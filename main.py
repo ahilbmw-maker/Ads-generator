@@ -53,11 +53,10 @@ Vrni SAMO veljaven JSON brez markdown:
 }}"""
 
     message = client.messages.create(
-        model="claude-3-5-sonnet-20241022",
-        max_tokens=4000,
-        tools=[{{"type": "web_search_20250305", "name": "web_search"}}] if req.mode == "url" else [],
-        messages=[{{"role": "user", "content": prompt}}]
-    )
+    model="claude-3-5-sonnet-20241022",
+    max_tokens=2000,
+    messages=[{"role": "user", "content": prompt}]
+)
     
     import json, re
     text = "".join(b.text for b in message.content if hasattr(b, "text"))
