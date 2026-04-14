@@ -37,6 +37,22 @@ from pydantic import BaseModel
 import anthropic
 
 app = FastAPI()
+@app.middleware("http")
+async def basic_auth(request: Request, call_next):
+    if request.url.path.startswith("/generate"):
+        # zaščiti samo API (ali odstrani if za vse)
+        pass
+
+    auth = request.headers.get("Authorization")
+
+    if not check_auth(auth):
+        return Response(
+            status_code=401,
+            headers={"WWW-Authenticate": "Basic"},
+            content="Unauthorized"
+        )
+
+    return await call_next(request)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
