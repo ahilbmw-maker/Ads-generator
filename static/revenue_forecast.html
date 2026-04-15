@@ -80,6 +80,9 @@ input::placeholder{color:var(--text3)}
           <span class="time-sep">:</span>
           <input type="number" id="mins" placeholder="mm" min="0" max="59" oninput="calc()">
         </div>
+        <button onclick="useNow()" style="margin-top:6px;width:100%;height:30px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
+          ⏱ Uporabi trenutni čas (Ljubljana)
+        </button>
         <div class="time-hint" id="time-hint"></div>
       </div>
       <div>
@@ -176,6 +179,15 @@ function setMode(m){
 
 function fmt(n){return new Intl.NumberFormat('sl-SI',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(n);}
 function fmtN(n){return new Intl.NumberFormat('sl-SI',{maximumFractionDigits:2}).format(n);}
+
+function useNow(){
+  // Ljubljana = UTC+1 (winter) / UTC+2 (summer DST)
+  const now = new Date();
+  const lj = new Date(now.toLocaleString('en-US', {timeZone: 'Europe/Ljubljana'}));
+  document.getElementById('hours').value = lj.getHours();
+  document.getElementById('mins').value = lj.getMinutes();
+  calc();
+}
 
 function calc(){
   const h = parseInt(document.getElementById('hours').value)||0;
