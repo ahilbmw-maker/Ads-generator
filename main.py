@@ -21,9 +21,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 # ─── BRAND DOMAIN MAPS ───────────────────────────────────────────────────────
-# For each brand: lang → domain
-# maaarket is the "master" brand — its XML feeds are the source of truth for slugs.
-# All other brands share the same slugs, just different domains.
 
 BRAND_DOMAINS = {
     "maaarket": {
@@ -97,7 +94,7 @@ BRAND_DOMAINS = {
     },
 }
 
-# ─── MAAARKET XML FEEDS (master source) ──────────────────────────────────────
+# ─── MAAARKET XML FEEDS ───────────────────────────────────────────────────────
 
 MAAARKET_FEEDS = {
     "sl": "https://api.maaarket.si/storage/exports/sl/google.xml",
@@ -112,10 +109,10 @@ MAAARKET_FEEDS = {
     "ro": "https://api.maaarket.ro/storage/exports/ro/google.xml",
 }
 
+# Google Merchant XML namespace
+G = "http://base.google.com/ns/1.0"
+
 # ─── CACHE ───────────────────────────────────────────────────────────────────
-# { lang: { key: { url, title, sku, path } } }
-# "path" = the URL path part (e.g. /izdelek/parni-cistilec-vapurex)
-# This is what gets reused across brands with domain swap.
 
 feed_cache: dict = {}
 last_fetch: Optional[datetime] = None
@@ -126,10 +123,9 @@ def is_cache_stale() -> bool:
     return last_fetch is None or datetime.now() - last_fetch > timedelta(hours=CACHE_TTL_HOURS)
 
 
-# ─── URL / BRAND HELPERS ─────────────────────────────────────────────────────
+# ─── HELPERS ─────────────────────────────────────────────────────────────────
 
 def detect_brand(url: str) -> Optional[str]:
-    """Detect brand from input URL domain."""
     if not url:
         return None
     domain = urlparse(url).netloc.lower().replace("www.", "")
@@ -141,7 +137,6 @@ def detect_brand(url: str) -> Optional[str]:
 
 
 def extract_slug(url: str) -> Optional[str]:
-    """Extract product slug (last path segment after known prefixes)."""
     for pattern in [
         r'/izdelek/([^/?#]+)',
         r'/product/([^/?#]+)',
@@ -158,13 +153,12 @@ def extract_slug(url: str) -> Optional[str]:
     return None
 
 
-# ─── XML PARSING ─────────────────────────────────────────────────────────────
-
 def parse_feed(xml_content: str) -> dict:
     """
-    Parse Google Merchant XML.
+    Parse Google Merchant XML feed.
+    Fields are under g: namespace: <g:id>, <g:link>, <g:title>
     Returns { key: { url, path, title, sku } }
-    Indexed by both g:id (SKU) and slug for flexible lookup.
+    Indexed by both g:id (numeric SKU) and URL slug.
     """
     products = {}
     try:
@@ -172,28 +166,36 @@ def parse_feed(xml_content: str) -> dict:
         channel = root.find('channel')
         if channel is None:
             return products
-        ns_g = 'http://base.google.com/ns/1.0'
+
         for item in channel.findall('item'):
-            link_el = item.find('link')
+            # g:link is the product URL
+            link_el = item.find(f'{{{G}}}link')
             url = link_el.text.strip() if link_el is not None and link_el.text else None
             if not url:
                 continue
+
             parsed = urlparse(url)
             path = parsed.path  # e.g. /izdelek/parni-cistilec-vapurex
 
-            title_el = item.find('title')
+            # g:title
+            title_el = item.find(f'{{{G}}}title')
             title = title_el.text.strip() if title_el is not None and title_el.text else ""
 
-            gid_el = item.find(f'{{{ns_g}}}id')
+            # g:id — numeric product ID / SKU
+            gid_el = item.find(f'{{{G}}}id')
             sku = gid_el.text.strip() if gid_el is not None and gid_el.text else None
 
             slug = extract_slug(url)
             entry = {"url": url, "path": path, "title": title, "sku": sku or ""}
 
+            # Index by SKU (numeric id)
             if sku:
                 products[sku.lower()] = entry
+
+            # Index by slug (URL slug)
             if slug and slug != (sku or "").lower():
                 products[slug] = entry
+
     except ET.ParseError as e:
         print(f"XML parse error: {e}")
     return products
@@ -217,7 +219,7 @@ async def fetch_all_feeds():
                 feed_cache[lang] = {}
                 print(f"  ✗ {lang}: {e}")
     last_fetch = datetime.now()
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Done.")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Feed cache updated.")
 
 
 async def ensure_cache_fresh():
@@ -225,20 +227,17 @@ async def ensure_cache_fresh():
         await fetch_all_feeds()
 
 
-# ─── CORE LOOKUP ─────────────────────────────────────────────────────────────
-
 def find_product_urls(source_url: Optional[str], sku: Optional[str]) -> dict:
     """
-    1. Determine brand from source_url (default: maaarket)
-    2. Find lookup key: explicit SKU > slug from URL
-    3. For each lang: find path in maaarket XML cache, then apply to target brand domain
-    4. Return { lang: final_url }
+    1. Detect brand from source_url
+    2. Lookup key = SKU (preferred) or slug from URL
+    3. Find path in maaarket XML cache for each lang
+    4. Build final URL: target brand domain + maaarket path
     """
     brand = detect_brand(source_url) if source_url else None
     if not brand:
         brand = "maaarket"
 
-    # Determine lookup key
     lookup_key = None
     if sku and sku.strip():
         lookup_key = sku.strip().lower()
@@ -252,8 +251,9 @@ def find_product_urls(source_url: Optional[str], sku: Optional[str]) -> dict:
     result = {}
 
     for lang, products in feed_cache.items():
-        # Find the product entry in maaarket XML
         entry = None
+
+        # Exact match
         if lookup_key in products:
             entry = products[lookup_key]
         else:
@@ -266,13 +266,10 @@ def find_product_urls(source_url: Optional[str], sku: Optional[str]) -> dict:
         if not entry:
             continue
 
-        # Get path from maaarket entry (e.g. /izdelek/parni-cistilec-vapurex)
         path = entry["path"]
 
-        # Apply target brand domain for this lang
         if lang in target_domains:
-            target_domain = target_domains[lang]
-            result[lang] = f"https://{target_domain}{path}"
+            result[lang] = f"https://{target_domains[lang]}{path}"
 
     return result
 
@@ -322,6 +319,26 @@ async def cache_status():
 async def refresh_cache():
     await fetch_all_feeds()
     return {"status": "ok", "last_fetch": last_fetch.isoformat()}
+
+
+@app.post("/lookup-debug")
+async def lookup_debug(data: dict):
+    """Debug endpoint: test SKU/URL lookup without generating ads."""
+    await ensure_cache_fresh()
+    source_url = data.get("source_url")
+    sku = data.get("sku")
+    urls = find_product_urls(source_url, sku)
+    brand = detect_brand(source_url) if source_url else "maaarket"
+    slug = extract_slug(source_url) if source_url else None
+    lookup_key = sku.strip().lower() if sku else slug
+    # Show first 5 cache keys per lang for debugging
+    sample = {lang: list(products.keys())[:5] for lang, products in feed_cache.items()}
+    return {
+        "brand": brand,
+        "lookup_key": lookup_key,
+        "found_urls": urls,
+        "cache_sample_keys": sample
+    }
 
 
 @app.post("/generate")
