@@ -165,61 +165,36 @@ textarea.input-area::placeholder { color: var(--text-tertiary); }
         </button>
       </div>
 
-      <!-- URL mode: URL + SKU side by side -->
+      <!-- URL mode -->
       <div id="input-url-wrap">
-        <div class="input-grid">
-          <div class="ifield">
-            <div class="ifield-label">
-              <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-              URL izdelka (SL)
-            </div>
-            <div class="ifield-wrap">
-              <span class="ifield-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
-              <input type="text" id="urlInput" placeholder="https://www.maaarket.si/izdelek/..." />
-            </div>
+        <div class="ifield">
+          <div class="ifield-label">
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            URL izdelka
           </div>
-          <div class="ifield">
-            <div class="ifield-label">
-              <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-              SKU koda
-              <span class="ifield-optional">opcijsko</span>
-            </div>
-            <div class="ifield-wrap">
-              <span class="ifield-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span>
-              <input type="text" id="skuInput" placeholder="npr. 12345 ali elastband-001" />
-            </div>
+          <div class="ifield-wrap">
+            <span class="ifield-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+            <input type="text" id="urlInput" placeholder="https://www.maaarket.si/izdelek/... ali satelitska stran" />
           </div>
         </div>
       </div>
 
       <!-- Text mode: description + URL + SKU -->
+      <!-- Text mode -->
       <div id="input-txt-wrap" style="display:none">
         <div class="ifield" style="margin-bottom:10px">
           <div class="ifield-label">Opis izdelka</div>
           <textarea class="input-area" id="txtInput" placeholder="Prilepi sem naziv, opis, lastnosti — karkoli iz strani izdelka..."></textarea>
         </div>
-        <div class="input-grid">
-          <div class="ifield">
-            <div class="ifield-label">
-              <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-              URL izdelka (SL)
-              <span class="ifield-optional">opcijsko</span>
-            </div>
-            <div class="ifield-wrap">
-              <span class="ifield-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
-              <input type="text" id="urlTxtInput" placeholder="https://www.maaarket.si/izdelek/..." />
-            </div>
+        <div class="ifield">
+          <div class="ifield-label">
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            URL izdelka
+            <span class="ifield-optional">opcijsko — za prikaz URL-jev po državah</span>
           </div>
-          <div class="ifield">
-            <div class="ifield-label">
-              <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-              SKU koda
-              <span class="ifield-optional">opcijsko</span>
-            </div>
-            <div class="ifield-wrap">
-              <span class="ifield-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span>
-              <input type="text" id="skuTxtInput" placeholder="npr. 12345" />
-            </div>
+          <div class="ifield-wrap">
+            <span class="ifield-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+            <input type="text" id="urlTxtInput" placeholder="https://www.maaarket.si/izdelek/..." />
           </div>
         </div>
       </div>
@@ -258,7 +233,7 @@ textarea.input-area::placeholder { color: var(--text-tertiary); }
 
       <div class="hint">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span class="hint-text" id="hintText">Generiram 1× Primary Text in 1× Headline v 10 jezikih. URL + SKU zagotavlja 100% zadetke za vse jezikovne variante.</span>
+        <span class="hint-text" id="hintText">Generiram 1× Primary Text in 1× Headline v 10 jezikih.</span>
       </div>
     </div>
 
@@ -342,24 +317,22 @@ function update(){
     for(let i=0;i<MAX;i++){const d=document.createElement('div');d.className='chip'+(i<state[t]?' on':'');c.appendChild(d);}
   });
   document.getElementById('hintText').textContent=
-    `Generiram ${state.pt}× Primary Text in ${state.hl}× Headline v 10 jezikih. URL + SKU zagotavlja 100% zadetke.`;
+    `Generiram ${state.pt}× Primary Text in ${state.hl}× Headline v 10 jezikih.`;
 }
 
 // Generate
 async function generate(){
-  let apiInput='', apiMode='url', sourceUrl='', sku='', label='';
+  let apiInput='', apiMode='url', sourceUrl='', label='';
 
   if(state.mode==='url'){
     const u=document.getElementById('urlInput').value.trim();
     if(!u){flash('urlInput');return;}
     apiInput=u; apiMode='url'; sourceUrl=u; label=u;
-    sku=document.getElementById('skuInput').value.trim();
   } else {
     const txt=document.getElementById('txtInput').value.trim();
     if(!txt){flash('txtInput');return;}
     apiInput=txt; apiMode='text'; label=txt.substring(0,80);
     sourceUrl=document.getElementById('urlTxtInput').value.trim();
-    sku=document.getElementById('skuTxtInput').value.trim();
   }
 
   const btn=document.getElementById('btnGen');
@@ -373,7 +346,7 @@ async function generate(){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({input:apiInput,mode:apiMode,pt_count:state.pt,hl_count:state.hl,
-        source_url:sourceUrl||null,sku:sku||null})
+        source_url:sourceUrl||null})
     });
     const data=await res.json();
     if(data.error)throw new Error(data.error);
