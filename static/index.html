@@ -42,6 +42,17 @@ textarea.input-area:focus { outline: none; border-color: var(--accent-border); b
 textarea.input-area::placeholder { color: var(--text-tertiary); }
 
 .btn-gen { width: 100%; height: 46px; border-radius: var(--radius); border: none; background: var(--accent); color: white; font-size: 14px; font-family: 'DM Sans', sans-serif; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all 0.15s; }
+
+/* Quality mode buttons */
+.qbtn { flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--surface); cursor: pointer; transition: all 0.15s; text-align: left; font-family: 'DM Sans', sans-serif; }
+.qbtn:hover { border-color: var(--border-hover); background: var(--surface2); }
+.qbtn.on { border-color: var(--accent); background: var(--accent-dim); }
+.qbtn-icon { font-size: 18px; flex-shrink: 0; line-height: 1; }
+.qbtn-body { display: flex; flex-direction: column; gap: 2px; }
+.qbtn-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.qbtn-sub { font-size: 11px; color: var(--text-tertiary); }
+.qbtn.on .qbtn-title { color: var(--accent); }
+.qbtn.on .qbtn-sub { color: var(--accent); opacity: 0.7; }
 .btn-gen:hover { background: #2d5fee; }
 .btn-gen:active { transform: scale(0.98); }
 .btn-gen:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -187,6 +198,24 @@ textarea.input-area::placeholder { color: var(--text-tertiary); }
         </div>
       </div>
 
+      <!-- Quality mode selector -->
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="qbtn on" id="qmode-sonnet" onclick="setQMode('sonnet')">
+          <span class="qbtn-icon">✦</span>
+          <span class="qbtn-body">
+            <span class="qbtn-title">Kreativno</span>
+            <span class="qbtn-sub">Sonnet · vrhunska kvaliteta</span>
+          </span>
+        </button>
+        <button class="qbtn" id="qmode-fast" onclick="setQMode('fast')">
+          <span class="qbtn-icon">⚡</span>
+          <span class="qbtn-body">
+            <span class="qbtn-title">Hitro</span>
+            <span class="qbtn-sub">Sonnet + Haiku · ~2× hitreje</span>
+          </span>
+        </button>
+      </div>
+
       <button class="btn-gen" id="btnGen" onclick="generate()">
         <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         Generiraj oglase
@@ -261,9 +290,15 @@ textarea.input-area::placeholder { color: var(--text-tertiary); }
 
 </div>
 <script>
-const state = {pt:1, hl:1};
+const state = {pt:1, hl:1, qmode:'sonnet'};
 const MAX=5, HKEY='meta_ads_history_v2', HMAX=8;
 let lastRequest = null;
+
+function setQMode(m){
+  state.qmode = m;
+  document.getElementById('qmode-sonnet').classList.toggle('on', m==='sonnet');
+  document.getElementById('qmode-fast').classList.toggle('on', m==='fast');
+}
 
 const LANGS = [
   {code:'sl',label:'SI SL',name:'Slovenščina'},{code:'hr',label:'HR HR',name:'Hrvaščina'},
@@ -329,7 +364,7 @@ async function generate(){
   document.getElementById('loading').classList.add('show');
 
   const products = inputs.map(url=>({url, mode:'url'}));
-  const reqBody = {products, pt_count:state.pt, hl_count:state.hl};
+  const reqBody = {products, pt_count:state.pt, hl_count:state.hl, qmode:state.qmode};
   lastRequest = {reqBody, urls: inputs};
 
   // Show progress indicators — first is active, rest waiting
