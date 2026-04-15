@@ -5,6 +5,7 @@ import asyncio
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI
@@ -27,6 +28,37 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
+# ─── DOMAIN MAPPING ───────────────────────────────────────────────────────────
+# Maps: source domain → { lang: target domain }
+# Add more satellite site groups here as needed.
+
+DOMAIN_GROUPS = [
+    {
+        "sl": "www.maaarket.si",
+        "hr": "www.maaarket.hr",
+        "rs": "www.maaarket.rs",
+        "hu": "www.maaarket.hu",
+        "cz": "www.maaarket.cz",
+        "sk": "www.maaarket.sk",
+        "pl": "www.maaarket.pl",
+        "gr": "www.maaarket.gr",
+        "ro": "www.maaarket.ro",
+        "bg": "www.maaarket.bg",
+    },
+    # Add more groups for satellite sites, e.g.:
+    # {
+    #     "sl": "www.thundershop.si",
+    #     "hr": "www.thundershop.hr",
+    #     ...
+    # },
+]
+
+# Path prefix per language (some shops use /izdelek/, others /product/ etc.)
+# If all domains use the same path, leave this empty.
+PATH_PREFIX_OVERRIDE = {
+    # "rs": "/proizvod/",  # example: RS uses different path prefix
+}
+
 # ─── XML FEED CONFIG ──────────────────────────────────────────────────────────
 
 FEEDS = {
@@ -43,7 +75,6 @@ FEEDS = {
 }
 
 # ─── IN-MEMORY CACHE ─────────────────────────────────────────────────────────
-# Structure: { lang: { sku: { "url": "...", "title": "..." } } }
 feed_cache: dict = {}
 last_fetch: Optional[datetime] = None
 CACHE_TTL_HOURS = 24
@@ -55,130 +86,125 @@ def is_cache_stale() -> bool:
     return datetime.now() - last_fetch > timedelta(hours=CACHE_TTL_HOURS)
 
 
-def extract_sku_from_url(url: str) -> Optional[str]:
-    """Extract SKU/slug from product URL. Works for maaarket URLs."""
-    # e.g. https://www.maaarket.si/izdelek/parni-cistilec-vapurex-9 -> parni-cistilec-vapurex-9
-    match = re.search(r'/izdelek/([^/?#]+)', url)
-    if match:
-        return match.group(1)
-    match = re.search(r'/product/([^/?#]+)', url)
-    if match:
-        return match.group(1)
-    match = re.search(r'/proizvod/([^/?#]+)', url)
-    if match:
-        return match.group(1)
+# ─── URL HELPERS ─────────────────────────────────────────────────────────────
+
+def get_domain_group(domain: str) -> Optional[dict]:
+    """Find the domain group that contains this domain."""
+    clean = domain.replace("https://", "").replace("http://", "").split("/")[0]
+    for group in DOMAIN_GROUPS:
+        if clean in group.values():
+            return group
     return None
 
 
+def build_urls_from_slug(source_url: str) -> dict:
+    """
+    Given a source URL, extract the slug and build URLs for all languages
+    by replacing the domain. Returns { lang: url }.
+    """
+    parsed = urlparse(source_url)
+    source_domain = parsed.netloc  # e.g. www.maaarket.si
+    path = parsed.path             # e.g. /izdelek/parni-cistilec-vapurex
+
+    group = get_domain_group(source_domain)
+    if not group:
+        return {}
+
+    result = {}
+    for lang, target_domain in group.items():
+        # Apply path prefix override if defined
+        final_path = path
+        if lang in PATH_PREFIX_OVERRIDE:
+            # Replace the path prefix (e.g. /izdelek/ → /proizvod/)
+            parts = path.split("/")
+            if len(parts) >= 3:
+                parts[1] = PATH_PREFIX_OVERRIDE[lang].strip("/")
+                final_path = "/".join(parts)
+
+        result[lang] = f"{parsed.scheme}://{target_domain}{final_path}"
+
+    return result
+
+
+def extract_slug(url: str) -> Optional[str]:
+    """Extract product slug from URL."""
+    for pattern in [r'/izdelek/([^/?#]+)', r'/product/([^/?#]+)', r'/proizvod/([^/?#]+)',
+                    r'/termek/([^/?#]+)', r'/produkt/([^/?#]+)', r'/produkty/([^/?#]+)']:
+        m = re.search(pattern, url)
+        if m:
+            return m.group(1).lower()
+    return None
+
+
+# ─── XML FEED PARSING ────────────────────────────────────────────────────────
+
 def parse_feed(xml_content: str, lang: str) -> dict:
-    """Parse Google Merchant XML feed and return {sku: {url, title, id}} dict."""
+    """Parse Google Merchant XML and return {sku: {url, title}} dict."""
     products = {}
     try:
         root = ET.fromstring(xml_content)
-        ns = {
-            'g': 'http://base.google.com/ns/1.0'
-        }
         channel = root.find('channel')
         if channel is None:
             return products
-
+        ns_g = 'http://base.google.com/ns/1.0'
         for item in channel.findall('item'):
-            # Get product link
             link_el = item.find('link')
             url = link_el.text.strip() if link_el is not None and link_el.text else None
             if not url:
                 continue
-
-            # Get title
             title_el = item.find('title')
             title = title_el.text.strip() if title_el is not None and title_el.text else ""
-
-            # Get g:id (SKU)
-            gid_el = item.find('g:id', ns)
-            if gid_el is None:
-                gid_el = item.find('{http://base.google.com/ns/1.0}id')
-            sku = gid_el.text.strip() if gid_el is not None and gid_el.text else None
-
-            # Extract slug from URL as backup key
-            slug = extract_sku_from_url(url)
-
-            product_data = {"url": url, "title": title, "sku": sku or ""}
-
+            gid_el = item.find(f'{{{ns_g}}}id')
+            sku = gid_el.text.strip().lower() if gid_el is not None and gid_el.text else None
+            slug = extract_slug(url)
+            entry = {"url": url, "title": title}
             if sku:
-                products[sku.lower()] = product_data
-            if slug:
-                products[slug.lower()] = product_data
-
+                products[sku] = entry
+            if slug and slug != sku:
+                products[slug] = entry
     except ET.ParseError as e:
-        print(f"XML parse error for {lang}: {e}")
+        print(f"XML parse error [{lang}]: {e}")
     return products
 
 
 async def fetch_all_feeds():
-    """Fetch all XML feeds concurrently and update cache."""
     global feed_cache, last_fetch
-    print(f"[{datetime.now()}] Fetching XML feeds...")
-
-    async with httpx.AsyncClient(timeout=30.0) as client_http:
-        tasks = {
-            lang: client_http.get(url)
-            for lang, url in FEEDS.items()
-        }
-
-        results = {}
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Fetching XML feeds...")
+    async with httpx.AsyncClient(timeout=30.0) as hc:
+        tasks = {lang: hc.get(url) for lang, url in FEEDS.items()}
         for lang, task in tasks.items():
             try:
-                response = await task
-                if response.status_code == 200:
-                    results[lang] = parse_feed(response.text, lang)
-                    print(f"  ✓ {lang}: {len(results[lang])} products")
+                resp = await task
+                if resp.status_code == 200:
+                    feed_cache[lang] = parse_feed(resp.text, lang)
+                    print(f"  ✓ {lang}: {len(feed_cache[lang])} products")
                 else:
-                    print(f"  ✗ {lang}: HTTP {response.status_code}")
-                    results[lang] = {}
+                    feed_cache[lang] = {}
+                    print(f"  ✗ {lang}: HTTP {resp.status_code}")
             except Exception as e:
+                feed_cache[lang] = {}
                 print(f"  ✗ {lang}: {e}")
-                results[lang] = {}
-
-    feed_cache = results
     last_fetch = datetime.now()
-    print(f"[{datetime.now()}] Feed cache updated.")
 
 
 async def ensure_cache_fresh():
-    """Refresh cache if stale."""
     if is_cache_stale():
         await fetch_all_feeds()
 
 
-def find_product_urls(query: str) -> dict:
-    """
-    Given a URL or SKU, find matching product URLs for all languages.
-    Returns { lang: { url, title } } or empty dict if not found.
-    """
-    # Normalize query
-    if query.startswith('http'):
-        key = extract_sku_from_url(query)
-    else:
-        key = query.strip()
-
-    if not key:
-        return {}
-
-    key = key.lower()
+def lookup_by_sku(sku: str) -> dict:
+    """Find product URLs across all languages by SKU. Returns {lang: url}."""
+    key = sku.strip().lower()
     result = {}
-
     for lang, products in feed_cache.items():
-        # Try exact match first
         if key in products:
-            result[lang] = products[key]
+            result[lang] = products[key]["url"]
             continue
-
-        # Try partial slug match (in case URL format differs slightly)
+        # Partial match fallback
         for prod_key, prod_data in products.items():
             if key in prod_key or prod_key in key:
-                result[lang] = prod_data
+                result[lang] = prod_data["url"]
                 break
-
     return result
 
 
@@ -186,14 +212,11 @@ def find_product_urls(query: str) -> dict:
 
 @app.on_event("startup")
 async def startup_event():
-    """Fetch feeds on startup."""
     await fetch_all_feeds()
-    # Schedule daily refresh in background
     asyncio.create_task(daily_refresh())
 
 
 async def daily_refresh():
-    """Background task: refresh feeds every 24 hours."""
     while True:
         await asyncio.sleep(CACHE_TTL_HOURS * 3600)
         await fetch_all_feeds()
@@ -202,14 +225,12 @@ async def daily_refresh():
 # ─── MODELS ──────────────────────────────────────────────────────────────────
 
 class AdRequest(BaseModel):
-    input: str
-    mode: str
+    input: str       # product description or URL
+    mode: str        # "url" or "text"
     pt_count: int = 1
     hl_count: int = 1
-
-
-class LookupRequest(BaseModel):
-    query: str  # URL or SKU
+    source_url: Optional[str] = None   # SL product URL for domain mapping
+    sku: Optional[str] = None          # SKU for XML lookup fallback
 
 
 # ─── ROUTES ──────────────────────────────────────────────────────────────────
@@ -221,84 +242,74 @@ def root():
 
 @app.get("/cache-status")
 async def cache_status():
-    """Check when cache was last updated and how many products per lang."""
     return {
         "last_fetch": last_fetch.isoformat() if last_fetch else None,
-        "next_fetch": (last_fetch + timedelta(hours=CACHE_TTL_HOURS)).isoformat() if last_fetch else None,
-        "products_per_lang": {lang: len(prods) for lang, prods in feed_cache.items()},
-        "stale": is_cache_stale()
+        "stale": is_cache_stale(),
+        "products_per_lang": {lang: len(p) for lang, p in feed_cache.items()}
     }
 
 
 @app.post("/refresh-cache")
 async def refresh_cache():
-    """Manually trigger a cache refresh."""
     await fetch_all_feeds()
     return {"status": "ok", "last_fetch": last_fetch.isoformat()}
-
-
-@app.post("/lookup")
-async def lookup_product(req: LookupRequest):
-    """Find product URLs across all languages for a given URL or SKU."""
-    await ensure_cache_fresh()
-    urls = find_product_urls(req.query)
-    return {
-        "query": req.query,
-        "found": len(urls) > 0,
-        "urls": urls
-    }
 
 
 @app.post("/generate")
 async def generate(req: AdRequest):
     await ensure_cache_fresh()
 
+    # ── Step 1: Resolve product URLs ──
+    product_urls = {}
+
+    if req.source_url:
+        # Primary: build URLs by replacing domain (no tokens needed)
+        product_urls = build_urls_from_slug(req.source_url)
+
+    if req.sku:
+        # Fallback/supplement: look up missing langs via XML cache
+        sku_urls = lookup_by_sku(req.sku)
+        for lang, url in sku_urls.items():
+            if lang not in product_urls:
+                product_urls[lang] = url
+
+    # ── Step 2: Generate ad copy via Claude ──
     if req.mode == "url":
         user_msg = f"Preberi to stran in ustvari Meta oglase: {req.input}"
     else:
         user_msg = f"Na podlagi tega opisa ustvari Meta oglase:\n\n{req.input}"
 
-    # Find product URLs for all languages
-    product_urls = find_product_urls(req.input) if req.mode == "url" else {}
-
-    pt_placeholders = ", ".join([f'"PT tekst {i+1}"' for i in range(req.pt_count)])
-    hl_placeholders = ", ".join([f'"HL tekst {i+1}"' for i in range(req.hl_count)])
+    pt_ph = ", ".join([f'"PT {i+1}"' for i in range(req.pt_count)])
+    hl_ph = ", ".join([f'"HL {i+1}"' for i in range(req.hl_count)])
 
     prompt = f"""{user_msg}
 
 OBVEZNO ustvari TOČNO {req.pt_count} Primary Text(ov) IN TOČNO {req.hl_count} Headline(ov) za VSAK jezik.
 
-Pravila za Primary Text (ponovi {req.pt_count}x za vsak jezik):
-- 2-3 kratke vrstice
-- Vsaj 4-5 emoji-jev razporejenih po besedilu
-- Energičen, prodajno usmerjen ton
-- Brez cen
-- Vsak tekst mora biti DRUGAČEN od ostalih
+Primary Text pravila:
+- 2-3 kratke vrstice, vsaj 4-5 emoji-jev, energičen prodajni ton, brez cen
+- Vsak tekst DRUGAČEN od ostalih
 
-Pravila za Headline (ponovi {req.hl_count}x za vsak jezik):
-- MAKSIMALNO 5 BESED, ne več!
-- Točno 1 emoji na začetku
-- Brez cen
-- Vsak headline mora biti DRUGAČEN
+Headline pravila:
+- MAKSIMALNO 5 BESED, točno 1 emoji na začetku, brez cen
+- Vsak headline DRUGAČEN
 
 Jeziki: SL (izvirnik), HR (latinica), RS (SAMO latinica), HU, CZ, SK, PL, GR (grška pisava), RO (latinica), BG (SAMO cirilica).
 
-JSON struktura — "pt" mora imeti TOČNO {req.pt_count} elementov, "hl" mora imeti TOČNO {req.hl_count} elementov:
+Vrni SAMO veljaven JSON brez markdown:
 {{
   "product": "kratko ime izdelka",
-  "sl": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
-  "hr": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
-  "rs": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
-  "hu": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
-  "cz": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
-  "sk": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
-  "pl": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
-  "gr": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
-  "ro": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
-  "bg": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}}
-}}
-
-Vrni SAMO veljaven JSON, brez markdown, brez ```."""
+  "sl": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
+  "hr": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
+  "rs": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
+  "hu": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
+  "cz": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
+  "sk": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
+  "pl": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
+  "gr": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
+  "ro": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
+  "bg": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}}
+}}"""
 
     tools = [{"type": "web_search_20250305", "name": "web_search"}] if req.mode == "url" else []
 
@@ -309,14 +320,9 @@ Vrni SAMO veljaven JSON, brez markdown, brez ```."""
         messages=[{"role": "user", "content": prompt}]
     )
 
-    text = ""
-    for block in message.content:
-        if hasattr(block, "text"):
-            text += block.text
-
+    text = "".join(b.text for b in message.content if hasattr(b, "text"))
     text = re.sub(r"```json\s*", "", text)
-    text = re.sub(r"```\s*", "", text)
-    text = text.strip()
+    text = re.sub(r"```\s*", "", text).strip()
 
     match = re.search(r'\{[\s\S]*\}', text)
     if not match:
@@ -324,11 +330,7 @@ Vrni SAMO veljaven JSON, brez markdown, brez ```."""
 
     try:
         data = json.loads(match.group())
-        # Attach product URLs to response
-        data["product_urls"] = {
-            lang: info["url"]
-            for lang, info in product_urls.items()
-        }
+        data["product_urls"] = product_urls
         return data
     except json.JSONDecodeError as e:
         return {"error": f"JSON napaka: {str(e)}"}
