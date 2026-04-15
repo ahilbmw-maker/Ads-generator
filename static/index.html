@@ -311,8 +311,27 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
 
         <div class="ifield">
-          <div class="ifield-label">Video Names <span class="ifield-optional">točno kot v TikTok</span></div>
-          <input type="text" class="no-icon" id="ttVideos" placeholder="[DURACOVER (1).mp4],[DURACOVER (2).mp4],[DURACOVER (3).mp4],[DURACOVER (4).mp4]" style="padding-left:12px"/>
+          <div class="ifield-label">Video Names <span class="ifield-optional">iz TikTok library</span></div>
+          <!-- Upload screenshot -->
+          <div id="ttVideoUploadArea" style="border:1.5px dashed var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer;transition:all 0.15s;background:var(--surface2);display:flex;align-items:center;gap:10px;margin-bottom:8px" onclick="document.getElementById('ttScreenshot').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="ttHandleDrop(event)">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <div>
+              <div style="font-size:13px;font-weight:500;color:var(--text-secondary)">Naloži screenshot TikTok Video Library</div>
+              <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">Klikni ali povleci sliko sem · PNG, JPG</div>
+            </div>
+            <input type="file" id="ttScreenshot" accept="image/*" style="display:none" onchange="ttProcessImage(this.files[0])">
+          </div>
+          <!-- Extracted preview -->
+          <div id="ttVideoPreview" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:8px">
+            <div style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+              Prepoznana imena <button onclick="ttClearVideos()" style="font-size:11px;color:var(--text-tertiary);background:none;border:none;cursor:pointer;font-family:DM Sans,sans-serif">Počisti</button>
+            </div>
+            <div id="ttVideoList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
+            <div style="font-size:11px;color:var(--text-tertiary);padding:6px 8px;background:var(--surface2);border-radius:6px;font-family:DM Mono,monospace;word-break:break-all" id="ttVideoFormatted"></div>
+          </div>
+          <!-- Manual fallback -->
+          <input type="text" class="no-icon" id="ttVideos" placeholder="[VIDEO (1).mp4],[VIDEO (2).mp4]..." style="padding-left:12px;font-size:12px"/>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Ali ročno vpiši v zgornjem polju</div>
         </div>
 
         <button class="btn-gen btn-tiktok" id="ttBtnGen" onclick="ttGenerate()">
@@ -437,6 +456,7 @@ async function metaGenerate() {
   metaLastReq={reqBody,urls:inputs};
   try{
     const res=await fetch('/generate-multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reqBody)});
+    if(!res.ok){const txt=await res.text();throw new Error(`Server napaka ${res.status} — poskusi znova čez minuto`);}
     const data=await res.json();
     if(data.error)throw new Error(data.error);
     inputs.forEach((_,i)=>{const el=document.getElementById('mprog-'+i);if(el){el.classList.remove('loading');el.classList.add('done');}});
@@ -455,6 +475,7 @@ async function metaRegen() {
   document.getElementById('prodTabs').innerHTML='';
   try{
     const res=await fetch('/generate-multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(metaLastReq.reqBody)});
+    if(!res.ok){const txt=await res.text();throw new Error(`Server napaka ${res.status} — poskusi znova čez minuto`);}
     const data=await res.json();
     if(data.error)throw new Error(data.error);
     saveH(data.results,metaLastReq.urls,metaLastReq.reqBody.pt_count,metaLastReq.reqBody.hl_count);
@@ -520,6 +541,72 @@ function metaGoBack(){
   document.getElementById('prodPanels').innerHTML='';document.getElementById('prodTabs').innerHTML='';
   document.getElementById('metaFormSection').style.display='block';
   document.getElementById('metaBtnGen').disabled=false;document.getElementById('metaError').classList.remove('show');
+}
+
+// ── TIKTOK VIDEO SCREENSHOT ──
+async function ttProcessImage(file) {
+  if (!file) return;
+  const area = document.getElementById('ttVideoUploadArea');
+  area.style.borderColor = 'var(--accent)';
+  area.innerHTML = `<div class="spinner tiktok" style="width:20px;height:20px;margin:0"></div><div style="font-size:13px;color:var(--text-secondary)">Berem imena videov...</div>`;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const b64 = e.target.result.split(',')[1];
+    const mediaType = file.type || 'image/png';
+    try {
+      const res = await fetch('/extract-videos', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({image: b64, media_type: mediaType})
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      ttShowVideos(data.filenames, data.formatted);
+    } catch(e) {
+      ttResetUpload();
+      alert('Napaka: ' + (e.message || 'Poskusi znova.'));
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function ttHandleDrop(e) {
+  e.preventDefault();
+  document.getElementById('ttVideoUploadArea').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) ttProcessImage(file);
+}
+
+function ttShowVideos(filenames, formatted) {
+  // Reset upload area
+  ttResetUpload();
+  // Show preview
+  const preview = document.getElementById('ttVideoPreview');
+  const list = document.getElementById('ttVideoList');
+  const formattedEl = document.getElementById('ttVideoFormatted');
+  list.innerHTML = filenames.map(f =>
+    `<div style="font-size:12px;padding:4px 8px;background:var(--surface2);border-radius:5px;font-family:DM Mono,monospace;color:var(--text)">${esc(f)}</div>`
+  ).join('');
+  formattedEl.textContent = formatted;
+  document.getElementById('ttVideos').value = formatted;
+  preview.style.display = 'block';
+}
+
+function ttClearVideos() {
+  document.getElementById('ttVideoPreview').style.display = 'none';
+  document.getElementById('ttVideos').value = '';
+  document.getElementById('ttScreenshot').value = '';
+}
+
+function ttResetUpload() {
+  document.getElementById('ttVideoUploadArea').style.borderColor = 'var(--border)';
+  document.getElementById('ttVideoUploadArea').innerHTML = `
+    <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    <div>
+      <div style="font-size:13px;font-weight:500;color:var(--text-secondary)">Naloži screenshot TikTok Video Library</div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">Klikni ali povleci sliko sem · PNG, JPG</div>
+    </div>
+    <input type="file" id="ttScreenshot" accept="image/*" style="display:none" onchange="ttProcessImage(this.files[0])">`;
 }
 
 // ── TIKTOK GENERATE ──
