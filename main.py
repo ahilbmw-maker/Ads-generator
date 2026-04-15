@@ -181,18 +181,18 @@ async def fetch_all_feeds():
 
     feed_by_lang = new_cache
 
-    # Build slug→g:id index from SL feed
-    # SL feed has slugs like "elasticni-trak-za-trening-elastband"
+    # Build slug→g:id index from ALL language feeds
+    # This allows lookup regardless of which language URL is entered
     new_slug_to_id = {}
-    sl_feed = feed_by_lang.get("sl", {})
-    for g_id, data in sl_feed.items():
-        slug = extract_slug(data["url"])
-        if slug:
-            new_slug_to_id[slug] = g_id
+    for lang, lang_feed in new_cache.items():
+        for g_id, data in lang_feed.items():
+            slug = extract_slug(data["url"])
+            if slug and slug not in new_slug_to_id:
+                new_slug_to_id[slug] = g_id
     slug_to_id = new_slug_to_id
 
     last_fetch = datetime.now()
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Done. SL slug index: {len(slug_to_id)} entries.")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Done. Slug index: {len(slug_to_id)} entries across all langs.")
 
 
 async def ensure_cache_fresh():
