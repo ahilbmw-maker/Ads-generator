@@ -357,7 +357,6 @@ async function generate(){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(reqBody)
     });
-    });
     const data=await res.json();
     if(data.error)throw new Error(data.error);
     saveH(data,label,state.pt,state.hl);
