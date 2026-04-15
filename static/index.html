@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meta Ads Generator</title>
+<title>Ads Generator</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -12,21 +12,38 @@
   --border: rgba(0,0,0,0.07); --border-hover: rgba(0,0,0,0.15);
   --text: #111116; --text-secondary: #55555f; --text-tertiary: #9999a8;
   --accent: #3a6fff; --accent-dim: rgba(58,111,255,0.1); --accent-border: rgba(58,111,255,0.3);
+  --tiktok: #010101; --tiktok-dim: rgba(1,1,1,0.07);
   --green: #0a8c5a; --green-dim: rgba(10,140,90,0.1); --green-border: rgba(10,140,90,0.28);
   --red: #e03030; --chip-off: #dddde5; --chip-on: #3a6fff;
-  --radius: 10px; --radius-lg: 14px;
+  --sidebar: 200px; --radius: 10px; --radius-lg: 14px;
 }
-body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; justify-content: center; padding: 2.5rem 1.5rem 5rem; }
-.layout { width: 100%; max-width: 960px; }
-.logo { display: flex; align-items: center; gap: 12px; margin-bottom: 2rem; }
-.logo-icon { width: 42px; height: 42px; border-radius: 12px; background: #1877F2; display: flex; align-items: center; justify-content: center; }
-.logo-icon svg { width: 20px; height: 20px; fill: white; }
-.logo-name { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
-.logo-sub { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
+
+/* ── SIDEBAR ── */
+.sidebar { width: var(--sidebar); flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 1.25rem 0.75rem; gap: 4px; min-height: 100vh; }
+.sidebar-logo { display: flex; align-items: center; gap: 8px; padding: 0 0.5rem 1.25rem; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem; }
+.sidebar-logo-icon { width: 28px; height: 28px; border-radius: 7px; background: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sidebar-logo-icon svg { width: 14px; height: 14px; fill: white; }
+.sidebar-logo-text { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: -0.2px; line-height: 1.2; }
+.sidebar-logo-sub { font-size: 10px; color: var(--text-tertiary); }
+.nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: var(--radius); cursor: pointer; transition: all 0.12s; color: var(--text-secondary); font-size: 13px; font-weight: 500; border: 1px solid transparent; }
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--surface2); color: var(--text); border-color: var(--border); }
+.nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+.nav-item .nav-badge { margin-left: auto; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px; font-family: 'DM Mono', monospace; }
+.nav-meta svg { stroke: #1877F2; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nav-meta.active { border-color: rgba(24,119,242,0.2); }
+.nav-tiktok svg { fill: var(--tiktok); stroke: none; }
+.nav-tiktok.active { border-color: rgba(1,1,1,0.12); }
+
+/* ── MAIN CONTENT ── */
+.main { flex: 1; padding: 2rem 2rem 5rem; max-width: 1000px; }
+.page { display: none; }
+.page.active { display: block; }
+
+/* ── SHARED COMPONENTS ── */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; }
 .slabel { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: block; }
-
-/* URL inputs */
 .url-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .url-row { display: flex; align-items: center; gap: 8px; }
 .url-num { width: 22px; height: 22px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text-tertiary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-family: 'DM Mono', monospace; }
@@ -34,29 +51,17 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .url-icon { position: absolute; left: 11px; pointer-events: none; }
 .url-icon svg { width: 13px; height: 13px; stroke: var(--text-tertiary); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 input[type="text"] { width: 100%; height: 42px; padding: 0 12px 0 32px; font-size: 13.5px; font-family: 'DM Sans', sans-serif; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); transition: all 0.15s; }
+input[type="text"].no-icon { padding-left: 12px; }
 input[type="text"]:focus { outline: none; border-color: var(--accent-border); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-dim); }
 input[type="text"]::placeholder { color: var(--text-tertiary); }
 input[type="text"].error { border-color: var(--red) !important; }
-textarea.input-area { width: 100%; min-height: 90px; padding: 11px 13px; font-size: 13.5px; font-family: 'DM Sans', sans-serif; line-height: 1.65; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); resize: vertical; transition: all 0.15s; }
-textarea.input-area:focus { outline: none; border-color: var(--accent-border); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-dim); }
-textarea.input-area::placeholder { color: var(--text-tertiary); }
-
 .btn-gen { width: 100%; height: 46px; border-radius: var(--radius); border: none; background: var(--accent); color: white; font-size: 14px; font-family: 'DM Sans', sans-serif; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all 0.15s; }
-
-/* Quality mode buttons */
-.qbtn { flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--surface); cursor: pointer; transition: all 0.15s; text-align: left; font-family: 'DM Sans', sans-serif; }
-.qbtn:hover { border-color: var(--border-hover); background: var(--surface2); }
-.qbtn.on { border-color: var(--accent); background: var(--accent-dim); }
-.qbtn-icon { font-size: 18px; flex-shrink: 0; line-height: 1; }
-.qbtn-body { display: flex; flex-direction: column; gap: 2px; }
-.qbtn-title { font-size: 13px; font-weight: 600; color: var(--text); }
-.qbtn-sub { font-size: 11px; color: var(--text-tertiary); }
-.qbtn.on .qbtn-title { color: var(--accent); }
-.qbtn.on .qbtn-sub { color: var(--accent); opacity: 0.7; }
 .btn-gen:hover { background: #2d5fee; }
 .btn-gen:active { transform: scale(0.98); }
 .btn-gen:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-gen svg { width: 14px; height: 14px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.btn-tiktok { background: var(--tiktok); }
+.btn-tiktok:hover { background: #333; }
 .sep { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
 .counters { display: flex; gap: 1.5rem; }
 .counter-group { flex: 1; }
@@ -75,18 +80,27 @@ textarea.input-area::placeholder { color: var(--text-tertiary); }
 .hint-text { font-size: 12px; color: var(--text-tertiary); line-height: 1.6; }
 .error-msg { display: none; padding: 10px 14px; background: rgba(224,48,48,0.07); border: 1px solid rgba(224,48,48,0.2); border-radius: var(--radius); font-size: 13px; color: var(--red); margin-top: 10px; }
 .error-msg.show { display: block; }
-
-/* Loading */
 .loading { display: none; text-align: center; padding: 3rem 1rem; }
 .loading.show { display: block; }
 .spinner { width: 30px; height: 30px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 1rem; }
+.spinner.tiktok { border-top-color: var(--tiktok); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-text { font-size: 13px; color: var(--text-tertiary); }
 .loading-progress { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
 .prog-item { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--text-tertiary); display: flex; align-items: center; gap: 5px; }
 .prog-item.done { color: var(--green); border-color: var(--green-border); background: var(--green-dim); }
 .prog-item.loading { color: var(--accent); border-color: var(--accent-border); background: var(--accent-dim); }
-.prog-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* Quality mode */
+.qbtn { flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--surface); cursor: pointer; transition: all 0.15s; text-align: left; font-family: 'DM Sans', sans-serif; }
+.qbtn:hover { border-color: var(--border-hover); background: var(--surface2); }
+.qbtn.on { border-color: var(--accent); background: var(--accent-dim); }
+.qbtn-icon { font-size: 18px; flex-shrink: 0; line-height: 1; }
+.qbtn-body { display: flex; flex-direction: column; gap: 2px; }
+.qbtn-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.qbtn-sub { font-size: 11px; color: var(--text-tertiary); }
+.qbtn.on .qbtn-title { color: var(--accent); }
+.qbtn.on .qbtn-sub { color: var(--accent); opacity: 0.7; }
 
 /* History */
 .history-section { margin-top: 1.5rem; }
@@ -105,18 +119,15 @@ textarea.input-area::placeholder { color: var(--text-tertiary); }
 .hi-badge { font-size: 10px; font-weight: 600; color: var(--text-tertiary); background: var(--surface2); border-radius: 4px; padding: 2px 6px; white-space: nowrap; font-family: 'DM Mono', monospace; }
 .history-empty { font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 1.5rem; background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); }
 
-/* Results */
+/* Meta results */
 .results { display: none; }
 .results.show { display: block; }
 .results-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 8px; }
-.results-hdr-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .results-hdr-right { display: flex; gap: 8px; }
 .back-btn { height: 34px; padding: 0 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.12s; display: flex; align-items: center; gap: 5px; }
 .back-btn:hover { border-color: var(--border-hover); color: var(--text); }
 .back-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .back-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
-/* Product tabs */
 .prod-tabs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 1.25rem; }
 .prod-tab { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); font-size: 13px; font-weight: 500; cursor: pointer; background: var(--surface); color: var(--text-secondary); transition: all 0.12s; display: flex; align-items: center; gap: 6px; }
 .prod-tab:hover { border-color: var(--border-hover); color: var(--text); }
@@ -125,8 +136,6 @@ textarea.input-area::placeholder { color: var(--text-tertiary); }
 .prod-tab:not(.on) .tab-num { background: var(--surface2); color: var(--text-tertiary); }
 .prod-panel { display: none; }
 .prod-panel.on { display: block; }
-
-/* Country sections */
 .country-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 10px; overflow: hidden; }
 .country-hdr { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .country-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 5px; font-family: 'DM Mono', monospace; letter-spacing: 0.3px; flex-shrink: 0; }
@@ -152,153 +161,208 @@ textarea.input-area::placeholder { color: var(--text-tertiary); }
 .pt-item { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .pt-item:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
 
+/* TikTok results */
+.tt-results { display: none; }
+.tt-results.show { display: block; }
+.tt-download-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; display: flex; align-items: center; gap: 16px; }
+.tt-download-icon { width: 48px; height: 48px; border-radius: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.tt-download-icon svg { width: 22px; height: 22px; stroke: var(--text-secondary); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.tt-download-body { flex: 1; }
+.tt-download-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.tt-download-sub { font-size: 12px; color: var(--text-tertiary); }
+.tt-download-btn { height: 38px; padding: 0 18px; border-radius: var(--radius); border: none; background: var(--tiktok); color: white; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0; }
+.tt-download-btn:hover { background: #333; }
+.tt-download-btn svg { width: 14px; height: 14px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tt-preview { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 12px; }
+.tt-preview-hdr { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.tt-preview-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; }
+.tt-lang-row { display: flex; align-items: center; gap: 0; border-bottom: 1px solid var(--border); }
+.tt-lang-row:last-child { border-bottom: none; }
+.tt-lang-badge { font-size: 11px; font-weight: 700; padding: 10px 14px; font-family: 'DM Mono', monospace; min-width: 80px; border-right: 1px solid var(--border); flex-shrink: 0; }
+.tt-text-cell { flex: 1; padding: 10px 14px; font-size: 12px; color: var(--text); line-height: 1.5; }
+.tt-cp-btn { height: 24px; padding: 0 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); font-size: 11px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; display: flex; align-items: center; gap: 4px; white-space: nowrap; margin: auto 14px auto 0; flex-shrink: 0; }
+.tt-cp-btn:hover { color: var(--text); border-color: var(--border-hover); }
+.tt-cp-btn.ok { color: var(--green); border-color: var(--green-border); background: var(--green-dim); }
+
+/* Lang colors */
 .lang-sl{background:#dbeafe;color:#1e40af} .lang-hr{background:#ffedd5;color:#9a3412}
 .lang-rs{background:#fee2e2;color:#991b1b} .lang-hu{background:#dcfce7;color:#166534}
 .lang-cz{background:#f3e8ff;color:#6b21a8} .lang-sk{background:#e0f2fe;color:#075985}
 .lang-pl{background:#fef9c3;color:#854d0e} .lang-gr{background:#e0e7ff;color:#3730a3}
 .lang-ro{background:#fef3c7;color:#92400e} .lang-bg{background:#d1fae5;color:#065f46}
+
+/* input-field helper */
+.ifield { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.ifield-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; display: flex; align-items: center; gap: 6px; }
+.ifield-optional { font-size: 10px; font-weight: 400; color: var(--text-tertiary); text-transform: none; letter-spacing: 0; background: var(--surface2); padding: 1px 6px; border-radius: 4px; }
+.input-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
 </style>
 </head>
 <body>
-<div class="layout">
 
-  <div class="logo">
-    <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg></div>
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="sidebar-logo-icon"><svg viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg></div>
     <div>
-      <div class="logo-name">Meta Ads Generator</div>
-      <div class="logo-sub">FB / Instagram — 10 jezikov</div>
+      <div class="sidebar-logo-text">Ads Generator</div>
+      <div class="sidebar-logo-sub">10 jezikov</div>
     </div>
   </div>
 
-  <!-- FORM -->
-  <div id="formSection">
-    <div class="card">
-      <span class="slabel">URL izdelkov</span>
-      <div class="url-list" id="urlList">
-        <div class="url-row">
-          <div class="url-num">1</div>
-          <div class="url-wrap">
-            <span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
-            <input type="text" class="url-input" placeholder="https://www.maaarket.si/izdelek/..." />
-          </div>
-        </div>
-        <div class="url-row">
-          <div class="url-num">2</div>
-          <div class="url-wrap">
-            <span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
-            <input type="text" class="url-input" placeholder="https://www.maaarket.si/izdelek/..." />
-          </div>
-        </div>
-        <div class="url-row">
-          <div class="url-num">3</div>
-          <div class="url-wrap">
-            <span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
-            <input type="text" class="url-input" placeholder="https://www.maaarket.si/izdelek/..." />
-          </div>
-        </div>
-      </div>
-
-      <!-- Quality mode selector -->
-      <div style="display:flex;gap:8px;margin-bottom:12px">
-        <button class="qbtn on" id="qmode-sonnet" onclick="setQMode('sonnet')">
-          <span class="qbtn-icon">✦</span>
-          <span class="qbtn-body">
-            <span class="qbtn-title">Kreativno</span>
-            <span class="qbtn-sub">Sonnet · vrhunska kvaliteta</span>
-          </span>
-        </button>
-        <button class="qbtn" id="qmode-fast" onclick="setQMode('fast')">
-          <span class="qbtn-icon">⚡</span>
-          <span class="qbtn-body">
-            <span class="qbtn-title">Hitro</span>
-            <span class="qbtn-sub">Sonnet + Haiku · ~2× hitreje</span>
-          </span>
-        </button>
-      </div>
-
-      <button class="btn-gen" id="btnGen" onclick="generate()">
-        <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        Generiraj oglase
-      </button>
-      <div class="error-msg" id="errorMsg"></div>
-
-      <div class="sep"></div>
-      <div class="counters">
-        <div class="counter-group">
-          <span class="slabel">Primary Texts</span>
-          <div class="counter-row">
-            <button class="cnt-btn" id="pt-minus" onclick="change('pt',-1)">−</button>
-            <span class="cnt-val" id="pt-val">1</span>
-            <button class="cnt-btn" id="pt-plus" onclick="change('pt',1)">+</button>
-            <span class="cnt-max">max 5</span>
-          </div>
-          <div class="chips" id="pt-chips"></div>
-        </div>
-        <div class="counters-divider"></div>
-        <div class="counter-group">
-          <span class="slabel">Headlines</span>
-          <div class="counter-row">
-            <button class="cnt-btn" id="hl-minus" onclick="change('hl',-1)">−</button>
-            <span class="cnt-val" id="hl-val">1</span>
-            <button class="cnt-btn" id="hl-plus" onclick="change('hl',1)">+</button>
-            <span class="cnt-max">max 5</span>
-          </div>
-          <div class="chips" id="hl-chips"></div>
-        </div>
-      </div>
-      <div class="hint">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span class="hint-text" id="hintText">Generiram 1× Primary Text in 1× Headline v 10 jezikih za vsak URL.</span>
-      </div>
-    </div>
-
-    <div class="loading" id="loading">
-      <div class="spinner"></div>
-      <div class="loading-text" id="loadingText">Generiram oglase vzporedno...</div>
-      <div class="loading-progress" id="loadingProgress"></div>
-    </div>
-
-    <!-- History -->
-    <div class="history-section">
-      <div class="history-hdr">
-        <span class="history-title">Zadnji vnosi</span>
-        <button class="history-clear" onclick="clearHistory()">Počisti</button>
-      </div>
-      <div class="history-list" id="historyList"></div>
-    </div>
+  <div class="nav-item nav-meta active" id="nav-meta" onclick="switchPage('meta')">
+    <svg viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+    Meta Ads
+    <span class="nav-badge" style="background:#e8f0fe;color:#1877F2">FB/IG</span>
   </div>
 
-  <!-- RESULTS -->
-  <div class="results" id="results">
-    <div class="results-hdr">
-      <div class="results-hdr-left">
+  <div class="nav-item nav-tiktok" id="nav-tiktok" onclick="switchPage('tiktok')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z"/></svg>
+    TikTok Ads
+    <span class="nav-badge" style="background:#f0f0f0;color:#555">XLS</span>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- ═══ META PAGE ═══ -->
+  <div class="page active" id="page-meta">
+    <div id="metaFormSection">
+      <div class="card">
+        <span class="slabel">URL izdelkov</span>
+        <div class="url-list">
+          <div class="url-row"><div class="url-num">1</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
+          <div class="url-row"><div class="url-num">2</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
+          <div class="url-row"><div class="url-num">3</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
+        </div>
+
+        <!-- Quality mode -->
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="qbtn on" id="qmode-sonnet" onclick="setQMode('sonnet')"><span class="qbtn-icon">✦</span><span class="qbtn-body"><span class="qbtn-title">Kreativno</span><span class="qbtn-sub">Sonnet · vrhunska kvaliteta</span></span></button>
+          <button class="qbtn" id="qmode-fast" onclick="setQMode('fast')"><span class="qbtn-icon">⚡</span><span class="qbtn-body"><span class="qbtn-title">Hitro</span><span class="qbtn-sub">Sonnet + Haiku · ~2× hitreje</span></span></button>
+        </div>
+
+        <button class="btn-gen" id="metaBtnGen" onclick="metaGenerate()">
+          <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Generiraj Meta oglase
+        </button>
+        <div class="error-msg" id="metaError"></div>
+
+        <div class="sep"></div>
+        <div class="counters">
+          <div class="counter-group">
+            <span class="slabel">Primary Texts</span>
+            <div class="counter-row"><button class="cnt-btn" id="pt-minus" onclick="change('pt',-1)">−</button><span class="cnt-val" id="pt-val">1</span><button class="cnt-btn" id="pt-plus" onclick="change('pt',1)">+</button><span class="cnt-max">max 5</span></div>
+            <div class="chips" id="pt-chips"></div>
+          </div>
+          <div class="counters-divider"></div>
+          <div class="counter-group">
+            <span class="slabel">Headlines</span>
+            <div class="counter-row"><button class="cnt-btn" id="hl-minus" onclick="change('hl',-1)">−</button><span class="cnt-val" id="hl-val">1</span><button class="cnt-btn" id="hl-plus" onclick="change('hl',1)">+</button><span class="cnt-max">max 5</span></div>
+            <div class="chips" id="hl-chips"></div>
+          </div>
+        </div>
+        <div class="hint"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span class="hint-text" id="metaHint">Generiram 1× PT in 1× HL v 10 jezikih za vsak URL.</span></div>
+      </div>
+
+      <div class="loading" id="metaLoading">
+        <div class="spinner"></div>
+        <div class="loading-text" id="metaLoadingText">Generiram oglase...</div>
+        <div class="loading-progress" id="metaProgress"></div>
+      </div>
+
+      <div class="history-section">
+        <div class="history-hdr"><span class="history-title">Zadnji vnosi</span><button class="history-clear" onclick="clearHistory()">Počisti</button></div>
+        <div class="history-list" id="historyList"></div>
+      </div>
+    </div>
+
+    <div class="results" id="metaResults">
+      <div class="results-hdr">
         <div class="prod-tabs" id="prodTabs"></div>
+        <div class="results-hdr-right">
+          <button class="back-btn" id="metaRegenBtn" onclick="metaRegen()"><svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg> Regeneriraj</button>
+          <button class="back-btn" onclick="metaGoBack()"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Nov vnos</button>
+        </div>
       </div>
-      <div class="results-hdr-right">
-        <button class="back-btn" id="regenBtn" onclick="regenerate()">
-          <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
-          Regeneriraj
+      <div id="prodPanels"></div>
+    </div>
+  </div>
+
+  <!-- ═══ TIKTOK PAGE ═══ -->
+  <div class="page" id="page-tiktok">
+    <div id="ttFormSection">
+      <div class="card">
+        <div class="ifield">
+          <div class="ifield-label"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> URL izdelka (SL)</div>
+          <div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" id="ttUrl" placeholder="https://www.maaarket.si/izdelek/..."/></div>
+        </div>
+
+        <div class="input-grid2">
+          <div class="ifield">
+            <div class="ifield-label">SKU koda</div>
+            <input type="text" class="no-icon" id="ttSku" placeholder="npr. DURACOVER" style="padding-left:12px"/>
+          </div>
+          <div class="ifield">
+            <div class="ifield-label">Brand <span class="ifield-optional">za Campaign Name</span></div>
+            <input type="text" class="no-icon" id="ttBrand" placeholder="npr. Maaarket" style="padding-left:12px"/>
+          </div>
+        </div>
+
+        <div class="ifield">
+          <div class="ifield-label">Video Names <span class="ifield-optional">točno kot v TikTok</span></div>
+          <input type="text" class="no-icon" id="ttVideos" placeholder="[DURACOVER (1).mp4],[DURACOVER (2).mp4],[DURACOVER (3).mp4],[DURACOVER (4).mp4]" style="padding-left:12px"/>
+        </div>
+
+        <button class="btn-gen btn-tiktok" id="ttBtnGen" onclick="ttGenerate()">
+          <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Generiraj TikTok oglase + XLS
         </button>
-        <button class="back-btn" onclick="goBack()">
-          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-          Nov vnos
-        </button>
+        <div class="error-msg" id="ttError"></div>
+
+        <div class="hint"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span class="hint-text">Claude generira 4 kratke variante (max 80 znakov) za vsako od 10 držav ter zapolni TikTok XLS template s texti, URL-ji in video imeni.</span></div>
+      </div>
+
+      <div class="loading" id="ttLoading">
+        <div class="spinner tiktok"></div>
+        <div class="loading-text">Generiram TikTok tekste in pripavljam XLS...</div>
       </div>
     </div>
-    <div id="prodPanels"></div>
+
+    <div class="tt-results" id="ttResults">
+      <div class="tt-download-card">
+        <div class="tt-download-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><polyline points="9 15 12 18 15 15"/></svg></div>
+        <div class="tt-download-body">
+          <div class="tt-download-title" id="ttFileName">TikTok Ads Export</div>
+          <div class="tt-download-sub">Pripravljeno za uvoz v TikTok Ads Manager</div>
+        </div>
+        <button class="tt-download-btn" id="ttDownloadBtn" onclick="ttDownload()">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Prenesi XLS
+        </button>
+      </div>
+
+      <div class="tt-preview" id="ttPreview">
+        <div class="tt-preview-hdr"><span class="tt-preview-title">Predogled tekstov po državah</span></div>
+        <div id="ttPreviewBody"></div>
+      </div>
+
+      <button class="back-btn" onclick="ttGoBack()" style="margin-top:4px">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        Nov vnos
+      </button>
+    </div>
   </div>
 
 </div>
-<script>
-const state = {pt:1, hl:1, qmode:'sonnet'};
-const MAX=5, HKEY='meta_ads_history_v2', HMAX=8;
-let lastRequest = null;
 
-function setQMode(m){
-  state.qmode = m;
-  document.getElementById('qmode-sonnet').classList.toggle('on', m==='sonnet');
-  document.getElementById('qmode-fast').classList.toggle('on', m==='fast');
-}
+<script>
+// ── STATE ──
+const metaState = {pt:1, hl:1, qmode:'sonnet'};
+const MAX=5, HKEY='meta_ads_history_v2', HMAX=8;
+let metaLastReq = null;
+let ttLastFile = null;
 
 const LANGS = [
   {code:'sl',label:'SI SL',name:'Slovenščina'},{code:'hr',label:'HR HR',name:'Hrvaščina'},
@@ -308,158 +372,114 @@ const LANGS = [
   {code:'ro',label:'RO RO',name:'Romunščina'},{code:'bg',label:'BG BG',name:'Bolgarščina'},
 ];
 
-// ── History ──
+// ── NAVIGATION ──
+function switchPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.getElementById('nav-' + page).classList.add('active');
+}
+
+// ── META COUNTERS ──
+function change(t, d) { metaState[t] = Math.min(MAX, Math.max(1, metaState[t]+d)); updateMeta(); }
+function setQMode(m) {
+  metaState.qmode = m;
+  document.getElementById('qmode-sonnet').classList.toggle('on', m==='sonnet');
+  document.getElementById('qmode-fast').classList.toggle('on', m==='fast');
+}
+function updateMeta() {
+  ['pt','hl'].forEach(t => {
+    document.getElementById(t+'-val').textContent = metaState[t];
+    document.getElementById(t+'-minus').disabled = metaState[t]<=1;
+    document.getElementById(t+'-plus').disabled = metaState[t]>=MAX;
+    const c = document.getElementById(t+'-chips'); c.innerHTML='';
+    for(let i=0;i<MAX;i++){const d=document.createElement('div');d.className='chip'+(i<metaState[t]?' on':'');c.appendChild(d);}
+  });
+  document.getElementById('metaHint').textContent = `Generiram ${metaState.pt}× PT in ${metaState.hl}× HL v 10 jezikih za vsak URL.`;
+}
+
+// ── META HISTORY ──
 function getH(){try{return JSON.parse(localStorage.getItem(HKEY)||'[]');}catch(e){return[];}}
-function saveH(results, urls, pt, hl){
+function saveH(results,urls,pt,hl){
   const h=getH();
-  const names = results.map(r=>r.product||'?').join(', ');
-  h.unshift({id:Date.now(), names, urls, pt, hl,
-    date:new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),
-    results});
+  h.unshift({id:Date.now(),names:results.map(r=>r.product||'?').join(', '),urls,pt,hl,
+    date:new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),results});
   if(h.length>HMAX)h.splice(HMAX);
-  localStorage.setItem(HKEY,JSON.stringify(h));
-  renderH();
+  localStorage.setItem(HKEY,JSON.stringify(h));renderH();
 }
 function renderH(){
-  const h=getH(), el=document.getElementById('historyList');
+  const h=getH(),el=document.getElementById('historyList');
   if(!h.length){el.innerHTML='<div class="history-empty">Še ni zgodovine.</div>';return;}
   el.innerHTML=h.map(e=>`<div class="history-item" onclick="loadH(${e.id})">
     <div class="hi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-    <div class="hi-body">
-      <div class="hi-name">🛍 ${esc(e.names)}</div>
-      <div class="hi-meta">${e.date} · ${e.urls.filter(Boolean).length} URL-jev</div>
-    </div>
+    <div class="hi-body"><div class="hi-name">🛍 ${esc(e.names)}</div><div class="hi-meta">${e.date} · ${e.urls.filter(Boolean).length} URL-jev</div></div>
     <span class="hi-badge">${e.pt}PT · ${e.hl}HL</span>
   </div>`).join('');
 }
-function loadH(id){const e=getH().find(x=>x.id===id);if(e)renderResults(e.results);}
+function loadH(id){const e=getH().find(x=>x.id===id);if(e)renderMetaResults(e.results);}
 function clearHistory(){localStorage.removeItem(HKEY);renderH();}
 
-// ── Counters ──
-function change(t,d){state[t]=Math.min(MAX,Math.max(1,state[t]+d));update();}
-function update(){
-  ['pt','hl'].forEach(t=>{
-    document.getElementById(t+'-val').textContent=state[t];
-    document.getElementById(t+'-minus').disabled=state[t]<=1;
-    document.getElementById(t+'-plus').disabled=state[t]>=MAX;
-    const c=document.getElementById(t+'-chips');c.innerHTML='';
-    for(let i=0;i<MAX;i++){const d=document.createElement('div');d.className='chip'+(i<state[t]?' on':'');c.appendChild(d);}
-  });
-  document.getElementById('hintText').textContent=
-    `Generiram ${state.pt}× Primary Text in ${state.hl}× Headline v 10 jezikih za vsak URL.`;
-}
-
-// ── Generate ──
-async function generate(){
-  const inputs = [...document.querySelectorAll('.url-input')].map(i=>i.value.trim()).filter(Boolean);
-  if(!inputs.length){
-    document.querySelectorAll('.url-input')[0].classList.add('error');
-    setTimeout(()=>document.querySelectorAll('.url-input')[0].classList.remove('error'),1500);
-    return;
-  }
-
-  const btn=document.getElementById('btnGen');
+// ── META GENERATE ──
+async function metaGenerate() {
+  const inputs = [...document.querySelectorAll('.meta-url-input')].map(i=>i.value.trim()).filter(Boolean);
+  if(!inputs.length){document.querySelectorAll('.meta-url-input')[0].classList.add('error');setTimeout(()=>document.querySelectorAll('.meta-url-input')[0].classList.remove('error'),1500);return;}
+  const btn=document.getElementById('metaBtnGen');
   btn.disabled=true;
-  document.getElementById('errorMsg').classList.remove('show');
-  document.getElementById('loading').classList.add('show');
-
-  const products = inputs.map(url=>({url, mode:'url'}));
-  const reqBody = {products, pt_count:state.pt, hl_count:state.hl, qmode:state.qmode};
-  lastRequest = {reqBody, urls: inputs};
-
-  // Show progress indicators — first is active, rest waiting
-  const prog = document.getElementById('loadingProgress');
-  prog.innerHTML = inputs.map((url,i)=>{
-    const name = url.split('/').filter(Boolean).pop()?.substring(0,22)||`Izdelek ${i+1}`;
-    const cls = i===0 ? 'loading' : '';
-    return `<div class="prog-item ${cls}" id="prog-${i}"><div class="prog-dot"></div>${name}</div>`;
+  document.getElementById('metaError').classList.remove('show');
+  document.getElementById('metaLoading').classList.add('show');
+  const prog=document.getElementById('metaProgress');
+  prog.innerHTML=inputs.map((url,i)=>{
+    const name=url.split('/').filter(Boolean).pop()?.substring(0,22)||`Izdelek ${i+1}`;
+    return `<div class="prog-item${i===0?' loading':''}" id="mprog-${i}"><div class="prog-dot" style="width:6px;height:6px;border-radius:50%;background:currentColor"></div>${name}</div>`;
   }).join('');
-  document.getElementById('loadingText').textContent = `Generiram 1/${inputs.length}...`;
-
+  document.getElementById('metaLoadingText').textContent=`Generiram 1/${inputs.length}...`;
+  const reqBody={products:inputs.map(url=>({url,mode:'url'})),pt_count:metaState.pt,hl_count:metaState.hl,qmode:metaState.qmode};
+  metaLastReq={reqBody,urls:inputs};
   try{
-    const res = await fetch('/generate-multi',{
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(reqBody)
-    });
-    const data = await res.json();
-    if(data.error) throw new Error(data.error);
-
-    // Mark all done
-    inputs.forEach((_,i)=>{
-      const el=document.getElementById('prog-'+i);
-      if(el){el.classList.remove('loading');el.classList.add('done');}
-    });
-    document.getElementById('loadingText').textContent='Končano!';
-
-    setTimeout(()=>{
-      document.getElementById('loading').classList.remove('show');
-      saveH(data.results, inputs, state.pt, state.hl);
-      renderResults(data.results);
-    }, 400);
-
+    const res=await fetch('/generate-multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reqBody)});
+    const data=await res.json();
+    if(data.error)throw new Error(data.error);
+    inputs.forEach((_,i)=>{const el=document.getElementById('mprog-'+i);if(el){el.classList.remove('loading');el.classList.add('done');}});
+    document.getElementById('metaLoadingText').textContent='Končano!';
+    setTimeout(()=>{document.getElementById('metaLoading').classList.remove('show');saveH(data.results,inputs,metaState.pt,metaState.hl);renderMetaResults(data.results);},400);
   }catch(e){
-    document.getElementById('loading').classList.remove('show');
-    const err=document.getElementById('errorMsg');
-    err.textContent='Napaka: '+(e.message||'Poskusi znova.');
-    err.classList.add('show');
-    btn.disabled=false;
+    document.getElementById('metaLoading').classList.remove('show');
+    const err=document.getElementById('metaError');err.textContent='Napaka: '+(e.message||'Poskusi znova.');err.classList.add('show');btn.disabled=false;
   }
 }
 
-async function regenerate(){
-  if(!lastRequest) return;
-  const btn=document.getElementById('regenBtn');
-  btn.disabled=true;
-
-  // Show loading inside results area directly
-  document.getElementById('prodPanels').innerHTML=`
-    <div style="text-align:center;padding:3rem 1rem">
-      <div class="spinner" style="margin:0 auto 1rem"></div>
-      <div style="font-size:13px;color:var(--text-tertiary)">Regeneriram oglase...</div>
-    </div>`;
+async function metaRegen() {
+  if(!metaLastReq)return;
+  const btn=document.getElementById('metaRegenBtn');btn.disabled=true;
+  document.getElementById('prodPanels').innerHTML=`<div style="text-align:center;padding:3rem 1rem"><div class="spinner" style="margin:0 auto 1rem"></div><div style="font-size:13px;color:var(--text-tertiary)">Regeneriram...</div></div>`;
   document.getElementById('prodTabs').innerHTML='';
-
   try{
-    const res=await fetch('/generate-multi',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(lastRequest.reqBody)
-    });
+    const res=await fetch('/generate-multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(metaLastReq.reqBody)});
     const data=await res.json();
-    if(data.error) throw new Error(data.error);
-    saveH(data.results, lastRequest.urls, lastRequest.reqBody.pt_count, lastRequest.reqBody.hl_count);
-    renderResults(data.results);
+    if(data.error)throw new Error(data.error);
+    saveH(data.results,metaLastReq.urls,metaLastReq.reqBody.pt_count,metaLastReq.reqBody.hl_count);
+    renderMetaResults(data.results);
   }catch(e){
     document.getElementById('prodPanels').innerHTML=`<div style="padding:1rem;color:var(--red);font-size:13px">Napaka: ${esc(e.message||'Poskusi znova.')}</div>`;
   }
   btn.disabled=false;
 }
 
-// ── Render results ──
-function renderResults(results){
-  document.getElementById('formSection').style.display='none';
-  document.getElementById('results').classList.add('show');
-  const tabs=document.getElementById('prodTabs');
-  const panels=document.getElementById('prodPanels');
-  tabs.innerHTML=''; panels.innerHTML='';
-
+function renderMetaResults(results) {
+  document.getElementById('metaFormSection').style.display='none';
+  document.getElementById('metaResults').classList.add('show');
+  const tabs=document.getElementById('prodTabs'),panels=document.getElementById('prodPanels');
+  tabs.innerHTML='';panels.innerHTML='';
   results.forEach((data,idx)=>{
-    if(!data||data.error) return;
-    const name = data.product || `Izdelek ${idx+1}`;
-
-    // Tab
+    if(!data||data.error)return;
+    const name=data.product||`Izdelek ${idx+1}`;
     const tab=document.createElement('div');
-    tab.className='prod-tab'+(idx===0?' on':'');
-    tab.id=`ptab-${idx}`;
+    tab.className='prod-tab'+(idx===0?' on':'');tab.id=`ptab-${idx}`;
     tab.innerHTML=`<span class="tab-num">${idx+1}</span>${esc(name)}`;
-    tab.onclick=()=>swProd(idx);
-    tabs.appendChild(tab);
-
-    // Panel
+    tab.onclick=()=>swProd(idx);tabs.appendChild(tab);
     const panel=document.createElement('div');
-    panel.className='prod-panel'+(idx===0?' on':'');
-    panel.id=`ppanel-${idx}`;
-    panel.innerHTML=renderProductPanel(data);
-    panels.appendChild(panel);
+    panel.className='prod-panel'+(idx===0?' on':'');panel.id=`ppanel-${idx}`;
+    panel.innerHTML=renderMetaPanel(data);panels.appendChild(panel);
   });
 }
 
@@ -470,80 +490,113 @@ function swProd(idx){
   document.getElementById('ppanel-'+idx).classList.add('on');
 }
 
-// Global text store — avoids JSON/quote escaping issues in onclick attributes
-const copyStore = {};
-let copyStoreId = 0;
-function storeText(txt){ const id='cs'+(++copyStoreId); copyStore[id]=txt; return id; }
-function copyById(id, btn){ actualCopy(copyStore[id]||'', btn); }
+const copyStore={};let csId=0;
+function storeText(txt){const id='cs'+(++csId);copyStore[id]=txt;return id;}
+function copyById(id,btn){actualCopy(copyStore[id]||'',btn);}
 
-function renderProductPanel(data){
+function renderMetaPanel(data) {
   const urls=data.product_urls||{};
   return LANGS.map(lang=>{
-    const d=data[lang.code]; if(!d)return '';
+    const d=data[lang.code];if(!d)return'';
     const pts=Array.isArray(d.pt)?d.pt:[d.pt];
     const hls=Array.isArray(d.hl)?d.hl:[d.hl];
     const purl=urls[lang.code]||null;
-
     const urlHtml=purl
       ?`<div class="country-url-row"><a class="country-url-link" href="${esc(purl)}" target="_blank">${esc(purl)}</a><button class="url-cp-btn" onclick="copyById('${storeText(purl)}',this)">${cpIco()} URL</button></div>`
       :`<span class="url-missing">URL ni najden</span>`;
-
-    function makeCpBtn(txt){ return `<button class="cp-btn" onclick="copyById('${storeText(txt)}',this)">${cpIco()} Kopiraj</button>`; }
-
-    const ptHtml = pts.length===1
-      ? `<div class="field-top"><span class="field-lbl">Primary Text</span>${makeCpBtn(pts[0])}</div><div class="field-text">${esc(pts[0])}</div>`
-      : `<div class="field-lbl" style="margin-bottom:8px">Primary Texts</div>`+pts.map((pt,i)=>`<div class="pt-item"><div class="field-top"><span class="field-lbl" style="opacity:.6">#${i+1}</span>${makeCpBtn(pt)}</div><div class="field-text">${esc(pt)}</div></div>`).join('');
-
-    const hlHtml = hls.length===1
-      ? `<div class="field-top"><span class="field-lbl">Headline</span>${makeCpBtn(hls[0])}</div><div class="field-text is-hl">${esc(hls[0])}</div>`
-      : `<div class="field-lbl" style="margin-bottom:8px">Headlines</div>`+hls.map((hl,i)=>`<div class="pt-item"><div class="field-top"><span class="field-lbl" style="opacity:.6">#${i+1}</span>${makeCpBtn(hl)}</div><div class="field-text is-hl">${esc(hl)}</div></div>`).join('');
-
-    return `<div class="country-section">
-      <div class="country-hdr">
-        <span class="country-badge lang-${lang.code}">${lang.label}</span>
-        <span class="country-name">${lang.name}</span>
-        ${urlHtml}
-      </div>
-      <div class="country-body">
-        <div class="field-col">${ptHtml}</div>
-        <div class="field-col">${hlHtml}</div>
-      </div>
-    </div>`;
+    function mkBtn(txt){return`<button class="cp-btn" onclick="copyById('${storeText(txt)}',this)">${cpIco()} Kopiraj</button>`;}
+    const ptHtml=pts.length===1
+      ?`<div class="field-top"><span class="field-lbl">Primary Text</span>${mkBtn(pts[0])}</div><div class="field-text">${esc(pts[0])}</div>`
+      :`<div class="field-lbl" style="margin-bottom:8px">Primary Texts</div>`+pts.map((pt,i)=>`<div class="pt-item"><div class="field-top"><span class="field-lbl" style="opacity:.6">#${i+1}</span>${mkBtn(pt)}</div><div class="field-text">${esc(pt)}</div></div>`).join('');
+    const hlHtml=hls.length===1
+      ?`<div class="field-top"><span class="field-lbl">Headline</span>${mkBtn(hls[0])}</div><div class="field-text is-hl">${esc(hls[0])}</div>`
+      :`<div class="field-lbl" style="margin-bottom:8px">Headlines</div>`+hls.map((hl,i)=>`<div class="pt-item"><div class="field-top"><span class="field-lbl" style="opacity:.6">#${i+1}</span>${mkBtn(hl)}</div><div class="field-text is-hl">${esc(hl)}</div></div>`).join('');
+    return`<div class="country-section"><div class="country-hdr"><span class="country-badge lang-${lang.code}">${lang.label}</span><span class="country-name">${lang.name}</span>${urlHtml}</div><div class="country-body"><div class="field-col">${ptHtml}</div><div class="field-col">${hlHtml}</div></div></div>`;
   }).join('');
 }
 
-function goBack(){
-  document.getElementById('results').classList.remove('show');
-  document.getElementById('prodPanels').innerHTML='';
-  document.getElementById('prodTabs').innerHTML='';
-  document.getElementById('formSection').style.display='block';
-  document.getElementById('btnGen').disabled=false;
-  document.getElementById('errorMsg').classList.remove('show');
+function metaGoBack(){
+  document.getElementById('metaResults').classList.remove('show');
+  document.getElementById('prodPanels').innerHTML='';document.getElementById('prodTabs').innerHTML='';
+  document.getElementById('metaFormSection').style.display='block';
+  document.getElementById('metaBtnGen').disabled=false;document.getElementById('metaError').classList.remove('show');
 }
 
-// ── Copy ──
-function actualCopy(txt, btn){
-  if(navigator.clipboard&&window.isSecureContext){
-    navigator.clipboard.writeText(txt).then(()=>showOk(btn)).catch(()=>fbCopy(txt,btn));
-  }else fbCopy(txt,btn);
+// ── TIKTOK GENERATE ──
+async function ttGenerate() {
+  const url=document.getElementById('ttUrl').value.trim();
+  const sku=document.getElementById('ttSku').value.trim();
+  const brand=document.getElementById('ttBrand').value.trim();
+  const videos=document.getElementById('ttVideos').value.trim();
+  if(!url){flash('ttUrl');return;}
+  if(!sku){flash('ttSku');return;}
+  if(!brand){flash('ttBrand');return;}
+  if(!videos){flash('ttVideos');return;}
+  const btn=document.getElementById('ttBtnGen');btn.disabled=true;
+  document.getElementById('ttError').classList.remove('show');
+  document.getElementById('ttLoading').classList.add('show');
+  try{
+    const res=await fetch('/generate-tiktok',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({source_url:url,sku,brand,video_names:videos})});
+    const data=await res.json();
+    if(data.error)throw new Error(data.error);
+    document.getElementById('ttLoading').classList.remove('show');
+    renderTikTokResults(data);
+  }catch(e){
+    document.getElementById('ttLoading').classList.remove('show');
+    const err=document.getElementById('ttError');err.textContent='Napaka: '+(e.message||'Poskusi znova.');err.classList.add('show');btn.disabled=false;
+  }
+}
+
+function renderTikTokResults(data) {
+  document.getElementById('ttFormSection').style.display='none';
+  document.getElementById('ttResults').classList.add('show');
+  const filepath=data.file;
+  const filename=filepath.split('/').pop();
+  ttLastFile=filename;
+  document.getElementById('ttFileName').textContent=filename;
+  const body=document.getElementById('ttPreviewBody');
+  body.innerHTML='';
+  LANGS.forEach(lang=>{
+    const txt=data.data?.[lang.code];if(!txt)return;
+    const row=document.createElement('div');row.className='tt-lang-row';
+    const id=storeText(txt);
+    row.innerHTML=`<span class="tt-lang-badge lang-${lang.code}">${lang.label}</span><div class="tt-text-cell">${esc(txt)}</div><button class="tt-cp-btn" onclick="copyById('${id}',this)">${cpIco()} Kopiraj</button>`;
+    body.appendChild(row);
+  });
+}
+
+function ttDownload(){
+  if(ttLastFile) window.open('/download/'+ttLastFile,'_blank');
+}
+
+function ttGoBack(){
+  document.getElementById('ttResults').classList.remove('show');
+  document.getElementById('ttFormSection').style.display='block';
+  document.getElementById('ttBtnGen').disabled=false;
+  document.getElementById('ttError').classList.remove('show');
+}
+
+// ── COPY ──
+function actualCopy(txt,btn){
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(txt).then(()=>showOk(btn)).catch(()=>fbCopy(txt,btn));}
+  else fbCopy(txt,btn);
 }
 function fbCopy(txt,btn){
-  const ta=document.createElement('textarea');
-  ta.value=txt;ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
+  const ta=document.createElement('textarea');ta.value=txt;ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
   document.body.appendChild(ta);ta.focus();ta.select();ta.setSelectionRange(0,99999);
-  try{document.execCommand('copy');}catch(e){}
-  document.body.removeChild(ta);showOk(btn);
+  try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);showOk(btn);
 }
 function showOk(btn){
   const orig=btn.innerHTML;
   btn.innerHTML=`<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg> Kopirano`;
-  btn.classList.add('ok');
-  setTimeout(()=>{btn.innerHTML=orig;btn.classList.remove('ok');},2000);
+  btn.classList.add('ok');setTimeout(()=>{btn.innerHTML=orig;btn.classList.remove('ok');},2000);
 }
 function cpIco(){return`<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;}
+function flash(id){const el=document.getElementById(id);if(!el)return;el.style.borderColor='var(--red)';el.focus();setTimeout(()=>el.style.borderColor='',1500);}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-update(); renderH();
+updateMeta();renderH();
 </script>
 </body>
 </html>
