@@ -8,22 +8,22 @@
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --bg: #f4f4f6;
+  --bg: #f2f2f5;
   --surface: #ffffff;
-  --surface2: #f0f0f3;
-  --border: rgba(0,0,0,0.08);
-  --border-hover: rgba(0,0,0,0.16);
+  --surface2: #ebebf0;
+  --border: rgba(0,0,0,0.07);
+  --border-hover: rgba(0,0,0,0.14);
   --text: #111116;
-  --text-secondary: #555560;
+  --text-secondary: #55555f;
   --text-tertiary: #9999a8;
   --accent: #3a6fff;
   --accent-dim: rgba(58,111,255,0.1);
-  --accent-border: rgba(58,111,255,0.35);
-  --green: #0f9e6a;
-  --green-dim: rgba(15,158,106,0.1);
-  --green-border: rgba(15,158,106,0.3);
+  --accent-border: rgba(58,111,255,0.3);
+  --green: #0a8c5a;
+  --green-dim: rgba(10,140,90,0.1);
+  --green-border: rgba(10,140,90,0.28);
   --red: #e03030;
-  --chip-off: #e4e4ea;
+  --chip-off: #dddde5;
   --chip-on: #3a6fff;
   --radius: 10px;
   --radius-lg: 14px;
@@ -35,26 +35,26 @@ body {
   min-height: 100vh;
   display: flex;
   justify-content: center;
-  padding: 2.5rem 1.5rem 4rem;
+  padding: 2.5rem 1.5rem 5rem;
 }
-.layout { width: 100%; max-width: 560px; }
+.layout { width: 100%; max-width: 900px; }
 
 /* Logo */
 .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 2rem; }
-.logo-icon { width: 42px; height: 42px; border-radius: 12px; background: #1877F2; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 8px rgba(24,119,242,0.3); }
+.logo-icon { width: 42px; height: 42px; border-radius: 12px; background: #1877F2; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .logo-icon svg { width: 20px; height: 20px; fill: white; }
-.logo-name { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; color: var(--text); }
+.logo-name { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
 .logo-sub { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
 
 /* Card */
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; }
 .section-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; display: block; }
 
 /* Mode toggle */
 .mode-row { display: flex; gap: 6px; margin-bottom: 1.25rem; background: var(--surface2); padding: 4px; border-radius: var(--radius); }
 .mode-btn { flex: 1; height: 34px; border-radius: 7px; border: none; background: transparent; color: var(--text-tertiary); font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s; }
 .mode-btn:hover { color: var(--text-secondary); }
-.mode-btn.on { background: var(--surface); color: var(--text); border: 1px solid var(--border-hover); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.mode-btn.on { background: var(--surface); color: var(--text); border: 1px solid var(--border-hover); }
 .mode-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Inputs */
@@ -71,10 +71,10 @@ textarea.input-area::placeholder { color: var(--text-tertiary); }
 textarea.input-area.error { border-color: var(--red) !important; }
 
 /* Generate button */
-.btn-gen { width: 100%; height: 46px; border-radius: var(--radius); border: none; background: var(--accent); color: white; font-size: 14px; font-family: 'DM Sans', sans-serif; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; letter-spacing: -0.2px; transition: all 0.15s; box-shadow: 0 2px 8px rgba(58,111,255,0.25); }
-.btn-gen:hover { background: #2d5fee; box-shadow: 0 4px 12px rgba(58,111,255,0.35); }
+.btn-gen { width: 100%; height: 46px; border-radius: var(--radius); border: none; background: var(--accent); color: white; font-size: 14px; font-family: 'DM Sans', sans-serif; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all 0.15s; }
+.btn-gen:hover { background: #2d5fee; }
 .btn-gen:active { transform: scale(0.98); }
-.btn-gen:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+.btn-gen:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-gen svg { width: 14px; height: 14px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Sep */
@@ -85,7 +85,7 @@ textarea.input-area.error { border-color: var(--red) !important; }
 .counter-group { flex: 1; }
 .counter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .cnt-btn { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; font-family: 'DM Mono', monospace; }
-.cnt-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface); }
+.cnt-btn:hover { border-color: var(--border-hover); color: var(--text); }
 .cnt-btn:disabled { opacity: 0.25; cursor: not-allowed; }
 .cnt-val { font-size: 16px; font-weight: 600; color: var(--text); min-width: 22px; text-align: center; font-family: 'DM Mono', monospace; }
 .cnt-max { font-size: 11px; color: var(--text-tertiary); }
@@ -99,12 +99,10 @@ textarea.input-area.error { border-color: var(--red) !important; }
 .hint svg { width: 13px; height: 13px; stroke: var(--text-tertiary); fill: none; stroke-width: 1.5; flex-shrink: 0; margin-top: 1px; }
 .hint-text { font-size: 12px; color: var(--text-tertiary); line-height: 1.6; }
 
-/* Error */
+/* Error / loading */
 .error-msg { display: none; padding: 10px 14px; background: rgba(224,48,48,0.07); border: 1px solid rgba(224,48,48,0.2); border-radius: var(--radius); font-size: 13px; color: var(--red); margin-top: 10px; }
 .error-msg.show { display: block; }
-
-/* Loading */
-.loading { display: none; text-align: center; padding: 2.5rem 1rem; }
+.loading { display: none; text-align: center; padding: 3rem 1rem; }
 .loading.show { display: block; }
 .spinner { width: 30px; height: 30px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 1rem; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -113,61 +111,112 @@ textarea.input-area.error { border-color: var(--red) !important; }
 /* Results */
 .results { display: none; }
 .results.show { display: block; }
-.product-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-secondary); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; margin-bottom: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
 
-/* Language tabs — colored pills */
-.tabs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 1.25rem; }
-.tab {
-  padding: 5px 12px;
-  border-radius: 20px;
-  border: 1.5px solid transparent;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.12s;
+/* Results header */
+.results-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+.product-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; }
+.back-btn { height: 36px; padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.12s; display: flex; align-items: center; gap: 6px; }
+.back-btn:hover { border-color: var(--border-hover); color: var(--text); }
+.back-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* COUNTRY SECTIONS — opcija C */
+.country-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.country-hdr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.country-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 5px;
   font-family: 'DM Mono', monospace;
   letter-spacing: 0.3px;
 }
-.tab:hover { opacity: 0.8; }
-
-/* Per-language colors */
-.tab[data-lang="sl"] { background: #e8f0ff; color: #2a5bd4; border-color: #b8ccf8; }
-.tab[data-lang="sl"].on { background: #2a5bd4; color: white; border-color: #2a5bd4; }
-.tab[data-lang="hr"] { background: #fff0e8; color: #c44b10; border-color: #f8c4a0; }
-.tab[data-lang="hr"].on { background: #c44b10; color: white; border-color: #c44b10; }
-.tab[data-lang="rs"] { background: #fde8e8; color: #b81c1c; border-color: #f4aaaa; }
-.tab[data-lang="rs"].on { background: #b81c1c; color: white; border-color: #b81c1c; }
-.tab[data-lang="hu"] { background: #e8fff2; color: #0d8c52; border-color: #96e6c0; }
-.tab[data-lang="hu"].on { background: #0d8c52; color: white; border-color: #0d8c52; }
-.tab[data-lang="cz"] { background: #f5e8ff; color: #7a28c9; border-color: #d4a8f5; }
-.tab[data-lang="cz"].on { background: #7a28c9; color: white; border-color: #7a28c9; }
-.tab[data-lang="sk"] { background: #e8f8ff; color: #0d7ab8; border-color: #96d4f0; }
-.tab[data-lang="sk"].on { background: #0d7ab8; color: white; border-color: #0d7ab8; }
-.tab[data-lang="pl"] { background: #fff5e8; color: #b86010; border-color: #f5cca0; }
-.tab[data-lang="pl"].on { background: #b86010; color: white; border-color: #b86010; }
-.tab[data-lang="gr"] { background: #e8eeff; color: #2840b8; border-color: #a8b8f5; }
-.tab[data-lang="gr"].on { background: #2840b8; color: white; border-color: #2840b8; }
-.tab[data-lang="ro"] { background: #fef5e8; color: #a06010; border-color: #f0d4a0; }
-.tab[data-lang="ro"].on { background: #a06010; color: white; border-color: #a06010; }
-.tab[data-lang="bg"] { background: #e8fff8; color: #0a7a5a; border-color: #90e0c8; }
-.tab[data-lang="bg"].on { background: #0a7a5a; color: white; border-color: #0a7a5a; }
-
-.panel { display: none; }
-.panel.on { display: block; }
-
-/* Ad cards */
-.ad-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-.ad-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.ad-lbl { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.7px; }
-.cp-btn { height: 28px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); font-size: 12px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; display: flex; align-items: center; gap: 5px; }
+.country-name {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.country-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+.country-body .field-col {
+  padding: 12px 16px;
+}
+.country-body .field-col:first-child {
+  border-right: 1px solid var(--border);
+}
+.field-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.field-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+.cp-btn {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.12s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
 .cp-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface); }
 .cp-btn.ok { color: var(--green); border-color: var(--green-border); background: var(--green-dim); }
-.cp-btn svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.ad-body { font-size: 14px; color: var(--text); line-height: 1.7; white-space: pre-wrap; }
-.ad-hl { font-size: 15px; font-weight: 600; color: var(--text); }
+.cp-btn svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.field-text {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.field-text.is-hl {
+  font-size: 14px;
+  font-weight: 600;
+}
 
-.back-btn { width: 100%; height: 40px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; margin-top: 4px; transition: all 0.12s; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-.back-btn:hover { border-color: var(--border-hover); color: var(--text); }
+/* Multiple PT — separator inside col */
+.pt-item { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.pt-item:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+
+/* Lang color map */
+.lang-sl { background: #dbeafe; color: #1e40af; }
+.lang-hr { background: #ffedd5; color: #9a3412; }
+.lang-rs { background: #fee2e2; color: #991b1b; }
+.lang-hu { background: #dcfce7; color: #166534; }
+.lang-cz { background: #f3e8ff; color: #6b21a8; }
+.lang-sk { background: #e0f2fe; color: #075985; }
+.lang-pl { background: #fef9c3; color: #854d0e; }
+.lang-gr { background: #e0e7ff; color: #3730a3; }
+.lang-ro { background: #fef3c7; color: #92400e; }
+.lang-bg { background: #d1fae5; color: #065f46; }
 </style>
 </head>
 <body>
@@ -201,9 +250,7 @@ textarea.input-area.error { border-color: var(--red) !important; }
       <div id="input-url-wrap">
         <span class="section-label">URL izdelka</span>
         <div class="url-wrap">
-          <span class="url-icon">
-            <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          </span>
+          <span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
           <input type="text" id="urlInput" placeholder="https://www.maaarket.si/izdelek/..." />
         </div>
       </div>
@@ -259,10 +306,14 @@ textarea.input-area.error { border-color: var(--red) !important; }
 
   <!-- RESULTS -->
   <div class="results" id="results">
-    <div class="product-badge" id="productBadge">Izdelek</div>
-    <div class="tabs" id="tabs"></div>
-    <div id="panels"></div>
-    <button class="back-btn" onclick="goBack()">← Nov izdelek</button>
+    <div class="results-hdr">
+      <div class="product-badge" id="productBadge">Izdelek</div>
+      <button class="back-btn" onclick="goBack()">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        Nov izdelek
+      </button>
+    </div>
+    <div id="countryList"></div>
   </div>
 
 </div>
@@ -270,17 +321,18 @@ textarea.input-area.error { border-color: var(--red) !important; }
 <script>
 const state = { pt: 1, hl: 1, mode: 'url' };
 const MAX = 5;
+
 const LANGS = [
-  {code:'sl', label:'SI SL'},
-  {code:'hr', label:'HR HR'},
-  {code:'rs', label:'RS RS'},
-  {code:'hu', label:'HU HU'},
-  {code:'cz', label:'CZ CZ'},
-  {code:'sk', label:'SK SK'},
-  {code:'pl', label:'PL PL'},
-  {code:'gr', label:'GR GR'},
-  {code:'ro', label:'RO RO'},
-  {code:'bg', label:'BG BG'},
+  { code: 'sl', label: 'SI SL', name: 'Slovenščina' },
+  { code: 'hr', label: 'HR HR', name: 'Hrvaščina' },
+  { code: 'rs', label: 'RS RS', name: 'Srbščina' },
+  { code: 'hu', label: 'HU HU', name: 'Madžarščina' },
+  { code: 'cz', label: 'CZ CZ', name: 'Češčina' },
+  { code: 'sk', label: 'SK SK', name: 'Slovaščina' },
+  { code: 'pl', label: 'PL PL', name: 'Poljščina' },
+  { code: 'gr', label: 'GR GR', name: 'Grščina' },
+  { code: 'ro', label: 'RO RO', name: 'Romunščina' },
+  { code: 'bg', label: 'BG BG', name: 'Bolgarščina' },
 ];
 
 function setMode(m) {
@@ -345,88 +397,119 @@ async function generate() {
   }
 }
 
+function copyIcon() {
+  return `<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+}
+function checkIcon() {
+  return `<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`;
+}
+
 function renderResults(data) {
   document.getElementById('loading').classList.remove('show');
   document.getElementById('formSection').style.display = 'none';
-  const results = document.getElementById('results');
-  results.classList.add('show');
+  document.getElementById('results').classList.add('show');
   document.getElementById('productBadge').textContent = '🛍 ' + (data.product || 'Izdelek');
 
-  const tabsEl = document.getElementById('tabs');
-  const panelsEl = document.getElementById('panels');
-  tabsEl.innerHTML = '';
-  panelsEl.innerHTML = '';
+  const list = document.getElementById('countryList');
+  list.innerHTML = '';
 
-  LANGS.forEach((lang, i) => {
+  LANGS.forEach(lang => {
     const d = data[lang.code];
     if (!d) return;
-
-    const tab = document.createElement('div');
-    tab.className = 'tab' + (i === 0 ? ' on' : '');
-    tab.setAttribute('data-lang', lang.code);
-    tab.textContent = lang.label;
-    tab.onclick = () => sw(lang.code);
-    tabsEl.appendChild(tab);
 
     const pts = Array.isArray(d.pt) ? d.pt : [d.pt];
     const hls = Array.isArray(d.hl) ? d.hl : [d.hl];
 
-    let html = '';
-    pts.forEach((pt, idx) => {
-      const id = `cp-pt-${lang.code}-${idx}`;
-      html += `<div class="ad-card">
-        <div class="ad-hdr">
-          <span class="ad-lbl">Primary Text${pts.length > 1 ? ' ' + (idx+1) : ''}</span>
-          <button class="cp-btn" id="${id}" onclick="doCopy('${id}', this)">
-            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Kopiraj
-          </button>
-        </div>
-        <div class="ad-body" id="txt-${id}">${esc(pt)}</div>
-      </div>`;
-    });
-    hls.forEach((hl, idx) => {
-      const id = `cp-hl-${lang.code}-${idx}`;
-      html += `<div class="ad-card">
-        <div class="ad-hdr">
-          <span class="ad-lbl">Headline${hls.length > 1 ? ' ' + (idx+1) : ''}</span>
-          <button class="cp-btn" id="${id}" onclick="doCopy('${id}', this)">
-            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Kopiraj
-          </button>
-        </div>
-        <div class="ad-hl" id="txt-${id}">${esc(hl)}</div>
-      </div>`;
-    });
+    const section = document.createElement('div');
+    section.className = 'country-section';
 
-    const panel = document.createElement('div');
-    panel.className = 'panel' + (i === 0 ? ' on' : '');
-    panel.id = 'panel-' + lang.code;
-    panel.innerHTML = html;
-    panelsEl.appendChild(panel);
+    // Header
+    const hdr = document.createElement('div');
+    hdr.className = 'country-hdr';
+    hdr.innerHTML = `<span class="country-badge lang-${lang.code}">${lang.label}</span><span class="country-name">${lang.name}</span>`;
+    section.appendChild(hdr);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'country-body';
+
+    // PT column
+    const ptCol = document.createElement('div');
+    ptCol.className = 'field-col';
+
+    if (pts.length === 1) {
+      const id = `f-pt-${lang.code}-0`;
+      ptCol.innerHTML = `
+        <div class="field-top">
+          <span class="field-lbl">Primary Text</span>
+          <button class="cp-btn" id="${id}" onclick="doCopy('${id}')">${copyIcon()}Kopiraj</button>
+        </div>
+        <div class="field-text" id="txt-${id}">${esc(pts[0])}</div>`;
+    } else {
+      ptCol.innerHTML = `<div class="field-lbl" style="margin-bottom:10px">Primary Texts</div>`;
+      pts.forEach((pt, i) => {
+        const id = `f-pt-${lang.code}-${i}`;
+        ptCol.innerHTML += `
+          <div class="pt-item">
+            <div class="field-top">
+              <span class="field-lbl" style="font-size:9px;opacity:0.7">#${i+1}</span>
+              <button class="cp-btn" id="${id}" onclick="doCopy('${id}')">${copyIcon()}Kopiraj</button>
+            </div>
+            <div class="field-text" id="txt-${id}">${esc(pt)}</div>
+          </div>`;
+      });
+    }
+
+    // HL column
+    const hlCol = document.createElement('div');
+    hlCol.className = 'field-col';
+
+    if (hls.length === 1) {
+      const id = `f-hl-${lang.code}-0`;
+      hlCol.innerHTML = `
+        <div class="field-top">
+          <span class="field-lbl">Headline</span>
+          <button class="cp-btn" id="${id}" onclick="doCopy('${id}')">${copyIcon()}Kopiraj</button>
+        </div>
+        <div class="field-text is-hl" id="txt-${id}">${esc(hls[0])}</div>`;
+    } else {
+      hlCol.innerHTML = `<div class="field-lbl" style="margin-bottom:10px">Headlines</div>`;
+      hls.forEach((hl, i) => {
+        const id = `f-hl-${lang.code}-${i}`;
+        hlCol.innerHTML += `
+          <div class="pt-item">
+            <div class="field-top">
+              <span class="field-lbl" style="font-size:9px;opacity:0.7">#${i+1}</span>
+              <button class="cp-btn" id="${id}" onclick="doCopy('${id}')">${copyIcon()}Kopiraj</button>
+            </div>
+            <div class="field-text is-hl" id="txt-${id}">${esc(hl)}</div>
+          </div>`;
+      });
+    }
+
+    body.appendChild(ptCol);
+    body.appendChild(hlCol);
+    section.appendChild(body);
+    list.appendChild(section);
   });
 }
 
-function sw(code) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
-  document.querySelector(`.tab[data-lang="${code}"]`).classList.add('on');
-  document.getElementById('panel-' + code).classList.add('on');
+function doCopy(id) {
+  const el = document.getElementById('txt-' + id);
+  const text = el ? el.innerText : '';
+  const btn = document.getElementById(id);
+
+  const tryClipboard = () => {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(() => showOk(btn)).catch(() => fallback(text, btn));
+    } else {
+      fallback(text, btn);
+    }
+  };
+  tryClipboard();
 }
 
-function doCopy(id, btn) {
-  const textEl = document.getElementById('txt-' + id);
-  const text = textEl ? textEl.innerText : '';
-
-  // Try modern clipboard API first, fallback to execCommand
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).then(() => showCopied(btn)).catch(() => fallbackCopy(text, btn));
-  } else {
-    fallbackCopy(text, btn);
-  }
-}
-
-function fallbackCopy(text, btn) {
+function fallback(text, btn) {
   const ta = document.createElement('textarea');
   ta.value = text;
   ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
@@ -436,21 +519,21 @@ function fallbackCopy(text, btn) {
   ta.setSelectionRange(0, 99999);
   try { document.execCommand('copy'); } catch(e) {}
   document.body.removeChild(ta);
-  showCopied(btn);
+  showOk(btn);
 }
 
-function showCopied(btn) {
-  btn.innerHTML = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg> Kopirano`;
+function showOk(btn) {
+  btn.innerHTML = `<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg>Kopirano`;
   btn.classList.add('ok');
   setTimeout(() => {
-    btn.innerHTML = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Kopiraj`;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Kopiraj`;
     btn.classList.remove('ok');
   }, 2000);
 }
 
 function goBack() {
   document.getElementById('results').classList.remove('show');
-  document.getElementById('results').innerHTML = `<div class="product-badge" id="productBadge">Izdelek</div><div class="tabs" id="tabs"></div><div id="panels"></div><button class="back-btn" onclick="goBack()">← Nov izdelek</button>`;
+  document.getElementById('countryList').innerHTML = '';
   document.getElementById('formSection').style.display = 'block';
   document.getElementById('btnGen').disabled = false;
   document.getElementById('errorMsg').classList.remove('show');
@@ -464,7 +547,7 @@ function flash(id) {
 }
 
 function esc(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 update();
