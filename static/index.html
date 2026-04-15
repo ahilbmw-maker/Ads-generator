@@ -255,10 +255,16 @@ textarea.input-area::placeholder { color: var(--text-tertiary); }
   <div class="results" id="results">
     <div class="results-hdr">
       <div class="product-badge" id="productBadge">Izdelek</div>
-      <button class="back-btn" onclick="goBack()">
-        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-        Nov izdelek
-      </button>
+      <div style="display:flex;gap:8px;">
+        <button class="back-btn" id="regenBtn" onclick="regenerate()">
+          <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
+          Regeneriraj
+        </button>
+        <button class="back-btn" onclick="goBack()">
+          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+          Nov izdelek
+        </button>
+      </div>
     </div>
     <div id="countryList"></div>
   </div>
@@ -267,6 +273,7 @@ textarea.input-area::placeholder { color: var(--text-tertiary); }
 <script>
 const state = {pt:1,hl:1,mode:'url'};
 const MAX=5, HKEY='meta_ads_history', HMAX=8;
+let lastRequest = null; // Store last request for regenerate
 const LANGS=[
   {code:'sl',label:'SI SL',name:'Slovenščina'},{code:'hr',label:'HR HR',name:'Hrvaščina'},
   {code:'rs',label:'RS RS',name:'Srbščina'},{code:'hu',label:'HU HU',name:'Madžarščina'},
@@ -341,12 +348,15 @@ async function generate(){
   document.getElementById('loading').classList.add('show');
   document.getElementById('loadingText').textContent=`Generiram ${state.pt}× PT in ${state.hl}× HL...`;
 
+  const reqBody = {input:apiInput,mode:apiMode,pt_count:state.pt,hl_count:state.hl,source_url:sourceUrl||null};
+  lastRequest = {reqBody, label};
+
   try{
     const res=await fetch('/generate',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({input:apiInput,mode:apiMode,pt_count:state.pt,hl_count:state.hl,
-        source_url:sourceUrl||null})
+      body:JSON.stringify(reqBody)
+    });
     });
     const data=await res.json();
     if(data.error)throw new Error(data.error);
@@ -418,6 +428,34 @@ function renderResults(data){
     sec.appendChild(body);
     list.appendChild(sec);
   });
+}
+
+async function regenerate(){
+  if(!lastRequest) return;
+  const btn=document.getElementById('regenBtn');
+  btn.disabled=true;
+  btn.innerHTML=`<svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;animation:spin 0.7s linear infinite"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg> Generiram...`;
+  document.getElementById('countryList').innerHTML='';
+  document.getElementById('loadingText').textContent='Regeneriram oglase...';
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('results').classList.remove('show');
+  document.getElementById('formSection').style.display='none';
+
+  try{
+    const res=await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lastRequest.reqBody)});
+    const data=await res.json();
+    if(data.error)throw new Error(data.error);
+    saveH(data,lastRequest.label,lastRequest.reqBody.pt_count,lastRequest.reqBody.hl_count);
+    document.getElementById('loading').classList.remove('show');
+    document.getElementById('results').classList.add('show');
+    renderResults(data);
+  }catch(e){
+    document.getElementById('loading').classList.remove('show');
+    document.getElementById('results').classList.add('show');
+    alert('Napaka: '+(e.message||'Poskusi znova.'));
+  }
+  btn.disabled=false;
+  btn.innerHTML=`<svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg> Regeneriraj`;
 }
 
 function goBack(){
