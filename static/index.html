@@ -474,11 +474,18 @@ function closeMenu(){
   document.querySelector('.sidebar').classList.remove('open');
   document.getElementById('overlay').classList.remove('open');
 }
+const PAGES = ['meta','tiktok','calc','forecast'];
+let currentIdx = 0;
+
 function switchPage(page) {
+  const idx = PAGES.indexOf(page);
+  if(idx >= 0) currentIdx = idx;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  document.getElementById('nav-' + page).classList.add('active');
+  if(document.getElementById('nav-' + page)) document.getElementById('nav-' + page).classList.add('active');
+  if(document.getElementById('tab-' + page)) document.getElementById('tab-' + page).classList.add('active');
   closeMenu();
 }
 
@@ -794,37 +801,12 @@ updateMeta();renderH();
 </nav>
 
 <script>
-// ── NAVIGATION ──
-const PAGES = ['meta','tiktok','calc','forecast'];
-let currentIdx = 0;
-
-function toggleMenu(){
-  document.querySelector('.sidebar').classList.toggle('open');
-  document.getElementById('overlay').classList.toggle('open');
-}
-function closeMenu(){
-  document.querySelector('.sidebar').classList.remove('open');
-  document.getElementById('overlay').classList.remove('open');
-}
-function switchPage(page) {
-  const idx = PAGES.indexOf(page);
-  if(idx >= 0) currentIdx = idx;
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-  document.getElementById('page-' + page).classList.add('active');
-  if(document.getElementById('nav-' + page)) document.getElementById('nav-' + page).classList.add('active');
-  if(document.getElementById('tab-' + page)) document.getElementById('tab-' + page).classList.add('active');
-  closeMenu();
-}
-
 // ── SWIPE GESTURE ──
 let touchStartX = 0, touchStartY = 0;
 document.addEventListener('touchstart', e => {
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
 }, {passive: true});
-
 document.addEventListener('touchend', e => {
   const dx = e.changedTouches[0].clientX - touchStartX;
   const dy = e.changedTouches[0].clientY - touchStartY;
@@ -833,8 +815,6 @@ document.addEventListener('touchend', e => {
   if(dx < 0 && currentIdx < PAGES.length - 1) switchPage(PAGES[currentIdx + 1]);
   if(dx > 0 && currentIdx > 0) switchPage(PAGES[currentIdx - 1]);
 }, {passive: true});
-
-updateMeta();renderH();
 </script>
 </body>
 </html>
