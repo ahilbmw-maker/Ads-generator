@@ -221,6 +221,12 @@ input[type="text"].error { border-color: var(--red) !important; }
     TikTok Ads
     <span class="nav-badge" style="background:#f0f0f0;color:#555">XLS</span>
   </div>
+
+  <div class="nav-item nav-calc" id="nav-calc" onclick="switchPage('calc')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
+    Kalkulator
+    <span class="nav-badge" style="background:#f0fff4;color:#276749">€</span>
+  </div>
 </nav>
 
 <!-- MAIN -->
@@ -372,6 +378,10 @@ input[type="text"].error { border-color: var(--red) !important; }
         Nov vnos
       </button>
     </div>
+  </div>
+  <!-- ═══ CALCULATOR PAGE ═══ -->
+  <div class="page" id="page-calc">
+    <iframe src="/static/price_calculator.html" style="width:100%;height:calc(100vh - 4rem);border:none;border-radius:var(--radius-lg)"></iframe>
   </div>
 
 </div>
