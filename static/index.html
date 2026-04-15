@@ -21,17 +21,50 @@
 }
 body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
 
-/* ── MOBILE HAMBURGER ── */
-.hamburger { display: none; position: fixed; top: 12px; left: 12px; z-index: 200; width: 36px; height: 36px; border-radius: 9px; background: var(--surface); border: 1px solid var(--border); cursor: pointer; align-items: center; justify-content: center; flex-direction: column; gap: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-.hamburger span { display: block; width: 16px; height: 1.5px; background: var(--text); border-radius: 2px; transition: all 0.2s; }
-.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 99; }
+/* ── MOBILE BOTTOM TAB BAR ── */
+.mobile-tabbar { display: none; }
 
 @media(max-width: 600px) {
-  .hamburger { display: flex; }
-  .sidebar { position: fixed; top: 0; left: 0; z-index: 100; transform: translateX(-100%); transition: transform 0.25s ease; min-height: 100vh; box-shadow: 2px 0 12px rgba(0,0,0,0.1); }
-  .sidebar.open { transform: translateX(0); }
-  .overlay.open { display: block; }
-  .main { padding: 1rem 1rem 4rem; padding-top: 3.5rem; }
+  .hamburger { display: none !important; }
+  .overlay { display: none !important; }
+  .sidebar { display: none; }
+  .main { padding: 1rem 1rem 5rem; max-width: 100%; }
+  .mobile-tabbar {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 58px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    z-index: 100;
+    align-items: stretch;
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    cursor: pointer;
+    transition: all 0.12s;
+    padding: 6px 4px;
+    border: none;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .tab-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .tab-item span { font-size: 9px; font-weight: 500; color: var(--text-tertiary); }
+  .tab-item.active span { color: var(--accent); }
+  .tab-item.active svg { opacity: 1; }
+  .tab-item svg { opacity: 0.4; }
+  .tab-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); display: none; margin-top: 1px; }
+  .tab-item.active .tab-dot { display: block; }
+  /* Swipe container */
+  .pages-wrap { width: 100%; overflow: hidden; }
+  .pages-inner { display: flex; transition: transform 0.3s ease; will-change: transform; }
+  .pages-inner .page { display: block; min-width: 100%; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .pages-inner .page.active { opacity: 1; pointer-events: auto; }
 }
 
 /* ── SIDEBAR ── */
@@ -412,7 +445,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
   <!-- ═══ CALCULATOR PAGE ═══ -->
   <div class="page" id="page-calc">
-    <iframe src="/static/price_calculator.html" style="width:100%;height:calc(100vh - 4rem);border:none;border-radius:var(--radius-lg)"></iframe>
+    <iframe src="/static/Price_calculator.html" style="width:100%;height:calc(100vh - 4rem);border:none;border-radius:var(--radius-lg)"></iframe>
   </div>
 
 </div>
@@ -732,6 +765,71 @@ function showOk(btn){
 function cpIco(){return`<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;}
 function flash(id){const el=document.getElementById(id);if(!el)return;el.style.borderColor='var(--red)';el.focus();setTimeout(()=>el.style.borderColor='',1500);}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+<!-- MOBILE BOTTOM TAB BAR -->
+<nav class="mobile-tabbar">
+  <button class="tab-item active" id="tab-meta" onclick="switchPage('meta')">
+    <svg viewBox="0 0 24 24" style="stroke:#1877F2;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+    <span>Meta</span>
+    <div class="tab-dot"></div>
+  </button>
+  <button class="tab-item" id="tab-tiktok" onclick="switchPage('tiktok')">
+    <svg viewBox="0 0 24 24" style="fill:var(--text);stroke:none"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z"/></svg>
+    <span>TikTok</span>
+    <div class="tab-dot"></div>
+  </button>
+  <button class="tab-item" id="tab-calc" onclick="switchPage('calc')">
+    <svg viewBox="0 0 24 24" style="stroke:var(--text-secondary);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
+    <span>Kalkulator</span>
+    <div class="tab-dot"></div>
+  </button>
+  <button class="tab-item" id="tab-forecast" onclick="switchPage('forecast')">
+    <svg viewBox="0 0 24 24" style="stroke:var(--text-secondary);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    <span>Napoved</span>
+    <div class="tab-dot"></div>
+  </button>
+</nav>
+
+<script>
+// ── NAVIGATION ──
+const PAGES = ['meta','tiktok','calc','forecast'];
+let currentIdx = 0;
+
+function toggleMenu(){
+  document.querySelector('.sidebar').classList.toggle('open');
+  document.getElementById('overlay').classList.toggle('open');
+}
+function closeMenu(){
+  document.querySelector('.sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+function switchPage(page) {
+  const idx = PAGES.indexOf(page);
+  if(idx >= 0) currentIdx = idx;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  if(document.getElementById('nav-' + page)) document.getElementById('nav-' + page).classList.add('active');
+  if(document.getElementById('tab-' + page)) document.getElementById('tab-' + page).classList.add('active');
+  closeMenu();
+}
+
+// ── SWIPE GESTURE ──
+let touchStartX = 0, touchStartY = 0;
+document.addEventListener('touchstart', e => {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}, {passive: true});
+
+document.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+  if(Math.abs(dx) < 50 || Math.abs(dy) > Math.abs(dx)) return;
+  if(window.innerWidth > 600) return;
+  if(dx < 0 && currentIdx < PAGES.length - 1) switchPage(PAGES[currentIdx + 1]);
+  if(dx > 0 && currentIdx > 0) switchPage(PAGES[currentIdx - 1]);
+}, {passive: true});
 
 updateMeta();renderH();
 </script>
