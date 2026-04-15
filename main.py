@@ -39,14 +39,23 @@ def generate(req: AdRequest):
     prompt = f"""{user_msg}
 
 Ustvari:
-- {req.pt_count}x Primary Text (kratek, z emoji, brez cen, prodajno usmerjen)
-- {req.hl_count}x Headline (kratek, 1 emoji, brez cen)
+- {req.pt_count}x Primary Text:
+  * 2-3 kratke vrstice
+  * Vsaj 2-3 emoji-jev razporejenih po besedilu
+  * Energičen, prodajno usmerjen ton
+  * Brez cen
+
+- {req.hl_count}x Headline:
+  * MAKSIMALNO 5 BESED — ne več!
+  * Točno 1 emoji na začetku
+  * Primeri dobre dolžine: "🔥 Čist dom brez kemikalij!" ali "💪 Treniraj kjer hočeš!"
+  * Brez cen
 
 Jeziki: SL (izvirnik), HR (latinica), RS (SAMO latinica, nikoli cirilica), HU, CZ, SK, PL, GR (grška pisava), RO (latinica), BG (SAMO cirilica).
 
 Vrni SAMO veljaven JSON brez markdown oznak, brez ```json, samo golo JSON besedilo:
 {{
-  "product": "ime izdelka",
+  "product": "kratko ime izdelka",
   "sl": {{"pt": ["..."], "hl": ["..."]}},
   "hr": {{"pt": ["..."], "hl": ["..."]}},
   "rs": {{"pt": ["..."], "hl": ["..."]}},
@@ -68,18 +77,15 @@ Vrni SAMO veljaven JSON brez markdown oznak, brez ```json, samo golo JSON besedi
         messages=[{"role": "user", "content": prompt}]
     )
 
-    # Zberemo vse text bloke iz odgovora (tudi po tool_use)
     text = ""
     for block in message.content:
         if hasattr(block, "text"):
             text += block.text
 
-    # Poiščemo JSON — tudi če je zavit v ```
     text = re.sub(r"```json\s*", "", text)
     text = re.sub(r"```\s*", "", text)
     text = text.strip()
 
-    # Vzamemo prvi { ... } blok
     match = re.search(r'\{[\s\S]*\}', text)
     if not match:
         return {"error": "Claude ni vrnil veljavnega JSON. Poskusi znova."}
