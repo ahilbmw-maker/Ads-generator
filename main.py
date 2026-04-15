@@ -312,23 +312,22 @@ async def generate(req: AdRequest):
 @app.post("/generate-multi")
 async def generate_multi(req: MultiAdRequest):
     """
-    Generate ads for multiple products in parallel.
+    Generate ads for multiple products sequentially to avoid timeout/memory issues.
     Returns list of results in same order as input.
     """
     await ensure_cache_fresh()
-
-    async def process_product(p: dict) -> dict:
+    results = []
+    for p in req.products:
         url = p.get("url", "").strip()
         mode = p.get("mode", "url")
         if not url:
-            return {"error": "Prazen URL"}
+            results.append({"error": "Prazen URL"})
+            continue
         if mode == "url":
             user_msg = f"Preberi to stran in ustvari Meta oglase: {url}"
         else:
             user_msg = f"Na podlagi tega opisa ustvari Meta oglase:\n\n{url}"
-        return await generate_one(user_msg, mode, url if mode == "url" else None,
-                                  req.pt_count, req.hl_count)
-
-    # Run all products in parallel
-    results = await asyncio.gather(*[process_product(p) for p in req.products])
-    return {"results": list(results)}
+        result = await generate_one(user_msg, mode, url if mode == "url" else None,
+                                    req.pt_count, req.hl_count)
+        results.append(result)
+    return {"results": results}
