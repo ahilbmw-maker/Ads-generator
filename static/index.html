@@ -1,546 +1,334 @@
-<!DOCTYPE html>
-<html lang="sl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meta Ads Generator</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-:root {
-  --bg: #f2f2f5;
-  --surface: #ffffff;
-  --surface2: #ebebf0;
-  --border: rgba(0,0,0,0.07);
-  --border-hover: rgba(0,0,0,0.15);
-  --text: #111116;
-  --text-secondary: #55555f;
-  --text-tertiary: #9999a8;
-  --accent: #3a6fff;
-  --accent-dim: rgba(58,111,255,0.1);
-  --accent-border: rgba(58,111,255,0.3);
-  --green: #0a8c5a;
-  --green-dim: rgba(10,140,90,0.1);
-  --green-border: rgba(10,140,90,0.28);
-  --red: #e03030;
-  --chip-off: #dddde5;
-  --chip-on: #3a6fff;
-  --radius: 10px;
-  --radius-lg: 14px;
-}
-body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; justify-content: center; padding: 2.5rem 1.5rem 5rem; }
-.layout { width: 100%; max-width: 900px; }
+import os
+import json
+import re
+import asyncio
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
+from typing import Optional
 
-.logo { display: flex; align-items: center; gap: 12px; margin-bottom: 2rem; }
-.logo-icon { width: 42px; height: 42px; border-radius: 12px; background: #1877F2; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.logo-icon svg { width: 20px; height: 20px; fill: white; }
-.logo-name { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
-.logo-sub { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+import httpx
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+import anthropic
 
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; }
-.section-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; display: block; }
+app = FastAPI()
 
-.mode-row { display: flex; gap: 6px; margin-bottom: 1.25rem; background: var(--surface2); padding: 4px; border-radius: var(--radius); }
-.mode-btn { flex: 1; height: 34px; border-radius: 7px; border: none; background: transparent; color: var(--text-tertiary); font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s; }
-.mode-btn:hover { color: var(--text-secondary); }
-.mode-btn.on { background: var(--surface); color: var(--text); border: 1px solid var(--border-hover); }
-.mode-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
-.url-wrap { position: relative; display: flex; align-items: center; margin-bottom: 10px; }
-.url-icon { position: absolute; left: 12px; pointer-events: none; }
-.url-icon svg { width: 14px; height: 14px; stroke: var(--text-tertiary); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-input[type="text"] { width: 100%; height: 44px; padding: 0 14px 0 36px; font-size: 14px; font-family: 'DM Sans', sans-serif; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); transition: all 0.15s; }
-input[type="text"]:focus { outline: none; border-color: var(--accent-border); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-dim); }
-input[type="text"]::placeholder { color: var(--text-tertiary); }
-input[type="text"].error { border-color: var(--red) !important; }
-textarea.input-area { width: 100%; min-height: 120px; padding: 12px 14px; font-size: 13.5px; font-family: 'DM Sans', sans-serif; line-height: 1.65; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); resize: vertical; transition: all 0.15s; margin-bottom: 10px; }
-textarea.input-area:focus { outline: none; border-color: var(--accent-border); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-dim); }
-textarea.input-area::placeholder { color: var(--text-tertiary); }
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-.btn-gen { width: 100%; height: 46px; border-radius: var(--radius); border: none; background: var(--accent); color: white; font-size: 14px; font-family: 'DM Sans', sans-serif; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all 0.15s; }
-.btn-gen:hover { background: #2d5fee; }
-.btn-gen:active { transform: scale(0.98); }
-.btn-gen:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-gen svg { width: 14px; height: 14px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-.sep { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+# ─── XML FEED CONFIG ──────────────────────────────────────────────────────────
 
-.counters { display: flex; gap: 1.5rem; }
-.counter-group { flex: 1; }
-.counter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.cnt-btn { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; font-family: 'DM Mono', monospace; }
-.cnt-btn:hover { border-color: var(--border-hover); color: var(--text); }
-.cnt-btn:disabled { opacity: 0.25; cursor: not-allowed; }
-.cnt-val { font-size: 16px; font-weight: 600; color: var(--text); min-width: 22px; text-align: center; font-family: 'DM Mono', monospace; }
-.cnt-max { font-size: 11px; color: var(--text-tertiary); }
-.chips { display: flex; gap: 3px; }
-.chip { height: 4px; flex: 1; border-radius: 2px; background: var(--chip-off); transition: background 0.2s; }
-.chip.on { background: var(--chip-on); }
-.counters-divider { width: 1px; background: var(--border); align-self: stretch; }
-
-.hint { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; background: var(--surface2); border-radius: 8px; margin-top: 1.25rem; }
-.hint svg { width: 13px; height: 13px; stroke: var(--text-tertiary); fill: none; stroke-width: 1.5; flex-shrink: 0; margin-top: 1px; }
-.hint-text { font-size: 12px; color: var(--text-tertiary); line-height: 1.6; }
-
-.error-msg { display: none; padding: 10px 14px; background: rgba(224,48,48,0.07); border: 1px solid rgba(224,48,48,0.2); border-radius: var(--radius); font-size: 13px; color: var(--red); margin-top: 10px; }
-.error-msg.show { display: block; }
-.loading { display: none; text-align: center; padding: 3rem 1rem; }
-.loading.show { display: block; }
-.spinner { width: 30px; height: 30px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 1rem; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.loading-text { font-size: 13px; color: var(--text-tertiary); }
-
-/* HISTORY */
-.history-section { margin-top: 1.5rem; }
-.history-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.history-title { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; }
-.history-clear { font-size: 11px; color: var(--text-tertiary); background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-.history-clear:hover { color: var(--red); }
-.history-list { display: flex; flex-direction: column; gap: 6px; }
-.history-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: all 0.12s; }
-.history-item:hover { border-color: var(--accent-border); background: var(--accent-dim); }
-.history-item-icon { width: 28px; height: 28px; border-radius: 7px; background: var(--surface2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.history-item-icon svg { width: 13px; height: 13px; stroke: var(--text-tertiary); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.history-item-body { flex: 1; min-width: 0; }
-.history-item-name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.history-item-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
-.history-item-badge { font-size: 10px; font-weight: 600; color: var(--text-tertiary); background: var(--surface2); border-radius: 4px; padding: 2px 6px; white-space: nowrap; font-family: 'DM Mono', monospace; }
-.history-empty { font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 1.5rem; background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); }
-
-/* RESULTS */
-.results { display: none; }
-.results.show { display: block; }
-.results-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
-.product-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; }
-.back-btn { height: 36px; padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.12s; display: flex; align-items: center; gap: 6px; }
-.back-btn:hover { border-color: var(--border-hover); color: var(--text); }
-.back-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
-/* COUNTRY SECTIONS */
-.country-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 10px; overflow: hidden; }
-.country-hdr { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
-.country-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 5px; font-family: 'DM Mono', monospace; letter-spacing: 0.3px; }
-.country-name { font-size: 12px; color: var(--text-tertiary); }
-.country-body { display: grid; grid-template-columns: 1fr 1fr; }
-.field-col { padding: 12px 16px; }
-.field-col:first-child { border-right: 1px solid var(--border); }
-.field-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.field-lbl { font-size: 10px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.7px; }
-.cp-btn { height: 24px; padding: 0 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); font-size: 11px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.cp-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface); }
-.cp-btn.ok { color: var(--green); border-color: var(--green-border); background: var(--green-dim); }
-.cp-btn svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
-.field-text { font-size: 13px; color: var(--text); line-height: 1.65; white-space: pre-wrap; }
-.field-text.is-hl { font-size: 14px; font-weight: 600; }
-.pt-item { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
-.pt-item:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
-
-.lang-sl { background: #dbeafe; color: #1e40af; }
-.lang-hr { background: #ffedd5; color: #9a3412; }
-.lang-rs { background: #fee2e2; color: #991b1b; }
-.lang-hu { background: #dcfce7; color: #166534; }
-.lang-cz { background: #f3e8ff; color: #6b21a8; }
-.lang-sk { background: #e0f2fe; color: #075985; }
-.lang-pl { background: #fef9c3; color: #854d0e; }
-.lang-gr { background: #e0e7ff; color: #3730a3; }
-.lang-ro { background: #fef3c7; color: #92400e; }
-.lang-bg { background: #d1fae5; color: #065f46; }
-</style>
-</head>
-<body>
-<div class="layout">
-
-  <div class="logo">
-    <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg></div>
-    <div>
-      <div class="logo-name">Meta Ads Generator</div>
-      <div class="logo-sub">FB / Instagram — 10 jezikov</div>
-    </div>
-  </div>
-
-  <!-- FORM -->
-  <div id="formSection">
-    <div class="card">
-      <span class="section-label">Način vnosa</span>
-      <div class="mode-row">
-        <button class="mode-btn on" id="mode-url" onclick="setMode('url')">
-          <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          URL izdelka
-        </button>
-        <button class="mode-btn" id="mode-txt" onclick="setMode('txt')">
-          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          Opis izdelka
-        </button>
-      </div>
-
-      <div id="input-url-wrap">
-        <span class="section-label">URL izdelka</span>
-        <div class="url-wrap">
-          <span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
-          <input type="text" id="urlInput" placeholder="https://www.maaarket.si/izdelek/..." />
-        </div>
-      </div>
-
-      <div id="input-txt-wrap" style="display:none">
-        <span class="section-label">Opis izdelka</span>
-        <textarea class="input-area" id="txtInput" placeholder="Prilepi sem naziv, opis, lastnosti — karkoli iz strani izdelka..."></textarea>
-      </div>
-
-      <button class="btn-gen" id="btnGen" onclick="generate()">
-        <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        Generiraj oglase
-      </button>
-      <div class="error-msg" id="errorMsg"></div>
-
-      <div class="sep"></div>
-
-      <div class="counters">
-        <div class="counter-group">
-          <span class="section-label">Primary Texts</span>
-          <div class="counter-row">
-            <button class="cnt-btn" id="pt-minus" onclick="change('pt',-1)">−</button>
-            <span class="cnt-val" id="pt-val">1</span>
-            <button class="cnt-btn" id="pt-plus" onclick="change('pt',1)">+</button>
-            <span class="cnt-max">max 5</span>
-          </div>
-          <div class="chips" id="pt-chips"></div>
-        </div>
-        <div class="counters-divider"></div>
-        <div class="counter-group">
-          <span class="section-label">Headlines</span>
-          <div class="counter-row">
-            <button class="cnt-btn" id="hl-minus" onclick="change('hl',-1)">−</button>
-            <span class="cnt-val" id="hl-val">1</span>
-            <button class="cnt-btn" id="hl-plus" onclick="change('hl',1)">+</button>
-            <span class="cnt-max">max 5</span>
-          </div>
-          <div class="chips" id="hl-chips"></div>
-        </div>
-      </div>
-
-      <div class="hint">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span class="hint-text" id="hintText">Generiram 1× Primary Text in 1× Headline v 10 jezikih.</span>
-      </div>
-    </div>
-
-    <div class="loading" id="loading">
-      <div class="spinner"></div>
-      <div class="loading-text" id="loadingText">Generiram oglase in prevode...</div>
-    </div>
-
-    <!-- HISTORY -->
-    <div class="history-section" id="historySection">
-      <div class="history-hdr">
-        <span class="history-title">Zadnji vnosi</span>
-        <button class="history-clear" onclick="clearHistory()">Počisti zgodovino</button>
-      </div>
-      <div class="history-list" id="historyList"></div>
-    </div>
-  </div>
-
-  <!-- RESULTS -->
-  <div class="results" id="results">
-    <div class="results-hdr">
-      <div class="product-badge" id="productBadge">Izdelek</div>
-      <button class="back-btn" onclick="goBack()">
-        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-        Nov izdelek
-      </button>
-    </div>
-    <div id="countryList"></div>
-  </div>
-
-</div>
-
-<script>
-const state = { pt: 1, hl: 1, mode: 'url' };
-const MAX = 5;
-const HISTORY_KEY = 'meta_ads_history';
-const MAX_HISTORY = 8;
-
-const LANGS = [
-  { code: 'sl', label: 'SI SL', name: 'Slovenščina' },
-  { code: 'hr', label: 'HR HR', name: 'Hrvaščina' },
-  { code: 'rs', label: 'RS RS', name: 'Srbščina' },
-  { code: 'hu', label: 'HU HU', name: 'Madžarščina' },
-  { code: 'cz', label: 'CZ CZ', name: 'Češčina' },
-  { code: 'sk', label: 'SK SK', name: 'Slovaščina' },
-  { code: 'pl', label: 'PL PL', name: 'Poljščina' },
-  { code: 'gr', label: 'GR GR', name: 'Grščina' },
-  { code: 'ro', label: 'RO RO', name: 'Romunščina' },
-  { code: 'bg', label: 'BG BG', name: 'Bolgarščina' },
-];
-
-// ---- HISTORY ----
-function getHistory() {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch(e) { return []; }
+FEEDS = {
+    "sl": "https://api.maaarket.si/storage/exports/sl/google.xml",
+    "hr": "https://api.maaarket.hr/storage/exports/hr/google.xml",
+    "rs": "https://api.maaarket.rs/storage/exports/sr/google.xml",
+    "hu": "https://api.maaarket.hu/storage/exports/hu/google.xml",
+    "pl": "https://api.maaarket.pl/storage/exports/pl/google.xml",
+    "cz": "https://api.maaarket.cz/storage/exports/cs/google.xml",
+    "sk": "https://api.maaarket.sk/storage/exports/sk/google.xml",
+    "gr": "https://api.maaarket.gr/storage/exports/el/google.xml",
+    "bg": "https://api.maaarket.bg/storage/exports/bg/google.xml",
+    "ro": "https://api.maaarket.ro/storage/exports/ro/google.xml",
 }
 
-function saveToHistory(data, input, mode, ptCount, hlCount) {
-  const history = getHistory();
-  const entry = {
-    id: Date.now(),
-    product: data.product || 'Izdelek',
-    input: input.substring(0, 120),
-    mode,
-    ptCount,
-    hlCount,
-    date: new Date().toLocaleDateString('sl-SI', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }),
-    data
-  };
-  history.unshift(entry);
-  if (history.length > MAX_HISTORY) history.splice(MAX_HISTORY);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-  renderHistory();
-}
+# ─── IN-MEMORY CACHE ─────────────────────────────────────────────────────────
+# Structure: { lang: { sku: { "url": "...", "title": "..." } } }
+feed_cache: dict = {}
+last_fetch: Optional[datetime] = None
+CACHE_TTL_HOURS = 24
 
-function renderHistory() {
-  const history = getHistory();
-  const list = document.getElementById('historyList');
-  const section = document.getElementById('historySection');
 
-  if (history.length === 0) {
-    list.innerHTML = '<div class="history-empty">Še ni zgodovine. Generiraj prve oglase!</div>';
-    return;
-  }
+def is_cache_stale() -> bool:
+    if last_fetch is None:
+        return True
+    return datetime.now() - last_fetch > timedelta(hours=CACHE_TTL_HOURS)
 
-  list.innerHTML = history.map(e => `
-    <div class="history-item" onclick="loadFromHistory(${e.id})">
-      <div class="history-item-icon">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      </div>
-      <div class="history-item-body">
-        <div class="history-item-name">🛍 ${esc(e.product)}</div>
-        <div class="history-item-meta">${e.date} &middot; ${esc(e.input.substring(0,60))}${e.input.length > 60 ? '...' : ''}</div>
-      </div>
-      <span class="history-item-badge">${e.ptCount}PT · ${e.hlCount}HL</span>
-    </div>`).join('');
-}
 
-function loadFromHistory(id) {
-  const history = getHistory();
-  const entry = history.find(e => e.id === id);
-  if (!entry) return;
-  renderResults(entry.data);
-}
+def extract_sku_from_url(url: str) -> Optional[str]:
+    """Extract SKU/slug from product URL. Works for maaarket URLs."""
+    # e.g. https://www.maaarket.si/izdelek/parni-cistilec-vapurex-9 -> parni-cistilec-vapurex-9
+    match = re.search(r'/izdelek/([^/?#]+)', url)
+    if match:
+        return match.group(1)
+    match = re.search(r'/product/([^/?#]+)', url)
+    if match:
+        return match.group(1)
+    match = re.search(r'/proizvod/([^/?#]+)', url)
+    if match:
+        return match.group(1)
+    return None
 
-function clearHistory() {
-  localStorage.removeItem(HISTORY_KEY);
-  renderHistory();
-}
 
-// ---- FORM ----
-function setMode(m) {
-  state.mode = m;
-  document.getElementById('mode-url').classList.toggle('on', m === 'url');
-  document.getElementById('mode-txt').classList.toggle('on', m === 'txt');
-  document.getElementById('input-url-wrap').style.display = m === 'url' ? 'block' : 'none';
-  document.getElementById('input-txt-wrap').style.display = m === 'txt' ? 'block' : 'none';
-}
+def parse_feed(xml_content: str, lang: str) -> dict:
+    """Parse Google Merchant XML feed and return {sku: {url, title, id}} dict."""
+    products = {}
+    try:
+        root = ET.fromstring(xml_content)
+        ns = {
+            'g': 'http://base.google.com/ns/1.0'
+        }
+        channel = root.find('channel')
+        if channel is None:
+            return products
 
-function change(type, dir) {
-  state[type] = Math.min(MAX, Math.max(1, state[type] + dir));
-  update();
-}
+        for item in channel.findall('item'):
+            # Get product link
+            link_el = item.find('link')
+            url = link_el.text.strip() if link_el is not None and link_el.text else None
+            if not url:
+                continue
 
-function update() {
-  ['pt', 'hl'].forEach(t => {
-    document.getElementById(t + '-val').textContent = state[t];
-    document.getElementById(t + '-minus').disabled = state[t] <= 1;
-    document.getElementById(t + '-plus').disabled = state[t] >= MAX;
-    const chips = document.getElementById(t + '-chips');
-    chips.innerHTML = '';
-    for (let i = 0; i < MAX; i++) {
-      const c = document.createElement('div');
-      c.className = 'chip' + (i < state[t] ? ' on' : '');
-      chips.appendChild(c);
-    }
-  });
-  document.getElementById('hintText').textContent =
-    `Generiram ${state.pt}× Primary Text in ${state.hl}× Headline v 10 jezikih.`;
-}
+            # Get title
+            title_el = item.find('title')
+            title = title_el.text.strip() if title_el is not None and title_el.text else ""
 
-async function generate() {
-  let input = '';
-  if (state.mode === 'url') {
-    input = document.getElementById('urlInput').value.trim();
-    if (!input) { flash('urlInput'); return; }
-  } else {
-    input = document.getElementById('txtInput').value.trim();
-    if (!input) { flash('txtInput'); return; }
-  }
+            # Get g:id (SKU)
+            gid_el = item.find('g:id', ns)
+            if gid_el is None:
+                gid_el = item.find('{http://base.google.com/ns/1.0}id')
+            sku = gid_el.text.strip() if gid_el is not None and gid_el.text else None
 
-  const btn = document.getElementById('btnGen');
-  btn.disabled = true;
-  document.getElementById('errorMsg').classList.remove('show');
-  document.getElementById('loading').classList.add('show');
-  document.getElementById('loadingText').textContent =
-    `Generiram ${state.pt}× Primary Text in ${state.hl}× Headline v 10 jezikih...`;
+            # Extract slug from URL as backup key
+            slug = extract_sku_from_url(url)
 
-  try {
-    const res = await fetch('/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input, mode: state.mode, pt_count: state.pt, hl_count: state.hl })
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    saveToHistory(data, input, state.mode, state.pt, state.hl);
-    renderResults(data);
-  } catch(e) {
-    document.getElementById('loading').classList.remove('show');
-    const err = document.getElementById('errorMsg');
-    err.textContent = 'Napaka: ' + (e.message || 'Poskusi znova.');
-    err.classList.add('show');
-    btn.disabled = false;
-  }
-}
+            product_data = {"url": url, "title": title, "sku": sku or ""}
 
-// ---- RESULTS ----
-function renderResults(data) {
-  document.getElementById('loading').classList.remove('show');
-  document.getElementById('formSection').style.display = 'none';
-  document.getElementById('results').classList.add('show');
-  document.getElementById('productBadge').textContent = '🛍 ' + (data.product || 'Izdelek');
+            if sku:
+                products[sku.lower()] = product_data
+            if slug:
+                products[slug.lower()] = product_data
 
-  const list = document.getElementById('countryList');
-  list.innerHTML = '';
+    except ET.ParseError as e:
+        print(f"XML parse error for {lang}: {e}")
+    return products
 
-  LANGS.forEach(lang => {
-    const d = data[lang.code];
-    if (!d) return;
 
-    const pts = Array.isArray(d.pt) ? d.pt : [d.pt];
-    const hls = Array.isArray(d.hl) ? d.hl : [d.hl];
+async def fetch_all_feeds():
+    """Fetch all XML feeds concurrently and update cache."""
+    global feed_cache, last_fetch
+    print(f"[{datetime.now()}] Fetching XML feeds...")
 
-    const section = document.createElement('div');
-    section.className = 'country-section';
+    async with httpx.AsyncClient(timeout=30.0) as client_http:
+        tasks = {
+            lang: client_http.get(url)
+            for lang, url in FEEDS.items()
+        }
 
-    const hdr = document.createElement('div');
-    hdr.className = 'country-hdr';
-    hdr.innerHTML = `<span class="country-badge lang-${lang.code}">${lang.label}</span><span class="country-name">${lang.name}</span>`;
-    section.appendChild(hdr);
+        results = {}
+        for lang, task in tasks.items():
+            try:
+                response = await task
+                if response.status_code == 200:
+                    results[lang] = parse_feed(response.text, lang)
+                    print(f"  ✓ {lang}: {len(results[lang])} products")
+                else:
+                    print(f"  ✗ {lang}: HTTP {response.status_code}")
+                    results[lang] = {}
+            except Exception as e:
+                print(f"  ✗ {lang}: {e}")
+                results[lang] = {}
 
-    const body = document.createElement('div');
-    body.className = 'country-body';
+    feed_cache = results
+    last_fetch = datetime.now()
+    print(f"[{datetime.now()}] Feed cache updated.")
 
-    // PT column
-    const ptCol = document.createElement('div');
-    ptCol.className = 'field-col';
-    if (pts.length === 1) {
-      const id = `f-pt-${lang.code}-0`;
-      ptCol.innerHTML = `
-        <div class="field-top">
-          <span class="field-lbl">Primary Text</span>
-          <button class="cp-btn" id="${id}" onclick="doCopy('${id}')">${copyIcon()} Kopiraj</button>
-        </div>
-        <div class="field-text" id="txt-${id}">${esc(pts[0])}</div>`;
-    } else {
-      ptCol.innerHTML = `<div class="field-lbl" style="margin-bottom:10px">Primary Texts</div>`;
-      pts.forEach((pt, i) => {
-        const id = `f-pt-${lang.code}-${i}`;
-        ptCol.innerHTML += `
-          <div class="pt-item">
-            <div class="field-top">
-              <span class="field-lbl" style="opacity:0.6">#${i+1}</span>
-              <button class="cp-btn" id="${id}" onclick="doCopy('${id}')">${copyIcon()} Kopiraj</button>
-            </div>
-            <div class="field-text" id="txt-${id}">${esc(pt)}</div>
-          </div>`;
-      });
+
+async def ensure_cache_fresh():
+    """Refresh cache if stale."""
+    if is_cache_stale():
+        await fetch_all_feeds()
+
+
+def find_product_urls(query: str) -> dict:
+    """
+    Given a URL or SKU, find matching product URLs for all languages.
+    Returns { lang: { url, title } } or empty dict if not found.
+    """
+    # Normalize query
+    if query.startswith('http'):
+        key = extract_sku_from_url(query)
+    else:
+        key = query.strip()
+
+    if not key:
+        return {}
+
+    key = key.lower()
+    result = {}
+
+    for lang, products in feed_cache.items():
+        # Try exact match first
+        if key in products:
+            result[lang] = products[key]
+            continue
+
+        # Try partial slug match (in case URL format differs slightly)
+        for prod_key, prod_data in products.items():
+            if key in prod_key or prod_key in key:
+                result[lang] = prod_data
+                break
+
+    return result
+
+
+# ─── STARTUP ─────────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+async def startup_event():
+    """Fetch feeds on startup."""
+    await fetch_all_feeds()
+    # Schedule daily refresh in background
+    asyncio.create_task(daily_refresh())
+
+
+async def daily_refresh():
+    """Background task: refresh feeds every 24 hours."""
+    while True:
+        await asyncio.sleep(CACHE_TTL_HOURS * 3600)
+        await fetch_all_feeds()
+
+
+# ─── MODELS ──────────────────────────────────────────────────────────────────
+
+class AdRequest(BaseModel):
+    input: str
+    mode: str
+    pt_count: int = 1
+    hl_count: int = 1
+
+
+class LookupRequest(BaseModel):
+    query: str  # URL or SKU
+
+
+# ─── ROUTES ──────────────────────────────────────────────────────────────────
+
+@app.get("/")
+def root():
+    return FileResponse("static/index.html")
+
+
+@app.get("/cache-status")
+async def cache_status():
+    """Check when cache was last updated and how many products per lang."""
+    return {
+        "last_fetch": last_fetch.isoformat() if last_fetch else None,
+        "next_fetch": (last_fetch + timedelta(hours=CACHE_TTL_HOURS)).isoformat() if last_fetch else None,
+        "products_per_lang": {lang: len(prods) for lang, prods in feed_cache.items()},
+        "stale": is_cache_stale()
     }
 
-    // HL column
-    const hlCol = document.createElement('div');
-    hlCol.className = 'field-col';
-    if (hls.length === 1) {
-      const id = `f-hl-${lang.code}-0`;
-      hlCol.innerHTML = `
-        <div class="field-top">
-          <span class="field-lbl">Headline</span>
-          <button class="cp-btn" id="${id}" onclick="doCopy('${id}')">${copyIcon()} Kopiraj</button>
-        </div>
-        <div class="field-text is-hl" id="txt-${id}">${esc(hls[0])}</div>`;
-    } else {
-      hlCol.innerHTML = `<div class="field-lbl" style="margin-bottom:10px">Headlines</div>`;
-      hls.forEach((hl, i) => {
-        const id = `f-hl-${lang.code}-${i}`;
-        hlCol.innerHTML += `
-          <div class="pt-item">
-            <div class="field-top">
-              <span class="field-lbl" style="opacity:0.6">#${i+1}</span>
-              <button class="cp-btn" id="${id}" onclick="doCopy('${id}')">${copyIcon()} Kopiraj</button>
-            </div>
-            <div class="field-text is-hl" id="txt-${id}">${esc(hl)}</div>
-          </div>`;
-      });
+
+@app.post("/refresh-cache")
+async def refresh_cache():
+    """Manually trigger a cache refresh."""
+    await fetch_all_feeds()
+    return {"status": "ok", "last_fetch": last_fetch.isoformat()}
+
+
+@app.post("/lookup")
+async def lookup_product(req: LookupRequest):
+    """Find product URLs across all languages for a given URL or SKU."""
+    await ensure_cache_fresh()
+    urls = find_product_urls(req.query)
+    return {
+        "query": req.query,
+        "found": len(urls) > 0,
+        "urls": urls
     }
 
-    body.appendChild(ptCol);
-    body.appendChild(hlCol);
-    section.appendChild(body);
-    list.appendChild(section);
-  });
-}
 
-function goBack() {
-  document.getElementById('results').classList.remove('show');
-  document.getElementById('countryList').innerHTML = '';
-  document.getElementById('formSection').style.display = 'block';
-  document.getElementById('btnGen').disabled = false;
-  document.getElementById('errorMsg').classList.remove('show');
-}
+@app.post("/generate")
+async def generate(req: AdRequest):
+    await ensure_cache_fresh()
 
-// ---- COPY ----
-function doCopy(id) {
-  const el = document.getElementById('txt-' + id);
-  const text = el ? el.innerText : '';
-  const btn = document.getElementById(id);
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).then(() => showOk(btn)).catch(() => fallback(text, btn));
-  } else {
-    fallback(text, btn);
-  }
-}
+    if req.mode == "url":
+        user_msg = f"Preberi to stran in ustvari Meta oglase: {req.input}"
+    else:
+        user_msg = f"Na podlagi tega opisa ustvari Meta oglase:\n\n{req.input}"
 
-function fallback(text, btn) {
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
-  document.body.appendChild(ta);
-  ta.focus();
-  ta.select();
-  ta.setSelectionRange(0, 99999);
-  try { document.execCommand('copy'); } catch(e) {}
-  document.body.removeChild(ta);
-  showOk(btn);
-}
+    # Find product URLs for all languages
+    product_urls = find_product_urls(req.input) if req.mode == "url" else {}
 
-function showOk(btn) {
-  btn.innerHTML = `<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg> Kopirano`;
-  btn.classList.add('ok');
-  setTimeout(() => { btn.innerHTML = copyIcon() + ' Kopiraj'; btn.classList.remove('ok'); }, 2000);
-}
+    pt_placeholders = ", ".join([f'"PT tekst {i+1}"' for i in range(req.pt_count)])
+    hl_placeholders = ", ".join([f'"HL tekst {i+1}"' for i in range(req.hl_count)])
 
-function copyIcon() {
-  return `<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
-}
+    prompt = f"""{user_msg}
 
-function flash(id) {
-  const el = document.getElementById(id);
-  el.classList.add('error');
-  el.focus();
-  setTimeout(() => el.classList.remove('error'), 1500);
-}
+OBVEZNO ustvari TOČNO {req.pt_count} Primary Text(ov) IN TOČNO {req.hl_count} Headline(ov) za VSAK jezik.
 
-function esc(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+Pravila za Primary Text (ponovi {req.pt_count}x za vsak jezik):
+- 2-3 kratke vrstice
+- Vsaj 4-5 emoji-jev razporejenih po besedilu
+- Energičen, prodajno usmerjen ton
+- Brez cen
+- Vsak tekst mora biti DRUGAČEN od ostalih
 
-// ---- INIT ----
-update();
-renderHistory();
-</script>
-</body>
-</html>
+Pravila za Headline (ponovi {req.hl_count}x za vsak jezik):
+- MAKSIMALNO 5 BESED, ne več!
+- Točno 1 emoji na začetku
+- Brez cen
+- Vsak headline mora biti DRUGAČEN
+
+Jeziki: SL (izvirnik), HR (latinica), RS (SAMO latinica), HU, CZ, SK, PL, GR (grška pisava), RO (latinica), BG (SAMO cirilica).
+
+JSON struktura — "pt" mora imeti TOČNO {req.pt_count} elementov, "hl" mora imeti TOČNO {req.hl_count} elementov:
+{{
+  "product": "kratko ime izdelka",
+  "sl": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
+  "hr": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
+  "rs": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
+  "hu": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
+  "cz": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
+  "sk": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
+  "pl": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
+  "gr": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
+  "ro": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}},
+  "bg": {{"pt": [{pt_placeholders}], "hl": [{hl_placeholders}]}}
+}}
+
+Vrni SAMO veljaven JSON, brez markdown, brez ```."""
+
+    tools = [{"type": "web_search_20250305", "name": "web_search"}] if req.mode == "url" else []
+
+    message = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=8000,
+        tools=tools if tools else anthropic.NOT_GIVEN,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    text = ""
+    for block in message.content:
+        if hasattr(block, "text"):
+            text += block.text
+
+    text = re.sub(r"```json\s*", "", text)
+    text = re.sub(r"```\s*", "", text)
+    text = text.strip()
+
+    match = re.search(r'\{[\s\S]*\}', text)
+    if not match:
+        return {"error": "Claude ni vrnil veljavnega JSON. Poskusi znova."}
+
+    try:
+        data = json.loads(match.group())
+        # Attach product URLs to response
+        data["product_urls"] = {
+            lang: info["url"]
+            for lang, info in product_urls.items()
+        }
+        return data
+    except json.JSONDecodeError as e:
+        return {"error": f"JSON napaka: {str(e)}"}
