@@ -1,31 +1,30 @@
-
 <!DOCTYPE html>
 <html lang="sl">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Meta Ads Generator</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --bg: #0f0f11;
-  --surface: #1a1a1f;
-  --surface2: #222228;
-  --border: rgba(255,255,255,0.08);
-  --border-hover: rgba(255,255,255,0.16);
-  --text: #f0f0f2;
-  --text-secondary: #888892;
-  --text-tertiary: #555560;
-  --accent: #4f7fff;
-  --accent-dim: rgba(79,127,255,0.12);
-  --accent-border: rgba(79,127,255,0.4);
-  --green: #3ecf8e;
-  --green-dim: rgba(62,207,142,0.12);
-  --green-border: rgba(62,207,142,0.35);
-  --red: #ff5757;
-  --chip-off: #2a2a32;
-  --chip-on: #4f7fff;
+  --bg: #f4f4f6;
+  --surface: #ffffff;
+  --surface2: #f0f0f3;
+  --border: rgba(0,0,0,0.08);
+  --border-hover: rgba(0,0,0,0.16);
+  --text: #111116;
+  --text-secondary: #555560;
+  --text-tertiary: #9999a8;
+  --accent: #3a6fff;
+  --accent-dim: rgba(58,111,255,0.1);
+  --accent-border: rgba(58,111,255,0.35);
+  --green: #0f9e6a;
+  --green-dim: rgba(15,158,106,0.1);
+  --green-border: rgba(15,158,106,0.3);
+  --red: #e03030;
+  --chip-off: #e4e4ea;
+  --chip-on: #3a6fff;
   --radius: 10px;
   --radius-lg: 14px;
 }
@@ -34,45 +33,59 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  padding: 2.5rem 1.5rem;
   display: flex;
   justify-content: center;
+  padding: 2.5rem 1.5rem 4rem;
 }
 .layout { width: 100%; max-width: 560px; }
+
+/* Logo */
 .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 2rem; }
-.logo-icon { width: 40px; height: 40px; border-radius: 11px; background: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.logo-icon { width: 42px; height: 42px; border-radius: 12px; background: #1877F2; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 8px rgba(24,119,242,0.3); }
 .logo-icon svg { width: 20px; height: 20px; fill: white; }
-.logo-name { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+.logo-name { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; color: var(--text); }
 .logo-sub { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1rem; }
-.section-label { font-size: 11px; font-weight: 500; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; display: block; }
+
+/* Card */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.section-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; display: block; }
+
+/* Mode toggle */
 .mode-row { display: flex; gap: 6px; margin-bottom: 1.25rem; background: var(--surface2); padding: 4px; border-radius: var(--radius); }
 .mode-btn { flex: 1; height: 34px; border-radius: 7px; border: none; background: transparent; color: var(--text-tertiary); font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s; }
 .mode-btn:hover { color: var(--text-secondary); }
-.mode-btn.on { background: var(--surface); color: var(--text); border: 1px solid var(--border-hover); }
+.mode-btn.on { background: var(--surface); color: var(--text); border: 1px solid var(--border-hover); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
 .mode-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Inputs */
 .url-wrap { position: relative; display: flex; align-items: center; margin-bottom: 10px; }
-.url-icon { position: absolute; left: 12px; pointer-events: none; display: flex; }
+.url-icon { position: absolute; left: 12px; pointer-events: none; }
 .url-icon svg { width: 14px; height: 14px; stroke: var(--text-tertiary); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-input[type="text"] { width: 100%; height: 44px; padding: 0 14px 0 36px; font-size: 14px; font-family: 'DM Sans', sans-serif; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); transition: border-color 0.15s; }
-input[type="text"]:focus { outline: none; border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-dim); }
+input[type="text"] { width: 100%; height: 44px; padding: 0 14px 0 36px; font-size: 14px; font-family: 'DM Sans', sans-serif; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); transition: all 0.15s; }
+input[type="text"]:focus { outline: none; border-color: var(--accent-border); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-dim); }
 input[type="text"]::placeholder { color: var(--text-tertiary); }
 input[type="text"].error { border-color: var(--red) !important; }
-textarea.input-area { width: 100%; min-height: 130px; padding: 12px 14px; font-size: 13.5px; font-family: 'DM Sans', sans-serif; line-height: 1.65; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); resize: vertical; transition: border-color 0.15s; margin-bottom: 10px; }
-textarea.input-area:focus { outline: none; border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-dim); }
+textarea.input-area { width: 100%; min-height: 120px; padding: 12px 14px; font-size: 13.5px; font-family: 'DM Sans', sans-serif; line-height: 1.65; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); resize: vertical; transition: all 0.15s; margin-bottom: 10px; }
+textarea.input-area:focus { outline: none; border-color: var(--accent-border); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-dim); }
 textarea.input-area::placeholder { color: var(--text-tertiary); }
 textarea.input-area.error { border-color: var(--red) !important; }
-.btn-gen { width: 100%; height: 44px; border-radius: var(--radius); border: none; background: var(--accent); color: white; font-size: 14px; font-family: 'DM Sans', sans-serif; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; letter-spacing: -0.2px; transition: opacity 0.15s, transform 0.1s, background 0.2s; }
-.btn-gen:hover { opacity: 0.9; }
+
+/* Generate button */
+.btn-gen { width: 100%; height: 46px; border-radius: var(--radius); border: none; background: var(--accent); color: white; font-size: 14px; font-family: 'DM Sans', sans-serif; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; letter-spacing: -0.2px; transition: all 0.15s; box-shadow: 0 2px 8px rgba(58,111,255,0.25); }
+.btn-gen:hover { background: #2d5fee; box-shadow: 0 4px 12px rgba(58,111,255,0.35); }
 .btn-gen:active { transform: scale(0.98); }
-.btn-gen:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-gen:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
 .btn-gen svg { width: 14px; height: 14px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Sep */
 .sep { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+
+/* Counters */
 .counters { display: flex; gap: 1.5rem; }
 .counter-group { flex: 1; }
 .counter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.cnt-btn { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; transition: all 0.12s; font-family: 'DM Mono', monospace; }
-.cnt-btn:hover { border-color: var(--border-hover); color: var(--text); }
+.cnt-btn { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; font-family: 'DM Mono', monospace; }
+.cnt-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface); }
 .cnt-btn:disabled { opacity: 0.25; cursor: not-allowed; }
 .cnt-val { font-size: 16px; font-weight: 600; color: var(--text); min-width: 22px; text-align: center; font-family: 'DM Mono', monospace; }
 .cnt-max { font-size: 11px; color: var(--text-tertiary); }
@@ -80,45 +93,86 @@ textarea.input-area.error { border-color: var(--red) !important; }
 .chip { height: 4px; flex: 1; border-radius: 2px; background: var(--chip-off); transition: background 0.2s; }
 .chip.on { background: var(--chip-on); }
 .counters-divider { width: 1px; background: var(--border); align-self: stretch; }
+
+/* Hint */
 .hint { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; background: var(--surface2); border-radius: 8px; margin-top: 1.25rem; }
 .hint svg { width: 13px; height: 13px; stroke: var(--text-tertiary); fill: none; stroke-width: 1.5; flex-shrink: 0; margin-top: 1px; }
 .hint-text { font-size: 12px; color: var(--text-tertiary); line-height: 1.6; }
 
+/* Error */
+.error-msg { display: none; padding: 10px 14px; background: rgba(224,48,48,0.07); border: 1px solid rgba(224,48,48,0.2); border-radius: var(--radius); font-size: 13px; color: var(--red); margin-top: 10px; }
+.error-msg.show { display: block; }
+
 /* Loading */
 .loading { display: none; text-align: center; padding: 2.5rem 1rem; }
 .loading.show { display: block; }
-.spinner { width: 32px; height: 32px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 1rem; }
+.spinner { width: 30px; height: 30px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 1rem; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-text { font-size: 13px; color: var(--text-tertiary); }
-
-/* Error */
-.error-msg { display: none; padding: 10px 14px; background: rgba(255,87,87,0.1); border: 1px solid rgba(255,87,87,0.3); border-radius: var(--radius); font-size: 13px; color: var(--red); margin-top: 10px; }
-.error-msg.show { display: block; }
 
 /* Results */
 .results { display: none; }
 .results.show { display: block; }
-.product-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 10px; margin-bottom: 1.25rem; }
-.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 1.25rem; }
-.tab { padding: 5px 12px; border-radius: var(--radius); border: 1px solid var(--border); font-size: 13px; cursor: pointer; background: var(--surface); color: var(--text-tertiary); transition: all 0.12s; }
-.tab:hover { color: var(--text-secondary); border-color: var(--border-hover); }
-.tab.on { background: var(--surface2); color: var(--text); font-weight: 500; border-color: var(--border-hover); }
+.product-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-secondary); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; margin-bottom: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+
+/* Language tabs — colored pills */
+.tabs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.tab {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1.5px solid transparent;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s;
+  font-family: 'DM Mono', monospace;
+  letter-spacing: 0.3px;
+}
+.tab:hover { opacity: 0.8; }
+
+/* Per-language colors */
+.tab[data-lang="sl"] { background: #e8f0ff; color: #2a5bd4; border-color: #b8ccf8; }
+.tab[data-lang="sl"].on { background: #2a5bd4; color: white; border-color: #2a5bd4; }
+.tab[data-lang="hr"] { background: #fff0e8; color: #c44b10; border-color: #f8c4a0; }
+.tab[data-lang="hr"].on { background: #c44b10; color: white; border-color: #c44b10; }
+.tab[data-lang="rs"] { background: #fde8e8; color: #b81c1c; border-color: #f4aaaa; }
+.tab[data-lang="rs"].on { background: #b81c1c; color: white; border-color: #b81c1c; }
+.tab[data-lang="hu"] { background: #e8fff2; color: #0d8c52; border-color: #96e6c0; }
+.tab[data-lang="hu"].on { background: #0d8c52; color: white; border-color: #0d8c52; }
+.tab[data-lang="cz"] { background: #f5e8ff; color: #7a28c9; border-color: #d4a8f5; }
+.tab[data-lang="cz"].on { background: #7a28c9; color: white; border-color: #7a28c9; }
+.tab[data-lang="sk"] { background: #e8f8ff; color: #0d7ab8; border-color: #96d4f0; }
+.tab[data-lang="sk"].on { background: #0d7ab8; color: white; border-color: #0d7ab8; }
+.tab[data-lang="pl"] { background: #fff5e8; color: #b86010; border-color: #f5cca0; }
+.tab[data-lang="pl"].on { background: #b86010; color: white; border-color: #b86010; }
+.tab[data-lang="gr"] { background: #e8eeff; color: #2840b8; border-color: #a8b8f5; }
+.tab[data-lang="gr"].on { background: #2840b8; color: white; border-color: #2840b8; }
+.tab[data-lang="ro"] { background: #fef5e8; color: #a06010; border-color: #f0d4a0; }
+.tab[data-lang="ro"].on { background: #a06010; color: white; border-color: #a06010; }
+.tab[data-lang="bg"] { background: #e8fff8; color: #0a7a5a; border-color: #90e0c8; }
+.tab[data-lang="bg"].on { background: #0a7a5a; color: white; border-color: #0a7a5a; }
+
 .panel { display: none; }
 .panel.on { display: block; }
-.ad-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; margin-bottom: 10px; }
+
+/* Ad cards */
+.ad-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
 .ad-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.ad-lbl { font-size: 11px; font-weight: 500; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.6px; }
-.cp-btn { height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-tertiary); font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; }
-.cp-btn:hover { border-color: var(--border-hover); color: var(--text); }
+.ad-lbl { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.7px; }
+.cp-btn { height: 28px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); font-size: 12px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; display: flex; align-items: center; gap: 5px; }
+.cp-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface); }
 .cp-btn.ok { color: var(--green); border-color: var(--green-border); background: var(--green-dim); }
+.cp-btn svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ad-body { font-size: 14px; color: var(--text); line-height: 1.7; white-space: pre-wrap; }
-.ad-hl { font-size: 15px; font-weight: 500; color: var(--text); }
-.back-btn { width: 100%; height: 38px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text-tertiary); font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; margin-top: 0.5rem; transition: all 0.12s; }
+.ad-hl { font-size: 15px; font-weight: 600; color: var(--text); }
+
+.back-btn { width: 100%; height: 40px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; margin-top: 4px; transition: all 0.12s; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
 .back-btn:hover { border-color: var(--border-hover); color: var(--text); }
 </style>
 </head>
 <body>
 <div class="layout">
+
   <div class="logo">
     <div class="logo-icon">
       <svg viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
@@ -129,7 +183,7 @@ textarea.input-area.error { border-color: var(--red) !important; }
     </div>
   </div>
 
-  <!-- INPUT FORM -->
+  <!-- FORM -->
   <div id="formSection">
     <div class="card">
       <span class="section-label">Način vnosa</span>
@@ -156,14 +210,13 @@ textarea.input-area.error { border-color: var(--red) !important; }
 
       <div id="input-txt-wrap" style="display:none">
         <span class="section-label">Opis izdelka</span>
-        <textarea class="input-area" id="txtInput" placeholder="Prilepi sem naziv, opis, lastnosti, bullet pointe — karkoli iz strani izdelka..."></textarea>
+        <textarea class="input-area" id="txtInput" placeholder="Prilepi sem naziv, opis, lastnosti — karkoli iz strani izdelka..."></textarea>
       </div>
 
       <button class="btn-gen" id="btnGen" onclick="generate()">
         <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         Generiraj oglase
       </button>
-
       <div class="error-msg" id="errorMsg"></div>
 
       <div class="sep"></div>
@@ -198,7 +251,6 @@ textarea.input-area.error { border-color: var(--red) !important; }
       </div>
     </div>
 
-    <!-- Loading -->
     <div class="loading" id="loading">
       <div class="spinner"></div>
       <div class="loading-text">Generiram oglase in prevode...</div>
@@ -207,22 +259,28 @@ textarea.input-area.error { border-color: var(--red) !important; }
 
   <!-- RESULTS -->
   <div class="results" id="results">
-    <div class="product-badge" id="productBadge">🛍️ Izdelek</div>
+    <div class="product-badge" id="productBadge">Izdelek</div>
     <div class="tabs" id="tabs"></div>
     <div id="panels"></div>
     <button class="back-btn" onclick="goBack()">← Nov izdelek</button>
   </div>
-</div>
 
-<textarea id="clip" style="position:fixed;left:-9999px;top:0;opacity:0"></textarea>
+</div>
 
 <script>
 const state = { pt: 1, hl: 1, mode: 'url' };
 const MAX = 5;
-const TABS = [
-  {code:'sl',name:'🇸🇮 SL'},{code:'hr',name:'🇭🇷 HR'},{code:'rs',name:'🇷🇸 RS'},
-  {code:'hu',name:'🇭🇺 HU'},{code:'cz',name:'🇨🇿 CZ'},{code:'sk',name:'🇸🇰 SK'},
-  {code:'pl',name:'🇵🇱 PL'},{code:'gr',name:'🇬🇷 GR'},{code:'ro',name:'🇷🇴 RO'},{code:'bg',name:'🇧🇬 BG'}
+const LANGS = [
+  {code:'sl', label:'SI SL'},
+  {code:'hr', label:'HR HR'},
+  {code:'rs', label:'RS RS'},
+  {code:'hu', label:'HU HU'},
+  {code:'cz', label:'CZ CZ'},
+  {code:'sk', label:'SK SK'},
+  {code:'pl', label:'PL PL'},
+  {code:'gr', label:'GR GR'},
+  {code:'ro', label:'RO RO'},
+  {code:'bg', label:'BG BG'},
 ];
 
 function setMode(m) {
@@ -264,7 +322,6 @@ async function generate() {
     input = document.getElementById('txtInput').value.trim();
     if (!input) { flash('txtInput'); return; }
   }
-
   const btn = document.getElementById('btnGen');
   btn.disabled = true;
   document.getElementById('errorMsg').classList.remove('show');
@@ -274,19 +331,12 @@ async function generate() {
     const res = await fetch('/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        input,
-        mode: state.mode,
-        pt_count: state.pt,
-        hl_count: state.hl
-      })
+      body: JSON.stringify({ input, mode: state.mode, pt_count: state.pt, hl_count: state.hl })
     });
-
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     renderResults(data);
-
-  } catch (e) {
+  } catch(e) {
     document.getElementById('loading').classList.remove('show');
     const err = document.getElementById('errorMsg');
     err.textContent = 'Napaka: ' + (e.message || 'Poskusi znova.');
@@ -298,23 +348,24 @@ async function generate() {
 function renderResults(data) {
   document.getElementById('loading').classList.remove('show');
   document.getElementById('formSection').style.display = 'none';
-  document.getElementById('results').classList.add('show');
-  document.getElementById('productBadge').textContent = '🛍️ ' + (data.product || 'Izdelek');
+  const results = document.getElementById('results');
+  results.classList.add('show');
+  document.getElementById('productBadge').textContent = '🛍 ' + (data.product || 'Izdelek');
 
   const tabsEl = document.getElementById('tabs');
   const panelsEl = document.getElementById('panels');
   tabsEl.innerHTML = '';
   panelsEl.innerHTML = '';
 
-  TABS.forEach((t, i) => {
-    const d = data[t.code];
+  LANGS.forEach((lang, i) => {
+    const d = data[lang.code];
     if (!d) return;
 
     const tab = document.createElement('div');
     tab.className = 'tab' + (i === 0 ? ' on' : '');
-    tab.id = 'tab-' + t.code;
-    tab.textContent = t.name;
-    tab.onclick = () => sw(t.code);
+    tab.setAttribute('data-lang', lang.code);
+    tab.textContent = lang.label;
+    tab.onclick = () => sw(lang.code);
     tabsEl.appendChild(tab);
 
     const pts = Array.isArray(d.pt) ? d.pt : [d.pt];
@@ -322,27 +373,35 @@ function renderResults(data) {
 
     let html = '';
     pts.forEach((pt, idx) => {
+      const id = `cp-pt-${lang.code}-${idx}`;
       html += `<div class="ad-card">
         <div class="ad-hdr">
           <span class="ad-lbl">Primary Text${pts.length > 1 ? ' ' + (idx+1) : ''}</span>
-          <button class="cp-btn" id="cp-pt-${t.code}-${idx}" onclick="doCopy('cp-pt-${t.code}-${idx}',${JSON.stringify(pt)})">Kopiraj</button>
+          <button class="cp-btn" id="${id}" onclick="doCopy('${id}', this)">
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Kopiraj
+          </button>
         </div>
-        <div class="ad-body">${esc(pt)}</div>
+        <div class="ad-body" id="txt-${id}">${esc(pt)}</div>
       </div>`;
     });
     hls.forEach((hl, idx) => {
+      const id = `cp-hl-${lang.code}-${idx}`;
       html += `<div class="ad-card">
         <div class="ad-hdr">
           <span class="ad-lbl">Headline${hls.length > 1 ? ' ' + (idx+1) : ''}</span>
-          <button class="cp-btn" id="cp-hl-${t.code}-${idx}" onclick="doCopy('cp-hl-${t.code}-${idx}',${JSON.stringify(hl)})">Kopiraj</button>
+          <button class="cp-btn" id="${id}" onclick="doCopy('${id}', this)">
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Kopiraj
+          </button>
         </div>
-        <div class="ad-hl">${esc(hl)}</div>
+        <div class="ad-hl" id="txt-${id}">${esc(hl)}</div>
       </div>`;
     });
 
     const panel = document.createElement('div');
     panel.className = 'panel' + (i === 0 ? ' on' : '');
-    panel.id = 'panel-' + t.code;
+    panel.id = 'panel-' + lang.code;
     panel.innerHTML = html;
     panelsEl.appendChild(panel);
   });
@@ -351,29 +410,50 @@ function renderResults(data) {
 function sw(code) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
-  document.getElementById('tab-' + code).classList.add('on');
+  document.querySelector(`.tab[data-lang="${code}"]`).classList.add('on');
   document.getElementById('panel-' + code).classList.add('on');
 }
 
-function doCopy(id, text) {
-  const ta = document.getElementById('clip');
+function doCopy(id, btn) {
+  const textEl = document.getElementById('txt-' + id);
+  const text = textEl ? textEl.innerText : '';
+
+  // Try modern clipboard API first, fallback to execCommand
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => showCopied(btn)).catch(() => fallbackCopy(text, btn));
+  } else {
+    fallbackCopy(text, btn);
+  }
+}
+
+function fallbackCopy(text, btn) {
+  const ta = document.createElement('textarea');
   ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus();
   ta.select();
   ta.setSelectionRange(0, 99999);
-  document.execCommand('copy');
-  const btn = document.getElementById(id);
-  btn.textContent = '✓ Kopirano';
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+  showCopied(btn);
+}
+
+function showCopied(btn) {
+  btn.innerHTML = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg> Kopirano`;
   btn.classList.add('ok');
-  setTimeout(() => { btn.textContent = 'Kopiraj'; btn.classList.remove('ok'); }, 2000);
+  setTimeout(() => {
+    btn.innerHTML = `<svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Kopiraj`;
+    btn.classList.remove('ok');
+  }, 2000);
 }
 
 function goBack() {
   document.getElementById('results').classList.remove('show');
+  document.getElementById('results').innerHTML = `<div class="product-badge" id="productBadge">Izdelek</div><div class="tabs" id="tabs"></div><div id="panels"></div><button class="back-btn" onclick="goBack()">← Nov izdelek</button>`;
   document.getElementById('formSection').style.display = 'block';
   document.getElementById('btnGen').disabled = false;
-  document.getElementById('results').innerHTML = '';
-  document.getElementById('tabs').innerHTML = '';
-  document.getElementById('panels').innerHTML = '';
+  document.getElementById('errorMsg').classList.remove('show');
 }
 
 function flash(id) {
@@ -383,7 +463,9 @@ function flash(id) {
   setTimeout(() => el.classList.remove('error'), 1500);
 }
 
-function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 update();
 </script>
