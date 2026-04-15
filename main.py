@@ -62,7 +62,7 @@ Vrni SAMO veljaven JSON brez markdown oznak, brez ```json, samo golo JSON besedi
     tools = [{"type": "web_search_20250305", "name": "web_search"}] if req.mode == "url" else []
 
     message = client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-haiku-4-5-20251001",
         max_tokens=4000,
         tools=tools if tools else anthropic.NOT_GIVEN,
         messages=[{"role": "user", "content": prompt}]
