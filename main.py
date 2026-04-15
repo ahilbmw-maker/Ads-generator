@@ -245,8 +245,21 @@ async def call_claude(prompt: str, model: str, tools=None, max_tokens: int = 800
     kwargs = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}
     if tools:
         kwargs["tools"] = tools
-    msg = await loop.run_in_executor(None, lambda: client.messages.create(**kwargs))
-    return "".join(b.text for b in msg.content if hasattr(b, "text"))
+
+    for attempt in range(3):
+        try:
+            msg = await loop.run_in_executor(None, lambda: client.messages.create(**kwargs))
+            return "".join(b.text for b in msg.content if hasattr(b, "text"))
+        except anthropic.RateLimitError:
+            if attempt < 2:
+                wait = (attempt + 1) * 20
+                print(f"  Rate limit, waiting {wait}s...")
+                await asyncio.sleep(wait)
+            else:
+                raise
+        except Exception as e:
+            raise
+    return ""
 
 
 async def generate_meta_one(user_msg: str, mode: str, source_url: Optional[str],
@@ -457,6 +470,33 @@ async def generate_tiktok(req: TikTokRequest):
         return {"status": "ok", "file": xlsx_path, "data": data}
     except FileNotFoundError as e:
         return {"error": str(e)}
+
+
+@app.post("/extract-videos")
+async def extract_videos(data: dict):
+    """Extract video filenames from a base64 screenshot using Claude vision."""
+    image_b64 = data.get("image")
+    media_type = data.get("media_type", "image/png")
+    if not image_b64:
+        return {"error": "Ni slike."}
+    loop = asyncio.get_event_loop()
+    msg = await loop.run_in_executor(None, lambda: client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=500,
+        messages=[{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
+            {"type": "text", "text": "Extract all video filenames from this screenshot. Return ONLY a JSON array of filenames, nothing else. Example: [\"VIDEO (1).mp4\", \"VIDEO (2).mp4\"]. Extract exactly as written, preserve spaces and capitalization."}
+        ]}]
+    ))
+    text = msg.content[0].text.strip()
+    text = re.sub(r"```json\s*", "", text)
+    text = re.sub(r"```\s*", "", text).strip()
+    try:
+        filenames = json.loads(text)
+        formatted = ",".join([f"[{f}]" for f in filenames])
+        return {"filenames": filenames, "formatted": formatted}
+    except json.JSONDecodeError:
+        return {"error": "Ni uspelo prebrati imen. Poskusi znova z jasnejšo sliko."}
 
 
 @app.get("/download/{filename}")
