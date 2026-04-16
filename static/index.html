@@ -323,8 +323,8 @@ input[type="text"].error { border-color: var(--red) !important; }
 
         <!-- Quality mode -->
         <div style="display:flex;gap:8px;margin-bottom:12px">
-          <button class="qbtn on" id="qmode-sonnet" onclick="setQMode('sonnet')"><span class="qbtn-icon">✦</span><span class="qbtn-body"><span class="qbtn-title">Kreativno</span><span class="qbtn-sub">Sonnet · vrhunska kvaliteta</span></span></button>
-          <button class="qbtn" id="qmode-fast" onclick="setQMode('fast')"><span class="qbtn-icon">⚡</span><span class="qbtn-body"><span class="qbtn-title">Hitro</span><span class="qbtn-sub">Sonnet + Haiku · ~2× hitreje</span></span></button>
+          <button class="qbtn" id="qmode-sonnet" onclick="setQMode('sonnet')"><span class="qbtn-icon">✦</span><span class="qbtn-body"><span class="qbtn-title">Kreativno</span><span class="qbtn-sub">Sonnet · vrhunska kvaliteta</span></span></button>
+          <button class="qbtn on" id="qmode-fast" onclick="setQMode('fast')"><span class="qbtn-icon">⚡</span><span class="qbtn-body"><span class="qbtn-title">Hitro</span><span class="qbtn-sub">Sonnet + Haiku · ~2× hitreje</span></span></button>
         </div>
 
         <button class="btn-gen" id="metaBtnGen" onclick="metaGenerate()">
@@ -471,7 +471,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
 <script>
 // ── STATE ──
-const metaState = {pt:1, hl:1, qmode:'sonnet'};
+const metaState = {pt:1, hl:1, qmode:'fast'};
 const MAX=5, HKEY='meta_ads_history_v2', HMAX=8;
 let metaLastReq = null;
 let ttLastFile = null;
