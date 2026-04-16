@@ -38,7 +38,7 @@ input:focus,select:focus{border-color:rgba(0,0,0,0.5);}
 .bump-btn.minus{color:#888;}
 .country-row{display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:0.5px solid rgba(0,0,0,0.08);align-items:stretch;}
 .country-row:last-child{border-bottom:none;}
-.cr-left{padding:10px 12px;display:flex;align-items:center;gap:10px;border-right:0.5px solid rgba(0,0,0,0.08);}
+.cr-left{padding:8px 10px;display:flex;align-items:center;gap:7px;border-right:0.5px solid rgba(0,0,0,0.08);}
 .cr-label{font-size:13px;font-weight:500;color:#1a1a1a;}
 .cr-curr{font-size:11px;color:#999;}
 .cr-right{padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
@@ -48,8 +48,8 @@ input:focus,select:focus{border-color:rgba(0,0,0,0.5);}
 .cr-copy{font-size:11px;padding:3px 8px;cursor:pointer;border-radius:4px;background:transparent;border:0.5px solid rgba(0,0,0,0.2);color:#666;white-space:nowrap;flex-shrink:0;}
 .cr-copy:hover{border-color:rgba(0,0,0,0.5);color:#1a1a1a;}
 .cr-copy.ok{color:#2a7a2a;border-color:#2a7a2a;}
-.cr-input{width:100%;font-size:13px;padding:5px 8px;background:transparent;border:none;border-bottom:0.5px solid rgba(0,0,0,0.1);border-radius:0;color:#1a1a1a;outline:none;}
-.cr-input:focus{border-bottom-color:rgba(0,0,0,0.5);}
+.cr-input{font-size:14px;padding:6px 10px;background:#f5f5f3;border:0.5px solid rgba(0,0,0,0.12);border-radius:7px;color:#1a1a1a;outline:none;min-width:80px;flex:1;height:34px;}
+.cr-input:focus{border-color:rgba(0,0,0,0.5);background:#fff;}
 .cr-input::placeholder{color:#bbb;}
 .all-table{border:0.5px solid rgba(0,0,0,0.12);border-radius:12px;overflow:hidden;margin-top:0.5rem;}
 .all-head{display:grid;grid-template-columns:1fr 1fr;border-bottom:0.5px solid rgba(0,0,0,0.15);}
@@ -109,8 +109,20 @@ input:focus,select:focus{border-color:rgba(0,0,0,0.5);}
   <div id="all-section" style="display:none;">
     <div style="display:flex;align-items:center;gap:10px;margin-top:1rem;flex-wrap:wrap;">
       <label style="white-space:nowrap;margin:0;">Popust %</label>
-      <input type="number" id="discount-all" value="40" step="1" min="0" max="99" oninput="calc()" style="max-width:90px;">
+      <input type="number" id="discount-all" value="25" step="1" min="0" max="99" oninput="calc();highlightDisc()" style="max-width:80px;">
       <button class="round-btn" id="round-btn" onclick="toggleRound()">Zaokroževanje</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;align-items:center;">
+      <span style="font-size:11px;color:#999;">Hitri popust:</span>
+      <button class="bump-btn" id="dq-10" onclick="setDiscount(10)">10%</button>
+      <button class="bump-btn" id="dq-15" onclick="setDiscount(15)">15%</button>
+      <button class="bump-btn" id="dq-20" onclick="setDiscount(20)">20%</button>
+      <button class="bump-btn" id="dq-25" onclick="setDiscount(25)" style="border-color:rgba(0,0,0,0.4);background:#fff;font-weight:500;color:#1a1a1a;">25%</button>
+      <button class="bump-btn" id="dq-30" onclick="setDiscount(30)">30%</button>
+      <button class="bump-btn" id="dq-35" onclick="setDiscount(35)">35%</button>
+      <button class="bump-btn" id="dq-40" onclick="setDiscount(40)">40%</button>
+      <button class="bump-btn" id="dq-45" onclick="setDiscount(45)">45%</button>
+      <button class="bump-btn" id="dq-50" onclick="setDiscount(50)">50%</button>
     </div>
     <div class="sec" style="margin-top:1.25rem;">Cene po državah</div>
     <div class="all-table">
@@ -136,6 +148,15 @@ const COUNTRIES={
   GR: {label:'GR', curr:'€',  vat:1.24,exchg:1,   ship:3.6,dec:2,color:'#1D9E75'},
   RO: {label:'RO', curr:'RON',vat:1.19,exchg:5,   ship:3.7,dec:2,color:'#BA7517'},
   BG: {label:'BG', curr:'€',  vat:1.20,exchg:1,   ship:3.7,dec:2,color:'#534AB7'},
+};
+// Bump vrednosti po valuti
+const BUMP_MAP={
+  '€':  [1,-1],
+  'din':[100,-100],
+  'Ft': [400,-400],
+  'Kč': [25,-25],
+  'zł': [5,-5],
+  'RON':[5,-5],
 };
 const BUMPS={
   '€':  [{l:'+0.50€',v:.5},{l:'+1€',v:1},{l:'+2€',v:2},{l:'+5€',v:5},{l:'−1€',v:-1}],
@@ -254,16 +275,54 @@ function calc(){
     }
   }
 }
+function setDiscount(d){
+  document.getElementById('discount-all').value=d;
+  highlightDisc();
+  calc();
+}
+function highlightDisc(){
+  const val=parseInt(document.getElementById('discount-all').value)||0;
+  [10,15,20,25,30,35,40,45,50].forEach(d=>{
+    const btn=document.getElementById('dq-'+d);
+    if(!btn)return;
+    if(d===val){btn.style.cssText='padding:4px 10px;font-size:12px;cursor:pointer;border-radius:8px;background:#fff;border:0.5px solid rgba(0,0,0,0.4);color:#1a1a1a;font-weight:500;';}
+    else{btn.style.cssText='padding:4px 10px;font-size:12px;cursor:pointer;border-radius:8px;background:#f5f5f3;border:0.5px solid rgba(0,0,0,0.15);color:#1a1a1a;';}
+  });
+}
+function bumpAll(ckey,val){
+  const c=COUNTRIES[ckey];
+  const inp=document.getElementById('inp-'+ckey);
+  if(!inp)return;
+  let cur=parseFloat(inp.value)||0;
+  // Če je prazno, vzami trenutno izračunano ceno
+  if(!cur){
+    const priceEl=document.getElementById('res-price-'+ckey);
+    if(priceEl){
+      const txt=priceEl.textContent.replace(/[^0-9.,]/g,'').replace(',','.');
+      cur=parseFloat(txt)||0;
+    }
+  }
+  let v=Math.max(0,cur+val);
+  inp.value=c.dec===0?Math.round(v):parseFloat(v.toFixed(2));
+  calc();
+}
+
 function buildAllRows(){
   const container=document.getElementById('all-rows');
   let html='';
   for(const ckey of Object.keys(COUNTRIES)){
     const c=COUNTRIES[ckey];
+    const bumps=BUMP_MAP[c.curr]||[1,-1];
+    const plusV=bumps[0],minusV=bumps[1];
+    const plusL=c.curr==='€'?'+1€':c.curr==='din'?'+100':c.curr==='Ft'?'+400':c.curr==='Kč'?'+25':c.curr==='zł'?'+5':'+5';
+    const minusL=c.curr==='€'?'−1€':c.curr==='din'?'−100':c.curr==='Ft'?'−400':c.curr==='Kč'?'−25':c.curr==='zł'?'−5':'−5';
     html+=`<div class="country-row">
       <div class="cr-left">
         <div class="cc-dot" style="background:${c.color};"></div>
         <div style="min-width:28px;"><div class="cr-label">${c.label}</div><div class="cr-curr">${c.curr}</div></div>
-        <input class="cr-input" id="inp-${ckey}" type="number" step="${c.dec===0?1:0.01}" min="0" placeholder="samodejno" oninput="calc()">
+        <input class="cr-input" id="inp-${ckey}" type="number" step="${c.dec===0?1:0.01}" min="0" placeholder="samodejno" oninput="calc()" style="min-width:100px;flex:1;">
+        <button class="bump-btn minus" style="padding:3px 7px;font-size:11px;flex-shrink:0" onclick="bumpAll('${ckey}',${minusV})">${minusL}</button>
+        <button class="bump-btn" style="padding:3px 7px;font-size:11px;flex-shrink:0" onclick="bumpAll('${ckey}',${plusV})">${plusL}</button>
       </div>
       <div class="cr-right">
         <div><div class="cr-price" id="res-price-${ckey}">—</div><div class="cr-nova">NOVA: <span id="res-nova-${ckey}">—</span></div></div>
@@ -276,6 +335,7 @@ function buildAllRows(){
 }
 buildBumpBtns();
 calc();
+highlightDisc();
 </script>
 </body>
 </html>
