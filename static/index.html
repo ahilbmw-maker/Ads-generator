@@ -596,12 +596,29 @@ async function metaRegen() {
 }
 
 function renderMetaResults(results) {
-  document.getElementById('metaFormSection').style.display='none';
-  document.getElementById('metaResults').classList.add('show');
   const tabs=document.getElementById('prodTabs'),panels=document.getElementById('prodPanels');
   tabs.innerHTML='';panels.innerHTML='';
+
+  // Filter valid results
+  const valid = results.filter(d => d && !d.error);
+
+  if(!valid.length) {
+    // All failed — show error and go back to form
+    document.getElementById('metaFormSection').style.display='block';
+    document.getElementById('metaLoading').classList.remove('show');
+    const err=document.getElementById('metaError');
+    const errMsg = results.find(d=>d?.error)?.error || 'Napaka pri generiranju. Poskusi znova.';
+    err.textContent='Napaka: '+errMsg;
+    err.classList.add('show');
+    document.getElementById('metaBtnGen').disabled=false;
+    return;
+  }
+
+  document.getElementById('metaFormSection').style.display='none';
+  document.getElementById('metaResults').classList.add('show');
+
   results.forEach((data,idx)=>{
-    if(!data||data.error)return;
+    if(!data||data.error) return;
     const name=data.product||`Izdelek ${idx+1}`;
     const tab=document.createElement('div');
     tab.className='prod-tab'+(idx===0?' on':'');tab.id=`ptab-${idx}`;
