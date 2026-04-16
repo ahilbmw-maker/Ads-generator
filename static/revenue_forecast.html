@@ -206,7 +206,10 @@ input::placeholder{color:var(--text3)}
     </div>
   </div>
 
-  <div class="footer">Model temelji na 7-dnevnem povprečju · 0 API klicev</div>
+  <div class="footer">
+    <div id="data-counter" style="margin-bottom:4px;font-size:11px"></div>
+    Model temelji na 7-dnevnem povprečju · 0 API klicev
+  </div>
 </div>
 
 <script>
@@ -235,6 +238,42 @@ function loadEntries(){
 function saveEntries(){
   const today=new Date().toLocaleDateString('sl-SI');
   localStorage.setItem('forecast_entries',JSON.stringify({date:today,entries}));
+  // Zbiranje zgodovinskih podatkov za učenje modela
+  collectHistoricalData(today);
+}
+
+function collectHistoricalData(today){
+  try{
+    const hist=JSON.parse(localStorage.getItem('forecast_history')||'{}');
+    // Shrani vse vnose za današnji dan
+    hist[today]=entries.map(e=>({
+      h: parseInt(e.label.split(':')[0]),
+      m: parseInt(e.label.split(':')[1]),
+      ord: e.dejanskiOrd||0,
+      rev: e.dejanski||0
+    }));
+    // Ohrani samo zadnjih 14 dni
+    const keys=Object.keys(hist).sort();
+    if(keys.length>14) delete hist[keys[0]];
+    localStorage.setItem('forecast_history',JSON.stringify(hist));
+    updateDataCounter();
+  }catch(e){}
+}
+
+function updateDataCounter(){
+  try{
+    const hist=JSON.parse(localStorage.getItem('forecast_history')||'{}');
+    const days=Object.keys(hist).length;
+    const el=document.getElementById('data-counter');
+    if(!el)return;
+    if(days<7){
+      el.textContent=`Zbiranje podatkov za učenje modela: ${days}/7 dni`;
+      el.style.color='var(--text3)';
+    } else {
+      el.textContent=`✓ Dovolj podatkov za osebni model (${days} dni)`;
+      el.style.color='var(--green)';
+    }
+  }catch(e){}
 }
 
 function setMode(m){
@@ -389,6 +428,7 @@ function renderLog(){
 loadEntries();
 renderChart();
 renderLog();
+updateDataCounter();
 </script>
 </body>
 </html>
