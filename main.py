@@ -277,9 +277,10 @@ Primary Text ({pt_count}x): 2-3 vrstice, 2-3 emoji-ji, prodajni ton, brez cen, v
 Headline ({hl_count}x): MAX 5 BESED, 1 emoji na začetku, brez cen, vsak DRUGAČEN.
 Vrni SAMO JSON: {{"product": "ime", "pt": [{pt_ph}], "hl": [{hl_ph}]}}"""
 
-        sl_text = await call_claude(sl_prompt, "claude-sonnet-4-6", tools if tools else None, 2000)
+        sl_text = await call_claude(sl_prompt, "claude-sonnet-4-6", tools if tools else None, 4000)
         sl_data = parse_json_response(sl_text)
         if not sl_data:
+            print(f"SL parse failed. Raw response: {sl_text[:500]}")
             return {"error": "Napaka pri generiranju SL tekstov."}
 
         sl_pts = sl_data.get("pt", [])
