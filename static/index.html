@@ -234,7 +234,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 .tt-results.show { display: block; }
 
 /* TikTok history panel */
-.tt-layout { display: grid; grid-template-columns: 1fr 220px; gap: 14px; align-items: start; }
+.tt-layout { display: grid; grid-template-columns: 1fr 280px; gap: 14px; align-items: start; }
 .tt-history { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
 .tt-history-hdr { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px; }
 .tt-search { width: 100%; height: 32px; padding: 0 10px; font-size: 12px; font-family: 'DM Sans', sans-serif; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); color: var(--text); margin-bottom: 8px; outline: none; }
@@ -459,6 +459,16 @@ input[type="text"].error { border-color: var(--red) !important; }
           <input type="text" class="tt-search" id="ttHistorySearch" placeholder="Išči SKU..." oninput="ttRenderHistory()">
           <div class="tt-history-list" id="ttHistoryList">
             <div class="tt-empty">Še ni zgodovine.</div>
+          </div>
+          <div id="ttManualAdd" style="margin-top:8px">
+            <div id="ttManualBtn" onclick="ttToggleManual()" style="font-size:11px;color:var(--text-tertiary);cursor:pointer;text-align:center;padding:6px;border:1px dashed var(--border);border-radius:var(--radius);background:transparent;font-family:'DM Sans',sans-serif">+ Dodaj SKU ročno</div>
+            <div id="ttManualForm" style="display:none;margin-top:6px">
+              <textarea id="ttManualSkus" placeholder="SIGNALSURE&#10;SWEEPI&#10;ABPULLER&#10;..." style="width:100%;height:80px;font-size:11px;font-family:'DM Mono',monospace;padding:7px 9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);resize:none;outline:none"></textarea>
+              <div style="display:flex;gap:5px;margin-top:5px">
+                <button onclick="ttImportManual()" style="flex:1;height:28px;font-size:11px;font-family:'DM Sans',sans-serif;border:none;border-radius:5px;background:var(--accent);color:white;cursor:pointer;font-weight:500">Uvozi</button>
+                <button onclick="ttToggleManual()" style="height:28px;padding:0 10px;font-size:11px;font-family:'DM Sans',sans-serif;border:1px solid var(--border);border-radius:5px;background:transparent;color:var(--text-secondary);cursor:pointer">Prekliči</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -867,6 +877,34 @@ function ttResetUpload() {
 }
 
 // ── TIKTOK GENERATE ──
+function ttToggleManual(){
+  const form=document.getElementById('ttManualForm');
+  const btn=document.getElementById('ttManualBtn');
+  const open=form.style.display==='none';
+  form.style.display=open?'block':'none';
+  btn.style.display=open?'none':'block';
+  if(open) document.getElementById('ttManualSkus').focus();
+}
+function ttImportManual(){
+  const raw=document.getElementById('ttManualSkus').value;
+  const skus=raw.split('\n').map(s=>s.trim().toUpperCase()).filter(Boolean);
+  if(!skus.length) return;
+  const h=ttGetHistory();
+  let added=0;
+  skus.forEach(sku=>{
+    if(!h.find(x=>x.sku===sku)){
+      h.push({sku,brand:'',url:'',videos:'',date:new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric'})});
+      added++;
+    }
+  });
+  localStorage.setItem(TT_HKEY,JSON.stringify(h));
+  ttRenderHistory();
+  document.getElementById('ttManualForm').style.display='none';
+  document.getElementById('ttManualBtn').style.display='block';
+  document.getElementById('ttManualSkus').value='';
+  alert(`Dodano ${added} SKU-jev!`);
+}
+
 // ── TIKTOK HISTORY ──
 const TT_HKEY = 'tiktok_history_v1';
 function ttGetHistory(){ try{ return JSON.parse(localStorage.getItem(TT_HKEY)||'[]'); }catch(e){ return []; } }
