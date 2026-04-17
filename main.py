@@ -27,8 +27,8 @@ client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 TEMPLATE_PATH = "static/tiktok_template.xlsx"
 EXPORTS_DIR = Path("exports")
 EXPORTS_DIR.mkdir(exist_ok=True)
-DATA_DIR = Path("data")
-DATA_DIR.mkdir(exist_ok=True)
+DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
+DATA_DIR.mkdir(exist_ok=True, parents=True)
 TT_HISTORY_FILE = DATA_DIR / "tiktok_history.json"
 META_HISTORY_FILE = DATA_DIR / "meta_history.json"
 
