@@ -554,7 +554,7 @@ function switchPage(page) {
   if(document.getElementById('tab-' + page)) document.getElementById('tab-' + page).classList.add('active');
   // Wide layout for forecast and calc pages
   const mainEl = document.querySelector('.main');
-  if(mainEl) mainEl.classList.toggle('wide', page==='forecast' || page==='calc');
+  if(mainEl) mainEl.classList.toggle('wide', page==='forecast' || page==='calc' || page==='tiktok');
   closeMenu();
 }
 
