@@ -185,6 +185,14 @@ input[type="text"].error { border-color: var(--red) !important; }
 .hi-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hi-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
 .hi-badge { font-size: 10px; font-weight: 600; color: var(--text-tertiary); background: var(--surface2); border-radius: 4px; padding: 2px 6px; white-space: nowrap; font-family: 'DM Mono', monospace; }
+.brand-badge { font-size: 10px; font-weight: 600; border-radius: 4px; padding: 2px 7px; white-space: nowrap; margin-left: 4px; }
+.brand-maaarket   { background:#e8f4fd; color:#1a73e8; }
+.brand-thundershop{ background:#fce8e8; color:#d93025; }
+.brand-colibrishop{ background:#fef3e2; color:#f09300; }
+.brand-zipply     { background:#e6f4ea; color:#1e8e3e; }
+.brand-easyzo     { background:#f3e8fd; color:#8430ce; }
+.brand-fluxigo    { background:#e8faf4; color:#0d8050; }
+.brand-other      { background:#f1f3f4; color:#5f6368; }
 .history-empty { font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 1.5rem; background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); }
 
 /* Meta results */
@@ -235,6 +243,10 @@ input[type="text"].error { border-color: var(--red) !important; }
 
 /* TikTok history panel */
 .tt-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.meta-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.meta-history-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
+.meta-history-search { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text-primary); margin-bottom: 10px; box-sizing: border-box; }
+.meta-history-search:focus { outline: none; border-color: var(--accent); }
 .tt-history { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
 .tt-history-hdr { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px; }
 .tt-search { width: 100%; height: 32px; padding: 0 10px; font-size: 12px; font-family: 'DM Sans', sans-serif; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); color: var(--text); margin-bottom: 8px; outline: none; }
@@ -334,6 +346,7 @@ input[type="text"].error { border-color: var(--red) !important; }
   <!-- ═══ META PAGE ═══ -->
   <div class="page active" id="page-meta">
     <div id="metaFormSection">
+      <div class="meta-layout">
       <div class="card">
         <span class="slabel">URL izdelkov</span>
         <div class="url-list">
@@ -377,11 +390,20 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div class="loading-progress" id="metaProgress"></div>
       </div>
 
-      <div class="history-section">
+      <div class="history-section" style="display:none">
         <div class="history-hdr"><span class="history-title">Zadnji vnosi</span><button class="history-clear" onclick="clearHistory()">Počisti</button></div>
         <div class="history-list" id="historyList"></div>
       </div>
-    </div>
+    </div><!-- /card -->
+
+      <!-- Meta history panel -->
+      <div class="meta-history-panel">
+        <div class="history-hdr"><span class="history-title">Zgodovina vnosov</span><button class="history-clear" onclick="metaServerClearHistory()">Počisti</button></div>
+        <input type="text" class="meta-history-search" id="metaHistorySearch" placeholder="Išči po imenu ali URL..." oninput="metaRenderServerHistory()">
+        <div class="history-list" id="metaServerHistoryList"><div class="history-empty">Nalagam...</div></div>
+      </div>
+
+      </div><!-- /meta-layout -->
 
     <div class="results" id="metaResults">
       <div class="results-hdr">
@@ -554,7 +576,7 @@ function switchPage(page) {
   if(document.getElementById('tab-' + page)) document.getElementById('tab-' + page).classList.add('active');
   // Wide layout for forecast and calc pages
   const mainEl = document.querySelector('.main');
-  if(mainEl) mainEl.classList.toggle('wide', page==='forecast' || page==='calc' || page==='tiktok');
+  if(mainEl) mainEl.classList.toggle('wide', page==='forecast' || page==='calc' || page==='tiktok' || page==='meta');
   closeMenu();
 }
 
@@ -577,7 +599,96 @@ function updateMeta() {
 }
 
 // ── META HISTORY ──
+// ── BRAND DETECTION ──
+function detectBrand(urls) {
+  const all = (urls||[]).filter(Boolean).join(' ').toLowerCase();
+  if(all.includes('maaarket'))    return {key:'maaarket',    label:'Maaarket'};
+  if(all.includes('thundershop')) return {key:'thundershop', label:'ThunderShop'};
+  if(all.includes('colibrishop')) return {key:'colibrishop', label:'ColibriShop'};
+  if(all.includes('zipply'))      return {key:'zipply',      label:'Zipply'};
+  if(all.includes('easyzo'))      return {key:'easyzo',      label:'Easyzo'};
+  if(all.includes('fluxigo'))     return {key:'fluxigo',     label:'Fluxigo'};
+  return {key:'other', label:'Drugo'};
+}
+
+// ── META HISTORY (server-side) ──
+let metaServerHistory = [];
+
+async function metaLoadServerHistory() {
+  try {
+    const res = await fetch('/meta-history');
+    metaServerHistory = await res.json();
+  } catch(e) { metaServerHistory = []; }
+  metaRenderServerHistory();
+}
+
+async function metaSaveServerHistory() {
+  try {
+    await fetch('/meta-history', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({history: metaServerHistory})});
+  } catch(e) {}
+}
+
+function metaRenderServerHistory() {
+  const el = document.getElementById('metaServerHistoryList');
+  const q = (document.getElementById('metaHistorySearch')?.value||'').toLowerCase();
+  const filtered = metaServerHistory.filter(e =>
+    !q || (e.names||'').toLowerCase().includes(q) || (e.urls||[]).some(u=>(u||'').toLowerCase().includes(q))
+  );
+  if (!filtered.length) { el.innerHTML='<div class="history-empty">Ni zgodovine.</div>'; return; }
+  el.innerHTML = filtered.map(e => {
+    const brand = detectBrand(e.urls);
+    return `<div class="history-item" onclick="metaLoadServerEntry(${e.id})">
+    <div class="hi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+    <div class="hi-body"><div class="hi-name">🛍 ${esc(e.names)}</div><div class="hi-meta">${e.date} · ${(e.urls||[]).filter(Boolean).length} URL-jev</div></div>
+    <span class="brand-badge brand-${brand.key}">${brand.label}</span>
+    <span class="hi-badge">${e.pt}PT · ${e.hl}HL</span>
+  </div>`;
+  }).join('');
+}
+
+function metaLoadServerEntry(id) {
+  const e = metaServerHistory.find(x => x.id === id);
+  if (!e) return;
+  // Fill URL inputs
+  const inputs = [...document.querySelectorAll('.meta-url-input')];
+  (e.urls||[]).forEach((u,i) => { if(inputs[i]) inputs[i].value = u||''; });
+  // Fill remaining with empty
+  for(let i=(e.urls||[]).length; i<inputs.length; i++) inputs[i].value='';
+}
+
+async function metaServerClearHistory() {
+  if(!confirm('Počistiti vso zgodovino Meta vnosov?')) return;
+  metaServerHistory = [];
+  await metaSaveServerHistory();
+  metaRenderServerHistory();
+}
+
 function getH(){try{return JSON.parse(localStorage.getItem(HKEY)||'[]');}catch(e){return[];}}
+function saveH(results,urls,pt,hl){
+  const h=getH();
+  const entry = {id:Date.now(),names:results.map(r=>r.product||'?').join(', '),urls,pt,hl,
+    date:new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),results};
+  h.unshift(entry);
+  if(h.length>HMAX)h.splice(HMAX);
+  localStorage.setItem(HKEY,JSON.stringify(h));renderH();
+  // Also save to server
+  metaServerHistory.unshift({...entry});
+  if(metaServerHistory.length>50) metaServerHistory.splice(50);
+  metaSaveServerHistory();
+  metaRenderServerHistory();
+}
+function renderH(){
+  const h=getH(),el=document.getElementById('historyList');
+  if(!h.length){el.innerHTML='<div class="history-empty">Še ni zgodovine.</div>';return;}
+  el.innerHTML=h.map(e=>`<div class="history-item" onclick="loadH(${e.id})">
+    <div class="hi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+    <div class="hi-body"><div class="hi-name">🛍 ${esc(e.names)}</div><div class="hi-meta">${e.date} · ${e.urls.filter(Boolean).length} URL-jev</div></div>
+    <span class="hi-badge">${e.pt}PT · ${e.hl}HL</span>
+  </div>`).join('');
+}
+function loadH(id){const e=getH().find(x=>x.id===id);if(e)renderMetaResults(e.results);}
+function clearHistory(){localStorage.removeItem(HKEY);renderH();}
 function saveH(results,urls,pt,hl){
   const h=getH();
   h.unshift({id:Date.now(),names:results.map(r=>r.product||'?').join(', '),urls,pt,hl,
@@ -1041,7 +1152,7 @@ function cpIco(){return`<svg viewBox="0 0 24 24" style="width:11px;height:11px;s
 function flash(id){const el=document.getElementById(id);if(!el)return;el.style.borderColor='var(--red)';el.focus();setTimeout(()=>el.style.borderColor='',1500);}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-updateMeta();renderH();ttRenderHistory();ttLoadHistory();
+updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();
 </script>
 
 <!-- MOBILE BOTTOM TAB BAR -->
