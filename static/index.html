@@ -889,15 +889,14 @@ function ttImportManual(){
   const raw=document.getElementById('ttManualSkus').value;
   const skus=raw.split('\n').map(s=>s.trim().toUpperCase()).filter(Boolean);
   if(!skus.length) return;
-  const h=ttGetHistory();
   let added=0;
   skus.forEach(sku=>{
-    if(!h.find(x=>x.sku===sku)){
-      h.push({sku,brand:'',url:'',videos:'',date:new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric'})});
+    if(!ttHistory.find(x=>x.sku===sku)){
+      ttHistory.push({sku,brand:'',url:'',videos:'',date:new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric'})});
       added++;
     }
   });
-  localStorage.setItem(TT_HKEY,JSON.stringify(h));
+  ttSaveHistory();
   ttRenderHistory();
   document.getElementById('ttManualForm').style.display='none';
   document.getElementById('ttManualBtn').style.display='block';
@@ -905,17 +904,32 @@ function ttImportManual(){
   alert(`Dodano ${added} SKU-jev!`);
 }
 
-// ── TIKTOK HISTORY ──
-const TT_HKEY = 'tiktok_history_v1';
-function ttGetHistory(){ try{ return JSON.parse(localStorage.getItem(TT_HKEY)||'[]'); }catch(e){ return []; } }
+// ── TIKTOK HISTORY (server-side) ──
+let ttHistory = [];
+
+async function ttLoadHistory(){
+  try{
+    const res = await fetch('/tiktok-history');
+    ttHistory = await res.json();
+  }catch(e){ ttHistory = []; }
+  ttRenderHistory();
+}
+
+async function ttSaveHistory(){
+  try{
+    await fetch('/tiktok-history', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({history: ttHistory})});
+  }catch(e){ console.warn('History save failed', e); }
+}
+
+function ttGetHistory(){ return ttHistory; }
+
 function ttSaveToHistory(sku, brand, url, videos){
-  const h = ttGetHistory();
-  // Odstrani duplikat
-  const idx = h.findIndex(x => x.sku === sku);
-  if(idx >= 0) h.splice(idx, 1);
-  h.unshift({ sku, brand, url, videos, date: new Date().toLocaleDateString('sl-SI', {day:'2-digit', month:'2-digit', year:'numeric'}) });
-  if(h.length > 50) h.splice(50);
-  localStorage.setItem(TT_HKEY, JSON.stringify(h));
+  const idx = ttHistory.findIndex(x => x.sku === sku);
+  if(idx >= 0) ttHistory.splice(idx, 1);
+  ttHistory.unshift({sku, brand, url, videos, date: new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric'})});
+  if(ttHistory.length > 100) ttHistory.splice(100);
+  ttSaveHistory();
   ttRenderHistory();
 }
 function ttRenderHistory(){
@@ -948,9 +962,8 @@ function ttRegenFromHistory(i){
   setTimeout(() => ttGenerate(), 100);
 }
 function ttDeleteHistory(i){
-  const h = ttGetHistory();
-  h.splice(i, 1);
-  localStorage.setItem(TT_HKEY, JSON.stringify(h));
+  ttHistory.splice(i,1);
+  ttSaveHistory();
   ttRenderHistory();
 }
 
@@ -1028,7 +1041,7 @@ function cpIco(){return`<svg viewBox="0 0 24 24" style="width:11px;height:11px;s
 function flash(id){const el=document.getElementById(id);if(!el)return;el.style.borderColor='var(--red)';el.focus();setTimeout(()=>el.style.borderColor='',1500);}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-updateMeta();renderH();ttRenderHistory();
+updateMeta();renderH();ttRenderHistory();ttLoadHistory();
 </script>
 
 <!-- MOBILE BOTTOM TAB BAR -->
