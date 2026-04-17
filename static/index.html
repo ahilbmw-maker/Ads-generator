@@ -232,6 +232,26 @@ input[type="text"].error { border-color: var(--red) !important; }
 /* TikTok results */
 .tt-results { display: none; }
 .tt-results.show { display: block; }
+
+/* TikTok history panel */
+.tt-layout { display: grid; grid-template-columns: 1fr 220px; gap: 14px; align-items: start; }
+.tt-history { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
+.tt-history-hdr { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px; }
+.tt-search { width: 100%; height: 32px; padding: 0 10px; font-size: 12px; font-family: 'DM Sans', sans-serif; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); color: var(--text); margin-bottom: 8px; outline: none; }
+.tt-search:focus { border-color: var(--accent-border); }
+.tt-history-list { display: flex; flex-direction: column; gap: 4px; max-height: 420px; overflow-y: auto; }
+.tt-h-item { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 10px; }
+.tt-h-sku { font-size: 12px; font-weight: 600; color: var(--text); }
+.tt-h-meta { font-size: 10px; color: var(--text-tertiary); margin-top: 2px; margin-bottom: 6px; }
+.tt-h-actions { display: flex; gap: 4px; }
+.tt-h-load { flex: 1; height: 24px; font-size: 10px; font-family: 'DM Sans', sans-serif; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--text-secondary); cursor: pointer; }
+.tt-h-load:hover { border-color: var(--accent-border); color: var(--accent); }
+.tt-h-regen { flex: 1; height: 24px; font-size: 10px; font-family: 'DM Sans', sans-serif; border: 1px solid var(--green-border); border-radius: 5px; background: var(--green-dim); color: var(--green); cursor: pointer; font-weight: 500; }
+.tt-h-regen:hover { background: var(--green); color: white; }
+.tt-h-del { width: 24px; height: 24px; font-size: 12px; font-family: 'DM Sans', sans-serif; border: 1px solid var(--border); border-radius: 5px; background: transparent; color: var(--text-tertiary); cursor: pointer; }
+.tt-h-del:hover { color: var(--red); border-color: var(--red); }
+.tt-empty { font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 1.5rem 0; }
+@media(max-width:600px){ .tt-layout { grid-template-columns: 1fr; } }
 .tt-download-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; display: flex; align-items: center; gap: 16px; }
 .tt-download-icon { width: 48px; height: 48px; border-radius: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .tt-download-icon svg { width: 22px; height: 22px; stroke: var(--text-secondary); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
@@ -383,7 +403,8 @@ input[type="text"].error { border-color: var(--red) !important; }
   <!-- ═══ TIKTOK PAGE ═══ -->
   <div class="page" id="page-tiktok">
     <div id="ttFormSection">
-      <div class="card">
+      <div class="tt-layout">
+        <div class="card" style="margin-bottom:0">
         <div class="ifield">
           <div class="ifield-label"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> URL izdelka (SL)</div>
           <div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" id="ttUrl" placeholder="https://www.maaarket.si/izdelek/..."/></div>
@@ -429,9 +450,19 @@ input[type="text"].error { border-color: var(--red) !important; }
           Generiraj TikTok oglase + XLS
         </button>
         <div class="error-msg" id="ttError"></div>
-
         <div class="hint"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span class="hint-text">Claude generira 4 kratke variante (max 80 znakov) za vsako od 10 držav ter zapolni TikTok XLS template s texti, URL-ji in video imeni.</span></div>
-      </div>
+        </div>
+
+        <!-- HISTORY PANEL -->
+        <div class="tt-history">
+          <div class="tt-history-hdr">Zgodovina SKU-jev</div>
+          <input type="text" class="tt-search" id="ttHistorySearch" placeholder="Išči SKU..." oninput="ttRenderHistory()">
+          <div class="tt-history-list" id="ttHistoryList">
+            <div class="tt-empty">Še ni zgodovine.</div>
+          </div>
+        </div>
+
+      </div><!-- /tt-layout -->
 
       <div class="loading" id="ttLoading">
         <div class="spinner tiktok"></div>
@@ -836,6 +867,55 @@ function ttResetUpload() {
 }
 
 // ── TIKTOK GENERATE ──
+// ── TIKTOK HISTORY ──
+const TT_HKEY = 'tiktok_history_v1';
+function ttGetHistory(){ try{ return JSON.parse(localStorage.getItem(TT_HKEY)||'[]'); }catch(e){ return []; } }
+function ttSaveToHistory(sku, brand, url, videos){
+  const h = ttGetHistory();
+  // Odstrani duplikat
+  const idx = h.findIndex(x => x.sku === sku);
+  if(idx >= 0) h.splice(idx, 1);
+  h.unshift({ sku, brand, url, videos, date: new Date().toLocaleDateString('sl-SI', {day:'2-digit', month:'2-digit', year:'numeric'}) });
+  if(h.length > 50) h.splice(50);
+  localStorage.setItem(TT_HKEY, JSON.stringify(h));
+  ttRenderHistory();
+}
+function ttRenderHistory(){
+  const q = (document.getElementById('ttHistorySearch')?.value||'').toLowerCase();
+  const h = ttGetHistory().filter(x => !q || x.sku.toLowerCase().includes(q));
+  const el = document.getElementById('ttHistoryList');
+  if(!el) return;
+  if(!h.length){ el.innerHTML='<div class="tt-empty">'+(q?'Ni rezultatov.':'Še ni zgodovine.')+'</div>'; return; }
+  el.innerHTML = h.map((e,i) => `
+    <div class="tt-h-item">
+      <div class="tt-h-sku">${esc(e.sku)}</div>
+      <div class="tt-h-meta">${esc(e.brand)} · ${esc(e.date)}</div>
+      <div class="tt-h-actions">
+        <button class="tt-h-load" onclick="ttLoadFromHistory(${i})">Naloži</button>
+        <button class="tt-h-regen" onclick="ttRegenFromHistory(${i})">↺ Znova</button>
+        <button class="tt-h-del" onclick="ttDeleteHistory(${i})">×</button>
+      </div>
+    </div>`).join('');
+}
+function ttLoadFromHistory(i){
+  const h = ttGetHistory();
+  const e = h[i]; if(!e) return;
+  document.getElementById('ttUrl').value = e.url||'';
+  document.getElementById('ttSku').value = e.sku||'';
+  document.getElementById('ttBrand').value = e.brand||'';
+  document.getElementById('ttVideos').value = e.videos||'';
+}
+function ttRegenFromHistory(i){
+  ttLoadFromHistory(i);
+  setTimeout(() => ttGenerate(), 100);
+}
+function ttDeleteHistory(i){
+  const h = ttGetHistory();
+  h.splice(i, 1);
+  localStorage.setItem(TT_HKEY, JSON.stringify(h));
+  ttRenderHistory();
+}
+
 async function ttGenerate() {
   const url=document.getElementById('ttUrl').value.trim();
   const sku=document.getElementById('ttSku').value.trim();
@@ -853,6 +933,7 @@ async function ttGenerate() {
       body:JSON.stringify({source_url:url,sku,brand,video_names:videos})});
     const data=await res.json();
     if(data.error)throw new Error(data.error);
+    ttSaveToHistory(sku, brand, url, videos);
     document.getElementById('ttLoading').classList.remove('show');
     renderTikTokResults(data);
   }catch(e){
@@ -909,7 +990,7 @@ function cpIco(){return`<svg viewBox="0 0 24 24" style="width:11px;height:11px;s
 function flash(id){const el=document.getElementById(id);if(!el)return;el.style.borderColor='var(--red)';el.focus();setTimeout(()=>el.style.borderColor='',1500);}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-updateMeta();renderH();
+updateMeta();renderH();ttRenderHistory();
 </script>
 
 <!-- MOBILE BOTTOM TAB BAR -->
