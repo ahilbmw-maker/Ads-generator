@@ -402,7 +402,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
         <!-- Desna kolona: zgodovina -->
         <div class="meta-history-panel">
-          <div class="history-hdr"><span class="history-title">Zgodovina vnosov</span><button class="history-clear" onclick="metaServerClearHistory()">Počisti</button></div>
+          <div class="history-hdr"><span class="history-title">Zgodovina vnosov</span></div>
           <input type="text" class="meta-history-search" id="metaHistorySearch" placeholder="Išči po imenu ali URL..." oninput="metaRenderServerHistory()">
           <div class="history-list" id="metaServerHistoryList"><div class="history-empty">Nalagam...</div></div>
         </div><!-- /desna kolona -->
@@ -692,24 +692,6 @@ function saveH(results,urls,pt,hl){
   if(metaServerHistory.length>50) metaServerHistory.splice(50);
   metaSaveServerHistory();
   metaRenderServerHistory();
-}
-function renderH(){
-  const h=getH(),el=document.getElementById('historyList');
-  if(!h.length){el.innerHTML='<div class="history-empty">Še ni zgodovine.</div>';return;}
-  el.innerHTML=h.map(e=>`<div class="history-item" onclick="loadH(${e.id})">
-    <div class="hi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-    <div class="hi-body"><div class="hi-name">🛍 ${esc(e.names)}</div><div class="hi-meta">${e.date} · ${e.urls.filter(Boolean).length} URL-jev</div></div>
-    <span class="hi-badge">${e.pt}PT · ${e.hl}HL</span>
-  </div>`).join('');
-}
-function loadH(id){const e=getH().find(x=>x.id===id);if(e)renderMetaResults(e.results);}
-function clearHistory(){localStorage.removeItem(HKEY);renderH();}
-function saveH(results,urls,pt,hl){
-  const h=getH();
-  h.unshift({id:Date.now(),names:results.map(r=>r.product||'?').join(', '),urls,pt,hl,
-    date:new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),results});
-  if(h.length>HMAX)h.splice(HMAX);
-  localStorage.setItem(HKEY,JSON.stringify(h));renderH();
 }
 function renderH(){
   const h=getH(),el=document.getElementById('historyList');
