@@ -245,6 +245,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 .tt-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
 .meta-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
 .meta-history-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
+.meta-history-panel .history-list { max-height: 520px; overflow-y: auto; }
 .meta-history-search { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text-primary); margin-bottom: 10px; box-sizing: border-box; }
 .meta-history-search:focus { outline: none; border-color: var(--accent); }
 .tt-history { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
@@ -347,61 +348,64 @@ input[type="text"].error { border-color: var(--red) !important; }
   <div class="page active" id="page-meta">
     <div id="metaFormSection">
       <div class="meta-layout">
-      <div class="card">
-        <span class="slabel">URL izdelkov</span>
-        <div class="url-list">
-          <div class="url-row"><div class="url-num">1</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
-          <div class="url-row"><div class="url-num">2</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
-          <div class="url-row"><div class="url-num">3</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
-        </div>
 
-        <!-- Quality mode -->
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <button class="qbtn" id="qmode-sonnet" onclick="setQMode('sonnet')"><span class="qbtn-icon">✦</span><span class="qbtn-body"><span class="qbtn-title">Kreativno</span><span class="qbtn-sub">Sonnet · vrhunska kvaliteta</span></span></button>
-          <button class="qbtn on" id="qmode-fast" onclick="setQMode('fast')"><span class="qbtn-icon">⚡</span><span class="qbtn-body"><span class="qbtn-title">Hitro</span><span class="qbtn-sub">Sonnet + Haiku · ~2× hitreje</span></span></button>
-        </div>
+        <!-- Leva kolona: forma -->
+        <div>
+          <div class="card">
+            <span class="slabel">URL izdelkov</span>
+            <div class="url-list">
+              <div class="url-row"><div class="url-num">1</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
+              <div class="url-row"><div class="url-num">2</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
+              <div class="url-row"><div class="url-num">3</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
+            </div>
 
-        <button class="btn-gen" id="metaBtnGen" onclick="metaGenerate()">
-          <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          Generiraj Meta oglase
-        </button>
-        <div class="error-msg" id="metaError"></div>
+            <!-- Quality mode -->
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <button class="qbtn" id="qmode-sonnet" onclick="setQMode('sonnet')"><span class="qbtn-icon">✦</span><span class="qbtn-body"><span class="qbtn-title">Kreativno</span><span class="qbtn-sub">Sonnet · vrhunska kvaliteta</span></span></button>
+              <button class="qbtn on" id="qmode-fast" onclick="setQMode('fast')"><span class="qbtn-icon">⚡</span><span class="qbtn-body"><span class="qbtn-title">Hitro</span><span class="qbtn-sub">Sonnet + Haiku · ~2× hitreje</span></span></button>
+            </div>
 
-        <div class="sep"></div>
-        <div class="counters">
-          <div class="counter-group">
-            <span class="slabel">Primary Texts</span>
-            <div class="counter-row"><button class="cnt-btn" id="pt-minus" onclick="change('pt',-1)">−</button><span class="cnt-val" id="pt-val">1</span><button class="cnt-btn" id="pt-plus" onclick="change('pt',1)">+</button><span class="cnt-max">max 5</span></div>
-            <div class="chips" id="pt-chips"></div>
+            <button class="btn-gen" id="metaBtnGen" onclick="metaGenerate()">
+              <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Generiraj Meta oglase
+            </button>
+            <div class="error-msg" id="metaError"></div>
+
+            <div class="sep"></div>
+            <div class="counters">
+              <div class="counter-group">
+                <span class="slabel">Primary Texts</span>
+                <div class="counter-row"><button class="cnt-btn" id="pt-minus" onclick="change('pt',-1)">−</button><span class="cnt-val" id="pt-val">1</span><button class="cnt-btn" id="pt-plus" onclick="change('pt',1)">+</button><span class="cnt-max">max 5</span></div>
+                <div class="chips" id="pt-chips"></div>
+              </div>
+              <div class="counters-divider"></div>
+              <div class="counter-group">
+                <span class="slabel">Headlines</span>
+                <div class="counter-row"><button class="cnt-btn" id="hl-minus" onclick="change('hl',-1)">−</button><span class="cnt-val" id="hl-val">1</span><button class="cnt-btn" id="hl-plus" onclick="change('hl',1)">+</button><span class="cnt-max">max 5</span></div>
+                <div class="chips" id="hl-chips"></div>
+              </div>
+            </div>
+            <div class="hint"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span class="hint-text" id="metaHint">Generiram 1× PT in 1× HL v 10 jezikih za vsak URL.</span></div>
+          </div><!-- /card -->
+
+          <div class="loading" id="metaLoading">
+            <div class="spinner"></div>
+            <div class="loading-text" id="metaLoadingText">Generiram oglase...</div>
+            <div class="loading-progress" id="metaProgress"></div>
           </div>
-          <div class="counters-divider"></div>
-          <div class="counter-group">
-            <span class="slabel">Headlines</span>
-            <div class="counter-row"><button class="cnt-btn" id="hl-minus" onclick="change('hl',-1)">−</button><span class="cnt-val" id="hl-val">1</span><button class="cnt-btn" id="hl-plus" onclick="change('hl',1)">+</button><span class="cnt-max">max 5</span></div>
-            <div class="chips" id="hl-chips"></div>
+
+          <div class="history-section" style="display:none">
+            <div class="history-hdr"><span class="history-title">Zadnji vnosi</span><button class="history-clear" onclick="clearHistory()">Počisti</button></div>
+            <div class="history-list" id="historyList"></div>
           </div>
-        </div>
-        <div class="hint"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span class="hint-text" id="metaHint">Generiram 1× PT in 1× HL v 10 jezikih za vsak URL.</span></div>
-      </div>
+        </div><!-- /leva kolona -->
 
-      <div class="loading" id="metaLoading">
-        <div class="spinner"></div>
-        <div class="loading-text" id="metaLoadingText">Generiram oglase...</div>
-        <div class="loading-progress" id="metaProgress"></div>
-      </div>
-
-      <div class="history-section" style="display:none">
-        <div class="history-hdr"><span class="history-title">Zadnji vnosi</span><button class="history-clear" onclick="clearHistory()">Počisti</button></div>
-        <div class="history-list" id="historyList"></div>
-      </div>
-    </div><!-- /card -->
-
-      <!-- Meta history panel -->
-      <div class="meta-history-panel">
-        <div class="history-hdr"><span class="history-title">Zgodovina vnosov</span><button class="history-clear" onclick="metaServerClearHistory()">Počisti</button></div>
-        <input type="text" class="meta-history-search" id="metaHistorySearch" placeholder="Išči po imenu ali URL..." oninput="metaRenderServerHistory()">
-        <div class="history-list" id="metaServerHistoryList"><div class="history-empty">Nalagam...</div></div>
-      </div>
+        <!-- Desna kolona: zgodovina -->
+        <div class="meta-history-panel">
+          <div class="history-hdr"><span class="history-title">Zgodovina vnosov</span><button class="history-clear" onclick="metaServerClearHistory()">Počisti</button></div>
+          <input type="text" class="meta-history-search" id="metaHistorySearch" placeholder="Išči po imenu ali URL..." oninput="metaRenderServerHistory()">
+          <div class="history-list" id="metaServerHistoryList"><div class="history-empty">Nalagam...</div></div>
+        </div><!-- /desna kolona -->
 
       </div><!-- /meta-layout -->
 
@@ -576,7 +580,12 @@ function switchPage(page) {
   if(document.getElementById('tab-' + page)) document.getElementById('tab-' + page).classList.add('active');
   // Wide layout for forecast and calc pages
   const mainEl = document.querySelector('.main');
-  if(mainEl) mainEl.classList.toggle('wide', page==='forecast' || page==='calc' || page==='tiktok' || page==='meta');
+  if(mainEl) mainEl.classList.toggle('wide', page==='forecast' || page==='calc' || page==='tiktok');
+  // Meta: wide only if form is visible (not results)
+  if(page==='meta') {
+    const formVisible = document.getElementById('metaFormSection').style.display !== 'none';
+    setMetaWide(formVisible);
+  }
   closeMenu();
 }
 
@@ -672,8 +681,9 @@ function saveH(results,urls,pt,hl){
   h.unshift(entry);
   if(h.length>HMAX)h.splice(HMAX);
   localStorage.setItem(HKEY,JSON.stringify(h));renderH();
-  // Also save to server
-  metaServerHistory.unshift({...entry});
+  // Save to server (without full results to save space)
+  const serverEntry = {id:entry.id, names:entry.names, urls:entry.urls, pt:entry.pt, hl:entry.hl, date:entry.date};
+  metaServerHistory.unshift(serverEntry);
   if(metaServerHistory.length>50) metaServerHistory.splice(50);
   metaSaveServerHistory();
   metaRenderServerHistory();
@@ -768,6 +778,7 @@ async function metaGenerateStream(inputs,reqBody,btn) {
             if(!rendered){
               document.getElementById('metaFormSection').style.display='none';
               document.getElementById('metaResults').classList.add('show');
+              setMetaWide(false);
               document.getElementById('streamingBar').style.display='flex';
               rendered=true;
             }
@@ -850,6 +861,7 @@ function renderMetaResults(results) {
 
   document.getElementById('metaFormSection').style.display='none';
   document.getElementById('metaResults').classList.add('show');
+  setMetaWide(false);
 
   results.forEach((data,idx)=>{
     if(!data||data.error) return;
@@ -896,10 +908,15 @@ function renderMetaPanel(data) {
   }).join('');
 }
 
+function setMetaWide(wide){
+  const m=document.querySelector('.main');
+  if(m) m.classList.toggle('wide', wide);
+}
 function metaGoBack(){
   document.getElementById('metaResults').classList.remove('show');
   document.getElementById('prodPanels').innerHTML='';document.getElementById('prodTabs').innerHTML='';
   document.getElementById('metaFormSection').style.display='block';
+  setMetaWide(true);
   document.getElementById('metaBtnGen').disabled=false;document.getElementById('metaError').classList.remove('show');
 }
 
@@ -1152,7 +1169,7 @@ function cpIco(){return`<svg viewBox="0 0 24 24" style="width:11px;height:11px;s
 function flash(id){const el=document.getElementById(id);if(!el)return;el.style.borderColor='var(--red)';el.focus();setTimeout(()=>el.style.borderColor='',1500);}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();
+updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();setMetaWide(true);
 </script>
 
 <!-- MOBILE BOTTOM TAB BAR -->
