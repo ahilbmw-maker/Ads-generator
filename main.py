@@ -213,7 +213,7 @@ Pravila:
 
 Jeziki: SL (izvirnik), HR (latinica), RS (SAMO latinica!), HU, CZ, SK, PL, GR (grška pisava), RO (latinica), BG (SAMO cirilica!).
 
-Vrni SAMO JSON brez markdown — vrednosti so že zformatirana TikTok vrednost z oglatimi oklepaji:
+Vrni SAMO JSON brez markdown, brez uvodnega besedila — vrednosti so že zformatirana TikTok vrednost z oglatimi oklepaji:
 {{
   "product": "ime",
   "sl": "[tekst1],[tekst2],[tekst3],[tekst4]",
@@ -226,7 +226,8 @@ Vrni SAMO JSON brez markdown — vrednosti so že zformatirana TikTok vrednost z
   "gr": "[tekst1],[tekst2],[tekst3],[tekst4]",
   "ro": "[tekst1],[tekst2],[tekst3],[tekst4]",
   "bg": "[tekst1],[tekst2],[tekst3],[tekst4]"
-}}"""
+}}
+POMEMBNO: Začni direktno z {{ in končaj z }} — nobenih dodatnih besed pred ali po JSON."""
 
 
 # ─── GENERATE HELPERS ────────────────────────────────────────────────────────
@@ -379,6 +380,7 @@ async def generate_tiktok_one(user_msg: str, mode: str, source_url: Optional[str
     text = await call_claude(prompt, "claude-sonnet-4-6", tools if tools else None)
     data = parse_json_response(text)
     if not data:
+        print(f"TikTok JSON parse failed. Raw (first 800 chars): {text[:800]}")
         return {"error": "Claude ni vrnil veljavnega JSON."}
     data["product_urls"] = product_urls
     return data
