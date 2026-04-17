@@ -638,9 +638,12 @@ async function metaLoadServerHistory() {
 
 async function metaSaveServerHistory() {
   try {
-    await fetch('/meta-history', {method:'POST', headers:{'Content-Type':'application/json'},
+    console.log('[MetaHistory] Saving', metaServerHistory.length, 'entries...');
+    const res = await fetch('/meta-history', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({history: metaServerHistory})});
-  } catch(e) {}
+    const json = await res.json();
+    console.log('[MetaHistory] Save response:', json);
+  } catch(e) { console.error('[MetaHistory] Save error:', e); }
 }
 
 function metaRenderServerHistory() {
