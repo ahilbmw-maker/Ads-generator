@@ -219,7 +219,19 @@ function fmt(val,dec,curr){
   return val.toFixed(dec).replace('.',',')+' '+curr;
 }
 function doCopy(val,btnId){
-  navigator.clipboard.writeText(val.toFixed(2)).catch(()=>{});
+  const txt=typeof val==='number'?val.toFixed(2):String(val);
+  // Fallback ki deluje v iframu
+  const ta=document.createElement('textarea');
+  ta.value=txt;
+  ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus();ta.select();ta.setSelectionRange(0,99999);
+  try{document.execCommand('copy');}catch(e){}
+  document.body.removeChild(ta);
+  // Poskusi tudi clipboard API
+  if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(txt).catch(()=>{});
+  }
   const btn=document.getElementById(btnId);
   if(!btn)return;
   const orig=btn.textContent;
