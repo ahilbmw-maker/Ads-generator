@@ -30,6 +30,7 @@ EXPORTS_DIR.mkdir(exist_ok=True)
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 TT_HISTORY_FILE = DATA_DIR / "tiktok_history.json"
+META_HISTORY_FILE = DATA_DIR / "meta_history.json"
 
 # ─── BRAND DOMAIN MAPS ───────────────────────────────────────────────────────
 
@@ -483,6 +484,24 @@ async def save_tiktok_history(data: dict):
     try:
         history = data.get("history", [])
         TT_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"status": "ok", "count": len(history)}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/meta-history")
+async def get_meta_history():
+    if META_HISTORY_FILE.exists():
+        try:
+            return json.loads(META_HISTORY_FILE.read_text(encoding="utf-8"))
+        except:
+            return []
+    return []
+
+@app.post("/meta-history")
+async def save_meta_history(data: dict):
+    try:
+        history = data.get("history", [])
+        META_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"status": "ok", "count": len(history)}
     except Exception as e:
         return {"error": str(e)}
