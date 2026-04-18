@@ -447,7 +447,131 @@ def build_tiktok_xlsx(sku: str, brand: str, video_names: str,
 
 # ─── MODELS ──────────────────────────────────────────────────────────────────
 
-class AdRequest(BaseModel):
+def build_master_xlsx(skus: list) -> str:
+    """Združi več SKU-jev v en master XLS — vsak SKU doda svoje vrstice (koliko jih je v template-u)."""
+    if not Path(TEMPLATE_PATH).exists():
+        raise FileNotFoundError("TikTok template not found.")
+
+    # Load template to get headers and template rows
+    wb_tmpl = openpyxl.load_workbook(TEMPLATE_PATH)
+    ws_tmpl = wb_tmpl['Ads']
+    headers = [cell.value for cell in ws_tmpl[1]]
+
+    col_campaign = headers.index('Campaign Name') + 1
+    col_bc_id    = headers.index('Business Center ID of the identity') + 1
+    col_video    = headers.index('Video Name') + 1
+    col_text     = headers.index('Text') + 1
+    col_url      = headers.index('Web URL') + 1
+    col_ag       = headers.index('Ad Group Name') + 1
+
+    base_bc_raw = ws_tmpl.cell(row=2, column=col_bc_id).value or ''
+    single_id = base_bc_raw.split(',')[0].strip()
+
+    # Collect template rows (row 2 onwards) as base structure
+    tmpl_rows = []
+    for row in ws_tmpl.iter_rows(min_row=2, values_only=False):
+        country = row[col_ag - 1].value
+        if not country:
+            continue
+        tmpl_rows.append({
+            'country': country,
+            'row_data': [cell.value for cell in row],
+            'row_styles': row,
+        })
+
+    # Create new workbook
+    wb_out = openpyxl.load_workbook(TEMPLATE_PATH)
+    ws_out = wb_out['Ads']
+
+    # Clear all data rows
+    for row in ws_out.iter_rows(min_row=2):
+        for cell in row:
+            cell.value = None
+
+    today = datetime.now().strftime('%-d_%-m_%Y')
+    out_row = 2
+
+    for sku_entry in skus:
+        sku = sku_entry.get('sku', '')
+        brand = sku_entry.get('brand', '')
+        video_names = sku_entry.get('videos', '')
+        texts_by_lang = sku_entry.get('texts', {})
+        urls_by_lang = sku_entry.get('urls', {})
+
+        videos = [v.strip() for v in re.findall(r'\[([^\]]+)\]', video_names)]
+        new_bc_id = ','.join([single_id] * len(videos)) if videos else single_id
+        new_campaign = f'[{brand}] Smart+ {sku} - {today}'
+
+        for tmpl_row in tmpl_rows:
+            country = tmpl_row['country']
+            lang = COUNTRY_TO_LANG.get(country)
+
+            # Copy template row values
+            orig_row = ws_tmpl[tmpl_row['row_styles'][0].row]
+            for col_idx, orig_cell in enumerate(orig_row, 1):
+                ws_out.cell(row=out_row, column=col_idx).value = orig_cell.value
+
+            # Fill in our data
+            ws_out.cell(row=out_row, column=col_campaign).value = new_campaign
+            ws_out.cell(row=out_row, column=col_bc_id).value = new_bc_id
+            ws_out.cell(row=out_row, column=col_video).value = video_names
+            if lang and lang in texts_by_lang:
+                ws_out.cell(row=out_row, column=col_text).value = texts_by_lang[lang]
+            if lang and lang in urls_by_lang:
+                ws_out.cell(row=out_row, column=col_url).value = urls_by_lang[lang]
+
+            out_row += 1
+
+    out_path = str(EXPORTS_DIR / f"master_{uuid.uuid4().hex[:8]}.xlsx")
+    wb_out.save(out_path)
+    return out_path
+
+
+class MasterXlsxRequest(BaseModel):
+    skus: List[dict]  # [{sku, brand, url, videos}]
+
+
+@app.post("/generate-master-xlsx")
+async def generate_master_xlsx(req: MasterXlsxRequest):
+    await ensure_cache_fresh()
+
+    skus_data = []
+    for entry in req.skus:
+        url = entry.get('url', '')
+        sku = entry.get('sku', '')
+        brand = entry.get('brand', '')
+        videos = entry.get('videos', '')
+
+        if not videos:
+            continue  # preskoči SKU brez video imen
+
+        # Generate TikTok texts
+        user_msg = f"Preberi to stran in ustvari TikTok oglase: {url}"
+        data = await generate_tiktok_one(user_msg, "url", url)
+        if "error" in data:
+            continue
+
+        texts_by_lang = {lang: data[lang] for lang in ["sl","hr","rs","hu","cz","sk","pl","gr","ro","bg"] if lang in data}
+        urls_by_lang = data.get("product_urls", {})
+
+        skus_data.append({
+            'sku': sku, 'brand': brand, 'videos': videos,
+            'texts': texts_by_lang, 'urls': urls_by_lang
+        })
+
+        if len(skus_data) < len(req.skus):
+            await asyncio.sleep(15)  # rate limit
+
+    if not skus_data:
+        return {"error": "Ni veljavnih SKU-jev za generiranje."}
+
+    try:
+        path = build_master_xlsx(skus_data)
+        return {"status": "ok", "file": path}
+    except FileNotFoundError as e:
+        return {"error": str(e)}
+
+
     input: str
     mode: str
     pt_count: int = 1
