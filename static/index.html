@@ -1081,10 +1081,12 @@ async function ttSaveHistory(){
 
 function ttGetHistory(){ return ttHistory; }
 
-function ttSaveToHistory(sku, brand, url, videos){
+function ttSaveToHistory(sku, brand, url, videos, texts, urls){
   const idx = ttHistory.findIndex(x => x.sku === sku);
   if(idx >= 0) ttHistory.splice(idx, 1);
-  ttHistory.unshift({sku, brand, url, videos, date: new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric'})});
+  ttHistory.unshift({sku, brand, url, videos,
+    texts: texts||{}, urls: urls||{},
+    date: new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric'})});
   if(ttHistory.length > 100) ttHistory.splice(100);
   ttSaveHistory();
   ttRenderHistory();
@@ -1119,13 +1121,13 @@ function ttUpdateMasterBar() {
 async function ttGenerateMaster() {
   const btn = document.getElementById('ttMasterBtn');
   btn.disabled = true;
-  btn.textContent = '⏳ Generiram...';
+  btn.textContent = '⏳ Sestavljam...';
 
-  // Build ordered list of entries by click order
+  // Build ordered list by click order, use cached texts
   const skus = ttSelectedSkus.map(sku => {
     const e = ttHistory.find(x => x.sku === sku);
     return e || null;
-  }).filter(e => e && e.videos); // preskoči brez video imen
+  }).filter(e => e && e.videos);
 
   if (!skus.length) {
     alert('Nobeden od izbranih SKU-jev nima shranjenih video imen.');
@@ -1135,17 +1137,19 @@ async function ttGenerateMaster() {
   }
 
   try {
-    const res = await fetch('/generate-master-xlsx', {
+    const res = await fetch('/build-master-xlsx', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({skus: skus.map(e => ({sku:e.sku, brand:e.brand, url:e.url, videos:e.videos}))})
+      body: JSON.stringify({skus: skus.map(e => ({
+        sku: e.sku, brand: e.brand, url: e.url,
+        videos: e.videos, texts: e.texts||{}, urls: e.urls||{}
+      }))})
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    // Download
     const a = document.createElement('a');
     a.href = '/download/' + data.file.split('/').pop();
-    a.download = `master_${ttSelectedSkus.join('_').substring(0,40)}.xlsx`;
+    a.download = `master_${ttSelectedSkus.slice(0,5).join('_')}.xlsx`;
     a.click();
     btn.textContent = '✅ Prenešeno!';
     setTimeout(() => { btn.textContent = '⬇ Ustvari Master XLS'; btn.disabled = false; }, 3000);
@@ -1214,7 +1218,11 @@ async function ttGenerate() {
       body:JSON.stringify({source_url:url,sku,brand,video_names:videos})});
     const data=await res.json();
     if(data.error)throw new Error(data.error);
-    ttSaveToHistory(sku, brand, url, videos);
+    // Shrani texte in URL-je v zgodovino za Master XLS
+    const texts = {};
+    const urls = data.product_urls || {};
+    ['sl','hr','rs','hu','cz','sk','pl','gr','ro','bg'].forEach(l => { if(data[l]) texts[l] = data[l]; });
+    ttSaveToHistory(sku, brand, url, videos, texts, urls);
     document.getElementById('ttLoading').classList.remove('show');
     renderTikTokResults(data);
   }catch(e){
