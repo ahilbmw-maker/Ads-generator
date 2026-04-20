@@ -658,10 +658,6 @@ input[type="text"].error { border-color: var(--red) !important; }
             </div>
             <input type="file" id="kFileInput" multiple accept="image/*" style="display:none" onchange="kHandleFiles(this.files)">
             <div id="kUploadedImages" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
-            <div id="kFetchedImagesWrap" style="display:none;margin-top:8px">
-              <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px">Slike s strani (klikni za izbiro):</div>
-              <div id="kFetchedImages" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-            </div>
           </div>
 
           <!-- Generiraj -->
@@ -1642,3 +1638,7 @@ function kDownload(url, n) {
 function kSendToAsana(url) {
   alert('Asana integracija prihaja v naslednjem koraku!');
 }
+
+</script>
+</body>
+</html>
