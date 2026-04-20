@@ -910,3 +910,141 @@ def download_file(filename: str):
         return {"error": "File not found"}
     return FileResponse(str(path), filename=filename,
                         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+# ─── KREATIVE ENDPOINTS ───────────────────────────────────────────────────────
+
+@app.post("/analyze-product-kreative")
+async def analyze_product_kreative(data: dict):
+    """Prebere stran izdelka in generira A/B/C opcije za kreative."""
+    url = data.get("url", "").strip()
+    if not url:
+        return {"error": "Manjka URL."}
+
+    # Fetch page
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as hc:
+            resp = await hc.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            html = resp.text if resp.status_code == 200 else ""
+    except Exception as e:
+        return {"error": f"Ne morem prebrati strani: {e}"}
+
+    # Extract images from page
+    import re as _re
+    from urllib.parse import urljoin
+    srcs = _re.findall(r'<img[^>]+src=["\']([^"\' ]+)["\']', html, _re.IGNORECASE)
+    images = []
+    seen = set()
+    skip = ["logo","icon","favicon","sprite","banner","flag","payment","badge","star","rating","arrow"]
+    for src in srcs:
+        if any(w in src.lower() for w in skip): continue
+        if not any(ext in src.lower() for ext in [".jpg",".jpeg",".png",".webp"]): continue
+        if src not in seen:
+            seen.add(src)
+            images.append(src)
+        if len(images) >= 12: break
+
+    # Build prompt for Claude to analyze product
+    tools = [{"type": "web_search_20250305", "name": "web_search"}]
+    analysis_prompt = f"""Preberi to spletno stran izdelka: {url}
+
+Na podlagi opisa izdelka generiraj strukturirane podatke za kreative FB oglasov.
+
+Vrni SAMO JSON (brez markdown) v tej obliki:
+{{
+  "name": "IME_IZDELKA_CAPS",
+  "aOptions": [
+    {{"label": "MAIN VERSION", "text": "kratek prodajni tekst 3-5 besed"}},
+    {{"label": "HIGH-CONVERT", "text": "kratek prodajni tekst 3-5 besed"}},
+    {{"label": "PROBLEM-SOLUTION", "text": "kratek prodajni tekst 3-5 besed"}},
+    {{"label": "ULTRA SIMPLE", "text": "2-3 besede maksimum"}}
+  ],
+  "bOptions": [
+    {{"label": "BEST", "text": "1 stavek opis ozadja/vibe za kreativo"}},
+    {{"label": "SECOND OPTION", "text": "1 stavek opis ozadja/vibe za kreativo"}},
+    {{"label": "SCROLL STOPPER", "text": "1 stavek opis ozadja/vibe za kreativo"}},
+    {{"label": "BONUS", "text": "1 stavek opis ozadja/vibe za kreativo"}}
+  ]
+}}
+
+Pravila:
+- name: samo ime blagovne znamke/modela z CAPS (npr. WEEDZAP, VAPUREX)
+- aOptions teksti: v angleščini, kratki, udarni, za FB oglas
+- bOptions teksti: kratki opisi ozadja/scene za AI generiranje slike
+- Vsak tekst mora biti unikaten in specifičen za ta izdelek"""
+
+    text = await call_claude(analysis_prompt, "claude-sonnet-4-6", tools, 2000)
+    result = parse_json_response(text)
+
+    if not result:
+        return {"error": "Ni uspelo analizirati izdelka. Poskusi znova."}
+
+    result["images"] = images
+    return result
+
+
+@app.post("/fetch-product-images")
+async def fetch_product_images(data: dict):
+    """Pobere slike izdelka s podane URL strani."""
+    url = data.get("url", "").strip()
+    if not url:
+        return {"error": "Manjka URL."}
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as hc:
+            resp = await hc.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            if resp.status_code != 200:
+                return {"error": f"Stran ni dostopna ({resp.status_code})."}
+            html = resp.text
+
+        # Extract img src attributes
+        import re as _re
+        srcs = _re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html, _re.IGNORECASE)
+
+        # Filter: only product-like images (skip icons, logos, tiny tracking pixels)
+        from urllib.parse import urljoin
+        base = url
+        images = []
+        seen = set()
+        for src in srcs:
+            if not src or src.startswith("data:"):
+                continue
+            full = urljoin(base, src)
+            # Skip obviously non-product images
+            skip_words = ["logo", "icon", "favicon", "sprite", "banner", "flag",
+                         "payment", "badge", "star", "rating", "arrow", "tracking"]
+            if any(w in full.lower() for w in skip_words):
+                continue
+            # Only jpg/png/webp
+            if not any(ext in full.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+                continue
+            if full not in seen:
+                seen.add(full)
+                images.append(full)
+            if len(images) >= 20:
+                break
+
+        return {"images": images, "count": len(images)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/generate-kreative")
+async def generate_kreative(data: dict):
+    """Placeholder za Higgsfield API — bo implementiran ko bo API ključ."""
+    prompt = data.get("prompt", "")
+    count = data.get("count", 4)
+    images = data.get("images", [])
+
+    if not prompt:
+        return {"error": "Manjka prompt."}
+
+    # TODO: Higgsfield API integracija
+    # Ko boš imel API ključ, bo šlo tako:
+    # async with httpx.AsyncClient() as hc:
+    #     resp = await hc.post("https://api.higgsfield.ai/v1/images/generate", ...)
+    #     return {"images": [...]}
+
+    return {
+        "error": "Higgsfield API ključ še ni nastavljen. Dodaj HIGGSFIELD_API_KEY v Render environment variables.",
+        "info": f"Prompt: {prompt[:100]}... | Slik: {count} | Referenčnih slik: {len(images)}"
+    }
