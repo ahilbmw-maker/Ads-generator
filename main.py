@@ -960,24 +960,24 @@ Vrni SAMO JSON (brez markdown) v tej obliki:
 {{
   "name": "IME_IZDELKA_CAPS",
   "aOptions": [
-    {{"label": "MAIN VERSION", "text": "kratek prodajni tekst 3-5 besed"}},
-    {{"label": "HIGH-CONVERT", "text": "kratek prodajni tekst 3-5 besed"}},
-    {{"label": "PROBLEM-SOLUTION", "text": "kratek prodajni tekst 3-5 besed"}},
-    {{"label": "ULTRA SIMPLE", "text": "2-3 besede maksimum"}}
+    {{"label": "MAIN VERSION", "text": "benefit1, benefit2, benefit3"}},
+    {{"label": "HIGH-CONVERT", "text": "benefit1, benefit2, benefit3"}},
+    {{"label": "PROBLEM-SOLUTION", "text": "benefit1, benefit2, benefit3"}},
+    {{"label": "ULTRA SIMPLE", "text": "benefit1, benefit2"}}
   ],
   "bOptions": [
-    {{"label": "BEST", "text": "1 stavek opis ozadja/vibe za kreativo"}},
-    {{"label": "SECOND OPTION", "text": "1 stavek opis ozadja/vibe za kreativo"}},
-    {{"label": "SCROLL STOPPER", "text": "1 stavek opis ozadja/vibe za kreativo"}},
-    {{"label": "BONUS", "text": "1 stavek opis ozadja/vibe za kreativo"}}
+    {{"label": "BEST", "text": "satisfying use moment shot"}},
+    {{"label": "SECOND OPTION", "text": "problem solved angle"}},
+    {{"label": "SCROLL STOPPER", "text": "before/after transformation"}},
+    {{"label": "BONUS", "text": "lifestyle outdoor scene"}}
   ]
 }}
 
 Pravila:
-- name: samo ime blagovne znamke/modela z CAPS (npr. WEEDZAP, VAPUREX)
-- aOptions teksti: v angleščini, kratki, udarni, za FB oglas
-- bOptions teksti: kratki opisi ozadja/scene za AI generiranje slike
-- Vsak tekst mora biti unikaten in specifičen za ta izdelek"""
+- name: samo ime blagovne znamke/modela z CAPS (npr. WEEDZAP, ASHIRAFLUX)
+- aOptions "text": SAMO kratki key benefits ločeni z vejico, ki se prikažejo kot ikone/tekst na sliki (v angleščini). Npr: "Real Flame, No Smoke, Anywhere You Are" ali "Pulls Root, No Chemicals, No Back Pain"
+- bOptions "text": SAMO kratko ime vibeа/stila ozadja (2-5 besed), npr: "evening atmosphere shot", "root pull satisfying moment", "before/after garden", "no chemicals angle"
+- Vsaka opcija mora biti unikatna in specifična za ta izdelek"""
 
     text = await call_claude(analysis_prompt, "claude-sonnet-4-6", tools, 2000)
     result = parse_json_response(text)
@@ -1057,12 +1057,11 @@ async def generate_kreative(data: dict):
         for b in b_options:
             prompt = (
                 f"From these reference images, create a new Facebook ad creative. "
-                f"Use {b.get('text', '')} as the background/scene style. "
-                f"On the image write ONLY the product name '{product_name}' in large uppercase letters — no other text. "
-                f"Where it makes sense, extract and recreate the logo from the reference images (exact style). "
-                f"Visually highlight these key benefits using icons or visual elements (in English): {a.get('text', '')}. "
-                f"Photorealistic, high quality, square 1:1 FB ad format. "
-                f"Do not add any other text, taglines or copy besides the product name."
+                f"Use '{b.get('text', '')}' as the background/scene style. "
+                f"On the image write ONLY the product name '{product_name}' in large uppercase letters — no other text or copy. "
+                f"Where possible, recreate the exact logo from the reference images. "
+                f"Visually highlight these key features using icons or small visual elements (in English): {a.get('text', '')}. "
+                f"Photorealistic, high quality, square 1:1 FB ad format."
             )
             combos.append({
                 "combo": f"{a.get('label','A')} × {b.get('label','B')}",
