@@ -975,13 +975,44 @@ Vrni SAMO JSON (brez markdown) v tej obliki:
   ]
 }}
 
-Pravila:
-- name: samo ime blagovne znamke/modela z CAPS (npr. WEEDZAP, ASHIRAFLUX)
-- aOptions "text": Kratki PRODAJNI UDARCI ločeni z vejico (max 2-3 besede vsak!) — NE lastnosti izdelka! Npr: "One Pan, Every Meal, No Stove" ali "Pull Root, No Chemicals, No Pain" ali "Real Flame, No Smoke, Anywhere". To so PRODAJNI SLOGANI za ikone na sliki, ne specifikacije! NIKOLI "1350W Power" ali "Stainless Steel" — to so lastnosti, ne udarci!
-- bOptions "text": Kratko ime KONCEPTA/VIBEА specifičnega za TA izdelek (max 3 besede). Vedno poveži z AKCIJO ali MOMENTOM tega specifičnega izdelka. Primeri za različne izdelke: kuhalna ponev → "sizzle sound moment", "speed cooking demo", "one pan versatility"; vrtno orodje → "root pull moment", "before/after garden", "no digging demo"; fitnes → "sweat reveal", "transformation shot", "workout intensity". NIKOLI splošnih vibesov kot "family meal vibes", "lifestyle scene", "counter to table"!
-- Vsaka opcija mora biti unikatna in specifična za ta izdelek
+PRAVILA:
+- name: samo ime blagovne znamke/modela z CAPS
+- aOptions: PRODAJNI UDARCI (ne lastnosti!), max 2-3 besede vsak, v angleščini
+- bOptions: KONCEPT/VIBE specifičen za TA izdelek, max 3 besede, vedno akcija ali moment
+- VSE mora biti v angleščini
 - Vrni točno 5 aOptions in 5 bOptions
-- IMPORTANT: ALL text in aOptions and bOptions MUST be in English only. Never use Slovenian or any other language. The "name" field should be the brand/product name in CAPS."""
+
+PRIMERI (uči se iz teh vzorcev):
+
+WEEDZAP (weed removal tool):
+aOptions: "Pull the Root, Stop the Weed, No Chemicals" | "Weeds Gone, Root and All, One Tool" | "Weeds Keep Coming Back, Pull the Root, Done for Good" | "Twist, Pull, Gone"
+bOptions: "root pull satisfying moment" | "no chemicals angle" | "before/after garden" | "no back pain angle"
+
+ASHIRAFLUX (smokeless fire pit):
+aOptions: "Real Flame, No Smoke, Anywhere You Are" | "No Fireplace? No Problem, Instant Cozy, Zero Smoke" | "Missing That Fire Feeling, Warm Vibes Instantly" | "Fill, Light, Relax"
+bOptions: "evening atmosphere shot" | "smoke vs no smoke" | "first light moment" | "indoor safe angle"
+
+STAXA (steel organizer shelf):
+aOptions: "Double Your Space, Zero Clutter, Instant Order" | "Messy Counter, One Shelf, Problem Solved" | "No Room, Stack It Up, Space Created" | "Stack, Store, Done"
+bOptions: "before/after counter" | "multi-room tour" | "satisfying load test" | "steel vs plastic"
+
+SIZZELA (electric frying pan):
+aOptions: "No Stove Needed, Cook Anywhere, Instant Heat" | "One Pan, Any Meal, Zero Hassle" | "No Stove, No Smoke, No Problem" | "Plug & Sizzle, Done"
+bOptions: "sizzle sound moment" | "speed cooking demo" | "steam lid reveal" | "no stove freedom"
+
+PLANTDRILL (garden auger):
+aOptions: "Drill, Plant, Done, No Digging" | "One Bit, Perfect Holes, Zero Effort" | "Back-Breaking Digging, One Drill Bit, Done" | "Drill, Drop, Grow"
+bOptions: "speed demo" | "planting demo" | "satisfying drill moment"
+
+SMARTFITNESS (EMS stimulator):
+aOptions: "Train Anywhere, No Gym, Real Results" | "On the Couch, Still Training, Zero Effort" | "No Time to Work Out, Wear It, Feel It Work" | "Stick, Activate, Tone"
+bOptions: "lifestyle demo" | "before/after body" | "reaction moment"
+
+SOWSYNC (seed spacing tool):
+aOptions: "Plant Smart, Perfect Spacing, Grow Better" | "Even Rows, No Waste, Strong Growth" | "Messy Planting, Seed Tool, Better Yield" | "Place, Press, Plant"
+bOptions: "before/after planting" | "planting demo" | "grid effect"
+
+Sedaj generiraj za izdelek na tej strani po ISTEM vzorcu:"""
 
     text = await call_claude(analysis_prompt, "claude-sonnet-4-6", tools, 2000)
     result = parse_json_response(text)
