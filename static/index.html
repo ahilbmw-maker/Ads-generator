@@ -1656,7 +1656,8 @@ let kHistory = [];
 async function kLoadHistory() {
   try {
     const res = await fetch('/kreative-history');
-    kHistory = await res.json();
+    const data = await res.json();
+    kHistory = Array.isArray(data) ? data : [];
   } catch(e) { kHistory = []; }
   kRenderHistory();
 }
