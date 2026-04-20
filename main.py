@@ -980,7 +980,8 @@ Pravila:
 - aOptions "text": SAMO kratki key benefits ločeni z vejico (max 2-3 besede vsak!). Npr: "Real Flame, No Smoke, Anywhere" ali "No Chemicals, No Back Pain, Fast Results" ali "Steam Clean, Deep Disinfect, No Chemicals". NIKOLI dolgih stavkov!
 - bOptions "text": SAMO kratko ime vibeа/stila ozadja (2-5 besed), npr: "evening atmosphere shot", "root pull satisfying moment", "before/after garden", "no chemicals angle", "sweat reveal close-up"
 - Vsaka opcija mora biti unikatna in specifična za ta izdelek
-- Vrni točno 5 aOptions in 5 bOptions"""
+- Vrni točno 5 aOptions in 5 bOptions
+- IMPORTANT: ALL text in aOptions and bOptions MUST be in English only. Never use Slovenian or any other language. The "name" field should be the brand/product name in CAPS."""
 
     text = await call_claude(analysis_prompt, "claude-sonnet-4-6", tools, 2000)
     result = parse_json_response(text)
