@@ -978,7 +978,7 @@ Vrni SAMO JSON (brez markdown) v tej obliki:
 Pravila:
 - name: samo ime blagovne znamke/modela z CAPS (npr. WEEDZAP, ASHIRAFLUX)
 - aOptions "text": SAMO kratki key benefits ločeni z vejico (max 2-3 besede vsak!). Npr: "Real Flame, No Smoke, Anywhere" ali "No Chemicals, No Back Pain, Fast Results" ali "Steam Clean, Deep Disinfect, No Chemicals". NIKOLI dolgih stavkov!
-- bOptions "text": SAMO kratko ime vibeа/stila ozadja, MAX 3 BESEDE! Npr: "before/after planting", "grid effect", "planting demo", "root pull moment", "sweat reveal". NIKOLI dolgih opisov!
+- bOptions "text": Kratko ime KONCEPTA/VIBEА (ne vizualni opis!), MAX 3 besede. Primeri: "speed cooking demo", "versatility show", "sizzle sound moment", "before/after planting", "root pull moment", "no chemicals angle", "sweat reveal". To so KONCEPTI ne opisi slike!
 - Vsaka opcija mora biti unikatna in specifična za ta izdelek
 - Vrni točno 5 aOptions in 5 bOptions
 - IMPORTANT: ALL text in aOptions and bOptions MUST be in English only. Never use Slovenian or any other language. The "name" field should be the brand/product name in CAPS."""
