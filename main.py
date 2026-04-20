@@ -1035,24 +1035,21 @@ async def fetch_product_images(data: dict):
 
 @app.post("/generate-kreative")
 async def generate_kreative(data: dict):
-    """Generira kreative z Nano Banana 2 API."""
+    """Generira kreative z Google Gemini (Nano Banana 2) API."""
+    import base64, struct, zlib
+
     product_name = data.get("productName", "")
     a_options = data.get("aOptions", [])
     b_options = data.get("bOptions", [])
     count = data.get("count", 4)
-    ref_images = data.get("images", [])  # base64 referenčne slike
+    ref_images = data.get("images", [])  # base64 data URLs
 
     if not product_name or not a_options or not b_options:
         return {"error": "Manjkajo podatki (ime izdelka, A ali B opcije)."}
 
-    hf_key = os.environ.get("HIGGSFIELD_API_KEY", "")
-    hf_secret = os.environ.get("HIGGSFIELD_API_SECRET", "")
-    if not hf_key:
-        return {"error": "HIGGSFIELD_API_KEY ni nastavljen v Render environment variables."}
-
-    auth = f"Key {hf_key}:{hf_secret}" if hf_secret else f"Key {hf_key}"
-    headers = {"Authorization": auth, "Content-Type": "application/json", "Accept": "application/json"}
-    model_url = "https://platform.higgsfield.ai/image/nano-banana-2"
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    if not gemini_key:
+        return {"error": "GEMINI_API_KEY ni nastavljen v Render environment variables."}
 
     # Build combinations
     combos = []
@@ -1060,56 +1057,73 @@ async def generate_kreative(data: dict):
         for b in b_options:
             prompt = (
                 f"Create a professional Facebook ad creative for {product_name}. "
-                f"Background/scene: {b.get('text', '')}. "
+                f"Background/scene style: {b.get('text', '')}. "
                 f"Key message to highlight visually: {a.get('text', '')}. "
-                f"Product name '{product_name}' in large uppercase letters on image. "
-                f"No other text. Use exact logo/branding from reference images. "
-                f"Photorealistic, high quality, FB ad format."
+                f"Write product name '{product_name}' in large uppercase letters on the image. "
+                f"No other text or copy. Use exact logo and branding from reference images if provided. "
+                f"Photorealistic, high quality, square FB ad format."
             )
             combos.append({
                 "combo": f"{a.get('label','A')} × {b.get('label','B')}",
                 "prompt": prompt,
-                "a": a, "b": b
             })
 
-    async def generate_one(hc, combo):
+    # Prepare reference image parts for Gemini
+    image_parts = []
+    for img_data in ref_images[:8]:
+        try:
+            if "," in img_data:
+                header, b64 = img_data.split(",", 1)
+                mime = header.split(":")[1].split(";")[0]
+            else:
+                b64 = img_data
+                mime = "image/jpeg"
+            image_parts.append({
+                "inline_data": {"mime_type": mime, "data": b64}
+            })
+        except Exception:
+            continue
+
+    async def generate_one(combo):
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={gemini_key}"
+        
+        # Build content parts: images first, then prompt
+        parts = list(image_parts) + [{"text": combo["prompt"]}]
+        
         payload = {
-            "prompt": combo["prompt"],
-            "aspect_ratio": "1:1",
-            "resolution": "720p"
+            "contents": [{"parts": parts}],
+            "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]}
         }
-        if ref_images:
-            payload["reference_images"] = ref_images[:8]
 
         try:
-            resp = await hc.post(model_url, json=payload, headers=headers)
-            req_data = resp.json()
+            async with httpx.AsyncClient(timeout=120.0) as hc:
+                resp = await hc.post(url, json=payload, headers={"Content-Type": "application/json"})
+                result = resp.json()
 
-            if resp.status_code != 200 or "request_id" not in req_data:
-                return {"combo": combo["combo"], "images": [], "error": req_data.get("message", str(req_data))}
+            if resp.status_code != 200:
+                err = result.get("error", {}).get("message", str(result))
+                return {"combo": combo["combo"], "images": [], "error": err}
 
-            request_id = req_data["request_id"]
-            status_url = f"https://platform.higgsfield.ai/requests/{request_id}/status"
+            # Extract generated images from response
+            imgs = []
+            candidates = result.get("candidates", [])
+            for candidate in candidates:
+                for part in candidate.get("content", {}).get("parts", []):
+                    if "inlineData" in part:
+                        inline = part["inlineData"]
+                        mime = inline.get("mimeType", "image/png")
+                        b64_data = inline.get("data", "")
+                        # Return as data URL
+                        imgs.append(f"data:{mime};base64,{b64_data}")
 
-            # Poll max 90s
-            for _ in range(30):
-                await asyncio.sleep(3)
-                status_resp = await hc.get(status_url, headers=headers)
-                status_data = status_resp.json()
-                status = status_data.get("status", "")
+            if not imgs:
+                return {"combo": combo["combo"], "images": [], "error": "Gemini ni vrnil slike. " + str(result)[:200]}
 
-                if status == "completed":
-                    imgs = [img["url"] for img in status_data.get("images", [])]
-                    return {"combo": combo["combo"], "images": imgs}
-                elif status in ("failed", "nsfw"):
-                    return {"combo": combo["combo"], "images": [], "error": f"Status: {status}"}
+            return {"combo": combo["combo"], "images": imgs}
 
-            return {"combo": combo["combo"], "images": [], "error": "Timeout"}
         except Exception as e:
             return {"combo": combo["combo"], "images": [], "error": str(e)}
 
     # Vse kombinacije vzporedno
-    async with httpx.AsyncClient(timeout=120.0) as hc:
-        results = await asyncio.gather(*[generate_one(hc, combo) for combo in combos])
-
+    results = await asyncio.gather(*[generate_one(combo) for combo in combos])
     return {"results": list(results)}
