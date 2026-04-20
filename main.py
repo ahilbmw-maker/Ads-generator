@@ -1035,41 +1035,86 @@ async def fetch_product_images(data: dict):
 
 @app.post("/generate-kreative")
 async def generate_kreative(data: dict):
-    """Placeholder za Higgsfield API."""
+    """Generira kreative z Nano Banana 2 API."""
     product_name = data.get("productName", "")
     a_options = data.get("aOptions", [])
     b_options = data.get("bOptions", [])
     count = data.get("count", 4)
-    images = data.get("images", [])
+    ref_images = data.get("images", [])  # base64 referenčne slike
 
     if not product_name or not a_options or not b_options:
         return {"error": "Manjkajo podatki (ime izdelka, A ali B opcije)."}
 
+    hf_key = os.environ.get("HIGGSFIELD_API_KEY", "")
+    hf_secret = os.environ.get("HIGGSFIELD_API_SECRET", "")
+    if not hf_key:
+        return {"error": "HIGGSFIELD_API_KEY ni nastavljen v Render environment variables."}
+
+    auth = f"Key {hf_key}:{hf_secret}" if hf_secret else f"Key {hf_key}"
+    headers = {"Authorization": auth, "Content-Type": "application/json", "Accept": "application/json"}
+    model_url = "https://platform.higgsfield.ai/image/nano-banana-2"
+
+    # Build combinations
     combos = []
     for a in a_options:
         for b in b_options:
+            prompt = (
+                f"Create a professional Facebook ad creative for {product_name}. "
+                f"Background/scene: {b.get('text', '')}. "
+                f"Key message to highlight visually: {a.get('text', '')}. "
+                f"Product name '{product_name}' in large uppercase letters on image. "
+                f"No other text. Use exact logo/branding from reference images. "
+                f"Photorealistic, high quality, FB ad format."
+            )
             combos.append({
-                "combo": f"{a.get('label','A')} x {b.get('label','B')}",
-                "prompt": f"Create FB ad creative for {product_name}. Style: {b.get('text','')}. Copy: {a.get('text','')}",
-                "images": []
+                "combo": f"{a.get('label','A')} × {b.get('label','B')}",
+                "prompt": prompt,
+                "a": a, "b": b
             })
 
-    # TODO: Higgsfield API integracija
-    return {
-        "error": f"Higgsfield API kljuc se ni nastavljen. Kombinacij: {len(combos)}, Slik/kombinacijo: {count}",
-        "results": combos
-    }
+    results = []
+    async with httpx.AsyncClient(timeout=120.0) as hc:
+        for combo in combos:
+            payload = {
+                "prompt": combo["prompt"],
+                "aspect_ratio": "1:1",
+                "resolution": "720p"
+            }
 
-    if not prompt:
-        return {"error": "Manjka prompt."}
+            # Add reference images if provided (max 8 for NB2)
+            if ref_images:
+                payload["reference_images"] = ref_images[:8]
 
-    # TODO: Higgsfield API integracija
-    # Ko boš imel API ključ, bo šlo tako:
-    # async with httpx.AsyncClient() as hc:
-    #     resp = await hc.post("https://api.higgsfield.ai/v1/images/generate", ...)
-    #     return {"images": [...]}
+            try:
+                # Submit request
+                resp = await hc.post(model_url, json=payload, headers=headers)
+                req_data = resp.json()
 
-    return {
-        "error": "Higgsfield API ključ še ni nastavljen. Dodaj HIGGSFIELD_API_KEY v Render environment variables.",
-        "info": f"Prompt: {prompt[:100]}... | Slik: {count} | Referenčnih slik: {len(images)}"
-    }
+                if resp.status_code != 200 or "request_id" not in req_data:
+                    results.append({"combo": combo["combo"], "images": [], "error": req_data.get("message", str(req_data))})
+                    continue
+
+                request_id = req_data["request_id"]
+                status_url = f"https://platform.higgsfield.ai/requests/{request_id}/status"
+
+                # Poll for result (max 90s)
+                for _ in range(30):
+                    await asyncio.sleep(3)
+                    status_resp = await hc.get(status_url, headers=headers)
+                    status_data = status_resp.json()
+                    status = status_data.get("status", "")
+
+                    if status == "completed":
+                        imgs = [img["url"] for img in status_data.get("images", [])]
+                        results.append({"combo": combo["combo"], "images": imgs})
+                        break
+                    elif status in ("failed", "nsfw"):
+                        results.append({"combo": combo["combo"], "images": [], "error": f"Status: {status}"})
+                        break
+                else:
+                    results.append({"combo": combo["combo"], "images": [], "error": "Timeout"})
+
+            except Exception as e:
+                results.append({"combo": combo["combo"], "images": [], "error": str(e)})
+
+    return {"results": results}
