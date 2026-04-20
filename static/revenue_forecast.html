@@ -263,11 +263,13 @@ async function loadEntries(){
 
 async function saveEntries(){
   const today = new Date().toLocaleDateString('sl-SI');
+  // Najprej shrani v history (bolj zanesljivo)
+  await collectHistoricalData(today);
+  // Potem shrani entries
   try{
     await fetch('/forecast-entries', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({date:today, entries})});
   }catch(e){}
-  collectHistoricalData(today);
 }
 
 async function collectHistoricalData(today){
@@ -279,9 +281,9 @@ async function collectHistoricalData(today){
       ord: e.dejanskiOrd||0,
       rev: e.dejanski||0
     }));
-    // Ohrani samo zadnjih 14 dni
+    // Ohrani zadnjih 30 dni
     const keys = Object.keys(hist).sort();
-    if(keys.length>14) delete hist[keys[0]];
+    if(keys.length>30) delete hist[keys[0]];
     await fetch('/forecast-history', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(hist)});
     updateDataCounter(hist);
