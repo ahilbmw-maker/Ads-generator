@@ -208,7 +208,10 @@ input::placeholder{color:var(--text3)}
 
       <div class="chart-panel">
         <div class="chart-hdr">
-          <span class="chart-title">Vnosi danes</span>
+          <span class="chart-title">Vnosi</span>
+          <select id="historyDateSelect" onchange="loadHistoryDate(this.value)" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg2);color:var(--text);cursor:pointer">
+            <option value="today">Danes</option>
+          </select>
         </div>
         <div class="log-list" id="logList"></div>
         <div id="log-empty" style="text-align:center;padding:1rem;font-size:12px;color:var(--text3)">Še ni vnosov.</div>
@@ -238,11 +241,28 @@ let chart2=null;
 // Load from server, reset if new day
 async function loadEntries(){
   try{
-    const data = await fetch('/forecast-entries').then(r=>r.json());
-    if(!data || !data.date) return;
     const today = new Date().toLocaleDateString('sl-SI');
-    if(data.date !== today) return; // new day, start fresh
-    entries = data.entries || [];
+    // Najprej poskusi today entries
+    const data = await fetch('/forecast-entries').then(r=>r.json());
+    if(data && data.date === today && data.entries && data.entries.length > 0){
+      entries = data.entries || [];
+      return;
+    }
+    // Če danes ni podatkov, naloži iz history (zadnji dan)
+    const hist = await fetch('/forecast-history').then(r=>r.json());
+    if(!hist) return;
+    const keys = Object.keys(hist).sort();
+    if(!keys.length) return;
+    // Poišči danes v history
+    if(hist[today] && hist[today].length > 0){
+      entries = hist[today].map((e,i) => ({
+        label: String(e.h).padStart(2,'0') + ':' + String(e.m).padStart(2,'0'),
+        dejanski: e.rev || 0,
+        dejanskiOrd: e.ord || 0
+      }));
+    } else {
+      entries = [];
+    }
   }catch(e){ entries=[]; }
 }
 
@@ -286,6 +306,42 @@ async function updateDataCounter(hist){
       el.textContent=`✓ Dovolj podatkov za osebni model (${days} dni)`;
       el.style.color='var(--green)';
     }
+    // Populate date selector
+    const sel = document.getElementById('historyDateSelect');
+    if(sel){
+      const today = new Date().toLocaleDateString('sl-SI');
+      const keys = Object.keys(hist).sort().reverse();
+      // Keep "Danes" option, add history dates
+      sel.innerHTML = '<option value="today">Danes</option>';
+      keys.forEach(k => {
+        if(k !== today){
+          const opt = document.createElement('option');
+          opt.value = k;
+          opt.textContent = k + ' (' + (hist[k]||[]).length + ' vnosov)';
+          sel.appendChild(opt);
+        }
+      });
+    }
+  }catch(e){}
+}
+
+async function loadHistoryDate(val){
+  if(val === 'today'){
+    await loadEntries();
+    renderLog();
+    redraw();
+    return;
+  }
+  try{
+    const hist = await fetch('/forecast-history').then(r=>r.json());
+    const dayData = hist[val] || [];
+    entries = dayData.map(e => ({
+      label: String(e.h).padStart(2,'0') + ':' + String(e.m).padStart(2,'0'),
+      dejanski: e.rev || 0,
+      dejanskiOrd: e.ord || 0
+    }));
+    renderLog();
+    redraw();
   }catch(e){}
 }
 
