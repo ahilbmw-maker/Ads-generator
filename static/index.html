@@ -289,10 +289,26 @@ input[type="text"].error { border-color: var(--red) !important; }
 .k-thumb.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
 .k-thumb-wrap { position: relative; }
 .k-thumb-del { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; background: var(--red, #d93025); color: white; border: none; border-radius: 50%; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
-.k-results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.k-results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .k-result-item { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--surface2); position: relative; }
-.k-result-item img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.k-result-item img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; cursor: pointer; }
 .k-result-actions { display: flex; gap: 4px; padding: 6px; }
+.k-img-card { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--surface2); position: relative; display: flex; flex-direction: column; }
+.k-img-card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; cursor: zoom-in; transition: opacity 0.1s; }
+.k-img-card img:hover { opacity: 0.92; }
+.k-img-combo { font-size: 9px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; padding: 4px 8px; background: var(--surface2); border-bottom: 1px solid var(--border); letter-spacing: 0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.k-img-actions { display: flex; gap: 3px; padding: 5px 6px; background: var(--surface); }
+.k-img-btn { flex: 1; font-size: 10px; font-weight: 500; padding: 4px 4px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; font-family: 'DM Sans', sans-serif; text-align: center; transition: all 0.1s; white-space: nowrap; }
+.k-img-btn:hover { border-color: var(--accent-border); color: var(--accent); }
+.k-img-btn.danger:hover { border-color: #dc2626; color: #dc2626; }
+.k-img-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.k-img-btn.primary:hover { opacity: 0.85; }
+.k-combo-header { grid-column: 1/-1; font-size: 10px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; padding: 8px 4px 2px; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
+.k-select-overlay { position: absolute; top: 6px; left: 6px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid white; background: rgba(0,0,0,0.3); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.1s; z-index: 2; }
+.k-img-card.selected .k-select-overlay { background: var(--accent); border-color: var(--accent); }
+.k-img-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+.k-bulk-bar { display: none; align-items: center; gap: 8px; padding: 8px 12px; background: var(--accent-dim); border: 1px solid var(--accent-border); border-radius: var(--radius); margin-bottom: 10px; font-size: 12px; }
+.k-bulk-bar.show { display: flex; }
 .k-result-btn { flex: 1; font-size: 11px; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; font-family: 'DM Sans', sans-serif; }
 .k-result-btn:hover { border-color: var(--accent-border); color: var(--accent); }
 .k-result-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
@@ -698,6 +714,12 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div id="kLoading" style="display:none;text-align:center;padding:2rem">
             <div class="spinner"></div>
             <div style="margin-top:8px;font-size:13px;color:var(--text-secondary)" id="kLoadingText">Generiram...</div>
+          </div>
+          <div id="kBulkBar" class="k-bulk-bar">
+            <span id="kBulkCount" style="font-weight:600;color:var(--accent)">0 izbranih</span>
+            <button class="k-img-btn primary" style="flex:none;padding:4px 10px" onclick="kBulkDownload()">⬇ Prenesi vse</button>
+            <button class="k-img-btn primary" style="flex:none;padding:4px 10px;background:#7c3aed;border-color:#7c3aed" onclick="kBulkAsana()">→ Asana (vse)</button>
+            <button class="k-img-btn danger" style="flex:none;padding:4px 10px;margin-left:auto" onclick="kClearSelection()">✕ Počisti</button>
           </div>
           <div id="kResultsGrid" class="k-results-grid">
             <div style="text-align:center;padding:4rem 2rem;color:var(--text-tertiary);font-size:13px">
@@ -1623,22 +1645,105 @@ async function kGenerate() {
   btn.disabled = false;
 }
 
+let kSelectedImgCards = new Set();
+
 function kRenderResults(results) {
   const grid = document.getElementById('kResultsGrid');
+  kSelectedImgCards.clear();
+  kUpdateBulkBar();
   if (!results.length) { grid.innerHTML = '<div style="color:var(--text-tertiary);padding:2rem;text-align:center">Ni rezultatov.</div>'; return; }
-  grid.innerHTML = results.map((r, i) => {
+
+  // Flatten: each image gets its own card
+  const cards = [];
+  results.forEach((r) => {
     const imgs = (r.images || (r.url ? [r.url] : [])).filter(Boolean);
-    return '<div class="k-result-item">' +
-      '<div class="k-result-header" style="padding:6px 8px;background:var(--surface2);border-bottom:1px solid var(--border)">' +
-        '<span style="font-size:10px;font-weight:600;color:var(--text-tertiary)">' + esc(r.combo || ('Kombinacija ' + (i+1))) + '</span>' +
+    if (!imgs.length) {
+      cards.push({combo: r.combo, url: null, error: r.error, idx: cards.length});
+    } else {
+      imgs.forEach(url => cards.push({combo: r.combo, url, idx: cards.length}));
+    }
+  });
+  window.kCardsData = cards;
+
+  grid.innerHTML = cards.map(c => {
+    if (!c.url) return (
+      '<div class="k-img-card">' +
+      '<div class="k-img-combo">' + esc(c.combo||'?') + '</div>' +
+      '<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:11px;padding:8px;text-align:center">' + esc(c.error||'Ni slike') + '</div>' +
+      '</div>'
+    );
+    return (
+      '<div class="k-img-card" id="kcard-' + c.idx + '">' +
+      '<div class="k-img-combo">' + esc(c.combo||'?') + '</div>' +
+      '<div style="position:relative">' +
+        '<img src="' + esc(c.url) + '" loading="lazy" onclick="kToggleSelect(' + c.idx + ')">' +
+        '<div class="k-select-overlay" onclick="kToggleSelect(' + c.idx + ')" id="ksel-' + c.idx + '"><svg viewBox="0 0 12 12" style="width:10px;height:10px;stroke:white;fill:none;stroke-width:2"><polyline points="2,6 5,9 10,3"/></svg></div>' +
       '</div>' +
-      (imgs.length ? imgs.map(url => '<img src="' + esc(url) + '" alt="kreativa" loading="lazy" style="width:100%;display:block">').join('') :
-        '<div style="aspect-ratio:1;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:12px">Ni slike</div>') +
-      '<div class="k-result-actions">' +
-        (imgs[0] ? '<button class="k-result-btn" onclick="kDownload(\'' + esc(imgs[0]) + '\',' + (i+1) + ')">&#x2B07; Prenesi</button>' : '') +
-        '<button class="k-result-btn primary" onclick="kSendToAsana(\'' + esc(imgs[0]||'') + '\')">&#x2192; Asana</button>' +
-      '</div></div>';
+      '<div class="k-img-actions">' +
+        '<button class="k-img-btn" onclick="kToggleSelect(' + c.idx + ')">&#x2611; Izberi</button>' +
+        '<button class="k-img-btn" onclick="kDownloadCard(' + c.idx + ')">&#x2B07;</button>' +
+        '<button class="k-img-btn primary" onclick="kSendToAsana(\'' + esc(c.url) + '\')">&#x2192; Asana</button>' +
+        '<button class="k-img-btn danger" onclick="kDeleteCard(' + c.idx + ')">&#x2715;</button>' +
+      '</div>' +
+      '</div>'
+    );
   }).join('');
+
+  document.getElementById('kResultCount').textContent = cards.filter(c=>c.url).length + ' slik';
+}
+
+function kToggleSelect(idx) {
+  const card = document.getElementById('kcard-' + idx);
+  if (!card) return;
+  if (kSelectedImgCards.has(idx)) {
+    kSelectedImgCards.delete(idx);
+    card.classList.remove('selected');
+  } else {
+    kSelectedImgCards.add(idx);
+    card.classList.add('selected');
+  }
+  kUpdateBulkBar();
+}
+
+function kUpdateBulkBar() {
+  const bar = document.getElementById('kBulkBar');
+  const cnt = document.getElementById('kBulkCount');
+  const n = kSelectedImgCards.size;
+  if (bar) bar.classList.toggle('show', n > 0);
+  if (cnt) cnt.textContent = n + ' izbranih';
+}
+
+function kClearSelection() {
+  kSelectedImgCards.forEach(idx => {
+    const card = document.getElementById('kcard-' + idx);
+    if (card) card.classList.remove('selected');
+  });
+  kSelectedImgCards.clear();
+  kUpdateBulkBar();
+}
+
+function kDeleteCard(idx) {
+  const card = document.getElementById('kcard-' + idx);
+  if (card) { card.style.transition='opacity 0.2s'; card.style.opacity='0'; setTimeout(()=>card.remove(),200); }
+  kSelectedImgCards.delete(idx);
+  kUpdateBulkBar();
+}
+
+function kDownloadCard(idx) {
+  const c = window.kCardsData?.[idx];
+  if (!c?.url) return;
+  const a = document.createElement('a');
+  const name = (c.combo||'kreativa').replace(/[^a-zA-Z0-9]/g,'_');
+  a.href = c.url; a.download = name + '_' + (idx+1) + '.png'; a.click();
+}
+
+function kBulkDownload() {
+  kSelectedImgCards.forEach(idx => kDownloadCard(idx));
+}
+
+function kBulkAsana() {
+  const urls = [...kSelectedImgCards].map(idx => window.kCardsData?.[idx]?.url).filter(Boolean);
+  alert('Asana bulk: ' + urls.length + ' slik — integracija prihaja!');
 }
 
 function kDownload(url, n) {
@@ -1649,6 +1754,7 @@ function kDownload(url, n) {
 function kSendToAsana(url) {
   alert('Asana integracija prihaja v naslednjem koraku!');
 }
+
 
 // ── KREATIVE HISTORY ──
 let kHistory = [];
