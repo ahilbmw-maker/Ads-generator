@@ -1063,7 +1063,8 @@ async def generate_kreative(data: dict):
                 f"Try a more intense '{b.get('text', '')}' background. "
                 f"Do not include any text/words on the image except the device name in capital letters '{product_name}' — place it where it fits best or makes sense. "
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
-                f"Highlight (can be through icons or text in English) that it is: {a.get('text', '')}."
+                f"Highlight (can be through icons or text in English) that it is: {a.get('text', '')}. "
+                f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. Square 1:1 format."
             )
             combos.append({
                 "combo": f"{a.get('label','A')} × {b.get('label','B')}",
