@@ -220,7 +220,7 @@ Pravila:
 
 Jeziki: SL (izvirnik), HR (latinica), RS (SAMO latinica!), HU, CZ, SK, PL, GR (grška pisava), RO (latinica), BG (SAMO cirilica!).
 
-Vrni SAMO JSON brez markdown, brez uvodnega besedila — vrednosti so že zformatirana TikTok vrednost z oglatimi oklepaji:
+KRITIČNO VAŽNO: Vrni IZKLJUČNO in SAMO JSON — nobenih uvodnih besed, nobenih razlag, nobenih komentarjev, nobenih markdown backticks. Prva in zadnja stvar v odgovoru mora biti {{ in }}. Nič drugega.
 {{
   "product": "ime",
   "sl": "[tekst1],[tekst2],[tekst3],[tekst4]",
@@ -233,8 +233,7 @@ Vrni SAMO JSON brez markdown, brez uvodnega besedila — vrednosti so že zforma
   "gr": "[tekst1],[tekst2],[tekst3],[tekst4]",
   "ro": "[tekst1],[tekst2],[tekst3],[tekst4]",
   "bg": "[tekst1],[tekst2],[tekst3],[tekst4]"
-}}
-POMEMBNO: Začni direktno z {{ in končaj z }} — nobenih dodatnih besed pred ali po JSON."""
+}}\n"""
 
 
 # ─── GENERATE HELPERS ────────────────────────────────────────────────────────
@@ -242,13 +241,24 @@ POMEMBNO: Začni direktno z {{ in končaj z }} — nobenih dodatnih besed pred a
 def parse_json_response(text: str) -> Optional[dict]:
     text = re.sub(r"```json\s*", "", text)
     text = re.sub(r"```\s*", "", text).strip()
+    # Try direct parse first
     match = re.search(r'\{[\s\S]*\}', text)
     if not match:
         return None
+    json_str = match.group()
     try:
-        return json.loads(match.group())
+        return json.loads(json_str)
     except json.JSONDecodeError:
-        return None
+        # Try to fix truncated JSON by finding last complete key-value
+        try:
+            # Remove trailing incomplete content after last complete string value
+            fixed = re.sub(r',\s*"[^"]*":\s*"[^"]*$', '', json_str)
+            fixed = re.sub(r',\s*"[^"]*":\s*$', '', fixed)
+            if not fixed.endswith('}'):
+                fixed = fixed.rstrip(',\n\r\t ') + '}'
+            return json.loads(fixed)
+        except Exception:
+            return None
 
 
 async def call_claude(prompt: str, model: str, tools=None, max_tokens: int = 8000) -> str:
