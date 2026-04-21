@@ -1281,3 +1281,103 @@ async def asana_attach(data: dict):
                 errors.append(f"Slika {i+1}: {str(e)}")
 
     return {"attached": attached, "errors": errors, "total": len(image_urls)}
+
+
+# ─── LOKALIZACIJA ENDPOINT ───────────────────────────────────────────────────
+
+LANG_NAMES = {
+    "HR": "Croatian", "RS": "Serbian (Latin script)",
+    "HU": "Hungarian", "CZ": "Czech", "SK": "Slovak",
+    "PL": "Polish", "RO": "Romanian", "BG": "Bulgarian",
+    "GR": "Greek", "SL": "Slovenian"
+}
+
+@app.post("/localize-kreativa")
+async def localize_kreativa(data: dict):
+    """Prevede tekst na hero kreativu v izbrane jezike z Gemini."""
+    image_data = data.get("image", "")
+    languages = data.get("languages", [])
+    asana_task_id = data.get("asana_task_id")
+    sku = data.get("sku", "SKU").strip().upper()
+
+    if not image_data or not languages:
+        return {"error": "Manjka slika ali jeziki."}
+
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    if not gemini_key:
+        return {"error": "GEMINI_API_KEY ni nastavljen."}
+
+    # Decode base64 image
+    try:
+        if "," in image_data:
+            header, b64 = image_data.split(",", 1)
+            mime = header.split(":")[1].split(";")[0]
+        else:
+            b64 = image_data
+            mime = "image/jpeg"
+    except Exception as e:
+        return {"error": f"Napaka pri dekodiranju slike: {e}"}
+
+    async def translate_one(lang_code):
+        lang_name = LANG_NAMES.get(lang_code, lang_code)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={gemini_key}"
+
+        prompt = (
+            f"Edit this image to translate all visible text into {lang_name}. "
+            f"Keep EVERYTHING exactly the same — same people, same background, same layout, same design, same product, same icons, same colors, same fonts. "
+            f"ONLY translate the text that is NOT a brand name or logo. "
+            f"Do NOT translate or modify any brand names, logos, or product names. "
+            f"Keep all text in the same position, same style, same size. "
+            f"The result must look identical to the original, only with translated text."
+        )
+
+        payload = {
+            "contents": [{"parts": [
+                {"inline_data": {"mime_type": mime, "data": b64}},
+                {"text": prompt}
+            ]}],
+            "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]}
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as hc:
+                resp = await hc.post(url, json=payload, headers={"Content-Type": "application/json"})
+                result = resp.json()
+
+            if resp.status_code != 200:
+                return {"lang": lang_code, "lang_name": lang_name, "url": None,
+                        "error": result.get("error", {}).get("message", str(result))[:200]}
+
+            for candidate in result.get("candidates", []):
+                for part in candidate.get("content", {}).get("parts", []):
+                    if "inlineData" in part:
+                        out_mime = part["inlineData"].get("mimeType", "image/png")
+                        out_b64 = part["inlineData"].get("data", "")
+                        img_url = f"data:{out_mime};base64,{out_b64}"
+                        filename = f"{lang_code}1_{sku}.png"
+
+                        # Priloži v Asano če je task ID
+                        asana_ok = False
+                        if asana_task_id:
+                            try:
+                                img_bytes = __import__("base64").b64decode(out_b64)
+                                token = os.environ.get("ASANA_API_KEY", "")
+                                async with httpx.AsyncClient(timeout=30.0) as hc2:
+                                    attach_resp = await hc2.post(
+                                        f"{ASANA_API}/tasks/{asana_task_id}/attachments",
+                                        headers={"Authorization": f"Bearer {token}"},
+                                        files={"file": (filename, img_bytes, out_mime)}
+                                    )
+                                asana_ok = attach_resp.status_code in (200, 201)
+                            except Exception:
+                                pass
+
+                        return {"lang": lang_code, "lang_name": lang_name, "url": img_url, "filename": filename, "asana_ok": asana_ok}
+
+            return {"lang": lang_code, "lang_name": lang_name, "url": None, "error": "Ni slike"}
+        except Exception as e:
+            return {"lang": lang_code, "lang_name": lang_name, "url": None, "error": str(e)}
+
+    # Vse jezike vzporedno
+    results = await asyncio.gather(*[translate_one(lang) for lang in languages])
+    return {"results": list(results)}
