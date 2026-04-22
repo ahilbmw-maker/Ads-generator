@@ -2307,17 +2307,34 @@ function narcHandleFile(file) {
 }
 
 function narcParseCsv(text) {
+  // Normalize line endings
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const lines = text.trim().split('\n');
   if (lines.length < 2) return [];
-  // Detect separator
-  const sep = lines[0].includes('\t') ? '\t' : ';';
-  const headers = lines[0].split(sep).map(h => h.trim().replace(/"/g, ''));
+
+  // Parse a single CSV line handling quoted fields
+  function parseLine(line) {
+    const cols = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; }
+      else if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+      else { cur += c; }
+    }
+    cols.push(cur.trim());
+    return cols;
+  }
+
+  const headers = parseLine(lines[0]).map(h => h.replace(/"/g, '').trim());
+  if (!headers.length || headers[0] === '') return [];
+
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(sep).map(c => c.trim().replace(/"/g, ''));
-    if (cols.length < 3) continue;
+    if (!lines[i].trim()) continue;
+    const cols = parseLine(lines[i]);
     const obj = {};
-    headers.forEach((h, j) => obj[h] = cols[j] || '');
+    headers.forEach((h, j) => obj[h] = (cols[j] || '').replace(/"/g, '').trim());
     rows.push(obj);
   }
   return rows;
@@ -2332,15 +2349,15 @@ function narcProcess() {
 
   // Map columns — flexible matching
   const hKeys = Object.keys(rows[0]);
-  const find = (patterns) => hKeys.find(k => patterns.some(p => k.toLowerCase().includes(p))) || hKeys[0];
+  const find = (patterns) => hKeys.find(k => patterns.some(p => k.toLowerCase().includes(p.toLowerCase()))) || '';
 
-  const colId = find(['id naroč', 'id naro', 'order_id', 'id nar']);
-  const colSku = find(['sku']);
-  const colNaziv = find(['naziv', 'name', 'produkt', 'ime']);
-  const colKolicina = find(['količina', 'kolicina', 'qty', 'quantity']);
-  const colRazlika = find(['prodano razlika', 'prodano_razlika', 'razlika']);
-  const colSlo = find(['razlika prodaje sl', 'prodaje sl', 'sl', 'slo']);
-  const colRs = find(['razlika prodaje rs', 'prodaje rs', ' rs']);
+  const colId = find(['ID naročila', 'id naro']);
+  const colSku = find(['SKU', 'sku']);
+  const colNaziv = find(['Naziv', 'naziv', 'name']);
+  const colKolicina = find(['Količina', 'kolicina', 'qty']);
+  const colRazlika = find(['Prodano razlika', 'prodano razlika']);
+  const colSlo = find(['Razlika prodaje SL', 'razlika prodaje sl']);
+  const colRs = find(['Razlika prodaje RS', 'razlika prodaje rs']);
 
   // Only negative razlika
   narcData = rows
