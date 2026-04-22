@@ -884,11 +884,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <span style="font-size:12px">Klikni ali povleci CSV sem</span>
           </div>
           <input type="file" id="narcFileInput" accept=".csv" style="display:none" onchange="narcHandleFile(this.files[0])">
-          <button id="narcAutoFetchBtn" onclick="narcCheckLatest()" style="margin-top:10px;width:100%;padding:9px 0;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:7px;transition:opacity 0.15s">
-            <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#fff;fill:none;stroke-width:2.2;flex-shrink:0"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            <span id="narcAutoFetchLabel">Naloži najnovejši CSV</span>
-          </button>
-          <div id="narcAutoFetchStatus" style="margin-top:6px;font-size:11px;color:var(--text-tertiary);text-align:center;display:none"></div>
+
         </div>
 
         <div class="card">
@@ -2637,112 +2633,6 @@ async function narcLoadFromHistory(idx) {
   } catch(e) {}
 }
 
-async function narcAutoFetch() {
-  const btn = document.getElementById('narcAutoFetchBtn');
-  const label = document.getElementById('narcAutoFetchLabel');
-  const status = document.getElementById('narcAutoFetchStatus');
-  if (!btn || !label) return;
-
-  btn.disabled = true;
-  btn.style.opacity = '0.65';
-  label.textContent = 'Fetcham iz ERP…';
-  status.style.display = 'block';
-  status.style.color = 'var(--text-tertiary)';
-  status.textContent = 'Klicem siluxar.si ERP…';
-
-  const today = new Date();
-  const to = today.toISOString().split('T')[0];
-  const from = new Date(new Date().setFullYear(today.getFullYear() - 1)).toISOString().split('T')[0];
-
-  const reset = (errMsg) => {
-    status.style.color = 'var(--red)';
-    status.textContent = '✗ ' + errMsg;
-    label.textContent = 'Auto-fetch iz ERP';
-    btn.disabled = false; btn.style.opacity = '1';
-  };
-
-  try {
-    // Korak 1: POST export — brskalnik poslje svoje cookies (ze prijavljen na siluxar.si)
-    const postRes = await fetch('https://www.siluxar.si/narocilnice', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
-      },
-      body: 'module=acc&mode=export&type=stockcsvalt-grouped'
-    });
-
-    if (!postRes.ok) { reset('POST napaka ' + postRes.status); return; }
-    const postText = (await postRes.text()).trim();
-    console.log('[auto-fetch] POST response:', postText);
-
-    // Parsiraj filename
-    let filename = null;
-    try { const j = JSON.parse(postText); filename = j.file || j.filename || j.name; } catch(e) {}
-    if (!filename && postText.includes('export.csv')) {
-      const m = postText.match(/[\w\-:.]+export\.csv/);
-      if (m) filename = m[0];
-    }
-    if (!filename) { reset('Ne morem dobiti imena fajla. Console: ' + postText.slice(0,80)); return; }
-
-    status.textContent = 'Prenasam CSV: ' + filename + '…';
-
-    // Korak 2: Prenesi CSV
-    const dlRes = await fetch('https://www.siluxar.si/download.php?file=' + encodeURIComponent(filename), {
-      credentials: 'include'
-    });
-
-    if (!dlRes.ok) { reset('Download napaka ' + dlRes.status); return; }
-    const csvText = await dlRes.text();
-    if (!csvText.trim()) { reset('Prazen CSV.'); return; }
-
-    const rows = csvText.trim().split('\n').length - 1;
-    status.style.color = 'var(--green)';
-    status.textContent = '✓ ' + rows + ' vrstic · ' + from + ' → ' + to;
-    label.textContent = 'Auto-fetch iz ERP';
-    btn.disabled = false; btn.style.opacity = '1';
-
-    narcProcessText(csvText, true);
-
-  } catch(e) {
-    // CORS napaka — siluxar.si ne dovoli cross-origin
-    if (e.message && e.message.toLowerCase().includes('cors') || e instanceof TypeError) {
-      reset('CORS blokada — odpri siluxar.si v brskalniku in se prijavi, nato poskusi znova.');
-    } else {
-      reset('Napaka: ' + e.message);
-    }
-  }
-}
-
-async function narcCheckLatest() {
-  const btn = document.getElementById('narcAutoFetchBtn');
-  const label = document.getElementById('narcAutoFetchLabel');
-  const status = document.getElementById('narcAutoFetchStatus');
-  btn.disabled = true; btn.style.opacity = '0.65';
-  label.textContent = 'Preverjam…';
-  status.style.display = 'block';
-  status.style.color = 'var(--text-tertiary)';
-  status.textContent = 'Isčem zadnji CSV…';
-  try {
-    const res = await fetch('/narocilnice-latest');
-    const data = await res.json();
-    if (!data.csv) {
-      status.style.color = 'var(--red)';
-      status.textContent = '✗ Ni podatkov. Najprej poženi zaznamek na siluxar.si.';
-    } else {
-      status.style.color = 'var(--green)';
-      status.textContent = '✓ ' + data.rows + ' vrstic · ' + data.date;
-      narcProcessText(data.csv, false);
-    }
-  } catch(e) {
-    status.style.color = 'var(--red)';
-    status.textContent = '✗ Napaka: ' + e.message;
-  }
-  label.textContent = 'Naloži najnovejši CSV';
-  btn.disabled = false; btn.style.opacity = '1';
-}
 
 updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();narcLoadHistory();narcRenderLangFilter();setMetaWide(true);
 
