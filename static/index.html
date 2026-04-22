@@ -900,11 +900,11 @@ input[type="text"].error { border-color: var(--red) !important; }
 
         <!-- Lang filter — collapsible -->
         <div class="card" style="padding:10px 14px">
-          <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="narcToggleLangPanel()">
-            <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--text-secondary);fill:none;stroke-width:2;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-            <span class="slabel" style="cursor:pointer">TRGOVINE / DRŽAVE</span>
-            <span id="narcLangCount" style="font-size:11px;font-weight:400;color:var(--text-tertiary)"></span>
-            <span id="narcLangChevron" style="margin-left:auto;font-size:11px;color:var(--text-tertiary);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px">Uredi ▾</span>
+          <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="narcToggleLangPanel()">
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:var(--text-secondary);fill:none;stroke-width:2;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span class="slabel" style="cursor:pointer;margin:0">TRGOVINE / DRŽAVE</span>
+            <span id="narcLangCount" style="font-size:11px;font-weight:400;color:var(--text-tertiary);margin:0"></span>
+            <span id="narcLangChevron" style="margin-left:auto;font-size:11px;color:var(--text-tertiary);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;white-space:nowrap">Uredi</span>
           </div>
           <div id="narcLangPanel" style="display:none;margin-top:10px">
             <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
@@ -2314,35 +2314,35 @@ let narcSortCol = 'razlika';
 let narcSortAsc = true;
 
 const NARC_LANGS = [
-  {key:'sl', label:'Silux.SI', flag:'🇸🇮'},
-  {key:'hr', label:'Silux.HR', flag:'🇭🇷'},
-  {key:'rs', label:'Silux.RS', flag:'🇷🇸'},
-  {key:'at', label:'Silux.AT', flag:'🇦🇹'},
-  {key:'de', label:'Silux.DE', flag:'🇩🇪'},
-  {key:'fr', label:'Silux.FR', flag:'🇫🇷'},
-  {key:'es', label:'Silux.ES', flag:'🇪🇸'},
-  {key:'en', label:'Silux.UK', flag:'🇬🇧'},
-  {key:'ba', label:'Silux.BA', flag:'🇧🇦'},
-  {key:'hu', label:'Silux.HU', flag:'🇭🇺'},
-  {key:'cs', label:'Silux.CZ', flag:'🇨🇿'},
-  {key:'sk', label:'Silux.SK', flag:'🇸🇰'},
-  {key:'el', label:'Silux.GR', flag:'🇬🇷'},
-  {key:'it', label:'Silux.IT', flag:'🇮🇹'},
-  {key:'ro', label:'Silux.RO', flag:'🇷🇴'},
-  {key:'ma-sl', label:'Maaarket.SI', flag:'🛒🇸🇮'},
-  {key:'ma-hr', label:'Maaarket.HR', flag:'🛒🇭🇷'},
-  {key:'ma-rs', label:'Maaarket.RS', flag:'🛒🇷🇸'},
-  {key:'ma-ba', label:'Maaarket.BA', flag:'🛒🇧🇦'},
-  {key:'ma-hu', label:'Maaarket.HU', flag:'🛒🇭🇺'},
-  {key:'ma-it', label:'Maaarket.IT', flag:'🛒🇮🇹'},
-  {key:'ma-cz', label:'Maaarket.CZ', flag:'🛒🇨🇿'},
-  {key:'ma-sk', label:'Maaarket.SK', flag:'🛒🇸🇰'},
-  {key:'ma-pl', label:'Maaarket.PL', flag:'🛒🇵🇱'},
-  {key:'ma-at', label:'Maaarket.AT', flag:'🛒🇦🇹'},
-  {key:'ma-de', label:'Maaarket.DE', flag:'🛒🇩🇪'},
-  {key:'ma-el', label:'Maaarket.GR', flag:'🛒🇬🇷'},
-  {key:'ma-ro', label:'Maaarket.RO', flag:'🛒🇷🇴'},
-  {key:'ma-bg', label:'Maaarket.BG', flag:'🛒🇧🇬'},
+  {key:'sl', label:'Silux.SI', flag:'SI'},
+  {key:'hr', label:'Silux.HR', flag:'HR'},
+  {key:'rs', label:'Silux.RS', flag:'RS'},
+  {key:'at', label:'Silux.AT', flag:'AT'},
+  {key:'de', label:'Silux.DE', flag:'DE'},
+  {key:'fr', label:'Silux.FR', flag:'FR'},
+  {key:'es', label:'Silux.ES', flag:'ES'},
+  {key:'en', label:'Silux.UK', flag:'UK'},
+  {key:'ba', label:'Silux.BA', flag:'BA'},
+  {key:'hu', label:'Silux.HU', flag:'HU'},
+  {key:'cs', label:'Silux.CZ', flag:'CZ'},
+  {key:'sk', label:'Silux.SK', flag:'SK'},
+  {key:'el', label:'Silux.GR', flag:'GR'},
+  {key:'it', label:'Silux.IT', flag:'IT'},
+  {key:'ro', label:'Silux.RO', flag:'RO'},
+  {key:'ma-sl', label:'Maaarket.SI', flag:'MA-SI'},
+  {key:'ma-hr', label:'Maaarket.HR', flag:'MA-HR'},
+  {key:'ma-rs', label:'Maaarket.RS', flag:'MA-RS'},
+  {key:'ma-ba', label:'Maaarket.BA', flag:'MA-BA'},
+  {key:'ma-hu', label:'Maaarket.HU', flag:'MA-HU'},
+  {key:'ma-it', label:'Maaarket.IT', flag:'MA-IT'},
+  {key:'ma-cz', label:'Maaarket.CZ', flag:'MA-CZ'},
+  {key:'ma-sk', label:'Maaarket.SK', flag:'MA-SK'},
+  {key:'ma-pl', label:'Maaarket.PL', flag:'MA-PL'},
+  {key:'ma-at', label:'Maaarket.AT', flag:'MA-AT'},
+  {key:'ma-de', label:'Maaarket.DE', flag:'MA-DE'},
+  {key:'ma-el', label:'Maaarket.GR', flag:'MA-GR'},
+  {key:'ma-ro', label:'Maaarket.RO', flag:'MA-RO'},
+  {key:'ma-bg', label:'Maaarket.BG', flag:'MA-BG'},
 ];
 
 let narcSelectedLangs = new Set(NARC_LANGS.map(l => l.key)); // all selected by default
@@ -2361,12 +2361,15 @@ function narcToggleLang(key, el) {
   else narcSelectedLangs.add(key);
   el.classList.toggle('active', narcSelectedLangs.has(key));
   narcUpdateLangCount();
+  if (narcData.length) narcRenderTable();
 }
 
 function narcToggleAllLangs() {
   if (narcSelectedLangs.size === NARC_LANGS.length) narcSelectedLangs.clear();
   else NARC_LANGS.forEach(l => narcSelectedLangs.add(l.key));
   narcRenderLangFilter();
+  narcUpdateLangCount();
+  if (narcData.length) narcRenderTable();
 }
 
 function narcBuildUrl(sku) {
@@ -2375,9 +2378,9 @@ function narcBuildUrl(sku) {
   const from = new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0];
   const langParams = NARC_LANGS
     .filter(l => narcSelectedLangs.has(l.key))
-    .map(l => `filter_lang_${l.key}=1`)
+    .map(l => 'filter_lang_' + l.key + '=1')
     .join('&');
-  return `https://www.siluxar.si/narocilnice?order_status_id=&order_shipping_id=0&supplier=18&author=&filter_buyer=&filter_buyer_address=&filter_buyer_phone=&filter_product=${encodeURIComponent(sku)}&filter_orderid=&filter_comments=0&filter_cancellations=0&filter_notpaid=0&filter_isvip=0&filter_buyer_deferred=0&sent_to_erp=&payment_type=&order_tag=&filter_ids=&from=${from}&to=${to}&${langParams}`;
+  return 'https://www.siluxar.si/narocilnice?order_status_id=&order_shipping_id=0&supplier=18&author=&filter_buyer=&filter_buyer_address=&filter_buyer_phone=&filter_product=' + encodeURIComponent(sku) + '&filter_orderid=&filter_comments=0&filter_cancellations=0&filter_notpaid=0&filter_isvip=0&filter_buyer_deferred=0&sent_to_erp=&payment_type=&order_tag=&filter_ids=&from=' + from + '&to=' + to + '&' + langParams;
 }
 
 function narcHandleFile(file) {
