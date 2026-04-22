@@ -1442,3 +1442,50 @@ async def save_narocilnice_history(data: dict):
         return {"status": "ok", "count": len(history)}
     except Exception as e:
         return {"error": str(e)}
+
+
+# ─── NAROČILNICE SKU LOOKUP ───────────────────────────────────────────────────
+
+@app.post("/narocilnice-lookup")
+async def narocilnice_lookup(data: dict):
+    """Poišče URL izdelka v Maaarket XML feedu po SKU ali nazivu."""
+    skus = data.get("skus", [])  # list of {sku, naziv}
+    
+    await ensure_cache_fresh()
+    
+    results = {}
+    sl_feed = feed_by_lang.get("sl", {})
+    
+    for item in skus:
+        sku = item.get("sku", "").strip().upper()
+        naziv = item.get("naziv", "").strip().lower()
+        
+        found_url = None
+        
+        # Search by SKU in title/id
+        for g_id, prod in sl_feed.items():
+            prod_title = prod.get("title", "").strip()
+            prod_url = prod.get("url", "")
+            prod_slug = extract_slug(prod_url) or ""
+            
+            # Match SKU in title or slug
+            if (sku and (sku.lower() in prod_title.lower() or sku.lower() in prod_slug.lower())):
+                found_url = prod_url
+                break
+        
+        # Fallback: search by naziv words (first 3 significant words)
+        if not found_url and naziv:
+            words = [w for w in naziv.split() if len(w) > 3][:3]
+            if words:
+                best_score = 0
+                for g_id, prod in sl_feed.items():
+                    prod_title = prod.get("title", "").strip().lower()
+                    score = sum(1 for w in words if w in prod_title)
+                    if score > best_score and score >= 2:
+                        best_score = score
+                        found_url = prod.get("url", "")
+        
+        if found_url:
+            results[sku] = found_url
+    
+    return {"urls": results}
