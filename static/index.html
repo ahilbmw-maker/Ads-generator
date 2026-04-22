@@ -2567,7 +2567,7 @@ function narcRenderTable() {
     return '<tr data-sku="' + esc(r.sku) + '" style="' + rowBg + '">' +
       '<td>' + esc(r.id) + '</td>' +
       '<td><a href="' + esc(url) + '" target="_blank" class="narc-sku-link" onclick="narcToggleRow(\'' + esc(r.sku) + '\'", true)">' + esc(r.sku) + '</a>' + shopLink + '</td>' +
-      '<td>' + esc(r.naziv) + '</td>' +
+      '<td><a href="' + esc(url) + '" target="_blank" class="narc-sku-link" onclick="narcToggleRow(\'' + esc(r.sku) + '\', true)">' + esc(r.sku) + '</a>' + shopLink + '</td>' +
       '<td class="' + (r.kolicina < 0 ? "neg" : "") + '">' + r.kolicina + '</td>' +
       '<td class="neg">' + r.razlika + '</td>' +
       '<td class="' + (r.slo < 0 ? "neg" : "") + '">' + r.slo + '</td>' +
