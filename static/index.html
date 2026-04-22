@@ -326,6 +326,21 @@ input[type="text"].error { border-color: var(--red) !important; }
 #lokResultsGrid { grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); }
 #page-lokalizacija .kreative-layout { grid-template-columns: 300px 1fr; }
 #page-lokalizacija .kreative-right { min-width: 0; overflow: hidden; }
+/* Narocilnice */
+.narc-table { width:100%; border-collapse:collapse; font-size:12px; }
+.narc-table th { background:var(--surface2); padding:8px 10px; text-align:left; font-size:11px; font-weight:600; color:var(--text-tertiary); border-bottom:2px solid var(--border); white-space:nowrap; cursor:pointer; user-select:none; }
+.narc-table th:hover { color:var(--accent); }
+.narc-table td { padding:7px 10px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; }
+.narc-table tr:hover td { background:var(--accent-dim); }
+.narc-table td.neg { color:#dc2626; font-weight:600; }
+.narc-sku-link { color:var(--accent); text-decoration:none; font-weight:600; }
+.narc-sku-link:hover { text-decoration:underline; }
+.narc-hist-item { padding:8px 12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); cursor:pointer; font-size:12px; margin-bottom:6px; transition:all 0.1s; }
+.narc-hist-item:hover { border-color:var(--accent-border); background:var(--accent-dim); }
+.narc-hist-date { font-size:10px; color:var(--text-tertiary); }
+.narc-lang-filter { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:12px; }
+.narc-lang-btn { padding:3px 10px; border-radius:20px; border:1px solid var(--border); background:var(--surface2); font-size:11px; font-weight:500; cursor:pointer; color:var(--text-secondary); transition:all 0.1s; }
+.narc-lang-btn.active { background:var(--accent); color:white; border-color:var(--accent); }
 #page-lokalizacija ~ .main, body:has(#page-lokalizacija.active) .main { max-width: 100% !important; }
 body:has(#page-lokalizacija.active) .main { max-width: none !important; }
 .k-option-btn { width:100%; text-align:left; padding:8px 12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.12s; display:flex; flex-direction:column; gap:2px; }
@@ -432,6 +447,12 @@ body:has(#page-lokalizacija.active) .main { max-width: none !important; }
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
     Lokalizacija
     <span class="nav-badge" style="background:#f0fdf4;color:#166534">🌍</span>
+  </div>
+
+  <div class="nav-item nav-narocilnice" id="nav-narocilnice" onclick="switchPage('narocilnice')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    Naročilnice
+    <span class="nav-badge" style="background:#fff7ed;color:#c2410c">📦</span>
   </div>
 </nav>
 
@@ -847,6 +868,66 @@ body:has(#page-lokalizacija.active) .main { max-width: none !important; }
     </div>
   </div><!-- /page-lokalizacija -->
 
+  <!-- ═══ NAROČILNICE PAGE ═══ -->
+  <div class="page" id="page-narocilnice">
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
+
+      <!-- LEVO: Upload + Zgodovina -->
+      <div>
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">UVOZI CSV</span>
+          <div id="narcDropZone" class="k-dropzone" style="margin-top:8px" onclick="document.getElementById('narcFileInput').click()">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span style="font-size:12px">Klikni ali povleci CSV sem</span>
+          </div>
+          <input type="file" id="narcFileInput" accept=".csv" style="display:none" onchange="narcHandleFile(this.files[0])">
+          <textarea id="narcCsvText" placeholder="Ali prilepi CSV vsebino sem..." class="k-prompt-textarea" style="margin-top:8px;min-height:80px;font-size:11px"></textarea>
+          <button class="btn-gen" onclick="narcProcess()" style="width:100%;margin-top:8px">
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 0 2-2h11"/></svg>
+            Uvozi in prikaži
+          </button>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span class="slabel">ZGODOVINA</span>
+          </div>
+          <div id="narcHistList"><div class="history-empty">Ni zgodovine.</div></div>
+        </div>
+      </div>
+
+      <!-- DESNO: Tabela -->
+      <div class="card" style="min-width:0;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <span class="slabel" id="narcTableTitle">NAROČILNICE — negativne razlike</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="text" id="narcSearch" placeholder="Išči SKU, naziv..." style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;width:180px" oninput="narcRenderTable()">
+            <span style="font-size:11px;color:var(--text-tertiary)" id="narcCount"></span>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="narc-table" id="narcTable">
+            <thead>
+              <tr>
+                <th onclick="narcSort('id')">ID naročila ↕</th>
+                <th onclick="narcSort('sku')">SKU ↕</th>
+                <th onclick="narcSort('naziv')">Naziv ↕</th>
+                <th onclick="narcSort('kolicina')">Količina ↕</th>
+                <th onclick="narcSort('razlika')">Prodano razlika ↕</th>
+                <th onclick="narcSort('slo')">Skladišče SLO ↕</th>
+                <th onclick="narcSort('rs')">Skladišče RS ↕</th>
+              </tr>
+            </thead>
+            <tbody id="narcTableBody">
+              <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Uvozi CSV za prikaz podatkov</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /page-narocilnice -->
+
 </div>
 
 <script>
@@ -873,7 +954,7 @@ function closeMenu(){
   document.querySelector('.sidebar').classList.remove('open');
   document.getElementById('overlay').classList.remove('open');
 }
-const PAGES = ['meta','tiktok','calc','forecast','kreative','lokalizacija'];
+const PAGES = ['meta','tiktok','calc','forecast','kreative','lokalizacija','narocilnice'];
 let currentIdx = 0;
 
 function switchPage(page) {
@@ -888,7 +969,7 @@ function switchPage(page) {
   // Wide layout
   const mainEl = document.querySelector('.main');
   if(mainEl) {
-    if(page==='forecast' || page==='calc' || page==='tiktok' || page==='kreative' || page==='lokalizacija') {
+    if(page==='forecast' || page==='calc' || page==='tiktok' || page==='kreative' || page==='lokalizacija' || page==='narocilnice') {
       mainEl.classList.add('wide');
     } else if(page==='meta') {
       const formVisible = document.getElementById('metaFormSection').style.display !== 'none';
@@ -2203,7 +2284,175 @@ function lokRenderResults(results) {
   }).join('');
 }
 
-updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();setMetaWide(true);
+// ── NAROČILNICE ──
+let narcData = [];
+let narcSortCol = 'razlika';
+let narcSortAsc = true;
+
+function narcBuildUrl(sku) {
+  const today = new Date();
+  const to = today.toISOString().split('T')[0];
+  const from = new Date(today.setFullYear(today.getFullYear() - 1)).toISOString().split('T')[0];
+  return `https://www.siluxar.si/narocilnice?order_status_id=&order_shipping_id=0&supplier=18&author=&filter_buyer=&filter_buyer_address=&filter_buyer_phone=&filter_product=${encodeURIComponent(sku)}&filter_orderid=&filter_comments=0&filter_cancellations=0&filter_notpaid=0&filter_isvip=0&filter_buyer_deferred=0&sent_to_erp=&payment_type=&order_tag=&filter_ids=&from=${from}&to=${to}&filter_lang_sl=1&filter_lang_hr=1&filter_lang_rs=1&filter_lang_at=1&filter_lang_de=1&filter_lang_fr=1&filter_lang_es=1&filter_lang_en=1&filter_lang_ba=1&filter_lang_hu=1&filter_lang_cs=1&filter_lang_sk=1&filter_lang_el=1&filter_lang_ma-sl=1&filter_lang_ma-hr=1&filter_lang_ma-rs=1&filter_lang_ma-ba=1&filter_lang_ma-hu=1&filter_lang_ma-it=1&filter_lang_ma-cz=1&filter_lang_ma-sk=1&filter_lang_ma-pl=1&filter_lang_ma-at=1&filter_lang_ma-de=1&filter_lang_ma-el=1&filter_lang_ma-ro=1&filter_lang_ma-bg=1&filter_lang_it=1&filter_lang_ro=1`;
+}
+
+function narcHandleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('narcCsvText').value = e.target.result;
+    narcProcess();
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function narcParseCsv(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+  // Detect separator
+  const sep = lines[0].includes('\t') ? '\t' : ';';
+  const headers = lines[0].split(sep).map(h => h.trim().replace(/"/g, ''));
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(sep).map(c => c.trim().replace(/"/g, ''));
+    if (cols.length < 3) continue;
+    const obj = {};
+    headers.forEach((h, j) => obj[h] = cols[j] || '');
+    rows.push(obj);
+  }
+  return rows;
+}
+
+function narcProcess() {
+  const text = document.getElementById('narcCsvText').value.trim();
+  if (!text) return;
+
+  const rows = narcParseCsv(text);
+  if (!rows.length) { alert('Napaka pri branju CSV.'); return; }
+
+  // Map columns — flexible matching
+  const hKeys = Object.keys(rows[0]);
+  const find = (patterns) => hKeys.find(k => patterns.some(p => k.toLowerCase().includes(p))) || hKeys[0];
+
+  const colId = find(['id naroč', 'id naro', 'order_id', 'id nar']);
+  const colSku = find(['sku']);
+  const colNaziv = find(['naziv', 'name', 'produkt', 'ime']);
+  const colKolicina = find(['količina', 'kolicina', 'qty', 'quantity']);
+  const colRazlika = find(['prodano razlika', 'prodano_razlika', 'razlika']);
+  const colSlo = find(['razlika prodaje sl', 'prodaje sl', 'sl', 'slo']);
+  const colRs = find(['razlika prodaje rs', 'prodaje rs', ' rs']);
+
+  // Only negative razlika
+  narcData = rows
+    .map(r => ({
+      id: r[colId] || '',
+      sku: r[colSku] || '',
+      naziv: r[colNaziv] || '',
+      kolicina: parseInt(r[colKolicina]) || 0,
+      razlika: parseInt(r[colRazlika]) || 0,
+      slo: parseInt(r[colSlo]) || 0,
+      rs: parseInt(r[colRs]) || 0,
+    }))
+    .filter(r => r.razlika < 0);
+
+  narcRenderTable();
+  document.getElementById('narcTableTitle').textContent = 'NAROČILNICE — ' + narcData.length + ' negativnih razlik';
+
+  // Save to history
+  narcSaveHistory(text);
+}
+
+function narcSort(col) {
+  if (narcSortCol === col) narcSortAsc = !narcSortAsc;
+  else { narcSortCol = col; narcSortAsc = true; }
+  narcRenderTable();
+}
+
+function narcRenderTable() {
+  const q = (document.getElementById('narcSearch')?.value || '').toLowerCase();
+  let rows = narcData.filter(r =>
+    !q || r.sku.toLowerCase().includes(q) || r.naziv.toLowerCase().includes(q) || r.id.toLowerCase().includes(q)
+  );
+
+  // Sort
+  rows.sort((a, b) => {
+    let av = a[narcSortCol], bv = b[narcSortCol];
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    if (av < bv) return narcSortAsc ? -1 : 1;
+    if (av > bv) return narcSortAsc ? 1 : -1;
+    return 0;
+  });
+
+  document.getElementById('narcCount').textContent = rows.length + ' vrstic';
+  const tbody = document.getElementById('narcTableBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Ni podatkov.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const url = narcBuildUrl(r.sku);
+    return `<tr>
+      <td>${esc(r.id)}</td>
+      <td><a href="${esc(url)}" target="_blank" class="narc-sku-link">${esc(r.sku)}</a></td>
+      <td>${esc(r.naziv)}</td>
+      <td class="${r.kolicina < 0 ? 'neg' : ''}">${r.kolicina}</td>
+      <td class="neg">${r.razlika}</td>
+      <td class="${r.slo < 0 ? 'neg' : ''}">${r.slo}</td>
+      <td class="${r.rs < 0 ? 'neg' : ''}">${r.rs}</td>
+    </tr>`;
+  }).join('');
+}
+
+// History
+async function narcSaveHistory(csvText) {
+  try {
+    await fetch('/narocilnice-history', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({csv: csvText, date: new Date().toLocaleString('sl-SI')})
+    });
+    narcLoadHistory();
+  } catch(e) {}
+}
+
+async function narcLoadHistory() {
+  try {
+    const res = await fetch('/narocilnice-history');
+    const data = await res.json();
+    const el = document.getElementById('narcHistList');
+    if (!data.length) { el.innerHTML = '<div class="history-empty">Ni zgodovine.</div>'; return; }
+    el.innerHTML = data.slice().reverse().map((h, i) =>
+      `<div class="narc-hist-item" onclick="narcLoadFromHistory(${data.length-1-i})">
+        <div style="font-weight:500">📄 Uvoz #${data.length - i}</div>
+        <div class="narc-hist-date">${esc(h.date)} · ${h.rows || 0} vrstic</div>
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
+
+async function narcLoadFromHistory(idx) {
+  try {
+    const res = await fetch('/narocilnice-history');
+    const data = await res.json();
+    if (!data[idx]) return;
+    document.getElementById('narcCsvText').value = data[idx].csv;
+    narcProcess();
+  } catch(e) {}
+}
+
+updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();narcLoadHistory();setMetaWide(true);
+
+// Drag & drop
+document.addEventListener('DOMContentLoaded', () => {
+  const dz = document.getElementById('narcDropZone');
+  if (!dz) return;
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); narcHandleFile(e.dataTransfer.files[0]); });
+});
+
+
 
 </script>
 <!-- HOVER PREVIEW -->
