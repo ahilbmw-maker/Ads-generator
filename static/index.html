@@ -2645,24 +2645,27 @@ async function narcLoadFromHistory(idx) {
 
 updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();narcLoadHistory();narcRenderLangFilter();setMetaWide(true);
 
-// Drag & drop
-document.addEventListener('DOMContentLoaded', () => {
+// Drag & drop + SKU click — direktno, brez DOMContentLoaded
+(function(){
   const dz = document.getElementById('narcDropZone');
-  if (!dz) return;
-  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
-  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
-  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); narcHandleFile(e.dataTransfer.files[0]); });
-
-  // Event delegation for SKU links
-  document.getElementById('narcTableBody').addEventListener('click', e => {
-    const link = e.target.closest('.narc-sku-link');
-    if (link) {
-      const tr = link.closest('tr');
-      const sku = tr ? tr.getAttribute('data-sku') : null;
-      if (sku) narcToggleRow(sku, true);
-    }
-  });
-});
+  if (dz) {
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+    dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); narcHandleFile(e.dataTransfer.files[0]); });
+  }
+  // Event delegation za SKU klik → zeleno obarvanje
+  const tb = document.getElementById('narcTableBody');
+  if (tb) {
+    tb.addEventListener('click', e => {
+      const link = e.target.closest('.narc-sku-link');
+      if (link) {
+        const tr = link.closest('tr');
+        const sku = tr ? tr.getAttribute('data-sku') : null;
+        if (sku) narcToggleRow(sku, true);
+      }
+    });
+  }
+})();
 
 
 
