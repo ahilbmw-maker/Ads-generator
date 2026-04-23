@@ -931,9 +931,9 @@ input[type="text"].error { border-color: var(--red) !important; }
                 <th onclick="narcSort('sku')">SKU ↕</th>
                 <th onclick="narcSort('naziv')">Naziv ↕</th>
                 <th onclick="narcSort('kolicina')">Količina ↕</th>
-                <th onclick="narcSort('razlika')">Prodano razlika ↕</th>
                 <th onclick="narcSort('zalogaSl')">Zaloga SL ↕</th>
                 <th onclick="narcSort('zalogaRs')">Zaloga RS ↕</th>
+                <th onclick="narcSort('razlika')">Prodano razlika ↕</th>
                 <th onclick="narcSort('slo')">Razlika SL ↕</th>
                 <th onclick="narcSort('rs')">Razlika RS ↕</th>
                 <th>✓</th>
@@ -2567,9 +2567,9 @@ function narcRenderTable() {
       '<td>' + skuLink + '</td>' +
       '<td>' + esc(r.naziv) + '</td>' +
       '<td class="' + (r.kolicina < 0 ? "neg" : "") + '">' + _nd(r.kolicina) + '</td>' +
-      '<td class="neg">' + r.razlika + '</td>' +
       '<td>' + _nd(r.zalogaSl) + '</td>' +
       '<td>' + _nd(r.zalogaRs) + '</td>' +
+      '<td class="neg">' + r.razlika + '</td>' +
       '<td class="' + (r.slo < 0 ? "neg" : "") + '">' + _nd(r.slo) + '</td>' +
       '<td class="' + (r.rs < 0 ? "neg" : "") + '">' + _nd(r.rs) + '</td>' +
       '<td>' + checkBtn + '</td>' +
