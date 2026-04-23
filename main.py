@@ -1677,3 +1677,101 @@ async def set_karantena_history(data: dict):
         return {"status": "ok"}
     except Exception as e:
         return {"error": str(e)}
+
+
+# ─── VIDEO ADS — SCRIPT GENERATION ───────────────────────────────────────────
+
+@app.post("/generate-video-scripts")
+async def generate_video_scripts(data: dict):
+    input_text = data.get("input", "").strip()
+    duration = data.get("duration", 15)
+    if not input_text:
+        return {"error": "Manjka vnos."}
+
+    mode = "url" if input_text.startswith("http") else "text"
+    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
+    words = 35 if duration == 15 else 70
+
+    prompt = f"""{'Preberi to stran in' if mode == 'url' else 'Na podlagi tega opisa'} ustvari voice over skripte za video oglas v 10 jezikih.
+
+{'Stran: ' + input_text if mode == 'url' else 'Opis: ' + input_text}
+
+Pravila:
+- Točno {words} besed na jezik (±5)
+- Naravni govorni slog, kot da govori prijatelj
+- Poudarek na eni glavni koristi izdelka
+- Brez cen, brez "klikni", brez "naroči"
+- Konec z močno izjavo (ne pozivom k akciji)
+- SL: slovenščina, HR: hrvaščina (latinica), RS: srbščina (SAMO latinica), HU: madžarščina, CZ: češčina, SK: slovaščina, PL: poljščina, GR: grščina (grška pisava), RO: romunščina, BG: bolgarščina (SAMO cirilica)
+
+Vrni SAMO JSON brez markdown:
+{{"product": "ime izdelka", "sl": "...", "hr": "...", "rs": "...", "hu": "...", "cz": "...", "sk": "...", "pl": "...", "gr": "...", "ro": "...", "bg": "..."}}"""
+
+    try:
+        text = await call_claude(prompt, "claude-sonnet-4-6", tools if tools else None, 4000)
+        data_parsed = parse_json_response(text)
+        if not data_parsed:
+            return {"error": "Napaka pri generiranju skript."}
+        scripts = {k: v for k, v in data_parsed.items() if k != "product"}
+        return {"scripts": scripts, "product": data_parsed.get("product", "")}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ─── VIDEO ADS — ELEVENLABS AUDIO ────────────────────────────────────────────
+
+ELEVENLABS_VOICES = {
+    "sl": "pNInz6obpgDQGcFmaJgB",  # Adam — multilingual
+    "hr": "pNInz6obpgDQGcFmaJgB",
+    "rs": "pNInz6obpgDQGcFmaJgB",
+    "hu": "pNInz6obpgDQGcFmaJgB",
+    "cz": "pNInz6obpgDQGcFmaJgB",
+    "sk": "pNInz6obpgDQGcFmaJgB",
+    "pl": "pNInz6obpgDQGcFmaJgB",
+    "gr": "pNInz6obpgDQGcFmaJgB",
+    "ro": "pNInz6obpgDQGcFmaJgB",
+    "bg": "pNInz6obpgDQGcFmaJgB",
+}
+
+@app.post("/generate-audio")
+async def generate_audio(data: dict):
+    text = data.get("text", "").strip()
+    lang = data.get("lang", "sl")
+    if not text:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Manjka tekst."}, status_code=400)
+
+    api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+    if not api_key:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "ELEVENLABS_API_KEY ni nastavljen."}, status_code=400)
+
+    voice_id = ELEVENLABS_VOICES.get(lang, "pNInz6obpgDQGcFmaJgB")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as hc:
+            resp = await hc.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                headers={
+                    "xi-api-key": api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                },
+                json={
+                    "text": text,
+                    "model_id": "eleven_multilingual_v2",
+                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
+                }
+            )
+        if resp.status_code != 200:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": f"ElevenLabs napaka {resp.status_code}: {resp.text[:200]}"}, status_code=400)
+
+        return StreamingResponse(
+            iter([resp.content]),
+            media_type="audio/mpeg",
+            headers={"Content-Disposition": f"attachment; filename=voiceover_{lang}.mp3"}
+        )
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
