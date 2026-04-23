@@ -1776,3 +1776,59 @@ async def generate_audio(data: dict):
     except Exception as e:
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ─── MERGE VIDEO + AUDIO ──────────────────────────────────────────────────────
+
+@app.post("/merge-video-audio")
+async def merge_video_audio(
+    video: UploadFile = File(...),
+    audio: UploadFile = File(...),
+    lang: str = "sl"
+):
+    """Spoji video + audio z FFmpeg in vrne MP4."""
+    import subprocess, tempfile
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = f"{tmp}/input.mp4"
+            audio_path = f"{tmp}/audio.mp3"
+            output_path = f"{tmp}/output_{lang}.mp4"
+
+            # Shrani uploadane fajle
+            with open(video_path, "wb") as f:
+                f.write(await video.read())
+            with open(audio_path, "wb") as f:
+                f.write(await audio.read())
+
+            # FFmpeg: zamenjaj audio track, ohrani video dolžino
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", video_path,
+                "-i", audio_path,
+                "-map", "0:v:0",      # video iz prvega inputa
+                "-map", "1:a:0",      # audio iz drugega inputa
+                "-c:v", "copy",       # video brez rekodiranja (hitro)
+                "-c:a", "aac",        # audio kot AAC
+                "-shortest",          # konča ko se krajši konča
+                output_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, timeout=120)
+
+            if result.returncode != 0:
+                return JSONResponse(
+                    {"error": f"FFmpeg napaka: {result.stderr.decode()[-300:]}"},
+                    status_code=500
+                )
+
+            with open(output_path, "rb") as f:
+                video_bytes = f.read()
+
+            return StreamingResponse(
+                iter([video_bytes]),
+                media_type="video/mp4",
+                headers={"Content-Disposition": f"attachment; filename=video_{lang}.mp4"}
+            )
+    except subprocess.TimeoutExpired:
+        return JSONResponse({"error": "FFmpeg timeout."}, status_code=500)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
