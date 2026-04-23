@@ -989,6 +989,14 @@ input[type="text"].error { border-color: var(--red) !important; }
           <input type="file" id="karanFileInput" accept=".pdf" style="display:none" onchange="karanHandleFile(this.files[0])">
           <div id="karanUploadStatus" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center;display:none"></div>
         </div>
+
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span class="slabel">ZGODOVINA</span>
+            <button class="history-clear" onclick="karanDeleteAllHistory()" style="color:#dc2626">🗑 Zbriši vse</button>
+          </div>
+          <div id="karanHistList"><div class="history-empty">Ni zgodovine.</div></div>
+        </div>
       </div>
 
       <!-- DESNO: Tabela -->
@@ -2753,6 +2761,7 @@ async function karanHandleFile(file) {
     status.style.color = 'var(--green)';
     status.textContent = '✓ ' + karanData.length + ' postavk naloženih';
     karanRenderTable();
+    karanSaveHistory(data.rows, file.name);
   } catch(e) {
     status.style.color = 'var(--red)';
     status.textContent = 'Napaka: ' + e.message;
@@ -2821,7 +2830,66 @@ function karanRenderTable() {
   }
 })();
 
-updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();narcLoadHistory();narcRenderLangFilter();setMetaWide(true);
+// ─── KARANTENA ZGODOVINA ─────────────────────────────────────────────────────
+
+async function karanSaveHistory(rows, filename) {
+  try {
+    await fetch('/karantena-history', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({rows, filename, date: new Date().toLocaleString('sl-SI')})
+    });
+    karanLoadHistory();
+  } catch(e) {}
+}
+
+async function karanLoadHistory() {
+  try {
+    const res = await fetch('/karantena-history');
+    const data = await res.json();
+    const el = document.getElementById('karanHistList');
+    if (!data.length) { el.innerHTML = '<div class="history-empty">Ni zgodovine.</div>'; return; }
+    el.innerHTML = data.slice().reverse().map((h, i) =>
+      `<div class="narc-hist-item" style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1;cursor:pointer" onclick="karanLoadFromHistory(${data.length-1-i})">
+          <div style="font-weight:500;font-size:12px">📄 ${esc(h.filename||'Uvoz #'+(data.length-i))}</div>
+          <div class="narc-hist-date">${esc(h.date)} · ${(h.rows||[]).length} postavk</div>
+        </div>
+        <button onclick="karanDeleteHistoryItem(${data.length-1-i})" style="background:none;border:none;cursor:pointer;color:var(--text-tertiary);font-size:14px;padding:2px 4px;flex-shrink:0" title="Zbriši">🗑</button>
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
+
+async function karanLoadFromHistory(idx) {
+  try {
+    const res = await fetch('/karantena-history');
+    const data = await res.json();
+    if (!data[idx]) return;
+    karanData = data[idx].rows || [];
+    karanRenderTable();
+  } catch(e) {}
+}
+
+async function karanDeleteHistoryItem(idx) {
+  if (!confirm('Zbrisati ta uvoz?')) return;
+  try {
+    const res = await fetch('/karantena-history');
+    let data = await res.json();
+    data.splice(idx, 1);
+    await fetch('/karantena-history-set', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({history: data})});
+    karanLoadHistory();
+  } catch(e) {}
+}
+
+async function karanDeleteAllHistory() {
+  if (!confirm('Zbrisati vso zgodovino karantene?')) return;
+  try {
+    await fetch('/karantena-history-set', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({history: []})});
+    karanLoadHistory();
+  } catch(e) {}
+}
+
+updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();narcLoadHistory();karanLoadHistory();narcRenderLangFilter();setMetaWide(true);
 
 // Drag & drop + SKU click — direktno, brez DOMContentLoaded
 (function(){
