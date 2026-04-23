@@ -932,13 +932,15 @@ input[type="text"].error { border-color: var(--red) !important; }
                 <th onclick="narcSort('naziv')">Naziv ↕</th>
                 <th onclick="narcSort('kolicina')">Količina ↕</th>
                 <th onclick="narcSort('razlika')">Prodano razlika ↕</th>
+                <th onclick="narcSort('zalogaSl')">Zaloga SL ↕</th>
+                <th onclick="narcSort('zalogaRs')">Zaloga RS ↕</th>
                 <th onclick="narcSort('slo')">Razlika SL ↕</th>
                 <th onclick="narcSort('rs')">Razlika RS ↕</th>
                 <th>✓</th>
               </tr>
             </thead>
             <tbody id="narcTableBody">
-              <tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Uvozi CSV za prikaz podatkov</td></tr>
+              <tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Uvozi CSV za prikaz podatkov</td></tr>
             </tbody>
           </table>
         </div>
@@ -2456,6 +2458,8 @@ function narcProcessText(text, saveToHistory = true) {
   const colNaziv = find(['Naziv', 'naziv', 'name']);
   const colKolicina = find(['Količina', 'kolicina', 'qty']);
   const colRazlika = find(['Prodano razlika', 'prodano razlika']);
+  const colZalogaSl = find(['Zaloga SL', 'zaloga sl']);
+  const colZalogaRs = find(['Zaloga RS', 'zaloga rs']);
   const colSlo = find(['Razlika prodaje SL', 'razlika prodaje sl']);
   const colRs = find(['Razlika prodaje RS', 'razlika prodaje rs']);
 
@@ -2467,6 +2471,8 @@ function narcProcessText(text, saveToHistory = true) {
       naziv: r[colNaziv] || '',
       kolicina: parseInt(r[colKolicina]) || 0,
       razlika: parseInt(r[colRazlika]) || 0,
+      zalogaSl: (colZalogaSl && r[colZalogaSl]?.trim()) ? r[colZalogaSl].trim() : '',
+      zalogaRs: (colZalogaRs && r[colZalogaRs]?.trim()) ? r[colZalogaRs].trim() : '',
       slo: parseInt(r[colSlo]) || 0,
       rs: parseInt(r[colRs]) || 0,
     }))
@@ -2520,7 +2526,7 @@ function narcFinish() {
   narcData = [];
   narcClickedRows.clear();
   narcShopUrls = {};
-  document.getElementById('narcTableBody').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Uvozi CSV za prikaz podatkov</td></tr>';
+  document.getElementById('narcTableBody').innerHTML = '<tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Uvozi CSV za prikaz podatkov</td></tr>';
   document.getElementById('narcTableTitle').textContent = 'NAROČILNICE — negativne razlike';
   document.getElementById('narcCount').textContent = '';
   document.getElementById('narcFinishBtn').style.display = 'none';
@@ -2545,7 +2551,7 @@ function narcRenderTable() {
   document.getElementById('narcCount').textContent = rows.length + ' vrstic';
   const tbody = document.getElementById('narcTableBody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Ni podatkov.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Ni podatkov.</td></tr>';
     return;
   }
 
@@ -2561,6 +2567,8 @@ function narcRenderTable() {
       '<td>' + esc(r.naziv) + '</td>' +
       '<td class="' + (r.kolicina < 0 ? "neg" : "") + '">' + _nd(r.kolicina) + '</td>' +
       '<td class="neg">' + r.razlika + '</td>' +
+      '<td>' + _nd(r.zalogaSl) + '</td>' +
+      '<td>' + _nd(r.zalogaRs) + '</td>' +
       '<td class="' + (r.slo < 0 ? "neg" : "") + '">' + _nd(r.slo) + '</td>' +
       '<td class="' + (r.rs < 0 ? "neg" : "") + '">' + _nd(r.rs) + '</td>' +
       '<td>' + checkBtn + '</td>' +
