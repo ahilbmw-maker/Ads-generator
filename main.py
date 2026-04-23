@@ -1755,8 +1755,7 @@ def build_srt(alignment: dict) -> str:
         t_start = starts[i]
         t_end = ends[i] if i < len(ends) else t_start + 0.1
         
-        if ch in (' ', '
-', '	'):
+        if ch in (' ', '\n', '\t'):
             if cur_word:
                 words.append((cur_word, cur_start, cur_end))
                 cur_word = ""
@@ -1794,14 +1793,10 @@ def build_srt(alignment: dict) -> str:
         line_text = " ".join(w[0] for w in group)
         t_in = group[0][1]
         t_out = group[-1][2]
-        lines.append(f"{idx}
-{fmt_time(t_in)} --> {fmt_time(t_out)}
-{line_text}
-")
+        lines.append(f"{idx}\n{fmt_time(t_in)} --> {fmt_time(t_out)}\n{line_text}\n")
         idx += 1
     
-    return "
-".join(lines)
+    return "\n".join(lines)
 
 
 @app.post("/generate-audio")
