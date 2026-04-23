@@ -1874,6 +1874,12 @@ async def merge_video_audio(
     """Spoji video + audio (+ opcijsko SRT podnapisi) z FFmpeg."""
     import subprocess, tempfile
     from fastapi.responses import JSONResponse as JR
+    # Uporabi static-ffmpeg da dobimo ffmpeg binarko brez root
+    try:
+        import static_ffmpeg
+        static_ffmpeg.add_paths()
+    except Exception:
+        pass
     try:
         with tempfile.TemporaryDirectory() as tmp:
             video_path = f"{tmp}/input.mp4"
