@@ -333,6 +333,19 @@ input[type="text"].error { border-color: var(--red) !important; }
 .narc-table td { padding:9px 12px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; }
 .narc-table tr:hover td { background:var(--accent-dim); }
 .narc-table td.neg { color:#dc2626; font-weight:600; }
+.narc-tab-bar { display:flex; gap:0; margin-bottom:14px; border-bottom:2px solid var(--border); }
+.narc-tab { padding:8px 20px; font-size:13px; font-weight:500; cursor:pointer; border:none; background:none; color:var(--text-secondary); font-family:'DM Sans',sans-serif; border-bottom:2px solid transparent; margin-bottom:-2px; transition:all 0.15s; }
+.narc-tab.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+.narc-tab:hover:not(.active) { color:var(--text); }
+.karan-table { width:100%; border-collapse:collapse; font-size:13px; }
+.karan-table th { background:var(--surface2); padding:10px 12px; text-align:left; font-size:12px; font-weight:600; color:var(--text-tertiary); border-bottom:2px solid var(--border); white-space:nowrap; cursor:pointer; user-select:none; }
+.karan-table th:hover { color:var(--accent); }
+.karan-table td { padding:9px 12px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; }
+.karan-table tr:hover td { background:var(--accent-dim); }
+.karan-table tr.dup-row td { background:rgba(245,158,11,0.08); }
+.karan-table tr.dup-row td:first-child { border-left:3px solid #f59e0b; }
+.karan-summary { display:flex; gap:16px; margin-top:10px; font-size:12px; color:var(--text-secondary); }
+.karan-summary span { background:var(--surface2); border-radius:6px; padding:4px 10px; }
 .narc-sku-link { color:var(--accent); text-decoration:none; font-weight:600; }
 .narc-sku-link:hover { text-decoration:underline; }
 .narc-check-btn { font-size:13px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer;color:var(--text-tertiary);transition:all 0.15s;font-family:'DM Sans',sans-serif; }
@@ -873,6 +886,15 @@ input[type="text"].error { border-color: var(--red) !important; }
 
   <!-- ═══ NAROČILNICE PAGE ═══ -->
   <div class="page" id="page-narocilnice">
+
+    <!-- TAB BAR -->
+    <div class="narc-tab-bar">
+      <button class="narc-tab active" id="narcTab-razlike" onclick="narcSwitchTab('razlike')">Negativne razlike</button>
+      <button class="narc-tab" id="narcTab-karantena" onclick="narcSwitchTab('karantena')">Karantena</button>
+    </div>
+
+    <!-- TAB: NEGATIVNE RAZLIKE -->
+    <div id="narcPanel-razlike" style="display:block">
     <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
 
       <!-- LEVO: Upload + Zgodovina -->
@@ -884,7 +906,6 @@ input[type="text"].error { border-color: var(--red) !important; }
             <span style="font-size:12px">Klikni ali povleci CSV sem</span>
           </div>
           <input type="file" id="narcFileInput" accept=".csv" style="display:none" onchange="narcHandleFile(this.files[0])">
-
         </div>
 
         <div class="card">
@@ -898,7 +919,6 @@ input[type="text"].error { border-color: var(--red) !important; }
 
       <!-- DESNO: Lang filter + Tabela -->
       <div style="min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:12px">
-
         <!-- Lang filter — collapsible -->
         <div class="card" style="padding:10px 14px">
           <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="narcToggleLangPanel()">
@@ -916,43 +936,96 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
 
         <div class="card" style="min-width:0;overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-          <span class="slabel" id="narcTableTitle">NAROČILNICE — negativne razlike</span>
-          <div style="display:flex;align-items:center;gap:8px">
-            <input type="text" id="narcSearch" placeholder="Išči SKU, naziv, ID..." style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;width:280px;font-family:'DM Sans',sans-serif" oninput="narcRenderTable()">
-            <span style="font-size:11px;color:var(--text-tertiary)" id="narcCount"></span>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <span class="slabel" id="narcTableTitle">NAROČILNICE — negativne razlike</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="text" id="narcSearch" placeholder="Išči SKU, naziv, ID..." style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;width:280px;font-family:'DM Sans',sans-serif" oninput="narcRenderTable()">
+              <span style="font-size:11px;color:var(--text-tertiary)" id="narcCount"></span>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="narc-table" id="narcTable">
+              <thead>
+                <tr>
+                  <th onclick="narcSort('id')">ID naročila ↕</th>
+                  <th onclick="narcSort('sku')">SKU ↕</th>
+                  <th onclick="narcSort('naziv')">Naziv ↕</th>
+                  <th onclick="narcSort('kolicina')">Količina ↕</th>
+                  <th onclick="narcSort('zalogaSl')">Zaloga SL ↕</th>
+                  <th onclick="narcSort('zalogaRs')">Zaloga RS ↕</th>
+                  <th onclick="narcSort('razlika')">Prodano razlika ↕</th>
+                  <th onclick="narcSort('slo')">Razlika SL ↕</th>
+                  <th onclick="narcSort('rs')">Razlika RS ↕</th>
+                  <th>✓</th>
+                </tr>
+              </thead>
+              <tbody id="narcTableBody">
+                <tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Uvozi CSV za prikaz podatkov</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="narcFinishBtn" style="display:none;margin-top:12px;text-align:center">
+            <button onclick="narcFinish()" style="padding:10px 32px;background:#10b981;color:white;border:none;border-radius:var(--radius);font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+              ✓ Zaključi — vse obdelano
+            </button>
           </div>
         </div>
-        <div style="overflow-x:auto">
-          <table class="narc-table" id="narcTable">
-            <thead>
-              <tr>
-                <th onclick="narcSort('id')">ID naročila ↕</th>
-                <th onclick="narcSort('sku')">SKU ↕</th>
-                <th onclick="narcSort('naziv')">Naziv ↕</th>
-                <th onclick="narcSort('kolicina')">Količina ↕</th>
-                <th onclick="narcSort('zalogaSl')">Zaloga SL ↕</th>
-                <th onclick="narcSort('zalogaRs')">Zaloga RS ↕</th>
-                <th onclick="narcSort('razlika')">Prodano razlika ↕</th>
-                <th onclick="narcSort('slo')">Razlika SL ↕</th>
-                <th onclick="narcSort('rs')">Razlika RS ↕</th>
-                <th>✓</th>
-              </tr>
-            </thead>
-            <tbody id="narcTableBody">
-              <tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Uvozi CSV za prikaz podatkov</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div id="narcFinishBtn" style="display:none;margin-top:12px;text-align:center">
-          <button onclick="narcFinish()" style="padding:10px 32px;background:#10b981;color:white;border:none;border-radius:var(--radius);font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
-            ✓ Zaključi — vse obdelano
-          </button>
-        </div>
-      </div><!-- /card tabela -->
-      </div><!-- /desno wrapper -->
-
+      </div>
     </div>
+    </div><!-- /panel razlike -->
+
+    <!-- TAB: KARANTENA -->
+    <div id="narcPanel-karantena" style="display:none">
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
+
+      <!-- LEVO: Upload -->
+      <div>
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">UVOZI KARANTENO</span>
+          <div id="karanDropZone" class="k-dropzone" style="margin-top:8px" onclick="document.getElementById('karanFileInput').click()">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span style="font-size:12px">Klikni ali povleci Excel sem</span>
+          </div>
+          <input type="file" id="karanFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="karanHandleFile(this.files[0])">
+          <div id="karanUploadStatus" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center;display:none"></div>
+        </div>
+      </div>
+
+      <!-- DESNO: Tabela -->
+      <div style="min-width:0;overflow:hidden">
+        <div class="card" style="min-width:0;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <span class="slabel" id="karanTitle">KARANTENA</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="text" id="karanSearch" placeholder="Išči SKU, naziv..." style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;width:240px;font-family:'DM Sans',sans-serif" oninput="karanRenderTable()">
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="karan-table" id="karanTable">
+              <thead>
+                <tr>
+                  <th onclick="karanSort('sku')">SKU ↕</th>
+                  <th onclick="karanSort('title')">Naziv ↕</th>
+                  <th onclick="karanSort('stock')">Zaloga ↕</th>
+                  <th onclick="karanSort('stock_actual')">Dejansko ↕</th>
+                  <th onclick="karanSort('position')">Pozicija ↕</th>
+                </tr>
+              </thead>
+              <tbody id="karanTableBody">
+                <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Uvozi Excel za prikaz podatkov</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="karanSummary" class="karan-summary" style="display:none">
+            <span id="karanRowCount">0 postavk</span>
+            <span id="karanStockSum">0 kosov skupaj</span>
+            <span id="karanDupCount" style="color:#f59e0b">0 podvojenih SKU</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div><!-- /panel karantena -->
+
   </div><!-- /page-narocilnice -->
 
 </div>
@@ -2643,6 +2716,125 @@ async function narcLoadFromHistory(idx) {
   } catch(e) {}
 }
 
+
+// ─── KARANTENA TAB ───────────────────────────────────────────────────────────
+
+function narcSwitchTab(tab) {
+  document.getElementById('narcPanel-razlike').style.display = tab === 'razlike' ? 'block' : 'none';
+  document.getElementById('narcPanel-karantena').style.display = tab === 'karantena' ? 'block' : 'none';
+  document.getElementById('narcTab-razlike').classList.toggle('active', tab === 'razlike');
+  document.getElementById('narcTab-karantena').classList.toggle('active', tab === 'karantena');
+}
+
+let karanData = [];
+let karanSortCol = 'sku';
+let karanSortAsc = true;
+
+function karanSort(col) {
+  if (karanSortCol === col) karanSortAsc = !karanSortAsc;
+  else { karanSortCol = col; karanSortAsc = true; }
+  karanRenderTable();
+}
+
+async function karanHandleFile(file) {
+  if (!file) return;
+  const status = document.getElementById('karanUploadStatus');
+  status.style.display = 'block';
+  status.style.color = 'var(--text-tertiary)';
+  status.textContent = 'Berem datoteko...';
+
+  try {
+    // Uporabi SheetJS za branje xlsx/xls/csv
+    const arrayBuffer = await file.arrayBuffer();
+    const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs');
+    const wb = XLSX.read(arrayBuffer, {type: 'array'});
+    // Vzami zadnji sheet (Table001 po navadi)
+    const sheetName = wb.SheetNames[wb.SheetNames.length - 1];
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, {defval: ''});
+
+    if (!rows.length) { status.style.color = 'var(--red)'; status.textContent = 'Napaka: prazen fajl.'; return; }
+
+    // Normalizacija kolon
+    karanData = rows.map(r => ({
+      product_id: String(r.product_id || r['product_id'] || ''),
+      sku: String(r.product_sku || r.sku || r.SKU || '').trim(),
+      title: String(r.title || r.naziv || r.Naziv || '').trim(),
+      stock: parseInt(r.stock || 0) || 0,
+      stock_actual: parseInt(r.stock_actual || 0) || 0,
+      position: String(r.position || r.pozicija || '').trim(),
+    })).filter(r => r.sku);
+
+    status.style.color = 'var(--green)';
+    status.textContent = '✓ ' + karanData.length + ' postavk naloženih';
+    karanRenderTable();
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = 'Napaka: ' + e.message;
+  }
+}
+
+function karanRenderTable() {
+  const q = (document.getElementById('karanSearch')?.value || '').toLowerCase();
+
+  // Najdi podvojene SKU-je
+  const skuCount = {};
+  karanData.forEach(r => { skuCount[r.sku] = (skuCount[r.sku] || 0) + 1; });
+  const dupSkus = new Set(Object.keys(skuCount).filter(s => skuCount[s] > 1));
+
+  let rows = karanData.filter(r =>
+    !q || r.sku.toLowerCase().includes(q) || r.title.toLowerCase().includes(q)
+  );
+
+  rows.sort((a, b) => {
+    let av = a[karanSortCol], bv = b[karanSortCol];
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    if (av < bv) return karanSortAsc ? -1 : 1;
+    if (av > bv) return karanSortAsc ? 1 : -1;
+    return 0;
+  });
+
+  const _nd = v => (v === '' || v === null || v === undefined || v === 0) ? '<span style="color:var(--text-tertiary);font-size:11px">—</span>' : v;
+
+  const tbody = document.getElementById('karanTableBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Ni podatkov.</td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(r => {
+      const isDup = dupSkus.has(r.sku);
+      const dupBadge = isDup ? ' <span style="font-size:10px;background:#fef3c7;color:#92400e;border-radius:3px;padding:1px 5px;font-weight:600">2×</span>' : '';
+      return '<tr class="' + (isDup ? 'dup-row' : '') + '">' +
+        '<td><strong>' + esc(r.sku) + '</strong>' + dupBadge + '</td>' +
+        '<td>' + esc(r.title) + '</td>' +
+        '<td>' + _nd(r.stock) + '</td>' +
+        '<td>' + _nd(r.stock_actual) + '</td>' +
+        '<td style="font-size:12px">' + _nd(r.position) + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  // Summary
+  const totalStock = karanData.reduce((s, r) => s + (r.stock || 0), 0);
+  const dupCount = dupSkus.size;
+  document.getElementById('karanTitle').textContent = 'KARANTENA — ' + karanData.length + ' postavk';
+  const sum = document.getElementById('karanSummary');
+  sum.style.display = karanData.length ? 'flex' : 'none';
+  document.getElementById('karanRowCount').textContent = karanData.length + ' postavk';
+  document.getElementById('karanStockSum').textContent = totalStock + ' kosov skupaj';
+  document.getElementById('karanDupCount').textContent = dupCount + ' podvojenih SKU';
+  document.getElementById('karanDupCount').style.display = dupCount ? 'inline' : 'none';
+}
+
+// Drag & drop za karantena
+(function(){
+  const dz2 = document.getElementById('karanDropZone');
+  if (dz2) {
+    dz2.addEventListener('dragover', e => { e.preventDefault(); dz2.classList.add('dragover'); });
+    dz2.addEventListener('dragleave', () => dz2.classList.remove('dragover'));
+    dz2.addEventListener('drop', e => { e.preventDefault(); dz2.classList.remove('dragover'); karanHandleFile(e.dataTransfer.files[0]); });
+  }
+})();
 
 updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();narcLoadHistory();narcRenderLangFilter();setMetaWide(true);
 
