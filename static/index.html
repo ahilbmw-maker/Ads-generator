@@ -1091,24 +1091,43 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
 
         <!-- Upload video -->
-        <div class="card">
-          <span class="slabel">TVOJ VIDEO</span>
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">VIDEOTI</span>
           <div id="vadsVideoZone" class="k-dropzone" style="margin-top:8px" onclick="document.getElementById('vadsVideoInput').click()">
             <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-            <span style="font-size:12px" id="vadsVideoLabel">Klikni ali povleci video sem</span>
+            <span style="font-size:12px">Klikni ali povleci videote sem</span>
           </div>
-          <input type="file" id="vadsVideoInput" accept="video/*" style="display:none" onchange="vadsHandleVideo(this.files[0])">
+          <input type="file" id="vadsVideoInput" accept="video/*" multiple style="display:none" onchange="vadsHandleVideos(this.files)">
+          <div id="vadsVideoList" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
           <div id="vadsVideoStatus" style="margin-top:6px;font-size:11px;color:var(--text-tertiary);text-align:center;display:none"></div>
+        </div>
+
+        <!-- Zgodovina -->
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span class="slabel">ZGODOVINA</span>
+            <button class="history-clear" onclick="vadsDeleteAllHistory()" style="color:#dc2626">🗑 Zbriši vse</button>
+          </div>
+          <div id="vadsHistList"><div class="history-empty">Ni zgodovine.</div></div>
         </div>
       </div>
 
       <!-- DESNO: Jeziki + skripte + audio -->
       <div style="min-width:0;overflow:hidden">
+        <div id="vadsBulkBar" style="display:none;margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="vadsGenerateAllAudio()" style="padding:9px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:6px">
+            🎙 Generiraj vse audio
+          </button>
+          <button onclick="vadsDownloadAllZip()" id="vadsZipBtn" style="display:none;padding:9px 16px;background:#7c3aed;color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:6px">
+            📦 Prenesi vse kot ZIP
+          </button>
+          <span id="vadsBulkStatus" style="font-size:11px;color:var(--text-tertiary);align-self:center"></span>
+        </div>
         <div id="vadsEmpty" class="card" style="text-align:center;padding:3rem;color:var(--text-tertiary)">
           <svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5;margin-bottom:12px"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
           <div style="font-size:13px">Vpiši URL ali opis in klikni Generiraj skripte</div>
         </div>
-        <div id="vadsResults" style="display:none;display:flex;flex-direction:column;gap:8px"></div>
+        <div id="vadsResults" style="display:none;flex-direction:column;gap:8px"></div>
       </div>
     </div>
   </div><!-- /page-videoads -->
@@ -3056,7 +3075,7 @@ const VADS_LANGS = [
 
 let vadsDuration = 15;
 let vadsScripts = {};
-let vadsVideoFile = null;
+let vadsVideoFiles = []; // array videotov
 
 function vadsSetDur(d) {
   vadsDuration = d;
@@ -3070,30 +3089,49 @@ function vadsSetDur(d) {
 
 function vadsInputChanged() { }
 
-function vadsHandleVideo(file) {
-  if (!file) return;
-  vadsVideoFile = file;
-  document.getElementById('vadsVideoLabel').textContent = '✓ ' + file.name;
-  document.getElementById('vadsVideoStatus').style.display = 'none';
-
-  // Preberi trajanje videa
+function vadsHandleVideos(files) {
+  if (!files || !files.length) return;
+  vadsVideoFiles = Array.from(files);
+  const list = document.getElementById('vadsVideoList');
+  if (list) list.innerHTML = vadsVideoFiles.map((f, i) =>
+    '<div style="display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 8px;background:var(--surface2);border-radius:5px">' +
+    '<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:var(--green);fill:none;stroke-width:2;flex-shrink:0"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>' +
+    '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>' +
+    '<button onclick="vadsRemoveVideo(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--text-tertiary);font-size:12px;padding:0 2px">×</button>' +
+    '</div>'
+  ).join('');
+  // Preberi trajanje prvega videa
   const videoEl = document.createElement('video');
   videoEl.preload = 'metadata';
   videoEl.onloadedmetadata = function() {
     URL.revokeObjectURL(videoEl.src);
     const dur = Math.round(videoEl.duration);
     vadsDuration = dur;
-    document.getElementById('vadsVideoDurLabel').textContent = dur;
+    const lbl = document.getElementById('vadsVideoDurLabel');
+    if (lbl) lbl.textContent = dur;
     document.getElementById('vadsDurAuto').style.display = 'block';
     document.getElementById('vadsDurManual').style.display = 'none';
-    console.log('[videoads] Video duration:', dur, 's');
   };
   videoEl.onerror = function() {
-    // Fallback na manual če ne more prebrati
     document.getElementById('vadsDurAuto').style.display = 'none';
     document.getElementById('vadsDurManual').style.display = 'flex';
   };
-  videoEl.src = URL.createObjectURL(file);
+  videoEl.src = URL.createObjectURL(vadsVideoFiles[0]);
+}
+
+function vadsHandleVideo(file) {
+  if (file) vadsHandleVideos([file]);
+}
+
+function vadsRemoveVideo(idx) {
+  vadsVideoFiles.splice(idx, 1);
+  if (vadsVideoFiles.length) vadsHandleVideos(vadsVideoFiles);
+  else {
+    const list = document.getElementById('vadsVideoList');
+    if (list) list.innerHTML = '';
+    document.getElementById('vadsDurAuto').style.display = 'none';
+    document.getElementById('vadsDurManual').style.display = 'flex';
+  }
 }
 
 async function vadsGenerate() {
@@ -3129,6 +3167,7 @@ async function vadsGenerate() {
     vadsScripts = data.scripts || {};
     status.textContent = '✓ Skripte generirane za ' + Object.keys(vadsScripts).length + ' jezikov';
     status.style.color = 'var(--green)';
+    vadsSaveHistory(input, vadsScripts, data.product);
 
     // Prikaži skripte
     VADS_LANGS.forEach(l => {
@@ -3197,7 +3236,7 @@ async function vadsGenerateAudio(langCode) {
     const srtUrl = URL.createObjectURL(srtBlob);
 
     player.style.display = 'block';
-    const hasVideo = !!vadsVideoFile;
+    const hasVideo = vadsVideoFiles.length > 0;
     const hasSrt = !!(data.srt);
     player.innerHTML = `
       <audio controls style="width:100%;height:36px">
@@ -3212,6 +3251,7 @@ async function vadsGenerateAudio(langCode) {
     `;
     status.style.color = 'var(--green)';
     status.textContent = '✓ Audio + podnapisi pripravljeni';
+    const zb = document.getElementById('vadsZipBtn'); if(zb) zb.style.display='flex';
     btn.innerHTML = '🔄 Regeneriraj';
     btn.disabled = false;
 
@@ -3224,7 +3264,7 @@ async function vadsGenerateAudio(langCode) {
 }
 
 async function _vadsMerge(langCode, btn, withSrt) {
-  if (!vadsVideoFile) return;
+  if (!vadsVideoFiles.length) return;
   const audioBlob = window._vadsAudioBlobs?.[langCode];
   if (!audioBlob) return;
 
@@ -3234,7 +3274,7 @@ async function _vadsMerge(langCode, btn, withSrt) {
 
   try {
     const formData = new FormData();
-    formData.append('video', vadsVideoFile, vadsVideoFile.name);
+    formData.append('video', vadsVideoFiles[0], vadsVideoFiles[0].name);
     formData.append('audio', audioBlob, 'audio.mp3');
     formData.append('lang', langCode);
     if (withSrt && window._vadsSrts?.[langCode]) {
@@ -3275,12 +3315,177 @@ async function vadsMergeVideoSrt(langCode, btn) {
 }
 
 async function vadsGenerateAllAudio() {
-  for (const l of VADS_LANGS) {
-    if (vadsScripts[l.code]) await vadsGenerateAudio(l.code);
+  const status = document.getElementById('vadsBulkStatus');
+  const langs = VADS_LANGS.filter(l => vadsScripts[l.code]);
+  for (let i = 0; i < langs.length; i++) {
+    if (status) status.textContent = 'Generiram ' + (i+1) + '/' + langs.length + '...';
+    await vadsGenerateAudio(langs[i].code);
+  }
+  if (status) status.textContent = '✓ Vse audio generirane';
+  // Pokaži ZIP gumb
+  const zipBtn = document.getElementById('vadsZipBtn');
+  if (zipBtn && window._vadsAudioBlobs && Object.keys(window._vadsAudioBlobs).length > 0) {
+    zipBtn.style.display = 'flex';
   }
 }
 
-updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();narcLoadHistory();karanLoadHistory();narcRenderLangFilter();setMetaWide(true);
+async function vadsDownloadAllZip() {
+  const btn = document.getElementById('vadsZipBtn');
+  const status = document.getElementById('vadsBulkStatus');
+  const origText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="vads-spinner" style="border-top-color:white"></div> Ustvarjam ZIP...'; }
+
+  try {
+    const { default: JSZip } = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+    const zip = new JSZip();
+    const hasVideos = vadsVideoFiles.length > 0;
+    const audioBlobs = window._vadsAudioBlobs || {};
+    const srts = window._vadsSrts || {};
+
+    let count = 0;
+    for (const [lang, blob] of Object.entries(audioBlobs)) {
+      const langName = VADS_LANGS.find(l => l.code === lang)?.name || lang;
+      if (status) status.textContent = 'Dodajam ' + langName + '...';
+
+      if (hasVideos) {
+        // Merge video + audio (+ srt) za vsak video
+        for (let vi = 0; vi < vadsVideoFiles.length; vi++) {
+          const videoFile = vadsVideoFiles[vi];
+          const formData = new FormData();
+          formData.append('video', videoFile, videoFile.name);
+          formData.append('audio', blob, 'audio.mp3');
+          formData.append('lang', lang);
+          if (srts[lang]) {
+            const srtBlob = new Blob([srts[lang]], {type: 'text/plain'});
+            formData.append('srt', srtBlob, 'subs.srt');
+          }
+          const res = await fetch('/merge-video-audio', {method: 'POST', body: formData});
+          if (res.ok) {
+            const videoBlob = await res.blob();
+            const suffix = vadsVideoFiles.length > 1 ? '_v' + (vi+1) : '';
+            zip.file('video_' + lang + suffix + '.mp4', videoBlob);
+            count++;
+          }
+        }
+      } else {
+        // Samo audio
+        zip.file('audio_' + lang + '.mp3', blob);
+        if (srts[lang]) zip.file('subs_' + lang + '.srt', srts[lang]);
+        count++;
+      }
+    }
+
+    if (status) status.textContent = 'Pakiranje ZIP...';
+    const zipBlob = await zip.generateAsync({type: 'blob'});
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'video_ads.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    if (status) status.textContent = '✓ ZIP prenesen (' + count + ' fajlov)';
+  } catch(e) {
+    if (status) status.textContent = '✗ Napaka: ' + e.message;
+    console.error(e);
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+}
+
+// ─── VIDEO ADS ZGODOVINA ─────────────────────────────────────────────────────
+
+async function vadsSaveHistory(input, scripts, product) {
+  try {
+    await fetch('/vads-history', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        input: input,
+        product: product || input.slice(0, 40),
+        scripts: scripts,
+        date: new Date().toLocaleString('sl-SI')
+      })
+    });
+    vadsLoadHistory();
+  } catch(e) {}
+}
+
+async function vadsLoadHistory() {
+  try {
+    const res = await fetch('/vads-history');
+    const data = await res.json();
+    const el = document.getElementById('vadsHistList');
+    if (!el) return;
+    if (!data.length) { el.innerHTML = '<div class="history-empty">Ni zgodovine.</div>'; return; }
+    el.innerHTML = data.slice().reverse().map((h, i) =>
+      `<div class="narc-hist-item" style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1;cursor:pointer" onclick="vadsLoadFromHistory(${data.length-1-i})">
+          <div style="font-weight:500;font-size:12px">🎬 ${esc(h.product||'Projekt')}</div>
+          <div class="narc-hist-date">${esc(h.date)}</div>
+        </div>
+        <button onclick="vadsDeleteHistoryItem(${data.length-1-i})" style="background:none;border:none;cursor:pointer;color:var(--text-tertiary);font-size:14px;padding:2px 4px;flex-shrink:0" title="Zbriši">🗑</button>
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
+
+async function vadsLoadFromHistory(idx) {
+  try {
+    const res = await fetch('/vads-history');
+    const data = await res.json();
+    if (!data[idx]) return;
+    const h = data[idx];
+
+    // Nastavi input
+    document.getElementById('vadsInput').value = h.input || '';
+    vadsScripts = h.scripts || {};
+
+    // Prikaži skripte
+    document.getElementById('vadsBulkBar').style.display = 'flex';
+    document.getElementById('vadsEmpty').style.display = 'none';
+    document.getElementById('vadsResults').style.display = 'flex';
+    document.getElementById('vadsResults').style.flexDirection = 'column';
+    document.getElementById('vadsResults').innerHTML = VADS_LANGS.map(l => {
+      const script = vadsScripts[l.code] || '';
+      if (!script) return '';
+      return `<div class="vads-lang-card" id="vadsCard-${l.code}">
+        <div class="vads-lang-header">${l.flag} ${l.name}</div>
+        <div class="vads-script">${esc(script)}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="vads-audio-btn generate" onclick="vadsGenerateAudio('${l.code}')" id="vadsAudioBtn-${l.code}">
+            🎙 Generiraj audio
+          </button>
+          <span class="vads-status" id="vadsAudioStatus-${l.code}"></span>
+        </div>
+        <div id="vadsAudioPlayer-${l.code}" style="margin-top:8px;display:none"></div>
+      </div>`;
+    }).filter(Boolean).join('');
+
+    document.getElementById('vadsGenStatus').style.display = 'block';
+    document.getElementById('vadsGenStatus').style.color = 'var(--green)';
+    document.getElementById('vadsGenStatus').textContent = '✓ Naloženo iz zgodovine: ' + (h.product || '');
+  } catch(e) {}
+}
+
+async function vadsDeleteHistoryItem(idx) {
+  if (!confirm('Zbrisati ta projekt?')) return;
+  try {
+    const res = await fetch('/vads-history');
+    let data = await res.json();
+    data.splice(idx, 1);
+    await fetch('/vads-history-set', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({history: data})});
+    vadsLoadHistory();
+  } catch(e) {}
+}
+
+async function vadsDeleteAllHistory() {
+  if (!confirm('Zbrisati vso zgodovino video projektov?')) return;
+  try {
+    await fetch('/vads-history-set', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({history: []})});
+    vadsLoadHistory();
+  } catch(e) {}
+}
+
+updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();narcLoadHistory();karanLoadHistory();vadsLoadHistory();narcRenderLangFilter();setMetaWide(true);
 
 // Drag & drop + SKU click — direktno, brez DOMContentLoaded
 (function(){
