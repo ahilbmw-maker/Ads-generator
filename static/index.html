@@ -984,9 +984,9 @@ input[type="text"].error { border-color: var(--red) !important; }
           <span class="slabel">UVOZI KARANTENO</span>
           <div id="karanDropZone" class="k-dropzone" style="margin-top:8px" onclick="document.getElementById('karanFileInput').click()">
             <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            <span style="font-size:12px">Klikni ali povleci Excel sem</span>
+            <span style="font-size:12px">Klikni ali povleci PDF sem</span>
           </div>
-          <input type="file" id="karanFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="karanHandleFile(this.files[0])">
+          <input type="file" id="karanFileInput" accept=".pdf" style="display:none" onchange="karanHandleFile(this.files[0])">
           <div id="karanUploadStatus" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center;display:none"></div>
         </div>
       </div>
@@ -2741,30 +2741,15 @@ async function karanHandleFile(file) {
   const status = document.getElementById('karanUploadStatus');
   status.style.display = 'block';
   status.style.color = 'var(--text-tertiary)';
-  status.textContent = 'Berem datoteko...';
+  status.textContent = 'Berem PDF...';
 
   try {
-    // Uporabi SheetJS za branje xlsx/xls/csv
-    const arrayBuffer = await file.arrayBuffer();
-    const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs');
-    const wb = XLSX.read(arrayBuffer, {type: 'array'});
-    // Vzami zadnji sheet (Table001 po navadi)
-    const sheetName = wb.SheetNames[wb.SheetNames.length - 1];
-    const ws = wb.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(ws, {defval: ''});
-
-    if (!rows.length) { status.style.color = 'var(--red)'; status.textContent = 'Napaka: prazen fajl.'; return; }
-
-    // Normalizacija kolon
-    karanData = rows.map(r => ({
-      product_id: String(r.product_id || r['product_id'] || ''),
-      sku: String(r.product_sku || r.sku || r.SKU || '').trim(),
-      title: String(r.title || r.naziv || r.Naziv || '').trim(),
-      stock: parseInt(r.stock || 0) || 0,
-      stock_actual: parseInt(r.stock_actual || 0) || 0,
-      position: String(r.position || r.pozicija || '').trim(),
-    })).filter(r => r.sku);
-
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/parse-karantena-pdf', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + data.error; return; }
+    karanData = data.rows;
     status.style.color = 'var(--green)';
     status.textContent = '✓ ' + karanData.length + ' postavk naloženih';
     karanRenderTable();
