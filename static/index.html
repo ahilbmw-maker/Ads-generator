@@ -1075,7 +1075,10 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
           <div class="field" style="margin-top:10px">
             <span class="flabel" style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Trajanje skripte</span>
-            <div style="display:flex;gap:6px">
+            <div id="vadsDurAuto" style="display:none;padding:8px 12px;background:var(--green-dim);border:1px solid var(--green-border);border-radius:var(--radius);font-size:12px;color:var(--green);font-weight:500">
+              🎬 Video: <span id="vadsVideoDurLabel">—</span>s → skripta prilagojena
+            </div>
+            <div id="vadsDurManual" style="display:flex;gap:6px">
               <button class="mode-btn on" id="vadsDur-15" onclick="vadsSetDur(15)" style="flex:1;padding:8px;font-size:12px;font-weight:500;cursor:pointer;border-radius:var(--radius);border:1.5px solid var(--accent-border);background:var(--accent-dim);color:var(--accent);font-family:'DM Sans',sans-serif">15s</button>
               <button class="mode-btn" id="vadsDur-30" onclick="vadsSetDur(30)" style="flex:1;padding:8px;font-size:12px;font-weight:500;cursor:pointer;border-radius:var(--radius);border:1.5px solid var(--border);background:var(--surface);color:var(--text-secondary);font-family:'DM Sans',sans-serif">30s</button>
             </div>
@@ -3072,6 +3075,25 @@ function vadsHandleVideo(file) {
   vadsVideoFile = file;
   document.getElementById('vadsVideoLabel').textContent = '✓ ' + file.name;
   document.getElementById('vadsVideoStatus').style.display = 'none';
+
+  // Preberi trajanje videa
+  const videoEl = document.createElement('video');
+  videoEl.preload = 'metadata';
+  videoEl.onloadedmetadata = function() {
+    URL.revokeObjectURL(videoEl.src);
+    const dur = Math.round(videoEl.duration);
+    vadsDuration = dur;
+    document.getElementById('vadsVideoDurLabel').textContent = dur;
+    document.getElementById('vadsDurAuto').style.display = 'block';
+    document.getElementById('vadsDurManual').style.display = 'none';
+    console.log('[videoads] Video duration:', dur, 's');
+  };
+  videoEl.onerror = function() {
+    // Fallback na manual če ne more prebrati
+    document.getElementById('vadsDurAuto').style.display = 'none';
+    document.getElementById('vadsDurManual').style.display = 'flex';
+  };
+  videoEl.src = URL.createObjectURL(file);
 }
 
 async function vadsGenerate() {
