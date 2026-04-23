@@ -879,9 +879,13 @@ input[type="text"].error { border-color: var(--red) !important; }
       <!-- DESNO: Rezultati -->
       <div class="kreative-right">
         <div class="card" style="min-height:500px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
             <span class="slabel">LOKALIZIRANE KREATIVE</span>
-            <span style="font-size:11px;color:var(--text-tertiary)" id="lokResultCount"></span>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:11px;color:var(--text-tertiary)" id="lokResultCount"></span>
+              <button id="lokDownloadAllBtn" onclick="lokDownloadAll()" style="display:none;padding:5px 10px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⬇ Vse</button>
+              <button id="lokAsanaAllBtn" onclick="lokAsanaAll()" style="display:none;padding:5px 10px;font-size:11px;font-weight:600;border:none;border-radius:6px;background:var(--accent);color:white;cursor:pointer;font-family:'DM Sans',sans-serif">→ Asana vse</button>
+            </div>
           </div>
           <div id="lokLoading" style="display:none;text-align:center;padding:2rem">
             <div class="spinner"></div>
@@ -2442,24 +2446,83 @@ async function lokGenerate() {
   btn.disabled = false;
 }
 
+let lokResultsData = [];
+
 function lokRenderResults(results) {
+  lokResultsData = results.filter(r => r.url);
   const grid = document.getElementById('lokResultsGrid');
+
+  const hasResults = lokResultsData.length > 0;
+  const dlBtn = document.getElementById('lokDownloadAllBtn');
+  const asBtn = document.getElementById('lokAsanaAllBtn');
+  if (dlBtn) dlBtn.style.display = hasResults ? 'inline-block' : 'none';
+  if (asBtn) asBtn.style.display = hasResults ? 'inline-block' : 'none';
+
   if (!results.length) { grid.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-tertiary)">Ni rezultatov.</div>'; return; }
   grid.innerHTML = results.map((r, i) => {
     if (!r.url) return (
       '<div class="k-img-card"><div class="k-img-combo">' + esc(r.lang||'?') + '</div>' +
       '<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:11px;padding:8px">' + esc(r.error||'Ni slike') + '</div></div>'
     );
+    const idx = lokResultsData.findIndex(x => x.url === r.url);
     return (
       '<div class="k-img-card">' +
-      '<div class="k-img-combo">' + esc(r.filename||r.lang) + (r.asana_ok ? ' ✓ Asana' : '') + '</div>' +
+      '<div class="k-img-combo">' + esc(r.filename||r.lang) + (r.asana_ok ? ' \u2713 Asana' : '') + '</div>' +
       '<div style="position:relative"><img src="' + esc(r.url) + '" loading="lazy" onmouseenter="kShowPreview(\'' + esc(r.url) + '\',event)" onmouseleave="kHidePreview()"></div>' +
       '<div class="k-img-actions">' +
-        '<button class="k-img-btn" onclick="lokDownload(\'' + esc(r.url) + '\',\'' + esc(r.filename||r.lang) + '\')">⬇</button>' +
-        '<button class="k-img-btn primary" onclick="kOpenAsanaModal(null)">→ Asana</button>' +
+        '<button class="k-img-btn" onclick="lokDownloadOne(' + idx + ')">\u2b07</button>' +
+        '<button class="k-img-btn primary" onclick="lokAsanaOne(' + idx + ')">\u2192 Asana</button>' +
       '</div></div>'
     );
   }).join('');
+}
+
+function lokDownloadOne(idx) {
+  const r = lokResultsData[idx];
+  if (!r) return;
+  const a = document.createElement('a');
+  a.href = r.url;
+  a.download = r.filename || (r.lang + '.png');
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function lokDownloadAll() {
+  if (!lokResultsData.length) return;
+  for (let i = 0; i < lokResultsData.length; i++) {
+    lokDownloadOne(i);
+    await new Promise(res => setTimeout(res, 300));
+  }
+}
+
+function lokAsanaOne(idx) {
+  const r = lokResultsData[idx];
+  if (!r || !r.url) return;
+  kAsanaPendingUrls = [r.url];
+  kAsanaSelectedTaskId = null;
+  kAsanaSelectedTaskName = '';
+  const lokUrl = document.getElementById('lokAsanaUrl')?.value?.trim();
+  document.getElementById('kAsanaUrlInput').value = lokUrl || '';
+  document.getElementById('kAsanaSearchResults').innerHTML = '';
+  document.getElementById('kAsanaSelected').textContent = '';
+  document.getElementById('kAsanaStatus').textContent = '1 slika pripravljena';
+  document.getElementById('kAsanaModal').classList.add('show');
+  if (lokUrl) kAsanaSearch(lokUrl);
+}
+
+function lokAsanaAll() {
+  if (!lokResultsData.length) return;
+  kAsanaPendingUrls = lokResultsData.map(r => r.url).filter(Boolean);
+  kAsanaSelectedTaskId = null;
+  kAsanaSelectedTaskName = '';
+  const lokUrl = document.getElementById('lokAsanaUrl')?.value?.trim();
+  document.getElementById('kAsanaUrlInput').value = lokUrl || '';
+  document.getElementById('kAsanaSearchResults').innerHTML = '';
+  document.getElementById('kAsanaSelected').textContent = '';
+  document.getElementById('kAsanaStatus').textContent = kAsanaPendingUrls.length + ' slik pripravljenih';
+  document.getElementById('kAsanaModal').classList.add('show');
+  if (lokUrl) kAsanaSearch(lokUrl);
 }
 
 // ── NAROČILNICE ──
