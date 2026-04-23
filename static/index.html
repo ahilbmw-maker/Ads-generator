@@ -1024,10 +1024,16 @@ input[type="text"].error { border-color: var(--red) !important; }
               </tbody>
             </table>
           </div>
-          <div id="karanSummary" class="karan-summary" style="display:none">
-            <span id="karanRowCount">0 postavk</span>
-            <span id="karanStockSum">0 kosov skupaj</span>
-            <span id="karanDupCount" style="color:#f59e0b">0 podvojenih SKU</span>
+          <div id="karanSummary" style="display:none;margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <button onclick="karanSetFilter('all')" id="karanFilter-all" class="narc-tab active" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1.5px solid var(--border);background:var(--surface2);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;color:var(--text-secondary)">
+              Vse · <span id="karanRowCount">0</span> postavk
+            </button>
+            <button onclick="karanSetFilter('dup')" id="karanFilter-dup" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1.5px solid #f59e0b;background:#fef3c7;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;color:#92400e;display:none">
+              ⚠ <span id="karanDupCount">0</span> podvojenih SKU
+            </button>
+            <span style="font-size:11px;color:var(--text-tertiary);padding:4px 10px;background:var(--surface2);border-radius:20px;border:1px solid var(--border)">
+              <span id="karanStockSum">0</span> kosov skupaj
+            </span>
           </div>
         </div>
       </div>
@@ -2737,6 +2743,17 @@ function narcSwitchTab(tab) {
 let karanData = [];
 let karanSortCol = 'sku';
 let karanSortAsc = true;
+let karanFilter = 'all';
+
+function karanSetFilter(f) {
+  karanFilter = f;
+  document.getElementById('karanFilter-all').style.background = f === 'all' ? 'var(--accent)' : 'var(--surface2)';
+  document.getElementById('karanFilter-all').style.color = f === 'all' ? 'white' : 'var(--text-secondary)';
+  document.getElementById('karanFilter-all').style.borderColor = f === 'all' ? 'var(--accent)' : 'var(--border)';
+  document.getElementById('karanFilter-dup').style.background = f === 'dup' ? '#f59e0b' : '#fef3c7';
+  document.getElementById('karanFilter-dup').style.color = f === 'dup' ? 'white' : '#92400e';
+  karanRenderTable();
+}
 
 function karanSort(col) {
   if (karanSortCol === col) karanSortAsc = !karanSortAsc;
@@ -2776,9 +2793,11 @@ function karanRenderTable() {
   karanData.forEach(r => { skuCount[r.sku] = (skuCount[r.sku] || 0) + 1; });
   const dupSkus = new Set(Object.keys(skuCount).filter(s => skuCount[s] > 1));
 
-  let rows = karanData.filter(r =>
-    !q || r.sku.toLowerCase().includes(q) || r.title.toLowerCase().includes(q)
-  );
+  let rows = karanData.filter(r => {
+    const matchQ = !q || r.sku.toLowerCase().includes(q) || r.title.toLowerCase().includes(q);
+    const matchF = karanFilter === 'dup' ? dupSkus.has(r.sku) : true;
+    return matchQ && matchF;
+  });
 
   rows.sort((a, b) => {
     let av = a[karanSortCol], bv = b[karanSortCol];
@@ -2814,10 +2833,11 @@ function karanRenderTable() {
   document.getElementById('karanTitle').textContent = 'KARANTENA — ' + karanData.length + ' postavk';
   const sum = document.getElementById('karanSummary');
   sum.style.display = karanData.length ? 'flex' : 'none';
-  document.getElementById('karanRowCount').textContent = karanData.length + ' postavk';
-  document.getElementById('karanStockSum').textContent = totalStock + ' kosov skupaj';
-  document.getElementById('karanDupCount').textContent = dupCount + ' podvojenih SKU';
-  document.getElementById('karanDupCount').style.display = dupCount ? 'inline' : 'none';
+  document.getElementById('karanRowCount').textContent = karanData.length;
+  document.getElementById('karanStockSum').textContent = totalStock;
+  document.getElementById('karanDupCount').textContent = dupCount;
+  const dupBtn = document.getElementById('karanFilter-dup');
+  if (dupBtn) dupBtn.style.display = dupCount ? 'inline-flex' : 'none';
 }
 
 // Drag & drop za karantena
