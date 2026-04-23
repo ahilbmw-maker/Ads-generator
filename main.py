@@ -300,10 +300,26 @@ EMOJI PRAVILO: Uporabljaj SAMO te emoji-je ki so zagotovo podprti na vseh naprav
 NE uporabljaj: redkih, novejših ali manj znanih emoji-jev ki se lahko prikažejo kot □
 Vrni SAMO JSON: {{"product": "ime", "pt": [{pt_ph}], "hl": [{hl_ph}]}}"""
 
-    sl_text = await call_claude(sl_prompt, "claude-sonnet-4-6", tools if tools else None, 4000)
+    try:
+        sl_text = await call_claude(sl_prompt, "claude-sonnet-4-6", tools if tools else None, 4000)
+    except Exception as e:
+        print(f"[generate_meta_sl_only] Claude API error: {e}")
+        return {"error": f"API napaka: {str(e)[:100]}"}
+    
+    print(f"[generate_meta_sl_only] raw response (first 200): {sl_text[:200]}")
     sl_data = parse_json_response(sl_text)
     if not sl_data:
-        return {"error": "Napaka pri generiranju SL tekstov."}
+        # Retry brez web search ce je bil URL mode
+        if mode == "url" and tools:
+            print(f"[generate_meta_sl_only] JSON parse failed, retrying without web search...")
+            try:
+                sl_text2 = await call_claude(sl_prompt, "claude-sonnet-4-6", None, 4000)
+                sl_data = parse_json_response(sl_text2)
+            except Exception as e2:
+                print(f"[generate_meta_sl_only] Retry failed: {e2}")
+        if not sl_data:
+            print(f"[generate_meta_sl_only] FAILED. Raw: {sl_text[:300]}")
+            return {"error": "Napaka pri generiranju SL tekstov."}
     return {
         "product": sl_data.get("product", "Izdelek"),
         "sl": {"pt": sl_data.get("pt", []), "hl": sl_data.get("hl", [])},
@@ -329,11 +345,24 @@ EMOJI PRAVILO: Uporabljaj SAMO te emoji-je ki so zagotovo podprti na vseh naprav
 NE uporabljaj: redkih, novejših ali manj znanih emoji-jev ki se lahko prikažejo kot □
 Vrni SAMO JSON: {{"product": "ime", "pt": [{pt_ph}], "hl": [{hl_ph}]}}"""
 
-        sl_text = await call_claude(sl_prompt, "claude-sonnet-4-6", tools if tools else None, 4000)
+        try:
+            sl_text = await call_claude(sl_prompt, "claude-sonnet-4-6", tools if tools else None, 4000)
+        except Exception as e:
+            print(f"[generate_meta_one] Claude API error: {e}")
+            return {"error": f"API napaka: {str(e)[:100]}"}
         sl_data = parse_json_response(sl_text)
         if not sl_data:
-            print(f"SL parse failed. Raw response: {sl_text[:500]}")
-            return {"error": "Napaka pri generiranju SL tekstov."}
+            print(f"[generate_meta_one] SL parse failed. Raw: {sl_text[:500]}")
+            # Retry brez web search
+            if mode == "url" and tools:
+                print(f"[generate_meta_one] Retrying without web search...")
+                try:
+                    sl_text2 = await call_claude(sl_prompt, "claude-sonnet-4-6", None, 4000)
+                    sl_data = parse_json_response(sl_text2)
+                except Exception as e2:
+                    print(f"[generate_meta_one] Retry failed: {e2}")
+            if not sl_data:
+                return {"error": "Napaka pri generiranju SL tekstov."}
 
         sl_pts = sl_data.get("pt", [])
         sl_hls = sl_data.get("hl", [])
