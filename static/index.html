@@ -3244,11 +3244,11 @@ async function vadsGenerateAudio(langCode) {
     window._vadsAudioBlobs = window._vadsAudioBlobs || {};
     window._vadsAudioBlobs[langCode] = blob;
 
-    // Shrani SRT
+    // Shrani SRT in ASS
     window._vadsSrts = window._vadsSrts || {};
-    window._vadsSrts[langCode] = data.srt || '';
+    window._vadsSrts[langCode] = data.ass || data.srt || '';
 
-    // SRT download URL
+    // SRT download URL (za ročni download)
     const srtBlob = new Blob([data.srt || ''], {type: 'text/plain'});
     const srtUrl = URL.createObjectURL(srtBlob);
 
