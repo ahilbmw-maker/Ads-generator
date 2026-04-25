@@ -1556,7 +1556,7 @@ async def save_forecast_eod(data: dict):
 
 # ─── KARANTENA PDF PARSER ─────────────────────────────────────────────────────
 
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Form
 import io
 import re as _re
 
@@ -1811,21 +1811,51 @@ def build_srt(alignment: dict) -> str:
     return "\n".join(lines)
 
 
-def build_ass(alignment: dict) -> str:
-    """Generira ASS karaoke podnapise — Stil B (bela+rumena, debela obroba)."""
+def get_subtitle_style_for_format(width: int, height: int) -> dict:
+    """Vrne optimalne subtitle nastavitve glede na video format."""
+    if width == 0 or height == 0:
+        # Default: assume 9:16
+        return {"fontsize": 64, "marginv": 100, "outline": 5, "max_words": 4, "playresx": 1080, "playresy": 1920}
+    
+    ratio = width / height
+    
+    if ratio < 0.7:
+        # 9:16 vertical (TikTok, Reels, Stories) — 0.5625
+        return {"fontsize": 64, "marginv": 100, "outline": 5, "max_words": 4, "playresx": width, "playresy": height}
+    elif ratio < 1.2:
+        # 1:1 square (Insta/FB feed) — 1.0
+        return {"fontsize": 50, "marginv": 70, "outline": 4, "max_words": 5, "playresx": width, "playresy": height}
+    elif ratio < 1.6:
+        # 4:3 (1.33)
+        return {"fontsize": 44, "marginv": 60, "outline": 4, "max_words": 5, "playresx": width, "playresy": height}
+    else:
+        # 16:9 horizontal (YouTube, etc.) — 1.78
+        return {"fontsize": 42, "marginv": 50, "outline": 3, "max_words": 6, "playresx": width, "playresy": height}
+
+
+def build_ass(alignment: dict, video_width: int = 1080, video_height: int = 1920) -> str:
+    """Generira ASS karaoke podnapise — Stil B (bela+rumena, debela obroba), prilagojen formatu."""
     words = _parse_words(alignment)
     if not words:
         return ""
 
-    # ASS header — Stil B: bela besedila, debela črna obroba, bold
-    header = """[Script Info]
+    style = get_subtitle_style_for_format(video_width, video_height)
+    fontsize = style["fontsize"]
+    marginv = style["marginv"]
+    outline = style["outline"]
+    max_words = style["max_words"]
+    playresx = style["playresx"]
+    playresy = style["playresy"]
+
+    # ASS header — prilagojen video formatu
+    header = f"""[Script Info]
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: {playresx}
+PlayResY: {playresy}
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Default,Arial,52,&H00FFFFFF,&H00FFD600,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,80,1
+Style: Default,Arial,{fontsize},&H00FFFFFF,&H00FFD600,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{outline},0,2,30,30,{marginv},1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
@@ -1836,12 +1866,12 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         sec, cs = int(s % 60), int((s - int(s)) * 100)
         return f"{h}:{m:02d}:{sec:02d}.{cs:02d}"
 
-    # Grupiraj v vrstice (max 4 besede)
+    # Grupiraj v vrstice (max max_words besed)
     lines_out = []
     i = 0
     while i < len(words):
         grp = [words[i]]; i += 1
-        while i < len(words) and len(grp) < 4 and (words[i][1] - grp[0][1]) < 2.5:
+        while i < len(words) and len(grp) < max_words and (words[i][1] - grp[0][1]) < 2.5:
             grp.append(words[i]); i += 1
 
         t_in = grp[0][1]
@@ -1955,6 +1985,7 @@ async def merge_video_audio(
                 f.write(await audio.read())
 
             has_srt = False
+            ass_content_orig = None
             if srt:
                 srt_content = await srt.read()
                 if srt_content.strip():
@@ -1962,11 +1993,49 @@ async def merge_video_audio(
                         f.write(srt_content)
                     # Poskusi parsati kot ASS (začne z [Script Info])
                     if srt_content.startswith(b'[Script Info]'):
-                        with open(ass_path, "wb") as f:
-                            f.write(srt_content)
+                        ass_content_orig = srt_content
                         has_srt = 'ass'
                     else:
-                        has_srt = 'srt' 
+                        has_srt = 'srt'
+
+            # Detect video dimensions z ffprobe za prilagoditev podnapisov
+            video_width, video_height = 0, 0
+            try:
+                probe_cmd = [
+                    "ffprobe", "-v", "error",
+                    "-select_streams", "v:0",
+                    "-show_entries", "stream=width,height",
+                    "-of", "csv=p=0",
+                    video_path
+                ]
+                probe_result = subprocess.run(probe_cmd, capture_output=True, timeout=10)
+                if probe_result.returncode == 0:
+                    dims = probe_result.stdout.decode().strip().split(',')
+                    if len(dims) == 2:
+                        video_width = int(dims[0])
+                        video_height = int(dims[1])
+                        print(f"[merge] Video {video_width}x{video_height} ratio={video_width/video_height:.2f}")
+            except Exception as e:
+                print(f"[merge] ffprobe failed: {e}")
+
+            # Če imamo ASS — adaptiraj nastavitve glede na format
+            if has_srt == 'ass' and ass_content_orig and video_width > 0 and video_height > 0:
+                style = get_subtitle_style_for_format(video_width, video_height)
+                # Prepiši Style: Default vrstico v ASS s pravimi parametri za format
+                ass_text = ass_content_orig.decode('utf-8', errors='replace')
+                # Prepiši PlayResX/PlayResY
+                ass_text = re.sub(r'PlayResX:\s*\d+', f'PlayResX: {style["playresx"]}', ass_text)
+                ass_text = re.sub(r'PlayResY:\s*\d+', f'PlayResY: {style["playresy"]}', ass_text)
+                # Prepiši Style: Default vrstico
+                new_style = f'Style: Default,Arial,{style["fontsize"]},&H00FFFFFF,&H00FFD600,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{style["outline"]},0,2,30,30,{style["marginv"]},1'
+                ass_text = re.sub(r'Style:\s*Default,[^\n]+', new_style, ass_text)
+                with open(ass_path, "wb") as f:
+                    f.write(ass_text.encode('utf-8'))
+                print(f"[merge] Adapted ASS for {video_width}x{video_height}: fontsize={style['fontsize']}, marginv={style['marginv']}")
+            elif has_srt == 'ass' and ass_content_orig:
+                # Ni dimensions — uporabi originalni ASS
+                with open(ass_path, "wb") as f:
+                    f.write(ass_content_orig)
 
             if has_srt:
                 # ASS karaoke ali SRT fallback
@@ -1974,7 +2043,9 @@ async def merge_video_audio(
                 if has_srt == 'ass':
                     vf = f"ass={sub_file}"
                 else:
-                    vf = f"subtitles={sub_file}:force_style='FontName=Arial,FontSize=52,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=4,Bold=1,Alignment=2,MarginV=80'"
+                    # SRT fallback — prilagodi format glede na video
+                    s = get_subtitle_style_for_format(video_width, video_height)
+                    vf = f"subtitles={sub_file}:force_style='FontName=Arial,FontSize={s['fontsize']},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline={s['outline']},Bold=1,Alignment=2,MarginV={s['marginv']}'"
                 cmd = [
                     "ffmpeg", "-y",
                     "-i", video_path,
@@ -2078,3 +2149,49 @@ async def set_vads_history(data: dict):
         return {"status": "ok"}
     except Exception as e:
         return {"error": str(e)}
+
+
+
+
+# ─── ASANA ATTACH BINARY (za ZIP, video, audio) ───────────────────────────────
+
+@app.post("/asana-attach-binary")
+async def asana_attach_binary(
+    task_id: str = Form(...),
+    file: UploadFile = File(...),
+    filename: str = Form(None)
+):
+    """Priloži binarni fajl (ZIP, MP4, MP3) na Asana task."""
+    if not task_id:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Manjka task_id."}, status_code=400)
+
+    token = os.environ.get("ASANA_API_KEY", "")
+    if not token:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "ASANA_API_KEY ni nastavljen."}, status_code=400)
+
+    try:
+        content = await file.read()
+        upload_filename = filename or file.filename or "attachment"
+        mime = file.content_type or "application/octet-stream"
+
+        async with httpx.AsyncClient(timeout=120.0) as hc:
+            files = {"file": (upload_filename, content, mime)}
+            attach_resp = await hc.post(
+                f"{ASANA_API}/tasks/{task_id}/attachments",
+                headers={"Authorization": f"Bearer {token}"},
+                files=files
+            )
+
+        if attach_resp.status_code in (200, 201):
+            return {"status": "ok", "filename": upload_filename, "size": len(content)}
+        else:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                {"error": f"Asana napaka {attach_resp.status_code}: {attach_resp.text[:200]}"},
+                status_code=400
+            )
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
