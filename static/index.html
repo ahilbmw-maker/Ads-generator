@@ -3355,11 +3355,27 @@ async function vadsMergeVideoSrt(langCode, btn) {
 async function vadsGenerateAllAudio() {
   const status = document.getElementById('vadsBulkStatus');
   const langs = VADS_LANGS.filter(l => vadsScripts[l.code]);
-  for (let i = 0; i < langs.length; i++) {
-    if (status) status.textContent = 'Generiram ' + (i+1) + '/' + langs.length + '...';
-    await vadsGenerateAudio(langs[i].code);
-  }
-  if (status) status.textContent = '✓ Vse audio generirane';
+
+  if (status) status.textContent = 'Generiram ' + langs.length + ' jezikov hkrati...';
+
+  // Counter za progress prikaz
+  let completed = 0;
+  const updateProgress = () => {
+    completed++;
+    if (status) status.textContent = 'Dokončano ' + completed + '/' + langs.length + '...';
+  };
+
+  // VZPOREDNO generiranje vseh audio fajlov
+  await Promise.all(langs.map(async (l) => {
+    try {
+      await vadsGenerateAudio(l.code);
+    } catch (e) {
+      console.error('Audio fail za', l.code, e);
+    }
+    updateProgress();
+  }));
+
+  if (status) status.textContent = '✓ Vse audio generirane (' + completed + '/' + langs.length + ')';
   // Pokaži ZIP gumb
   const zipBtn = document.getElementById('vadsZipBtn');
   if (zipBtn && window._vadsAudioBlobs && Object.keys(window._vadsAudioBlobs).length > 0) {
