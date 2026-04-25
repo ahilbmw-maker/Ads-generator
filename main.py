@@ -438,7 +438,8 @@ def build_tiktok_xlsx(sku: str, brand: str, video_names: str,
     today = datetime.now().strftime('%-d_%-m_%Y')
     new_campaign = f'[{brand}] Smart+ {sku} - {today}'
 
-    rows_to_skip = []
+    # Zberemo vse template vrstice najprej
+    tmpl_data = []
     for row in ws.iter_rows(min_row=2):
         r = row[0].row
         country = ws.cell(row=r, column=col_ag).value
@@ -446,20 +447,38 @@ def build_tiktok_xlsx(sku: str, brand: str, video_names: str,
             continue
         lang = COUNTRY_TO_LANG.get(country)
         if skip_rs and lang == 'rs':
-            rows_to_skip.append(r)
             continue
-        ws.cell(row=r, column=col_campaign).value = new_campaign
-        ws.cell(row=r, column=col_bc_id).value = new_bc_id
-        ws.cell(row=r, column=col_video).value = video_names
-        if lang and lang in texts_by_lang:
-            ws.cell(row=r, column=col_text).value = texts_by_lang[lang]
-        # URL: uporabi lang-specifičen če obstaja, sicer fallback na glavni url
-        url = (urls_by_lang.get(lang) if lang else None) or next(iter(urls_by_lang.values()), '')
-        if url:
-            ws.cell(row=r, column=col_url).value = url
+        row_vals = [ws.cell(row=r, column=c+1).value for c in range(len(headers))]
+        tmpl_data.append({'country': country, 'lang': lang, 'row_vals': row_vals})
 
-    for r in sorted(rows_to_skip, reverse=True):
-        ws.delete_rows(r)
+    # Počisti vse vrstice razen headerja
+    ws.delete_rows(2, ws.max_row)
+
+    # Ustvari novo vrstico za vsako varianto
+    out_row = 2
+    fallback_url = next(iter(urls_by_lang.values()), '') if urls_by_lang else ''
+    for td in tmpl_data:
+        lang = td['lang']
+        raw_text = texts_by_lang.get(lang, '') if lang else ''
+        # Split variante: [tekst1],[tekst2],[tekst3],[tekst4]
+        variants = [v.strip() for v in re.findall(r'\[([^\]]+)\]', raw_text)] if raw_text else [raw_text]
+        if not variants:
+            variants = [raw_text]
+        url = (urls_by_lang.get(lang) if lang else None) or fallback_url
+
+        for variant in variants:
+            # Kopiraj vse originalne vrednosti
+            for c_idx, val in enumerate(td['row_vals'], 1):
+                ws.cell(row=out_row, column=c_idx).value = val
+            # Prepiši naše vrednosti
+            ws.cell(row=out_row, column=col_campaign).value = new_campaign
+            ws.cell(row=out_row, column=col_bc_id).value = new_bc_id
+            ws.cell(row=out_row, column=col_video).value = video_names
+            ws.cell(row=out_row, column=col_text).value = variant
+            if url:
+                ws.cell(row=out_row, column=col_url).value = url
+            out_row += 1
+
     out_path = str(EXPORTS_DIR / f"tiktok_{sku}_{uuid.uuid4().hex[:8]}.xlsx")
     wb.save(out_path)
     return out_path
