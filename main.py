@@ -518,11 +518,12 @@ def build_master_xlsx(skus: list) -> str:
         video_names = sku_entry.get('videos', '')
         texts_by_lang = sku_entry.get('texts', {})
         urls_by_lang = sku_entry.get('urls', {})
-        # Fallback: če urls prazen, uporabi url za vse jezike (vse možne lang kode)
-        if not urls_by_lang and sku_entry.get('url'):
-            fallback = sku_entry['url']
-            all_langs = list(COUNTRY_TO_LANG.values()) + ['sl','hr','rs','hu','cz','sk','pl','gr','ro','bg']
-            urls_by_lang = {lang: fallback for lang in set(all_langs)}
+        fallback_url = sku_entry.get('url') or sku_entry.get('source_url') or ''
+        print(f"[master] SKU={sku} url={fallback_url!r} urls={urls_by_lang}")
+        # Fallback: če urls prazen, uporabi url za vse jezike
+        if not urls_by_lang and fallback_url:
+            all_langs = list(set(list(COUNTRY_TO_LANG.values()) + ['sl','hr','rs','hu','cz','sk','pl','gr','ro','bg']))
+            urls_by_lang = {lang: fallback_url for lang in all_langs}
         print(f"[master] SKU={sku} urls_by_lang keys={list(urls_by_lang.keys())[:5]}")
 
         videos = [v.strip() for v in re.findall(r'\[([^\]]+)\]', video_names)]
