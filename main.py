@@ -216,6 +216,7 @@ Pravila:
 - Brez emojiev, brez # in {{}}
 - Kratek, direkten, akcijski stil
 - Vsaka varianta drugačen pristop (korist, socialni dokaz, nujnost, radovednost)
+- OBVEZNO obdaj vsako varianto z oglatimi oklepaji: [varianta1],[varianta2],[varianta3],[varianta4]
 - Brez "kakovost/dostava/zaloga" strukture — bodi kreativen
 
 Jeziki: SL (izvirnik), HR (latinica), RS (SAMO latinica!), HU, CZ, SK, PL, GR (grška pisava), RO (latinica), BG (SAMO cirilica!).
@@ -223,16 +224,16 @@ Jeziki: SL (izvirnik), HR (latinica), RS (SAMO latinica!), HU, CZ, SK, PL, GR (g
 KRITIČNO VAŽNO: Vrni IZKLJUČNO in SAMO JSON — nobenih uvodnih besed, nobenih razlag, nobenih komentarjev, nobenih markdown backticks. Prva in zadnja stvar v odgovoru mora biti {{ in }}. Nič drugega.
 {{
   "product": "ime",
-  "sl": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "hr": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "rs": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "hu": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "cz": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "sk": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "pl": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "gr": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "ro": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "bg": "[tekst1],[tekst2],[tekst3],[tekst4]"
+  "sl": "[VARIANTA1],[VARIANTA2],[VARIANTA3],[VARIANTA4]",
+  "hr": "[VARIANTA1],[VARIANTA2],[VARIANTA3],[VARIANTA4]",
+  "rs": "[VARIANTA1],[VARIANTA2],[VARIANTA3],[VARIANTA4]",
+  "hu": "[VARIANTA1],[VARIANTA2],[VARIANTA3],[VARIANTA4]",
+  "cz": "[VARIANTA1],[VARIANTA2],[VARIANTA3],[VARIANTA4]",
+  "sk": "[VARIANTA1],[VARIANTA2],[VARIANTA3],[VARIANTA4]",
+  "pl": "[VARIANTA1],[VARIANTA2],[VARIANTA3],[VARIANTA4]",
+  "gr": "[VARIANTA1],[VARIANTA2],[VARIANTA3],[VARIANTA4]",
+  "ro": "[VARIANTA1],[VARIANTA2],[VARIANTA3],[VARIANTA4]",
+  "bg": "[VARIANTA1],[VARIANTA2],[VARIANTA3],[VARIANTA4]"
 }}\n"""
 
 
@@ -464,7 +465,14 @@ def build_tiktok_xlsx(sku: str, brand: str, video_names: str,
         lang = td['lang']
         raw_text = texts_by_lang.get(lang, '') if lang else ''
         # Split variante: [tekst1],[tekst2],[tekst3],[tekst4]
-        variants = [v.strip() for v in re.findall(r'\[([^\]]+)\]', raw_text)] if raw_text else [raw_text]
+        # Poskusi [] format najprej, sicer splittaj po vejici (Claude vrne variante ločene z vejico)
+        if '[' in raw_text and ']' in raw_text:
+            variants = [v.strip() for v in re.findall(r'\[([^\]]+)\]', raw_text)]
+        elif raw_text:
+            # Split po vejici — vsaka varianta je ločena z vejico
+            variants = [v.strip() for v in raw_text.split(',') if v.strip()]
+        else:
+            variants = []
         if not variants:
             variants = [raw_text]
         url = (urls_by_lang.get(lang) if lang else None) or fallback_url
