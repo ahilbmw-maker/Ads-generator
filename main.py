@@ -30,6 +30,8 @@ EXPORTS_DIR.mkdir(exist_ok=True)
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 DATA_DIR.mkdir(exist_ok=True, parents=True)
 TT_HISTORY_FILE = DATA_DIR / "tiktok_history.json"
+SCRAPE_CACHE_FILE = DATA_DIR / "scrape_cache.json"
+SCRAPE_CACHE_DAYS = 30  # cache veljaven 30 dni
 META_HISTORY_FILE = DATA_DIR / "meta_history.json"
 KREATIVE_HISTORY_FILE = DATA_DIR / "kreative_history.json"
 FORECAST_ENTRIES_FILE = DATA_DIR / "forecast_entries.json"
@@ -137,6 +139,115 @@ def detect_brand(url: str) -> Optional[str]:
             if domain == d.replace("www.", ""):
                 return brand
     return None
+
+
+def _normalize_url(url: str) -> str:
+    """Normaliziraj URL: odstrani query parametre in fragmente."""
+    if not url:
+        return ""
+    try:
+        from urllib.parse import urlparse, urlunparse
+        p = urlparse(url.strip().lower())
+        # Obdrži scheme, netloc, path; odstrani query, fragment
+        return urlunparse((p.scheme, p.netloc, p.path.rstrip('/'), '', '', ''))
+    except:
+        return url.strip()
+
+
+def _load_scrape_cache() -> dict:
+    if SCRAPE_CACHE_FILE.exists():
+        try:
+            return json.loads(SCRAPE_CACHE_FILE.read_text(encoding="utf-8"))
+        except:
+            return {}
+    return {}
+
+
+def _save_scrape_cache(cache: dict) -> None:
+    try:
+        SCRAPE_CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        print(f"[scrape-cache] save error: {e}")
+
+
+async def get_product_info_cached(url: str) -> dict:
+    """Vrne {title, description} — iz cache če <30 dni, sicer fetcha in shrani."""
+    if not url:
+        return {"title": "", "description": "", "url": url}
+
+    norm_url = _normalize_url(url)
+    cache = _load_scrape_cache()
+
+    # Preveri cache
+    entry = cache.get(norm_url)
+    if entry:
+        try:
+            scraped_at = datetime.fromisoformat(entry.get("scraped_at", ""))
+            age_days = (datetime.now() - scraped_at).days
+            if age_days < SCRAPE_CACHE_DAYS:
+                print(f"[scrape-cache] HIT (age={age_days}d) for {norm_url}")
+                return {
+                    "title": entry.get("title", ""),
+                    "description": entry.get("description", ""),
+                    "url": url,
+                }
+        except Exception as e:
+            print(f"[scrape-cache] parse error: {e}")
+
+    # Cache miss — fetcha
+    print(f"[scrape-cache] MISS — fetching {norm_url}")
+    title, description = "", ""
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as hc:
+            resp = await hc.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            if resp.status_code == 200:
+                html = resp.text
+                # Izloci title
+                m = re.search(r'<title[^>]*>([^<]+)</title>', html, re.IGNORECASE)
+                if m:
+                    title = m.group(1).strip()[:300]
+                # Izloci meta description
+                m = re.search(r'<meta\s+name=["\']description["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+                if not m:
+                    m = re.search(r'<meta\s+content=["\']([^"\']+)["\']\s+name=["\']description["\']', html, re.IGNORECASE)
+                if m:
+                    description = m.group(1).strip()[:1500]
+                # Fallback: preberi prvih ~2000 znakov main vsebine
+                if not description:
+                    # Odstrani style/script
+                    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', html, flags=re.DOTALL|re.IGNORECASE)
+                    text = re.sub(r'<[^>]+>', ' ', text)
+                    text = re.sub(r'\s+', ' ', text).strip()
+                    description = text[:1500]
+    except Exception as e:
+        print(f"[scrape-cache] fetch error for {url}: {e}")
+        return {"title": "", "description": "", "url": url, "error": str(e)}
+
+    # Shrani v cache
+    cache[norm_url] = {
+        "title": title,
+        "description": description,
+        "scraped_at": datetime.now().isoformat(),
+    }
+    _save_scrape_cache(cache)
+    print(f"[scrape-cache] SAVED title={title[:60]!r} desc_len={len(description)}")
+
+    return {"title": title, "description": description, "url": url}
+
+
+def _build_product_context(info: dict) -> str:
+    """Vrne formatiran context za vstavitev v prompt."""
+    title = info.get("title", "")
+    desc = info.get("description", "")
+    url = info.get("url", "")
+    parts = []
+    if title:
+        parts.append(f"Naslov izdelka: {title}")
+    if desc:
+        parts.append(f"Opis izdelka: {desc}")
+    if url:
+        parts.append(f"URL: {url}")
+    return "\n".join(parts)
 
 
 def find_product_urls(source_url: Optional[str]) -> dict:
@@ -287,10 +398,22 @@ async def generate_meta_sl_only(user_msg: str, mode: str, source_url: Optional[s
                                 pt_count: int, hl_count: int) -> dict:
     """Generira samo SL tekste brez prevajanja — za streaming mode."""
     product_urls = find_product_urls(source_url)
-    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
+
+    # Cache scrape - če je URL, vstavi title+opis direktno v prompt (brez web_search)
+    product_context = ""
+    tools = []
+    if mode == "url" and source_url:
+        info = await get_product_info_cached(source_url)
+        product_context = _build_product_context(info)
+        # Če scrape failne (prazen context), fallback na web_search
+        if not product_context:
+            tools = [{"type": "web_search_20250305", "name": "web_search"}]
+            print(f"[scrape-cache] empty context, falling back to web_search for {source_url}")
     pt_ph = ", ".join([f'"PT {i+1}"' for i in range(pt_count)])
     hl_ph = ", ".join([f'"HL {i+1}"' for i in range(hl_count)])
-    sl_prompt = f"""{user_msg}
+
+    base_msg = product_context if product_context else user_msg
+    sl_prompt = f"""{base_msg}
 
 Ustvari Meta oglase SAMO v slovenščini.
 Primary Text ({pt_count}x): 2-3 vrstice, 2-3 emoji-ji, prodajni ton, brez cen, vsak DRUGAČEN.
@@ -314,12 +437,21 @@ Vrni SAMO JSON: {{"product": "ime", "pt": [{pt_ph}], "hl": [{hl_ph}]}}"""
 async def generate_meta_one(user_msg: str, mode: str, source_url: Optional[str],
                             pt_count: int, hl_count: int, qmode: str) -> dict:
     product_urls = find_product_urls(source_url)
-    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
+
+    # Cache scrape
+    product_context = ""
+    tools = []
+    if mode == "url" and source_url:
+        info = await get_product_info_cached(source_url)
+        product_context = _build_product_context(info)
+        if not product_context:
+            tools = [{"type": "web_search_20250305", "name": "web_search"}]
+            print(f"[scrape-cache] empty context, falling back to web_search for {source_url}")
 
     if qmode == "fast":
         pt_ph = ", ".join([f'"PT {i+1}"' for i in range(pt_count)])
         hl_ph = ", ".join([f'"HL {i+1}"' for i in range(hl_count)])
-        sl_prompt = f"""{user_msg}
+        sl_prompt = f"""{product_context if product_context else user_msg}
 
 Ustvari Meta oglase SAMO v slovenščini.
 Primary Text ({pt_count}x): 2-3 vrstice, 2-3 emoji-ji, prodajni ton, brez cen, vsak DRUGAČEN.
@@ -392,7 +524,18 @@ Vrni SAMO JSON:
 
 async def generate_tiktok_one(user_msg: str, mode: str, source_url: Optional[str]) -> dict:
     product_urls = find_product_urls(source_url)
-    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
+
+    # Cache scrape
+    tools = []
+    if mode == "url" and source_url:
+        info = await get_product_info_cached(source_url)
+        product_context = _build_product_context(info)
+        if product_context:
+            user_msg = f"{product_context}\n\nUstvari TikTok oglase za ta izdelek."
+        else:
+            tools = [{"type": "web_search_20250305", "name": "web_search"}]
+            print(f"[scrape-cache] empty context, falling back to web_search for {source_url}")
+
     prompt = build_tiktok_prompt(user_msg)
     text = await call_claude(prompt, "claude-sonnet-4-6", tools if tools else None)
     data = parse_json_response(text)
@@ -974,18 +1117,21 @@ async def analyze_product_kreative(data: dict):
     if not url:
         return {"error": "Manjka URL."}
 
-    # Fetch page
-    try:
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as hc:
-            resp = await hc.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            html = resp.text if resp.status_code == 200 else ""
-    except Exception as e:
-        return {"error": f"Ne morem prebrati strani: {e}"}
+    # Cache scrape — uporabi cached title+description
+    info = await get_product_info_cached(url)
+    if info.get("error"):
+        return {"error": f"Ne morem prebrati strani: {info['error']}"}
 
+    title = info.get("title", "")
+    description = info.get("description", "")
+    if not title and not description:
+        return {"error": "Stran ni vrnila vsebine."}
 
-    # Build prompt for Claude to analyze product
-    tools = [{"type": "web_search_20250305", "name": "web_search"}]
-    analysis_prompt = f"""Preberi to spletno stran izdelka: {url}
+    # Build prompt — context vstavljen direktno (brez web_search)
+    tools = None  # ni več potreben web_search
+    analysis_prompt = f"""Naslov izdelka: {title}
+Opis izdelka: {description}
+URL: {url}
 
 Na podlagi opisa izdelka generiraj strukturirane podatke za kreative FB oglasov.
 
@@ -1047,7 +1193,7 @@ bOptions: "before/after planting" | "planting demo" | "grid effect"
 
 Sedaj generiraj za izdelek na tej strani po ISTEM vzorcu:"""
 
-    text = await call_claude(analysis_prompt, "claude-sonnet-4-6", tools, 2000)
+    text = await call_claude(analysis_prompt, "claude-sonnet-4-6", None, 2000)
     result = parse_json_response(text)
 
     if not result:
@@ -1712,13 +1858,26 @@ async def generate_video_scripts(data: dict):
         return {"error": "Manjka vnos."}
 
     mode = "url" if input_text.startswith("http") else "text"
-    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
+
+    # Cache scrape za URL — vstavi title+opis direktno (brez web_search)
+    product_context = ""
+    tools = []
+    if mode == "url":
+        info = await get_product_info_cached(input_text)
+        product_context = _build_product_context(info)
+        if not product_context:
+            tools = [{"type": "web_search_20250305", "name": "web_search"}]
+            print(f"[scrape-cache] empty context, falling back to web_search for {input_text}")
+
     # ~2.5 besede/sekundo za naravni govorni tempo, -1s buffer
     words = max(20, min(120, int((duration - 1) * 2.5)))
 
-    prompt = f"""{'Preberi to stran in' if mode == 'url' else 'Na podlagi tega opisa'} ustvari voice over skripte za video oglas v 10 jezikih.
+    if mode == "url" and product_context:
+        intro = f"{product_context}\n\nNa podlagi teh podatkov ustvari voice over skripte za video oglas v 10 jezikih."
+    else:
+        intro = f"Na podlagi tega opisa ustvari voice over skripte za video oglas v 10 jezikih.\n\nOpis: {input_text}"
 
-{'Stran: ' + input_text if mode == 'url' else 'Opis: ' + input_text}
+    prompt = f"""{intro}
 
 Pravila:
 - Točno {words} besed na jezik (±5)
@@ -2072,3 +2231,55 @@ async def set_vads_history(data: dict):
         return {"status": "ok"}
     except Exception as e:
         return {"error": str(e)}
+
+
+# ─── SCRAPE CACHE ENDPOINTS ───────────────────────────────────────────────────
+
+@app.get("/scrape-cache-stats")
+async def scrape_cache_stats():
+    """Debug: pregled scrape cache."""
+    cache = _load_scrape_cache()
+    now = datetime.now()
+    items = []
+    for url, entry in cache.items():
+        try:
+            scraped_at = datetime.fromisoformat(entry.get("scraped_at", ""))
+            age_days = (now - scraped_at).days
+        except:
+            age_days = -1
+        items.append({
+            "url": url,
+            "title": entry.get("title", "")[:80],
+            "scraped_at": entry.get("scraped_at", ""),
+            "age_days": age_days,
+            "expired": age_days >= SCRAPE_CACHE_DAYS,
+        })
+    items.sort(key=lambda x: x["age_days"])
+    return {
+        "total": len(items),
+        "valid": sum(1 for i in items if not i["expired"]),
+        "expired": sum(1 for i in items if i["expired"]),
+        "items": items,
+    }
+
+
+@app.post("/scrape-cache-refresh")
+async def scrape_cache_refresh(data: dict):
+    """Force refresh za URL."""
+    url = data.get("url", "").strip()
+    if not url:
+        return {"error": "Manjka URL."}
+    norm = _normalize_url(url)
+    cache = _load_scrape_cache()
+    if norm in cache:
+        del cache[norm]
+        _save_scrape_cache(cache)
+    info = await get_product_info_cached(url)
+    return {"status": "ok", "info": info}
+
+
+@app.post("/scrape-cache-clear")
+async def scrape_cache_clear():
+    """Zbriše ves cache."""
+    _save_scrape_cache({})
+    return {"status": "ok"}
