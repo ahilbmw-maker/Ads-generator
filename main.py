@@ -457,6 +457,9 @@ def build_tiktok_xlsx(sku: str, brand: str, video_names: str,
     # Ustvari novo vrstico za vsako varianto
     out_row = 2
     fallback_url = next(iter(urls_by_lang.values()), '') if urls_by_lang else ''
+    print(f'[tiktok-xlsx] tmpl_data={len(tmpl_data)} rows, texts_by_lang keys={list(texts_by_lang.keys())}')
+    for lang_k, lang_v in texts_by_lang.items():
+        print(f'  [{lang_k}] = {repr(lang_v[:60])}')
     for td in tmpl_data:
         lang = td['lang']
         raw_text = texts_by_lang.get(lang, '') if lang else ''
