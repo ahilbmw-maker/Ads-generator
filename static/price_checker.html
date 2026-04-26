@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Price Checker — Maaarket</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #21262d;
+    --border: #30363d;
+    --green: #40c150;
+    --green-dim: rgba(64,193,80,0.12);
+    --red: #f85149;
+    --red-dim: rgba(248,81,73,0.12);
+    --yellow: #e3b341;
+    --yellow-dim: rgba(227,179,65,0.12);
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    min-height: 100vh;
+  }
+
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--green);
+    letter-spacing: -0.5px;
+  }
+
+  .logo span { color: var(--muted); font-weight: 400; }
+
+  .upload-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .btn {
+    background: var(--green);
+    color: #000;
+    font-family: var(--font);
+    font-weight: 700;
+    font-size: 12px;
+    padding: 8px 16px;
+    border: none;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn.secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  #fileInput { display: none; }
+
+  .stats-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 32px;
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .stat-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+
+  .stat-num { font-weight: 700; font-size: 14px; }
+  .stat-label { color: var(--muted); }
+
+  .filters {
+    padding: 16px 32px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .filter-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--font);
+    font-size: 11px;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.5px;
+  }
+
+  .filter-btn:hover, .filter-btn.active {
+    border-color: var(--green);
+    color: var(--green);
+    background: var(--green-dim);
+  }
+
+  .filter-btn.f-red.active { border-color: var(--red); color: var(--red); background: var(--red-dim); }
+  .filter-btn.f-yellow.active { border-color: var(--yellow); color: var(--yellow); background: var(--yellow-dim); }
+
+  .search-input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 5px 12px;
+    outline: none;
+    width: 200px;
+    transition: border-color 0.15s;
+  }
+  .search-input:focus { border-color: var(--green); }
+  .search-input::placeholder { color: var(--muted); }
+
+  .table-wrap {
+    overflow-x: auto;
+    padding: 0 32px 40px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+  }
+
+  th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  th:hover { color: var(--text); }
+
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(48,54,61,0.5);
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  tr:hover td { background: var(--surface2); }
+
+  .row-error td:first-child { border-left: 3px solid var(--red); }
+  .row-warn td:first-child { border-left: 3px solid var(--yellow); }
+  .row-ok td:first-child { border-left: 3px solid var(--green); }
+
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-error { background: var(--red-dim); color: var(--red); border: 1px solid rgba(248,81,73,0.3); }
+  .badge-warn { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(227,179,65,0.3); }
+  .badge-ok { background: var(--green-dim); color: var(--green); border: 1px solid rgba(64,193,80,0.3); }
+
+  .price-old { color: var(--muted); text-decoration: line-through; margin-right: 6px; font-size: 11px; }
+  .price-new { color: var(--green); font-weight: 700; }
+  .price-ok { color: var(--text); }
+
+  .id-badge {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 10px;
+    padding: 2px 6px;
+    font-family: var(--font);
+  }
+
+  .empty {
+    text-align: center;
+    padding: 80px 32px;
+    color: var(--muted);
+  }
+
+  .empty h2 { font-size: 24px; color: var(--text); margin-bottom: 8px; }
+  .empty p { font-size: 13px; margin-bottom: 24px; line-height: 1.6; }
+
+  .drop-zone {
+    border: 2px dashed var(--border);
+    padding: 60px;
+    text-align: center;
+    margin: 32px;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--green);
+    background: var(--green-dim);
+  }
+  .drop-zone h3 { font-size: 16px; margin-bottom: 8px; }
+  .drop-zone p { color: var(--muted); font-size: 12px; }
+
+  .copy-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--font);
+    font-size: 10px;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .copy-btn:hover { border-color: var(--green); color: var(--green); }
+
+  .issue-type { font-size: 10px; color: var(--muted); }
+
+  @media (max-width: 768px) {
+    .header, .stats-bar, .filters { padding: 12px 16px; }
+    .table-wrap { padding: 0 16px 40px; }
+    .drop-zone { margin: 16px; padding: 40px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">price<span>checker</span> <span style="font-size:11px;color:var(--muted)">// maaarket.si</span></div>
+  <div class="upload-area">
+    <input type="file" id="fileInput" accept=".txt,.csv,.tsv">
+    <button class="btn secondary" onclick="document.getElementById('fileInput').click()">📂 Naloži datoteko</button>
+    <button class="btn" onclick="analyzeDemo()">▶ Demo podatki</button>
+  </div>
+</div>
+
+<div class="stats-bar" id="statsBar" style="display:none">
+  <div class="stat">
+    <div class="stat-dot" style="background:var(--text)"></div>
+    <span class="stat-num" id="statTotal">0</span>
+    <span class="stat-label">skupaj</span>
+  </div>
+  <div class="stat">
+    <div class="stat-dot" style="background:var(--red)"></div>
+    <span class="stat-num" id="statErrors">0</span>
+    <span class="stat-label">napake cen</span>
+  </div>
+  <div class="stat">
+    <div class="stat-dot" style="background:var(--yellow)"></div>
+    <span class="stat-num" id="statWarnings">0</span>
+    <span class="stat-label">mejne cene</span>
+  </div>
+  <div class="stat">
+    <div class="stat-dot" style="background:var(--green)"></div>
+    <span class="stat-num" id="statOk">0</span>
+    <span class="stat-label">OK</span>
+  </div>
+</div>
+
+<div class="filters" id="filtersBar" style="display:none">
+  <button class="filter-btn active" onclick="setFilter('all', this)">VSE</button>
+  <button class="filter-btn f-red" onclick="setFilter('error', this)">⛔ NAPAKE</button>
+  <button class="filter-btn f-yellow" onclick="setFilter('warn', this)">⚠ MEJNE</button>
+  <button class="filter-btn active" onclick="setFilter('ok', this)" id="filterOk" style="display:none">✅ OK</button>
+  <span style="color:var(--muted);font-size:11px;margin-left:8px">|</span>
+  <button class="filter-btn" onclick="setFilter('EUR', this)">EUR</button>
+  <button class="filter-btn" onclick="setFilter('CZK', this)">CZK</button>
+  <button class="filter-btn" onclick="setFilter('HUF', this)">HUF</button>
+  <button class="filter-btn" onclick="setFilter('PLN', this)">PLN</button>
+  <button class="filter-btn" onclick="setFilter('RON', this)">RON</button>
+  <button class="filter-btn" onclick="setFilter('RSD', this)">RSD</button>
+  <input type="text" class="search-input" placeholder="Išči SKU ali ID..." oninput="setSearch(this.value)" id="searchInput">
+  <button class="btn secondary" onclick="copyIssues()" style="margin-left:auto;font-size:11px">📋 Kopiraj ID-je z napakami</button>
+</div>
+
+<div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
+  <h3>📋 Povleci datoteko sem</h3>
+  <p>Ali klikni za izbiro .txt datoteke z naročili<br><br>
+  Podprti formati: tab-ločeni izvoz iz sistema (ID naročila, SKU, Izdelek, Zaloga, Cena, NC, Razlika, Marža, Trgovina)</p>
+</div>
+
+<div class="table-wrap" id="tableWrap" style="display:none">
+  <table id="resultsTable">
+    <thead>
+      <tr>
+        <th onclick="sortBy('id')">ID naročila ↕</th>
+        <th onclick="sortBy('sku')">SKU ↕</th>
+        <th>Cena originalna</th>
+        <th>Predlagana cena</th>
+        <th>Valuta</th>
+        <th>Trgovina</th>
+        <th>Status</th>
+        <th>Razlog</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<script>
+let allRows = [];
+let currentFilter = 'all';
+let currentSearch = '';
+let sortCol = null;
+let sortDir = 1;
+
+// ============ PRICE RULES ============
+
+function checkPrice(amount, currency) {
+  const issues = [];
+  let suggested = null;
+
+  if (currency === 'EUR') {
+    // Must end in .99
+    const decimal = Math.round((amount % 1) * 100);
+    if (decimal !== 99) {
+      const base = Math.floor(amount);
+      suggested = base + 0.99;
+      if (suggested <= 0) suggested = 0.99;
+      issues.push('EUR mora biti X.99');
+    }
+  }
+
+  else if (currency === 'CZK') {
+    // Must end in 9 (no decimals)
+    const rounded = Math.round(amount);
+    const lastDigit = rounded % 10;
+    if (lastDigit !== 9) {
+      suggested = rounded - lastDigit + 9;
+      if (suggested < amount) suggested += 10;
+      issues.push('CZK mora končati na 9');
+    }
+    // Check boundary: e.g. 401 → 399
+    const boundaryCheck = checkBoundary(rounded, currency);
+    if (boundaryCheck) { issues.push(boundaryCheck.issue); if (!suggested) suggested = boundaryCheck.suggested; }
+  }
+
+  else if (currency === 'HUF') {
+    // Must end in 99
+    const rounded = Math.round(amount);
+    const lastTwo = rounded % 100;
+    if (lastTwo !== 99) {
+      suggested = rounded - lastTwo + 99;
+      if (suggested < amount) suggested += 100;
+      issues.push('HUF mora končati na 99');
+    }
+    const boundaryCheck = checkBoundary(rounded, currency);
+    if (boundaryCheck) { issues.push(boundaryCheck.issue); if (!suggested) suggested = boundaryCheck.suggested; }
+  }
+
+  else if (currency === 'PLN') {
+    // Must be whole number
+    const decimal = amount % 1;
+    if (decimal !== 0) {
+      suggested = Math.round(amount);
+      issues.push('PLN mora biti celo število');
+    }
+    const boundaryCheck = checkBoundary(Math.round(amount), currency);
+    if (boundaryCheck) { issues.push(boundaryCheck.issue); if (!suggested) suggested = boundaryCheck.suggested; }
+  }
+
+  else if (currency === 'RON') {
+    // Must be whole number
+    const decimal = amount % 1;
+    if (decimal !== 0) {
+      suggested = Math.round(amount);
+      issues.push('RON mora biti celo število');
+    }
+    const boundaryCheck = checkBoundary(Math.round(amount), currency);
+    if (boundaryCheck) { issues.push(boundaryCheck.issue); if (!suggested) suggested = boundaryCheck.suggested; }
+  }
+
+  else if (currency === 'RSD') {
+    // Just check boundary
+    const rounded = Math.round(amount);
+    const boundaryCheck = checkBoundary(rounded, currency);
+    if (boundaryCheck) { issues.push(boundaryCheck.issue); suggested = boundaryCheck.suggested; }
+  }
+
+  return { issues, suggested, isOk: issues.length === 0 };
+}
+
+function checkBoundary(amount, currency) {
+  // SAMO preveri če je cena TAKOJ NAD okroglo številko
+  // Primer: 401 CZK → predlog 399, 6099 HUF → predlog 5999
+  // NE zaokrožujemo navzgor — 59 RON je OK, 61 RON → 59 RON
+
+  const boundaries = {
+    CZK: [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1500, 2000, 3000, 5000],
+    HUF: [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 15000, 20000],
+    PLN: [20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200],
+    RON: [20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200],
+    RSD: [500, 1000, 1500, 2000, 2500, 3000, 4000, 5000],
+  };
+
+  const threshold = {
+    CZK: 5, HUF: 50, PLN: 2, RON: 2, RSD: 30
+  };
+
+  const bounds = boundaries[currency];
+  const thresh = threshold[currency];
+  if (!bounds || !thresh) return null;
+
+  for (const bound of bounds) {
+    // SAMO navzgor — cena je TAKOJ NAD okroglo številko
+    if (amount > bound && amount <= bound + thresh) {
+      const suggested = bound - 1;
+      return { issue: `Mejna cena (${amount} nad ${bound}) → predlog ${suggested}`, suggested };
+    }
+    // NE zaokrožujemo navzdol — cene pod okroglo številko so OK
+  }
+  return null;
+}
+
+// ============ PARSE ============
+
+function parsePrice(priceStr) {
+  if (!priceStr || priceStr.trim() === '0,00' || priceStr.trim() === '0.00') return null;
+
+  // Detect currency
+  let currency = 'EUR';
+  let amount = 0;
+
+  const str = priceStr.trim();
+
+  if (str.includes('CZK') || str.includes('Kč')) currency = 'CZK';
+  else if (str.includes('FT') || str.includes('HUF') || str.includes('Ft')) currency = 'HUF';
+  else if (str.includes('PLN') || str.includes('zł')) currency = 'PLN';
+  else if (str.includes('RON')) currency = 'RON';
+  else if (str.includes('RSD')) currency = 'RSD';
+  else if (str.includes('BGN')) currency = 'BGN';
+  else if (str.includes('EUR') || str.includes('€')) currency = 'EUR';
+  else currency = 'EUR';
+
+  // Extract number
+  const numStr = str.replace(/[^0-9.,]/g, '').replace(/\./g, '').replace(',', '.');
+  amount = parseFloat(numStr);
+
+  if (isNaN(amount)) return null;
+  return { amount, currency };
+}
+
+function formatSuggested(amount, currency) {
+  if (currency === 'EUR') return amount.toFixed(2) + ' €';
+  if (currency === 'HUF') return Math.round(amount).toLocaleString('hu') + ' Ft';
+  if (currency === 'CZK') return Math.round(amount) + ' CZK';
+  if (currency === 'PLN') return Math.round(amount) + ' PLN';
+  if (currency === 'RON') return Math.round(amount) + ' RON';
+  if (currency === 'RSD') return Math.round(amount).toLocaleString('rs') + ' RSD';
+  return amount + ' ' + currency;
+}
+
+// ============ PARSE FILE ============
+
+function parseFile(text) {
+  const lines = text.split('\n').filter(l => l.trim());
+  const rows = [];
+
+  for (const line of lines) {
+    const parts = line.split('\t');
+    if (parts.length < 6) continue;
+
+    // Skip header
+    if (parts.some(p => p.trim() === 'ID naročila' || p.trim() === 'SKU izdelka')) continue;
+
+    // Find columns — flexible parsing
+    let id, sku, product, price, store;
+
+    // Try to find ID (7-digit number)
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i].trim();
+      if (/^\d{7}$/.test(p)) {
+        id = p;
+        sku = parts[i+1]?.trim();
+        product = parts[i+2]?.trim();
+        // price is usually parts[i+4] — contains currency info
+        price = parts[i+4]?.trim();
+        store = parts[i+8]?.trim() || parts[parts.length-1]?.trim();
+        break;
+      }
+    }
+
+    if (!id || !price) continue;
+
+    // Parse price — remove "- Nx" quantity suffix
+    const priceClean = price.replace(/\s*-\s*\d+x?\s*$/i, '').trim();
+    const parsed = parsePrice(priceClean);
+
+    if (!parsed) continue;
+
+    const check = checkPrice(parsed.amount, parsed.currency);
+
+    rows.push({
+      id,
+      sku: sku || '',
+      product: product || '',
+      priceRaw: priceClean,
+      amount: parsed.amount,
+      currency: parsed.currency,
+      store: store || '',
+      issues: check.issues,
+      suggested: check.suggested,
+      isOk: check.isOk,
+      status: check.issues.length === 0 ? 'ok' : 
+              check.issues.some(i => i.includes('Mejna')) ? 'warn' : 'error'
+    });
+  }
+
+  return rows;
+}
+
+// ============ RENDER ============
+
+function renderTable(rows) {
+  let filtered = rows;
+
+  if (currentFilter === 'error') filtered = rows.filter(r => r.status === 'error');
+  else if (currentFilter === 'warn') filtered = rows.filter(r => r.status === 'warn');
+  else if (currentFilter === 'ok') filtered = rows.filter(r => r.status === 'ok');
+  else if (['EUR','CZK','HUF','PLN','RON','RSD'].includes(currentFilter)) {
+    filtered = rows.filter(r => r.currency === currentFilter);
+  }
+
+  if (currentSearch) {
+    const s = currentSearch.toLowerCase();
+    filtered = filtered.filter(r => 
+      r.id.includes(s) || 
+      r.sku.toLowerCase().includes(s) ||
+      r.store.toLowerCase().includes(s)
+    );
+  }
+
+  if (sortCol) {
+    filtered = [...filtered].sort((a, b) => {
+      const av = a[sortCol] || '';
+      const bv = b[sortCol] || '';
+      return av.toString().localeCompare(bv.toString()) * sortDir;
+    });
+  }
+
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted)">Ni zadetkov</td></tr>`;
+    return;
+  }
+
+  for (const row of filtered) {
+    const tr = document.createElement('tr');
+    tr.className = `row-${row.status}`;
+
+    const statusBadge = row.status === 'ok' 
+      ? '<span class="badge badge-ok">✓ OK</span>'
+      : row.status === 'warn'
+      ? '<span class="badge badge-warn">⚠ MEJNA</span>'
+      : '<span class="badge badge-error">⛔ NAPAKA</span>';
+
+    const priceDisplay = row.isOk
+      ? `<span class="price-ok">${row.priceRaw}</span>`
+      : row.suggested
+        ? `<span class="price-old">${row.priceRaw}</span>`
+        : `<span style="color:var(--red)">${row.priceRaw}</span>`;
+
+    const suggestedDisplay = row.suggested
+      ? `<span class="price-new">${formatSuggested(row.suggested, row.currency)}</span>`
+      : row.isOk
+        ? `<span class="price-ok">—</span>`
+        : `<span class="price-ok">—</span>`;
+
+    const reasons = row.issues.map(i => `<div class="issue-type">${i}</div>`).join('');
+
+    tr.innerHTML = `
+      <td>
+        <a href="https://www.siluxar.si/narocilnice/${row.id}" target="_blank" class="id-badge" style="text-decoration:none;color:var(--green);border-color:rgba(64,193,80,0.4)">${row.id} ↗</a>
+      </td>
+      <td style="font-weight:600;color:var(--text)">${row.sku}</td>
+      <td>${priceDisplay}</td>
+      <td>${suggestedDisplay}</td>
+      <td><span style="color:var(--muted);font-size:11px">${row.currency}</span></td>
+      <td style="color:var(--muted);font-size:11px">${row.store}</td>
+      <td>${statusBadge}</td>
+      <td>${reasons}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+function updateStats(rows) {
+  const errors = rows.filter(r => r.status === 'error').length;
+  const warns = rows.filter(r => r.status === 'warn').length;
+  const ok = rows.filter(r => r.status === 'ok').length;
+
+  document.getElementById('statTotal').textContent = rows.length;
+  document.getElementById('statErrors').textContent = errors;
+  document.getElementById('statWarnings').textContent = warns;
+  document.getElementById('statOk').textContent = ok;
+
+  document.getElementById('statsBar').style.display = 'flex';
+  document.getElementById('filtersBar').style.display = 'flex';
+  document.getElementById('tableWrap').style.display = 'block';
+  document.getElementById('dropZone').style.display = 'none';
+}
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderTable(allRows);
+}
+
+function setSearch(v) {
+  currentSearch = v;
+  renderTable(allRows);
+}
+
+function sortBy(col) {
+  if (sortCol === col) sortDir *= -1;
+  else { sortCol = col; sortDir = 1; }
+  renderTable(allRows);
+}
+
+function copyIssues() {
+  const issues = allRows.filter(r => r.status !== 'ok');
+  const ids = [...new Set(issues.map(r => r.id))].join('\n');
+  navigator.clipboard.writeText(ids);
+  alert(`Kopirano ${[...new Set(issues.map(r => r.id))].length} ID-jev!`);
+}
+
+// ============ FILE UPLOAD ============
+
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    allRows = parseFile(ev.target.result);
+    updateStats(allRows);
+    renderTable(allRows);
+  };
+  reader.readAsText(file, 'UTF-8');
+});
+
+// Drag & drop
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    allRows = parseFile(ev.target.result);
+    updateStats(allRows);
+    renderTable(allRows);
+  };
+  reader.readAsText(file, 'UTF-8');
+});
+
+// ============ DEMO ============
+
+function analyzeDemo() {
+  const demoData = `\t2688119\tDUOTAP\tMini presenečenje\t588\t9,95 RON - 1x\t0,29\t1,32\t455,71\tMaaarket.RO\t
+\t2688124\tFLUXLAMP\tSolarna svetilka\t80\t10,71 - 7x\t3,39\t5,39\t158,96\tMaaarket.SI\t
+\t2687799\tSANDLANDIA\tStol za igro\t2\t19,99 - 1x\t8,03\t7,16\t89,20\tMaaarket.HR\t
+\t2687991\tROPENETIC\tDigitální švihadlo\t163\t349,00 CZK - 1x\t4,00\t7,83\t195,87\tMaaarket.CZ\t
+\t2687579\tSTEAMAX\tVysokotlaký parní čistič\t60\t859,00 CZK - 1x\t18,04\t11,09\t61,49\tMaaarket.CZ\t
+\t2687966\tHYDRASPRINK\tAquaAxis forgó permetező\t140\t4.999,00 FT - 1x\t2,54\t7,69\t302,88\tMaaarket.HU\t
+\t2688079\tKOCLINKA\tMimsy gyerekasztal\t13\t6.999,00 FT - 1x\t4,95\t7,87\t158,93\tMaaarket.HU\t
+\t2687785\tPILARAFIT\tBodyAlign Pilates tábla\t87\t10.999,00 FT - 1x\t10,39\t13,30\t128,04\tMaaarket.HU\t
+\t2687626\tCOREFIT\tLioRoller wałek\t264\t77,00 PLN - 1x\t4,30\t10,46\t243,35\tMaaarket.PL\t
+\t2687831\tTIMERANGER\tTalzWatch Smartwatch\t50\t104,00 PLN - 1x\t9,47\t10,47\t110,59\tMaaarket.PL\t
+\t2688106\tABPULLER\tGumka do treningu\t210\t59,00 PLN - 1x\t0,78\t10,54\t1350,91\tMaaarket.PL\t
+\t2687622\tROOTNIK\tInstrument WeedZap\t246\t59,00 RON - 1x\t1,85\t7,73\t417,76\tMaaarket.RO\t
+\t2687720\tHYDRASPRINK\tPulverizator rotativ\t140\t64,00 RON - 1x\t2,54\t7,85\t308,99\tMaaarket.RO\t
+\t2687500\tMUSKLOR\tAparat MaxStrength\t10\t99,00 RON - 1x\t3,60\t12,47\t346,51\tMaaarket.RO\t
+\t2687741\tPANMAX\tElektrická pánev SizZela\t284\t479,00 CZK - 1x\t5,99\t10,26\t171,25\tMaaarket.CZ\t
+\t2687638\tHYDRASPRINK\tAquaAxis rotacioni\t140\t1.499,00 RSD - 1x\t2,54\t8,04\t316,67\tMaaarket.RS\t
+\t2687530\tMaaa61grey\tSvinčnik za obrvi\t1463\t9,99 - 1x\t0,20\t7,99\t3994,26\tMaaarket.SI\t
+\t2687665\tPOSHAIR\tBούρτσα μαλλιών\t16\t19,99 - 1x\t7,80\t7,51\t96,35\tMaaarket.GR\t
+\t2687941\tLEATHERPATCH\tLeatherGlue Zestaw\t33\t52,00 PLN - 1x\t1,95\t8,02\t411,15\tMaaarket.PL\t
+\t2687570\tZOOMORA\tCuriosityZoomer\t45\t10.799,00 FT - 1x\t12,87\t10,40\t80,79\tMaaarket.HU\t`;
+
+  allRows = parseFile(demoData);
+  updateStats(allRows);
+  renderTable(allRows);
+}
+</script>
+</body>
+</html>
