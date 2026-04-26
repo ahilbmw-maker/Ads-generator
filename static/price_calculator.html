@@ -73,7 +73,7 @@ input:focus,select:focus{border-color:rgba(0,0,0,0.5);}
     <div><label>Nabavna cena (NC) €</label><input type="number" id="nc" value="2.5" step="0.01" min="0" oninput="calc()"></div>
     <div><label>Zaslužek (RVC) €</label><input type="number" id="rvc" value="6.3" step="0.1" min="0" oninput="calc()"></div>
   </div>
-  <div id="single-section">
+  <div id="single-section" style="display:none;">
     <div class="sec" style="margin-top:1.25rem;">Nastavitve</div>
     <div class="grid2">
       <div>
@@ -106,7 +106,7 @@ input:focus,select:focus{border-color:rgba(0,0,0,0.5);}
     </div>
     <div id="result-area"></div>
   </div>
-  <div id="all-section" style="display:none;">
+  <div id="all-section">
     <div style="display:flex;align-items:center;gap:10px;margin-top:1rem;flex-wrap:wrap;">
       <label style="white-space:nowrap;margin:0;">Popust %</label>
       <input type="number" id="discount-all" value="25" step="1" min="0" max="99" oninput="calc();highlightDisc()" style="max-width:80px;">
@@ -200,7 +200,7 @@ function setInputMode(im){
   document.getElementById('manual-input').style.display=im==='manual'?'block':'none';
   calc();
 }
-function onCountryChange(){buildBumpBtns();calc();}
+function onCountryChange(){buildBumpBtns();buildAllRows();calc();}
 function buildBumpBtns(){
   const c=COUNTRIES[document.getElementById('country').value];
   const bumps=BUMPS[c.curr]||BUMPS['€'];
