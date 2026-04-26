@@ -6,19 +6,19 @@
 <title>Price Checker — Maaarket</title>
 <style>
   :root {
-    --bg: #0d1117;
-    --surface: #161b22;
-    --surface2: #21262d;
-    --border: #30363d;
-    --green: #40c150;
-    --green-dim: rgba(64,193,80,0.12);
-    --red: #f85149;
-    --red-dim: rgba(248,81,73,0.12);
-    --yellow: #e3b341;
-    --yellow-dim: rgba(227,179,65,0.12);
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    --bg: #f7f7f8;
+    --surface: #ffffff;
+    --surface2: #f0f2f5;
+    --border: #e1e4e8;
+    --green: #1a7f37;
+    --green-dim: rgba(26,127,55,0.10);
+    --red: #cf222e;
+    --red-dim: rgba(207,34,46,0.10);
+    --yellow: #9a6700;
+    --yellow-dim: rgba(154,103,0,0.10);
+    --text: #1f2328;
+    --muted: #656d76;
+    --font: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -59,7 +59,7 @@
 
   .btn {
     background: var(--green);
-    color: #000;
+    color: #fff;
     font-family: var(--font);
     font-weight: 700;
     font-size: 12px;
@@ -258,11 +258,10 @@
 <body>
 
 <div class="header">
-  <div class="logo">price<span>checker</span> <span style="font-size:11px;color:var(--muted)">// maaarket.si</span></div>
+  <div class="logo">price<span>checker</span> <span style="font-size:11px;color:var(--muted)">// maaarket</span></div>
   <div class="upload-area">
     <input type="file" id="fileInput" accept=".txt,.csv,.tsv">
     <button class="btn secondary" onclick="document.getElementById('fileInput').click()">📂 Naloži datoteko</button>
-    <button class="btn" onclick="analyzeDemo()">▶ Demo podatki</button>
   </div>
 </div>
 
@@ -287,6 +286,11 @@
     <span class="stat-num" id="statOk">0</span>
     <span class="stat-label">OK</span>
   </div>
+  <div class="stat">
+    <div class="stat-dot" style="background:var(--accent, var(--green))"></div>
+    <span class="stat-num" id="statResolved">0</span>
+    <span class="stat-label">urejenih</span>
+  </div>
 </div>
 
 <div class="filters" id="filtersBar" style="display:none">
@@ -302,7 +306,9 @@
   <button class="filter-btn" onclick="setFilter('RON', this)">RON</button>
   <button class="filter-btn" onclick="setFilter('RSD', this)">RSD</button>
   <input type="text" class="search-input" placeholder="Išči SKU ali ID..." oninput="setSearch(this.value)" id="searchInput">
+  <button class="filter-btn" onclick="setFilter('resolved', this)">✓ UREJENI</button>
   <button class="btn secondary" onclick="copyIssues()" style="margin-left:auto;font-size:11px">📋 Kopiraj ID-je z napakami</button>
+  <button class="btn secondary" onclick="clearTable()" style="font-size:11px;background:var(--red-dim);color:var(--red);border-color:var(--red)">🗑 Zbriši seznam</button>
 </div>
 
 <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
@@ -315,10 +321,14 @@
   <table id="resultsTable">
     <thead>
       <tr>
+        <th style="width:30px">✓</th>
         <th onclick="sortBy('id')">ID naročila ↕</th>
         <th onclick="sortBy('sku')">SKU ↕</th>
         <th>Cena originalna</th>
         <th>Predlagana cena</th>
+        <th>NC</th>
+        <th>Razlika</th>
+        <th>Marža</th>
         <th>Valuta</th>
         <th>Trgovina</th>
         <th>Status</th>
@@ -496,7 +506,7 @@ function parseFile(text) {
     if (parts.some(p => p.trim() === 'ID naročila' || p.trim() === 'SKU izdelka')) continue;
 
     // Find columns — flexible parsing
-    let id, sku, product, price, store;
+    let id, sku, product, price, nc, razlika, marza, store;
 
     // Try to find ID (7-digit number)
     for (let i = 0; i < parts.length; i++) {
@@ -507,6 +517,10 @@ function parseFile(text) {
         product = parts[i+2]?.trim();
         // price is usually parts[i+4] — contains currency info
         price = parts[i+4]?.trim();
+        // NC, razlika, marza so naslednje cele kolone
+        nc = parts[i+5]?.trim();
+        razlika = parts[i+6]?.trim();
+        marza = parts[i+7]?.trim();
         store = parts[i+8]?.trim() || parts[parts.length-1]?.trim();
         break;
       }
@@ -529,10 +543,14 @@ function parseFile(text) {
       priceRaw: priceClean,
       amount: parsed.amount,
       currency: parsed.currency,
+      nc: nc || '',
+      razlika: razlika || '',
+      marza: marza || '',
       store: store || '',
       issues: check.issues,
       suggested: check.suggested,
       isOk: check.isOk,
+      resolved: false,
       status: check.issues.length === 0 ? 'ok' : 
               check.issues.some(i => i.includes('Mejna')) ? 'warn' : 'error'
     });
@@ -546,9 +564,11 @@ function parseFile(text) {
 function renderTable(rows) {
   let filtered = rows;
 
-  if (currentFilter === 'error') filtered = rows.filter(r => r.status === 'error');
-  else if (currentFilter === 'warn') filtered = rows.filter(r => r.status === 'warn');
+  if (currentFilter === 'error') filtered = rows.filter(r => r.status === 'error' && !r.resolved);
+  else if (currentFilter === 'warn') filtered = rows.filter(r => r.status === 'warn' && !r.resolved);
   else if (currentFilter === 'ok') filtered = rows.filter(r => r.status === 'ok');
+  else if (currentFilter === 'all') filtered = rows.filter(r => r.status === 'ok' || !r.resolved);
+  else if (currentFilter === 'resolved') filtered = rows.filter(r => r.resolved);
   else if (['EUR','CZK','HUF','PLN','RON','RSD'].includes(currentFilter)) {
     filtered = rows.filter(r => r.currency === currentFilter);
   }
@@ -574,7 +594,7 @@ function renderTable(rows) {
   tbody.innerHTML = '';
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted)">Ni zadetkov</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:40px;color:var(--muted)">Ni zadetkov</td></tr>`;
     return;
   }
 
@@ -602,13 +622,21 @@ function renderTable(rows) {
 
     const reasons = row.issues.map(i => `<div class="issue-type">${i}</div>`).join('');
 
+    const checkboxHtml = (row.status !== 'ok')
+      ? `<input type="checkbox" onchange="toggleResolved('${row.id}', '${row.sku}', this.checked)" ${row.resolved ? 'checked' : ''} style="cursor:pointer;width:16px;height:16px" title="Označi kot urejeno">`
+      : '<span style="color:var(--green)">✓</span>';
+
     tr.innerHTML = `
+      <td style="text-align:center">${checkboxHtml}</td>
       <td>
         <a href="https://www.siluxar.si/narocilnice/${row.id}" target="_blank" class="id-badge" style="text-decoration:none;color:var(--green);border-color:rgba(64,193,80,0.4)">${row.id} ↗</a>
       </td>
       <td style="font-weight:600;color:var(--text)">${row.sku}</td>
       <td>${priceDisplay}</td>
       <td>${suggestedDisplay}</td>
+      <td style="font-size:11px;color:var(--muted)">${row.nc}</td>
+      <td style="font-size:11px;color:var(--muted)">${row.razlika}</td>
+      <td style="font-size:11px;color:var(--muted)">${row.marza}</td>
       <td><span style="color:var(--muted);font-size:11px">${row.currency}</span></td>
       <td style="color:var(--muted);font-size:11px">${row.store}</td>
       <td>${statusBadge}</td>
@@ -619,14 +647,17 @@ function renderTable(rows) {
 }
 
 function updateStats(rows) {
-  const errors = rows.filter(r => r.status === 'error').length;
-  const warns = rows.filter(r => r.status === 'warn').length;
+  const errors = rows.filter(r => r.status === 'error' && !r.resolved).length;
+  const warns = rows.filter(r => r.status === 'warn' && !r.resolved).length;
   const ok = rows.filter(r => r.status === 'ok').length;
+  const resolved = rows.filter(r => r.resolved).length;
 
   document.getElementById('statTotal').textContent = rows.length;
   document.getElementById('statErrors').textContent = errors;
   document.getElementById('statWarnings').textContent = warns;
   document.getElementById('statOk').textContent = ok;
+  const elResolved = document.getElementById('statResolved');
+  if (elResolved) elResolved.textContent = resolved;
 
   document.getElementById('statsBar').style.display = 'flex';
   document.getElementById('filtersBar').style.display = 'flex';
@@ -653,13 +684,86 @@ function sortBy(col) {
 }
 
 function copyIssues() {
-  const issues = allRows.filter(r => r.status !== 'ok');
+  const issues = allRows.filter(r => r.status !== 'ok' && !r.resolved);
   const ids = [...new Set(issues.map(r => r.id))].join('\n');
   navigator.clipboard.writeText(ids);
   alert(`Kopirano ${[...new Set(issues.map(r => r.id))].length} ID-jev!`);
 }
 
+function toggleResolved(id, sku, checked) {
+  // Najdi vrstico in označi kot resolved
+  const row = allRows.find(r => r.id === id && r.sku === sku);
+  if (row) {
+    row.resolved = checked;
+    // Shrani v localStorage da se ohrani po reload-u
+    try {
+      const key = 'price_checker_resolved';
+      const stored = JSON.parse(localStorage.getItem(key) || '{}');
+      const rowKey = id + '|' + sku;
+      if (checked) stored[rowKey] = true;
+      else delete stored[rowKey];
+      localStorage.setItem(key, JSON.stringify(stored));
+    } catch(e) {}
+    saveTableToStorage();
+    renderTable(allRows);
+    updateStats(allRows);
+  }
+}
+
+function clearTable() {
+  if (!confirm('Zbriši cel seznam? Vseh urejenih oznak bo izgubljeno.')) return;
+  allRows = [];
+  try {
+    localStorage.removeItem('price_checker_resolved');
+    localStorage.removeItem('price_checker_table');
+  } catch(e) {}
+  document.getElementById('tableBody').innerHTML = '';
+  document.getElementById('statsBar').style.display = 'none';
+  document.getElementById('filtersBar').style.display = 'none';
+  document.getElementById('tableWrap').style.display = 'none';
+  document.getElementById('dropZone').style.display = 'flex';
+  document.getElementById('searchInput').value = '';
+  currentFilter = 'all';
+  currentSearch = '';
+}
+
+function loadResolvedFromStorage() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('price_checker_resolved') || '{}');
+    allRows.forEach(r => {
+      r.resolved = !!stored[r.id + '|' + r.sku];
+    });
+  } catch(e) {}
+}
+
+function saveTableToStorage() {
+  try {
+    localStorage.setItem('price_checker_table', JSON.stringify(allRows));
+  } catch(e) { console.warn('saveTable fail', e); }
+}
+
+function loadTableFromStorage() {
+  try {
+    const stored = localStorage.getItem('price_checker_table');
+    if (stored) {
+      allRows = JSON.parse(stored);
+      if (allRows.length > 0) {
+        loadResolvedFromStorage();
+        renderTable(allRows);
+        updateStats(allRows);
+        return true;
+      }
+    }
+  } catch(e) { console.warn('loadTable fail', e); }
+  return false;
+}
+
 // ============ FILE UPLOAD ============
+
+// Ob nalaganju strani — preveri če je shranjena tabela in jo naloži
+window.addEventListener('DOMContentLoaded', () => {
+  loadTableFromStorage();
+});
 
 document.getElementById('fileInput').addEventListener('change', function(e) {
   const file = e.target.files[0];
@@ -667,6 +771,8 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
   const reader = new FileReader();
   reader.onload = function(ev) {
     allRows = parseFile(ev.target.result);
+    loadResolvedFromStorage();
+    saveTableToStorage();
     updateStats(allRows);
     renderTable(allRows);
   };
@@ -685,6 +791,8 @@ dz.addEventListener('drop', e => {
   const reader = new FileReader();
   reader.onload = ev => {
     allRows = parseFile(ev.target.result);
+    loadResolvedFromStorage();
+    saveTableToStorage();
     updateStats(allRows);
     renderTable(allRows);
   };
