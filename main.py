@@ -1955,6 +1955,156 @@ async def generate_audio(data: dict):
 
 # ─── MERGE VIDEO + AUDIO ──────────────────────────────────────────────────────
 
+# ─── VIDEO SESSION CACHE — single upload za batch merge ───────────────────────
+
+VIDEO_SESSION_DIR = Path("/tmp/video_sessions")
+VIDEO_SESSION_DIR.mkdir(exist_ok=True, parents=True)
+
+@app.post("/upload-video-session")
+async def upload_video_session(video: UploadFile = File(...)):
+    """Naloži video enkrat, vrni session_id za večkratno uporabo."""
+    try:
+        import uuid as _u
+        session_id = _u.uuid4().hex[:16]
+        session_path = VIDEO_SESSION_DIR / f"{session_id}.mp4"
+        content_bytes = await video.read()
+        session_path.write_bytes(content_bytes)
+        # Avtomatsko počisti starejše od 30 min
+        try:
+            now = datetime.now().timestamp()
+            for f in VIDEO_SESSION_DIR.glob("*.mp4"):
+                if now - f.stat().st_mtime > 1800:
+                    f.unlink()
+        except: pass
+        print(f"[video-session] uploaded {session_id} ({len(content_bytes)} bytes)")
+        return {"session_id": session_id, "size": len(content_bytes)}
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/cleanup-video-session")
+async def cleanup_video_session(data: dict):
+    """Počisti video session ko ni več potreben."""
+    session_ids = data.get("session_ids", [])
+    deleted = 0
+    for sid in session_ids:
+        try:
+            p = VIDEO_SESSION_DIR / f"{sid}.mp4"
+            if p.exists():
+                p.unlink()
+                deleted += 1
+        except: pass
+    return {"deleted": deleted}
+
+
+@app.post("/merge-video-audio-session")
+async def merge_video_audio_session(
+    session_id: str = Form(...),
+    audio: UploadFile = File(...),
+    lang: str = Form("sl"),
+    srt: UploadFile = File(None),
+):
+    """Merge z video iz cached session (faster — video že na strežniku)."""
+    import subprocess, tempfile
+    from fastapi.responses import JSONResponse as JR
+    try:
+        import static_ffmpeg
+        static_ffmpeg.add_paths()
+    except Exception:
+        pass
+
+    session_video_path = VIDEO_SESSION_DIR / f"{session_id}.mp4"
+    if not session_video_path.exists():
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": f"Video session {session_id} not found."}, status_code=404)
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = f"{tmp}/audio.mp3"
+            srt_path = f"{tmp}/subs.srt"
+            ass_path = f"{tmp}/subs.ass"
+            output_path = f"{tmp}/output_{lang}.mp4"
+            video_path = str(session_video_path)
+
+            with open(audio_path, "wb") as f:
+                f.write(await audio.read())
+
+            has_srt = False
+            ass_content_orig = None
+            if srt:
+                srt_content = await srt.read()
+                if srt_content.strip():
+                    with open(srt_path, "wb") as f:
+                        f.write(srt_content)
+                    if srt_content.startswith(b'[Script Info]'):
+                        ass_content_orig = srt_content
+                        has_srt = 'ass'
+                    else:
+                        has_srt = 'srt'
+
+            # Detect video dimensions
+            video_width, video_height = 0, 0
+            try:
+                probe_cmd = ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                             "-show_entries", "stream=width,height", "-of", "csv=p=0", video_path]
+                probe_result = subprocess.run(probe_cmd, capture_output=True, timeout=10)
+                if probe_result.returncode == 0:
+                    dims = probe_result.stdout.decode().strip().split(',')
+                    if len(dims) == 2:
+                        video_width, video_height = int(dims[0]), int(dims[1])
+            except: pass
+
+            # Adapt ASS če imamo
+            if has_srt == 'ass' and ass_content_orig and video_width > 0 and video_height > 0:
+                style = get_subtitle_style_for_format(video_width, video_height)
+                ass_text = ass_content_orig.decode('utf-8', errors='replace')
+                ass_text = re.sub(r'PlayResX:\s*\d+', f'PlayResX: {style["playresx"]}', ass_text)
+                ass_text = re.sub(r'PlayResY:\s*\d+', f'PlayResY: {style["playresy"]}', ass_text)
+                new_style = f'Style: Default,Arial,{style["fontsize"]},&H00FFFFFF,&H00FFD600,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{style["outline"]},0,2,30,30,{style["marginv"]},1'
+                ass_text = re.sub(r'Style:\s*Default,[^\n]+', new_style, ass_text)
+                with open(ass_path, "wb") as f:
+                    f.write(ass_text.encode('utf-8'))
+            elif has_srt == 'ass' and ass_content_orig:
+                with open(ass_path, "wb") as f:
+                    f.write(ass_content_orig)
+
+            if has_srt:
+                sub_file = ass_path if has_srt == 'ass' else srt_path
+                if has_srt == 'ass':
+                    vf = f"ass={sub_file}"
+                else:
+                    s = get_subtitle_style_for_format(video_width, video_height)
+                    vf = f"subtitles={sub_file}:force_style='FontName=Arial,FontSize={s['fontsize']},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline={s['outline']},Bold=1,Alignment=2,MarginV={s['marginv']}'"
+                cmd = ["ffmpeg", "-y", "-i", video_path, "-i", audio_path, "-vf", vf,
+                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-c:a", "aac",
+                       "-shortest", output_path]
+            else:
+                cmd = ["ffmpeg", "-y", "-i", video_path, "-i", audio_path,
+                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac",
+                       "-shortest", output_path]
+
+            result = subprocess.run(cmd, capture_output=True, timeout=180)
+            if result.returncode != 0:
+                err_msg = result.stderr.decode(errors='replace')[-400:]
+                return JR({"error": f"FFmpeg napaka: {err_msg}"}, status_code=500)
+
+            with open(output_path, "rb") as f:
+                video_bytes = f.read()
+
+            return StreamingResponse(
+                iter([video_bytes]),
+                media_type="video/mp4",
+                headers={"Content-Disposition": f"attachment; filename=video_{lang}.mp4"}
+            )
+    except subprocess.TimeoutExpired:
+        return JR({"error": "FFmpeg timeout."}, status_code=500)
+    except Exception as e:
+        return JR({"error": str(e)}, status_code=500)
+
+
+# ─── MERGE VIDEO + AUDIO (full upload — fallback) ─────────────────────────────
+
 @app.post("/merge-video-audio")
 async def merge_video_audio(
     video: UploadFile = File(...),
