@@ -1287,7 +1287,6 @@ async function vadsAsanaSendZip(taskId) {
   }
 }
 
-updateMeta(); }
 function setQMode(m) {
   metaState.qmode = m;
   document.getElementById('qmode-sonnet').classList.toggle('on', m==='sonnet');
@@ -2310,6 +2309,8 @@ function kCloseAsanaModal() {
   document.getElementById('kAsanaModal').classList.remove('show');
   window._vadsAsanaMode = false;
   window._vadsZipBlob = null;
+  window._lokAsanaMode = false;
+  window._lokZipBlob = null;
 }
 
 async function kAsanaSearch() {
@@ -2370,8 +2371,14 @@ async function kAsanaAttach() {
   const statusEl = document.getElementById('kAsanaStatus');
 
   // Če je VADS ZIP mode - pošlji ZIP namesto slik
-  if (window._vadsAsanaMode && window._vadsZipBlob) {
-    const ok = await vadsAsanaSendZip(kAsanaSelectedTaskId);
+  if (window._vadsAsanaMode) {
+    await vadsAsanaSendZip(kAsanaSelectedTaskId);
+    btn.disabled = false;
+    return;
+  }
+  // Če je LOK ZIP mode - pošlji ZIP slik
+  if (window._lokAsanaMode) {
+    await lokAsanaSendZip(kAsanaSelectedTaskId);
     btn.disabled = false;
     return;
   }
@@ -2625,11 +2632,59 @@ function lokDownloadOne(idx) {
   document.body.removeChild(a);
 }
 
+// Pomožna: zgradi ZIP iz lokResultsData
+async function lokBuildZipBlob(progressCallback) {
+  if (!window.JSZip) { await new Promise((res,rej) => { const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+  const JSZip = window.JSZip;
+  const zip = new JSZip();
+  let count = 0;
+  const total = lokResultsData.length;
+
+  // Paralelno fetch slik (10 hkrati)
+  const PARALLEL = 10;
+  let done = 0;
+  const queue = lokResultsData.map((r, i) => ({r, i}));
+  const workers = Array(PARALLEL).fill(null).map(async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      if (!item) break;
+      try {
+        const resp = await fetch(item.r.url);
+        const blob = await resp.blob();
+        const fname = item.r.filename || (item.r.lang + '_' + item.i + '.png');
+        zip.file(fname, blob);
+        count++;
+      } catch(e) { console.error('Fetch fail:', item.r.url, e); }
+      done++;
+      if (progressCallback) progressCallback('Pripravljam ' + done + '/' + total + '...');
+    }
+  });
+  await Promise.all(workers);
+
+  if (progressCallback) progressCallback('Pakiranje ZIP...');
+  const zipBlob = await zip.generateAsync({type: 'blob'});
+  return {zipBlob, count};
+}
+
 async function lokDownloadAll() {
   if (!lokResultsData.length) return;
-  for (let i = 0; i < lokResultsData.length; i++) {
-    lokDownloadOne(i);
-    await new Promise(res => setTimeout(res, 300));
+  const btn = document.getElementById('lokDownloadAllBtn');
+  const origText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Gradim ZIP...'; }
+  try {
+    const result = await lokBuildZipBlob((msg) => {
+      if (btn) btn.innerHTML = '⏳ ' + msg;
+    });
+    const url = URL.createObjectURL(result.zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'lokalizacija_' + new Date().toISOString().split('T')[0] + '.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    if (btn) btn.innerHTML = '✓ Preneseno (' + result.count + ')';
+    setTimeout(() => { if (btn) { btn.disabled = false; btn.innerHTML = origText; } }, 2000);
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+    alert('Napaka: ' + e.message);
   }
 }
 
@@ -2648,18 +2703,72 @@ function lokAsanaOne(idx) {
   if (lokUrl) kAsanaSearch(lokUrl);
 }
 
-function lokAsanaAll() {
+async function lokAsanaAll() {
   if (!lokResultsData.length) return;
-  kAsanaPendingUrls = lokResultsData.map(r => r.url).filter(Boolean);
-  kAsanaSelectedTaskId = null;
-  kAsanaSelectedTaskName = '';
+
+  // Odpri Asana modal TAKOJ + gradi ZIP v ozadju
+  window._lokAsanaMode = true;
+  window._lokZipBlob = null;
+  window._lokZipBuilding = true;
   const lokUrl = document.getElementById('lokAsanaUrl')?.value?.trim();
   document.getElementById('kAsanaUrlInput').value = lokUrl || '';
   document.getElementById('kAsanaSearchResults').innerHTML = '';
   document.getElementById('kAsanaSelected').textContent = '';
-  document.getElementById('kAsanaStatus').textContent = kAsanaPendingUrls.length + ' slik pripravljenih';
+  document.getElementById('kAsanaStatus').textContent = '⏳ Gradim ZIP v ozadju... (vpiši Asana task)';
   document.getElementById('kAsanaModal').classList.add('show');
   if (lokUrl) kAsanaSearch(lokUrl);
+
+  // Gradi ZIP v ozadju
+  try {
+    const result = await lokBuildZipBlob((msg) => {
+      const s = document.getElementById('kAsanaStatus');
+      if (s && window._lokZipBuilding) s.textContent = '⏳ ' + msg;
+    });
+    window._lokZipBlob = result.zipBlob;
+    window._lokZipFilename = 'lokalizacija_' + new Date().toISOString().split('T')[0] + '.zip';
+    window._lokZipBuilding = false;
+    const s = document.getElementById('kAsanaStatus');
+    if (s) s.textContent = '✓ ZIP pripravljen (' + (result.zipBlob.size/1024/1024).toFixed(1) + ' MB, ' + result.count + ' slik) — pošlji v Asana';
+  } catch(e) {
+    window._lokZipBuilding = false;
+    const s = document.getElementById('kAsanaStatus');
+    if (s) s.textContent = '✗ Napaka: ' + e.message;
+  }
+}
+
+async function lokAsanaSendZip(taskId) {
+  const status = document.getElementById('kAsanaStatus');
+  if (window._lokZipBuilding) {
+    if (status) status.textContent = '⏳ Čakam da se ZIP konča gradit...';
+    while (window._lokZipBuilding) await new Promise(r => setTimeout(r, 500));
+  }
+  if (!window._lokZipBlob) {
+    if (status) status.textContent = '✗ ZIP ni pripravljen.';
+    return false;
+  }
+  if (status) status.textContent = 'Pošiljam ZIP v Asana...';
+  const formData = new FormData();
+  formData.append('task_id', taskId);
+  formData.append('file', window._lokZipBlob, window._lokZipFilename);
+  formData.append('filename', window._lokZipFilename);
+  try {
+    const res = await fetch('/asana-attach-binary', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) {
+      if (status) status.textContent = '✗ ' + data.error;
+      return false;
+    }
+    if (status) status.textContent = '✓ ZIP poslan v Asana (' + data.filename + ')';
+    setTimeout(() => {
+      document.getElementById('kAsanaModal').classList.remove('show');
+      window._lokAsanaMode = false;
+      window._lokZipBlob = null;
+    }, 1500);
+    return true;
+  } catch(e) {
+    if (status) status.textContent = '✗ ' + e.message;
+    return false;
+  }
 }
 
 // ── NAROČILNICE ──
