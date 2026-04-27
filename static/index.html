@@ -1311,6 +1311,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <!-- Tab nav -->
     <div style="display:flex;gap:8px;padding:12px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border)">
       <button class="analiza-tab-btn active" id="analizaTab-meta" onclick="switchAnalizaTab('meta')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📘 Meta Ads</button>
+      <button class="analiza-tab-btn" id="analizaTab-obrat14" onclick="switchAnalizaTab('obrat14')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📊 Obrat 14 dni</button>
     </div>
 
     <!-- TAB: Meta Ads -->
@@ -1371,6 +1372,52 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </div>
     </div>
+    <!-- TAB: Obrat 14 dni -->
+    <div id="analizaSubpage-obrat14" style="display:none;padding:14px">
+      <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
+        <!-- Levo: upload -->
+        <div>
+          <div class="card">
+            <span class="slabel">META ADS POROČILO</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Uporablja shranjeni FB CSV iz tab-a "Meta Ads".</p>
+            <div id="o14MetaInfo" style="padding:8px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;color:var(--text-secondary)">Nalagam status...</div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <span class="slabel">OBRAT 14 DNI</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži TXT/TSV s podatki o prodaji zadnjih 14 dni (SKU, Naziv, Količina).</p>
+            <div id="o14DropZone" class="k-dropzone" style="margin-top:8px;padding:14px;cursor:pointer" onclick="document.getElementById('o14Input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="o14HandleDrop(event)">
+              <span style="font-size:11px">📊 Klikni ali povleci TXT/TSV</span>
+            </div>
+            <input type="file" id="o14Input" accept=".txt,.tsv,.csv" style="display:none" onchange="o14Upload(this.files[0])">
+            <div id="o14Status" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
+            <div id="o14Info" style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:none"></div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <span class="slabel">PRIKAZ</span>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+              <button class="o14-filter-btn active" onclick="o14SetFilter('all', this)" style="padding:8px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">📋 Vsi izdelki</button>
+              <button class="o14-filter-btn" onclick="o14SetFilter('with_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">📢 Z oglasi</button>
+              <button class="o14-filter-btn" onclick="o14SetFilter('without_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">🔥 Brez oglasov (potencial)</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Desno: tabela -->
+        <div>
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <span class="slabel" style="margin:0" id="o14TableTitle">OBRAT IZDELKOV (0)</span>
+              <input type="text" id="o14Search" placeholder="🔍 Išči SKU ali naziv..." oninput="o14RenderTable()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:240px">
+            </div>
+            <div id="o14Table" style="display:flex;flex-direction:column;gap:6px;overflow-x:auto"></div>
+            <div id="o14Empty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži obrat 14 dni za začetek.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /page-analiza -->
 
 </div>
@@ -4683,7 +4730,184 @@ let anSortCol = 'stock';
 let anSortDir = -1;
 
 function switchAnalizaTab(tab) {
-  // V prihodnosti, trenutno samo meta
+  ['meta', 'obrat14'].forEach(t => {
+    const btn = document.getElementById('analizaTab-' + t);
+    const sub = document.getElementById('analizaSubpage-' + t);
+    if (t === tab) {
+      if (btn) { btn.style.background = 'var(--accent)'; btn.style.color = 'white'; btn.style.border = 'none'; btn.classList.add('active'); }
+      if (sub) sub.style.display = (t === 'obrat14') ? 'block' : 'grid';
+    } else {
+      if (btn) { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; btn.style.border = '1px solid var(--border)'; btn.classList.remove('active'); }
+      if (sub) sub.style.display = 'none';
+    }
+  });
+  if (tab === 'obrat14') {
+    o14LoadData();
+    o14LoadMetaInfo();
+  }
+}
+
+// ─── OBRAT 14 DNI ─────────────────────────────────────────────────────────────
+let o14Items = [];
+let o14TargetAccounts = [];
+let o14Filter = 'all';
+
+function o14HandleDrop(ev) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  const f = ev.dataTransfer.files[0];
+  if (f) o14Upload(f);
+}
+
+async function o14Upload(file) {
+  if (!file) return;
+  const status = document.getElementById('o14Status');
+  status.style.display = 'block';
+  status.textContent = '⏳ Nalagam...';
+  try {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    const res = await fetch('/analiza-obrat14-upload', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    status.textContent = '✓ Naloženih ' + data.rows + ' vrstic';
+    status.style.color = 'var(--green)';
+    document.getElementById('o14Input').value = '';
+    o14LoadData();
+  } catch(e) {
+    status.textContent = '✗ ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+}
+
+async function o14LoadMetaInfo() {
+  try {
+    const res = await fetch('/analiza-meta-data');
+    const data = await res.json();
+    const info = document.getElementById('o14MetaInfo');
+    if (!info) return;
+    if (data.loaded && data.uploaded_at) {
+      const dt = new Date(data.uploaded_at);
+      info.innerHTML = '<strong style="color:var(--green)">✓ ' + (data.rows || 0) + ' vrstic · ' + (data.items?.length || 0) + ' SKU-jev</strong><br>posodobljeno: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    } else {
+      info.innerHTML = '<span style="color:var(--text-tertiary)">⚠ Ni naloženega FB CSV<br>Naloži v zavihku Meta Ads</span>';
+    }
+  } catch(e) {
+    console.warn('o14LoadMetaInfo:', e);
+  }
+}
+
+async function o14LoadData() {
+  try {
+    const res = await fetch('/analiza-obrat14-data');
+    const data = await res.json();
+    if (!data.loaded) {
+      document.getElementById('o14Info').style.display = 'none';
+      o14Items = [];
+      o14TargetAccounts = [];
+      o14RenderTable();
+      return;
+    }
+    o14Items = data.items || [];
+    o14TargetAccounts = data.target_accounts || [];
+
+    const info = document.getElementById('o14Info');
+    if (info) {
+      info.style.display = 'block';
+      const dt = data.uploaded_at ? new Date(data.uploaded_at) : null;
+      const dateStr = dt ? dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      info.innerHTML = '<strong style="color:var(--green)">✓ ' + o14Items.length + ' izdelkov</strong>' + (dateStr ? '<br>posodobljeno: ' + dateStr : '');
+    }
+    o14RenderTable();
+  } catch(e) {
+    console.warn('o14LoadData:', e);
+  }
+}
+
+function o14SetFilter(filter, btn) {
+  o14Filter = filter;
+  document.querySelectorAll('.o14-filter-btn').forEach(b => {
+    b.style.background = 'transparent';
+    b.style.color = 'var(--text-secondary)';
+    b.classList.remove('active');
+  });
+  if (btn) {
+    btn.style.background = 'var(--surface2)';
+    btn.style.color = 'var(--text)';
+    btn.classList.add('active');
+  }
+  o14RenderTable();
+}
+
+function o14RenderTable() {
+  const search = (document.getElementById('o14Search')?.value || '').toLowerCase().trim();
+  let filtered = [...o14Items];
+
+  if (o14Filter === 'with_ads') {
+    filtered = filtered.filter(r => r.has_ads);
+  } else if (o14Filter === 'without_ads') {
+    filtered = filtered.filter(r => !r.has_ads);
+  }
+
+  if (search) {
+    filtered = filtered.filter(r =>
+      r.sku.toLowerCase().includes(search) ||
+      (r.naziv || '').toLowerCase().includes(search)
+    );
+  }
+
+  document.getElementById('o14TableTitle').textContent = 'OBRAT IZDELKOV (' + filtered.length + ')';
+  const table = document.getElementById('o14Table');
+  const empty = document.getElementById('o14Empty');
+
+  if (!o14Items.length) {
+    table.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Header dinamičen z account stolpci
+  const accountCols = o14TargetAccounts.map(() => '60px').join(' ');
+  const cols = '1.2fr 2fr 70px ' + accountCols;
+  const minWidth = 200 + 250 + 70 + (o14TargetAccounts.length * 70) + 'px';
+
+  let html = '<div style="display:grid;grid-template-columns:' + cols + ';gap:8px;padding:10px 12px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.3px;min-width:' + minWidth + '">' +
+    '<span>SKU</span>' +
+    '<span>Naziv</span>' +
+    '<span style="text-align:center">Obrat</span>' +
+    o14TargetAccounts.map(a => '<span style="text-align:center;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(a) + '">' + esc(a.replace('si_SUBAN_', '').replace('si_Suban_', '').replace('Maaarket ', 'M.').replace('.', '')) + '</span>').join('') +
+    '</div>';
+
+  if (filtered.length === 0) {
+    html += '<div style="padding:2rem;text-align:center;color:var(--text-tertiary);font-size:12px">Ni rezultatov.</div>';
+  } else {
+    html += filtered.slice(0, 500).map(r => {
+      const accCells = o14TargetAccounts.map(acc => {
+        const data = r.accounts?.[acc];
+        if (!data) return '<span style="text-align:center;color:var(--text-tertiary);font-size:11px">—</span>';
+        // Obarvamo glede na spend
+        const color = data.spend > 100 ? 'var(--green)' : 'var(--text-secondary)';
+        const intensity = data.spend > 0 ? Math.min(0.15, data.spend / 1000) : 0;
+        return '<span style="text-align:center;font-size:11px;font-weight:600;color:' + color + ';background:rgba(64,193,80,' + intensity + ');padding:2px 4px;border-radius:3px" title="Spend: ' + data.spend.toFixed(2) + ' € · Nakupi: ' + data.purchases + '">' + Math.round(data.spend) + '€</span>';
+      }).join('');
+
+      const bg = !r.has_ads ? 'rgba(124,58,237,0.08)' : 'var(--surface2)';
+
+      return '<div style="display:grid;grid-template-columns:' + cols + ';gap:8px;align-items:center;padding:10px 12px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:12px;min-width:' + minWidth + '">' +
+        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.sku) + '</div>' +
+        '<div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.naziv) + '">' + esc(r.naziv) + '</div>' +
+        '<div style="text-align:center;font-weight:600;color:var(--text)">' + r.kolicina + '</div>' +
+        accCells +
+      '</div>';
+    }).join('');
+
+    if (filtered.length > 500) {
+      html += '<div style="padding:1rem;text-align:center;color:var(--text-tertiary);font-size:12px">Prikazano prvih 500 od ' + filtered.length + '.</div>';
+    }
+  }
+
+  table.innerHTML = html;
 }
 
 function anSetFilter(filter, btn) {
