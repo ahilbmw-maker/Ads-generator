@@ -3242,15 +3242,17 @@ async def analiza_meta_data():
             ctr = _f(row.get('CTR (link click-through rate)'))
             atc = _i(row.get('Adds to cart'))
             freq = _f(row.get('Frequency'))
-            # Status iz FB Campaign Delivery (active/inactive) — to je resnica
+            # Status SAMO iz FB Campaign Delivery kolone (edina resnica)
+            # Ime kampanje (@STOP, ⛔, OFF) se IGNORIRA — to so naši interni oznaki
             delivery = (row.get('Campaign Delivery') or '').strip().lower()
             if delivery == 'inactive':
                 is_stopped = True
             elif delivery == 'active':
                 is_stopped = False
             else:
-                # Fallback: če stolpec manjka, uporabi ime kampanje
-                is_stopped = '@stop' in campaign_name.lower() or '⛔' in campaign_name
+                # Stolpec manjka ali neznana vrednost → privzeto aktivna
+                # (raje napačno aktivna kot napačno pavzirana — ker FB sam ne ve)
+                is_stopped = False
 
             # Izvleci SKU-je iz imena (filtrirano po znanih SKU iz zaloge)
             skus = extract_skus_from_text(campaign_name, known_skus if known_skus else None)
@@ -3451,16 +3453,16 @@ async def analiza_obrat14_data():
                     spend = _f(row.get('Amount spent (EUR)'))
                     purchases = _i(row.get('Purchases'))
                     
-                    # Status iz Campaign Delivery (active/inactive) — FB resnica
+                    # Status SAMO iz FB Campaign Delivery kolone (edina resnica)
+                    # Ime kampanje (@STOP, ⛔, OFF) se IGNORIRA — to so naši interni oznaki
                     delivery = (row.get('Campaign Delivery') or '').strip().lower()
                     if delivery == 'inactive':
                         is_active_campaign = False
                     elif delivery == 'active':
                         is_active_campaign = True
                     else:
-                        # Fallback po imenu
-                        cname_lower = cname.lower()
-                        is_active_campaign = not ('@stop' in cname_lower or '⛔' in cname)
+                        # Stolpec manjka ali neznana vrednost → privzeto aktivna
+                        is_active_campaign = True
 
                     # Izvleci SKU iz imena
                     skus = extract_skus_from_text(cname, known_skus_obrat)
