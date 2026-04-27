@@ -4290,7 +4290,7 @@ async function orodjaLoadHistory() {
     }
     list.innerHTML = data.items.map(item => {
       const dt = new Date(item.created);
-      const dateStr = dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      const dateStr = dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
       const sizeKb = (item.size / 1024).toFixed(1);
       return (
         '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">' +
@@ -4485,7 +4485,7 @@ async function hsLoadHistory() {
     }
     list.innerHTML = data.items.map(item => {
       const dt = new Date(item.created);
-      const dateStr = dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      const dateStr = dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
       const sizeKb = (item.size / 1024).toFixed(1);
       return (
         '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border);gap:6px">' +
@@ -4526,7 +4526,7 @@ async function pcLoadStockStatus() {
     if (!info) return;
     if (data.loaded) {
       const dt = new Date(data.uploaded_at);
-      const dateStr = dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      const dateStr = dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
       info.innerHTML = '<strong style="color:var(--green)">✓ Naložena</strong><br>' + data.rows + ' vrstic · posodobljeno: ' + dateStr;
     } else {
       info.innerHTML = '<strong style="color:var(--text-tertiary)">⚠ Ni naložene zaloge</strong><br>Naloži CSV za začetek.';
@@ -4801,7 +4801,7 @@ async function o14LoadMetaInfo() {
     if (!info) return;
     if (data.loaded && data.uploaded_at) {
       const dt = new Date(data.uploaded_at);
-      info.innerHTML = '<strong style="color:var(--green)">✓ ' + (data.rows || 0) + ' vrstic · ' + (data.items?.length || 0) + ' SKU-jev</strong><br>posodobljeno: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      info.innerHTML = '<strong style="color:var(--green)">✓ ' + (data.rows || 0) + ' vrstic · ' + (data.items?.length || 0) + ' SKU-jev</strong><br>posodobljeno: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
     } else {
       info.innerHTML = '<span style="color:var(--text-tertiary)">⚠ Ni naloženega FB CSV<br>Naloži v zavihku Meta Ads</span>';
     }
@@ -4828,7 +4828,7 @@ async function o14LoadData() {
     if (info) {
       info.style.display = 'block';
       const dt = data.uploaded_at ? new Date(data.uploaded_at) : null;
-      const dateStr = dt ? dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      const dateStr = dt ? dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'}) : '';
       info.innerHTML = '<strong style="color:var(--green)">✓ ' + o14Items.length + ' izdelkov</strong>' + (dateStr ? '<br>posodobljeno: ' + dateStr : '');
     }
     o14RenderTable();
@@ -5037,7 +5037,7 @@ async function anLoadStock() {
     const info = document.getElementById('anStockInfo');
     if (data.uploaded_at) {
       const dt = new Date(data.uploaded_at);
-      info.innerHTML = '<strong style="color:var(--green)">✓ ' + anStockData.length + ' SKU-jev</strong><br>posodobljeno: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      info.innerHTML = '<strong style="color:var(--green)">✓ ' + anStockData.length + ' SKU-jev</strong><br>posodobljeno: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
     } else {
       info.innerHTML = '<span style="color:var(--text-tertiary)">⚠ Ni naložene zaloge<br>Naloži v Orodja → Kontrola cen</span>';
     }
@@ -5446,7 +5446,7 @@ async function anLoadMetaFromServer() {
       let html = '<strong style="color:var(--green)">✓ ' + data.rows + ' vrstic · ' + (data.items?.length || 0) + ' SKU-jev</strong>';
       if (data.uploaded_at) {
         const dt = new Date(data.uploaded_at);
-        html += '<br>Naloženo: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+        html += '<br>Naloženo: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
       }
       if (data.filename) html += '<br><span style="color:var(--text-tertiary);font-size:10px">' + esc(data.filename) + '</span>';
       summary.innerHTML = html;
