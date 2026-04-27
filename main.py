@@ -3000,3 +3000,41 @@ Brez dodatnih komentarjev, samo JSON."""
         traceback.print_exc()
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/orodja-stock-data")
+async def orodja_stock_data():
+    """Vrne celoten seznam zaloge (sku, title, stock, stock30) iz shranjenega CSV."""
+    if not STOCK_CSV_FILE.exists():
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Najprej naloži CSV zaloge v Orodja → Kontrola cen."}, status_code=400)
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        first_line = text.split('\n', 1)[0]
+        sep = ';' if first_line.count(';') > first_line.count(',') else ','
+
+        reader = _csv.DictReader(_SIO(text), delimiter=sep)
+        items = []
+        for row in reader:
+            sku = (row.get('product_sku') or row.get('sku') or '').strip()
+            if not sku:
+                continue
+            items.append({
+                "sku": sku,
+                "title": (row.get('title') or '').strip(),
+                "stock": (row.get('stock') or '0').strip(),
+                "stock30": (row.get('stock30') or '0').strip(),
+            })
+
+        meta = {}
+        if STOCK_CSV_META.exists():
+            try:
+                meta = json.loads(STOCK_CSV_META.read_text(encoding="utf-8"))
+            except: pass
+
+        return {"items": items, "total": len(items), **meta}
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
