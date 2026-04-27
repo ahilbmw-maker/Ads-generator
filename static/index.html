@@ -4469,6 +4469,15 @@ async function pcPdfProcess(file) {
   }
 }
 
+let pcSortCol = null;
+let pcSortDir = 1;
+
+function pcSortBy(col) {
+  if (pcSortCol === col) pcSortDir = -pcSortDir;
+  else { pcSortCol = col; pcSortDir = 1; }
+  pcRenderResults();
+}
+
 function pcRenderResults(data) {
   document.getElementById('pcResultsCard').style.display = 'block';
   document.getElementById('pcEmpty').style.display = 'none';
@@ -4488,8 +4497,34 @@ function pcRenderResults(data) {
     '<span style="color:var(--green)">↓ Cenejše (PDF): ' + manjse + '</span>' +
     (noMatch > 0 ? ' · <span style="color:var(--text-tertiary)">⚠ Brez matcha: ' + noMatch + '</span>' : '');
 
+  // Sortiraj če je sort aktiven
+  if (pcSortCol) {
+    pcResults.sort((a, b) => {
+      let av = a[pcSortCol], bv = b[pcSortCol];
+      // null/undefined gredo na konec
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      // Številsko sortiranje
+      if (typeof av === 'number' && typeof bv === 'number') {
+        return (av - bv) * pcSortDir;
+      }
+      // String sortiranje
+      return av.toString().localeCompare(bv.toString()) * pcSortDir;
+    });
+  }
   const list = document.getElementById('pcItemsList');
-  list.innerHTML = '<div style="display:grid;grid-template-columns:2fr 80px 130px 110px 1.5fr;gap:14px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px"><span>SKU</span><span style="text-align:center">Kol</span><span style="text-align:right">PDF €</span><span style="text-align:right">Zaloga €</span><span>Razlika</span></div>';
+  const sortInd = (col) => {
+    if (pcSortCol !== col) return '<span style="opacity:0.4;margin-left:4px">↕</span>';
+    return '<span style="color:var(--accent);margin-left:4px">' + (pcSortDir === 1 ? '↑' : '↓') + '</span>';
+  };
+  list.innerHTML = '<div style="display:grid;grid-template-columns:2fr 80px 130px 110px 1.5fr;gap:14px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none">' +
+    '<span style="cursor:pointer" onclick="pcSortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
+    '<span style="text-align:center;cursor:pointer" onclick="pcSortBy(\'kolicina\')">Kol' + sortInd('kolicina') + '</span>' +
+    '<span style="text-align:right;cursor:pointer" onclick="pcSortBy(\'cena_pdf_neto\')">PDF €' + sortInd('cena_pdf_neto') + '</span>' +
+    '<span style="text-align:right;cursor:pointer" onclick="pcSortBy(\'cena_zaloga\')">Zaloga €' + sortInd('cena_zaloga') + '</span>' +
+    '<span style="cursor:pointer" onclick="pcSortBy(\'razlika\')">Razlika' + sortInd('razlika') + '</span>' +
+    '</div>';
 
   list.innerHTML += pcResults.map((r, idx) => {
     let bg = 'var(--surface2)';
