@@ -1337,12 +1337,22 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div class="card" style="margin-top:12px">
           <span class="slabel">FILTRI</span>
           <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
-            <button class="an-filter-btn active" onclick="anSetFilter('all', this)" style="padding:8px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">Vsi izdelki</button>
-            <button class="an-filter-btn" onclick="anSetFilter('high_stock_no_obrat', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">Visoka zaloga, brez obrata</button>
-            <button class="an-filter-btn" onclick="anSetFilter('high_obrat', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">Najboljši obrat (top 30 dni)</button>
-            <button class="an-filter-btn" onclick="anSetFilter('zero_stock', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">Brez zaloge</button>
-            <button class="an-filter-btn" onclick="anSetFilter('potential', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">🚀 Potencial (zaloga + ni oglasa)</button>
-            <button class="an-filter-btn" onclick="anSetFilter('active_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">📘 Aktivni oglasi</button>
+            <button class="an-filter-btn active" onclick="anSetFilter('all', this)" style="padding:8px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">📋 Vsi izdelki</button>
+            <div style="height:1px;background:var(--border);margin:4px 0"></div>
+            <span style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:2px">Po oglasih</span>
+            <button class="an-filter-btn" onclick="anSetFilter('active_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">▶ Aktivno se oglašuje</button>
+            <button class="an-filter-btn" onclick="anSetFilter('only_stopped', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⏸ Bili aktivni a STOP</button>
+            <button class="an-filter-btn" onclick="anSetFilter('not_advertised', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">○ Brez oglasov v 14d</button>
+            <div style="height:1px;background:var(--border);margin:4px 0"></div>
+            <span style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:2px">Po zalogi</span>
+            <button class="an-filter-btn" onclick="anSetFilter('high_stock_no_obrat', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">📦 Visoka zaloga, brez obrata</button>
+            <button class="an-filter-btn" onclick="anSetFilter('high_obrat', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">🚀 Najboljši obrat (top 30d)</button>
+            <button class="an-filter-btn" onclick="anSetFilter('zero_stock', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⚠️ Brez zaloge</button>
+            <div style="height:1px;background:var(--border);margin:4px 0"></div>
+            <span style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:2px">Pametni filtri</span>
+            <button class="an-filter-btn" onclick="anSetFilter('potential', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">💎 Potencial (zaloga + brez ads)</button>
+            <button class="an-filter-btn" onclick="anSetFilter('underperforming', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⚠️ Slab CPA (>15€)</button>
+            <button class="an-filter-btn" onclick="anSetFilter('top_performers', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⭐ Top (CPA &lt; 8€, &gt;5 nakupov)</button>
           </div>
         </div>
       </div>
@@ -4962,6 +4972,23 @@ function anSortBy(col) {
 function anRenderTable() {
   const search = (document.getElementById('anSearch')?.value || '').toLowerCase().trim();
   const skuMap = window._anSkuMap || {};
+  
+  // Whitelist accounts za prikaz pasov
+  const TARGET_ACCOUNTS = ['Maaarket X', 'Maaarket ALL', 'Maaarket ALL2', 'Maaarket ALL3 + RS', 'Zipply.', 'si_SUBAN_Maaarket SK', 'Maaarket PL/RO', 'Maaarket HR', 'si_Suban_Maaarket HR', 'Easyzo'];
+  // Krajše labele
+  const ACC_SHORT = {
+    'Maaarket X': 'M.X',
+    'Maaarket ALL': 'M.ALL',
+    'Maaarket ALL2': 'M.ALL2',
+    'Maaarket ALL3 + RS': 'M.ALL3+RS',
+    'Zipply.': 'Zipply',
+    'si_SUBAN_Maaarket SK': 'SK',
+    'Maaarket PL/RO': 'PL/RO',
+    'Maaarket HR': 'HR',
+    'si_Suban_Maaarket HR': 'HR2',
+    'Easyzo': 'Easyzo',
+  };
+
   const _isAdvertised = (sku) => {
     const upper = (sku || '').toUpperCase();
     const koren = upper.split(/[_\-]/)[0];
@@ -4996,10 +5023,8 @@ function anRenderTable() {
   const spendMin = parseFloat(document.getElementById('anFilterSpendMin')?.value || '');
 
   if (accFilter) {
-    // Filtrirano po accountu — agregiramo samo ujemajoče account-e
     const accLower = accFilter.toLowerCase();
     filtered = filtered.filter(r => r._ad && Object.keys(r._ad.accounts || {}).some(a => a.toLowerCase().includes(accLower)));
-    // Reagregiraj metrike SAMO za matchajoče account-e
     filtered = filtered.map(r => {
       if (!r._ad) return r;
       const matchedAccounts = {};
@@ -5027,20 +5052,25 @@ function anRenderTable() {
   if (!isNaN(cpaMax)) filtered = filtered.filter(r => r.ad_cpa !== null && r.ad_cpa <= cpaMax);
   if (!isNaN(spendMin)) filtered = filtered.filter(r => r.ad_spend !== null && r.ad_spend >= spendMin);
 
+  // Filter po kategoriji (sidebar)
   if (anFilter === 'high_stock_no_obrat') {
     filtered = filtered.filter(r => r.stock >= 20 && r.stock30 === 0);
   } else if (anFilter === 'high_obrat') {
     filtered = filtered.filter(r => r.stock30 >= 5).sort((a, b) => b.stock30 - a.stock30).slice(0, 100);
   } else if (anFilter === 'zero_stock') {
     filtered = filtered.filter(r => r.stock === 0);
-  } else if (anFilter === 'advertised') {
-    filtered = filtered.filter(r => _isAdvertised(r.sku));
+  } else if (anFilter === 'advertised' || anFilter === 'active_ads') {
+    filtered = filtered.filter(r => r._ad && (r._ad.campaign_count - r._ad.stopped_count) > 0);
+  } else if (anFilter === 'only_stopped') {
+    filtered = filtered.filter(r => r._ad && r._ad.campaign_count > 0 && (r._ad.campaign_count - r._ad.stopped_count) === 0);
   } else if (anFilter === 'not_advertised') {
-    filtered = filtered.filter(r => !_isAdvertised(r.sku));
+    filtered = filtered.filter(r => !r._ad || r._ad.campaign_count === 0);
   } else if (anFilter === 'potential' || anFilter === 'opportunity') {
-    filtered = filtered.filter(r => r.stock >= 20 && r.stock30 >= 3 && !_isAdvertised(r.sku));
-  } else if (anFilter === 'active_ads') {
-    filtered = filtered.filter(r => _isAdvertised(r.sku));
+    filtered = filtered.filter(r => r.stock >= 20 && r.stock30 >= 3 && (!r._ad || r._ad.campaign_count === 0));
+  } else if (anFilter === 'underperforming') {
+    filtered = filtered.filter(r => r.ad_cpa !== null && r.ad_cpa > 15);
+  } else if (anFilter === 'top_performers') {
+    filtered = filtered.filter(r => r.ad_cpa !== null && r.ad_cpa < 8 && (r.ad_purchases || 0) > 5);
   }
 
   // Search
@@ -5074,7 +5104,6 @@ function anRenderTable() {
     empty.style.display = 'block';
     return;
   }
-
   empty.style.display = 'none';
 
   const sortInd = (col) => {
@@ -5084,23 +5113,43 @@ function anRenderTable() {
 
   const hasMetaData = Object.keys(skuMap).length > 0;
 
-  // Header — če imamo FB data, dodaj kolone
-  const cols = hasMetaData
-    ? '1.3fr 2fr 70px 80px 70px 1.5fr 90px 80px 80px'
-    : '1.5fr 3fr 100px 130px 100px';
+  // LEGENDA + statistike
+  let totalAds = 0, totalActive = 0, totalStopped = 0, totalNoAds = 0;
+  for (const r of anFilteredData) {
+    if (!r._ad || r._ad.campaign_count === 0) totalNoAds++;
+    else {
+      totalAds++;
+      if ((r._ad.campaign_count - r._ad.stopped_count) > 0) totalActive++;
+      else totalStopped++;
+    }
+  }
 
-  let html = '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none">' +
+  let legendHtml = '';
+  if (hasMetaData) {
+    legendHtml = '<div style="display:flex;gap:14px;flex-wrap:wrap;padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;margin-bottom:10px;align-items:center">' +
+      '<span style="font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px">Legenda:</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;background:rgba(64,193,80,0.18);border:1px solid rgba(64,193,80,0.4);border-radius:3px"></span><span style="color:var(--text-secondary)">Aktivni v 14d (' + totalActive + ')</span></span>' +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.4);border-radius:3px"></span><span style="color:var(--text-secondary)">Bili aktivni a sedaj @STOP (' + totalStopped + ')</span></span>' +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.3);border-radius:3px"></span><span style="color:var(--text-secondary)">Potencial (zaloga, brez ads)</span></span>' +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;background:var(--surface2);border:1px solid var(--border);border-radius:3px"></span><span style="color:var(--text-secondary)">Brez oglasov v 14d (' + totalNoAds + ')</span></span>' +
+      '</div>';
+  }
+
+  // Header
+  const cols = '1.3fr 2.2fr 70px 75px 70px 1fr 80px 70px 70px';
+  let html = legendHtml +
+    '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none">' +
     '<span style="cursor:pointer" onclick="anSortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
     '<span style="cursor:pointer" onclick="anSortBy(\'title\')">Naziv izdelka' + sortInd('title') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock\')">Zaloga' + sortInd('stock') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock30\')">Obrat 30d' + sortInd('stock30') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'ratio\')">Razm.' + sortInd('ratio') + '</span>' +
     (hasMetaData
-      ? '<span style="cursor:pointer" onclick="anSortBy(\'ad_accounts\')">Ad accounti' + sortInd('ad_accounts') + '</span>' +
+      ? '<span>Status</span>' +
         '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_spend\')">Spend' + sortInd('ad_spend') + '</span>' +
         '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_purchases\')">Nakupi' + sortInd('ad_purchases') + '</span>' +
         '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_cpa\')">CPA' + sortInd('ad_cpa') + '</span>'
-      : '') +
+      : '<span></span><span></span><span></span><span></span>') +
     '</div>';
 
   // Vrstice
@@ -5112,16 +5161,16 @@ function anRenderTable() {
       let stockColor = 'var(--text-secondary)';
       let obratColor = 'var(--text-secondary)';
 
-      // Vizualni cue
-      if (r.stock >= 20 && r.stock30 === 0) {
-        bg = 'rgba(248,81,73,0.06)'; // RDEČ - mrtva zaloga
-        stockColor = 'var(--red)';
-      } else if (r.stock === 0) {
-        bg = 'rgba(0,0,0,0.03)'; // siv - brez zaloge
+      if (r.stock === 0) {
+        bg = 'rgba(0,0,0,0.03)';
         stockColor = 'var(--text-tertiary)';
       } else if (r.stock30 >= 10) {
-        bg = 'rgba(64,193,80,0.06)'; // ZELEN - dobro prodajan
+        bg = 'rgba(64,193,80,0.04)';
         obratColor = 'var(--green)';
+      }
+      if (r.stock >= 20 && r.stock30 === 0) {
+        bg = 'rgba(248,81,73,0.06)';
+        stockColor = 'var(--red)';
       }
 
       let ratioTxt = '—';
@@ -5129,42 +5178,70 @@ function anRenderTable() {
       if (r.ratio !== null && r.ratio !== Infinity) {
         const ratio = r.ratio.toFixed(1);
         ratioTxt = ratio + '×';
-        if (r.ratio < 1) ratioColor = 'var(--green)'; // hitro proda
-        else if (r.ratio > 5) ratioColor = 'var(--red)'; // počasno
+        if (r.ratio < 1) ratioColor = 'var(--green)';
+        else if (r.ratio > 5) ratioColor = 'var(--red)';
       } else if (r.stock > 0 && r.stock30 === 0) {
         ratioTxt = '∞';
         ratioColor = 'var(--red)';
       }
 
-      // FB Ads info
-      let metaCells = '';
+      // STATUS BADGE
+      let statusCells = '';
+      let statusBadge = '';
+      let accountBar = '';
       const adData = r._ad;
 
       if (hasMetaData) {
         if (!adData || adData.campaign_count === 0) {
-          metaCells =
-            '<div style="font-size:11px;color:var(--text-tertiary);font-style:italic">— ni oglasa —</div>' +
+          statusBadge = '<span style="font-size:11px;color:var(--text-tertiary);font-style:italic">— ni oglasa —</span>';
+          if (r.stock >= 20 && r.stock30 >= 3) {
+            bg = 'rgba(124,58,237,0.10)';
+            statusBadge = '<span style="font-size:11px;color:#7c3aed;font-weight:600">🚀 Potencial</span>';
+          }
+          statusCells =
+            '<div>' + statusBadge + '</div>' +
             '<div style="text-align:right;color:var(--text-tertiary)">—</div>' +
             '<div style="text-align:right;color:var(--text-tertiary)">—</div>' +
             '<div style="text-align:right;color:var(--text-tertiary)">—</div>';
-          if (r.stock >= 20 && r.stock30 >= 3) {
-            bg = 'rgba(124,58,237,0.10)';
-          }
         } else {
-          const accounts = Object.keys(adData.accounts || {});
+          // Imam ads - 14d je vse v csv = NE pišem "ni oglasa"
+          const activeCount = adData.campaign_count - adData.stopped_count;
+          const isAllStopped = activeCount === 0;
+          // Subtle bg + status badge
+          if (isAllStopped) {
+            bg = 'rgba(245,158,11,0.10)'; // RUMENO - bil aktiven a sedaj stop
+            statusBadge = '<span style="font-size:11px;color:#d97706;font-weight:600">⏸ Stop (' + adData.campaign_count + ')</span>';
+          } else {
+            bg = 'rgba(64,193,80,0.10)'; // ZELENO - aktiven
+            statusBadge = '<span style="font-size:11px;color:var(--green);font-weight:600">▶ Aktiven (' + activeCount + '/' + adData.campaign_count + ')</span>';
+          }
+
           const cpa = r.ad_cpa;
           const cpaTxt = cpa !== null ? cpa.toFixed(2) + ' €' : '—';
           const cpaColor = cpa !== null && cpa < 8 ? 'var(--green)' : cpa !== null && cpa > 15 ? 'var(--red)' : 'var(--text)';
-          const activeCount = adData.campaign_count - adData.stopped_count;
-          const accountsLabel = adData._filtered
-            ? adData.campaign_count + ' kamp · ' + (accounts.length === 1 ? accounts[0].slice(0, 22) : accounts.length + ' acc.')
-            : activeCount + '/' + adData.campaign_count + ' kamp · ' + (accounts.length === 1 ? accounts[0].slice(0, 18) : accounts.length + ' acc.');
 
-          metaCells =
-            '<div style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(accounts.join(", ")) + '">' + esc(accountsLabel) + '</div>' +
+          statusCells =
+            '<div>' + statusBadge + '</div>' +
             '<div style="text-align:right;font-weight:500;color:var(--text)">' + adData.total_spend.toFixed(0) + ' €</div>' +
             '<div style="text-align:right;font-weight:600;color:var(--text)">' + adData.total_purchases + '</div>' +
             '<div style="text-align:right;font-weight:600;color:' + cpaColor + '">' + cpaTxt + '</div>';
+
+          // ACCOUNT BAR — pas pod glavno vrstico
+          const accCells = TARGET_ACCOUNTS.map(acc => {
+            const accData = adData.accounts?.[acc];
+            const label = ACC_SHORT[acc] || acc;
+            if (!accData || accData.spend === 0) {
+              return '<span style="text-align:center;color:var(--text-tertiary);font-size:10px;padding:3px 6px;background:var(--bg-secondary);border-radius:4px;display:inline-flex;align-items:center;justify-content:center" title="' + esc(acc) + ': ni oglaševan">' + esc(label) + ' —</span>';
+            }
+            const intensity = Math.min(0.30, accData.spend / 800);
+            return '<span style="text-align:center;font-size:10px;font-weight:600;color:var(--green);padding:3px 6px;background:rgba(64,193,80,' + intensity + ');border:1px solid rgba(64,193,80,0.3);border-radius:4px;display:inline-flex;align-items:center;justify-content:center" title="' + esc(acc) + ': ' + accData.spend.toFixed(2) + '€ · ' + accData.purchases + ' nakupov">' + esc(label) + ' ' + Math.round(accData.spend) + '€</span>';
+          }).join('');
+
+          accountBar =
+            '<div style="grid-column:1/-1;padding:8px 14px 4px;display:flex;flex-wrap:wrap;gap:5px;border-top:1px dashed var(--border);margin-top:4px">' +
+              '<span style="color:var(--text-tertiary);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.3px;margin-right:4px;align-self:center">Po accountih:</span>' +
+              accCells +
+            '</div>';
         }
       }
 
@@ -5174,12 +5251,13 @@ function anRenderTable() {
         '<div style="text-align:center;font-weight:600;color:' + stockColor + '">' + r.stock + '</div>' +
         '<div style="text-align:center;font-weight:500;color:' + obratColor + '">' + r.stock30 + '</div>' +
         '<div style="text-align:center;font-weight:500;color:' + ratioColor + '">' + ratioTxt + '</div>' +
-        metaCells +
+        statusCells +
+        accountBar +
       '</div>';
     }).join('');
 
     if (filtered.length > 500) {
-      html += '<div style="padding:1rem;text-align:center;color:var(--text-tertiary);font-size:12px">Prikazano prvih 500 od ' + filtered.length + ' (uporabi iskanje za filtriranje).</div>';
+      html += '<div style="padding:1rem;text-align:center;color:var(--text-tertiary);font-size:12px">Prikazano prvih 500 od ' + filtered.length + '. Uporabi iskanje za filtriranje.</div>';
     }
   }
 
