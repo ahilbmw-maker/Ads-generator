@@ -2921,11 +2921,46 @@ Brez dodatnih komentarjev, samo JSON."""
             title = (row.get('title') or '').strip()
             stock_map[sku.lower()] = {"sku": sku, "cena_zaloga": cena, "title": title}
 
+        # Fuzzy match helper
+        def find_stock_match(sku_pdf):
+            """Najprej exact match, nato koren match (PLANTUP_white → PLANTUP), nato fuzzy."""
+            sku_lower = sku_pdf.lower()
+            # 1. Exact match
+            if sku_lower in stock_map:
+                return stock_map[sku_lower]
+
+            # 2. Koren match — vzami osnovno besedo (PLANTUP_white → PLANTUP, COVERKA_2x3m → COVERKA)
+            koren = re.split(r'[_\-\s]', sku_lower)[0]
+            if not koren or len(koren) < 3:
+                return None
+
+            # Najdi vse SKU-je v zalogi ki začnejo s tem korenom
+            candidates = [(k, v) for k, v in stock_map.items() if k.split('_')[0] == koren or k.split('-')[0] == koren or k == koren]
+
+            if not candidates:
+                return None
+
+            # Če je samo eden, vrni ga
+            if len(candidates) == 1:
+                return candidates[0][1]
+
+            # 3. Fuzzy match — pri več zadetkih izberi najbolj podobnega
+            from difflib import SequenceMatcher
+            best = None
+            best_ratio = 0
+            for k, v in candidates:
+                ratio = SequenceMatcher(None, sku_lower, k).ratio()
+                if ratio > best_ratio:
+                    best_ratio = ratio
+                    best = v
+            # Vrni samo če je dovolj podoben (>0.6)
+            return best if best_ratio >= 0.6 else None
+
         # 3. Match in primerjava
         results = []
         for item in items:
             sku_pdf = item["sku"]
-            stock = stock_map.get(sku_pdf.lower())
+            stock = find_stock_match(sku_pdf)
 
             cena_pdf_neto = item["cena_pdf"] * (1 - item["popust_pct"] / 100)
 
