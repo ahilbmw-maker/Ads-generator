@@ -1411,8 +1411,9 @@ input[type="text"].error { border-color: var(--red) !important; }
             <span class="slabel">PRIKAZ</span>
             <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
               <button class="o14-filter-btn active" onclick="o14SetFilter('all', this)" style="padding:8px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">📋 Vsi izdelki</button>
-              <button class="o14-filter-btn" onclick="o14SetFilter('with_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">📢 Z oglasi</button>
-              <button class="o14-filter-btn" onclick="o14SetFilter('without_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">🔥 Brez oglasov (potencial)</button>
+              <button class="o14-filter-btn" onclick="o14SetFilter('with_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">✓ Aktivni v 14d</button>
+              <button class="o14-filter-btn" onclick="o14SetFilter('paused', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⏸ Pavzirani (vsi STOP)</button>
+              <button class="o14-filter-btn" onclick="o14SetFilter('without_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">✗ Brez oglasov (potencial)</button>
             </div>
           </div>
         </div>
@@ -4859,20 +4860,34 @@ function o14RenderTable() {
   // Whitelist account selection (ki so checkani)
   const checkedAccounts = window._o14CheckedAccounts || new Set(o14TargetAccounts);
 
-  // Sidebar filtri
-  if (o14Filter === 'with_ads') {
-    filtered = filtered.filter(r => r.has_ads);
-  } else if (o14Filter === 'without_ads') {
-    filtered = filtered.filter(r => !r.has_ads);
-  }
+  // Sidebar filtri (na podlagi VIDNIH/checkanih accountov)
+  // active = vsaj en checkan account je active
+  // paused = vsi checkani so paused (ni nobeden active med checkanimi)
+  // none = nobeden checkani account ne oglašuje
+  const getStatusInChecked = (r) => {
+    if (!r.accounts || checkedAccounts.size === 0) return 'none';
+    let hasActive = false, hasPaused = false;
+    for (const acc of checkedAccounts) {
+      const d = r.accounts[acc];
+      if (!d || d.campaigns === 0) continue;
+      if (d.status === 'active') hasActive = true;
+      else if (d.status === 'paused') hasPaused = true;
+    }
+    if (hasActive) return 'active';
+    if (hasPaused) return 'paused';
+    return 'none';
+  };
 
-  // Account checkbox filter — če so checkani SAMO nekateri, prikaži le SKU ki imajo ads na enem od checkanih
-  if (checkedAccounts.size < o14TargetAccounts.length && checkedAccounts.size > 0) {
-    filtered = filtered.filter(r => {
-      if (!r.accounts) return false;
-      return Array.from(checkedAccounts).some(acc => r.accounts[acc]);
-    });
+  if (o14Filter === 'with_ads') {
+    // Aktivno se oglašuje na izbranih accountih
+    filtered = filtered.filter(r => getStatusInChecked(r) === 'active');
+  } else if (o14Filter === 'paused') {
+    filtered = filtered.filter(r => getStatusInChecked(r) === 'paused');
+  } else if (o14Filter === 'without_ads') {
+    // BREZ oglasov v 14d ZNOTRAJ izbranih accountov (potencial)
+    filtered = filtered.filter(r => getStatusInChecked(r) === 'none');
   }
+  // else 'all' = vse SKU-je
 
   // Search
   if (search) {
@@ -4886,12 +4901,15 @@ function o14RenderTable() {
   if (window._o14SortCol) {
     const col = window._o14SortCol;
     const dir = window._o14SortDir || 1;
+    const statusRank = {'active': 3, 'paused': 2, 'none': 1};
     filtered.sort((a, b) => {
       let av, bv;
       if (col.startsWith('acc:')) {
         const acc = col.slice(4);
-        av = a.accounts?.[acc] ? 1 : 0;
-        bv = b.accounts?.[acc] ? 1 : 0;
+        const aData = a.accounts?.[acc];
+        const bData = b.accounts?.[acc];
+        av = aData ? (statusRank[aData.status] || 0) : 0;
+        bv = bData ? (statusRank[bData.status] || 0) : 0;
       } else {
         av = a[col]; bv = b[col];
       }
@@ -4960,13 +4978,20 @@ function o14RenderTable() {
   if (filtered.length === 0) {
     html += '<div style="padding:2rem;text-align:center;color:var(--text-tertiary);font-size:12px">Ni rezultatov.</div>';
   } else {
-    html += filtered.slice(0, 500).map(r => {
+    html += filtered.map(r => {
       const accCells = visibleAccounts.map(acc => {
         const data = r.accounts?.[acc];
         if (!data || data.campaigns === 0) {
-          return '<span style="text-align:center;color:var(--text-tertiary);font-size:14px">○</span>';
+          // ✗ rdeč — ni v 14d reportu sploh
+          return '<span style="text-align:center;color:#dc2626;font-size:16px;font-weight:700" title="' + esc(acc) + ': BREZ oglasov v 14 dneh — kandidat za reaktivacijo">✗</span>';
         }
-        return '<span style="text-align:center;color:var(--green);font-size:14px;font-weight:600" title="' + esc(acc) + ': ' + data.campaigns + ' kampanj · ' + data.spend.toFixed(2) + '€ · ' + data.purchases + ' nakupov">✓</span>';
+        const status = data.status || 'none';
+        if (status === 'active') {
+          return '<span style="text-align:center;color:var(--green);font-size:16px;font-weight:700" title="' + esc(acc) + ': AKTIVEN ▶ ' + (data.active || 0) + ' aktivnih · ' + (data.paused || 0) + ' pavziranih · ' + data.spend.toFixed(2) + '€ · ' + data.purchases + ' nakupov">✓</span>';
+        } else if (status === 'paused') {
+          return '<span style="text-align:center;color:#d97706;font-size:14px;font-weight:700" title="' + esc(acc) + ': PAVZA ⏸ vse pavzirane · ' + data.spend.toFixed(2) + '€ · ' + data.purchases + ' nakupov">⏸</span>';
+        }
+        return '<span style="text-align:center;color:#dc2626;font-size:16px;font-weight:700">✗</span>';
       }).join('');
 
       const bg = !r.has_ads ? 'rgba(124,58,237,0.08)' : 'var(--surface2)';
@@ -4979,9 +5004,7 @@ function o14RenderTable() {
       '</div>';
     }).join('');
 
-    if (filtered.length > 500) {
-      html += '<div style="padding:1rem;text-align:center;color:var(--text-tertiary);font-size:12px">Prikazano prvih 500 od ' + filtered.length + '.</div>';
-    }
+
   }
 
   table.innerHTML = html;
@@ -5241,7 +5264,7 @@ function anRenderTable() {
   if (filtered.length === 0) {
     html += '<div style="padding:2rem;text-align:center;color:var(--text-tertiary);font-size:12px">Ni rezultatov.</div>';
   } else {
-    html += filtered.slice(0, 500).map(r => {
+    html += filtered.map(r => {
       let bg = 'var(--surface2)';
       let stockColor = 'var(--text-secondary)';
       let obratColor = 'var(--text-secondary)';
@@ -5339,10 +5362,6 @@ function anRenderTable() {
         accountBar +
       '</div>';
     }).join('');
-
-    if (filtered.length > 500) {
-      html += '<div style="padding:1rem;text-align:center;color:var(--text-tertiary);font-size:12px">Prikazano prvih 500 od ' + filtered.length + '. Uporabi iskanje za filtriranje.</div>';
-    }
   }
 
   table.innerHTML = html;
