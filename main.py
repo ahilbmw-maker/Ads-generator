@@ -3073,8 +3073,8 @@ def _load_known_skus():
             sku = (row.get('product_sku') or row.get('sku') or '').strip()
             if sku:
                 skus.add(sku.upper())
-                # Dodaj tudi koren (PLANTUP_white -> PLANTUP)
-                koren = re.split(r'[_\-\s]', sku)[0].upper()
+                # Dodaj tudi koren (PLANTUP_white -> PLANTUP, Maaa61lightBrown -> Maaa61)
+                koren = smart_root(sku).upper()
                 if koren and len(koren) >= 4:
                     skus.add(koren)
         return skus
@@ -3083,18 +3083,53 @@ def _load_known_skus():
         return set()
 
 
+def smart_root(s: str) -> str:
+    """Pridobi koren SKU-ja:
+    1. Razdeli po _-/presledek (PLANTUP_white → PLANTUP, COVERKA_2x3m → COVERKA)
+    2. Camel-case prehod (Maaa61lightBrown → Maaa61)
+    3. Digit-pred-male-črke (M261red → M261, Maaa6red → Maaa6)
+    """
+    if not s:
+        return s
+    base = re.split(r'[_\-\s]', s)[0]
+    cut = None
+    # Camel-case: lower → Upper
+    m = re.search(r'([a-z])([A-Z])', base)
+    if m:
+        idx = m.start() + 1
+        while idx > 1 and base[idx-1].islower():
+            idx -= 1
+        if idx > 0:
+            cut = idx
+    # Digit followed by lowercase (M261red, Maaa6red)
+    if cut is None:
+        m2 = re.search(r'(\d)([a-z])', base)
+        if m2:
+            cut = m2.start() + 1
+    return base[:cut] if cut is not None else base
+
+
 def extract_skus_from_text(text: str, known_skus: set = None) -> list[str]:
-    """Izvleče SKU tokene iz teksta. Če je known_skus dan, vrača samo te."""
+    """Izvleče SKU tokene iz teksta. Če je known_skus dan, vrača samo te.
+    
+    Match strategija:
+    1. Exact match (case-insensitive) v known_skus
+    2. Koren match - PLANTUP_white → PLANTUP
+    3. Mixed-case dovoljen če je v known_skus (npr. Maaa61, silux74)
+    """
     if not text:
         return []
     tokens = []
+    
+    # Pripravi case-insensitive lookup
+    known_upper = set()
+    if known_skus is not None:
+        known_upper = {s.upper() for s in known_skus}
+    
     for raw in text.split():
         # Odstrani emoji in posebne znake na začetku/koncu
         cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', raw)
         if not cleaned or len(cleaned) < 4:
-            continue
-        # Mora bit UPPERCASE
-        if cleaned != cleaned.upper():
             continue
         # Ne sme vsebovati piko/decimal (filtrira 9.0BID, BID8.5)
         if '.' in cleaned:
@@ -3102,23 +3137,31 @@ def extract_skus_from_text(text: str, known_skus: set = None) -> list[str]:
         # Mora vsebovati vsaj 1 črko
         if not any(c.isalpha() for c in cleaned):
             continue
-        # Skip stopwords
-        if cleaned in SKU_STOPWORDS:
+        # Skip stopwords (case-insensitive)
+        if cleaned.upper() in SKU_STOPWORDS:
             continue
         # Skip čiste številke + max 1 črka (90D, 7D, 30D, 1ER ipd.)
-        if re.match(r'^\d+[A-Z]?$', cleaned):
+        if re.match(r'^\d+[A-Z]?$', cleaned, re.IGNORECASE):
             continue
-        # Če imamo seznam znanih SKU, preverim pripadnost
+        
+        cleaned_upper = cleaned.upper()
+        
+        # Če imamo known_skus, preverjamo pripadnost
         if known_skus is not None:
-            if cleaned in known_skus:
+            # Exact match (case-insensitive)
+            if cleaned_upper in known_upper:
                 tokens.append(cleaned)
-            else:
-                # Tudi koren preverim (M261_red -> M261)
-                koren = re.split(r'[_\-]', cleaned)[0]
-                if koren in known_skus:
-                    tokens.append(cleaned)
+                continue
+            # Koren match (PLANTUP_white → PLANTUP, Maaa61lightBrown → Maaa61)
+            koren = smart_root(cleaned)
+            if koren.upper() in known_upper:
+                tokens.append(cleaned)
+                continue
+            # Le UPPERCASE besede (>=4 znaki) ki niso v knownh — ignoriraj
         else:
-            tokens.append(cleaned)
+            # Brez known_skus - sprejmemo le UPPERCASE besede (legacy)
+            if cleaned == cleaned.upper():
+                tokens.append(cleaned)
     return tokens
 
 
@@ -3358,13 +3401,17 @@ async def analiza_obrat14_data():
                 reader = _csv.DictReader(_SIO(fb_text), delimiter=fb_sep)
 
                 # Pripravi seznam znanih SKU iz obrat14 (za extract_skus filter)
+                # Vključimo VSE variante — uppercase (za standardni match) + originalne + korene
                 known_skus_obrat = set()
                 for it in items:
-                    s = it["sku"].upper()
+                    s = it["sku"]
                     known_skus_obrat.add(s)
-                    koren = re.split(r'[_\-\s]', s)[0]
+                    known_skus_obrat.add(s.upper())
+                    # Koren (PLANTUP_white -> PLANTUP, Maaa61lightBrown -> Maaa61, COVERKA_2x3m -> COVERKA)
+                    koren = smart_root(s)
                     if koren and len(koren) >= 4:
                         known_skus_obrat.add(koren)
+                        known_skus_obrat.add(koren.upper())
 
                 def _f(v):
                     try: return float(str(v or '0').replace(',', '.'))
@@ -3385,31 +3432,59 @@ async def analiza_obrat14_data():
                     skus = extract_skus_from_text(cname, known_skus_obrat)
                     skus = list(dict.fromkeys(skus))
 
+                    # Za vsak SKU token iz kampanje, najdi VSE matching izdelke v 14dni
                     for sku_token in skus:
-                        # Najdi kateri SKU iz našega seznama je to
                         sku_upper = sku_token.upper()
-                        # Poskusi exact
-                        target_sku = None
+                        token_koren = smart_root(sku_upper)
+                        target_skus = []
+                        
+                        # 1. Exact (case-insensitive)
                         for it in items:
                             if it["sku"].upper() == sku_upper:
-                                target_sku = it["sku"]
+                                target_skus = [it["sku"]]
                                 break
-                            # Primerjaj koren
-                            koren_item = re.split(r'[_\-\s]', it["sku"])[0].upper()
-                            if koren_item == sku_upper or koren_item == re.split(r'[_\-\s]', sku_upper)[0]:
-                                target_sku = it["sku"]
-                                break
+                        
+                        if not target_skus:
+                            # 2. Koren match — vsi izdelki s tem korenom
+                            candidates = []
+                            for it in items:
+                                item_koren = smart_root(it["sku"]).upper()
+                                if item_koren == token_koren or item_koren == sku_upper or token_koren == it["sku"].upper():
+                                    candidates.append(it["sku"])
+                            
+                            if len(candidates) == 0:
+                                continue
+                            elif len(candidates) == 1:
+                                target_skus = candidates
+                            else:
+                                # 3. Več zadetkov: če je sku_token preprosto koren (npr. "Maaa61") → vse variante
+                                if sku_upper == token_koren:
+                                    target_skus = candidates
+                                else:
+                                    # Fuzzy match — najdi najbolj podobnega
+                                    from difflib import SequenceMatcher
+                                    best, best_ratio = None, 0
+                                    for c in candidates:
+                                        ratio = SequenceMatcher(None, sku_upper, c.upper()).ratio()
+                                        if ratio > best_ratio:
+                                            best_ratio = ratio
+                                            best = c
+                                    if best and best_ratio >= 0.6:
+                                        target_skus = [best]
+                                    else:
+                                        target_skus = candidates  # fallback: vse
 
-                        if not target_sku:
-                            continue
-
-                        if target_sku not in sku_ads_map:
-                            sku_ads_map[target_sku] = {}
-                        if account not in sku_ads_map[target_sku]:
-                            sku_ads_map[target_sku][account] = {"spend": 0, "purchases": 0, "campaigns": 0}
-                        sku_ads_map[target_sku][account]["spend"] += spend
-                        sku_ads_map[target_sku][account]["purchases"] += purchases
-                        sku_ads_map[target_sku][account]["campaigns"] += 1
+                        # Zabeleži za vse target SKU-je
+                        for target_sku in target_skus:
+                            if target_sku not in sku_ads_map:
+                                sku_ads_map[target_sku] = {}
+                            if account not in sku_ads_map[target_sku]:
+                                sku_ads_map[target_sku][account] = {"spend": 0, "purchases": 0, "campaigns": 0}
+                            # Razdelimo spend/purchases enakomerno če je več target SKU
+                            split = max(1, len(target_skus))
+                            sku_ads_map[target_sku][account]["spend"] += spend / split
+                            sku_ads_map[target_sku][account]["purchases"] += purchases / split
+                            sku_ads_map[target_sku][account]["campaigns"] += 1
             except Exception as e:
                 print(f"[obrat14] FB match err: {e}")
 
