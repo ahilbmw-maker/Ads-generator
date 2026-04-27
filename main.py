@@ -2714,3 +2714,254 @@ async def orodja_hs_history_delete(filename: str):
             from fastapi.responses import JSONResponse
             return JSONResponse({"error": str(e)}, status_code=500)
     return {"status": "not_found"}
+
+
+
+# ─── ORODJA: Kontrola cen — Stock CSV upload + match s PDF predračun ────────
+
+STOCK_CSV_FILE = DATA_DIR / "stock_inventory.csv"
+STOCK_CSV_META = DATA_DIR / "stock_inventory_meta.json"
+
+
+@app.post("/orodja-stock-upload")
+async def orodja_stock_upload(file: UploadFile = File(...)):
+    """Naloži CSV zaloge — overwrite obstoječ. Shrani s timestampom."""
+    try:
+        content_bytes = await file.read()
+        STOCK_CSV_FILE.write_bytes(content_bytes)
+
+        # Preštej vrstice (brez praznih + brez headerja)
+        text = content_bytes.decode('utf-8-sig', errors='replace')
+        all_lines = [l for l in text.split('\n') if l.strip()]
+        rows = max(0, len(all_lines) - 1)  # minus header
+
+        # Detektiraj separator (',' ali ';')
+        sep = ';' if (all_lines and all_lines[0].count(';') > all_lines[0].count(',')) else ','
+
+        # Preštej validne SKU postavke
+        try:
+            import csv as _csv
+            from io import StringIO as _SIO
+            reader = _csv.reader(_SIO(text), delimiter=sep)
+            headers = next(reader, [])
+            h_lower = [h.strip().lower() for h in headers]
+            sku_idx = next((i for i, h in enumerate(h_lower) if h in ('product_sku', 'sku')), -1)
+            valid_count = 0
+            if sku_idx >= 0:
+                for row in reader:
+                    if len(row) > sku_idx and (row[sku_idx] or '').strip():
+                        valid_count += 1
+            else:
+                valid_count = rows
+        except:
+            valid_count = rows
+
+        meta = {
+            "uploaded_at": datetime.now().isoformat(),
+            "filename": file.filename,
+            "size": len(content_bytes),
+            "rows": valid_count,
+            "separator": sep,
+        }
+        STOCK_CSV_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        return {"status": "ok", "rows": valid_count, "uploaded_at": meta["uploaded_at"], "filename": file.filename}
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/orodja-stock-status")
+async def orodja_stock_status():
+    """Vrne info o trenutno shranjeni zalogi."""
+    if not STOCK_CSV_FILE.exists() or not STOCK_CSV_META.exists():
+        return {"loaded": False}
+    try:
+        meta = json.loads(STOCK_CSV_META.read_text(encoding="utf-8"))
+        return {"loaded": True, **meta}
+    except Exception as e:
+        return {"loaded": False, "error": str(e)}
+
+
+@app.post("/orodja-price-check")
+async def orodja_price_check(file: UploadFile = File(...)):
+    """Sprejme HS+ PDF + match s shranjeno zalogo, vrne primerjavo cen."""
+    if not STOCK_CSV_FILE.exists():
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Najprej naloži CSV zaloge."}, status_code=400)
+
+    try:
+        # 1. Preberi PDF s Claude Vision (isti pristop kot orodja-import-hs-pdf)
+        content_bytes = await file.read()
+        items = []  # [{ean, opis, sku, kolicina, cena_pdf, popust_pct}]
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+            tmp.write(content_bytes)
+            tmp_path = tmp.name
+
+        try:
+            # Najprej poskus pdfplumber
+            try:
+                with pdfplumber.open(tmp_path) as pdf:
+                    for page in pdf.pages:
+                        text = page.extract_text() or ""
+                        if text.strip():
+                            for line in text.split('\n'):
+                                line = line.strip()
+                                # Format: ean opis kolicina KOS cena popust DDV znesek
+                                m = re.match(r'^(\d{12,14})\s+(.+?)\s+(\d+)\s+(?:KOS|kos)\s+([\d.,]+)\s+(\d+)?', line)
+                                if m:
+                                    opis = m.group(2).strip()
+                                    tokens = [t.rstrip('.,;:') for t in opis.split()]
+                                    upper_t = [t for t in tokens if t.isupper() and len(t) >= 3 and not t.isdigit()]
+                                    sku = upper_t[-1] if upper_t else (tokens[-1] if tokens else opis)
+                                    try:
+                                        cena = float(m.group(4).replace(',', '.'))
+                                    except:
+                                        cena = 0
+                                    try:
+                                        popust = float(m.group(5)) if m.group(5) else 0
+                                    except:
+                                        popust = 0
+                                    items.append({
+                                        "ean": m.group(1),
+                                        "opis": opis,
+                                        "sku": sku,
+                                        "kolicina": int(m.group(3)),
+                                        "cena_pdf": cena,
+                                        "popust_pct": popust,
+                                    })
+            except: pass
+
+            # Fallback: Claude Vision
+            if not items:
+                import base64
+                pdf_b64 = base64.b64encode(content_bytes).decode('utf-8')
+                prompt = """Preberi ta predračun in vrni VSA postavke v JSON formatu.
+Za vsako postavko izloci:
+- ean: 13-mestna številka koda na začetku vrstice
+- opis: celoten opis postavke
+- sku: zadnja SVE-VELIKA-ČRKA beseda v opisu (npr. "HYDRASPRINK HYDRASPRINK" → SKU = "HYDRASPRINK"; "WHEELPLAY yellow WHEELPLAY" → SKU = "WHEELPLAY"; "TOPKNER 180x200 TOPKNER" → SKU = "TOPKNER_180x200")
+- kolicina: število pred "KOS" oznako
+- cena_pdf: cena enote (po KOS, npr. "2,67")
+- popust_pct: popust v % (število iz Popust % stolpca, lahko je prazno → 0)
+
+POMEMBNO: Pri SKU-jih z dimenzijami (TOPKNER, WHEELPLAY) vključi tudi dimenzijo/barvo, ker so to različni izdelki:
+- "TOPKNER 180x200 TOPKNER" → "TOPKNER_180x200"
+- "TOPKNER 160x200 TOPKNER" → "TOPKNER_160x200"
+- "WHEELPLAY yellow WHEELPLAY" → "WHEELPLAY_yellow"
+- "PLANTUP (white) PLANTUP" → "PLANTUP_white"
+- "BEEWAX WOOD POLISH BEEWAX" → "BEEWAX"
+
+Vrni IZKLJUČNO valid JSON v formatu:
+{"items": [{"ean": "...", "opis": "...", "sku": "...", "kolicina": 350, "cena_pdf": 2.67, "popust_pct": 5}, ...]}
+
+Brez dodatnih komentarjev, samo JSON."""
+
+                try:
+                    client = anthropic.Anthropic()
+                    response = client.messages.create(
+                        model="claude-sonnet-4-6",
+                        max_tokens=8000,
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64}},
+                                {"type": "text", "text": prompt}
+                            ]
+                        }]
+                    )
+                    text_resp = "".join([b.text for b in response.content if hasattr(b, 'text')])
+                    parsed = parse_json_response(text_resp)
+                    if parsed and 'items' in parsed:
+                        for it in parsed['items']:
+                            try: qty = int(it.get('kolicina', 0))
+                            except: qty = 0
+                            try: cena = float(str(it.get('cena_pdf', 0)).replace(',', '.'))
+                            except: cena = 0
+                            try: popust = float(str(it.get('popust_pct', 0)).replace(',', '.'))
+                            except: popust = 0
+                            items.append({
+                                "ean": str(it.get('ean', '')),
+                                "opis": str(it.get('opis', '')),
+                                "sku": str(it.get('sku', '')).strip(),
+                                "kolicina": qty,
+                                "cena_pdf": cena,
+                                "popust_pct": popust,
+                            })
+                except Exception as e:
+                    print(f"[price-check] Claude error: {e}")
+        finally:
+            try: os.unlink(tmp_path)
+            except: pass
+
+        if not items:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": "PDF parse fail."}, status_code=400)
+
+        # 2. Naloži zalogo iz CSV
+        import csv
+        from io import StringIO
+        stock_text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        # Detect separator
+        first_line = stock_text.split('\n')[0]
+        delim = ';' if first_line.count(';') > first_line.count(',') else ','
+        reader = csv.DictReader(StringIO(stock_text), delimiter=delim)
+
+        # Map SKU → cena (lower-case za case-insensitive match)
+        stock_map = {}
+        for row in reader:
+            sku = (row.get('product_sku') or row.get('sku') or '').strip()
+            if not sku:
+                continue
+            try:
+                cena = float(str(row.get('price_netto') or row.get('price') or 0).replace(',', '.'))
+            except:
+                cena = 0
+            title = (row.get('title') or '').strip()
+            stock_map[sku.lower()] = {"sku": sku, "cena_zaloga": cena, "title": title}
+
+        # 3. Match in primerjava
+        results = []
+        for item in items:
+            sku_pdf = item["sku"]
+            stock = stock_map.get(sku_pdf.lower())
+
+            cena_pdf_neto = item["cena_pdf"] * (1 - item["popust_pct"] / 100)
+
+            if stock:
+                cena_zaloga = stock["cena_zaloga"]
+                razlika = cena_pdf_neto - cena_zaloga
+                razlika_pct = (razlika / cena_zaloga * 100) if cena_zaloga > 0 else 0
+                if abs(razlika) < 0.001:
+                    status = "match"
+                elif razlika > 0:
+                    status = "vecja"  # PDF cena VEČJA = SLABO za nas
+                else:
+                    status = "manjsa"  # PDF cena MANJŠA = DOBRO za nas
+            else:
+                cena_zaloga = None
+                razlika = None
+                razlika_pct = None
+                status = "no_match"
+
+            results.append({
+                "sku": sku_pdf,
+                "opis": item["opis"],
+                "title_zaloga": stock["title"] if stock else None,
+                "kolicina": item["kolicina"],
+                "cena_pdf": item["cena_pdf"],
+                "popust_pct": item["popust_pct"],
+                "cena_pdf_neto": round(cena_pdf_neto, 4),
+                "cena_zaloga": cena_zaloga,
+                "razlika": round(razlika, 4) if razlika is not None else None,
+                "razlika_pct": round(razlika_pct, 2) if razlika_pct is not None else None,
+                "status": status,
+            })
+
+        return {"items": results, "total": len(results), "matched": sum(1 for r in results if r["status"] != "no_match")}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
