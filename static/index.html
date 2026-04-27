@@ -4489,7 +4489,7 @@ function pcRenderResults(data) {
     (noMatch > 0 ? ' · <span style="color:var(--text-tertiary)">⚠ Brez matcha: ' + noMatch + '</span>' : '');
 
   const list = document.getElementById('pcItemsList');
-  list.innerHTML = '<div style="display:grid;grid-template-columns:2fr 80px 100px 100px 110px 1.5fr;gap:14px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px"><span>SKU</span><span style="text-align:center">Kol</span><span style="text-align:right">PDF €</span><span style="text-align:right">Neto €</span><span style="text-align:right">Zaloga €</span><span>Razlika</span></div>';
+  list.innerHTML = '<div style="display:grid;grid-template-columns:2fr 80px 130px 110px 1.5fr;gap:14px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px"><span>SKU</span><span style="text-align:center">Kol</span><span style="text-align:right">PDF €</span><span style="text-align:right">Zaloga €</span><span>Razlika</span></div>';
 
   list.innerHTML += pcResults.map((r, idx) => {
     let bg = 'var(--surface2)';
@@ -4500,14 +4500,15 @@ function pcRenderResults(data) {
       bg = 'var(--bg-secondary)';
       badge = '<span style="color:var(--text-tertiary);font-size:10px;font-weight:500">⚠ Brez matcha</span>';
     } else if (r.status === 'match') {
+      bg = 'var(--surface2)';
       badge = '<span style="color:var(--green);font-size:10px;font-weight:600">✓ Ujema</span>';
       razlikaTxt = '0.00 €';
     } else if (r.status === 'vecja') {
-      bg = 'rgba(248,81,73,0.06)';
+      bg = 'rgba(248,81,73,0.15)';  // RDEČ — PDF dražji = SLABO
       badge = '<span style="color:var(--red);font-size:10px;font-weight:600">↑ +' + r.razlika.toFixed(2) + ' € (' + r.razlika_pct.toFixed(1) + '%)</span>';
       razlikaTxt = '+' + r.razlika.toFixed(2) + ' €';
     } else if (r.status === 'manjsa') {
-      bg = 'rgba(64,193,80,0.06)';
+      bg = 'rgba(64,193,80,0.15)';  // ZELEN — PDF cenejši = DOBRO
       badge = '<span style="color:var(--green);font-size:10px;font-weight:600">↓ ' + r.razlika.toFixed(2) + ' € (' + r.razlika_pct.toFixed(1) + '%)</span>';
       razlikaTxt = r.razlika.toFixed(2) + ' €';
     }
@@ -4515,11 +4516,15 @@ function pcRenderResults(data) {
     const popustTxt = r.popust_pct > 0 ? ' (-' + r.popust_pct + '%)' : '';
 
     const opisFull = r.title_zaloga || r.opis || '';
-    return '<div style="display:grid;grid-template-columns:2fr 80px 100px 100px 110px 1.5fr;gap:14px;align-items:center;padding:14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px">' +
+    // PDF kolona: če je popust, prikaži dejansko neto ceno (po popustu) z (-5%) opombo
+    const pdfPriceDisplay = r.popust_pct > 0
+      ? r.cena_pdf_neto.toFixed(2) + ' <span style="color:var(--text-tertiary);font-size:10px">(-' + r.popust_pct + '%)</span>'
+      : r.cena_pdf_neto.toFixed(2);
+
+    return '<div style="display:grid;grid-template-columns:2fr 80px 130px 110px 1.5fr;gap:14px;align-items:center;padding:14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px">' +
       '<div style="min-width:0"><div style="font-weight:600;color:var(--text);font-size:14px">' + esc(r.sku) + '</div><div style="font-size:11px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px" title="' + esc(opisFull) + '">' + esc(opisFull) + '</div></div>' +
       '<span style="color:var(--text-secondary);text-align:center;font-weight:500">' + r.kolicina + '</span>' +
-      '<span style="color:var(--text-secondary);text-align:right">' + r.cena_pdf.toFixed(2) + popustTxt + '</span>' +
-      '<span style="color:var(--text);font-weight:600;text-align:right">' + r.cena_pdf_neto.toFixed(2) + '</span>' +
+      '<span style="color:var(--text);font-weight:600;text-align:right">' + pdfPriceDisplay + '</span>' +
       '<span style="color:' + (r.cena_zaloga !== null ? 'var(--text-secondary)' : 'var(--text-tertiary)') + ';text-align:right;font-weight:500">' + (r.cena_zaloga !== null ? r.cena_zaloga.toFixed(2) : '—') + '</span>' +
       '<div>' + badge + '</div>' +
     '</div>';
