@@ -1380,7 +1380,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <button onclick="anClearFilters()" style="padding:5px 10px;background:none;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text-tertiary);cursor:pointer;font-family:'DM Sans',sans-serif">↻ Počisti</button>
           </div>
 
-          <div id="anTable" style="display:flex;flex-direction:column;gap:6px"></div>
+          <div id="anTable" style="display:flex;flex-direction:column;gap:6px;overflow-x:auto"></div>
           <div id="anEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži CSV zalogo v zavihku <strong>Orodja → Kontrola cen</strong>.</div>
         </div>
       </div>
@@ -1413,7 +1413,7 @@ input[type="text"].error { border-color: var(--red) !important; }
               <button class="o14-filter-btn active" onclick="o14SetFilter('all', this)" style="padding:8px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">📋 Vsi izdelki</button>
               <button class="o14-filter-btn" onclick="o14SetFilter('with_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">✓ Aktivni v 14d</button>
               <button class="o14-filter-btn" onclick="o14SetFilter('paused', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⏸ Pavzirani (vsi STOP)</button>
-              <button class="o14-filter-btn" onclick="o14SetFilter('without_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">✗ Brez oglasov (potencial)</button>
+              <button class="o14-filter-btn" onclick="o14SetFilter('without_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">— Brez oglasov (potencial)</button>
             </div>
           </div>
         </div>
@@ -4992,16 +4992,16 @@ function o14RenderTable() {
       const accCells = visibleAccounts.map(acc => {
         const data = r.accounts?.[acc];
         if (!data || data.campaigns === 0) {
-          // ✗ rdeč — ni v 14d reportu sploh
-          return '<span style="text-align:center;color:#dc2626;font-size:16px;font-weight:700" title="' + esc(acc) + ': BREZ oglasov v 14 dneh — kandidat za reaktivacijo">✗</span>';
+          // — sivi pomišljaj (ni v 14d reportu — potencialni kandidat za reaktivacijo, info v tooltip)
+          return '<div style="text-align:center;color:var(--text-tertiary);font-size:14px" title="' + esc(acc) + ': brez oglasov v 14d (kandidat za reaktivacijo)">—</div>';
         }
         const status = data.status || 'none';
         if (status === 'active') {
-          return '<span style="text-align:center;color:var(--green);font-size:16px;font-weight:700" title="' + esc(acc) + ': AKTIVEN ▶ ' + (data.active || 0) + ' aktivnih · ' + (data.paused || 0) + ' pavziranih · ' + data.spend.toFixed(2) + '€ · ' + data.purchases + ' nakupov">✓</span>';
+          return '<div style="text-align:center;color:var(--green);font-size:15px;font-weight:700" title="' + esc(acc) + ': aktiven · ' + (data.active || 0) + ' aktivnih · ' + (data.paused || 0) + ' pavziranih · ' + data.spend.toFixed(2) + '€ · ' + data.purchases + ' nakupov">✓</div>';
         } else if (status === 'paused') {
-          return '<span style="text-align:center;color:#d97706;font-size:14px;font-weight:700" title="' + esc(acc) + ': PAVZA ⏸ vse pavzirane · ' + data.spend.toFixed(2) + '€ · ' + data.purchases + ' nakupov">⏸</span>';
+          return '<div style="text-align:center;color:#d97706;font-size:14px;font-weight:700" title="' + esc(acc) + ': pavzirano · vse kampanje STOP · ' + data.spend.toFixed(2) + '€ · ' + data.purchases + ' nakupov">⏸</div>';
         }
-        return '<span style="text-align:center;color:#dc2626;font-size:16px;font-weight:700">✗</span>';
+        return '<div style="text-align:center;color:var(--text-tertiary);font-size:14px" title="' + esc(acc) + ': ni oglaševan">—</div>';
       }).join('');
 
       const bg = !r.has_ads ? 'rgba(124,58,237,0.08)' : 'var(--surface2)';
@@ -5086,6 +5086,14 @@ async function anLoadStock() {
 }
 
 function anSortBy(col) {
+  if (anSortCol === col) anSortDir = -anSortDir;
+  else { anSortCol = col; anSortDir = -1; }
+  window._anPage = 1;
+  anRenderTable();
+}
+
+function anSortByAccount(acc) {
+  const col = 'acc:' + acc;
   if (anSortCol === col) anSortDir = -anSortDir;
   else { anSortCol = col; anSortDir = -1; }
   window._anPage = 1;
@@ -5206,8 +5214,24 @@ function anRenderTable() {
 
   // Sort
   if (anSortCol) {
+    const accStatusRank = {'active': 3, 'paused': 2, 'none': 1};
     filtered.sort((a, b) => {
-      let av = a[anSortCol], bv = b[anSortCol];
+      let av, bv;
+      if (typeof anSortCol === 'string' && anSortCol.startsWith('acc:')) {
+        const acc = anSortCol.slice(4);
+        const aData = a._ad?.accounts?.[acc];
+        const bData = b._ad?.accounts?.[acc];
+        const getRank = (d) => {
+          if (!d || (d.campaigns || 0) === 0) return 0;
+          let s = d.status;
+          if (!s) s = (d.active || 0) > 0 ? 'active' : 'paused';
+          return accStatusRank[s] || 0;
+        };
+        av = getRank(aData);
+        bv = getRank(bData);
+      } else {
+        av = a[anSortCol]; bv = b[anSortCol];
+      }
       if (av == null && bv == null) return 0;
       if (av == null) return 1;
       if (bv == null) return -1;
@@ -5268,21 +5292,35 @@ function anRenderTable() {
       '</div>';
   }
 
-  // Header
-  const cols = '1.3fr 2.2fr 70px 75px 70px 1fr 80px 70px 70px';
+  // Header — account stolpci direktno v gridu (vodoravno)
+  // Brez RAZM. stolpca; namesto zneskov v account stolpcih le simboli ✓ / ⏸ / —
+  const accountColsTpl = hasMetaData ? TARGET_ACCOUNTS.map(() => '54px').join(' ') : '';
+  const cols = hasMetaData
+    ? '1.3fr 2.2fr 70px 75px 130px ' + accountColsTpl + ' 80px 70px 70px'
+    : '1.3fr 2.2fr 70px 75px';
+
+  // Min širina za grid, da se ne stiska — sumiraj fr in px približno
+  const accCount = hasMetaData ? TARGET_ACCOUNTS.length : 0;
+  const minWidth = hasMetaData ? (260 + 440 + 70 + 75 + 130 + (accCount * 54) + 80 + 70 + 70 + (accCount + 8) * 10) : 800;
+
   let html = legendHtml +
-    '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none">' +
+    '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none;min-width:' + minWidth + 'px">' +
     '<span style="cursor:pointer" onclick="anSortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
     '<span style="cursor:pointer" onclick="anSortBy(\'title\')">Naziv izdelka' + sortInd('title') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock\')">Zaloga' + sortInd('stock') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock30\')">Obrat 30d' + sortInd('stock30') + '</span>' +
-    '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'ratio\')">Razm.' + sortInd('ratio') + '</span>' +
     (hasMetaData
       ? '<span>Status</span>' +
+        TARGET_ACCOUNTS.map(acc => {
+          const lbl = ACC_SHORT[acc] || acc;
+          // Escape za inline onclick atribut: nadomesti ' z ASCII string-om znotraj single-quoted JS arg
+          const accEsc = String(acc).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+          return '<span style="text-align:center;cursor:pointer;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="anSortByAccount(\'' + accEsc + '\')" title="' + esc(acc) + ' — klik za sortiranje">' + esc(lbl) + sortInd('acc:' + acc) + '</span>';
+        }).join('') +
         '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_spend\')">Spend' + sortInd('ad_spend') + '</span>' +
         '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_purchases\')">Nakupi' + sortInd('ad_purchases') + '</span>' +
         '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_cpa\')">CPA' + sortInd('ad_cpa') + '</span>'
-      : '<span></span><span></span><span></span><span></span>') +
+      : '') +
     '</div>';
 
   // Vrstice
@@ -5306,23 +5344,36 @@ function anRenderTable() {
         stockColor = 'var(--red)';
       }
 
-      let ratioTxt = '—';
-      let ratioColor = 'var(--text-tertiary)';
-      if (r.ratio !== null && r.ratio !== Infinity) {
-        const ratio = r.ratio.toFixed(1);
-        ratioTxt = ratio + '×';
-        if (r.ratio < 1) ratioColor = 'var(--green)';
-        else if (r.ratio > 5) ratioColor = 'var(--red)';
-      } else if (r.stock > 0 && r.stock30 === 0) {
-        ratioTxt = '∞';
-        ratioColor = 'var(--red)';
-      }
-
-      // STATUS BADGE
+      // STATUS BADGE + account stolpci (inline, kot vodoravne celice grida)
       let statusCells = '';
       let statusBadge = '';
-      let accountBar = '';
+      let accountInlineCells = '';
       const adData = r._ad;
+
+      // Helper: zgenerira account celice (✓ / ⏸ / —) glede na stanje za ta SKU
+      const buildAccountInline = () => {
+        if (!hasMetaData) return '';
+        return TARGET_ACCOUNTS.map(acc => {
+          const accData = adData ? (adData.accounts?.[acc]) : null;
+          if (!accData || (accData.campaigns || 0) === 0 || (accData.spend === 0 && accData.purchases === 0 && (accData.campaigns || 0) === 0)) {
+            // Ni oglaševan
+            return '<div style="text-align:center;color:var(--text-tertiary);font-size:14px" title="' + esc(acc) + ': ni oglaševan">—</div>';
+          }
+          // accData.status: 'active' | 'paused' (če nimamo, izpeljemo iz active/paused števca)
+          let status = accData.status;
+          if (!status) {
+            const ac = accData.active || 0;
+            status = ac > 0 ? 'active' : 'paused';
+          }
+          if (status === 'active') {
+            const tip = esc(acc) + ': aktiven · ' + (accData.spend || 0).toFixed(2) + '€ · ' + (accData.purchases || 0) + ' nakupov · ' + (accData.campaigns || 0) + ' kampanj';
+            return '<div style="text-align:center;color:var(--green);font-size:15px;font-weight:700" title="' + tip + '">✓</div>';
+          }
+          // paused (bil aktiven a sedaj STOP)
+          const tip = esc(acc) + ': pavzirano · ' + (accData.spend || 0).toFixed(2) + '€ · ' + (accData.purchases || 0) + ' nakupov';
+          return '<div style="text-align:center;color:#d97706;font-size:14px;font-weight:700" title="' + tip + '">⏸</div>';
+        }).join('');
+      };
 
       if (hasMetaData) {
         if (!adData || adData.campaign_count === 0) {
@@ -5331,21 +5382,24 @@ function anRenderTable() {
             bg = 'rgba(124,58,237,0.10)';
             statusBadge = '<span style="font-size:11px;color:#7c3aed;font-weight:600">🚀 Potencial</span>';
           }
+          accountInlineCells = TARGET_ACCOUNTS.map(acc =>
+            '<div style="text-align:center;color:var(--text-tertiary);font-size:14px" title="' + esc(acc) + ': ni oglaševan">—</div>'
+          ).join('');
           statusCells =
             '<div>' + statusBadge + '</div>' +
+            accountInlineCells +
             '<div style="text-align:right;color:var(--text-tertiary)">—</div>' +
             '<div style="text-align:right;color:var(--text-tertiary)">—</div>' +
             '<div style="text-align:right;color:var(--text-tertiary)">—</div>';
         } else {
-          // Imam ads - 14d je vse v csv = NE pišem "ni oglasa"
+          // Imam ads
           const activeCount = adData.campaign_count - adData.stopped_count;
           const isAllStopped = activeCount === 0;
-          // Subtle bg + status badge
           if (isAllStopped) {
-            bg = 'rgba(245,158,11,0.10)'; // RUMENO - bil aktiven a sedaj stop
+            bg = 'rgba(245,158,11,0.10)';
             statusBadge = '<span style="font-size:11px;color:#d97706;font-weight:600">⏸ Stop (' + adData.campaign_count + ')</span>';
           } else {
-            bg = 'rgba(64,193,80,0.10)'; // ZELENO - aktiven
+            bg = 'rgba(64,193,80,0.10)';
             statusBadge = '<span style="font-size:11px;color:var(--green);font-weight:600">▶ Aktiven (' + activeCount + '/' + adData.campaign_count + ')</span>';
           }
 
@@ -5353,38 +5407,23 @@ function anRenderTable() {
           const cpaTxt = cpa !== null ? cpa.toFixed(2) + ' €' : '—';
           const cpaColor = cpa !== null && cpa < 8 ? 'var(--green)' : cpa !== null && cpa > 15 ? 'var(--red)' : 'var(--text)';
 
+          accountInlineCells = buildAccountInline();
+
           statusCells =
             '<div>' + statusBadge + '</div>' +
+            accountInlineCells +
             '<div style="text-align:right;font-weight:500;color:var(--text)">' + adData.total_spend.toFixed(0) + ' €</div>' +
             '<div style="text-align:right;font-weight:600;color:var(--text)">' + adData.total_purchases + '</div>' +
             '<div style="text-align:right;font-weight:600;color:' + cpaColor + '">' + cpaTxt + '</div>';
-
-          // ACCOUNT BAR — pas pod glavno vrstico, samo ✓ za aktivni
-          const accCells = TARGET_ACCOUNTS.map(acc => {
-            const accData = adData.accounts?.[acc];
-            const label = ACC_SHORT[acc] || acc;
-            if (!accData || accData.spend === 0) {
-              return '<span style="text-align:center;color:var(--text-tertiary);font-size:10px;padding:4px 10px;background:var(--bg-secondary);border-radius:4px;display:inline-flex;align-items:center;justify-content:center;gap:4px" title="' + esc(acc) + ': ni oglaševan">' + esc(label) + ' <span style="opacity:0.5">○</span></span>';
-            }
-            return '<span style="text-align:center;font-size:10px;font-weight:600;color:var(--green);padding:4px 10px;background:rgba(64,193,80,0.15);border:1px solid rgba(64,193,80,0.4);border-radius:4px;display:inline-flex;align-items:center;justify-content:center;gap:4px" title="' + esc(acc) + ': ' + accData.spend.toFixed(2) + '€ · ' + accData.purchases + ' nakupov · ' + accData.campaigns + ' kampanj">' + esc(label) + ' ✓</span>';
-          }).join('');
-
-          accountBar =
-            '<div style="grid-column:1/-1;padding:8px 14px 4px;display:flex;flex-wrap:wrap;gap:5px;border-top:1px dashed var(--border);margin-top:4px">' +
-              '<span style="color:var(--text-tertiary);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.3px;margin-right:4px;align-self:center">Po accountih:</span>' +
-              accCells +
-            '</div>';
         }
       }
 
-      return '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;align-items:center;padding:12px 14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px">' +
+      return '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;align-items:center;padding:12px 14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px;min-width:' + minWidth + 'px">' +
         '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.sku) + '">' + esc(r.sku) + '</div>' +
         '<div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.title) + '">' + esc(r.title) + '</div>' +
         '<div style="text-align:center;font-weight:600;color:' + stockColor + '">' + r.stock + '</div>' +
         '<div style="text-align:center;font-weight:500;color:' + obratColor + '">' + r.stock30 + '</div>' +
-        '<div style="text-align:center;font-weight:500;color:' + ratioColor + '">' + ratioTxt + '</div>' +
         statusCells +
-        accountBar +
       '</div>';
     }).join('');
 
