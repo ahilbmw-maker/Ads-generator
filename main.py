@@ -1393,7 +1393,7 @@ async def localize_kreativa(data: dict):
                         out_mime = part["inlineData"].get("mimeType", "image/png")
                         out_b64 = part["inlineData"].get("data", "")
                         img_url = f"data:{out_mime};base64,{out_b64}"
-                        filename = f"{lang_code}{img_idx}_{sku}.png"
+                        filename = f"{sku}_{lang_code}_v{img_idx}.png"
                         asana_ok = False
                         if asana_task_id:
                             try:
