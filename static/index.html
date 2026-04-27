@@ -1100,6 +1100,10 @@ input[type="text"].error { border-color: var(--red) !important; }
             <input type="text" id="vadsInput" placeholder="https://... ali opis izdelka" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif" oninput="vadsInputChanged()">
           </div>
           <div class="field" style="margin-top:10px">
+            <span class="flabel" style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">SKU</span>
+            <input type="text" id="vadsSku" placeholder="npr. PILARAFIT" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;text-transform:uppercase">
+          </div>
+          <div class="field" style="margin-top:10px">
             <span class="flabel" style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Trajanje skripte</span>
             <div id="vadsDurAuto" style="display:none;padding:8px 12px;background:var(--green-dim);border:1px solid var(--green-border);border-radius:var(--radius);font-size:12px;color:var(--green);font-weight:500">
               🎬 Video: <span id="vadsVideoDurLabel">—</span>s → skripta prilagojena
@@ -3526,8 +3530,8 @@ async function vadsGenerateAudio(langCode) {
         <source src="${url}" type="audio/mpeg">
       </audio>
       <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-        <a href="${url}" download="voiceover_${langCode}.mp3" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">⬇ MP3</a>
-        ${hasSrt ? `<a href="${srtUrl}" download="podnapisi_${langCode}.srt" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">📝 SRT</a>` : ''}
+        <a href="${url}" download="${(document.getElementById('vadsSku')?.value||'audio').trim().toUpperCase()}_${langCode}_v1.mp3" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">⬇ MP3</a>
+        ${hasSrt ? `<a href="${srtUrl}" download="${(document.getElementById('vadsSku')?.value||'audio').trim().toUpperCase()}_${langCode}_v1.srt" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">📝 SRT</a>` : ''}
         ${hasVideo ? `<button class="vads-audio-btn generate" style="font-size:11px" onclick="vadsMergeVideo('${langCode}', this)">🎬 Video</button>` : ''}
         ${hasVideo && hasSrt ? `<button class="vads-audio-btn generate" style="font-size:11px;background:#7c3aed" onclick="vadsMergeVideoSrt('${langCode}', this)">🎬+📝 Video + podnapisi</button>` : ''}
       </div>
@@ -3576,7 +3580,7 @@ async function _vadsMerge(langCode, btn, withSrt) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `video_${langCode}.mp4`;
+    const skuV = (document.getElementById("vadsSku")?.value || "video").trim().toUpperCase() || "VIDEO"; a.download = skuV + "_" + langCode + "_v1.mp4";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -3669,7 +3673,9 @@ async function vadsBuildZipBlob(progressCallback) {
         if (res.ok) {
           const videoBlob = await res.blob();
           const suffix = vadsVideoFiles.length > 1 ? '_v' + (vi+1) : '';
-          zip.file('video_' + lang + suffix + '.mp4', videoBlob);
+          const sku = (document.getElementById('vadsSku')?.value || 'video').trim().toUpperCase() || 'VIDEO';
+          const fname = sku + '_' + lang + '_v' + (vi+1) + '.mp4';
+          zip.file(fname, videoBlob);
           count++;
         } else {
           console.error('Merge fail status:', res.status, lang, vi);
@@ -3687,8 +3693,9 @@ async function vadsBuildZipBlob(progressCallback) {
   } else {
     // Samo audio fajli
     for (const [lang, blob] of Object.entries(audioBlobs)) {
-      zip.file('audio_' + lang + '.mp3', blob);
-      if (srts[lang]) zip.file('subs_' + lang + '.srt', srts[lang]);
+      const sku = (document.getElementById('vadsSku')?.value || 'audio').trim().toUpperCase() || 'AUDIO';
+      zip.file(sku + '_' + lang + '_v1.mp3', blob);
+      if (srts[lang]) zip.file(sku + '_' + lang + '_v1.srt', srts[lang]);
       count++;
     }
   }
