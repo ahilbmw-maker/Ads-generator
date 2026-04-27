@@ -4772,7 +4772,32 @@ function anRenderTable() {
   const spendMin = parseFloat(document.getElementById('anFilterSpendMin')?.value || '');
 
   if (accFilter) {
-    filtered = filtered.filter(r => r._ad && Object.keys(r._ad.accounts || {}).some(a => a.toLowerCase().includes(accFilter.toLowerCase())));
+    // Filtrirano po accountu — agregiramo samo ujemajoče account-e
+    const accLower = accFilter.toLowerCase();
+    filtered = filtered.filter(r => r._ad && Object.keys(r._ad.accounts || {}).some(a => a.toLowerCase().includes(accLower)));
+    // Reagregiraj metrike SAMO za matchajoče account-e
+    filtered = filtered.map(r => {
+      if (!r._ad) return r;
+      const matchedAccounts = {};
+      let spend = 0, purchases = 0, campaigns = 0;
+      for (const [acc, data] of Object.entries(r._ad.accounts || {})) {
+        if (acc.toLowerCase().includes(accLower)) {
+          matchedAccounts[acc] = data;
+          spend += data.spend || 0;
+          purchases += data.purchases || 0;
+          campaigns += data.campaigns || 0;
+        }
+      }
+      return {
+        ...r,
+        ad_spend: spend,
+        ad_purchases: purchases,
+        ad_cpa: purchases > 0 ? (spend / purchases) : null,
+        ad_accounts: Object.keys(matchedAccounts).join(', '),
+        ad_campaign_count: campaigns,
+        _ad: { ...r._ad, accounts: matchedAccounts, total_spend: spend, total_purchases: purchases, campaign_count: campaigns, stopped_count: 0, _filtered: true },
+      };
+    });
   }
   if (!isNaN(cpaMin)) filtered = filtered.filter(r => r.ad_cpa !== null && r.ad_cpa >= cpaMin);
   if (!isNaN(cpaMax)) filtered = filtered.filter(r => r.ad_cpa !== null && r.ad_cpa <= cpaMax);
@@ -4907,7 +4932,9 @@ function anRenderTable() {
           const cpaTxt = cpa !== null ? cpa.toFixed(2) + ' €' : '—';
           const cpaColor = cpa !== null && cpa < 8 ? 'var(--green)' : cpa !== null && cpa > 15 ? 'var(--red)' : 'var(--text)';
           const activeCount = adData.campaign_count - adData.stopped_count;
-          const accountsLabel = activeCount + '/' + adData.campaign_count + ' kamp · ' + (accounts.length === 1 ? accounts[0].slice(0, 18) : accounts.length + ' acc.');
+          const accountsLabel = adData._filtered
+            ? adData.campaign_count + ' kamp · ' + (accounts.length === 1 ? accounts[0].slice(0, 22) : accounts.length + ' acc.')
+            : activeCount + '/' + adData.campaign_count + ' kamp · ' + (accounts.length === 1 ? accounts[0].slice(0, 18) : accounts.length + ' acc.');
 
           metaCells =
             '<div style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(accounts.join(", ")) + '">' + esc(accountsLabel) + '</div>' +
@@ -4949,17 +4976,15 @@ async function anLoadMeta(file) {
   const status = document.getElementById('anMetaStatus');
   status.style.display = 'block';
   status.style.color = 'var(--text-tertiary)';
-  status.textContent = '⏳ Berem datoteko...';
+  status.textContent = '⏳ Naložujem na server...';
 
   try {
-    let rows = [];
+    // CSV ali XLS na server (XLS pretvorimo v CSV najprej)
+    let uploadFile = file;
     const ext = file.name.toLowerCase().split('.').pop();
 
-    if (ext === 'csv') {
-      const text = await file.text();
-      rows = anParseCsv(text);
-    } else if (ext === 'xls' || ext === 'xlsx') {
-      // Naložimo SheetJS če še ni
+    if (ext === 'xls' || ext === 'xlsx') {
+      // Pretvori XLS v CSV pred uploadom
       if (!window.XLSX) {
         await new Promise((res, rej) => {
           const s = document.createElement('script');
@@ -4971,42 +4996,80 @@ async function anLoadMeta(file) {
       const ab = await file.arrayBuffer();
       const wb = window.XLSX.read(ab, {type: 'array'});
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      rows = window.XLSX.utils.sheet_to_json(sheet, {defval: ''});
-    } else {
+      const csv = window.XLSX.utils.sheet_to_csv(sheet);
+      uploadFile = new File([csv], file.name.replace(/\.[^.]+$/, '.csv'), {type: 'text/csv'});
+    } else if (ext !== 'csv') {
       throw new Error('Podprti formati: CSV, XLS, XLSX');
     }
 
-    if (!rows.length) throw new Error('Ni podatkov v datoteki.');
+    const formData = new FormData();
+    formData.append('file', uploadFile, uploadFile.name);
+    const res = await fetch('/analiza-meta-upload', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
 
-    anMetaData = rows;
-
-    // Poišči "campaign name" kolono
-    const firstRow = rows[0];
-    const campaignKey = Object.keys(firstRow).find(k =>
-      /campaign\s*name|ime\s*kampanje|kampanj/i.test(k)
-    );
-
-    status.textContent = '✓ Naloženih ' + rows.length + ' vrstic';
+    status.textContent = '✓ Naloženih ' + data.rows + ' vrstic';
     status.style.color = 'var(--green)';
 
-    // Povzetek
-    const summary = document.getElementById('anMetaSummary');
-    summary.style.display = 'block';
-    let html = '<strong>' + rows.length + '</strong> vrstic · <strong>' + Object.keys(firstRow).length + '</strong> kolon';
-    if (campaignKey) {
-      html += '<br>Kampanj: <strong>' + campaignKey + '</strong>';
-    } else {
-      html += '<br><span style="color:var(--yellow)">⚠ Ne najdem campaign name kolone</span>';
-    }
-    summary.innerHTML = html;
-
-    // Match s SKU + render
-    anMatchAndRender();
-
     document.getElementById('anMetaInput').value = '';
+    // Naloži procesirane podatke iz servera
+    await anLoadMetaFromServer();
   } catch(e) {
     status.textContent = '✗ ' + e.message;
     status.style.color = 'var(--red)';
+  }
+}
+
+async function anLoadMetaFromServer() {
+  // Naloži že shranjene Meta Ads podatke iz servera
+  try {
+    const res = await fetch('/analiza-meta-data');
+    const data = await res.json();
+    if (!data.loaded) {
+      window._anSkuMap = {};
+      anRenderTable();
+      const summary = document.getElementById('anMetaSummary');
+      if (summary) summary.style.display = 'none';
+      return;
+    }
+
+    // Zgradi skuMap iz items[]
+    const skuMap = {};
+    for (const item of (data.items || [])) {
+      const sku = item.sku;
+      const accountsObj = {};
+      for (const a of (item.accounts || [])) {
+        accountsObj[a.name] = {spend: a.spend, purchases: a.purchases, campaigns: a.campaigns};
+      }
+      skuMap[sku] = {
+        sku: sku,
+        accounts: accountsObj,
+        total_spend: item.total_spend || 0,
+        total_purchases: item.total_purchases || 0,
+        campaign_count: item.campaign_count || 0,
+        stopped_count: item.stopped_count || 0,
+        active_count: item.active_count || 0,
+      };
+    }
+    window._anSkuMap = skuMap;
+
+    // Povzetek info
+    const summary = document.getElementById('anMetaSummary');
+    if (summary) {
+      summary.style.display = 'block';
+      let html = '<strong style="color:var(--green)">✓ ' + data.rows + ' vrstic · ' + (data.items?.length || 0) + ' SKU-jev</strong>';
+      if (data.uploaded_at) {
+        const dt = new Date(data.uploaded_at);
+        html += '<br>Naloženo: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      }
+      if (data.filename) html += '<br><span style="color:var(--text-tertiary);font-size:10px">' + esc(data.filename) + '</span>';
+      summary.innerHTML = html;
+    }
+
+    anRenderTable();
+  } catch(e) {
+    console.warn('anLoadMetaFromServer fail:', e);
+    window._anSkuMap = {};
   }
 }
 
@@ -5050,7 +5113,7 @@ function anParseCsv(text) {
   return rows;
 }
 
-function anMatchAndRender() {
+function anMatchAndRender() { anRenderTable(); return; /*deprecated*/
   // Najdi keys
   if (!anMetaData.length) { anRenderTable(); return; }
   const sample = anMetaData[0];
@@ -5156,7 +5219,10 @@ function anClearFilters() {
 // Naloži zalogo ko se odpre Analiza tab
 document.addEventListener('DOMContentLoaded', () => {
   const navAn = document.getElementById('nav-analiza');
-  if (navAn) navAn.addEventListener('click', () => setTimeout(anLoadStock, 100));
+  if (navAn) navAn.addEventListener('click', () => setTimeout(() => {
+    anLoadStock();
+    anLoadMetaFromServer();
+  }, 100));
 });
 
 
