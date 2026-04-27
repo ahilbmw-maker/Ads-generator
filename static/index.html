@@ -1349,10 +1349,23 @@ input[type="text"].error { border-color: var(--red) !important; }
       <!-- Desno: tabela -->
       <div>
         <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
             <span class="slabel" style="margin:0" id="anTableTitle">ZALOGA IZDELKOV (0)</span>
             <input type="text" id="anSearch" placeholder="🔍 Išči SKU ali naziv..." oninput="anRenderTable()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:240px">
           </div>
+
+          <!-- Quick filtri (nad tabelo) -->
+          <div id="anQuickFilters" style="display:flex;gap:8px;margin-bottom:12px;padding:10px 12px;background:var(--bg-secondary);border-radius:var(--radius);flex-wrap:wrap;align-items:center;font-size:11px">
+            <span style="color:var(--text-tertiary);font-weight:500">FILTRI:</span>
+            <input type="text" id="anFilterAccount" placeholder="Ad account..." oninput="anRenderTable()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text);font-family:'DM Sans',sans-serif;width:140px">
+            <span style="color:var(--text-tertiary)">CPA:</span>
+            <input type="number" id="anFilterCpaMin" placeholder="min" oninput="anRenderTable()" step="0.5" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text);font-family:'DM Sans',sans-serif;width:60px">
+            <input type="number" id="anFilterCpaMax" placeholder="max" oninput="anRenderTable()" step="0.5" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text);font-family:'DM Sans',sans-serif;width:60px">
+            <span style="color:var(--text-tertiary)">Spend min €:</span>
+            <input type="number" id="anFilterSpendMin" placeholder="0" oninput="anRenderTable()" step="10" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text);font-family:'DM Sans',sans-serif;width:70px">
+            <button onclick="anClearFilters()" style="padding:5px 10px;background:none;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text-tertiary);cursor:pointer;font-family:'DM Sans',sans-serif">↻ Počisti</button>
+          </div>
+
           <div id="anTable" style="display:flex;flex-direction:column;gap:6px"></div>
           <div id="anEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži CSV zalogo v zavihku <strong>Orodja → Kontrola cen</strong>.</div>
         </div>
@@ -4724,17 +4737,46 @@ function anSortBy(col) {
 
 function anRenderTable() {
   const search = (document.getElementById('anSearch')?.value || '').toLowerCase().trim();
-  let filtered = [...anStockData];
-
-  // Filter po kategoriji
-  const skuMapL = window._anSkuMap || {};
-  const _skuMap = window._anSkuMap || {};
+  const skuMap = window._anSkuMap || {};
   const _isAdvertised = (sku) => {
     const upper = (sku || '').toUpperCase();
     const koren = upper.split(/[_\-]/)[0];
-    const d = _skuMap[upper] || _skuMap[koren];
+    const d = skuMap[upper] || skuMap[koren];
     return d && d.campaign_count > 0;
   };
+  const getAdData = (sku) => {
+    const upper = (sku || '').toUpperCase();
+    const koren = upper.split(/[_\-]/)[0];
+    return skuMap[upper] || skuMap[koren] || null;
+  };
+
+  // Pripravi vrstice z merged ad data za sortiranje
+  let filtered = anStockData.map(r => {
+    const ad = getAdData(r.sku);
+    return {
+      ...r,
+      ad_spend: ad ? ad.total_spend : null,
+      ad_purchases: ad ? ad.total_purchases : null,
+      ad_cpa: (ad && ad.total_purchases > 0) ? (ad.total_spend / ad.total_purchases) : null,
+      ad_accounts: ad ? Object.keys(ad.accounts || {}).join(', ') : '',
+      ad_campaign_count: ad ? ad.campaign_count : 0,
+      ad_active_count: ad ? (ad.campaign_count - ad.stopped_count) : 0,
+      _ad: ad,
+    };
+  });
+
+  // FILTRI iznad tabele
+  const accFilter = (document.getElementById('anFilterAccount')?.value || '').trim();
+  const cpaMin = parseFloat(document.getElementById('anFilterCpaMin')?.value || '');
+  const cpaMax = parseFloat(document.getElementById('anFilterCpaMax')?.value || '');
+  const spendMin = parseFloat(document.getElementById('anFilterSpendMin')?.value || '');
+
+  if (accFilter) {
+    filtered = filtered.filter(r => r._ad && Object.keys(r._ad.accounts || {}).some(a => a.toLowerCase().includes(accFilter.toLowerCase())));
+  }
+  if (!isNaN(cpaMin)) filtered = filtered.filter(r => r.ad_cpa !== null && r.ad_cpa >= cpaMin);
+  if (!isNaN(cpaMax)) filtered = filtered.filter(r => r.ad_cpa !== null && r.ad_cpa <= cpaMax);
+  if (!isNaN(spendMin)) filtered = filtered.filter(r => r.ad_spend !== null && r.ad_spend >= spendMin);
 
   if (anFilter === 'high_stock_no_obrat') {
     filtered = filtered.filter(r => r.stock >= 20 && r.stock30 === 0);
@@ -4746,15 +4788,10 @@ function anRenderTable() {
     filtered = filtered.filter(r => _isAdvertised(r.sku));
   } else if (anFilter === 'not_advertised') {
     filtered = filtered.filter(r => !_isAdvertised(r.sku));
-  } else if (anFilter === 'potential') {
-    // Zaloga >= 20 + obrat >= 3 + brez oglasov
+  } else if (anFilter === 'potential' || anFilter === 'opportunity') {
     filtered = filtered.filter(r => r.stock >= 20 && r.stock30 >= 3 && !_isAdvertised(r.sku));
   } else if (anFilter === 'active_ads') {
     filtered = filtered.filter(r => _isAdvertised(r.sku));
-  } else if (anFilter === 'potential') {
-    filtered = filtered.filter(r => r.stock >= 20 && r.stock30 >= 3 && (!skuMapL[r.sku] || skuMapL[r.sku].length === 0));
-  } else if (anFilter === 'active_ads') {
-    filtered = filtered.filter(r => skuMapL[r.sku] && skuMapL[r.sku].length > 0);
   }
 
   // Search
@@ -4796,21 +4833,25 @@ function anRenderTable() {
     return '<span style="color:var(--accent);margin-left:4px">' + (anSortDir === 1 ? '↑' : '↓') + '</span>';
   };
 
-  const skuMap = window._anSkuMap || {};
   const hasMetaData = Object.keys(skuMap).length > 0;
 
   // Header — če imamo FB data, dodaj kolone
   const cols = hasMetaData
-    ? '1.5fr 2.5fr 80px 100px 80px 1.2fr 90px 80px'
+    ? '1.3fr 2fr 70px 80px 70px 1.5fr 90px 80px 80px'
     : '1.5fr 3fr 100px 130px 100px';
 
-  let html = '<div style="display:grid;grid-template-columns:' + cols + ';gap:12px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none">' +
+  let html = '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none">' +
     '<span style="cursor:pointer" onclick="anSortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
     '<span style="cursor:pointer" onclick="anSortBy(\'title\')">Naziv izdelka' + sortInd('title') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock\')">Zaloga' + sortInd('stock') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock30\')">Obrat 30d' + sortInd('stock30') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'ratio\')">Razm.' + sortInd('ratio') + '</span>' +
-    (hasMetaData ? '<span>Ad acc.</span><span style="text-align:right">Spend</span><span style="text-align:right">CPA</span>' : '') +
+    (hasMetaData
+      ? '<span style="cursor:pointer" onclick="anSortBy(\'ad_accounts\')">Ad accounti' + sortInd('ad_accounts') + '</span>' +
+        '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_spend\')">Spend' + sortInd('ad_spend') + '</span>' +
+        '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_purchases\')">Nakupi' + sortInd('ad_purchases') + '</span>' +
+        '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_cpa\')">CPA' + sortInd('ad_cpa') + '</span>'
+      : '') +
     '</div>';
 
   // Vrstice
@@ -4848,43 +4889,35 @@ function anRenderTable() {
 
       // FB Ads info
       let metaCells = '';
-      // Najdi SKU ad data — preveri po polnem SKU ali po korenu
-      const skuKoren = (r.sku || '').toUpperCase().split(/[_\-]/)[0];
-      const skuFull = (r.sku || '').toUpperCase();
-      const adData = skuMap[skuFull] || skuMap[skuKoren] || null;
+      const adData = r._ad;
 
       if (hasMetaData) {
         if (!adData || adData.campaign_count === 0) {
-          // Ni oglaševan — predlog
           metaCells =
-            '<div style="font-size:11px;color:var(--text-tertiary);font-style:italic">Ni oglasa</div>' +
+            '<div style="font-size:11px;color:var(--text-tertiary);font-style:italic">— ni oglasa —</div>' +
+            '<div style="text-align:right;color:var(--text-tertiary)">—</div>' +
             '<div style="text-align:right;color:var(--text-tertiary)">—</div>' +
             '<div style="text-align:right;color:var(--text-tertiary)">—</div>';
-          // Highlight predlogov: visoka zaloga + dobro prodajan + brez oglasa = POTENCIAL
           if (r.stock >= 20 && r.stock30 >= 3) {
-            bg = 'rgba(124,58,237,0.10)'; // vijolično - potencial
+            bg = 'rgba(124,58,237,0.10)';
           }
         } else {
           const accounts = Object.keys(adData.accounts || {});
-          const accountsTxt = accounts.length === 0 ? adData.campaign_count + ' kamp.'
-                            : accounts.length === 1 ? accounts[0]
-                            : accounts.length + ' accountov';
-          // CPA = total_spend / total_purchases (boljše kot ROAS, ker FB CSV ne nosi ROAS direktno)
-          const cpa = adData.total_purchases > 0 ? (adData.total_spend / adData.total_purchases) : null;
+          const cpa = r.ad_cpa;
           const cpaTxt = cpa !== null ? cpa.toFixed(2) + ' €' : '—';
           const cpaColor = cpa !== null && cpa < 8 ? 'var(--green)' : cpa !== null && cpa > 15 ? 'var(--red)' : 'var(--text)';
-          // Aktivne / stop count
           const activeCount = adData.campaign_count - adData.stopped_count;
-          const accountsLabel = activeCount + '/' + adData.campaign_count + ' aktivnih · ' + accountsTxt;
+          const accountsLabel = activeCount + '/' + adData.campaign_count + ' kamp · ' + (accounts.length === 1 ? accounts[0].slice(0, 18) : accounts.length + ' acc.');
 
           metaCells =
             '<div style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(accounts.join(", ")) + '">' + esc(accountsLabel) + '</div>' +
             '<div style="text-align:right;font-weight:500;color:var(--text)">' + adData.total_spend.toFixed(0) + ' €</div>' +
+            '<div style="text-align:right;font-weight:600;color:var(--text)">' + adData.total_purchases + '</div>' +
             '<div style="text-align:right;font-weight:600;color:' + cpaColor + '">' + cpaTxt + '</div>';
         }
       }
 
-      return '<div style="display:grid;grid-template-columns:' + cols + ';gap:12px;align-items:center;padding:12px 14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px">' +
+      return '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;align-items:center;padding:12px 14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px">' +
         '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.sku) + '">' + esc(r.sku) + '</div>' +
         '<div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.title) + '">' + esc(r.title) + '</div>' +
         '<div style="text-align:center;font-weight:600;color:' + stockColor + '">' + r.stock + '</div>' +
@@ -5109,6 +5142,14 @@ function anMatchAndRender() {
   }
 
   window._anSkuMap = skuMap;
+  anRenderTable();
+}
+
+function anClearFilters() {
+  ['anFilterAccount', 'anFilterCpaMin', 'anFilterCpaMax', 'anFilterSpendMin'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
   anRenderTable();
 }
 
