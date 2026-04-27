@@ -4728,12 +4728,29 @@ function anRenderTable() {
 
   // Filter po kategoriji
   const skuMapL = window._anSkuMap || {};
+  const _skuMap = window._anSkuMap || {};
+  const _isAdvertised = (sku) => {
+    const upper = (sku || '').toUpperCase();
+    const koren = upper.split(/[_\-]/)[0];
+    const d = _skuMap[upper] || _skuMap[koren];
+    return d && d.campaign_count > 0;
+  };
+
   if (anFilter === 'high_stock_no_obrat') {
     filtered = filtered.filter(r => r.stock >= 20 && r.stock30 === 0);
   } else if (anFilter === 'high_obrat') {
     filtered = filtered.filter(r => r.stock30 >= 5).sort((a, b) => b.stock30 - a.stock30).slice(0, 100);
   } else if (anFilter === 'zero_stock') {
     filtered = filtered.filter(r => r.stock === 0);
+  } else if (anFilter === 'advertised') {
+    filtered = filtered.filter(r => _isAdvertised(r.sku));
+  } else if (anFilter === 'not_advertised') {
+    filtered = filtered.filter(r => !_isAdvertised(r.sku));
+  } else if (anFilter === 'potential') {
+    // Zaloga >= 20 + obrat >= 3 + brez oglasov
+    filtered = filtered.filter(r => r.stock >= 20 && r.stock30 >= 3 && !_isAdvertised(r.sku));
+  } else if (anFilter === 'active_ads') {
+    filtered = filtered.filter(r => _isAdvertised(r.sku));
   } else if (anFilter === 'potential') {
     filtered = filtered.filter(r => r.stock >= 20 && r.stock30 >= 3 && (!skuMapL[r.sku] || skuMapL[r.sku].length === 0));
   } else if (anFilter === 'active_ads') {
@@ -4793,7 +4810,7 @@ function anRenderTable() {
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock\')">Zaloga' + sortInd('stock') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock30\')">Obrat 30d' + sortInd('stock30') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'ratio\')">Razm.' + sortInd('ratio') + '</span>' +
-    (hasMetaData ? '<span>Ad acc.</span><span style="text-align:right">Spend</span><span style="text-align:right">ROAS</span>' : '') +
+    (hasMetaData ? '<span>Ad acc.</span><span style="text-align:right">Spend</span><span style="text-align:right">CPA</span>' : '') +
     '</div>';
 
   // Vrstice
@@ -4831,27 +4848,39 @@ function anRenderTable() {
 
       // FB Ads info
       let metaCells = '';
+      // Najdi SKU ad data — preveri po polnem SKU ali po korenu
+      const skuKoren = (r.sku || '').toUpperCase().split(/[_\-]/)[0];
+      const skuFull = (r.sku || '').toUpperCase();
+      const adData = skuMap[skuFull] || skuMap[skuKoren] || null;
+
       if (hasMetaData) {
-        const ads = skuMap[r.sku] || [];
-        if (ads.length === 0) {
+        if (!adData || adData.campaign_count === 0) {
           // Ni oglaševan — predlog
           metaCells =
             '<div style="font-size:11px;color:var(--text-tertiary);font-style:italic">Ni oglasa</div>' +
             '<div style="text-align:right;color:var(--text-tertiary)">—</div>' +
             '<div style="text-align:right;color:var(--text-tertiary)">—</div>';
-          // Highlight predlogov: visoka zaloga + brez oglasa
+          // Highlight predlogov: visoka zaloga + dobro prodajan + brez oglasa = POTENCIAL
           if (r.stock >= 20 && r.stock30 >= 3) {
-            bg = 'rgba(124,58,237,0.08)'; // vijolično - potencial
+            bg = 'rgba(124,58,237,0.10)'; // vijolično - potencial
           }
         } else {
-          const accounts = [...new Set(ads.map(a => a.account).filter(Boolean))];
-          const totalSpend = ads.reduce((s, a) => s + (a.spend || 0), 0);
-          const avgRoas = ads.length > 0 ? (ads.reduce((s, a) => s + (a.roas || 0), 0) / ads.length) : 0;
-          const accountsTxt = accounts.length === 0 ? ads.length + ' kamp.' : (accounts.length === 1 ? accounts[0] : accounts.length + ' acc.');
+          const accounts = Object.keys(adData.accounts || {});
+          const accountsTxt = accounts.length === 0 ? adData.campaign_count + ' kamp.'
+                            : accounts.length === 1 ? accounts[0]
+                            : accounts.length + ' accountov';
+          // CPA = total_spend / total_purchases (boljše kot ROAS, ker FB CSV ne nosi ROAS direktno)
+          const cpa = adData.total_purchases > 0 ? (adData.total_spend / adData.total_purchases) : null;
+          const cpaTxt = cpa !== null ? cpa.toFixed(2) + ' €' : '—';
+          const cpaColor = cpa !== null && cpa < 8 ? 'var(--green)' : cpa !== null && cpa > 15 ? 'var(--red)' : 'var(--text)';
+          // Aktivne / stop count
+          const activeCount = adData.campaign_count - adData.stopped_count;
+          const accountsLabel = activeCount + '/' + adData.campaign_count + ' aktivnih · ' + accountsTxt;
+
           metaCells =
-            '<div style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(accounts.join(", ") || (ads.length + " kampanj")) + '">' + esc(accountsTxt) + '</div>' +
-            '<div style="text-align:right;font-weight:500;color:var(--text)">' + totalSpend.toFixed(0) + ' €</div>' +
-            '<div style="text-align:right;font-weight:600;color:' + (avgRoas >= 2 ? 'var(--green)' : avgRoas >= 1 ? 'var(--text)' : 'var(--red)') + '">' + (avgRoas > 0 ? avgRoas.toFixed(2) : '—') + '</div>';
+            '<div style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(accounts.join(", ")) + '">' + esc(accountsLabel) + '</div>' +
+            '<div style="text-align:right;font-weight:500;color:var(--text)">' + adData.total_spend.toFixed(0) + ' €</div>' +
+            '<div style="text-align:right;font-weight:600;color:' + cpaColor + '">' + cpaTxt + '</div>';
         }
       }
 
@@ -5000,28 +5029,82 @@ function anMatchAndRender() {
 
   if (!campaignKey) { anRenderTable(); return; }
 
-  // Zgradi mapo SKU → [{account, campaign, spend, roas, ...}]
-  const skuMap = {};
+  // Zgradi set znanih SKU + korenov za match
+  const knownSkus = new Set();
+  const skuToFull = {}; // koren -> full sku (npr. PILARAFIT -> PILARAFIT)
+  for (const s of (anStockData || [])) {
+    if (!s.sku || s.sku.length < 3) continue;
+    const upper = s.sku.toUpperCase();
+    knownSkus.add(upper);
+    // Tudi koren (npr. PILARAFIT_white -> PILARAFIT)
+    const koren = upper.split(/[_\-]/)[0];
+    if (koren && koren.length >= 4) {
+      knownSkus.add(koren);
+      if (!skuToFull[koren]) skuToFull[koren] = upper;
+    }
+  }
+
+  // Zgradi mapo SKU → metrike (po accountu)
+  const skuMap = {}; // sku → {accounts: {acc: {...}}, totals: {...}}
+
+  function extractSkuTokens(text) {
+    if (!text) return [];
+    const tokens = [];
+    const STOPWORDS = new Set(['STOP','BIDCAP','COSTCAP','BID','CPA','BC','OFF','LOCAL','OUTLET','MAAARKET','MULTIPLE','NOVO','CATALOG','INTERESTED','AUTO','ADVANTAGE','CAMPAIGN','LOOKALIKE','BROAD','COLD','KATALOG','INFLATED','ZIPPLY','EASYZO','SUBAN','ALL']);
+    for (const raw of String(text).split(/\s+/)) {
+      let cleaned = raw.replace(/^[^\w]+|[^\w]+$/g, '');
+      if (!cleaned || cleaned.length < 4) continue;
+      if (cleaned !== cleaned.toUpperCase()) continue;
+      if (cleaned.includes('.')) continue;
+      if (!/[A-Z]/.test(cleaned)) continue;
+      if (STOPWORDS.has(cleaned)) continue;
+      if (/^\d+[A-Z]?$/.test(cleaned)) continue;
+      // Preveri če je v znanih SKU ali koren
+      if (knownSkus.has(cleaned)) {
+        tokens.push(cleaned);
+      } else {
+        const koren = cleaned.split(/[_\-]/)[0];
+        if (knownSkus.has(koren)) {
+          tokens.push(koren);  // shrani kot koren
+        }
+      }
+    }
+    return [...new Set(tokens)];
+  }
+
   for (const row of anMetaData) {
-    const campaign = (row[campaignKey] || '').toString().toUpperCase();
+    const campaign = (row[campaignKey] || '').toString();
     if (!campaign) continue;
 
-    // Najdi SKU iz imena kampanje — match z anStockData
-    const matched = (anStockData || []).filter(s => {
-      if (!s.sku || s.sku.length < 3) return false;
-      return campaign.includes(s.sku.toUpperCase());
-    });
+    const account = accountKey ? (row[accountKey] || '—') : '—';
+    const spend = spendKey ? parseFloat(String(row[spendKey]).replace(',', '.')) || 0 : 0;
+    const purchases = purchaseKey ? parseInt(row[purchaseKey]) || 0 : 0;
+    const roas = roasKey ? parseFloat(String(row[roasKey]).replace(',', '.')) || 0 : 0;
+    const isStopped = /@stop|⛔|off/i.test(campaign);
 
-    for (const m of matched) {
-      const sku = m.sku;
-      if (!skuMap[sku]) skuMap[sku] = [];
-      skuMap[sku].push({
-        campaign: row[campaignKey],
-        account: accountKey ? row[accountKey] : '',
-        spend: spendKey ? parseFloat(String(row[spendKey]).replace(',', '.')) || 0 : 0,
-        roas: roasKey ? parseFloat(String(row[roasKey]).replace(',', '.')) || 0 : 0,
-        purchases: purchaseKey ? parseInt(row[purchaseKey]) || 0 : 0,
-      });
+    const skus = extractSkuTokens(campaign);
+    for (const sku of skus) {
+      if (!skuMap[sku]) {
+        skuMap[sku] = {
+          sku: sku,
+          accounts: {},
+          campaigns: [],
+          total_spend: 0,
+          total_purchases: 0,
+          campaign_count: 0,
+          stopped_count: 0,
+        };
+      }
+      const d = skuMap[sku];
+      if (!d.accounts[account]) d.accounts[account] = {spend: 0, purchases: 0, campaigns: 0};
+      d.accounts[account].spend += spend;
+      d.accounts[account].purchases += purchases;
+      d.accounts[account].campaigns += 1;
+      d.total_spend += spend;
+      d.total_purchases += purchases;
+      d.campaign_count += 1;
+      if (isStopped) d.stopped_count += 1;
+      d.campaigns.push({name: campaign, account, spend, purchases, roas, stopped: isStopped});
     }
   }
 
