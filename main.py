@@ -2345,3 +2345,150 @@ async def asana_attach_binary(
     except Exception as e:
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ─── ORODJA: Združevalnik SKU+količin ─────────────────────────────────────────
+
+ORODJA_HISTORY_DIR = DATA_DIR / "orodja_history"
+ORODJA_HISTORY_DIR.mkdir(exist_ok=True, parents=True)
+
+
+def cleanup_orodja_history():
+    """Briše datoteke starejše od 30 dni."""
+    try:
+        cutoff = datetime.now().timestamp() - (30 * 86400)
+        for f in ORODJA_HISTORY_DIR.glob("*.xlsx"):
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+    except Exception as e:
+        print(f"[orodja] cleanup err: {e}")
+
+
+@app.post("/orodja-merge-skus")
+async def orodja_merge_skus(file: UploadFile = File(...)):
+    """Sprejme CSV z SKU+Količina, združi dvojnike, vrne XLSX."""
+    try:
+        content_bytes = await file.read()
+        text = content_bytes.decode('utf-8-sig', errors='replace')
+
+        # Parsanje CSV
+        import csv
+        from io import StringIO
+        reader = csv.reader(StringIO(text))
+        headers = next(reader, None)
+        if not headers:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": "Prazen CSV."}, status_code=400)
+
+        # Najdi indekse SKU in Količina kolon
+        h_lower = [h.lower().strip() for h in headers]
+        try:
+            sku_idx = next(i for i, h in enumerate(h_lower) if h in ('sku', 'sku.'))
+        except StopIteration:
+            sku_idx = 1  # default druga kolona
+        try:
+            qty_idx = next(i for i, h in enumerate(h_lower) if 'količin' in h or 'kolicin' in h or h == 'qty' or h == 'quantity')
+        except StopIteration:
+            qty_idx = 3  # default
+
+        # Združi po SKU
+        sku_totals = {}
+        for row in reader:
+            if len(row) <= max(sku_idx, qty_idx):
+                continue
+            sku = (row[sku_idx] or '').strip()
+            if not sku:
+                continue
+            try:
+                qty = int(float((row[qty_idx] or '0').strip().replace(',', '.')))
+            except:
+                qty = 0
+            sku_totals[sku] = sku_totals.get(sku, 0) + qty
+
+        if not sku_totals:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": "Ne najdem SKU/količina kolon v CSV."}, status_code=400)
+
+        # Generiraj XLSX
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Order"
+        # Brez headerjev — samo SKU | količina
+        for sku, qty in sorted(sku_totals.items()):
+            ws.append([sku, qty])
+
+        # Shrani v history
+        cleanup_orodja_history()  # počisti stare najprej
+        ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        out_filename = f"Order_{ts}.xlsx"
+        out_path = ORODJA_HISTORY_DIR / out_filename
+        wb.save(out_path)
+
+        # Vrni datoteko
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=str(out_path),
+            filename=out_filename,
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"X-Skus-Total": str(len(sku_totals)), "X-Filename": out_filename}
+        )
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/orodja-history")
+async def orodja_history():
+    """Vrne seznam datotek v orodja_history (urejen po datumu od najnovejše)."""
+    cleanup_orodja_history()
+    items = []
+    try:
+        for f in sorted(ORODJA_HISTORY_DIR.glob("*.xlsx"), key=lambda x: x.stat().st_mtime, reverse=True):
+            stat = f.stat()
+            items.append({
+                "filename": f.name,
+                "size": stat.st_size,
+                "created": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            })
+    except Exception as e:
+        print(f"[orodja] history err: {e}")
+    return {"items": items[:100]}
+
+
+@app.get("/orodja-download/{filename}")
+async def orodja_download(filename: str):
+    """Prenesi XLSX iz history."""
+    # Sanitize filename — preprečimo path traversal
+    if '/' in filename or '\\' in filename or '..' in filename:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Neveljavno ime."}, status_code=400)
+
+    f = ORODJA_HISTORY_DIR / filename
+    if not f.exists():
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Datoteka ne obstaja."}, status_code=404)
+
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path=str(f),
+        filename=filename,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+
+@app.delete("/orodja-history/{filename}")
+async def orodja_history_delete(filename: str):
+    """Zbriši posamezno datoteko iz history."""
+    if '/' in filename or '\\' in filename or '..' in filename:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Neveljavno ime."}, status_code=400)
+
+    f = ORODJA_HISTORY_DIR / filename
+    if f.exists():
+        try:
+            f.unlink()
+            return {"status": "ok"}
+        except Exception as e:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": str(e)}, status_code=500)
+    return {"status": "not_found"}
