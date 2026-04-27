@@ -4856,17 +4856,51 @@ function o14RenderTable() {
   const search = (document.getElementById('o14Search')?.value || '').toLowerCase().trim();
   let filtered = [...o14Items];
 
+  // Whitelist account selection (ki so checkani)
+  const checkedAccounts = window._o14CheckedAccounts || new Set(o14TargetAccounts);
+
+  // Sidebar filtri
   if (o14Filter === 'with_ads') {
     filtered = filtered.filter(r => r.has_ads);
   } else if (o14Filter === 'without_ads') {
     filtered = filtered.filter(r => !r.has_ads);
   }
 
+  // Account checkbox filter — če so checkani SAMO nekateri, prikaži le SKU ki imajo ads na enem od checkanih
+  if (checkedAccounts.size < o14TargetAccounts.length && checkedAccounts.size > 0) {
+    filtered = filtered.filter(r => {
+      if (!r.accounts) return false;
+      return Array.from(checkedAccounts).some(acc => r.accounts[acc]);
+    });
+  }
+
+  // Search
   if (search) {
     filtered = filtered.filter(r =>
       r.sku.toLowerCase().includes(search) ||
       (r.naziv || '').toLowerCase().includes(search)
     );
+  }
+
+  // Sort
+  if (window._o14SortCol) {
+    const col = window._o14SortCol;
+    const dir = window._o14SortDir || 1;
+    filtered.sort((a, b) => {
+      let av, bv;
+      if (col.startsWith('acc:')) {
+        const acc = col.slice(4);
+        av = a.accounts?.[acc] ? 1 : 0;
+        bv = b.accounts?.[acc] ? 1 : 0;
+      } else {
+        av = a[col]; bv = b[col];
+      }
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === 'number') return (av - bv) * dir;
+      return String(av).localeCompare(String(bv)) * dir;
+    });
   }
 
   document.getElementById('o14TableTitle').textContent = 'OBRAT IZDELKOV (' + filtered.length + ')';
@@ -4880,34 +4914,64 @@ function o14RenderTable() {
   }
   empty.style.display = 'none';
 
-  // Header dinamičen z account stolpci
-  const accountCols = o14TargetAccounts.map(() => '60px').join(' ');
-  const cols = '1.2fr 2fr 70px ' + accountCols;
-  const minWidth = 200 + 250 + 70 + (o14TargetAccounts.length * 70) + 'px';
+  const sortInd = (col) => {
+    if (window._o14SortCol !== col) return '<span style="opacity:0.4;margin-left:4px">↕</span>';
+    return '<span style="color:var(--accent);margin-left:4px">' + ((window._o14SortDir || 1) === 1 ? '↑' : '↓') + '</span>';
+  };
 
-  let html = '<div style="display:grid;grid-template-columns:' + cols + ';gap:8px;padding:10px 12px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.3px;min-width:' + minWidth + '">' +
-    '<span>SKU</span>' +
-    '<span>Naziv</span>' +
-    '<span style="text-align:center">Obrat</span>' +
-    o14TargetAccounts.map(a => '<span style="text-align:center;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(a) + '">' + esc(a.replace('si_SUBAN_', '').replace('si_Suban_', '').replace('Maaarket ', 'M.').replace('.', '')) + '</span>').join('') +
-    '</div>';
+  // Krajše labele za accounti
+  const ACC_SHORT = {
+    'Maaarket X': 'M.X', 'Maaarket ALL': 'M.ALL', 'Maaarket ALL2': 'M.ALL2',
+    'Maaarket ALL3 + RS': 'M.ALL3+RS', 'Zipply.': 'Zipply', 'si_SUBAN_Maaarket SK': 'SK',
+    'Maaarket PL/RO': 'PL/RO', 'Maaarket HR': 'HR', 'si_Suban_Maaarket HR': 'HR2',
+    'Easyzo': 'Easyzo',
+  };
+
+  // Filtriraj account stolpce po checkanu
+  const visibleAccounts = o14TargetAccounts.filter(a => checkedAccounts.has(a));
+
+  // Account checkbox bar
+  const accCheckboxes = '<div style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;align-items:center">' +
+    '<span style="font-size:11px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">Ad accounti:</span>' +
+    '<button onclick="o14ToggleAllAccounts(true)" style="padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--text-secondary);cursor:pointer;font-family:\'DM Sans\',sans-serif">✓ Vsi</button>' +
+    '<button onclick="o14ToggleAllAccounts(false)" style="padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--text-secondary);cursor:pointer;font-family:\'DM Sans\',sans-serif">✗ Nobeden</button>' +
+    o14TargetAccounts.map(acc => {
+      const checked = checkedAccounts.has(acc);
+      const label = ACC_SHORT[acc] || acc;
+      return '<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:' + (checked ? 'rgba(64,193,80,0.12)' : 'var(--surface)') + ';border:1px solid ' + (checked ? 'rgba(64,193,80,0.4)' : 'var(--border)') + ';border-radius:4px;cursor:pointer;font-size:11px;color:' + (checked ? 'var(--green)' : 'var(--text-secondary)') + ';font-weight:500" title="' + esc(acc) + '">' +
+        '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="o14ToggleAccount(\'' + esc(acc) + '\', this.checked)" style="margin:0;cursor:pointer">' +
+        esc(label) +
+      '</label>';
+    }).join('') +
+  '</div>';
+
+  // Header — sortable + dinamičen z visible accounti
+  const accountCols = visibleAccounts.map(() => '70px').join(' ');
+  const cols = '1.3fr 2.5fr 80px' + (visibleAccounts.length > 0 ? ' ' + accountCols : '');
+
+  let html = accCheckboxes;
+  html += '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.4px;user-select:none">' +
+    '<span style="cursor:pointer" onclick="o14SortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
+    '<span style="cursor:pointer" onclick="o14SortBy(\'naziv\')">Naziv' + sortInd('naziv') + '</span>' +
+    '<span style="text-align:center;cursor:pointer" onclick="o14SortBy(\'kolicina\')">Obrat' + sortInd('kolicina') + '</span>' +
+    visibleAccounts.map(a => '<span style="text-align:center;cursor:pointer;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="o14SortBy(\'acc:' + esc(a).replace(/\\/g, '\\\\').replace(/\'/g, "\\\'") + '\')" title="' + esc(a) + '">' + esc(ACC_SHORT[a] || a) + sortInd('acc:' + a) + '</span>').join('') +
+  '</div>';
 
   if (filtered.length === 0) {
     html += '<div style="padding:2rem;text-align:center;color:var(--text-tertiary);font-size:12px">Ni rezultatov.</div>';
   } else {
     html += filtered.slice(0, 500).map(r => {
-      const accCells = o14TargetAccounts.map(acc => {
+      const accCells = visibleAccounts.map(acc => {
         const data = r.accounts?.[acc];
-        if (!data) return '<span style="text-align:center;color:var(--text-tertiary);font-size:11px">—</span>';
-        // Obarvamo glede na spend
-        const color = data.spend > 100 ? 'var(--green)' : 'var(--text-secondary)';
-        const intensity = data.spend > 0 ? Math.min(0.15, data.spend / 1000) : 0;
-        return '<span style="text-align:center;font-size:11px;font-weight:600;color:' + color + ';background:rgba(64,193,80,' + intensity + ');padding:2px 4px;border-radius:3px" title="Spend: ' + data.spend.toFixed(2) + ' € · Nakupi: ' + data.purchases + '">' + Math.round(data.spend) + '€</span>';
+        if (!data || data.campaigns === 0) {
+          return '<span style="text-align:center;color:var(--text-tertiary);font-size:14px">○</span>';
+        }
+        return '<span style="text-align:center;color:var(--green);font-size:14px;font-weight:600" title="' + esc(acc) + ': ' + data.campaigns + ' kampanj · ' + data.spend.toFixed(2) + '€ · ' + data.purchases + ' nakupov">✓</span>';
       }).join('');
 
       const bg = !r.has_ads ? 'rgba(124,58,237,0.08)' : 'var(--surface2)';
 
-      return '<div style="display:grid;grid-template-columns:' + cols + ';gap:8px;align-items:center;padding:10px 12px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:12px;min-width:' + minWidth + '">' +
+      return '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;align-items:center;padding:11px 14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px">' +
         '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.sku) + '</div>' +
         '<div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.naziv) + '">' + esc(r.naziv) + '</div>' +
         '<div style="text-align:center;font-weight:600;color:var(--text)">' + r.kolicina + '</div>' +
@@ -4921,6 +4985,24 @@ function o14RenderTable() {
   }
 
   table.innerHTML = html;
+}
+
+function o14SortBy(col) {
+  if (window._o14SortCol === col) window._o14SortDir = -(window._o14SortDir || 1);
+  else { window._o14SortCol = col; window._o14SortDir = -1; }
+  o14RenderTable();
+}
+
+function o14ToggleAccount(acc, checked) {
+  if (!window._o14CheckedAccounts) window._o14CheckedAccounts = new Set(o14TargetAccounts);
+  if (checked) window._o14CheckedAccounts.add(acc);
+  else window._o14CheckedAccounts.delete(acc);
+  o14RenderTable();
+}
+
+function o14ToggleAllAccounts(all) {
+  window._o14CheckedAccounts = all ? new Set(o14TargetAccounts) : new Set();
+  o14RenderTable();
 }
 
 function anSetFilter(filter, btn) {
