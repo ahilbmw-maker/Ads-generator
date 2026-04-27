@@ -1254,10 +1254,10 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div>
 
     <!-- TAB 3: Kontrola cen -->
-    <div id="orodjaSubpage-pricecheck" style="display:none;padding:16px;height:calc(100vh - 7rem)">
-      <div style="display:grid;grid-template-columns:340px 1fr;gap:16px;height:100%;overflow:hidden">
+    <div id="orodjaSubpage-pricecheck" style="display:none;padding:16px">
+      <div style="display:grid;grid-template-columns:340px 1fr;gap:16px">
         <!-- Levi: upload zaloge + PDF -->
-        <div style="overflow-y:auto;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;flex-direction:column;gap:12px">
           <div class="card">
             <span class="slabel">1. ZALOGA (CSV)</span>
             <div id="pcStockInfo" style="margin-top:8px;padding:10px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;color:var(--text-secondary)">Nalagam status...</div>
@@ -1283,7 +1283,7 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
 
         <!-- Desni: rezultati -->
-        <div style="overflow-y:auto;padding-right:4px">
+        <div>
           <div class="card" id="pcResultsCard" style="display:none">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
               <span class="slabel" style="margin:0" id="pcResultsCount">PRIMERJAVA CEN</span>
@@ -1292,7 +1292,7 @@ input[type="text"].error { border-color: var(--red) !important; }
               </div>
             </div>
             <div id="pcStats" style="margin-bottom:12px;padding:10px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text-secondary)"></div>
-            <div id="pcItemsList" style="display:flex;flex-direction:column;gap:6px"></div>
+            <div id="pcItemsList" style="display:flex;flex-direction:column;gap:8px"></div>
           </div>
           <div id="pcEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži zalogo (1) in PDF predračun (2) za začetek primerjave.</div>
         </div>
@@ -4489,7 +4489,7 @@ function pcRenderResults(data) {
     (noMatch > 0 ? ' · <span style="color:var(--text-tertiary)">⚠ Brez matcha: ' + noMatch + '</span>' : '');
 
   const list = document.getElementById('pcItemsList');
-  list.innerHTML = '<div style="display:grid;grid-template-columns:1.5fr 70px 80px 80px 90px 1fr;gap:10px;padding:8px 12px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px"><span>SKU</span><span>Kol</span><span>PDF €</span><span>Neto €</span><span>Zaloga €</span><span>Razlika</span></div>';
+  list.innerHTML = '<div style="display:grid;grid-template-columns:2fr 80px 100px 100px 110px 1.5fr;gap:14px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px"><span>SKU</span><span style="text-align:center">Kol</span><span style="text-align:right">PDF €</span><span style="text-align:right">Neto €</span><span style="text-align:right">Zaloga €</span><span>Razlika</span></div>';
 
   list.innerHTML += pcResults.map((r, idx) => {
     let bg = 'var(--surface2)';
@@ -4514,12 +4514,13 @@ function pcRenderResults(data) {
 
     const popustTxt = r.popust_pct > 0 ? ' (-' + r.popust_pct + '%)' : '';
 
-    return '<div style="display:grid;grid-template-columns:1.5fr 70px 80px 80px 90px 1fr;gap:10px;align-items:center;padding:10px 12px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:12px">' +
-      '<div><div style="font-weight:600;color:var(--text)">' + esc(r.sku) + '</div><div style="font-size:10px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.opis||'') + '">' + esc((r.title_zaloga || r.opis || '').substring(0, 50)) + '</div></div>' +
-      '<span style="color:var(--text-secondary);text-align:center">' + r.kolicina + '</span>' +
+    const opisFull = r.title_zaloga || r.opis || '';
+    return '<div style="display:grid;grid-template-columns:2fr 80px 100px 100px 110px 1.5fr;gap:14px;align-items:center;padding:14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px">' +
+      '<div style="min-width:0"><div style="font-weight:600;color:var(--text);font-size:14px">' + esc(r.sku) + '</div><div style="font-size:11px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px" title="' + esc(opisFull) + '">' + esc(opisFull) + '</div></div>' +
+      '<span style="color:var(--text-secondary);text-align:center;font-weight:500">' + r.kolicina + '</span>' +
       '<span style="color:var(--text-secondary);text-align:right">' + r.cena_pdf.toFixed(2) + popustTxt + '</span>' +
       '<span style="color:var(--text);font-weight:600;text-align:right">' + r.cena_pdf_neto.toFixed(2) + '</span>' +
-      '<span style="color:' + (r.cena_zaloga !== null ? 'var(--text-secondary)' : 'var(--text-tertiary)') + ';text-align:right">' + (r.cena_zaloga !== null ? r.cena_zaloga.toFixed(2) : '—') + '</span>' +
+      '<span style="color:' + (r.cena_zaloga !== null ? 'var(--text-secondary)' : 'var(--text-tertiary)') + ';text-align:right;font-weight:500">' + (r.cena_zaloga !== null ? r.cena_zaloga.toFixed(2) : '—') + '</span>' +
       '<div>' + badge + '</div>' +
     '</div>';
   }).join('');
