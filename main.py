@@ -3435,6 +3435,17 @@ async def analiza_obrat14_data():
                     account = (row.get('Account name') or '').strip() or '—'
                     spend = _f(row.get('Amount spent (EUR)'))
                     purchases = _i(row.get('Purchases'))
+                    
+                    # Status iz Campaign Delivery (active/inactive) — FB resnica
+                    delivery = (row.get('Campaign Delivery') or '').strip().lower()
+                    if delivery == 'inactive':
+                        is_active_campaign = False
+                    elif delivery == 'active':
+                        is_active_campaign = True
+                    else:
+                        # Fallback po imenu
+                        cname_lower = cname.lower()
+                        is_active_campaign = not ('@stop' in cname_lower or '⛔' in cname)
 
                     # Izvleci SKU iz imena
                     skus = extract_skus_from_text(cname, known_skus_obrat)
@@ -3487,19 +3498,39 @@ async def analiza_obrat14_data():
                             if target_sku not in sku_ads_map:
                                 sku_ads_map[target_sku] = {}
                             if account not in sku_ads_map[target_sku]:
-                                sku_ads_map[target_sku][account] = {"spend": 0, "purchases": 0, "campaigns": 0}
+                                sku_ads_map[target_sku][account] = {"spend": 0, "purchases": 0, "campaigns": 0, "active": 0, "paused": 0}
                             # Razdelimo spend/purchases enakomerno če je več target SKU
                             split = max(1, len(target_skus))
                             sku_ads_map[target_sku][account]["spend"] += spend / split
                             sku_ads_map[target_sku][account]["purchases"] += purchases / split
                             sku_ads_map[target_sku][account]["campaigns"] += 1
+                            if is_active_campaign:
+                                sku_ads_map[target_sku][account]["active"] += 1
+                            else:
+                                sku_ads_map[target_sku][account]["paused"] += 1
             except Exception as e:
                 print(f"[obrat14] FB match err: {e}")
 
-        # Agregiraj
+        # Agregiraj — vsakemu accountu dodaj status field (active/paused/none)
         for it in items:
-            it["accounts"] = sku_ads_map.get(it["sku"], {})
-            it["has_ads"] = len(it["accounts"]) > 0
+            accounts_data = sku_ads_map.get(it["sku"], {})
+            for acc_name, acc_data in accounts_data.items():
+                if acc_data.get("active", 0) > 0:
+                    acc_data["status"] = "active"
+                elif acc_data.get("paused", 0) > 0:
+                    acc_data["status"] = "paused"
+                else:
+                    acc_data["status"] = "none"
+            it["accounts"] = accounts_data
+            it["has_ads"] = len(accounts_data) > 0
+            # Skupni status
+            statuses = [a.get("status") for a in accounts_data.values()]
+            if "active" in statuses:
+                it["overall_status"] = "active"
+            elif "paused" in statuses:
+                it["overall_status"] = "paused"
+            else:
+                it["overall_status"] = "none"
 
         meta = {}
         if OBRAT14_META.exists():
