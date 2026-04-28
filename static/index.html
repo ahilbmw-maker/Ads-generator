@@ -1385,13 +1385,18 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div>
         <div class="card">
           <span class="slabel">META ADS POROČILO</span>
-          <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži CSV/XLS export iz FB Ads Manager poročila. Match s SKU bo po imenu kampanje.</p>
+          <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži CSV/XLS export iz FB Ads Manager poročila. Vsak upload se <strong>doda</strong> k obstoječim (več BM-jev).</p>
           <div id="anMetaDropZone" class="k-dropzone" style="margin-top:8px;padding:14px;cursor:pointer" onclick="document.getElementById('anMetaInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="anMetaHandleDrop(event)">
             <span style="font-size:11px">📊 Klikni ali povleci CSV/XLS</span>
           </div>
           <input type="file" id="anMetaInput" accept=".csv,.xls,.xlsx" style="display:none" onchange="anLoadMeta(this.files[0])">
           <div id="anMetaStatus" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center;display:none"></div>
           <div id="anMetaSummary" style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:none"></div>
+          <div id="anMetaUploads" style="margin-top:8px;display:none">
+            <div style="font-size:10px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">Naloženi CSV-ji:</div>
+            <div id="anMetaUploadsList" style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text-secondary)"></div>
+            <button onclick="anMetaClear()" style="margin-top:8px;padding:4px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🗑 Počisti vse &amp; začni znova</button>
+          </div>
         </div>
 
         <div class="card" style="margin-top:12px">
@@ -5214,11 +5219,11 @@ function anToggleAllAccounts(all) {
 function anRenderTable() {
   const search = (document.getElementById('anSearch')?.value || '').toLowerCase().trim();
   const skuMap = window._anSkuMap || {};
-  
-  // Whitelist accounts za prikaz pasov
-  // TARGET_ACCOUNTS → globalna konstanta (AD_ACCOUNTS_CONFIG)
-  // Krajše labele
-  // ACC_SHORT → globalna konstanta (AD_ACCOUNTS_CONFIG)
+
+  // Dynamični account seznam — preferira server podatke, fallback na config
+  const _effectiveAccounts = (window._anDynamicAccounts && window._anDynamicAccounts.length > 0)
+    ? window._anDynamicAccounts
+    : TARGET_ACCOUNTS;
 
   // JS verzija smart_root — identična Python smart_root()
   // Maaa61lightBrown → Maaa61, M377grey → M377, SOLEBRACE_SM → SOLEBRACE
@@ -5271,7 +5276,7 @@ function anRenderTable() {
   });
 
   // FILTRI iznad tabele — checkboxi po accountih (kot v Obrat 14 dni)
-  if (!window._anCheckedAccounts) window._anCheckedAccounts = new Set(TARGET_ACCOUNTS.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
+  if (!window._anCheckedAccounts) window._anCheckedAccounts = new Set(_effectiveAccounts.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
   const checkedAccounts = window._anCheckedAccounts;
 
   // Filter: SKU obdržimo, če ima oglas na vsaj enem izbranem accountu
@@ -5280,7 +5285,7 @@ function anRenderTable() {
   if (checkedAccounts.size === 0) {
     // Nobeden checkan → samo SKU brez oglasov
     filtered = filtered.filter(r => !r._ad || r._ad.campaign_count === 0);
-  } else if (checkedAccounts.size < TARGET_ACCOUNTS.length) {
+  } else if (checkedAccounts.size < _effectiveAccounts.length) {
     // Subset: če ima oglas, mora imeti vsaj en izbran account; SKU brez oglasov ostanejo
     filtered = filtered.filter(r => {
       if (!r._ad || r._ad.campaign_count === 0) return true;
@@ -5314,7 +5319,7 @@ function anRenderTable() {
       };
     });
   }
-  // checkedAccounts.size === TARGET_ACCOUNTS.length → vse accounti vidni, brez filtriranja
+  // checkedAccounts.size === _effectiveAccounts.length → vse accounti vidni, brez filtriranja
 
   // Filter po kategoriji (sidebar)
   if (anFilter === 'high_stock_no_obrat') {
@@ -5432,7 +5437,7 @@ function anRenderTable() {
   }
 
   // Vidni accounti (po izbranih checkboxih)
-  const visibleAccounts = TARGET_ACCOUNTS.filter(a => checkedAccounts.has(a));
+  const visibleAccounts = _effectiveAccounts.filter(a => checkedAccounts.has(a));
 
   // Header — account stolpci direktno v gridu (vodoravno), samo izbrani
   // Brez RAZM. stolpca; namesto zneskov v account stolpcih le simboli ✓ / ⏸ / —
@@ -5629,7 +5634,7 @@ function anRenderTable() {
         '<span style="font-size:11px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">Ad accounti:</span>' +
         '<button onclick="anToggleAllAccounts(true)" style="padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--text-secondary);cursor:pointer;font-family:\'DM Sans\',sans-serif">✓ Vsi</button>' +
         '<button onclick="anToggleAllAccounts(false)" style="padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--text-secondary);cursor:pointer;font-family:\'DM Sans\',sans-serif">✗ Nobeden</button>' +
-        TARGET_ACCOUNTS.map(acc => {
+        _effectiveAccounts.map(acc => {
           const isChecked = checkedAccounts.has(acc);
           const lbl = ACC_SHORT[acc] || acc;
           const accEsc = String(acc).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -5712,16 +5717,34 @@ async function anLoadMeta(file) {
 }
 
 async function anLoadMetaFromServer() {
-  // Naloži že shranjene Meta Ads podatke iz servera
   try {
     const res = await fetch('/analiza-meta-data');
     const data = await res.json();
     if (!data.loaded) {
       window._anSkuMap = {};
       anRenderTable();
-      const summary = document.getElementById('anMetaSummary');
-      if (summary) summary.style.display = 'none';
+      document.getElementById('anMetaSummary')?.style && (document.getElementById('anMetaSummary').style.display = 'none');
+      document.getElementById('anMetaUploads')?.style && (document.getElementById('anMetaUploads').style.display = 'none');
       return;
+    }
+
+    // Dinamični TARGET_ACCOUNTS iz server podatkov
+    // Prioriteta: 1) konfig ACC_SHORT za kratice, 2) AD_ACCOUNTS_CONFIG hidden nastavitve
+    // Novi accounti (ki niso v AD_ACCOUNTS_CONFIG) → privzeto vključeni
+    const serverAccounts = data.accounts || [];
+    if (serverAccounts.length > 0) {
+      window._anDynamicAccounts = serverAccounts;
+      // Nastavi checked accounts — ohrani obstoječe, dodaj nove kot checked
+      if (!window._anCheckedAccounts) {
+        window._anCheckedAccounts = new Set(serverAccounts.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
+      } else {
+        // Dodaj nove accounte ki jih še ni v checked setu (privzeto vključeni)
+        for (const a of serverAccounts) {
+          if (!TARGET_ACCOUNTS.includes(a) && !window._anCheckedAccounts.has(a)) {
+            window._anCheckedAccounts.add(a);
+          }
+        }
+      }
     }
 
     // Zgradi skuMap iz items[]
@@ -5731,22 +5754,14 @@ async function anLoadMetaFromServer() {
       const accountsObj = {};
       for (const a of (item.accounts || [])) {
         accountsObj[a.name] = {
-          spend: a.spend,
-          purchases: a.purchases,
-          campaigns: a.campaigns,
-          active: a.active || 0,
-          paused: a.paused || 0,
-          status: a.status || null,
+          spend: a.spend, purchases: a.purchases, campaigns: a.campaigns,
+          active: a.active || 0, paused: a.paused || 0, status: a.status || null,
         };
       }
-      // UPPERCASE ključ da se ujema z getAdData(.toUpperCase()) lookupom
       skuMap[sku.toUpperCase()] = {
-        sku: sku,
-        accounts: accountsObj,
-        total_spend: item.total_spend || 0,
-        total_purchases: item.total_purchases || 0,
-        campaign_count: item.campaign_count || 0,
-        stopped_count: item.stopped_count || 0,
+        sku, accounts: accountsObj,
+        total_spend: item.total_spend || 0, total_purchases: item.total_purchases || 0,
+        campaign_count: item.campaign_count || 0, stopped_count: item.stopped_count || 0,
         active_count: item.active_count || 0,
       };
     }
@@ -5756,13 +5771,30 @@ async function anLoadMetaFromServer() {
     const summary = document.getElementById('anMetaSummary');
     if (summary) {
       summary.style.display = 'block';
-      let html = '<strong style="color:var(--green)">✓ ' + data.rows + ' vrstic · ' + (data.items?.length || 0) + ' SKU-jev</strong>';
+      let html = '<strong style="color:var(--green)">✓ ' + (data.rows || 0) + ' vrstic · ' + (data.items?.length || 0) + ' SKU-jev</strong>';
       if (data.uploaded_at) {
         const dt = new Date(data.uploaded_at);
         html += '<br>Naloženo: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
       }
       if (data.filename) html += '<br><span style="color:var(--text-tertiary);font-size:10px">' + esc(data.filename) + '</span>';
       summary.innerHTML = html;
+    }
+
+    // Prikaži seznam uploadov
+    const uploadsEl = document.getElementById('anMetaUploads');
+    const uploadsListEl = document.getElementById('anMetaUploadsList');
+    const uploads = data.uploads || [];
+    if (uploadsEl && uploadsListEl && uploads.length > 0) {
+      uploadsEl.style.display = 'block';
+      uploadsListEl.innerHTML = uploads.map(u => {
+        const dt = u.uploaded_at ? new Date(u.uploaded_at).toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'}) : '—';
+        return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border)">'
+          + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px" title="' + esc(u.filename) + '">' + esc(u.filename) + '</span>'
+          + '<span style="color:var(--text-tertiary);flex-shrink:0;margin-left:6px">+' + (u.rows_added||0) + ' · ' + dt + '</span>'
+          + '</div>';
+      }).join('');
+    } else if (uploadsEl) {
+      uploadsEl.style.display = 'none';
     }
 
     anRenderTable();
@@ -5911,10 +5943,23 @@ function anMatchAndRender() { anRenderTable(); return; /*deprecated*/
 }
 
 function anClearFilters() {
-  // TARGET_ACCOUNTS → globalna konstanta (AD_ACCOUNTS_CONFIG)
-  window._anCheckedAccounts = new Set(TARGET_ACCOUNTS.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
+  const eff = window._anDynamicAccounts?.length > 0 ? window._anDynamicAccounts : TARGET_ACCOUNTS;
+  window._anCheckedAccounts = new Set(eff.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
   window._anPage = 1;
   anRenderTable();
+}
+
+async function anMetaClear() {
+  if (!confirm('Zbriši vse naložene Meta Ads CSV-je in začni znova?')) return;
+  try {
+    await fetch('/analiza-meta-clear', { method: 'POST' });
+    window._anSkuMap = {};
+    window._anDynamicAccounts = [];
+    window._anCheckedAccounts = null;
+    document.getElementById('anMetaSummary').style.display = 'none';
+    document.getElementById('anMetaUploads').style.display = 'none';
+    anRenderTable();
+  } catch(e) { alert('Napaka: ' + e.message); }
 }
 
 // Naloži zalogo ko se odpre Analiza tab
