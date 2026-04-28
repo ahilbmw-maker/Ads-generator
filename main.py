@@ -2725,50 +2725,109 @@ STOCK_CSV_META = DATA_DIR / "stock_inventory_meta.json"
 
 @app.post("/orodja-stock-upload")
 async def orodja_stock_upload(file: UploadFile = File(...)):
-    """Naloži CSV zaloge — overwrite obstoječ. Shrani s timestampom."""
+    """Naloži CSV zaloge — merge po SKU (sešteje stock iz več skladišč/uploadov)."""
     try:
+        import csv as _csv
+        from io import StringIO as _SIO
+
         content_bytes = await file.read()
-        STOCK_CSV_FILE.write_bytes(content_bytes)
-
-        # Preštej vrstice (brez praznih + brez headerja)
         text = content_bytes.decode('utf-8-sig', errors='replace')
-        all_lines = [l for l in text.split('\n') if l.strip()]
-        rows = max(0, len(all_lines) - 1)  # minus header
+        sep = ';' if (text.split('\n', 1)[0].count(';') > text.split('\n', 1)[0].count(',')) else ','
 
-        # Detektiraj separator (',' ali ';')
-        sep = ';' if (all_lines and all_lines[0].count(';') > all_lines[0].count(',')) else ','
+        reader = _csv.DictReader(_SIO(text), delimiter=sep)
+        new_rows = [r for r in reader]
+        if not new_rows:
+            return JSONResponse({"error": "Prazen CSV."}, status_code=400)
 
-        # Preštej validne SKU postavke
-        try:
-            import csv as _csv
-            from io import StringIO as _SIO
-            reader = _csv.reader(_SIO(text), delimiter=sep)
-            headers = next(reader, [])
-            h_lower = [h.strip().lower() for h in headers]
-            sku_idx = next((i for i, h in enumerate(h_lower) if h in ('product_sku', 'sku')), -1)
-            valid_count = 0
-            if sku_idx >= 0:
-                for row in reader:
-                    if len(row) > sku_idx and (row[sku_idx] or '').strip():
-                        valid_count += 1
+        # Normalizacija: najdi SKU, stock, stock30, title stolpce
+        sample = new_rows[0]
+        keys = list(sample.keys())
+
+        def find_col(*candidates):
+            for c in candidates:
+                for k in keys:
+                    if k.strip().lower() == c.lower():
+                        return k
+            return None
+
+        sku_col   = find_col('product_sku', 'sku')
+        stock_col = find_col('stock', 'qty', 'quantity', 'kolicina', 'količina')
+        s30_col   = find_col('stock30', 'stock_30', 'obrat30', 'obrat_30')
+        title_col = find_col('title', 'naziv', 'name')
+
+        if not sku_col:
+            return JSONResponse({"error": f"Ne najdem SKU stolpca. Najdeni: {keys}"}, status_code=400)
+
+        # Merge znotraj CSV-ja — seštej stock za isti SKU (več lokacij)
+        merged = {}
+        added = 0
+        updated = 0
+        for row in new_rows:
+            if not sku_col: continue
+            sku = (row.get(sku_col) or '').strip()
+            if not sku: continue
+            try:
+                new_stock = int(float((row.get(stock_col) or '0').replace(',', '.'))) if stock_col else 0
+            except: new_stock = 0
+            try:
+                new_s30 = int(float((row.get(s30_col) or '0').replace(',', '.'))) if s30_col else 0
+            except: new_s30 = 0
+            title = (row.get(title_col) or '').strip() if title_col else ''
+
+            if sku in merged:
+                # Isti SKU, druga lokacija — seštej stock
+                merged[sku]['stock'] += new_stock
+                if new_s30 > merged[sku]['stock30']:
+                    merged[sku]['stock30'] = new_s30
+                if title and not merged[sku]['title']:
+                    merged[sku]['title'] = title
+                updated += 1
             else:
-                valid_count = rows
-        except:
-            valid_count = rows
+                merged[sku] = {
+                    'product_sku': sku,
+                    'title': title,
+                    'stock': new_stock,
+                    'stock30': new_s30,
+                }
+                added += 1
 
+        # Shrani nazaj kot CSV
+        out = _SIO()
+        writer = _csv.DictWriter(out, fieldnames=['product_sku', 'title', 'stock', 'stock30'])
+        writer.writeheader()
+        writer.writerows(merged.values())
+        STOCK_CSV_FILE.write_text(out.getvalue(), encoding='utf-8')
+
+        total = len(merged)
         meta = {
             "uploaded_at": datetime.now(timezone.utc).isoformat(),
             "filename": file.filename,
-            "size": len(content_bytes),
-            "rows": valid_count,
-            "separator": sep,
+            "rows": total,
+            "rows_added": added,
+            "rows_merged": updated,
         }
-        STOCK_CSV_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Ohrani seznam uploadov
+        old_meta = {}
+        if STOCK_CSV_META.exists():
+            try: old_meta = json.loads(STOCK_CSV_META.read_text(encoding='utf-8'))
+            except: pass
+        uploads = old_meta.get('uploads', [])
+        uploads.append({"filename": file.filename, "uploaded_at": meta["uploaded_at"], "added": added, "merged": updated})
+        meta['uploads'] = uploads[-5:]  # zadnjih 5
+        STOCK_CSV_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
 
-        return {"status": "ok", "rows": valid_count, "uploaded_at": meta["uploaded_at"], "filename": file.filename}
+        return {
+            "status": "ok",
+            "rows": total,
+            "rows_added": added,
+            "rows_merged": updated,
+            "uploaded_at": meta["uploaded_at"],
+            "filename": file.filename,
+        }
     except Exception as e:
-        from fastapi.responses import JSONResponse
+        import traceback; traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
+
 
 
 @app.get("/orodja-stock-status")
@@ -2781,6 +2840,17 @@ async def orodja_stock_status():
         return {"loaded": True, **meta}
     except Exception as e:
         return {"loaded": False, "error": str(e)}
+
+
+@app.post("/orodja-stock-clear")
+async def orodja_stock_clear():
+    """Počisti zalogo (reset za nov upload)."""
+    try:
+        if STOCK_CSV_FILE.exists(): STOCK_CSV_FILE.unlink()
+        if STOCK_CSV_META.exists(): STOCK_CSV_META.unlink()
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/orodja-price-check")
