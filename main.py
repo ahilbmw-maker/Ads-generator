@@ -3854,16 +3854,19 @@ async def hsuvoz_move_back(request: Request):
 
 @app.post("/hsuvoz-delete-item")
 async def hsuvoz_delete_item(request: Request):
-    """Zbriše SKU iz 'za naročilo'."""
+    """Zbriše SKU iz 'za naročilo' ali 'order'. Če sku='__ALL__', zbriše vse."""
     try:
         body = await request.json()
         sku = body.get("sku")
-        source = body.get("source", "current")  # 'current' ali 'order'
+        source = body.get("source", "current")
         file = HSUVOZ_CURRENT if source == "current" else HSUVOZ_ORDER
         if not file.exists():
             return JSONResponse({"error": "Ni podatkov."}, status_code=404)
         data = json.loads(file.read_text(encoding="utf-8"))
-        data["items"] = [it for it in data.get("items", []) if it["sku"] != sku]
+        if sku == "__ALL__":
+            data["items"] = []
+        else:
+            data["items"] = [it for it in data.get("items", []) if it["sku"] != sku]
         file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"ok": True}
     except Exception as e:
