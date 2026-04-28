@@ -4977,7 +4977,7 @@ function o14RenderTable() {
   }
 
   // Paginacija
-  const PAGE_SIZE = 50;
+  const PAGE_SIZE = 500;
   if (typeof window._o14Page === 'undefined') window._o14Page = 1;
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   if (window._o14Page > totalPages) window._o14Page = totalPages;
