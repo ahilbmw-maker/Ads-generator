@@ -3892,3 +3892,15 @@ async def hsuvoz_order_clear():
         return {"ok": True}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/hsuvoz-current-clear")
+async def hsuvoz_current_clear():
+    """Počisti celoten seznam 'za naročilo'."""
+    try:
+        if HSUVOZ_CURRENT.exists():
+            data = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
+            data["items"] = []
+            HSUVOZ_CURRENT.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
