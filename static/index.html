@@ -106,12 +106,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 /* ── MAIN CONTENT ── */
 .main { flex: 1; padding: 2rem 2rem 5rem; max-width: 1000px; }
 .main.wide { max-width: 100%; padding: 1.5rem 1.5rem 5rem; }
-/* Fallback: če JS ne nastavi .wide ob load (npr. v artifact preview), tab strani z lastnim
-   sub-tab navigation gridom dobijo wide layout neodvisno od JS-a */
-body:has(#page-analiza.active) .main,
-body:has(#page-orodja.active) .main { max-width: 100% !important; padding: 1.5rem 1.5rem 5rem !important; }
-#page-analiza { width: 100%; max-width: 100%; }
-#analizaSubpage-meta, #analizaSubpage-obrat14 { width: 100%; max-width: 100%; box-sizing: border-box; }
 .page { display: none; }
 .page.active { display: block; }
 
@@ -1321,7 +1315,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div>
 
     <!-- TAB: Meta Ads -->
-    <div id="analizaSubpage-meta" style="padding:14px;display:grid;grid-template-columns:260px minmax(0, 1fr);gap:14px;align-items:start">
+    <div id="analizaSubpage-meta" style="padding:14px;display:grid;grid-template-columns:220px minmax(0, 1fr);gap:14px;align-items:start">
       <!-- Levo: nastavitve + povzetek -->
       <div>
         <div class="card">
@@ -1381,7 +1375,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div>
     <!-- TAB: Obrat 14 dni -->
     <div id="analizaSubpage-obrat14" style="display:none;padding:14px">
-      <div style="display:grid;grid-template-columns:260px minmax(0, 1fr);gap:14px;align-items:start">
+      <div style="display:grid;grid-template-columns:220px minmax(0, 1fr);gap:14px;align-items:start">
         <!-- Levo: upload -->
         <div>
           <div class="card">
