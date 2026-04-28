@@ -1331,12 +1331,14 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div style="display:flex;flex-direction:column;gap:12px">
           <div class="card">
             <span class="slabel">1. ZALOGA (CSV)</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 8px;line-height:1.4">Vsak upload se <strong>doda</strong> k obstoječim — stock se sešteje (silux1 + silux2).</p>
             <div id="pcStockInfo" style="margin-top:8px;padding:10px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;color:var(--text-secondary)">Nalagam status...</div>
             <div id="pcStockDropZone" class="k-dropzone" style="margin-top:8px;padding:14px" onclick="document.getElementById('pcStockInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="pcStockHandleDrop(event)">
               <span style="font-size:11px">Klikni ali povleci CSV za posodobitev</span>
             </div>
             <input type="file" id="pcStockInput" accept=".csv" style="display:none" onchange="pcStockUpload(this.files[0])">
             <div id="pcStockStatus" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
+            <button onclick="pcStockClear()" style="margin-top:6px;padding:4px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🗑 Počisti zalogo &amp; začni znova</button>
           </div>
 
           <div class="card">
@@ -4614,7 +4616,21 @@ async function pcLoadStockStatus() {
     if (data.loaded) {
       const dt = new Date(data.uploaded_at);
       const dateStr = dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
-      info.innerHTML = '<strong style="color:var(--green)">✓ Naložena</strong><br>' + data.rows + ' vrstic · posodobljeno: ' + dateStr;
+      let html = '<strong style="color:var(--green)">✓ Naložena</strong><br>' + data.rows + ' SKU-jev · ' + dateStr;
+      // Prikaži seznam uploadov
+      const uploads = data.uploads || [];
+      if (uploads.length > 1) {
+        html += '<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:5px">';
+        html += uploads.map(u => {
+          const udt = new Date(u.uploaded_at).toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
+          return '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-tertiary)">'
+            + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px">' + esc(u.filename) + '</span>'
+            + '<span style="flex-shrink:0;margin-left:4px">+' + (u.added||0) + ' nov · ∑' + (u.merged||0) + '</span>'
+            + '</div>';
+        }).join('');
+        html += '</div>';
+      }
+      info.innerHTML = html;
     } else {
       info.innerHTML = '<strong style="color:var(--text-tertiary)">⚠ Ni naložene zaloge</strong><br>Naloži CSV za začetek.';
     }
@@ -4634,21 +4650,33 @@ async function pcStockUpload(file) {
   if (!file) return;
   const status = document.getElementById('pcStockStatus');
   status.style.display = 'block';
-  status.textContent = '⏳ Nalagam zalogo...';
+  status.style.color = 'var(--text-secondary)';
+  status.textContent = '⏳ Nalagam in združujem zalogo...';
   try {
     const formData = new FormData();
     formData.append('file', file, file.name);
     const res = await fetch('/orodja-stock-upload', {method: 'POST', body: formData});
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    status.textContent = '✓ Naloženo ' + data.rows + ' vrstic';
     status.style.color = 'var(--green)';
+    status.textContent = `✓ ${data.rows} SKU-jev skupaj · ${data.rows_added} novih · ${data.rows_merged} združenih`;
     pcLoadStockStatus();
     document.getElementById('pcStockInput').value = '';
   } catch(e) {
     status.textContent = '✗ ' + e.message;
     status.style.color = 'var(--red)';
   }
+}
+
+async function pcStockClear() {
+  if (!confirm('Zbriši vso naloženo zalogo in začni znova?')) return;
+  try {
+    await fetch('/orodja-stock-clear', { method: 'POST' });
+    document.getElementById('pcStockInfo').innerHTML = '<strong style="color:var(--text-tertiary)">⚠ Ni naložene zaloge</strong><br>Naloži CSV za začetek.';
+    const status = document.getElementById('pcStockStatus');
+    status.style.display = 'none';
+    status.textContent = '';
+  } catch(e) { alert('Napaka: ' + e.message); }
 }
 
 function pcPdfHandleDrop(ev) {
