@@ -5707,7 +5707,8 @@ async function anLoadMetaFromServer() {
           status: a.status || null,
         };
       }
-      skuMap[sku] = {
+      // UPPERCASE ključ da se ujema z getAdData(.toUpperCase()) lookupom
+      skuMap[sku.toUpperCase()] = {
         sku: sku,
         accounts: accountsObj,
         total_spend: item.total_spend || 0,
