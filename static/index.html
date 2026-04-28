@@ -1294,6 +1294,7 @@ input[type="text"].error { border-color: var(--red) !important; }
               <span class="slabel" style="margin:0" id="hsuvozTitle">ZA NAROČILO (0)</span>
               <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
                 <button onclick="hsuvozMoveAllToOrder()" style="padding:5px 10px;background:#0f766e;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">→ Vse v naročilo</button>
+                <button onclick="hsuvozClearCurrent()" style="padding:5px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Počisti</button>
                 <button onclick="hsuvozToggleDone()" id="hsuvozToggleDoneBtn" style="padding:5px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">👁 Done</button>
               </div>
             </div>
@@ -6132,6 +6133,14 @@ async function hsuvozClearOrder() {
   try {
     await fetch('/hsuvoz-order-clear', { method:'POST' });
     await hsuvozLoadOrderPanel();
+  } catch(e) { alert('Napaka: '+e.message); }
+}
+
+async function hsuvozClearCurrent() {
+  if (!confirm('Zbriši vse SKU-je iz seznama "Za naročilo"?')) return;
+  try {
+    await fetch('/hsuvoz-delete-item', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku:'__ALL__', source:'current'}) });
+    await hsuvozLoadCurrent();
   } catch(e) { alert('Napaka: '+e.message); }
 }
 
