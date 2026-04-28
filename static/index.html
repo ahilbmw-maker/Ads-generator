@@ -1181,6 +1181,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div style="display:flex;gap:8px;padding:12px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border)">
       <button class="orodja-tab-btn active" id="orodjaTab-csv" onclick="switchOrodjaTab('csv')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Ikonka uvoz</button>
       <button class="orodja-tab-btn" id="orodjaTab-hs" onclick="switchOrodjaTab('hs')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📦 Uvoz HS+</button>
+      <button class="orodja-tab-btn" id="orodjaTab-hsuvoz" onclick="switchOrodjaTab('hsuvoz')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🛒 HS+ uvoz</button>
       <button class="orodja-tab-btn" id="orodjaTab-pricecheck" onclick="switchOrodjaTab('pricecheck')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Kontrola cen</button>
     </div>
 
@@ -1259,6 +1260,59 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div>
 
     <!-- TAB 3: Kontrola cen -->
+    <div id="orodjaSubpage-hsuvoz" style="display:none;padding:14px">
+      <div style="display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;align-items:start">
+
+        <!-- LEVO: upload + info + history -->
+        <div>
+          <div class="card">
+            <span class="slabel">HS+ UVOZ — NAROČILNICE</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži CSV export iz naročilnic (ID naročila, SKU, Naziv, Količina). Orodje združi dvojnike SKU-jev.</p>
+            <div id="hsuvozDropZone" class="k-dropzone" style="padding:14px" onclick="document.getElementById('hsuvozInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="hsuvozHandleDrop(event)">
+              <span style="font-size:11px">Klikni ali povleci CSV sem</span>
+            </div>
+            <input type="file" id="hsuvozInput" accept=".csv" style="display:none" onchange="hsuvozUpload(this.files[0])">
+            <div id="hsuvozStatus" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
+            <div id="hsuvozInfo" style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:none"></div>
+          </div>
+
+          <div class="card" style="margin-top:0">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <span class="slabel" style="margin:0">ZGODOVINA (30 DNI)</span>
+              <button onclick="hsuvozLoadHistory()" style="padding:3px 8px;background:none;border:1px solid var(--border);border-radius:var(--radius);font-size:10px;color:var(--text-tertiary);cursor:pointer;font-family:'DM Sans',sans-serif">↻ Osveži</button>
+            </div>
+            <div id="hsuvozHistoryList" style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--text-secondary)">Nalagam...</div>
+          </div>
+        </div>
+
+        <!-- DESNO: tabela SKU-jev -->
+        <div>
+          <div class="card" id="hsuvozResultCard" style="display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <span class="slabel" style="margin:0" id="hsuvozTitle">SKU-JI ZA NAROČILO (0)</span>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button onclick="hsuvozCopySelected()" id="hsuvozCopySelBtn" style="display:none;padding:6px 12px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Kopiraj označene</button>
+                <button onclick="hsuvozCopyAll()" style="padding:6px 12px;background:var(--green);color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Kopiraj vse SKU</button>
+                <button onclick="hsuvozToggleDone()" id="hsuvozToggleDoneBtn" style="padding:6px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">👁 Prikaži done</button>
+              </div>
+            </div>
+            <!-- Header tabele -->
+            <div style="display:grid;grid-template-columns:24px 28px 1fr 2fr 60px 80px 32px;gap:8px;padding:8px 10px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
+              <span></span>
+              <span>#</span>
+              <span>SKU</span>
+              <span>Naziv</span>
+              <span style="text-align:center">Kol.</span>
+              <span>Naročila</span>
+              <span></span>
+            </div>
+            <div id="hsuvozList" style="display:flex;flex-direction:column;gap:4px"></div>
+          </div>
+          <div id="hsuvozEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:3rem">Naloži CSV naročilnic za začetek.</div>
+        </div>
+      </div>
+    </div>
+
     <div id="orodjaSubpage-pricecheck" style="display:none;padding:14px">
       <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
         <!-- Levi: upload zaloge + PDF -->
@@ -4316,12 +4370,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ─── ORODJA SUB-TABS + HS+ ─────────────────────────────────────────────────
 function switchOrodjaTab(tab) {
-  ['csv', 'hs', 'pricecheck'].forEach(t => {
+  ['csv', 'hs', 'hsuvoz', 'pricecheck'].forEach(t => {
     const btn = document.getElementById('orodjaTab-' + t);
     const sub = document.getElementById('orodjaSubpage-' + t);
     if (t === tab) {
       if (btn) { btn.style.background = 'var(--accent)'; btn.style.color = 'white'; btn.style.border = 'none'; btn.classList.add('active'); }
-      if (sub) sub.style.display = (t === 'csv') ? 'grid' : 'block';
+      if (sub) sub.style.display = (t === 'csv' || t === 'hsuvoz') ? 'block' : 'block';
     } else {
       if (btn) { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; btn.style.border = '1px solid var(--border)'; btn.classList.remove('active'); }
       if (sub) sub.style.display = 'none';
@@ -4330,6 +4384,7 @@ function switchOrodjaTab(tab) {
   if (tab === 'hs') hsLoadHistory();
   if (tab === 'pricecheck') pcLoadStockStatus();
   if (tab === 'csv') orodjaLoadHistory();
+  if (tab === 'hsuvoz') { hsuvozLoadHistory(); hsuvozLoadCurrent(); }
 }
 
 let hsItems = [];
@@ -5825,6 +5880,236 @@ document.addEventListener('DOMContentLoaded', () => {
     anLoadMetaFromServer();
   }, 100));
 });
+
+// ═══════════════════════════════════════════════════════
+// HS+ UVOZ — JS logika
+// ═══════════════════════════════════════════════════════
+
+let _hsuvozShowDone = false;
+let _hsuvozSelected = new Set(); // izbrani SKU-ji za kopiranje
+
+function hsuvozHandleDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) hsuvozUpload(f);
+}
+
+async function hsuvozUpload(file) {
+  const status = document.getElementById('hsuvozStatus');
+  const info = document.getElementById('hsuvozInfo');
+  status.style.display = 'block';
+  status.style.color = 'var(--text-secondary)';
+  status.textContent = '⏳ Nalagam...';
+  info.style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/hsuvoz-upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) {
+      status.style.color = 'var(--red)';
+      status.textContent = '⚠ ' + data.error;
+      return;
+    }
+    status.style.color = 'var(--green)';
+    status.textContent = `✓ ${data.total_skus} SKU-jev naloženih`;
+    info.style.display = 'block';
+    info.textContent = `Naloženo: ${new Date(data.uploaded_at).toLocaleString('sl-SI')} · ${file.name}`;
+    await hsuvozLoadCurrent();
+    await hsuvozLoadHistory();
+  } catch (e) {
+    status.style.color = 'var(--red)';
+    status.textContent = '⚠ Napaka: ' + e.message;
+  }
+}
+
+async function hsuvozLoadCurrent() {
+  try {
+    const res = await fetch('/hsuvoz-data');
+    const data = await res.json();
+    if (!data.loaded || !data.items?.length) {
+      document.getElementById('hsuvozResultCard').style.display = 'none';
+      document.getElementById('hsuvozEmpty').style.display = 'block';
+      return;
+    }
+    document.getElementById('hsuvozResultCard').style.display = 'block';
+    document.getElementById('hsuvozEmpty').style.display = 'none';
+    hsuvozRender(data.items);
+  } catch (e) {
+    console.warn('hsuvozLoadCurrent err', e);
+  }
+}
+
+function hsuvozRender(items) {
+  const list = document.getElementById('hsuvozList');
+  const title = document.getElementById('hsuvozTitle');
+  const visible = _hsuvozShowDone ? items : items.filter(it => !it.done);
+  const undone = items.filter(it => !it.done);
+
+  title.textContent = `SKU-JI ZA NAROČILO (${undone.length} aktivnih / ${items.length} skupaj)`;
+
+  // Posodobi gumb za kopiranje izbranih
+  const copySelBtn = document.getElementById('hsuvozCopySelBtn');
+  copySelBtn.style.display = _hsuvozSelected.size > 0 ? 'inline-block' : 'none';
+
+  if (!visible.length) {
+    list.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:1.5rem">Vsi SKU-ji so označeni kot done. 🎉</div>';
+    return;
+  }
+
+  list.innerHTML = visible.map((it, idx) => {
+    const isSelected = _hsuvozSelected.has(it.sku);
+    const isDone = it.done;
+    const bg = isDone ? 'rgba(0,0,0,0.03)' : (isSelected ? 'rgba(24,119,242,0.08)' : 'var(--surface)');
+    const border = isSelected ? '1px solid rgba(24,119,242,0.3)' : '1px solid var(--border)';
+    const opacity = isDone ? '0.5' : '1';
+
+    // Naročila kot klikabilni linki
+    const orderLinks = (it.orders || []).map(id =>
+      `<a href="https://www.siluxar.si/narocilnice/${id}" target="_blank" style="color:var(--accent);text-decoration:none;font-size:10px;background:rgba(24,119,242,0.08);border:1px solid rgba(24,119,242,0.2);border-radius:4px;padding:1px 5px" title="Naroč. ${id}">${id}</a>`
+    ).join(' ');
+
+    return `<div style="display:grid;grid-template-columns:24px 28px 1fr 2fr 60px 80px 32px;gap:8px;padding:9px 10px;background:${bg};border:${border};border-radius:var(--radius);font-size:12px;align-items:center;opacity:${opacity}" id="hsuvoz-row-${esc(it.sku)}">
+      <input type="checkbox" ${isSelected ? 'checked' : ''} ${isDone ? 'disabled' : ''} onchange="hsuvozToggleSelect(${JSON.stringify(it.sku)}, this.checked)" style="cursor:pointer;width:14px;height:14px">
+      <span style="color:var(--text-tertiary);font-size:11px">${idx + 1}</span>
+      <div style="display:flex;align-items:center;gap:5px">
+        <span style="font-weight:600;color:${isDone ? 'var(--text-tertiary)' : 'var(--text)'};text-decoration:${isDone ? 'line-through' : 'none'}" id="hsuvoz-sku-${esc(it.sku)}">${esc(it.sku)}</span>
+        <button onclick="hsuvozStartEdit(${JSON.stringify(it.sku)})" title="Uredi SKU" style="padding:1px 5px;background:none;border:1px solid var(--border);border-radius:3px;font-size:9px;color:var(--text-tertiary);cursor:pointer;font-family:'DM Sans',sans-serif">✏</button>
+      </div>
+      <span style="color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(it.naziv)}">${esc(it.naziv) || '—'}</span>
+      <span style="text-align:center;font-weight:700;color:${isDone ? 'var(--text-tertiary)' : 'var(--text)'}">${it.qty}</span>
+      <div style="display:flex;flex-wrap:wrap;gap:3px">${orderLinks}</div>
+      <label title="${isDone ? 'Označeno kot naročeno' : 'Označi kot naročeno'}" style="cursor:pointer;display:flex;align-items:center;justify-content:center">
+        <input type="checkbox" ${isDone ? 'checked' : ''} onchange="hsuvozSetDone(${JSON.stringify(it.sku)}, this.checked)" style="width:15px;height:15px;cursor:pointer;accent-color:var(--green)">
+      </label>
+    </div>`;
+  }).join('');
+}
+
+function hsuvozToggleSelect(sku, checked) {
+  if (checked) _hsuvozSelected.add(sku);
+  else _hsuvozSelected.delete(sku);
+  // Re-render samo gumb
+  const btn = document.getElementById('hsuvozCopySelBtn');
+  if (btn) btn.style.display = _hsuvozSelected.size > 0 ? 'inline-block' : 'none';
+}
+
+async function hsuvozSetDone(sku, done) {
+  try {
+    await fetch('/hsuvoz-set-done', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sku, done })
+    });
+    await hsuvozLoadCurrent();
+  } catch (e) { console.warn('setDone err', e); }
+}
+
+function hsuvozToggleDone() {
+  _hsuvozShowDone = !_hsuvozShowDone;
+  const btn = document.getElementById('hsuvozToggleDoneBtn');
+  btn.textContent = _hsuvozShowDone ? '🙈 Skrij done' : '👁 Prikaži done';
+  btn.style.background = _hsuvozShowDone ? 'rgba(0,0,0,0.06)' : 'transparent';
+  hsuvozLoadCurrent();
+}
+
+async function hsuvozCopyAll() {
+  try {
+    const res = await fetch('/hsuvoz-data');
+    const data = await res.json();
+    const active = (data.items || []).filter(it => !it.done);
+    const text = active.map(it => it.sku).join('\n');
+    await navigator.clipboard.writeText(text);
+    // Flash feedback
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = '✓ Kopirano!';
+    btn.style.background = '#16a34a';
+    setTimeout(() => { btn.textContent = orig; btn.style.background = 'var(--green)'; }, 1500);
+  } catch (e) { alert('Napaka pri kopiranju: ' + e.message); }
+}
+
+async function hsuvozCopySelected() {
+  try {
+    const res = await fetch('/hsuvoz-data');
+    const data = await res.json();
+    const sel = (data.items || []).filter(it => _hsuvozSelected.has(it.sku));
+    const text = sel.map(it => it.sku).join('\n');
+    await navigator.clipboard.writeText(text);
+    const btn = document.getElementById('hsuvozCopySelBtn');
+    const orig = btn.textContent;
+    btn.textContent = `✓ Kopirano (${sel.length})!`;
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  } catch (e) { alert('Napaka: ' + e.message); }
+}
+
+function hsuvozStartEdit(sku) {
+  const span = document.getElementById('hsuvoz-sku-' + esc(sku));
+  if (!span) return;
+  const orig = sku;
+  span.innerHTML = `<input id="hsuvoz-edit-input" value="${esc(sku)}" style="padding:2px 6px;border:1px solid var(--accent);border-radius:4px;font-size:12px;font-family:'DM Sans',sans-serif;width:110px" onkeydown="if(event.key==='Enter')hsuvozSaveEdit(${JSON.stringify(orig)});if(event.key==='Escape')hsuvozLoadCurrent()">
+    <button onclick="hsuvozSaveEdit(${JSON.stringify(orig)})" style="padding:2px 6px;background:var(--accent);color:white;border:none;border-radius:3px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">✓</button>
+    <button onclick="hsuvozLoadCurrent()" style="padding:2px 6px;background:none;border:1px solid var(--border);border-radius:3px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">✗</button>`;
+  document.getElementById('hsuvoz-edit-input')?.focus();
+}
+
+async function hsuvozSaveEdit(oldSku) {
+  const input = document.getElementById('hsuvoz-edit-input');
+  const newSku = input?.value?.trim();
+  if (!newSku || newSku === oldSku) { hsuvozLoadCurrent(); return; }
+  try {
+    const res = await fetch('/hsuvoz-edit-sku', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ old_sku: oldSku, new_sku: newSku })
+    });
+    const data = await res.json();
+    if (data.error) { alert('Napaka: ' + data.error); return; }
+    // Posodobi selected set
+    if (_hsuvozSelected.has(oldSku)) { _hsuvozSelected.delete(oldSku); _hsuvozSelected.add(newSku); }
+    await hsuvozLoadCurrent();
+  } catch (e) { alert('Napaka: ' + e.message); }
+}
+
+async function hsuvozLoadHistory() {
+  const el = document.getElementById('hsuvozHistoryList');
+  try {
+    const res = await fetch('/hsuvoz-history');
+    const data = await res.json();
+    if (!data.items?.length) {
+      el.innerHTML = '<span style="color:var(--text-tertiary)">Ni zgodovine.</span>';
+      return;
+    }
+    el.innerHTML = data.items.map(it => {
+      const dt = it.uploaded_at ? new Date(it.uploaded_at).toLocaleString('sl-SI', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+      const kb = it.size ? Math.round(it.size / 1024) + ' KB' : '';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);gap:8px">
+        <div style="min-width:0">
+          <div style="font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(it.original_filename)}">${esc(it.original_filename)}</div>
+          <div style="color:var(--text-tertiary);font-size:10px;margin-top:1px">${dt} · ${it.total_skus} SKU · ${kb}</div>
+        </div>
+        <button onclick="hsuvozLoadFromHistory(${JSON.stringify(it.filename)})" style="flex-shrink:0;padding:4px 8px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:10px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">↩ Naloži</button>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = '<span style="color:var(--red)">Napaka pri nalaganju zgodovine.</span>';
+  }
+}
+
+async function hsuvozLoadFromHistory(filename) {
+  try {
+    const res = await fetch('/hsuvoz-load-history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename })
+    });
+    const data = await res.json();
+    if (data.error) { alert('Napaka: ' + data.error); return; }
+    await hsuvozLoadCurrent();
+  } catch (e) { alert('Napaka: ' + e.message); }
+}
 
 
 </script>
