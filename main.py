@@ -3716,21 +3716,23 @@ async def hsuvoz_set_done(request: Request):
 
 @app.post("/hsuvoz-edit-sku")
 async def hsuvoz_edit_sku(request: Request):
-    """Preimenuje SKU."""
+    """Preimenuje SKU v current ali order."""
     try:
         body = await request.json()
         old_sku = body.get("old_sku")
         new_sku = (body.get("new_sku") or "").strip()
+        source = body.get("source", "current")
         if not new_sku:
             return JSONResponse({"error": "Nov SKU je prazen."}, status_code=400)
-        if not HSUVOZ_CURRENT.exists():
+        file = HSUVOZ_CURRENT if source == "current" else HSUVOZ_ORDER
+        if not file.exists():
             return JSONResponse({"error": "Ni podatkov."}, status_code=404)
-        data = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
+        data = json.loads(file.read_text(encoding="utf-8"))
         for it in data.get("items", []):
             if it["sku"] == old_sku:
                 it["sku"] = new_sku
                 break
-        HSUVOZ_CURRENT.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"ok": True}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -3771,5 +3773,119 @@ async def hsuvoz_load_history(request: Request):
         data = json.loads(hist_file.read_text(encoding="utf-8"))
         HSUVOZ_CURRENT.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"ok": True, "total_skus": data.get("total_skus", 0)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+# ═══════════════════════════════════════════════════════════════
+# HS+ NAROČANJE — naročilo composer (ločen persistent state)
+# ═══════════════════════════════════════════════════════════════
+HSUVOZ_ORDER = DATA_DIR / "hsuvoz_order.json"
+
+@app.post("/hsuvoz-move-to-order")
+async def hsuvoz_move_to_order(request: Request):
+    """Premakne SKU iz 'za naročilo' v 'naročilo'."""
+    try:
+        body = await request.json()
+        sku = body.get("sku")
+        if not sku or not HSUVOZ_CURRENT.exists():
+            return JSONResponse({"error": "Ni podatkov."}, status_code=400)
+
+        # Poberi iz current
+        current = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
+        item = next((it for it in current.get("items", []) if it["sku"] == sku), None)
+        if not item:
+            return JSONResponse({"error": "SKU ne obstaja."}, status_code=404)
+
+        # Dodaj v order (ali posodobi qty)
+        order = {"items": []}
+        if HSUVOZ_ORDER.exists():
+            try: order = json.loads(HSUVOZ_ORDER.read_text(encoding="utf-8"))
+            except: pass
+
+        existing = next((it for it in order["items"] if it["sku"] == sku), None)
+        if existing:
+            existing["qty"] += item["qty"]
+            existing["orders"] = list(set(existing.get("orders", []) + item.get("orders", [])))
+        else:
+            order["items"].append({**item, "done": False})
+
+        HSUVOZ_ORDER.write_text(json.dumps(order, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # Odstrani iz current
+        current["items"] = [it for it in current["items"] if it["sku"] != sku]
+        HSUVOZ_CURRENT.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/hsuvoz-move-back")
+async def hsuvoz_move_back(request: Request):
+    """Vrne SKU iz naročila nazaj v 'za naročilo'."""
+    try:
+        body = await request.json()
+        sku = body.get("sku")
+        if not sku or not HSUVOZ_ORDER.exists():
+            return JSONResponse({"error": "Ni podatkov."}, status_code=400)
+
+        order = json.loads(HSUVOZ_ORDER.read_text(encoding="utf-8"))
+        item = next((it for it in order["items"] if it["sku"] == sku), None)
+        if not item:
+            return JSONResponse({"error": "SKU ne obstaja v naročilu."}, status_code=404)
+
+        # Vrni v current
+        current = {"items": []}
+        if HSUVOZ_CURRENT.exists():
+            try: current = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
+            except: pass
+
+        if not any(it["sku"] == sku for it in current["items"]):
+            current["items"].append({**item, "done": False})
+            HSUVOZ_CURRENT.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        order["items"] = [it for it in order["items"] if it["sku"] != sku]
+        HSUVOZ_ORDER.write_text(json.dumps(order, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/hsuvoz-delete-item")
+async def hsuvoz_delete_item(request: Request):
+    """Zbriše SKU iz 'za naročilo'."""
+    try:
+        body = await request.json()
+        sku = body.get("sku")
+        source = body.get("source", "current")  # 'current' ali 'order'
+        file = HSUVOZ_CURRENT if source == "current" else HSUVOZ_ORDER
+        if not file.exists():
+            return JSONResponse({"error": "Ni podatkov."}, status_code=404)
+        data = json.loads(file.read_text(encoding="utf-8"))
+        data["items"] = [it for it in data.get("items", []) if it["sku"] != sku]
+        file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/hsuvoz-order-data")
+async def hsuvoz_order_data():
+    """Vrne seznam SKU-jev v naročilu."""
+    try:
+        if not HSUVOZ_ORDER.exists():
+            return {"items": []}
+        return json.loads(HSUVOZ_ORDER.read_text(encoding="utf-8"))
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/hsuvoz-order-clear")
+async def hsuvoz_order_clear():
+    """Počisti celotno naročilo."""
+    try:
+        HSUVOZ_ORDER.write_text(json.dumps({"items": []}, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
