@@ -6143,7 +6143,7 @@ function hsuvozRender(items, listId, source) {
       + '<div style="display:grid;grid-template-columns:32px 28px 130px 1fr 55px 85px 85px 100px;gap:8px;padding:9px 12px;font-size:12px;align-items:center">'
       + '<input type="checkbox" ' + (isChecked ? 'checked' : '') + ' onchange="window._hsvCheck(\'' + source + '\',' + idx + ',this.checked)" style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">'
       + '<span style="color:var(--text-tertiary);font-size:11px">' + (idx + 1) + '</span>'
-      + '<span style="font-weight:700;font-size:12px;color:' + skuColor + ';text-decoration:' + skuDeco + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="hsuvoz-sku-' + source + '-' + idx + '">' + esc(it.sku) + '</span>'
+      + '<input value="' + esc(it.sku) + '" data-orig="' + esc(it.sku) + '" data-src="' + source + '" data-idx="' + idx + '" onfocus="this.select()" onblur="window._hsvSaveSkuEdit(this)" onkeydown="if(event.key===\'Enter\'){this.blur();}if(event.key===\'Escape\'){this.value=this.dataset.orig;this.blur();}" style="font-weight:700;font-size:12px;color:' + skuColor + ';text-decoration:' + skuDeco + ';border:none;background:transparent;outline:none;width:100%;cursor:text;font-family:DM Sans,sans-serif;padding:0" title="Klikni za urejanje SKU">'
       + '<span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">' + esc(it.naziv || '—') + '</span>'
       + '<div style="text-align:center">'
       + '<span style="font-weight:700;font-size:15px;color:var(--text)">' + it.qty + '</span>'
@@ -6158,7 +6158,6 @@ function hsuvozRender(items, listId, source) {
       + '<button onclick="window._hsvOrders(\'' + ordersId + '\',this)" style="padding:4px 8px;background:rgba(24,119,242,0.07);border:1px solid rgba(24,119,242,0.2);border-radius:6px;font-size:11px;color:var(--accent);cursor:pointer;width:100%;text-align:center">📦 ' + ordersCount + '</button>'
       + '<div style="display:flex;gap:3px;justify-content:flex-end">'
       + btnMove
-      + '<button onclick="window._hsvAct(\'edit\',\'' + source + '\',' + idx + ')" style="padding:4px 5px;background:none;border:1px solid var(--border);color:var(--text-tertiary);border-radius:4px;font-size:10px;cursor:pointer">✏</button>'
       + '</div>'
       + '</div>'
       + '<div id="' + ordersId + '" style="display:none;padding:5px 12px 10px 50px;flex-wrap:wrap;gap:5px">' + orderLinks + '</div>'
@@ -6173,7 +6172,42 @@ function hsuvozRender(items, listId, source) {
     const sku = items_ref[idx].sku;
     if (action === 'move') hsuvozMoveToOrder(sku);
     else if (action === 'back') hsuvozMoveBack(sku);
-    else if (action === 'edit') hsuvozStartEdit(sku, src, idx);
+  };
+
+  window._hsvSaveSkuEdit = async function(input) {
+    const newSku = input.value.trim();
+    const oldSku = input.dataset.orig;
+    const source = input.dataset.src;
+    const idx = parseInt(input.dataset.idx);
+    if (!newSku || newSku === oldSku) {
+      input.value = oldSku; // Vrni original če prazno
+      return;
+    }
+    // Vizualni feedback med shranjevanjem
+    input.style.opacity = '0.5';
+    try {
+      const res = await fetch('/hsuvoz-edit-sku?old_sku=' + encodeURIComponent(oldSku) + '&new_sku=' + encodeURIComponent(newSku) + '&source=' + source, {method:'POST'});
+      const data = await res.json();
+      if (data.error) {
+        input.value = oldSku;
+        alert('Napaka: ' + data.error);
+      } else {
+        input.dataset.orig = newSku; // Posodobi orig za naslednji edit
+        // Posodobi _hsuvozSelected če je bila ta vrstica označena
+        if (window._hsuvozSelected) {
+          if (window._hsuvozSelected.has(oldSku + '|' + source)) {
+            window._hsuvozSelected.delete(oldSku + '|' + source);
+            window._hsuvozSelected.add(newSku + '|' + source);
+          }
+        }
+        // Posodobi items_ref v memory
+        const items_ref = source === 'current' ? window._hsuvozCurrentItems : window._hsuvozOrderItems;
+        if (items_ref && items_ref[idx]) items_ref[idx].sku = newSku;
+      }
+    } catch(e) {
+      input.value = oldSku;
+    }
+    input.style.opacity = '1';
   };
 
   window._hsvCheck = function(src, idx, checked) {
