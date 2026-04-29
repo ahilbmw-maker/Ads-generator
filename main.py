@@ -1,4068 +1,6492 @@
-import os
-import json
-import re
-import asyncio
-import shutil
-import uuid
-import xml.etree.ElementTree as ET
-from datetime import datetime, timezone, timedelta
-from typing import Optional, List
-from urllib.parse import urlparse
-from pathlib import Path
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SLX Analytics</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<link rel="shortcut icon" href="/static/favicon.png">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f2f2f5; --surface: #fff; --surface2: #ebebf0;
+  --border: rgba(0,0,0,0.07); --border-hover: rgba(0,0,0,0.15);
+  --text: #111116; --text-secondary: #55555f; --text-tertiary: #9999a8;
+  --accent: #3a6fff; --accent-dim: rgba(58,111,255,0.1); --accent-border: rgba(58,111,255,0.3);
+  --tiktok: #010101; --tiktok-dim: rgba(1,1,1,0.07);
+  --green: #0a8c5a; --green-dim: rgba(10,140,90,0.1); --green-border: rgba(10,140,90,0.28);
+  --red: #e03030; --chip-off: #dddde5; --chip-on: #3a6fff;
+  --sidebar: 200px; --radius: 10px; --radius-lg: 14px;
+}
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
 
-import httpx
-import openpyxl
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
-import anthropic
+/* ── MOBILE BOTTOM TAB BAR ── */
+.mobile-tabbar { display: none; }
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-app.mount("/static", StaticFiles(directory="static"), name="static")
-client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-
-TEMPLATE_PATH = "static/tiktok_template.xlsx"
-EXPORTS_DIR = Path("exports")
-EXPORTS_DIR.mkdir(exist_ok=True)
-DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
-DATA_DIR.mkdir(exist_ok=True, parents=True)
-TT_HISTORY_FILE = DATA_DIR / "tiktok_history.json"
-META_HISTORY_FILE = DATA_DIR / "meta_history.json"
-KREATIVE_HISTORY_FILE = DATA_DIR / "kreative_history.json"
-FORECAST_ENTRIES_FILE = DATA_DIR / "forecast_entries.json"
-FORECAST_HISTORY_FILE = DATA_DIR / "forecast_history.json"
-
-# ─── BRAND DOMAIN MAPS ───────────────────────────────────────────────────────
-
-BRAND_DOMAINS = {
-    "maaarket": {"sl":"www.maaarket.si","hr":"www.maaarket.hr","rs":"www.maaarket.rs","hu":"www.maaarket.hu","cz":"www.maaarket.cz","sk":"www.maaarket.sk","pl":"www.maaarket.pl","gr":"www.maaarket.gr","ro":"www.maaarket.ro","bg":"www.maaarket.bg"},
-    "fluxigo":  {"sl":"www.fluxigo.si","hr":"www.fluxigo.hr","rs":"www.fluxigo.rs","hu":"www.fluxigo.hu","cz":"www.fluxigo.cz","sk":"www.fluxigo.sk","pl":"www.fluxigo.pl","gr":"www.fluxigo.gr","ro":"www.fluxigo.ro","bg":"www.fluxigo.bg"},
-    "easyzo":   {"sl":"www.easyzo.si","hr":"www.easyzo.hr","rs":"www.easyzo.rs","hu":"www.easyzo.hu","cz":"www.easyzo.cz","sk":"www.easyzo.sk","pl":"www.easyzo.pl","gr":"www.easyzo.gr","ro":"www.easyzo.ro","bg":"www.easyzo.bg"},
-    "zipply":   {"sl":"www.zipply.si","hr":"www.zipply.hr","rs":"www.zipply.rs","hu":"www.zipply.hu","cz":"www.zipply.cz","sk":"www.zipply.sk","pl":"www.zipply.pl","gr":"www.zipply.gr","ro":"www.zipply.ro","bg":"www.zipply.bg"},
-    "thundershop": {"sl":"www.thundershop.si","hr":"www.thundershop.hr","rs":"www.thundershop.rs","hu":"www.thundershop.hu","cz":"www.thundershop.cz","sk":"www.thundershop.sk","gr":"www.thundershop.gr","ro":"www.thundershop.ro","bg":"www.thundershop.bg"},
-    "colibrishop": {"sl":"www.colibrishop.si","hr":"www.colibrishop.hr","rs":"www.colibrishop.rs","cz":"www.colibrishop.cz","sk":"www.colibrishop.sk","gr":"www.colibrishop.gr","ro":"www.colibrishop.ro","bg":"www.colibrishop.bg"},
+@media(max-width: 600px) {
+  .hamburger { display: none !important; }
+  .overlay { display: none !important; }
+  .sidebar { display: none !important; }
+  .main { padding: 0.75rem 0.75rem 5rem; max-width: 100%; overflow-x: hidden; }
+  body { display: block; }
+  #page-meta { max-width: 100%; overflow-x: hidden; }
+  input[type="text"] { max-width: 100%; min-width: 0; }
+  .url-wrap { min-width: 0; overflow: hidden; }
+  .url-row { min-width: 0; }
+  .hint { display: none; }
+  .card { padding: 1rem; }
+  .country-body { grid-template-columns: 1fr; }
+  .field-col:first-child { border-right: none; border-bottom: 1px solid var(--border); }
+  .results-hdr { flex-direction: column; align-items: flex-start; }
+  .results-hdr-right { width: 100%; justify-content: flex-end; }
+  .prod-tabs { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
+  .prod-tab { flex-shrink: 0; }
+  .country-url-link { max-width: 160px; }
+  .counters { gap: 1rem; }
+  .input-grid2 { grid-template-columns: 1fr; }
+  .qbtn-sub { display: none; }
+  .mobile-tabbar {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 58px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    z-index: 9999;
+    align-items: stretch;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    cursor: pointer;
+    transition: all 0.12s;
+    padding: 6px 4px;
+    border: none;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .tab-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .tab-item span { font-size: 9px; font-weight: 500; color: var(--text-tertiary); }
+  .tab-item.active span { color: var(--accent); }
+  .tab-item.active svg { opacity: 1; }
+  .tab-item svg { opacity: 0.4; }
+  .tab-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); display: none; margin-top: 1px; }
+  .tab-item.active .tab-dot { display: block; }
+  /* Swipe container */
+  .pages-wrap { width: 100%; overflow: hidden; }
+  .pages-inner { display: flex; transition: transform 0.3s ease; will-change: transform; }
+  .pages-inner .page { display: block; min-width: 100%; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .pages-inner .page.active { opacity: 1; pointer-events: auto; }
 }
 
-MAAARKET_FEEDS = {
-    "sl":"https://api.maaarket.si/storage/exports/sl/google.xml",
-    "hr":"https://api.maaarket.hr/storage/exports/hr/google.xml",
-    "rs":"https://api.maaarket.rs/storage/exports/sr/google.xml",
-    "hu":"https://api.maaarket.hu/storage/exports/hu/google.xml",
-    "pl":"https://api.maaarket.pl/storage/exports/pl/google.xml",
-    "cz":"https://api.maaarket.cz/storage/exports/cs/google.xml",
-    "sk":"https://api.maaarket.sk/storage/exports/sk/google.xml",
-    "gr":"https://api.maaarket.gr/storage/exports/el/google.xml",
-    "bg":"https://api.maaarket.bg/storage/exports/bg/google.xml",
-    "ro":"https://api.maaarket.ro/storage/exports/ro/google.xml",
+/* ── SIDEBAR ── */
+.sidebar { width: var(--sidebar); flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 1.25rem 0.75rem; gap: 4px; min-height: 100vh; }
+.sidebar-logo { display: flex; align-items: center; gap: 8px; padding: 0 0.5rem 1.25rem; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem; }
+.sidebar-logo-icon { width: 28px; height: 28px; border-radius: 7px; background: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sidebar-logo-icon svg { width: 14px; height: 14px; fill: white; }
+.sidebar-logo-text { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: -0.2px; line-height: 1.2; }
+.sidebar-logo-sub { font-size: 10px; color: var(--text-tertiary); }
+.nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: var(--radius); cursor: pointer; transition: all 0.12s; color: var(--text-secondary); font-size: 13px; font-weight: 500; border: 1px solid transparent; }
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--surface2); color: var(--text); border-color: var(--border); }
+.nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+.nav-item .nav-badge { margin-left: auto; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px; font-family: 'DM Mono', monospace; }
+.nav-meta svg { stroke: #1877F2; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nav-meta.active { border-color: rgba(24,119,242,0.2); }
+.nav-tiktok svg { fill: var(--tiktok); stroke: none; }
+.nav-tiktok.active { border-color: rgba(1,1,1,0.12); }
+
+/* ── MAIN CONTENT ── */
+.main { flex: 1; padding: 2rem 2rem 5rem; max-width: 1000px; }
+.main.wide { max-width: 100%; padding: 1.5rem 1.5rem 5rem; }
+.page { display: none; }
+.page.active { display: block; }
+
+/* ── SHARED COMPONENTS ── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; }
+.slabel { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: block; }
+.url-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.url-row { display: flex; align-items: center; gap: 8px; }
+.url-num { width: 22px; height: 22px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text-tertiary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-family: 'DM Mono', monospace; }
+.url-wrap { flex: 1; position: relative; display: flex; align-items: center; }
+.url-icon { position: absolute; left: 11px; pointer-events: none; }
+.url-icon svg { width: 13px; height: 13px; stroke: var(--text-tertiary); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+input[type="text"] { width: 100%; height: 42px; padding: 0 12px 0 32px; font-size: 13.5px; font-family: 'DM Sans', sans-serif; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); transition: all 0.15s; }
+input[type="text"].no-icon { padding-left: 12px; }
+input[type="text"]:focus { outline: none; border-color: var(--accent-border); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-dim); }
+input[type="text"]::placeholder { color: var(--text-tertiary); }
+input[type="text"].error { border-color: var(--red) !important; }
+.btn-gen { width: 100%; height: 46px; border-radius: var(--radius); border: none; background: var(--accent); color: white; font-size: 14px; font-family: 'DM Sans', sans-serif; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all 0.15s; }
+.btn-gen:hover { background: #2d5fee; }
+.btn-gen:active { transform: scale(0.98); }
+.btn-gen:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-gen svg { width: 14px; height: 14px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.btn-tiktok { background: var(--tiktok); }
+.btn-tiktok:hover { background: #333; }
+.sep { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+.counters { display: flex; gap: 1.5rem; }
+.counter-group { flex: 1; }
+.counter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cnt-btn { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; font-family: 'DM Mono', monospace; }
+.cnt-btn:hover { border-color: var(--border-hover); color: var(--text); }
+.cnt-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+.cnt-val { font-size: 16px; font-weight: 600; min-width: 22px; text-align: center; font-family: 'DM Mono', monospace; }
+.cnt-max { font-size: 11px; color: var(--text-tertiary); }
+.chips { display: flex; gap: 3px; }
+.chip { height: 4px; flex: 1; border-radius: 2px; background: var(--chip-off); transition: background 0.2s; }
+.chip.on { background: var(--chip-on); }
+.counters-divider { width: 1px; background: var(--border); align-self: stretch; }
+.hint { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; background: var(--surface2); border-radius: 8px; margin-top: 1.25rem; }
+.hint svg { width: 13px; height: 13px; stroke: var(--text-tertiary); fill: none; stroke-width: 1.5; flex-shrink: 0; margin-top: 1px; }
+.hint-text { font-size: 12px; color: var(--text-tertiary); line-height: 1.6; }
+.error-msg { display: none; padding: 10px 14px; background: rgba(224,48,48,0.07); border: 1px solid rgba(224,48,48,0.2); border-radius: var(--radius); font-size: 13px; color: var(--red); margin-top: 10px; }
+.error-msg.show { display: block; }
+.loading { display: none; text-align: center; padding: 3rem 1rem; }
+.loading.show { display: block; }
+.spinner { width: 30px; height: 30px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 1rem; }
+.spinner.tiktok { border-top-color: var(--tiktok); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 13px; color: var(--text-tertiary); }
+.loading-progress { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+.prog-item { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--text-tertiary); display: flex; align-items: center; gap: 5px; }
+.prog-item.done { color: var(--green); border-color: var(--green-border); background: var(--green-dim); }
+.prog-item.loading { color: var(--accent); border-color: var(--accent-border); background: var(--accent-dim); }
+
+/* Quality mode */
+.qbtn { flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--surface); cursor: pointer; transition: all 0.15s; text-align: left; font-family: 'DM Sans', sans-serif; }
+.qbtn:hover { border-color: var(--border-hover); background: var(--surface2); }
+.qbtn.on { border-color: var(--accent); background: var(--accent-dim); }
+.qbtn-icon { font-size: 18px; flex-shrink: 0; line-height: 1; }
+.qbtn-body { display: flex; flex-direction: column; gap: 2px; }
+.qbtn-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.qbtn-sub { font-size: 11px; color: var(--text-tertiary); }
+.qbtn.on .qbtn-title { color: var(--accent); }
+.qbtn.on .qbtn-sub { color: var(--accent); opacity: 0.7; }
+
+/* History */
+.history-section { margin-top: 1.5rem; }
+.history-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.history-title { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; }
+.history-clear { font-size: 11px; color: var(--text-tertiary); background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.history-clear:hover { color: var(--red); }
+.history-list { display: flex; flex-direction: column; gap: 6px; }
+.history-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: all 0.12s; }
+.history-item:hover { border-color: var(--accent-border); background: var(--accent-dim); }
+.hi-icon { width: 28px; height: 28px; border-radius: 7px; background: var(--surface2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.hi-icon svg { width: 13px; height: 13px; stroke: var(--text-tertiary); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.hi-body { flex: 1; min-width: 0; }
+.hi-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hi-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
+.hi-badge { font-size: 10px; font-weight: 600; color: var(--text-tertiary); background: var(--surface2); border-radius: 4px; padding: 2px 6px; white-space: nowrap; font-family: 'DM Mono', monospace; }
+.brand-badge { font-size: 10px; font-weight: 600; border-radius: 4px; padding: 2px 7px; white-space: nowrap; margin-left: 4px; }
+.brand-maaarket   { background:#e8f4fd; color:#1a73e8; }
+.brand-thundershop{ background:#fce8e8; color:#d93025; }
+.brand-colibrishop{ background:#fef3e2; color:#f09300; }
+.brand-zipply     { background:#e6f4ea; color:#1e8e3e; }
+.brand-easyzo     { background:#f3e8fd; color:#8430ce; }
+.brand-fluxigo    { background:#e8faf4; color:#0d8050; }
+.brand-other      { background:#f1f3f4; color:#5f6368; }
+.history-empty { font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 1.5rem; background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); }
+
+/* Meta results */
+.results { display: none; }
+.results.show { display: block; }
+.results-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 8px; }
+.results-hdr-right { display: flex; gap: 8px; }
+.back-btn { height: 34px; padding: 0 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.12s; display: flex; align-items: center; gap: 5px; }
+.back-btn:hover { border-color: var(--border-hover); color: var(--text); }
+.back-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.back-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.prod-tabs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.prod-tab { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); font-size: 13px; font-weight: 500; cursor: pointer; background: var(--surface); color: var(--text-secondary); transition: all 0.12s; display: flex; align-items: center; gap: 6px; }
+.prod-tab:hover { border-color: var(--border-hover); color: var(--text); }
+.prod-tab.on { background: var(--accent); color: white; border-color: var(--accent); }
+.prod-tab .tab-num { width: 16px; height: 16px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; font-family: 'DM Mono', monospace; }
+.prod-tab:not(.on) .tab-num { background: var(--surface2); color: var(--text-tertiary); }
+.prod-panel { display: none; }
+.prod-panel.on { display: block; }
+.country-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 10px; overflow: hidden; }
+.country-hdr { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.country-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 5px; font-family: 'DM Mono', monospace; letter-spacing: 0.3px; flex-shrink: 0; }
+.country-name { font-size: 12px; color: var(--text-tertiary); flex-shrink: 0; }
+.country-url-row { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.country-url-link { font-size: 11px; color: var(--accent); text-decoration: none; font-family: 'DM Mono', monospace; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.country-url-link:hover { text-decoration: underline; }
+.url-missing { font-size: 11px; color: var(--text-tertiary); font-style: italic; margin-left: auto; }
+.url-cp-btn { height: 22px; padding: 0 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-tertiary); font-size: 10px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; display: flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0; }
+.url-cp-btn:hover { border-color: var(--accent-border); color: var(--accent); }
+.url-cp-btn.ok { color: var(--green); border-color: var(--green-border); background: var(--green-dim); }
+.country-body { display: grid; grid-template-columns: 1fr 1fr; }
+.field-col { padding: 12px 16px; }
+.field-col:first-child { border-right: 1px solid var(--border); }
+.field-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.field-lbl { font-size: 10px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.7px; }
+.cp-btn { height: 24px; padding: 0 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); font-size: 11px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.cp-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface); }
+.cp-btn.ok { color: var(--green); border-color: var(--green-border); background: var(--green-dim); }
+.cp-btn svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.field-text { font-size: 13px; color: var(--text); line-height: 1.65; white-space: pre-wrap; }
+.field-text.is-hl { font-size: 14px; font-weight: 600; }
+.pt-item { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.pt-item:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+
+/* TikTok results */
+.tt-results { display: none; }
+.tt-results.show { display: block; }
+
+/* TikTok history panel */
+.tt-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.meta-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.meta-history-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
+.meta-history-panel .history-list { max-height: 520px; overflow-y: auto; }
+.hi-regen { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 4px; border: 1px solid var(--accent-border); background: var(--accent-dim); color: var(--accent); cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+.hi-regen:hover { background: var(--accent); color: #fff; }
+.meta-history-search { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text-primary); margin-bottom: 10px; box-sizing: border-box; }
+.meta-history-search:focus { outline: none; border-color: var(--accent); }
+.tt-history { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
+.tt-history-hdr { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px; }
+.tt-search { width: 100%; height: 32px; padding: 0 10px; font-size: 12px; font-family: 'DM Sans', sans-serif; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); color: var(--text); margin-bottom: 8px; outline: none; box-sizing: border-box; }
+.tt-search:focus { border-color: var(--accent-border); }
+.tt-history-list { display: flex; flex-direction: column; gap: 4px; max-height: 520px; overflow-y: auto; }
+.tt-h-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; display: flex; align-items: center; gap: 8px; transition: all 0.12s; }
+.tt-h-item:hover { border-color: var(--accent-border); background: var(--accent-dim); }
+.tt-h-icon { width: 28px; height: 28px; border-radius: 7px; background: var(--surface2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.tt-h-icon svg { width: 13px; height: 13px; stroke: var(--text-tertiary); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.tt-h-body { flex: 1; min-width: 0; }
+.tt-h-sku { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tt-h-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
+.tt-h-load { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; white-space: nowrap; flex-shrink: 0; font-family: 'DM Sans', sans-serif; }
+.tt-h-load:hover { border-color: var(--accent-border); color: var(--accent); }
+.tt-h-regen { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--green-border,#b7e4c7); background: var(--green-dim,#f0faf4); color: var(--green,#1e8e3e); cursor: pointer; white-space: nowrap; flex-shrink: 0; font-family: 'DM Sans', sans-serif; }
+.tt-h-regen:hover { background: var(--green,#1e8e3e); color: white; }
+.tt-h-del { width: 22px; height: 22px; font-size: 13px; border: none; background: transparent; color: var(--text-tertiary); cursor: pointer; flex-shrink: 0; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+.tt-h-del:hover { color: var(--red,#d93025); background: #fce8e8; }
+.tt-empty { font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 1.5rem 0; }
+
+/* ── KREATIVE ── */
+.kreative-layout { display: grid; grid-template-columns: 380px 1fr; gap: 14px; align-items: start; }
+.kreative-left { display: flex; flex-direction: column; gap: 0; }
+.kreative-right { min-width: 0; }
+.kinput-btn { flex: 1; padding: 6px 12px; font-size: 12px; font-weight: 500; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; }
+.kinput-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+.kinput-btn:hover:not(.active) { border-color: var(--accent-border); color: var(--accent); }
+.k-dropzone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 1.5rem; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); transition: all 0.12s; }
+.k-dropzone:hover { border-color: var(--accent-border); background: var(--accent-dim); }
+.k-dropzone.dragover { border-color: var(--accent); background: var(--accent-dim); }
+.k-prompt-textarea { width: 100%; min-height: 120px; padding: 10px; font-size: 12px; font-family: 'DM Mono', monospace; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); color: var(--text); resize: vertical; outline: none; box-sizing: border-box; line-height: 1.5; }
+.k-prompt-textarea:focus { border-color: var(--accent-border); }
+.k-tag { font-size: 11px; padding: 3px 9px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; }
+.k-tag:hover { border-color: var(--accent-border); color: var(--accent); background: var(--accent-dim); }
+.k-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: var(--radius); border: 2px solid transparent; cursor: pointer; transition: all 0.12s; }
+.k-thumb:hover { border-color: var(--accent); }
+.k-thumb.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+.k-thumb-wrap { position: relative; }
+.k-thumb-del { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; background: var(--red, #d93025); color: white; border: none; border-radius: 50%; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
+.k-results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 10px; }
+.k-result-item { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--surface2); position: relative; }
+.k-result-item img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.k-result-actions { display: flex; gap: 4px; padding: 6px; }
+.k-result-btn { flex: 1; font-size: 11px; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.k-result-btn:hover { border-color: var(--accent-border); color: var(--accent); }
+.k-result-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.k-img-card { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--surface2); display: flex; flex-direction: column; transition: border-color 0.12s, box-shadow 0.12s; }
+.k-img-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+.k-img-card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; cursor: pointer; }
+.k-img-combo { font-size: 9px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; padding: 4px 8px; background: var(--surface2); border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px; }
+.k-img-actions { display: flex; gap: 3px; padding: 5px; background: var(--surface); }
+.k-img-btn { flex: 1; font-size: 10px; font-weight: 500; padding: 4px 3px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; font-family: 'DM Sans', sans-serif; text-align: center; transition: all 0.1s; white-space: nowrap; }
+.k-img-btn:hover { border-color: var(--accent-border); color: var(--accent); }
+.k-img-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.k-img-btn.primary:hover { opacity: 0.85; }
+.k-img-btn.danger:hover { border-color: #dc2626; color: #dc2626; }
+.k-select-check { position: absolute; top: 6px; left: 6px; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; background: rgba(0,0,0,0.35); cursor: pointer; z-index: 2; display: flex; align-items: center; justify-content: center; transition: all 0.1s; }
+.k-img-card.selected .k-select-check { background: var(--accent); border-color: var(--accent); }
+.k-zoom-btn { position: absolute; bottom: 6px; right: 6px; width: 24px; height: 24px; border-radius: 6px; background: rgba(0,0,0,0.5); cursor: pointer; z-index: 2; display: flex; align-items: center; justify-content: center; transition: background 0.1s; }
+.k-zoom-btn:hover { background: rgba(0,0,0,0.8); }
+.k-bulk-bar { display: none; align-items: center; gap: 8px; padding: 8px 12px; background: var(--accent-dim); border: 1px solid var(--accent-border); border-radius: var(--radius); margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; }
+.k-bulk-bar.show { display: flex; }
+.k-asana-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+.k-asana-modal.show { display: flex; }
+.k-asana-modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; width: 480px; max-width: 95vw; }
+.k-asana-modal-box input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); color: var(--text); font-size: 13px; font-family: 'DM Sans', sans-serif; box-sizing: border-box; outline: none; }
+.k-asana-modal-box input:focus { border-color: var(--accent-border); }
+.k-hover-preview { display:none; position:fixed; z-index:2000; pointer-events:none; border-radius:12px; overflow:hidden; box-shadow:0 24px 64px rgba(0,0,0,0.55); border:2px solid rgba(255,255,255,0.15); transition: opacity 0.1s; }
+.k-hover-preview.show { display:block; }
+.k-hover-preview img { width:500px; height:500px; object-fit:cover; display:block; }
+.lok-lang-btn { display:flex; align-items:center; gap:6px; padding:6px 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); cursor:pointer; font-size:12px; color:var(--text-secondary); transition:all 0.1s; }
+.lok-lang-btn:has(input:checked) { border-color:var(--accent); background:var(--accent-dim); color:var(--accent); font-weight:500; }
+.lok-lang-btn input { display:none; }
+#lokResultsGrid { grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); }
+#page-lokalizacija .kreative-layout { grid-template-columns: 300px 1fr; }
+#page-lokalizacija .kreative-right { min-width: 0; overflow: hidden; }
+/* Narocilnice */
+.narc-table { width:100%; border-collapse:collapse; font-size:13px; }
+.narc-table th { background:var(--surface2); padding:10px 12px; text-align:left; font-size:12px; font-weight:600; color:var(--text-tertiary); border-bottom:2px solid var(--border); white-space:nowrap; cursor:pointer; user-select:none; }
+.narc-table th:hover { color:var(--accent); }
+.narc-table td { padding:9px 12px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; }
+.narc-table tr:hover td { background:var(--accent-dim); }
+.narc-table td.neg { color:#dc2626; font-weight:600; }
+.vads-lang-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; margin-bottom:8px; }
+.vads-lang-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px; font-weight:600; }
+.vads-script { font-size:12px; color:var(--text-secondary); line-height:1.6; padding:8px 10px; background:var(--surface2); border-radius:6px; margin-bottom:8px; white-space:pre-wrap; }
+.vads-audio-btn { padding:7px 14px; border:none; border-radius:var(--radius); font-size:12px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; display:inline-flex; align-items:center; gap:5px; }
+.vads-audio-btn.generate { background:var(--accent); color:white; }
+.vads-audio-btn.generate:hover { background:#2d5fee; }
+.vads-audio-btn.download { background:var(--green-dim); color:var(--green); border:1px solid var(--green-border); }
+.vads-status { font-size:11px; margin-top:6px; color:var(--text-tertiary); }
+.vads-progress { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-tertiary); }
+.vads-spinner { width:12px; height:12px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; flex-shrink:0; }
+.narc-tab-bar { display:flex; gap:0; margin-bottom:14px; border-bottom:2px solid var(--border); }
+.narc-tab { padding:8px 20px; font-size:13px; font-weight:500; cursor:pointer; border:none; background:none; color:var(--text-secondary); font-family:'DM Sans',sans-serif; border-bottom:2px solid transparent; margin-bottom:-2px; transition:all 0.15s; }
+.narc-tab.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+.narc-tab:hover:not(.active) { color:var(--text); }
+.karan-table { width:100%; border-collapse:collapse; font-size:13px; }
+.karan-table th { background:var(--surface2); padding:10px 12px; text-align:left; font-size:12px; font-weight:600; color:var(--text-tertiary); border-bottom:2px solid var(--border); white-space:nowrap; cursor:pointer; user-select:none; }
+.karan-table th:hover { color:var(--accent); }
+.karan-table td { padding:9px 12px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; }
+.karan-table tr:hover td { background:var(--accent-dim); }
+.karan-table tr.dup-row td { background:rgba(245,158,11,0.08); }
+.karan-table tr.dup-row td:first-child { border-left:3px solid #f59e0b; }
+.karan-summary { display:flex; gap:16px; margin-top:10px; font-size:12px; color:var(--text-secondary); }
+.karan-summary span { background:var(--surface2); border-radius:6px; padding:4px 10px; }
+.narc-sku-link { color:var(--accent); text-decoration:none; font-weight:600; }
+.narc-sku-link:hover { text-decoration:underline; }
+.narc-check-btn { font-size:13px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer;color:var(--text-tertiary);transition:all 0.15s;font-family:'DM Sans',sans-serif; }
+.narc-check-btn.done { background:#10b981;color:white;border-color:#10b981; }
+.narc-check-btn:hover { border-color:#10b981;color:#10b981; }
+.narc-check-btn.done:hover { background:#059669;border-color:#059669; }
+.narc-hist-item:hover { border-color:var(--accent-border); background:var(--accent-dim); }
+.narc-hist-date { font-size:10px; color:var(--text-tertiary); }
+.narc-lang-filter { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:12px; }
+.narc-lang-btn { padding:4px 10px; border-radius:20px; border:1px solid var(--border); background:var(--surface2); font-size:11px; font-weight:500; cursor:pointer; color:var(--text-secondary); transition:all 0.1s; font-family:'DM Sans',sans-serif; }
+.narc-lang-btn.active { background:var(--accent); color:white; border-color:var(--accent); }
+.narc-lang-btn:hover:not(.active) { border-color:var(--accent-border); color:var(--accent); }
+#page-narocilnice .kreative-right, #page-lokalizacija .kreative-right { min-width: 0; overflow: hidden; }
+.k-option-btn { width:100%; text-align:left; padding:8px 12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.12s; display:flex; flex-direction:column; gap:2px; }
+.k-option-btn:hover { border-color:var(--accent-border); background:var(--accent-dim); }
+.k-option-btn.active { border-color:var(--accent); background:var(--accent-dim); }
+.k-opt-label { font-size:10px; font-weight:700; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.5px; }
+.k-option-btn.active .k-opt-label { color:var(--accent); }
+.k-opt-text { font-size:12px; font-weight:500; color:var(--text); }
+.k-result-header { padding:6px 8px; background:var(--surface2); border-bottom:1px solid var(--border); }
+@media(max-width:600px){ .kreative-layout { grid-template-columns: 1fr; } }
+.kreative-history-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
+.kreative-history-panel .history-list { max-height: 600px; overflow-y: auto; margin-top: 8px; }
+.tt-h-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.tt-h-item.selected { border-color: var(--accent-border); background: var(--accent-dim); }
+.tt-master-bar { display: none; align-items: center; gap: 8px; padding: 8px 12px; margin-top: 8px; background: var(--accent-dim); border: 1px solid var(--accent-border); border-radius: var(--radius); }
+.tt-master-bar.show { display: flex; }
+.tt-master-count { font-size: 12px; font-weight: 600; color: var(--accent); flex: 1; }
+.tt-master-btn { font-size: 12px; font-weight: 600; padding: 5px 14px; border-radius: var(--radius); border: none; background: var(--accent); color: white; cursor: pointer; white-space: nowrap; }
+.tt-master-btn:hover { opacity: 0.85; }
+.tt-master-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+@media(max-width:600px){ .tt-layout { grid-template-columns: 1fr; } }
+.tt-download-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; display: flex; align-items: center; gap: 16px; }
+.tt-download-icon { width: 48px; height: 48px; border-radius: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.tt-download-icon svg { width: 22px; height: 22px; stroke: var(--text-secondary); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.tt-download-body { flex: 1; }
+.tt-download-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.tt-download-sub { font-size: 12px; color: var(--text-tertiary); }
+.tt-download-btn { height: 38px; padding: 0 18px; border-radius: var(--radius); border: none; background: var(--tiktok); color: white; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0; }
+.tt-download-btn:hover { background: #333; }
+.tt-download-btn svg { width: 14px; height: 14px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tt-preview { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 12px; }
+.tt-preview-hdr { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.tt-preview-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; }
+.tt-lang-row { display: flex; align-items: center; gap: 0; border-bottom: 1px solid var(--border); }
+.tt-lang-row:last-child { border-bottom: none; }
+.tt-lang-badge { font-size: 11px; font-weight: 700; padding: 10px 14px; font-family: 'DM Mono', monospace; min-width: 80px; border-right: 1px solid var(--border); flex-shrink: 0; }
+.tt-text-cell { flex: 1; padding: 10px 14px; font-size: 12px; color: var(--text); line-height: 1.5; }
+.tt-cp-btn { height: 24px; padding: 0 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-secondary); font-size: 11px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; display: flex; align-items: center; gap: 4px; white-space: nowrap; margin: auto 14px auto 0; flex-shrink: 0; }
+.tt-cp-btn:hover { color: var(--text); border-color: var(--border-hover); }
+.tt-cp-btn.ok { color: var(--green); border-color: var(--green-border); background: var(--green-dim); }
+
+/* Lang colors */
+.lang-sl{background:#dbeafe;color:#1e40af} .lang-hr{background:#ffedd5;color:#9a3412}
+.lang-rs{background:#fee2e2;color:#991b1b} .lang-hu{background:#dcfce7;color:#166534}
+.lang-cz{background:#f3e8ff;color:#6b21a8} .lang-sk{background:#e0f2fe;color:#075985}
+.lang-pl{background:#fef9c3;color:#854d0e} .lang-gr{background:#e0e7ff;color:#3730a3}
+.lang-ro{background:#fef3c7;color:#92400e} .lang-bg{background:#d1fae5;color:#065f46}
+
+/* input-field helper */
+.ifield { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.ifield-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; display: flex; align-items: center; gap: 6px; }
+.ifield-optional { font-size: 10px; font-weight: 400; color: var(--text-tertiary); text-transform: none; letter-spacing: 0; background: var(--surface2); padding: 1px 6px; border-radius: 4px; }
+.input-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<button class="hamburger" id="hamburger" onclick="toggleMenu()" aria-label="Meni">
+  <span></span><span></span><span></span>
+</button>
+<div class="overlay" id="overlay" onclick="closeMenu()"></div>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><svg viewBox="0 0 248 278" style="width:28px;height:28px;" xmlns="http://www.w3.org/2000/svg"><g transform="translate(123.759601, 139.000000) scale(-1, 1) rotate(-180.000000) translate(-123.759601, -139.000000) translate(0.948541, 0.837558)" fill="#83CA06"><path d="M222.595046,103.073568 C217.759361,103.073568 213.822828,107.007908 213.822828,111.845787 C213.822828,116.683665 217.759361,120.618005 222.595046,120.618005 C227.430732,120.618005 231.367265,116.683665 231.367265,111.845787 C231.367265,107.007908 227.430732,103.073568 222.595046,103.073568 M148.031188,103.073568 C143.195503,103.073568 139.25897,107.007908 139.25897,111.845787 C139.25897,116.683665 143.195503,120.618005 148.031188,120.618005 C152.866874,120.618005 156.803407,116.683665 156.803407,111.845787 C156.803407,107.007908 152.866874,103.073568 148.031188,103.073568 M187.506172,76.7569124 C192.341857,76.7569124 196.27839,72.8225724 196.27839,67.9846939 C196.27839,63.1468153 192.341857,59.2124753 187.506172,59.2124753 C182.670486,59.2124753 178.733953,63.1468153 178.733953,67.9846939 C178.733953,72.8225724 182.670486,76.7569124 187.506172,76.7569124 M108.556205,17.5444371 C108.556205,12.7065586 104.621865,8.77221856 99.7839862,8.77221856 C94.9461076,8.77221856 91.0117676,12.7065586 91.0117676,17.5444371 C91.0117676,22.3823157 94.9461076,26.3166557 99.7839862,26.3166557 C104.621865,26.3166557 108.556205,22.3823157 108.556205,17.5444371 M53.7298387,59.2124753 C48.8919602,59.2124753 44.9576201,63.1468153 44.9576201,67.9846939 C44.9576201,72.8225724 48.8919602,76.7569124 53.7298387,76.7569124 C58.5677172,76.7569124 62.5020573,72.8225724 62.5020573,67.9846939 C62.5020573,63.1468153 58.5677172,59.2124753 53.7298387,59.2124753 M99.7839862,127.197169 C104.621865,127.197169 108.556205,123.262829 108.556205,118.424951 C108.556205,113.587072 104.621865,109.652732 99.7839862,109.652732 C94.9461076,109.652732 91.0117676,113.587072 91.0117676,118.424951 C91.0117676,123.262829 94.9461076,127.197169 99.7839862,127.197169 M20.8340191,109.652732 C15.9961406,109.652732 12.0618005,113.587072 12.0618005,118.424951 C12.0618005,123.262829 15.9961406,127.197169 20.8340191,127.197169 C25.6718976,127.197169 29.6062377,123.262829 29.6062377,118.424951 C29.6062377,113.587072 25.6718976,109.652732 20.8340191,109.652732 M18.6409645,166.672153 C13.8030859,166.672153 9.86874589,170.606493 9.86874589,175.444371 C9.86874589,180.28225 13.8030859,184.21659 18.6409645,184.21659 C23.478843,184.21659 27.413183,180.28225 27.413183,175.444371 C27.413183,170.606493 23.478843,166.672153 18.6409645,166.672153 M64.6951119,247.815174 C64.6951119,252.653053 68.6294519,256.587393 73.4673305,256.587393 C78.305209,256.587393 82.239549,252.653053 82.239549,247.815174 C82.239549,242.977296 78.305209,239.042956 73.4673305,239.042956 C68.6294519,239.042956 64.6951119,242.977296 64.6951119,247.815174 M115.135369,258.780448 C115.135369,263.618326 119.069709,267.552666 123.907587,267.552666 C128.743273,267.552666 132.679806,263.618326 132.679806,258.780448 C132.679806,253.942569 128.743273,250.008229 123.907587,250.008229 C119.069709,250.008229 115.135369,253.942569 115.135369,258.780448 M163.382571,247.815174 C163.382571,252.653053 167.319104,256.587393 172.154789,256.587393 C176.990475,256.587393 180.927008,252.653053 180.927008,247.815174 C180.927008,242.977296 176.990475,239.042956 172.154789,239.042956 C167.319104,239.042956 163.382571,242.977296 163.382571,247.815174 M213.822828,212.7263 C218.658513,212.7263 222.595046,208.79196 222.595046,203.954082 C222.595046,199.116203 218.658513,195.181863 213.822828,195.181863 C208.987142,195.181863 205.050609,199.116203 205.050609,203.954082 C205.050609,208.79196 208.987142,212.7263 213.822828,212.7263 M226.981155,162.286043 C231.816841,162.286043 235.753374,158.351703 235.753374,153.513825 C235.753374,148.675946 231.816841,144.741606 226.981155,144.741606 C222.14547,144.741606 218.208937,148.675946 218.208937,153.513825 C218.208937,158.351703 222.14547,162.286043 226.981155,162.286043 M222.595046,129.390224 C214.436883,129.390224 207.583587,123.786969 205.629575,116.231896 L164.996659,116.231896 C163.042647,123.786969 156.189352,129.390224 148.031188,129.390224 C138.357624,129.390224 130.486751,121.519351 130.486751,111.845787 C130.486751,103.689816 136.092199,96.8343277 143.645079,94.880316 L143.645079,72.3708032 L70.6975025,72.3708032 C69.1053448,78.5201284 64.2652732,83.3602 58.115948,84.9523576 L58.115948,114.038841 L82.8163224,114.038841 C84.7725272,106.485961 91.6258229,100.880513 99.7839862,100.880513 C109.45755,100.880513 117.328423,108.751387 117.328423,118.424951 C117.328423,126.583114 111.725169,133.43641 104.170095,135.392614 L104.170095,171.058262 L119.521478,171.058262 L128.293697,171.058262 L128.293697,179.830481 L128.293697,199.567972 L145.838134,199.567972 L145.838134,157.899934 L145.838134,153.513825 L145.838134,149.127716 L154.610352,149.127716 L210.015685,149.127716 C211.969696,141.574835 218.822992,135.969388 226.981155,135.969388 C236.654719,135.969388 244.525592,143.840261 244.525592,153.513825 C244.525592,163.187389 236.654719,171.058262 226.981155,171.058262 C218.822992,171.058262 211.969696,165.455007 210.015685,157.899934 L154.610352,157.899934 L154.610352,199.567972 L196.857357,199.567972 C198.811368,192.015092 205.664664,186.409645 213.822828,186.409645 C223.496392,186.409645 231.367265,194.280518 231.367265,203.954082 C231.367265,213.627646 223.496392,221.498519 213.822828,221.498519 C205.664664,221.498519 198.811368,215.895264 196.857357,208.340191 L176.540899,208.340191 L176.540899,230.849704 C184.093779,232.803715 189.699226,239.659204 189.699226,247.815174 C189.699226,257.488738 181.828353,265.359612 172.154789,265.359612 C162.481225,265.359612 154.610352,257.488738 154.610352,247.815174 C154.610352,239.659204 160.2158,232.803715 167.76868,230.849704 L167.76868,208.340191 L128.293697,208.340191 L128.293697,241.814977 C135.846577,243.768989 141.452024,250.624477 141.452024,258.780448 C141.452024,268.454012 133.581151,276.324885 123.907587,276.324885 C114.234023,276.324885 106.36315,268.454012 106.36315,258.780448 C106.36315,250.624477 111.966405,243.768989 119.521478,241.814977 L119.521478,179.830481 L77.8534398,179.830481 L77.8534398,230.849704 C85.408513,232.803715 91.0117676,239.659204 91.0117676,247.815174 C91.0117676,257.488738 83.1408945,265.359612 73.4673305,265.359612 C63.7937665,265.359612 55.9228934,257.488738 55.9228934,247.815174 C55.9228934,239.659204 61.526148,232.803715 69.0812212,230.849704 L69.0812212,179.830481 L35.6086282,179.830481 C33.6524235,187.385554 26.7991277,192.988808 18.6409645,192.988808 C8.96740043,192.988808 1.09652732,185.117935 1.09652732,175.444371 C1.09652732,165.770807 8.96740043,157.899934 18.6409645,157.899934 C26.7991277,157.899934 33.6524235,163.505382 35.6086282,171.058262 L95.3978769,171.058262 L95.3978769,135.392614 C89.2485517,133.800457 84.4084801,128.960385 82.8163224,122.81106 L37.8016829,122.81106 C35.8454781,130.366133 28.9921824,135.969388 20.8340191,135.969388 C11.1604551,135.969388 3.28958196,128.098515 3.28958196,118.424951 C3.28958196,108.751387 11.1604551,100.880513 20.8340191,100.880513 C28.9921824,100.880513 35.8454781,106.485961 37.8016829,114.038841 L49.3437294,114.038841 L49.3437294,84.9523576 C41.7886562,82.9961529 36.1854016,76.1428571 36.1854016,67.9846939 C36.1854016,58.3111299 44.0562747,50.4402567 53.7298387,50.4402567 C61.888002,50.4402567 68.7412977,56.0457044 70.6975025,63.5985846 L95.3978769,63.5985846 L95.3978769,34.5121009 C87.8428037,32.5558961 82.239549,25.7026004 82.239549,17.5444371 C82.239549,7.87087311 90.1104222,0 99.7839862,0 C109.45755,0 117.328423,7.87087311 117.328423,17.5444371 C117.328423,25.7026004 111.725169,32.5558961 104.170095,34.5121009 L104.170095,63.5985846 L170.540701,63.5985846 C172.494713,56.0457044 179.348009,50.4402567 187.506172,50.4402567 C197.179736,50.4402567 205.050609,58.3111299 205.050609,67.9846939 C205.050609,77.6582579 197.179736,85.529131 187.506172,85.529131 C179.348009,85.529131 172.494713,79.9258764 170.540701,72.3708032 L152.417298,72.3708032 L152.417298,94.880316 C158.566623,96.4702806 163.406694,101.310352 164.996659,107.459677 L205.629575,107.459677 C207.583587,99.9067972 214.436883,94.3013496 222.595046,94.3013496 C232.26861,94.3013496 240.139483,102.172223 240.139483,111.845787 C240.139483,121.519351 232.26861,129.390224 222.595046,129.390224"/></g></svg></div>
+    <div>
+      <div class="sidebar-logo-text">SLX Analytics</div>
+      <div class="sidebar-logo-sub">v1.0</div>
+    </div>
+  </div>
+
+  <div class="nav-item nav-meta active" id="nav-meta" onclick="switchPage('meta')">
+    <svg viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+    Meta Ads
+    <span class="nav-badge" style="background:#e8f0fe;color:#1877F2">FB/IG</span>
+  </div>
+
+  <div class="nav-item nav-tiktok" id="nav-tiktok" onclick="switchPage('tiktok')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z"/></svg>
+    TikTok Ads
+    <span class="nav-badge" style="background:#f0f0f0;color:#555">XLS</span>
+  </div>
+
+  <div class="nav-item nav-calc" id="nav-calc" onclick="switchPage('calc')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
+    Kalkulator
+    <span class="nav-badge" style="background:#f0fff4;color:#276749">€</span>
+  </div>
+
+  <div class="nav-item nav-forecast" id="nav-forecast" onclick="switchPage('forecast')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    Napoved
+    <span class="nav-badge" style="background:#fff7ed;color:#9a3412">📈</span>
+  </div>
+
+  <div class="nav-item nav-kreative" id="nav-kreative" onclick="switchPage('kreative')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    Kreative
+    <span class="nav-badge" style="background:#fdf2f8;color:#9d174d">🎨</span>
+  </div>
+
+  <div class="nav-item nav-lokalizacija" id="nav-lokalizacija" onclick="switchPage('lokalizacija')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    Lokalizacija
+    <span class="nav-badge" style="background:#f0fdf4;color:#166534">🌍</span>
+  </div>
+
+  <div class="nav-item nav-narocilnice" id="nav-narocilnice" onclick="switchPage('narocilnice')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    Naročilnice
+    <span class="nav-badge" style="background:#fff7ed;color:#c2410c">📦</span>
+  </div>
+  <div class="nav-item nav-videoads" id="nav-videoads" onclick="switchPage('videoads')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+    Video Ads
+    <span style="margin-left:auto;font-size:13px">🎬</span>
+  </div>
+  <div class="nav-item nav-orodja" id="nav-orodja" onclick="switchPage('orodja')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+    Orodja
+    <span style="margin-left:auto;font-size:13px">🛠️</span>
+  </div>
+  <div class="nav-item nav-analiza" id="nav-analiza" onclick="switchPage('analiza')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    Analiza
+    <span style="margin-left:auto;font-size:13px">📊</span>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- ═══ META PAGE ═══ -->
+  <div class="page active" id="page-meta">
+    <div id="metaFormSection">
+      <div class="meta-layout">
+
+        <!-- Leva kolona: forma -->
+        <div>
+          <div class="card">
+            <span class="slabel">URL izdelkov</span>
+            <div class="url-list">
+              <div class="url-row"><div class="url-num">1</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
+              <div class="url-row"><div class="url-num">2</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
+              <div class="url-row"><div class="url-num">3</div><div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" class="meta-url-input" placeholder="https://www.maaarket.si/izdelek/..."/></div></div>
+            </div>
+
+            <!-- Quality mode -->
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <button class="qbtn" id="qmode-sonnet" onclick="setQMode('sonnet')"><span class="qbtn-icon">✦</span><span class="qbtn-body"><span class="qbtn-title">Kreativno</span><span class="qbtn-sub">Sonnet · vrhunska kvaliteta</span></span></button>
+              <button class="qbtn on" id="qmode-fast" onclick="setQMode('fast')"><span class="qbtn-icon">⚡</span><span class="qbtn-body"><span class="qbtn-title">Hitro</span><span class="qbtn-sub">Sonnet + Haiku · ~2× hitreje</span></span></button>
+            </div>
+
+            <button class="btn-gen" id="metaBtnGen" onclick="metaGenerate()">
+              <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Generiraj Meta oglase
+            </button>
+            <div class="error-msg" id="metaError"></div>
+
+            <div class="sep"></div>
+            <div class="counters">
+              <div class="counter-group">
+                <span class="slabel">Primary Texts</span>
+                <div class="counter-row"><button class="cnt-btn" id="pt-minus" onclick="change('pt',-1)">−</button><span class="cnt-val" id="pt-val">1</span><button class="cnt-btn" id="pt-plus" onclick="change('pt',1)">+</button><span class="cnt-max">max 5</span></div>
+                <div class="chips" id="pt-chips"></div>
+              </div>
+              <div class="counters-divider"></div>
+              <div class="counter-group">
+                <span class="slabel">Headlines</span>
+                <div class="counter-row"><button class="cnt-btn" id="hl-minus" onclick="change('hl',-1)">−</button><span class="cnt-val" id="hl-val">1</span><button class="cnt-btn" id="hl-plus" onclick="change('hl',1)">+</button><span class="cnt-max">max 5</span></div>
+                <div class="chips" id="hl-chips"></div>
+              </div>
+            </div>
+            <div class="hint"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span class="hint-text" id="metaHint">Generiram 1× PT in 1× HL v 10 jezikih za vsak URL.</span></div>
+          </div><!-- /card -->
+
+          <div class="loading" id="metaLoading">
+            <div class="spinner"></div>
+            <div class="loading-text" id="metaLoadingText">Generiram oglase...</div>
+            <div class="loading-progress" id="metaProgress"></div>
+          </div>
+
+          <div class="history-section" style="display:none">
+            <div class="history-hdr"><span class="history-title">Zadnji vnosi</span><button class="history-clear" onclick="clearHistory()">Počisti</button></div>
+            <div class="history-list" id="historyList"></div>
+          </div>
+        </div><!-- /leva kolona -->
+
+        <!-- Desna kolona: zgodovina -->
+        <div class="meta-history-panel">
+          <div class="history-hdr"><span class="history-title">Zgodovina vnosov</span></div>
+          <input type="text" class="meta-history-search" id="metaHistorySearch" placeholder="Išči po imenu ali URL..." oninput="metaRenderServerHistory()">
+          <div class="history-list" id="metaServerHistoryList"><div class="history-empty">Nalagam...</div></div>
+        </div><!-- /desna kolona -->
+
+      </div><!-- /meta-layout -->
+    </div><!-- /metaFormSection -->
+
+    <div class="results" id="metaResults">
+      <div class="results-hdr">
+        <div class="prod-tabs" id="prodTabs"></div>
+        <div class="results-hdr-right">
+          <button class="back-btn" id="metaRegenBtn" onclick="metaRegen()"><svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg> Regeneriraj</button>
+          <button class="back-btn" onclick="metaGoBack()"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Nov vnos</button>
+        </div>
+      </div>
+      <!-- Streaming progress bar — viden med prevajanjem -->
+      <div id="streamingBar" style="display:none;align-items:center;gap:10px;padding:8px 14px;margin-bottom:10px;background:var(--accent-dim);border:1px solid var(--accent-border);border-radius:var(--radius);font-size:12px;color:var(--accent)">
+        <div class="spinner" style="width:14px;height:14px;border-width:2px;flex-shrink:0"></div>
+        <span id="streamingBarText">Prevajam...</span>
+      </div>
+      <div id="prodPanels"></div>
+    </div>
+  </div>
+
+  <!-- ═══ TIKTOK PAGE ═══ -->
+  <div class="page" id="page-tiktok">
+    <div id="ttFormSection">
+      <div class="tt-layout">
+        <div class="card" style="margin-bottom:0">
+        <div class="ifield">
+          <div class="ifield-label"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> URL izdelka (SL)</div>
+          <div class="url-wrap"><span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><input type="text" id="ttUrl" placeholder="https://www.maaarket.si/izdelek/..."/></div>
+        </div>
+
+        <div class="input-grid2">
+          <div class="ifield">
+            <div class="ifield-label">SKU koda</div>
+            <input type="text" class="no-icon" id="ttSku" placeholder="npr. DURACOVER" style="padding-left:12px"/>
+          </div>
+          <div class="ifield">
+            <div class="ifield-label">Brand <span class="ifield-optional">za Campaign Name</span></div>
+            <input type="text" class="no-icon" id="ttBrand" placeholder="npr. Maaarket" style="padding-left:12px"/>
+          </div>
+        </div>
+
+        <div class="ifield">
+          <div class="ifield-label">Video Names <span class="ifield-optional">iz TikTok library</span></div>
+          <!-- Upload screenshot -->
+          <div id="ttVideoUploadArea" style="border:1.5px dashed var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer;transition:all 0.15s;background:var(--surface2);display:flex;align-items:center;gap:10px;margin-bottom:8px" onclick="document.getElementById('ttScreenshot').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="ttHandleDrop(event)">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <div>
+              <div style="font-size:13px;font-weight:500;color:var(--text-secondary)">Naloži screenshot TikTok Video Library</div>
+              <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">Klikni, povleci ali prilepi sliko (Ctrl+V) · PNG, JPG</div>
+            </div>
+            <input type="file" id="ttScreenshot" accept="image/*" style="display:none" onchange="ttProcessImage(this.files[0])">
+          </div>
+          <!-- Extracted preview -->
+          <div id="ttVideoPreview" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:8px">
+            <div style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+              Prepoznana imena <button onclick="ttClearVideos()" style="font-size:11px;color:var(--text-tertiary);background:none;border:none;cursor:pointer;font-family:DM Sans,sans-serif">Počisti</button>
+            </div>
+            <div id="ttVideoList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
+            <div style="font-size:11px;color:var(--text-tertiary);padding:6px 8px;background:var(--surface2);border-radius:6px;font-family:DM Mono,monospace;word-break:break-all" id="ttVideoFormatted"></div>
+          </div>
+          <!-- Manual fallback -->
+          <input type="text" class="no-icon" id="ttVideos" placeholder="[VIDEO (1).mp4],[VIDEO (2).mp4]..." style="padding-left:12px;font-size:12px"/>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Ali ročno vpiši v zgornjem polju</div>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);margin-bottom:10px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="ttSkipRs" style="width:14px;height:14px;cursor:pointer">
+          Izpusti RS (Srbija) iz XLS
+        </label>
+
+        <button class="btn-gen btn-tiktok" id="ttBtnGen" onclick="ttGenerate()">
+          <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Generiraj TikTok oglase + XLS
+        </button>
+        <div class="error-msg" id="ttError"></div>
+        <div class="hint"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span class="hint-text">Claude generira 4 kratke variante (max 80 znakov) za vsako od 10 držav ter zapolni TikTok XLS template s texti, URL-ji in video imeni.</span></div>
+        </div>
+
+        <!-- HISTORY PANEL -->
+        <div class="tt-history">
+          <div class="tt-history-hdr">Zgodovina SKU-jev</div>
+          <input type="text" class="tt-search" id="ttHistorySearch" placeholder="Išči SKU..." oninput="ttRenderHistory()">
+          <div class="tt-history-list" id="ttHistoryList">
+            <div class="tt-empty">Še ni zgodovine.</div>
+          </div>
+          <!-- Master XLS bar -->
+          <div class="tt-master-bar" id="ttMasterBar">
+            <span class="tt-master-count" id="ttMasterCount">0 izbranih</span>
+            <button class="tt-master-btn" id="ttMasterBtn" onclick="ttGenerateMaster()">⬇ Ustvari Master XLS</button>
+          </div>
+          <div id="ttManualAdd" style="margin-top:8px">
+            <div id="ttManualBtn" onclick="ttToggleManual()" style="font-size:11px;color:var(--text-tertiary);cursor:pointer;text-align:center;padding:6px;border:1px dashed var(--border);border-radius:var(--radius);background:transparent;font-family:'DM Sans',sans-serif">+ Dodaj SKU ročno</div>
+            <div id="ttManualForm" style="display:none;margin-top:6px">
+              <textarea id="ttManualSkus" placeholder="SIGNALSURE&#10;SWEEPI&#10;ABPULLER&#10;..." style="width:100%;height:80px;font-size:11px;font-family:'DM Mono',monospace;padding:7px 9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);resize:none;outline:none"></textarea>
+              <div style="display:flex;gap:5px;margin-top:5px">
+                <button onclick="ttImportManual()" style="flex:1;height:28px;font-size:11px;font-family:'DM Sans',sans-serif;border:none;border-radius:5px;background:var(--accent);color:white;cursor:pointer;font-weight:500">Uvozi</button>
+                <button onclick="ttToggleManual()" style="height:28px;padding:0 10px;font-size:11px;font-family:'DM Sans',sans-serif;border:1px solid var(--border);border-radius:5px;background:transparent;color:var(--text-secondary);cursor:pointer">Prekliči</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /tt-layout -->
+
+      <div class="loading" id="ttLoading">
+        <div class="spinner tiktok"></div>
+        <div class="loading-text">Generiram TikTok tekste in pripavljam XLS...</div>
+      </div>
+    </div>
+
+    <div class="tt-results" id="ttResults">
+      <div class="tt-download-card">
+        <div class="tt-download-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><polyline points="9 15 12 18 15 15"/></svg></div>
+        <div class="tt-download-body">
+          <div class="tt-download-title" id="ttFileName">TikTok Ads Export</div>
+          <div class="tt-download-sub">Pripravljeno za uvoz v TikTok Ads Manager</div>
+        </div>
+        <button class="tt-download-btn" id="ttDownloadBtn" onclick="ttDownload()">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Prenesi XLS
+        </button>
+      </div>
+
+      <div class="tt-preview" id="ttPreview">
+        <div class="tt-preview-hdr"><span class="tt-preview-title">Predogled tekstov po državah</span></div>
+        <div id="ttPreviewBody"></div>
+      </div>
+
+      <button class="back-btn" onclick="ttGoBack()" style="margin-top:4px">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        Nov vnos
+      </button>
+    </div>
+  </div>
+  <!-- ═══ FORECAST PAGE ═══ -->
+  <div class="page" id="page-forecast">
+    <iframe src="/static/revenue_forecast.html" style="width:100%;height:calc(100vh - 4rem);border:none;border-radius:var(--radius-lg)" allow="clipboard-write"></iframe>
+  </div>
+
+  <!-- ═══ CALCULATOR PAGE ═══ -->
+  <div class="page" id="page-calc">
+    <div style="display:flex;gap:8px;padding:8px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border)">
+      <button class="calc-tab-btn active" id="calcTab-calc" onclick="switchCalcTab('calc')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+        💰 Kalkulator
+      </button>
+      <button class="calc-tab-btn" id="calcTab-pricecheck" onclick="switchCalcTab('pricecheck')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+        📊 Price Checker
+      </button>
+    </div>
+    <iframe id="calcFrame-calc" src="/static/price_calculator.html" style="width:100%;height:calc(100vh - 7rem);border:none" allow="clipboard-write"></iframe>
+    <iframe id="calcFrame-pricecheck" src="/static/price_checker.html" style="width:100%;height:calc(100vh - 7rem);border:none;display:none" allow="clipboard-write"></iframe>
+  </div>
+
+  <!-- ═══ KREATIVE PAGE ═══ -->
+  <div class="page" id="page-kreative">
+    <div class="kreative-layout">
+
+      <!-- LEVO: Vnos + A/B/C izbira -->
+      <div class="kreative-left">
+
+        <!-- Blok 1: URL + Analiziraj -->
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">URL IZDELKA</span>
+          <div class="url-wrap" style="margin-bottom:8px">
+            <span class="url-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+            <input type="text" id="kUrlInput" placeholder="https://www.maaarket.si/izdelek/..." style="width:100%"/>
+          </div>
+          <button class="btn-gen" id="kAnalyzeBtn" onclick="kAnalyze()" style="width:100%">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Analiziraj izdelek
+          </button>
+        </div>
+
+        <!-- Zgodovina kreativ -->
+        <div class="card" style="margin-bottom:12px">
+          <div class="history-hdr"><span class="history-title">Zgodovina kreativ</span></div>
+          <input type="text" class="meta-history-search" id="kHistorySearch" placeholder="Išči po imenu..." oninput="kRenderHistory()" style="margin-top:6px">
+          <div class="history-list" id="kHistoryList" style="max-height:200px;overflow-y:auto;margin-top:6px"><div class="history-empty">Nalagam...</div></div>
+        </div>
+
+        <!-- Loading analiza -->
+        <div id="kAnalyzeLoading" style="display:none" class="card" style="margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px;padding:4px 0">
+            <div class="spinner" style="width:16px;height:16px;border-width:2px"></div>
+            <span style="font-size:13px;color:var(--text-secondary)">Analiziram izdelek...</span>
+          </div>
+        </div>
+
+        <!-- Blok 2: A/B/C — prikaže se po analizi -->
+        <div id="kAbcSection" style="display:none">
+
+          <!-- C: Ime izdelka -->
+          <div class="card" style="margin-bottom:12px">
+            <span class="slabel">C — IME IZDELKA</span>
+            <input type="text" id="kProductName" class="meta-url-input" style="margin-top:6px;font-weight:600;font-size:14px" placeholder="npr. WEEDZAP"/>
+          </div>
+
+          <!-- A: Tekst opcije -->
+          <div class="card" style="margin-bottom:12px">
+            <span class="slabel">A — IZBERI TEKST (lahko več)</span>
+            <div id="kAOptions" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
+          </div>
+
+          <!-- B: Ozadje/Vibe opcije -->
+          <div class="card" style="margin-bottom:12px">
+            <span class="slabel">B — IZBERI OZADJE (lahko več)</span>
+            <div id="kBOptions" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
+          </div>
+
+          <!-- Slike -->
+          <div class="card" style="margin-bottom:12px">
+            <span class="slabel">REFERENČNE SLIKE IZDELKA</span>
+            <div id="kDropZone" class="k-dropzone" style="margin-top:8px" onclick="document.getElementById('kFileInput').click()">
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <span style="font-size:12px">Klikni, povleci ali prilepi slike (Ctrl+V)</span>
+            </div>
+            <input type="file" id="kFileInput" multiple accept="image/*" style="display:none" onchange="kHandleFiles(this.files)">
+            <div id="kUploadedImages" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+          </div>
+
+          <!-- Generiraj -->
+          <div class="card">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+              <span style="font-size:12px;color:var(--text-secondary)">Slike na kombinacijo:</span>
+              <button class="cnt-btn" onclick="kChangeCount(-1)">&#x2212;</button>
+              <span class="cnt-val" id="kCountVal">4</span>
+              <button class="cnt-btn" onclick="kChangeCount(1)">+</button>
+            </div>
+            <div id="kComboPreview" style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px"></div>
+            <button class="btn-gen" id="kGenBtn" onclick="kGenerate()" style="width:100%">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Generiraj kreative
+            </button>
+            <div class="error-msg" id="kError"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- DESNO: Preview -->
+      <div class="kreative-right">
+        <div class="card" style="min-height:500px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <span class="slabel">GENERIRANE KREATIVE</span>
+            <span style="font-size:11px;color:var(--text-tertiary)" id="kResultCount"></span>
+          </div>
+          <div id="kLoading" style="display:none;text-align:center;padding:2rem">
+            <div class="spinner"></div>
+            <div style="margin-top:8px;font-size:13px;color:var(--text-secondary)" id="kLoadingText">Generiram...</div>
+          </div>
+          <div id="kBulkBar" class="k-bulk-bar">
+            <span id="kBulkCount" style="font-weight:600;color:var(--accent)">0 izbranih</span>
+            <button class="k-img-btn primary" style="flex:none;padding:4px 10px;font-size:11px" onclick="kBulkDownload()">⬇ Prenesi izbrane</button>
+            <button class="k-img-btn primary" style="flex:none;padding:4px 10px;font-size:11px;background:#7c3aed;border-color:#7c3aed" onclick="kOpenAsanaModal(null)">→ Asana (izbrane)</button>
+            <button class="k-img-btn" style="flex:none;padding:4px 8px;font-size:11px;margin-left:auto" onclick="kClearSelection()">✕ Počisti</button>
+          </div>
+          <div id="kResultsGrid" class="k-results-grid">
+            <div style="text-align:center;padding:4rem 2rem;color:var(--text-tertiary);font-size:13px">
+              <svg viewBox="0 0 24 24" style="width:48px;height:48px;stroke:var(--border);fill:none;stroke-width:1.2;display:block;margin:0 auto 12px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              Vpiši URL in analiziraj izdelek,<br>nato izberi A+B kombinacije
+            </div>
+          </div>
+        </div>
+      </div><!-- /kreative-right -->
+
+    </div>
+  </div><!-- /page-kreative -->
+
+  <!-- ═══ LOKALIZACIJA PAGE ═══ -->
+  <div class="page" id="page-lokalizacija">
+    <div class="kreative-layout">
+
+      <!-- LEVO: Vnos -->
+      <div class="kreative-left">
+
+        <!-- Upload slike -->
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">SKU KODA</span>
+          <input type="text" id="lokSku" placeholder="npr. SIGNALSURE" class="meta-url-input" style="margin-top:6px;font-weight:600;font-size:14px;text-transform:uppercase">
+        </div>
+
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">BRAND (ne prevajaj)</span>
+          <input type="text" id="lokBrand" placeholder="npr. MEGACOVER, EELHOE, SHAPEUPS" class="meta-url-input" style="margin-top:6px;font-size:13px">
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">AI ne bo prevajal tega besedila</div>
+        </div>
+
+        <!-- Upload slike -->
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">HERO KREATIVA</span>
+          <div id="lokDropZone" class="k-dropzone" style="margin-top:8px" onclick="document.getElementById('lokFileInput').click()">
+            <svg viewBox="0 0 24 24" style="width:24px;height:24px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <span style="font-size:12px">Klikni ali povleci hero kreative sem</span>
+            <span style="font-size:11px;color:var(--text-tertiary)">PNG, JPG · več slik naenkrat</span>
+          </div>
+          <input type="file" id="lokFileInput" accept="image/*" multiple style="display:none" onchange="lokHandleFiles(this.files)">
+          <div id="lokPreview" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+        </div>
+
+        <!-- Čakalnica iz Kreative -->
+        <div class="card" style="margin-bottom:12px" id="lokQueueCard" style="display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span class="slabel">IZ KREATIVE <span id="lokQueueCount" style="font-weight:400;color:var(--text-tertiary)"></span></span>
+            <button class="history-clear" onclick="lokQueueClear()" style="color:#dc2626">Počisti</button>
+          </div>
+          <div id="lokQueueGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"></div>
+          <button onclick="lokQueueAddAll()" style="margin-top:8px;width:100%;padding:7px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+            ✓ Dodaj vse v lokalizacijo
+          </button>
+        </div>
+
+        <!-- Izberi jezike -->
+        <div class="card" style="margin-bottom:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span class="slabel">IZBERI JEZIKE</span>
+            <button class="history-clear" onclick="lokSelectAll()">Vse</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <label class="lok-lang-btn"><input type="checkbox" value="HR" onchange="lokUpdateCount()"> 🇭🇷 Hrvaščina</label>
+            <label class="lok-lang-btn"><input type="checkbox" value="RS" onchange="lokUpdateCount()"> 🇷🇸 Srbščina</label>
+            <label class="lok-lang-btn"><input type="checkbox" value="HU" onchange="lokUpdateCount()"> 🇭🇺 Madžarščina</label>
+            <label class="lok-lang-btn"><input type="checkbox" value="CZ" onchange="lokUpdateCount()"> 🇨🇿 Češčina</label>
+            <label class="lok-lang-btn"><input type="checkbox" value="SK" onchange="lokUpdateCount()"> 🇸🇰 Slovaščina</label>
+            <label class="lok-lang-btn"><input type="checkbox" value="PL" onchange="lokUpdateCount()"> 🇵🇱 Poljščina</label>
+            <label class="lok-lang-btn"><input type="checkbox" value="RO" onchange="lokUpdateCount()"> 🇷🇴 Romunščina</label>
+            <label class="lok-lang-btn"><input type="checkbox" value="BG" onchange="lokUpdateCount()"> 🇧🇬 Bolgarščina</label>
+            <label class="lok-lang-btn"><input type="checkbox" value="GR" onchange="lokUpdateCount()"> 🇬🇷 Grščina</label>
+            <label class="lok-lang-btn"><input type="checkbox" value="SL" onchange="lokUpdateCount()"> 🇸🇮 Slovenščina</label>
+          </div>
+        </div>
+
+        <!-- Asana task (opcijsko) -->
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">ASANA TASK (opcijsko)</span>
+          <input type="text" id="lokAsanaUrl" placeholder="https://app.asana.com/.../task/..." class="meta-url-input" style="margin-top:6px;font-size:12px">
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Če vpiše, se slike avtomatsko priložijo po jezikih</div>
+        </div>
+
+        <!-- Generiraj -->
+        <div class="card">
+          <div id="lokCountPreview" style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">Izberi jezike...</div>
+          <button class="btn-gen" id="lokGenBtn" onclick="lokGenerate()" style="width:100%">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            Lokaliziraj kreative
+          </button>
+          <div class="error-msg" id="lokError"></div>
+        </div>
+      </div>
+
+      <!-- DESNO: Rezultati -->
+      <div class="kreative-right">
+        <div class="card" style="min-height:500px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+            <span class="slabel">LOKALIZIRANE KREATIVE</span>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:11px;color:var(--text-tertiary)" id="lokResultCount"></span>
+              <button id="lokDownloadAllBtn" onclick="lokDownloadAll()" style="display:none;padding:5px 10px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⬇ Vse</button>
+              <button id="lokAsanaAllBtn" onclick="lokAsanaAll()" style="display:none;padding:5px 10px;font-size:11px;font-weight:600;border:none;border-radius:6px;background:var(--accent);color:white;cursor:pointer;font-family:'DM Sans',sans-serif">→ Asana vse</button>
+            </div>
+          </div>
+          <div id="lokLoading" style="display:none;text-align:center;padding:2rem">
+            <div class="spinner"></div>
+            <div style="margin-top:8px;font-size:13px;color:var(--text-secondary)" id="lokLoadingText">Lokaliziram...</div>
+          </div>
+          <div id="lokResultsGrid" class="k-results-grid">
+            <div style="text-align:center;padding:4rem 2rem;color:var(--text-tertiary);font-size:13px">
+              <svg viewBox="0 0 24 24" style="width:48px;height:48px;stroke:var(--border);fill:none;stroke-width:1.2;display:block;margin:0 auto 12px"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              Naloži hero kreativo in izberi jezike
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /page-lokalizacija -->
+
+  <!-- ═══ NAROČILNICE PAGE ═══ -->
+  <div class="page" id="page-narocilnice">
+
+    <!-- TAB BAR -->
+    <div class="narc-tab-bar">
+      <button class="narc-tab active" id="narcTab-razlike" onclick="narcSwitchTab('razlike')">Negativne razlike</button>
+      <button class="narc-tab" id="narcTab-karantena" onclick="narcSwitchTab('karantena')">Karantena</button>
+    </div>
+
+    <!-- TAB: NEGATIVNE RAZLIKE -->
+    <div id="narcPanel-razlike" style="display:block">
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
+
+      <!-- LEVO: Upload + Zgodovina -->
+      <div>
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">UVOZI CSV</span>
+          <div id="narcDropZone" class="k-dropzone" style="margin-top:8px" onclick="document.getElementById('narcFileInput').click()">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span style="font-size:12px">Klikni ali povleci CSV sem</span>
+          </div>
+          <input type="file" id="narcFileInput" accept=".csv" style="display:none" onchange="narcHandleFile(this.files[0])">
+        </div>
+
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span class="slabel">ZGODOVINA</span>
+            <button class="history-clear" onclick="narcDeleteAllHistory()" style="color:#dc2626">🗑 Zbriši vse</button>
+          </div>
+          <div id="narcHistList"><div class="history-empty">Ni zgodovine.</div></div>
+        </div>
+      </div>
+
+      <!-- DESNO: Lang filter + Tabela -->
+      <div style="min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:12px">
+        <!-- Lang filter — collapsible -->
+        <div class="card" style="padding:10px 14px">
+          <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="narcToggleLangPanel()">
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:var(--text-secondary);fill:none;stroke-width:2;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span class="slabel" style="cursor:pointer;margin:0">TRGOVINE / DRŽAVE</span>
+            <span id="narcLangCount" style="font-size:11px;font-weight:400;color:var(--text-tertiary);margin:0"></span>
+            <span id="narcLangChevron" style="margin-left:auto;font-size:11px;color:var(--text-tertiary);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;white-space:nowrap">Uredi</span>
+          </div>
+          <div id="narcLangPanel" style="display:none;margin-top:10px">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+              <button class="history-clear" onclick="event.stopPropagation();narcToggleAllLangs()">Izberi vse / Počisti</button>
+            </div>
+            <div id="narcLangFilter" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+          </div>
+        </div>
+
+        <div class="card" style="min-width:0;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <span class="slabel" id="narcTableTitle">NAROČILNICE — negativne razlike</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="text" id="narcSearch" placeholder="Išči SKU, naziv, ID..." style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;width:280px;font-family:'DM Sans',sans-serif" oninput="narcRenderTable()">
+              <span style="font-size:11px;color:var(--text-tertiary)" id="narcCount"></span>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="narc-table" id="narcTable">
+              <thead>
+                <tr>
+                  <th onclick="narcSort('id')">ID naročila ↕</th>
+                  <th onclick="narcSort('sku')">SKU ↕</th>
+                  <th onclick="narcSort('naziv')">Naziv ↕</th>
+                  <th onclick="narcSort('kolicina')">Količina ↕</th>
+                  <th onclick="narcSort('zalogaSl')">Zaloga SL ↕</th>
+                  <th onclick="narcSort('zalogaRs')">Zaloga RS ↕</th>
+                  <th onclick="narcSort('razlika')">Prodano razlika ↕</th>
+                  <th onclick="narcSort('slo')">Razlika SL ↕</th>
+                  <th onclick="narcSort('rs')">Razlika RS ↕</th>
+                  <th>✓</th>
+                </tr>
+              </thead>
+              <tbody id="narcTableBody">
+                <tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Uvozi CSV za prikaz podatkov</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="narcFinishBtn" style="display:none;margin-top:12px;text-align:center">
+            <button onclick="narcFinish()" style="padding:10px 32px;background:#10b981;color:white;border:none;border-radius:var(--radius);font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+              ✓ Zaključi — vse obdelano
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div><!-- /panel razlike -->
+
+    <!-- TAB: KARANTENA -->
+    <div id="narcPanel-karantena" style="display:none">
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
+
+      <!-- LEVO: Upload -->
+      <div>
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">UVOZI KARANTENO</span>
+          <div id="karanDropZone" class="k-dropzone" style="margin-top:8px" onclick="document.getElementById('karanFileInput').click()">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span style="font-size:12px">Klikni ali povleci PDF sem</span>
+          </div>
+          <input type="file" id="karanFileInput" accept=".pdf" style="display:none" onchange="karanHandleFile(this.files[0])">
+          <div id="karanUploadStatus" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center;display:none"></div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span class="slabel">ZGODOVINA</span>
+            <button class="history-clear" onclick="karanDeleteAllHistory()" style="color:#dc2626">🗑 Zbriši vse</button>
+          </div>
+          <div id="karanHistList"><div class="history-empty">Ni zgodovine.</div></div>
+        </div>
+      </div>
+
+      <!-- DESNO: Tabela -->
+      <div style="min-width:0;overflow:hidden">
+        <div class="card" style="min-width:0;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <span class="slabel" id="karanTitle">KARANTENA</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="text" id="karanSearch" placeholder="Išči SKU, naziv..." style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;width:240px;font-family:'DM Sans',sans-serif" oninput="karanRenderTable()">
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="karan-table" id="karanTable">
+              <thead>
+                <tr>
+                  <th onclick="karanSort('sku')">SKU ↕</th>
+                  <th onclick="karanSort('title')">Naziv ↕</th>
+                  <th onclick="karanSort('stock')">Zaloga ↕</th>
+                  <th onclick="karanSort('stock_actual')">Dejansko ↕</th>
+                  <th onclick="karanSort('position')">Pozicija ↕</th>
+                </tr>
+              </thead>
+              <tbody id="karanTableBody">
+                <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Uvozi Excel za prikaz podatkov</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="karanSummary" style="display:none;margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <button onclick="karanSetFilter('all')" id="karanFilter-all" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1.5px solid var(--accent);background:var(--accent);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;color:white">
+              Vse · <span id="karanRowCount">0</span> postavk
+            </button>
+            <button onclick="karanSetFilter('dup')" id="karanFilter-dup" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1.5px solid #f59e0b;background:#fef3c7;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;color:#92400e;display:none">
+              ⚠ <span id="karanDupCount">0</span> podvojenih SKU
+            </button>
+            <span style="font-size:11px;color:var(--text-tertiary);padding:4px 10px;background:var(--surface2);border-radius:20px;border:1px solid var(--border)">
+              <span id="karanStockSum">0</span> kosov skupaj
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div><!-- /panel karantena -->
+
+  </div><!-- /page-narocilnice -->
+
+  <!-- ═══ VIDEO ADS PAGE ═══ -->
+  <div class="page" id="page-videoads">
+    <div style="display:grid;grid-template-columns:340px 1fr;gap:14px;align-items:start">
+
+      <!-- LEVO: Input -->
+      <div>
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">VNOS IZDELKA</span>
+          <div class="field" style="margin-top:10px">
+            <span class="flabel" style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">URL ali kratek opis</span>
+            <input type="text" id="vadsInput" placeholder="https://... ali opis izdelka" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif" oninput="vadsInputChanged()">
+          </div>
+          <div class="field" style="margin-top:10px">
+            <span class="flabel" style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">SKU</span>
+            <input type="text" id="vadsSku" placeholder="npr. PILARAFIT" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;text-transform:uppercase">
+          </div>
+          <div class="field" style="margin-top:10px">
+            <span class="flabel" style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Trajanje skripte</span>
+            <div id="vadsDurAuto" style="display:none;padding:8px 12px;background:var(--green-dim);border:1px solid var(--green-border);border-radius:var(--radius);font-size:12px;color:var(--green);font-weight:500">
+              🎬 Video: <span id="vadsVideoDurLabel">—</span>s → skripta prilagojena
+            </div>
+            <div id="vadsDurManual" style="display:flex;gap:6px">
+              <button class="mode-btn on" id="vadsDur-15" onclick="vadsSetDur(15)" style="flex:1;padding:8px;font-size:12px;font-weight:500;cursor:pointer;border-radius:var(--radius);border:1.5px solid var(--accent-border);background:var(--accent-dim);color:var(--accent);font-family:'DM Sans',sans-serif">15s</button>
+              <button class="mode-btn" id="vadsDur-30" onclick="vadsSetDur(30)" style="flex:1;padding:8px;font-size:12px;font-weight:500;cursor:pointer;border-radius:var(--radius);border:1.5px solid var(--border);background:var(--surface);color:var(--text-secondary);font-family:'DM Sans',sans-serif">30s</button>
+            </div>
+          </div>
+          <button onclick="vadsGenerate()" id="vadsGenBtn" style="margin-top:12px;width:100%;padding:11px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:7px">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:none;stroke-width:2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Generiraj skripte
+          </button>
+          <div id="vadsGenStatus" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center;display:none"></div>
+        </div>
+
+        <!-- Upload video -->
+        <div class="card" style="margin-bottom:12px">
+          <span class="slabel">VIDEOTI</span>
+          <div id="vadsVideoZone" class="k-dropzone" style="margin-top:8px" onclick="document.getElementById('vadsVideoInput').click()">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            <span style="font-size:12px">Klikni ali povleci videote sem</span>
+          </div>
+          <input type="file" id="vadsVideoInput" accept="video/*" multiple style="display:none" onchange="vadsHandleVideos(this.files)">
+          <div id="vadsVideoList" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
+          <div id="vadsVideoStatus" style="margin-top:6px;font-size:11px;color:var(--text-tertiary);text-align:center;display:none"></div>
+        </div>
+
+        <!-- Zgodovina -->
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span class="slabel">ZGODOVINA</span>
+            <button class="history-clear" onclick="vadsDeleteAllHistory()" style="color:#dc2626">🗑 Zbriši vse</button>
+          </div>
+          <div id="vadsHistList"><div class="history-empty">Ni zgodovine.</div></div>
+        </div>
+      </div>
+
+      <!-- DESNO: Jeziki + skripte + audio -->
+      <div style="min-width:0;overflow:hidden">
+        <div id="vadsBulkBar" style="display:none;margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="vadsGenerateAllAudio()" style="padding:9px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:6px">
+            🎙 Generiraj vse audio
+          </button>
+          <button onclick="vadsDownloadAllZip()" id="vadsZipBtn" style="display:none;padding:9px 16px;background:#7c3aed;color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:6px">
+            📦 Prenesi vse kot ZIP
+          </button>
+          <button onclick="vadsZipToAsana()" id="vadsZipAsanaBtn" style="display:none;padding:9px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:6px">
+            📦 → Asana
+          </button>
+          <span id="vadsBulkStatus" style="font-size:11px;color:var(--text-tertiary);align-self:center"></span>
+        </div>
+        <div id="vadsEmpty" class="card" style="text-align:center;padding:3rem;color:var(--text-tertiary)">
+          <svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5;margin-bottom:12px"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          <div style="font-size:13px">Vpiši URL ali opis in klikni Generiraj skripte</div>
+        </div>
+        <div id="vadsResults" style="display:none;flex-direction:column;gap:8px"></div>
+      </div>
+    </div>
+  </div><!-- /page-videoads -->
+
+  <!-- ═══ ORODJA PAGE ═══ -->
+  <div class="page" id="page-orodja">
+    <!-- Tab nav -->
+    <div style="display:flex;gap:8px;padding:12px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border)">
+      <button class="orodja-tab-btn active" id="orodjaTab-csv" onclick="switchOrodjaTab('csv')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Ikonka uvoz</button>
+      <button class="orodja-tab-btn" id="orodjaTab-hs" onclick="switchOrodjaTab('hs')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📦 Uvoz HS+</button>
+      <button class="orodja-tab-btn" id="orodjaTab-hsuvoz" onclick="switchOrodjaTab('hsuvoz')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🛒 HS+ naročanje</button>
+      <button class="orodja-tab-btn" id="orodjaTab-pricecheck" onclick="switchOrodjaTab('pricecheck')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Kontrola cen</button>
+    </div>
+
+    <!-- TAB 1: CSV Združevalnik -->
+    <div id="orodjaSubpage-csv" style="padding:14px;display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
+      <div>
+        <div class="card">
+          <span class="slabel">IKONKA UVOZ</span>
+          <p style="font-size:12px;color:var(--text-secondary);margin:8px 0 12px;line-height:1.5">
+            Naloži CSV z naročilnico (SKU + Količina). Orodje samodejno združi dvojnike in vrne XLSX s SKU + skupna količina.
+          </p>
+          <div id="orodjaDropZone" class="k-dropzone" style="margin-top:8px;padding:18px" onclick="document.getElementById('orodjaCsvInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="orodjaHandleDrop(event)">
+            <svg viewBox="0 0 24 24" style="width:24px;height:24px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span style="font-size:12px">Klikni ali povleci CSV sem</span>
+          </div>
+          <input type="file" id="orodjaCsvInput" accept=".csv" style="display:none" onchange="orodjaProcess(this.files[0])">
+          <div id="orodjaStatus" style="margin-top:10px;font-size:12px;color:var(--text-secondary);text-align:center;display:none"></div>
+          <div id="orodjaError" style="margin-top:10px;font-size:12px;color:var(--red);display:none"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <span class="slabel" style="margin:0">ZGODOVINA (zadnjih 30 dni)</span>
+            <button onclick="orodjaLoadHistory()" style="padding:6px 10px;background:none;border:1px solid var(--border);color:var(--text-secondary);font-size:11px;border-radius:var(--radius);cursor:pointer;font-family:'DM Sans',sans-serif">↻ Osveži</button>
+          </div>
+          <div id="orodjaHistoryList" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Uvoz HS+ -->
+    <div id="orodjaSubpage-hs" style="display:none;padding:14px">
+      <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
+        <!-- Levi: upload + history -->
+        <div style="overflow-y:auto;display:flex;flex-direction:column;gap:12px">
+          <div class="card">
+            <span class="slabel">UVOZ HS+ PREDRAČUN</span>
+            <p style="font-size:12px;color:var(--text-secondary);margin:8px 0 12px;line-height:1.5">
+              Naloži PDF predračun. Sistem prebere SKU + količine. Lahko jih urediš pred izvozom.
+            </p>
+            <div id="hsDropZone" class="k-dropzone" style="margin-top:8px;padding:18px" onclick="document.getElementById('hsPdfInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="hsHandleDrop(event)">
+              <svg viewBox="0 0 24 24" style="width:24px;height:24px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span style="font-size:12px">Klikni ali povleci PDF sem</span>
+            </div>
+            <input type="file" id="hsPdfInput" accept=".pdf" style="display:none" onchange="hsProcess(this.files[0])">
+            <div id="hsStatus" style="margin-top:10px;font-size:12px;color:var(--text-secondary);text-align:center;display:none"></div>
+            <div id="hsError" style="margin-top:10px;font-size:12px;color:var(--red);display:none"></div>
+          </div>
+
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <span class="slabel" style="margin:0">ZGODOVINA HS+ (90 dni)</span>
+              <button onclick="hsLoadHistory()" style="padding:5px 10px;background:none;border:1px solid var(--border);color:var(--text-secondary);font-size:11px;border-radius:var(--radius);cursor:pointer;font-family:'DM Sans',sans-serif">↻</button>
+            </div>
+            <div id="hsHistoryList" style="display:flex;flex-direction:column;gap:5px;max-height:380px;overflow-y:auto"></div>
+          </div>
+        </div>
+
+        <!-- Desni: tabela + akcije -->
+        <div>
+          <div class="card" id="hsResultsCard" style="display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <span class="slabel" style="margin:0" id="hsResultsCount">PREBRANE POSTAVKE</span>
+              <div style="display:flex;gap:6px">
+                <button onclick="hsCopyAll()" style="padding:7px 12px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Kopiraj vse</button>
+                <button onclick="hsExportXlsx()" style="padding:7px 12px;background:#7c3aed;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📦 XLSX</button>
+              </div>
+            </div>
+            <div id="hsItemsList" style="display:flex;flex-direction:column;gap:8px"></div>
+            <div id="hsSummary" style="margin-top:12px;padding:10px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary)"></div>
+          </div>
+          <div id="hsEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži PDF predračun za začetek.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: Kontrola cen -->
+    <div id="orodjaSubpage-hsuvoz" style="display:none;padding:14px">
+      <div style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:14px;align-items:start">
+
+        <!-- LEVO: upload + history -->
+        <div>
+          <div class="card">
+            <span class="slabel">HS+ NAROČANJE</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži CSV export iz naročilnic (ID naročila, SKU, Naziv, Količina).</p>
+            <div id="hsuvozDropZone" class="k-dropzone" style="padding:14px" onclick="document.getElementById('hsuvozInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="hsuvozHandleDrop(event)">
+              <span style="font-size:11px">Klikni ali povleci CSV sem</span>
+            </div>
+            <input type="file" id="hsuvozInput" accept=".csv" style="display:none" onchange="hsuvozUpload(this.files[0])">
+            <div id="hsuvozStatus" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
+            <div id="hsuvozInfo" style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:none"></div>
+          </div>
+
+          <div class="card" style="margin-top:0">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <span class="slabel" style="margin:0">ZGODOVINA (30 DNI)</span>
+              <button onclick="hsuvozLoadHistory()" style="padding:3px 8px;background:none;border:1px solid var(--border);border-radius:var(--radius);font-size:10px;color:var(--text-tertiary);cursor:pointer;font-family:'DM Sans',sans-serif">↻ Osveži</button>
+            </div>
+            <div id="hsuvozHistoryList" style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--text-secondary)">Nalagam...</div>
+          </div>
+        </div>
+
+        <!-- DESNO: dva panela -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+
+          <!-- PANEL 1: Za naročilo (CSV uvoz) -->
+          <div class="card" id="hsuvozResultCard" style="display:none;padding:1rem">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+              <span class="slabel" style="margin:0" id="hsuvozTitle">ZA NAROČILO (0)</span>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                <button onclick="hsuvozToggleDone()" id="hsuvozToggleDoneBtn" style="padding:5px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">👁 Done</button>
+              </div>
+            </div>
+            <!-- Masovne akcije (pokažejo se ko je kaj označeno) -->
+            <div id="hsuvozBulkBar" style="display:none;padding:8px 12px;background:rgba(24,119,242,0.06);border:1px solid rgba(24,119,242,0.2);border-radius:var(--radius);margin-bottom:8px;display:none;align-items:center;gap:8px;flex-wrap:wrap">
+              <span id="hsuvozSelCount" style="font-size:12px;font-weight:600;color:var(--accent)">0 označenih</span>
+              <button onclick="hsuvozMoveSelectedToOrder()" style="padding:5px 12px;background:#0f766e;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">→ Premakni v naročilo</button>
+              <button onclick="hsuvozDeleteSelected()" style="padding:5px 12px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Zbriši označene</button>
+              <button onclick="hsuvozDeselectAll('current')" style="padding:5px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Počisti izbor</button>
+            </div>
+            <!-- Header -->
+            <div style="display:grid;grid-template-columns:32px 28px 130px 1fr 55px 85px 85px 100px;gap:8px;padding:8px 12px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;align-items:center">
+              <input type="checkbox" id="hsuvozSelectAll" onchange="hsuvozToggleSelectAll('current',this.checked)" style="cursor:pointer;width:14px;height:14px">
+              <span>#</span><span>SKU</span><span>Naziv</span><span style="text-align:center">Kol.</span><span style="text-align:center">Obrat 30d</span><span style="text-align:center">Naročila</span><span></span>
+            </div>
+            <div id="hsuvozList" style="display:flex;flex-direction:column;gap:3px"></div>
+            <!-- Footer akcije -->
+            <div style="display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap">
+              <button onclick="hsuvozMoveAllToOrder()" style="padding:5px 10px;background:#0f766e;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">→ Vse v naročilo</button>
+              <button onclick="hsuvozClearCurrent()" style="padding:5px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Počisti vse</button>
+            </div>
+          </div>
+          <div id="hsuvozEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">Naloži CSV naročilnic za začetek.</div>
+
+          <!-- PANEL 2: Naročilo (composer) -->
+          <div class="card" id="hsuvozOrderCard" style="padding:1rem">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+              <span class="slabel" style="margin:0;color:#0f766e" id="hsuvozOrderTitle">📦 NAROČILO (0 SKU)</span>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button onclick="hsuvozCopyOrder()" id="hsuvozCopyOrderBtn" style="padding:5px 10px;background:var(--green);color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Kopiraj SKU</button>
+                <button onclick="hsuvozClearOrder()" style="padding:5px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Počisti</button>
+              </div>
+            </div>
+            <!-- Masovne akcije za naročilo -->
+            <div id="hsuvozOrderBulkBar" style="display:none;padding:8px 12px;background:rgba(15,118,110,0.06);border:1px solid rgba(15,118,110,0.2);border-radius:var(--radius);margin-bottom:8px;align-items:center;gap:8px;flex-wrap:wrap">
+              <span id="hsuvozOrderSelCount" style="font-size:12px;font-weight:600;color:#0f766e">0 označenih</span>
+              <button onclick="hsuvozDeleteSelectedOrder()" style="padding:5px 12px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Zbriši označene</button>
+              <button onclick="hsuvozMoveSelectedBack()" style="padding:5px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">← Vrni v seznam</button>
+              <button onclick="hsuvozDeselectAll('order')" style="padding:5px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Počisti izbor</button>
+            </div>
+            <div id="hsuvozOrderEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:1.5rem">Premakni SKU-je sem z gumbom "→ Naročilo".</div>
+            <div style="display:grid;grid-template-columns:32px 28px 130px 1fr 55px 85px 85px 100px;gap:8px;padding:8px 12px;background:rgba(15,118,110,0.08);border-radius:var(--radius);font-size:10px;font-weight:600;color:#0f766e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:none;align-items:center" id="hsuvozOrderHeader">
+              <input type="checkbox" id="hsuvozOrderSelectAll" onchange="hsuvozToggleSelectAll('order',this.checked)" style="cursor:pointer;width:14px;height:14px">
+              <span>#</span><span>SKU</span><span>Naziv</span><span style="text-align:center">Kol.</span><span style="text-align:center">Obrat 30d</span><span style="text-align:center">Naročila</span><span></span>
+            </div>
+            <div id="hsuvozOrderList" style="display:flex;flex-direction:column;gap:3px"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div id="orodjaSubpage-pricecheck" style="display:none;padding:14px">
+      <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
+        <!-- Levi: upload zaloge + PDF -->
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="card">
+            <span class="slabel">1. ZALOGA (CSV)</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 8px;line-height:1.4">Vsak upload se <strong>doda</strong> k obstoječim — stock se sešteje (silux1 + silux2).</p>
+            <div id="pcStockInfo" style="margin-top:8px;padding:10px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;color:var(--text-secondary)">Nalagam status...</div>
+            <div id="pcStockDropZone" class="k-dropzone" style="margin-top:8px;padding:14px" onclick="document.getElementById('pcStockInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="pcStockHandleDrop(event)">
+              <span style="font-size:11px">Klikni ali povleci CSV za posodobitev</span>
+            </div>
+            <input type="file" id="pcStockInput" accept=".csv" style="display:none" onchange="pcStockUpload(this.files[0])">
+            <div id="pcStockStatus" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
+            <button onclick="pcStockClear()" style="margin-top:6px;padding:4px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🗑 Počisti zalogo &amp; začni znova</button>
+          </div>
+
+          <div class="card">
+            <span class="slabel">2. PDF PREDRAČUN HS+</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 10px;line-height:1.4">
+              Naloži PDF predračun. Sistem najprej prebere postavke, nato matchа s CSV zalogo in primerja cene.
+            </p>
+            <div id="pcPdfDropZone" class="k-dropzone" style="margin-top:8px;padding:14px" onclick="document.getElementById('pcPdfInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="pcPdfHandleDrop(event)">
+              <span style="font-size:11px">Klikni ali povleci PDF</span>
+            </div>
+            <input type="file" id="pcPdfInput" accept=".pdf" style="display:none" onchange="pcPdfProcess(this.files[0])">
+            <div id="pcStatus" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
+            <div id="pcError" style="margin-top:8px;font-size:11px;color:var(--red);display:none"></div>
+          </div>
+        </div>
+
+        <!-- Desni: rezultati -->
+        <div>
+          <div class="card" id="pcResultsCard" style="display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <span class="slabel" style="margin:0" id="pcResultsCount">PRIMERJAVA CEN</span>
+              <div style="display:flex;gap:6px">
+                <button onclick="pcExportXlsx()" style="padding:7px 12px;background:#7c3aed;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📦 Izvozi XLSX</button>
+              </div>
+            </div>
+            <div id="pcStats" style="margin-bottom:12px;padding:10px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text-secondary)"></div>
+            <div id="pcItemsList" style="display:flex;flex-direction:column;gap:8px"></div>
+          </div>
+          <div id="pcEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži zalogo (1) in PDF predračun (2) za začetek primerjave.</div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /page-orodja -->
+
+  <!-- ═══ ANALIZA PAGE ═══ -->
+  <div class="page" id="page-analiza">
+    <!-- Tab nav -->
+    <div style="display:flex;gap:8px;padding:12px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border)">
+      <button class="analiza-tab-btn active" id="analizaTab-meta" onclick="switchAnalizaTab('meta')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📘 Meta Ads</button>
+      <button class="analiza-tab-btn" id="analizaTab-obrat14" onclick="switchAnalizaTab('obrat14')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📊 Obrat 14 dni</button>
+    </div>
+
+    <!-- TAB: Meta Ads -->
+    <div id="analizaSubpage-meta" style="padding:14px 0 0 0;display:grid;grid-template-columns:220px minmax(0, 1fr);gap:14px;align-items:start">
+      <!-- Levo: nastavitve + povzetek -->
+      <div>
+        <div class="card">
+          <span class="slabel">META ADS POROČILO</span>
+          <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži CSV/XLS export iz FB Ads Manager poročila. Vsak upload se <strong>doda</strong> k obstoječim (več BM-jev).</p>
+          <div id="anMetaDropZone" class="k-dropzone" style="margin-top:8px;padding:14px;cursor:pointer" onclick="document.getElementById('anMetaInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="anMetaHandleDrop(event)">
+            <span style="font-size:11px">📊 Klikni ali povleci CSV/XLS</span>
+          </div>
+          <input type="file" id="anMetaInput" accept=".csv,.xls,.xlsx" style="display:none" onchange="anLoadMeta(this.files[0])">
+          <div id="anMetaStatus" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center;display:none"></div>
+          <div id="anMetaSummary" style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:none"></div>
+          <div id="anMetaUploads" style="margin-top:8px;display:none">
+            <div style="font-size:10px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">Naloženi CSV-ji:</div>
+            <div id="anMetaUploadsList" style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text-secondary)"></div>
+            <button onclick="anMetaClear()" style="margin-top:8px;padding:4px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🗑 Počisti vse &amp; začni znova</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <span class="slabel">ZALOGA</span>
+          <div id="anStockInfo" style="margin-top:8px;font-size:11px;color:var(--text-secondary)"></div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <span class="slabel">FILTRI</span>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+            <button class="an-filter-btn active" onclick="anSetFilter('all', this)" style="padding:8px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">📋 Vsi izdelki</button>
+            <div style="height:1px;background:var(--border);margin:4px 0"></div>
+            <span style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:2px">Po oglasih</span>
+            <button class="an-filter-btn" onclick="anSetFilter('active_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">▶ Aktivno se oglašuje</button>
+            <button class="an-filter-btn" onclick="anSetFilter('only_stopped', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⏸ Bili aktivni a STOP</button>
+            <button class="an-filter-btn" onclick="anSetFilter('not_advertised', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">○ Brez oglasov v 14d</button>
+            <div style="height:1px;background:var(--border);margin:4px 0"></div>
+            <span style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:2px">Po zalogi</span>
+            <button class="an-filter-btn" onclick="anSetFilter('high_stock_no_obrat', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">📦 Visoka zaloga, brez obrata</button>
+            <button class="an-filter-btn" onclick="anSetFilter('high_obrat', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">🚀 Najboljši obrat (top 30d)</button>
+            <button class="an-filter-btn" onclick="anSetFilter('zero_stock', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⚠️ Brez zaloge</button>
+            <div style="height:1px;background:var(--border);margin:4px 0"></div>
+            <span style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:2px">Pametni filtri</span>
+            <button class="an-filter-btn" onclick="anSetFilter('potential', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">💎 Potencial (zaloga + brez ads)</button>
+            <button class="an-filter-btn" onclick="anSetFilter('underperforming', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⚠️ Slab CPA (>15€)</button>
+            <button class="an-filter-btn" onclick="anSetFilter('top_performers', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⭐ Top (CPA &lt; 8€, &gt;5 nakupov)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Desno: tabela -->
+      <div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <span class="slabel" style="margin:0" id="anTableTitle">ZALOGA IZDELKOV (0)</span>
+            <input type="text" id="anSearch" placeholder="🔍 Išči SKU ali naziv..." oninput="window._anPage = 1; anRenderTable()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:240px">
+          </div>
+
+          <!-- Quick filtri (nad tabelo) -->
+          <div id="anQuickFilters" style="display:flex;gap:8px;margin-bottom:10px;padding:10px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);flex-wrap:wrap;align-items:center;font-size:11px"></div>
+
+          <div id="anTable" style="display:flex;flex-direction:column;gap:6px;overflow-x:auto"></div>
+          <div id="anEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži CSV zalogo v zavihku <strong>Orodja → Kontrola cen</strong>.</div>
+        </div>
+      </div>
+    </div>
+    <!-- TAB: Obrat 14 dni -->
+    <div id="analizaSubpage-obrat14" style="display:none;padding:14px 0 0 0">
+      <div style="display:grid;grid-template-columns:220px minmax(0, 1fr);gap:14px;align-items:start">
+        <!-- Levo: upload -->
+        <div>
+          <div class="card">
+            <span class="slabel">META ADS POROČILO</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Uporablja shranjeni FB CSV iz tab-a "Meta Ads".</p>
+            <div id="o14MetaInfo" style="padding:8px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;color:var(--text-secondary)">Nalagam status...</div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <span class="slabel">OBRAT 14 DNI</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži TXT/TSV s podatki o prodaji zadnjih 14 dni (SKU, Naziv, Količina).</p>
+            <div id="o14DropZone" class="k-dropzone" style="margin-top:8px;padding:14px;cursor:pointer" onclick="document.getElementById('o14Input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="o14HandleDrop(event)">
+              <span style="font-size:11px">📊 Klikni ali povleci TXT/TSV</span>
+            </div>
+            <input type="file" id="o14Input" accept=".txt,.tsv,.csv" style="display:none" onchange="o14Upload(this.files[0])">
+            <div id="o14Status" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
+            <div id="o14Info" style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:none"></div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <span class="slabel">PRIKAZ</span>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+              <button class="o14-filter-btn active" onclick="o14SetFilter('all', this)" style="padding:8px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">📋 Vsi izdelki</button>
+              <button class="o14-filter-btn" onclick="o14SetFilter('with_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">✓ Aktivni v 14d</button>
+              <button class="o14-filter-btn" onclick="o14SetFilter('paused', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⏸ Pavzirani (vsi STOP)</button>
+              <button class="o14-filter-btn" onclick="o14SetFilter('without_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">— Brez oglasov (potencial)</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Desno: tabela -->
+        <div>
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <span class="slabel" style="margin:0" id="o14TableTitle">OBRAT IZDELKOV (0)</span>
+              <input type="text" id="o14Search" placeholder="🔍 Išči SKU ali naziv..." oninput="window._o14Page = 1; o14RenderTable()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:240px">
+            </div>
+            <div id="o14Table" style="display:flex;flex-direction:column;gap:6px;overflow-x:auto"></div>
+            <div id="o14Empty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži obrat 14 dni za začetek.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-analiza -->
+
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// AD ACCOUNTS KONFIGURACIJA — UREDI SAMO TUKAJ
+// Dodaj nov account: { name: 'Ime v FB', short: 'KRATICA', hidden: false }
+// hidden: true = privzeto odznačen v checkboxih
+// ══════════════════════════════════════════════════════════════
+const AD_ACCOUNTS_CONFIG = [
+  { name: 'Maaarket X',            short: 'M.X',       hidden: false },
+  { name: 'Maaarket ALL',          short: 'M.ALL',     hidden: false },
+  { name: 'Maaarket ALL2',         short: 'M.ALL2',    hidden: false },
+  { name: 'Maaarket ALL3 + RS',    short: 'M.ALL3+RS', hidden: true  },
+  { name: 'Zipply.',               short: 'Zipply',    hidden: false },
+  { name: 'si_SUBAN_Maaarket SK',  short: 'SK',        hidden: false },
+  { name: 'Maaarket PL/RO',        short: 'PL/RO',     hidden: false },
+  { name: 'Maaarket HR',           short: 'HR',        hidden: true  },
+  { name: 'si_Suban_Maaarket HR',  short: 'HR2',       hidden: true  },
+  { name: 'Easyzo',                short: 'Easyzo',    hidden: false },
+  // Ko dobiš nova accounta, dodaj ju sem:
+  // { name: 'Novi Account 1', short: 'NOV1', hidden: false },
+  // { name: 'Novi Account 2', short: 'NOV2', hidden: true },  // privzeto skrit
+];
+
+// Izpeljane konstante — NE UREJAJ
+const TARGET_ACCOUNTS = AD_ACCOUNTS_CONFIG.map(a => a.name);
+const ACC_SHORT = Object.fromEntries(AD_ACCOUNTS_CONFIG.map(a => [a.name, a.short]));
+const ACC_DEFAULT_HIDDEN = new Set(AD_ACCOUNTS_CONFIG.filter(a => a.hidden).map(a => a.name));
+// ══════════════════════════════════════════════════════════════
+
+// ── STATE ──
+const metaState = {pt:1, hl:1, qmode:'fast'};
+const MAX=5, HKEY='meta_ads_history_v2', HMAX=8;
+let metaLastReq = null;
+let ttLastFile = null;
+
+const LANGS = [
+  {code:'sl',label:'SI SL',name:'Slovenščina'},{code:'hr',label:'HR HR',name:'Hrvaščina'},
+  {code:'rs',label:'RS RS',name:'Srbščina'},{code:'hu',label:'HU HU',name:'Madžarščina'},
+  {code:'cz',label:'CZ CZ',name:'Češčina'},{code:'sk',label:'SK SK',name:'Slovaščina'},
+  {code:'pl',label:'PL PL',name:'Poljščina'},{code:'gr',label:'GR GR',name:'Grščina'},
+  {code:'ro',label:'RO RO',name:'Romunščina'},{code:'bg',label:'BG BG',name:'Bolgarščina'},
+];
+
+// ── NAVIGATION ──
+function toggleMenu(){
+  document.querySelector('.sidebar').classList.toggle('open');
+  document.getElementById('overlay').classList.toggle('open');
+}
+function closeMenu(){
+  document.querySelector('.sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+const PAGES = ['meta','tiktok','calc','forecast','kreative','lokalizacija','narocilnice','videoads','orodja','analiza'];
+let currentIdx = 0;
+
+function switchCalcTab(tab) {
+  ['calc', 'pricecheck'].forEach(t => {
+    const btn = document.getElementById('calcTab-' + t);
+    const frame = document.getElementById('calcFrame-' + t);
+    if (t === tab) {
+      if (btn) { btn.style.background = 'var(--accent)'; btn.style.color = 'white'; btn.style.border = 'none'; btn.classList.add('active'); }
+      if (frame) frame.style.display = 'block';
+    } else {
+      if (btn) { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; btn.style.border = '1px solid var(--border)'; btn.classList.remove('active'); }
+      if (frame) frame.style.display = 'none';
+    }
+  });
 }
 
-G = "http://base.google.com/ns/1.0"
-feed_by_lang: dict = {}
-slug_to_id: dict = {}
-last_fetch: Optional[datetime] = None
-CACHE_TTL_HOURS = 24
+function switchPage(page) {
+  const idx = PAGES.indexOf(page);
+  if(idx >= 0) currentIdx = idx;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  if(document.getElementById('nav-' + page)) document.getElementById('nav-' + page).classList.add('active');
+  if(document.getElementById('tab-' + page)) document.getElementById('tab-' + page).classList.add('active');
+  // Wide layout
+  const mainEl = document.querySelector('.main');
+  if(mainEl) {
+    if(page==='forecast' || page==='calc' || page==='tiktok' || page==='kreative' || page==='lokalizacija' || page==='narocilnice' || page==='videoads' || page==='orodja' || page==='analiza') {
+      mainEl.classList.add('wide');
+    } else if(page==='meta') {
+      const formVisible = document.getElementById('metaFormSection').style.display !== 'none';
+      mainEl.classList.toggle('wide', formVisible);
+    } else {
+      mainEl.classList.remove('wide');
+    }
+  }
+  closeMenu();
+}
 
+// ── META COUNTERS ──
+function change(t, d) { metaState[t] = Math.min(MAX, Math.max(1, metaState[t]+d)); updateMeta(); }
 
-def is_cache_stale():
-    return last_fetch is None or datetime.now() - last_fetch > timedelta(hours=CACHE_TTL_HOURS)
+async function vadsZipToAsana() {
+  const audioBlobs = window._vadsAudioBlobs || {};
+  if (!Object.keys(audioBlobs).length) {
+    alert('Najprej generiraj audio.');
+    return;
+  }
 
+  // 1. Odpri Asana modal TAKOJ
+  window._vadsAsanaMode = true;
+  window._vadsZipBlob = null;
+  window._vadsZipBuilding = true;
+  document.getElementById('kAsanaUrlInput').value = '';
+  document.getElementById('kAsanaSearchResults').innerHTML = '';
+  document.getElementById('kAsanaSelected').textContent = '';
+  document.getElementById('kAsanaStatus').textContent = '⏳ ZIP se gradi v ozadju (lahko zapreš okno) — vpiši Asana task';
+  const lbl = document.getElementById('kAsanaSubmitLabel');
+  if (lbl) lbl.textContent = 'Pošlji video ZIP';
+  document.getElementById('kAsanaModal').classList.add('show');
 
-def extract_slug(url: str) -> Optional[str]:
-    path = urlparse(url).path.rstrip('/')
-    parts = [p for p in path.split('/') if p]
-    return parts[-1].lower() if parts else None
+  // 2. V ozadju gradi ZIP — progress prikazuj v vadsBulkStatus (glavni status)
+  const bulkStatus = document.getElementById('vadsBulkStatus');
+  try {
+    const result = await vadsBuildZipBlob((msg) => {
+      if (bulkStatus) bulkStatus.textContent = msg;
+      const s = document.getElementById('kAsanaStatus');
+      if (s && window._vadsZipBuilding && document.getElementById('kAsanaModal').classList.contains('show')) {
+        s.textContent = '⏳ ' + msg;
+      }
+    });
+    window._vadsZipBlob = result.zipBlob;
+    window._vadsZipFilename = 'video_ads_' + new Date().toISOString().split('T')[0] + '.zip';
+    window._vadsZipBuilding = false;
+    const sizeStr = (result.zipBlob.size/1024/1024).toFixed(1);
+    if (bulkStatus) bulkStatus.textContent = '✓ ZIP pripravljen (' + sizeStr + ' MB)';
+    const s = document.getElementById('kAsanaStatus');
+    if (s) s.textContent = '✓ ZIP pripravljen (' + sizeStr + ' MB) — pošlji v Asana';
+  } catch(e) {
+    window._vadsZipBuilding = false;
+    if (bulkStatus) bulkStatus.textContent = '✗ Napaka: ' + e.message;
+    const s = document.getElementById('kAsanaStatus');
+    if (s) s.textContent = '✗ Napaka pri gradnji ZIP: ' + e.message;
+  }
+}
 
+// Override Asana attach gumb da pošlje ZIP namesto slik
+async function vadsAsanaSendZip(taskId) {
+  const status = document.getElementById('kAsanaStatus');
 
-def parse_feed(xml_content: str) -> dict:
-    products = {}
-    try:
-        root = ET.fromstring(xml_content)
-        channel = root.find('channel')
-        if channel is None:
-            return products
-        for item in channel.findall('item'):
-            gid_el = item.find(f'{{{G}}}id')
-            link_el = item.find(f'{{{G}}}link')
-            if gid_el is None or not gid_el.text or link_el is None or not link_el.text:
-                continue
-            g_id = gid_el.text.strip()
-            url = link_el.text.strip()
-            path = urlparse(url).path
-            products[g_id] = {"url": url, "path": path}
-    except ET.ParseError:
-        pass
-    return products
+  // Če ZIP še ni pripravljen, počakaj
+  if (window._vadsZipBuilding) {
+    if (status) status.textContent = '⏳ Čakam da se ZIP konča gradit, potem bo poslan...';
+    while (window._vadsZipBuilding) {
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
 
+  if (!window._vadsZipBlob) {
+    if (status) status.textContent = '✗ ZIP ni pripravljen.';
+    return false;
+  }
 
-async def fetch_all_feeds():
-    global feed_by_lang, slug_to_id, last_fetch
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Fetching XML feeds...")
-    async with httpx.AsyncClient(timeout=30.0) as hc:
-        tasks = {lang: hc.get(url) for lang, url in MAAARKET_FEEDS.items()}
-        new_cache = {}
-        for lang, task in tasks.items():
-            try:
-                resp = await task
-                new_cache[lang] = parse_feed(resp.text) if resp.status_code == 200 else {}
-                print(f"  ✓ {lang}: {len(new_cache.get(lang,{}))} products")
-            except Exception as e:
-                new_cache[lang] = {}
-                print(f"  ✗ {lang}: {e}")
-    feed_by_lang = new_cache
-    new_slug_to_id = {}
-    for lang, lang_feed in feed_by_lang.items():
-        for g_id, data in lang_feed.items():
-            slug = extract_slug(data["url"])
-            if slug and slug not in new_slug_to_id:
-                new_slug_to_id[slug] = g_id
-    slug_to_id = new_slug_to_id
-    last_fetch = datetime.now()
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Done. Slug index: {len(slug_to_id)}")
+  if (status) status.textContent = 'Pošiljam ZIP v Asana...';
 
+  const formData = new FormData();
+  formData.append('task_id', taskId);
+  formData.append('file', window._vadsZipBlob, window._vadsZipFilename);
+  formData.append('filename', window._vadsZipFilename);
 
-async def ensure_cache_fresh():
-    if is_cache_stale():
-        await fetch_all_feeds()
+  try {
+    const res = await fetch('/asana-attach-binary', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) {
+      if (status) status.textContent = '✗ ' + data.error;
+      return false;
+    }
+    if (status) status.textContent = '✓ ZIP poslan v Asana (' + data.filename + ')';
+    setTimeout(() => {
+      document.getElementById('kAsanaModal').classList.remove('show');
+      window._vadsAsanaMode = false;
+      window._vadsZipBlob = null;
+    }, 1500);
+    return true;
+  } catch(e) {
+    if (status) status.textContent = '✗ ' + e.message;
+    return false;
+  }
+}
 
+function setQMode(m) {
+  metaState.qmode = m;
+  document.getElementById('qmode-sonnet').classList.toggle('on', m==='sonnet');
+  document.getElementById('qmode-fast').classList.toggle('on', m==='fast');
+}
+function updateMeta() {
+  ['pt','hl'].forEach(t => {
+    document.getElementById(t+'-val').textContent = metaState[t];
+    document.getElementById(t+'-minus').disabled = metaState[t]<=1;
+    document.getElementById(t+'-plus').disabled = metaState[t]>=MAX;
+    const c = document.getElementById(t+'-chips'); c.innerHTML='';
+    for(let i=0;i<MAX;i++){const d=document.createElement('div');d.className='chip'+(i<metaState[t]?' on':'');c.appendChild(d);}
+  });
+  document.getElementById('metaHint').textContent = `Generiram ${metaState.pt}× PT in ${metaState.hl}× HL v 10 jezikih za vsak URL.`;
+}
 
-def detect_brand(url: str) -> Optional[str]:
-    if not url:
-        return None
-    domain = urlparse(url).netloc.lower().replace("www.", "")
-    for brand, lang_map in BRAND_DOMAINS.items():
-        for d in lang_map.values():
-            if domain == d.replace("www.", ""):
-                return brand
-    return None
+// ── META HISTORY ──
+// ── BRAND DETECTION ──
+function detectBrand(urls) {
+  const all = (urls||[]).filter(Boolean).join(' ').toLowerCase();
+  if(all.includes('maaarket'))    return {key:'maaarket',    label:'Maaarket'};
+  if(all.includes('thundershop')) return {key:'thundershop', label:'ThunderShop'};
+  if(all.includes('colibrishop')) return {key:'colibrishop', label:'ColibriShop'};
+  if(all.includes('zipply'))      return {key:'zipply',      label:'Zipply'};
+  if(all.includes('easyzo'))      return {key:'easyzo',      label:'Easyzo'};
+  if(all.includes('fluxigo'))     return {key:'fluxigo',     label:'Fluxigo'};
+  return {key:'other', label:'Drugo'};
+}
 
+// ── META HISTORY (server-side) ──
+let metaServerHistory = [];
 
-def find_product_urls(source_url: Optional[str]) -> dict:
-    if not source_url:
-        return {}
-    brand = detect_brand(source_url) or "maaarket"
-    slug = extract_slug(source_url)
-    if not slug:
-        return {}
-    g_id = slug_to_id.get(slug)
-    if not g_id:
-        return {}
-    target_domains = BRAND_DOMAINS.get(brand, BRAND_DOMAINS["maaarket"])
-    result = {}
-    for lang, products in feed_by_lang.items():
-        if lang not in target_domains or g_id not in products:
-            continue
-        result[lang] = f"https://{target_domains[lang]}{products[g_id]['path']}"
-    return result
+async function metaLoadServerHistory() {
+  try {
+    const res = await fetch('/meta-history');
+    metaServerHistory = await res.json();
+  } catch(e) { metaServerHistory = []; }
+  metaRenderServerHistory();
+}
 
+async function metaSaveServerHistory() {
+  try {
+    console.log('[MetaHistory] Saving', metaServerHistory.length, 'entries...');
+    const res = await fetch('/meta-history', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({history: metaServerHistory})});
+    const json = await res.json();
+    console.log('[MetaHistory] Save response:', json);
+  } catch(e) { console.error('[MetaHistory] Save error:', e); }
+}
 
-# ─── STARTUP ─────────────────────────────────────────────────────────────────
+function metaRenderServerHistory() {
+  const el = document.getElementById('metaServerHistoryList');
+  const q = (document.getElementById('metaHistorySearch')?.value||'').toLowerCase();
+  const filtered = metaServerHistory.filter(e =>
+    !q || (e.names||'').toLowerCase().includes(q) || (e.urls||[]).some(u=>(u||'').toLowerCase().includes(q))
+  );
+  if (!filtered.length) { el.innerHTML='<div class="history-empty">Ni zgodovine.</div>'; return; }
+  el.innerHTML = filtered.map(e => {
+    const brand = detectBrand(e.urls);
+    return `<div class="history-item" onclick="metaLoadServerEntry(${e.id})" style="cursor:pointer">
+    <div class="hi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+    <div class="hi-body"><div class="hi-name">🛍 ${esc(e.names)}</div><div class="hi-meta">${e.date} · ${(e.urls||[]).filter(Boolean).length} URL-jev</div></div>
+    <span class="brand-badge brand-${brand.key}">${brand.label}</span>
+    <span class="hi-badge">${e.pt}PT · ${e.hl}HL</span>
+  </div>`;
+  }).join('');
+}
 
-@app.on_event("startup")
-async def startup_event():
-    await fetch_all_feeds()
-    asyncio.create_task(daily_refresh())
+function metaLoadServerEntry(id) {
+  const e = metaServerHistory.find(x => x.id === id);
+  if (!e) return;
+  if (e.results && e.results.length) {
+    // Show saved results directly
+    document.getElementById('metaFormSection').style.display = 'none';
+    document.getElementById('metaResults').classList.add('show');
+    setMetaWide(false);
+    renderMetaResults(e.results);
+  } else {
+    // Fallback: just load URLs into form
+    const inputs = [...document.querySelectorAll('.meta-url-input')];
+    (e.urls||[]).forEach((u,i) => { if(inputs[i]) inputs[i].value = u||''; });
+    for(let i=(e.urls||[]).length; i<inputs.length; i++) inputs[i].value='';
+  }
+}
 
+function metaRegenServerEntry(id) {
+  const e = metaServerHistory.find(x => x.id === id);
+  if (!e) return;
+  const inputs = [...document.querySelectorAll('.meta-url-input')];
+  (e.urls||[]).forEach((u,i) => { if(inputs[i]) inputs[i].value = u||''; });
+  for(let i=(e.urls||[]).length; i<inputs.length; i++) inputs[i].value='';
+  setTimeout(() => metaGenerate(), 100);
+}
 
-async def daily_refresh():
-    while True:
-        await asyncio.sleep(CACHE_TTL_HOURS * 3600)
-        await fetch_all_feeds()
+async function metaServerClearHistory() {
+  if(!confirm('Počistiti vso zgodovino Meta vnosov?')) return;
+  metaServerHistory = [];
+  await metaSaveServerHistory();
+  metaRenderServerHistory();
+}
 
+function getH(){try{return JSON.parse(localStorage.getItem(HKEY)||'[]');}catch(e){return[];}}
+function saveH(results,urls,pt,hl){
+  const validResults = (results||[]).filter(r => r && !r.error);
+  if(!validResults.length) { console.warn('[MetaHistory] No valid results to save'); return; }
+  const h=getH();
+  const entry = {id:Date.now(),names:validResults.map(r=>r.product||'?').join(', '),urls,pt,hl,
+    date:new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),results};
+  h.unshift(entry);
+  if(h.length>HMAX)h.splice(HMAX);
+  localStorage.setItem(HKEY,JSON.stringify(h));renderH();
+  // Save to server (without full results to save space)
+  const serverEntry = {id:entry.id, names:entry.names, urls:entry.urls, pt:entry.pt, hl:entry.hl, date:entry.date, results:validResults};
 
-# ─── PROMPT BUILDERS ─────────────────────────────────────────────────────────
+  metaServerHistory.unshift(serverEntry);
+  if(metaServerHistory.length>50) metaServerHistory.splice(50);
+  metaSaveServerHistory();
+  metaRenderServerHistory();
+}
+function renderH(){
+  const h=getH(),el=document.getElementById('historyList');
+  if(!h.length){el.innerHTML='<div class="history-empty">Še ni zgodovine.</div>';return;}
+  el.innerHTML=h.map(e=>`<div class="history-item" onclick="loadH(${e.id})">
+    <div class="hi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+    <div class="hi-body"><div class="hi-name">🛍 ${esc(e.names)}</div><div class="hi-meta">${e.date} · ${e.urls.filter(Boolean).length} URL-jev</div></div>
+    <span class="hi-badge">${e.pt}PT · ${e.hl}HL</span>
+  </div>`).join('');
+}
+function loadH(id){const e=getH().find(x=>x.id===id);if(e)renderMetaResults(e.results);}
+function clearHistory(){localStorage.removeItem(HKEY);renderH();}
 
-def build_meta_prompt(user_msg: str, pt_count: int, hl_count: int) -> str:
-    pt_ph = ", ".join([f'"PT {i+1}"' for i in range(pt_count)])
-    hl_ph = ", ".join([f'"HL {i+1}"' for i in range(hl_count)])
-    return f"""{user_msg}
+// ── META GENERATE ──
+async function metaGenerate() {
+  const inputs = [...document.querySelectorAll('.meta-url-input')].map(i=>i.value.trim()).filter(Boolean);
+  if(!inputs.length){document.querySelectorAll('.meta-url-input')[0].classList.add('error');setTimeout(()=>document.querySelectorAll('.meta-url-input')[0].classList.remove('error'),1500);return;}
+  const btn=document.getElementById('metaBtnGen');
+  btn.disabled=true;
+  document.getElementById('metaError').classList.remove('show');
+  document.getElementById('metaLoading').classList.add('show');
+  const prog=document.getElementById('metaProgress');
+  prog.innerHTML=inputs.map((url,i)=>{
+    const name=url.split('/').filter(Boolean).pop()?.substring(0,22)||`Izdelek ${i+1}`;
+    return `<div class="prog-item${i===0?' loading':''}" id="mprog-${i}"><div class="prog-dot" style="width:6px;height:6px;border-radius:50%;background:currentColor"></div>${name}</div>`;
+  }).join('');
+  document.getElementById('metaLoadingText').textContent=`Generiram 1/${inputs.length}...`;
+  const reqBody={products:inputs.map(url=>({url,mode:'url'})),pt_count:metaState.pt,hl_count:metaState.hl,qmode:metaState.qmode};
+  metaLastReq={reqBody,urls:inputs};
+  if(metaState.qmode==='fast'){
+    await metaGenerateStream(inputs,reqBody,btn);
+  } else {
+    await metaGenerateClassic(inputs,reqBody,btn);
+  }
+}
 
-Ustvari Meta oglase za FB/Instagram v 10 jezikih.
+async function metaGenerateStream(inputs,reqBody,btn) {
+  const results=new Array(inputs.length).fill(null);
+  let rendered=false;
+  try{
+    const res=await fetch('/generate-multi-stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reqBody)});
+    if(!res.ok) throw new Error(`Server napaka ${res.status}`);
+    const reader=res.body.getReader();
+    const decoder=new TextDecoder();
+    let buffer='';
+    while(true){
+      const {done,value}=await reader.read();
+      if(done) break;
+      buffer+=decoder.decode(value,{stream:true});
+      const lines=buffer.split('\n');
+      buffer=lines.pop();
+      for(const line of lines){
+        if(!line.startsWith('data: ')) continue;
+        try{
+          const msg=JSON.parse(line.slice(6));
+          if(msg.type==='loading'){
+            document.getElementById('metaLoadingText').textContent=`Generiram ${msg.index+1}/${inputs.length}...`;
+          }
+          else if(msg.type==='progress'){
+            const langNames={'sl':'SL','hr':'HR','rs':'RS','hu':'HU','cz':'CZ','sk':'SK','pl':'PL','gr':'GR','ro':'RO','bg':'BG'};
+            if(msg.step==='sl'){
+              document.getElementById('metaLoadingText').textContent='Generiram SL tekste...';
+            } else if(msg.langs){
+              const names=msg.langs.map(l=>langNames[l]||l).join(', ');
+              document.getElementById('metaLoadingText').textContent=`Prevajam: ${names}...`;
+              document.getElementById('streamingBarText').textContent=`Prevajam: ${names}...`;
+            }
+          }
+          else if(msg.type==='partial'){
+            results[msg.index]=msg.data;
+            if(!rendered){
+              document.getElementById('metaFormSection').style.display='none';
+              document.getElementById('metaResults').classList.add('show');
+              setMetaWide(false);
+              document.getElementById('streamingBar').style.display='flex';
+              rendered=true;
+            }
+            renderMetaResults(results.filter(Boolean));
+          }
+          else if(msg.type==='result'){
+            results[msg.index]=msg.data;
+            const el=document.getElementById('mprog-'+msg.index);
+            if(el){el.classList.remove('loading');el.classList.add('done');}
+          }
+          else if(msg.type==='done'){
+            document.getElementById('streamingBar').style.display='none';
+            document.getElementById('metaLoadingText').textContent='Končano! ✅';
+            setTimeout(()=>{
+              document.getElementById('metaLoading').classList.remove('show');
+              saveH(results,inputs,metaState.pt,metaState.hl);
+              renderMetaResults(results.filter(Boolean));
+            },600);
+          }
+        }catch(e){console.warn('SSE parse error',e);}
+      }
+    }
+  }catch(e){
+    document.getElementById('metaLoading').classList.remove('show');
+    const err=document.getElementById('metaError');err.textContent='Napaka: '+(e.message||'Poskusi znova.');err.classList.add('show');btn.disabled=false;
+  }
+}
 
-Primary Text ({pt_count}x na jezik): 2-3 vrstice, 2-3 emoji-ji, prodajni ton, brez cen, vsak DRUGAČEN.
-Headline ({hl_count}x na jezik): MAX 5 BESED, 1 emoji na začetku, brez cen, vsak DRUGAČEN.
-EMOJI PRAVILO: Uporabljaj SAMO te emoji-je ki so zagotovo podprti na vseh napravah:
-✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌 🙌 😍 💎 🏆 ⚡ 🌟 👏 💫 🛒 📦 🔑 💯 😊 🤩 🌿 🌱 🍃 🌸 🌻 🌞 🍀 🎉 🎊 🛍️ 💚 💙 🧡 💜 🤍 🖤
-NE uporabljaj: redkih, novejših ali manj znanih emoji-jev ki se lahko prikažejo kot □
+async function metaGenerateClassic(inputs,reqBody,btn) {
+  try{
+    const res=await fetch('/generate-multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reqBody)});
+    if(!res.ok){const txt=await res.text();throw new Error(`Server napaka ${res.status} — poskusi znova čez minuto`);}
+    const data=await res.json();
+    if(data.error)throw new Error(data.error);
+    inputs.forEach((_,i)=>{const el=document.getElementById('mprog-'+i);if(el){el.classList.remove('loading');el.classList.add('done');}});
+    document.getElementById('metaLoadingText').textContent='Končano!';
+    setTimeout(()=>{document.getElementById('metaLoading').classList.remove('show');saveH(data.results,inputs,metaState.pt,metaState.hl);renderMetaResults(data.results);},400);
+  }catch(e){
+    document.getElementById('metaLoading').classList.remove('show');
+    const err=document.getElementById('metaError');err.textContent='Napaka: '+(e.message||'Poskusi znova.');err.classList.add('show');btn.disabled=false;
+  }
+}
 
-Jeziki: SL (izvirnik), HR (latinica), RS (SAMO latinica!), HU, CZ, SK, PL, GR (grška pisava), RO (latinica), BG (SAMO cirilica!).
+async function metaRegen() {
+  if(!metaLastReq)return;
+  const btn=document.getElementById('metaRegenBtn');btn.disabled=true;
+  document.getElementById('prodPanels').innerHTML=`<div style="text-align:center;padding:3rem 1rem"><div class="spinner" style="margin:0 auto 1rem"></div><div style="font-size:13px;color:var(--text-tertiary)">Regeneriram...</div></div>`;
+  document.getElementById('prodTabs').innerHTML='';
+  try{
+    const res=await fetch('/generate-multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(metaLastReq.reqBody)});
+    if(!res.ok){const txt=await res.text();throw new Error(`Server napaka ${res.status} — poskusi znova čez minuto`);}
+    const data=await res.json();
+    if(data.error)throw new Error(data.error);
+    saveH(data.results,metaLastReq.urls,metaLastReq.reqBody.pt_count,metaLastReq.reqBody.hl_count);
+    renderMetaResults(data.results);
+  }catch(e){
+    document.getElementById('prodPanels').innerHTML=`<div style="padding:1rem;color:var(--red);font-size:13px">Napaka: ${esc(e.message||'Poskusi znova.')}</div>`;
+  }
+  btn.disabled=false;
+}
 
-Vrni SAMO JSON brez markdown:
-{{
-  "product": "ime",
-  "sl": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
-  "hr": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
-  "rs": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
-  "hu": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
-  "cz": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
-  "sk": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
-  "pl": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
-  "gr": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
-  "ro": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}},
-  "bg": {{"pt": [{pt_ph}], "hl": [{hl_ph}]}}
-}}"""
+function renderMetaResults(results) {
+  const tabs=document.getElementById('prodTabs'),panels=document.getElementById('prodPanels');
+  tabs.innerHTML='';panels.innerHTML='';
 
+  // Filter valid results
+  const valid = results.filter(d => d && !d.error);
 
-def build_tiktok_prompt(user_msg: str) -> str:
-    return f"""{user_msg}
+  if(!valid.length) {
+    // All failed — show error and go back to form
+    document.getElementById('metaFormSection').style.display='block';
+    document.getElementById('metaLoading').classList.remove('show');
+    const err=document.getElementById('metaError');
+    const errMsg = results.find(d=>d?.error)?.error || 'Napaka pri generiranju. Poskusi znova.';
+    err.textContent='Napaka: '+errMsg;
+    err.classList.add('show');
+    document.getElementById('metaBtnGen').disabled=false;
+    return;
+  }
 
-Ustvari TikTok oglasne tekste v 10 jezikih.
+  document.getElementById('metaFormSection').style.display='none';
+  document.getElementById('metaResults').classList.add('show');
+  setMetaWide(false);
 
-Pravila:
-- Točno 4 variante na jezik
-- Vsaka varianta MAX 80 znakov (strogo!)
-- Brez emojiev, brez # in {{}}
-- Kratek, direkten, akcijski stil
-- Vsaka varianta drugačen pristop (korist, socialni dokaz, nujnost, radovednost)
-- Brez "kakovost/dostava/zaloga" strukture — bodi kreativen
+  results.forEach((data,idx)=>{
+    if(!data||data.error) return;
+    const name=data.product||`Izdelek ${idx+1}`;
+    const tab=document.createElement('div');
+    tab.className='prod-tab'+(idx===0?' on':'');tab.id=`ptab-${idx}`;
+    tab.innerHTML=`<span class="tab-num">${idx+1}</span>${esc(name)}`;
+    tab.onclick=()=>swProd(idx);tabs.appendChild(tab);
+    const panel=document.createElement('div');
+    panel.className='prod-panel'+(idx===0?' on':'');panel.id=`ppanel-${idx}`;
+    panel.innerHTML=renderMetaPanel(data);panels.appendChild(panel);
+  });
+}
 
-KRITIČNO PREPOVEDANO:
-- NE omenjaj cen ali EUR (kot "6,99 EUR", "samo X EUR", itd.)
-- NE omenjaj popustov ali procentov (kot "minus 62%", "do -50%", itd.)
-- NE izmišljaj specifičnih številk (kot "100 funkcij", "375 kupcev") — uporabljaj generične izraze ("tisoči kupcev", "številne funkcije")
-- NE omenjaj "danes/jutri" v povezavi z akcijo
+function swProd(idx){
+  document.querySelectorAll('.prod-tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.prod-panel').forEach(p=>p.classList.remove('on'));
+  document.getElementById('ptab-'+idx).classList.add('on');
+  document.getElementById('ppanel-'+idx).classList.add('on');
+}
 
-Jeziki: SL (izvirnik), HR (latinica), RS (SAMO latinica!), HU, CZ, SK, PL, GR (grška pisava), RO (latinica), BG (SAMO cirilica!).
+const copyStore={};let csId=0;
+function storeText(txt){const id='cs'+(++csId);copyStore[id]=txt;return id;}
+function copyById(id,btn){actualCopy(copyStore[id]||'',btn);}
 
-KRITIČNO VAŽNO: Vrni IZKLJUČNO in SAMO JSON — nobenih uvodnih besed, nobenih razlag, nobenih komentarjev, nobenih markdown backticks. Prva in zadnja stvar v odgovoru mora biti {{ in }}. Nič drugega.
-{{
-  "product": "ime",
-  "sl": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "hr": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "rs": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "hu": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "cz": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "sk": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "pl": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "gr": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "ro": "[tekst1],[tekst2],[tekst3],[tekst4]",
-  "bg": "[tekst1],[tekst2],[tekst3],[tekst4]"
-}}\n"""
+function renderMetaPanel(data) {
+  const urls=data.product_urls||{};
+  return LANGS.map(lang=>{
+    const d=data[lang.code];if(!d)return'';
+    const pts=Array.isArray(d.pt)?d.pt:[d.pt];
+    const hls=Array.isArray(d.hl)?d.hl:[d.hl];
+    const purl=urls[lang.code]||null;
+    const urlHtml=purl
+      ?`<div class="country-url-row"><a class="country-url-link" href="${esc(purl)}" target="_blank">${esc(purl)}</a><button class="url-cp-btn" onclick="copyById('${storeText(purl)}',this)">${cpIco()} URL</button></div>`
+      :`<span class="url-missing">URL ni najden</span>`;
+    function mkBtn(txt){return`<button class="cp-btn" onclick="copyById('${storeText(txt)}',this)">${cpIco()} Kopiraj</button>`;}
+    const ptHtml=pts.length===1
+      ?`<div class="field-top"><span class="field-lbl">Primary Text</span>${mkBtn(pts[0])}</div><div class="field-text">${esc(pts[0])}</div>`
+      :`<div class="field-lbl" style="margin-bottom:8px">Primary Texts</div>`+pts.map((pt,i)=>`<div class="pt-item"><div class="field-top"><span class="field-lbl" style="opacity:.6">#${i+1}</span>${mkBtn(pt)}</div><div class="field-text">${esc(pt)}</div></div>`).join('');
+    const hlHtml=hls.length===1
+      ?`<div class="field-top"><span class="field-lbl">Headline</span>${mkBtn(hls[0])}</div><div class="field-text is-hl">${esc(hls[0])}</div>`
+      :`<div class="field-lbl" style="margin-bottom:8px">Headlines</div>`+hls.map((hl,i)=>`<div class="pt-item"><div class="field-top"><span class="field-lbl" style="opacity:.6">#${i+1}</span>${mkBtn(hl)}</div><div class="field-text is-hl">${esc(hl)}</div></div>`).join('');
+    return`<div class="country-section"><div class="country-hdr"><span class="country-badge lang-${lang.code}">${lang.label}</span><span class="country-name">${lang.name}</span>${urlHtml}</div><div class="country-body"><div class="field-col">${ptHtml}</div><div class="field-col">${hlHtml}</div></div></div>`;
+  }).join('');
+}
 
+function setMetaWide(wide){
+  const m=document.querySelector('.main');
+  if(m) m.classList.toggle('wide', wide);
+}
+function metaGoBack(){
+  document.getElementById('metaResults').classList.remove('show');
+  document.getElementById('prodPanels').innerHTML='';document.getElementById('prodTabs').innerHTML='';
+  document.getElementById('metaFormSection').style.display='block';
+  setMetaWide(true);
+  document.getElementById('metaBtnGen').disabled=false;document.getElementById('metaError').classList.remove('show');
+}
 
-# ─── GENERATE HELPERS ────────────────────────────────────────────────────────
+// ── TIKTOK VIDEO SCREENSHOT ──
+async function ttProcessImage(file) {
+  if (!file) return;
+  const area = document.getElementById('ttVideoUploadArea');
+  area.style.borderColor = 'var(--accent)';
+  area.innerHTML = `<div class="spinner tiktok" style="width:20px;height:20px;margin:0"></div><div style="font-size:13px;color:var(--text-secondary)">Berem imena videov...</div>`;
 
-def parse_json_response(text: str) -> Optional[dict]:
-    text = re.sub(r"```json\s*", "", text)
-    text = re.sub(r"```\s*", "", text).strip()
-    # Try direct parse first
-    match = re.search(r'\{[\s\S]*\}', text)
-    if not match:
-        return None
-    json_str = match.group()
-    try:
-        return json.loads(json_str)
-    except json.JSONDecodeError:
-        # Try to fix truncated JSON by finding last complete key-value
-        try:
-            # Remove trailing incomplete content after last complete string value
-            fixed = re.sub(r',\s*"[^"]*":\s*"[^"]*$', '', json_str)
-            fixed = re.sub(r',\s*"[^"]*":\s*$', '', fixed)
-            if not fixed.endswith('}'):
-                fixed = fixed.rstrip(',\n\r\t ') + '}'
-            return json.loads(fixed)
-        except Exception:
-            return None
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const b64 = e.target.result.split(',')[1];
+    const mediaType = file.type || 'image/png';
+    try {
+      const res = await fetch('/extract-videos', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({image: b64, media_type: mediaType})
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      ttShowVideos(data.filenames, data.formatted);
+    } catch(e) {
+      ttResetUpload();
+      alert('Napaka: ' + (e.message || 'Poskusi znova.'));
+    }
+  };
+  reader.readAsDataURL(file);
+}
 
+function ttHandleDrop(e) {
+  e.preventDefault();
+  document.getElementById('ttVideoUploadArea').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) ttProcessImage(file);
+}
 
-async def call_claude(prompt: str, model: str, tools=None, max_tokens: int = 4000) -> str:
-    loop = asyncio.get_event_loop()
-    kwargs = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}
-    if tools:
-        kwargs["tools"] = tools
+// Ctrl+V paste slike direktno
+document.addEventListener('paste', function(e) {
+  if(!document.getElementById('page-tiktok').classList.contains('active')) return;
+  const items = e.clipboardData?.items;
+  if(!items) return;
+  for(const item of items) {
+    if(item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if(file) {
+        ttProcessImage(file);
+        const area = document.getElementById('ttVideoUploadArea');
+        if(area){area.style.borderColor='var(--accent)';setTimeout(()=>area.style.borderColor='var(--border)',1000);}
+      }
+      break;
+    }
+  }
+});
 
-    for attempt in range(3):
-        try:
-            msg = await loop.run_in_executor(None, lambda: client.messages.create(**kwargs))
-            return "".join(b.text for b in msg.content if hasattr(b, "text"))
-        except anthropic.RateLimitError:
-            if attempt < 2:
-                wait = (attempt + 1) * 20
-                print(f"  Rate limit, waiting {wait}s...")
-                await asyncio.sleep(wait)
-            else:
-                raise
-        except Exception as e:
-            raise
-    return ""
+function ttShowVideos(filenames, formatted) {
+  // Reset upload area
+  ttResetUpload();
+  // Show preview
+  const preview = document.getElementById('ttVideoPreview');
+  const list = document.getElementById('ttVideoList');
+  const formattedEl = document.getElementById('ttVideoFormatted');
+  list.innerHTML = filenames.map(f =>
+    `<div style="font-size:12px;padding:4px 8px;background:var(--surface2);border-radius:5px;font-family:DM Mono,monospace;color:var(--text)">${esc(f)}</div>`
+  ).join('');
+  formattedEl.textContent = formatted;
+  document.getElementById('ttVideos').value = formatted;
+  preview.style.display = 'block';
+}
 
+function ttClearVideos() {
+  document.getElementById('ttVideoPreview').style.display = 'none';
+  document.getElementById('ttVideos').value = '';
+  document.getElementById('ttScreenshot').value = '';
+}
 
-async def generate_meta_sl_only(user_msg: str, mode: str, source_url: Optional[str],
-                                pt_count: int, hl_count: int) -> dict:
-    """Generira samo SL tekste brez prevajanja — za streaming mode."""
-    product_urls = find_product_urls(source_url)
-    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
-    pt_ph = ", ".join([f'"PT {i+1}"' for i in range(pt_count)])
-    hl_ph = ", ".join([f'"HL {i+1}"' for i in range(hl_count)])
-    sl_prompt = f"""{user_msg}
+function ttResetUpload() {
+  document.getElementById('ttVideoUploadArea').style.borderColor = 'var(--border)';
+  document.getElementById('ttVideoUploadArea').innerHTML = `
+    <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    <div>
+      <div style="font-size:13px;font-weight:500;color:var(--text-secondary)">Naloži screenshot TikTok Video Library</div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">Klikni ali povleci sliko sem · PNG, JPG</div>
+    </div>
+    <input type="file" id="ttScreenshot" accept="image/*" style="display:none" onchange="ttProcessImage(this.files[0])">`;
+}
 
-Ustvari Meta oglase SAMO v slovenščini.
-Primary Text ({pt_count}x): 2-3 vrstice, 2-3 emoji-ji, prodajni ton, brez cen, vsak DRUGAČEN.
-Headline ({hl_count}x): MAX 5 BESED, 1 emoji na začetku, brez cen, vsak DRUGAČEN.
-EMOJI PRAVILO: Uporabljaj SAMO te emoji-je ki so zagotovo podprti na vseh napravah:
-✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌 🙌 😍 💎 🏆 ⚡ 🌟 👏 💫 🛒 📦 🔑 💯 😊 🤩 🌿 🌱 🍃 🌸 🌻 🌞 🍀 🎉 🎊 🛍️ 💚 💙 🧡 💜 🤍 🖤
-NE uporabljaj: redkih, novejših ali manj znanih emoji-jev ki se lahko prikažejo kot □
-Vrni SAMO JSON: {{"product": "ime", "pt": [{pt_ph}], "hl": [{hl_ph}]}}"""
+// ── TIKTOK GENERATE ──
+function ttToggleManual(){
+  const form=document.getElementById('ttManualForm');
+  const btn=document.getElementById('ttManualBtn');
+  const open=form.style.display==='none';
+  form.style.display=open?'block':'none';
+  btn.style.display=open?'none':'block';
+  if(open) document.getElementById('ttManualSkus').focus();
+}
+function ttImportManual(){
+  const raw=document.getElementById('ttManualSkus').value;
+  const skus=raw.split('\n').map(s=>s.trim().toUpperCase()).filter(Boolean);
+  if(!skus.length) return;
+  let added=0;
+  skus.forEach(sku=>{
+    if(!ttHistory.find(x=>x.sku===sku)){
+      ttHistory.push({sku,brand:'',url:'',videos:'',date:new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric'})});
+      added++;
+    }
+  });
+  ttSaveHistory();
+  ttRenderHistory();
+  document.getElementById('ttManualForm').style.display='none';
+  document.getElementById('ttManualBtn').style.display='block';
+  document.getElementById('ttManualSkus').value='';
+  alert(`Dodano ${added} SKU-jev!`);
+}
 
-    sl_text = await call_claude(sl_prompt, "claude-sonnet-4-6", tools if tools else None, 1500)
-    sl_data = parse_json_response(sl_text)
-    if not sl_data:
-        return {"error": "Napaka pri generiranju SL tekstov."}
-    return {
-        "product": sl_data.get("product", "Izdelek"),
-        "sl": {"pt": sl_data.get("pt", []), "hl": sl_data.get("hl", [])},
-        "product_urls": product_urls,
+// ── TIKTOK HISTORY (server-side) ──
+let ttHistory = [];
+
+async function ttLoadHistory(){
+  try{
+    const res = await fetch('/tiktok-history');
+    ttHistory = await res.json();
+  }catch(e){ ttHistory = []; }
+  ttRenderHistory();
+}
+
+async function ttSaveHistory(){
+  try{
+    const res = await fetch('/tiktok-history', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({history: ttHistory})});
+    const json = await res.json();
+    console.log('[TikTokHistory] Saved', ttHistory.length, 'entries:', json);
+  }catch(e){ console.warn('[TikTokHistory] Save failed', e); }
+}
+
+function ttGetHistory(){ return ttHistory; }
+
+function ttSaveToHistory(sku, brand, url, videos, texts, urls){
+  const idx = ttHistory.findIndex(x => x.sku === sku);
+  if(idx >= 0) ttHistory.splice(idx, 1);
+  ttHistory.unshift({sku, brand, url, videos,
+    texts: texts||{}, urls: urls||{},
+    date: new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric'})});
+  if(ttHistory.length > 100) ttHistory.splice(100);
+  ttSaveHistory();
+  ttRenderHistory();
+}
+let ttSelectedSkus = []; // ordered by click
+
+function ttToggleSelect(sku, checkbox) {
+  const item = checkbox.closest('.tt-h-item');
+  if (checkbox.checked) {
+    if (!ttSelectedSkus.includes(sku)) ttSelectedSkus.push(sku);
+    item.classList.add('selected');
+  } else {
+    ttSelectedSkus = ttSelectedSkus.filter(s => s !== sku);
+    item.classList.remove('selected');
+  }
+  ttUpdateMasterBar();
+}
+
+function ttUpdateMasterBar() {
+  const bar = document.getElementById('ttMasterBar');
+  const count = document.getElementById('ttMasterCount');
+  const btn = document.getElementById('ttMasterBtn');
+  if (ttSelectedSkus.length >= 1) {
+    bar.classList.add('show');
+    count.textContent = `${ttSelectedSkus.length} izbranih SKU-jev`;
+    btn.disabled = false;
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+async function ttGenerateMaster() {
+  const btn = document.getElementById('ttMasterBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Sestavljam...';
+
+  // Build ordered list by click order, use cached texts
+  const skus = ttSelectedSkus.map(sku => {
+    const e = ttHistory.find(x => x.sku === sku);
+    return e || null;
+  }).filter(e => e && e.videos);
+
+  if (!skus.length) {
+    alert('Nobeden od izbranih SKU-jev nima shranjenih video imen.');
+    btn.disabled = false;
+    btn.textContent = '⬇ Ustvari Master XLS';
+    return;
+  }
+
+  try {
+    const res = await fetch('/build-master-xlsx', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({skus: skus.map(e => ({
+        sku: e.sku, brand: e.brand, url: e.url,
+        videos: e.videos, texts: e.texts||{}, urls: e.urls||{}
+      }))})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const a = document.createElement('a');
+    a.href = '/download/' + data.file.split('/').pop();
+    a.download = `master_${ttSelectedSkus.slice(0,5).join('_')}.xlsx`;
+    a.click();
+    btn.textContent = '✅ Prenešeno!';
+    setTimeout(() => { btn.textContent = '⬇ Ustvari Master XLS'; btn.disabled = false; }, 3000);
+  } catch(e) {
+    alert('Napaka: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '⬇ Ustvari Master XLS';
+  }
+}
+
+function ttRenderHistory(){
+  const q = (document.getElementById('ttHistorySearch')?.value||'').toLowerCase();
+  const h = ttGetHistory().filter(x => !q || x.sku.toLowerCase().includes(q));
+  const el = document.getElementById('ttHistoryList');
+  if(!el) return;
+  if(!h.length){ el.innerHTML='<div class="tt-empty">'+(q?'Ni rezultatov.':'Še ni zgodovine.')+'</div>'; return; }
+  el.innerHTML = h.map((e,i) => {
+    const isSelected = ttSelectedSkus.includes(e.sku);
+    const hasVideos = !!e.videos;
+    return `
+    <div class="tt-h-item${isSelected?' selected':''}">
+      <input type="checkbox" class="tt-h-check" ${isSelected?'checked':''} ${!hasVideos?'disabled title="Ni video imen"':''} onchange="ttToggleSelect('${esc(e.sku)}', this)">
+      <div class="tt-h-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+      <div class="tt-h-body">
+        <div class="tt-h-sku">${esc(e.sku)}</div>
+        <div class="tt-h-meta">${esc(e.brand||'')}${e.brand?' · ':''}${esc(e.date)}</div>
+      </div>
+      <button class="tt-h-load" onclick="ttLoadFromHistory(${i})">Naloži</button>
+      <button class="tt-h-regen" onclick="ttRegenFromHistory(${i})">↺ Znova</button>
+      <button class="tt-h-del" onclick="ttDeleteHistory(${i})">×</button>
+    </div>`;
+  }).join('');
+}
+function ttLoadFromHistory(i){
+  const h = ttGetHistory();
+  const e = h[i]; if(!e) return;
+  document.getElementById('ttUrl').value = e.url||'';
+  document.getElementById('ttSku').value = e.sku||'';
+  document.getElementById('ttBrand').value = e.brand||'';
+  document.getElementById('ttVideos').value = e.videos||'';
+}
+function ttRegenFromHistory(i){
+  ttLoadFromHistory(i);
+  setTimeout(() => ttGenerate(), 100);
+}
+function ttDeleteHistory(i){
+  ttHistory.splice(i,1);
+  ttSaveHistory();
+  ttRenderHistory();
+}
+
+async function ttGenerate() {
+
+  const url=document.getElementById('ttUrl').value.trim();
+  const sku=document.getElementById('ttSku').value.trim();
+  const brand=document.getElementById('ttBrand').value.trim();
+  const videos=document.getElementById('ttVideos').value.trim();
+  if(!url){flash('ttUrl');return;}
+  if(!sku){flash('ttSku');return;}
+  if(!brand){flash('ttBrand');return;}
+  if(!videos){flash('ttVideos');return;}
+  const btn=document.getElementById('ttBtnGen');btn.disabled=true;
+  document.getElementById('ttError').classList.remove('show');
+  document.getElementById('ttLoading').classList.add('show');
+  try{
+    const res=await fetch('/generate-tiktok',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({source_url:url,sku,brand,video_names:videos,skip_rs:document.getElementById('ttSkipRs')?.checked||false})});
+    const data=await res.json();
+    if(data.error)throw new Error(data.error);
+    // Shrani texte in URL-je v zgodovino za Master XLS
+    const texts = {};
+    const urls = data.product_urls || {};
+    ['sl','hr','rs','hu','cz','sk','pl','gr','ro','bg'].forEach(l => { if(data[l]) texts[l] = data[l]; });
+    ttSaveToHistory(sku, brand, url, videos, texts, urls);
+  // Odznači RS checkbox po generiranju
+  const rsChk = document.getElementById("ttSkipRs"); if(rsChk) rsChk.checked = false;
+    document.getElementById('ttLoading').classList.remove('show');
+    renderTikTokResults(data);
+  }catch(e){
+    document.getElementById('ttLoading').classList.remove('show');
+    const err=document.getElementById('ttError');err.textContent='Napaka: '+(e.message||'Poskusi znova.');err.classList.add('show');btn.disabled=false;
+  }
+}
+
+function renderTikTokResults(data) {
+  document.getElementById('ttFormSection').style.display='none';
+  document.getElementById('ttResults').classList.add('show');
+  const filepath=data.file;
+  const filename=filepath.split('/').pop();
+  ttLastFile=filename;
+  document.getElementById('ttFileName').textContent=filename;
+  const body=document.getElementById('ttPreviewBody');
+  body.innerHTML='';
+  LANGS.forEach(lang=>{
+    const txt=data.data?.[lang.code];if(!txt)return;
+    const row=document.createElement('div');row.className='tt-lang-row';
+    const id=storeText(txt);
+    row.innerHTML=`<span class="tt-lang-badge lang-${lang.code}">${lang.label}</span><div class="tt-text-cell">${esc(txt)}</div><button class="tt-cp-btn" onclick="copyById('${id}',this)">${cpIco()} Kopiraj</button>`;
+    body.appendChild(row);
+  });
+}
+
+function ttDownload(){
+  if(ttLastFile) window.open('/download/'+ttLastFile,'_blank');
+}
+
+function ttGoBack(){
+  document.getElementById('ttResults').classList.remove('show');
+  document.getElementById('ttFormSection').style.display='block';
+  document.getElementById('ttBtnGen').disabled=false;
+  document.getElementById('ttError').classList.remove('show');
+}
+
+// ── COPY ──
+function actualCopy(txt,btn){
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(txt).then(()=>showOk(btn)).catch(()=>fbCopy(txt,btn));}
+  else fbCopy(txt,btn);
+}
+function fbCopy(txt,btn){
+  const ta=document.createElement('textarea');ta.value=txt;ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
+  document.body.appendChild(ta);ta.focus();ta.select();ta.setSelectionRange(0,99999);
+  try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);showOk(btn);
+}
+function showOk(btn){
+  const orig=btn.innerHTML;
+  btn.innerHTML=`<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg> Kopirano`;
+  btn.classList.add('ok');setTimeout(()=>{btn.innerHTML=orig;btn.classList.remove('ok');},2000);
+}
+function cpIco(){return`<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;}
+function flash(id){const el=document.getElementById(id);if(!el)return;el.style.borderColor='var(--red)';el.focus();setTimeout(()=>el.style.borderColor='',1500);}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ── KREATIVE ──
+let kProductData = null;
+let kSelectedA = [];
+let kSelectedB = [];
+let kSelectedImages = [];
+let kCount = 4;
+
+function kChangeCount(d) {
+  kCount = Math.max(1, Math.min(12, kCount + d));
+  document.getElementById('kCountVal').textContent = kCount;
+  kUpdateComboPreview();
+}
+
+function kUpdateComboPreview() {
+  const nA = kSelectedA.length, nB = kSelectedB.length;
+  const el = document.getElementById('kComboPreview');
+  if (!el) return;
+  if (!nA || !nB) { el.textContent = 'Izberi vsaj 1x A in 1x B'; return; }
+  const total = nA * nB * kCount;
+  el.textContent = nA + ' tekst × ' + nB + ' ozadje × ' + kCount + ' slik = ' + total + ' kreativ';
+}
+
+function kToggleA(idx) {
+  const i = kSelectedA.indexOf(idx);
+  if (i >= 0) kSelectedA.splice(i, 1); else kSelectedA.push(idx);
+  document.querySelectorAll('.k-option-btn[data-type="a"]').forEach((btn, j) => {
+    btn.classList.toggle('active', kSelectedA.includes(j));
+  });
+  kUpdateComboPreview();
+}
+
+function kToggleB(idx) {
+  const i = kSelectedB.indexOf(idx);
+  if (i >= 0) kSelectedB.splice(i, 1); else kSelectedB.push(idx);
+  document.querySelectorAll('.k-option-btn[data-type="b"]').forEach((btn, j) => {
+    btn.classList.toggle('active', kSelectedB.includes(j));
+  });
+  kUpdateComboPreview();
+}
+
+function kRenderAB() {
+  if (!kProductData) return;
+  const aEl = document.getElementById('kAOptions');
+  const bEl = document.getElementById('kBOptions');
+  aEl.innerHTML = kProductData.aOptions.map((opt, i) =>
+    '<button class="k-option-btn' + (kSelectedA.includes(i) ? ' active' : '') + '" data-type="a" onclick="kToggleA(' + i + ')">' +
+    '<span class="k-opt-label">' + esc(opt.label) + '</span>' +
+    '<span class="k-opt-text">' + esc(opt.text) + '</span></button>'
+  ).join('');
+  bEl.innerHTML = kProductData.bOptions.map((opt, i) =>
+    '<button class="k-option-btn' + (kSelectedB.includes(i) ? ' active' : '') + '" data-type="b" onclick="kToggleB(' + i + ')">' +
+    '<span class="k-opt-label">' + esc(opt.label) + '</span>' +
+    '<span class="k-opt-text">' + esc(opt.text) + '</span></button>'
+  ).join('');
+}
+
+async function kAnalyze() {
+  const url = document.getElementById('kUrlInput').value.trim();
+  if (!url) return;
+  const btn = document.getElementById('kAnalyzeBtn');
+  btn.disabled = true;
+  document.getElementById('kAnalyzeLoading').style.display = 'block';
+  document.getElementById('kAbcSection').style.display = 'none';
+  document.getElementById('kError').classList.remove('show');
+  // Počisti prejšnje rezultate
+  document.getElementById('kResultsGrid').innerHTML = '<div style="text-align:center;padding:4rem 2rem;color:var(--text-tertiary);font-size:13px"><svg viewBox="0 0 24 24" style="width:48px;height:48px;stroke:var(--border);fill:none;stroke-width:1.2;display:block;margin:0 auto 12px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Vpiši URL in analiziraj izdelek,<br>nato izberi A+B kombinacije</div>';
+  document.getElementById('kResultCount').textContent = '';
+  document.getElementById('kBulkBar').classList.remove('show');
+  kSelectedImgCards.clear();
+  window.kCardsData = [];
+
+  try {
+    const res = await fetch('/analyze-product-kreative', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    kProductData = data;
+    kSelectedA = []; kSelectedB = [];
+    document.getElementById('kProductName').value = data.name || '';
+    kRenderAB();
+
+    if (data.images && data.images.length) {
+      document.getElementById('kFetchedImagesWrap').style.display = 'block';
+      document.getElementById('kFetchedImages').innerHTML = data.images.map(src =>
+        '<div class="k-thumb-wrap"><img src="' + esc(src) + '" class="k-thumb" onclick="kToggleFetched(\'' + esc(src) + '\')" title="Klikni za izbiro"></div>'
+      ).join('');
     }
 
+    document.getElementById('kAbcSection').style.display = 'block';
+    kUpdateComboPreview();
+    // Shrani v zgodovino
+    kSaveToHistory(url, data.name, data.aOptions, data.bOptions);
+  } catch(e) {
+    document.getElementById('kError').textContent = 'Napaka: ' + e.message;
+    document.getElementById('kError').classList.add('show');
+  }
 
-async def generate_meta_one(user_msg: str, mode: str, source_url: Optional[str],
-                            pt_count: int, hl_count: int, qmode: str) -> dict:
-    product_urls = find_product_urls(source_url)
-    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
+  document.getElementById('kAnalyzeLoading').style.display = 'none';
+  btn.disabled = false;
+}
 
-    if qmode == "fast":
-        pt_ph = ", ".join([f'"PT {i+1}"' for i in range(pt_count)])
-        hl_ph = ", ".join([f'"HL {i+1}"' for i in range(hl_count)])
-        sl_prompt = f"""{user_msg}
+function kToggleFetched(src) {
+  const idx = kSelectedImages.findIndex(x => x.src === src);
+  if (idx >= 0) kSelectedImages.splice(idx, 1);
+  else kSelectedImages.push({src, type: 'fetched'});
+  document.querySelectorAll('#kFetchedImages .k-thumb').forEach(img => {
+    img.classList.toggle('selected', !!kSelectedImages.find(x => x.src === img.src));
+  });
+}
 
-Ustvari Meta oglase SAMO v slovenščini.
-Primary Text ({pt_count}x): 2-3 vrstice, 2-3 emoji-ji, prodajni ton, brez cen, vsak DRUGAČEN.
-Headline ({hl_count}x): MAX 5 BESED, 1 emoji na začetku, brez cen, vsak DRUGAČEN.
-EMOJI PRAVILO: Uporabljaj SAMO te emoji-je ki so zagotovo podprti na vseh napravah:
-✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌 🙌 😍 💎 🏆 ⚡ 🌟 👏 💫 🛒 📦 🔑 💯 😊 🤩 🌿 🌱 🍃 🌸 🌻 🌞 🍀 🎉 🎊 🛍️ 💚 💙 🧡 💜 🤍 🖤 🟢 🔵 🟡
-NE uporabljaj: redkih, novejših ali manj znanih emoji-jev ki se lahko prikažejo kot □
-Vrni SAMO JSON: {{"product": "ime", "pt": [{pt_ph}], "hl": [{hl_ph}]}}"""
+function kHandleFiles(files) {
+  [...files].forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      kSelectedImages.push({src: e.target.result, type: 'uploaded', name: file.name});
+      kRenderUploadedImages();
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
-        sl_text = await call_claude(sl_prompt, "claude-sonnet-4-6", tools if tools else None, 1500)
-        sl_data = parse_json_response(sl_text)
-        if not sl_data:
-            print(f"SL parse failed. Raw response: {sl_text[:500]}")
-            return {"error": "Napaka pri generiranju SL tekstov."}
+function kRenderUploadedImages() {
+  const el = document.getElementById('kUploadedImages');
+  const uploaded = kSelectedImages.filter(x => x.type === 'uploaded');
+  el.innerHTML = uploaded.map((img, i) =>
+    '<div class="k-thumb-wrap"><img src="' + img.src + '" class="k-thumb selected">' +
+    '<button class="k-thumb-del" onclick="kRemoveUploaded(' + kSelectedImages.indexOf(img) + ')">x</button></div>'
+  ).join('');
+}
 
-        sl_pts = sl_data.get("pt", [])
-        sl_hls = sl_data.get("hl", [])
-        trans_prompt = f"""Prevedi Meta oglase iz slovenščine v 9 jezikov. Ohrani ŠTEVILO in POZICIJO emoji-jev točno kot v originalu.
+function kRemoveUploaded(idx) {
+  kSelectedImages.splice(idx, 1);
+  kRenderUploadedImages();
+}
 
-Primary Texts: {json.dumps(sl_pts, ensure_ascii=False)}
-Headlines: {json.dumps(sl_hls, ensure_ascii=False)}
+document.addEventListener('paste', e => {
+  if (!document.getElementById('page-kreative').classList.contains('active')) return;
+  const items = e.clipboardData?.items || [];
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      const reader = new FileReader();
+      reader.onload = ev => {
+        kSelectedImages.push({src: ev.target.result, type: 'uploaded', name: 'paste.png'});
+        kRenderUploadedImages();
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+});
 
-PRAVILA PREVAJANJA PO JEZIKIH:
+document.addEventListener('DOMContentLoaded', () => {
+  const dz = document.getElementById('kDropZone');
+  if (!dz) return;
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); kHandleFiles(e.dataTransfer.files); });
+});
 
-HR (hrvaščina, latinica): Natural marketing ton. Pazi na "č/ć/š/ž/đ".
+async function kGenerate() {
+  if (!kSelectedA.length || !kSelectedB.length) {
+    const err = document.getElementById('kError');
+    err.textContent = 'Izberi vsaj 1x A (tekst) in 1x B (ozadje)!';
+    err.classList.add('show'); return;
+  }
+  document.getElementById('kError').classList.remove('show');
+  const btn = document.getElementById('kGenBtn');
+  btn.disabled = true;
+  document.getElementById('kLoading').style.display = 'block';
+  document.getElementById('kResultsGrid').innerHTML = '';
 
-RS (srbščina, SAMO LATINICA — NIKOLI cirilica!): Natural marketing ton. Pazi na "č/ć/š/ž/đ".
+  const productName = document.getElementById('kProductName').value.trim();
+  const aOpts = kSelectedA.map(i => kProductData.aOptions[i]);
+  const bOpts = kSelectedB.map(i => kProductData.bOptions[i]);
+  const images = kSelectedImages.map(x => x.src);
+  const total = aOpts.length * bOpts.length;
+  document.getElementById('kLoadingText').textContent = 'Generiram ' + total + ' kombinacij (×' + kCount + ' slik)...';
 
-HU (madžarščina): KRITIČNO - to ni indoevropski jezik, NE prevajaj dobesedno. Uporabljaj aglutinacijo (končnice) pravilno. CTA kot "Naroči zdaj" = "Rendeld meg most". Pazi da stavek ni predolg (madžarski stavki so lahko za 20-30% daljši).
+  try {
+    const res = await fetch('/generate-kreative', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({productName, aOptions: aOpts, bOptions: bOpts, count: kCount, images})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    kRenderResults(data.results || []);
+    document.getElementById('kResultCount').textContent = (data.results||[]).length + ' kombinacij';
+  } catch(e) {
+    document.getElementById('kError').textContent = 'Napaka: ' + e.message;
+    document.getElementById('kError').classList.add('show');
+  }
+  document.getElementById('kLoading').style.display = 'none';
+  btn.disabled = false;
+}
 
-CZ (češčina): Natural. Pazi na sklonjenje samostalnikov (akuzativ po glagolih).
+// ── HOVER PREVIEW ──
+const kPreviewEl = () => document.getElementById('kHoverPreview');
+const kPreviewImg = () => document.getElementById('kHoverPreviewImg');
+let kHoverTimer = null;
 
-SK (slovaščina): Podobno češčini. Natural.
+function kShowPreview(src, e) {
+  clearTimeout(kHoverTimer);
+  kHoverTimer = setTimeout(() => {
+    const el = kPreviewEl();
+    const img = kPreviewImg();
+    if (!el || !img) return;
+    img.src = src;
+    el.classList.add('show');
+    kPositionPreview(e);
+  }, 120);
+}
 
-PL (poljščina): Pazi na sklone (7 padežev). CTA "Naroči" = "Zamów". Uporabi neformalni ti-vi.
+function kHidePreview() {
+  clearTimeout(kHoverTimer);
+  const el = kPreviewEl();
+  if (el) el.classList.remove('show');
+}
 
-GR (grščina, grška pisava!): KRITIČNO - kompleksna slovnica s skloni (nominativ/akuzativ). CTA "Naroči zdaj" = "Παράγγειλε τώρα". Izogibaj se predolgih stavkov. Pazi na spol samostalnikov. Uporabljaj natural marketing grščino, ne dobesedni prevod.
+function kPositionPreview(e) {
+  const el = kPreviewEl();
+  if (!el || !el.classList.contains('show')) return;
+  const W = window.innerWidth, H = window.innerHeight;
+  const pw = 504, ph = 504;
+  let x = e.clientX + 16;
+  let y = e.clientY - ph / 2;
+  if (x + pw > W - 10) x = e.clientX - pw - 16;
+  if (y < 10) y = 10;
+  if (y + ph > H - 10) y = H - ph - 10;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+}
 
-RO (romunščina, latinica): Natural. Pazi na "ă/â/î/ș/ț". CTA "Naroči" = "Comandă".
+document.addEventListener('mousemove', e => {
+  if (kPreviewEl()?.classList.contains('show')) kPositionPreview(e);
+});
 
-BG (bolgarščina, SAMO CIRILICA — NIKOLI latinica!): Natural. CTA "Naroči" = "Поръчай".
+let kSelectedImgCards = new Set();
+let kAsanaPendingUrls = [];
+let kAsanaSelectedTaskId = null;
+let kAsanaSelectedTaskName = '';
 
-SPLOŠNA PRAVILA:
-- Ohrani prodajni/energičen ton
-- Prevodi morajo zveneti kot da jih je pisal materni govorec, ne robot
-- Ohrani ŠTEVILO emoji-jev (če ima SL 3 emoji, mora imeti tudi prevod 3)
-- Headlines: ohrani MAX 5 besed tudi v prevodu
-- Ne prevajaj blagovnih znamk, imen izdelkov, če so v originalu
+function kRenderResults(results) {
+  const grid = document.getElementById('kResultsGrid');
+  kSelectedImgCards.clear();
+  kUpdateBulkBar();
+  if (!results.length) { grid.innerHTML = '<div style="color:var(--text-tertiary);padding:2rem;text-align:center">Ni rezultatov.</div>'; return; }
 
-Vrni SAMO JSON:
-{{"hr":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"rs":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"hu":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"cz":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"sk":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"pl":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"gr":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"ro":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"bg":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}}}}"""
+  const cards = [];
+  results.forEach(r => {
+    const imgs = (r.images || (r.url ? [r.url] : [])).filter(Boolean);
+    if (!imgs.length) {
+      cards.push({combo: r.combo, url: null, error: r.error, idx: cards.length});
+    } else {
+      imgs.forEach(url => cards.push({combo: r.combo, url, idx: cards.length}));
+    }
+  });
+  window.kCardsData = cards;
 
-        trans_text = await call_claude(trans_prompt, "claude-haiku-4-5-20251001", None, 5000)
-        trans_data = parse_json_response(trans_text)
-        if not trans_data:
-            return {"error": "Napaka pri prevajanju."}
+  grid.innerHTML = cards.map(c => {
+    if (!c.url) return (
+      '<div class="k-img-card">' +
+      '<div class="k-img-combo">' + esc(c.combo||'?') + '</div>' +
+      '<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:11px;padding:8px;text-align:center">' + esc(c.error||'Ni slike') + '</div>' +
+      '</div>'
+    );
+    return (
+      '<div class="k-img-card" id="kcard-' + c.idx + '">' +
+      '<div class="k-img-combo">' + esc(c.combo||'?') + '</div>' +
+      '<div style="position:relative">' +
+        '<img src="' + esc(c.url) + '" loading="lazy" onclick="kToggleSelect(' + c.idx + ')" title="Klikni za izbiro">' +
+        '<div class="k-select-check" onclick="kToggleSelect(' + c.idx + ')">' +
+          '<svg viewBox="0 0 12 12" style="width:9px;height:9px;stroke:white;fill:none;stroke-width:2.5"><polyline points="2,6 5,9 10,3"/></svg>' +
+        '</div>' +
+        '<div class="k-zoom-btn" onmouseenter="kShowPreview(\'' + esc(c.url) + '\',event)" onmouseleave="kHidePreview()" title="Predogled">' +
+          '<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:white;fill:none;stroke-width:2.5"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>' +
+        '</div>' +
+      '</div>' +
+      '<div class="k-img-actions">' +
+        '<button class="k-img-btn" onclick="kToggleSelect(' + c.idx + ')">&#x2611;</button>' +
+        '<button class="k-img-btn" onclick="kDownloadCard(' + c.idx + ')" title="Prenesi">&#x2B07;</button>' +
+        '<button class="k-img-btn" style="background:#7c3aed;color:white;border-color:#7c3aed" onclick="kSendToLok(' + c.idx + ')" title="Pošlji v Lokalizacijo" id="kLokBtn-' + c.idx + '">&#x1F30D; Lok</button>' +
+        '<button class="k-img-btn primary" onclick="kOpenAsanaModal([' + c.idx + '])" title="Pošlji v Asana">&#x2192; Asana</button>' +
+        '<button class="k-img-btn danger" onclick="kDeleteCard(' + c.idx + ')" title="Zbriši">&#x2715;</button>' +
+      '</div>' +
+      '</div>'
+    );
+  }).join('');
 
-        result = {"product": sl_data.get("product","Izdelek"), "sl": {"pt": sl_pts, "hl": sl_hls}, "product_urls": product_urls}
-        result.update(trans_data)
-        return result
-    else:
-        prompt = build_meta_prompt(user_msg, pt_count, hl_count)
-        text = await call_claude(prompt, "claude-sonnet-4-6", tools if tools else None)
-        data = parse_json_response(text)
-        if not data:
-            return {"error": "Claude ni vrnil veljavnega JSON."}
-        data["product_urls"] = product_urls
-        return data
+  document.getElementById('kResultCount').textContent = cards.filter(c=>c.url).length + ' slik';
+}
 
+function kToggleSelect(idx) {
+  const card = document.getElementById('kcard-' + idx);
+  if (!card) return;
+  if (kSelectedImgCards.has(idx)) { kSelectedImgCards.delete(idx); card.classList.remove('selected'); }
+  else { kSelectedImgCards.add(idx); card.classList.add('selected'); }
+  kUpdateBulkBar();
+}
 
-async def generate_tiktok_one(user_msg: str, mode: str, source_url: Optional[str]) -> dict:
-    product_urls = find_product_urls(source_url)
-    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
-    prompt = build_tiktok_prompt(user_msg)
-    text = await call_claude(prompt, "claude-sonnet-4-6", tools if tools else None)
-    data = parse_json_response(text)
-    if not data:
-        print(f"TikTok JSON parse failed. Raw (first 800 chars): {text[:800]}")
-        return {"error": "Claude ni vrnil veljavnega JSON."}
-    data["product_urls"] = product_urls
-    return data
+function kUpdateBulkBar() {
+  const bar = document.getElementById('kBulkBar');
+  const cnt = document.getElementById('kBulkCount');
+  const n = kSelectedImgCards.size;
+  if (bar) bar.classList.toggle('show', n > 0);
+  if (cnt) cnt.textContent = n + ' izbranih';
+}
 
+function kClearSelection() {
+  kSelectedImgCards.forEach(idx => { const c = document.getElementById('kcard-' + idx); if(c) c.classList.remove('selected'); });
+  kSelectedImgCards.clear();
+  kUpdateBulkBar();
+}
 
-# ─── TIKTOK XLSX BUILDER ─────────────────────────────────────────────────────
+function kDeleteCard(idx) {
+  const card = document.getElementById('kcard-' + idx);
+  if (card) { card.style.transition='opacity 0.2s'; card.style.opacity='0'; setTimeout(()=>card.remove(),200); }
+  kSelectedImgCards.delete(idx);
+  kUpdateBulkBar();
+}
 
-COUNTRY_TO_LANG = {
-    "BG": "bg", "CZ": "cz", "GR": "gr", "SK": "sk", "RS": "rs",
-    "RO": "ro", "HU": "hu", "HR": "hr", "PL": "pl", "SLO": "sl"
+function kDownloadCard(idx) {
+  const c = window.kCardsData?.[idx];
+  if (!c?.url) return;
+  const a = document.createElement('a');
+  const name = (c.combo||'kreativa').replace(/[^a-zA-Z0-9]/g,'_');
+  a.href = c.url; a.download = name + '_' + (idx+1) + '.png'; a.click();
+}
+
+function kBulkDownload() {
+  kSelectedImgCards.forEach(idx => kDownloadCard(idx));
+}
+
+// ── ASANA MODAL ──
+function kOpenAsanaModal(idxArray) {
+  // idxArray = null means use selected, else specific indices
+  const indices = idxArray || [...kSelectedImgCards];
+  kAsanaPendingUrls = indices.map(i => window.kCardsData?.[i]?.url).filter(Boolean);
+  if (!kAsanaPendingUrls.length) return;
+  kAsanaSelectedTaskId = null;
+  kAsanaSelectedTaskName = '';
+  document.getElementById('kAsanaUrlInput').value = '';
+  document.getElementById('kAsanaSearchResults').innerHTML = '';
+  document.getElementById('kAsanaSelected').textContent = '';
+  document.getElementById('kAsanaStatus').textContent = kAsanaPendingUrls.length + ' slikč pripravljenih za priložitev';
+  document.getElementById('kAsanaModal').classList.add('show');
+}
+
+function kCloseAsanaModal() {
+  document.getElementById('kAsanaModal').classList.remove('show');
+  // OPOMBA: ne pobriši ZIP buildanja — uporabnik lahko zapre modal medtem ko se ZIP gradi.
+  // Ko bo modal spet odprt, se bo lahko priložilo. Resetira se šele ko se ZIP pošlje ali pokliče izrecno reset.
+  const lbl = document.getElementById('kAsanaSubmitLabel');
+  if (lbl) lbl.textContent = 'Priloži slike';
+}
+
+async function kAsanaSearch() {
+  const q = document.getElementById('kAsanaUrlInput').value.trim();
+  if (!q) return;
+
+  // Check if it's a URL — extract task ID directly
+  const urlMatch = q.match(/\/task\/(\d+)/);
+  if (urlMatch) {
+    kAsanaSelectedTaskId = urlMatch[1];
+    document.getElementById('kAsanaSelected').textContent = '✓ Task ID: ' + kAsanaSelectedTaskId;
+    document.getElementById('kAsanaSearchResults').innerHTML = '';
+    return;
+  }
+
+  // Search by name
+  const el = document.getElementById('kAsanaSearchResults');
+  el.innerHTML = '<div style="font-size:12px;color:var(--text-secondary);padding:4px">Iščem...</div>';
+  try {
+    const res = await fetch('/asana-search?q=' + encodeURIComponent(q));
+    const data = await res.json();
+    if (data.error) { el.innerHTML = '<div style="font-size:12px;color:#dc2626">' + esc(data.error) + '</div>'; return; }
+    const tasks = data.tasks || [];
+    if (!tasks.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);padding:4px">Ni zadetkov.</div>'; return; }
+    el.innerHTML = tasks.map(t =>
+      '<div onclick="kSelectAsanaTask(\'' + esc(t.gid) + '\',\'' + esc(t.name) + '\')" style="padding:6px 8px;border-radius:4px;cursor:pointer;font-size:12px;border:1px solid var(--border);margin-bottom:4px;background:var(--surface2)">' +
+        '<div style="font-weight:500">' + esc(t.name) + '</div>' +
+        '<div style="font-size:10px;color:var(--text-tertiary)">' + esc(t.project||'') + '</div>' +
+      '</div>'
+    ).join('');
+  } catch(e) {
+    el.innerHTML = '<div style="font-size:12px;color:#dc2626">Napaka: ' + esc(e.message) + '</div>';
+  }
+}
+
+function kSelectAsanaTask(gid, name) {
+  kAsanaSelectedTaskId = gid;
+  kAsanaSelectedTaskName = name;
+  document.getElementById('kAsanaSelected').textContent = '✓ Izbran: ' + name;
+  document.getElementById('kAsanaSearchResults').innerHTML = '';
+  document.getElementById('kAsanaUrlInput').value = name;
+}
+
+async function kAsanaAttach() {
+  // Also try extracting task ID from URL input
+  if (!kAsanaSelectedTaskId) {
+    const val = document.getElementById('kAsanaUrlInput').value.trim();
+    const urlMatch = val.match(/\/task\/(\d+)/);
+    if (urlMatch) kAsanaSelectedTaskId = urlMatch[1];
+  }
+  if (!kAsanaSelectedTaskId) {
+    document.getElementById('kAsanaStatus').textContent = '⚠ Izberi task ali prilepi URL!';
+    return;
+  }
+
+  const btn = document.getElementById('kAsanaSubmitBtn');
+  btn.disabled = true;
+  const statusEl = document.getElementById('kAsanaStatus');
+
+  // Če je VADS ZIP mode - pošlji ZIP namesto slik
+  if (window._vadsAsanaMode) {
+    await vadsAsanaSendZip(kAsanaSelectedTaskId);
+    btn.disabled = false;
+    return;
+  }
+  // Če je LOK ZIP mode - pošlji ZIP slik
+  if (window._lokAsanaMode) {
+    await lokAsanaSendZip(kAsanaSelectedTaskId);
+    btn.disabled = false;
+    return;
+  }
+
+  statusEl.textContent = 'Priložujem ' + kAsanaPendingUrls.length + ' slik...';
+
+  try {
+    const res = await fetch('/asana-attach', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({task_id: kAsanaSelectedTaskId, image_urls: kAsanaPendingUrls})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    statusEl.textContent = '✓ Priloženo ' + (data.attached||0) + ' slik v Asana!';
+    setTimeout(kCloseAsanaModal, 1500);
+  } catch(e) {
+    statusEl.textContent = '✕ Napaka: ' + e.message;
+  }
+  btn.disabled = false;
+}
+
+function kDownload(url, n) {
+  const a = document.createElement('a');
+  a.href = url; a.download = 'kreativa_' + n + '.png'; a.click();
+}
+
+function kSendToAsana(url) {
+  kOpenAsanaModal(null);
+}
+
+// ── KREATIVE HISTORY ──
+let kHistory = [];
+
+async function kLoadHistory() {
+  try {
+    const res = await fetch('/kreative-history');
+    const data = await res.json();
+    kHistory = Array.isArray(data) ? data : [];
+  } catch(e) { kHistory = []; }
+  kRenderHistory();
+}
+
+async function kSaveHistory() {
+  try {
+    await fetch('/kreative-history', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({history: kHistory})});
+  } catch(e) {}
+}
+
+function kRenderHistory() {
+  const el = document.getElementById('kHistoryList');
+  if (!el) return;
+  const q = (document.getElementById('kHistorySearch')?.value||'').toLowerCase();
+  const filtered = kHistory.filter(e => !q || (e.name||'').toLowerCase().includes(q) || (e.url||'').toLowerCase().includes(q));
+  if (!filtered.length) { el.innerHTML = '<div class="history-empty">Ni zgodovine.</div>'; return; }
+  el.innerHTML = filtered.map(e => `
+    <div class="history-item" onclick="kLoadFromHistory('${esc(e.id)}')" style="cursor:pointer">
+      <div class="hi-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+      <div class="hi-body">
+        <div class="hi-name">🎨 ${esc(e.name||'?')}</div>
+        <div class="hi-meta">${e.date} · ${e.aCount||0}A × ${e.bCount||0}B</div>
+      </div>
+    </div>`).join('');
+}
+
+function kSaveToHistory(url, name, aOptions, bOptions) {
+  const id = Date.now().toString();
+  const date = new Date().toLocaleDateString('sl-SI',{day:'2-digit',month:'2-digit',year:'numeric'});
+  // Remove duplicate by URL
+  kHistory = kHistory.filter(e => e.url !== url);
+  kHistory.unshift({id, url, name, aOptions, bOptions, aCount: aOptions.length, bCount: bOptions.length, date});
+  if (kHistory.length > 50) kHistory.splice(50);
+  kSaveHistory();
+  kRenderHistory();
+}
+
+function kLoadFromHistory(id) {
+  const e = kHistory.find(x => x.id === id);
+  if (!e) return;
+  // Restore URL
+  document.getElementById('kUrlInput').value = e.url || '';
+  // Restore product data
+  kProductData = {name: e.name, aOptions: e.aOptions, bOptions: e.bOptions};
+  kSelectedA = []; kSelectedB = [];
+  document.getElementById('kProductName').value = e.name || '';
+  kRenderAB();
+  document.getElementById('kAbcSection').style.display = 'block';
+  kUpdateComboPreview();
+}
+
+// ── LOKALIZACIJA ──
+const LOK_LANGS = {
+  HR: 'Croatian', RS: 'Serbian (Latin)', HU: 'Hungarian', CZ: 'Czech',
+  SK: 'Slovak', PL: 'Polish', RO: 'Romanian', BG: 'Bulgarian',
+  GR: 'Greek', SL: 'Slovenian'
+};
+let lokImages = []; // array of base64 data URLs
+
+function lokHandleFiles(files) {
+  [...files].forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      lokImages.push(e.target.result);
+      lokRenderPreviews();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function lokRenderPreviews() {
+  const el = document.getElementById('lokPreview');
+  el.innerHTML = lokImages.map((src, i) =>
+    '<div class="k-thumb-wrap">' +
+      '<img src="' + src + '" class="k-thumb selected" style="width:72px;height:72px;object-fit:cover;border-radius:var(--radius);border:2px solid var(--accent)">' +
+      '<button class="k-thumb-del" onclick="lokRemoveImage(' + i + ')">x</button>' +
+    '</div>'
+  ).join('');
+}
+
+function lokRemoveImage(idx) {
+  lokImages.splice(idx, 1);
+  lokRenderPreviews();
+}
+
+function lokClearFile() {
+  lokImages = [];
+  lokRenderPreviews();
+  document.getElementById('lokFileInput').value = '';
+}
+
+function lokGetSelected() {
+  return [...document.querySelectorAll('#page-lokalizacija input[type=checkbox]:checked')].map(cb => cb.value);
+}
+
+function lokSelectAll() {
+  const cbs = document.querySelectorAll('#page-lokalizacija input[type=checkbox]');
+  const allChecked = [...cbs].every(cb => cb.checked);
+  cbs.forEach(cb => cb.checked = !allChecked);
+  lokUpdateCount();
+}
+
+function lokUpdateCount() {
+  const langs = lokGetSelected();
+  const el = document.getElementById('lokCountPreview');
+  if (!el) return;
+  if (!langs.length) { el.textContent = 'Izberi jezike...'; return; }
+  const cost = (langs.length * 0.067).toFixed(2);
+  el.innerHTML = langs.length + ' jezikov - ~$' + cost;
+}
+
+// Drag & drop
+document.addEventListener('DOMContentLoaded', () => {
+  const dz = document.getElementById('lokDropZone');
+  if (!dz) return;
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); lokHandleFiles(e.dataTransfer.files); });
+});
+
+// Paste support
+document.addEventListener('paste', e => {
+  if (!document.getElementById('page-lokalizacija').classList.contains('active')) return;
+  const items = e.clipboardData?.items || [];
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      lokHandleFiles([item.getAsFile()]);
+      break;
+    }
+  }
+});
+
+async function lokGenerate() {
+  if (!lokImages.length) {
+    const err = document.getElementById('lokError');
+    err.textContent = 'Naloži vsaj 1 hero kreativo!'; err.classList.add('show'); return;
+  }
+  const langs = lokGetSelected();
+  if (!langs.length) {
+    const err = document.getElementById('lokError');
+    err.textContent = 'Izberi vsaj 1 jezik!'; err.classList.add('show'); return;
+  }
+  document.getElementById('lokError').classList.remove('show');
+  const btn = document.getElementById('lokGenBtn');
+  btn.disabled = true;
+  document.getElementById('lokLoading').style.display = 'block';
+  document.getElementById('lokResultsGrid').innerHTML = '';
+  document.getElementById('lokLoadingText').textContent = 'Lokaliziram ' + langs.length + ' jezikov × ' + lokImages.length + ' kreativ...';
+
+  const asanaUrl = document.getElementById('lokAsanaUrl').value.trim();
+  const asanaTaskId = asanaUrl.match(/\/task\/(\d+)/)?.[1] || null;
+  const sku = document.getElementById('lokSku').value.trim().toUpperCase() || 'SKU';
+  const brand = document.getElementById('lokBrand').value.trim();
+
+  try {
+    const res = await fetch('/localize-kreativa', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({images: lokImages, languages: langs, asana_task_id: asanaTaskId, sku, brand})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    lokRenderResults(data.results || []);
+    document.getElementById('lokResultCount').textContent = (data.results||[]).length + ' lokalizacij';
+  } catch(e) {
+    document.getElementById('lokError').textContent = 'Napaka: ' + e.message;
+    document.getElementById('lokError').classList.add('show');
+  }
+  document.getElementById('lokLoading').style.display = 'none';
+  btn.disabled = false;
+}
+
+let lokResultsData = [];
+
+function lokRenderResults(results) {
+  lokResultsData = results.filter(r => r.url);
+  const grid = document.getElementById('lokResultsGrid');
+
+  const hasResults = lokResultsData.length > 0;
+  const dlBtn = document.getElementById('lokDownloadAllBtn');
+  const asBtn = document.getElementById('lokAsanaAllBtn');
+  if (dlBtn) dlBtn.style.display = hasResults ? 'inline-block' : 'none';
+  if (asBtn) asBtn.style.display = hasResults ? 'inline-block' : 'none';
+
+  if (!results.length) { grid.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-tertiary)">Ni rezultatov.</div>'; return; }
+  grid.innerHTML = results.map((r, i) => {
+    if (!r.url) return (
+      '<div class="k-img-card"><div class="k-img-combo">' + esc(r.lang||'?') + '</div>' +
+      '<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:11px;padding:8px">' + esc(r.error||'Ni slike') + '</div></div>'
+    );
+    const idx = lokResultsData.findIndex(x => x.url === r.url);
+    return (
+      '<div class="k-img-card">' +
+      '<div class="k-img-combo">' + esc(r.filename||r.lang) + (r.asana_ok ? ' \u2713 Asana' : '') + '</div>' +
+      '<div style="position:relative"><img src="' + esc(r.url) + '" loading="lazy" onmouseenter="kShowPreview(\'' + esc(r.url) + '\',event)" onmouseleave="kHidePreview()"></div>' +
+      '<div class="k-img-actions">' +
+        '<button class="k-img-btn" onclick="lokDownloadOne(' + idx + ')">\u2b07</button>' +
+        '<button class="k-img-btn primary" onclick="lokAsanaOne(' + idx + ')">\u2192 Asana</button>' +
+      '</div></div>'
+    );
+  }).join('');
+}
+
+function lokDownloadOne(idx) {
+  const r = lokResultsData[idx];
+  if (!r) return;
+  const a = document.createElement('a');
+  a.href = r.url;
+  a.download = r.filename || (r.lang + '.png');
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// Pomožna: zgradi ZIP iz lokResultsData
+async function lokBuildZipBlob(progressCallback) {
+  if (!window.JSZip) { await new Promise((res,rej) => { const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+  const JSZip = window.JSZip;
+  const zip = new JSZip();
+  let count = 0;
+  const total = lokResultsData.length;
+
+  // Paralelno fetch slik (10 hkrati)
+  const PARALLEL = 10;
+  let done = 0;
+  const queue = lokResultsData.map((r, i) => ({r, i}));
+  const workers = Array(PARALLEL).fill(null).map(async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      if (!item) break;
+      try {
+        const resp = await fetch(item.r.url);
+        const blob = await resp.blob();
+        const fname = item.r.filename || (item.r.lang + '_' + item.i + '.png');
+        zip.file(fname, blob);
+        count++;
+      } catch(e) { console.error('Fetch fail:', item.r.url, e); }
+      done++;
+      if (progressCallback) progressCallback('Pripravljam ' + done + '/' + total + '...');
+    }
+  });
+  await Promise.all(workers);
+
+  if (progressCallback) progressCallback('Pakiranje ZIP...');
+  const zipBlob = await zip.generateAsync({type: 'blob'});
+  return {zipBlob, count};
+}
+
+async function lokDownloadAll() {
+  if (!lokResultsData.length) return;
+  const btn = document.getElementById('lokDownloadAllBtn');
+  const origText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Gradim ZIP...'; }
+  try {
+    const result = await lokBuildZipBlob((msg) => {
+      if (btn) btn.innerHTML = '⏳ ' + msg;
+    });
+    const url = URL.createObjectURL(result.zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'lokalizacija_' + new Date().toISOString().split('T')[0] + '.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    if (btn) btn.innerHTML = '✓ Preneseno (' + result.count + ')';
+    setTimeout(() => { if (btn) { btn.disabled = false; btn.innerHTML = origText; } }, 2000);
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+    alert('Napaka: ' + e.message);
+  }
+}
+
+function lokAsanaOne(idx) {
+  const r = lokResultsData[idx];
+  if (!r || !r.url) return;
+  kAsanaPendingUrls = [r.url];
+  kAsanaSelectedTaskId = null;
+  kAsanaSelectedTaskName = '';
+  const lokUrl = document.getElementById('lokAsanaUrl')?.value?.trim();
+  document.getElementById('kAsanaUrlInput').value = lokUrl || '';
+  document.getElementById('kAsanaSearchResults').innerHTML = '';
+  document.getElementById('kAsanaSelected').textContent = '';
+  document.getElementById('kAsanaStatus').textContent = '1 slika pripravljena';
+  document.getElementById('kAsanaModal').classList.add('show');
+  if (lokUrl) kAsanaSearch(lokUrl);
+}
+
+async function lokAsanaAll() {
+  if (!lokResultsData.length) return;
+
+  // Odpri Asana modal TAKOJ + gradi ZIP v ozadju
+  window._lokAsanaMode = true;
+  window._lokZipBlob = null;
+  window._lokZipBuilding = true;
+  const lokUrl = document.getElementById('lokAsanaUrl')?.value?.trim();
+  document.getElementById('kAsanaUrlInput').value = lokUrl || '';
+  document.getElementById('kAsanaSearchResults').innerHTML = '';
+  document.getElementById('kAsanaSelected').textContent = '';
+  document.getElementById('kAsanaStatus').textContent = '⏳ ZIP se gradi v ozadju (lahko zapreš okno) — vpiši Asana task';
+  const lbl = document.getElementById('kAsanaSubmitLabel');
+  if (lbl) lbl.textContent = 'Pošlji slike ZIP';
+  document.getElementById('kAsanaModal').classList.add('show');
+  if (lokUrl) kAsanaSearch(lokUrl);
+
+  // Gradi ZIP v ozadju
+  const dlBtn = document.getElementById('lokDownloadAllBtn');
+  const origDlText = dlBtn ? dlBtn.innerHTML : '';
+  try {
+    const result = await lokBuildZipBlob((msg) => {
+      if (dlBtn) dlBtn.innerHTML = '⏳ ' + msg;
+      const s = document.getElementById('kAsanaStatus');
+      if (s && window._lokZipBuilding && document.getElementById('kAsanaModal').classList.contains('show')) {
+        s.textContent = '⏳ ' + msg;
+      }
+    });
+    window._lokZipBlob = result.zipBlob;
+    window._lokZipFilename = 'lokalizacija_' + new Date().toISOString().split('T')[0] + '.zip';
+    window._lokZipBuilding = false;
+    if (dlBtn) dlBtn.innerHTML = origDlText;
+    const sizeStr = (result.zipBlob.size/1024/1024).toFixed(1);
+    const s = document.getElementById('kAsanaStatus');
+    if (s) s.textContent = '✓ ZIP pripravljen (' + sizeStr + ' MB, ' + result.count + ' slik) — pošlji v Asana';
+  } catch(e) {
+    window._lokZipBuilding = false;
+    if (dlBtn) dlBtn.innerHTML = origDlText;
+    const s = document.getElementById('kAsanaStatus');
+    if (s) s.textContent = '✗ Napaka: ' + e.message;
+  }
+}
+
+async function lokAsanaSendZip(taskId) {
+  const status = document.getElementById('kAsanaStatus');
+  if (window._lokZipBuilding) {
+    if (status) status.textContent = '⏳ Čakam da se ZIP konča gradit...';
+    while (window._lokZipBuilding) await new Promise(r => setTimeout(r, 500));
+  }
+  if (!window._lokZipBlob) {
+    if (status) status.textContent = '✗ ZIP ni pripravljen.';
+    return false;
+  }
+  if (status) status.textContent = 'Pošiljam ZIP v Asana...';
+  const formData = new FormData();
+  formData.append('task_id', taskId);
+  formData.append('file', window._lokZipBlob, window._lokZipFilename);
+  formData.append('filename', window._lokZipFilename);
+  try {
+    const res = await fetch('/asana-attach-binary', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) {
+      if (status) status.textContent = '✗ ' + data.error;
+      return false;
+    }
+    if (status) status.textContent = '✓ ZIP poslan v Asana (' + data.filename + ')';
+    setTimeout(() => {
+      document.getElementById('kAsanaModal').classList.remove('show');
+      window._lokAsanaMode = false;
+      window._lokZipBlob = null;
+    }, 1500);
+    return true;
+  } catch(e) {
+    if (status) status.textContent = '✗ ' + e.message;
+    return false;
+  }
+}
+
+// ── NAROČILNICE ──
+let narcData = [];
+let narcSortCol = 'razlika';
+let narcSortAsc = true;
+
+const NARC_LANGS = [
+  {key:'sl', label:'Silux.SI', flag:'SI'},
+  {key:'hr', label:'Silux.HR', flag:'HR'},
+  {key:'rs', label:'Silux.RS', flag:'RS'},
+  {key:'at', label:'Silux.AT', flag:'AT'},
+  {key:'de', label:'Silux.DE', flag:'DE'},
+  {key:'fr', label:'Silux.FR', flag:'FR'},
+  {key:'es', label:'Silux.ES', flag:'ES'},
+  {key:'en', label:'Silux.UK', flag:'UK'},
+  {key:'ba', label:'Silux.BA', flag:'BA'},
+  {key:'hu', label:'Silux.HU', flag:'HU'},
+  {key:'cs', label:'Silux.CZ', flag:'CZ'},
+  {key:'sk', label:'Silux.SK', flag:'SK'},
+  {key:'el', label:'Silux.GR', flag:'GR'},
+  {key:'it', label:'Silux.IT', flag:'IT'},
+  {key:'ro', label:'Silux.RO', flag:'RO'},
+  {key:'ma-sl', label:'Maaarket.SI', flag:'MA-SI'},
+  {key:'ma-hr', label:'Maaarket.HR', flag:'MA-HR'},
+  {key:'ma-rs', label:'Maaarket.RS', flag:'MA-RS'},
+  {key:'ma-ba', label:'Maaarket.BA', flag:'MA-BA'},
+  {key:'ma-hu', label:'Maaarket.HU', flag:'MA-HU'},
+  {key:'ma-it', label:'Maaarket.IT', flag:'MA-IT'},
+  {key:'ma-cz', label:'Maaarket.CZ', flag:'MA-CZ'},
+  {key:'ma-sk', label:'Maaarket.SK', flag:'MA-SK'},
+  {key:'ma-pl', label:'Maaarket.PL', flag:'MA-PL'},
+  {key:'ma-at', label:'Maaarket.AT', flag:'MA-AT'},
+  {key:'ma-de', label:'Maaarket.DE', flag:'MA-DE'},
+  {key:'ma-el', label:'Maaarket.GR', flag:'MA-GR'},
+  {key:'ma-ro', label:'Maaarket.RO', flag:'MA-RO'},
+  {key:'ma-bg', label:'Maaarket.BG', flag:'MA-BG'},
+];
+
+let narcSelectedLangs = new Set(NARC_LANGS.map(l => l.key)); // all selected by default
+
+function narcRenderLangFilter() {
+  const el = document.getElementById('narcLangFilter');
+  if (!el) return;
+  narcUpdateLangCount();
+  el.innerHTML = NARC_LANGS.map(l =>
+    '<button class="narc-lang-btn' + (narcSelectedLangs.has(l.key) ? ' active' : '') + '" onclick="narcToggleLang(\'' + l.key + '\',this)" type="button">' + l.flag + ' ' + l.label + '</button>'
+  ).join('');
+}
+
+function narcToggleLang(key, el) {
+  if (narcSelectedLangs.has(key)) narcSelectedLangs.delete(key);
+  else narcSelectedLangs.add(key);
+  el.classList.toggle('active', narcSelectedLangs.has(key));
+  narcUpdateLangCount();
+  if (narcData.length) narcRenderTable();
+}
+
+function narcToggleAllLangs() {
+  if (narcSelectedLangs.size === NARC_LANGS.length) narcSelectedLangs.clear();
+  else NARC_LANGS.forEach(l => narcSelectedLangs.add(l.key));
+  narcRenderLangFilter();
+  narcUpdateLangCount();
+  if (narcData.length) narcRenderTable();
+}
+
+function narcBuildUrl(sku) {
+  const today = new Date();
+  const to = today.toISOString().split('T')[0];
+  const from = new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0];
+  const langParams = NARC_LANGS
+    .filter(l => narcSelectedLangs.has(l.key))
+    .map(l => 'filter_lang_' + l.key + '=1')
+    .join('&');
+  return 'https://www.siluxar.si/narocilnice?order_status_id=&order_shipping_id=0&supplier=18&author=&filter_buyer=&filter_buyer_address=&filter_buyer_phone=&filter_product=' + encodeURIComponent(sku) + '&filter_orderid=&filter_comments=0&filter_cancellations=0&filter_notpaid=0&filter_isvip=0&filter_buyer_deferred=0&sent_to_erp=&payment_type=&order_tag=&filter_ids=&from=' + from + '&to=' + to + '&' + langParams;
+}
+
+function narcHandleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { narcProcessText(e.target.result); };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function narcParseCsv(text) {
+  // Normalize line endings
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+
+  // Parse a single CSV line handling quoted fields
+  function parseLine(line) {
+    const cols = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; }
+      else if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+      else { cur += c; }
+    }
+    cols.push(cur.trim());
+    return cols;
+  }
+
+  const headers = parseLine(lines[0]).map(h => h.replace(/"/g, '').trim());
+  if (!headers.length || headers[0] === '') return [];
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const cols = parseLine(lines[i]);
+    const obj = {};
+    headers.forEach((h, j) => obj[h] = (cols[j] || '').replace(/"/g, '').trim());
+    rows.push(obj);
+  }
+  return rows;
+}
+
+function narcToggleLangPanel() {
+  const panel = document.getElementById('narcLangPanel');
+  const chevron = document.getElementById('narcLangChevron');
+  const open = panel.style.display === 'none';
+  panel.style.display = open ? 'block' : 'none';
+  if (chevron) chevron.textContent = open ? 'Zapri' : 'Uredi';
+}
+
+function narcUpdateLangCount() {
+  const el = document.getElementById('narcLangCount');
+  if (el) el.textContent = '(' + narcSelectedLangs.size + '/' + NARC_LANGS.length + ' izbranih)';
+}
+
+function narcProcess() {}
+
+function narcProcessText(text, saveToHistory = true) {
+  text = text.trim();
+  if (!text) return;
+
+  const rows = narcParseCsv(text);
+  if (!rows.length) { alert('Napaka pri branju CSV.'); return; }
+
+  // Map columns — flexible matching
+  const hKeys = Object.keys(rows[0]);
+  const find = (patterns) => hKeys.find(k => patterns.some(p => k.toLowerCase().includes(p.toLowerCase()))) || '';
+
+  const colId = find(['ID naročila', 'id naro']);
+  const colSku = find(['SKU', 'sku']);
+  const colNaziv = find(['Naziv', 'naziv', 'name']);
+  const colKolicina = find(['Količina', 'kolicina', 'qty']);
+  const colRazlika = find(['Prodano razlika', 'prodano razlika']);
+  const colZalogaSl = find(['Zaloga SL', 'zaloga sl']);
+  const colZalogaRs = find(['Zaloga RS', 'zaloga rs']);
+  const colSlo = find(['Razlika prodaje SL', 'razlika prodaje sl']);
+  const colRs = find(['Razlika prodaje RS', 'razlika prodaje rs']);
+
+  // Only negative razlika
+  narcData = rows
+    .map(r => ({
+      id: r[colId] || '',
+      sku: r[colSku] || '',
+      naziv: r[colNaziv] || '',
+      kolicina: parseInt(r[colKolicina]) || 0,
+      razlika: parseInt(r[colRazlika]) || 0,
+      zalogaSl: (colZalogaSl && r[colZalogaSl]?.trim() && r[colZalogaSl].trim() !== 'Ni podatka') ? r[colZalogaSl].trim() : '',
+      zalogaRs: (colZalogaRs && r[colZalogaRs]?.trim() && r[colZalogaRs].trim() !== 'Ni podatka') ? r[colZalogaRs].trim() : '',
+      slo: parseInt(r[colSlo]) || 0,
+      rs: parseInt(r[colRs]) || 0,
+    }))
+    .filter(r => r.razlika < 0);
+
+  narcRenderTable();
+  document.getElementById('narcTableTitle').textContent = 'NAROČILNICE — ' + narcData.length + ' negativnih razlik';
+  narcClickedRows.clear();
+  narcFetchShopUrls();
+
+  if (saveToHistory) narcSaveHistory(text);
+}
+
+function narcSort(col) {
+  if (narcSortCol === col) narcSortAsc = !narcSortAsc;
+  else { narcSortCol = col; narcSortAsc = true; }
+  narcRenderTable();
+}
+
+let narcClickedRows = new Set();
+let narcShopUrls = {}; // sku -> maaarket url
+
+async function narcFetchShopUrls() {
+  // XML lookup removed — too complex, not needed
+}
+
+function narcToggleRow(sku, forceOn) {
+  if (forceOn) narcClickedRows.add(sku);
+  else if (narcClickedRows.has(sku)) narcClickedRows.delete(sku);
+  else narcClickedRows.add(sku);
+  const done = narcClickedRows.has(sku);
+  document.querySelectorAll(`tr[data-sku="${CSS.escape(sku)}"]`).forEach(tr => {
+    tr.style.background = done ? 'rgba(16,185,129,0.12)' : '';
+    const btn = tr.querySelector('.narc-check-btn');
+    if (btn) {
+      btn.textContent = done ? '✓' : '○';
+      btn.classList.toggle('done', done);
+    }
+  });
+  narcCheckAllDone();
+}
+
+function narcCheckAllDone() {
+  const total = narcData.length;
+  const done = narcClickedRows.size;
+  const btn = document.getElementById('narcFinishBtn');
+  if (btn) btn.style.display = done >= total && total > 0 ? 'block' : 'none';
+}
+
+function narcFinish() {
+  narcData = [];
+  narcClickedRows.clear();
+  narcShopUrls = {};
+  document.getElementById('narcTableBody').innerHTML = '<tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Uvozi CSV za prikaz podatkov</td></tr>';
+  document.getElementById('narcTableTitle').textContent = 'NAROČILNICE — negativne razlike';
+  document.getElementById('narcCount').textContent = '';
+  document.getElementById('narcFinishBtn').style.display = 'none';
+  document.getElementById('narcCsvText').value = '';
+}
+
+function narcRenderTable() {
+  const q = (document.getElementById('narcSearch')?.value || '').toLowerCase();
+  let rows = narcData.filter(r =>
+    !q || r.sku.toLowerCase().includes(q) || r.naziv.toLowerCase().includes(q) || r.id.toLowerCase().includes(q)
+  );
+
+  rows.sort((a, b) => {
+    let av = a[narcSortCol], bv = b[narcSortCol];
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    if (av < bv) return narcSortAsc ? -1 : 1;
+    if (av > bv) return narcSortAsc ? 1 : -1;
+    return 0;
+  });
+
+  document.getElementById('narcCount').textContent = rows.length + ' vrstic';
+  const tbody = document.getElementById('narcTableBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Ni podatkov.</td></tr>';
+    return;
+  }
+
+   tbody.innerHTML = rows.map(r => {
+    const url = narcBuildUrl(r.sku);
+    const isDone = narcClickedRows.has(r.sku);
+    const rowBg = isDone ? 'background:rgba(16,185,129,0.12)' : '';
+    const checkBtn = '<button onclick="narcToggleRow(\'' + esc(r.sku) + '\')" class="narc-check-btn' + (isDone ? ' done' : '') + '">' + (isDone ? '\u2713' : '\u25cb') + '</button>';
+    const _nd = (v) => (v === 0 || v === '' || v === null || v === undefined) ? '<span style="color:var(--text-tertiary);font-size:11px">—</span>' : v;
+    const skuLink = '<a href="' + esc(url) + '" target="_blank" class="narc-sku-link" onclick="narcToggleRow(\'' + esc(r.sku) + '\')">' + esc(r.sku) + '</a>';
+    return '<tr data-sku="' + esc(r.sku) + '" style="' + rowBg + '">' +
+      '<td>' + esc(r.id) + '</td>' +
+      '<td>' + skuLink + '</td>' +
+      '<td>' + esc(r.naziv) + '</td>' +
+      '<td class="' + (r.kolicina < 0 ? "neg" : "") + '">' + _nd(r.kolicina) + '</td>' +
+      '<td>' + _nd(r.zalogaSl) + '</td>' +
+      '<td>' + _nd(r.zalogaRs) + '</td>' +
+      '<td class="neg">' + r.razlika + '</td>' +
+      '<td class="' + (r.slo < 0 ? "neg" : "") + '">' + _nd(r.slo) + '</td>' +
+      '<td class="' + (r.rs < 0 ? "neg" : "") + '">' + _nd(r.rs) + '</td>' +
+      '<td>' + checkBtn + '</td>' +
+      '</tr>';
+  }).join('');
+
+  narcCheckAllDone();
+}
+
+// History
+async function narcSaveHistory(csvText) {
+  try {
+    await fetch('/narocilnice-history', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({csv: csvText, date: new Date().toLocaleString('sl-SI')})
+    });
+    narcLoadHistory();
+  } catch(e) {}
+}
+
+async function narcLoadHistory() {
+  try {
+    const res = await fetch('/narocilnice-history');
+    const data = await res.json();
+    const el = document.getElementById('narcHistList');
+    if (!data.length) { el.innerHTML = '<div class="history-empty">Ni zgodovine.</div>'; return; }
+    el.innerHTML = data.slice().reverse().map((h, i) =>
+      `<div class="narc-hist-item" style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1" onclick="narcLoadFromHistory(${data.length-1-i})" style="cursor:pointer">
+          <div style="font-weight:500;font-size:12px">📄 Uvoz #${data.length - i}</div>
+          <div class="narc-hist-date">${esc(h.date)} · ${h.rows || 0} vrstic</div>
+        </div>
+        <button onclick="narcDeleteHistoryItem(${data.length-1-i})" style="background:none;border:none;cursor:pointer;color:var(--text-tertiary);font-size:14px;padding:2px 4px;flex-shrink:0" title="Zbriši ta vnos">🗑</button>
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
+
+async function narcDeleteHistoryItem(idx) {
+  if (!confirm('Zbriši ta uvoz iz zgodovine?')) return;
+  try {
+    const res = await fetch('/narocilnice-history');
+    let data = await res.json();
+    data.splice(idx, 1);
+    await fetch('/narocilnice-history-set', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({history: data})
+    });
+    narcLoadHistory();
+  } catch(e) {}
+}
+
+async function narcDeleteAllHistory() {
+  if (!confirm('Zbrisati VSEH ' + '? To dejanje je nepovratno.')) return;
+  if (!confirm('Ste prepričani? Vsa zgodovina uvozov bo izgubljena.')) return;
+  try {
+    await fetch('/narocilnice-history-set', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({history: []})
+    });
+    narcLoadHistory();
+  } catch(e) {}
+}
+
+async function narcLoadFromHistory(idx) {
+  try {
+    const res = await fetch('/narocilnice-history');
+    const data = await res.json();
+    if (!data[idx]) return;
+    narcProcessText(data[idx].csv, false);
+  } catch(e) {}
 }
 
 
-def build_tiktok_xlsx(sku: str, brand: str, video_names: str,
-                      texts_by_lang: dict, urls_by_lang: dict,
-                      skip_rs: bool = False) -> str:
-    if not Path(TEMPLATE_PATH).exists():
-        raise FileNotFoundError("TikTok template not found. Upload tiktok_template.xlsx to static/")
-
-    wb = openpyxl.load_workbook(TEMPLATE_PATH)
-    ws = wb['Ads']
-    headers = [cell.value for cell in ws[1]]
-
-    col_campaign = headers.index('Campaign Name') + 1
-    col_bc_id    = headers.index('Business Center ID of the identity') + 1
-    col_video    = headers.index('Video Name') + 1
-    col_text     = headers.index('Text') + 1
-    col_url      = headers.index('Web URL') + 1
-    col_ag       = headers.index('Ad Group Name') + 1
-
-    base_bc_raw = ws.cell(row=2, column=col_bc_id).value or ''
-    single_id = base_bc_raw.split(',')[0].strip()
-    videos = [v.strip() for v in re.findall(r'\[([^\]]+)\]', video_names)]
-    new_bc_id = ','.join([single_id] * len(videos)) if videos else single_id
-    today = datetime.now().strftime('%-d_%-m_%Y')
-    new_campaign = f'[{brand}] Smart+ {sku} - {today}'
-
-    for row in ws.iter_rows(min_row=2):
-        r = row[0].row
-        country = ws.cell(row=r, column=col_ag).value
-        if not country:
-            continue
-        lang = COUNTRY_TO_LANG.get(country)
-        if skip_rs and lang == 'rs':
-            ws.delete_rows(r)
-            continue
-        ws.cell(row=r, column=col_campaign).value = new_campaign
-        ws.cell(row=r, column=col_bc_id).value = new_bc_id
-        ws.cell(row=r, column=col_video).value = video_names
-        if lang and lang in texts_by_lang:
-            raw = texts_by_lang[lang]
-            # Izloci variante
-            if '[' in raw and ']' in raw:
-                # Že v [] formatu — uporabi kot je
-                ws.cell(row=r, column=col_text).value = raw
-            else:
-                # Brez oklepajev — splittaj po pikastih ločilih (".," ali "?," ali "!,")
-                # da ne razbijemo posameznih povedi znotraj variante
-                parts = re.split(r'(?<=[.!?]),', raw)
-                parts = [p.strip() for p in parts if p.strip()]
-                raw = ','.join(f'[{p}]' for p in parts)
-                ws.cell(row=r, column=col_text).value = raw
-        url = (urls_by_lang.get(lang) if lang else None) or next(iter(urls_by_lang.values()), '')
-        if url:
-            ws.cell(row=r, column=col_url).value = url
-
-    out_path = str(EXPORTS_DIR / f"tiktok_{sku}_{uuid.uuid4().hex[:8]}.xlsx")
-    wb.save(out_path)
-    return out_path
-
-
-
-def build_master_xlsx(skus: list) -> str:
-    """Združi več SKU-jev v en master XLS — vsak SKU doda svoje vrstice (koliko jih je v template-u)."""
-    if not Path(TEMPLATE_PATH).exists():
-        raise FileNotFoundError("TikTok template not found.")
-
-    # Load template to get headers and template rows
-    wb_tmpl = openpyxl.load_workbook(TEMPLATE_PATH)
-    ws_tmpl = wb_tmpl['Ads']
-    headers = [cell.value for cell in ws_tmpl[1]]
-
-    col_campaign = headers.index('Campaign Name') + 1
-    col_bc_id    = headers.index('Business Center ID of the identity') + 1
-    col_video    = headers.index('Video Name') + 1
-    col_text     = headers.index('Text') + 1
-    col_url      = headers.index('Web URL') + 1
-    col_ag       = headers.index('Ad Group Name') + 1
-
-    base_bc_raw = ws_tmpl.cell(row=2, column=col_bc_id).value or ''
-    single_id = base_bc_raw.split(',')[0].strip()
-
-    # Collect template rows (row 2 onwards) as base structure
-    tmpl_rows = []
-    for row in ws_tmpl.iter_rows(min_row=2, values_only=False):
-        country = row[col_ag - 1].value
-        if not country:
-            continue
-        tmpl_rows.append({
-            'country': country,
-            'row_data': [cell.value for cell in row],
-            'row_num': row[0].row,
-        })
-
-    # Create new workbook
-    wb_out = openpyxl.load_workbook(TEMPLATE_PATH)
-    ws_out = wb_out['Ads']
-
-    # Clear all data rows
-    for row in ws_out.iter_rows(min_row=2):
-        for cell in row:
-            cell.value = None
-
-    today = datetime.now().strftime('%-d_%-m_%Y')
-    out_row = 2
-
-    for sku_entry in skus:
-        sku = sku_entry.get('sku', '')
-        brand = sku_entry.get('brand', '')
-        video_names = sku_entry.get('videos', '')
-        texts_by_lang = sku_entry.get('texts', {})
-        urls_by_lang = sku_entry.get('urls', {})
-        fallback_url = sku_entry.get('url') or sku_entry.get('source_url') or ''
-        print(f"[master] SKU={sku} url={fallback_url!r} urls={urls_by_lang}")
-        # Fallback: če urls prazen, uporabi url za vse jezike
-        if not urls_by_lang and fallback_url:
-            all_langs = list(set(list(COUNTRY_TO_LANG.values()) + ['sl','hr','rs','hu','cz','sk','pl','gr','ro','bg']))
-            urls_by_lang = {lang: fallback_url for lang in all_langs}
-        print(f"[master] SKU={sku} urls_by_lang keys={list(urls_by_lang.keys())[:5]}")
-
-        videos = [v.strip() for v in re.findall(r'\[([^\]]+)\]', video_names)]
-        new_bc_id = ','.join([single_id] * len(videos)) if videos else single_id
-        new_campaign = f'[{brand}] Smart+ {sku} - {today}'
-
-        for tmpl_row in tmpl_rows:
-            country = tmpl_row['country']
-            lang = COUNTRY_TO_LANG.get(country)
-
-            # Copy template row values
-            orig_row = ws_tmpl[tmpl_row['row_num']]
-            for col_idx, orig_cell in enumerate(orig_row, 1):
-                ws_out.cell(row=out_row, column=col_idx).value = orig_cell.value
-
-            # Fill in our data
-            ws_out.cell(row=out_row, column=col_campaign).value = new_campaign
-            ws_out.cell(row=out_row, column=col_bc_id).value = new_bc_id
-            ws_out.cell(row=out_row, column=col_video).value = video_names
-            if lang and lang in texts_by_lang:
-                ws_out.cell(row=out_row, column=col_text).value = texts_by_lang[lang]
-            # URL: lang-specifičen ali fallback
-            url = (urls_by_lang.get(lang) if lang else None) or fallback_url or next(iter(urls_by_lang.values()), '')
-            if url:
-                ws_out.cell(row=out_row, column=col_url).value = url
-
-            out_row += 1
-
-    out_path = str(EXPORTS_DIR / f"master_{uuid.uuid4().hex[:8]}.xlsx")
-    wb_out.save(out_path)
-    return out_path
-
-
-class MasterXlsxRequest(BaseModel):
-    skus: List[dict]  # [{sku, brand, url, videos, texts, urls}]
-
-
-@app.post("/build-master-xlsx")
-async def build_master_xlsx_endpoint(req: MasterXlsxRequest):
-    """Sestavi master XLS iz že shranjenih tekstov — brez API klicev."""
-    skus_data = []
-    for entry in req.skus:
-        if not entry.get('videos'):
-            continue
-        skus_data.append({
-            'sku':    entry.get('sku', ''),
-            'brand':  entry.get('brand', ''),
-            'videos': entry.get('videos', ''),
-            'texts':  entry.get('texts', {}),
-            'urls':   entry.get('urls', {}),
-        })
-
-    if not skus_data:
-        return {"error": "Ni veljavnih SKU-jev (manjkajo video imena)."}
-
-    try:
-        path = build_master_xlsx(skus_data)
-        return {"status": "ok", "file": path}
-    except FileNotFoundError as e:
-        return {"error": str(e)}
-
-
-@app.post("/generate-master-xlsx")
-async def generate_master_xlsx(req: MasterXlsxRequest):
-    await ensure_cache_fresh()
-
-    skus_data = []
-    for entry in req.skus:
-        url = entry.get('url', '')
-        sku = entry.get('sku', '')
-        brand = entry.get('brand', '')
-        videos = entry.get('videos', '')
-
-        if not videos:
-            continue  # preskoči SKU brez video imen
-
-        # Generate TikTok texts
-        user_msg = f"Preberi to stran in ustvari TikTok oglase: {url}"
-        data = await generate_tiktok_one(user_msg, "url", url)
-        if "error" in data:
-            continue
-
-        texts_by_lang = {lang: data[lang] for lang in ["sl","hr","rs","hu","cz","sk","pl","gr","ro","bg"] if lang in data}
-        urls_by_lang = data.get("product_urls", {})
-
-        skus_data.append({
-            'sku': sku, 'brand': brand, 'videos': videos,
-            'texts': texts_by_lang, 'urls': urls_by_lang
-        })
-
-        if len(skus_data) < len(req.skus):
-            await asyncio.sleep(15)  # rate limit
-
-    if not skus_data:
-        return {"error": "Ni veljavnih SKU-jev za generiranje."}
-
-    try:
-        path = build_master_xlsx(skus_data)
-        return {"status": "ok", "file": path}
-    except FileNotFoundError as e:
-        return {"error": str(e)}
-
-
-    input: str
-    mode: str
-    pt_count: int = 1
-    hl_count: int = 1
-    source_url: Optional[str] = None
-    qmode: str = "sonnet"
-
-
-class MultiAdRequest(BaseModel):
-    products: List[dict]
-    pt_count: int = 1
-    hl_count: int = 1
-    qmode: str = "sonnet"
-
-
-class TikTokRequest(BaseModel):
-    source_url: str
-    sku: str
-    brand: str
-    video_names: str
-    skip_rs: bool = False
-
-
-# ─── ROUTES ──────────────────────────────────────────────────────────────────
-
-@app.get("/tiktok-history")
-async def get_tiktok_history():
-    if TT_HISTORY_FILE.exists():
-        try:
-            return json.loads(TT_HISTORY_FILE.read_text(encoding="utf-8"))
-        except:
-            return []
-    return []
-
-@app.post("/tiktok-history")
-async def save_tiktok_history(data: dict):
-    try:
-        history = data.get("history", [])
-        TT_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok", "count": len(history)}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/meta-history")
-async def get_meta_history():
-    if META_HISTORY_FILE.exists():
-        try:
-            return json.loads(META_HISTORY_FILE.read_text(encoding="utf-8"))
-        except:
-            return []
-    return []
-
-@app.post("/meta-history")
-async def save_meta_history(data: dict):
-    try:
-        history = data.get("history", [])
-        META_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok", "count": len(history)}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/forecast-entries")
-async def get_forecast_entries():
-    if FORECAST_ENTRIES_FILE.exists():
-        try:
-            return json.loads(FORECAST_ENTRIES_FILE.read_text(encoding="utf-8"))
-        except:
-            return {}
-    return {}
-
-@app.post("/forecast-entries")
-async def save_forecast_entries(data: dict):
-    try:
-        FORECAST_ENTRIES_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok"}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/forecast-history")
-async def get_forecast_history():
-    if FORECAST_HISTORY_FILE.exists():
-        try:
-            return json.loads(FORECAST_HISTORY_FILE.read_text(encoding="utf-8"))
-        except:
-            return {}
-    return {}
-
-@app.post("/forecast-history")
-async def save_forecast_history(data: dict):
-    try:
-        FORECAST_HISTORY_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok"}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/")
-def root():
-    return FileResponse("static/index.html")
-
-
-@app.get("/cache-status")
-async def cache_status():
-    return {"last_fetch": last_fetch.isoformat() if last_fetch else None,
-            "stale": is_cache_stale(),
-            "products_per_lang": {lang: len(p) for lang, p in feed_by_lang.items()},
-            "slug_index_size": len(slug_to_id)}
-
-
-@app.post("/refresh-cache")
-async def refresh_cache():
-    await fetch_all_feeds()
-    return {"status": "ok", "last_fetch": last_fetch.isoformat()}
-
-
-@app.post("/generate")
-async def generate(req: AdRequest):
-    await ensure_cache_fresh()
-    user_msg = f"Preberi to stran in ustvari Meta oglase: {req.input}" if req.mode == "url" else f"Na podlagi tega opisa ustvari Meta oglase:\n\n{req.input}"
-    return await generate_meta_one(user_msg, req.mode, req.source_url, req.pt_count, req.hl_count, req.qmode)
-
-
-@app.post("/generate-multi")
-async def generate_multi(req: MultiAdRequest):
-    await ensure_cache_fresh()
-    results = []
-    for i, p in enumerate(req.products):
-        url = p.get("url", "").strip()
-        mode = p.get("mode", "url")
-        if not url:
-            results.append({"error": "Prazen URL"})
-            continue
-        user_msg = f"Preberi to stran in ustvari Meta oglase: {url}" if mode == "url" else f"Na podlagi tega opisa:\n\n{url}"
-        result = await generate_meta_one(user_msg, mode, url if mode == "url" else None,
-                                         req.pt_count, req.hl_count, req.qmode)
-        results.append(result)
-        if i < len(req.products) - 1:
-            await asyncio.sleep(15)
-    return {"results": results}
-
-
-@app.post("/generate-multi-stream")
-async def generate_multi_stream(req: MultiAdRequest):
-    """SSE streaming endpoint — pošilja rezultate batch po batch."""
-    await ensure_cache_fresh()
-
-    async def event_stream():
-        for i, p in enumerate(req.products):
-            url = p.get("url", "").strip()
-            mode = p.get("mode", "url")
-            if not url:
-                yield f"data: {json.dumps({'type': 'result', 'index': i, 'data': {'error': 'Prazen URL'}})}\n\n"
-                continue
-
-            # Notify frontend that this product is being processed
-            yield f"data: {json.dumps({'type': 'loading', 'index': i, 'url': url})}\n\n"
-
-            user_msg = f"Preberi to stran in ustvari Meta oglase: {url}" if mode == "url" else f"Na podlagi tega opisa:\n\n{url}"
-
-            if req.qmode == "fast":
-                # Step 1: SL generation
-                yield f"data: {json.dumps({'type': 'progress', 'index': i, 'step': 'sl'})}\n\n"
-                result = await generate_meta_sl_only(user_msg, mode, url if mode == "url" else None,
-                                                      req.pt_count, req.hl_count)
-                if "error" in result:
-                    yield f"data: {json.dumps({'type': 'result', 'index': i, 'data': result})}\n\n"
-                    if i < len(req.products) - 1:
-                        await asyncio.sleep(15)
-                    continue
-
-                # Send SL immediately
-                yield f"data: {json.dumps({'type': 'partial', 'index': i, 'langs': ['sl'], 'data': result})}\n\n"
-
-                sl_pts = result["sl"]["pt"]
-                sl_hls = result["sl"]["hl"]
-                product_urls = result.get("product_urls", {})
-                product_name = result.get("product", "Izdelek")
-
-                # Step 2: Parallel translation in 4 batches of 2-3 langs
-                pt_ph = ", ".join([f'"PT {i2+1}"' for i2 in range(req.pt_count)])
-                hl_ph = ", ".join([f'"HL {i2+1}"' for i2 in range(req.hl_count)])
-
-                lang_batches = [
-                    ["hr", "rs"],
-                    ["hu", "cz"],
-                    ["sk", "pl"],
-                    ["gr", "ro", "bg"],
-                ]
-
-                lang_info = {
-                    "hr": "HR (hrvaščina, latinica)",
-                    "rs": "RS (srbščina, SAMO latinica!)",
-                    "hu": "HU (madžarščina - aglutinacijski jezik, ne prevajaj dobesedno)",
-                    "cz": "CZ (češčina)",
-                    "sk": "SK (slovaščina)",
-                    "pl": "PL (poljščina)",
-                    "gr": "GR (grščina, grška pisava!)",
-                    "ro": "RO (romunščina, latinica)",
-                    "bg": "BG (bolgarščina, SAMO cirilica!)",
-                }
-
-                full_result = {
-                    "product": product_name,
-                    "product_urls": product_urls,
-                    "sl": {"pt": sl_pts, "hl": sl_hls},
-                }
-
-                for batch in lang_batches:
-                    yield f"data: {json.dumps({'type': 'progress', 'index': i, 'step': 'translating', 'langs': batch})}\n\n"
-
-                    batch_json_keys = ", ".join([
-                        f'"{lang}":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}}'
-                        for lang in batch
-                    ])
-                    batch_lang_lines = "\n".join([f"- {lang_info[lang]}" for lang in batch])
-
-                    batch_prompt = f"""Prevedi Meta oglase iz slovenščine v naslednje jezike. Ohrani ŠTEVILO in POZICIJO emoji-jev točno kot v originalu.
-
-Primary Texts: {json.dumps(sl_pts, ensure_ascii=False)}
-Headlines: {json.dumps(sl_hls, ensure_ascii=False)}
-
-Prevedi SAMO v te jezike:
-{batch_lang_lines}
-
-SPLOŠNA PRAVILA:
-- Ohrani prodajni/energičen ton
-- Prevodi morajo zveneti kot materni govorec
-- Ohrani ŠTEVILO emoji-jev
-- Headlines: MAX 5 besed
-- Ne prevajaj imen izdelkov/blagovnih znamk
-
-Vrni SAMO JSON: {{{batch_json_keys}}}"""
-
-                    batch_text = await call_claude(batch_prompt, "claude-haiku-4-5-20251001", None, 1500)
-                    batch_data = parse_json_response(batch_text)
-
-                    if batch_data:
-                        full_result.update(batch_data)
-                        yield f"data: {json.dumps({'type': 'partial', 'index': i, 'langs': batch, 'data': full_result})}\n\n"
-
-                yield f"data: {json.dumps({'type': 'result', 'index': i, 'data': full_result})}\n\n"
-
-            else:
-                # Kreativni način — en klic, pošlji ko konča
-                result = await generate_meta_one(user_msg, mode, url if mode == "url" else None,
-                                                  req.pt_count, req.hl_count, req.qmode)
-                yield f"data: {json.dumps({'type': 'result', 'index': i, 'data': result})}\n\n"
-
-            if i < len(req.products) - 1:
-                await asyncio.sleep(15)
-
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-
-
-@app.post("/generate-tiktok")
-async def generate_tiktok(req: TikTokRequest):
-    await ensure_cache_fresh()
-    user_msg = f"Preberi to stran in ustvari TikTok oglase: {req.source_url}"
-    data = await generate_tiktok_one(user_msg, "url", req.source_url)
-    if "error" in data:
-        return data
-
-    product_urls = data.get("product_urls", {})
-    texts_by_lang = {lang: data[lang] for lang in ["sl","hr","rs","hu","cz","sk","pl","gr","ro","bg"] if lang in data}
-
-    try:
-        xlsx_path = build_tiktok_xlsx(
-            sku=req.sku,
-            brand=req.brand,
-            video_names=req.video_names,
-            texts_by_lang=texts_by_lang,
-            urls_by_lang=product_urls,
-            skip_rs=req.skip_rs
-        )
-        return {"status": "ok", "file": xlsx_path, "data": data}
-    except FileNotFoundError as e:
-        return {"error": str(e)}
-
-
-@app.post("/extract-videos")
-async def extract_videos(data: dict):
-    """Extract video filenames from a base64 screenshot using Claude vision."""
-    image_b64 = data.get("image")
-    media_type = data.get("media_type", "image/png")
-    if not image_b64:
-        return {"error": "Ni slike."}
-    loop = asyncio.get_event_loop()
-    msg = await loop.run_in_executor(None, lambda: client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=500,
-        messages=[{"role": "user", "content": [
-            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
-            {"type": "text", "text": "Extract all video filenames from this screenshot. Return ONLY a JSON array of filenames, nothing else. Example: [\"VIDEO (1).mp4\", \"VIDEO (2).mp4\"]. Extract exactly as written, preserve spaces and capitalization."}
-        ]}]
-    ))
-    text = msg.content[0].text.strip()
-    text = re.sub(r"```json\s*", "", text)
-    text = re.sub(r"```\s*", "", text).strip()
-    try:
-        filenames = json.loads(text)
-        formatted = ",".join([f"[{f}]" for f in filenames])
-        return {"filenames": filenames, "formatted": formatted}
-    except json.JSONDecodeError:
-        return {"error": "Ni uspelo prebrati imen. Poskusi znova z jasnejšo sliko."}
-
-
-@app.get("/download/{filename}")
-def download_file(filename: str):
-    path = EXPORTS_DIR / filename
-    if not path.exists():
-        return {"error": "File not found"}
-    return FileResponse(str(path), filename=filename,
-                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-
-@app.get("/kreative-history")
-async def get_kreative_history():
-    if KREATIVE_HISTORY_FILE.exists():
-        try:
-            return json.loads(KREATIVE_HISTORY_FILE.read_text(encoding="utf-8"))
-        except:
-            return []
-    return []
-
-@app.post("/kreative-history")
-async def save_kreative_history(data: dict):
-    try:
-        history = data.get("history", [])
-        KREATIVE_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok", "count": len(history)}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-# ─── KREATIVE ENDPOINTS ───────────────────────────────────────────────────────
-
-@app.post("/analyze-product-kreative")
-async def analyze_product_kreative(data: dict):
-    """Prebere stran izdelka in generira A/B/C opcije za kreative."""
-    url = data.get("url", "").strip()
-    if not url:
-        return {"error": "Manjka URL."}
-
-    # Fetch page
-    try:
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as hc:
-            resp = await hc.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            html = resp.text if resp.status_code == 200 else ""
-    except Exception as e:
-        return {"error": f"Ne morem prebrati strani: {e}"}
-
-
-    # Build prompt for Claude to analyze product
-    tools = [{"type": "web_search_20250305", "name": "web_search"}]
-    analysis_prompt = f"""Preberi to spletno stran izdelka: {url}
-
-Na podlagi opisa izdelka generiraj strukturirane podatke za kreative FB oglasov.
-
-Vrni SAMO JSON (brez markdown) v tej obliki:
-{{
-  "name": "IME_IZDELKA_CAPS",
-  "aOptions": [
-    {{"label": "MAIN VERSION", "text": "benefit1, benefit2, benefit3"}},
-    {{"label": "HIGH-CONVERT", "text": "benefit1, benefit2, benefit3"}},
-    {{"label": "PROBLEM-SOLUTION", "text": "benefit1, benefit2, benefit3"}},
-    {{"label": "ULTRA SIMPLE", "text": "benefit1, benefit2"}},
-    {{"label": "SOCIAL PROOF", "text": "benefit1, benefit2, benefit3"}}
-  ],
-  "bOptions": [
-    {{"label": "BEST", "text": "kratko ime vibeа ozadja"}},
-    {{"label": "SECOND OPTION", "text": "kratko ime vibeа ozadja"}},
-    {{"label": "SCROLL STOPPER", "text": "kratko ime vibeа ozadja"}},
-    {{"label": "BONUS", "text": "kratko ime vibeа ozadja"}},
-    {{"label": "LIFESTYLE", "text": "kratko ime vibeа ozadja"}}
-  ]
-}}
-
-PRAVILA:
-- name: samo ime blagovne znamke/modela z CAPS
-- aOptions: PRODAJNI UDARCI (ne lastnosti!), max 2-3 besede vsak, v angleščini
-- bOptions: KONCEPT/VIBE specifičen za TA izdelek, max 3 besede, vedno akcija ali moment
-- VSE mora biti v angleščini
-- Vrni točno 5 aOptions in 5 bOptions
-
-PRIMERI (uči se iz teh vzorcev):
-
-WEEDZAP (weed removal tool):
-aOptions: "Pull the Root, Stop the Weed, No Chemicals" | "Weeds Gone, Root and All, One Tool" | "Weeds Keep Coming Back, Pull the Root, Done for Good" | "Twist, Pull, Gone"
-bOptions: "root pull satisfying moment" | "no chemicals angle" | "before/after garden" | "no back pain angle"
-
-ASHIRAFLUX (smokeless fire pit):
-aOptions: "Real Flame, No Smoke, Anywhere You Are" | "No Fireplace? No Problem, Instant Cozy, Zero Smoke" | "Missing That Fire Feeling, Warm Vibes Instantly" | "Fill, Light, Relax"
-bOptions: "evening atmosphere shot" | "smoke vs no smoke" | "first light moment" | "indoor safe angle"
-
-STAXA (steel organizer shelf):
-aOptions: "Double Your Space, Zero Clutter, Instant Order" | "Messy Counter, One Shelf, Problem Solved" | "No Room, Stack It Up, Space Created" | "Stack, Store, Done"
-bOptions: "before/after counter" | "multi-room tour" | "satisfying load test" | "steel vs plastic"
-
-SIZZELA (electric frying pan):
-aOptions: "No Stove Needed, Cook Anywhere, Instant Heat" | "One Pan, Any Meal, Zero Hassle" | "No Stove, No Smoke, No Problem" | "Plug & Sizzle, Done"
-bOptions: "sizzle sound moment" | "speed cooking demo" | "steam lid reveal" | "no stove freedom"
-
-PLANTDRILL (garden auger):
-aOptions: "Drill, Plant, Done, No Digging" | "One Bit, Perfect Holes, Zero Effort" | "Back-Breaking Digging, One Drill Bit, Done" | "Drill, Drop, Grow"
-bOptions: "speed demo" | "planting demo" | "satisfying drill moment"
-
-SMARTFITNESS (EMS stimulator):
-aOptions: "Train Anywhere, No Gym, Real Results" | "On the Couch, Still Training, Zero Effort" | "No Time to Work Out, Wear It, Feel It Work" | "Stick, Activate, Tone"
-bOptions: "lifestyle demo" | "before/after body" | "reaction moment"
-
-SOWSYNC (seed spacing tool):
-aOptions: "Plant Smart, Perfect Spacing, Grow Better" | "Even Rows, No Waste, Strong Growth" | "Messy Planting, Seed Tool, Better Yield" | "Place, Press, Plant"
-bOptions: "before/after planting" | "planting demo" | "grid effect"
-
-Sedaj generiraj za izdelek na tej strani po ISTEM vzorcu:"""
-
-    text = await call_claude(analysis_prompt, "claude-sonnet-4-6", tools, 800)
-    result = parse_json_response(text)
-
-    if not result:
-        return {"error": "Ni uspelo analizirati izdelka. Poskusi znova."}
-
-    return result
-
-
-@app.post("/fetch-product-images")
-async def fetch_product_images(data: dict):
-    """Pobere slike izdelka s podane URL strani."""
-    url = data.get("url", "").strip()
-    if not url:
-        return {"error": "Manjka URL."}
-    try:
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as hc:
-            resp = await hc.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            if resp.status_code != 200:
-                return {"error": f"Stran ni dostopna ({resp.status_code})."}
-            html = resp.text
-
-        # Extract img src attributes
-        import re as _re
-        srcs = _re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html, _re.IGNORECASE)
-
-        # Filter: only product-like images (skip icons, logos, tiny tracking pixels)
-        from urllib.parse import urljoin
-        base = url
-        images = []
-        seen = set()
-        for src in srcs:
-            if not src or src.startswith("data:"):
-                continue
-            full = urljoin(base, src)
-            # Skip obviously non-product images
-            skip_words = ["logo", "icon", "favicon", "sprite", "banner", "flag",
-                         "payment", "badge", "star", "rating", "arrow", "tracking"]
-            if any(w in full.lower() for w in skip_words):
-                continue
-            # Only jpg/png/webp
-            if not any(ext in full.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
-                continue
-            if full not in seen:
-                seen.add(full)
-                images.append(full)
-            if len(images) >= 20:
-                break
-
-        return {"images": images, "count": len(images)}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@app.post("/generate-kreative")
-async def generate_kreative(data: dict):
-    """Generira kreative z Google Gemini (Nano Banana 2) API."""
-    import base64, struct, zlib
-
-    product_name = data.get("productName", "")
-    a_options = data.get("aOptions", [])
-    b_options = data.get("bOptions", [])
-    count = data.get("count", 4)
-    ref_images = data.get("images", [])  # base64 data URLs
-
-    if not product_name or not a_options or not b_options:
-        return {"error": "Manjkajo podatki (ime izdelka, A ali B opcije)."}
-
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    if not gemini_key:
-        return {"error": "GEMINI_API_KEY ni nastavljen v Render environment variables."}
-
-    # Build combinations
-    combos = []
-    for a in a_options:
-        for b in b_options:
-            prompt = (
-                f"From these reference images create a new FB ad creative. "
-                f"Try a more intense '{b.get('text', '')}' background. "
-                f"Do not include any text/words on the image except the device name in capital letters '{product_name}' — place it where it fits best or makes sense. "
-                f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
-                f"Highlight (can be through icons or text in English) that it is: {a.get('text', '')}. "
-                f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. Square 1:1 format."
-            )
-            combos.append({
-                "combo": f"{a.get('label','A')} × {b.get('label','B')}",
-                "prompt": prompt,
-            })
-
-    # Prepare reference image parts for Gemini
-    # Upload referenčne slike enkrat na Gemini Files API (ne pošiljamo base64 v vsak klic)
-    file_uris = []
-    if ref_images:
-        async with httpx.AsyncClient(timeout=60.0) as hc:
-            for img_data in ref_images[:4]:  # max 4 referenčne slike
-                try:
-                    if "," in img_data:
-                        header, b64 = img_data.split(",", 1)
-                        mime = header.split(":")[1].split(";")[0]
-                    else:
-                        b64 = img_data
-                        mime = "image/jpeg"
-                    img_bytes = __import__("base64").b64decode(b64)
-                    upload_url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={gemini_key}"
-                    resp = await hc.post(
-                        upload_url,
-                        content=img_bytes,
-                        headers={"Content-Type": mime, "X-Goog-Upload-Content-Type": mime,
-                                 "X-Goog-Upload-Protocol": "raw"}
-                    )
-                    if resp.status_code == 200:
-                        uri = resp.json().get("file", {}).get("uri", "")
-                        if uri:
-                            file_uris.append({"fileData": {"mimeType": mime, "fileUri": uri}})
-                except Exception:
-                    continue
-
-    # Fallback: če Files API ne dela, uporabi inline za prvo sliko
-    if file_uris:
-        image_parts = file_uris
-    elif ref_images:
-        try:
-            img_data = ref_images[0]
-            if "," in img_data:
-                header, b64 = img_data.split(",", 1)
-                mime = header.split(":")[1].split(";")[0]
-            else:
-                b64 = img_data; mime = "image/jpeg"
-            image_parts = [{"inline_data": {"mime_type": mime, "data": b64}}]
-        except Exception:
-            image_parts = []
-    else:
-        image_parts = []
-
-    async def generate_one_image(combo_prompt, combo_label, idx):
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={gemini_key}"
-        parts = list(image_parts) + [{"text": combo_prompt}]
-        payload = {
-            "contents": [{"parts": parts}],
-            "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]}
-        }
-        try:
-            async with httpx.AsyncClient(timeout=120.0) as hc:
-                resp = await hc.post(api_url, json=payload, headers={"Content-Type": "application/json"})
-                result = resp.json()
-            if resp.status_code != 200:
-                return None, result.get("error", {}).get("message", str(result))
-            for candidate in result.get("candidates", []):
-                for part in candidate.get("content", {}).get("parts", []):
-                    if "inlineData" in part:
-                        inline = part["inlineData"]
-                        mime = inline.get("mimeType", "image/png")
-                        b64_data = inline.get("data", "")
-                        return f"data:{mime};base64,{b64_data}", None
-            return None, "Gemini ni vrnil slike: " + str(result)[:150]
-        except Exception as e:
-            return None, str(e)
-
-    async def generate_combo(combo):
-        """Generate `count` images for one combo in parallel."""
-        tasks = [generate_one_image(combo["prompt"], combo["combo"], i) for i in range(count)]
-        img_results = await asyncio.gather(*tasks)
-        imgs = [img for img, err in img_results if img]
-        errors = [err for img, err in img_results if err]
-        if not imgs:
-            return {"combo": combo["combo"], "images": [], "error": errors[0] if errors else "Ni slike"}
-        return {"combo": combo["combo"], "images": imgs}
-
-    # Vse kombinacije + vse slike vzporedno
-    results = await asyncio.gather(*[generate_combo(combo) for combo in combos])
-    return {"results": list(results)}
-
-
-# ─── ASANA ENDPOINTS ──────────────────────────────────────────────────────────
-
-ASANA_API = "https://app.asana.com/api/1.0"
-
-def asana_headers():
-    token = os.environ.get("ASANA_API_KEY", "")
-    return {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-
-@app.get("/asana-search")
-async def asana_search(q: str = ""):
-    """Išče Asana taske po imenu."""
-    if not q:
-        return {"tasks": []}
-    token = os.environ.get("ASANA_API_KEY", "")
-    if not token:
-        return {"error": "ASANA_API_KEY ni nastavljen."}
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as hc:
-            # Get workspaces first
-            ws_resp = await hc.get(f"{ASANA_API}/workspaces", headers=asana_headers())
-            workspaces = ws_resp.json().get("data", [])
-            if not workspaces:
-                return {"error": "Ni najdenih workspace-ov."}
-            ws_gid = workspaces[0]["gid"]
-
-            # Search tasks
-            params = {"workspace": ws_gid, "text": q, "resource_type": "task",
-                      "opt_fields": "gid,name,projects.name"}
-            search_resp = await hc.get(f"{ASANA_API}/workspaces/{ws_gid}/tasks/search",
-                                        params=params, headers=asana_headers())
-            tasks_raw = search_resp.json().get("data", [])
-
-            tasks = []
-            for t in tasks_raw[:10]:
-                projects = t.get("projects", [])
-                proj_name = projects[0]["name"] if projects else ""
-                tasks.append({"gid": t["gid"], "name": t["name"], "project": proj_name})
-
-            return {"tasks": tasks}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@app.post("/asana-attach")
-async def asana_attach(data: dict):
-    """Priloži slike (base64 data URLs) na Asana task."""
-    task_id = data.get("task_id", "")
-    image_urls = data.get("image_urls", [])
-
-    if not task_id or not image_urls:
-        return {"error": "Manjka task_id ali slike."}
-
-    token = os.environ.get("ASANA_API_KEY", "")
-    if not token:
-        return {"error": "ASANA_API_KEY ni nastavljen."}
-
-    attached = 0
-    errors = []
-
-    async with httpx.AsyncClient(timeout=60.0) as hc:
-        for i, img_url in enumerate(image_urls):
-            try:
-                # Decode base64 data URL
-                if img_url.startswith("data:"):
-                    header, b64data = img_url.split(",", 1)
-                    mime = header.split(":")[1].split(";")[0]
-                    ext = mime.split("/")[1] if "/" in mime else "png"
-                    img_bytes = __import__("base64").b64decode(b64data)
-                else:
-                    # Regular URL — fetch it
-                    img_resp = await hc.get(img_url)
-                    img_bytes = img_resp.content
-                    mime = img_resp.headers.get("content-type", "image/png")
-                    ext = "png"
-
-                filename = f"kreativa_{i+1}.{ext}"
-
-                # Upload to Asana as attachment
-                files = {"file": (filename, img_bytes, mime)}
-                attach_resp = await hc.post(
-                    f"{ASANA_API}/tasks/{task_id}/attachments",
-                    headers={"Authorization": f"Bearer {token}"},
-                    files=files
-                )
-
-                if attach_resp.status_code in (200, 201):
-                    attached += 1
-                else:
-                    errors.append(f"Slika {i+1}: {attach_resp.text[:100]}")
-
-            except Exception as e:
-                errors.append(f"Slika {i+1}: {str(e)}")
-
-    return {"attached": attached, "errors": errors, "total": len(image_urls)}
-
-
-# ─── LOKALIZACIJA ENDPOINT ───────────────────────────────────────────────────
-
-LANG_NAMES = {
-    "HR": "Croatian", "RS": "Serbian (Latin script)",
-    "HU": "Hungarian", "CZ": "Czech", "SK": "Slovak",
-    "PL": "Polish", "RO": "Romanian", "BG": "Bulgarian",
-    "GR": "Greek", "SL": "Slovenian"
+// ─── KARANTENA TAB ───────────────────────────────────────────────────────────
+
+function narcSwitchTab(tab) {
+  document.getElementById('narcPanel-razlike').style.display = tab === 'razlike' ? 'block' : 'none';
+  document.getElementById('narcPanel-karantena').style.display = tab === 'karantena' ? 'block' : 'none';
+  document.getElementById('narcTab-razlike').classList.toggle('active', tab === 'razlike');
+  document.getElementById('narcTab-karantena').classList.toggle('active', tab === 'karantena');
 }
 
-@app.post("/localize-kreativa")
-async def localize_kreativa(data: dict):
-    """Prevede tekst na hero kreativu v izbrane jezike z Gemini."""
-    image_data = data.get("image", "") or (data.get("images", [None])[0] or "")
-    images_data = data.get("images", [])
-    if not images_data and image_data:
-        images_data = [image_data]
-    languages = data.get("languages", [])
-    asana_task_id = data.get("asana_task_id")
-    sku = data.get("sku", "SKU").strip().upper()
-    brand = data.get("brand", "").strip()
+let karanData = [];
+let karanSortCol = 'sku';
+let karanSortAsc = true;
+let karanFilter = 'all';
 
-    if not images_data or not languages:
-        return {"error": "Manjka slika ali jeziki."}
-
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    if not gemini_key:
-        return {"error": "GEMINI_API_KEY ni nastavljen."}
-
-    # Decode base64 image
-    try:
-        if "," in image_data:
-            header, b64 = image_data.split(",", 1)
-            mime = header.split(":")[1].split(";")[0]
-        else:
-            b64 = image_data
-            mime = "image/jpeg"
-    except Exception as e:
-        return {"error": f"Napaka pri dekodiranju slike: {e}"}
-
-    async def translate_one(lang_code, img_b64, img_mime, img_idx):
-        lang_name = LANG_NAMES.get(lang_code, lang_code)
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={gemini_key}"
-        brand_note = f" Do NOT translate these brand/product names (keep exactly as-is): {brand}." if brand else ""
-        prompt = (
-            f"Edit this image to translate all visible text into {lang_name}. "
-            f"Keep EVERYTHING exactly the same — same people, same background, same layout, same design, same product, same icons, same colors, same fonts. "
-            f"ONLY translate the text that is NOT a brand name or logo."
-            f"{brand_note} "
-            f"Do NOT translate or modify any brand names, logos, or product names. "
-            f"Keep all text in the same position, same style, same size."
-        )
-        payload = {
-            "contents": [{"parts": [
-                {"inline_data": {"mime_type": img_mime, "data": img_b64}},
-                {"text": prompt}
-            ]}],
-            "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]}
-        }
-        try:
-            async with httpx.AsyncClient(timeout=120.0) as hc:
-                resp = await hc.post(api_url, json=payload, headers={"Content-Type": "application/json"})
-                result = resp.json()
-            if resp.status_code != 200:
-                return {"lang": lang_code, "lang_name": lang_name, "url": None,
-                        "error": result.get("error", {}).get("message", str(result))[:200]}
-            for candidate in result.get("candidates", []):
-                for part in candidate.get("content", {}).get("parts", []):
-                    if "inlineData" in part:
-                        out_mime = part["inlineData"].get("mimeType", "image/png")
-                        out_b64 = part["inlineData"].get("data", "")
-                        img_url = f"data:{out_mime};base64,{out_b64}"
-                        filename = f"{sku}_{lang_code}_v{img_idx}.png"
-                        asana_ok = False
-                        if asana_task_id:
-                            try:
-                                img_bytes = __import__("base64").b64decode(out_b64)
-                                token = os.environ.get("ASANA_API_KEY", "")
-                                async with httpx.AsyncClient(timeout=30.0) as hc2:
-                                    attach_resp = await hc2.post(
-                                        f"{ASANA_API}/tasks/{asana_task_id}/attachments",
-                                        headers={"Authorization": f"Bearer {token}"},
-                                        files={"file": (filename, img_bytes, out_mime)}
-                                    )
-                                asana_ok = attach_resp.status_code in (200, 201)
-                            except Exception:
-                                pass
-                        return {"lang": lang_code, "lang_name": lang_name, "url": img_url, "filename": filename, "asana_ok": asana_ok}
-            return {"lang": lang_code, "lang_name": lang_name, "url": None, "error": "Ni slike"}
-        except Exception as e:
-            return {"lang": lang_code, "lang_name": lang_name, "url": None, "error": str(e)}
-
-    # Pripravi vse kombinacije slika × jezik vzporedno
-    tasks = []
-    for img_idx, img_data_item in enumerate(images_data, 1):
-        try:
-            if "," in img_data_item:
-                header, b64 = img_data_item.split(",", 1)
-                mime = header.split(":")[1].split(";")[0]
-            else:
-                b64 = img_data_item; mime = "image/jpeg"
-        except Exception:
-            continue
-        for lang_code in languages:
-            tasks.append(translate_one(lang_code, b64, mime, img_idx))
-    results = await asyncio.gather(*tasks)
-    return {"results": list(results)}
-
-
-# ─── NAROČILNICE HISTORY ─────────────────────────────────────────────────────
-
-NAROCILNICE_HISTORY_FILE = DATA_DIR / "narocilnice_history.json"
-
-@app.get("/narocilnice-history")
-async def get_narocilnice_history():
-    if NAROCILNICE_HISTORY_FILE.exists():
-        try:
-            return json.loads(NAROCILNICE_HISTORY_FILE.read_text(encoding="utf-8"))
-        except:
-            return []
-    return []
-
-@app.post("/narocilnice-history")
-async def save_narocilnice_history(data: dict):
-    try:
-        history = []
-        if NAROCILNICE_HISTORY_FILE.exists():
-            try:
-                history = json.loads(NAROCILNICE_HISTORY_FILE.read_text(encoding="utf-8"))
-            except:
-                history = []
-        
-        csv_text = data.get("csv", "")
-        date = data.get("date", "")
-        
-        # Count negative rows
-        rows = 0
-        for line in csv_text.split('\n')[1:]:
-            if line.strip():
-                rows += 1
-        
-        history.append({"csv": csv_text, "date": date, "rows": rows})
-        # Keep last 50
-        if len(history) > 50:
-            history = history[-50:]
-        
-        NAROCILNICE_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok", "count": len(history)}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-# ─── NAROČILNICE SKU LOOKUP ───────────────────────────────────────────────────
-
-@app.post("/narocilnice-lookup")
-async def narocilnice_lookup(data: dict):
-    """Poišče URL izdelka v Maaarket XML feedu po SKU ali nazivu."""
-    skus = data.get("skus", [])  # list of {sku, naziv}
-    
-    await ensure_cache_fresh()
-    
-    results = {}
-    sl_feed = feed_by_lang.get("sl", {})
-    
-    for item in skus:
-        sku = item.get("sku", "").strip().upper()
-        naziv = item.get("naziv", "").strip().lower()
-        
-        found_url = None
-        
-        # Search by SKU in title/id
-        for g_id, prod in sl_feed.items():
-            prod_title = prod.get("title", "").strip()
-            prod_url = prod.get("url", "")
-            prod_slug = extract_slug(prod_url) or ""
-            
-            # Match SKU in title or slug
-            if (sku and (sku.lower() in prod_title.lower() or sku.lower() in prod_slug.lower())):
-                found_url = prod_url
-                break
-        
-        # Fallback: search by naziv words (first 3 significant words)
-        if not found_url and naziv:
-            words = [w for w in naziv.split() if len(w) > 3][:3]
-            if words:
-                best_score = 0
-                for g_id, prod in sl_feed.items():
-                    prod_title = prod.get("title", "").strip().lower()
-                    score = sum(1 for w in words if w in prod_title)
-                    if score > best_score and score >= 2:
-                        best_score = score
-                        found_url = prod.get("url", "")
-        
-        if found_url:
-            results[sku] = found_url
-    
-    return {"urls": results}
-
-
-@app.post("/narocilnice-history-set")
-async def set_narocilnice_history(data: dict):
-    """Nastavi celotno zgodovino (za brisanje)."""
-    try:
-        history = data.get("history", [])
-        NAROCILNICE_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok", "count": len(history)}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-
-# ─── FORECAST EOD (End-of-day končna naročila) ───────────────────────────────
-
-FORECAST_EOD_FILE = DATA_DIR / "forecast_eod.json"
-
-@app.get("/forecast-eod")
-async def get_forecast_eod():
-    if FORECAST_EOD_FILE.exists():
-        try:
-            return json.loads(FORECAST_EOD_FILE.read_text(encoding="utf-8"))
-        except:
-            pass
-    return {}
-
-@app.post("/forecast-eod")
-async def save_forecast_eod(data: dict):
-    try:
-        FORECAST_EOD_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok", "count": len(data)}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-# ─── KARANTENA PDF PARSER ─────────────────────────────────────────────────────
-
-from fastapi import UploadFile, File, Form
-import io
-import re as _re
-
-@app.post("/parse-karantena-pdf")
-async def parse_karantena_pdf(file: UploadFile = File(...)):
-    """Parsira PDF karantene in vrne strukturirane podatke."""
-    try:
-        import pdfplumber
-        content = await file.read()
-        rows = []
-        
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            full_text = ""
-            for page in pdf.pages:
-                # Poskusi extract table najprej
-                tables = page.extract_tables()
-                if tables:
-                    for table in tables:
-                        for row in table:
-                            if not row or not any(row):
-                                continue
-                            # Preskoči header vrstice
-                            if row[0] and str(row[0]).strip().lower() in ('product_id', 'id', '#'):
-                                continue
-                            # Normalizacija vrstice
-                            cells = [str(c).strip() if c else '' for c in row]
-                            if len(cells) >= 3:
-                                product_id = cells[0] if cells[0] else ''
-                                sku = cells[1] if len(cells) > 1 else ''
-                                title = cells[2] if len(cells) > 2 else ''
-                                stock = cells[3] if len(cells) > 3 else '0'
-                                stock_actual = cells[4] if len(cells) > 4 else '0'
-                                position = cells[5] if len(cells) > 5 else ''
-                                
-                                # Preskoči header
-                                if sku.lower() in ('product_sku', 'sku', ''):
-                                    continue
-                                
-                                try: stock = int(float(stock))
-                                except: stock = 0
-                                try: stock_actual = int(float(stock_actual))
-                                except: stock_actual = 0
-                                
-                                rows.append({
-                                    'product_id': product_id,
-                                    'sku': sku,
-                                    'title': title,
-                                    'stock': stock,
-                                    'stock_actual': stock_actual,
-                                    'position': position,
-                                })
-                else:
-                    full_text += (page.extract_text() or "") + "\n"
-            
-            # Fallback: text parsing če ni tabel
-            if not rows and full_text:
-                lines = full_text.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    parts = line.split()
-                    if len(parts) >= 3 and parts[0].isdigit():
-                        product_id = parts[0]
-                        sku = parts[1]
-                        # Preskoči header
-                        if sku.lower() in ('product_sku', 'sku'):
-                            continue
-                        # Poišči zadnji del ki je številka (stock)
-                        stock = 0
-                        stock_actual = 0
-                        position = ''
-                        title_parts = []
-                        for i, p in enumerate(parts[2:], 2):
-                            if _re.match(r'^\d+$', p):
-                                stock = int(p)
-                                if i+1 < len(parts) and _re.match(r'^\d+$', parts[i+1]):
-                                    stock_actual = int(parts[i+1])
-                                    if i+2 < len(parts):
-                                        position = parts[i+2]
-                                break
-                            else:
-                                title_parts.append(p)
-                        title = ' '.join(title_parts)
-                        rows.append({
-                            'product_id': product_id,
-                            'sku': sku,
-                            'title': title,
-                            'stock': stock,
-                            'stock_actual': stock_actual,
-                            'position': position,
-                        })
-        
-        if not rows:
-            return {"error": "Ni podatkov v PDF-u."}
-        
-        print(f"[karantena] Parsed {len(rows)} rows from PDF")
-        return {"rows": rows, "count": len(rows)}
-        
-    except ImportError:
-        return {"error": "pdfplumber ni nameščen. Dodaj ga v requirements.txt."}
-    except Exception as e:
-        import traceback
-        print(f"[karantena] Error: {e}\n{traceback.format_exc()[-500:]}")
-        return {"error": str(e)}
-
-
-# ─── KARANTENA HISTORY ────────────────────────────────────────────────────────
-
-KARANTENA_HISTORY_FILE = DATA_DIR / "karantena_history.json"
-
-@app.get("/karantena-history")
-async def get_karantena_history():
-    if KARANTENA_HISTORY_FILE.exists():
-        try:
-            return json.loads(KARANTENA_HISTORY_FILE.read_text(encoding="utf-8"))
-        except:
-            return []
-    return []
-
-@app.post("/karantena-history")
-async def save_karantena_history(data: dict):
-    try:
-        history = []
-        if KARANTENA_HISTORY_FILE.exists():
-            try:
-                history = json.loads(KARANTENA_HISTORY_FILE.read_text(encoding="utf-8"))
-            except:
-                history = []
-        history.append({
-            "rows": data.get("rows", []),
-            "filename": data.get("filename", ""),
-            "date": data.get("date", "")
-        })
-        if len(history) > 30:
-            history = history[-30:]
-        KARANTENA_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok"}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/karantena-history-set")
-async def set_karantena_history(data: dict):
-    try:
-        history = data.get("history", [])
-        KARANTENA_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok"}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-# ─── VIDEO ADS — SCRIPT GENERATION ───────────────────────────────────────────
-
-@app.post("/generate-video-scripts")
-async def generate_video_scripts(data: dict):
-    input_text = data.get("input", "").strip()
-    duration = data.get("duration", 15)
-    if not input_text:
-        return {"error": "Manjka vnos."}
-
-    mode = "url" if input_text.startswith("http") else "text"
-    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
-    # ~2.5 besede/sekundo za naravni govorni tempo, -1s buffer
-    words = max(20, min(120, int((duration - 1) * 2.5)))
-
-    prompt = f"""{'Preberi to stran in' if mode == 'url' else 'Na podlagi tega opisa'} ustvari voice over skripte za video oglas v 10 jezikih.
-
-{'Stran: ' + input_text if mode == 'url' else 'Opis: ' + input_text}
-
-Pravila:
-- Točno {words} besed na jezik (±5)
-- Naravni govorni slog, kot da govori prijatelj
-- Poudarek na eni glavni koristi izdelka
-- Brez cen, brez "klikni", brez "naroči"
-- Konec z močno izjavo (ne pozivom k akciji)
-- SL: slovenščina, HR: hrvaščina (latinica), RS: srbščina (SAMO latinica), HU: madžarščina, CZ: češčina, SK: slovaščina, PL: poljščina, GR: grščina (grška pisava), RO: romunščina, BG: bolgarščina (SAMO cirilica)
-
-Vrni SAMO JSON brez markdown:
-{{"product": "ime izdelka", "sl": "...", "hr": "...", "rs": "...", "hu": "...", "cz": "...", "sk": "...", "pl": "...", "gr": "...", "ro": "...", "bg": "..."}}"""
-
-    try:
-        text = await call_claude(prompt, "claude-sonnet-4-6", tools if tools else None, 10000)
-        data_parsed = parse_json_response(text)
-        if not data_parsed:
-            return {"error": "Napaka pri generiranju skript."}
-        scripts = {k: v for k, v in data_parsed.items() if k != "product"}
-        return {"scripts": scripts, "product": data_parsed.get("product", "")}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-# ─── VIDEO ADS — ELEVENLABS AUDIO ────────────────────────────────────────────
-
-ELEVENLABS_VOICES = {
-    "sl": "pNInz6obpgDQGcFmaJgB",  # Adam — multilingual
-    "hr": "pNInz6obpgDQGcFmaJgB",
-    "rs": "pNInz6obpgDQGcFmaJgB",
-    "hu": "pNInz6obpgDQGcFmaJgB",
-    "cz": "pNInz6obpgDQGcFmaJgB",
-    "sk": "pNInz6obpgDQGcFmaJgB",
-    "pl": "pNInz6obpgDQGcFmaJgB",
-    "gr": "pNInz6obpgDQGcFmaJgB",
-    "ro": "pNInz6obpgDQGcFmaJgB",
-    "bg": "pNInz6obpgDQGcFmaJgB",
+function karanSetFilter(f) {
+  karanFilter = f;
+  document.getElementById('karanFilter-all').style.background = f === 'all' ? 'var(--accent)' : 'var(--surface2)';
+  document.getElementById('karanFilter-all').style.color = f === 'all' ? 'white' : 'var(--text-secondary)';
+  document.getElementById('karanFilter-all').style.borderColor = f === 'all' ? 'var(--accent)' : 'var(--border)';
+  document.getElementById('karanFilter-dup').style.background = f === 'dup' ? '#f59e0b' : '#fef3c7';
+  document.getElementById('karanFilter-dup').style.color = f === 'dup' ? 'white' : '#92400e';
+  karanRenderTable();
 }
 
-def _parse_words(alignment: dict):
-    """Iz ElevenLabs alignment podatkov izloci seznam (beseda, start, end)."""
-    chars = alignment.get("characters", [])
-    starts = alignment.get("character_start_times_seconds", [])
-    ends = alignment.get("character_end_times_seconds", [])
-    words = []
-    cur_word, cur_start, cur_end = "", None, None
-    for i, ch in enumerate(chars):
-        if i >= len(starts):
-            break
-        t_start = starts[i]
-        t_end = ends[i] if i < len(ends) else t_start + 0.1
-        if ch in (' ', '\n', '\t'):
-            if cur_word:
-                words.append((cur_word, cur_start, cur_end))
-            cur_word, cur_start, cur_end = "", None, None
-        else:
-            if cur_start is None:
-                cur_start = t_start
-            cur_end = t_end
-            cur_word += ch
-    if cur_word:
-        words.append((cur_word, cur_start, cur_end))
-    return words
+function karanSort(col) {
+  if (karanSortCol === col) karanSortAsc = !karanSortAsc;
+  else { karanSortCol = col; karanSortAsc = true; }
+  karanRenderTable();
+}
 
+async function karanHandleFile(file) {
+  if (!file) return;
+  const status = document.getElementById('karanUploadStatus');
+  status.style.display = 'block';
+  status.style.color = 'var(--text-tertiary)';
+  status.textContent = 'Berem PDF...';
 
-def build_srt(alignment: dict) -> str:
-    """Generira SRT iz ElevenLabs alignment (za download)."""
-    words = _parse_words(alignment)
-    if not words:
-        return ""
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/parse-karantena-pdf', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + data.error; return; }
+    karanData = data.rows;
+    status.style.color = 'var(--green)';
+    status.textContent = '✓ ' + karanData.length + ' postavk naloženih';
+    karanRenderTable();
+    karanSaveHistory(data.rows, file.name);
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = 'Napaka: ' + e.message;
+  }
+}
 
-    def fmt(s):
-        h, m = int(s // 3600), int((s % 3600) // 60)
-        sec, ms = int(s % 60), int((s - int(s)) * 1000)
-        return f"{h:02d}:{m:02d}:{sec:02d},{ms:03d}"
+function karanRenderTable() {
+  const q = (document.getElementById('karanSearch')?.value || '').toLowerCase();
 
-    lines, i, idx = [], 0, 1
-    while i < len(words):
-        grp = [words[i]]
-        i += 1
-        while i < len(words) and len(grp) < 5 and (words[i][1] - grp[0][1]) < 3.0:
-            grp.append(words[i]); i += 1
-        lines.append(f"{idx}\n{fmt(grp[0][1])} --> {fmt(grp[-1][2])}\n{' '.join(w[0] for w in grp)}\n")
-        idx += 1
-    return "\n".join(lines)
+  // Najdi podvojene SKU-je
+  const skuCount = {};
+  karanData.forEach(r => { skuCount[r.sku] = (skuCount[r.sku] || 0) + 1; });
+  const dupSkus = new Set(Object.keys(skuCount).filter(s => skuCount[s] > 1));
 
+  let rows = karanData.filter(r => {
+    const matchQ = !q || r.sku.toLowerCase().includes(q) || r.title.toLowerCase().includes(q);
+    const matchF = karanFilter === 'dup' ? dupSkus.has(r.sku) : true;
+    return matchQ && matchF;
+  });
 
-def get_subtitle_style_for_format(width: int, height: int) -> dict:
-    """Vrne optimalne subtitle nastavitve glede na video format."""
-    if width == 0 or height == 0:
-        # Default: assume 9:16
-        return {"fontsize": 64, "marginv": 100, "outline": 5, "max_words": 4, "playresx": 1080, "playresy": 1920}
-    
-    ratio = width / height
-    
-    if ratio < 0.7:
-        # 9:16 vertical (TikTok, Reels, Stories) — 0.5625
-        return {"fontsize": 64, "marginv": 100, "outline": 5, "max_words": 4, "playresx": width, "playresy": height}
-    elif ratio < 1.2:
-        # 1:1 square (Insta/FB feed) — 1.0
-        return {"fontsize": 50, "marginv": 70, "outline": 4, "max_words": 5, "playresx": width, "playresy": height}
-    elif ratio < 1.6:
-        # 4:3 (1.33)
-        return {"fontsize": 44, "marginv": 60, "outline": 4, "max_words": 5, "playresx": width, "playresy": height}
-    else:
-        # 16:9 horizontal (YouTube, etc.) — 1.78
-        return {"fontsize": 42, "marginv": 50, "outline": 3, "max_words": 6, "playresx": width, "playresy": height}
+  rows.sort((a, b) => {
+    let av = a[karanSortCol], bv = b[karanSortCol];
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    if (av < bv) return karanSortAsc ? -1 : 1;
+    if (av > bv) return karanSortAsc ? 1 : -1;
+    return 0;
+  });
 
+  const _nd = v => (v === '' || v === null || v === undefined || v === 0) ? '<span style="color:var(--text-tertiary);font-size:11px">—</span>' : v;
 
-def build_ass(alignment: dict, video_width: int = 1080, video_height: int = 1920) -> str:
-    """Generira ASS karaoke podnapise — Stil B (bela+rumena, debela obroba), prilagojen formatu."""
-    words = _parse_words(alignment)
-    if not words:
-        return ""
+  const tbody = document.getElementById('karanTableBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Ni podatkov.</td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(r => {
+      const isDup = dupSkus.has(r.sku);
+      const dupBadge = isDup ? ' <span style="font-size:10px;background:#fef3c7;color:#92400e;border-radius:3px;padding:1px 5px;font-weight:600">2×</span>' : '';
+      return '<tr class="' + (isDup ? 'dup-row' : '') + '">' +
+        '<td><strong>' + esc(r.sku) + '</strong>' + dupBadge + '</td>' +
+        '<td>' + esc(r.title) + '</td>' +
+        '<td>' + _nd(r.stock) + '</td>' +
+        '<td>' + _nd(r.stock_actual) + '</td>' +
+        '<td style="font-size:12px">' + _nd(r.position) + '</td>' +
+        '</tr>';
+    }).join('');
+  }
 
-    style = get_subtitle_style_for_format(video_width, video_height)
-    fontsize = style["fontsize"]
-    marginv = style["marginv"]
-    outline = style["outline"]
-    max_words = style["max_words"]
-    playresx = style["playresx"]
-    playresy = style["playresy"]
+  // Summary
+  const totalStock = karanData.reduce((s, r) => s + (r.stock || 0), 0);
+  const dupCount = dupSkus.size;
+  document.getElementById('karanTitle').textContent = 'KARANTENA — ' + karanData.length + ' postavk';
+  const sum = document.getElementById('karanSummary');
+  sum.style.display = karanData.length ? 'flex' : 'none';
+  document.getElementById('karanRowCount').textContent = karanData.length;
+  document.getElementById('karanStockSum').textContent = totalStock;
+  document.getElementById('karanDupCount').textContent = dupCount;
+  const dupBtn = document.getElementById('karanFilter-dup');
+  if (dupBtn) dupBtn.style.display = dupCount ? 'inline-flex' : 'none';
+}
 
-    # ASS header — prilagojen video formatu
-    header = f"""[Script Info]
-ScriptType: v4.00+
-PlayResX: {playresx}
-PlayResY: {playresy}
+// Drag & drop za karantena
+(function(){
+  const dz2 = document.getElementById('karanDropZone');
+  if (dz2) {
+    dz2.addEventListener('dragover', e => { e.preventDefault(); dz2.classList.add('dragover'); });
+    dz2.addEventListener('dragleave', () => dz2.classList.remove('dragover'));
+    dz2.addEventListener('drop', e => { e.preventDefault(); dz2.classList.remove('dragover'); karanHandleFile(e.dataTransfer.files[0]); });
+  }
+})();
 
-[V4+ Styles]
-Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Default,Arial,{fontsize},&H00FFFFFF,&H00FFD600,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{outline},0,2,30,30,{marginv},1
+// ─── KARANTENA ZGODOVINA ─────────────────────────────────────────────────────
 
-[Events]
-Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
-"""
+async function karanSaveHistory(rows, filename) {
+  try {
+    await fetch('/karantena-history', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({rows, filename, date: new Date().toLocaleString('sl-SI')})
+    });
+    karanLoadHistory();
+  } catch(e) {}
+}
 
-    def fmt(s):
-        h, m = int(s // 3600), int((s % 3600) // 60)
-        sec, cs = int(s % 60), int((s - int(s)) * 100)
-        return f"{h}:{m:02d}:{sec:02d}.{cs:02d}"
+async function karanLoadHistory() {
+  try {
+    const res = await fetch('/karantena-history');
+    const data = await res.json();
+    const el = document.getElementById('karanHistList');
+    if (!data.length) { el.innerHTML = '<div class="history-empty">Ni zgodovine.</div>'; return; }
+    el.innerHTML = data.slice().reverse().map((h, i) =>
+      `<div class="narc-hist-item" style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1;cursor:pointer" onclick="karanLoadFromHistory(${data.length-1-i})">
+          <div style="font-weight:500;font-size:12px">📄 ${esc(h.filename||'Uvoz #'+(data.length-i))}</div>
+          <div class="narc-hist-date">${esc(h.date)} · ${(h.rows||[]).length} postavk</div>
+        </div>
+        <button onclick="karanDeleteHistoryItem(${data.length-1-i})" style="background:none;border:none;cursor:pointer;color:var(--text-tertiary);font-size:14px;padding:2px 4px;flex-shrink:0" title="Zbriši">🗑</button>
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
 
-    # Grupiraj v vrstice (max max_words besed)
-    lines_out = []
-    i = 0
-    while i < len(words):
-        grp = [words[i]]; i += 1
-        while i < len(words) and len(grp) < max_words and (words[i][1] - grp[0][1]) < 2.5:
-            grp.append(words[i]); i += 1
+async function karanLoadFromHistory(idx) {
+  try {
+    const res = await fetch('/karantena-history');
+    const data = await res.json();
+    if (!data[idx]) return;
+    karanData = data[idx].rows || [];
+    karanRenderTable();
+  } catch(e) {}
+}
 
-        t_in = grp[0][1]
-        t_out = grp[-1][2] + 0.05
+async function karanDeleteHistoryItem(idx) {
+  if (!confirm('Zbrisati ta uvoz?')) return;
+  try {
+    const res = await fetch('/karantena-history');
+    let data = await res.json();
+    data.splice(idx, 1);
+    await fetch('/karantena-history-set', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({history: data})});
+    karanLoadHistory();
+  } catch(e) {}
+}
 
-        # Karaoke: vsaka beseda dobi {\kXX} tag (čas v centisekundah)
-        parts = []
-        for wi, (word, wstart, wend) in enumerate(grp):
-            # Čas do naslednje besede ali konec
-            if wi + 1 < len(grp):
-                dur_cs = int((grp[wi+1][1] - wstart) * 100)
-            else:
-                dur_cs = int((wend - wstart) * 100) + 5
-            dur_cs = max(dur_cs, 5)
-            parts.append("{" + chr(92) + "k" + str(dur_cs) + "}" + word)
+async function karanDeleteAllHistory() {
+  if (!confirm('Zbrisati vso zgodovino karantene?')) return;
+  try {
+    await fetch('/karantena-history-set', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({history: []})});
+    karanLoadHistory();
+  } catch(e) {}
+}
 
-        karaoke_text = " ".join(parts)
-        lines_out.append(f"Dialogue: 0,{fmt(t_in)},{fmt(t_out)},Default,,0,0,0,,{karaoke_text}")
+// ─── VIDEO ADS ────────────────────────────────────────────────────────────────
 
-    return header + "\n".join(lines_out)
+const VADS_LANGS = [
+  {code:'sl', name:'Slovenščina', flag:'🇸🇮'},
+  {code:'hr', name:'Hrvaščina', flag:'🇭🇷'},
+  {code:'rs', name:'Srbščina', flag:'🇷🇸'},
+  {code:'hu', name:'Madžarščina', flag:'🇭🇺'},
+  {code:'cz', name:'Češčina', flag:'🇨🇿'},
+  {code:'sk', name:'Slovaščina', flag:'🇸🇰'},
+  {code:'pl', name:'Poljščina', flag:'🇵🇱'},
+  {code:'gr', name:'Grščina', flag:'🇬🇷'},
+  {code:'ro', name:'Romunščina', flag:'🇷🇴'},
+  {code:'bg', name:'Bolgarščina', flag:'🇧🇬'},
+];
 
+let vadsDuration = 15;
+let vadsScripts = {};
+let vadsVideoFiles = []; // array videotov
 
-@app.post("/generate-audio")
-async def generate_audio(data: dict):
-    text = data.get("text", "").strip()
-    lang = data.get("lang", "sl")
-    if not text:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Manjka tekst."}, status_code=400)
+function vadsSetDur(d) {
+  vadsDuration = d;
+  document.getElementById('vadsDur-15').style.background = d === 15 ? 'var(--accent-dim)' : 'var(--surface)';
+  document.getElementById('vadsDur-15').style.color = d === 15 ? 'var(--accent)' : 'var(--text-secondary)';
+  document.getElementById('vadsDur-15').style.borderColor = d === 15 ? 'var(--accent-border)' : 'var(--border)';
+  document.getElementById('vadsDur-30').style.background = d === 30 ? 'var(--accent-dim)' : 'var(--surface)';
+  document.getElementById('vadsDur-30').style.color = d === 30 ? 'var(--accent)' : 'var(--text-secondary)';
+  document.getElementById('vadsDur-30').style.borderColor = d === 30 ? 'var(--accent-border)' : 'var(--border)';
+}
 
-    api_key = os.environ.get("ELEVENLABS_API_KEY", "")
-    if not api_key:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "ELEVENLABS_API_KEY ni nastavljen."}, status_code=400)
+function vadsInputChanged() { }
 
-    voice_id = ELEVENLABS_VOICES.get(lang, "pNInz6obpgDQGcFmaJgB")
+function vadsHandleVideos(files) {
+  if (!files || !files.length) return;
+  vadsVideoFiles = Array.from(files);
+  const list = document.getElementById('vadsVideoList');
+  if (list) list.innerHTML = vadsVideoFiles.map((f, i) =>
+    '<div style="display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 8px;background:var(--surface2);border-radius:5px">' +
+    '<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:var(--green);fill:none;stroke-width:2;flex-shrink:0"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>' +
+    '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>' +
+    '<button onclick="vadsRemoveVideo(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--text-tertiary);font-size:12px;padding:0 2px">×</button>' +
+    '</div>'
+  ).join('');
+  // Preberi trajanje vseh videotov
+  window._vadsVideoDurations = new Array(vadsVideoFiles.length).fill(0);
+  vadsVideoFiles.forEach((f, i) => {
+    const el = document.createElement('video');
+    el.preload = 'metadata';
+    el.onloadedmetadata = function() {
+      URL.revokeObjectURL(el.src);
+      window._vadsVideoDurations[i] = Math.round(el.duration);
+      const loaded = window._vadsVideoDurations.filter(d => d > 0).length;
+      if (loaded === vadsVideoFiles.length) {
+        const minDur = Math.min(...window._vadsVideoDurations);
+        vadsDuration = minDur;
+        const lbl = document.getElementById('vadsVideoDurLabel');
+        if (lbl) lbl.textContent = vadsVideoFiles.length > 1
+          ? window._vadsVideoDurations.join('s / ') + 's'
+          : minDur + 's';
+        document.getElementById('vadsDurAuto').style.display = 'block';
+        document.getElementById('vadsDurManual').style.display = 'none';
+      }
+    };
+    el.onerror = function() {
+      document.getElementById('vadsDurAuto').style.display = 'none';
+      document.getElementById('vadsDurManual').style.display = 'flex';
+    };
+    el.src = URL.createObjectURL(f);
+  });
+}
 
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as hc:
-            # Uporabi /with-timestamps endpoint za alignment podatke
-            resp = await hc.post(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps",
-                headers={
-                    "xi-api-key": api_key,
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "text": text,
-                    "model_id": "eleven_multilingual_v2",
-                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
-                }
-            )
+function vadsHandleVideo(file) {
+  if (file) vadsHandleVideos([file]);
+}
 
-        if resp.status_code != 200:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"error": f"ElevenLabs napaka {resp.status_code}: {resp.text[:300]}"}, status_code=400)
+function vadsRemoveVideo(idx) {
+  vadsVideoFiles.splice(idx, 1);
+  if (vadsVideoFiles.length) vadsHandleVideos(vadsVideoFiles);
+  else {
+    const list = document.getElementById('vadsVideoList');
+    if (list) list.innerHTML = '';
+    document.getElementById('vadsDurAuto').style.display = 'none';
+    document.getElementById('vadsDurManual').style.display = 'flex';
+  }
+}
 
-        result = resp.json()
-        
-        # Dekodira audio iz base64
-        import base64
-        audio_b64 = result.get("audio_base64", "")
-        audio_bytes = base64.b64decode(audio_b64)
-        
-        # Generiraj SRT (za download) in ASS (za karaoke merge)
-        alignment = result.get("alignment", {})
-        srt = build_srt(alignment)
-        ass = build_ass(alignment)
+async function vadsGenerate() {
+  const input = document.getElementById('vadsInput').value.trim();
+  if (!input) { alert('Vpiši URL ali opis izdelka.'); return; }
 
-        return {
-            "audio_base64": audio_b64,
-            "srt": srt,
-            "ass": ass,
-            "lang": lang
+  const btn = document.getElementById('vadsGenBtn');
+  const status = document.getElementById('vadsGenStatus');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="vads-spinner"></div> Generiram skripte...';
+  status.style.display = 'block';
+  status.textContent = 'Claude analizira izdelek...';
+
+  document.getElementById('vadsEmpty').style.display = 'none';
+  document.getElementById('vadsResults').style.display = 'flex';
+  document.getElementById('vadsResults').style.flexDirection = 'column';
+  document.getElementById('vadsResults').innerHTML = VADS_LANGS.map(l =>
+    `<div class="vads-lang-card" id="vadsCard-${l.code}">
+      <div class="vads-lang-header">${l.flag} ${l.name}</div>
+      <div class="vads-progress"><div class="vads-spinner"></div> Generiram...</div>
+    </div>`
+  ).join('');
+
+  try {
+    // Generiraj skripte za vsak video z njegovo dolžino
+    const durations = (window._vadsVideoDurations && window._vadsVideoDurations.length === vadsVideoFiles.length)
+      ? window._vadsVideoDurations
+      : vadsVideoFiles.map(() => vadsDuration);
+
+    // Generiraj za najkrajši video (konzervativno)
+    const minDur = durations.length ? Math.min(...durations) : vadsDuration;
+
+    const res = await fetch('/generate-video-scripts', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({input, duration: minDur, durations: durations})
+    });
+    const data = await res.json();
+    if (data.error) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + data.error; btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:none;stroke-width:2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Generiraj skripte'; return; }
+
+    vadsScripts = data.scripts || {};
+    status.textContent = '✓ Skripte generirane za ' + Object.keys(vadsScripts).length + ' jezikov';
+    status.style.color = 'var(--green)';
+    vadsSaveHistory(input, vadsScripts, data.product);
+
+    // Prikaži skripte
+    VADS_LANGS.forEach(l => {
+      const card = document.getElementById('vadsCard-' + l.code);
+      if (!card) return;
+      const script = vadsScripts[l.code] || '';
+      card.innerHTML = `
+        <div class="vads-lang-header">${l.flag} ${l.name}</div>
+        <div class="vads-script">${esc(script)}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="vads-audio-btn generate" onclick="vadsGenerateAudio('${l.code}')" id="vadsAudioBtn-${l.code}">
+            🎙 Generiraj audio
+          </button>
+          <span class="vads-status" id="vadsAudioStatus-${l.code}"></span>
+        </div>
+        <div id="vadsAudioPlayer-${l.code}" style="margin-top:8px;display:none"></div>
+      `;
+    });
+
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = '✗ Napaka: ' + e.message;
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:none;stroke-width:2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Generiraj skripte';
+}
+
+async function vadsGenerateAudio(langCode) {
+  const script = vadsScripts[langCode];
+  if (!script) return;
+
+  const btn = document.getElementById('vadsAudioBtn-' + langCode);
+  const status = document.getElementById('vadsAudioStatus-' + langCode);
+  const player = document.getElementById('vadsAudioPlayer-' + langCode);
+
+  btn.disabled = true;
+  btn.innerHTML = '<div class="vads-spinner" style="border-top-color:white"></div> Generiram...';
+  status.textContent = 'ElevenLabs generira...';
+
+  try {
+    const res = await fetch('/generate-audio', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: script, lang: langCode})
+    });
+
+    const data = await res.json();
+    if (data.error) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + data.error; btn.disabled = false; btn.innerHTML = '🎙 Generiraj audio'; return; }
+
+    // Konvertiraj base64 audio v blob
+    const audioBytes = Uint8Array.from(atob(data.audio_base64), c => c.charCodeAt(0));
+    const blob = new Blob([audioBytes], {type: 'audio/mpeg'});
+    const url = URL.createObjectURL(blob);
+
+    // Shrani za merge
+    window._vadsAudioBlobs = window._vadsAudioBlobs || {};
+    window._vadsAudioBlobs[langCode] = blob;
+
+    // Shrani SRT in ASS
+    window._vadsSrts = window._vadsSrts || {};
+    window._vadsSrts[langCode] = data.ass || data.srt || '';
+
+    // SRT download URL (za ročni download)
+    const srtBlob = new Blob([data.srt || ''], {type: 'text/plain'});
+    const srtUrl = URL.createObjectURL(srtBlob);
+
+    player.style.display = 'block';
+    const hasVideo = vadsVideoFiles.length > 0;
+    const hasSrt = !!(data.srt);
+    player.innerHTML = `
+      <audio controls style="width:100%;height:36px">
+        <source src="${url}" type="audio/mpeg">
+      </audio>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <a href="${url}" download="${(document.getElementById('vadsSku')?.value||'audio').trim().toUpperCase()}_${langCode}_v1.mp3" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">⬇ MP3</a>
+        ${hasSrt ? `<a href="${srtUrl}" download="${(document.getElementById('vadsSku')?.value||'audio').trim().toUpperCase()}_${langCode}_v1.srt" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">📝 SRT</a>` : ''}
+        ${hasVideo ? `<button class="vads-audio-btn generate" style="font-size:11px" onclick="vadsMergeVideo('${langCode}', this)">🎬 Video</button>` : ''}
+        ${hasVideo && hasSrt ? `<button class="vads-audio-btn generate" style="font-size:11px;background:#7c3aed" onclick="vadsMergeVideoSrt('${langCode}', this)">🎬+📝 Video + podnapisi</button>` : ''}
+      </div>
+    `;
+    status.style.color = 'var(--green)';
+    status.textContent = '✓ Audio + podnapisi pripravljeni';
+    const zb = document.getElementById('vadsZipBtn'); if(zb) zb.style.display='flex';
+    btn.innerHTML = '🔄 Regeneriraj';
+    btn.disabled = false;
+
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = '✗ ' + e.message;
+    btn.disabled = false;
+    btn.innerHTML = '🎙 Generiraj audio';
+  }
+}
+
+async function _vadsMerge(langCode, btn, withSrt) {
+  if (!vadsVideoFiles.length) return;
+  const audioBlob = window._vadsAudioBlobs?.[langCode];
+  if (!audioBlob) return;
+
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<div class="vads-spinner" style="border-top-color:white"></div> Spajam...';
+
+  try {
+    const formData = new FormData();
+    formData.append('video', vadsVideoFiles[0], vadsVideoFiles[0].name);
+    formData.append('audio', audioBlob, 'audio.mp3');
+    formData.append('lang', langCode);
+    if (withSrt && window._vadsSrts?.[langCode]) {
+      const srtBlob = new Blob([window._vadsSrts[langCode]], {type: 'text/plain'});
+      formData.append('srt', srtBlob, 'subs.srt');
+    }
+
+    const res = await fetch('/merge-video-audio', {method: 'POST', body: formData});
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert('Napaka: ' + (err.error || res.status));
+      btn.disabled = false; btn.innerHTML = origText;
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const skuV = (document.getElementById("vadsSku")?.value || "video").trim().toUpperCase() || "VIDEO"; a.download = skuV + "_" + langCode + "_v1.mp4";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    btn.innerHTML = '✓ Prenesen';
+    btn.disabled = false;
+  } catch(e) {
+    alert('Napaka: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
+}
+
+async function vadsMergeVideo(langCode, btn) {
+  await _vadsMerge(langCode, btn, false);
+}
+
+async function vadsMergeVideoSrt(langCode, btn) {
+  await _vadsMerge(langCode, btn, true);
+}
+
+async function vadsGenerateAllAudio() {
+  const status = document.getElementById('vadsBulkStatus');
+  const langs = VADS_LANGS.filter(l => vadsScripts[l.code]);
+  const total = langs.length;
+
+  if (status) status.textContent = 'Generiram audio (3 hkrati zaradi ElevenLabs limita)...';
+
+  let completed = 0;
+  const AUDIO_PARALLEL_LIMIT = 3; // ElevenLabs free tier limit
+
+  // Worker pool — 3 paralelno zaradi ElevenLabs limita
+  const queue = [...langs];
+  const workers = Array(AUDIO_PARALLEL_LIMIT).fill(null).map(async () => {
+    while (queue.length) {
+      const l = queue.shift();
+      if (!l) break;
+      try {
+        await vadsGenerateAudio(l.code);
+      } catch (e) {
+        console.error('Audio fail za', l.code, e);
+      }
+      completed++;
+      if (status) status.textContent = 'Dokončano ' + completed + '/' + total + '...';
+    }
+  });
+  await Promise.all(workers);
+
+  if (status) status.textContent = '✓ Vse audio generirane (' + completed + '/' + total + ')';
+  const zipBtn = document.getElementById('vadsZipBtn');
+  if (zipBtn && window._vadsAudioBlobs && Object.keys(window._vadsAudioBlobs).length > 0) {
+    zipBtn.style.display = 'flex';
+    const zaBtn = document.getElementById('vadsZipAsanaBtn'); if (zaBtn) zaBtn.style.display = 'flex';
+  }
+}
+
+async function vadsBuildZipBlob(progressCallback) {
+  /** Skupna funkcija za grajenje ZIP-a — uporablja jo Download in Asana flow. */
+  if (!window.JSZip) { await new Promise((res,rej) => { const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+  const JSZip = window.JSZip;
+  const zip = new JSZip();
+  const hasVideos = vadsVideoFiles.length > 0;
+  const audioBlobs = window._vadsAudioBlobs || {};
+  const srts = window._vadsSrts || {};
+  let count = 0;
+
+  if (hasVideos) {
+    // Pripravi vse merge taske
+    const tasks = [];
+    for (const [lang, blob] of Object.entries(audioBlobs)) {
+      for (let vi = 0; vi < vadsVideoFiles.length; vi++) {
+        tasks.push({lang, blob, videoFile: vadsVideoFiles[vi], vi});
+      }
+    }
+    const total = tasks.length;
+    let done = 0;
+    const PARALLEL_LIMIT = 3;
+
+    const runTask = async (task) => {
+      const {lang, blob, videoFile, vi} = task;
+      const formData = new FormData();
+      formData.append('video', videoFile, videoFile.name);
+      formData.append('audio', blob, 'audio.mp3');
+      formData.append('lang', lang);
+      if (srts[lang]) {
+        const srtBlob = new Blob([srts[lang]], {type: 'text/plain'});
+        formData.append('srt', srtBlob, 'subs.srt');
+      }
+      try {
+        const res = await fetch('/merge-video-audio', {method: 'POST', body: formData});
+        if (res.ok) {
+          const videoBlob = await res.blob();
+          const suffix = vadsVideoFiles.length > 1 ? '_v' + (vi+1) : '';
+          const sku = (document.getElementById('vadsSku')?.value || 'video').trim().toUpperCase() || 'VIDEO';
+          const fname = sku + '_' + lang + '_v' + (vi+1) + '.mp4';
+          zip.file(fname, videoBlob);
+          count++;
+        } else {
+          console.error('Merge fail status:', res.status, lang, vi);
         }
-
-    except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-# ─── MERGE VIDEO + AUDIO ──────────────────────────────────────────────────────
-
-# ─── VIDEO SESSION CACHE — single upload za batch merge ───────────────────────
-
-VIDEO_SESSION_DIR = Path("/tmp/video_sessions")
-VIDEO_SESSION_DIR.mkdir(exist_ok=True, parents=True)
-
-@app.post("/upload-video-session")
-async def upload_video_session(video: UploadFile = File(...)):
-    """Naloži video enkrat, vrni session_id za večkratno uporabo."""
-    try:
-        import uuid as _u
-        session_id = _u.uuid4().hex[:16]
-        session_path = VIDEO_SESSION_DIR / f"{session_id}.mp4"
-        content_bytes = await video.read()
-        session_path.write_bytes(content_bytes)
-        # Avtomatsko počisti starejše od 30 min
-        try:
-            now = datetime.now().timestamp()
-            for f in VIDEO_SESSION_DIR.glob("*.mp4"):
-                if now - f.stat().st_mtime > 1800:
-                    f.unlink()
-        except: pass
-        print(f"[video-session] uploaded {session_id} ({len(content_bytes)} bytes)")
-        return {"session_id": session_id, "size": len(content_bytes)}
-    except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/cleanup-video-session")
-async def cleanup_video_session(data: dict):
-    """Počisti video session ko ni več potreben."""
-    session_ids = data.get("session_ids", [])
-    deleted = 0
-    for sid in session_ids:
-        try:
-            p = VIDEO_SESSION_DIR / f"{sid}.mp4"
-            if p.exists():
-                p.unlink()
-                deleted += 1
-        except: pass
-    return {"deleted": deleted}
-
-
-@app.post("/merge-video-audio-session")
-async def merge_video_audio_session(
-    session_id: str = Form(...),
-    audio: UploadFile = File(...),
-    lang: str = Form("sl"),
-    srt: UploadFile = File(None),
-):
-    """Merge z video iz cached session (faster — video že na strežniku)."""
-    import subprocess, tempfile
-    from fastapi.responses import JSONResponse as JR
-    try:
-        import static_ffmpeg
-        static_ffmpeg.add_paths()
-    except Exception:
-        pass
-
-    session_video_path = VIDEO_SESSION_DIR / f"{session_id}.mp4"
-    if not session_video_path.exists():
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": f"Video session {session_id} not found."}, status_code=404)
-
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            audio_path = f"{tmp}/audio.mp3"
-            srt_path = f"{tmp}/subs.srt"
-            ass_path = f"{tmp}/subs.ass"
-            output_path = f"{tmp}/output_{lang}.mp4"
-            video_path = str(session_video_path)
-
-            with open(audio_path, "wb") as f:
-                f.write(await audio.read())
-
-            has_srt = False
-            ass_content_orig = None
-            if srt:
-                srt_content = await srt.read()
-                if srt_content.strip():
-                    with open(srt_path, "wb") as f:
-                        f.write(srt_content)
-                    if srt_content.startswith(b'[Script Info]'):
-                        ass_content_orig = srt_content
-                        has_srt = 'ass'
-                    else:
-                        has_srt = 'srt'
-
-            # Detect video dimensions
-            video_width, video_height = 0, 0
-            try:
-                probe_cmd = ["ffprobe", "-v", "error", "-select_streams", "v:0",
-                             "-show_entries", "stream=width,height", "-of", "csv=p=0", video_path]
-                probe_result = subprocess.run(probe_cmd, capture_output=True, timeout=10)
-                if probe_result.returncode == 0:
-                    dims = probe_result.stdout.decode().strip().split(',')
-                    if len(dims) == 2:
-                        video_width, video_height = int(dims[0]), int(dims[1])
-            except: pass
-
-            # Adapt ASS če imamo
-            if has_srt == 'ass' and ass_content_orig and video_width > 0 and video_height > 0:
-                style = get_subtitle_style_for_format(video_width, video_height)
-                ass_text = ass_content_orig.decode('utf-8', errors='replace')
-                ass_text = re.sub(r'PlayResX:\s*\d+', f'PlayResX: {style["playresx"]}', ass_text)
-                ass_text = re.sub(r'PlayResY:\s*\d+', f'PlayResY: {style["playresy"]}', ass_text)
-                new_style = f'Style: Default,Arial,{style["fontsize"]},&H00FFFFFF,&H00FFD600,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{style["outline"]},0,2,30,30,{style["marginv"]},1'
-                ass_text = re.sub(r'Style:\s*Default,[^\n]+', new_style, ass_text)
-                with open(ass_path, "wb") as f:
-                    f.write(ass_text.encode('utf-8'))
-            elif has_srt == 'ass' and ass_content_orig:
-                with open(ass_path, "wb") as f:
-                    f.write(ass_content_orig)
-
-            if has_srt:
-                sub_file = ass_path if has_srt == 'ass' else srt_path
-                if has_srt == 'ass':
-                    vf = f"ass={sub_file}"
-                else:
-                    s = get_subtitle_style_for_format(video_width, video_height)
-                    vf = f"subtitles={sub_file}:force_style='FontName=Arial,FontSize={s['fontsize']},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline={s['outline']},Bold=1,Alignment=2,MarginV={s['marginv']}'"
-                cmd = ["ffmpeg", "-y", "-i", video_path, "-i", audio_path, "-vf", vf,
-                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-c:a", "aac",
-                       "-shortest", output_path]
-            else:
-                cmd = ["ffmpeg", "-y", "-i", video_path, "-i", audio_path,
-                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac",
-                       "-shortest", output_path]
-
-            result = subprocess.run(cmd, capture_output=True, timeout=180)
-            if result.returncode != 0:
-                err_msg = result.stderr.decode(errors='replace')[-400:]
-                return JR({"error": f"FFmpeg napaka: {err_msg}"}, status_code=500)
-
-            with open(output_path, "rb") as f:
-                video_bytes = f.read()
-
-            return StreamingResponse(
-                iter([video_bytes]),
-                media_type="video/mp4",
-                headers={"Content-Disposition": f"attachment; filename=video_{lang}.mp4"}
-            )
-    except subprocess.TimeoutExpired:
-        return JR({"error": "FFmpeg timeout."}, status_code=500)
-    except Exception as e:
-        return JR({"error": str(e)}, status_code=500)
-
-
-# ─── MERGE VIDEO + AUDIO (full upload — fallback) ─────────────────────────────
-
-@app.post("/merge-video-audio")
-async def merge_video_audio(
-    video: UploadFile = File(...),
-    audio: UploadFile = File(...),
-    lang: str = "sl",
-    srt: UploadFile = File(None),
-):
-    """Spoji video + audio (+ opcijsko SRT podnapisi) z FFmpeg."""
-    import subprocess, tempfile
-    from fastapi.responses import JSONResponse as JR
-    # Uporabi static-ffmpeg da dobimo ffmpeg binarko brez root
-    try:
-        import static_ffmpeg
-        static_ffmpeg.add_paths()
-    except Exception:
-        pass
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            video_path = f"{tmp}/input.mp4"
-            audio_path = f"{tmp}/audio.mp3"
-            srt_path = f"{tmp}/subs.srt"
-            ass_path = f"{tmp}/subs.ass"
-            output_path = f"{tmp}/output_{lang}.mp4"
-
-            with open(video_path, "wb") as f:
-                f.write(await video.read())
-            with open(audio_path, "wb") as f:
-                f.write(await audio.read())
-
-            has_srt = False
-            ass_content_orig = None
-            if srt:
-                srt_content = await srt.read()
-                if srt_content.strip():
-                    with open(srt_path, "wb") as f:
-                        f.write(srt_content)
-                    # Poskusi parsati kot ASS (začne z [Script Info])
-                    if srt_content.startswith(b'[Script Info]'):
-                        ass_content_orig = srt_content
-                        has_srt = 'ass'
-                    else:
-                        has_srt = 'srt'
-
-            # Detect video dimensions z ffprobe za prilagoditev podnapisov
-            video_width, video_height = 0, 0
-            try:
-                probe_cmd = [
-                    "ffprobe", "-v", "error",
-                    "-select_streams", "v:0",
-                    "-show_entries", "stream=width,height",
-                    "-of", "csv=p=0",
-                    video_path
-                ]
-                probe_result = subprocess.run(probe_cmd, capture_output=True, timeout=10)
-                if probe_result.returncode == 0:
-                    dims = probe_result.stdout.decode().strip().split(',')
-                    if len(dims) == 2:
-                        video_width = int(dims[0])
-                        video_height = int(dims[1])
-                        print(f"[merge] Video {video_width}x{video_height} ratio={video_width/video_height:.2f}")
-            except Exception as e:
-                print(f"[merge] ffprobe failed: {e}")
-
-            # Če imamo ASS — adaptiraj nastavitve glede na format
-            if has_srt == 'ass' and ass_content_orig and video_width > 0 and video_height > 0:
-                style = get_subtitle_style_for_format(video_width, video_height)
-                # Prepiši Style: Default vrstico v ASS s pravimi parametri za format
-                ass_text = ass_content_orig.decode('utf-8', errors='replace')
-                # Prepiši PlayResX/PlayResY
-                ass_text = re.sub(r'PlayResX:\s*\d+', f'PlayResX: {style["playresx"]}', ass_text)
-                ass_text = re.sub(r'PlayResY:\s*\d+', f'PlayResY: {style["playresy"]}', ass_text)
-                # Prepiši Style: Default vrstico
-                new_style = f'Style: Default,Arial,{style["fontsize"]},&H00FFFFFF,&H00FFD600,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{style["outline"]},0,2,30,30,{style["marginv"]},1'
-                ass_text = re.sub(r'Style:\s*Default,[^\n]+', new_style, ass_text)
-                with open(ass_path, "wb") as f:
-                    f.write(ass_text.encode('utf-8'))
-                print(f"[merge] Adapted ASS for {video_width}x{video_height}: fontsize={style['fontsize']}, marginv={style['marginv']}")
-            elif has_srt == 'ass' and ass_content_orig:
-                # Ni dimensions — uporabi originalni ASS
-                with open(ass_path, "wb") as f:
-                    f.write(ass_content_orig)
-
-            if has_srt:
-                # ASS karaoke ali SRT fallback
-                sub_file = ass_path if has_srt == 'ass' else srt_path
-                if has_srt == 'ass':
-                    vf = f"ass={sub_file}"
-                else:
-                    # SRT fallback — prilagodi format glede na video
-                    s = get_subtitle_style_for_format(video_width, video_height)
-                    vf = f"subtitles={sub_file}:force_style='FontName=Arial,FontSize={s['fontsize']},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline={s['outline']},Bold=1,Alignment=2,MarginV={s['marginv']}'"
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-i", video_path,
-                    "-i", audio_path,
-                    "-vf", vf,
-                    "-map", "0:v:0",
-                    "-map", "1:a:0",
-                    "-c:v", "libx264",
-                    "-c:a", "aac",
-                    "-shortest",
-                    output_path
-                ]
-            else:
-                # Samo audio zamenjava, video brez rekodiranja
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-i", video_path,
-                    "-i", audio_path,
-                    "-map", "0:v:0",
-                    "-map", "1:a:0",
-                    "-c:v", "copy",
-                    "-c:a", "aac",
-                    "-shortest",
-                    output_path
-                ]
-
-            result = subprocess.run(cmd, capture_output=True, timeout=180)
-
-            if result.returncode != 0:
-                err_msg = result.stderr.decode(errors='replace')[-400:]
-                print(f"[merge] FFmpeg error: {err_msg}")
-                return JR({"error": f"FFmpeg napaka: {err_msg}"}, status_code=500)
-
-            with open(output_path, "rb") as f:
-                video_bytes = f.read()
-
-            return StreamingResponse(
-                iter([video_bytes]),
-                media_type="video/mp4",
-                headers={"Content-Disposition": f"attachment; filename=video_{lang}.mp4"}
-            )
-    except subprocess.TimeoutExpired:
-        return JR({"error": "FFmpeg timeout."}, status_code=500)
-    except Exception as e:
-        return JR({"error": str(e)}, status_code=500)
-
-
-# ─── VIDEO ADS HISTORY ────────────────────────────────────────────────────────
-
-VADS_HISTORY_FILE = DATA_DIR / "vads_history.json"
-
-def vads_cleanup_old():
-    """Zbriše vnose starejše od 7 dni."""
-    if not VADS_HISTORY_FILE.exists():
-        return
-    try:
-        history = json.loads(VADS_HISTORY_FILE.read_text(encoding="utf-8"))
-        cutoff = datetime.now() - timedelta(days=7)
-        history = [h for h in history if datetime.strptime(h.get("date","1.1.2000 00:00"), "%d.%m.%Y %H:%M") > cutoff]
-        VADS_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
-    except:
-        pass
-
-@app.get("/vads-history")
-async def get_vads_history():
-    vads_cleanup_old()
-    if VADS_HISTORY_FILE.exists():
-        try:
-            return json.loads(VADS_HISTORY_FILE.read_text(encoding="utf-8"))
-        except:
-            return []
-    return []
-
-@app.post("/vads-history")
-async def save_vads_history(data: dict):
-    try:
-        history = []
-        if VADS_HISTORY_FILE.exists():
-            try:
-                history = json.loads(VADS_HISTORY_FILE.read_text(encoding="utf-8"))
-            except:
-                history = []
-        history.append({
-            "input": data.get("input", ""),
-            "product": data.get("product", ""),
-            "scripts": data.get("scripts", {}),
-            "date": data.get("date", "")
-        })
-        if len(history) > 50:
-            history = history[-50:]
-        VADS_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok"}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/vads-history-set")
-async def set_vads_history(data: dict):
-    try:
-        history = data.get("history", [])
-        VADS_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"status": "ok"}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-
-
-# ─── ASANA ATTACH BINARY (za ZIP, video, audio) ───────────────────────────────
-
-@app.post("/asana-attach-binary")
-async def asana_attach_binary(
-    task_id: str = Form(...),
-    file: UploadFile = File(...),
-    filename: str = Form(None)
-):
-    """Priloži binarni fajl (ZIP, MP4, MP3) na Asana task."""
-    if not task_id:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Manjka task_id."}, status_code=400)
-
-    token = os.environ.get("ASANA_API_KEY", "")
-    if not token:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "ASANA_API_KEY ni nastavljen."}, status_code=400)
-
-    try:
-        content = await file.read()
-        upload_filename = filename or file.filename or "attachment"
-        mime = file.content_type or "application/octet-stream"
-
-        async with httpx.AsyncClient(timeout=120.0) as hc:
-            files = {"file": (upload_filename, content, mime)}
-            attach_resp = await hc.post(
-                f"{ASANA_API}/tasks/{task_id}/attachments",
-                headers={"Authorization": f"Bearer {token}"},
-                files=files
-            )
-
-        if attach_resp.status_code in (200, 201):
-            return {"status": "ok", "filename": upload_filename, "size": len(content)}
-        else:
-            from fastapi.responses import JSONResponse
-            return JSONResponse(
-                {"error": f"Asana napaka {attach_resp.status_code}: {attach_resp.text[:200]}"},
-                status_code=400
-            )
-    except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-# ─── ORODJA: Združevalnik SKU+količin ─────────────────────────────────────────
-
-ORODJA_HISTORY_DIR = DATA_DIR / "orodja_history"
-ORODJA_HISTORY_DIR.mkdir(exist_ok=True, parents=True)
-
-ORODJA_HS_HISTORY_DIR = DATA_DIR / "orodja_hs_history"
-ORODJA_HS_HISTORY_DIR.mkdir(exist_ok=True, parents=True)
-
-
-def cleanup_orodja_history():
-    """Briše datoteke starejše od 30 dni (CSV združevalnik)."""
-    try:
-        cutoff = datetime.now().timestamp() - (30 * 86400)
-        for f in ORODJA_HISTORY_DIR.glob("*.xlsx"):
-            if f.stat().st_mtime < cutoff:
-                f.unlink()
-    except Exception as e:
-        print(f"[orodja] cleanup err: {e}")
-
-
-def cleanup_orodja_hs_history():
-    """Briše datoteke starejše od 90 dni (HS+ uvoz)."""
-    try:
-        cutoff = datetime.now().timestamp() - (90 * 86400)
-        for f in ORODJA_HS_HISTORY_DIR.glob("*.xlsx"):
-            if f.stat().st_mtime < cutoff:
-                f.unlink()
-    except Exception as e:
-        print(f"[orodja-hs] cleanup err: {e}")
-
-
-@app.post("/orodja-merge-skus")
-async def orodja_merge_skus(file: UploadFile = File(...)):
-    """Sprejme CSV z SKU+Količina, združi dvojnike, vrne XLSX."""
-    try:
-        content_bytes = await file.read()
-        text = content_bytes.decode('utf-8-sig', errors='replace')
-
-        # Parsanje CSV
-        import csv
-        from io import StringIO
-        reader = csv.reader(StringIO(text))
-        headers = next(reader, None)
-        if not headers:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"error": "Prazen CSV."}, status_code=400)
-
-        # Najdi indekse SKU in Količina kolon
-        h_lower = [h.lower().strip() for h in headers]
-        try:
-            sku_idx = next(i for i, h in enumerate(h_lower) if h in ('sku', 'sku.'))
-        except StopIteration:
-            sku_idx = 1  # default druga kolona
-        try:
-            qty_idx = next(i for i, h in enumerate(h_lower) if 'količin' in h or 'kolicin' in h or h == 'qty' or h == 'quantity')
-        except StopIteration:
-            qty_idx = 3  # default
-
-        # Združi po SKU
-        sku_totals = {}
-        for row in reader:
-            if len(row) <= max(sku_idx, qty_idx):
-                continue
-            sku = (row[sku_idx] or '').strip()
-            if not sku:
-                continue
-            try:
-                qty = int(float((row[qty_idx] or '0').strip().replace(',', '.')))
-            except:
-                qty = 0
-            sku_totals[sku] = sku_totals.get(sku, 0) + qty
-
-        if not sku_totals:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"error": "Ne najdem SKU/količina kolon v CSV."}, status_code=400)
-
-        # Generiraj XLSX
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Order"
-        # Brez headerjev — samo SKU | količina
-        for sku, qty in sorted(sku_totals.items()):
-            ws.append([sku, qty])
-
-        # Shrani v history
-        cleanup_orodja_history()  # počisti stare najprej
-        ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        out_filename = f"Order_{ts}.xlsx"
-        out_path = ORODJA_HISTORY_DIR / out_filename
-        wb.save(out_path)
-
-        # Vrni datoteko
-        from fastapi.responses import FileResponse
-        return FileResponse(
-            path=str(out_path),
-            filename=out_filename,
-            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            headers={"X-Skus-Total": str(len(sku_totals)), "X-Filename": out_filename}
-        )
-    except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.get("/orodja-history")
-async def orodja_history():
-    """Vrne seznam datotek v orodja_history (urejen po datumu od najnovejše)."""
-    cleanup_orodja_history()
-    items = []
-    try:
-        for f in sorted(ORODJA_HISTORY_DIR.glob("*.xlsx"), key=lambda x: x.stat().st_mtime, reverse=True):
-            stat = f.stat()
-            items.append({
-                "filename": f.name,
-                "size": stat.st_size,
-                "created": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            })
-    except Exception as e:
-        print(f"[orodja] history err: {e}")
-    return {"items": items[:100]}
-
-
-@app.get("/orodja-download/{filename}")
-async def orodja_download(filename: str):
-    """Prenesi XLSX iz history."""
-    # Sanitize filename — preprečimo path traversal
-    if '/' in filename or '\\' in filename or '..' in filename:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Neveljavno ime."}, status_code=400)
-
-    f = ORODJA_HISTORY_DIR / filename
-    if not f.exists():
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Datoteka ne obstaja."}, status_code=404)
-
-    from fastapi.responses import FileResponse
-    return FileResponse(
-        path=str(f),
-        filename=filename,
-        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-
-
-@app.delete("/orodja-history/{filename}")
-async def orodja_history_delete(filename: str):
-    """Zbriši posamezno datoteko iz history."""
-    if '/' in filename or '\\' in filename or '..' in filename:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Neveljavno ime."}, status_code=400)
-
-    f = ORODJA_HISTORY_DIR / filename
-    if f.exists():
-        try:
-            f.unlink()
-            return {"status": "ok"}
-        except Exception as e:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"error": str(e)}, status_code=500)
-    return {"status": "not_found"}
-
-
-# ─── ORODJA: Uvoz HS+ PDF predračun ───────────────────────────────────────────
-
-@app.post("/orodja-import-hs-pdf")
-async def orodja_import_hs_pdf(file: UploadFile = File(...)):
-    """Sprejme HS+ PDF predračun, vrne JSON s SKU + količinami.
-    Uporablja Claude Vision za branje image-based PDF."""
-    try:
-        content_bytes = await file.read()
-        items = []
-
-        # Najprej poskus tekst-extraction (če je tekstovni PDF)
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
-            tmp.write(content_bytes)
-            tmp_path = tmp.name
-
-        try:
-            try:
-                with pdfplumber.open(tmp_path) as pdf:
-                    for page in pdf.pages:
-                        text = page.extract_text() or ""
-                        if text.strip():
-                            for line in text.split('\n'):
-                                line = line.strip()
-                                m = re.match(r'^(\d{12,14})\s+(.+?)\s+(\d+)\s+(?:KOS|kos|PCS|pcs)', line)
-                                if m:
-                                    opis = m.group(2).strip()
-                                    tokens = [t.rstrip('.,;:') for t in opis.split()]
-                                    upper_t = [t for t in tokens if t.isupper() and len(t) >= 3 and not t.isdigit()]
-                                    sku = upper_t[-1] if upper_t else (tokens[-1] if tokens else opis)
-                                    items.append({
-                                        "ean": m.group(1),
-                                        "opis": opis,
-                                        "sku": sku,
-                                        "kolicina": int(m.group(3)),
-                                    })
-            except: pass
-
-            # Fallback: Claude Vision (PDF kot dokument)
-            if not items:
-                import base64
-                pdf_b64 = base64.b64encode(content_bytes).decode('utf-8')
-
-                prompt = """Preberi ta predračun in vrni VSA postavke v JSON formatu.
-Za vsako postavko izloci:
-- ean: 13-mestna številčna koda na začetku vrstice
-- opis: celoten opis postavke
-- sku: zadnja SVE-VELIKA-ČRKA beseda v opisu (npr. "HYDRASPRINK HYDRASPRINK" → SKU = "HYDRASPRINK"; "WHEELPLAY yellow WHEELPLAY" → SKU = "WHEELPLAY"; "TOPKNER 180x200 TOPKNER" → SKU = "TOPKNER")
-- kolicina: število pred "KOS" oznako
-
-Vrni IZKLJUČNO valid JSON v formatu:
-{"items": [{"ean": "...", "opis": "...", "sku": "...", "kolicina": 350}, ...]}
-
-Brez dodatnih komentarjev, samo JSON."""
-
-                try:
-                    client = anthropic.Anthropic()
-                    response = client.messages.create(
-                        model="claude-sonnet-4-6",
-                        max_tokens=8000,
-                        messages=[{
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "document",
-                                    "source": {
-                                        "type": "base64",
-                                        "media_type": "application/pdf",
-                                        "data": pdf_b64
-                                    }
-                                },
-                                {"type": "text", "text": prompt}
-                            ]
-                        }]
-                    )
-                    text = "".join([b.text for b in response.content if hasattr(b, 'text')])
-                    parsed = parse_json_response(text)
-                    if parsed and 'items' in parsed:
-                        for it in parsed['items']:
-                            try:
-                                qty = int(it.get('kolicina', 0))
-                            except:
-                                qty = 0
-                            items.append({
-                                "ean": str(it.get('ean', '')),
-                                "opis": str(it.get('opis', '')),
-                                "sku": str(it.get('sku', '')).strip(),
-                                "kolicina": qty,
-                            })
-                except Exception as e:
-                    print(f"[hs-pdf] Claude vision error: {e}")
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except: pass
-
-        if not items:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"error": "Iz PDF-ja ne morem prebrati postavk."}, status_code=400)
-
-        # Skupna količina iz PDF-ja
-        pdf_total = sum(int(it.get('kolicina', 0) or 0) for it in items)
-        return {"items": items, "total": len(items), "pdf_total": pdf_total}
-    except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/orodja-export-hs-xlsx")
-async def orodja_export_hs_xlsx(data: dict):
-    """Sprejme [{sku, kolicina}], generira XLSX in shrani v history."""
-    try:
-        items = data.get("items", [])
-        if not items:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"error": "Ni postavk."}, status_code=400)
-
-        # Generiraj XLSX z headerji sku|stock (HS+ format)
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = datetime.now().strftime('%Y-%m-%d_%H-%M-%S-export')
-        ws.append(["sku", "stock"])  # header
-        for item in items:
-            sku = (item.get("sku") or "").strip()
-            qty = item.get("kolicina") or 0
-            if not sku:
-                continue
-            try:
-                qty_int = int(float(qty))
-            except:
-                qty_int = 0
-            ws.append([sku, qty_int])
-
-        cleanup_orodja_hs_history()
-        ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        out_filename = f"HS_PLUS_{ts}.xlsx"
-        out_path = ORODJA_HS_HISTORY_DIR / out_filename
-        wb.save(out_path)
-
-        from fastapi.responses import FileResponse
-        return FileResponse(
-            path=str(out_path),
-            filename=out_filename,
-            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            headers={"X-Filename": out_filename}
-        )
-    except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-
-# ─── HS+ HISTORY ENDPOINTS ────────────────────────────────────────────────────
-
-@app.get("/orodja-hs-history")
-async def orodja_hs_history():
-    """Vrne seznam HS+ datotek (90 dni)."""
-    cleanup_orodja_hs_history()
-    items = []
-    try:
-        for f in sorted(ORODJA_HS_HISTORY_DIR.glob("*.xlsx"), key=lambda x: x.stat().st_mtime, reverse=True):
-            stat = f.stat()
-            items.append({
-                "filename": f.name,
-                "size": stat.st_size,
-                "created": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            })
-    except Exception as e:
-        print(f"[orodja-hs] history err: {e}")
-    return {"items": items[:200]}
-
-
-@app.get("/orodja-hs-download/{filename}")
-async def orodja_hs_download(filename: str):
-    if '/' in filename or '\\' in filename or '..' in filename:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Neveljavno ime."}, status_code=400)
-
-    f = ORODJA_HS_HISTORY_DIR / filename
-    if not f.exists():
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Datoteka ne obstaja."}, status_code=404)
-
-    from fastapi.responses import FileResponse
-    return FileResponse(
-        path=str(f),
-        filename=filename,
-        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-
-
-@app.delete("/orodja-hs-history/{filename}")
-async def orodja_hs_history_delete(filename: str):
-    if '/' in filename or '\\' in filename or '..' in filename:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Neveljavno ime."}, status_code=400)
-
-    f = ORODJA_HS_HISTORY_DIR / filename
-    if f.exists():
-        try:
-            f.unlink()
-            return {"status": "ok"}
-        except Exception as e:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"error": str(e)}, status_code=500)
-    return {"status": "not_found"}
-
-
-
-# ─── ORODJA: Kontrola cen — Stock CSV upload + match s PDF predračun ────────
-
-STOCK_CSV_FILE = DATA_DIR / "stock_inventory.csv"
-STOCK_CSV_META = DATA_DIR / "stock_inventory_meta.json"
-
-
-@app.post("/orodja-stock-upload")
-async def orodja_stock_upload(file: UploadFile = File(...)):
-    """Naloži CSV zaloge — merge po SKU (sešteje stock iz več skladišč/uploadov)."""
-    try:
-        import csv as _csv
-        from io import StringIO as _SIO
-
-        content_bytes = await file.read()
-        text = content_bytes.decode('utf-8-sig', errors='replace')
-        sep = ';' if (text.split('\n', 1)[0].count(';') > text.split('\n', 1)[0].count(',')) else ','
-
-        reader = _csv.DictReader(_SIO(text), delimiter=sep)
-        new_rows = [r for r in reader]
-        if not new_rows:
-            return JSONResponse({"error": "Prazen CSV."}, status_code=400)
-
-        # Normalizacija: najdi SKU, stock, stock30, title stolpce
-        sample = new_rows[0]
-        keys = list(sample.keys())
-
-        def find_col(*candidates):
-            for c in candidates:
-                for k in keys:
-                    if k.strip().lower() == c.lower():
-                        return k
-            return None
-
-        sku_col   = find_col('product_sku', 'sku')
-        stock_col = find_col('stock', 'qty', 'quantity', 'kolicina', 'količina')
-        s30_col   = find_col('stock30', 'stock_30', 'obrat30', 'obrat_30')
-        title_col = find_col('title', 'naziv', 'name')
-
-        if not sku_col:
-            return JSONResponse({"error": f"Ne najdem SKU stolpca. Najdeni: {keys}"}, status_code=400)
-
-        # Merge znotraj CSV-ja — seštej stock za isti SKU (več lokacij)
-        merged = {}
-        added = 0
-        updated = 0
-        for row in new_rows:
-            if not sku_col: continue
-            sku = (row.get(sku_col) or '').strip()
-            if not sku: continue
-            try:
-                new_stock = int(float((row.get(stock_col) or '0').replace(',', '.'))) if stock_col else 0
-            except: new_stock = 0
-            try:
-                new_s30 = int(float((row.get(s30_col) or '0').replace(',', '.'))) if s30_col else 0
-            except: new_s30 = 0
-            title = (row.get(title_col) or '').strip() if title_col else ''
-
-            if sku in merged:
-                # Isti SKU, druga lokacija — seštej stock
-                merged[sku]['stock'] += new_stock
-                if new_s30 > merged[sku]['stock30']:
-                    merged[sku]['stock30'] = new_s30
-                if title and not merged[sku]['title']:
-                    merged[sku]['title'] = title
-                updated += 1
-            else:
-                merged[sku] = {
-                    'product_sku': sku,
-                    'title': title,
-                    'stock': new_stock,
-                    'stock30': new_s30,
-                }
-                added += 1
-
-        # Shrani nazaj kot CSV
-        out = _SIO()
-        writer = _csv.DictWriter(out, fieldnames=['product_sku', 'title', 'stock', 'stock30'])
-        writer.writeheader()
-        writer.writerows(merged.values())
-        STOCK_CSV_FILE.write_text(out.getvalue(), encoding='utf-8')
-
-        total = len(merged)
-        meta = {
-            "uploaded_at": datetime.now(timezone.utc).isoformat(),
-            "filename": file.filename,
-            "rows": total,
-            "rows_added": added,
-            "rows_merged": updated,
-        }
-        # Ohrani seznam uploadov
-        old_meta = {}
-        if STOCK_CSV_META.exists():
-            try: old_meta = json.loads(STOCK_CSV_META.read_text(encoding='utf-8'))
-            except: pass
-        uploads = old_meta.get('uploads', [])
-        uploads.append({"filename": file.filename, "uploaded_at": meta["uploaded_at"], "added": added, "merged": updated})
-        meta['uploads'] = uploads[-5:]  # zadnjih 5
-        STOCK_CSV_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
-
-        return {
-            "status": "ok",
-            "rows": total,
-            "rows_added": added,
-            "rows_merged": updated,
-            "uploaded_at": meta["uploaded_at"],
-            "filename": file.filename,
-        }
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-
-@app.get("/orodja-stock-status")
-async def orodja_stock_status():
-    """Vrne info o trenutno shranjeni zalogi."""
-    if not STOCK_CSV_FILE.exists() or not STOCK_CSV_META.exists():
-        return {"loaded": False}
-    try:
-        meta = json.loads(STOCK_CSV_META.read_text(encoding="utf-8"))
-        return {"loaded": True, **meta}
-    except Exception as e:
-        return {"loaded": False, "error": str(e)}
-
-
-@app.post("/orodja-stock-clear")
-async def orodja_stock_clear():
-    """Počisti zalogo (reset za nov upload)."""
-    try:
-        if STOCK_CSV_FILE.exists(): STOCK_CSV_FILE.unlink()
-        if STOCK_CSV_META.exists(): STOCK_CSV_META.unlink()
-        return {"ok": True}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/orodja-price-check")
-async def orodja_price_check(file: UploadFile = File(...)):
-    """Sprejme HS+ PDF + match s shranjeno zalogo, vrne primerjavo cen."""
-    if not STOCK_CSV_FILE.exists():
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Najprej naloži CSV zaloge."}, status_code=400)
-
-    try:
-        # 1. Preberi PDF s Claude Vision (isti pristop kot orodja-import-hs-pdf)
-        content_bytes = await file.read()
-        items = []  # [{ean, opis, sku, kolicina, cena_pdf, popust_pct}]
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
-            tmp.write(content_bytes)
-            tmp_path = tmp.name
-
-        try:
-            # Najprej poskus pdfplumber
-            try:
-                with pdfplumber.open(tmp_path) as pdf:
-                    for page in pdf.pages:
-                        text = page.extract_text() or ""
-                        if text.strip():
-                            for line in text.split('\n'):
-                                line = line.strip()
-                                # Format: ean opis kolicina KOS cena popust DDV znesek
-                                m = re.match(r'^(\d{12,14})\s+(.+?)\s+(\d+)\s+(?:KOS|kos)\s+([\d.,]+)\s+(\d+)?', line)
-                                if m:
-                                    opis = m.group(2).strip()
-                                    tokens = [t.rstrip('.,;:') for t in opis.split()]
-                                    upper_t = [t for t in tokens if t.isupper() and len(t) >= 3 and not t.isdigit()]
-                                    sku = upper_t[-1] if upper_t else (tokens[-1] if tokens else opis)
-                                    try:
-                                        cena = float(m.group(4).replace(',', '.'))
-                                    except:
-                                        cena = 0
-                                    try:
-                                        popust = float(m.group(5)) if m.group(5) else 0
-                                    except:
-                                        popust = 0
-                                    items.append({
-                                        "ean": m.group(1),
-                                        "opis": opis,
-                                        "sku": sku,
-                                        "kolicina": int(m.group(3)),
-                                        "cena_pdf": cena,
-                                        "popust_pct": popust,
-                                    })
-            except: pass
-
-            # Fallback: Claude Vision
-            if not items:
-                import base64
-                pdf_b64 = base64.b64encode(content_bytes).decode('utf-8')
-                prompt = """Preberi ta predračun in vrni VSA postavke v JSON formatu.
-Za vsako postavko izloci:
-- ean: 13-mestna številka koda na začetku vrstice
-- opis: celoten opis postavke
-- sku: zadnja SVE-VELIKA-ČRKA beseda v opisu (npr. "HYDRASPRINK HYDRASPRINK" → SKU = "HYDRASPRINK"; "WHEELPLAY yellow WHEELPLAY" → SKU = "WHEELPLAY"; "TOPKNER 180x200 TOPKNER" → SKU = "TOPKNER_180x200")
-- kolicina: število pred "KOS" oznako
-- cena_pdf: cena enote (po KOS, npr. "2,67")
-- popust_pct: popust v % (število iz Popust % stolpca, lahko je prazno → 0)
-
-POMEMBNO: Pri SKU-jih z dimenzijami (TOPKNER, WHEELPLAY) vključi tudi dimenzijo/barvo, ker so to različni izdelki:
-- "TOPKNER 180x200 TOPKNER" → "TOPKNER_180x200"
-- "TOPKNER 160x200 TOPKNER" → "TOPKNER_160x200"
-- "WHEELPLAY yellow WHEELPLAY" → "WHEELPLAY_yellow"
-- "PLANTUP (white) PLANTUP" → "PLANTUP_white"
-- "BEEWAX WOOD POLISH BEEWAX" → "BEEWAX"
-
-Vrni IZKLJUČNO valid JSON v formatu:
-{"items": [{"ean": "...", "opis": "...", "sku": "...", "kolicina": 350, "cena_pdf": 2.67, "popust_pct": 5}, ...]}
-
-Brez dodatnih komentarjev, samo JSON."""
-
-                try:
-                    client = anthropic.Anthropic()
-                    response = client.messages.create(
-                        model="claude-sonnet-4-6",
-                        max_tokens=8000,
-                        messages=[{
-                            "role": "user",
-                            "content": [
-                                {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64}},
-                                {"type": "text", "text": prompt}
-                            ]
-                        }]
-                    )
-                    text_resp = "".join([b.text for b in response.content if hasattr(b, 'text')])
-                    parsed = parse_json_response(text_resp)
-                    if parsed and 'items' in parsed:
-                        for it in parsed['items']:
-                            try: qty = int(it.get('kolicina', 0))
-                            except: qty = 0
-                            try: cena = float(str(it.get('cena_pdf', 0)).replace(',', '.'))
-                            except: cena = 0
-                            try: popust = float(str(it.get('popust_pct', 0)).replace(',', '.'))
-                            except: popust = 0
-                            items.append({
-                                "ean": str(it.get('ean', '')),
-                                "opis": str(it.get('opis', '')),
-                                "sku": str(it.get('sku', '')).strip(),
-                                "kolicina": qty,
-                                "cena_pdf": cena,
-                                "popust_pct": popust,
-                            })
-                except Exception as e:
-                    print(f"[price-check] Claude error: {e}")
-        finally:
-            try: os.unlink(tmp_path)
-            except: pass
-
-        if not items:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"error": "PDF parse fail."}, status_code=400)
-
-        # 2. Naloži zalogo iz CSV
-        import csv
-        from io import StringIO
-        stock_text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
-        # Detect separator
-        first_line = stock_text.split('\n')[0]
-        delim = ';' if first_line.count(';') > first_line.count(',') else ','
-        reader = csv.DictReader(StringIO(stock_text), delimiter=delim)
-
-        # Map SKU → cena (lower-case za case-insensitive match)
-        stock_map = {}
-        for row in reader:
-            sku = (row.get('product_sku') or row.get('sku') or '').strip()
-            if not sku:
-                continue
-            try:
-                cena = float(str(row.get('price_netto') or row.get('price') or 0).replace(',', '.'))
-            except:
-                cena = 0
-            title = (row.get('title') or '').strip()
-            stock_map[sku.lower()] = {"sku": sku, "cena_zaloga": cena, "title": title}
-
-        # Fuzzy match helper
-        def find_stock_match(sku_pdf):
-            """Najprej exact match, nato koren match (PLANTUP_white → PLANTUP), nato fuzzy."""
-            sku_lower = sku_pdf.lower()
-            # 1. Exact match
-            if sku_lower in stock_map:
-                return stock_map[sku_lower]
-
-            # 2. Koren match — vzami osnovno besedo (PLANTUP_white → PLANTUP, COVERKA_2x3m → COVERKA)
-            koren = re.split(r'[_\-\s]', sku_lower)[0]
-            if not koren or len(koren) < 3:
-                return None
-
-            # Najdi vse SKU-je v zalogi ki začnejo s tem korenom
-            candidates = [(k, v) for k, v in stock_map.items() if k.split('_')[0] == koren or k.split('-')[0] == koren or k == koren]
-
-            if not candidates:
-                return None
-
-            # Če je samo eden, vrni ga
-            if len(candidates) == 1:
-                return candidates[0][1]
-
-            # 3. Fuzzy match — pri več zadetkih izberi najbolj podobnega
-            from difflib import SequenceMatcher
-            best = None
-            best_ratio = 0
-            for k, v in candidates:
-                ratio = SequenceMatcher(None, sku_lower, k).ratio()
-                if ratio > best_ratio:
-                    best_ratio = ratio
-                    best = v
-            # Vrni samo če je dovolj podoben (>0.6)
-            return best if best_ratio >= 0.6 else None
-
-        # 3. Match in primerjava
-        results = []
-        for item in items:
-            sku_pdf = item["sku"]
-            stock = find_stock_match(sku_pdf)
-
-            cena_pdf_neto = item["cena_pdf"] * (1 - item["popust_pct"] / 100)
-
-            if stock:
-                cena_zaloga = stock["cena_zaloga"]
-                razlika = cena_pdf_neto - cena_zaloga
-                razlika_pct = (razlika / cena_zaloga * 100) if cena_zaloga > 0 else 0
-                if abs(razlika) < 0.001:
-                    status = "match"
-                elif razlika > 0:
-                    status = "vecja"  # PDF cena VEČJA = SLABO za nas
-                else:
-                    status = "manjsa"  # PDF cena MANJŠA = DOBRO za nas
-            else:
-                cena_zaloga = None
-                razlika = None
-                razlika_pct = None
-                status = "no_match"
-
-            results.append({
-                "sku": sku_pdf,
-                "opis": item["opis"],
-                "title_zaloga": stock["title"] if stock else None,
-                "kolicina": item["kolicina"],
-                "cena_pdf": item["cena_pdf"],
-                "popust_pct": item["popust_pct"],
-                "cena_pdf_neto": round(cena_pdf_neto, 4),
-                "cena_zaloga": cena_zaloga,
-                "razlika": round(razlika, 4) if razlika is not None else None,
-                "razlika_pct": round(razlika_pct, 2) if razlika_pct is not None else None,
-                "status": status,
-            })
-
-        return {"items": results, "total": len(results), "matched": sum(1 for r in results if r["status"] != "no_match")}
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.get("/orodja-stock-data")
-async def orodja_stock_data():
-    """Vrne celoten seznam zaloge (sku, title, stock, stock30) iz shranjenega CSV."""
-    if not STOCK_CSV_FILE.exists():
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Najprej naloži CSV zaloge v Orodja → Kontrola cen."}, status_code=400)
-    try:
-        import csv as _csv
-        from io import StringIO as _SIO
-        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
-        first_line = text.split('\n', 1)[0]
-        sep = ';' if first_line.count(';') > first_line.count(',') else ','
-
-        reader = _csv.DictReader(_SIO(text), delimiter=sep)
-        items = []
-        for row in reader:
-            sku = (row.get('product_sku') or row.get('sku') or '').strip()
-            if not sku:
-                continue
-            items.append({
-                "sku": sku,
-                "title": (row.get('title') or '').strip(),
-                "stock": (row.get('stock') or '0').strip(),
-                "stock30": (row.get('stock30') or '0').strip(),
-            })
-
-        meta = {}
-        if STOCK_CSV_META.exists():
-            try:
-                meta = json.loads(STOCK_CSV_META.read_text(encoding="utf-8"))
-            except: pass
-
-        return {"items": items, "total": len(items), **meta}
-    except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-# ─── ANALIZA: Meta Ads CSV upload ──────────────────────────────────────────────
-
-META_ADS_FILE = DATA_DIR / "meta_ads_report.csv"
-META_ADS_META = DATA_DIR / "meta_ads_meta.json"
-
-
-# Stop words - skupne besede ki niso SKU
-SKU_STOPWORDS = {
-    'STOP', 'BIDCAP', 'COSTCAP', 'BID', 'CPA', 'BC', 'EX', 'WP', 'WV', 'EU', 'OFF',
-    'LOCAL', 'OUTLET', 'MAAARKET', 'MULTIPLE', 'MAAARKET.HR', 'MAAARKET.RS', 'MAAARKET.SK',
-    'NI', 'ZALOGE', 'NOVO', 'CATALOG', 'CATALOGSALE', 'CATEGORY', 'INTERESTED', 'AUTO',
-    'ADVANTAGE', 'PROSPECTING', 'REMARKETING', 'CAMPAIGN', 'LOOKALIKE', 'BROAD', 'AAA',
-    'DABA', 'COLD', 'KATALOG', 'INFLATED', 'INTERESTS', 'ABO', 'ZIPPLY', 'EASYZO', 'SUBAN',
-    'INTEREST', 'TOFU', 'BOFU', 'MOFU', 'ALL'
+      } catch (e) { console.error('Merge fail:', lang, vi, e); }
+      done++;
+      if (progressCallback) progressCallback('Spajam ' + done + '/' + total + ' (paralelno ' + PARALLEL_LIMIT + 'x)...');
+    };
+
+    const queue = [...tasks];
+    const workers = Array(PARALLEL_LIMIT).fill(null).map(async () => {
+      while (queue.length) { const task = queue.shift(); if (task) await runTask(task); }
+    });
+    await Promise.all(workers);
+  } else {
+    // Samo audio fajli
+    for (const [lang, blob] of Object.entries(audioBlobs)) {
+      const sku = (document.getElementById('vadsSku')?.value || 'audio').trim().toUpperCase() || 'AUDIO';
+      zip.file(sku + '_' + lang + '_v1.mp3', blob);
+      if (srts[lang]) zip.file(sku + '_' + lang + '_v1.srt', srts[lang]);
+      count++;
+    }
+  }
+
+  if (progressCallback) progressCallback('Pakiranje ZIP...');
+  const zipBlob = await zip.generateAsync({type: 'blob'});
+  return {zipBlob, count};
+}
+
+async function vadsDownloadAllZip() {
+  const btn = document.getElementById('vadsZipBtn');
+  const status = document.getElementById('vadsBulkStatus');
+  const origText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="vads-spinner" style="border-top-color:white"></div> Ustvarjam ZIP...'; }
+
+  try {
+    let count = 0;
+    let zipBlob;
+    const result = await vadsBuildZipBlob((msg) => { if (status) status.textContent = msg; });
+    zipBlob = result.zipBlob;
+    count = result.count;
+
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'video_ads.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    if (status) status.textContent = '✓ ZIP prenesen (' + count + ' fajlov)';
+  } catch(e) {
+    if (status) status.textContent = '✗ Napaka: ' + e.message;
+    console.error(e);
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+}
+
+// ─── VIDEO ADS ZGODOVINA ─────────────────────────────────────────────────────
+
+async function vadsSaveHistory(input, scripts, product) {
+  try {
+    await fetch('/vads-history', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        input: input,
+        product: product || input.slice(0, 40),
+        scripts: scripts,
+        date: new Date().toLocaleString('sl-SI')
+      })
+    });
+    vadsLoadHistory();
+  } catch(e) {}
+}
+
+async function vadsLoadHistory() {
+  try {
+    const res = await fetch('/vads-history');
+    const data = await res.json();
+    const el = document.getElementById('vadsHistList');
+    if (!el) return;
+    if (!data.length) { el.innerHTML = '<div class="history-empty">Ni zgodovine.</div>'; return; }
+    el.innerHTML = data.slice().reverse().map((h, i) =>
+      `<div class="narc-hist-item" style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1;cursor:pointer" onclick="vadsLoadFromHistory(${data.length-1-i})">
+          <div style="font-weight:500;font-size:12px">🎬 ${esc(h.product||'Projekt')}</div>
+          <div class="narc-hist-date">${esc(h.date)}</div>
+        </div>
+        <button onclick="vadsDeleteHistoryItem(${data.length-1-i})" style="background:none;border:none;cursor:pointer;color:var(--text-tertiary);font-size:14px;padding:2px 4px;flex-shrink:0" title="Zbriši">🗑</button>
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
+
+async function vadsLoadFromHistory(idx) {
+  try {
+    const res = await fetch('/vads-history');
+    const data = await res.json();
+    if (!data[idx]) return;
+    const h = data[idx];
+
+    // Nastavi input
+    document.getElementById('vadsInput').value = h.input || '';
+    vadsScripts = h.scripts || {};
+
+    // Prikaži skripte
+    document.getElementById('vadsBulkBar').style.display = 'flex';
+    document.getElementById('vadsEmpty').style.display = 'none';
+    document.getElementById('vadsResults').style.display = 'flex';
+    document.getElementById('vadsResults').style.flexDirection = 'column';
+    document.getElementById('vadsResults').innerHTML = VADS_LANGS.map(l => {
+      const script = vadsScripts[l.code] || '';
+      if (!script) return '';
+      return `<div class="vads-lang-card" id="vadsCard-${l.code}">
+        <div class="vads-lang-header">${l.flag} ${l.name}</div>
+        <div class="vads-script">${esc(script)}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="vads-audio-btn generate" onclick="vadsGenerateAudio('${l.code}')" id="vadsAudioBtn-${l.code}">
+            🎙 Generiraj audio
+          </button>
+          <span class="vads-status" id="vadsAudioStatus-${l.code}"></span>
+        </div>
+        <div id="vadsAudioPlayer-${l.code}" style="margin-top:8px;display:none"></div>
+      </div>`;
+    }).filter(Boolean).join('');
+
+    document.getElementById('vadsGenStatus').style.display = 'block';
+    document.getElementById('vadsGenStatus').style.color = 'var(--green)';
+    document.getElementById('vadsGenStatus').textContent = '✓ Naloženo iz zgodovine: ' + (h.product || '');
+  } catch(e) {}
+}
+
+async function vadsDeleteHistoryItem(idx) {
+  if (!confirm('Zbrisati ta projekt?')) return;
+  try {
+    const res = await fetch('/vads-history');
+    let data = await res.json();
+    data.splice(idx, 1);
+    await fetch('/vads-history-set', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({history: data})});
+    vadsLoadHistory();
+  } catch(e) {}
+}
+
+async function vadsDeleteAllHistory() {
+  if (!confirm('Zbrisati vso zgodovino video projektov?')) return;
+  try {
+    await fetch('/vads-history-set', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({history: []})});
+    vadsLoadHistory();
+  } catch(e) {}
+}
+
+// ─── KREATIVA → LOKALIZACIJA ČAKALNICA ───────────────────────────────────────
+
+window._lokQueue = []; // [{url, combo}]
+
+function kSendToLok(idx) {
+  const card = window.kCardsData?.[idx];
+  if (!card || !card.url) return;
+
+  // Dodaj v čakalnico če še ni
+  if (!window._lokQueue.find(q => q.url === card.url)) {
+    window._lokQueue.push({url: card.url, combo: card.combo || ''});
+  }
+
+  // Vizualni feedback na gumbu
+  const btn = document.getElementById('kLokBtn-' + idx);
+  if (btn) {
+    btn.innerHTML = '&#x2713; Lok';
+    btn.style.background = '#16a34a';
+    btn.style.borderColor = '#16a34a';
+    btn.disabled = true;
+  }
+
+  lokQueueRender();
+
+  // Pokaži notification
+  const notif = document.createElement('div');
+  notif.style.cssText = 'position:fixed;top:20px;right:20px;background:#7c3aed;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;z-index:9999;font-family:"DM Sans",sans-serif';
+  notif.textContent = '🌍 Dodano v Lokalizacija čakalnico (' + window._lokQueue.length + ')';
+  document.body.appendChild(notif);
+  setTimeout(() => notif.remove(), 2500);
+}
+
+function lokQueueRender() {
+  const card = document.getElementById('lokQueueCard');
+  const grid = document.getElementById('lokQueueGrid');
+  const count = document.getElementById('lokQueueCount');
+  if (!card || !grid) return;
+
+  card.style.display = window._lokQueue.length ? 'block' : 'none';
+  if (count) count.textContent = '(' + window._lokQueue.length + ')';
+
+  grid.innerHTML = window._lokQueue.map((q, i) =>
+    '<div style="position:relative;border-radius:5px;overflow:hidden;aspect-ratio:1">' +
+    '<img src="' + esc(q.url) + '" style="width:100%;height:100%;object-fit:cover">' +
+    '<button onclick="lokQueueRemove(' + i + ')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:white;border:none;border-radius:3px;font-size:10px;cursor:pointer;padding:1px 5px;line-height:1.4">×</button>' +
+    '</div>'
+  ).join('');
+}
+
+function lokQueueRemove(idx) {
+  window._lokQueue.splice(idx, 1);
+  lokQueueRender();
+}
+
+function lokQueueClear() {
+  window._lokQueue = [];
+  lokQueueRender();
+}
+
+async function lokQueueAddAll() {
+  if (!window._lokQueue.length) return;
+
+  // Fetch vsake slike in dodaj v lokPreview kot file-like object
+  const previews = [];
+  for (const q of window._lokQueue) {
+    try {
+      const res = await fetch(q.url);
+      const blob = await res.blob();
+      const ext = blob.type.includes('png') ? 'png' : 'jpg';
+      const file = new File([blob], (q.combo || 'kreativa').replace(/[^a-zA-Z0-9]/g,'_') + '.' + ext, {type: blob.type});
+      previews.push(file);
+    } catch(e) {
+      console.warn('Napaka pri fetchanju:', q.url, e);
+    }
+  }
+
+  if (previews.length) {
+    // Dodaj v lokalizacija
+    await lokHandleFilesFromQueue(previews);
+    // Počisti čakalnico
+    window._lokQueue = [];
+    lokQueueRender();
+    // Premakni na Lokalizacija tab
+    switchPage('lokalizacija');
+  }
+}
+
+async function lokHandleFilesFromQueue(files) {
+  // Enako kot lokHandleFiles — doda slike v lokImages array
+  for (const file of files) {
+    await new Promise(res => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        lokImages.push(e.target.result);
+        res();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  lokRenderPreviews();
+  if (typeof lokUpdateCount === 'function') lokUpdateCount();
+}
+
+updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();narcLoadHistory();karanLoadHistory();vadsLoadHistory();narcRenderLangFilter();setMetaWide(true);
+
+// Drag & drop + SKU click — direktno, brez DOMContentLoaded
+(function(){
+  const dz = document.getElementById('narcDropZone');
+  if (dz) {
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+    dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); narcHandleFile(e.dataTransfer.files[0]); });
+  }
+  // Event delegation za SKU klik → zeleno obarvanje
+  const tb = document.getElementById('narcTableBody');
+  if (tb) {
+    tb.addEventListener('click', e => {
+      const link = e.target.closest('.narc-sku-link');
+      if (link) {
+        const tr = link.closest('tr');
+        const sku = tr ? tr.getAttribute('data-sku') : null;
+        if (sku) narcToggleRow(sku, true);
+      }
+    });
+  }
+})();
+
+
+
+
+// ─── ORODJA: Ikonka uvoz ─────────────────────────────────────────────────
+function orodjaHandleDrop(ev) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  const f = ev.dataTransfer.files[0];
+  if (f) orodjaProcess(f);
+}
+
+async function orodjaProcess(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.csv')) {
+    document.getElementById('orodjaError').textContent = 'Samo CSV datoteke.';
+    document.getElementById('orodjaError').style.display = 'block';
+    return;
+  }
+
+  document.getElementById('orodjaError').style.display = 'none';
+  const status = document.getElementById('orodjaStatus');
+  status.style.display = 'block';
+  status.textContent = '⏳ Procesiram CSV...';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    const res = await fetch('/orodja-merge-skus', {method: 'POST', body: formData});
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({error: 'Napaka strežnika.'}));
+      throw new Error(err.error || 'Napaka.');
+    }
+
+    const total = res.headers.get('X-Skus-Total') || '?';
+    const filename = res.headers.get('X-Filename') || 'Order.xlsx';
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    status.textContent = '✓ Generirano XLSX (' + total + ' unikatnih SKU) — prenešeno';
+    status.style.color = 'var(--green)';
+
+    // Resetiraj input in osveži history
+    document.getElementById('orodjaCsvInput').value = '';
+    setTimeout(() => orodjaLoadHistory(), 500);
+  } catch(e) {
+    document.getElementById('orodjaError').textContent = '✗ ' + e.message;
+    document.getElementById('orodjaError').style.display = 'block';
+    status.style.display = 'none';
+  }
+}
+
+async function orodjaLoadHistory() {
+  const list = document.getElementById('orodjaHistoryList');
+  if (!list) return;
+  try {
+    const res = await fetch('/orodja-history');
+    const data = await res.json();
+    if (!data.items || data.items.length === 0) {
+      list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-tertiary);font-size:12px">Še ni zapisov.</div>';
+      return;
+    }
+    list.innerHTML = data.items.map(item => {
+      const dt = new Date(item.created);
+      const dateStr = dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
+      const sizeKb = (item.size / 1024).toFixed(1);
+      return (
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:12px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(item.filename) + '</div>' +
+          '<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">' + dateStr + ' · ' + sizeKb + ' KB</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px">' +
+          '<a href="/orodja-download/' + encodeURIComponent(item.filename) + '" download="' + esc(item.filename) + '" style="padding:5px 10px;background:var(--accent);color:white;text-decoration:none;border-radius:var(--radius);font-size:11px;font-weight:500">⬇</a>' +
+          '<button onclick="orodjaHistoryDelete(\'' + esc(item.filename) + '\')" style="padding:5px 10px;background:none;border:1px solid var(--border);color:var(--text-tertiary);font-size:11px;border-radius:var(--radius);cursor:pointer;font-family:\'DM Sans\',sans-serif">×</button>' +
+        '</div>' +
+        '</div>'
+      );
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div style="padding:1rem;color:var(--red);font-size:12px">Napaka: ' + e.message + '</div>';
+  }
+}
+
+async function orodjaHistoryDelete(filename) {
+  if (!confirm('Zbrišem ' + filename + '?')) return;
+  try {
+    await fetch('/orodja-history/' + encodeURIComponent(filename), {method: 'DELETE'});
+    orodjaLoadHistory();
+  } catch(e) { alert('Napaka: ' + e.message); }
+}
+
+// Naloži zgodovino ko se odpre Orodja tab
+document.addEventListener('DOMContentLoaded', () => {
+  const navOrodja = document.getElementById('nav-orodja');
+  if (navOrodja) navOrodja.addEventListener('click', () => setTimeout(orodjaLoadHistory, 100));
+});
+
+
+
+// ─── ORODJA SUB-TABS + HS+ ─────────────────────────────────────────────────
+function switchOrodjaTab(tab) {
+  ['csv', 'hs', 'hsuvoz', 'pricecheck'].forEach(t => {
+    const btn = document.getElementById('orodjaTab-' + t);
+    const sub = document.getElementById('orodjaSubpage-' + t);
+    if (t === tab) {
+      if (btn) { btn.style.background = 'var(--accent)'; btn.style.color = 'white'; btn.style.border = 'none'; btn.classList.add('active'); }
+      if (sub) sub.style.display = (t === 'csv' || t === 'hsuvoz') ? 'block' : 'block';
+    } else {
+      if (btn) { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; btn.style.border = '1px solid var(--border)'; btn.classList.remove('active'); }
+      if (sub) sub.style.display = 'none';
+    }
+  });
+  if (tab === 'hs') hsLoadHistory();
+  if (tab === 'pricecheck') pcLoadStockStatus();
+  if (tab === 'csv') orodjaLoadHistory();
+  if (tab === 'hsuvoz') { hsuvozLoadStock(); hsuvozLoadHistory(); hsuvozLoadCurrent(); hsuvozLoadOrderPanel(); }
+}
+
+let hsItems = [];
+
+function hsHandleDrop(ev) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  const f = ev.dataTransfer.files[0];
+  if (f) hsProcess(f);
+}
+
+async function hsProcess(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    document.getElementById('hsError').textContent = 'Samo PDF datoteke.';
+    document.getElementById('hsError').style.display = 'block';
+    return;
+  }
+  document.getElementById('hsError').style.display = 'none';
+  const status = document.getElementById('hsStatus');
+  status.style.display = 'block';
+  status.textContent = '⏳ Berem PDF (lahko traja 10-30s)...';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    const res = await fetch('/orodja-import-hs-pdf', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    hsItems = data.items || [];
+    window._hsPdfTotal = data.pdf_total || hsItems.reduce((s, it) => s + (parseInt(it.kolicina)||0), 0);
+    hsRenderItems();
+    status.textContent = '✓ Prebrano ' + hsItems.length + ' postavk';
+    status.style.color = 'var(--green)';
+    document.getElementById('hsResultsCard').style.display = 'block';
+    document.getElementById('hsEmpty').style.display = 'none';
+    document.getElementById('hsResultsCount').textContent = 'PREBRANE POSTAVKE (' + hsItems.length + ')';
+    document.getElementById('hsPdfInput').value = '';
+  } catch(e) {
+    document.getElementById('hsError').textContent = '✗ ' + e.message;
+    document.getElementById('hsError').style.display = 'block';
+    status.style.display = 'none';
+  }
+}
+
+function hsCalcTotal() {
+  return hsItems.reduce((sum, it) => sum + (parseInt(it.kolicina)||0), 0);
+}
+
+function hsUpdateSummary() {
+  const total = hsCalcTotal();
+  const count = hsItems.length;
+  const pdfTotal = window._hsPdfTotal || 0;
+  const summary = document.getElementById('hsSummary');
+  if (!summary) return;
+
+  let html = '<strong>' + count + ' postavk · skupna količina: ' + total + '</strong>';
+  if (pdfTotal > 0) {
+    if (total === pdfTotal) {
+      html += ' <span style="color:var(--green)">✓ Ujema se s PDF (' + pdfTotal + ')</span>';
+    } else {
+      html += ' <span style="color:var(--red)">⚠ Ne ujema! PDF: ' + pdfTotal + ' (razlika: ' + (total - pdfTotal) + ')</span>';
+    }
+  }
+  summary.innerHTML = html;
+}
+
+function hsRenderItems() {
+  const list = document.getElementById('hsItemsList');
+  if (!list) return;
+  list.innerHTML = hsItems.map((item, idx) => (
+    '<div style="display:grid;grid-template-columns:2fr 130px 3fr 36px;gap:12px;align-items:center;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">' +
+      '<input type="text" value="' + esc(item.sku) + '" oninput="hsUpdateField(' + idx + ',\'sku\',this.value)" placeholder="SKU" style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-weight:600;color:var(--text);font-family:\'DM Sans\',sans-serif;text-transform:uppercase;width:100%;box-sizing:border-box">' +
+      '<input type="number" value="' + (item.kolicina||0) + '" oninput="hsUpdateField(' + idx + ',\'kolicina\',parseInt(this.value)||0)" placeholder="Količina" style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:14px;color:var(--text);font-family:\'DM Sans\',sans-serif;width:100%;box-sizing:border-box;text-align:center;font-weight:500">' +
+      '<span style="font-size:12px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 6px" title="' + esc(item.opis||'') + '">' + esc(item.opis||'') + '</span>' +
+      '<button onclick="hsRemoveItem(' + idx + ')" style="padding:0;background:none;border:1px solid var(--border);color:var(--text-tertiary);font-size:16px;border-radius:var(--radius);cursor:pointer;font-family:\'DM Sans\',sans-serif;width:36px;height:36px;display:flex;align-items:center;justify-content:center" title="Odstrani">×</button>' +
+    '</div>'
+  )).join('');
+  hsUpdateSummary();
+}
+
+function hsUpdateField(idx, field, value) {
+  if (hsItems[idx]) hsItems[idx][field] = value;
+  if (field === 'kolicina') hsUpdateSummary();
+}
+
+function hsRemoveItem(idx) {
+  hsItems.splice(idx, 1);
+  hsRenderItems();
+  document.getElementById('hsResultsCount').textContent = 'PREBRANE POSTAVKE (' + hsItems.length + ')';
+  hsUpdateSummary();
+}
+
+function hsCopyAll() {
+  if (!hsItems.length) return;
+  const text = hsItems.map(it => 'SKU: ' + (it.sku||'') + '\nKoličina: ' + (it.kolicina||0)).join('\n\n');
+  navigator.clipboard.writeText(text).then(() => {
+    alert('Kopirano ' + hsItems.length + ' postavk v clipboard!');
+  }).catch(e => {
+    alert('Napaka pri kopiranju: ' + e.message);
+  });
+}
+
+async function hsExportXlsx() {
+  if (!hsItems.length) return;
+  try {
+    const res = await fetch('/orodja-export-hs-xlsx', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({items: hsItems})
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({error: 'Napaka.'}));
+      throw new Error(err.error);
+    }
+    const filename = res.headers.get('X-Filename') || 'HS_Order.xlsx';
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setTimeout(() => hsLoadHistory(), 500);
+  } catch(e) {
+    alert('Napaka: ' + e.message);
+  }
 }
 
 
-def _load_known_skus():
-    """Naloži SKU-je iz CSV zaloge (case-insensitive set)."""
-    if not STOCK_CSV_FILE.exists():
-        return set()
-    try:
-        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
-        first_line = text.split('\n', 1)[0]
-        sep = ';' if first_line.count(';') > first_line.count(',') else ','
-        import csv as _csv
-        from io import StringIO as _SIO
-        reader = _csv.DictReader(_SIO(text), delimiter=sep)
-        skus = set()
-        for row in reader:
-            sku = (row.get('product_sku') or row.get('sku') or '').strip()
-            if sku:
-                skus.add(sku.upper())
-                # Dodaj tudi koren (PLANTUP_white -> PLANTUP, Maaa61lightBrown -> Maaa61)
-                koren = smart_root(sku).upper()
-                if koren and len(koren) >= 4:
-                    skus.add(koren)
-        return skus
-    except Exception as e:
-        print(f"[meta] _load_known_skus err: {e}")
-        return set()
+
+async function hsLoadHistory() {
+  const list = document.getElementById('hsHistoryList');
+  if (!list) return;
+  try {
+    const res = await fetch('/orodja-hs-history');
+    const data = await res.json();
+    if (!data.items || data.items.length === 0) {
+      list.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-tertiary);font-size:11px">Še ni zapisov.</div>';
+      return;
+    }
+    list.innerHTML = data.items.map(item => {
+      const dt = new Date(item.created);
+      const dateStr = dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
+      const sizeKb = (item.size / 1024).toFixed(1);
+      return (
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border);gap:6px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:11px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(item.filename) + '</div>' +
+          '<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">' + dateStr + ' · ' + sizeKb + ' KB</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:4px;flex-shrink:0">' +
+          '<a href="/orodja-hs-download/' + encodeURIComponent(item.filename) + '" download="' + esc(item.filename) + '" style="padding:4px 8px;background:var(--accent);color:white;text-decoration:none;border-radius:var(--radius);font-size:10px;font-weight:500">⬇</a>' +
+          '<button onclick="hsHistoryDelete(\'' + esc(item.filename) + '\')" style="padding:4px 8px;background:none;border:1px solid var(--border);color:var(--text-tertiary);font-size:10px;border-radius:var(--radius);cursor:pointer;font-family:\'DM Sans\',sans-serif">×</button>' +
+        '</div>' +
+        '</div>'
+      );
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div style="padding:0.8rem;color:var(--red);font-size:11px">Napaka: ' + e.message + '</div>';
+  }
+}
+
+async function hsHistoryDelete(filename) {
+  if (!confirm('Zbrišem ' + filename + '?')) return;
+  try {
+    await fetch('/orodja-hs-history/' + encodeURIComponent(filename), {method: 'DELETE'});
+    hsLoadHistory();
+  } catch(e) { alert('Napaka: ' + e.message); }
+}
 
 
-def smart_root(s: str) -> str:
-    """Pridobi koren SKU-ja:
-    1. Razdeli po _-/presledek (PLANTUP_white → PLANTUP, COVERKA_2x3m → COVERKA)
-    2. Camel-case prehod (Maaa61lightBrown → Maaa61)
-    3. Digit-pred-male-črke (M261red → M261, Maaa6red → Maaa6)
-    """
-    if not s:
-        return s
-    base = re.split(r'[_\-\s]', s)[0]
-    cut = None
-    # Camel-case: lower → Upper
-    m = re.search(r'([a-z])([A-Z])', base)
-    if m:
-        idx = m.start() + 1
-        while idx > 1 and base[idx-1].islower():
-            idx -= 1
-        if idx > 0:
-            cut = idx
-    # Digit followed by lowercase (M261red, Maaa6red)
-    if cut is None:
-        m2 = re.search(r'(\d)([a-z])', base)
-        if m2:
-            cut = m2.start() + 1
-    return base[:cut] if cut is not None else base
+
+// ─── ORODJA: Kontrola cen ────────────────────────────────────────────────
+let pcResults = [];
+
+async function pcLoadStockStatus() {
+  try {
+    const res = await fetch('/orodja-stock-status');
+    const data = await res.json();
+    const info = document.getElementById('pcStockInfo');
+    if (!info) return;
+    if (data.loaded) {
+      const dt = new Date(data.uploaded_at);
+      const dateStr = dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
+      let html = '<strong style="color:var(--green)">✓ Naložena</strong><br>' + data.rows + ' SKU-jev · ' + dateStr;
+      // Prikaži seznam uploadov
+      const uploads = data.uploads || [];
+      if (uploads.length > 1) {
+        html += '<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:5px">';
+        html += uploads.map(u => {
+          const udt = new Date(u.uploaded_at).toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
+          return '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-tertiary)">'
+            + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px">' + esc(u.filename) + '</span>'
+            + '<span style="flex-shrink:0;margin-left:4px">+' + (u.added||0) + ' nov · ∑' + (u.merged||0) + '</span>'
+            + '</div>';
+        }).join('');
+        html += '</div>';
+      }
+      info.innerHTML = html;
+    } else {
+      info.innerHTML = '<strong style="color:var(--text-tertiary)">⚠ Ni naložene zaloge</strong><br>Naloži CSV za začetek.';
+    }
+  } catch(e) {
+    document.getElementById('pcStockInfo').textContent = 'Napaka: ' + e.message;
+  }
+}
+
+function pcStockHandleDrop(ev) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  const f = ev.dataTransfer.files[0];
+  if (f) pcStockUpload(f);
+}
+
+async function pcStockUpload(file) {
+  if (!file) return;
+  const status = document.getElementById('pcStockStatus');
+  status.style.display = 'block';
+  status.style.color = 'var(--text-secondary)';
+  status.textContent = '⏳ Nalagam in združujem zalogo...';
+  try {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    const res = await fetch('/orodja-stock-upload', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    status.style.color = 'var(--green)';
+    status.textContent = `✓ ${data.rows} SKU-jev skupaj · ${data.rows_added} novih · ${data.rows_merged} združenih`;
+    pcLoadStockStatus();
+    document.getElementById('pcStockInput').value = '';
+  } catch(e) {
+    status.textContent = '✗ ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+}
+
+async function pcStockClear() {
+  if (!confirm('Zbriši vso naloženo zalogo in začni znova?')) return;
+  try {
+    await fetch('/orodja-stock-clear', { method: 'POST' });
+    document.getElementById('pcStockInfo').innerHTML = '<strong style="color:var(--text-tertiary)">⚠ Ni naložene zaloge</strong><br>Naloži CSV za začetek.';
+    const status = document.getElementById('pcStockStatus');
+    status.style.display = 'none';
+    status.textContent = '';
+  } catch(e) { alert('Napaka: ' + e.message); }
+}
+
+function pcPdfHandleDrop(ev) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  const f = ev.dataTransfer.files[0];
+  if (f) pcPdfProcess(f);
+}
+
+async function pcPdfProcess(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    document.getElementById('pcError').textContent = 'Samo PDF datoteke.';
+    document.getElementById('pcError').style.display = 'block';
+    return;
+  }
+  document.getElementById('pcError').style.display = 'none';
+  const status = document.getElementById('pcStatus');
+  status.style.display = 'block';
+  status.textContent = '⏳ Berem PDF in primerjam cene (10-30s)...';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    const res = await fetch('/orodja-price-check', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    pcResults = data.items || [];
+    pcRenderResults(data);
+    status.textContent = '✓ Primerjano ' + data.matched + '/' + data.total + ' postavk';
+    status.style.color = 'var(--green)';
+    document.getElementById('pcPdfInput').value = '';
+  } catch(e) {
+    document.getElementById('pcError').textContent = '✗ ' + e.message;
+    document.getElementById('pcError').style.display = 'block';
+    status.style.display = 'none';
+  }
+}
+
+let pcSortCol = null;
+let pcSortDir = 1;
+
+function pcSortBy(col) {
+  if (pcSortCol === col) pcSortDir = -pcSortDir;
+  else { pcSortCol = col; pcSortDir = 1; }
+  pcRenderResults();
+}
+
+function pcRenderResults(data) {
+  document.getElementById('pcResultsCard').style.display = 'block';
+  document.getElementById('pcEmpty').style.display = 'none';
+  document.getElementById('pcResultsCount').textContent = 'PRIMERJAVA CEN (' + pcResults.length + ')';
+
+  // Stats
+  const matched = pcResults.filter(r => r.status !== 'no_match');
+  const vecje = pcResults.filter(r => r.status === 'vecja').length;
+  const manjse = pcResults.filter(r => r.status === 'manjsa').length;
+  const ujema = pcResults.filter(r => r.status === 'match').length;
+  const noMatch = pcResults.filter(r => r.status === 'no_match').length;
+
+  document.getElementById('pcStats').innerHTML =
+    '<strong>Pregled:</strong> ' + pcResults.length + ' postavk · ' +
+    '<span style="color:var(--green)">✓ Ujema: ' + ujema + '</span> · ' +
+    '<span style="color:var(--red)">↑ Dražje (PDF): ' + vecje + '</span> · ' +
+    '<span style="color:var(--green)">↓ Cenejše (PDF): ' + manjse + '</span>' +
+    (noMatch > 0 ? ' · <span style="color:var(--text-tertiary)">⚠ Brez matcha: ' + noMatch + '</span>' : '');
+
+  // Sortiraj če je sort aktiven
+  if (pcSortCol) {
+    pcResults.sort((a, b) => {
+      let av = a[pcSortCol], bv = b[pcSortCol];
+      // null/undefined gredo na konec
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      // Številsko sortiranje
+      if (typeof av === 'number' && typeof bv === 'number') {
+        return (av - bv) * pcSortDir;
+      }
+      // String sortiranje
+      return av.toString().localeCompare(bv.toString()) * pcSortDir;
+    });
+  }
+  const list = document.getElementById('pcItemsList');
+  const sortInd = (col) => {
+    if (pcSortCol !== col) return '<span style="opacity:0.4;margin-left:4px">↕</span>';
+    return '<span style="color:var(--accent);margin-left:4px">' + (pcSortDir === 1 ? '↑' : '↓') + '</span>';
+  };
+  list.innerHTML = '<div style="display:grid;grid-template-columns:2fr 80px 130px 110px 1.5fr;gap:14px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none">' +
+    '<span style="cursor:pointer" onclick="pcSortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
+    '<span style="text-align:center;cursor:pointer" onclick="pcSortBy(\'kolicina\')">Kol' + sortInd('kolicina') + '</span>' +
+    '<span style="text-align:right;cursor:pointer" onclick="pcSortBy(\'cena_pdf_neto\')">PDF €' + sortInd('cena_pdf_neto') + '</span>' +
+    '<span style="text-align:right;cursor:pointer" onclick="pcSortBy(\'cena_zaloga\')">Zaloga €' + sortInd('cena_zaloga') + '</span>' +
+    '<span style="cursor:pointer" onclick="pcSortBy(\'razlika\')">Razlika' + sortInd('razlika') + '</span>' +
+    '</div>';
+
+  list.innerHTML += pcResults.map((r, idx) => {
+    let bg = 'var(--surface2)';
+    let badge = '';
+    let razlikaTxt = '—';
+
+    if (r.status === 'no_match') {
+      bg = 'var(--bg-secondary)';
+      badge = '<span style="color:var(--text-tertiary);font-size:10px;font-weight:500">⚠ Brez matcha</span>';
+    } else if (r.status === 'match') {
+      bg = 'var(--surface2)';
+      badge = '<span style="color:var(--green);font-size:10px;font-weight:600">✓ Ujema</span>';
+      razlikaTxt = '0.00 €';
+    } else if (r.status === 'vecja') {
+      bg = 'rgba(248,81,73,0.15)';  // RDEČ — PDF dražji = SLABO
+      badge = '<span style="color:var(--red);font-size:10px;font-weight:600">↑ +' + r.razlika.toFixed(2) + ' € (' + r.razlika_pct.toFixed(1) + '%)</span>';
+      razlikaTxt = '+' + r.razlika.toFixed(2) + ' €';
+    } else if (r.status === 'manjsa') {
+      bg = 'rgba(64,193,80,0.15)';  // ZELEN — PDF cenejši = DOBRO
+      badge = '<span style="color:var(--green);font-size:10px;font-weight:600">↓ ' + r.razlika.toFixed(2) + ' € (' + r.razlika_pct.toFixed(1) + '%)</span>';
+      razlikaTxt = r.razlika.toFixed(2) + ' €';
+    }
+
+    const popustTxt = r.popust_pct > 0 ? ' (-' + r.popust_pct + '%)' : '';
+
+    const opisFull = r.title_zaloga || r.opis || '';
+    // PDF kolona: če je popust, prikaži dejansko neto ceno (po popustu) z (-5%) opombo
+    const pdfPriceDisplay = r.popust_pct > 0
+      ? r.cena_pdf_neto.toFixed(2) + ' <span style="color:var(--text-tertiary);font-size:10px">(-' + r.popust_pct + '%)</span>'
+      : r.cena_pdf_neto.toFixed(2);
+
+    return '<div style="display:grid;grid-template-columns:2fr 80px 130px 110px 1.5fr;gap:14px;align-items:center;padding:14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px">' +
+      '<div style="min-width:0"><div style="font-weight:600;color:var(--text);font-size:14px">' + esc(r.sku) + '</div><div style="font-size:11px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px" title="' + esc(opisFull) + '">' + esc(opisFull) + '</div></div>' +
+      '<span style="color:var(--text-secondary);text-align:center;font-weight:500">' + r.kolicina + '</span>' +
+      '<span style="color:var(--text);font-weight:600;text-align:right">' + pdfPriceDisplay + '</span>' +
+      '<span style="color:' + (r.cena_zaloga !== null ? 'var(--text-secondary)' : 'var(--text-tertiary)') + ';text-align:right;font-weight:500">' + (r.cena_zaloga !== null ? r.cena_zaloga.toFixed(2) : '—') + '</span>' +
+      '<div>' + badge + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function pcExportXlsx() {
+  if (!pcResults.length) return;
+  // Pošlji results na server za XLSX export
+  // Lažje: naredimo client-side z SheetJS
+  if (!window.XLSX) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  const data = pcResults.map(r => ({
+    'SKU': r.sku,
+    'Naziv': r.title_zaloga || r.opis,
+    'Količina': r.kolicina,
+    'PDF cena': r.cena_pdf,
+    'Popust %': r.popust_pct,
+    'PDF neto': r.cena_pdf_neto,
+    'Zaloga cena': r.cena_zaloga,
+    'Razlika €': r.razlika,
+    'Razlika %': r.razlika_pct,
+    'Status': r.status === 'match' ? 'Ujema se' :
+             r.status === 'vecja' ? 'PDF dražji' :
+             r.status === 'manjsa' ? 'PDF cenejši' :
+             'Brez matcha'
+  }));
+  const ws = window.XLSX.utils.json_to_sheet(data);
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, 'Kontrola cen');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').split('.')[0];
+  window.XLSX.writeFile(wb, 'Kontrola_cen_' + ts + '.xlsx');
+}
 
 
-def extract_skus_from_text(text: str, known_skus: set = None) -> list[str]:
-    """Izvleče SKU tokene iz teksta. Če je known_skus dan, vrača samo te.
-    
-    Match strategija:
-    1. Exact match (case-insensitive) v known_skus
-    2. Koren match - PLANTUP_white → PLANTUP
-    3. Mixed-case dovoljen če je v known_skus (npr. Maaa61, silux74)
-    """
-    if not text:
-        return []
-    tokens = []
-    
-    # Pripravi case-insensitive lookup
-    known_upper = set()
-    if known_skus is not None:
-        known_upper = {s.upper() for s in known_skus}
-    
-    for raw in text.split():
-        # Odstrani emoji in posebne znake na začetku/koncu
-        cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', raw)
-        if not cleaned or len(cleaned) < 4:
-            continue
-        # Ne sme vsebovati piko/decimal (filtrira 9.0BID, BID8.5)
-        if '.' in cleaned:
-            continue
-        # Mora vsebovati vsaj 1 črko
-        if not any(c.isalpha() for c in cleaned):
-            continue
-        # Skip stopwords (case-insensitive)
-        if cleaned.upper() in SKU_STOPWORDS:
-            continue
-        # Skip čiste številke + max 1 črka (90D, 7D, 30D, 1ER ipd.)
-        if re.match(r'^\d+[A-Z]?$', cleaned, re.IGNORECASE):
-            continue
-        
-        cleaned_upper = cleaned.upper()
-        
-        # Če imamo known_skus, preverjamo pripadnost
-        if known_skus is not None:
-            # Exact match (case-insensitive)
-            if cleaned_upper in known_upper:
-                tokens.append(cleaned)
-                continue
-            # Koren match (PLANTUP_white → PLANTUP, Maaa61lightBrown → Maaa61)
-            koren = smart_root(cleaned)
-            if koren.upper() in known_upper:
-                tokens.append(cleaned)
-                continue
-            # Le UPPERCASE besede (>=4 znaki) ki niso v knownh — ignoriraj
-        else:
-            # Brez known_skus - sprejmemo le UPPERCASE besede (legacy)
-            if cleaned == cleaned.upper():
-                tokens.append(cleaned)
-    return tokens
 
+// ─── ANALIZA: Meta Ads ──────────────────────────────────────────────────────
+let anStockData = [];
+let anFilteredData = [];
+let anFilter = 'all';
+let anSortCol = 'stock';
+let anSortDir = -1;
 
-@app.post("/analiza-meta-upload")
-async def analiza_meta_upload(file: UploadFile = File(...)):
-    """Sprejme CSV iz FB Ads Manager export, DODA k obstoječim (accumulate po Campaign name unikatnosti)."""
-    try:
-        import csv as _csv
-        from io import StringIO as _SIO
+function switchAnalizaTab(tab) {
+  ['meta', 'obrat14'].forEach(t => {
+    const btn = document.getElementById('analizaTab-' + t);
+    const sub = document.getElementById('analizaSubpage-' + t);
+    if (t === tab) {
+      if (btn) { btn.style.background = 'var(--accent)'; btn.style.color = 'white'; btn.style.border = 'none'; btn.classList.add('active'); }
+      if (sub) sub.style.display = (t === 'obrat14') ? 'block' : 'grid';
+    } else {
+      if (btn) { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; btn.style.border = '1px solid var(--border)'; btn.classList.remove('active'); }
+      if (sub) sub.style.display = 'none';
+    }
+  });
+  if (tab === 'obrat14') {
+    o14LoadData();
+    o14LoadMetaInfo();
+  }
+}
 
-        content_bytes = await file.read()
-        new_text = content_bytes.decode('utf-8-sig', errors='replace')
-        first_line = new_text.split('\n', 1)[0]
-        sep = ';' if first_line.count(';') > first_line.count(',') else ','
+// ─── OBRAT 14 DNI ─────────────────────────────────────────────────────────────
+let o14Items = [];
+let o14TargetAccounts = [];
+let o14Filter = 'all';
 
-        # Preberi nove vrstice
-        new_reader = _csv.DictReader(_SIO(new_text), delimiter=sep)
-        new_rows = [r for r in new_reader if r.get('Campaign name', '').strip()]
-        if not new_rows:
-            return JSONResponse({"error": "CSV nima veljavnih vrstic."}, status_code=400)
+function o14HandleDrop(ev) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  const f = ev.dataTransfer.files[0];
+  if (f) o14Upload(f);
+}
 
-        headers = list(new_rows[0].keys())
+async function o14Upload(file) {
+  if (!file) return;
+  const status = document.getElementById('o14Status');
+  status.style.display = 'block';
+  status.textContent = '⏳ Nalagam...';
+  try {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    const res = await fetch('/analiza-obrat14-upload', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    status.textContent = '✓ Naloženih ' + data.rows + ' vrstic';
+    status.style.color = 'var(--green)';
+    document.getElementById('o14Input').value = '';
+    o14LoadData();
+  } catch(e) {
+    status.textContent = '✗ ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+}
 
-        # Preberi obstoječe vrstice (če obstajajo)
-        existing_rows = []
-        if META_ADS_FILE.exists():
-            try:
-                ex_text = META_ADS_FILE.read_text(encoding='utf-8-sig', errors='replace')
-                ex_sep = ';' if ex_text.split('\n',1)[0].count(';') > ex_text.split('\n',1)[0].count(',') else ','
-                ex_reader = _csv.DictReader(_SIO(ex_text), delimiter=ex_sep)
-                existing_rows = [r for r in ex_reader if r.get('Campaign name', '').strip()]
-            except: pass
+async function o14LoadMetaInfo() {
+  try {
+    const res = await fetch('/analiza-meta-data');
+    const data = await res.json();
+    const info = document.getElementById('o14MetaInfo');
+    if (!info) return;
+    if (data.loaded && data.uploaded_at) {
+      const dt = new Date(data.uploaded_at);
+      info.innerHTML = '<strong style="color:var(--green)">✓ ' + (data.rows || 0) + ' vrstic · ' + (data.items?.length || 0) + ' SKU-jev</strong><br>posodobljeno: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
+    } else {
+      info.innerHTML = '<span style="color:var(--text-tertiary)">⚠ Ni naloženega FB CSV<br>Naloži v zavihku Meta Ads</span>';
+    }
+  } catch(e) {
+    console.warn('o14LoadMetaInfo:', e);
+  }
+}
 
-        # Deduplikacija: ključ = Campaign name + Account name + Reporting starts
-        def row_key(r):
-            return (r.get('Campaign name','').strip(), r.get('Account name','').strip(), r.get('Reporting starts','').strip())
+async function o14LoadData() {
+  try {
+    const res = await fetch('/analiza-obrat14-data');
+    const data = await res.json();
+    if (!data.loaded) {
+      document.getElementById('o14Info').style.display = 'none';
+      o14Items = [];
+      o14TargetAccounts = [];
+      o14RenderTable();
+      return;
+    }
+    o14Items = data.items || [];
+    o14TargetAccounts = data.target_accounts || [];
 
-        existing_keys = {row_key(r) for r in existing_rows}
-        added = [r for r in new_rows if row_key(r) not in existing_keys]
-        merged = existing_rows + added
+    const info = document.getElementById('o14Info');
+    if (info) {
+      info.style.display = 'block';
+      const dt = data.uploaded_at ? new Date(data.uploaded_at) : null;
+      const dateStr = dt ? dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'}) : '';
+      info.innerHTML = '<strong style="color:var(--green)">✓ ' + o14Items.length + ' izdelkov</strong>' + (dateStr ? '<br>posodobljeno: ' + dateStr : '');
+    }
+    o14RenderTable();
+  } catch(e) {
+    console.warn('o14LoadData:', e);
+  }
+}
 
-        # Shrani merged CSV
-        out = _SIO()
-        # Združi vse headerje (union)
-        all_headers = list(dict.fromkeys(headers + [h for h in (existing_rows[0].keys() if existing_rows else []) if h not in headers]))
-        writer = _csv.DictWriter(out, fieldnames=all_headers, extrasaction='ignore')
-        writer.writeheader()
-        writer.writerows(merged)
-        META_ADS_FILE.write_text(out.getvalue(), encoding='utf-8')
+function o14SetFilter(filter, btn) {
+  o14Filter = filter;
+  window._o14Page = 1;
+  document.querySelectorAll('.o14-filter-btn').forEach(b => {
+    b.style.background = 'transparent';
+    b.style.color = 'var(--text-secondary)';
+    b.classList.remove('active');
+  });
+  if (btn) {
+    btn.style.background = 'var(--surface2)';
+    btn.style.color = 'var(--text)';
+    btn.classList.add('active');
+  }
+  o14RenderTable();
+}
 
-        # Zapiši meta (seznam vseh naloženih fileov)
-        meta = {}
-        if META_ADS_META.exists():
-            try: meta = json.loads(META_ADS_META.read_text(encoding='utf-8'))
-            except: pass
-        uploads = meta.get('uploads', [])
-        uploads.append({
-            "filename": file.filename,
-            "uploaded_at": datetime.now(timezone.utc).isoformat(),
-            "rows_added": len(added),
-            "rows_total": len(merged),
-        })
-        meta = {
-            "uploaded_at": datetime.now(timezone.utc).isoformat(),
-            "filename": file.filename,
-            "rows": len(merged),
-            "rows_added": len(added),
-            "uploads": uploads[-10:],  # ohrani zadnjih 10
+function o14RenderTable() {
+  const search = (document.getElementById('o14Search')?.value || '').toLowerCase().trim();
+  let filtered = [...o14Items];
+
+  // Whitelist account selection (ki so checkani)
+  const checkedAccounts = window._o14CheckedAccounts || new Set(o14TargetAccounts);
+
+  // Sidebar filtri (na podlagi VIDNIH/checkanih accountov)
+  // active = vsaj en checkan account je active
+  // paused = vsi checkani so paused (ni nobeden active med checkanimi)
+  // none = nobeden checkani account ne oglašuje
+  const getStatusInChecked = (r) => {
+    if (!r.accounts || checkedAccounts.size === 0) return 'none';
+    let hasActive = false, hasPaused = false;
+    for (const acc of checkedAccounts) {
+      const d = r.accounts[acc];
+      if (!d || d.campaigns === 0) continue;
+      if (d.status === 'active') hasActive = true;
+      else if (d.status === 'paused') hasPaused = true;
+    }
+    if (hasActive) return 'active';
+    if (hasPaused) return 'paused';
+    return 'none';
+  };
+
+  if (o14Filter === 'with_ads') {
+    // Aktivno se oglašuje na izbranih accountih
+    filtered = filtered.filter(r => getStatusInChecked(r) === 'active');
+  } else if (o14Filter === 'paused') {
+    filtered = filtered.filter(r => getStatusInChecked(r) === 'paused');
+  } else if (o14Filter === 'without_ads') {
+    // BREZ oglasov v 14d ZNOTRAJ izbranih accountov (potencial)
+    filtered = filtered.filter(r => getStatusInChecked(r) === 'none');
+  }
+  // else 'all' = vse SKU-je
+
+  // Search
+  if (search) {
+    filtered = filtered.filter(r =>
+      r.sku.toLowerCase().includes(search) ||
+      (r.naziv || '').toLowerCase().includes(search)
+    );
+  }
+
+  // Sort
+  if (window._o14SortCol) {
+    const col = window._o14SortCol;
+    const dir = window._o14SortDir || 1;
+    const statusRank = {'active': 3, 'paused': 2, 'none': 1};
+    filtered.sort((a, b) => {
+      let av, bv;
+      if (col.startsWith('acc:')) {
+        const acc = col.slice(4);
+        const aData = a.accounts?.[acc];
+        const bData = b.accounts?.[acc];
+        av = aData ? (statusRank[aData.status] || 0) : 0;
+        bv = bData ? (statusRank[bData.status] || 0) : 0;
+      } else {
+        av = a[col]; bv = b[col];
+      }
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === 'number') return (av - bv) * dir;
+      return String(av).localeCompare(String(bv)) * dir;
+    });
+  }
+
+  // Paginacija
+  const PAGE_SIZE = 500;
+  if (typeof window._o14Page === 'undefined') window._o14Page = 1;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if (window._o14Page > totalPages) window._o14Page = totalPages;
+  const pageStart = (window._o14Page - 1) * PAGE_SIZE;
+  const pageEnd = pageStart + PAGE_SIZE;
+  const pageItems = filtered.slice(pageStart, pageEnd);
+
+  document.getElementById('o14TableTitle').textContent = 'OBRAT IZDELKOV (' + filtered.length + ')';
+  const table = document.getElementById('o14Table');
+  const empty = document.getElementById('o14Empty');
+
+  if (!o14Items.length) {
+    table.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const sortInd = (col) => {
+    if (window._o14SortCol !== col) return '<span style="opacity:0.4;margin-left:4px">↕</span>';
+    return '<span style="color:var(--accent);margin-left:4px">' + ((window._o14SortDir || 1) === 1 ? '↑' : '↓') + '</span>';
+  };
+
+  // Poseben sort indicator za moder account header pill (bele puščice na modri bg)
+  const sortIndAcc = (col) => {
+    if (window._o14SortCol !== col) return '<span style="opacity:0.6;margin-left:3px;color:#fff">↕</span>';
+    return '<span style="margin-left:3px;color:#fff">' + ((window._o14SortDir || 1) === 1 ? '↑' : '↓') + '</span>';
+  };
+
+  // Krajše labele za accounti
+  // ACC_SHORT → globalna konstanta (AD_ACCOUNTS_CONFIG)
+
+  // Filtriraj account stolpce po checkanu
+  const visibleAccounts = o14TargetAccounts.filter(a => checkedAccounts.has(a));
+
+  // Account checkbox bar
+  const accCheckboxes = '<div style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;align-items:center">' +
+    '<span style="font-size:11px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">Ad accounti:</span>' +
+    '<button onclick="o14ToggleAllAccounts(true)" style="padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--text-secondary);cursor:pointer;font-family:\'DM Sans\',sans-serif">✓ Vsi</button>' +
+    '<button onclick="o14ToggleAllAccounts(false)" style="padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--text-secondary);cursor:pointer;font-family:\'DM Sans\',sans-serif">✗ Nobeden</button>' +
+    o14TargetAccounts.map(acc => {
+      const checked = checkedAccounts.has(acc);
+      const label = ACC_SHORT[acc] || acc;
+      return '<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:' + (checked ? 'rgba(64,193,80,0.12)' : 'var(--surface)') + ';border:1px solid ' + (checked ? 'rgba(64,193,80,0.4)' : 'var(--border)') + ';border-radius:4px;cursor:pointer;font-size:11px;color:' + (checked ? 'var(--green)' : 'var(--text-secondary)') + ';font-weight:500" title="' + esc(acc) + '">' +
+        '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="o14ToggleAccount(\'' + esc(acc) + '\', this.checked)" style="margin:0;cursor:pointer">' +
+        esc(label) +
+      '</label>';
+    }).join('') +
+  '</div>';
+
+  // Header — sortable + dinamičen z visible accounti
+  const accountCols = visibleAccounts.map(() => '70px').join(' ');
+  const cols = '1.3fr 2.5fr 80px' + (visibleAccounts.length > 0 ? ' ' + accountCols : '');
+
+  let html = accCheckboxes;
+
+  // Variant D: Dark label nad account stolpci (samo če imamo vidne accounte)
+  if (visibleAccounts.length > 0) {
+    html += '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:0 14px;margin-bottom:0">';
+    // Empty cells for SKU, Naziv, Obrat (3 cells)
+    html += '<span></span><span></span><span></span>';
+    // Dark label spans across all visible account columns
+    html += '<span style="grid-column:span ' + visibleAccounts.length + ';display:flex;align-items:center;justify-content:center;background:#1f2937;color:#fff;font-size:9px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;border-radius:5px 5px 0 0;padding:3px 8px;height:18px">Ad accounti — status oglasov</span>';
+    html += '</div>';
+  }
+
+  html += '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.4px;user-select:none">' +
+    '<span style="cursor:pointer" onclick="o14SortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
+    '<span style="cursor:pointer" onclick="o14SortBy(\'naziv\')">Naziv' + sortInd('naziv') + '</span>' +
+    '<span style="text-align:center;cursor:pointer" onclick="o14SortBy(\'kolicina\')">Obrat' + sortInd('kolicina') + '</span>' +
+    visibleAccounts.map(a => '<span style="text-align:center;cursor:pointer;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#185FA5;border-radius:3px;padding:4px 2px;color:#fff;font-weight:600" onclick="o14SortBy(\'acc:' + esc(a).replace(/\\/g, '\\\\').replace(/\'/g, "\\\'") + '\')" title="' + esc(a) + '">' + esc(ACC_SHORT[a] || a) + sortIndAcc('acc:' + a) + '</span>').join('') +
+  '</div>';
+
+  if (filtered.length === 0) {
+    html += '<div style="padding:2rem;text-align:center;color:var(--text-tertiary);font-size:12px">Ni rezultatov.</div>';
+  } else {
+    // Inverzni style: ✓ = poln zeleni kvadrat z belo kljukico, ⏸ = poln oranžen kvadrat z belo pavzo, — = sivi pill
+    const O14_ACC_CELL_BG = 'rgba(0,0,0,0.04)';
+    const O14_ACTIVE_BG = '#639922';
+    const O14_PAUSED_BG = '#EF9F27';
+    html += pageItems.map(r => {
+      const accCells = visibleAccounts.map(acc => {
+        const data = r.accounts?.[acc];
+        if (!data || data.campaigns === 0) {
+          // — sivi pomišljaj (ni v 14d reportu — potencialni kandidat za reaktivacijo, info v tooltip)
+          return '<div style="text-align:center;color:var(--text-tertiary);font-size:14px;background:' + O14_ACC_CELL_BG + ';border-radius:3px;padding:3px 0" title="' + esc(acc) + ': brez oglasov v 14d (kandidat za reaktivacijo)">—</div>';
         }
-        META_ADS_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
-
-        # Zberi accounte iz merged podatkov
-        accounts = sorted(set(r.get('Account name','').strip() for r in merged if r.get('Account name','').strip()))
-
-        return {
-            "status": "ok",
-            "rows_added": len(added),
-            "rows_total": len(merged),
-            "uploaded_at": meta["uploaded_at"],
-            "filename": file.filename,
-            "accounts": accounts,
+        const status = data.status || 'none';
+        if (status === 'active') {
+          return '<div style="text-align:center;color:#fff;font-size:14px;font-weight:700;background:' + O14_ACTIVE_BG + ';border-radius:3px;padding:3px 0" title="' + esc(acc) + ': aktiven · ' + (data.active || 0) + ' aktivnih · ' + (data.paused || 0) + ' pavziranih · ' + data.spend.toFixed(2) + '€ · ' + data.purchases + ' nakupov">✓</div>';
+        } else if (status === 'paused') {
+          return '<div style="text-align:center;color:#fff;font-size:13px;font-weight:700;background:' + O14_PAUSED_BG + ';border-radius:3px;padding:3px 0" title="' + esc(acc) + ': pavzirano · vse kampanje STOP · ' + data.spend.toFixed(2) + '€ · ' + data.purchases + ' nakupov">⏸</div>';
         }
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return '<div style="text-align:center;color:var(--text-tertiary);font-size:14px;background:' + O14_ACC_CELL_BG + ';border-radius:3px;padding:3px 0" title="' + esc(acc) + ': ni oglaševan">—</div>';
+      }).join('');
+
+      const bg = !r.has_ads ? 'rgba(124,58,237,0.08)' : 'var(--surface2)';
+
+      return '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;align-items:center;padding:11px 14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px">' +
+        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.sku) + '</div>' +
+        '<div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.naziv) + '">' + esc(r.naziv) + '</div>' +
+        '<div style="text-align:center;font-weight:600;color:var(--text)">' + r.kolicina + '</div>' +
+        accCells +
+      '</div>';
+    }).join('');
 
 
-@app.post("/analiza-meta-clear")
-async def analiza_meta_clear():
-    """Počisti vse naložene Meta Ads CSV podatke."""
-    try:
-        if META_ADS_FILE.exists(): META_ADS_FILE.unlink()
-        if META_ADS_META.exists(): META_ADS_META.unlink()
-        return {"ok": True}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+  }
 
+  table.innerHTML = html;
+}
 
+function o14SortBy(col) {
+  if (window._o14SortCol === col) window._o14SortDir = -(window._o14SortDir || 1);
+  else { window._o14SortCol = col; window._o14SortDir = -1; }
+  window._o14Page = 1;
+  o14RenderTable();
+}
 
-@app.get("/analiza-meta-data")
-async def analiza_meta_data():
-    """Vrne agregirane podatke iz Meta Ads CSV: SKU → metrike po accountu."""
-    if not META_ADS_FILE.exists():
-        return {"loaded": False}
+function o14ToggleAccount(acc, checked) {
+  if (!window._o14CheckedAccounts) window._o14CheckedAccounts = new Set(o14TargetAccounts);
+  if (checked) window._o14CheckedAccounts.add(acc);
+  else window._o14CheckedAccounts.delete(acc);
+  window._o14Page = 1;
+  o14RenderTable();
+}
 
-    try:
-        text = META_ADS_FILE.read_text(encoding="utf-8-sig", errors="replace")
-        first_line = text.split('\n', 1)[0]
-        sep = ';' if first_line.count(';') > first_line.count(',') else ','
+function o14ToggleAllAccounts(all) {
+  window._o14CheckedAccounts = all ? new Set(o14TargetAccounts) : new Set();
+  window._o14Page = 1;
+  o14RenderTable();
+}
 
-        import csv as _csv
-        from io import StringIO as _SIO
-        reader = _csv.DictReader(_SIO(text), delimiter=sep)
+function anSetFilter(filter, btn) {
+  anFilter = filter;
+  window._anPage = 1;
+  document.querySelectorAll('.an-filter-btn').forEach(b => {
+    b.classList.remove('active');
+    b.style.background = 'transparent';
+    b.style.color = 'var(--text-secondary)';
+  });
+  if (btn) {
+    btn.classList.add('active');
+    btn.style.background = 'var(--surface2)';
+    btn.style.color = 'var(--text)';
+  }
+  anRenderTable();
+}
 
-        # Agregirajmo po SKU (in kasneje v JS po accountu)
-        sku_data = {}  # sku → {accounts: {acc: {spend, purchases, etc}}, campaigns: [...]}
+async function anLoadStock() {
+  // Naložimo iz iste shranjene CSV zaloge kot kontrola cen
+  try {
+    const res = await fetch('/orodja-stock-data');
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    anStockData = (data.items || []).map(it => ({
+      sku: it.sku || '',
+      title: it.title || '',
+      stock: parseInt(it.stock) || 0,
+      stock30: parseInt(it.stock30) || 0,
+      ratio: (parseInt(it.stock30) || 0) > 0 ? ((parseInt(it.stock) || 0) / (parseInt(it.stock30) || 1)) : null,
+    }));
 
-        def _f(v):
-            try:
-                return float(str(v or '0').replace(',', '.'))
-            except:
-                return 0.0
+    const info = document.getElementById('anStockInfo');
+    if (data.uploaded_at) {
+      const dt = new Date(data.uploaded_at);
+      info.innerHTML = '<strong style="color:var(--green)">✓ ' + anStockData.length + ' SKU-jev</strong><br>posodobljeno: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
+    } else {
+      info.innerHTML = '<span style="color:var(--text-tertiary)">⚠ Ni naložene zaloge<br>Naloži v Orodja → Kontrola cen</span>';
+    }
 
-        def _i(v):
-            try:
-                return int(float(str(v or '0').replace(',', '.')))
-            except:
-                return 0
+    anRenderTable();
+  } catch(e) {
+    document.getElementById('anStockInfo').innerHTML = '<span style="color:var(--red)">⚠ ' + e.message + '</span>';
+  }
+}
 
-        # Naloži znane SKU-je iz zaloge (za boljši filter)
-        known_skus = _load_known_skus()
+function anSortBy(col) {
+  if (anSortCol === col) anSortDir = -anSortDir;
+  else { anSortCol = col; anSortDir = -1; }
+  window._anPage = 1;
+  anRenderTable();
+}
 
-        for row in reader:
-            campaign_name = (row.get('Campaign name') or '').strip()
-            if not campaign_name:
-                continue
+function anSortByAccount(acc) {
+  const col = 'acc:' + acc;
+  if (anSortCol === col) anSortDir = -anSortDir;
+  else { anSortCol = col; anSortDir = -1; }
+  window._anPage = 1;
+  anRenderTable();
+}
 
-            account = (row.get('Account name') or '').strip() or '—'
-            spend = _f(row.get('Amount spent (EUR)'))
-            purchases = _i(row.get('Purchases'))
-            cpa = _f(row.get('Cost per purchase'))
-            cpc = _f(row.get('CPC (cost per link click)'))
-            ctr = _f(row.get('CTR (link click-through rate)'))
-            atc = _i(row.get('Adds to cart'))
-            freq = _f(row.get('Frequency'))
-            # Status SAMO iz FB Campaign Delivery kolone (edina resnica)
-            # Ime kampanje (@STOP, ⛔, OFF) se IGNORIRA — to so naši interni oznaki
-            delivery = (row.get('Campaign Delivery') or '').strip().lower()
-            if delivery == 'inactive':
-                is_stopped = True
-            elif delivery == 'active':
-                is_stopped = False
-            else:
-                # Stolpec manjka ali neznana vrednost → privzeto aktivna
-                # (raje napačno aktivna kot napačno pavzirana — ker FB sam ne ve)
-                is_stopped = False
+function anToggleAccount(acc, checked) {
+  if (!window._anCheckedAccounts) window._anCheckedAccounts = new Set(TARGET_ACCOUNTS.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
+  if (checked) window._anCheckedAccounts.add(acc);
+  else window._anCheckedAccounts.delete(acc);
+  window._anPage = 1;
+  anRenderTable();
+}
 
-            # Izvleci SKU-je iz imena (filtrirano po znanih SKU iz zaloge)
-            skus = extract_skus_from_text(campaign_name, known_skus if known_skus else None)
-            # Dedupliciraj
-            skus = list(dict.fromkeys(skus))
+function anToggleAllAccounts(all) {
+  window._anCheckedAccounts = all ? new Set(TARGET_ACCOUNTS) : new Set();
+  window._anPage = 1;
+  anRenderTable();
+}
 
-            for sku in skus:
-                if sku not in sku_data:
-                    sku_data[sku] = {
-                        "sku": sku,
-                        "campaigns": [],
-                        "accounts": {},
-                        "total_spend": 0,
-                        "total_purchases": 0,
-                        "total_atc": 0,
-                        "total_clicks_value": 0,  # za uteženo CPC
-                        "campaign_count": 0,
-                        "stopped_count": 0,
-                    }
-                d = sku_data[sku]
-                d["campaigns"].append({
-                    "name": campaign_name,
-                    "account": account,
-                    "spend": spend,
-                    "purchases": purchases,
-                    "cpa": cpa,
-                    "atc": atc,
-                    "stopped": is_stopped,
-                })
-                if account not in d["accounts"]:
-                    d["accounts"][account] = {"spend": 0, "purchases": 0, "campaigns": 0, "active": 0, "paused": 0}
-                d["accounts"][account]["spend"] += spend
-                d["accounts"][account]["purchases"] += purchases
-                d["accounts"][account]["campaigns"] += 1
-                if is_stopped:
-                    d["accounts"][account]["paused"] += 1
-                else:
-                    d["accounts"][account]["active"] += 1
-                d["total_spend"] += spend
-                d["total_purchases"] += purchases
-                d["total_atc"] += atc
-                d["campaign_count"] += 1
-                if is_stopped:
-                    d["stopped_count"] += 1
+function anRenderTable() {
+  const search = (document.getElementById('anSearch')?.value || '').toLowerCase().trim();
+  const skuMap = window._anSkuMap || {};
 
-        # Pripravi flat seznam za frontend
-        items = []
-        for sku, d in sku_data.items():
-            avg_cpa = (d["total_spend"] / d["total_purchases"]) if d["total_purchases"] > 0 else None
-            # Izračunaj per-account status (active = vsaj 1 aktivna, paused = vse pavzirane)
-            accounts_with_status = []
-            for k, v in d["accounts"].items():
-                acc = {"name": k, **v}
-                if v.get("active", 0) > 0:
-                    acc["status"] = "active"
-                elif v.get("paused", 0) > 0:
-                    acc["status"] = "paused"
-                else:
-                    acc["status"] = "none"
-                accounts_with_status.append(acc)
-            items.append({
-                "sku": sku,
-                "total_spend": round(d["total_spend"], 2),
-                "total_purchases": d["total_purchases"],
-                "total_atc": d["total_atc"],
-                "avg_cpa": round(avg_cpa, 2) if avg_cpa is not None else None,
-                "campaign_count": d["campaign_count"],
-                "stopped_count": d["stopped_count"],
-                "active_count": d["campaign_count"] - d["stopped_count"],
-                "accounts": accounts_with_status,
-            })
+  // Dynamični account seznam — preferira server podatke, fallback na config
+  const _effectiveAccounts = (window._anDynamicAccounts && window._anDynamicAccounts.length > 0)
+    ? window._anDynamicAccounts
+    : TARGET_ACCOUNTS;
 
-        # Zberi vse accounte dinamično iz podatkov (ne hardkodiran whitelist)
-        all_accounts = sorted(set(
-            acc_name
-            for d in sku_data.values()
-            for acc_name in d["accounts"].keys()
-            if acc_name and acc_name != '—'
-        ))
+  // JS verzija smart_root — identična Python smart_root()
+  // Maaa61lightBrown → Maaa61, M377grey → M377, SOLEBRACE_SM → SOLEBRACE
+  const smartRoot = (s) => {
+    if (!s) return s;
+    const base = s.split(/[_\-\s]/)[0];
+    let cut = null;
+    // Camel-case: lower→Upper prehod (Maaa61lightBrown → Maaa61)
+    const m = base.match(/[a-z][A-Z]/);
+    if (m) {
+      // m.index je pozicija lowercase znaka, prehod je na m.index+1
+      let idx = m.index + 1;
+      // Pomikamo se nazaj dokler je lowercase (Python: while idx>1 and base[idx-1].islower())
+      while (idx > 1 && base[idx-1] >= 'a' && base[idx-1] <= 'z') idx--;
+      if (idx > 0) cut = idx;
+    }
+    // Digit followed by lowercase (M377grey → M377)
+    if (cut === null) {
+      const m2 = base.match(/\d[a-z]/);
+      if (m2) cut = m2.index + 1;
+    }
+    return cut !== null ? base.slice(0, cut) : base;
+  };
 
-        meta = {}
-        if META_ADS_META.exists():
-            try:
-                meta = json.loads(META_ADS_META.read_text(encoding="utf-8"))
-            except: pass
+  const _isAdvertised = (sku) => {
+    const upper = (sku || '').toUpperCase();
+    const koren = smartRoot(sku || '').toUpperCase();
+    const d = skuMap[upper] || (koren !== upper ? skuMap[koren] : null);
+    return d && d.campaign_count > 0;
+  };
+  const getAdData = (sku) => {
+    const upper = (sku || '').toUpperCase();
+    const koren = smartRoot(sku || '').toUpperCase();
+    return skuMap[upper] || (koren !== upper ? skuMap[koren] : null) || null;
+  };
 
-        return {
-            "loaded": True,
-            "items": items,
-            "total_skus": len(items),
-            "accounts": all_accounts,  # dynamic lista za frontend checkboxe
-            **{k: v for k, v in meta.items() if k != 'accounts'},
+  // Pripravi vrstice z merged ad data za sortiranje
+  let filtered = anStockData.map(r => {
+    const ad = getAdData(r.sku);
+    return {
+      ...r,
+      ad_spend: ad ? ad.total_spend : null,
+      ad_purchases: ad ? ad.total_purchases : null,
+      ad_cpa: (ad && ad.total_purchases > 0) ? (ad.total_spend / ad.total_purchases) : null,
+      ad_accounts: ad ? Object.keys(ad.accounts || {}).join(', ') : '',
+      ad_campaign_count: ad ? ad.campaign_count : 0,
+      ad_active_count: ad ? (ad.campaign_count - ad.stopped_count) : 0,
+      _ad: ad,
+    };
+  });
+
+  // FILTRI iznad tabele — checkboxi po accountih (kot v Obrat 14 dni)
+  if (!window._anCheckedAccounts) window._anCheckedAccounts = new Set(_effectiveAccounts.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
+  const checkedAccounts = window._anCheckedAccounts;
+
+  // Filter: SKU obdržimo, če ima oglas na vsaj enem izbranem accountu
+  // ALI če nima oglasa sploh (kategorija "brez oglasov" ostane vidna v stolpcih z —)
+  // ALI če v sidebar filtru ni izbran "active_ads"/"only_stopped"
+  if (checkedAccounts.size === 0) {
+    // Nobeden checkan → samo SKU brez oglasov
+    filtered = filtered.filter(r => !r._ad || r._ad.campaign_count === 0);
+  } else if (checkedAccounts.size < _effectiveAccounts.length) {
+    // Subset: če ima oglas, mora imeti vsaj en izbran account; SKU brez oglasov ostanejo
+    filtered = filtered.filter(r => {
+      if (!r._ad || r._ad.campaign_count === 0) return true;
+      return Object.keys(r._ad.accounts || {}).some(acc => checkedAccounts.has(acc));
+    });
+    // Skrči _ad podatke samo na izbrane accounte za pravilen prikaz spend/cpa/status
+    filtered = filtered.map(r => {
+      if (!r._ad) return r;
+      const matchedAccounts = {};
+      let spend = 0, purchases = 0, campaigns = 0, stopped = 0;
+      for (const [acc, data] of Object.entries(r._ad.accounts || {})) {
+        if (checkedAccounts.has(acc)) {
+          matchedAccounts[acc] = data;
+          spend += data.spend || 0;
+          purchases += data.purchases || 0;
+          campaigns += data.campaigns || 0;
+          // izpeljemo "stopped" iz statusa accounta (paused = vse kampanje na tem accountu so pavzirane)
+          if ((data.status === 'paused') || ((data.active || 0) === 0 && (data.campaigns || 0) > 0)) {
+            stopped += data.campaigns || 0;
+          }
         }
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": str(e)}, status_code=500)
+      }
+      return {
+        ...r,
+        ad_spend: spend,
+        ad_purchases: purchases,
+        ad_cpa: purchases > 0 ? (spend / purchases) : null,
+        ad_accounts: Object.keys(matchedAccounts).join(', '),
+        ad_campaign_count: campaigns,
+        _ad: { ...r._ad, accounts: matchedAccounts, total_spend: spend, total_purchases: purchases, campaign_count: campaigns, stopped_count: stopped, _filtered: true },
+      };
+    });
+  }
+  // checkedAccounts.size === _effectiveAccounts.length → vse accounti vidni, brez filtriranja
 
+  // Filter po kategoriji (sidebar)
+  if (anFilter === 'high_stock_no_obrat') {
+    filtered = filtered.filter(r => r.stock >= 20 && r.stock30 === 0);
+  } else if (anFilter === 'high_obrat') {
+    filtered = filtered.filter(r => r.stock30 >= 5).sort((a, b) => b.stock30 - a.stock30).slice(0, 100);
+  } else if (anFilter === 'zero_stock') {
+    filtered = filtered.filter(r => r.stock === 0);
+  } else if (anFilter === 'advertised' || anFilter === 'active_ads') {
+    filtered = filtered.filter(r => r._ad && (r._ad.campaign_count - r._ad.stopped_count) > 0);
+  } else if (anFilter === 'only_stopped') {
+    filtered = filtered.filter(r => r._ad && r._ad.campaign_count > 0 && (r._ad.campaign_count - r._ad.stopped_count) === 0);
+  } else if (anFilter === 'not_advertised') {
+    filtered = filtered.filter(r => !r._ad || r._ad.campaign_count === 0);
+  } else if (anFilter === 'potential' || anFilter === 'opportunity') {
+    filtered = filtered.filter(r => r.stock >= 20 && r.stock30 >= 3 && (!r._ad || r._ad.campaign_count === 0));
+  } else if (anFilter === 'underperforming') {
+    filtered = filtered.filter(r => r.ad_cpa !== null && r.ad_cpa > 15);
+  } else if (anFilter === 'top_performers') {
+    filtered = filtered.filter(r => r.ad_cpa !== null && r.ad_cpa < 8 && (r.ad_purchases || 0) > 5);
+  }
 
-# ─── ANALIZA: Obrat 14 dni ─────────────────────────────────────────────────────
+  // Search
+  if (search) {
+    filtered = filtered.filter(r =>
+      r.sku.toLowerCase().includes(search) ||
+      r.title.toLowerCase().includes(search)
+    );
+  }
 
-OBRAT14_FILE = DATA_DIR / "obrat_14dni.txt"
-OBRAT14_META = DATA_DIR / "obrat_14dni_meta.json"
+  // Sort
+  if (anSortCol) {
+    const accStatusRank = {'active': 3, 'paused': 2, 'none': 1};
+    filtered.sort((a, b) => {
+      let av, bv;
+      if (typeof anSortCol === 'string' && anSortCol.startsWith('acc:')) {
+        const acc = anSortCol.slice(4);
+        const aData = a._ad?.accounts?.[acc];
+        const bData = b._ad?.accounts?.[acc];
+        const getRank = (d) => {
+          if (!d || (d.campaigns || 0) === 0) return 0;
+          let s = d.status;
+          if (!s) s = (d.active || 0) > 0 ? 'active' : 'paused';
+          return accStatusRank[s] || 0;
+        };
+        av = getRank(aData);
+        bv = getRank(bData);
+      } else {
+        av = a[anSortCol]; bv = b[anSortCol];
+      }
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === 'number') return (av - bv) * anSortDir;
+      return String(av).localeCompare(String(bv)) * anSortDir;
+    });
+  }
 
-# Whitelist accounts za Obrat 14dni view
-TARGET_ACCOUNTS = ['Maaarket X', 'Maaarket ALL', 'Maaarket ALL2', 'Maaarket ALL3 + RS', 'Zipply.', 'si_SUBAN_Maaarket SK', 'Maaarket PL/RO', 'Maaarket HR', 'si_Suban_Maaarket HR', 'Easyzo']
-# Ko dobiš nova accounta, dodaj ju sem IN v AD_ACCOUNTS_CONFIG v index.html
+  anFilteredData = filtered;
 
+  // Paginacija (500/stran)
+  const PAGE_SIZE = 500;
+  if (typeof window._anPage === 'undefined') window._anPage = 1;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if (window._anPage > totalPages) window._anPage = totalPages;
+  const pageStart = (window._anPage - 1) * PAGE_SIZE;
+  const pageEnd = pageStart + PAGE_SIZE;
+  const pageItems = filtered.slice(pageStart, pageEnd);
 
-@app.post("/analiza-obrat14-upload")
-async def analiza_obrat14_upload(file: UploadFile = File(...)):
-    """Sprejme TXT/TSV iz top obratov, shrani."""
-    try:
-        content_bytes = await file.read()
-        OBRAT14_FILE.write_bytes(content_bytes)
+  document.getElementById('anTableTitle').textContent = 'ZALOGA IZDELKOV (' + filtered.length + ')';
 
-        text = content_bytes.decode('utf-8-sig', errors='replace')
-        lines = [l.strip() for l in text.splitlines() if l.strip()]
+  const table = document.getElementById('anTable');
+  const empty = document.getElementById('anEmpty');
 
-        meta = {
-            "uploaded_at": datetime.now(timezone.utc).isoformat(),
-            "filename": file.filename,
-            "size": len(content_bytes),
-            "rows": max(0, len(lines) - 1),
+  if (!anStockData.length) {
+    table.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const sortInd = (col) => {
+    if (anSortCol !== col) return '<span style="opacity:0.4;margin-left:4px">↕</span>';
+    return '<span style="color:var(--accent);margin-left:4px">' + (anSortDir === 1 ? '↑' : '↓') + '</span>';
+  };
+
+  // Poseben sort indicator za moder account header pill (bele puščice da so vidne na modri bg)
+  const sortIndAcc = (col) => {
+    if (anSortCol !== col) return '<span style="opacity:0.6;margin-left:3px;color:#fff">↕</span>';
+    return '<span style="margin-left:3px;color:#fff">' + (anSortDir === 1 ? '↑' : '↓') + '</span>';
+  };
+
+  const hasMetaData = Object.keys(skuMap).length > 0;
+
+  // LEGENDA + statistike
+  let totalAds = 0, totalActive = 0, totalStopped = 0, totalNoAds = 0;
+  for (const r of anFilteredData) {
+    if (!r._ad || r._ad.campaign_count === 0) totalNoAds++;
+    else {
+      totalAds++;
+      if ((r._ad.campaign_count - r._ad.stopped_count) > 0) totalActive++;
+      else totalStopped++;
+    }
+  }
+
+  let legendHtml = '';
+  if (hasMetaData) {
+    legendHtml = '<div style="display:flex;gap:14px;flex-wrap:wrap;padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;margin-bottom:10px;align-items:center">' +
+      '<span style="font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px">Legenda:</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;background:rgba(64,193,80,0.18);border:1px solid rgba(64,193,80,0.4);border-radius:3px"></span><span style="color:var(--text-secondary)">Aktivni v 14d (' + totalActive + ')</span></span>' +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.4);border-radius:3px"></span><span style="color:var(--text-secondary)">Bili aktivni a sedaj @STOP (' + totalStopped + ')</span></span>' +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.3);border-radius:3px"></span><span style="color:var(--text-secondary)">Potencial (zaloga, brez ads)</span></span>' +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;background:var(--surface2);border:1px solid var(--border);border-radius:3px"></span><span style="color:var(--text-secondary)">Brez oglasov v 14d (' + totalNoAds + ')</span></span>' +
+      '</div>';
+  }
+
+  // Vidni accounti (po izbranih checkboxih)
+  const visibleAccounts = _effectiveAccounts.filter(a => checkedAccounts.has(a));
+
+  // Header — account stolpci direktno v gridu (vodoravno), samo izbrani
+  // Brez RAZM. stolpca; namesto zneskov v account stolpcih le simboli ✓ / ⏸ / —
+  const accountColsTpl = (hasMetaData && visibleAccounts.length > 0) ? visibleAccounts.map(() => '54px').join(' ') : '';
+  const cols = hasMetaData
+    ? '1.3fr 2.2fr 70px 75px 130px ' + accountColsTpl + (visibleAccounts.length > 0 ? ' ' : '') + '80px 70px 70px'
+    : '1.3fr 2.2fr 70px 75px';
+
+  // Min širina za grid, da se ne stiska — sumiraj fr in px približno
+  const accCount = hasMetaData ? visibleAccounts.length : 0;
+  const minWidth = hasMetaData ? (260 + 440 + 70 + 75 + 130 + (accCount * 54) + 80 + 70 + 70 + (accCount + 8) * 10) : 800;
+
+  let html = legendHtml;
+
+  // Variant D: Dark label nad account stolpci (samo ko imamo Meta data + vidne accounte)
+  if (hasMetaData && visibleAccounts.length > 0) {
+    // Položaj dark labela: levi offset = SKU (1.3fr) + Naziv (2.2fr) + Zaloga (70) + Obrat (75) + Status (130) + 5×gap (10*5=50)
+    // Ker prve 2 stolpca sta fr-ja, težko izračunamo natančno px → uporabimo flex hack: pozicionira se relativno na grid
+    // Lažja rešitev: dodamo grid bar ki ima isto cols strukturo, in dark label samo span-a account stolpce
+    const labelGridCols = cols; // ista struktura kot header
+    let labelHtml = '<div style="display:grid;grid-template-columns:' + labelGridCols + ';gap:10px;padding:0 14px;min-width:' + minWidth + 'px;width:100%;margin-bottom:0">';
+    // Empty cells for SKU, Naziv, Zaloga, Obrat, Status (5 cells)
+    labelHtml += '<span></span><span></span><span></span><span></span><span></span>';
+    // Dark label spans across all visible account columns
+    labelHtml += '<span style="grid-column:span ' + visibleAccounts.length + ';display:flex;align-items:center;justify-content:center;background:#1f2937;color:#fff;font-size:9px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;border-radius:5px 5px 0 0;padding:3px 8px;height:18px">Ad accounti — status oglasov</span>';
+    // Empty cells for Spend, Nakupi, CPA (3 cells)
+    labelHtml += '<span></span><span></span><span></span>';
+    labelHtml += '</div>';
+    html += labelHtml;
+  }
+
+  html +=
+    '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none;min-width:' + minWidth + 'px;width:100%">' +
+    '<span style="cursor:pointer" onclick="anSortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
+    '<span style="cursor:pointer" onclick="anSortBy(\'title\')">Naziv izdelka' + sortInd('title') + '</span>' +
+    '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock\')">Zaloga' + sortInd('stock') + '</span>' +
+    '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock30\')">Obrat 30d' + sortInd('stock30') + '</span>' +
+    (hasMetaData
+      ? '<span>Status</span>' +
+        visibleAccounts.map(acc => {
+          const lbl = ACC_SHORT[acc] || acc;
+          // Escape za inline onclick atribut: nadomesti ' z ASCII string-om znotraj single-quoted JS arg
+          const accEsc = String(acc).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+          // Inverzni style: moder pill bg (var. 3), bel tekst — header izstopi kot informacijska skupina
+          return '<span style="text-align:center;cursor:pointer;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#185FA5;border-radius:3px;padding:4px 2px;color:#fff;font-weight:600" onclick="anSortByAccount(\'' + accEsc + '\')" title="' + esc(acc) + ' — klik za sortiranje">' + esc(lbl) + sortIndAcc('acc:' + acc) + '</span>';
+        }).join('') +
+        '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_spend\')">Spend' + sortInd('ad_spend') + '</span>' +
+        '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_purchases\')">Nakupi' + sortInd('ad_purchases') + '</span>' +
+        '<span style="text-align:right;cursor:pointer" onclick="anSortBy(\'ad_cpa\')">CPA' + sortInd('ad_cpa') + '</span>'
+      : '') +
+    '</div>';
+
+  // Vrstice
+  if (filtered.length === 0) {
+    html += '<div style="padding:2rem;text-align:center;color:var(--text-tertiary);font-size:12px">Ni rezultatov.</div>';
+  } else {
+    html += pageItems.map(r => {
+      let bg = 'var(--surface2)';
+      let stockColor = 'var(--text-secondary)';
+      let obratColor = 'var(--text-secondary)';
+
+      if (r.stock === 0) {
+        bg = 'rgba(0,0,0,0.03)';
+        stockColor = 'var(--text-tertiary)';
+      } else if (r.stock30 >= 10) {
+        bg = 'rgba(64,193,80,0.04)';
+        obratColor = 'var(--green)';
+      }
+      if (r.stock >= 20 && r.stock30 === 0) {
+        bg = 'rgba(248,81,73,0.06)';
+        stockColor = 'var(--red)';
+      }
+
+      // STATUS BADGE + account stolpci (inline, kot vodoravne celice grida)
+      let statusCells = '';
+      let statusBadge = '';
+      let accountInlineCells = '';
+      const adData = r._ad;
+
+      // Helper: zgenerira account celice (✓ / ⏸ / —) glede na stanje za ta SKU
+      // INVERZNI STYLE: ✓ = poln zeleni kvadrat z belo kljukico, ⏸ = poln oranžen kvadrat z belo pavzo, — = sivi pill
+      const ACC_CELL_BG = 'rgba(0,0,0,0.04)';
+      const ACC_ACTIVE_BG = '#639922';     // zelena (--c-green-600)
+      const ACC_PAUSED_BG = '#EF9F27';     // oranžna (--c-amber-200)
+      const buildAccountInline = () => {
+        if (!hasMetaData) return '';
+        return visibleAccounts.map(acc => {
+          const accData = adData ? (adData.accounts?.[acc]) : null;
+          if (!accData || (accData.campaigns || 0) === 0 || (accData.spend === 0 && accData.purchases === 0 && (accData.campaigns || 0) === 0)) {
+            // Ni oglaševan
+            return '<div style="text-align:center;color:var(--text-tertiary);font-size:14px;background:' + ACC_CELL_BG + ';border-radius:3px;padding:3px 0" title="' + esc(acc) + ': ni oglaševan">—</div>';
+          }
+          // accData.status: 'active' | 'paused' (če nimamo, izpeljemo iz active/paused števca)
+          let status = accData.status;
+          if (!status) {
+            const ac = accData.active || 0;
+            status = ac > 0 ? 'active' : 'paused';
+          }
+          if (status === 'active') {
+            const tip = esc(acc) + ': aktiven · ' + (accData.spend || 0).toFixed(2) + '€ · ' + (accData.purchases || 0) + ' nakupov · ' + (accData.campaigns || 0) + ' kampanj';
+            return '<div style="text-align:center;color:#fff;font-size:14px;font-weight:700;background:' + ACC_ACTIVE_BG + ';border-radius:3px;padding:3px 0" title="' + tip + '">✓</div>';
+          }
+          // paused (bil aktiven a sedaj STOP)
+          const tip = esc(acc) + ': pavzirano · ' + (accData.spend || 0).toFixed(2) + '€ · ' + (accData.purchases || 0) + ' nakupov';
+          return '<div style="text-align:center;color:#fff;font-size:13px;font-weight:700;background:' + ACC_PAUSED_BG + ';border-radius:3px;padding:3px 0" title="' + tip + '">⏸</div>';
+        }).join('');
+      };
+
+      if (hasMetaData) {
+        if (!adData || adData.campaign_count === 0) {
+          statusBadge = '<span style="font-size:11px;color:var(--text-tertiary);font-style:italic">— ni oglasa —</span>';
+          if (r.stock >= 20 && r.stock30 >= 3) {
+            bg = 'rgba(124,58,237,0.10)';
+            statusBadge = '<span style="font-size:11px;color:#7c3aed;font-weight:600">🚀 Potencial</span>';
+          }
+          accountInlineCells = visibleAccounts.map(acc =>
+            '<div style="text-align:center;color:var(--text-tertiary);font-size:14px;background:' + ACC_CELL_BG + ';border-radius:3px;padding:3px 0" title="' + esc(acc) + ': ni oglaševan">—</div>'
+          ).join('');
+          statusCells =
+            '<div>' + statusBadge + '</div>' +
+            accountInlineCells +
+            '<div style="text-align:right;color:var(--text-tertiary)">—</div>' +
+            '<div style="text-align:right;color:var(--text-tertiary)">—</div>' +
+            '<div style="text-align:right;color:var(--text-tertiary)">—</div>';
+        } else {
+          // Imam ads
+          const activeCount = adData.campaign_count - adData.stopped_count;
+          const isAllStopped = activeCount === 0;
+          if (isAllStopped) {
+            bg = 'rgba(245,158,11,0.10)';
+            statusBadge = '<span style="font-size:11px;color:#d97706;font-weight:600">⏸ Stop (' + adData.campaign_count + ')</span>';
+          } else {
+            bg = 'rgba(64,193,80,0.10)';
+            statusBadge = '<span style="font-size:11px;color:var(--green);font-weight:600">▶ Aktiven (' + activeCount + '/' + adData.campaign_count + ')</span>';
+          }
+
+          const cpa = r.ad_cpa;
+          const cpaTxt = cpa !== null ? cpa.toFixed(2) + ' €' : '—';
+          const cpaColor = cpa !== null && cpa < 8 ? 'var(--green)' : cpa !== null && cpa > 15 ? 'var(--red)' : 'var(--text)';
+
+          accountInlineCells = buildAccountInline();
+
+          statusCells =
+            '<div>' + statusBadge + '</div>' +
+            accountInlineCells +
+            '<div style="text-align:right;font-weight:500;color:var(--text)">' + adData.total_spend.toFixed(0) + ' €</div>' +
+            '<div style="text-align:right;font-weight:600;color:var(--text)">' + adData.total_purchases + '</div>' +
+            '<div style="text-align:right;font-weight:600;color:' + cpaColor + '">' + cpaTxt + '</div>';
         }
-        OBRAT14_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+      }
 
-        return {"status": "ok", "rows": meta["rows"], "uploaded_at": meta["uploaded_at"], "filename": file.filename}
-    except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": str(e)}, status_code=500)
+      return '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;align-items:center;padding:12px 14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px;min-width:' + minWidth + 'px;width:100%">' +
+        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.sku) + '">' + esc(r.sku) + '</div>' +
+        '<div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.title) + '">' + esc(r.title) + '</div>' +
+        '<div style="text-align:center;font-weight:600;color:' + stockColor + '">' + r.stock + '</div>' +
+        '<div style="text-align:center;font-weight:500;color:' + obratColor + '">' + r.stock30 + '</div>' +
+        statusCells +
+      '</div>';
+    }).join('');
 
+    // Paginacija footer
+    if (totalPages > 1) {
+      const pageButtons = [];
+      pageButtons.push('<button onclick="anSetPage(' + Math.max(1, window._anPage - 1) + ')" ' + (window._anPage === 1 ? 'disabled' : '') + ' style="padding:7px 12px;background:var(--surface);border:1px solid var(--border);border-radius:4px;cursor:' + (window._anPage === 1 ? 'not-allowed' : 'pointer') + ';font-size:12px;color:' + (window._anPage === 1 ? 'var(--text-tertiary)' : 'var(--text)') + ';font-family:\'DM Sans\',sans-serif">‹ Prejšnja</button>');
 
-@app.get("/analiza-obrat14-data")
-async def analiza_obrat14_data():
-    """Vrne obrat 14dni podatke + match z FB Ads (po accountu, samo whitelist)."""
-    if not OBRAT14_FILE.exists():
-        return {"loaded": False}
+      const showPages = new Set();
+      showPages.add(1); showPages.add(totalPages);
+      for (let i = Math.max(1, window._anPage - 2); i <= Math.min(totalPages, window._anPage + 2); i++) showPages.add(i);
+      const sortedPages = Array.from(showPages).sort((a, b) => a - b);
 
-    try:
-        # Naloži obrat14
-        text = OBRAT14_FILE.read_text(encoding="utf-8-sig", errors="replace")
-        lines = [l.strip() for l in text.splitlines() if l.strip()]
-        if len(lines) < 2:
-            return {"loaded": False, "error": "Prazna datoteka."}
+      let lastP = 0;
+      for (const p of sortedPages) {
+        if (p - lastP > 1) pageButtons.push('<span style="padding:6px 4px;color:var(--text-tertiary)">…</span>');
+        const isActive = p === window._anPage;
+        pageButtons.push('<button onclick="anSetPage(' + p + ')" style="padding:7px 13px;background:' + (isActive ? 'var(--accent)' : 'var(--surface)') + ';border:1px solid ' + (isActive ? 'var(--accent)' : 'var(--border)') + ';border-radius:4px;cursor:pointer;font-size:12px;color:' + (isActive ? 'white' : 'var(--text)') + ';font-weight:' + (isActive ? '600' : '400') + ';font-family:\'DM Sans\',sans-serif">' + p + '</button>');
+        lastP = p;
+      }
 
-        # Detect separator (tab ali ;)
-        first = lines[0]
-        if '\t' in first:
-            sep = '\t'
-        elif ';' in first:
-            sep = ';'
-        else:
-            sep = ','
+      pageButtons.push('<button onclick="anSetPage(' + Math.min(totalPages, window._anPage + 1) + ')" ' + (window._anPage === totalPages ? 'disabled' : '') + ' style="padding:7px 12px;background:var(--surface);border:1px solid var(--border);border-radius:4px;cursor:' + (window._anPage === totalPages ? 'not-allowed' : 'pointer') + ';font-size:12px;color:' + (window._anPage === totalPages ? 'var(--text-tertiary)' : 'var(--text)') + ';font-family:\'DM Sans\',sans-serif">Naslednja ›</button>');
 
-        items = []
-        # Skip header
-        for line in lines[1:]:
-            parts = line.split(sep)
-            if len(parts) < 3:
-                continue
-            sku = parts[0].strip()
-            naziv = parts[1].strip()
-            try:
-                kolicina = int(float(parts[2].strip().replace(',', '.')))
-            except:
-                kolicina = 0
-            if not sku:
-                continue
-            items.append({
-                "sku": sku,
-                "naziv": naziv,
-                "kolicina": kolicina,
-            })
+      html += '<div style="display:flex;gap:6px;justify-content:center;align-items:center;padding:18px 0 4px;flex-wrap:wrap">' +
+        pageButtons.join('') +
+        '<span style="margin-left:14px;font-size:11px;color:var(--text-tertiary)">Stran ' + window._anPage + ' / ' + totalPages + ' · prikazano ' + (pageStart + 1) + '–' + Math.min(pageEnd, filtered.length) + ' od ' + filtered.length + '</span>' +
+      '</div>';
+    }
+  }
 
-        # Match z FB Ads — uporabljaj že shranjen META_ADS_FILE
-        sku_ads_map = {}  # sku.upper() → {account: {spend, purchases}, ...}
-        if META_ADS_FILE.exists():
-            try:
-                fb_text = META_ADS_FILE.read_text(encoding="utf-8-sig", errors="replace")
-                fb_first = fb_text.split('\n', 1)[0]
-                fb_sep = ';' if fb_first.count(';') > fb_first.count(',') else ','
-                import csv as _csv
-                from io import StringIO as _SIO
-                reader = _csv.DictReader(_SIO(fb_text), delimiter=fb_sep)
+  // Render account checkbox bar (samo ko imamo Meta podatke)
+  const filterBar = document.getElementById('anQuickFilters');
+  if (filterBar) {
+    if (hasMetaData) {
+      filterBar.style.display = 'flex';
+      // Prikaži VSE accounte: config + server (union), da so privzeto skriti vedno vidni
+      const serverAccs = _effectiveAccounts || [];
+      const configAccs = TARGET_ACCOUNTS;
+      const allAccs = [...new Set([...configAccs, ...serverAccs])];
+      filterBar.innerHTML =
+        '<span style="font-size:11px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">Ad accounti:</span>' +
+        '<button onclick="anToggleAllAccounts(true)" style="padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--text-secondary);cursor:pointer;font-family:\'DM Sans\',sans-serif">✓ Vsi</button>' +
+        '<button onclick="anToggleAllAccounts(false)" style="padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--text-secondary);cursor:pointer;font-family:\'DM Sans\',sans-serif">✗ Nobeden</button>' +
+        allAccs.map(acc => {
+          const isChecked = checkedAccounts.has(acc);
+          const lbl = ACC_SHORT[acc] || acc;
+          const accEsc = String(acc).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+          return '<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:' + (isChecked ? 'rgba(64,193,80,0.12)' : 'var(--surface)') + ';border:1px solid ' + (isChecked ? 'rgba(64,193,80,0.4)' : 'var(--border)') + ';border-radius:4px;cursor:pointer;font-size:11px;color:' + (isChecked ? 'var(--green)' : 'var(--text-secondary)') + ';font-weight:500" title="' + esc(acc) + '">' +
+            '<input type="checkbox" ' + (isChecked ? 'checked' : '') + ' onchange="anToggleAccount(\'' + accEsc + '\', this.checked)" style="margin:0;cursor:pointer">' +
+            esc(lbl) +
+          '</label>';
+        }).join('');
+    } else {
+      filterBar.style.display = 'none';
+      filterBar.innerHTML = '';
+    }
+  }
 
-                # Pripravi seznam znanih SKU iz obrat14 (za extract_skus filter)
-                # Vključimo VSE variante — uppercase (za standardni match) + originalne + korene
-                known_skus_obrat = set()
-                for it in items:
-                    s = it["sku"]
-                    known_skus_obrat.add(s)
-                    known_skus_obrat.add(s.upper())
-                    # Koren (PLANTUP_white -> PLANTUP, Maaa61lightBrown -> Maaa61, COVERKA_2x3m -> COVERKA)
-                    koren = smart_root(s)
-                    if koren and len(koren) >= 4:
-                        known_skus_obrat.add(koren)
-                        known_skus_obrat.add(koren.upper())
+  table.innerHTML = html;
+}
 
-                def _f(v):
-                    try: return float(str(v or '0').replace(',', '.'))
-                    except: return 0.0
-                def _i(v):
-                    try: return int(float(str(v or '0').replace(',', '.')))
-                    except: return 0
+function anSetPage(p) {
+  window._anPage = p;
+  anRenderTable();
+  document.getElementById('anTable')?.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
 
-                for row in reader:
-                    cname = (row.get('Campaign name') or '').strip()
-                    if not cname:
-                        continue
-                    account = (row.get('Account name') or '').strip() or '—'
-                    spend = _f(row.get('Amount spent (EUR)'))
-                    purchases = _i(row.get('Purchases'))
-                    
-                    # Status SAMO iz FB Campaign Delivery kolone (edina resnica)
-                    # Ime kampanje (@STOP, ⛔, OFF) se IGNORIRA — to so naši interni oznaki
-                    delivery = (row.get('Campaign Delivery') or '').strip().lower()
-                    if delivery == 'inactive':
-                        is_active_campaign = False
-                    elif delivery == 'active':
-                        is_active_campaign = True
-                    else:
-                        # Stolpec manjka ali neznana vrednost → privzeto aktivna
-                        is_active_campaign = True
+let anMetaData = []; // FB ads rows
 
-                    # Izvleci SKU iz imena
-                    skus = extract_skus_from_text(cname, known_skus_obrat)
-                    skus = list(dict.fromkeys(skus))
+function anMetaHandleDrop(ev) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  const f = ev.dataTransfer.files[0];
+  if (f) anLoadMeta(f);
+}
 
-                    # Za vsak SKU token iz kampanje, najdi VSE matching izdelke v 14dni
-                    for sku_token in skus:
-                        sku_upper = sku_token.upper()
-                        token_koren = smart_root(sku_upper)
-                        target_skus = []
-                        
-                        # 1. Exact (case-insensitive)
-                        for it in items:
-                            if it["sku"].upper() == sku_upper:
-                                target_skus = [it["sku"]]
-                                break
-                        
-                        if not target_skus:
-                            # 2. Koren match — vsi izdelki s tem korenom
-                            candidates = []
-                            for it in items:
-                                item_koren = smart_root(it["sku"]).upper()
-                                if item_koren == token_koren or item_koren == sku_upper or token_koren == it["sku"].upper():
-                                    candidates.append(it["sku"])
-                            
-                            if len(candidates) == 0:
-                                continue
-                            elif len(candidates) == 1:
-                                target_skus = candidates
-                            else:
-                                # 3. Več zadetkov: če je sku_token preprosto koren (npr. "Maaa61") → vse variante
-                                if sku_upper == token_koren:
-                                    target_skus = candidates
-                                else:
-                                    # Fuzzy match — najdi najbolj podobnega
-                                    from difflib import SequenceMatcher
-                                    best, best_ratio = None, 0
-                                    for c in candidates:
-                                        ratio = SequenceMatcher(None, sku_upper, c.upper()).ratio()
-                                        if ratio > best_ratio:
-                                            best_ratio = ratio
-                                            best = c
-                                    if best and best_ratio >= 0.6:
-                                        target_skus = [best]
-                                    else:
-                                        target_skus = candidates  # fallback: vse
+async function anLoadMeta(file) {
+  if (!file) return;
+  const status = document.getElementById('anMetaStatus');
+  status.style.display = 'block';
+  status.style.color = 'var(--text-tertiary)';
+  status.textContent = '⏳ Naložujem na server...';
 
-                        # Zabeleži za vse target SKU-je
-                        for target_sku in target_skus:
-                            if target_sku not in sku_ads_map:
-                                sku_ads_map[target_sku] = {}
-                            if account not in sku_ads_map[target_sku]:
-                                sku_ads_map[target_sku][account] = {"spend": 0, "purchases": 0, "campaigns": 0, "active": 0, "paused": 0}
-                            # Razdelimo spend/purchases enakomerno če je več target SKU
-                            split = max(1, len(target_skus))
-                            sku_ads_map[target_sku][account]["spend"] += spend / split
-                            sku_ads_map[target_sku][account]["purchases"] += purchases / split
-                            sku_ads_map[target_sku][account]["campaigns"] += 1
-                            if is_active_campaign:
-                                sku_ads_map[target_sku][account]["active"] += 1
-                            else:
-                                sku_ads_map[target_sku][account]["paused"] += 1
-            except Exception as e:
-                print(f"[obrat14] FB match err: {e}")
+  try {
+    // CSV ali XLS na server (XLS pretvorimo v CSV najprej)
+    let uploadFile = file;
+    const ext = file.name.toLowerCase().split('.').pop();
 
-        # Agregiraj — vsakemu accountu dodaj status field (active/paused/none)
-        for it in items:
-            accounts_data = sku_ads_map.get(it["sku"], {})
-            for acc_name, acc_data in accounts_data.items():
-                if acc_data.get("active", 0) > 0:
-                    acc_data["status"] = "active"
-                elif acc_data.get("paused", 0) > 0:
-                    acc_data["status"] = "paused"
-                else:
-                    acc_data["status"] = "none"
-            it["accounts"] = accounts_data
-            it["has_ads"] = len(accounts_data) > 0
-            # Skupni status
-            statuses = [a.get("status") for a in accounts_data.values()]
-            if "active" in statuses:
-                it["overall_status"] = "active"
-            elif "paused" in statuses:
-                it["overall_status"] = "paused"
-            else:
-                it["overall_status"] = "none"
+    if (ext === 'xls' || ext === 'xlsx') {
+      // Pretvori XLS v CSV pred uploadom
+      if (!window.XLSX) {
+        await new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+          s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      }
+      const ab = await file.arrayBuffer();
+      const wb = window.XLSX.read(ab, {type: 'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const csv = window.XLSX.utils.sheet_to_csv(sheet);
+      uploadFile = new File([csv], file.name.replace(/\.[^.]+$/, '.csv'), {type: 'text/csv'});
+    } else if (ext !== 'csv') {
+      throw new Error('Podprti formati: CSV, XLS, XLSX');
+    }
 
-        meta = {}
-        if OBRAT14_META.exists():
-            try:
-                meta = json.loads(OBRAT14_META.read_text(encoding="utf-8"))
-            except: pass
+    const formData = new FormData();
+    formData.append('file', uploadFile, uploadFile.name);
+    const res = await fetch('/analiza-meta-upload', {method: 'POST', body: formData});
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
 
-        return {
-            "loaded": True,
-            "items": items,
-            "total": len(items),
-            "target_accounts": TARGET_ACCOUNTS,
-            **meta,
+    status.textContent = '✓ Naloženih ' + data.rows + ' vrstic';
+    status.style.color = 'var(--green)';
+
+    document.getElementById('anMetaInput').value = '';
+    // Naloži procesirane podatke iz servera
+    await anLoadMetaFromServer();
+  } catch(e) {
+    status.textContent = '✗ ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+}
+
+async function anLoadMetaFromServer() {
+  try {
+    const res = await fetch('/analiza-meta-data');
+    const data = await res.json();
+    if (!data.loaded) {
+      window._anSkuMap = {};
+      anRenderTable();
+      document.getElementById('anMetaSummary')?.style && (document.getElementById('anMetaSummary').style.display = 'none');
+      document.getElementById('anMetaUploads')?.style && (document.getElementById('anMetaUploads').style.display = 'none');
+      return;
+    }
+
+    // Dinamični TARGET_ACCOUNTS iz server podatkov
+    // Prioriteta: 1) konfig ACC_SHORT za kratice, 2) AD_ACCOUNTS_CONFIG hidden nastavitve
+    // Novi accounti (ki niso v AD_ACCOUNTS_CONFIG) → privzeto vključeni
+    const serverAccounts = data.accounts || [];
+    if (serverAccounts.length > 0) {
+      window._anDynamicAccounts = serverAccounts;
+      // Nastavi checked accounts — ohrani obstoječe, dodaj nove kot checked
+      if (!window._anCheckedAccounts) {
+        window._anCheckedAccounts = new Set(serverAccounts.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
+      } else {
+        // Dodaj nove accounte ki jih še ni v checked setu (privzeto vključeni)
+        for (const a of serverAccounts) {
+          if (!TARGET_ACCOUNTS.includes(a) && !window._anCheckedAccounts.has(a)) {
+            window._anCheckedAccounts.add(a);
+          }
         }
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": str(e)}, status_code=500)
+      }
+    }
 
-# ═══════════════════════════════════════════════════════════════
-# HS+ UVOZ — naročilnice z združevanjem SKU + history
-# ═══════════════════════════════════════════════════════════════
-HSUVOZ_DIR = DATA_DIR / "hsuvoz_history"
-HSUVOZ_DIR.mkdir(exist_ok=True, parents=True)
-HSUVOZ_CURRENT = DATA_DIR / "hsuvoz_current.json"
+    // Zgradi skuMap iz items[]
+    const skuMap = {};
+    for (const item of (data.items || [])) {
+      const sku = item.sku;
+      const accountsObj = {};
+      for (const a of (item.accounts || [])) {
+        accountsObj[a.name] = {
+          spend: a.spend, purchases: a.purchases, campaigns: a.campaigns,
+          active: a.active || 0, paused: a.paused || 0, status: a.status || null,
+        };
+      }
+      skuMap[sku.toUpperCase()] = {
+        sku, accounts: accountsObj,
+        total_spend: item.total_spend || 0, total_purchases: item.total_purchases || 0,
+        campaign_count: item.campaign_count || 0, stopped_count: item.stopped_count || 0,
+        active_count: item.active_count || 0,
+      };
+    }
+    window._anSkuMap = skuMap;
 
+    // Povzetek info
+    const summary = document.getElementById('anMetaSummary');
+    if (summary) {
+      summary.style.display = 'block';
+      let html = '<strong style="color:var(--green)">✓ ' + (data.rows || 0) + ' vrstic · ' + (data.items?.length || 0) + ' SKU-jev</strong>';
+      if (data.uploaded_at) {
+        const dt = new Date(data.uploaded_at);
+        html += '<br>Naloženo: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
+      }
+      if (data.filename) html += '<br><span style="color:var(--text-tertiary);font-size:10px">' + esc(data.filename) + '</span>';
+      summary.innerHTML = html;
+    }
 
-def hsuvoz_cleanup():
-    """Briše JSON datoteke starejše od 30 dni."""
-    try:
-        cutoff = datetime.now().timestamp() - (30 * 86400)
-        for f in HSUVOZ_DIR.glob("*.json"):
-            if f.stat().st_mtime < cutoff:
-                f.unlink()
-    except Exception as e:
-        print(f"[hsuvoz] cleanup err: {e}")
+    // Prikaži seznam uploadov
+    const uploadsEl = document.getElementById('anMetaUploads');
+    const uploadsListEl = document.getElementById('anMetaUploadsList');
+    const uploads = data.uploads || [];
+    if (uploadsEl && uploadsListEl && uploads.length > 0) {
+      uploadsEl.style.display = 'block';
+      uploadsListEl.innerHTML = uploads.map(u => {
+        const dt = u.uploaded_at ? new Date(u.uploaded_at).toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'}) : '—';
+        return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border)">'
+          + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px" title="' + esc(u.filename) + '">' + esc(u.filename) + '</span>'
+          + '<span style="color:var(--text-tertiary);flex-shrink:0;margin-left:6px">+' + (u.rows_added||0) + ' · ' + dt + '</span>'
+          + '</div>';
+      }).join('');
+    } else if (uploadsEl) {
+      uploadsEl.style.display = 'none';
+    }
 
+    anRenderTable();
+  } catch(e) {
+    console.warn('anLoadMetaFromServer fail:', e);
+    window._anSkuMap = {};
+  }
+}
 
-@app.post("/hsuvoz-upload")
-async def hsuvoz_upload(file: UploadFile = File(...)):
-    """Sprejme CSV naročilnic, združi količine po SKU, shrani v current + history."""
-    import csv
-    from io import StringIO
-    try:
-        content = (await file.read()).decode("utf-8-sig", errors="replace")
-        reader = csv.DictReader(StringIO(content))
+function anParseCsv(text) {
+  // Detect separator
+  const firstLine = text.split('\n')[0];
+  const sep = (firstLine.match(/,/g)||[]).length >= (firstLine.match(/;/g)||[]).length ? ',' : ';';
 
-        # Normalizacija headerjev
-        rows = []
-        for row in reader:
-            norm = {k.strip().replace('\ufeff', ''): v.strip() for k, v in row.items()}
-            rows.append(norm)
+  // Naive CSV parser z support za quoted fields
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return [];
 
-        if not rows:
-            return JSONResponse({"error": "Prazen CSV."}, status_code=400)
+  function parseLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (c === sep && !inQuotes) {
+        result.push(current);
+        current = '';
+      } else {
+        current += c;
+      }
+    }
+    result.push(current);
+    return result;
+  }
 
-        # Najdi kolone (ID naročila, SKU, Naziv, Količina)
-        sample = rows[0]
-        keys = list(sample.keys())
+  const headers = parseLine(lines[0]).map(h => h.trim());
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseLine(lines[i]);
+    const row = {};
+    headers.forEach((h, idx) => row[h] = (values[idx] || '').trim());
+    rows.push(row);
+  }
+  return rows;
+}
 
-        def find_col(candidates):
-            for c in candidates:
-                for k in keys:
-                    if c.lower() in k.lower():
-                        return k
-            return None
+function anMatchAndRender() { anRenderTable(); return; /*deprecated*/
+  // Najdi keys
+  if (!anMetaData.length) { anRenderTable(); return; }
+  const sample = anMetaData[0];
+  const campaignKey = Object.keys(sample).find(k => /campaign\s*name|ime\s*kampanje|kampanj/i.test(k));
+  const accountKey = Object.keys(sample).find(k => /account\s*name|account_name|ad\s*account/i.test(k));
+  const spendKey = Object.keys(sample).find(k => /amount\s*spent|spend|porabljen/i.test(k));
+  const roasKey = Object.keys(sample).find(k => /roas|return\s*on\s*ad/i.test(k));
+  const purchaseKey = Object.keys(sample).find(k => /purchases|nakup/i.test(k) && !/value|vrednost/i.test(k));
 
-        id_col  = find_col(["id naročila", "id narocila", "id"])
-        sku_col = find_col(["sku"])
-        naz_col = find_col(["naziv", "name"])
-        qty_col = find_col(["količina", "kolicina", "qty", "quantity"])
+  if (!campaignKey) { anRenderTable(); return; }
 
-        if not sku_col or not qty_col:
-            return JSONResponse({"error": f"Ne najdem SKU/Količina kolon. Najdene: {keys}"}, status_code=400)
+  // Zgradi set znanih SKU + korenov za match
+  const knownSkus = new Set();
+  const skuToFull = {}; // koren -> full sku (npr. PILARAFIT -> PILARAFIT)
+  for (const s of (anStockData || [])) {
+    if (!s.sku || s.sku.length < 3) continue;
+    const upper = s.sku.toUpperCase();
+    knownSkus.add(upper);
+    // Tudi koren (npr. PILARAFIT_white -> PILARAFIT)
+    const koren = upper.split(/[_\-]/)[0];
+    if (koren && koren.length >= 4) {
+      knownSkus.add(koren);
+      if (!skuToFull[koren]) skuToFull[koren] = upper;
+    }
+  }
 
-        # Združi po SKU
-        sku_map = {}  # sku → {naziv, qty, orders: [id,...]}
-        for row in rows:
-            sku = (row.get(sku_col) or "").strip()
-            if not sku:
-                continue
-            try:
-                qty = int(float((row.get(qty_col) or "0").replace(",", ".")))
-            except:
-                qty = 0
-            naziv = (row.get(naz_col) or "").strip() if naz_col else ""
-            order_id = (row.get(id_col) or "").strip() if id_col else ""
+  // Zgradi mapo SKU → metrike (po accountu)
+  const skuMap = {}; // sku → {accounts: {acc: {...}}, totals: {...}}
 
-            if sku not in sku_map:
-                sku_map[sku] = {"sku": sku, "naziv": naziv, "qty": 0, "orders": [], "done": False}
-            sku_map[sku]["qty"] += qty
-            if order_id and order_id not in sku_map[sku]["orders"]:
-                sku_map[sku]["orders"].append(order_id)
-            # Ohrani naziv (vzemi prvega ki ni prazen)
-            if not sku_map[sku]["naziv"] and naziv:
-                sku_map[sku]["naziv"] = naziv
-
-        items = sorted(sku_map.values(), key=lambda x: -x["qty"])
-
-        # Naloži obstoječe done state iz currenta (ohrani done flag)
-        if HSUVOZ_CURRENT.exists():
-            try:
-                existing = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
-                done_map = {it["sku"]: it.get("done", False) for it in existing.get("items", [])}
-                for it in items:
-                    if it["sku"] in done_map:
-                        it["done"] = done_map[it["sku"]]
-            except:
-                pass
-
-        ts = datetime.now(timezone.utc).isoformat()
-        payload = {
-            "uploaded_at": ts,
-            "filename": file.filename,
-            "total_skus": len(items),
-            "items": items,
+  function extractSkuTokens(text) {
+    if (!text) return [];
+    const tokens = [];
+    const STOPWORDS = new Set(['STOP','BIDCAP','COSTCAP','BID','CPA','BC','OFF','LOCAL','OUTLET','MAAARKET','MULTIPLE','NOVO','CATALOG','INTERESTED','AUTO','ADVANTAGE','CAMPAIGN','LOOKALIKE','BROAD','COLD','KATALOG','INFLATED','ZIPPLY','EASYZO','SUBAN','ALL']);
+    for (const raw of String(text).split(/\s+/)) {
+      let cleaned = raw.replace(/^[^\w]+|[^\w]+$/g, '');
+      if (!cleaned || cleaned.length < 4) continue;
+      if (cleaned !== cleaned.toUpperCase()) continue;
+      if (cleaned.includes('.')) continue;
+      if (!/[A-Z]/.test(cleaned)) continue;
+      if (STOPWORDS.has(cleaned)) continue;
+      if (/^\d+[A-Z]?$/.test(cleaned)) continue;
+      // Preveri če je v znanih SKU ali koren
+      if (knownSkus.has(cleaned)) {
+        tokens.push(cleaned);
+      } else {
+        const koren = cleaned.split(/[_\-]/)[0];
+        if (knownSkus.has(koren)) {
+          tokens.push(koren);  // shrani kot koren
         }
+      }
+    }
+    return [...new Set(tokens)];
+  }
 
-        # Shrani current
-        HSUVOZ_CURRENT.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+  for (const row of anMetaData) {
+    const campaign = (row[campaignKey] || '').toString();
+    if (!campaign) continue;
 
-        # Shrani v history
-        hsuvoz_cleanup()
-        hist_file = HSUVOZ_DIR / f"hsuvoz_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
-        hist_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    const account = accountKey ? (row[accountKey] || '—') : '—';
+    const spend = spendKey ? parseFloat(String(row[spendKey]).replace(',', '.')) || 0 : 0;
+    const purchases = purchaseKey ? parseInt(row[purchaseKey]) || 0 : 0;
+    const roas = roasKey ? parseFloat(String(row[roasKey]).replace(',', '.')) || 0 : 0;
+    // DEPRECATED PATH — funkcija vrne early na začetku, ta koda se ne izvaja.
+    // Statusa NE določamo iz imena kampanje — to je samo naš interni napis.
+    // Resnica je samo "Campaign Delivery" kolona, ki jo prebere backend.
+    const isStopped = false;
 
-        return {"ok": True, "total_skus": len(items), "uploaded_at": ts, "filename": file.filename}
+    const skus = extractSkuTokens(campaign);
+    for (const sku of skus) {
+      if (!skuMap[sku]) {
+        skuMap[sku] = {
+          sku: sku,
+          accounts: {},
+          campaigns: [],
+          total_spend: 0,
+          total_purchases: 0,
+          campaign_count: 0,
+          stopped_count: 0,
+        };
+      }
+      const d = skuMap[sku];
+      if (!d.accounts[account]) d.accounts[account] = {spend: 0, purchases: 0, campaigns: 0};
+      d.accounts[account].spend += spend;
+      d.accounts[account].purchases += purchases;
+      d.accounts[account].campaigns += 1;
+      d.total_spend += spend;
+      d.total_purchases += purchases;
+      d.campaign_count += 1;
+      if (isStopped) d.stopped_count += 1;
+      d.campaigns.push({name: campaign, account, spend, purchases, roas, stopped: isStopped});
+    }
+  }
 
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+  window._anSkuMap = skuMap;
+  anRenderTable();
+}
+
+function anClearFilters() {
+  const eff = window._anDynamicAccounts?.length > 0 ? window._anDynamicAccounts : TARGET_ACCOUNTS;
+  window._anCheckedAccounts = new Set(eff.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
+  window._anPage = 1;
+  anRenderTable();
+}
+
+async function anMetaClear() {
+  if (!confirm('Zbriši vse naložene Meta Ads CSV-je in začni znova?')) return;
+  try {
+    await fetch('/analiza-meta-clear', { method: 'POST' });
+    window._anSkuMap = {};
+    window._anDynamicAccounts = [];
+    window._anCheckedAccounts = null;
+    document.getElementById('anMetaSummary').style.display = 'none';
+    document.getElementById('anMetaUploads').style.display = 'none';
+    anRenderTable();
+  } catch(e) { alert('Napaka: ' + e.message); }
+}
+
+// Naloži zalogo ko se odpre Analiza tab
+document.addEventListener('DOMContentLoaded', () => {
+  const navAn = document.getElementById('nav-analiza');
+  if (navAn) navAn.addEventListener('click', () => setTimeout(() => {
+    anLoadStock();
+    anLoadMetaFromServer();
+  }, 100));
+});
+
+// ═══════════════════════════════════════════════════════
+// HS+ NAROČANJE — JS logika
+// ═══════════════════════════════════════════════════════
+
+let _hsuvozShowDone = false;
+let _hsuvozStock = {};
+
+async function hsuvozLoadStock() {
+  try {
+    const res = await fetch('/orodja-stock-data');
+    if (!res.ok) return;
+    const data = await res.json();
+    _hsuvozStock = {};
+    (data.items || []).forEach(it => { _hsuvozStock[it.sku.toUpperCase()] = parseInt(it.stock30) || 0; });
+  } catch(e) {}
+}
+
+function hsuvozHandleDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) hsuvozUpload(f);
+}
+
+async function hsuvozUpload(file) {
+  const status = document.getElementById('hsuvozStatus');
+  const info = document.getElementById('hsuvozInfo');
+  status.style.display = 'block';
+  status.style.color = 'var(--text-secondary)';
+  status.textContent = '⏳ Nalagam...';
+  info.style.display = 'none';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/hsuvoz-upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + data.error; return; }
+    status.style.color = 'var(--green)';
+    status.textContent = `✓ ${data.total_skus} SKU-jev naloženih`;
+    info.style.display = 'block';
+    info.textContent = `${new Date(data.uploaded_at).toLocaleString('sl-SI')} · ${file.name}`;
+    await hsuvozLoadCurrent();
+    await hsuvozLoadHistory();
+  } catch(e) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + e.message; }
+}
+
+async function hsuvozLoadCurrent() {
+  try {
+    const res = await fetch('/hsuvoz-data');
+    const data = await res.json();
+    const card = document.getElementById('hsuvozResultCard');
+    const empty = document.getElementById('hsuvozEmpty');
+    if (!data.loaded || !data.items?.length) {
+      card.style.display = 'none'; empty.style.display = 'block';
+    } else {
+      card.style.display = 'block'; empty.style.display = 'none';
+      hsuvozRender(data.items, 'hsuvozList', 'current');
+      const undone = data.items.filter(it => !it.done).length;
+      document.getElementById('hsuvozTitle').textContent = `ZA NAROČILO (${undone} / ${data.items.length})`;
+    }
+  } catch(e) { console.warn('hsuvozLoadCurrent', e); }
+}
+
+async function hsuvozLoadOrderPanel() {
+  try {
+    const res = await fetch('/hsuvoz-order-data');
+    const data = await res.json();
+    const items = data.items || [];
+    document.getElementById('hsuvozOrderTitle').textContent = `📦 NAROČILO (${items.length} SKU · ${items.reduce((s,i)=>s+i.qty,0)} kos)`;
+    const orderEmpty = document.getElementById('hsuvozOrderEmpty');
+    const orderHeader = document.getElementById('hsuvozOrderHeader');
+    if (!items.length) {
+      orderEmpty.style.display = 'block'; orderHeader.style.display = 'none';
+      document.getElementById('hsuvozOrderList').innerHTML = '';
+    } else {
+      orderEmpty.style.display = 'none'; orderHeader.style.display = 'grid';
+      hsuvozRender(items, 'hsuvozOrderList', 'order');
+    }
+  } catch(e) { console.warn('hsuvozLoadOrderPanel', e); }
+}
+
+function hsuvozRender(items, listId, source) {
+  const list = document.getElementById(listId);
+  const visible = (source === 'current' && !_hsuvozShowDone) ? items.filter(it => !it.done) : items;
+  if (!visible.length) {
+    list.innerHTML = source === 'order' ? '' : '<div style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:1rem">Vsi SKU-ji so v naročilu ali done. 🎉</div>';
+    return;
+  }
+
+  // Shrani v window za event delegation
+  if (source === 'current') window._hsuvozCurrentItems = visible;
+  else window._hsuvozOrderItems = visible;
+
+  const rows = visible.map((it, idx) => {
+    const isDone = it.done;
+    const obrat = _hsuvozStock[(it.sku||'').toUpperCase()];
+    const obratColor = obrat > 10 ? '#16a34a' : obrat > 3 ? '#d97706' : obrat !== undefined ? 'var(--red)' : 'var(--text-tertiary)';
+    const obratBg = obrat > 10 ? 'rgba(22,163,74,0.08)' : obrat > 3 ? 'rgba(217,119,6,0.08)' : obrat !== undefined ? 'rgba(239,68,68,0.08)' : 'transparent';
+    const obratBorder = obrat > 10 ? 'rgba(22,163,74,0.25)' : obrat > 3 ? 'rgba(217,119,6,0.25)' : obrat !== undefined ? 'rgba(239,68,68,0.25)' : 'transparent';
+    const ordersId = 'hsuvoz-orders-' + source + '-' + idx;
+    const ordersCount = (it.orders || []).length;
+    const orderLinks = (it.orders || []).map(function(id) {
+      return '<a href="https://www.siluxar.si/narocilnice/' + id + '" target="_blank" style="color:var(--accent);text-decoration:none;font-size:10px;background:rgba(24,119,242,0.08);border:1px solid rgba(24,119,242,0.2);border-radius:4px;padding:2px 7px;display:inline-block">' + id + '</a>';
+    }).join(' ');
+
+    const rowBg = source === 'order' ? 'rgba(15,118,110,0.05)' : (isDone ? 'rgba(0,0,0,0.02)' : 'var(--surface)');
+    const rowBorder = source === 'order' ? '1px solid rgba(15,118,110,0.2)' : '1px solid var(--border)';
+    const skuColor = isDone ? 'var(--text-tertiary)' : (source === 'order' ? '#0f766e' : 'var(--text)');
+    const skuDeco = isDone ? 'line-through' : 'none';
+
+    const isChecked = (window._hsuvozSelected || new Set()).has(it.sku + '|' + source);
+
+    const btnMove = source === 'current'
+      ? '<button onclick="window._hsvAct(\'move\',\'current\',' + idx + ')" style="padding:3px 7px;background:#0f766e;color:white;border:none;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap">&rarr; Naročilo</button>'
+      : '<button onclick="window._hsvAct(\'back\',\'order\',' + idx + ')" style="padding:3px 7px;background:none;border:1px solid var(--border);color:var(--text-secondary);border-radius:4px;font-size:10px;cursor:pointer">&larr; Nazaj</button>';
+
+    return '<div style="border:' + rowBorder + ';border-radius:var(--radius);background:' + rowBg + ';' + (isDone ? 'opacity:0.5' : '') + (isChecked ? 'outline:2px solid rgba(24,119,242,0.4);' : '') + '">'
+      + '<div style="display:grid;grid-template-columns:32px 28px 130px 1fr 55px 85px 85px 100px;gap:8px;padding:9px 12px;font-size:12px;align-items:center">'
+      + '<input type="checkbox" ' + (isChecked ? 'checked' : '') + ' onchange="window._hsvCheck(\'' + source + '\',' + idx + ',this.checked)" style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">'
+      + '<span style="color:var(--text-tertiary);font-size:11px">' + (idx + 1) + '</span>'
+      + '<span style="font-weight:700;font-size:12px;color:' + skuColor + ';text-decoration:' + skuDeco + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="hsuvoz-sku-' + source + '-' + idx + '">' + esc(it.sku) + '</span>'
+      + '<span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">' + esc(it.naziv || '—') + '</span>'
+      + '<div style="text-align:center">'
+      + '<span style="font-weight:700;font-size:15px;color:var(--text)">' + it.qty + '</span>'
+      + '<div style="font-size:9px;color:var(--text-tertiary);margin-top:1px">kos</div>'
+      + '</div>'
+      + (obrat !== undefined
+        ? '<div style="text-align:center;background:' + obratBg + ';border-radius:6px;padding:4px 6px;border:1px solid ' + obratBorder + '">'
+          + '<div style="font-weight:700;font-size:14px;color:' + obratColor + '">' + obrat + '</div>'
+          + '<div style="font-size:9px;color:' + obratColor + ';opacity:0.8">obr/30d</div>'
+          + '</div>'
+        : '<div style="text-align:center;color:var(--text-tertiary);font-size:11px">—</div>')
+      + '<button onclick="window._hsvOrders(\'' + ordersId + '\',this)" style="padding:4px 8px;background:rgba(24,119,242,0.07);border:1px solid rgba(24,119,242,0.2);border-radius:6px;font-size:11px;color:var(--accent);cursor:pointer;width:100%;text-align:center">📦 ' + ordersCount + '</button>'
+      + '<div style="display:flex;gap:3px;justify-content:flex-end">'
+      + btnMove
+      + '<button onclick="window._hsvAct(\'edit\',\'' + source + '\',' + idx + ')" style="padding:4px 5px;background:none;border:1px solid var(--border);color:var(--text-tertiary);border-radius:4px;font-size:10px;cursor:pointer">✏</button>'
+      + '</div>'
+      + '</div>'
+      + '<div id="' + ordersId + '" style="display:none;padding:5px 12px 10px 50px;flex-wrap:wrap;gap:5px">' + orderLinks + '</div>'
+      + '</div>';
+  });
+
+  list.innerHTML = rows.join('');
+
+  window._hsvAct = function(action, src, idx) {
+    const items_ref = src === 'current' ? window._hsuvozCurrentItems : window._hsuvozOrderItems;
+    if (!items_ref || idx < 0 || idx >= items_ref.length) return;
+    const sku = items_ref[idx].sku;
+    if (action === 'move') hsuvozMoveToOrder(sku);
+    else if (action === 'back') hsuvozMoveBack(sku);
+    else if (action === 'edit') hsuvozStartEdit(sku, src, idx);
+  };
+
+  window._hsvCheck = function(src, idx, checked) {
+    if (!window._hsuvozSelected) window._hsuvozSelected = new Set();
+    const items_ref = src === 'current' ? window._hsuvozCurrentItems : window._hsuvozOrderItems;
+    if (!items_ref || idx >= items_ref.length) return;
+    const key = items_ref[idx].sku + '|' + src;
+    if (checked) window._hsuvozSelected.add(key);
+    else window._hsuvozSelected.delete(key);
+    hsuvozUpdateBulkBar(src);
+  };
+
+  window._hsvOrders = function(id, btn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const isOpen = el.style.display !== 'none';
+    el.style.display = isOpen ? 'none' : 'flex';
+    btn.style.background = isOpen ? 'rgba(24,119,242,0.07)' : 'rgba(24,119,242,0.18)';
+  };
+}
 
 
-@app.get("/hsuvoz-data")
-async def hsuvoz_data():
-    """Vrne trenutne HS+ uvoz podatke."""
-    try:
-        if not HSUVOZ_CURRENT.exists():
-            return {"loaded": False, "items": []}
-        data = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
-        return {"loaded": True, **data}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+function hsuvozToggleOrders(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'flex';
+  btn.style.background = isOpen ? 'rgba(24,119,242,0.07)' : 'rgba(24,119,242,0.18)';
+  btn.style.fontWeight = isOpen ? 'normal' : '600';
+}
 
+async function hsuvozMoveToOrder(sku) {
+  try {
+    await fetch('/hsuvoz-move-to-order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku}) });
+    await Promise.all([hsuvozLoadCurrent(), hsuvozLoadOrderPanel()]);
+  } catch(e) { alert('Napaka: '+e.message); }
+}
 
-@app.post("/hsuvoz-set-done")
-async def hsuvoz_set_done(request: Request):
-    """Nastavi done flag za SKU."""
-    try:
-        body = await request.json()
-        sku = body.get("sku")
-        done = bool(body.get("done", False))
-        if not HSUVOZ_CURRENT.exists():
-            return JSONResponse({"error": "Ni podatkov."}, status_code=404)
-        data = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
-        for it in data.get("items", []):
-            if it["sku"] == sku:
-                it["done"] = done
-                break
-        HSUVOZ_CURRENT.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"ok": True}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+async function hsuvozMoveBack(sku) {
+  try {
+    await fetch('/hsuvoz-move-back', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku}) });
+    await Promise.all([hsuvozLoadCurrent(), hsuvozLoadOrderPanel()]);
+  } catch(e) { alert('Napaka: '+e.message); }
+}
 
+async function hsuvozMoveAllToOrder() {
+  try {
+    const res = await fetch('/hsuvoz-data');
+    const data = await res.json();
+    const active = (data.items||[]).filter(it=>!it.done);
+    for (const it of active) {
+      await fetch('/hsuvoz-move-to-order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku:it.sku}) });
+    }
+    await Promise.all([hsuvozLoadCurrent(), hsuvozLoadOrderPanel()]);
+  } catch(e) { alert('Napaka: '+e.message); }
+}
 
-@app.post("/hsuvoz-edit-sku")
-async def hsuvoz_edit_sku(request: Request):
-    """Preimenuje SKU v current ali order."""
-    try:
-        body = await request.json()
-        old_sku = body.get("old_sku")
-        new_sku = (body.get("new_sku") or "").strip()
-        source = body.get("source", "current")
-        if not new_sku:
-            return JSONResponse({"error": "Nov SKU je prazen."}, status_code=400)
-        file = HSUVOZ_CURRENT if source == "current" else HSUVOZ_ORDER
-        if not file.exists():
-            return JSONResponse({"error": "Ni podatkov."}, status_code=404)
-        data = json.loads(file.read_text(encoding="utf-8"))
-        for it in data.get("items", []):
-            if it["sku"] == old_sku:
-                it["sku"] = new_sku
-                break
-        file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"ok": True}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+function hsuvozUpdateBulkBar(src) {
+  if (!window._hsuvozSelected) window._hsuvozSelected = new Set();
+  const sel = [...window._hsuvozSelected].filter(k => k.endsWith('|' + src));
+  const count = sel.length;
+  if (src === 'current') {
+    const bar = document.getElementById('hsuvozBulkBar');
+    const cnt = document.getElementById('hsuvozSelCount');
+    if (bar) { bar.style.display = count > 0 ? 'flex' : 'none'; }
+    if (cnt) cnt.textContent = count + ' označenih';
+  } else {
+    const bar = document.getElementById('hsuvozOrderBulkBar');
+    const cnt = document.getElementById('hsuvozOrderSelCount');
+    if (bar) { bar.style.display = count > 0 ? 'flex' : 'none'; }
+    if (cnt) cnt.textContent = count + ' označenih';
+  }
+}
 
+function hsuvozToggleSelectAll(src, checked) {
+  if (!window._hsuvozSelected) window._hsuvozSelected = new Set();
+  const items_ref = src === 'current' ? window._hsuvozCurrentItems : window._hsuvozOrderItems;
+  if (!items_ref) return;
+  items_ref.forEach(it => {
+    const key = it.sku + '|' + src;
+    if (checked) window._hsuvozSelected.add(key);
+    else window._hsuvozSelected.delete(key);
+  });
+  // Re-render da se checkboxi posodobijo
+  if (src === 'current') hsuvozLoadCurrent();
+  else hsuvozLoadOrderPanel();
+}
 
-@app.get("/hsuvoz-history")
-async def hsuvoz_history():
-    """Vrne seznam zgodovinskih uploadov (30 dni)."""
-    hsuvoz_cleanup()
-    try:
-        items = []
-        for f in sorted(HSUVOZ_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
-            try:
-                d = json.loads(f.read_text(encoding="utf-8"))
-                items.append({
-                    "filename": f.name,
-                    "original_filename": d.get("filename", f.name),
-                    "uploaded_at": d.get("uploaded_at", ""),
-                    "total_skus": d.get("total_skus", 0),
-                    "size": f.stat().st_size,
-                })
-            except:
-                pass
-        return {"items": items}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+function hsuvozDeselectAll(src) {
+  if (!window._hsuvozSelected) return;
+  const keys = [...window._hsuvozSelected].filter(k => k.endsWith('|' + src));
+  keys.forEach(k => window._hsuvozSelected.delete(k));
+  if (src === 'current') hsuvozLoadCurrent();
+  else hsuvozLoadOrderPanel();
+}
 
+async function hsuvozMoveSelectedToOrder() {
+  if (!window._hsuvozSelected) return;
+  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|current')).map(k => k.slice(0, k.lastIndexOf('|current')));
+  if (!skus.length) return;
+  for (const sku of skus) {
+    await fetch('/hsuvoz-move-to-order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku}) });
+    window._hsuvozSelected.delete(sku + '|current');
+  }
+  await Promise.all([hsuvozLoadCurrent(), hsuvozLoadOrderPanel()]);
+}
 
-@app.post("/hsuvoz-load-history")
-async def hsuvoz_load_history(request: Request):
-    """Naloži zgodovinski upload kot current."""
-    try:
-        body = await request.json()
-        fname = body.get("filename")
-        hist_file = HSUVOZ_DIR / fname
-        if not hist_file.exists():
-            return JSONResponse({"error": "Datoteka ne obstaja."}, status_code=404)
-        data = json.loads(hist_file.read_text(encoding="utf-8"))
-        HSUVOZ_CURRENT.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"ok": True, "total_skus": data.get("total_skus", 0)}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+async function hsuvozDeleteSelected() {
+  if (!window._hsuvozSelected) return;
+  const skus = [...window._hsuvozSelected]
+    .filter(k => k.endsWith('|current'))
+    .map(k => k.slice(0, k.lastIndexOf('|current')));
+  if (!skus.length) return;
+  try {
+    for (const sku of skus) {
+      const res = await fetch('/hsuvoz-delete-item?sku=' + encodeURIComponent(sku) + '&source=current', {
+        method: 'POST'
+      });
+      console.log('[hsuvoz] delete', sku, res.status);
+      window._hsuvozSelected.delete(sku + '|current');
+    }
+    await hsuvozLoadCurrent();
+  } catch(e) { alert('Napaka: ' + e.message); }
+}
 
-# ═══════════════════════════════════════════════════════════════
-# HS+ NAROČANJE — naročilo composer (ločen persistent state)
-# ═══════════════════════════════════════════════════════════════
-HSUVOZ_ORDER = DATA_DIR / "hsuvoz_order.json"
+async function hsuvozDeleteSelectedOrder() {
+  if (!window._hsuvozSelected) return;
+  const skus = [...window._hsuvozSelected]
+    .filter(k => k.endsWith('|order'))
+    .map(k => k.slice(0, k.lastIndexOf('|order')));
+  if (!skus.length) return;
+  try {
+    for (const sku of skus) {
+      await fetch('/hsuvoz-delete-item?sku=' + encodeURIComponent(sku) + '&source=order', {
+        method: 'POST'
+      });
+      window._hsuvozSelected.delete(sku + '|order');
+    }
+    await hsuvozLoadOrderPanel();
+  } catch(e) { alert('Napaka: ' + e.message); }
+}
 
-@app.post("/hsuvoz-move-to-order")
-async def hsuvoz_move_to_order(request: Request):
-    """Premakne SKU iz 'za naročilo' v 'naročilo'."""
-    try:
-        body = await request.json()
-        sku = body.get("sku")
-        if not sku or not HSUVOZ_CURRENT.exists():
-            return JSONResponse({"error": "Ni podatkov."}, status_code=400)
+async function hsuvozMoveSelectedBack() {
+  if (!window._hsuvozSelected) return;
+  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|order')).map(k => k.slice(0, k.lastIndexOf('|order')));
+  if (!skus.length) return;
+  for (const sku of skus) {
+    await fetch('/hsuvoz-move-back', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku}) });
+    window._hsuvozSelected.delete(sku + '|order');
+  }
+  await Promise.all([hsuvozLoadCurrent(), hsuvozLoadOrderPanel()]);
+}
 
-        # Poberi iz current
-        current = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
-        item = next((it for it in current.get("items", []) if it["sku"] == sku), None)
-        if not item:
-            return JSONResponse({"error": "SKU ne obstaja."}, status_code=404)
+async function hsuvozDeleteItem(sku, source) {
+  try {
+    const res = await fetch('/hsuvoz-delete-item', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku, source}) });
+    const data = await res.json();
+    if (data.error) { alert('Napaka: ' + data.error); return; }
+    if (source === 'current') await hsuvozLoadCurrent();
+    else await hsuvozLoadOrderPanel();
+  } catch(e) { alert('Napaka: '+e.message); }
+}
 
-        # Dodaj v order (ali posodobi qty)
-        order = {"items": []}
-        if HSUVOZ_ORDER.exists():
-            try: order = json.loads(HSUVOZ_ORDER.read_text(encoding="utf-8"))
-            except: pass
+async function hsuvozCopyOrder() {
+  try {
+    const res = await fetch('/hsuvoz-order-data');
+    const data = await res.json();
+    const text = (data.items||[]).map(it=>it.sku).join('\n');
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    const btn = document.getElementById('hsuvozCopyOrderBtn');
+    const orig = btn.textContent;
+    btn.textContent = '✓ Kopirano!';
+    btn.style.background = '#16a34a';
+    setTimeout(()=>{ btn.textContent = orig; btn.style.background = 'var(--green)'; }, 1500);
+  } catch(e) { alert('Napaka: '+e.message); }
+}
 
-        existing = next((it for it in order["items"] if it["sku"] == sku), None)
-        if existing:
-            existing["qty"] += item["qty"]
-            existing["orders"] = list(set(existing.get("orders", []) + item.get("orders", [])))
-        else:
-            order["items"].append({**item, "done": False})
+async function hsuvozClearOrder() {
+  if (!confirm('Počisti celotno naročilo?')) return;
+  try {
+    await fetch('/hsuvoz-order-clear', { method:'POST' });
+    await hsuvozLoadOrderPanel();
+  } catch(e) { alert('Napaka: '+e.message); }
+}
 
-        HSUVOZ_ORDER.write_text(json.dumps(order, ensure_ascii=False, indent=2), encoding="utf-8")
+async function hsuvozClearCurrent() {
+  if (!confirm('Zbriši vse SKU-je iz seznama "Za naročilo"?')) return;
+  try {
+    const res = await fetch('/hsuvoz-current-clear', { method:'POST' });
+    const data = await res.json();
+    if (data.error) { alert('Napaka: '+data.error); return; }
+    await hsuvozLoadCurrent();
+  } catch(e) { alert('Napaka: '+e.message); }
+}
 
-        # Odstrani iz current
-        current["items"] = [it for it in current["items"] if it["sku"] != sku]
-        HSUVOZ_CURRENT.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+function hsuvozToggleDone() {
+  _hsuvozShowDone = !_hsuvozShowDone;
+  const btn = document.getElementById('hsuvozToggleDoneBtn');
+  btn.textContent = _hsuvozShowDone ? '🙈 Skrij done' : '👁 Done';
+  btn.style.background = _hsuvozShowDone ? 'rgba(0,0,0,0.06)' : 'transparent';
+  hsuvozLoadCurrent();
+}
 
-        return {"ok": True}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+async function hsuvozSetDone(sku, done) {
+  try {
+    await fetch('/hsuvoz-set-done', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku, done}) });
+    await hsuvozLoadCurrent();
+  } catch(e) {}
+}
 
+function hsuvozStartEdit(sku, source, idx) {
+  const span = document.getElementById('hsuvoz-sku-' + source + '-' + idx);
+  if (!span) return;
+  span.innerHTML = '<input id="hsuvoz-edit-input" value="' + sku.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '" style="padding:2px 6px;border:1px solid var(--accent);border-radius:4px;font-size:12px;font-family:DM Sans,sans-serif;width:100px">'
+    + '<button id="hsuvoz-edit-ok" style="padding:2px 5px;background:var(--accent);color:white;border:none;border-radius:3px;font-size:10px;cursor:pointer;margin-left:3px">&#10003;</button>'
+    + '<button id="hsuvoz-edit-cancel" style="padding:2px 5px;background:none;border:1px solid var(--border);border-radius:3px;font-size:10px;cursor:pointer;margin-left:2px">&#10007;</button>';
+  const inp = document.getElementById('hsuvoz-edit-input');
+  inp?.focus();
+  inp?.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') hsuvozSaveEdit(sku, source);
+    if (e.key === 'Escape') source === 'current' ? hsuvozLoadCurrent() : hsuvozLoadOrderPanel();
+  });
+  document.getElementById('hsuvoz-edit-ok')?.addEventListener('click', function() { hsuvozSaveEdit(sku, source); });
+  document.getElementById('hsuvoz-edit-cancel')?.addEventListener('click', function() { source === 'current' ? hsuvozLoadCurrent() : hsuvozLoadOrderPanel(); });
+}
 
-@app.post("/hsuvoz-move-back")
-async def hsuvoz_move_back(request: Request):
-    """Vrne SKU iz naročila nazaj v 'za naročilo'."""
-    try:
-        body = await request.json()
-        sku = body.get("sku")
-        if not sku or not HSUVOZ_ORDER.exists():
-            return JSONResponse({"error": "Ni podatkov."}, status_code=400)
+async function hsuvozSaveEdit(oldSku, source) {
+  const input = document.getElementById('hsuvoz-edit-input');
+  const newSku = input?.value?.trim();
+  if (!newSku || newSku === oldSku) { source === 'current' ? hsuvozLoadCurrent() : hsuvozLoadOrderPanel(); return; }
+  try {
+    const res = await fetch('/hsuvoz-edit-sku', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({old_sku:oldSku, new_sku:newSku, source}) });
+    const data = await res.json();
+    if (data.error) { alert('Napaka: '+data.error); return; }
+    source === 'current' ? await hsuvozLoadCurrent() : await hsuvozLoadOrderPanel();
+  } catch(e) { alert('Napaka: '+e.message); }
+}
 
-        order = json.loads(HSUVOZ_ORDER.read_text(encoding="utf-8"))
-        item = next((it for it in order["items"] if it["sku"] == sku), None)
-        if not item:
-            return JSONResponse({"error": "SKU ne obstaja v naročilu."}, status_code=404)
+async function hsuvozLoadHistory() {
+  const el = document.getElementById('hsuvozHistoryList');
+  try {
+    const res = await fetch('/hsuvoz-history');
+    const data = await res.json();
+    if (!data.items?.length) { el.innerHTML = '<span style="color:var(--text-tertiary)">Ni zgodovine.</span>'; return; }
+    window._hsvHistory = data.items;
+    el.innerHTML = data.items.map(function(it, hidx) {
+      const dt = it.uploaded_at ? new Date(it.uploaded_at).toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);gap:6px">'
+        + '<div style="min-width:0">'
+        + '<div style="font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">' + esc(it.original_filename) + '</div>'
+        + '<div style="color:var(--text-tertiary);font-size:10px">' + dt + ' · ' + it.total_skus + ' SKU</div>'
+        + '</div>'
+        + '<button onclick="window._hsvLoadHist(' + hidx + ',this)" style="flex-shrink:0;padding:4px 10px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap">↩ Naloži</button>'
+        + '</div>';
+    }).join('');
 
-        # Vrni v current
-        current = {"items": []}
-        if HSUVOZ_CURRENT.exists():
-            try: current = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
-            except: pass
+    window._hsvLoadHist = async function(hidx, btn) {
+      if (!window._hsvHistory || hidx >= window._hsvHistory.length) return;
+      const filename = window._hsvHistory[hidx].filename;
+      const orig = btn.textContent;
+      btn.textContent = '⏳';
+      btn.disabled = true;
+      await hsuvozLoadFromHistory(filename);
+      btn.textContent = '✓ Naloženo!';
+      btn.style.background = '#16a34a';
+      setTimeout(function() { btn.textContent = orig; btn.style.background = 'var(--accent)'; btn.disabled = false; }, 1500);
+    };
+  } catch(e) { el.innerHTML = '<span style="color:var(--red)">Napaka.</span>'; }
+}
 
-        if not any(it["sku"] == sku for it in current["items"]):
-            current["items"].append({**item, "done": False})
-            HSUVOZ_CURRENT.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+async function hsuvozLoadFromHistory(filename) {
+  try {
+    const res = await fetch('/hsuvoz-load-history', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({filename}) });
+    const data = await res.json();
+    if (data.error) { alert('Napaka: '+data.error); return; }
+    await hsuvozLoadCurrent();
+  } catch(e) { alert('Napaka: '+e.message); }
+}
 
-        order["items"] = [it for it in order["items"] if it["sku"] != sku]
-        HSUVOZ_ORDER.write_text(json.dumps(order, ensure_ascii=False, indent=2), encoding="utf-8")
+</script>
+<!-- HOVER PREVIEW -->
+<div class="k-hover-preview" id="kHoverPreview">
+  <img id="kHoverPreviewImg" src="" alt="">
+</div>
 
-        return {"ok": True}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+<!-- ASANA MODAL -->
+<div class="k-asana-modal" id="kAsanaModal" onclick="if(event.target===this)kCloseAsanaModal()">
+  <div class="k-asana-modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <span style="font-weight:700;font-size:14px">Priloži v Asana task</span>
+      <button onclick="kCloseAsanaModal()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-tertiary)">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Prilepi Asana task URL ali poišči task:</div>
+    <input type="text" id="kAsanaUrlInput" placeholder="https://app.asana.com/0/.../task/..." style="margin-bottom:8px">
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <button class="btn-gen" style="flex:1;font-size:12px" onclick="kAsanaSearch()">
+        <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Išči task po imenu
+      </button>
+    </div>
+    <div id="kAsanaSearchResults" style="max-height:200px;overflow-y:auto;margin-bottom:12px"></div>
+    <div id="kAsanaSelected" style="font-size:11px;color:var(--accent);margin-bottom:10px;min-height:16px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-gen" id="kAsanaSubmitBtn" onclick="kAsanaAttach()" style="flex:1">
+        <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <span id="kAsanaSubmitLabel">Priloži slike</span>
+      </button>
+      <button onclick="kCloseAsanaModal()" style="padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius);background:none;cursor:pointer;font-size:12px;color:var(--text-secondary)">Prekliči</button>
+    </div>
+    <div id="kAsanaStatus" style="font-size:12px;margin-top:8px;min-height:18px"></div>
+  </div>
+</div>
 
-
-@app.post("/hsuvoz-delete-item")
-async def hsuvoz_delete_item(request: Request):
-    try:
-        raw = await request.body()
-        try:
-            body = json.loads(raw)
-        except Exception:
-            return JSONResponse({"error": "Invalid JSON"}, status_code=400)
-
-        source = str(body.get("source") or "current")
-        file = HSUVOZ_CURRENT if source == "current" else HSUVOZ_ORDER
-        if not file.exists():
-            return JSONResponse({"error": "Ni podatkov."}, status_code=404)
-
-        data = json.loads(file.read_text(encoding="utf-8"))
-
-        # Sprejme: {"sku": "X"} ali {"skus": ["X","Y"]}
-        skus_raw = body.get("skus") or ([body.get("sku")] if body.get("sku") else [])
-        skus_set = set(str(s).strip() for s in skus_raw if s)
-
-        if not skus_set:
-            return JSONResponse({"error": "Ni SKU-jev."}, status_code=400)
-
-        before = len(data.get("items", []))
-        data["items"] = [it for it in data.get("items", []) if str(it.get("sku","")).strip() not in skus_set]
-        after = len(data["items"])
-        file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"ok": True, "deleted": before - after}
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.get("/hsuvoz-order-data")
-async def hsuvoz_order_data():
-    """Vrne seznam SKU-jev v naročilu."""
-    try:
-        if not HSUVOZ_ORDER.exists():
-            return {"items": []}
-        return json.loads(HSUVOZ_ORDER.read_text(encoding="utf-8"))
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/hsuvoz-order-clear")
-async def hsuvoz_order_clear():
-    """Počisti celotno naročilo."""
-    try:
-        HSUVOZ_ORDER.write_text(json.dumps({"items": []}, ensure_ascii=False), encoding="utf-8")
-        return {"ok": True}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-@app.post("/hsuvoz-current-clear")
-async def hsuvoz_current_clear():
-    """Počisti celoten seznam 'za naročilo'."""
-    try:
-        if HSUVOZ_CURRENT.exists():
-            data = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
-            data["items"] = []
-            HSUVOZ_CURRENT.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"ok": True}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+</body>
+</html>
