@@ -1290,32 +1290,52 @@ input[type="text"].error { border-color: var(--red) !important; }
 
           <!-- PANEL 1: Za naročilo (CSV uvoz) -->
           <div class="card" id="hsuvozResultCard" style="display:none;padding:1rem">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
               <span class="slabel" style="margin:0" id="hsuvozTitle">ZA NAROČILO (0)</span>
               <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-                <button onclick="hsuvozMoveAllToOrder()" style="padding:5px 10px;background:#0f766e;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">→ Vse v naročilo</button>
-                <button onclick="hsuvozClearCurrent()" style="padding:5px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Počisti</button>
                 <button onclick="hsuvozToggleDone()" id="hsuvozToggleDoneBtn" style="padding:5px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">👁 Done</button>
               </div>
             </div>
-            <div style="display:grid;grid-template-columns:28px 130px 1fr 55px 85px 85px 120px;gap:10px;padding:8px 12px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">
+            <!-- Masovne akcije (pokažejo se ko je kaj označeno) -->
+            <div id="hsuvozBulkBar" style="display:none;padding:8px 12px;background:rgba(24,119,242,0.06);border:1px solid rgba(24,119,242,0.2);border-radius:var(--radius);margin-bottom:8px;display:none;align-items:center;gap:8px;flex-wrap:wrap">
+              <span id="hsuvozSelCount" style="font-size:12px;font-weight:600;color:var(--accent)">0 označenih</span>
+              <button onclick="hsuvozMoveSelectedToOrder()" style="padding:5px 12px;background:#0f766e;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">→ Premakni v naročilo</button>
+              <button onclick="hsuvozDeleteSelected()" style="padding:5px 12px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Zbriši označene</button>
+              <button onclick="hsuvozDeselectAll('current')" style="padding:5px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Počisti izbor</button>
+            </div>
+            <!-- Header -->
+            <div style="display:grid;grid-template-columns:32px 28px 130px 1fr 55px 85px 85px 100px;gap:8px;padding:8px 12px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;align-items:center">
+              <input type="checkbox" id="hsuvozSelectAll" onchange="hsuvozToggleSelectAll('current',this.checked)" style="cursor:pointer;width:14px;height:14px">
               <span>#</span><span>SKU</span><span>Naziv</span><span style="text-align:center">Kol.</span><span style="text-align:center">Obrat 30d</span><span style="text-align:center">Naročila</span><span></span>
             </div>
             <div id="hsuvozList" style="display:flex;flex-direction:column;gap:3px"></div>
+            <!-- Footer akcije -->
+            <div style="display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap">
+              <button onclick="hsuvozMoveAllToOrder()" style="padding:5px 10px;background:#0f766e;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">→ Vse v naročilo</button>
+              <button onclick="hsuvozClearCurrent()" style="padding:5px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Počisti vse</button>
+            </div>
           </div>
           <div id="hsuvozEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">Naloži CSV naročilnic za začetek.</div>
 
           <!-- PANEL 2: Naročilo (composer) -->
           <div class="card" id="hsuvozOrderCard" style="padding:1rem">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
               <span class="slabel" style="margin:0;color:#0f766e" id="hsuvozOrderTitle">📦 NAROČILO (0 SKU)</span>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
                 <button onclick="hsuvozCopyOrder()" id="hsuvozCopyOrderBtn" style="padding:5px 10px;background:var(--green);color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Kopiraj SKU</button>
                 <button onclick="hsuvozClearOrder()" style="padding:5px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Počisti</button>
               </div>
             </div>
+            <!-- Masovne akcije za naročilo -->
+            <div id="hsuvozOrderBulkBar" style="display:none;padding:8px 12px;background:rgba(15,118,110,0.06);border:1px solid rgba(15,118,110,0.2);border-radius:var(--radius);margin-bottom:8px;align-items:center;gap:8px;flex-wrap:wrap">
+              <span id="hsuvozOrderSelCount" style="font-size:12px;font-weight:600;color:#0f766e">0 označenih</span>
+              <button onclick="hsuvozDeleteSelectedOrder()" style="padding:5px 12px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Zbriši označene</button>
+              <button onclick="hsuvozMoveSelectedBack()" style="padding:5px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">← Vrni v seznam</button>
+              <button onclick="hsuvozDeselectAll('order')" style="padding:5px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Počisti izbor</button>
+            </div>
             <div id="hsuvozOrderEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:1.5rem">Premakni SKU-je sem z gumbom "→ Naročilo".</div>
-            <div style="display:grid;grid-template-columns:28px 130px 1fr 55px 85px 85px 120px;gap:10px;padding:8px 12px;background:rgba(15,118,110,0.08);border-radius:var(--radius);font-size:10px;font-weight:600;color:#0f766e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:none" id="hsuvozOrderHeader">
+            <div style="display:grid;grid-template-columns:32px 28px 130px 1fr 55px 85px 85px 100px;gap:8px;padding:8px 12px;background:rgba(15,118,110,0.08);border-radius:var(--radius);font-size:10px;font-weight:600;color:#0f766e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:none;align-items:center" id="hsuvozOrderHeader">
+              <input type="checkbox" id="hsuvozOrderSelectAll" onchange="hsuvozToggleSelectAll('order',this.checked)" style="cursor:pointer;width:14px;height:14px">
               <span>#</span><span>SKU</span><span>Naziv</span><span style="text-align:center">Kol.</span><span style="text-align:center">Obrat 30d</span><span style="text-align:center">Naročila</span><span></span>
             </div>
             <div id="hsuvozOrderList" style="display:flex;flex-direction:column;gap:3px"></div>
@@ -6113,37 +6133,32 @@ function hsuvozRender(items, listId, source) {
     const skuColor = isDone ? 'var(--text-tertiary)' : (source === 'order' ? '#0f766e' : 'var(--text)');
     const skuDeco = isDone ? 'line-through' : 'none';
 
-    const btnMove = source === 'current'
-      ? '<button data-action="move" data-idx="' + idx + '" data-source="current" style="padding:3px 7px;background:#0f766e;color:white;border:none;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap">&rarr; Naročilo</button>'
-      : '<button data-action="back" data-idx="' + idx + '" data-source="order" style="padding:3px 7px;background:none;border:1px solid var(--border);color:var(--text-secondary);border-radius:4px;font-size:10px;cursor:pointer">&larr; Nazaj</button>';
+    const isChecked = (window._hsuvozSelected || new Set()).has(it.sku + '|' + source);
 
-    return '<div style="border:' + rowBorder + ';border-radius:var(--radius);background:' + rowBg + ';' + (isDone ? 'opacity:0.5' : '') + '">'
-      + '<div style="display:grid;grid-template-columns:28px 130px 1fr 55px 85px 85px 120px;gap:10px;padding:9px 12px;font-size:12px;align-items:center">'
-      // #
+    const btnMove = source === 'current'
+      ? '<button onclick="window._hsvAct(\'move\',\'current\',' + idx + ')" style="padding:3px 7px;background:#0f766e;color:white;border:none;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap">&rarr; Naročilo</button>'
+      : '<button onclick="window._hsvAct(\'back\',\'order\',' + idx + ')" style="padding:3px 7px;background:none;border:1px solid var(--border);color:var(--text-secondary);border-radius:4px;font-size:10px;cursor:pointer">&larr; Nazaj</button>';
+
+    return '<div style="border:' + rowBorder + ';border-radius:var(--radius);background:' + rowBg + ';' + (isDone ? 'opacity:0.5' : '') + (isChecked ? 'outline:2px solid rgba(24,119,242,0.4);' : '') + '">'
+      + '<div style="display:grid;grid-template-columns:32px 28px 130px 1fr 55px 85px 85px 100px;gap:8px;padding:9px 12px;font-size:12px;align-items:center">'
+      + '<input type="checkbox" ' + (isChecked ? 'checked' : '') + ' onchange="window._hsvCheck(\'' + source + '\',' + idx + ',this.checked)" style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">'
       + '<span style="color:var(--text-tertiary);font-size:11px">' + (idx + 1) + '</span>'
-      // SKU
       + '<span style="font-weight:700;font-size:12px;color:' + skuColor + ';text-decoration:' + skuDeco + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="hsuvoz-sku-' + source + '-' + idx + '">' + esc(it.sku) + '</span>'
-      // Naziv
       + '<span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">' + esc(it.naziv || '—') + '</span>'
-      // Količina naročeno
       + '<div style="text-align:center">'
       + '<span style="font-weight:700;font-size:15px;color:var(--text)">' + it.qty + '</span>'
       + '<div style="font-size:9px;color:var(--text-tertiary);margin-top:1px">kos</div>'
       + '</div>'
-      // Obrat 30d — lasten stolpec, velik badge
       + (obrat !== undefined
         ? '<div style="text-align:center;background:' + obratBg + ';border-radius:6px;padding:4px 6px;border:1px solid ' + obratBorder + '">'
           + '<div style="font-weight:700;font-size:14px;color:' + obratColor + '">' + obrat + '</div>'
           + '<div style="font-size:9px;color:' + obratColor + ';opacity:0.8">obr/30d</div>'
           + '</div>'
         : '<div style="text-align:center;color:var(--text-tertiary);font-size:11px">—</div>')
-      // Naročila (accordion gumb)
-      + '<button data-action="orders" data-id="' + ordersId + '" style="padding:4px 8px;background:rgba(24,119,242,0.07);border:1px solid rgba(24,119,242,0.2);border-radius:6px;font-size:11px;color:var(--accent);cursor:pointer;width:100%;text-align:center">📦 ' + ordersCount + ' naroč.</button>'
-      // Akcije
-      + '<div style="display:flex;gap:4px;justify-content:flex-end">'
+      + '<button onclick="window._hsvOrders(\'' + ordersId + '\',this)" style="padding:4px 8px;background:rgba(24,119,242,0.07);border:1px solid rgba(24,119,242,0.2);border-radius:6px;font-size:11px;color:var(--accent);cursor:pointer;width:100%;text-align:center">📦 ' + ordersCount + '</button>'
+      + '<div style="display:flex;gap:3px;justify-content:flex-end">'
       + btnMove
-      + '<button data-action="edit" data-idx="' + idx + '" data-source="' + source + '" title="Preimenuj SKU" style="padding:4px 6px;background:none;border:1px solid var(--border);color:var(--text-tertiary);border-radius:4px;font-size:10px;cursor:pointer">✏</button>'
-      + '<button data-action="delete" data-idx="' + idx + '" data-source="' + source + '" title="Zbriši" style="padding:4px 6px;background:none;border:1px solid rgba(239,68,68,0.3);color:var(--red);border-radius:4px;font-size:10px;cursor:pointer">🗑</button>'
+      + '<button onclick="window._hsvAct(\'edit\',\'' + source + '\',' + idx + ')" style="padding:4px 5px;background:none;border:1px solid var(--border);color:var(--text-tertiary);border-radius:4px;font-size:10px;cursor:pointer">✏</button>'
       + '</div>'
       + '</div>'
       + '<div id="' + ordersId + '" style="display:none;padding:5px 12px 10px 50px;flex-wrap:wrap;gap:5px">' + orderLinks + '</div>'
@@ -6152,33 +6167,31 @@ function hsuvozRender(items, listId, source) {
 
   list.innerHTML = rows.join('');
 
-  // Event delegation — en listener na list elementu
-  list.onclick = function(e) {
-    const btn = e.target.closest('[data-action]');
-    if (!btn) return;
-    const action = btn.dataset.action;
-    const src = btn.dataset.source || 'current';
+  window._hsvAct = function(action, src, idx) {
     const items_ref = src === 'current' ? window._hsuvozCurrentItems : window._hsuvozOrderItems;
-
-    if (action === 'orders') {
-      const el = document.getElementById(btn.dataset.id);
-      if (!el) return;
-      const isOpen = el.style.display !== 'none';
-      el.style.display = isOpen ? 'none' : 'flex';
-      btn.style.background = isOpen ? 'rgba(24,119,242,0.07)' : 'rgba(24,119,242,0.18)';
-      return;
-    }
-
-    const idx = parseInt(btn.dataset.idx);
-    if (!items_ref || isNaN(idx) || idx < 0 || idx >= items_ref.length) {
-      console.warn('hsuvoz click: items_ref missing or idx out of range', {action, src, idx, len: items_ref?.length});
-      return;
-    }
+    if (!items_ref || idx < 0 || idx >= items_ref.length) return;
     const sku = items_ref[idx].sku;
     if (action === 'move') hsuvozMoveToOrder(sku);
     else if (action === 'back') hsuvozMoveBack(sku);
     else if (action === 'edit') hsuvozStartEdit(sku, src, idx);
-    else if (action === 'delete') hsuvozDeleteItem(sku, src);
+  };
+
+  window._hsvCheck = function(src, idx, checked) {
+    if (!window._hsuvozSelected) window._hsuvozSelected = new Set();
+    const items_ref = src === 'current' ? window._hsuvozCurrentItems : window._hsuvozOrderItems;
+    if (!items_ref || idx >= items_ref.length) return;
+    const key = items_ref[idx].sku + '|' + src;
+    if (checked) window._hsuvozSelected.add(key);
+    else window._hsuvozSelected.delete(key);
+    hsuvozUpdateBulkBar(src);
+  };
+
+  window._hsvOrders = function(id, btn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const isOpen = el.style.display !== 'none';
+    el.style.display = isOpen ? 'none' : 'flex';
+    btn.style.background = isOpen ? 'rgba(24,119,242,0.07)' : 'rgba(24,119,242,0.18)';
   };
 }
 
@@ -6216,6 +6229,89 @@ async function hsuvozMoveAllToOrder() {
     }
     await Promise.all([hsuvozLoadCurrent(), hsuvozLoadOrderPanel()]);
   } catch(e) { alert('Napaka: '+e.message); }
+}
+
+function hsuvozUpdateBulkBar(src) {
+  if (!window._hsuvozSelected) window._hsuvozSelected = new Set();
+  const sel = [...window._hsuvozSelected].filter(k => k.endsWith('|' + src));
+  const count = sel.length;
+  if (src === 'current') {
+    const bar = document.getElementById('hsuvozBulkBar');
+    const cnt = document.getElementById('hsuvozSelCount');
+    if (bar) { bar.style.display = count > 0 ? 'flex' : 'none'; }
+    if (cnt) cnt.textContent = count + ' označenih';
+  } else {
+    const bar = document.getElementById('hsuvozOrderBulkBar');
+    const cnt = document.getElementById('hsuvozOrderSelCount');
+    if (bar) { bar.style.display = count > 0 ? 'flex' : 'none'; }
+    if (cnt) cnt.textContent = count + ' označenih';
+  }
+}
+
+function hsuvozToggleSelectAll(src, checked) {
+  if (!window._hsuvozSelected) window._hsuvozSelected = new Set();
+  const items_ref = src === 'current' ? window._hsuvozCurrentItems : window._hsuvozOrderItems;
+  if (!items_ref) return;
+  items_ref.forEach(it => {
+    const key = it.sku + '|' + src;
+    if (checked) window._hsuvozSelected.add(key);
+    else window._hsuvozSelected.delete(key);
+  });
+  // Re-render da se checkboxi posodobijo
+  if (src === 'current') hsuvozLoadCurrent();
+  else hsuvozLoadOrderPanel();
+}
+
+function hsuvozDeselectAll(src) {
+  if (!window._hsuvozSelected) return;
+  const keys = [...window._hsuvozSelected].filter(k => k.endsWith('|' + src));
+  keys.forEach(k => window._hsuvozSelected.delete(k));
+  if (src === 'current') hsuvozLoadCurrent();
+  else hsuvozLoadOrderPanel();
+}
+
+async function hsuvozMoveSelectedToOrder() {
+  if (!window._hsuvozSelected) return;
+  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|current')).map(k => k.replace('|current', ''));
+  if (!skus.length) return;
+  for (const sku of skus) {
+    await fetch('/hsuvoz-move-to-order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku}) });
+    window._hsuvozSelected.delete(sku + '|current');
+  }
+  await Promise.all([hsuvozLoadCurrent(), hsuvozLoadOrderPanel()]);
+}
+
+async function hsuvozDeleteSelected() {
+  if (!window._hsuvozSelected) return;
+  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|current')).map(k => k.replace('|current', ''));
+  if (!skus.length) return;
+  for (const sku of skus) {
+    await fetch('/hsuvoz-delete-item', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku, source:'current'}) });
+    window._hsuvozSelected.delete(sku + '|current');
+  }
+  await hsuvozLoadCurrent();
+}
+
+async function hsuvozDeleteSelectedOrder() {
+  if (!window._hsuvozSelected) return;
+  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|order')).map(k => k.replace('|order', ''));
+  if (!skus.length) return;
+  for (const sku of skus) {
+    await fetch('/hsuvoz-delete-item', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku, source:'order'}) });
+    window._hsuvozSelected.delete(sku + '|order');
+  }
+  await hsuvozLoadOrderPanel();
+}
+
+async function hsuvozMoveSelectedBack() {
+  if (!window._hsuvozSelected) return;
+  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|order')).map(k => k.replace('|order', ''));
+  if (!skus.length) return;
+  for (const sku of skus) {
+    await fetch('/hsuvoz-move-back', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku}) });
+    window._hsuvozSelected.delete(sku + '|order');
+  }
+  await Promise.all([hsuvozLoadCurrent(), hsuvozLoadOrderPanel()]);
 }
 
 async function hsuvozDeleteItem(sku, source) {
