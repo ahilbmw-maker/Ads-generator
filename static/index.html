@@ -6272,7 +6272,7 @@ function hsuvozDeselectAll(src) {
 
 async function hsuvozMoveSelectedToOrder() {
   if (!window._hsuvozSelected) return;
-  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|current')).map(k => k.replace('|current', ''));
+  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|current')).map(k => k.slice(0, k.lastIndexOf('|current')));
   if (!skus.length) return;
   for (const sku of skus) {
     await fetch('/hsuvoz-move-to-order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku}) });
@@ -6283,29 +6283,45 @@ async function hsuvozMoveSelectedToOrder() {
 
 async function hsuvozDeleteSelected() {
   if (!window._hsuvozSelected) return;
-  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|current')).map(k => k.replace('|current', ''));
+  const skus = [...window._hsuvozSelected]
+    .filter(k => k.endsWith('|current'))
+    .map(k => k.slice(0, k.lastIndexOf('|current')));
   if (!skus.length) return;
-  for (const sku of skus) {
-    await fetch('/hsuvoz-delete-item', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku, source:'current'}) });
-    window._hsuvozSelected.delete(sku + '|current');
-  }
-  await hsuvozLoadCurrent();
+  try {
+    const res = await fetch('/hsuvoz-delete-item', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({skus, source: 'current'})
+    });
+    const data = await res.json();
+    if (data.error) { alert('Napaka: ' + data.error); return; }
+    skus.forEach(s => window._hsuvozSelected.delete(s + '|current'));
+    await hsuvozLoadCurrent();
+  } catch(e) { alert('Napaka: ' + e.message); }
 }
 
 async function hsuvozDeleteSelectedOrder() {
   if (!window._hsuvozSelected) return;
-  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|order')).map(k => k.replace('|order', ''));
+  const skus = [...window._hsuvozSelected]
+    .filter(k => k.endsWith('|order'))
+    .map(k => k.slice(0, k.lastIndexOf('|order')));
   if (!skus.length) return;
-  for (const sku of skus) {
-    await fetch('/hsuvoz-delete-item', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku, source:'order'}) });
-    window._hsuvozSelected.delete(sku + '|order');
-  }
-  await hsuvozLoadOrderPanel();
+  try {
+    const res = await fetch('/hsuvoz-delete-item', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({skus, source: 'order'})
+    });
+    const data = await res.json();
+    if (data.error) { alert('Napaka: ' + data.error); return; }
+    skus.forEach(s => window._hsuvozSelected.delete(s + '|order'));
+    await hsuvozLoadOrderPanel();
+  } catch(e) { alert('Napaka: ' + e.message); }
 }
 
 async function hsuvozMoveSelectedBack() {
   if (!window._hsuvozSelected) return;
-  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|order')).map(k => k.replace('|order', ''));
+  const skus = [...window._hsuvozSelected].filter(k => k.endsWith('|order')).map(k => k.slice(0, k.lastIndexOf('|order')));
   if (!skus.length) return;
   for (const sku of skus) {
     await fetch('/hsuvoz-move-back', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku}) });
