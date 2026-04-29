@@ -6157,8 +6157,7 @@ function hsuvozRender(items, listId, source) {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const action = btn.dataset.action;
-    const idx = parseInt(btn.dataset.idx);
-    const src = btn.dataset.source;
+    const src = btn.dataset.source || 'current';
     const items_ref = src === 'current' ? window._hsuvozCurrentItems : window._hsuvozOrderItems;
 
     if (action === 'orders') {
@@ -6169,7 +6168,12 @@ function hsuvozRender(items, listId, source) {
       btn.style.background = isOpen ? 'rgba(24,119,242,0.07)' : 'rgba(24,119,242,0.18)';
       return;
     }
-    if (!items_ref || idx >= items_ref.length) return;
+
+    const idx = parseInt(btn.dataset.idx);
+    if (!items_ref || isNaN(idx) || idx < 0 || idx >= items_ref.length) {
+      console.warn('hsuvoz click: items_ref missing or idx out of range', {action, src, idx, len: items_ref?.length});
+      return;
+    }
     const sku = items_ref[idx].sku;
     if (action === 'move') hsuvozMoveToOrder(sku);
     else if (action === 'back') hsuvozMoveBack(sku);
@@ -6215,9 +6219,10 @@ async function hsuvozMoveAllToOrder() {
 }
 
 async function hsuvozDeleteItem(sku, source) {
-  if (!confirm(`Zbriši "${sku}"?`)) return;
   try {
-    await fetch('/hsuvoz-delete-item', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku, source}) });
+    const res = await fetch('/hsuvoz-delete-item', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sku, source}) });
+    const data = await res.json();
+    if (data.error) { alert('Napaka: ' + data.error); return; }
     if (source === 'current') await hsuvozLoadCurrent();
     else await hsuvozLoadOrderPanel();
   } catch(e) { alert('Napaka: '+e.message); }
