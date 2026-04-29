@@ -6287,20 +6287,18 @@ async function hsuvozDeleteSelected() {
   const skus = allKeys
     .filter(k => k.endsWith('|current'))
     .map(k => k.slice(0, k.lastIndexOf('|current')));
-  console.log('[hsuvoz] deleteSelected - allKeys:', allKeys, 'skus:', skus);
-  if (!skus.length) { console.warn('[hsuvoz] no skus to delete'); return; }
+  console.log('[hsuvoz] deleteSelected skus:', skus);
+  if (!skus.length) return;
   try {
-    const body = JSON.stringify({skus, source: 'current'});
-    console.log('[hsuvoz] sending:', body);
-    const res = await fetch('/hsuvoz-delete-item', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body
-    });
-    console.log('[hsuvoz] response status:', res.status);
-    const data = await res.json();
-    if (data.error) { alert('Napaka: ' + data.error); return; }
-    skus.forEach(s => window._hsuvozSelected.delete(s + '|current'));
+    for (const sku of skus) {
+      const res = await fetch('/hsuvoz-delete-item', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({sku: sku, source: 'current'})
+      });
+      console.log('[hsuvoz] delete', sku, res.status);
+      window._hsuvozSelected.delete(sku + '|current');
+    }
     await hsuvozLoadCurrent();
   } catch(e) { alert('Napaka: ' + e.message); }
 }
@@ -6312,14 +6310,14 @@ async function hsuvozDeleteSelectedOrder() {
     .map(k => k.slice(0, k.lastIndexOf('|order')));
   if (!skus.length) return;
   try {
-    const res = await fetch('/hsuvoz-delete-item', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({skus, source: 'order'})
-    });
-    const data = await res.json();
-    if (data.error) { alert('Napaka: ' + data.error); return; }
-    skus.forEach(s => window._hsuvozSelected.delete(s + '|order'));
+    for (const sku of skus) {
+      await fetch('/hsuvoz-delete-item', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({sku: sku, source: 'order'})
+      });
+      window._hsuvozSelected.delete(sku + '|order');
+    }
     await hsuvozLoadOrderPanel();
   } catch(e) { alert('Napaka: ' + e.message); }
 }
