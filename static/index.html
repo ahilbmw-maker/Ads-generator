@@ -495,6 +495,11 @@ input[type="text"].error { border-color: var(--red) !important; }
     Analiza
     <span style="margin-left:auto;font-size:13px">📊</span>
   </div>
+  <div class="nav-item nav-zaloga" id="nav-zaloga" onclick="switchPage('zaloga')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    Zaloga
+    <span style="margin-left:auto;font-size:13px">📦</span>
+  </div>
 </nav>
 
 <!-- MAIN -->
@@ -1515,6 +1520,59 @@ input[type="text"].error { border-color: var(--red) !important; }
 
   </div><!-- /page-analiza -->
 
+  <!-- PAGE: ZALOGA -->
+  <div class="page" id="page-zaloga">
+    <div style="padding:14px;display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;align-items:start">
+
+      <!-- LEVO: upload + filter -->
+      <div>
+        <div class="card">
+          <span class="slabel">ZALOGA (CSV)</span>
+          <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 8px;line-height:1.4">Naloži CSV export zaloge. Isti format kot Kontrola cen.</p>
+          <div id="zalogaDropZone" class="k-dropzone" style="padding:14px;cursor:pointer" onclick="document.getElementById('zalogaInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="zalogaHandleDrop(event)">
+            <span style="font-size:11px">Klikni ali povleci CSV sem</span>
+          </div>
+          <input type="file" id="zalogaInput" accept=".csv" style="display:none" onchange="zalogaUpload(this.files[0])">
+          <div id="zalogaStatus" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
+          <div id="zalogaInfo" style="margin-top:8px;padding:8px 10px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;color:var(--text-secondary)">Ni naloženih podatkov.</div>
+        </div>
+        <div class="card" style="margin-top:0">
+          <span class="slabel">FILTER</span>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+              <input type="checkbox" id="zalogaOnlyStock" onchange="zalogaRender()" style="cursor:pointer;accent-color:var(--green)">
+              <span>Samo na zalogi (stock &gt; 0)</span>
+            </label>
+            <input type="text" id="zalogaSearch" placeholder="🔍 Išči SKU, naziv, pozicijo..." oninput="zalogaRender()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:100%">
+          </div>
+          <div id="zalogaStats" style="margin-top:10px;font-size:11px;color:var(--text-tertiary);display:none"></div>
+        </div>
+      </div>
+
+      <!-- DESNO: tabela -->
+      <div>
+        <div id="zalogaTableWrap" style="display:none">
+          <!-- Sticky header -->
+          <div id="zalogaHeaderWrap" style="position:sticky;top:0;z-index:20;background:var(--bg);padding-bottom:2px;overflow-x:auto">
+            <div id="zalogaHeader" style="display:grid;grid-template-columns:80px 110px 1fr 65px 65px 65px 90px 1fr;gap:8px;padding:10px 12px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;min-width:900px;border-bottom:2px solid var(--border);cursor:pointer;user-select:none">
+              <span onclick="zalogaSortBy('product_id')">ID <span id="zSort-product_id"></span></span>
+              <span onclick="zalogaSortBy('product_sku')">SKU <span id="zSort-product_sku"></span></span>
+              <span onclick="zalogaSortBy('title')">Naziv <span id="zSort-title"></span></span>
+              <span style="text-align:right" onclick="zalogaSortBy('stock')">Zaloga <span id="zSort-stock"></span></span>
+              <span style="text-align:right" onclick="zalogaSortBy('price')">Cena <span id="zSort-price"></span></span>
+              <span style="text-align:right" onclick="zalogaSortBy('stock30')">Obr/30d <span id="zSort-stock30"></span></span>
+              <span onclick="zalogaSortBy('position')">Pozicija <span id="zSort-position"></span></span>
+              <span onclick="zalogaSortBy('note')">Opomba <span id="zSort-note"></span></span>
+            </div>
+          </div>
+          <div id="zalogaTable" style="display:flex;flex-direction:column;gap:3px;margin-top:4px;overflow-x:auto;min-width:900px"></div>
+          <div id="zalogaFooter" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center;padding:4px"></div>
+        </div>
+        <div id="zalogaEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:3rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">Naloži CSV za prikaz zaloge.</div>
+      </div>
+    </div>
+  </div><!-- /page-zaloga -->
+
 </div>
 
 <script>
@@ -1568,7 +1626,7 @@ function closeMenu(){
   document.querySelector('.sidebar').classList.remove('open');
   document.getElementById('overlay').classList.remove('open');
 }
-const PAGES = ['meta','tiktok','calc','forecast','kreative','lokalizacija','narocilnice','videoads','orodja','analiza'];
+const PAGES = ['meta','tiktok','calc','forecast','kreative','lokalizacija','narocilnice','videoads','orodja','analiza','zaloga'];
 let currentIdx = 0;
 
 function switchCalcTab(tab) {
@@ -1597,7 +1655,7 @@ function switchPage(page) {
   // Wide layout
   const mainEl = document.querySelector('.main');
   if(mainEl) {
-    if(page==='forecast' || page==='calc' || page==='tiktok' || page==='kreative' || page==='lokalizacija' || page==='narocilnice' || page==='videoads' || page==='orodja' || page==='analiza') {
+    if(page==='forecast' || page==='calc' || page==='tiktok' || page==='kreative' || page==='lokalizacija' || page==='narocilnice' || page==='videoads' || page==='orodja' || page==='analiza' || page==='zaloga') {
       mainEl.classList.add('wide');
     } else if(page==='meta') {
       const formVisible = document.getElementById('metaFormSection').style.display !== 'none';
@@ -1607,6 +1665,7 @@ function switchPage(page) {
     }
   }
   closeMenu();
+  if (page === 'zaloga') zalogaLoad();
 }
 
 // ── META COUNTERS ──
@@ -6022,6 +6081,139 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 100));
 });
 
+// ═══════════════════════════════════════════════════════
+// ZALOGA TAB — JS logika
+// ═══════════════════════════════════════════════════════
+
+let _zalogaData = [];
+let _zalogaSortCol = 'stock';
+let _zalogaSortDir = -1; // -1 = desc (največ zaloge najprej)
+
+function zalogaHandleDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) zalogaUpload(f);
+}
+
+async function zalogaUpload(file) {
+  const status = document.getElementById('zalogaStatus');
+  status.style.display = 'block';
+  status.style.color = 'var(--text-secondary)';
+  status.textContent = '⏳ Nalagam...';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/orodja-stock-upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + data.error; return; }
+    status.style.color = 'var(--green)';
+    status.textContent = `✓ ${data.rows} SKU-jev naloženih · ${data.rows_merged} združenih`;
+    document.getElementById('zalogaInput').value = '';
+    await zalogaLoad();
+  } catch(e) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + e.message; }
+}
+
+async function zalogaLoad() {
+  try {
+    const res = await fetch('/orodja-stock-data');
+    const data = await res.json();
+    if (!data.items?.length) return;
+    _zalogaData = data.items;
+    // Posodobi info
+    const info = document.getElementById('zalogaInfo');
+    const dt = data.uploaded_at ? new Date(data.uploaded_at).toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+    info.innerHTML = `<strong style="color:var(--green)">✓ Naložena</strong> · ${data.total || _zalogaData.length} SKU-jev · ${dt}`;
+    zalogaRender();
+  } catch(e) { console.warn('zalogaLoad', e); }
+}
+
+function zalogaSortBy(col) {
+  if (_zalogaSortCol === col) _zalogaSortDir *= -1;
+  else { _zalogaSortCol = col; _zalogaSortDir = col === 'title' || col === 'product_sku' || col === 'note' || col === 'position' ? 1 : -1; }
+  zalogaRender();
+}
+
+function zalogaRender() {
+  if (!_zalogaData.length) return;
+
+  const search = (document.getElementById('zalogaSearch')?.value || '').toLowerCase().trim();
+  const onlyStock = document.getElementById('zalogaOnlyStock')?.checked;
+
+  // Filter
+  let items = _zalogaData.filter(it => {
+    if (onlyStock && (parseInt(it.stock) || 0) <= 0) return false;
+    if (search) {
+      const hay = [(it.product_sku||''), (it.title||''), (it.position||''), (it.note||''), (it.product_id||'')].join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  items = [...items].sort((a, b) => {
+    const col = _zalogaSortCol;
+    let av = a[col], bv = b[col];
+    if (col === 'stock' || col === 'stock30' || col === 'price' || col === 'product_id') {
+      av = parseFloat(av) || 0; bv = parseFloat(bv) || 0;
+      return (av - bv) * _zalogaSortDir;
+    }
+    return ((av||'').toString().localeCompare((bv||'').toString(), 'sl')) * _zalogaSortDir;
+  });
+
+  // Update sort indicators
+  ['product_id','product_sku','title','stock','price','stock30','position','note'].forEach(col => {
+    const el = document.getElementById('zSort-' + col);
+    if (!el) return;
+    if (_zalogaSortCol === col) el.textContent = _zalogaSortDir === 1 ? ' ↑' : ' ↓';
+    else el.textContent = ' ↕';
+    el.style.opacity = _zalogaSortCol === col ? '1' : '0.35';
+  });
+
+  // Stats
+  const statsEl = document.getElementById('zalogaStats');
+  const totalStock = items.reduce((s, it) => s + (parseInt(it.stock)||0), 0);
+  statsEl.style.display = 'block';
+  statsEl.textContent = `Prikazano: ${items.length} SKU-jev · Skupna zaloga: ${totalStock.toLocaleString('sl-SI')} kos`;
+
+  // Render tabela
+  const tableEl = document.getElementById('zalogaTable');
+  const wrap = document.getElementById('zalogaTableWrap');
+  const empty = document.getElementById('zalogaEmpty');
+
+  if (!items.length) {
+    wrap.style.display = 'none';
+    empty.style.display = 'block';
+    empty.textContent = search || onlyStock ? 'Ni rezultatov za trenutni filter.' : 'Naloži CSV za prikaz zaloge.';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  empty.style.display = 'none';
+
+  tableEl.innerHTML = items.map(it => {
+    const stock = parseInt(it.stock) || 0;
+    const stock30 = parseInt(it.stock30) || 0;
+    const price = parseFloat(it.price) || 0;
+    const stockColor = stock > 50 ? 'var(--green)' : stock > 10 ? '#d97706' : stock > 0 ? 'var(--red)' : 'var(--text-tertiary)';
+    const obratColor = stock30 > 10 ? '#16a34a' : stock30 > 3 ? '#d97706' : stock30 > 0 ? 'var(--red)' : 'var(--text-tertiary)';
+    const rowBg = stock === 0 ? 'rgba(0,0,0,0.02)' : 'var(--surface)';
+    const rowOpacity = stock === 0 ? '0.55' : '1';
+
+    return `<div style="display:grid;grid-template-columns:80px 110px 1fr 65px 65px 65px 90px 1fr;gap:8px;padding:8px 12px;background:${rowBg};border:1px solid var(--border);border-radius:var(--radius);font-size:12px;align-items:center;opacity:${rowOpacity};min-width:900px">
+      <span style="color:var(--text-tertiary);font-size:11px">${esc(it.product_id||'—')}</span>
+      <span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(it.product_sku)}">${esc(it.product_sku||'—')}</span>
+      <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${esc(it.title)}">${esc(it.title||'—')}</span>
+      <span style="text-align:right;font-weight:700;color:${stockColor}">${stock}</span>
+      <span style="text-align:right;color:var(--text-secondary)">${price > 0 ? price.toFixed(2) + ' €' : '—'}</span>
+      <span style="text-align:right;color:${obratColor};font-weight:600">${stock30 > 0 ? stock30 : '—'}</span>
+      <span style="color:var(--text-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(it.position)}">${esc(it.position||'—')}</span>
+      <span style="color:var(--text-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(it.note)}">${esc(it.note||'—')}</span>
+    </div>`;
+  }).join('');
+}
+
+</script>
 // ═══════════════════════════════════════════════════════
 // HS+ NAROČANJE — JS logika
 // ═══════════════════════════════════════════════════════
