@@ -3084,10 +3084,10 @@ Brez dodatnih komentarjev, samo JSON."""
 
 @app.get("/orodja-stock-data")
 async def orodja_stock_data():
-    """Vrne celoten seznam zaloge (sku, title, stock, stock30) iz shranjenega CSV."""
+    """Vrne celoten seznam zaloge iz shranjenega CSV."""
     if not STOCK_CSV_FILE.exists():
         from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Najprej naloži CSV zaloge v Orodja → Kontrola cen."}, status_code=400)
+        return JSONResponse({"error": "Najprej naloži CSV zaloge."}, status_code=400)
     try:
         import csv as _csv
         from io import StringIO as _SIO
@@ -3103,9 +3103,14 @@ async def orodja_stock_data():
                 continue
             items.append({
                 "sku": sku,
+                "product_sku": sku,
+                "product_id": (row.get('product_id') or '').strip(),
                 "title": (row.get('title') or '').strip(),
                 "stock": (row.get('stock') or '0').strip(),
                 "stock30": (row.get('stock30') or '0').strip(),
+                "price": (row.get('price_netto') or row.get('price') or '0').strip(),
+                "position": (row.get('position') or '').strip(),
+                "note": (row.get('note') or '').strip(),
             })
 
         meta = {}
