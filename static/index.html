@@ -1526,29 +1526,29 @@ input[type="text"].error { border-color: var(--red) !important; }
 
       <!-- STICKY TOOLBAR: upload + iskalnik + filter -->
       <div style="position:sticky;top:0;z-index:30;background:var(--bg);padding-bottom:6px">
-        <div style="display:grid;grid-template-columns:220px 1fr auto auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
           <!-- Upload -->
-          <div>
-            <div id="zalogaDropZone" class="k-dropzone" style="padding:10px 12px;cursor:pointer" onclick="document.getElementById('zalogaInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="zalogaHandleDrop(event)">
-              <span style="font-size:11px">📂 Naloži CSV zaloge</span>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <div id="zalogaDropZone" onclick="document.getElementById('zalogaInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="zalogaHandleDrop(event)" style="display:flex;align-items:center;gap:7px;padding:7px 12px;background:var(--bg-secondary);border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;color:var(--text-secondary)">
+              <span>📂</span><span>Naloži CSV zaloge</span>
             </div>
             <input type="file" id="zalogaInput" accept=".csv" style="display:none" onchange="zalogaUpload(this.files[0])">
-            <div id="zalogaInfo" style="margin-top:5px;font-size:10px;color:var(--text-tertiary)">Ni naloženih podatkov.</div>
+            <div id="zalogaInfo" style="font-size:10px;color:var(--text-tertiary)">Ni naloženih podatkov.</div>
+            <div id="zalogaStatus" style="font-size:10px;color:var(--text-secondary);display:none"></div>
           </div>
           <!-- Iskalnik -->
           <div style="position:relative">
-            <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none">🔍</span>
-            <input type="text" id="zalogaSearch" placeholder="Išči SKU, naziv, ID, pozicijo, opombo..." oninput="zalogaRender()" style="width:100%;padding:10px 12px 10px 36px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
+            <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-tertiary);pointer-events:none">🔍</span>
+            <input type="text" id="zalogaSearch" placeholder="Išči SKU, naziv, ID, pozicijo, opombo..." oninput="zalogaRender()" style="width:100%;padding:9px 12px 9px 34px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
           </div>
           <!-- Samo na zalogi -->
-          <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;white-space:nowrap;padding:0 4px">
+          <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;white-space:nowrap">
             <input type="checkbox" id="zalogaOnlyStock" onchange="zalogaRender()" style="cursor:pointer;accent-color:var(--green);width:15px;height:15px">
             <span>Samo na zalogi</span>
           </label>
           <!-- Stats -->
-          <div id="zalogaStats" style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;text-align:right"></div>
+          <div id="zalogaStats" style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;text-align:right;min-width:160px"></div>
         </div>
-        <div id="zalogaStatus" style="margin-top:4px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
 
         <!-- Sticky header tabele -->
         <div id="zalogaHeaderWrap" style="background:var(--bg);padding-top:4px;display:none">
