@@ -1514,6 +1514,15 @@ function analyzeDemo() {
         <button class="calc-btn-round" onclick="calcAdjustNC(0.5)">+</button>
       </div>
     </div>
+    <!-- RVC -->
+    <div class="calc-section">
+      <div class="calc-label">Zaslužek RVC (€)</div>
+      <div class="calc-row">
+        <button class="calc-btn-round" onclick="calcAdjustRVC(-0.5)">−</button>
+        <input class="calc-input" type="number" id="calcRvc" value="6.30" step="0.1" oninput="calcUpdate()" style="text-align:center;font-weight:600">
+        <button class="calc-btn-round" onclick="calcAdjustRVC(0.5)">+</button>
+      </div>
+    </div>
     <!-- Popust -->
     <div class="calc-section">
       <div class="calc-label">Popust %</div>
@@ -1549,19 +1558,19 @@ function analyzeDemo() {
 
 <script>
 // ── KALKULATOR PANEL ────────────────────────────────────────
-const CALC_RATES = { EUR:1, RSD:117.5, HUF:400, CZK:25.2, PLN:4.28, RON:4.97, BGN:1.956 };
+const CALC_RATES = { EUR:1, RSD:120, HUF:400, CZK:25, PLN:4.5, RON:5, BGN:1 };
 const CALC_COUNTRIES = [
-  { code:'SLO', label:'SLO', curr:'EUR', color:'#22c55e' },
-  { code:'HR',  label:'HR',  curr:'EUR', color:'#3b82f6' },
-  { code:'IT',  label:'IT',  curr:'EUR', color:'#8b5cf6' },
-  { code:'SK',  label:'SK',  curr:'EUR', color:'#06b6d4' },
-  { code:'GR',  label:'GR',  curr:'EUR', color:'#0ea5e9' },
-  { code:'BG',  label:'BG',  curr:'EUR', color:'#84cc16' },
-  { code:'RS',  label:'RS',  curr:'RSD', color:'#f59e0b' },
-  { code:'HU',  label:'HU',  curr:'HUF', color:'#ef4444' },
-  { code:'CZ',  label:'CZ',  curr:'CZK', color:'#d97706' },
-  { code:'PL',  label:'PL',  curr:'PLN', color:'#dc2626' },
-  { code:'RO',  label:'RO',  curr:'RON', color:'#7c3aed' },
+  { code:'SLO', label:'SLO', curr:'EUR', color:'#5DCAA5', vat:1.22, ship:3.5, dec:2 },
+  { code:'HR',  label:'HR',  curr:'EUR', color:'#378ADD', vat:1.25, ship:3.5, dec:2 },
+  { code:'IT',  label:'IT',  curr:'EUR', color:'#D4537E', vat:1.22, ship:5.4, dec:2 },
+  { code:'SK',  label:'SK',  curr:'EUR', color:'#888780', vat:1.22, ship:4.0, dec:2 },
+  { code:'GR',  label:'GR',  curr:'EUR', color:'#1D9E75', vat:1.24, ship:3.6, dec:2 },
+  { code:'BG',  label:'BG',  curr:'EUR', color:'#534AB7', vat:1.20, ship:3.7, dec:2 },
+  { code:'RS',  label:'RS',  curr:'RSD', color:'#D85A30', vat:1.20, ship:2.0, dec:0 },
+  { code:'HU',  label:'HU',  curr:'HUF', color:'#7F77DD', vat:1.22, ship:3.0, dec:0 },
+  { code:'CZ',  label:'CZ',  curr:'CZK', color:'#EF9F27', vat:1.22, ship:4.0, dec:0 },
+  { code:'PL',  label:'PL',  curr:'PLN', color:'#E24B4A', vat:1.23, ship:4.0, dec:2 },
+  { code:'RO',  label:'RO',  curr:'RON', color:'#BA7517', vat:1.19, ship:3.7, dec:2 },
 ];
 const CURR_SUFFIX = { EUR:'€', RSD:'din', HUF:'Ft', CZK:'Kč', PLN:'zł', RON:'RON', BGN:'лв' };
 const CURR_STEP = { EUR:1, RSD:100, HUF:400, CZK:25, PLN:5, RON:5, BGN:1 };
@@ -1582,8 +1591,13 @@ function calcAdjustNC(delta) {
   calcUpdate();
 }
 
+function calcAdjustRVC(delta) {
+  const inp = document.getElementById('calcRvc');
+  inp.value = Math.max(0, (parseFloat(inp.value)||0) + delta).toFixed(2);
+  calcUpdate();
+}
+
 function calcSetPopust(pct) {
-  document.getElementById('calcPopust').value = pct;
   document.querySelectorAll('.calc-preset').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.calc-preset').forEach(b => { if (b.textContent.trim() === pct+'%') b.classList.add('active'); });
   calcUpdate();
@@ -1619,10 +1633,10 @@ function calcFormatPrice(v, curr) {
 
 function calcUpdate() {
   const nc = parseFloat(document.getElementById('calcNc').value) || 0;
+  const rvc = parseFloat(document.getElementById('calcRvc').value) || 0;
   const popust = parseFloat(document.getElementById('calcPopust').value) / 100;
   const wrap = document.getElementById('calcCountries');
 
-  // Prvič — inicializiraj HTML strukturo
   if (!wrap.querySelector('.calc-country-row')) {
     wrap.innerHTML = CALC_COUNTRIES.map(c => `
       <div class="calc-country-row" id="crow-${c.code}">
@@ -1631,7 +1645,7 @@ function calcUpdate() {
           <small>${c.curr}</small>
         </div>
         <input class="calc-price-in" id="calc-${c.code}" type="number"
-          step="${c.curr==='EUR'?'0.01':CURR_STEP[c.curr]||1}"
+          step="${c.dec === 0 ? '1' : '0.01'}"
           oninput="calcUpdateRow('${c.code}')"
           onchange="calcUpdateRow('${c.code}')">
         <div class="calc-nova" id="cnova-${c.code}"></div>
@@ -1641,68 +1655,85 @@ function calcUpdate() {
       </div>`).join('');
   }
 
-  // Vsakič — posodobi izračune za vse vrstice
   CALC_COUNTRIES.forEach(c => {
     const inp = document.getElementById('calc-' + c.code);
     if (!inp) return;
     const rate = CALC_RATES[c.curr] || 1;
-    const basePriceEur = nc > 0 && popust < 1 ? nc / (1 - popust) : nc;
-    const basePriceCurr = basePriceEur * rate;
-    const suggested = calcRoundPrice(basePriceCurr, c.curr);
 
-    // Nastavi vrednost samo če polje nima fokusa (user ne tipka)
+    // Pravilna formula iz originalnega kalkulatorja:
+    // fin = (nc + rvc + ship) * vat * (1 - disc) * exchg
+    const baseFin = (nc + rvc + c.ship) * c.vat * (1 - popust) * rate;
+    const suggested = calcRoundPrice(baseFin, c.curr);
+
     if (document.activeElement !== inp) {
-      inp.value = c.curr === 'EUR' ? suggested.toFixed(2) : Math.round(suggested);
+      inp.value = c.dec === 0 ? Math.round(suggested) : parseFloat(suggested.toFixed(2));
     }
 
-    const userPrice = parseFloat(inp.value) || suggested;
-    const novaCms = popust < 1 ? userPrice / (1 - popust) : userPrice;
-    const marza = nc > 0 ? ((userPrice / rate - nc) / nc * 100) : 0;
-    const marzaColor = marza > 100 ? '#16a34a' : marza > 50 ? '#d97706' : '#dc2626';
-
-    const nova = document.getElementById('cnova-' + c.code);
-    const cms = document.getElementById('ccms-' + c.code);
-    const marz = document.getElementById('cmarza-' + c.code);
-
-    if (nova) nova.innerHTML = `<strong>${calcFormatPrice(userPrice, c.curr)}</strong>`;
-    if (cms) cms.innerHTML = `<span style="font-size:9px">NOVA CMS</span><strong style="color:#4f6ef7">${calcFormatPrice(novaCms, c.curr)}</strong>`;
-    if (marz) marz.innerHTML = `<span style="font-size:9px">MARŽA</span><strong style="color:${marzaColor}">${marza.toFixed(0)}%</strong>`;
+    calcUpdateRow(c.code, nc, rvc, popust);
   });
 }
 
-function calcUpdateRow(code) {
-  // Klic ob spremembi posameznega input polja — samo posodobi to vrstico
-  const nc = parseFloat(document.getElementById('calcNc').value) || 0;
-  const popust = parseFloat(document.getElementById('calcPopust').value) / 100;
+function calcUpdateRow(code, nc, rvc, popust) {
+  if (nc === undefined) nc = parseFloat(document.getElementById('calcNc').value) || 0;
+  if (rvc === undefined) rvc = parseFloat(document.getElementById('calcRvc').value) || 0;
+  if (popust === undefined) popust = parseFloat(document.getElementById('calcPopust').value) / 100;
+
   const c = CALC_COUNTRIES.find(x => x.code === code);
   if (!c) return;
   const rate = CALC_RATES[c.curr] || 1;
   const inp = document.getElementById('calc-' + code);
-  const userPrice = parseFloat(inp?.value) || 0;
-  const novaCms = popust < 1 ? userPrice / (1 - popust) : userPrice;
-  const marza = nc > 0 ? ((userPrice / rate - nc) / nc * 100) : 0;
+  const fin = parseFloat(inp?.value) || 0;
+
+  // NOVA CMS = fin / vat / (1 - disc)
+  const novaCms = fin / c.vat / (1 - popust);
+
+  // Marža = (fin/rate/vat - nc - ship) / (nc + rvc + ship) * 100
+  const finEur = fin / rate / c.vat;
+  const cost = nc + rvc + c.ship;
+  const marza = cost > 0 ? ((finEur - cost) / cost * 100) : 0;
   const marzaColor = marza > 100 ? '#16a34a' : marza > 50 ? '#d97706' : '#dc2626';
 
   const nova = document.getElementById('cnova-' + code);
   const cms = document.getElementById('ccms-' + code);
   const marz = document.getElementById('cmarza-' + code);
-  if (nova) nova.innerHTML = `<strong>${calcFormatPrice(userPrice, c.curr)}</strong>`;
-  if (cms) cms.innerHTML = `<span style="font-size:9px">NOVA CMS</span><strong style="color:#4f6ef7">${calcFormatPrice(novaCms, c.curr)}</strong>`;
+
+  if (nova) nova.innerHTML = `<strong>${calcFormatPrice(fin, c.curr)}</strong>`;
+  if (cms) cms.innerHTML = `<span style="font-size:9px">NOVA CMS</span><strong style="color:#4f6ef7">${calcFormatPrice(novaCms, 'EUR')}</strong>`;
   if (marz) marz.innerHTML = `<span style="font-size:9px">MARŽA</span><strong style="color:${marzaColor}">${marza.toFixed(0)}%</strong>`;
 }
 
 function calcCopyRow(code, curr, btn) {
+  const c = CALC_COUNTRIES.find(x => x.code === code);
   const inp = document.getElementById('calc-' + code);
   const popust = parseFloat(document.getElementById('calcPopust').value) / 100;
-  const userPrice = parseFloat(inp?.value) || 0;
-  const novaCms = popust < 1 ? userPrice / (1 - popust) : userPrice;
-  const txt = calcFormatPrice(userPrice, curr) + '\nNOVA: ' + calcFormatPrice(novaCms, curr);
-  navigator.clipboard.writeText(txt).then(() => {
+  const fin = parseFloat(inp?.value) || 0;
+  const novaCms = fin / (c?.vat || 1.22) / (1 - popust);
+  const txt = calcFormatPrice(fin, curr) + '\nNOVA: ' + novaCms.toFixed(2) + ' €';
+
+  // Clipboard s fallback
+  const doCopy = () => {
     const orig = btn.textContent;
     btn.textContent = '✓';
     btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1200);
-  });
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1400);
+  };
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(doCopy).catch(() => fallbackCopy(txt, doCopy));
+  } else {
+    fallbackCopy(txt, doCopy);
+  }
+}
+
+function fallbackCopy(text, callback) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); if (callback) callback(); } catch(e) {}
+  document.body.removeChild(ta);
 }
 </script>
 
