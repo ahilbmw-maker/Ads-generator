@@ -5437,10 +5437,10 @@ function tt14RenderTable() {
 
   tableEl.innerHTML = header + items.map(it => {
     const statusBadge = it.status === 'active'
-      ? `<span style="background:rgba(34,197,94,0.1);color:var(--green);font-size:10px;padding:2px 7px;border-radius:4px;font-weight:600">▶ ${it.active_campaigns}/${it.campaigns}</span>`
+      ? `<span style="display:inline-flex;align-items:center;gap:4px;background:#22c55e;color:#fff;font-size:10px;padding:3px 8px;border-radius:5px;font-weight:700">▶ ${it.active_campaigns}/${it.campaigns}</span>`
       : it.campaigns > 0
-      ? `<span style="background:rgba(239,68,68,0.08);color:var(--red);font-size:10px;padding:2px 7px;border-radius:4px">⏸ STOP</span>`
-      : `<span style="font-size:10px;color:var(--text-tertiary)">—</span>`;
+      ? `<span style="display:inline-flex;align-items:center;gap:4px;background:#f59e0b;color:#fff;font-size:10px;padding:3px 8px;border-radius:5px;font-weight:700">⏸ ${it.campaigns}</span>`
+      : `<span style="display:inline-flex;align-items:center;background:var(--surface2);color:var(--text-tertiary);font-size:10px;padding:3px 8px;border-radius:5px">—</span>`;
     const obratColor = it.obrat14 > 10 ? 'var(--green)' : it.obrat14 > 3 ? '#d97706' : it.obrat14 > 0 ? 'var(--red)' : 'var(--text-tertiary)';
     const stockColor = it.stock > 50 ? 'var(--green)' : it.stock > 10 ? '#d97706' : it.stock > 0 ? 'var(--red)' : 'var(--text-tertiary)';
 
