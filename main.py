@@ -3289,12 +3289,15 @@ async def analiza_tiktok_upload(file: UploadFile = File(...)):
             try: conversions = float(str(conv_raw).replace(',', '.')) if conv_raw else 0
             except: conversions = 0
 
-            # Izvleci SKU iz campaign name — vzorec: [Maaarket] Smart+ SKU ...
+            # Izvleci SKU iz campaign name — vzorec: [Maaarket] Smart+ SKU ali SKU: ABPULLER kjerkoli
             import re
             sku = ''
             m = re.search(r'Smart\+\s+([A-Z0-9_]+)', campaign, re.IGNORECASE)
             if m: sku = smart_root(m.group(1).strip())
             else:
+                m = re.search(r'SKU:\s*([A-Z0-9_]+)', campaign, re.IGNORECASE)
+                if m: sku = smart_root(m.group(1).strip())
+            if not sku:
                 # Splošno: vzemi zadnji ALL-CAPS blok
                 words = campaign.split()
                 for w in words:
@@ -3661,7 +3664,7 @@ async def analiza_ttkreative_upload(file: UploadFile = File(...)):
             m = _re.search(r'Smart\+\s+([A-Z0-9_]+)', campaign, _re.I)
             if m: sku = smart_root(m.group(1)).upper()
             else:
-                m = _re.match(r'SKU:\s*([A-Z0-9_]+)', campaign, _re.I)
+                m = _re.search(r'SKU:\s*([A-Z0-9_]+)', campaign, _re.I)
                 sku = smart_root(m.group(1)).upper() if m else ''
             if not sku: continue
 
