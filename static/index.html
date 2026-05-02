@@ -5818,6 +5818,8 @@ function tt14RenderTable() {
   const emptyEl = document.getElementById('tt14Empty');
   const search = (document.getElementById('tt14Search')?.value || '').toLowerCase();
 
+  console.log('[tt14] tt14Data:', tt14Data.length, '_o14Items:', window._o14Items?.length);
+
   if (!tt14Data.length && !window._o14Items?.length) {
     emptyEl.style.display = 'block';
     emptyEl.textContent = 'Naloži TikTok XLSX poročilo za začetek.';
