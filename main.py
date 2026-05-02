@@ -3140,7 +3140,107 @@ async def orodja_stock_data():
 
 # ─── ANALIZA: TikTok Ads upload ──────────────────────────────────────────────
 
-TIKTOK_ADS_FILE = DATA_DIR / "tiktok_ads_report.csv"
+TIKTOK_CREATIVE_FILE = DATA_DIR / "tiktok_creative_map.json"
+
+@app.post("/tiktok-creative-upload")
+async def tiktok_creative_upload(file: UploadFile = File(...)):
+    """Naloži TikTok Ad level export — zgradi Video→SKU mapping."""
+    try:
+        import io, re as _re
+        content = await file.read()
+        fname = file.filename or ""
+
+        if fname.endswith('.xlsx') or fname.endswith('.xls'):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+            ws = wb.active
+            rows_raw = list(ws.iter_rows(values_only=True))
+            headers = [str(h).strip() if h else '' for h in rows_raw[0]]
+            data_rows = [dict(zip(headers, r)) for r in rows_raw[1:] if any(v is not None for v in r)]
+        else:
+            import csv as _csv
+            text = content.decode('utf-8-sig', errors='replace')
+            sep = ';' if text.split('\n')[0].count(';') > text.split('\n')[0].count(',') else ','
+            data_rows = list(_csv.DictReader(io.StringIO(text), delimiter=sep))
+
+        def extract_sku(campaign):
+            c = str(campaign or '')
+            m = _re.search(r'SKU:\s*([A-Za-z0-9_]+)', c)
+            if m: return smart_root(m.group(1)).upper()
+            m = _re.search(r'Smart\+\s+([A-Za-z0-9_]+)', c, _re.I)
+            if m: return smart_root(m.group(1)).upper()
+            return ''
+
+        # Zgradi mapping: {sku: [{video, cost, conversions, status}]}
+        sku_map = {}
+        skipped = 0
+        for row in data_rows:
+            video = str(row.get('Video') or '').strip()
+            if not video or video == '-': skipped += 1; continue
+            campaign = row.get('Campaign name') or row.get('Campaign Name') or ''
+            sku = extract_sku(campaign)
+            if not sku: skipped += 1; continue
+
+            try: cost = float(str(row.get('Cost') or 0).replace(',', '.'))
+            except: cost = 0
+            try: conversions = int(float(str(row.get('Conversions') or 0).replace(',', '.')))
+            except: conversions = 0
+            status = str(row.get('Primary status') or '').strip().lower()
+
+            if sku not in sku_map:
+                sku_map[sku] = {}
+            if video not in sku_map[sku]:
+                sku_map[sku][video] = {'video': video, 'cost': 0, 'conversions': 0, 'status': status}
+            sku_map[sku][video]['cost'] += cost
+            sku_map[sku][video]['conversions'] += conversions
+            if status == 'active': sku_map[sku][video]['status'] = 'active'
+
+        # Pretvori v seznam in sortiraj po cost desc
+        result = {}
+        for sku, videos in sku_map.items():
+            result[sku] = sorted(videos.values(), key=lambda x: x['cost'], reverse=True)
+
+        TIKTOK_CREATIVE_FILE.write_text(
+            json.dumps({'map': result, 'uploaded_at': __import__('datetime').datetime.now().isoformat(), 'filename': fname, 'skus': len(result)}, ensure_ascii=False),
+            encoding='utf-8'
+        )
+        return {"ok": True, "skus": len(result), "videos": sum(len(v) for v in result.values()), "skipped": skipped}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/tiktok-creative-search")
+async def tiktok_creative_search(sku: str = ""):
+    """Poišči videe za SKU."""
+    if not TIKTOK_CREATIVE_FILE.exists():
+        return JSONResponse({"error": "Naloži Creative CSV najprej."}, status_code=400)
+    try:
+        data = json.loads(TIKTOK_CREATIVE_FILE.read_text(encoding='utf-8'))
+        cmap = data.get('map', {})
+        sku_up = sku.upper().strip()
+        if not sku_up:
+            return {"skus": list(cmap.keys()), "videos": []}
+        # Išči po SKU ali korenu
+        root = smart_root(sku_up)
+        videos = cmap.get(sku_up) or cmap.get(root) or []
+        # Fuzzy: če ni exact match, vrni SKU-je ki vsebujejo iskalni niz
+        if not videos:
+            matches = {k: v for k, v in cmap.items() if sku_up in k or root in k}
+            return {"skus": list(matches.keys()), "videos": [], "fuzzy": True}
+        return {"sku": sku_up, "videos": videos, "total": len(videos)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/tiktok-creative-info")
+async def tiktok_creative_info():
+    if not TIKTOK_CREATIVE_FILE.exists():
+        return {"loaded": False}
+    try:
+        data = json.loads(TIKTOK_CREATIVE_FILE.read_text(encoding='utf-8'))
+        return {"loaded": True, "skus": data.get('skus', 0), "uploaded_at": data.get('uploaded_at'), "filename": data.get('filename')}
+    except:
+        return {"loaded": False}
+
+
 TIKTOK_ADS_META = DATA_DIR / "tiktok_ads_meta.json"
 
 @app.post("/analiza-tiktok-upload")
@@ -3319,6 +3419,327 @@ async def analiza_tiktok_clear():
     if TIKTOK_ADS_FILE.exists(): TIKTOK_ADS_FILE.unlink()
     if TIKTOK_ADS_META.exists(): TIKTOK_ADS_META.unlink()
     return {"ok": True}
+
+# ─── TIKTOK KREATIVE ──────────────────────────────────────────────────────────
+TIKTOK_KR_FILE = DATA_DIR / "tiktok_kreative.csv"
+TIKTOK_CL_FILE = DATA_DIR / "tiktok_creative_library.csv"  # Creative Library resolucije
+
+@app.post("/analiza-ttcreative-library-upload")
+async def analiza_ttcreative_library_upload(file: UploadFile = File(...)):
+    """Naloži TikTok Creative Library CSV z Video name + Video ID + resolucijo."""
+    try:
+        content = await file.read()
+        fname = file.filename or ""
+        import io, re as _re
+
+        if fname.endswith('.xlsx') or fname.endswith('.xls'):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+            ws = wb.active
+            rows_raw = list(ws.iter_rows(values_only=True))
+            headers = [str(h).strip() if h else '' for h in rows_raw[0]]
+            data_rows = [dict(zip(headers, row)) for row in rows_raw[1:] if any(r is not None for r in row)]
+        else:
+            import csv as _csv
+            text = content.decode('utf-8-sig', errors='replace')
+            sep = '\t' if '\t' in text.split('\n')[0] else (';' if ';' in text.split('\n')[0] else ',')
+            data_rows = list(_csv.DictReader(io.StringIO(text), delimiter=sep))
+
+        def fcol(row, *keys):
+            for k in keys:
+                for rk in row.keys():
+                    if rk.strip().lower() == k.lower(): return row[rk]
+            return None
+
+        def extract_dims_from_str(s):
+            """Izvleče resolucijo iz stolpca ali video imena."""
+            m = _re.search(r'(\d{3,5})\s*[xX×]\s*(\d{3,5})', str(s or ''))
+            if m:
+                w, h = int(m.group(1)), int(m.group(2))
+                # Ignoriraj očitno napačne vrednosti
+                if w > 100 and h > 100 and w < 10000 and h < 10000:
+                    return w, h
+            return None, None
+
+        def clean_video_name(v):
+            v = str(v or '').strip()
+            if not v or v == '-': return ''
+            # Odstrani leading hash
+            parts = v.split(' ')
+            if len(parts) > 1 and _re.match(r'^[a-f0-9]{32}$', parts[0]):
+                return ' '.join(parts[1:])
+            return v
+
+        parsed = {}
+        for row in data_rows:
+            # Poizkusi različne stolpce
+            video_raw = fcol(row, 'Video', 'Video name', 'Creative name', 'Ad name', 'video', 'Name')
+            video_id = str(fcol(row, 'Video ID', 'Video material ID', 'video_id', 'ID') or '').strip()
+            res_col = fcol(row, 'Resolution', 'Video resolution', 'Dimension', 'Size', 'resolution')
+
+            if not video_raw or str(video_raw).strip() in ('-', '', 'None'): continue
+            video = clean_video_name(video_raw)
+            if not video: continue
+
+            # Resolucija: najprej iz stolpca, potem iz video imena
+            w, h = extract_dims_from_str(res_col) if res_col else (None, None)
+            if not w:
+                w, h = extract_dims_from_str(video_raw)
+
+            if video not in parsed:
+                parsed[video] = {'video': video, 'video_id': video_id, 'w': w or '', 'h': h or ''}
+            elif w and not parsed[video]['w']:
+                parsed[video]['w'] = w
+                parsed[video]['h'] = h
+
+        if not parsed:
+            return JSONResponse({"error": "Ni veljavnih videov v datoteki."}, status_code=400)
+
+        # Shrani / merge
+        import csv as _csv2
+        existing = {}
+        if TIKTOK_CL_FILE.exists():
+            t = TIKTOK_CL_FILE.read_text(encoding='utf-8-sig', errors='replace')
+            for r in _csv2.DictReader(io.StringIO(t)):
+                existing[r['video']] = r
+        for v, data in parsed.items():
+            if v not in existing:
+                existing[v] = data
+            else:
+                # Posodobi resolucijo če je manjka
+                if data['w'] and not existing[v].get('w'):
+                    existing[v]['w'] = data['w']
+                    existing[v]['h'] = data['h']
+                if data['video_id'] and not existing[v].get('video_id'):
+                    existing[v]['video_id'] = data['video_id']
+
+        out = io.StringIO()
+        fn = ['video', 'video_id', 'w', 'h']
+        writer = _csv2.DictWriter(out, fieldnames=fn, extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(existing.values())
+        TIKTOK_CL_FILE.write_text(out.getvalue(), encoding='utf-8')
+
+        with_res = sum(1 for v in existing.values() if v.get('w'))
+        return {"ok": True, "videos": len(existing), "with_resolution": with_res}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/analiza-ttcreative-library-data")
+async def analiza_ttcreative_library_data():
+    if not TIKTOK_CL_FILE.exists():
+        return {"items": [], "total": 0}
+    import csv as _csv3, io as _io3
+    text = TIKTOK_CL_FILE.read_text(encoding='utf-8-sig', errors='replace')
+    rows = list(_csv3.DictReader(_io3.StringIO(text)))
+    return {"items": rows, "total": len(rows)}
+
+@app.get("/analiza-ttkreative-search")
+async def analiza_ttkreative_search(sku: str = ""):
+    """Poišče vse videote za SKU — spoji Ads + Creative Library."""
+    import csv as _csv4, io as _io4, re as _re4
+    sku = sku.strip().upper()
+    if not sku:
+        return JSONResponse({"error": "Vpišite SKU."}, status_code=400)
+
+    # 1. Ads data — video→SKU mapping
+    ads_videos = {}  # video_name → {cost, conversions, status, campaign}
+    if TIKTOK_KR_FILE.exists():
+        text = TIKTOK_KR_FILE.read_text(encoding='utf-8-sig', errors='replace')
+        for r in _csv4.DictReader(_io4.StringIO(text)):
+            row_sku = (r.get('sku') or '').strip().upper()
+            row_root = smart_root(row_sku).upper()
+            search_root = smart_root(sku).upper()
+            if row_sku == sku or row_root == search_root or row_sku.startswith(search_root):
+                v = r.get('video', '').strip()
+                if v and v not in ads_videos:
+                    ads_videos[v] = {
+                        'video': v,
+                        'cost': float(r.get('cost', 0) or 0),
+                        'conversions': float(r.get('conversions', 0) or 0),
+                        'status': r.get('status', ''),
+                        'w': r.get('w') or None,
+                        'h': r.get('h') or None,
+                    }
+                elif v in ads_videos:
+                    ads_videos[v]['cost'] += float(r.get('cost', 0) or 0)
+                    ads_videos[v]['conversions'] += float(r.get('conversions', 0) or 0)
+
+    # 2. Creative Library — resolucije
+    cl_map = {}  # video_name → {w, h, video_id}
+    if TIKTOK_CL_FILE.exists():
+        text = TIKTOK_CL_FILE.read_text(encoding='utf-8-sig', errors='replace')
+        for r in _csv4.DictReader(_io4.StringIO(text)):
+            cl_map[r.get('video', '').strip()] = r
+
+    # 3. Spoji
+    results = []
+    for v, data in ads_videos.items():
+        cl = cl_map.get(v, {})
+        w = data.get('w') or cl.get('w') or None
+        h = data.get('h') or cl.get('h') or None
+        try: w = int(w) if w else None
+        except: w = None
+        try: h = int(h) if h else None
+        except: h = None
+        results.append({
+            'video': v,
+            'video_id': cl.get('video_id', ''),
+            'w': w, 'h': h,
+            'cost': round(data['cost'], 2),
+            'conversions': int(data['conversions']),
+            'status': data['status'],
+            'res_status': _res_status(w, h),
+        })
+
+    # Sortiraj po cost desc
+    results.sort(key=lambda x: x['cost'], reverse=True)
+    return {"sku": sku, "items": results, "total": len(results)}
+
+def _res_status(w, h):
+    if not w or not h: return "unknown"
+    ratio = w / h
+    if ratio < 0.7: min_w, min_h = 540, 960
+    elif ratio < 1.3: min_w, min_h = 640, 640
+    else: min_w, min_h = 960, 540
+    if w < min_w or h < min_h: return "bad"
+    if min(w, h) < 720: return "warn"
+    return "ok"
+
+
+async def analiza_ttkreative_upload(file: UploadFile = File(...)):
+    """Naloži TikTok Ad level XLSX z Video + Campaign name stolpci."""
+    try:
+        content = await file.read()
+        fname = file.filename or ""
+        import io, re as _re
+
+        if fname.endswith('.xlsx') or fname.endswith('.xls'):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+            ws = wb.active
+            rows_raw = list(ws.iter_rows(values_only=True))
+            headers = [str(h).strip() if h else '' for h in rows_raw[0]]
+            data_rows = [dict(zip(headers, row)) for row in rows_raw[1:] if any(r is not None for r in row)]
+        else:
+            import csv as _csv, io as _io
+            text = content.decode('utf-8-sig', errors='replace')
+            sep = ';' if text.split('\n')[0].count(';') > text.split('\n')[0].count(',') else ','
+            data_rows = list(_csv.DictReader(_io.StringIO(text), delimiter=sep))
+
+        def fcol(row, *keys):
+            for k in keys:
+                for rk in row.keys():
+                    if rk.strip().lower() == k.lower(): return row[rk]
+            return None
+
+        def extract_dims(video):
+            m = _re.search(r'(\d{3,4})\s*[xX×]\s*(\d{3,4})', str(video or ''))
+            if m:
+                w, h = int(m.group(1)), int(m.group(2))
+                return w, h
+            return None, None
+
+        def clean_video_name(v):
+            v = str(v or '').strip()
+            if not v or v == '-': return ''
+            parts = v.split(' ')
+            if len(parts) > 1 and _re.match(r'^[a-f0-9]{32}$', parts[0]):
+                return ' '.join(parts[1:])
+            return v
+
+        parsed = []
+        for row in data_rows:
+            campaign = str(fcol(row, 'Campaign name') or '').strip()
+            video_raw = fcol(row, 'Video', 'video')
+            if not video_raw or str(video_raw).strip() in ('-', '', 'None'): continue
+
+            video = clean_video_name(video_raw)
+            if not video: continue
+
+            # SKU iz campaign name
+            m = _re.search(r'Smart\+\s+([A-Z0-9_]+)', campaign, _re.I)
+            if m: sku = smart_root(m.group(1)).upper()
+            else:
+                m = _re.match(r'SKU:\s*([A-Z0-9_]+)', campaign, _re.I)
+                sku = smart_root(m.group(1)).upper() if m else ''
+            if not sku: continue
+
+            status = str(fcol(row, 'Primary status', 'Status') or '').strip()
+            try: cost = float(str(fcol(row, 'Cost') or 0).replace(',', '.'))
+            except: cost = 0
+            try: conversions = float(str(fcol(row, 'Conversions') or 0).replace(',', '.'))
+            except: conversions = 0
+
+            w, h = extract_dims(video_raw)
+            parsed.append({
+                'sku': sku, 'video': video,
+                'w': w or '', 'h': h or '',
+                'cost': cost, 'conversions': conversions,
+                'status': status, 'campaign': campaign,
+            })
+
+        if not parsed:
+            return JSONResponse({"error": "Ni veljavnih videov v datoteki."}, status_code=400)
+
+        # Dedup po sku+video, summiraj cost/conversions
+        import csv as _csv2
+        existing = {}
+        if TIKTOK_KR_FILE.exists():
+            t = TIKTOK_KR_FILE.read_text(encoding='utf-8-sig', errors='replace')
+            for r in _csv2.DictReader(io.StringIO(t)):
+                key = r['sku'] + '||' + r['video']
+                existing[key] = r
+        for r in parsed:
+            key = r['sku'] + '||' + r['video']
+            if key in existing:
+                try: existing[key]['cost'] = float(existing[key]['cost']) + r['cost']
+                except: existing[key]['cost'] = r['cost']
+                try: existing[key]['conversions'] = float(existing[key]['conversions']) + r['conversions']
+                except: existing[key]['conversions'] = r['conversions']
+            else:
+                existing[key] = r
+
+        out = io.StringIO()
+        fieldnames = ['sku', 'video', 'w', 'h', 'cost', 'conversions', 'status', 'campaign']
+        writer = _csv2.DictWriter(out, fieldnames=fieldnames, extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(existing.values())
+        TIKTOK_KR_FILE.write_text(out.getvalue(), encoding='utf-8')
+
+        skus = len(set(r['sku'] for r in existing.values()))
+        return {"ok": True, "videos": len(existing), "skus": skus}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/analiza-ttkreative-data")
+async def analiza_ttkreative_data():
+    if not TIKTOK_KR_FILE.exists():
+        return JSONResponse({"error": "Ni podatkov."}, status_code=400)
+    try:
+        import csv as _csv3, io as _io3
+        text = TIKTOK_KR_FILE.read_text(encoding='utf-8-sig', errors='replace')
+        rows = list(_csv3.DictReader(_io3.StringIO(text)))
+        items = []
+        for r in rows:
+            try: w = int(r['w']) if r.get('w') else None
+            except: w = None
+            try: h = int(r['h']) if r.get('h') else None
+            except: h = None
+            try: cost = float(r.get('cost', 0) or 0)
+            except: cost = 0
+            try: conv = float(r.get('conversions', 0) or 0)
+            except: conv = 0
+            items.append({
+                'sku': r.get('sku', ''), 'video': r.get('video', ''),
+                'w': w, 'h': h, 'cost': cost, 'conversions': conv,
+                'status': r.get('status', ''), 'campaign': r.get('campaign', ''),
+            })
+        return {"items": items, "total": len(items)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 
 # ─── ANALIZA: Meta Ads CSV upload ──────────────────────────────────────────────
 
