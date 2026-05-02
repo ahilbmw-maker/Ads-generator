@@ -5781,13 +5781,6 @@ function ttKrGetResStatus(w, h) {
   return 'ok';
 }
 
-function ttKrHandleDrop(e) {
-  e.preventDefault();
-  e.currentTarget.classList.remove('drag-over');
-  const f = e.dataTransfer.files[0];
-  if (f) ttKrUpload(f);
-}
-
 
 let tt14Data = [];  // TikTok kampanje (iz XLSX)
 let tt14Filter = 'all';
