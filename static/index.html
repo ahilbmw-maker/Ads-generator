@@ -537,7 +537,12 @@ input[type="text"].error { border-color: var(--red) !important; }
   <div class="nav-item nav-analiza" id="nav-analiza" onclick="switchPage('analiza')">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
     Analiza
-    <span style="margin-left:auto;font-size:13px">📊</span>
+    <button class="nav-expand-btn" id="navexp-analiza" onclick="event.stopPropagation();navToggleSub('analiza')" title="Pododdelki">+</button>
+  </div>
+  <div class="nav-sub" id="navsub-analiza">
+    <div class="nav-sub-item" onclick="switchPage('analiza');switchAnalizaTab('meta')">Meta Ads</div>
+    <div class="nav-sub-item" onclick="switchPage('analiza');switchAnalizaTab('obrat14')">Obrat 14 dni (FB)</div>
+    <div class="nav-sub-item" onclick="switchPage('analiza');switchAnalizaTab('obrat14tt')">Obrat 14 dni (TikTok)</div>
   </div>
 
   <div class="nav-item nav-forecast" id="nav-forecast" onclick="switchPage('forecast')">
@@ -637,6 +642,11 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div class="ht-icon">📊</div>
             <div class="ht-name">Analiza</div>
             <div class="ht-desc">Meta Ads podatki</div>
+            <div class="ht-pills">
+              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary);cursor:pointer" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('meta')">↗ Meta Ads</span>
+              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary);cursor:pointer" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('obrat14')">↗ Obrat 14d (FB)</span>
+              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary);cursor:pointer" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('obrat14tt')">↗ Obrat 14d (TT)</span>
+            </div>
           </div>
           <div class="home-tile" style="border-left-color:#f97316" onclick="switchPage('forecast')">
             <div class="ht-icon">📈</div>
