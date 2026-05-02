@@ -1556,45 +1556,81 @@ function calcUpdate() {
   const popust = parseFloat(document.getElementById('calcPopust').value) / 100;
   const wrap = document.getElementById('calcCountries');
 
-  wrap.innerHTML = CALC_COUNTRIES.map(c => {
-    const id = 'calc-' + c.code;
-    const rate = CALC_RATES[c.curr] || 1;
-    const stored = document.getElementById(id);
-    const userVal = stored ? parseFloat(stored.value) : null;
-    
-    // Izračun predlagane cene
-    const basePriceEur = nc / (1 - (popust < 1 ? popust : 0));
-    const basePriceCurr = basePriceEur * rate;
-    const rounded = calcRoundPrice(basePriceCurr, c.curr);
-    const displayPrice = userVal !== null ? userVal : rounded;
-    const novaCms = displayPrice / (1 - (popust < 1 ? popust : 0));
-    const marza = nc > 0 ? ((displayPrice/rate - nc)/nc*100) : 0;
+  // Prvič — inicializiraj HTML strukturo
+  if (!wrap.querySelector('.calc-country-row')) {
+    wrap.innerHTML = CALC_COUNTRIES.map(c => `
+      <div class="calc-country-row" id="crow-${c.code}">
+        <div class="calc-flag">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c.color};margin-right:4px"></span>${c.label}
+          <small>${c.curr}</small>
+        </div>
+        <input class="calc-price-in" id="calc-${c.code}" type="number"
+          step="${c.curr==='EUR'?'0.01':CURR_STEP[c.curr]||1}"
+          oninput="calcUpdateRow('${c.code}')"
+          onchange="calcUpdateRow('${c.code}')">
+        <div class="calc-nova" id="cnova-${c.code}"></div>
+        <div class="calc-nova" id="ccms-${c.code}"></div>
+        <div class="calc-nova" id="cmarza-${c.code}"></div>
+        <button class="calc-copy-btn" id="ccopy-${c.code}" onclick="calcCopyRow('${c.code}','${c.curr}',this)">kopiraj</button>
+      </div>`).join('');
+  }
 
-    return `<div class="calc-country-row">
-      <div class="calc-flag">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c.color};margin-right:4px"></span>${c.label}
-        <small>${c.curr}</small>
-      </div>
-      <input class="calc-price-in" id="${id}" type="number" value="${userVal !== null ? userVal : rounded.toFixed(c.curr==='EUR'?2:0)}" step="${c.curr==='EUR'?'0.01':CURR_STEP[c.curr]||1}" oninput="calcUpdate()">
-      <div class="calc-nova">
-        <strong>${calcFormatPrice(displayPrice, c.curr)}</strong>
-        <span style="font-size:9px;color:${marza>100?'#16a34a':marza>50?'#d97706':'#dc2626'}">×${nc>0?(displayPrice/rate/nc).toFixed(1):'–'}</span>
-      </div>
-      <div class="calc-nova">
-        <span style="font-size:9px">NOVA CMS</span>
-        <strong style="color:#4f6ef7">${calcFormatPrice(novaCms, c.curr)}</strong>
-      </div>
-      <div class="calc-nova">
-        <span style="font-size:9px">MARŽA</span>
-        <strong style="color:${marza>100?'#16a34a':marza>50?'#d97706':'#dc2626'}">${marza.toFixed(0)}%</strong>
-      </div>
-      <button class="calc-copy-btn" onclick="calcCopyRow('${c.code}','${c.curr}',${displayPrice},${novaCms},this)">kopiraj</button>
-    </div>`;
-  }).join('');
+  // Vsakič — posodobi izračune za vse vrstice
+  CALC_COUNTRIES.forEach(c => {
+    const inp = document.getElementById('calc-' + c.code);
+    if (!inp) return;
+    const rate = CALC_RATES[c.curr] || 1;
+    const basePriceEur = nc > 0 && popust < 1 ? nc / (1 - popust) : nc;
+    const basePriceCurr = basePriceEur * rate;
+    const suggested = calcRoundPrice(basePriceCurr, c.curr);
+
+    // Nastavi vrednost samo če polje nima fokusa (user ne tipka)
+    if (document.activeElement !== inp) {
+      inp.value = c.curr === 'EUR' ? suggested.toFixed(2) : Math.round(suggested);
+    }
+
+    const userPrice = parseFloat(inp.value) || suggested;
+    const novaCms = popust < 1 ? userPrice / (1 - popust) : userPrice;
+    const marza = nc > 0 ? ((userPrice / rate - nc) / nc * 100) : 0;
+    const marzaColor = marza > 100 ? '#16a34a' : marza > 50 ? '#d97706' : '#dc2626';
+
+    const nova = document.getElementById('cnova-' + c.code);
+    const cms = document.getElementById('ccms-' + c.code);
+    const marz = document.getElementById('cmarza-' + c.code);
+
+    if (nova) nova.innerHTML = `<strong>${calcFormatPrice(userPrice, c.curr)}</strong>`;
+    if (cms) cms.innerHTML = `<span style="font-size:9px">NOVA CMS</span><strong style="color:#4f6ef7">${calcFormatPrice(novaCms, c.curr)}</strong>`;
+    if (marz) marz.innerHTML = `<span style="font-size:9px">MARŽA</span><strong style="color:${marzaColor}">${marza.toFixed(0)}%</strong>`;
+  });
 }
 
-function calcCopyRow(code, curr, price, nova, btn) {
-  const txt = calcFormatPrice(price, curr) + '\nNOVA: ' + calcFormatPrice(nova, curr);
+function calcUpdateRow(code) {
+  // Klic ob spremembi posameznega input polja — samo posodobi to vrstico
+  const nc = parseFloat(document.getElementById('calcNc').value) || 0;
+  const popust = parseFloat(document.getElementById('calcPopust').value) / 100;
+  const c = CALC_COUNTRIES.find(x => x.code === code);
+  if (!c) return;
+  const rate = CALC_RATES[c.curr] || 1;
+  const inp = document.getElementById('calc-' + code);
+  const userPrice = parseFloat(inp?.value) || 0;
+  const novaCms = popust < 1 ? userPrice / (1 - popust) : userPrice;
+  const marza = nc > 0 ? ((userPrice / rate - nc) / nc * 100) : 0;
+  const marzaColor = marza > 100 ? '#16a34a' : marza > 50 ? '#d97706' : '#dc2626';
+
+  const nova = document.getElementById('cnova-' + code);
+  const cms = document.getElementById('ccms-' + code);
+  const marz = document.getElementById('cmarza-' + code);
+  if (nova) nova.innerHTML = `<strong>${calcFormatPrice(userPrice, c.curr)}</strong>`;
+  if (cms) cms.innerHTML = `<span style="font-size:9px">NOVA CMS</span><strong style="color:#4f6ef7">${calcFormatPrice(novaCms, c.curr)}</strong>`;
+  if (marz) marz.innerHTML = `<span style="font-size:9px">MARŽA</span><strong style="color:${marzaColor}">${marza.toFixed(0)}%</strong>`;
+}
+
+function calcCopyRow(code, curr, btn) {
+  const inp = document.getElementById('calc-' + code);
+  const popust = parseFloat(document.getElementById('calcPopust').value) / 100;
+  const userPrice = parseFloat(inp?.value) || 0;
+  const novaCms = popust < 1 ? userPrice / (1 - popust) : userPrice;
+  const txt = calcFormatPrice(userPrice, curr) + '\nNOVA: ' + calcFormatPrice(novaCms, curr);
   navigator.clipboard.writeText(txt).then(() => {
     const orig = btn.textContent;
     btn.textContent = '✓';
