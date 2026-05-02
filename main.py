@@ -3256,23 +3256,43 @@ async def analiza_tiktok_data():
 
         # Dodaj zalogo iz stock CSV
         stock_map = {}
+        stock_root_map = {}  # root → seznam variant
         if STOCK_CSV_FILE.exists():
             st = STOCK_CSV_FILE.read_text(encoding='utf-8-sig', errors='replace')
             sep = ';' if st.split('\n')[0].count(';') > st.split('\n')[0].count(',') else ','
             for r in _csv3.DictReader(_io3.StringIO(st), delimiter=sep):
                 sku = (r.get('product_sku') or r.get('sku') or '').strip().upper()
                 if sku:
-                    stock_map[sku] = {
+                    entry = {
                         'stock': int(float(r.get('stock', 0) or 0)),
                         'stock30': int(float(r.get('stock30', 0) or 0)),
                         'title': r.get('title', ''),
                     }
+                    stock_map[sku] = entry
+                    # Dodaj pod koren (BATHFLEX_white → BATHFLEX)
+                    root = smart_root(sku).upper()
+                    if root not in stock_root_map:
+                        stock_root_map[root] = []
+                    stock_root_map[root].append(entry)
+
+        def get_stock(sku):
+            # 1. Točen match
+            if sku in stock_map: return stock_map[sku]
+            # 2. Koren match (BATHFLEX → BATHFLEX_white + BATHFLEX_black sešteto)
+            root = smart_root(sku).upper()
+            variants = stock_root_map.get(sku) or stock_root_map.get(root)
+            if variants:
+                return {
+                    'stock': sum(v['stock'] for v in variants),
+                    'stock30': sum(v['stock30'] for v in variants),
+                    'title': variants[0]['title'],
+                }
+            return {}
 
         items = []
         for r in rows:
             sku = (r.get('sku') or '').strip().upper()
-            root = smart_root(sku).upper() if sku else ''
-            st_data = stock_map.get(sku) or stock_map.get(root) or {}
+            st_data = get_stock(sku)
             items.append({
                 'campaign': r.get('campaign', ''),
                 'sku': sku,
