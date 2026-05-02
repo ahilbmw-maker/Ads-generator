@@ -548,19 +548,35 @@ function parsePrice(priceStr) {
   else if (str.includes('EUR') || str.includes('€')) currency = 'EUR';
   else currency = 'EUR';
 
-  // Extract number — podpira formate: 1.968,34 / 1968,34 / 1968.34 / 1,968.34
+  // Extract number — podpira: 1.968,34 / 1968,34 / 3,99 / 3.99 / 1,968.34
   let numStr = str.replace(/[^0-9.,]/g, '').trim();
-  // Določi format: če je vejica zadnji separator z 2 decimalkama → slovensko/srbsko (pika=tisočice, vejica=decimale)
   const commaIdx = numStr.lastIndexOf(',');
   const dotIdx = numStr.lastIndexOf('.');
-  if (commaIdx > dotIdx && commaIdx === numStr.length - 3) {
-    // Format: 1.968,34 → odstrani pike, vejico → pika
+  const commaCount = (numStr.match(/,/g)||[]).length;
+  const dotCount = (numStr.match(/\./g)||[]).length;
+
+  if (commaIdx > dotIdx && commaIdx === numStr.length - 3 && dotCount >= 1) {
+    // Format: 1.968,34 — pika=tisočice, vejica=decimale
     numStr = numStr.replace(/\./g, '').replace(',', '.');
-  } else if (dotIdx > commaIdx && dotIdx === numStr.length - 3) {
-    // Format: 1,968.34 → samo odstrani vejice
+  } else if (commaIdx > dotIdx && commaIdx === numStr.length - 3 && dotCount === 0) {
+    // Format: 1968,34 — vejica=decimale, ni pike
+    numStr = numStr.replace(',', '.');
+  } else if (dotIdx > commaIdx && dotIdx === numStr.length - 3 && commaCount >= 1) {
+    // Format: 1,968.34 — vejica=tisočice, pika=decimale
     numStr = numStr.replace(/,/g, '');
+  } else if (commaCount === 1 && dotCount === 0) {
+    // Format: 3,99 ali 16,99 — vejica=decimale
+    numStr = numStr.replace(',', '.');
+  } else if (dotCount === 1 && commaCount === 0) {
+    // Format: 3.99 (pika=decimale) ALI 6.799 (pika=tisočice pri HUF)
+    // Če je HUF/RSD in po piki so 3 mesta → tisočice
+    const afterDot = numStr.slice(dotIdx + 1);
+    if (afterDot.length === 3 && ['HUF','RSD','CZK'].includes(currency)) {
+      numStr = numStr.replace('.', ''); // tisočice, ne decimale
+    }
+    // sicer pika=decimale, numStr je že ok
   } else {
-    // Samo vejica brez pike ali obratno
+    // Fallback: odstrani pike, vejico → pika
     numStr = numStr.replace(/\./g, '').replace(',', '.');
   }
   amount = parseFloat(numStr);
@@ -750,11 +766,7 @@ function renderTable(rows) {
 
     const rowKey = row.id + '|' + row.sku;
     const isSelected = selectedKeys.has(rowKey);
-    const checkboxHtml = (row.status !== 'ok' && !row.isNull)
-      ? `<input type="checkbox" data-key="${rowKey}" onchange="bulkToggleRow('${rowKey}',this.checked,this.closest('tr'))" ${row.resolved ? 'checked' : ''} ${isSelected ? 'checked' : ''} style="cursor:pointer;width:15px;height:15px" title="Označi">`
-      : row.status === 'ok'
-      ? '<span style="color:var(--green);font-size:13px">✓</span>'
-      : `<input type="checkbox" data-key="${rowKey}" onchange="bulkToggleRow('${rowKey}',this.checked,this.closest('tr'))" ${isSelected ? 'checked' : ''} style="cursor:pointer;width:15px;height:15px">`;
+    const checkboxHtml = `<input type="checkbox" data-key="${rowKey}" onchange="bulkToggleRow('${rowKey}',this.checked,this.closest('tr'))" ${isSelected ? 'checked' : ''} style="cursor:pointer;width:15px;height:15px" title="Označi">`;
 
     tr.innerHTML = `
       <td style="text-align:center">${checkboxHtml}</td>
