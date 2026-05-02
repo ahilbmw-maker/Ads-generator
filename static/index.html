@@ -463,7 +463,8 @@ input[type="text"].error { border-color: var(--red) !important; }
   .home-tile .ht-name { font-size:13px; font-weight:600; color:var(--text); }
   .home-tile .ht-desc { font-size:11px; color:var(--text-secondary); }
   .home-tile .ht-pills { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
-  .home-pill { font-size:9px; padding:2px 7px; border-radius:10px; font-weight:600; }
+  .home-pill { font-size:9px; padding:2px 7px; border-radius:10px; font-weight:600; transition:all 0.12s; }
+  .home-pill:hover { background:var(--accent) !important; color:#fff !important; }
 </style>
 </head>
 <body>
@@ -488,6 +489,8 @@ input[type="text"].error { border-color: var(--red) !important; }
     Domov
   </div>
 
+  <div style="padding:8px 10px 4px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.7px;color:var(--text-tertiary)">Oglaševanje</div>
+
   <div class="nav-item nav-meta" id="nav-meta" onclick="switchPage('meta')">
     <svg viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
     Meta Ads
@@ -500,26 +503,16 @@ input[type="text"].error { border-color: var(--red) !important; }
     <span class="nav-badge" style="background:#f0f0f0;color:#555">XLS</span>
   </div>
 
-  <div class="nav-item nav-calc" id="nav-calc" onclick="switchPage('calc')">
-    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
-    Urejevalnik cen
-    <button class="nav-expand-btn" id="navexp-calc" onclick="event.stopPropagation();navToggleSub('calc')" title="Pododdelki">+</button>
-  </div>
-  <div class="nav-sub" id="navsub-calc">
-    <div class="nav-sub-item" onclick="switchPage('calc');switchCalcTab('pricecheck')">Price Checker</div>
-    <div class="nav-sub-item" onclick="switchPage('calc');switchCalcTab('calc')">Kalkulator</div>
-  </div>
-
-  <div class="nav-item nav-forecast" id="nav-forecast" onclick="switchPage('forecast')">
-    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    Napoved
-    <span class="nav-badge" style="background:#fff7ed;color:#9a3412">📈</span>
-  </div>
-
   <div class="nav-item nav-kreative" id="nav-kreative" onclick="switchPage('kreative')">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
     Kreative
     <span class="nav-badge" style="background:#fdf2f8;color:#9d174d">🎨</span>
+  </div>
+
+  <div class="nav-item nav-videoads" id="nav-videoads" onclick="switchPage('videoads')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+    Video Ads
+    <span style="margin-left:auto;font-size:13px">🎬</span>
   </div>
 
   <div class="nav-item nav-lokalizacija" id="nav-lokalizacija" onclick="switchPage('lokalizacija')">
@@ -533,11 +526,35 @@ input[type="text"].error { border-color: var(--red) !important; }
     Naročilnice
     <span class="nav-badge" style="background:#fff7ed;color:#c2410c">📦</span>
   </div>
-  <div class="nav-item nav-videoads" id="nav-videoads" onclick="switchPage('videoads')">
-    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-    Video Ads
-    <span style="margin-left:auto;font-size:13px">🎬</span>
+
+  <div style="margin:6px 10px;height:1px;background:var(--border)"></div>
+  <div style="padding:4px 10px 4px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.7px;color:var(--text-tertiary)">Finance & Analiza</div>
+
+  <div class="nav-item nav-calc" id="nav-calc" onclick="switchPage('calc')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
+    Urejevalnik cen
+    <button class="nav-expand-btn" id="navexp-calc" onclick="event.stopPropagation();navToggleSub('calc')" title="Pododdelki">+</button>
   </div>
+  <div class="nav-sub" id="navsub-calc">
+    <div class="nav-sub-item" onclick="switchPage('calc');switchCalcTab('pricecheck')">Price Checker</div>
+    <div class="nav-sub-item" onclick="switchPage('calc');switchCalcTab('calc')">Kalkulator</div>
+  </div>
+
+  <div class="nav-item nav-analiza" id="nav-analiza" onclick="switchPage('analiza')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    Analiza
+    <span style="margin-left:auto;font-size:13px">📊</span>
+  </div>
+
+  <div class="nav-item nav-forecast" id="nav-forecast" onclick="switchPage('forecast')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    Napoved
+    <span class="nav-badge" style="background:#fff7ed;color:#9a3412">📈</span>
+  </div>
+
+  <div style="margin:6px 10px;height:1px;background:var(--border)"></div>
+  <div style="padding:4px 10px 4px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.7px;color:var(--text-tertiary)">Upravljanje</div>
+
   <div class="nav-item nav-orodja" id="nav-orodja" onclick="switchPage('orodja')">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
     Orodja
@@ -550,11 +567,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('pricecheck')">Kontrola cen</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('zdrnarocila')">Zdru. naročila</div>
   </div>
-  <div class="nav-item nav-analiza" id="nav-analiza" onclick="switchPage('analiza')">
-    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-    Analiza
-    <span style="margin-left:auto;font-size:13px">📊</span>
-  </div>
+
   <div class="nav-item nav-zaloga" id="nav-zaloga" onclick="switchPage('zaloga')">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
     Zaloga
@@ -569,7 +582,7 @@ input[type="text"].error { border-color: var(--red) !important; }
   <div class="page active" id="page-home">
     <div class="home-wrap">
       <div class="home-greeting">
-        <h1>Dober dan, Irenej 👋</h1>
+        <h1>Dober dan, SLX team 👋</h1>
         <p id="homeDateStr">Nalagam...</p>
       </div>
 
@@ -617,8 +630,8 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div class="ht-name">Urejevalnik cen</div>
             <div class="ht-desc">Cene po državah</div>
             <div class="ht-pills">
-              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary)">Price Checker</span>
-              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary)">Kalkulator</span>
+              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary);cursor:pointer" onclick="event.stopPropagation();switchPage('calc');switchCalcTab('pricecheck')">↗ Price Checker</span>
+              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary);cursor:pointer" onclick="event.stopPropagation();switchPage('calc');switchCalcTab('calc')">↗ Kalkulator</span>
             </div>
           </div>
           <div class="home-tile" style="border-left-color:#f59e0b" onclick="switchPage('analiza')">
@@ -642,8 +655,10 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div class="ht-name">Orodja</div>
             <div class="ht-desc">Uvoz, HS+, naročila</div>
             <div class="ht-pills">
-              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary)">HS+ naročanje</span>
-              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary)">Zdru. naročila</span>
+              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary);cursor:pointer" onclick="event.stopPropagation();switchPage('orodja');switchOrodjaTab('hsuvoz')">↗ HS+ naročanje</span>
+              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary);cursor:pointer" onclick="event.stopPropagation();switchPage('orodja');switchOrodjaTab('zdrnarocila')">↗ Zdru. naročila</span>
+              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary);cursor:pointer" onclick="event.stopPropagation();switchPage('orodja');switchOrodjaTab('csv')">↗ Ikonka uvoz</span>
+              <span class="home-pill" style="background:var(--surface2);color:var(--text-secondary);cursor:pointer" onclick="event.stopPropagation();switchPage('orodja');switchOrodjaTab('hs')">↗ Uvoz HS+</span>
             </div>
           </div>
           <div class="home-tile" style="border-left-color:#64748b" onclick="switchPage('zaloga')">
