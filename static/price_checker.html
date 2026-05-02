@@ -392,17 +392,23 @@ function checkPrice(amount, currency) {
   }
 
   else if (currency === 'CZK') {
-    // Must end in 9 (no decimals)
     const rounded = Math.round(amount);
     const lastDigit = rounded % 10;
     if (lastDigit !== 9) {
-      suggested = rounded - lastDigit + 9;
-      if (suggested < amount) suggested += 10;
-      issues.push('CZK mora končati na 9');
+      // Preveri ali je bližji naslednji X9 ali prejšnji X9
+      const nextX9 = rounded - lastDigit + 9 + (lastDigit >= 9 ? 10 : 0);
+      const prevX9 = rounded - lastDigit - 1;
+      // Proximity navzgor max +25 CZK (npr. 243→249), sicer navzdol
+      if (lastDigit <= 4 || (nextX9 - rounded) > 25) {
+        suggested = prevX9 > 0 ? prevX9 : nextX9;
+        issues.push('CZK mora končati na 9 → predlog: ' + suggested);
+      } else {
+        suggested = nextX9;
+        issues.push('CZK mora končati na 9 → predlog: ' + suggested);
+      }
     }
-    // Check boundary: e.g. 401 → 399
     const boundaryCheck = checkBoundary(rounded, currency);
-    if (boundaryCheck) { issues.push(boundaryCheck.issue); if (!suggested) suggested = boundaryCheck.suggested; }
+    if (boundaryCheck && !suggested) { issues.push(boundaryCheck.issue); suggested = boundaryCheck.suggested; }
   }
 
   else if (currency === 'HUF') {
@@ -414,37 +420,87 @@ function checkPrice(amount, currency) {
       if (suggested < amount) suggested += 100;
       issues.push('HUF mora končati na 99');
     }
-    const boundaryCheck = checkBoundary(rounded, currency);
-    if (boundaryCheck) { issues.push(boundaryCheck.issue); if (!suggested) suggested = boundaryCheck.suggested; }
+    // Proximity check: če je cena blizu X.999 vzorca (npr. 6799 → 6999, razlika ≤ 300)
+    // Preverimo naslednji .999 nivo (1999, 2999, 3999, ...)
+    const hufRounded = Math.round(amount);
+    const nextNineNine9 = Math.ceil(hufRounded / 1000) * 1000 - 1; // npr. 6799 → 6999
+    const distUp = nextNineNine9 - hufRounded;
+    if (distUp > 0 && distUp <= 300 && lastTwo === 99) {
+      // Cena je X99 ampak blizu naslednjega X999 — predlog navzgor
+      issues.push(`Blizu ${nextNineNine9} FT (razlika ${distUp} FT) → predlog navzgor`);
+      suggested = nextNineNine9;
+    } else if (distUp > 0 && distUp <= 300 && lastTwo !== 99) {
+      // Že ima napako (ni na 99), samo posodobimo predlog na naslednji .999
+      suggested = nextNineNine9;
+    }
+    const boundaryCheck = checkBoundary(hufRounded, currency);
+    if (boundaryCheck && issues.length === 0) { issues.push(boundaryCheck.issue); if (!suggested) suggested = boundaryCheck.suggested; }
   }
 
   else if (currency === 'PLN') {
-    // Must be whole number
-    const decimal = amount % 1;
-    if (decimal !== 0) {
-      suggested = Math.round(amount);
+    const rounded = Math.round(amount);
+    if (amount % 1 !== 0) {
+      suggested = rounded;
       issues.push('PLN mora biti celo število');
     }
-    const boundaryCheck = checkBoundary(Math.round(amount), currency);
-    if (boundaryCheck) { issues.push(boundaryCheck.issue); if (!suggested) suggested = boundaryCheck.suggested; }
+    // Proximity navzgor max +5 PLN (npr. 24→29 ✗ preveliko, 27→29 ✓)
+    // Navzdol če je razlika do naslednjega X9 > 5
+    const lastPln = rounded % 10;
+    if (lastPln !== 9 && !suggested) {
+      const nextX9 = rounded - lastPln + 9 + (lastPln >= 9 ? 10 : 0);
+      const prevX9 = rounded - lastPln - 1;
+      if ((nextX9 - rounded) <= 5) {
+        suggested = nextX9;
+        issues.push('PLN mora biti X9 → predlog: ' + suggested);
+      } else {
+        suggested = prevX9 > 0 ? prevX9 : nextX9;
+        issues.push('PLN mora biti X9 → predlog: ' + suggested);
+      }
+    }
+    const bcPln = checkBoundary(rounded, currency);
+    if (bcPln && !suggested) { issues.push(bcPln.issue); suggested = bcPln.suggested; }
   }
 
   else if (currency === 'RON') {
-    // Must be whole number
-    const decimal = amount % 1;
-    if (decimal !== 0) {
-      suggested = Math.round(amount);
+    const rounded = Math.round(amount);
+    if (amount % 1 !== 0) {
+      suggested = rounded;
       issues.push('RON mora biti celo število');
     }
-    const boundaryCheck = checkBoundary(Math.round(amount), currency);
-    if (boundaryCheck) { issues.push(boundaryCheck.issue); if (!suggested) suggested = boundaryCheck.suggested; }
+    // Proximity navzgor max +5 RON
+    const lastRon = rounded % 10;
+    if (lastRon !== 9 && !suggested) {
+      const nextX9 = rounded - lastRon + 9 + (lastRon >= 9 ? 10 : 0);
+      const prevX9 = rounded - lastRon - 1;
+      if ((nextX9 - rounded) <= 5) {
+        suggested = nextX9;
+        issues.push('RON mora biti X9 → predlog: ' + suggested);
+      } else {
+        suggested = prevX9 > 0 ? prevX9 : nextX9;
+        issues.push('RON mora biti X9 → predlog: ' + suggested);
+      }
+    }
+    const bcRon = checkBoundary(rounded, currency);
+    if (bcRon && !suggested) { issues.push(bcRon.issue); suggested = bcRon.suggested; }
   }
 
   else if (currency === 'RSD') {
-    // Just check boundary
     const rounded = Math.round(amount);
+    // Proximity navzgor max +100 RSD do psiholoških pragov (X99, X999)
+    const lastRsd = rounded % 100;
+    if (lastRsd !== 99) {
+      const nextX99 = rounded - lastRsd + 99 + (lastRsd >= 99 ? 100 : 0);
+      const prevX99 = rounded - lastRsd - 1;
+      if ((nextX99 - rounded) <= 100) {
+        suggested = nextX99;
+        issues.push('RSD blizu ' + nextX99 + ' (+' + (nextX99 - rounded) + ') → predlog navzgor');
+      } else if (prevX99 > 0) {
+        suggested = prevX99;
+        issues.push('RSD predlog: ' + prevX99);
+      }
+    }
     const boundaryCheck = checkBoundary(rounded, currency);
-    if (boundaryCheck) { issues.push(boundaryCheck.issue); suggested = boundaryCheck.suggested; }
+    if (boundaryCheck && !suggested) { issues.push(boundaryCheck.issue); suggested = boundaryCheck.suggested; }
   }
 
   return { issues, suggested, isOk: issues.length === 0 };
