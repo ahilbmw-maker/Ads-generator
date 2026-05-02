@@ -453,7 +453,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
   <div class="nav-item nav-calc" id="nav-calc" onclick="switchPage('calc')">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
-    Kalkulator
+    Urejevalnik cen
     <span class="nav-badge" style="background:#f0fff4;color:#276749">€</span>
   </div>
 
@@ -710,15 +710,15 @@ input[type="text"].error { border-color: var(--red) !important; }
   <!-- ═══ CALCULATOR PAGE ═══ -->
   <div class="page" id="page-calc">
     <div style="display:flex;gap:8px;padding:8px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border)">
-      <button class="calc-tab-btn active" id="calcTab-calc" onclick="switchCalcTab('calc')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
-        💰 Kalkulator
-      </button>
-      <button class="calc-tab-btn" id="calcTab-pricecheck" onclick="switchCalcTab('pricecheck')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+      <button class="calc-tab-btn active" id="calcTab-pricecheck" onclick="switchCalcTab('pricecheck')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
         📊 Price Checker
       </button>
+      <button class="calc-tab-btn" id="calcTab-calc" onclick="switchCalcTab('calc')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+        💰 Kalkulator
+      </button>
     </div>
-    <iframe id="calcFrame-calc" src="/static/price_calculator.html" style="width:100%;height:calc(100vh - 7rem);border:none" allow="clipboard-write"></iframe>
-    <iframe id="calcFrame-pricecheck" src="/static/price_checker.html" style="width:100%;height:calc(100vh - 7rem);border:none;display:none" allow="clipboard-write"></iframe>
+    <iframe id="calcFrame-pricecheck" src="/static/price_checker.html" style="width:100%;height:calc(100vh - 7rem);border:none" allow="clipboard-write"></iframe>
+    <iframe id="calcFrame-calc" src="/static/price_calculator.html" style="width:100%;height:calc(100vh - 7rem);border:none;display:none" allow="clipboard-write"></iframe>
   </div>
 
   <!-- ═══ KREATIVE PAGE ═══ -->
@@ -1188,6 +1188,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="orodja-tab-btn" id="orodjaTab-hs" onclick="switchOrodjaTab('hs')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📦 Uvoz HS+</button>
       <button class="orodja-tab-btn" id="orodjaTab-hsuvoz" onclick="switchOrodjaTab('hsuvoz')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🛒 HS+ naročanje</button>
       <button class="orodja-tab-btn" id="orodjaTab-pricecheck" onclick="switchOrodjaTab('pricecheck')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Kontrola cen</button>
+      <button class="orodja-tab-btn" id="orodjaTab-zdrnarocila" onclick="switchOrodjaTab('zdrnarocila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔗 Združena naročila</button>
     </div>
 
     <!-- TAB 1: CSV Združevalnik -->
@@ -1393,6 +1394,42 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div id="pcItemsList" style="display:flex;flex-direction:column;gap:8px"></div>
           </div>
           <div id="pcEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži zalogo (1) in PDF predračun (2) za začetek primerjave.</div>
+        </div>
+      </div>
+    </div>
+    <!-- ZDRUŽENA NAROČILA TAB -->
+    <div id="orodjaSubpage-zdrnarocila" style="display:none;padding:14px">
+      <div style="display:grid;grid-template-columns:240px minmax(0,1fr);gap:14px;align-items:start">
+
+        <!-- Levo: upload + filter -->
+        <div>
+          <div class="card">
+            <span class="slabel">NAROČILNICE (CSV)</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 8px;line-height:1.4">Isti format kot HS+ naročanje: ID naročila, SKU, Naziv, Količina.</p>
+            <div id="znDropZone" class="k-dropzone" style="padding:14px;cursor:pointer" onclick="document.getElementById('znInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="znHandleDrop(event)">
+              <span style="font-size:11px">Klikni ali povleci CSV sem</span>
+            </div>
+            <input type="file" id="znInput" accept=".csv" style="display:none" onchange="znUpload(this.files[0])">
+            <div id="znStatus" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
+            <div id="znInfo" style="margin-top:6px;font-size:10px;color:var(--text-tertiary)"></div>
+          </div>
+          <div class="card" style="margin-top:0">
+            <span class="slabel">FILTER</span>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+              <input type="text" id="znSearch" placeholder="🔍 Išči SKU, ID naročila..." oninput="znRender()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:100%;box-sizing:border-box">
+              <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer">
+                <input type="checkbox" id="znOnlyMulti" onchange="znRender()" style="cursor:pointer;accent-color:var(--accent)">
+                <span>Samo naročila z 2+ SKU</span>
+              </label>
+            </div>
+            <div id="znStats" style="margin-top:10px;font-size:11px;color:var(--text-tertiary)"></div>
+          </div>
+        </div>
+
+        <!-- Desno: vizualizacija -->
+        <div>
+          <div id="znEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:3rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">Naloži CSV naročilnic za prikaz združenih naročil.</div>
+          <div id="znResults" style="display:none;flex-direction:column;gap:8px"></div>
         </div>
       </div>
     </div>
@@ -4498,12 +4535,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ─── ORODJA SUB-TABS + HS+ ─────────────────────────────────────────────────
 function switchOrodjaTab(tab) {
-  ['csv', 'hs', 'hsuvoz', 'pricecheck'].forEach(t => {
+  ['csv', 'hs', 'hsuvoz', 'pricecheck', 'zdrnarocila'].forEach(t => {
     const btn = document.getElementById('orodjaTab-' + t);
     const sub = document.getElementById('orodjaSubpage-' + t);
     if (t === tab) {
       if (btn) { btn.style.background = 'var(--accent)'; btn.style.color = 'white'; btn.style.border = 'none'; btn.classList.add('active'); }
-      if (sub) sub.style.display = (t === 'csv' || t === 'hsuvoz') ? 'block' : 'block';
+      if (sub) sub.style.display = 'block';
     } else {
       if (btn) { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; btn.style.border = '1px solid var(--border)'; btn.classList.remove('active'); }
       if (sub) sub.style.display = 'none';
@@ -4513,6 +4550,7 @@ function switchOrodjaTab(tab) {
   if (tab === 'pricecheck') pcLoadStockStatus();
   if (tab === 'csv') orodjaLoadHistory();
   if (tab === 'hsuvoz') { hsuvozLoadStock(); hsuvozLoadHistory(); hsuvozLoadCurrent(); hsuvozLoadOrderPanel(); }
+  if (tab === 'zdrnarocila') znLoad();
 }
 
 let hsItems = [];
