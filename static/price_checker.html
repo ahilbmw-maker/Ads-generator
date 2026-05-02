@@ -315,7 +315,7 @@
   <span style="color:var(--border);margin:0 4px">|</span>
   <input type="text" class="search-input" placeholder="🔍 Išči SKU ali ID..." oninput="setSearch(this.value)" id="searchInput">
   <span style="color:var(--border);margin:0 4px">|</span>
-  <button class="filter-btn" onclick="setFilter('resolved', this)" style="color:var(--green)">✓ Urejeni</button>
+  <button class="filter-btn" onclick="taskFilter('resolved',null);this.classList.add('active')" style="color:var(--green)">✓ Urejeni</button>
 </div>
 
 <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
@@ -351,6 +351,7 @@
 <script>
 let allRows = [];
 let currentFilter = 'all';
+let currentCurrency = 'all';
 let currentSearch = '';
 let sortCol = null;
 let sortDir = 1;
@@ -539,8 +540,21 @@ function parsePrice(priceStr) {
   else if (str.includes('EUR') || str.includes('€')) currency = 'EUR';
   else currency = 'EUR';
 
-  // Extract number
-  const numStr = str.replace(/[^0-9.,]/g, '').replace(/\./g, '').replace(',', '.');
+  // Extract number — podpira formate: 1.968,34 / 1968,34 / 1968.34 / 1,968.34
+  let numStr = str.replace(/[^0-9.,]/g, '').trim();
+  // Določi format: če je vejica zadnji separator z 2 decimalkama → slovensko/srbsko (pika=tisočice, vejica=decimale)
+  const commaIdx = numStr.lastIndexOf(',');
+  const dotIdx = numStr.lastIndexOf('.');
+  if (commaIdx > dotIdx && commaIdx === numStr.length - 3) {
+    // Format: 1.968,34 → odstrani pike, vejico → pika
+    numStr = numStr.replace(/\./g, '').replace(',', '.');
+  } else if (dotIdx > commaIdx && dotIdx === numStr.length - 3) {
+    // Format: 1,968.34 → samo odstrani vejice
+    numStr = numStr.replace(/,/g, '');
+  } else {
+    // Samo vejica brez pike ali obratno
+    numStr = numStr.replace(/\./g, '').replace(',', '.');
+  }
   amount = parseFloat(numStr);
 
   if (isNaN(amount)) return null;
@@ -648,15 +662,18 @@ function parseFile(text) {
 function renderTable(rows) {
   let filtered = rows;
 
-  if (currentFilter === 'error') filtered = rows.filter(r => r.status === 'error' && !r.resolved);
-  else if (currentFilter === 'warn') filtered = rows.filter(r => r.status === 'warn' && !r.resolved);
-  else if (currentFilter === 'ok') filtered = rows.filter(r => r.status === 'ok');
-  else if (currentFilter === 'all') filtered = rows.filter(r => r.status === 'ok' || !r.resolved);
-  else if (currentFilter === 'resolved') filtered = rows.filter(r => r.resolved);
-  else if (currentFilter === 'qty') filtered = rows.filter(r => (r.qty || 1) > 1);
-  else if (currentFilter === 'null') filtered = rows.filter(r => r.isNull);
-  else if (['EUR','CZK','HUF','PLN','RON','RSD'].includes(currentFilter)) {
-    filtered = rows.filter(r => r.currency === currentFilter);
+  // Task filter (glavna navigacija)
+  if (currentFilter === 'error') filtered = filtered.filter(r => r.status === 'error' && !r.resolved);
+  else if (currentFilter === 'warn') filtered = filtered.filter(r => r.status === 'warn' && !r.resolved);
+  else if (currentFilter === 'ok') filtered = filtered.filter(r => r.status === 'ok');
+  else if (currentFilter === 'resolved') filtered = filtered.filter(r => r.resolved);
+  else if (currentFilter === 'qty') filtered = filtered.filter(r => (r.qty || 1) > 1);
+  else if (currentFilter === 'null') filtered = filtered.filter(r => r.isNull);
+  else filtered = filtered.filter(r => r.status === 'ok' || !r.resolved); // 'all'
+
+  // Currency filter (sekundarni)
+  if (currentCurrency && currentCurrency !== 'all' && !['resolved'].includes(currentCurrency)) {
+    filtered = filtered.filter(r => r.currency === currentCurrency);
   }
 
   if (currentSearch) {
@@ -797,7 +814,7 @@ function taskFilter(f, card) {
 }
 
 function setFilter(f, btn) {
-  currentFilter = f;
+  currentCurrency = f;
   document.querySelectorAll('.filters .filter-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   renderTable(allRows);
