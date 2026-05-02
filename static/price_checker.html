@@ -121,6 +121,7 @@
   .task-card.tc-null .task-icon { background: var(--blue-dim); }
   .task-card.tc-null .task-num { color: var(--blue); }
   .task-card.tc-null.active { border-color: var(--blue); background: var(--blue-dim); }
+  #tc-lowval.active { border-color: #7c3aed !important; background: #f5f3ff !important; }
 
   .task-card.tc-ok .task-icon { background: var(--green-dim); }
   .task-card.tc-ok .task-num { color: var(--green); }
@@ -290,6 +291,11 @@
     <div class="task-icon">🚫</div>
     <div class="task-num" id="statNull">0</div>
     <div class="task-label">Vrednost 0</div>
+  </div>
+  <div class="task-card" onclick="taskFilter('lowval',this)" id="tc-lowval" style="border-color:#e9d5ff">
+    <div class="task-icon" style="background:#f5f3ff">💸</div>
+    <div class="task-num" id="statLowval" style="color:#7c3aed">0</div>
+    <div class="task-label">Razlika &lt;7€</div>
   </div>
   <div class="task-card tc-ok" onclick="taskFilter('ok',this)" id="tc-ok">
     <div class="task-icon">✅</div>
@@ -752,6 +758,7 @@ function renderTable(rows) {
   else if (currentFilter === 'resolved') filtered = filtered.filter(r => r.resolved);
   else if (currentFilter === 'qty') filtered = filtered.filter(r => (r.qty || 1) > 1);
   else if (currentFilter === 'null') filtered = filtered.filter(r => r.isNull);
+  else if (currentFilter === 'lowval') filtered = filtered.filter(r => !r.isNull && r.razlikaNum !== null && !isNaN(r.razlikaNum) && Math.abs(r.razlikaNum) < 7);
   else filtered = filtered.filter(r => r.status === 'ok' || !r.resolved); // 'all'
 
   // Currency filter (sekundarni)
@@ -853,6 +860,7 @@ function updateStats(rows) {
   const warns = rows.filter(r => r.status === 'warn' && !r.resolved).length;
   const ok = rows.filter(r => r.status === 'ok').length;
   const nulls = rows.filter(r => r.isNull).length;
+  const lowval = rows.filter(r => !r.isNull && (r.razlikaNum !== null && !isNaN(r.razlikaNum)) && Math.abs(r.razlikaNum) < 7).length;
   const qtyRows = rows.filter(r => (r.qty || 1) > 1).length;
   // Multi: ID-ji z več postavkami
   const idCounts = {};
@@ -866,6 +874,8 @@ function updateStats(rows) {
   document.getElementById('statMulti').textContent = multiCount;
   document.getElementById('statQty').textContent = qtyRows;
   document.getElementById('statNull').textContent = nulls;
+  const lvEl = document.getElementById('statLowval');
+  if (lvEl) lvEl.textContent = lowval;
 
   document.getElementById('taskBar').style.display = 'flex';
   document.getElementById('filtersBar').style.display = 'flex';
@@ -1708,7 +1718,8 @@ function calcCopyRow(code, curr, btn) {
   const popust = parseFloat(document.getElementById('calcPopust').value) / 100;
   const fin = parseFloat(inp?.value) || 0;
   const novaCms = fin / (c?.vat || 1.22) / (1 - popust);
-  const txt = calcFormatPrice(fin, curr) + '\nNOVA: ' + novaCms.toFixed(2) + ' €';
+  // Kopira NOVA CMS vrednost (kar vpišemo v CMS)
+  const txt = novaCms.toFixed(2);
 
   // Clipboard s fallback
   const doCopy = () => {
