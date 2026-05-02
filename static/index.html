@@ -5727,34 +5727,6 @@ function ttKrHandleDrop(e) {
   if (f) ttKrUpload(f);
 }
 
-async function ttKrUpload(file) {
-  const status = document.getElementById('ttKrStatus');
-  status.style.display = 'block';
-  status.style.color = 'var(--text-secondary)';
-  status.textContent = '⏳ Nalagam in analiziram...';
-  const fd = new FormData();
-  fd.append('file', file);
-  try {
-    const res = await fetch('/analiza-ttkreative-upload', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (data.error) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + data.error; return; }
-    status.style.color = 'var(--green)';
-    status.textContent = `✓ ${data.skus} SKU-jev · ${data.videos} videov naloženih`;
-    document.getElementById('ttKrInput').value = '';
-    ttKrLoadData();
-  } catch(e) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + e.message; }
-}
-
-async function ttKrLoadData() {
-  try {
-    const res = await fetch('/analiza-ttkreative-data');
-    const data = await res.json();
-    if (data.error) return;
-    ttKrData = data.items || [];
-    ttKrRender();
-  } catch(e) { console.warn('ttKrLoadData', e); }
-}
-
 
 let tt14Data = [];  // TikTok kampanje (iz XLSX)
 let tt14Filter = 'all';
