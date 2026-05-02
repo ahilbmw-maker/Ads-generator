@@ -5542,7 +5542,9 @@ async function ttKrUpload(file) {
     const res = await fetch('/analiza-ttkreative-upload', {method:'POST', body:fd});
     const data = await res.json();
     if (data.error) { st.style.color = 'var(--red)'; st.textContent = '⚠ ' + data.error; return; }
-    st.style.color = 'var(--green)'; st.textContent = `✓ ${data.skus} SKU-jev · ${data.videos} videov`;
+    const skus = data.skus ?? data.total_skus ?? '?';
+    const videos = data.videos ?? data.total ?? '?';
+    st.style.color = 'var(--green)'; st.textContent = `✓ ${skus} SKU-jev · ${videos} videov`;
     document.getElementById('ttKrInput').value = '';
   } catch(e) { st.style.color = 'var(--red)'; st.textContent = '⚠ ' + e.message; }
 }
@@ -5562,21 +5564,25 @@ async function ttClUpload(file) {
 
 async function ttKrLoadData() {
   try {
-    const [kr, cl] = await Promise.all([
-      fetch('/analiza-ttkreative-data').then(r=>r.json()).catch(()=>({total:0})),
-      fetch('/analiza-ttcreative-library-data').then(r=>r.json()).catch(()=>({total:0})),
+    const [krRes, clRes] = await Promise.all([
+      fetch('/analiza-ttkreative-data'),
+      fetch('/analiza-ttcreative-library-data'),
     ]);
+    const kr = await krRes.json().catch(()=>({total:0}));
+    const cl = await clRes.json().catch(()=>({total:0}));
     const krSt = document.getElementById('ttKrStatus');
     const clSt = document.getElementById('ttClStatus');
-    if (krSt && kr.total > 0) {
+    if (krSt && (kr.total || kr.items?.length) > 0) {
+      const n = kr.total || kr.items?.length || 0;
       krSt.style.display='block';
       krSt.style.color='var(--green)';
-      krSt.textContent=`✓ ${kr.total} videov naloženih (shranjeno)`;
+      krSt.textContent=`✓ ${n} videov naloženih (shranjeno)`;
     }
-    if (clSt && cl.total > 0) {
+    if (clSt && (cl.total || cl.items?.length) > 0) {
+      const n = cl.total || cl.items?.length || 0;
       clSt.style.display='block';
       clSt.style.color='var(--green)';
-      clSt.textContent=`✓ ${cl.total} videov iz Creative Library (shranjeno)`;
+      clSt.textContent=`✓ ${n} videov iz Creative Library (shranjeno)`;
     }
   } catch(e) { console.warn('ttKrLoadData', e); }
 }
@@ -5808,7 +5814,12 @@ async function tt14LoadData() {
     const info = document.getElementById('tt14Info');
     if (tt14Data.length > 0 && info) {
       info.style.display = 'block';
-      info.textContent = `✓ ${tt14Data.length} kampanj naloženih`;
+      info.style.color = 'var(--green)';
+      // Timestamp iz meta
+      const dt = ttData.uploads?.length
+        ? new Date(ttData.uploads[ttData.uploads.length-1].uploaded_at).toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
+        : '';
+      info.textContent = `✓ ${tt14Data.length} kampanj (shranjeno${dt ? ' · ' + dt : ''})`;
     }
 
     // Naloži skupni obrat 14 dni če še ni naložen
