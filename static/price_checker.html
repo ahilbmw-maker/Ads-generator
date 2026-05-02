@@ -8,7 +8,7 @@
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
   :root {
-    --bg: #f4f6fb;
+    --bg: #eef1f8;
     --surface: #ffffff;
     --surface2: #f8fafd;
     --border: #edf0f7;
@@ -31,8 +31,8 @@
     --blue: #2563eb;
     --blue-dim: #eff6ff;
     --blue-border: #bfdbfe;
-    --text: #1e2a3a;
-    --muted: #8896b0;
+    --text: #0f172a;
+    --muted: #475569;
     --font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     --mono: 'Courier New', monospace;
     --radius: 10px;
@@ -325,10 +325,16 @@
 </div>
 
 <div class="table-wrap" id="tableWrap" style="display:none">
-  <table id="resultsTable">
+<div id="bulkBar" style="display:none;align-items:center;gap:10px;padding:8px 14px;background:var(--accent);border-radius:8px;margin:12px 0 6px;color:#fff;font-size:12px;font-weight:500">
+  <span id="bulkCount">0 označenih</span>
+  <button onclick="bulkMarkResolved()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">✓ Označi kot urejeno</button>
+  <button onclick="bulkDelete()" style="background:rgba(255,80,80,0.3);border:1px solid rgba(255,100,100,0.5);color:#fff;padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🗑 Zbriši označene</button>
+  <button onclick="bulkClear()" style="margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">✕ Počisti izbor</button>
+</div>
+<table id="resultsTable">
     <thead>
       <tr>
-        <th style="width:30px">✓</th>
+        <th style="width:36px"><input type="checkbox" id="selectAllMain" onchange="bulkToggleAll(this.checked)" style="cursor:pointer;width:15px;height:15px"></th>
         <th onclick="sortBy('id')" style="cursor:pointer">ID naročila ↕</th>
         <th onclick="sortBy('sku')" style="cursor:pointer">SKU ↕</th>
         <th onclick="sortBy('amount')" style="cursor:pointer">Cena originalna ↕</th>
@@ -355,6 +361,7 @@ let currentCurrency = 'all';
 let currentSearch = '';
 let sortCol = null;
 let sortDir = 1;
+let selectedKeys = new Set(); // 'id|sku' za vsako označeno vrstico
 
 // ============ PRICE RULES ============
 
@@ -740,9 +747,13 @@ function renderTable(rows) {
 
     const reasons = row.issues.map(i => `<div class="issue-type">${i}</div>`).join('');
 
-    const checkboxHtml = (row.status !== 'ok')
-      ? `<input type="checkbox" onchange="toggleResolved('${row.id}', '${row.sku}', this.checked)" ${row.resolved ? 'checked' : ''} style="cursor:pointer;width:16px;height:16px" title="Označi kot urejeno">`
-      : '<span style="color:var(--green)">✓</span>';
+    const rowKey = row.id + '|' + row.sku;
+    const isSelected = selectedKeys.has(rowKey);
+    const checkboxHtml = (row.status !== 'ok' && !row.isNull)
+      ? `<input type="checkbox" data-key="${rowKey}" onchange="bulkToggleRow('${rowKey}',this.checked,this.closest('tr'))" ${row.resolved ? 'checked' : ''} ${isSelected ? 'checked' : ''} style="cursor:pointer;width:15px;height:15px" title="Označi">`
+      : row.status === 'ok'
+      ? '<span style="color:var(--green);font-size:13px">✓</span>'
+      : `<input type="checkbox" data-key="${rowKey}" onchange="bulkToggleRow('${rowKey}',this.checked,this.closest('tr'))" ${isSelected ? 'checked' : ''} style="cursor:pointer;width:15px;height:15px">`;
 
     tr.innerHTML = `
       <td style="text-align:center">${checkboxHtml}</td>
@@ -762,6 +773,7 @@ function renderTable(rows) {
     `;
     tbody.appendChild(tr);
   }
+  bulkUpdateBar();
 }
 
 function updateStats(rows) {
@@ -1076,17 +1088,98 @@ function multiFilterRender() {
   renderMultiView(allRows);
 }
 
+// ── BULK OPERACIJE ─────────────────────────────
+function bulkUpdateBar() {
+  const bar = document.getElementById('bulkBar');
+  const cnt = document.getElementById('bulkCount');
+  const selectAll = document.getElementById('selectAllMain');
+  if (!bar) return;
+  const n = selectedKeys.size;
+  bar.style.display = n > 0 ? 'flex' : 'none';
+  if (cnt) cnt.textContent = n + ' označenih';
+  if (selectAll) {
+    const visibleKeys = getVisibleKeys();
+    selectAll.indeterminate = n > 0 && n < visibleKeys.length;
+    selectAll.checked = visibleKeys.length > 0 && visibleKeys.every(k => selectedKeys.has(k));
+  }
+}
+
+function getVisibleKeys() {
+  return Array.from(document.querySelectorAll('#tableBody input[type=checkbox][data-key]'))
+    .map(cb => cb.dataset.key);
+}
+
+function bulkToggleAll(checked) {
+  getVisibleKeys().forEach(k => {
+    if (checked) selectedKeys.add(k);
+    else selectedKeys.delete(k);
+  });
+  document.querySelectorAll('#tableBody input[type=checkbox][data-key]').forEach(cb => {
+    cb.checked = checked;
+    cb.closest('tr').style.background = checked ? 'rgba(79,110,247,0.05)' : '';
+  });
+  bulkUpdateBar();
+}
+
+function bulkToggleRow(key, checked, tr) {
+  if (checked) selectedKeys.add(key);
+  else selectedKeys.delete(key);
+  if (tr) tr.style.background = checked ? 'rgba(79,110,247,0.05)' : '';
+  bulkUpdateBar();
+}
+
+function bulkMarkResolved() {
+  selectedKeys.forEach(key => {
+    const [id, sku] = key.split('|');
+    const row = allRows.find(r => r.id === id && r.sku === sku);
+    if (row && row.status !== 'ok') {
+      row.resolved = true;
+      try {
+        const stored = JSON.parse(localStorage.getItem('price_checker_resolved') || '{}');
+        stored[key] = true;
+        localStorage.setItem('price_checker_resolved', JSON.stringify(stored));
+      } catch(e) {}
+    }
+  });
+  selectedKeys.clear();
+  saveTableToStorage();
+  updateStats(allRows);
+  renderTable(allRows);
+}
+
+function bulkDelete() {
+  const toDelete = new Set(selectedKeys);
+  allRows = allRows.filter(r => !toDelete.has(r.id + '|' + r.sku));
+  try {
+    const stored = JSON.parse(localStorage.getItem('price_checker_resolved') || '{}');
+    toDelete.forEach(k => delete stored[k]);
+    localStorage.setItem('price_checker_resolved', JSON.stringify(stored));
+  } catch(e) {}
+  selectedKeys.clear();
+  saveTableToStorage();
+  updateStats(allRows);
+  renderTable(allRows);
+}
+
+function bulkClear() {
+  selectedKeys.clear();
+  document.querySelectorAll('#tableBody input[type=checkbox][data-key]').forEach(cb => {
+    cb.checked = false;
+    cb.closest('tr').style.background = '';
+  });
+  bulkUpdateBar();
+}
+
 function toggleResolved(id, sku, checked) {
   const row = allRows.find(r => r.id === id && r.sku === sku);
   if (row) {
     row.resolved = checked;
     try {
-      const key = 'price_checker_resolved';
-      const stored = JSON.parse(localStorage.getItem(key) || '{}');
-      const rowKey = id + '|' + sku;
-      if (checked) stored[rowKey] = true;
-      else delete stored[rowKey];
-      localStorage.setItem(key, JSON.stringify(stored));
+      const stored = JSON.parse(localStorage.getItem('price_checker_resolved') || '{}');
+      const key = id + '|' + sku;
+      if (checked) stored[key] = true;
+      else delete stored[key];
+      localStorage.setItem('price_checker_resolved', JSON.stringify(stored));
     } catch(e) {}
     saveTableToStorage();
     renderTable(allRows);
