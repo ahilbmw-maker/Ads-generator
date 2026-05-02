@@ -1614,8 +1614,8 @@ input[type="text"].error { border-color: var(--red) !important; }
     <!-- Tab nav -->
     <div style="display:flex;gap:8px;padding:12px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border)">
       <button class="analiza-tab-btn active" id="analizaTab-meta" onclick="switchAnalizaTab('meta')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📘 Meta Ads</button>
-      <button class="analiza-tab-btn" id="analizaTab-tiktok" onclick="switchAnalizaTab('tiktok')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🎵 TikTok Ads</button>
-      <button class="analiza-tab-btn" id="analizaTab-obrat14" onclick="switchAnalizaTab('obrat14')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📊 Obrat 14 dni</button>
+      <button class="analiza-tab-btn" id="analizaTab-obrat14" onclick="switchAnalizaTab('obrat14')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📊 Obrat 14 dni (FB)</button>
+      <button class="analiza-tab-btn" id="analizaTab-obrat14tt" onclick="switchAnalizaTab('obrat14tt')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📊 Obrat 14 dni (TikTok)</button>
     </div>
 
     <!-- TAB: Meta Ads -->
@@ -1684,68 +1684,6 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
     </div>
     <!-- TAB: TikTok Ads -->
-    <div id="analizaSubpage-tiktok" style="display:none;padding:14px 0 0 0;display:none">
-      <div style="display:grid;grid-template-columns:220px minmax(0, 1fr);gap:14px;align-items:start">
-        <!-- Levo -->
-        <div>
-          <div class="card">
-            <span class="slabel">TIKTOK ADS POROČILO</span>
-            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži XLSX/CSV Campaign Report iz TikTok Ads Manager. Vsak upload se <strong>doda</strong> k obstoječim.</p>
-            <div id="anTTDropZone" class="k-dropzone" style="margin-top:8px;padding:14px;cursor:pointer" onclick="document.getElementById('anTTInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="anTTHandleDrop(event)">
-              <span style="font-size:11px">🎵 Klikni ali povleci XLSX/CSV</span>
-            </div>
-            <input type="file" id="anTTInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="anLoadTikTok(this.files[0])">
-            <div id="anTTStatus" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center;display:none"></div>
-            <div id="anTTSummary" style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:none"></div>
-            <div id="anTTUploads" style="margin-top:8px;display:none">
-              <div style="font-size:10px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">Naloženi CSV-ji:</div>
-              <div id="anTTUploadsList" style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text-secondary)"></div>
-              <button onclick="anTTClear()" style="margin-top:8px;padding:4px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🗑 Počisti vse &amp; začni znova</button>
-            </div>
-          </div>
-
-          <div class="card" style="margin-top:12px">
-            <span class="slabel">ZALOGA</span>
-            <div id="anTTStockInfo" style="margin-top:8px;font-size:11px;color:var(--text-secondary)">Zaloga se deli z Meta Ads zavihkom.</div>
-          </div>
-
-          <div class="card" style="margin-top:12px">
-            <span class="slabel">FILTRI</span>
-            <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
-              <button class="an-filter-btn active" onclick="anTTSetFilter('all', this)" style="padding:8px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">📋 Vsi izdelki</button>
-              <div style="height:1px;background:var(--border);margin:4px 0"></div>
-              <span style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:2px">Po oglasih</span>
-              <button class="an-filter-btn" onclick="anTTSetFilter('active_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">▶ Aktivno se oglašuje</button>
-              <button class="an-filter-btn" onclick="anTTSetFilter('only_stopped', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⏸ Bili aktivni a STOP</button>
-              <button class="an-filter-btn" onclick="anTTSetFilter('not_advertised', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">○ Brez oglasov v 14d</button>
-              <div style="height:1px;background:var(--border);margin:4px 0"></div>
-              <span style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:2px">Po zalogi</span>
-              <button class="an-filter-btn" onclick="anTTSetFilter('high_stock_no_obrat', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">📦 Visoka zaloga, brez obrata</button>
-              <button class="an-filter-btn" onclick="anTTSetFilter('high_obrat', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">🚀 Najboljši obrat (top 30d)</button>
-              <button class="an-filter-btn" onclick="anTTSetFilter('zero_stock', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⚠️ Brez zaloge</button>
-              <div style="height:1px;background:var(--border);margin:4px 0"></div>
-              <span style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:2px">Pametni filtri</span>
-              <button class="an-filter-btn" onclick="anTTSetFilter('potential', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">💎 Potencial (zaloga + brez ads)</button>
-              <button class="an-filter-btn" onclick="anTTSetFilter('top_performers', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⭐ Top (CPA &lt; 8€, &gt;5 konverzij)</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Desno: tabela -->
-        <div>
-          <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-              <span class="slabel" style="margin:0" id="anTTTableTitle">TIKTOK IZDELKI (0)</span>
-              <input type="text" id="anTTSearch" placeholder="🔍 Išči SKU ali naziv..." oninput="anTTRenderTable()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:240px">
-            </div>
-            <div id="anTTTableHeaderWrap" style="position:sticky;top:0;z-index:20;background:var(--bg);padding-bottom:2px"></div>
-            <div id="anTTTable" style="display:flex;flex-direction:column;gap:6px;overflow-x:auto"></div>
-            <div id="anTTEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži TikTok XLSX poročilo za začetek.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- TAB: Obrat 14 dni -->
     <div id="analizaSubpage-obrat14" style="display:none;padding:14px 0 0 0">
       <div style="display:grid;grid-template-columns:220px minmax(0, 1fr);gap:14px;align-items:start">
@@ -1788,6 +1726,53 @@ input[type="text"].error { border-color: var(--red) !important; }
             </div>
             <div id="o14Table" style="display:flex;flex-direction:column;gap:6px;overflow-x:auto"></div>
             <div id="o14Empty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži obrat 14 dni za začetek.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Obrat 14 dni (TikTok) -->
+    <div id="analizaSubpage-obrat14tt" style="display:none;padding:14px 0 0 0">
+      <div style="display:grid;grid-template-columns:220px minmax(0, 1fr);gap:14px;align-items:start">
+        <!-- Levo: upload -->
+        <div>
+          <div class="card">
+            <span class="slabel">TIKTOK ADS POROČILO</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži XLSX Campaign Report iz TikTok Ads Manager.</p>
+            <div id="tt14DropZone" class="k-dropzone" style="margin-top:8px;padding:14px;cursor:pointer" onclick="document.getElementById('tt14Input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="tt14HandleDrop(event)">
+              <span style="font-size:11px">🎵 Klikni ali povleci XLSX/CSV</span>
+            </div>
+            <input type="file" id="tt14Input" accept=".xlsx,.xls,.csv" style="display:none" onchange="tt14Upload(this.files[0])">
+            <div id="tt14Status" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
+            <div id="tt14Info" style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:none"></div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <span class="slabel">OBRAT 14 DNI</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Skupen z FB — isti TXT/TSV upload.</p>
+            <div id="tt14ObratInfo" style="padding:8px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;color:var(--text-secondary)">Nalagam status...</div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <span class="slabel">PRIKAZ</span>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+              <button class="tt14-filter-btn active" onclick="tt14SetFilter('all', this)" style="padding:8px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">📋 Vsi izdelki</button>
+              <button class="tt14-filter-btn" onclick="tt14SetFilter('with_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">✓ Aktivni v 14d</button>
+              <button class="tt14-filter-btn" onclick="tt14SetFilter('paused', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⏸ Pavzirani (vsi STOP)</button>
+              <button class="tt14-filter-btn" onclick="tt14SetFilter('without_ads', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">— Brez oglasov (potencial)</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Desno: tabela -->
+        <div>
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <span class="slabel" style="margin:0" id="tt14TableTitle">TIKTOK OBRAT (0)</span>
+              <input type="text" id="tt14Search" placeholder="🔍 Išči SKU ali naziv..." oninput="tt14RenderTable()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:240px">
+            </div>
+            <div id="tt14Table" style="display:flex;flex-direction:column;gap:6px;overflow-x:auto"></div>
+            <div id="tt14Empty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži TikTok poročilo za začetek.</div>
           </div>
         </div>
       </div>
@@ -5238,12 +5223,12 @@ let anSortCol = 'stock';
 let anSortDir = -1;
 
 function switchAnalizaTab(tab) {
-  ['meta', 'tiktok', 'obrat14'].forEach(t => {
+  ['meta', 'obrat14', 'obrat14tt'].forEach(t => {
     const btn = document.getElementById('analizaTab-' + t);
     const sub = document.getElementById('analizaSubpage-' + t);
     if (t === tab) {
       if (btn) { btn.style.background = 'var(--accent)'; btn.style.color = 'white'; btn.style.border = 'none'; btn.classList.add('active'); }
-      if (sub) sub.style.display = (t === 'obrat14' || t === 'tiktok') ? 'block' : 'grid';
+      if (sub) sub.style.display = t === 'meta' ? 'grid' : 'block';
     } else {
       if (btn) { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; btn.style.border = '1px solid var(--border)'; btn.classList.remove('active'); }
       if (sub) sub.style.display = 'none';
@@ -5251,12 +5236,169 @@ function switchAnalizaTab(tab) {
   });
   if (tab === 'obrat14') { o14LoadData(); o14LoadMetaInfo(); }
   if (tab === 'meta') { anLoadStock(); anLoadMetaFromServer(); }
-  if (tab === 'tiktok') { anTTLoadFromServer(); }
+  if (tab === 'obrat14tt') { tt14LoadData(); }
 }
 
-// ─── TIKTOK ANALIZA ───────────────────────────────────────────────────────────
-let anTTData = [];
-let anTTFilter = 'all';
+// ─── OBRAT 14 DNI: TIKTOK ─────────────────────────────────────────────────────
+let tt14Data = [];  // TikTok kampanje (iz XLSX)
+let tt14Filter = 'all';
+
+function tt14HandleDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) tt14Upload(f);
+}
+
+async function tt14Upload(file) {
+  const status = document.getElementById('tt14Status');
+  status.style.display = 'block';
+  status.style.color = 'var(--text-secondary)';
+  status.textContent = '⏳ Nalagam...';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/analiza-tiktok-upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + data.error; return; }
+    status.style.color = 'var(--green)';
+    status.textContent = `✓ ${data.rows} kampanj naloženih`;
+    document.getElementById('tt14Input').value = '';
+    tt14LoadData();
+  } catch(e) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + e.message; }
+}
+
+async function tt14LoadData() {
+  try {
+    // TikTok kampanje
+    const ttRes = await fetch('/analiza-tiktok-data');
+    const ttData = await ttRes.json();
+    if (!ttData.error) tt14Data = ttData.items || [];
+
+    // Info
+    const info = document.getElementById('tt14Info');
+    if (tt14Data.length > 0 && info) {
+      info.style.display = 'block';
+      info.textContent = `✓ ${tt14Data.length} kampanj naloženih`;
+    }
+
+    // Obrat 14 dni status (skupen z FB)
+    const o14Info = document.getElementById('tt14ObratInfo');
+    try {
+      const o14Res = await fetch('/o14-data');
+      const o14 = await o14Res.json();
+      if (o14Info) {
+        o14Info.textContent = o14.items?.length
+          ? `✓ ${o14.items.length} SKU-jev · skupen z FB Obrat 14 dni`
+          : 'Naloži obrat 14 dni v zavihku "Obrat 14 dni (FB)".';
+      }
+    } catch(e) {}
+
+    tt14RenderTable();
+  } catch(e) { console.warn('tt14LoadData', e); }
+}
+
+function tt14SetFilter(f, btn) {
+  tt14Filter = f;
+  document.querySelectorAll('.tt14-filter-btn').forEach(b => {
+    b.style.background = 'transparent';
+    b.style.color = 'var(--text-secondary)';
+  });
+  if (btn) { btn.style.background = 'var(--surface2)'; btn.style.color = 'var(--text)'; }
+  tt14RenderTable();
+}
+
+function tt14RenderTable() {
+  const tableEl = document.getElementById('tt14Table');
+  const emptyEl = document.getElementById('tt14Empty');
+  const search = (document.getElementById('tt14Search')?.value || '').toLowerCase();
+
+  if (!tt14Data.length) {
+    emptyEl.style.display = 'block';
+    emptyEl.textContent = 'Naloži TikTok XLSX poročilo za začetek.';
+    return;
+  }
+
+  // Združi po SKU — isti SKU ima lahko več kampanj
+  const skuMap = {};
+  for (const row of tt14Data) {
+    const sku = row.sku || '';
+    if (!sku) continue;
+    if (!skuMap[sku]) {
+      skuMap[sku] = {
+        sku, title: row.title || '',
+        spend: 0, conversions: 0,
+        status: 'inactive', campaigns: 0, active_campaigns: 0,
+        stock: row.stock || 0, stock30: row.stock30 || 0,
+        obrat14: 0,
+      };
+    }
+    skuMap[sku].spend += row.spend || 0;
+    skuMap[sku].conversions += row.conversions || 0;
+    skuMap[sku].campaigns++;
+    if (row.status === 'active') { skuMap[sku].active_campaigns++; skuMap[sku].status = 'active'; }
+  }
+
+  // Združi z obrat 14 dni (skupen z FB) — iz window._o14Items
+  if (window._o14Items?.length) {
+    for (const o14 of window._o14Items) {
+      const sku = (o14.sku || '').toUpperCase();
+      if (skuMap[sku]) {
+        skuMap[sku].obrat14 = o14.qty || 0;
+        if (!skuMap[sku].title) skuMap[sku].title = o14.naziv || '';
+      }
+    }
+  }
+
+  let items = Object.values(skuMap);
+
+  // Filter
+  if (tt14Filter === 'with_ads') items = items.filter(i => i.status === 'active');
+  else if (tt14Filter === 'paused') items = items.filter(i => i.status !== 'active' && i.campaigns > 0);
+  else if (tt14Filter === 'without_ads') items = items.filter(i => i.campaigns === 0 && i.obrat14 > 0);
+
+  if (search) items = items.filter(i => (i.sku + ' ' + i.title).toLowerCase().includes(search));
+
+  // Sortiraj po obratu desc
+  items.sort((a, b) => b.obrat14 - a.obrat14);
+
+  document.getElementById('tt14TableTitle').textContent = `TIKTOK OBRAT (${items.length})`;
+
+  if (!items.length) {
+    tableEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    emptyEl.textContent = 'Ni zadetkov za ta filter.';
+    return;
+  }
+  emptyEl.style.display = 'none';
+
+  const GRID = '140px 1fr 80px 70px 80px 90px 70px';
+  const header = `<div style="display:grid;grid-template-columns:${GRID};gap:8px;padding:9px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--border);margin-bottom:4px">
+    <span>SKU</span><span>Naziv</span><span style="text-align:center">Status TT</span><span style="text-align:right">Obrat 14d</span><span style="text-align:right">Spend</span><span style="text-align:right">Konv.</span><span style="text-align:right">Zaloga</span>
+  </div>`;
+
+  tableEl.innerHTML = header + items.map(it => {
+    const statusBadge = it.status === 'active'
+      ? `<span style="background:rgba(34,197,94,0.1);color:var(--green);font-size:10px;padding:2px 7px;border-radius:4px;font-weight:600">▶ ${it.active_campaigns}/${it.campaigns}</span>`
+      : it.campaigns > 0
+      ? `<span style="background:rgba(239,68,68,0.08);color:var(--red);font-size:10px;padding:2px 7px;border-radius:4px">⏸ STOP</span>`
+      : `<span style="font-size:10px;color:var(--text-tertiary)">—</span>`;
+    const obratColor = it.obrat14 > 10 ? 'var(--green)' : it.obrat14 > 3 ? '#d97706' : it.obrat14 > 0 ? 'var(--red)' : 'var(--text-tertiary)';
+    const stockColor = it.stock > 50 ? 'var(--green)' : it.stock > 10 ? '#d97706' : it.stock > 0 ? 'var(--red)' : 'var(--text-tertiary)';
+
+    return `<div style="display:grid;grid-template-columns:${GRID};gap:8px;padding:9px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;align-items:center">
+      <span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.sku)}</span>
+      <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${esc(it.title)}">${esc(it.title||'—')}</span>
+      <span style="text-align:center">${statusBadge}</span>
+      <span style="text-align:right;font-weight:700;color:${obratColor}">${it.obrat14 || '—'}</span>
+      <span style="text-align:right;font-size:11px;color:var(--text-secondary)">${it.spend > 0 ? it.spend.toFixed(0) + ' €' : '—'}</span>
+      <span style="text-align:right;font-size:11px;color:var(--text-secondary)">${it.conversions || '—'}</span>
+      <span style="text-align:right;font-weight:600;color:${stockColor}">${it.stock}</span>
+    </div>`;
+  }).join('');
+}
+
+
 
 function anTTHandleDrop(e) {
   e.preventDefault();
