@@ -5,29 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Price Checker — Maaarket</title>
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
   :root {
-    --bg: #0a0c10;
-    --surface: #111318;
-    --surface2: #1a1d24;
-    --surface3: #22262f;
-    --border: #2a2f3a;
-    --green: #34d058;
-    --green-dim: rgba(52,208,88,0.10);
-    --red: #f85149;
-    --red-dim: rgba(248,81,73,0.10);
-    --yellow: #e3b341;
-    --yellow-dim: rgba(227,179,65,0.10);
-    --purple: #a78bfa;
-    --purple-dim: rgba(167,139,250,0.10);
-    --orange: #fb923c;
-    --orange-dim: rgba(251,146,60,0.10);
-    --blue: #60a5fa;
-    --blue-dim: rgba(96,165,250,0.10);
-    --text: #e2e8f0;
-    --muted: #64748b;
-    --font: 'JetBrains Mono', 'Fira Code', monospace;
-    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --radius: 8px;
+    --bg: #f4f6fb;
+    --surface: #ffffff;
+    --surface2: #f8fafd;
+    --border: #edf0f7;
+    --border2: #e2e8f2;
+    --green: #16a34a;
+    --green-dim: #f0fdf4;
+    --green-border: #bbf7d0;
+    --red: #e53e3e;
+    --red-dim: #fff0f0;
+    --red-border: #ffd0d0;
+    --yellow: #d97706;
+    --yellow-dim: #fffbeb;
+    --yellow-border: #fde68a;
+    --purple: #7c3aed;
+    --purple-dim: #f3efff;
+    --purple-border: #ddd6fe;
+    --orange: #ea580c;
+    --orange-dim: #fff7ed;
+    --orange-border: #fed7aa;
+    --blue: #2563eb;
+    --blue-dim: #eff6ff;
+    --blue-border: #bfdbfe;
+    --text: #1e2a3a;
+    --muted: #8896b0;
+    --font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono: 'Courier New', monospace;
+    --radius: 10px;
+    --accent: #4f6ef7;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -40,230 +49,217 @@
     min-height: 100vh;
   }
 
-  /* ── LAYOUT ── */
+  /* ── HEADER ── */
   .header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 14px 28px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
+    padding: 13px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
     position: sticky; top: 0; z-index: 50;
   }
-  .logo { font-size: 16px; font-weight: 700; color: var(--green); letter-spacing: -0.5px; font-family: var(--font); }
-  .logo span { color: var(--muted); font-weight: 400; }
+  .logo { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+  .logo span { color: var(--accent); }
+  .logo em { font-style: normal; font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 8px; }
   .upload-area { display: flex; align-items: center; gap: 10px; }
   #fileInput { display: none; }
 
   .btn {
-    background: var(--green);
-    color: #000;
-    font-family: var(--sans);
-    font-weight: 600;
-    font-size: 12px;
-    padding: 7px 14px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: opacity 0.15s;
+    background: var(--accent); color: #fff;
+    font-family: var(--font); font-weight: 600; font-size: 12px;
+    padding: 8px 16px; border: none; border-radius: 8px;
+    cursor: pointer; transition: opacity 0.15s;
   }
-  .btn:hover { opacity: 0.85; }
+  .btn:hover { opacity: 0.9; }
   .btn.secondary {
-    background: var(--surface2);
-    color: var(--text);
-    border: 1px solid var(--border);
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border2);
   }
 
-  /* ── TASK CARDS (glavna navigacija) ── */
+  /* ── TASK BAR ── */
   .task-bar {
-    background: var(--surface);
+    background: var(--bg);
+    padding: 16px 24px;
+    display: none; gap: 10px; flex-wrap: wrap; align-items: stretch;
     border-bottom: 1px solid var(--border);
-    padding: 12px 28px;
-    display: none;
-    gap: 10px;
-    flex-wrap: wrap;
-    align-items: stretch;
   }
   .task-card {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 10px 16px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    cursor: pointer;
-    transition: all 0.15s;
-    background: var(--surface2);
-    min-width: 120px;
-    position: relative;
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer; transition: all 0.15s;
+    min-width: 110px; position: relative; overflow: hidden;
   }
-  .task-card:hover { border-color: var(--muted); transform: translateY(-1px); }
+  .task-card:hover { transform: translateY(-2px); border-color: var(--border2); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
   .task-card.active { border-width: 2px; }
-  .task-card .task-num { font-size: 22px; font-weight: 700; font-family: var(--font); line-height: 1; }
-  .task-card .task-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--sans); }
-  .task-card .task-icon { font-size: 14px; margin-bottom: 2px; }
-  .task-card.tc-all { border-color: var(--border); }
-  .task-card.tc-all.active { border-color: var(--text); }
-  .task-card.tc-all .task-num { color: var(--text); }
-  .task-card.tc-error { }
-  .task-card.tc-error.active { border-color: var(--red); background: var(--red-dim); }
-  .task-card.tc-error .task-num { color: var(--red); }
-  .task-card.tc-warn.active { border-color: var(--yellow); background: var(--yellow-dim); }
-  .task-card.tc-warn .task-num { color: var(--yellow); }
-  .task-card.tc-multi.active { border-color: var(--purple); background: var(--purple-dim); }
-  .task-card.tc-multi .task-num { color: var(--purple); }
-  .task-card.tc-qty.active { border-color: var(--orange); background: var(--orange-dim); }
-  .task-card.tc-qty .task-num { color: var(--orange); }
-  .task-card.tc-null.active { border-color: var(--blue); background: var(--blue-dim); }
-  .task-card.tc-null .task-num { color: var(--blue); }
-  .task-card.tc-ok.active { border-color: var(--green); background: var(--green-dim); }
-  .task-card.tc-ok .task-num { color: var(--green); }
-  .task-done-bar {
-    position: absolute; bottom: 0; left: 0; height: 2px; border-radius: 0 0 var(--radius) var(--radius);
-    background: currentColor; transition: width 0.3s;
-  }
+  .task-card .task-icon { width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; margin-bottom: 6px; }
+  .task-card .task-num { font-size: 24px; font-weight: 700; line-height: 1; }
+  .task-card .task-label { font-size: 10px; color: var(--muted); font-weight: 500; margin-top: 2px; }
 
-  /* ── SECONDARY FILTERS ── */
+  .task-card.tc-all .task-icon { background: #f0f2f8; }
+  .task-card.tc-all .task-num { color: var(--text); }
+  .task-card.tc-all.active { border-color: var(--accent); }
+
+  .task-card.tc-error .task-icon { background: var(--red-dim); }
+  .task-card.tc-error .task-num { color: var(--red); }
+  .task-card.tc-error.active { border-color: var(--red); background: var(--red-dim); }
+
+  .task-card.tc-warn .task-icon { background: var(--yellow-dim); }
+  .task-card.tc-warn .task-num { color: var(--yellow); }
+  .task-card.tc-warn.active { border-color: var(--yellow); background: var(--yellow-dim); }
+
+  .task-card.tc-multi .task-icon { background: var(--purple-dim); }
+  .task-card.tc-multi .task-num { color: var(--purple); }
+  .task-card.tc-multi.active { border-color: var(--purple); background: var(--purple-dim); }
+
+  .task-card.tc-qty .task-icon { background: var(--orange-dim); }
+  .task-card.tc-qty .task-num { color: var(--orange); }
+  .task-card.tc-qty.active { border-color: var(--orange); background: var(--orange-dim); }
+
+  .task-card.tc-null .task-icon { background: var(--blue-dim); }
+  .task-card.tc-null .task-num { color: var(--blue); }
+  .task-card.tc-null.active { border-color: var(--blue); background: var(--blue-dim); }
+
+  .task-card.tc-ok .task-icon { background: var(--green-dim); }
+  .task-card.tc-ok .task-num { color: var(--green); }
+  .task-card.tc-ok.active { border-color: var(--green); background: var(--green-dim); }
+
+  .task-done-bar { display: none; }
+
+  /* ── FILTERS ── */
   .filters {
-    padding: 10px 28px;
-    display: none;
-    gap: 6px;
-    flex-wrap: wrap;
-    align-items: center;
+    padding: 10px 24px;
+    display: none; gap: 6px; flex-wrap: wrap; align-items: center;
+    background: var(--surface);
     border-bottom: 1px solid var(--border);
-    background: var(--bg);
   }
   .filter-btn {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    font-family: var(--sans);
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: all 0.15s;
+    background: transparent; border: 1px solid var(--border2);
+    color: var(--muted); font-family: var(--font); font-size: 11px;
+    padding: 4px 10px; border-radius: 6px; cursor: pointer;
+    transition: all 0.15s; font-weight: 500;
   }
   .filter-btn:hover { border-color: var(--muted); color: var(--text); }
-  .filter-btn.active { border-color: var(--green); color: var(--green); background: var(--green-dim); }
-  .filter-btn.f-red.active { border-color: var(--red); color: var(--red); background: var(--red-dim); }
-  .filter-btn.f-yellow.active { border-color: var(--yellow); color: var(--yellow); background: var(--yellow-dim); }
+  .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .filter-btn.f-red.active { background: var(--red); border-color: var(--red); color: #fff; }
+  .filter-btn.f-yellow.active { background: var(--yellow); border-color: var(--yellow); color: #fff; }
 
   .search-input {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: 12px;
-    padding: 5px 12px;
-    outline: none;
-    width: 200px;
-    border-radius: 5px;
+    background: var(--bg); border: 1px solid var(--border2);
+    color: var(--text); font-family: var(--font); font-size: 12px;
+    padding: 5px 12px; outline: none; width: 210px; border-radius: 6px;
     transition: border-color 0.15s;
   }
-  .search-input:focus { border-color: var(--green); }
+  .search-input:focus { border-color: var(--accent); }
   .search-input::placeholder { color: var(--muted); }
 
   /* ── TABLE ── */
-  .table-wrap { overflow-x: auto; padding: 0 28px 40px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  .table-wrap { overflow-x: auto; padding: 16px 24px 40px; }
+  table {
+    width: 100%; border-collapse: collapse;
+    background: var(--surface); border-radius: 12px;
+    overflow: hidden; border: 1px solid var(--border);
+  }
   th {
-    text-align: left; padding: 8px 12px; font-size: 10px;
-    letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted);
+    text-align: left; padding: 11px 14px; font-size: 10px;
+    letter-spacing: 0.6px; text-transform: uppercase; color: var(--muted);
     border-bottom: 1px solid var(--border); white-space: nowrap;
-    cursor: pointer; user-select: none; font-family: var(--sans);
+    cursor: pointer; user-select: none; font-weight: 600;
+    background: var(--surface2);
   }
   th:hover { color: var(--text); }
-  td { padding: 9px 12px; border-bottom: 1px solid rgba(42,47,58,0.6); white-space: nowrap; vertical-align: middle; }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; font-size: 12px; }
+  tr:last-child td { border-bottom: none; }
   tr:hover td { background: var(--surface2); }
   .row-error td:first-child { border-left: 3px solid var(--red); }
   .row-warn td:first-child { border-left: 3px solid var(--yellow); }
   .row-ok td:first-child { border-left: 3px solid var(--green); }
   .row-null td:first-child { border-left: 3px solid var(--blue); }
 
-  .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; letter-spacing: 0.3px; font-family: var(--sans); }
-  .badge-error { background: var(--red-dim); color: var(--red); border: 1px solid rgba(248,81,73,0.3); }
-  .badge-warn { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(227,179,65,0.3); }
-  .badge-ok { background: var(--green-dim); color: var(--green); border: 1px solid rgba(52,208,88,0.3); }
-  .badge-null { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(96,165,250,0.3); }
+  .badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
+  .badge-error { background: var(--red-dim); color: #c53030; }
+  .badge-warn { background: var(--yellow-dim); color: #92400e; }
+  .badge-ok { background: var(--green-dim); color: #166534; }
+  .badge-null { background: var(--blue-dim); color: #1e40af; }
 
-  .price-old { color: var(--muted); text-decoration: line-through; margin-right: 6px; font-size: 11px; }
+  .price-old { color: #c4cdd8; text-decoration: line-through; margin-right: 4px; font-size: 11px; }
   .price-new { color: var(--green); font-weight: 700; }
   .price-ok { color: var(--text); }
 
   .id-badge {
-    background: var(--surface2); border: 1px solid var(--border);
-    color: var(--muted); font-size: 10px; padding: 2px 6px;
-    border-radius: 4px; font-family: var(--font);
+    font-family: var(--mono); font-size: 11px;
+    background: var(--bg); padding: 2px 6px;
+    border-radius: 5px; color: var(--muted);
   }
 
-  .issue-type { font-size: 10px; color: var(--muted); font-family: var(--sans); }
+  .issue-type { font-size: 10px; color: var(--muted); }
 
   /* ── DROP ZONE ── */
   .drop-zone {
-    border: 2px dashed var(--border); padding: 80px 40px;
-    text-align: center; margin: 40px 28px; transition: all 0.2s;
-    cursor: pointer; border-radius: 12px;
+    border: 2px dashed var(--border2); padding: 80px 40px;
+    text-align: center; margin: 32px 24px; border-radius: 16px;
+    cursor: pointer; transition: all 0.2s; background: var(--surface);
   }
-  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--green); background: var(--green-dim); }
-  .drop-zone h3 { font-size: 18px; margin-bottom: 10px; }
-  .drop-zone p { color: var(--muted); font-size: 12px; line-height: 1.7; font-family: var(--sans); }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--blue-dim); }
+  .drop-zone h3 { font-size: 18px; margin-bottom: 10px; font-weight: 600; color: var(--text); }
+  .drop-zone p { color: var(--muted); font-size: 12px; line-height: 1.7; }
 
   .copy-btn {
-    background: none; border: 1px solid var(--border); color: var(--muted);
-    font-family: var(--sans); font-size: 10px; padding: 2px 8px;
+    background: none; border: 1px solid var(--border2); color: var(--muted);
+    font-family: var(--font); font-size: 10px; padding: 2px 8px;
     border-radius: 4px; cursor: pointer; transition: all 0.15s;
   }
-  .copy-btn:hover { border-color: var(--green); color: var(--green); }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
 
   @media (max-width: 768px) {
     .header, .task-bar, .filters { padding: 10px 16px; }
-    .table-wrap { padding: 0 16px 40px; }
+    .table-wrap { padding: 12px 16px 40px; }
     .drop-zone { margin: 16px; padding: 40px 20px; }
     .task-card { min-width: 90px; }
   }
 
-  .f-multi { border-color: rgba(130,80,255,0.5); color: #a78bfa; }
-  .f-multi.active, .f-multi:hover { background: rgba(130,80,255,0.15); color: #c4b5fd; border-color: #a78bfa; }
+  /* ── MULTI VIEW ── */
+  .f-multi { border-color: var(--purple-border); color: var(--purple); }
+  .f-multi.active { background: var(--purple); color: #fff; border-color: var(--purple); }
 
-  .group-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 6px; }
-  .group-header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--surface2); border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; flex-wrap: wrap; }
-  .group-header:hover { background: rgba(130,80,255,0.08); }
-  .group-id-badge { font-weight: 700; color: #a78bfa; font-size: 13px; text-decoration: none; border: 1px solid rgba(167,139,250,0.4); border-radius: 4px; padding: 2px 8px; flex-shrink: 0; }
-  .group-id-badge:hover { background: rgba(167,139,250,0.1); }
-  .group-count-badge { background: rgba(130,80,255,0.2); color: #c4b5fd; border-radius: 12px; padding: 2px 8px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
-  .group-skus { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
-  .group-sku-pill { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600; flex-shrink: 0; }
-  .group-sku-ok { background: rgba(64,193,80,0.12); color: var(--green); border: 1px solid rgba(64,193,80,0.25); }
-  .group-sku-error { background: rgba(248,81,73,0.12); color: var(--red); border: 1px solid rgba(248,81,73,0.25); }
-  .group-sku-warn { background: rgba(227,179,65,0.12); color: var(--yellow); border: 1px solid rgba(227,179,65,0.25); }
-  .group-toggle { color: var(--muted); font-size: 11px; flex-shrink: 0; margin-left: auto; transition: transform 0.15s; }
+  .group-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 8px; }
+  .group-header { display: flex; align-items: center; gap: 10px; padding: 11px 16px; background: var(--surface2); border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; flex-wrap: wrap; }
+  .group-header:hover { background: var(--purple-dim); }
+  .group-id-badge { font-weight: 700; color: var(--purple); font-size: 12px; text-decoration: none; border: 1px solid var(--purple-border); border-radius: 6px; padding: 2px 8px; flex-shrink: 0; background: var(--purple-dim); }
+  .group-id-badge:hover { opacity: 0.8; }
+  .group-count-badge { background: var(--purple-dim); color: var(--purple); border-radius: 12px; padding: 2px 8px; font-size: 11px; font-weight: 600; flex-shrink: 0; border: 1px solid var(--purple-border); }
+  .group-skus { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; min-width: 0; }
+  .group-sku-pill { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; flex-shrink: 0; }
+  .group-sku-ok { background: var(--green-dim); color: #166534; border: 1px solid var(--green-border); }
+  .group-sku-error { background: var(--red-dim); color: #c53030; border: 1px solid var(--red-border); }
+  .group-sku-warn { background: var(--yellow-dim); color: #92400e; border: 1px solid var(--yellow-border); }
+  .group-toggle { color: var(--muted); font-size: 11px; flex-shrink: 0; margin-left: auto; }
   .group-rows { display: none; }
   .group-rows.open { display: block; }
-  .group-rows table { width: 100%; border-collapse: collapse; }
-  .group-rows td { padding: 8px 16px; border-bottom: 1px solid rgba(48,54,61,0.4); font-size: 12px; }
+  .group-rows table { width: 100%; border-collapse: collapse; border-radius: 0; border: none; }
+  .group-rows td { padding: 9px 16px; border-bottom: 1px solid var(--border); font-size: 12px; }
   .group-rows tr:last-child td { border-bottom: none; }
-  .group-rows tr:hover td { background: rgba(255,255,255,0.02); }
-  #multiView { display: none; padding: 8px 24px 24px; }
-  .multi-stats { padding: 8px 24px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .group-rows tr:hover td { background: var(--surface2); }
+  #multiView { display: none; padding: 16px 24px 32px; }
+  .multi-stats { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 16px; font-size: 11px; color: var(--muted); background: var(--surface); border-radius: 10px; margin-bottom: 12px; border: 1px solid var(--border); }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <div class="logo">price<span>checker</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans)">//&nbsp;maaarket</span></div>
+  <div class="logo">price<span>checker</span><em>// maaarket</em></div>
   <div class="upload-area">
     <input type="file" id="fileInput" accept=".txt,.csv,.tsv">
-    <button class="btn secondary" onclick="document.getElementById('fileInput').click()" style="font-family:var(--sans)">📂 Naloži datoteko</button>
+    <button class="btn secondary" onclick="document.getElementById('fileInput').click()">📂 Naloži datoteko</button>
   </div>
 </div>
 
 <!-- TASK CARDS — glavna navigacija -->
 <div class="task-bar" id="taskBar">
   <div class="task-card tc-all active" onclick="taskFilter('all',this)" id="tc-all">
-    <div class="task-icon">📋</div>
+    <div class="task-icon" style="background:#f0f2f8">📋</div>
     <div class="task-num" id="statTotal">0</div>
     <div class="task-label">Vsa naročila</div>
   </div>
