@@ -2647,16 +2647,17 @@ function ttCreativeUpdateOutput() {
     if (out) out.style.display = 'none';
     if (btn) btn.style.display = 'none';
   } else {
-    const formatted = [...ttCreativeSelected].map((v, i) => `[VIDEO (${i+1}).mp4]`).join('');
-    if (out) { out.style.display = 'block'; out.textContent = formatted; out.dataset.videos = [...ttCreativeSelected].join('|||'); }
+    // Format: [ABPULLER4.mp4][ABPULLER3.mp4]... — dejanska imena
+    const formatted = [...ttCreativeSelected].map(v => `[${v}]`).join('');
+    if (out) { out.style.display = 'block'; out.textContent = formatted; }
     if (btn) { btn.style.display = 'block'; btn.textContent = `✓ Vstavi ${n} video${n > 1 ? 'v' : ''} v polje`; }
   }
 }
 
 function ttCreativeInsert() {
   if (!ttCreativeSelected.size) return;
-  const videos = [...ttCreativeSelected];
-  const formatted = videos.map((v, i) => `[VIDEO (${i+1}).mp4]`).join('');
+  // Vstavi dejanska imena: [ABPULLER4.mp4][ABPULLER3.mp4]
+  const formatted = [...ttCreativeSelected].map(v => `[${v}]`).join('');
   const field = document.getElementById('ttVideos');
   if (field) {
     field.value = formatted;
@@ -5651,21 +5652,17 @@ function ttKrUpdateOutput() {
   card.style.display = selected.length > 0 ? 'block' : 'none';
   if (count) count.textContent = `${selected.length} videov izbranih`;
   if (output) {
-    // Format: [VIDEO(1).mp4][VIDEO(2).mp4]...
-    const fmt = selected.map((v,i) => `[VIDEO(${i+1}).mp4]`).join('');
+    // Dejanska imena: [ABPULLER4.mp4][ABPULLER3.mp4]
+    const fmt = selected.map(v => `[${v}]`).join('');
     output.textContent = fmt;
-    // Shrani dejanska imena za kopiraj
-    output.dataset.videos = selected.join('|||');
   }
 }
 
 function ttKrCopyOutput() {
   const output = document.getElementById('ttKrSelOutput');
   const btn = document.getElementById('ttKrCopyBtn');
-  const videos = (output?.dataset.videos || '').split('|||').filter(Boolean);
-  // Kopiraj samo VIDEO NAMES polje: [VIDEO(1).mp4][VIDEO(2).mp4]
-  const fmt = videos.map((v,i) => `[VIDEO(${i+1}).mp4]`).join('');
-  const txt = fmt;
+  // Kopiraj kar je v output (dejanska imena)
+  const txt = output?.textContent || '';
   const doCopy = () => {
     if (btn) { const orig=btn.textContent; btn.textContent='✓ Kopirano!'; setTimeout(()=>btn.textContent=orig,1500); }
   };
