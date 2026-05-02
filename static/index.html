@@ -5629,7 +5629,9 @@ function ttKrRenderResults() {
     const resTxt = it.w ? `${resIcon} ${it.w}×${it.h}` : '—';
     const cpa = it.conversions>0 ? (it.cost/it.conversions) : 0;
     const cpaColor = cpa>0&&cpa<8?'var(--green)':cpa>15?'var(--red)':'var(--text)';
-    const statusDot = it.status==='Active'
+    const statusDot = it.source === 'library'
+      ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--text-tertiary);display:inline-block;margin-right:4px;flex-shrink:0" title="Samo v Creative Library — ni spend podatkov"></span>'
+      : it.status==='Active'
       ? '<span style="width:6px;height:6px;border-radius:50%;background:#22c55e;display:inline-block;margin-right:4px;flex-shrink:0"></span>'
       : it.status ? '<span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;display:inline-block;margin-right:4px;flex-shrink:0"></span>'
       : '';
