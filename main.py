@@ -4889,15 +4889,30 @@ async def inventura_pdf(data: dict):
         pdfmetrics.registerFont(TTFont("DejaVu", DEJAVU_REGULAR))
         pdfmetrics.registerFont(TTFont("DejaVu-Bold", DEJAVU_BOLD))
 
-        def trunc(s, max_chars=55):
-            """Skrajšaj naziv: reže pri prvi vejici/oklepaju, max 55 znakov."""
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+
+        def trunc_ellipsis(s, font, font_size, max_width_pt):
+            """Skrajšaj niz na max_width_pt točk, doda ... če je presezan."""
             if not s: return ""
+            # Najprej reži pri vejici/oklepaju
             for sep in [",", "(", " -"]:
                 idx = s.find(sep)
-                if 0 < idx < max_chars:
-                    s = s[:idx].strip()
-                    break
-            return s[:max_chars].strip()
+                if 0 < idx < len(s):
+                    candidate = s[:idx].strip()
+                    if stringWidth(candidate, font, font_size) <= max_width_pt:
+                        s = candidate
+                        break
+            # Če je še vedno predolg, reži znak po znak + dodaj ...
+            ellipsis = "..."
+            ellipsis_w = stringWidth(ellipsis, font, font_size)
+            if stringWidth(s, font, font_size) <= max_width_pt:
+                return s
+            while s and stringWidth(s + ellipsis, font, font_size) > max_width_pt:
+                s = s[:-1]
+            return s.strip() + ellipsis
+
+        ROW_H = 0.65 * cm   # fiksna višina vseh podatkovnih vrstic
+        HDR_H = 0.7  * cm   # višina header vrstice
 
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4,
@@ -4906,46 +4921,62 @@ async def inventura_pdf(data: dict):
         s_title = ParagraphStyle("t", fontSize=14, fontName="DejaVu-Bold", spaceAfter=4)
         s_sub   = ParagraphStyle("s", fontSize=9,  fontName="DejaVu",
                                  textColor=colors.HexColor("#64748b"), spaceAfter=12)
-        s_cell  = ParagraphStyle("c", fontSize=8,  fontName="DejaVu", leading=10)
+        s_num   = ParagraphStyle("n", fontSize=8,  fontName="DejaVu",   leading=10, alignment=1)
+        s_cell  = ParagraphStyle("c", fontSize=8,  fontName="DejaVu",   leading=10)
         s_sku   = ParagraphStyle("k", fontSize=8,  fontName="DejaVu-Bold", leading=10)
         s_kom   = ParagraphStyle("m", fontSize=8,  fontName="DejaVu",
                                  textColor=colors.HexColor("#7c3aed"), leading=10)
         s_hdr   = ParagraphStyle("h", fontSize=8,  fontName="DejaVu-Bold",
-                                 textColor=colors.white, leading=10)
+                                 textColor=colors.white, leading=10, alignment=1)
 
         story = [
             Paragraph(title_text, s_title),
             Paragraph(f"Datum: {datum}  |  Skupaj SKU-jev: {len(items)}", s_sub),
         ]
 
-        col_widths = [0.6*cm, 3.6*cm, 6.5*cm, 2.0*cm, 3.8*cm, 1.9*cm]
+        # Širine: # | SKU | Naziv | Pozicija | Komentar | Fizično ✓
+        # Skupaj = 18.0 cm (A4 - 3cm robov)
+        col_widths = [0.9*cm, 3.5*cm, 6.2*cm, 2.0*cm, 3.5*cm, 1.9*cm]
+
+        # Max širina za naziv v točkah (6.2cm - 2*padding 5pt)
+        naziv_max_pt = 6.2 * 28.35 - 10
+
         table_data = [[
             Paragraph("#", s_hdr), Paragraph("SKU", s_hdr), Paragraph("Naziv", s_hdr),
             Paragraph("Pozicija", s_hdr), Paragraph("Komentar", s_hdr), Paragraph("Fizično ✓", s_hdr),
         ]]
         for i, it in enumerate(items, 1):
-            komentar = str(it.get("komentar") or "").strip()
+            komentar_raw = str(it.get("komentar") or "").strip()
+            naziv_raw = str(it.get("naziv") or "")
+            naziv_short = trunc_ellipsis(naziv_raw, "DejaVu", 8, naziv_max_pt)
+            # Komentar tudi skrajšaj če predolg
+            kom_max_pt = 3.5 * 28.35 - 10
+            komentar_short = trunc_ellipsis(komentar_raw, "DejaVu", 8, kom_max_pt) if komentar_raw else ""
             table_data.append([
-                Paragraph(str(i), s_cell),
+                Paragraph(str(i), s_num),
                 Paragraph(str(it.get("sku") or ""), s_sku),
-                Paragraph(trunc(str(it.get("naziv") or "")), s_cell),
+                Paragraph(naziv_short, s_cell),
                 Paragraph(str(it.get("pozicija") or "—"), s_cell),
-                Paragraph(komentar, s_kom) if komentar else Paragraph("", s_cell),
+                Paragraph(komentar_short, s_kom) if komentar_short else Paragraph("", s_cell),
                 Paragraph("", s_cell),
             ])
 
-        tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
+        # Fiksne višine vrstic: header + vse podatkovne enako
+        row_heights = [HDR_H] + [ROW_H] * (len(table_data) - 1)
+
+        tbl = Table(table_data, colWidths=col_widths, rowHeights=row_heights, repeatRows=1)
         row_styles = [
             ("BACKGROUND",    (0,0), (-1,0), colors.HexColor("#1e293b")),
             ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
             ("GRID",          (0,0), (-1,-1), 0.4, colors.HexColor("#e2e8f0")),
             ("LINEBELOW",     (0,0), (-1,0), 1.5, colors.HexColor("#1e293b")),
-            ("TOPPADDING",    (0,0), (-1,-1), 5),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+            ("TOPPADDING",    (0,0), (-1,-1), 4),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 4),
             ("LEFTPADDING",   (0,0), (-1,-1), 5),
             ("RIGHTPADDING",  (0,0), (-1,-1), 5),
             ("ALIGN",         (0,0), (0,-1), "CENTER"),
             ("ALIGN",         (3,1), (3,-1), "CENTER"),
+            ("NOSPLIT",       (0,0), (-1,-1)),
             ("BOX",           (5,1), (5,-1), 0.8, colors.HexColor("#94a3b8")),
             ("BACKGROUND",    (5,1), (5,-1), colors.HexColor("#f0fdf4")),
         ]
