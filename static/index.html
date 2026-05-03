@@ -565,7 +565,6 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('hsuvoz')">HS+ naročanje</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('pricecheck')">Kontrola cen</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('zdrnarocila')">Zdru. naročila</div>
-    <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('inventura')">📦 Inventura</div>
   </div>
 
   <div class="nav-item nav-zaloga" id="nav-zaloga" onclick="switchPage('zaloga')">
@@ -1657,95 +1656,93 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </div>
     </div>
-    <!-- INVENTURA SUBPAGE -->
-    <div id="orodjaSubpage-inventura" style="display:none;padding:14px">
-      <div style="max-width:1100px;margin:0 auto">
+  </div><!-- /page-orodja -->
 
-        <!-- Header -->
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-          <div>
-            <h2 style="font-size:16px;font-weight:700;color:var(--text);margin:0">📦 Inventura</h2>
-            <p style="font-size:11px;color:var(--text-secondary);margin:4px 0 0">Naloži CSV izvoz → združi po SKU → PDF za skladiščnike</p>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button onclick="inventuraClear()" id="inv-clear-btn" style="display:none;background:var(--surface);border:1px solid var(--border);color:var(--text-secondary);padding:7px 14px;border-radius:var(--radius);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Počisti</button>
-            <button onclick="inventuraPdf()" id="inv-pdf-btn" style="display:none;background:#16a34a;color:#fff;border:none;padding:8px 18px;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📄 Generiraj PDF</button>
-          </div>
+  <!-- ═══ INVENTURA SUBPAGE (znotraj orodja sistema) ═══ -->
+  <div id="orodjaSubpage-inventura" style="display:none;padding:14px">
+    <div style="max-width:960px;margin:0 auto">
+
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2 style="font-size:15px;font-weight:700;color:var(--text);margin:0">📦 Inventura</h2>
+          <p style="font-size:11px;color:var(--text-secondary);margin:3px 0 0">Naloži CSV → združi po SKU → uredi → PDF za skladiščnike</p>
         </div>
-
-        <!-- Upload area -->
-        <div id="inv-upload-area">
-          <div style="background:var(--surface);border:2px dashed var(--border);border-radius:12px;padding:48px 32px;text-align:center;cursor:pointer;transition:all 0.2s"
-               onclick="document.getElementById('inv-file-input').click()"
-               ondragover="event.preventDefault();this.style.borderColor='var(--accent)';this.style.background='rgba(79,110,247,0.05)'"
-               ondragleave="this.style.borderColor='var(--border)';this.style.background='var(--surface)'"
-               ondrop="event.preventDefault();this.style.borderColor='var(--border)';this.style.background='var(--surface)';inventuraHandleFile(event.dataTransfer.files[0])"
-               onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-            <div style="font-size:36px;margin-bottom:12px">📦</div>
-            <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">Naloži CSV inventurni izvoz</div>
-            <div style="font-size:11px;color:var(--text-secondary);line-height:1.7">
-              Format: <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:10px">ID naročila, SKU, Naziv, Količina, Pozicija, Opomba, Prodano</code><br>
-              Dvojniki po SKU se samodejno seštejejo
-            </div>
-            <input type="file" id="inv-file-input" accept=".csv,.txt" style="display:none" onchange="inventuraHandleFile(this.files[0])">
-          </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button onclick="inventuraClear()" id="inv-clear-btn" style="display:none;background:var(--surface);border:1px solid var(--border);color:var(--text-secondary);padding:7px 14px;border-radius:var(--radius);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Počisti</button>
+          <button onclick="inventuraPdf()" id="inv-pdf-btn" style="display:none;background:#16a34a;color:#fff;border:none;padding:8px 18px;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📄 Generiraj PDF</button>
         </div>
-
-        <!-- Stats bar -->
-        <div id="inv-stats" style="display:none;margin-top:14px">
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-            <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 18px;min-width:110px">
-              <div style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Skupaj SKU</div>
-              <div id="inv-stat-skus" style="font-size:22px;font-weight:700;color:var(--text)">0</div>
-            </div>
-            <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 18px;min-width:110px">
-              <div style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Skupaj kosov</div>
-              <div id="inv-stat-qty" style="font-size:22px;font-weight:700;color:var(--accent)">0</div>
-            </div>
-            <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 18px;min-width:160px;flex:1">
-              <div style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Datoteka</div>
-              <div id="inv-stat-file" style="font-size:11px;font-weight:600;color:var(--text);word-break:break-all">—</div>
-            </div>
-            <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;flex:2;min-width:200px;display:flex;align-items:center;gap:8px">
-              <span style="color:var(--text-secondary);font-size:13px">🔍</span>
-              <input type="text" id="inv-search" placeholder="Išči SKU, naziv, pozicijo..." oninput="inventuraRender()"
-                style="border:none;outline:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text);width:100%">
-            </div>
-          </div>
-        </div>
-
-        <!-- Table -->
-        <div id="inv-table-wrap" style="display:none">
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-            <table style="width:100%;border-collapse:collapse">
-              <thead>
-                <tr style="background:#1e293b">
-                  <th style="padding:10px 12px;text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;font-weight:600;white-space:nowrap">#</th>
-                  <th style="padding:10px 12px;text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;font-weight:600;white-space:nowrap">SKU</th>
-                  <th style="padding:10px 12px;text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;font-weight:600">Naziv</th>
-                  <th style="padding:10px 12px;text-align:center;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;font-weight:600;white-space:nowrap">Pozicija</th>
-                  <th style="padding:10px 12px;text-align:center;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;font-weight:600;white-space:nowrap">Naroč. kol.</th>
-                  <th style="padding:10px 12px;text-align:center;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;font-weight:600;white-space:nowrap">Prodano</th>
-                  <th style="padding:10px 12px;text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;font-weight:600">Opomba</th>
-                </tr>
-              </thead>
-              <tbody id="inv-tbody"></tbody>
-            </table>
-          </div>
-          <div id="inv-no-results" style="display:none;text-align:center;padding:40px;color:var(--text-secondary);font-size:12px">Ni zadetkov</div>
-        </div>
-
-        <!-- Loading / Error -->
-        <div id="inv-loading" style="display:none;text-align:center;padding:48px;color:var(--text-secondary)">
-          <div style="font-size:22px;margin-bottom:8px">⏳</div>
-          <div style="font-size:12px">Obdelujem CSV...</div>
-        </div>
-        <div id="inv-error" style="display:none;background:#fff5f5;border:1px solid #fed7d7;border-radius:var(--radius);padding:12px 16px;color:#c53030;font-size:12px;margin-top:12px"></div>
-
       </div>
-    </div>
-    </div><!-- /page-orodja -->
 
+      <!-- Upload -->
+      <div id="inv-upload-area">
+        <div style="background:var(--surface);border:2px dashed var(--border);border-radius:12px;padding:40px 24px;text-align:center;cursor:pointer;transition:all 0.2s"
+             onclick="document.getElementById('inv-file-input').click()"
+             ondragover="event.preventDefault();this.style.borderColor='var(--accent)';this.style.background='rgba(79,110,247,0.04)'"
+             ondragleave="this.style.borderColor='var(--border)';this.style.background='var(--surface)'"
+             ondrop="event.preventDefault();this.style.borderColor='var(--border)';this.style.background='var(--surface)';inventuraHandleFile(event.dataTransfer.files[0])"
+             onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <div style="font-size:32px;margin-bottom:10px">📦</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">Naloži CSV inventurni izvoz</div>
+          <div style="font-size:11px;color:var(--text-secondary)">Dvojniki po SKU se samodejno seštejejo</div>
+          <input type="file" id="inv-file-input" accept=".csv,.txt" style="display:none" onchange="inventuraHandleFile(this.files[0])">
+        </div>
+      </div>
+
+      <!-- Loading / Error -->
+      <div id="inv-loading" style="display:none;text-align:center;padding:40px;color:var(--text-secondary)">
+        <div style="font-size:20px;margin-bottom:8px">⏳</div><div style="font-size:12px">Obdelujem CSV...</div>
+      </div>
+      <div id="inv-error" style="display:none;background:#fff5f5;border:1px solid #fed7d7;border-radius:var(--radius);padding:12px 16px;color:#c53030;font-size:12px;margin-top:12px"></div>
+
+      <!-- Stats + Search -->
+      <div id="inv-stats" style="display:none;margin-top:14px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:stretch">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 16px;min-width:100px">
+            <div style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">SKU-jev</div>
+            <div id="inv-stat-skus" style="font-size:20px;font-weight:700;color:var(--text)">0</div>
+          </div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 16px;flex:1;min-width:160px;display:flex;align-items:center;gap:8px">
+            <span style="color:var(--text-secondary);font-size:13px">🔍</span>
+            <input type="text" id="inv-search" placeholder="Išči SKU, naziv, pozicijo..." oninput="inventuraRender()"
+              style="border:none;outline:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text);width:100%">
+          </div>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div id="inv-table-wrap" style="display:none">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="background:#1e293b">
+                <th style="padding:9px 12px;text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;width:32px">#</th>
+                <th style="padding:9px 12px;text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600">SKU</th>
+                <th style="padding:9px 12px;text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Naziv</th>
+                <th style="padding:9px 12px;text-align:center;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;white-space:nowrap">Pozicija</th>
+                <th style="padding:9px 12px;text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Komentar</th>
+                <th style="padding:9px 12px;text-align:center;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;width:40px">✕</th>
+              </tr>
+            </thead>
+            <tbody id="inv-tbody"></tbody>
+          </table>
+        </div>
+        <div id="inv-no-results" style="display:none;text-align:center;padding:32px;color:var(--text-secondary);font-size:12px">Ni zadetkov</div>
+
+        <!-- Dodaj vrstico -->
+        <div style="margin-top:10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--text-secondary);font-weight:600;white-space:nowrap">+ Dodaj ročno:</span>
+          <input type="text" id="inv-add-sku" placeholder="SKU" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface2);outline:none;width:130px">
+          <input type="text" id="inv-add-naziv" placeholder="Naziv" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface2);outline:none;flex:1;min-width:120px">
+          <input type="text" id="inv-add-pos" placeholder="Pozicija" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface2);outline:none;width:100px">
+          <button onclick="inventuraAddRow()" style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">Dodaj</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ ANALIZA PAGE ═══ -->
   <div class="page" id="page-analiza">
     <!-- Tab nav -->
     <div style="display:flex;gap:8px;padding:12px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border)">
@@ -5227,11 +5224,9 @@ function inventuraHandleFile(file) {
         document.getElementById('inv-upload-area').style.display = 'block';
         return;
       }
-      invItems = data.items || [];
-      const totalQty = invItems.reduce((s, it) => s + (it.kolicina || 0), 0);
+      // Dodaj prazen komentar vsaki postavki
+      invItems = (data.items || []).map(it => ({ ...it, komentar: '' }));
       document.getElementById('inv-stat-skus').textContent = data.total_skus;
-      document.getElementById('inv-stat-qty').textContent = totalQty;
-      document.getElementById('inv-stat-file').textContent = data.filename || '—';
       document.getElementById('inv-stats').style.display = 'block';
       document.getElementById('inv-table-wrap').style.display = 'block';
       document.getElementById('inv-pdf-btn').style.display = 'inline-block';
@@ -5248,6 +5243,12 @@ function inventuraHandleFile(file) {
 
 function inventuraRender() {
   const search = (document.getElementById('inv-search')?.value || '').toLowerCase();
+  const tbody = document.getElementById('inv-tbody');
+  const noRes = document.getElementById('inv-no-results');
+
+  // Posodobi stat
+  document.getElementById('inv-stat-skus').textContent = invItems.length;
+
   let filtered = invItems;
   if (search) {
     filtered = filtered.filter(it =>
@@ -5256,28 +5257,48 @@ function inventuraRender() {
       (it.pozicija || '').toLowerCase().includes(search)
     );
   }
-  const tbody = document.getElementById('inv-tbody');
-  const noRes = document.getElementById('inv-no-results');
+
   if (filtered.length === 0) { tbody.innerHTML = ''; noRes.style.display = 'block'; return; }
   noRes.style.display = 'none';
+
   tbody.innerHTML = filtered.map((it, i) => {
+    const realIdx = invItems.indexOf(it);
     const bg = i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)';
     const pozBadge = it.pozicija && it.pozicija !== 'Ni podatka'
       ? `<span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600;font-family:monospace">${it.pozicija}</span>`
       : `<span style="color:var(--text-tertiary);font-size:11px">—</span>`;
-    const opombaBadge = it.opomba
-      ? `<span style="background:#fef9c3;color:#854d0e;border:1px solid #fde047;border-radius:4px;padding:1px 6px;font-size:10px">${it.opomba}</span>`
-      : '';
     return `<tr style="background:${bg};border-bottom:1px solid var(--border)">
-      <td style="padding:9px 12px;font-size:10px;color:var(--text-tertiary)">${i + 1}</td>
-      <td style="padding:9px 12px;font-size:11px;font-weight:700;color:var(--text);font-family:monospace;white-space:nowrap">${it.sku}</td>
-      <td style="padding:9px 12px;font-size:11px;color:var(--text-secondary);max-width:260px">${it.naziv || '—'}</td>
-      <td style="padding:9px 12px;text-align:center">${pozBadge}</td>
-      <td style="padding:9px 12px;text-align:center;font-size:13px;font-weight:700;color:${it.kolicina > 1 ? '#16a34a' : 'var(--text)'}">${it.kolicina}</td>
-      <td style="padding:9px 12px;text-align:center;font-size:11px;color:var(--text-secondary)">${it.prodano || 0}</td>
-      <td style="padding:9px 12px">${opombaBadge}</td>
+      <td style="padding:8px 12px;font-size:10px;color:var(--text-tertiary)">${i + 1}</td>
+      <td style="padding:8px 12px;font-size:11px;font-weight:700;color:var(--text);font-family:monospace;white-space:nowrap">${it.sku}</td>
+      <td style="padding:8px 12px;font-size:11px;color:var(--text-secondary);max-width:240px">${it.naziv || '—'}</td>
+      <td style="padding:8px 12px;text-align:center">${pozBadge}</td>
+      <td style="padding:6px 8px">
+        <input type="text" value="${(it.komentar||'').replace(/"/g,'&quot;')}" placeholder="npr. poglej pod mizo..."
+          oninput="invItems[${realIdx}].komentar=this.value"
+          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:11px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface2);outline:none;min-width:140px">
+      </td>
+      <td style="padding:8px 10px;text-align:center">
+        <button onclick="inventuraDelete(${realIdx})" title="Zbriši" style="background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:5px;width:24px;height:24px;cursor:pointer;font-size:13px;line-height:1;padding:0">✕</button>
+      </td>
     </tr>`;
   }).join('');
+}
+
+function inventuraDelete(idx) {
+  invItems.splice(idx, 1);
+  inventuraRender();
+}
+
+function inventuraAddRow() {
+  const sku    = (document.getElementById('inv-add-sku')?.value || '').trim();
+  const naziv  = (document.getElementById('inv-add-naziv')?.value || '').trim();
+  const pos    = (document.getElementById('inv-add-pos')?.value || '').trim();
+  if (!sku) { alert('SKU je obvezen.'); return; }
+  invItems.push({ sku, naziv, pozicija: pos, komentar: '' });
+  document.getElementById('inv-add-sku').value = '';
+  document.getElementById('inv-add-naziv').value = '';
+  document.getElementById('inv-add-pos').value = '';
+  inventuraRender();
 }
 
 function inventuraPdf() {
