@@ -2053,6 +2053,7 @@ function switchPage(page) {
   }
   closeMenu();
   if (page === 'tiktok') { ttLoadSkus(); }
+  if (page === 'zaloga') { zalogaLoad(); }
   try { localStorage.setItem('slx_active_page', page); } catch(e) {}
 }
 
