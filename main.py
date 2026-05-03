@@ -4809,32 +4809,27 @@ INVENTURA_DIR.mkdir(exist_ok=True, parents=True)
 
 @app.post("/inventura-upload")
 async def inventura_upload(file: UploadFile = File(...)):
-    """Sprejme CSV izvoz, združi po SKU, vrne strukturiran seznam."""
+    """Sprejme CSV izvoz, združi po SKU, vrne seznam."""
     try:
         import csv
         from io import StringIO
-
         content = (await file.read()).decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(StringIO(content))
-        rows = [{ k.strip().replace('\ufeff',''): (v or '').strip() for k,v in row.items() } for row in reader]
-
+        rows = [{k.strip().replace('\ufeff', ''): (v or '').strip() for k, v in row.items()} for row in reader]
         if not rows:
             return JSONResponse({"error": "Prazen CSV."}, status_code=400)
-
         keys = list(rows[0].keys())
 
-        def find_col(*candidates):
-            for c in candidates:
+        def fc(*cands):
+            for c in cands:
                 for k in keys:
                     if c.lower() in k.lower(): return k
             return None
 
-        sku_col    = find_col("sku", "SKU")
-        naziv_col  = find_col("naziv", "name", "Naziv")
-        qty_col    = find_col("količina", "kolicina", "qty", "Količina")
-        pos_col    = find_col("pozicija", "position", "Pozicija")
-        opomba_col = find_col("opomba", "note", "Opomba")
-        prodano_col = find_col("prodano", "sold", "Prodano")
+        sku_col  = fc("sku", "SKU")
+        naz_col  = fc("naziv", "name", "Naziv")
+        qty_col  = fc("količina", "kolicina", "qty", "Količina")
+        pos_col  = fc("pozicija", "position", "Pozicija")
 
         if not sku_col:
             return JSONResponse({"error": f"Ne najdem SKU stolpca. Najdeni: {keys}"}, status_code=400)
@@ -4843,24 +4838,17 @@ async def inventura_upload(file: UploadFile = File(...)):
         for row in rows:
             sku = (row.get(sku_col) or "").strip()
             if not sku: continue
-            try: qty = int(float((row.get(qty_col) or "0").replace(",","."))) if qty_col else 0
-            except: qty = 0
-            naziv    = (row.get(naziv_col) or "").strip() if naziv_col else ""
+            try: qty = int(float((row.get(qty_col) or "0").replace(",", "."))) if qty_col else 1
+            except: qty = 1
+            naziv    = (row.get(naz_col) or "").strip() if naz_col else ""
             pozicija = (row.get(pos_col) or "").strip() if pos_col else ""
-            opomba   = (row.get(opomba_col) or "").strip() if opomba_col else ""
-            try: prodano = int(float((row.get(prodano_col) or "0").replace(",","."))) if prodano_col else 0
-            except: prodano = 0
-
             if sku not in sku_map:
-                sku_map[sku] = {"sku": sku, "naziv": naziv, "kolicina": 0, "pozicija": pozicija, "opomba": opomba, "prodano": prodano}
-            sku_map[sku]["kolicina"] += qty
+                sku_map[sku] = {"sku": sku, "naziv": naziv, "pozicija": pozicija, "komentar": ""}
             if not sku_map[sku]["pozicija"] and pozicija: sku_map[sku]["pozicija"] = pozicija
             if not sku_map[sku]["naziv"] and naziv: sku_map[sku]["naziv"] = naziv
-            if prodano > sku_map[sku]["prodano"]: sku_map[sku]["prodano"] = prodano
 
         items = sorted(sku_map.values(), key=lambda x: (x["pozicija"] or "zzz", x["sku"]))
         return {"ok": True, "total_skus": len(items), "filename": file.filename, "items": items}
-
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -4868,12 +4856,11 @@ async def inventura_upload(file: UploadFile = File(...)):
 
 @app.post("/inventura-pdf")
 async def inventura_pdf(data: dict):
-    """Generira PDF inventurni list."""
+    """Generira PDF inventurni list — SKU, naziv, pozicija, komentar, fizično."""
     try:
-        items  = data.get("items", [])
+        items = data.get("items", [])
         title_text = data.get("title", "Inventurni list")
-        datum  = data.get("datum", datetime.now().strftime("%d. %m. %Y"))
-
+        datum = data.get("datum", datetime.now().strftime("%d. %m. %Y"))
         if not items:
             return JSONResponse({"error": "Ni postavk."}, status_code=400)
 
@@ -4883,7 +4870,6 @@ async def inventura_pdf(data: dict):
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import cm
-        from reportlab.lib.enums import TA_LEFT
 
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4,
@@ -4895,62 +4881,64 @@ async def inventura_pdf(data: dict):
                                  textColor=colors.HexColor("#64748b"), spaceAfter=12)
         s_cell  = ParagraphStyle("c", fontSize=8,  fontName="Helvetica", leading=11)
         s_sku   = ParagraphStyle("k", fontSize=8,  fontName="Helvetica-Bold", leading=11)
+        s_kom   = ParagraphStyle("m", fontSize=8,  fontName="Helvetica",
+                                 textColor=colors.HexColor("#7c3aed"), leading=11)
 
         story = [
             Paragraph(title_text, s_title),
             Paragraph(f"Datum: {datum}  |  Skupaj SKU-jev: {len(items)}", s_sub),
         ]
 
-        col_widths = [3.8*cm, 7.5*cm, 2.2*cm, 2.0*cm, 1.8*cm, 1.5*cm]
-        table_data = [["SKU", "Naziv", "Pozicija", "Naroč. kol.", "Prodano", "Fizično ✓"]]
+        # Stolpci: SKU | Naziv | Pozicija | Komentar | Fizično ✓
+        col_widths = [3.5*cm, 7.0*cm, 2.2*cm, 4.0*cm, 1.8*cm]
+        table_data = [["SKU", "Naziv", "Pozicija", "Komentar", "Fizično ✓"]]
         for it in items:
+            komentar = str(it.get("komentar") or "").strip()
             table_data.append([
                 Paragraph(str(it.get("sku") or ""), s_sku),
                 Paragraph(str(it.get("naziv") or "")[:120], s_cell),
                 str(it.get("pozicija") or "—"),
-                str(it.get("kolicina") or 0),
-                str(it.get("prodano") or 0),
+                Paragraph(komentar, s_kom) if komentar else "",
                 "",
             ])
 
         tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
         row_styles = [
-            ("BACKGROUND",   (0,0), (-1,0), colors.HexColor("#1e293b")),
-            ("TEXTCOLOR",    (0,0), (-1,0), colors.white),
-            ("FONTNAME",     (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTSIZE",     (0,0), (-1,0), 8),
-            ("ALIGN",        (0,0), (-1,0), "CENTER"),
-            ("VALIGN",       (0,0), (-1,-1), "MIDDLE"),
-            ("GRID",         (0,0), (-1,-1), 0.4, colors.HexColor("#e2e8f0")),
-            ("LINEBELOW",    (0,0), (-1,0), 1.5, colors.HexColor("#1e293b")),
-            ("FONTSIZE",     (0,1), (-1,-1), 8),
-            ("TOPPADDING",   (0,0), (-1,-1), 5),
-            ("BOTTOMPADDING",(0,0), (-1,-1), 5),
-            ("LEFTPADDING",  (0,0), (-1,-1), 6),
-            ("RIGHTPADDING", (0,0), (-1,-1), 6),
-            ("ALIGN",        (3,1), (4,-1), "CENTER"),
-            ("ALIGN",        (2,1), (2,-1), "CENTER"),
-            ("BOX",          (5,1), (5,-1), 0.8, colors.HexColor("#94a3b8")),
-            ("BACKGROUND",   (5,1), (5,-1), colors.HexColor("#f0fdf4")),
+            ("BACKGROUND",    (0,0), (-1,0), colors.HexColor("#1e293b")),
+            ("TEXTCOLOR",     (0,0), (-1,0), colors.white),
+            ("FONTNAME",      (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTSIZE",      (0,0), (-1,0), 8),
+            ("ALIGN",         (0,0), (-1,0), "CENTER"),
+            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+            ("GRID",          (0,0), (-1,-1), 0.4, colors.HexColor("#e2e8f0")),
+            ("LINEBELOW",     (0,0), (-1,0), 1.5, colors.HexColor("#1e293b")),
+            ("FONTSIZE",      (0,1), (-1,-1), 8),
+            ("TOPPADDING",    (0,0), (-1,-1), 5),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+            ("LEFTPADDING",   (0,0), (-1,-1), 6),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 6),
+            ("ALIGN",         (2,1), (2,-1), "CENTER"),
+            ("BOX",           (4,1), (4,-1), 0.8, colors.HexColor("#94a3b8")),
+            ("BACKGROUND",    (4,1), (4,-1), colors.HexColor("#f0fdf4")),
         ]
         for i in range(1, len(table_data)):
             if i % 2 == 0:
                 row_styles.append(("BACKGROUND", (0,i), (-1,i), colors.HexColor("#f8fafc")))
         tbl.setStyle(TableStyle(row_styles))
         story.append(tbl)
-        story.append(Spacer(1, 0.5*cm))
+        story.append(Spacer(1, 0.4*cm))
         story.append(Paragraph(
-            "Navodilo: V stolpec 'Fizično ✓' vpišite dejansko zalogo. Prazno = ni pregledano. ✓ = potrjeno. 0 = ni na zalogi.",
-            ParagraphStyle("f", fontSize=7, fontName="Helvetica", textColor=colors.HexColor("#94a3b8"))
+            "Navodilo: V stolpec 'Fizično ✓' vpišite dejansko stanje zaloge. "
+            "Prazno = ni pregledano. ✓ = potrjeno. 0 = ni na zalogi.",
+            ParagraphStyle("f", fontSize=7, fontName="Helvetica",
+                           textColor=colors.HexColor("#94a3b8"))
         ))
 
         doc.build(story)
         buf.seek(0)
-
         ts = datetime.now().strftime("%Y-%m-%d_%H-%M")
         return StreamingResponse(buf, media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename=inventura_{ts}.pdf"})
-
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
