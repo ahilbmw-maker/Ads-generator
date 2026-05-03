@@ -4867,7 +4867,7 @@ async def inventura_upload(file: UploadFile = File(...)):
 
 @app.post("/inventura-pdf")
 async def inventura_pdf(data: dict):
-    """Generira PDF inventurni list z DejaVu fontom, shrani v zgodovino."""
+    """Generira PDF inventurni list z DejaVu fontom (unicode) in skrajšanimi nazivi."""
     try:
         items = data.get("items", [])
         title_text = data.get("title", "Inventurni list")
@@ -4885,10 +4885,12 @@ async def inventura_pdf(data: dict):
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
 
+        # Registriraj DejaVu — podpira cirilico, grščino, madžarščino itd.
         pdfmetrics.registerFont(TTFont("DejaVu", DEJAVU_REGULAR))
         pdfmetrics.registerFont(TTFont("DejaVu-Bold", DEJAVU_BOLD))
 
-        def trunc(s, max_chars):
+        def trunc(s, max_chars=55):
+            """Skrajšaj naziv: reže pri prvi vejici/oklepaju, max 55 znakov."""
             if not s: return ""
             for sep in [",", "(", " -"]:
                 idx = s.find(sep)
@@ -4926,7 +4928,7 @@ async def inventura_pdf(data: dict):
             table_data.append([
                 Paragraph(str(i), s_cell),
                 Paragraph(str(it.get("sku") or ""), s_sku),
-                Paragraph(trunc(str(it.get("naziv") or ""), 55), s_cell),
+                Paragraph(trunc(str(it.get("naziv") or "")), s_cell),
                 Paragraph(str(it.get("pozicija") or "—"), s_cell),
                 Paragraph(komentar, s_kom) if komentar else Paragraph("", s_cell),
                 Paragraph("", s_cell),
@@ -4961,10 +4963,11 @@ async def inventura_pdf(data: dict):
         ))
         doc.build(story)
 
-        # Shrani v zgodovino
+        # Shrani v zgodovino + cleanup
         inventura_cleanup()
         ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        save_name = f"{filename_hint}_{ts}.pdf" if not filename_hint.endswith(".pdf") else f"{filename_hint[:-4]}_{ts}.pdf"
+        base = filename_hint.replace(".pdf", "")
+        save_name = f"{base}_{ts}.pdf"
         pdf_path = INVENTURA_DIR / save_name
         buf.seek(0)
         pdf_path.write_bytes(buf.read())
@@ -4979,7 +4982,7 @@ async def inventura_pdf(data: dict):
 
 @app.get("/inventura-history")
 async def inventura_history():
-    """Vrne seznam shranjenih inventur (30 dni)."""
+    """Vrne seznam shranjenih inventurnih PDF-jev (30 dni)."""
     inventura_cleanup()
     items = []
     try:
@@ -4988,7 +4991,6 @@ async def inventura_history():
             items.append({
                 "filename": f.name,
                 "size": stat.st_size,
-                "skus": 0,  # ne shranjujemo SKU count osobej
                 "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
             })
     except Exception as e:
