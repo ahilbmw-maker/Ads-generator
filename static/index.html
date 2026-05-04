@@ -1731,6 +1731,7 @@ input[type="text"].error { border-color: var(--red) !important; }
                   <th style="padding:9px 10px;text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Naziv</th>
                   <th style="padding:9px 10px;text-align:center;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;white-space:nowrap">Pozicija</th>
                   <th style="padding:9px 10px;text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Komentar</th>
+                  <th style="padding:9px 10px;text-align:center;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;white-space:nowrap;width:70px">Kol. ✓</th>
                   <th style="padding:9px 10px;text-align:center;font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;width:36px">✕</th>
                 </tr>
               </thead>
@@ -5273,21 +5274,41 @@ function inventuraRender() {
     const pozBadge = it.pozicija && it.pozicija !== 'Ni podatka'
       ? `<span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:600;font-family:monospace">${it.pozicija}</span>`
       : `<span style="color:var(--text-tertiary);font-size:11px">—</span>`;
+    const qty = it.kolicina_dejansko !== undefined ? it.kolicina_dejansko : '';
     return `<tr style="background:${bg};border-bottom:1px solid var(--border)">
       <td style="padding:7px 10px;font-size:10px;color:var(--text-tertiary)">${i + 1}</td>
-      <td style="padding:7px 10px;font-size:11px;font-weight:700;color:var(--text);font-family:monospace;white-space:nowrap">${it.sku}</td>
+      <td style="padding:7px 10px;font-size:11px;color:var(--text);">
+        <div style="display:flex;align-items:center;gap:5px">
+          <span style="font-weight:700;font-family:monospace;white-space:nowrap">${it.sku}</span>
+          <button onclick="event.stopPropagation();invCopySku(this,'${it.sku.replace(/'/g,"\\'")}')" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:9px;font-weight:600;color:var(--text-secondary);padding:2px 6px;white-space:nowrap;font-family:'DM Sans',sans-serif;transition:all 0.1s">📋</button>
+        </div>
+      </td>
       <td style="padding:7px 10px;font-size:11px;color:var(--text-secondary);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(it.naziv||'').replace(/"/g,'&quot;')}">${it.naziv || '—'}</td>
       <td style="padding:7px 10px;text-align:center">${pozBadge}</td>
       <td style="padding:5px 7px">
         <input type="text" value="${(it.komentar||'').replace(/"/g,'&quot;')}" placeholder="komentar..."
           oninput="invItems[${realIdx}].komentar=this.value"
-          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:4px 7px;font-size:11px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface2);outline:none;min-width:110px">
+          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:4px 7px;font-size:11px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface2);outline:none;min-width:90px">
+      </td>
+      <td style="padding:5px 7px;text-align:center">
+        <input type="number" min="0" value="${qty}" placeholder="—"
+          oninput="invItems[${realIdx}].kolicina_dejansko=this.value===''?undefined:Number(this.value)"
+          style="width:52px;border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:11px;font-family:'DM Sans',sans-serif;color:var(--text);background:${qty!==''?'#f0fdf4':'var(--surface2)'};outline:none;text-align:center"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
       </td>
       <td style="padding:7px 8px;text-align:center">
         <button onclick="inventuraDelete(${realIdx})" title="Zbriši" style="background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:12px;line-height:1;padding:0">✕</button>
       </td>
     </tr>`;
   }).join('');
+}
+
+function invCopySku(btn, sku) {
+  navigator.clipboard.writeText(sku).then(() => {
+    btn.textContent = '✓';
+    btn.style.background = 'var(--green)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--green)';
+    setTimeout(() => { btn.textContent = '📋'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }, 1500);
+  });
 }
 
 function inventuraDelete(idx) {
@@ -5357,17 +5378,58 @@ async function invLoadHistory() {
       const dt = new Date(it.created_at);
       const dateStr = dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
       const sizeKb = (it.size / 1024).toFixed(0);
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border);gap:6px">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:11px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.filename}</div>
-          <div style="font-size:10px;color:var(--text-tertiary);margin-top:1px">${dateStr} · ${sizeKb} KB</div>
+      return `<div style="background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;gap:6px;cursor:pointer"
+             onclick="invHistoryLoad('${it.filename}')" title="Klikni za ogled seznama">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.filename.replace('.pdf','')}</div>
+            <div style="font-size:10px;color:var(--text-tertiary);margin-top:1px">${dateStr} · ${sizeKb} KB</div>
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0">
+            <button onclick="event.stopPropagation();invHistoryLoad('${it.filename}')"
+              style="padding:4px 8px;background:var(--surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">👁</button>
+            <a href="/inventura-history-download/${encodeURIComponent(it.filename)}" download="${it.filename}"
+              onclick="event.stopPropagation()"
+              style="padding:4px 8px;background:var(--accent);color:white;text-decoration:none;border-radius:var(--radius);font-size:10px;font-weight:600">⬇</a>
+          </div>
         </div>
-        <a href="/inventura-history-download/${encodeURIComponent(it.filename)}" download="${it.filename}"
-           style="padding:4px 8px;background:var(--accent);color:white;text-decoration:none;border-radius:var(--radius);font-size:10px;font-weight:600;flex-shrink:0">⬇</a>
       </div>`;
     }).join('');
   } catch(e) {
     list.innerHTML = '<div style="font-size:11px;color:var(--red);padding:8px">Napaka pri nalaganju zgodovine</div>';
+  }
+}
+
+async function invHistoryLoad(filename) {
+  try {
+    document.getElementById('inv-empty').style.display = 'none';
+    document.getElementById('inv-table-wrap').style.display = 'none';
+    document.getElementById('inv-loading').style.display = 'block';
+
+    const data = await fetch(`/inventura-history-load/${encodeURIComponent(filename)}`).then(r => r.json());
+    document.getElementById('inv-loading').style.display = 'none';
+
+    if (data.error) {
+      document.getElementById('inv-error').textContent = '⚠ ' + data.error;
+      document.getElementById('inv-error').style.display = 'block';
+      document.getElementById('inv-empty').style.display = 'block';
+      return;
+    }
+
+    invItems = (data.items || []).map(it => ({ ...it, kolicina_dejansko: it.kolicina_dejansko }));
+    document.getElementById('inv-stat-skus').textContent = invItems.length;
+    document.getElementById('inv-status').textContent = '📂 ' + filename.replace('.pdf','') + ' — ' + invItems.length + ' SKU-jev';
+    document.getElementById('inv-status').style.display = 'block';
+    document.getElementById('inv-actions-card').style.display = 'block';
+    document.getElementById('inv-table-wrap').style.display = 'block';
+    document.getElementById('inv-error').style.display = 'none';
+    const si = document.getElementById('inv-search'); if (si) si.value = '';
+    inventuraRender();
+  } catch(e) {
+    document.getElementById('inv-loading').style.display = 'none';
+    document.getElementById('inv-error').textContent = '⚠ Napaka: ' + e.message;
+    document.getElementById('inv-error').style.display = 'block';
+    document.getElementById('inv-empty').style.display = 'block';
   }
 }
 // ── /INVENTURA ────────────────────────────────────────────────
