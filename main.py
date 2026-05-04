@@ -4811,10 +4811,10 @@ DEJAVU_BOLD    = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 
 def inventura_cleanup():
-    """Zbriše PDF-je starejše od 30 dni."""
+    """Zbriše PDF-je in JSON-e starejše od 30 dni."""
     try:
         cutoff = datetime.now().timestamp() - (30 * 86400)
-        for f in INVENTURA_DIR.glob("*.pdf"):
+        for f in list(INVENTURA_DIR.glob("*.pdf")) + list(INVENTURA_DIR.glob("*.json")):
             if f.stat().st_mtime < cutoff:
                 f.unlink()
     except Exception as e:
@@ -5003,6 +5003,14 @@ async def inventura_pdf(data: dict):
         buf.seek(0)
         pdf_path.write_bytes(buf.read())
 
+        # Shrani JSON za ponovni ogled
+        json_path = INVENTURA_DIR / save_name.replace(".pdf", ".json")
+        json_path.write_text(json.dumps({
+            "filename": save_name,
+            "datum": datum,
+            "items": items,
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+
         buf.seek(0)
         return StreamingResponse(buf, media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={save_name}"})
@@ -5038,3 +5046,17 @@ async def inventura_history_download(filename: str):
     if not f.exists():
         return JSONResponse({"error": "Datoteka ne obstaja."}, status_code=404)
     return FileResponse(str(f), filename=filename, media_type="application/pdf")
+
+
+@app.get("/inventura-history-load/{filename}")
+async def inventura_history_load(filename: str):
+    """Naloži JSON podatke shranjene ob generiranju PDF-ja."""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return JSONResponse({"error": "Neveljavno ime."}, status_code=400)
+    # JSON je shranjen z enakim imenom kot PDF, le .json končnica
+    json_name = filename.replace(".pdf", ".json")
+    f = INVENTURA_DIR / json_name
+    if not f.exists():
+        return JSONResponse({"error": "Podatki niso na voljo (star zapis)."}, status_code=404)
+    data = json.loads(f.read_text(encoding="utf-8"))
+    return data
