@@ -870,12 +870,33 @@ SPLOŠNA PRAVILA:
 
 Vrni SAMO JSON: {{{batch_json_keys}}}"""
 
-                    batch_text = await call_claude(batch_prompt, "claude-haiku-4-5-20251001", None, 1500)
-                    batch_data = parse_json_response(batch_text)
+                    # Retry do 3x
+                    batch_data = None
+                    for attempt in range(3):
+                        try:
+                            batch_text = await call_claude(batch_prompt, "claude-haiku-4-5-20251001", None, 3000)
+                            batch_data = parse_json_response(batch_text)
+                            if batch_data:
+                                # Preveri da so vsi jeziki iz batcha prisotni
+                                missing = [lang for lang in batch if lang not in batch_data]
+                                if missing:
+                                    print(f"[meta-stream] batch {batch} manjkajo jeziki: {missing}, retry {attempt+1}")
+                                    batch_data = None
+                                else:
+                                    break
+                            else:
+                                print(f"[meta-stream] batch {batch} JSON parse fail, retry {attempt+1}, response[:200]: {batch_text[:200]}")
+                        except Exception as e:
+                            print(f"[meta-stream] batch {batch} error attempt {attempt+1}: {e}")
+                        if attempt < 2:
+                            await asyncio.sleep(5)
 
                     if batch_data:
                         full_result.update(batch_data)
                         yield f"data: {json.dumps({'type': 'partial', 'index': i, 'langs': batch, 'data': full_result})}\n\n"
+                    else:
+                        print(f"[meta-stream] batch {batch} FAILED po 3 poskusih — jeziki manjkajo v rezultatu")
+                        yield f"data: {json.dumps({'type': 'batch_error', 'index': i, 'langs': batch, 'error': f'Prevod za {batch} ni uspel'})}\n\n"
 
                 yield f"data: {json.dumps({'type': 'result', 'index': i, 'data': full_result})}\n\n"
 
