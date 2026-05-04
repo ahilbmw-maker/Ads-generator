@@ -2476,6 +2476,12 @@ async function metaGenerateStream(inputs,reqBody,btn) {
               renderMetaResults(results.filter(Boolean));
             },600);
           }
+          else if(msg.type==='batch_error'){
+            const langNames={'sl':'SL','hr':'HR','rs':'RS','hu':'HU','cz':'CZ','sk':'SK','pl':'PL','gr':'GR','ro':'RO','bg':'BG'};
+            const names=(msg.langs||[]).map(l=>langNames[l]||l).join(', ');
+            console.warn(`[meta] Prevod za ${names} ni uspel:`, msg.error);
+            document.getElementById('streamingBarText').textContent=`⚠ Prevod za ${names} ni uspel`;
+          }
         }catch(e){console.warn('SSE parse error',e);}
       }
     }
