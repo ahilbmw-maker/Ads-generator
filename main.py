@@ -202,6 +202,9 @@ def extract_slug(url: str) -> Optional[str]:
 
 
 def parse_feed(xml_content: str) -> dict:
+    """Parse Google Shopping XML feed.
+    Vrne: {g_id: {url, path, title, description, price, mpn, brand, product_type, image, availability}}
+    """
     products = {}
     try:
         root = ET.fromstring(xml_content)
@@ -216,7 +219,30 @@ def parse_feed(xml_content: str) -> dict:
             g_id = gid_el.text.strip()
             url = link_el.text.strip()
             path = urlparse(url).path
-            products[g_id] = {"url": url, "path": path}
+
+            def _get(tag):
+                el = item.find(f'{{{G}}}{tag}')
+                return el.text.strip() if el is not None and el.text else ""
+
+            # Standard RSS tags (brez namespace)
+            def _get_rss(tag):
+                el = item.find(tag)
+                return el.text.strip() if el is not None and el.text else ""
+
+            products[g_id] = {
+                "url": url,
+                "path": path,
+                "title": _get_rss('title') or _get('title'),
+                "description": _get_rss('description') or _get('description'),
+                "price": _get('price'),
+                "sale_price": _get('sale_price'),
+                "mpn": _get('mpn'),  # običajno SKU
+                "brand": _get('brand'),
+                "product_type": _get('product_type'),
+                "google_category": _get('google_product_category'),
+                "image": _get('image_link'),
+                "availability": _get('availability'),
+            }
     except ET.ParseError:
         pass
     return products
@@ -4673,6 +4699,318 @@ Brez dodatnih komentarjev, samo JSON."""
         traceback.print_exc()
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# XSELL — AI-powered cross-sell suggestions
+# Združi: zalogo (SKU, naziv, cena, marža) + XML feed (opis, kategorija, URL)
+# ═══════════════════════════════════════════════════════════════════════════
+
+XSELL_DIR = DATA_DIR / "xsell"
+XSELL_DIR.mkdir(parents=True, exist_ok=True)
+XSELL_CACHE_FILE = XSELL_DIR / "suggestions_cache.json"
+
+
+def _load_stock_lookup() -> dict:
+    """Vrne dict {SKU_uppercase: {sku, title, price, stock, ...}} iz CSV zaloge."""
+    if not STOCK_CSV_FILE.exists():
+        return {}
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        first_line = text.split('\n', 1)[0]
+        sep = ';' if first_line.count(';') > first_line.count(',') else ','
+        reader = _csv.DictReader(_SIO(text), delimiter=sep)
+        lookup = {}
+        for row in reader:
+            sku = (row.get('product_sku') or row.get('sku') or '').strip()
+            if not sku:
+                continue
+            lookup[sku.upper()] = {
+                "sku": sku,
+                "product_id": (row.get('product_id') or '').strip(),
+                "title": (row.get('title') or '').strip(),
+                "stock": int(float(row.get('stock') or 0) or 0),
+                "stock30": int(float(row.get('stock30') or 0) or 0),
+                "price": float(row.get('price_netto') or row.get('price') or 0),
+                "position": (row.get('position') or '').strip(),
+            }
+        return lookup
+    except Exception as e:
+        print(f"[xsell] stock load error: {e}")
+        return {}
+
+
+def _find_feed_product(sku_or_url: str, lang: str = "sl") -> Optional[dict]:
+    """Najdi izdelek v cached feed-u po SKU (MPN), product_id, slug ali URL."""
+    feed = feed_by_lang.get(lang, {})
+    if not feed:
+        return None
+    query = sku_or_url.strip()
+    query_up = query.upper()
+
+    # 1. URL ali pot — match po path
+    if query.startswith('http') or '/' in query:
+        path = urlparse(query).path if query.startswith('http') else query
+        for g_id, p in feed.items():
+            if p.get("path") == path or p.get("url") == query:
+                return {"g_id": g_id, **p}
+        # Po slug
+        slug = path.rstrip('/').split('/')[-1].lower()
+        for g_id, p in feed.items():
+            p_slug = urlparse(p.get("url", "")).path.rstrip('/').split('/')[-1].lower()
+            if slug and p_slug == slug:
+                return {"g_id": g_id, **p}
+
+    # 2. Direct ID match
+    if query in feed:
+        return {"g_id": query, **feed[query]}
+
+    # 3. MPN (SKU) match
+    for g_id, p in feed.items():
+        if (p.get("mpn") or "").upper() == query_up:
+            return {"g_id": g_id, **p}
+
+    # 4. SKU substring v title (zadnja možnost)
+    for g_id, p in feed.items():
+        if query_up in (p.get("title") or "").upper():
+            return {"g_id": g_id, **p}
+
+    return None
+
+
+@app.get("/xsell-feed-status")
+async def xsell_feed_status():
+    """Vrne status XML feed-a."""
+    return {
+        "ok": True,
+        "last_fetch": last_fetch.isoformat() if last_fetch else None,
+        "languages": {lang: len(prods) for lang, prods in feed_by_lang.items()},
+        "total_sl": len(feed_by_lang.get("sl", {})),
+        "stock_loaded": STOCK_CSV_FILE.exists(),
+    }
+
+
+@app.post("/xsell-suggest")
+async def xsell_suggest(data: dict):
+    """Vrne 3 Xsell predloge za vhodni SKU ali URL.
+
+    Vhod: {"input": "M260" or "https://maaarket.si/product/...", "lang": "sl"}
+    Izhod: {"original": {...}, "suggestions": [{...}, {...}, {...}]}
+    """
+    try:
+        query = (data.get("input") or "").strip()
+        lang = (data.get("lang") or "sl").strip()
+        if not query:
+            return {"ok": False, "error": "Vnesi SKU ali URL"}
+
+        # Cache lookup (7-dnevni)
+        cache_key = f"{lang}:{query.upper()}"
+        try:
+            if XSELL_CACHE_FILE.exists():
+                cache = json.loads(XSELL_CACHE_FILE.read_text(encoding="utf-8"))
+                if cache_key in cache:
+                    cached = cache[cache_key]
+                    cached_at = datetime.fromisoformat(cached.get("cached_at", ""))
+                    if datetime.now() - cached_at < timedelta(days=7):
+                        return {"ok": True, "cached": True, **cached["result"]}
+        except Exception:
+            pass
+
+        # 1. Najdi izdelek v feed-u (opis, kategorija)
+        feed_product = _find_feed_product(query, lang)
+
+        # 2. Najdi tudi v zalogi (cena, stock)
+        stock_lookup = _load_stock_lookup()
+        if not stock_lookup:
+            return {"ok": False, "error": "Zaloga ni naložena. Najprej naloži CSV zaloge v Zaloga tab."}
+
+        # Najdi originalni izdelek v zalogi
+        original_sku = None
+        if feed_product:
+            mpn = (feed_product.get("mpn") or "").upper()
+            if mpn and mpn in stock_lookup:
+                original_sku = mpn
+        if not original_sku:
+            if query.upper() in stock_lookup:
+                original_sku = query.upper()
+
+        if not original_sku and not feed_product:
+            return {"ok": False, "error": f"Izdelek '{query}' ni najden v zalogi ali XML feed-u"}
+
+        # Sestavi originalni izdelek
+        original = {}
+        if original_sku and original_sku in stock_lookup:
+            original.update(stock_lookup[original_sku])
+        if feed_product:
+            original.update({
+                "title_full": feed_product.get("title", ""),
+                "description": feed_product.get("description", ""),
+                "url": feed_product.get("url", ""),
+                "image": feed_product.get("image", ""),
+                "product_type": feed_product.get("product_type", ""),
+                "google_category": feed_product.get("google_category", ""),
+                "brand": feed_product.get("brand", ""),
+                "feed_price": feed_product.get("price", ""),
+            })
+
+        # 3. Sestavi katalog kandidatov (presek zaloge + feed)
+        candidates = []
+        feed = feed_by_lang.get(lang, {})
+        feed_by_mpn = {}
+        for g_id, p in feed.items():
+            mpn = (p.get("mpn") or "").upper()
+            if mpn:
+                feed_by_mpn[mpn] = {"g_id": g_id, **p}
+
+        for sku_up, stock in stock_lookup.items():
+            if sku_up == original_sku:
+                continue
+            if stock["stock"] <= 0:
+                continue
+            fp = feed_by_mpn.get(sku_up)
+            if not fp:
+                continue
+            candidates.append({
+                "sku": stock["sku"],
+                "title": stock["title"] or fp.get("title", ""),
+                "price": stock["price"],
+                "stock": stock["stock"],
+                "stock30": stock["stock30"],
+                "description": (fp.get("description") or "")[:300],  # omeji za prompt
+                "product_type": fp.get("product_type", ""),
+                "url": fp.get("url", ""),
+                "image": fp.get("image", ""),
+            })
+
+        if len(candidates) < 3:
+            return {"ok": False, "error": f"Premalo kandidatov ({len(candidates)}). Preveri zalogo in XML feed."}
+
+        # 4. AI Re-ranking — Claude izbere 3 najboljše
+        candidates_for_ai = candidates[:80]  # omejimo da prompt ni prevelik
+        cand_text = "\n".join([
+            f"{i+1}. SKU={c['sku']} | {c['title'][:80]} | {c['price']:.2f}€ | stock={c['stock']} | tip={c.get('product_type','')[:60]} | opis={c['description'][:150]}"
+            for i, c in enumerate(candidates_for_ai)
+        ])
+
+        original_desc = (original.get("description") or "")[:500]
+        prompt = f"""Si strokovnjak za cross-sell v e-commerce trgovini Maaarket.si.
+
+ORIGINALNI IZDELEK:
+SKU: {original.get('sku', '?')}
+Naziv: {original.get('title_full') or original.get('title', '?')}
+Cena: {original.get('price', 0):.2f}€
+Tip: {original.get('product_type', '')}
+Opis: {original_desc}
+
+KATALOG MOŽNIH XSELL IZDELKOV (vsi na zalogi):
+{cand_text}
+
+Izberi 3 NAJBOLJ SMISELNE Xsell predloge — DIVERZNO, vsak drugačnega tipa:
+1. KOMPLEMENTAREN (dopolnilo k originalnemu izdelku — npr. nadomestni del, pribor, set)
+2. KATEGORIJSKO PODOBEN (alternative ali konkurenčen izdelek iste vrste — kupec mogoče raje izbere drugega)
+3. CENOVNO SMISELN (add-on po nižji ceni, da poveča vrednost košarice)
+
+Za vsakega navedi:
+- SKU (točno iz seznama)
+- type ("komplementaren" | "kategorijsko_podoben" | "cenovno_smiseln")
+- reason: en stavek, zakaj je smiseln Xsell (max 100 znakov, slovenščina)
+
+VRNI EXACT JSON, brez dodatnega teksta:
+{{
+  "suggestions": [
+    {{"sku": "...", "type": "komplementaren", "reason": "..."}},
+    {{"sku": "...", "type": "kategorijsko_podoben", "reason": "..."}},
+    {{"sku": "...", "type": "cenovno_smiseln", "reason": "..."}}
+  ]
+}}"""
+
+        ai_response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1200,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        ai_text = ai_response.content[0].text.strip()
+        # Strip ```json fences
+        ai_text = re.sub(r'^```(?:json)?\s*', '', ai_text)
+        ai_text = re.sub(r'\s*```$', '', ai_text)
+
+        try:
+            ai_data = json.loads(ai_text)
+        except json.JSONDecodeError:
+            # Fallback: probaj najti JSON v odgovoru
+            m = re.search(r'\{[\s\S]*\}', ai_text)
+            if m:
+                ai_data = json.loads(m.group())
+            else:
+                return {"ok": False, "error": f"AI vrnil neveljaven JSON: {ai_text[:200]}"}
+
+        # 5. Sestavi končni odgovor — dopolni z metadata
+        suggestions_out = []
+        for s in ai_data.get("suggestions", [])[:3]:
+            sku = (s.get("sku") or "").strip().upper()
+            # Najdi v kandidatih
+            cand = next((c for c in candidates if c["sku"].upper() == sku), None)
+            if not cand:
+                continue
+            suggestions_out.append({
+                "sku": cand["sku"],
+                "type": s.get("type", ""),
+                "reason": s.get("reason", ""),
+                "title": cand["title"],
+                "price": cand["price"],
+                "stock": cand["stock"],
+                "stock30": cand["stock30"],
+                "url": cand.get("url", ""),
+                "image": cand.get("image", ""),
+            })
+
+        result = {
+            "original": {
+                "sku": original.get("sku") or original_sku or query,
+                "title": original.get("title_full") or original.get("title", ""),
+                "price": original.get("price", 0),
+                "stock": original.get("stock", 0),
+                "url": original.get("url", ""),
+                "image": original.get("image", ""),
+                "product_type": original.get("product_type", ""),
+            },
+            "suggestions": suggestions_out,
+            "candidates_total": len(candidates),
+        }
+
+        # Cache za 7 dni
+        try:
+            cache = {}
+            if XSELL_CACHE_FILE.exists():
+                cache = json.loads(XSELL_CACHE_FILE.read_text(encoding="utf-8"))
+            cache[cache_key] = {"cached_at": datetime.now().isoformat(), "result": result}
+            # Cleanup starih (> 7 dni)
+            now_ts = datetime.now()
+            cache = {k: v for k, v in cache.items()
+                     if (now_ts - datetime.fromisoformat(v.get("cached_at", "1970-01-01"))).days < 7}
+            XSELL_CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            print(f"[xsell] cache save error: {e}")
+
+        return {"ok": True, "cached": False, **result}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/xsell-cache-clear")
+async def xsell_cache_clear():
+    """Pobriše Xsell cache (forsiraj fresh AI re-rank)."""
+    try:
+        if XSELL_CACHE_FILE.exists():
+            XSELL_CACHE_FILE.unlink()
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.get("/orodja-stock-data")
