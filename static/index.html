@@ -2472,22 +2472,6 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
           <input type="file" id="beta-file-input" accept=".csv" style="display:none">
           <div id="beta-file-info" style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;display:none"></div>
-
-          <!-- Nastavitve analize -->
-          <div style="margin-bottom:10px">
-            <label style="font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Min. spend za analizo (€)</label>
-            <input type="number" id="beta-min-spend" value="5" min="0" step="1"
-              style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
-          </div>
-          <div style="margin-bottom:10px">
-            <label style="font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Max. CPP za dober rezultat (€)</label>
-            <input type="number" id="beta-target-cpp" value="15" min="1" step="1"
-              style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
-          </div>
-          <button onclick="betaAnalyze()" id="beta-analyze-btn"
-            style="width:100%;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-            🔍 Analiziraj kampanje
-          </button>
         </div>
 
         <!-- Povzetek -->
@@ -13883,7 +13867,7 @@ function betaAnalyzeScalingCandidate(campaign, targetCPP) {
 
 function betaRunRecommender() {
   if (!betaCampaigns.length) { alert('Najprej naloži CSV!'); return; }
-  const targetCPP = parseFloat(document.getElementById('beta-target-cpp').value || 15);
+  const targetCPP = 15;  // Hard-coded target — odstranjeni inputi UI
 
   const results = betaCampaigns.map(c => betaAnalyzeScalingCandidate(c, targetCPP));
 
@@ -14034,10 +14018,10 @@ function betaAnalyze() {
 }
 
 function betaRenderTable() {
-  const minSpend = parseFloat(document.getElementById('beta-min-spend').value||5);
-  const targetCPP = parseFloat(document.getElementById('beta-target-cpp').value||15);
-  const sort = document.getElementById('beta-sort').value;
-  const filter = document.getElementById('beta-filter-status').value;
+  const minSpend = 5;  // Hard-coded default
+  const targetCPP = 15;  // Hard-coded default
+  const sort = document.getElementById('beta-sort')?.value || 'cpp_asc';
+  const filter = document.getElementById('beta-filter-status')?.value || 'all';
 
   let camps = betaCampaigns.filter(c => c.spend >= minSpend);
   const searchQ = (document.getElementById('beta-search')?.value||'').toLowerCase();
@@ -14095,8 +14079,8 @@ async function betaAIAnalyze() {
   btn.disabled = true; btn.textContent = '⏳ Analiziram...';
   result.textContent = '';
 
-  const minSpend = parseFloat(document.getElementById('beta-min-spend').value||5);
-  const targetCPP = parseFloat(document.getElementById('beta-target-cpp').value||15);
+  const minSpend = 5;
+  const targetCPP = 15;
 
   const camps = betaCampaigns.filter(c => c.spend >= minSpend);
   const totalSpend = camps.reduce((s,c)=>s+c.spend,0).toFixed(2);
@@ -14166,14 +14150,37 @@ Max 5 vrstic na sekcijo. Samo tabele, brez uvodnega teksta.`;
 }
 
 async function betaSaveExport(filename) {
-  if (!betaCampaigns.length) return;
+  if (!betaCampaigns.length) {
+    console.warn('[beta-save] No campaigns to save');
+    return;
+  }
   const totalSpend = betaCampaigns.reduce((s,c)=>s+c.spend,0);
   const totalPurchases = betaCampaigns.reduce((s,c)=>s+c.purchases,0);
+  const fi = document.getElementById('beta-file-info');
   try {
-    await fetch('/beta-save-export', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({filename, campaigns: betaCampaigns, total_spend: totalSpend, total_purchases: totalPurchases})});
+    const body = JSON.stringify({filename, campaigns: betaCampaigns, total_spend: totalSpend, total_purchases: totalPurchases});
+    console.log(`[beta-save] Sending ${(body.length/1024).toFixed(1)} KB to /beta-save-export`);
+    if (fi) fi.innerHTML = `💾 Shranjujem ${filename}...`;
+    const res = await fetch('/beta-save-export', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: body
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      console.error('[beta-save] Backend error:', data.error);
+      if (fi) fi.innerHTML = `<span style="color:#dc2626">⚠️ Shranjevanje ni uspelo: ${data.error || 'unknown'}</span>`;
+      return;
+    }
+    console.log(`[beta-save] Saved as ${data.saved}`);
+    if (fi) {
+      fi.innerHTML = `<span style="background:rgba(34,197,94,0.15);color:#16a34a;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-right:6px">✓ SHRANJENO</span>${filename}`;
+    }
     await betaLoadHistory();
-  } catch(e) { console.warn('beta save error', e); }
+  } catch(e) {
+    console.error('[beta-save] Network/JSON error:', e);
+    if (fi) fi.innerHTML = `<span style="color:#dc2626">⚠️ Napaka shranjevanja: ${e.message}</span>`;
+  }
 }
 
 async function betaLoadHistory() {
