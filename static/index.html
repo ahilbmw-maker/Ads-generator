@@ -16374,6 +16374,43 @@ async function knjBatchProcess() {
             <div style="margin-top:12px;padding:10px 12px;background:rgba(34,197,94,0.05);border:1px dashed rgba(34,197,94,0.3);border-radius:6px;font-size:11px;color:var(--text-secondary);line-height:1.5">
               💡 <strong>ZIP je shranjen v Storage → Knjigovodstvo.</strong> E-maili so označeni kot prebrani — ne bodo se ponovno procesirali. Skupaj <strong>${totalRows}</strong> računovodskih vrstic.
             </div>
+            ${(() => {
+              const dd = d.dedup || {};
+              const totalSkipped = dd.total_skipped || 0;
+              if (totalSkipped === 0 && (dd.unique_invoices || 0) === 0) return '';
+              if (totalSkipped === 0) {
+                return `
+                  <div style="margin-top:10px;padding:10px 12px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:6px;font-size:11px;color:var(--text-secondary);line-height:1.5">
+                    🛡️ <strong style="color:#16a34a">Dedup preverjeno:</strong> ${dd.unique_invoices} unikatnih faktur, brez dvojnikov ✓
+                  </div>`;
+              }
+              const batchDupsHtml = (dd.batch_duplicates_list || []).length ? `
+                <div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(245,158,11,0.3)">
+                  <div style="font-size:10px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">⚠️ V istem batchu (${dd.duplicates_in_batch})</div>
+                  ${(dd.batch_duplicates_list || []).map(x => `<div style="font-size:10px;color:var(--text-secondary);font-family:'DM Mono',monospace;padding:1px 0">• ${x.type} <strong>${x.invoice_num}</strong> <span style="color:var(--text-tertiary)">← ${(x.from || '').split('<')[0].trim().slice(0, 30)}</span></div>`).join('')}
+                </div>` : '';
+              const histDupsHtml = (dd.history_duplicates_list || []).length ? `
+                <div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(168,85,247,0.3)">
+                  <div style="font-size:10px;font-weight:700;color:#9333ea;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">♻️ Iz zgodovine (${dd.duplicates_in_history})</div>
+                  ${(dd.history_duplicates_list || []).map(x => `<div style="font-size:10px;color:var(--text-secondary);font-family:'DM Mono',monospace;padding:1px 0">• ${x.type} <strong>${x.invoice_num}</strong> <span style="color:var(--text-tertiary)">(že v ${(x.original_batch || '').slice(0, 24)})</span></div>`).join('')}
+                </div>` : '';
+              return `
+                <div style="margin-top:10px;padding:12px;background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.3);border-radius:6px;font-size:11px;color:var(--text);line-height:1.5">
+                  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+                    <div style="font-size:13px;font-weight:700;color:#d97706">🛡️ Dedup poročilo — preskočenih ${totalSkipped} dvojnikov</div>
+                    <div style="display:flex;gap:6px">
+                      <span style="background:rgba(34,197,94,0.15);color:#16a34a;padding:2px 8px;border-radius:4px;font-weight:700;font-size:10px">${dd.unique_invoices} unikatnih</span>
+                      ${dd.duplicates_in_batch ? `<span style="background:rgba(245,158,11,0.15);color:#d97706;padding:2px 8px;border-radius:4px;font-weight:700;font-size:10px">${dd.duplicates_in_batch} batch dup</span>` : ''}
+                      ${dd.duplicates_in_history ? `<span style="background:rgba(168,85,247,0.15);color:#9333ea;padding:2px 8px;border-radius:4px;font-weight:700;font-size:10px">${dd.duplicates_in_history} zgodovina</span>` : ''}
+                    </div>
+                  </div>
+                  ${batchDupsHtml}
+                  ${histDupsHtml}
+                  <div style="font-size:10px;color:var(--text-tertiary);margin-top:8px;padding-top:6px;border-top:1px dashed var(--border)">
+                    📄 Podrobno poročilo: <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:10px">_DEDUP_REPORT.txt</code> v ZIP arhivu
+                  </div>
+                </div>`;
+            })()}
           `;
         }
         if (status) status.innerHTML = `<span style="color:#16a34a">✓ Obdelano <strong>${d.emails}</strong> emailov · ${d.debit_rows} DU + ${d.credit_rows} NU + ${d.pdf_count} PDF · ZIP: ${d.zip_size_kb} KB · ${elapsedSec}s</span>`;
