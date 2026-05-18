@@ -4988,12 +4988,88 @@ async def xsell_suggest(data: dict):
                 }
             }
 
-        # 4. AI Re-ranking — Claude izbere 3 najboljše
-        candidates_for_ai = candidates[:80]  # omejimo da prompt ni prevelik
-        cand_text = "\n".join([
-            f"{i+1}. SKU={c['sku']} | {c['title'][:80]} | {c['price']:.2f}€ | stock={c['stock']} | tip={c.get('product_type','')[:60]} | opis={c['description'][:150]}"
-            for i, c in enumerate(candidates_for_ai)
-        ])
+        # === KATEGORIJA-AWARE PRE-FILTERING ===
+        # Original product_type je hierarhija: "Beauty & Care > Face care > Cleansers"
+        # Razdeli kandidate v skupine po ujemanju kategorij.
+        original_ptype = (original.get("product_type") or "").strip()
+        original_ptype_parts = [p.strip().lower() for p in re.split(r'\s*[>/]\s*', original_ptype) if p.strip()]
+        original_top_cat = original_ptype_parts[0] if original_ptype_parts else ""
+        original_sub_cat = original_ptype_parts[1] if len(original_ptype_parts) > 1 else ""
+        print(f"[xsell] Original category: top='{original_top_cat}', sub='{original_sub_cat}', full='{original_ptype}'")
+
+        def _cat_distance(cand_ptype: str) -> int:
+            """Vrne 0 (ista kategorija), 1 (sosednja sub), 2 (samo top), 3 (drugo)."""
+            cand_parts = [p.strip().lower() for p in re.split(r'\s*[>/]\s*', cand_ptype) if p.strip()]
+            if not cand_parts or not original_top_cat:
+                return 3
+            cand_top = cand_parts[0]
+            cand_sub = cand_parts[1] if len(cand_parts) > 1 else ""
+            # Točno iste vse ravni
+            if cand_ptype.strip().lower() == original_ptype.strip().lower():
+                return 0
+            # Top + sub se ujemata
+            if cand_top == original_top_cat and original_sub_cat and cand_sub == original_sub_cat:
+                return 0
+            # Samo top kategorija se ujema (sosednja)
+            if cand_top == original_top_cat:
+                return 1
+            # Word overlap fallback (npr. "skin care" vs "face skin" delita "skin")
+            orig_words = set(re.findall(r'[a-zA-ZčšžćđČŠŽĆĐ]+', original_ptype.lower()))
+            cand_words = set(re.findall(r'[a-zA-ZčšžćđČŠŽĆĐ]+', cand_ptype.lower()))
+            common = orig_words & cand_words
+            common = {w for w in common if len(w) > 3}  # filter prekratke ("za", "in")
+            if len(common) >= 2:
+                return 2
+            if len(common) >= 1:
+                return 3
+            return 3
+
+        # Razvrsti kandidate v 3 nivoje
+        same_cat = []
+        adjacent_cat = []
+        other = []
+        for c in candidates:
+            d = _cat_distance(c.get("product_type", ""))
+            if d == 0:
+                same_cat.append(c)
+            elif d <= 1:
+                adjacent_cat.append(c)
+            elif d <= 2:
+                other.append(c)  # poseben tier
+        # Sortiraj po podobnosti naziva (preprosti word overlap)
+        orig_title_words = set(re.findall(r'[a-zA-ZčšžćđČŠŽĆĐ]{3,}', (original.get("title") or original.get("title_full") or "").lower()))
+        def _title_score(c):
+            cw = set(re.findall(r'[a-zA-ZčšžćđČŠŽĆĐ]{3,}', (c.get("title") or "").lower()))
+            return len(cw & orig_title_words)
+        same_cat.sort(key=_title_score, reverse=True)
+        adjacent_cat.sort(key=_title_score, reverse=True)
+        other.sort(key=_title_score, reverse=True)
+
+        print(f"[xsell] Category distribution: same={len(same_cat)}, adjacent={len(adjacent_cat)}, other={len(other)}")
+
+        # Vzami uravnoteženi nabor: 70% iz iste/sosednje kategorije, 30% iz drugih
+        ranked = same_cat[:35] + adjacent_cat[:25] + other[:20]
+        if len(ranked) < 30:
+            ranked = (same_cat + adjacent_cat + other)[:60]
+        candidates_for_ai = ranked[:80]
+
+        # Pripravi text za Claude — z eksplicitno kategorijsko strukturo
+        def _fmt_cand(c, marker=""):
+            return f"{marker}SKU={c['sku']} | {c['title'][:80]} | {c['price']:.2f}€ | stock={c['stock']} | kategorija={c.get('product_type','')[:80]} | opis={c['description'][:140]}"
+
+        # Razdeli v sekcije za prompt
+        same_cat_for_prompt = [c for c in candidates_for_ai if _cat_distance(c.get("product_type", "")) == 0]
+        adjacent_for_prompt = [c for c in candidates_for_ai if _cat_distance(c.get("product_type", "")) == 1]
+        other_for_prompt = [c for c in candidates_for_ai if _cat_distance(c.get("product_type", "")) >= 2]
+
+        sections = []
+        if same_cat_for_prompt:
+            sections.append("🎯 ISTA KATEGORIJA (priporočam izbrati prvo + drugo iz tega seznama):\n" + "\n".join(_fmt_cand(c) for c in same_cat_for_prompt[:30]))
+        if adjacent_for_prompt:
+            sections.append("📂 SOSEDNJA KATEGORIJA:\n" + "\n".join(_fmt_cand(c) for c in adjacent_for_prompt[:25]))
+        if other_for_prompt:
+            sections.append("🔀 OSTALI (za cenovno smiseln add-on če nima boljše opcije):\n" + "\n".join(_fmt_cand(c) for c in other_for_prompt[:15]))
+        cand_text = "\n\n".join(sections)
 
         original_desc = (original.get("description") or "")[:500]
         prompt = f"""Si strokovnjak za cross-sell v e-commerce trgovini Maaarket.si.
@@ -5002,21 +5078,30 @@ ORIGINALNI IZDELEK:
 SKU: {original.get('sku', '?')}
 Naziv: {original.get('title_full') or original.get('title', '?')}
 Cena: {original.get('price', 0):.2f}€
-Tip: {original.get('product_type', '')}
+Kategorija: {original_ptype or '(neznana)'}
 Opis: {original_desc}
 
-KATALOG MOŽNIH XSELL IZDELKOV (vsi na zalogi):
+KATALOG MOŽNIH XSELL IZDELKOV (organiziran po kategorijski sorodnosti):
+
 {cand_text}
 
+KRITIČNO POMEMBNO — KATEGORIJSKO UJEMANJE:
+Originalni izdelek je iz kategorije "{original_ptype or 'neznana'}".
+Xsell predlogi MORAJO biti SMISELNI in iz SORODNE NAMENA. Npr:
+- Izdelek za "nega obraza" → drugi izdelki za nego obraza/telesa (NE krtače za čiščenje doma!)
+- Izdelek za "čiščenje doma" → drugi pripomočki za čiščenje (NE krema za obraz!)
+- Izdelek za "kuhinja" → kuhinjski pripomočki
+Če nimaš dovolj kandidatov iz iste kategorije, raje izberi LE 1-2 predloga kot da forsiraš nesmiselne kombinacije.
+
 Izberi 3 NAJBOLJ SMISELNE Xsell predloge — DIVERZNO, vsak drugačnega tipa:
-1. KOMPLEMENTAREN (dopolnilo k originalnemu izdelku — npr. nadomestni del, pribor, set)
-2. KATEGORIJSKO PODOBEN (alternative ali konkurenčen izdelek iste vrste — kupec mogoče raje izbere drugega)
-3. CENOVNO SMISELN (add-on po nižji ceni, da poveča vrednost košarice)
+1. KOMPLEMENTAREN: dopolnilo/add-on K ORIGINALNEMU IZDELKU (npr. nadomestne glave, pribor, polnilo) — MORA biti iz iste kategorije!
+2. KATEGORIJSKO PODOBEN: alternative izdelek za isti ali sorodni namen (kupec mogoče raje izbere drugega) — MORA biti iz iste ali sosednje kategorije!
+3. CENOVNO SMISELN: add-on z nižjo ceno ki POVEČUJE vrednost košarice — mora biti smiseln glede na originalno kategorijo (ne random poceni izdelek)
 
 Za vsakega navedi:
 - SKU (točno iz seznama)
 - type ("komplementaren" | "kategorijsko_podoben" | "cenovno_smiseln")
-- reason: en stavek, zakaj je smiseln Xsell (max 100 znakov, slovenščina)
+- reason: en stavek ZAKAJ je smiseln Xsell GLEDE NA KATEGORIJO originalnega izdelka (max 100 znakov, slovenščina)
 
 VRNI EXACT JSON, brez dodatnega teksta:
 {{
