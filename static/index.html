@@ -3899,11 +3899,39 @@ async function vadsToSlxDownload() {
     const total = tasks.length;
     let uploaded = 0;
     const errors = [];
+    const failedTasks = [];  // za retry
 
+    // Render Pro Plus: 2 CPU + 4GB RAM — lahko 2 paralelno
     const PARALLEL = 2;
-    const runTask = async (task) => {
+    const MAX_RETRIES = 2;
+    const THROTTLE_MS = 500;  // Krajša pavza, le da odda dih
+
+    // Health check pred vsakim taskom — če server crashed in se vrača, počakaj
+    async function waitForServerHealth(maxWaitSec = 30) {
+      const start = Date.now();
+      while ((Date.now() - start) / 1000 < maxWaitSec) {
+        try {
+          const ctrl = new AbortController();
+          const tid = setTimeout(() => ctrl.abort(), 3000);
+          const r = await fetch('/healthz', {signal: ctrl.signal});
+          clearTimeout(tid);
+          if (r.ok) return true;
+        } catch (e) {}
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      return false;
+    }
+
+    const runTask = async (task, attempt = 1) => {
       const {lang, audioBlob, videoFile, vi} = task;
+      const taskId = `${lang}_v${vi+1}`;
       try {
+        // Health check — če je server v restart loop-u, počakaj
+        if (attempt > 1) {
+          const ok = await waitForServerHealth(30);
+          if (!ok) throw new Error('Server ne odgovarja po 30s');
+        }
+
         // 1. Merge video + audio + srt
         const mergeFd = new FormData();
         mergeFd.append('video', videoFile, videoFile.name);
@@ -3912,9 +3940,17 @@ async function vadsToSlxDownload() {
         if (srts[lang]) {
           mergeFd.append('srt', new Blob([srts[lang]], {type: 'text/plain'}), 'subs.srt');
         }
-        const mergeRes = await fetch('/merge-video-audio', {method: 'POST', body: mergeFd});
-        if (!mergeRes.ok) throw new Error('Merge failed: ' + mergeRes.status);
+        // Timeout: 5 minut na video (dovolj za FFmpeg)
+        const ctrl = new AbortController();
+        const timeoutId = setTimeout(() => ctrl.abort(), 5 * 60 * 1000);
+        const mergeRes = await fetch('/merge-video-audio', {method: 'POST', body: mergeFd, signal: ctrl.signal});
+        clearTimeout(timeoutId);
+        if (!mergeRes.ok) {
+          const errTxt = await mergeRes.text().catch(() => '');
+          throw new Error(`Merge ${mergeRes.status}: ${errTxt.slice(0, 200)}`);
+        }
         const videoBlob = await mergeRes.blob();
+        if (videoBlob.size < 1000) throw new Error('Merge vrnil prazen video');
 
         // 2. Save to ads.slx disk
         const uploadFd = new FormData();
@@ -3926,11 +3962,29 @@ async function vadsToSlxDownload() {
         const upData = await upRes.json();
         if (!upData.ok) throw new Error(upData.error || 'Save failed');
         uploaded++;
+
+        // Throttle — pavza za CPU recovery med taski
+        await new Promise(r => setTimeout(r, THROTTLE_MS));
+        return true;
       } catch (e) {
-        errors.push(`${lang}_v${vi+1}: ${e.message}`);
+        const errMsg = e.name === 'AbortError' ? 'Timeout (5 min)' : e.message;
+        const isServerError = errMsg.includes('500') || errMsg.includes('502') || errMsg.includes('503') || errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError');
+        if (attempt < MAX_RETRIES) {
+          // Pri server crash daj več časa (10s), drugače 2s
+          const waitMs = isServerError ? 10000 : 2000;
+          console.warn(`[vads] ${taskId} attempt ${attempt} failed: ${errMsg}, retry v ${waitMs/1000}s...`);
+          await new Promise(r => setTimeout(r, waitMs));
+          return await runTask(task, attempt + 1);
+        }
+        errors.push(`${taskId}: ${errMsg}`);
+        failedTasks.push(task);
+        return false;
+      } finally {
+        btn.innerHTML = `⏳ ${uploaded}/${total} naloženo${errors.length ? ` · ${errors.length} napak` : ''}...`;
+        if (bulkStatus) {
+          bulkStatus.innerHTML = `⏳ Procesiranje: <strong>${uploaded}/${total}</strong>` + (errors.length ? ` · <span style="color:#dc2626">${errors.length} napak</span>` : '');
+        }
       }
-      btn.innerHTML = `⏳ ${uploaded}/${total} naloženo...`;
-      if (bulkStatus) bulkStatus.textContent = `Disk save: ${uploaded}/${total}` + (errors.length ? ` (${errors.length} napak)` : '');
     };
 
     const queue = [...tasks];
@@ -3951,9 +4005,31 @@ async function vadsToSlxDownload() {
     if (uploaded > 0) {
       try { await navigator.clipboard.writeText(downloadUrl); } catch(e) {}
       if (bulkStatus) {
-        bulkStatus.innerHTML = `✓ ${uploaded}/${total} naloženo · <a href="${downloadUrl}" target="_blank" style="color:var(--accent);font-weight:600">📁 Odpri Download stran</a> · link kopiran`;
+        let statusHtml = `✓ ${uploaded}/${total} naloženo · <a href="${downloadUrl}" target="_blank" style="color:var(--accent);font-weight:600">📁 Odpri Download stran</a> · link kopiran`;
+        if (errors.length) {
+          // Pokaži FAILED tasks + retry gumb
+          const failedSummary = errors.slice(0, 10).join('<br>');
+          const moreErr = errors.length > 10 ? `<br>… +${errors.length - 10} več` : '';
+          statusHtml += `
+            <div style="margin-top:12px;padding:12px;background:rgba(220,38,38,0.08);border:1px solid #fca5a5;border-radius:8px;font-size:11px">
+              <div style="font-weight:700;color:#dc2626;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+                <span>⚠️ ${errors.length} nalog ni uspelo:</span>
+                <button onclick="vadsRetryFailedTasks()" style="padding:5px 12px;background:#dc2626;color:white;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🔄 Poskusi znova</button>
+              </div>
+              <div style="font-family:monospace;font-size:10px;color:var(--text-secondary);max-height:200px;overflow-y:auto;line-height:1.5">${failedSummary}${moreErr}</div>
+            </div>`;
+          // Shrani za retry
+          window._vadsFailedTasks = failedTasks;
+          window._vadsRetryContext = {sku, audioBlobs, srts};
+        }
+        bulkStatus.innerHTML = statusHtml;
       }
-      alert(`✓ ${uploaded} videov shranjenih (SKU: ${sku}).\n\nDownload link:\n${downloadUrl}\n\nKopiral sem ga v clipboard.`);
+      const alertMsg = errors.length
+        ? `⚠️ ${uploaded}/${total} videov shranjenih (${errors.length} napak).\n\nNapake so prikazane v statusu, lahko jih poskusiš znova.\n\nDownload link:\n${downloadUrl}`
+        : `✓ ${uploaded} videov shranjenih (SKU: ${sku}).\n\nDownload link:\n${downloadUrl}\n\nKopiral sem ga v clipboard.`;
+      alert(alertMsg);
+    } else if (errors.length) {
+      alert(`❌ Vse naloge so spodletele (${errors.length}).\n\nPrva napaka: ${errors[0]}\n\nPreveri network in poskusi znova.`);
     }
 
     setTimeout(() => {
@@ -3968,6 +4044,92 @@ async function vadsToSlxDownload() {
       btn.disabled = false;
       btn.innerHTML = origText;
     }, 3000);
+  }
+}
+
+async function vadsRetryFailedTasks() {
+  const failed = window._vadsFailedTasks || [];
+  const ctx = window._vadsRetryContext || {};
+  if (!failed.length || !ctx.sku) {
+    alert('Ni shranjenih napak za retry.');
+    return;
+  }
+  if (!confirm(`Poskusi znova ${failed.length} neuspešnih nalog?`)) return;
+
+  const btn = document.getElementById('vadsSlxBtn');
+  const bulkStatus = document.getElementById('vadsBulkStatus');
+  const origText = btn ? btn.innerHTML : '';
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '🔄 Retry...'; }
+
+  const total = failed.length;
+  let uploaded = 0;
+  const errors = [];
+  const stillFailed = [];
+
+  for (const task of failed) {
+    const {lang, audioBlob, videoFile, vi} = task;
+    const taskId = `${lang}_v${vi+1}`;
+    try {
+      const mergeFd = new FormData();
+      mergeFd.append('video', videoFile, videoFile.name);
+      mergeFd.append('audio', audioBlob, 'audio.mp3');
+      mergeFd.append('lang', lang);
+      if (ctx.srts && ctx.srts[lang]) {
+        mergeFd.append('srt', new Blob([ctx.srts[lang]], {type: 'text/plain'}), 'subs.srt');
+      }
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 5 * 60 * 1000);
+      const mergeRes = await fetch('/merge-video-audio', {method: 'POST', body: mergeFd, signal: ctrl.signal});
+      clearTimeout(timeoutId);
+      if (!mergeRes.ok) {
+        const errTxt = await mergeRes.text().catch(() => '');
+        throw new Error(`Merge ${mergeRes.status}: ${errTxt.slice(0, 200)}`);
+      }
+      const videoBlob = await mergeRes.blob();
+      if (videoBlob.size < 1000) throw new Error('Merge vrnil prazen video');
+
+      const uploadFd = new FormData();
+      uploadFd.append('video', videoBlob, 'video.mp4');
+      uploadFd.append('sku_name', ctx.sku);
+      uploadFd.append('country_code', lang);
+      uploadFd.append('video_version', String(vi + 1));
+      const upRes = await fetch('/video-save-to-disk', {method: 'POST', body: uploadFd});
+      const upData = await upRes.json();
+      if (!upData.ok) throw new Error(upData.error || 'Save failed');
+      uploaded++;
+    } catch (e) {
+      errors.push(`${taskId}: ${e.message}`);
+      stillFailed.push(task);
+    }
+    if (btn) btn.innerHTML = `🔄 Retry ${uploaded}/${total}${errors.length ? ` · ${errors.length} napak` : ''}`;
+  }
+
+  const downloadUrl = window.location.origin + '/d/' + encodeURIComponent(ctx.sku);
+  if (stillFailed.length > 0) {
+    window._vadsFailedTasks = stillFailed;
+    if (bulkStatus) {
+      const failedSummary = errors.slice(0, 10).join('<br>');
+      bulkStatus.innerHTML = `
+        ⚠ Retry: ${uploaded}/${total} uspelo · <a href="${downloadUrl}" target="_blank" style="color:var(--accent);font-weight:600">📁 Odpri Download stran</a>
+        <div style="margin-top:12px;padding:12px;background:rgba(220,38,38,0.08);border:1px solid #fca5a5;border-radius:8px;font-size:11px">
+          <div style="font-weight:700;color:#dc2626;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+            <span>⚠️ ${stillFailed.length} še vedno neuspelih:</span>
+            <button onclick="vadsRetryFailedTasks()" style="padding:5px 12px;background:#dc2626;color:white;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🔄 Še enkrat</button>
+          </div>
+          <div style="font-family:monospace;font-size:10px;color:var(--text-secondary);max-height:200px;overflow-y:auto;line-height:1.5">${failedSummary}</div>
+        </div>`;
+    }
+  } else {
+    window._vadsFailedTasks = [];
+    if (bulkStatus) {
+      bulkStatus.innerHTML = `✓ Retry uspešen! Vsi ${total} videov naloženi · <a href="${downloadUrl}" target="_blank" style="color:var(--accent);font-weight:600">📁 Odpri Download stran</a>`;
+    }
+    alert(`✓ Retry uspešen! Vsi ${total} videov naloženi.`);
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = origText;
   }
 }
 
