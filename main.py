@@ -41,6 +41,10 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.mount("/static", StaticFiles(directory="static"), name="static")
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
+# Maksimum sočasnih FFmpeg procesov — Render Pro 2 CPU/4GB ne zdrži več kot 1 hkrati
+# brez health check timeoutov. (1 CPU za FFmpeg, 1 CPU za /healthz + uvicorn)
+FFMPEG_SEMAPHORE = asyncio.Semaphore(1)
+
 TEMPLATE_PATH = "static/tiktok_template.xlsx"
 EXPORTS_DIR = Path("exports")
 EXPORTS_DIR.mkdir(exist_ok=True)
@@ -3638,7 +3642,18 @@ async def merge_video_audio_session(
                        "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac",
                        "-shortest", output_path]
 
-            result = subprocess.run(cmd, capture_output=True, timeout=180)
+            # FFmpeg v executorju + nice priority
+            import os as _os
+            if _os.name == 'posix':
+                cmd = ['nice', '-n', '10'] + cmd
+
+            # Semafor: samo 1 FFmpeg naenkrat na server
+            async with FFMPEG_SEMAPHORE:
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: subprocess.run(cmd, capture_output=True, timeout=180)
+                )
             if result.returncode != 0:
                 err_msg = result.stderr.decode(errors='replace')[-400:]
                 return JR({"error": f"FFmpeg napaka: {err_msg}"}, status_code=500)
@@ -3784,7 +3799,20 @@ async def merge_video_audio(
                     output_path
                 ]
 
-            result = subprocess.run(cmd, capture_output=True, timeout=180)
+            # Run FFmpeg v executorju da NE blokiramo async event loop-a
+            # (preprečuje /healthz timeoute → Render restart)
+            # nice=10 da imajo drugi procesi (npr. uvicorn /healthz) prednost
+            import os as _os
+            if _os.name == 'posix':
+                cmd = ['nice', '-n', '10'] + cmd
+
+            # Semafor: samo 1 FFmpeg naenkrat na server — preprečuje CPU saturation
+            async with FFMPEG_SEMAPHORE:
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: subprocess.run(cmd, capture_output=True, timeout=180)
+                )
 
             if result.returncode != 0:
                 err_msg = result.stderr.decode(errors='replace')[-400:]
