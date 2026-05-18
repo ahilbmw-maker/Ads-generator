@@ -3277,6 +3277,10 @@ input[type="text"].error { border-color: var(--red) !important; }
             style="padding:11px 22px;background:#0891b2;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">
             🎯 Predlagaj 3
           </button>
+          <button onclick="xsellClearCache()" title="Pobriši cache (forsiraj sveže AI predloge)"
+            style="padding:11px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap">
+            🗑️ Cache
+          </button>
         </div>
         <div style="font-size:10px;color:var(--text-tertiary);margin-top:6px">
           💡 Tip: lahko prilepiš SKU (M260), URL (maaarket.si/product/...) ali ime izdelka.
@@ -11966,6 +11970,16 @@ async function xsellInit() {
     const stockOk = d.stock_loaded ? '✓ zaloga' : '⚠ ni zaloge';
     el.innerHTML = `XML feed: ${lastFetchStr}<br>${totalSL} izdelkov · ${stockOk}`;
   } catch(e) { console.warn('xsell init', e); }
+}
+
+async function xsellClearCache() {
+  if (!confirm('Pobriši Xsell cache? Naslednji klic za vsak SKU bo svež AI klic.')) return;
+  try {
+    const r = await fetch('/xsell-cache-clear', {method: 'POST'});
+    const d = await r.json();
+    if (d.ok) alert('✓ Cache pobrisan');
+    else alert('⚠️ ' + (d.error || 'Napaka'));
+  } catch(e) { alert('Napaka: ' + e.message); }
 }
 
 async function xsellSuggest() {
