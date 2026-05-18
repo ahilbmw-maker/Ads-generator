@@ -8029,34 +8029,44 @@ BETA_DIR = DATA_DIR / "beta_exports"
 async def beta_save_export(data: dict):
     """Shrani Meta Ads CSV export na disk z datumom."""
     try:
-        BETA_DIR.mkdir(exist_ok=True)
+        BETA_DIR.mkdir(parents=True, exist_ok=True)
         from datetime import datetime
-        import pytz
-        lj = pytz.timezone("Europe/Ljubljana")
-        now = datetime.now(lj)
+        try:
+            import pytz
+            lj = pytz.timezone("Europe/Ljubljana")
+            now = datetime.now(lj)
+        except Exception:
+            now = datetime.now()
         date_str = now.strftime("%Y-%m-%d")
         ts_str = now.strftime("%Y-%m-%d_%H-%M")
-        
+
         # Meta info
         filename = f"{ts_str}_{data.get('filename','export').replace(' ','_')[:40]}.json"
+        campaigns = data.get("campaigns", [])
         payload = {
             "filename": data.get("filename", ""),
             "date": date_str,
             "timestamp": ts_str,
-            "campaigns": data.get("campaigns", []),
+            "campaigns": campaigns,
             "total_spend": data.get("total_spend", 0),
             "total_purchases": data.get("total_purchases", 0),
         }
-        (BETA_DIR / filename).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        
+        out_path = BETA_DIR / filename
+        out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        size_kb = out_path.stat().st_size / 1024
+        print(f"[beta-save] OK: {filename} ({len(campaigns)} kampanj, {size_kb:.1f} KB) -> {out_path}")
+
         # Pobriši stare (> 30 dni)
         cutoff = now.timestamp() - 30*24*3600
         for f in BETA_DIR.glob("*.json"):
             if f.stat().st_mtime < cutoff:
                 f.unlink()
-        
-        return {"ok": True, "saved": filename}
+
+        return {"ok": True, "saved": filename, "size_kb": round(size_kb, 1), "path": str(out_path)}
     except Exception as e:
+        import traceback
+        print(f"[beta-save] ERROR: {e}")
+        traceback.print_exc()
         return {"ok": False, "error": str(e)}
 
 @app.get("/beta-export-history")
