@@ -10770,10 +10770,22 @@ SUPPLIER_VENDOR_IDS = {
 
 @app.post("/prevzemi-backfill-vendor-ids")
 async def prevzemi_backfill_vendor_ids():
-    """Posodobi vendor_id v vseh obstoječih meta.json datotekah."""
+    """Posodobi vendor_id (in supplier če manjka) v vseh obstoječih meta.json datotekah.
+    Če 'supplier' polje manjka, ga proba ugotoviti iz 'vendor_name' z heuristiko."""
     try:
         updated = 0
         skipped = 0
+        details = []
+
+        # Heuristika za ugibanje supplier-ja iz vendor_name (lowercase substring match)
+        VENDOR_NAME_HINTS = {
+            "amio":       ["amio", "suban"],
+            "abakus":     ["abakus"],
+            "intercars":  ["intercars", "inter cars", "inter-cars"],
+            "motoprofil": ["motoprofil", "moto profil", "moto-profil"],
+            "ikonka":     ["ikonka", "kik"],
+        }
+
         for d in PREVZEMI_DIR.iterdir():
             if not d.is_dir():
                 continue
@@ -10782,16 +10794,43 @@ async def prevzemi_backfill_vendor_ids():
                 continue
             try:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                changed = False
+
                 supplier_key = (meta.get("supplier") or "").lower()
+
+                # Če supplier polje manjka, ga proba ugotoviti iz vendor_name
+                if not supplier_key:
+                    vname = (meta.get("vendor_name") or "").lower()
+                    for sup, hints in VENDOR_NAME_HINTS.items():
+                        if any(h in vname for h in hints):
+                            supplier_key = sup
+                            meta["supplier"] = sup
+                            meta["supplier_name"] = SUPPLIER_NAMES.get(sup, sup)
+                            changed = True
+                            break
+
+                # Posodobi vendor_id če manjka in supplier obstaja v mapping-u
                 if supplier_key in SUPPLIER_VENDOR_IDS and not meta.get("vendor_id"):
                     meta["vendor_id"] = SUPPLIER_VENDOR_IDS[supplier_key]
+                    changed = True
+
+                if changed:
                     meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
                     updated += 1
+                    details.append({"id": d.name, "supplier": supplier_key, "vendor_id": meta.get("vendor_id", "")})
                 else:
                     skipped += 1
-            except Exception:
+            except Exception as e:
                 skipped += 1
-        return {"ok": True, "updated": updated, "skipped": skipped, "mapping": SUPPLIER_VENDOR_IDS}
+                details.append({"id": d.name, "error": str(e)})
+
+        return {
+            "ok": True,
+            "updated": updated,
+            "skipped": skipped,
+            "mapping": SUPPLIER_VENDOR_IDS,
+            "details": details[:50],  # samo prvih 50 za debugging
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
