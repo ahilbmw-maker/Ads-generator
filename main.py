@@ -901,7 +901,7 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
     """Sinhrona obdelava — teče v executorju.
     1. IMAP fetch UNSEEN
     2. Zberi vse XML + PDF attachmente
-    3. Razdeli XML-je na DU + NU
+    3. Razdeli XML-je na DU + NU (z dedup po številki računa)
     4. Generiraj CSV-je
     5. Zapakiraj vse + PDF-je v 1 ZIP
     6. Shrani v storage
@@ -919,6 +919,15 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
     port = int(cfg.get("imap_port", 993))
     username = cfg["email"]
 
+    # Naloži zgodovino že obdelanih faktur (cross-batch dedup)
+    HISTORY_FILE = STORAGE_KNJ_DIR / "_processed_invoices.json"
+    processed_history = {}  # {invoice_key: {batch, ts, email_from}}
+    if HISTORY_FILE.exists():
+        try:
+            processed_history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            processed_history = {}
+
     try:
         if port == 993:
             mail = imaplib.IMAP4_SSL(host, port)
@@ -935,6 +944,12 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
     xml_files = []  # (filename, content_str)
     processed_email_nums = []
     email_meta = []  # za log
+
+    # Dedup tracking
+    seen_invoices_this_batch = set()       # invoice_key v tem batchu
+    skipped_dup_in_batch = []              # [{invoice_num, type, from}]
+    skipped_dup_in_history = []            # [{invoice_num, type, from, original_batch}]
+    new_invoices_added = []                # [{invoice_num, type}]
 
     try:
         mail.select("INBOX")
@@ -972,7 +987,7 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                     continue  # Ne procesiraj emailov brez attachmentov, pusti UNSEEN
 
                 # Klasifikacija attachmentov
-                ext_count = {"xml": 0, "pdf": 0, "other": 0}
+                ext_count = {"xml": 0, "pdf": 0, "other": 0, "xml_dup_batch": 0, "xml_dup_history": 0}
                 for fn, content in email_attachments:
                     fn_up = fn.upper()
                     if fn_up.endswith(".XML"):
@@ -985,18 +1000,73 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                             except UnicodeDecodeError:
                                 xml_text = content.decode('utf-8', errors='ignore')
 
+                        # Parsiraj glede na ime ali heuristiko
+                        parsed_d = []
+                        parsed_c = []
+                        invoice_type = None  # "DU" | "NU"
                         if '_DU_' in fn_up or '_DU.' in fn_up or 'DU.XML' in fn_up:
-                            debit_rows.extend(_parse_polcar_debit(xml_text))
+                            parsed_d = _parse_polcar_debit(xml_text)
+                            invoice_type = "DU"
                         elif '_NU_' in fn_up or '_NU.' in fn_up or 'NU.XML' in fn_up:
-                            credit_rows.extend(_parse_polcar_credit(xml_text))
+                            parsed_c = _parse_polcar_credit(xml_text)
+                            invoice_type = "NU"
                         else:
-                            # Heuristika
                             d = _parse_polcar_debit(xml_text)
                             c = _parse_polcar_credit(xml_text)
-                            if d and not c: debit_rows.extend(d)
-                            elif c and not d: credit_rows.extend(c)
-                            elif len(d) > len(c): debit_rows.extend(d)
-                            else: credit_rows.extend(c)
+                            if d and not c:
+                                parsed_d = d; invoice_type = "DU"
+                            elif c and not d:
+                                parsed_c = c; invoice_type = "NU"
+                            elif len(d) > len(c):
+                                parsed_d = d; invoice_type = "DU"
+                            else:
+                                parsed_c = c; invoice_type = "NU"
+
+                        # === DEDUP CHECK ===
+                        # Vzami številko fakture iz prve vrstice (vse vrstice istega XML imajo isti Številka)
+                        invoice_num = ""
+                        if parsed_d:
+                            invoice_num = parsed_d[0].get('Številka', '').strip()
+                        elif parsed_c:
+                            invoice_num = parsed_c[0].get('Številka', '').strip()
+
+                        if invoice_num and invoice_type:
+                            invoice_key = f"{invoice_type}:{invoice_num}"
+
+                            # 1. preveri ali že v tem batchu
+                            if invoice_key in seen_invoices_this_batch:
+                                skipped_dup_in_batch.append({
+                                    "invoice_num": invoice_num, "type": invoice_type,
+                                    "from": sender, "filename": fn
+                                })
+                                xml_files.append((f"DUPLICATE_BATCH__{fn}", content))
+                                ext_count["xml_dup_batch"] += 1
+                                continue
+
+                            # 2. preveri zgodovino
+                            if invoice_key in processed_history:
+                                hist = processed_history[invoice_key]
+                                skipped_dup_in_history.append({
+                                    "invoice_num": invoice_num, "type": invoice_type,
+                                    "from": sender, "filename": fn,
+                                    "original_batch": hist.get("batch", "?"),
+                                    "original_date": hist.get("ts", "?"),
+                                })
+                                xml_files.append((f"DUPLICATE_HISTORY__{fn}", content))
+                                ext_count["xml_dup_history"] += 1
+                                continue
+
+                            # Ni dvojnik — dodaj v batch
+                            seen_invoices_this_batch.add(invoice_key)
+                            new_invoices_added.append({
+                                "invoice_num": invoice_num, "type": invoice_type
+                            })
+
+                        # Doda vrstice
+                        if parsed_d:
+                            debit_rows.extend(parsed_d)
+                        if parsed_c:
+                            credit_rows.extend(parsed_c)
 
                         xml_files.append((fn, content))
                         ext_count["xml"] += 1
@@ -1060,7 +1130,8 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                     safe_fn += ".xml"
                 zf.writestr(f"XMLs/{safe_fn}", content)
 
-            # Manifest
+            # Manifest z dedup poročilom
+            total_dups = len(skipped_dup_in_batch) + len(skipped_dup_in_history)
             manifest = {
                 "created_at": _dt.now().isoformat(),
                 "emails_processed": len(processed_email_nums),
@@ -1069,8 +1140,48 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                 "pdf_count": len([p for p in pdf_files if p[0].lower().endswith(".pdf")]),
                 "xml_count": len(xml_files),
                 "emails": email_meta,
+                "deduplication": {
+                    "unique_invoices_added": len(new_invoices_added),
+                    "duplicates_in_batch": len(skipped_dup_in_batch),
+                    "duplicates_in_history": len(skipped_dup_in_history),
+                    "total_duplicates_skipped": total_dups,
+                    "new_invoices_list": new_invoices_added,
+                    "duplicates_batch_detail": skipped_dup_in_batch,
+                    "duplicates_history_detail": skipped_dup_in_history,
+                },
             }
             zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+
+            # Dedup report kot ločen TXT (čitljivo za uporabnika)
+            report_lines = [
+                "═══ DEDUPLICATION REPORT ═══",
+                f"Datum: {_dt.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                f"Batch ZIP: {zip_name}",
+                "",
+                f"📥 Obdelanih emailov: {len(processed_email_nums)}",
+                f"✓ Unikatnih novih faktur: {len(new_invoices_added)}",
+                f"⚠️  Duplikati v tem batchu: {len(skipped_dup_in_batch)}",
+                f"♻️  Duplikati iz zgodovine: {len(skipped_dup_in_history)}",
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                f"📊 Skupaj duplikatov preskočenih: {total_dups}",
+                "",
+            ]
+            if skipped_dup_in_batch:
+                report_lines.append("⚠️  DVOJNIKI V TEM BATCHU (isti račun prejel 2× v istem prevzemu):")
+                for d in skipped_dup_in_batch:
+                    report_lines.append(f"   • {d['type']} {d['invoice_num']}  ←  {d.get('from', '?')[:50]}")
+                report_lines.append("")
+            if skipped_dup_in_history:
+                report_lines.append("♻️  DVOJNIKI IZ ZGODOVINE (že obdelan v prejšnjem batchu):")
+                for d in skipped_dup_in_history:
+                    report_lines.append(f"   • {d['type']} {d['invoice_num']}  ←  {d.get('from', '?')[:50]}")
+                    report_lines.append(f"       (originalni batch: {d.get('original_batch', '?')})")
+                report_lines.append("")
+            if new_invoices_added:
+                report_lines.append("✓ NOVE UNIKATNE FAKTURE V TEM BATCHU:")
+                for inv in new_invoices_added:
+                    report_lines.append(f"   • {inv['type']} {inv['invoice_num']}")
+            zf.writestr("_DEDUP_REPORT.txt", "\n".join(report_lines).encode("utf-8"))
 
         # === Označi kot prebrane ===
         for num in processed_email_nums:
@@ -1080,7 +1191,22 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                 pass
         mail.logout()
 
+        # === POSODOBI ZGODOVINO OBDELANIH FAKTUR ===
+        for inv in new_invoices_added:
+            key = f"{inv['type']}:{inv['invoice_num']}"
+            processed_history[key] = {
+                "batch": zip_name,
+                "ts": _dt.now().isoformat(),
+                "type": inv['type'],
+                "invoice_num": inv['invoice_num'],
+            }
+        try:
+            HISTORY_FILE.write_text(json.dumps(processed_history, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            print(f"[knj-batch] Cannot write history: {e}")
+
         # Log
+        total_dups = len(skipped_dup_in_batch) + len(skipped_dup_in_history)
         _append_email_log({
             "ts": _dt.now().isoformat(),
             "type": "batch",
@@ -1090,6 +1216,7 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
             "debit_rows": len(debit_rows),
             "credit_rows": len(credit_rows),
             "pdf_count": len(pdf_files),
+            "duplicates_skipped": total_dups,
         })
 
         return {
@@ -1101,6 +1228,14 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
             "pdf_count": len(pdf_files),
             "zip_filename": zip_name,
             "zip_size_kb": round(zip_path.stat().st_size / 1024, 1),
+            "dedup": {
+                "unique_invoices": len(new_invoices_added),
+                "duplicates_in_batch": len(skipped_dup_in_batch),
+                "duplicates_in_history": len(skipped_dup_in_history),
+                "total_skipped": total_dups,
+                "batch_duplicates_list": skipped_dup_in_batch[:20],   # max 20 za UI
+                "history_duplicates_list": skipped_dup_in_history[:20],
+            },
         }
 
     except Exception as e:
