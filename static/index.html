@@ -2510,6 +2510,22 @@ input[type="text"].error { border-color: var(--red) !important; }
 
       <!-- DESNO: Rezultati + AI analiza -->
       <div>
+
+        <!-- ─── SCALING RECOMMENDER HERO ─── -->
+        <div style="background:linear-gradient(135deg,#7c3aed 0%,#a855f7 100%);color:white;border-radius:12px;padding:18px 22px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+          <div style="flex:1;min-width:240px">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.85;font-weight:600;margin-bottom:4px">🚀 SCALING RECOMMENDER</div>
+            <div style="font-size:18px;font-weight:700;letter-spacing:-0.3px">Najdi SKU za inflated bid scaling</div>
+            <div style="font-size:11px;opacity:0.85;margin-top:3px">Analiza trendov · ≥3 dni · ≥10 nakupov · ≥30€ spend</div>
+          </div>
+          <button onclick="betaRunRecommender()" style="padding:14px 28px;background:white;color:#7c3aed;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(0,0,0,0.15);transition:all 0.2s;white-space:nowrap" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 6px 18px rgba(0,0,0,0.25)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 14px rgba(0,0,0,0.15)'">
+            🎯 IZBERI KANDIDATE
+          </button>
+        </div>
+
+        <!-- Recommender rezultat -->
+        <div id="beta-recommender-result" style="display:none;margin-bottom:14px"></div>
+
         <div class="card" id="beta-results-card" style="display:none">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
             <span class="slabel">🎯 ANALIZA KAMPANJ</span>
@@ -13469,37 +13485,56 @@ function betaParseCSV(text) {
     return obj;
   });
 
-  // Grupiraj po kampaniji
+  // Grupiraj po kampaniji — OHRANI DNEVNE PODATKE
   const camps = {};
   for (const r of rows) {
     const name = r['Campaign name'];
     if (!name || !r['Day']) continue;
-    if (!camps[name]) camps[name] = {name, spend:0, purchases:0, atc:0, cpc:[], ctr:[], freq:[], delivery:'', account:''};
-    camps[name].spend += parseFloat(r['Amount spent (EUR)']||0);
-    camps[name].purchases += parseInt(parseFloat(r['Purchases']||0));
-    camps[name].atc += parseInt(parseFloat(r['Adds to cart']||0));
+    if (!camps[name]) {
+      camps[name] = {
+        name,
+        days: [],  // [{day, spend, purchases, atc, cpc, ctr, freq}]
+        delivery: '',
+        account: '',
+      };
+    }
+    const spend = parseFloat(r['Amount spent (EUR)']||0);
+    const purchases = parseInt(parseFloat(r['Purchases']||0));
+    const atc = parseInt(parseFloat(r['Adds to cart']||0));
     const cpc = parseFloat(r['CPC (cost per link click)']||0);
     const ctr = parseFloat(r['CTR (link click-through rate)']||0);
     const freq = parseFloat(r['Frequency']||0);
-    if (cpc) camps[name].cpc.push(cpc);
-    if (ctr) camps[name].ctr.push(ctr);
-    if (freq) camps[name].freq.push(freq);
+    camps[name].days.push({
+      day: r['Day'], spend, purchases, atc, cpc, ctr, freq,
+    });
     camps[name].delivery = r['Campaign Delivery']||'';
     camps[name].account = r['Account name']||'';
   }
 
-  betaCampaigns = Object.values(camps).map(c => ({
-    name: c.name,
-    spend: Math.round(c.spend*100)/100,
-    purchases: c.purchases,
-    cpp: c.purchases > 0 ? Math.round(c.spend/c.purchases*100)/100 : null,
-    cpc: c.cpc.length ? Math.round(c.cpc.reduce((a,b)=>a+b)/c.cpc.length*10000)/10000 : 0,
-    ctr: c.ctr.length ? Math.round(c.ctr.reduce((a,b)=>a+b)/c.ctr.length*100)/100 : 0,
-    freq: c.freq.length ? Math.round(c.freq.reduce((a,b)=>a+b)/c.freq.length*100)/100 : 0,
-    atc: c.atc,
-    delivery: c.delivery,
-    account: c.account,
-  })).filter(c => c.spend > 0);
+  // Pretvori v agregirane podatke (za obstoječo tabelo) + ohrani days za scaling
+  betaCampaigns = Object.values(camps).map(c => {
+    // Sortiraj dni kronološko
+    c.days.sort((a, b) => a.day.localeCompare(b.day));
+    const totalSpend = c.days.reduce((s, d) => s + d.spend, 0);
+    const totalPurchases = c.days.reduce((s, d) => s + d.purchases, 0);
+    const totalAtc = c.days.reduce((s, d) => s + d.atc, 0);
+    const cpcs = c.days.filter(d => d.cpc > 0).map(d => d.cpc);
+    const ctrs = c.days.filter(d => d.ctr > 0).map(d => d.ctr);
+    const freqs = c.days.filter(d => d.freq > 0).map(d => d.freq);
+    return {
+      name: c.name,
+      spend: Math.round(totalSpend*100)/100,
+      purchases: totalPurchases,
+      cpp: totalPurchases > 0 ? Math.round(totalSpend/totalPurchases*100)/100 : null,
+      cpc: cpcs.length ? Math.round(cpcs.reduce((a,b)=>a+b)/cpcs.length*10000)/10000 : 0,
+      ctr: ctrs.length ? Math.round(ctrs.reduce((a,b)=>a+b)/ctrs.length*100)/100 : 0,
+      freq: freqs.length ? Math.round(freqs.reduce((a,b)=>a+b)/freqs.length*100)/100 : 0,
+      atc: totalAtc,
+      delivery: c.delivery,
+      account: c.account,
+      days: c.days,  // ← dnevni podatki za trend analizo
+    };
+  }).filter(c => c.spend > 0);
 
   // Pokaži summary
   const total = betaCampaigns.length;
@@ -13525,6 +13560,312 @@ function betaParseCSV(text) {
         <div style="font-size:11px;color:var(--text-secondary)">Avg CPP</div>
       </div>
     </div>`;
+}
+
+// ═══ SCALING RECOMMENDER — INFLATED BID ALGORITEM ═══════════════════════════
+
+function betaExtractSku(campaignName) {
+  // Maaarket campaign convention: SKU je ponavadi v imenu kampanje
+  // Vzami zadnje besede ali kar prepoznamo kot SKU
+  if (!campaignName) return campaignName;
+  // Heuristika: poišči BIG CAPS besedo ali pa zadnji segment po " - "
+  const segments = campaignName.split(' - ').map(s => s.trim());
+  // Zadnji segment je ponavadi SKU
+  return segments[segments.length - 1] || campaignName;
+}
+
+function betaCalcLinearTrend(values) {
+  // Vrne slope (pozitiven = naraščanje, negativen = padanje)
+  if (!values || values.length < 2) return 0;
+  const n = values.length;
+  const xs = values.map((_, i) => i);
+  const meanX = xs.reduce((a, b) => a + b, 0) / n;
+  const meanY = values.reduce((a, b) => a + b, 0) / n;
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - meanX) * (values[i] - meanY);
+    den += (xs[i] - meanX) ** 2;
+  }
+  return den === 0 ? 0 : num / den;
+}
+
+function betaAnalyzeScalingCandidate(campaign, targetCPP) {
+  const days = campaign.days || [];
+  const dayCount = days.length;
+  const totalSpend = campaign.spend;
+  const totalPurchases = campaign.purchases;
+  const overallCPP = campaign.cpp;
+
+  // Razlogi za diskvalifikacijo
+  const blockers = [];
+  if (dayCount < 3) blockers.push(`Premalo dni (${dayCount}, min 3)`);
+  if (totalPurchases < 10) blockers.push(`Premalo nakupov (${totalPurchases}, min 10)`);
+  if (totalSpend < 30) blockers.push(`Premalo spend (${totalSpend.toFixed(2)}€, min 30€)`);
+  if (campaign.delivery && !campaign.delivery.toLowerCase().includes('active')) {
+    blockers.push(`Kampanja ni aktivna (${campaign.delivery})`);
+  }
+  if (!overallCPP) blockers.push('Brez CPP podatkov');
+
+  if (blockers.length > 0) {
+    return { tier: 'DISQUALIFIED', score: 0, blockers, campaign };
+  }
+
+  // Signali za scaling
+  const signals = [];
+  let score = 0;
+
+  // 1. CPP signal — kako daleč pod target
+  const cppRatio = overallCPP / targetCPP;
+  if (cppRatio < 0.5) {
+    score += 40; signals.push({ icon: '🎯', text: `CPP ${overallCPP.toFixed(2)}€ je ${Math.round((1-cppRatio)*100)}% pod target ${targetCPP}€` });
+  } else if (cppRatio < 0.75) {
+    score += 25; signals.push({ icon: '✓', text: `CPP ${overallCPP.toFixed(2)}€ pod target ${targetCPP}€` });
+  } else if (cppRatio < 1.0) {
+    score += 10; signals.push({ icon: '~', text: `CPP ${overallCPP.toFixed(2)}€ blizu target ${targetCPP}€` });
+  } else {
+    score -= 20; signals.push({ icon: '⚠️', text: `CPP ${overallCPP.toFixed(2)}€ NAD target ${targetCPP}€` });
+  }
+
+  // 2. CPP trend signal — pad CPP-ja
+  const recentDays = days.slice(-Math.min(3, Math.floor(dayCount/2)));
+  const earlyDays = days.slice(0, Math.min(3, Math.floor(dayCount/2)));
+  const recentSpend = recentDays.reduce((s, d) => s + d.spend, 0);
+  const recentPurchases = recentDays.reduce((s, d) => s + d.purchases, 0);
+  const earlySpend = earlyDays.reduce((s, d) => s + d.spend, 0);
+  const earlyPurchases = earlyDays.reduce((s, d) => s + d.purchases, 0);
+  const recentCPP = recentPurchases > 0 ? recentSpend / recentPurchases : null;
+  const earlyCPP = earlyPurchases > 0 ? earlySpend / earlyPurchases : null;
+
+  if (recentCPP !== null && earlyCPP !== null) {
+    const trendPct = (recentCPP - earlyCPP) / earlyCPP * 100;
+    if (trendPct < -20) {
+      score += 30; signals.push({ icon: '📉', text: `CPP padajoč: ${trendPct.toFixed(0)}% (${earlyCPP.toFixed(2)}€ → ${recentCPP.toFixed(2)}€)` });
+    } else if (trendPct < -5) {
+      score += 15; signals.push({ icon: '↘', text: `CPP rahlo izboljšuje: ${trendPct.toFixed(0)}%` });
+    } else if (trendPct > 20) {
+      score -= 20; signals.push({ icon: '⚠️', text: `CPP narašča: +${trendPct.toFixed(0)}% (slabšanje)` });
+    } else if (trendPct > 5) {
+      score -= 5; signals.push({ icon: '↗', text: `CPP rahlo narašča: +${trendPct.toFixed(0)}%` });
+    } else {
+      score += 10; signals.push({ icon: '➡️', text: 'CPP stabilen' });
+    }
+  }
+
+  // 3. Volume signal — naraščanje purchase-ev v zadnjih dneh
+  const purchasesPerDay = days.map(d => d.purchases);
+  const purchaseSlope = betaCalcLinearTrend(purchasesPerDay);
+  if (purchaseSlope > 0.5) {
+    score += 15; signals.push({ icon: '🚀', text: `Pospešen volumen nakupov (+${purchaseSlope.toFixed(1)}/dan trend)` });
+  } else if (purchaseSlope > 0.1) {
+    score += 8; signals.push({ icon: '↗', text: 'Volumen rahlo narašča' });
+  } else if (purchaseSlope < -0.5) {
+    score -= 15; signals.push({ icon: '📉', text: `Volumen pada (${purchaseSlope.toFixed(1)}/dan)` });
+  }
+
+  // 4. Frequency signal — audience fatigue check
+  if (campaign.freq > 0) {
+    if (campaign.freq < 2) {
+      score += 10; signals.push({ icon: '✓', text: `Frequency ${campaign.freq.toFixed(1)} (svež audience)` });
+    } else if (campaign.freq < 3) {
+      signals.push({ icon: '~', text: `Frequency ${campaign.freq.toFixed(1)} (OK)` });
+    } else {
+      score -= 15; signals.push({ icon: '⚠️', text: `Frequency ${campaign.freq.toFixed(1)} (audience utruja)` });
+    }
+  }
+
+  // 5. CPP konsistentnost — ne ene-dnevne sreče
+  const dailyCPPs = days.filter(d => d.purchases > 0).map(d => d.spend / d.purchases);
+  if (dailyCPPs.length >= 3) {
+    const dailyAvg = dailyCPPs.reduce((a, b) => a + b) / dailyCPPs.length;
+    const variance = dailyCPPs.reduce((s, v) => s + (v - dailyAvg) ** 2, 0) / dailyCPPs.length;
+    const stdDev = Math.sqrt(variance);
+    const coeffVar = dailyAvg > 0 ? stdDev / dailyAvg : 1;
+    if (coeffVar < 0.3 && overallCPP < targetCPP) {
+      score += 15; signals.push({ icon: '🛡️', text: `Konsistenten CPP (variabilnost ${(coeffVar*100).toFixed(0)}%)` });
+    } else if (coeffVar > 0.7) {
+      score -= 10; signals.push({ icon: '⚠️', text: `Visoko nihanje CPP (±${(coeffVar*100).toFixed(0)}%)` });
+    }
+  }
+
+  // Določi tier in akcijo
+  let tier, action, color;
+  if (score >= 75) {
+    tier = 'HOT';
+    action = 'Scale +50% danes';
+    color = '#dc2626';
+  } else if (score >= 50) {
+    tier = 'STRONG';
+    action = 'Scale +25% danes';
+    color = '#ea580c';
+  } else if (score >= 25) {
+    tier = 'WATCH';
+    action = 'Opazuj 2-3 dni, lahko +10%';
+    color = '#ca8a04';
+  } else if (score >= 0) {
+    tier = 'HOLD';
+    action = 'Trenutno OK, ne dodaj budgeta';
+    color = '#64748b';
+  } else {
+    tier = 'KILL';
+    action = 'Razmisli o ugasnjevanju';
+    color = '#7c3aed';
+  }
+
+  return {
+    tier, score, action, color, signals, blockers: [],
+    campaign,
+    metrics: {
+      overallCPP, targetCPP, dayCount,
+      recentCPP, earlyCPP,
+      purchaseSlope,
+      dailyCPPs,
+    },
+  };
+}
+
+function betaRunRecommender() {
+  if (!betaCampaigns.length) { alert('Najprej naloži CSV!'); return; }
+  const targetCPP = parseFloat(document.getElementById('beta-target-cpp').value || 15);
+
+  const results = betaCampaigns.map(c => betaAnalyzeScalingCandidate(c, targetCPP));
+
+  // Razvrsti po score (qualified prej, disqualified za njimi)
+  const qualified = results.filter(r => r.tier !== 'DISQUALIFIED').sort((a, b) => b.score - a.score);
+  const disqualified = results.filter(r => r.tier === 'DISQUALIFIED');
+
+  // Render
+  const wrap = document.getElementById('beta-recommender-result');
+  if (!wrap) return;
+
+  const tierCounts = {HOT:0, STRONG:0, WATCH:0, HOLD:0, KILL:0};
+  qualified.forEach(r => tierCounts[r.tier]++);
+
+  let html = `
+    <div style="margin-bottom:16px;padding:14px 16px;background:linear-gradient(135deg,#0f172a,#1e293b);color:white;border-radius:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.7;font-weight:700">🤖 Scaling Recommender</div>
+          <div style="font-size:18px;font-weight:800;margin-top:3px">Analiza ${qualified.length} kvalificiranih SKU</div>
+          <div style="font-size:11px;opacity:0.7;margin-top:2px">${disqualified.length} ne ustreza kriterijem (premalo nakupov/dni/spend)</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${tierCounts.HOT > 0 ? `<span style="padding:5px 12px;background:#dc2626;border-radius:6px;font-size:11px;font-weight:700">🔥 ${tierCounts.HOT} HOT</span>` : ''}
+          ${tierCounts.STRONG > 0 ? `<span style="padding:5px 12px;background:#ea580c;border-radius:6px;font-size:11px;font-weight:700">💪 ${tierCounts.STRONG} STRONG</span>` : ''}
+          ${tierCounts.WATCH > 0 ? `<span style="padding:5px 12px;background:#ca8a04;border-radius:6px;font-size:11px;font-weight:700">👁️ ${tierCounts.WATCH} WATCH</span>` : ''}
+          ${tierCounts.HOLD > 0 ? `<span style="padding:5px 12px;background:#64748b;border-radius:6px;font-size:11px;font-weight:700">⏸️ ${tierCounts.HOLD} HOLD</span>` : ''}
+          ${tierCounts.KILL > 0 ? `<span style="padding:5px 12px;background:#7c3aed;border-radius:6px;font-size:11px;font-weight:700">🛑 ${tierCounts.KILL} KILL</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+
+  if (qualified.length === 0) {
+    html += `<div style="padding:30px;text-align:center;color:var(--text-tertiary);background:var(--surface);border:1px dashed var(--border);border-radius:10px">
+      Nobena kampanja ni izpolnila minimalnih kriterijev (min. 10 nakupov, 3 dni, 30€ spend).
+    </div>`;
+  }
+
+  // Render qualified cards
+  for (const r of qualified) {
+    const sku = betaExtractSku(r.campaign.name);
+    const tierIcon = {HOT:'🔥', STRONG:'💪', WATCH:'👁️', HOLD:'⏸️', KILL:'🛑'}[r.tier];
+
+    // Mini chart (CPP po dnevih) — ASCII spark
+    const chartDays = r.campaign.days.filter(d => d.purchases > 0);
+    let sparkHtml = '';
+    if (chartDays.length >= 2) {
+      const cpps = chartDays.map(d => d.spend / d.purchases);
+      const min = Math.min(...cpps);
+      const max = Math.max(...cpps);
+      const range = max - min || 1;
+      const heights = cpps.map(v => 4 + (1 - (v - min) / range) * 24);  // padajoč CPP = višja črta
+      sparkHtml = `
+        <div style="margin-top:10px;padding:10px 12px;background:var(--surface2);border-radius:6px">
+          <div style="font-size:9px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;font-weight:700">📈 CPP trend (manjši = boljši)</div>
+          <div style="display:flex;align-items:flex-end;gap:2px;height:32px">
+            ${heights.map((h, i) => `<div title="${chartDays[i].day}: ${cpps[i].toFixed(2)}€" style="flex:1;height:${h}px;background:linear-gradient(to top,${r.color},${r.color}aa);border-radius:2px 2px 0 0;min-width:8px"></div>`).join('')}
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-tertiary);margin-top:4px;font-family:'DM Mono',monospace">
+            <span>${chartDays[0].day}</span>
+            <span>${chartDays[chartDays.length-1].day}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    html += `
+      <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${r.color};border-radius:10px;padding:16px 18px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:240px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="padding:3px 10px;background:${r.color};color:white;border-radius:5px;font-size:11px;font-weight:800;letter-spacing:0.5px">${tierIcon} ${r.tier}</span>
+              <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text-tertiary);background:var(--surface2);padding:2px 7px;border-radius:3px">SCORE ${r.score}</span>
+            </div>
+            <div style="font-size:18px;font-weight:800;color:var(--text);margin-top:8px;letter-spacing:-0.3px">${sku}</div>
+            <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-family:'DM Mono',monospace">${r.campaign.name.slice(0, 70)}${r.campaign.name.length > 70 ? '…' : ''}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-tertiary);font-weight:700">PRIPOROČILO</div>
+            <div style="font-size:14px;font-weight:700;color:${r.color};margin-top:3px;letter-spacing:-0.3px">${r.action}</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-top:14px">
+          <div style="background:var(--surface2);padding:8px 10px;border-radius:6px">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700">CPP</div>
+            <div style="font-size:17px;font-weight:800;color:${r.metrics.overallCPP < r.metrics.targetCPP ? '#16a34a' : '#dc2626'};margin-top:2px;font-family:'DM Mono',monospace">${r.metrics.overallCPP ? r.metrics.overallCPP.toFixed(2) : '—'}€</div>
+          </div>
+          <div style="background:var(--surface2);padding:8px 10px;border-radius:6px">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700">Spend</div>
+            <div style="font-size:17px;font-weight:800;color:var(--text);margin-top:2px;font-family:'DM Mono',monospace">${r.campaign.spend.toFixed(0)}€</div>
+          </div>
+          <div style="background:var(--surface2);padding:8px 10px;border-radius:6px">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700">Nakupi</div>
+            <div style="font-size:17px;font-weight:800;color:var(--accent);margin-top:2px;font-family:'DM Mono',monospace">${r.campaign.purchases}</div>
+          </div>
+          <div style="background:var(--surface2);padding:8px 10px;border-radius:6px">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700">Dni</div>
+            <div style="font-size:17px;font-weight:800;color:var(--text);margin-top:2px;font-family:'DM Mono',monospace">${r.metrics.dayCount}</div>
+          </div>
+          <div style="background:var(--surface2);padding:8px 10px;border-radius:6px">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700">Freq</div>
+            <div style="font-size:17px;font-weight:800;color:${r.campaign.freq > 3 ? '#dc2626' : 'var(--text)'};margin-top:2px;font-family:'DM Mono',monospace">${r.campaign.freq.toFixed(1)}</div>
+          </div>
+        </div>
+
+        ${sparkHtml}
+
+        <div style="margin-top:12px">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700;margin-bottom:6px">📊 Trend signali</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            ${r.signals.map(s => `<div style="font-size:12px;color:var(--text);display:flex;gap:8px;line-height:1.4"><span style="flex-shrink:0">${s.icon}</span><span>${s.text}</span></div>`).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Disqualified — collapsed summary
+  if (disqualified.length > 0) {
+    html += `
+      <details style="margin-top:14px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text-tertiary);padding:8px;background:var(--surface2);border-radius:6px">
+          📋 ${disqualified.length} ne ustreza kriterijem (klikni za prikaz)
+        </summary>
+        <div style="padding:10px;background:var(--surface2);margin-top:4px;border-radius:6px;max-height:300px;overflow-y:auto">
+          ${disqualified.map(r => `
+            <div style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:11px">
+              <strong>${betaExtractSku(r.campaign.name)}</strong>
+              <span style="color:var(--text-tertiary);margin-left:6px">${r.blockers.join(' · ')}</span>
+            </div>
+          `).join('')}
+        </div>
+      </details>
+    `;
+  }
+
+  wrap.innerHTML = html;
+  wrap.style.display = 'block';
 }
 
 function betaAnalyze() {
