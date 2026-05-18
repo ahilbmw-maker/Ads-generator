@@ -9916,6 +9916,11 @@ ZAHTEVE:
 - Tehnične podatke vzemi PREDVSEM iz SLO vira (ker so v slovenščini in zanesljivi)
 - Aliexpress vir uporabi za dodatne specifikacije in vizualne reference
 
+DOLŽINA BESEDILA (POMEMBNO — opisi naj bodo bogati in informativni):
+- "glavni_opis": vsak odstavek naj ima 4-6 povedi (NE 1-2). Opisuj problem, rešitev, koristi, scenarije uporabe, počutje uporabnika. Vsebina naj se bere kot mini članek, ne kot bullet list. Vsaj 2-3 odstavki.
+- "izpostavitve.opis": vsak naj ima 3-4 povedi (NE samo 1-2). Razloži funkcijo, zakaj je pomembna, kako koristi uporabniku, in konkretno povej kako se to manifestira v praksi.
+- "kratek_opis": ostane 1 stavek (max 25 besed) za hook na vrhu
+
 FORMATIRANJE (POMEMBNO):
 - Za "glavni_opis" uporabi HTML tage, NE markdown:
   - <p>...</p> za odstavke
@@ -9929,11 +9934,11 @@ VRNI EXACT JSON v tej obliki, brez dodatnega teksta:
 {{
   "naslov": "Ime izdelka IZMIŠLJEN_IME 🔥 Glavna lastnost",
   "kratek_opis": "En stavek (max 25 besed) ki privablja in pove kaj izdelek dela.",
-  "glavni_opis": "<p><strong>Naslov 1. odstavka</strong> 🏠</p><p>Vsebina prvega odstavka z <strong>poudarki</strong> in opisi.</p><p><strong>Naslov 2. odstavka</strong> ⚡</p><p>Vsebina drugega odstavka...</p>",
+  "glavni_opis": "<p><strong>Naslov 1. odstavka</strong> 🏠</p><p>Vsebina prvega odstavka s 4-6 povedmi: opiši problem ki ga uporabnik ima, rešitev ki jo izdelek prinaša, glavne <strong>poudarke</strong>, konkretne scenarije uporabe in počutje uporabnika ko ga uporablja.</p><p><strong>Naslov 2. odstavka</strong> ⚡</p><p>Drugi odstavek z 4-6 povedmi: dodatne lastnosti, materiali ali tehnologija, primerjava z alternativami, in zakaj je ravno ta izdelek smiselna izbira.</p>",
   "izpostavitve": [
-    {{"naslov": "🎯 Naslov 1", "opis": "1-2 stavka opisa."}},
-    {{"naslov": "⚡ Naslov 2", "opis": "1-2 stavka opisa."}},
-    {{"naslov": "💪 Naslov 3", "opis": "1-2 stavka opisa."}}
+    {{"naslov": "🎯 Naslov 1", "opis": "3-4 povedi: razloži funkcijo izdelka, zakaj je ta lastnost pomembna, kako konkretno koristi uporabniku v vsakdanjem življenju, in kaj naredi razliko od konkurence."}},
+    {{"naslov": "⚡ Naslov 2", "opis": "3-4 povedi: tehnični aspekt z razlago, prednost ki jo uporabnik občuti, primer realne uporabe, in kako prihrani čas ali denar."}},
+    {{"naslov": "💪 Naslov 3", "opis": "3-4 povedi: trajnost ali kakovost gradnje, kaj to pomeni za uporabnika dolgoročno, jamstvo ali zanesljivost, in zakaj se splača investirati."}}
   ],
   "tehnicne_lastnosti": [
     "Material: ...",
@@ -9960,7 +9965,7 @@ VRNI EXACT JSON v tej obliki, brez dodatnega teksta:
                 },
                 json={
                     "model": "claude-sonnet-4-6",
-                    "max_tokens": 4000,
+                    "max_tokens": 6000,
                     "messages": [{"role": "user", "content": prompt}],
                 }
             )
