@@ -3631,7 +3631,7 @@ async def merge_video_audio_session(
                     s = get_subtitle_style_for_format(video_width, video_height)
                     vf = f"subtitles={sub_file}:force_style='FontName=Arial,FontSize={s['fontsize']},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline={s['outline']},Bold=1,Alignment=2,MarginV={s['marginv']}'"
                 cmd = ["ffmpeg", "-y", "-threads", "1", "-i", video_path, "-i", audio_path, "-vf", vf,
-                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac",
                        "-shortest", output_path]
             else:
                 cmd = ["ffmpeg", "-y", "-threads", "1", "-i", video_path, "-i", audio_path,
@@ -3764,7 +3764,7 @@ async def merge_video_audio(
                     "-map", "0:v:0",
                     "-map", "1:a:0",
                     "-c:v", "libx264",
-                    "-preset", "ultrafast",
+                    "-preset", "veryfast",
                     "-c:a", "aac",
                     "-shortest",
                     output_path
