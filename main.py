@@ -9721,9 +9721,8 @@ async def prevzemi_generate_xml(req: PrevzemiXmlRequest):
             "ToPay": total_str,
             "Value": total_str,
             "ValueWithVAT": total_str,
+            "SupplierID": vendor_id,  # vedno prisoten, "" če dobavitelj ni prepoznan
         }
-        if vendor_id:
-            invoice_attrs["SupplierID"] = vendor_id
         invoice_el = _ET.SubElement(root, "Invoice", **invoice_attrs)
         items_el = _ET.SubElement(invoice_el, "InvoiceItems")
 
