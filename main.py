@@ -555,6 +555,7 @@ def _process_email_attachment(filename: str, content: bytes, subject: str, sende
             "created_ts": ts,
             "supplier": supplier,
             "supplier_name": SUPPLIER_NAMES.get(supplier, supplier),
+            "vendor_id": SUPPLIER_VENDOR_IDS.get(supplier, ""),
             "invoice_number": parsed.get("invoice_number", ""),
             "invoice_date": parsed.get("invoice_date", ""),
             "vendor_name": parsed.get("vendor_name", ""),
@@ -9460,6 +9461,9 @@ IMPORTANT:
             'record_id': record_id,
             'original_filename': file.filename or 'invoice.pdf',
             'created_ts': ts,
+            'supplier': 'amio',
+            'supplier_name': SUPPLIER_NAMES.get('amio', 'AMiO'),
+            'vendor_id': SUPPLIER_VENDOR_IDS.get('amio', ''),
             'invoice_number': parsed.get('invoice_number', ''),
             'invoice_date': parsed.get('invoice_date', ''),
             'vendor_name': parsed.get('vendor_name', ''),
@@ -9696,17 +9700,31 @@ async def prevzemi_generate_xml(req: PrevzemiXmlRequest):
         total_value = sum(_to_float(it.get('value', 0)) for it in selected)
         total_str = f"{total_value:.2f}"
 
+        # Get supplier vendor ID from meta.json
+        meta_path = PREVZEMI_DIR / rec_safe / 'meta.json'
+        supplier_key = None
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding='utf-8'))
+                supplier_key = meta.get('supplier', '').lower()
+            except Exception:
+                pass
+        vendor_id = SUPPLIER_VENDOR_IDS.get(supplier_key, '') if supplier_key else ''
+
         # Build XML
         root = _ET.Element("nextis.xmlservice")
-        invoice_el = _ET.SubElement(root, "Invoice",
-            Number=invoice_num,
-            DateCreated=date_str,
-            Currency=currency,
-            Payed="0.00",
-            ToPay=total_str,
-            Value=total_str,
-            ValueWithVAT=total_str
-        )
+        invoice_attrs = {
+            "Number": invoice_num,
+            "DateCreated": date_str,
+            "Currency": currency,
+            "Payed": "0.00",
+            "ToPay": total_str,
+            "Value": total_str,
+            "ValueWithVAT": total_str,
+        }
+        if vendor_id:
+            invoice_attrs["SupplierID"] = vendor_id
+        invoice_el = _ET.SubElement(root, "Invoice", **invoice_attrs)
         items_el = _ET.SubElement(invoice_el, "InvoiceItems")
 
         for item in selected:
@@ -10741,6 +10759,43 @@ SUPPLIER_NAMES = {
     "unknown": "Unknown",
 }
 
+# Vendor ID-ji v računovodskem sistemu (siluxar/nextis)
+SUPPLIER_VENDOR_IDS = {
+    "amio":       "000097",
+    "abakus":     "D00003",
+    "intercars":  "000177",
+    "motoprofil": "P00010",
+    "ikonka":     "000223",
+}
+
+
+@app.post("/prevzemi-backfill-vendor-ids")
+async def prevzemi_backfill_vendor_ids():
+    """Posodobi vendor_id v vseh obstoječih meta.json datotekah."""
+    try:
+        updated = 0
+        skipped = 0
+        for d in PREVZEMI_DIR.iterdir():
+            if not d.is_dir():
+                continue
+            meta_path = d / "meta.json"
+            if not meta_path.exists():
+                continue
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                supplier_key = (meta.get("supplier") or "").lower()
+                if supplier_key in SUPPLIER_VENDOR_IDS and not meta.get("vendor_id"):
+                    meta["vendor_id"] = SUPPLIER_VENDOR_IDS[supplier_key]
+                    meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+                    updated += 1
+                else:
+                    skipped += 1
+            except Exception:
+                skipped += 1
+        return {"ok": True, "updated": updated, "skipped": skipped, "mapping": SUPPLIER_VENDOR_IDS}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 
 @app.post("/prevzemi-parse-supplier")
 async def prevzemi_parse_supplier(file: UploadFile = File(...)):
@@ -10790,6 +10845,7 @@ async def prevzemi_parse_supplier(file: UploadFile = File(...)):
             'created_ts': ts,
             'supplier': supplier,
             'supplier_name': SUPPLIER_NAMES.get(supplier, supplier),
+            'vendor_id': SUPPLIER_VENDOR_IDS.get(supplier, ''),
             'invoice_number': parsed.get('invoice_number', ''),
             'invoice_date': parsed.get('invoice_date', ''),
             'vendor_name': parsed.get('vendor_name', ''),
