@@ -4835,6 +4835,86 @@ async def xsell_feed_status():
     }
 
 
+def _scrape_maaarket_crosssell(product_url: str) -> list[dict]:
+    """Iz Maaarket strani izdelka pobere 'Kupci pogosto izberejo še' linke.
+    Vrne seznam {url, title} za predlagane izdelke."""
+    if not product_url or 'maaarket.' not in product_url:
+        return []
+    try:
+        import urllib.request
+        req = urllib.request.Request(product_url, headers={
+            'User-Agent': 'Mozilla/5.0 (compatible; Maaarket-XSell-Bot/1.0)'
+        })
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            html = resp.read().decode('utf-8', errors='replace')
+    except Exception as e:
+        print(f"[xsell-scrape] Failed to fetch {product_url}: {e}")
+        return []
+
+    # Najdi "Kupci pogosto izberejo še" sekcijo
+    # Vzorec: <h2|h3|div>...Kupci pogosto izberejo še...</...>
+    # Pri njej so <a href="/izdelek/..."> linki
+    results = []
+    # Heuristika: poišči vse linke /izdelek/ v zadnji tretjini strani (cross-sell je običajno na dnu)
+    section_start = html.lower().find('kupci pogosto')
+    if section_start < 0:
+        section_start = html.lower().find('cross-sell')
+    if section_start < 0:
+        # Fallback: zadnja tretjina strani
+        section_start = len(html) * 2 // 3
+
+    section_html = html[section_start:]
+    # Najdi /izdelek/ linke
+    link_pattern = re.compile(r'href="(/izdelek/[^"#?]+)"[^>]*(?:title="([^"]+)")?')
+    seen_slugs = set()
+    for match in link_pattern.finditer(section_html):
+        slug_path = match.group(1)
+        title = (match.group(2) or '').strip()
+        slug = slug_path.rstrip('/').split('/')[-1]
+        if slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+        # Sestavi full URL
+        from urllib.parse import urljoin
+        full_url = urljoin(product_url, slug_path)
+        results.append({"url": full_url, "slug": slug, "title": title})
+        if len(results) >= 5:
+            break
+    print(f"[xsell-scrape] Found {len(results)} cross-sell links from {product_url}")
+    return results
+
+
+def _extract_category_from_url(url: str) -> Optional[str]:
+    """Iz Maaarket URL-ja izvleče kategorijo (če je v 'izdelki' poti).
+    Žal pa /izdelek/SLUG nima poti — zato to delamo iz scraped breadcrumbs ali category page."""
+    if not url:
+        return None
+    path = urlparse(url).path
+    # Maaarket strukture: /izdelek/{slug} — kategorija ni v URL-u
+    # Vendar lahko fetch-amo stran in poiščemo breadcrumb
+    return None
+
+
+def _fetch_maaarket_category(product_url: str) -> Optional[str]:
+    """Z fetcha strani pobere kategorijo iz breadcrumb-a."""
+    if not product_url or 'maaarket.' not in product_url:
+        return None
+    try:
+        import urllib.request
+        req = urllib.request.Request(product_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            html = resp.read().decode('utf-8', errors='replace')
+        # Najdi breadcrumb: ponavadi je tukaj /izdelki/{category-slug}
+        match = re.search(r'/izdelki/([a-z0-9-]+)', html)
+        if match:
+            cat_slug = match.group(1)
+            print(f"[xsell-cat] Detected category slug: {cat_slug}")
+            return cat_slug
+    except Exception as e:
+        print(f"[xsell-cat] Failed: {e}")
+    return None
+
+
 @app.post("/xsell-suggest")
 async def xsell_suggest(data: dict):
     """Vrne 3 Xsell predloge za vhodni SKU ali URL.
@@ -4988,36 +5068,109 @@ async def xsell_suggest(data: dict):
                 }
             }
 
+        # === SCRAPE MAAARKET CROSS-SELL + KATEGORIJA ===
+        # Če imamo URL originalnega izdelka, scrape "Kupci pogosto izberejo še" + breadcrumb kategorijo
+        scraped_xsell_urls = []
+        scraped_category_slug = None
+        original_url = original.get("url") or (feed_product.get("url") if feed_product else "")
+        if original_url:
+            try:
+                # Fetch enkrat, parse oboje
+                import urllib.request
+                req = urllib.request.Request(original_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    page_html = resp.read().decode('utf-8', errors='replace')
+
+                # 1. Najdi kategorijo iz breadcrumb-a
+                cat_match = re.search(r'/izdelki/([a-z0-9-]+)', page_html)
+                if cat_match:
+                    scraped_category_slug = cat_match.group(1)
+                    print(f"[xsell] Category slug: {scraped_category_slug}")
+
+                # 2. Najdi cross-sell linke (zadnja tretjina strani)
+                section_start = page_html.lower().find('kupci pogosto')
+                if section_start < 0:
+                    section_start = len(page_html) * 2 // 3
+                section_html = page_html[section_start:]
+                link_pattern = re.compile(r'href="(/izdelek/([^"#?/]+))"')
+                seen_slugs = set()
+                from urllib.parse import urljoin
+                for match in link_pattern.finditer(section_html):
+                    slug = match.group(2)
+                    if slug in seen_slugs or slug == urlparse(original_url).path.rstrip('/').split('/')[-1]:
+                        continue
+                    seen_slugs.add(slug)
+                    full_url = urljoin(original_url, match.group(1))
+                    scraped_xsell_urls.append({"url": full_url, "slug": slug})
+                    if len(scraped_xsell_urls) >= 5:
+                        break
+                print(f"[xsell] Scraped {len(scraped_xsell_urls)} cross-sell URLs")
+            except Exception as e:
+                print(f"[xsell] Scrape error: {e}")
+
+        # Najdi scraped izdelke med kandidati (po slug match)
+        scraped_candidates = []
+        for sx in scraped_xsell_urls:
+            for c in candidates:
+                c_slug = urlparse(c.get("url", "")).path.rstrip('/').split('/')[-1].lower()
+                if c_slug == sx["slug"].lower():
+                    scraped_candidates.append(c)
+                    break
+        print(f"[xsell] Matched {len(scraped_candidates)} scraped to feed candidates")
+
         # === KATEGORIJA-AWARE PRE-FILTERING ===
-        # Original product_type je hierarhija: "Beauty & Care > Face care > Cleansers"
-        # Razdeli kandidate v skupine po ujemanju kategorij.
+        # Najprej probaj URL slug kategorije (zelo zanesljivo za Maaarket)
+        # Sicer fallback na product_type iz feed-a
         original_ptype = (original.get("product_type") or "").strip()
         original_ptype_parts = [p.strip().lower() for p in re.split(r'\s*[>/]\s*', original_ptype) if p.strip()]
         original_top_cat = original_ptype_parts[0] if original_ptype_parts else ""
         original_sub_cat = original_ptype_parts[1] if len(original_ptype_parts) > 1 else ""
         print(f"[xsell] Original category: top='{original_top_cat}', sub='{original_sub_cat}', full='{original_ptype}'")
 
-        def _cat_distance(cand_ptype: str) -> int:
-            """Vrne 0 (ista kategorija), 1 (sosednja sub), 2 (samo top), 3 (drugo)."""
+        # Cache za kategorijo izdelkov iz URL-jev (da ne fetchamo isti URL večkrat)
+        # Vrnemo izdelke ki imajo isto URL kategorijo
+
+        # Najprej probaj poiskati izdelke iste kategorije preko **fetcha kategorije strani**
+        # ALI alternative: filter kandidatov po sorodnih besedah v slugu
+        same_category_slugs = set()
+        if scraped_category_slug:
+            # Fetch kategorijo stran in pridobi vse SKU slug-e
+            try:
+                cat_url = f"https://www.maaarket.si/izdelki/{scraped_category_slug}"
+                import urllib.request
+                req = urllib.request.Request(cat_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    cat_html = resp.read().decode('utf-8', errors='replace')
+                # Najdi vse /izdelek/{slug} v kategoriji
+                for match in re.finditer(r'/izdelek/([a-z0-9-]+)', cat_html):
+                    same_category_slugs.add(match.group(1).lower())
+                print(f"[xsell] Category '{scraped_category_slug}' has {len(same_category_slugs)} products")
+            except Exception as e:
+                print(f"[xsell] Category fetch failed: {e}")
+
+        def _cat_distance(cand):
+            """Vrne 0 (ista kategorija po URL slug-u), 1 (sosednja sub), 2 (samo top), 3 (drugo)."""
+            # NAJZANESLJIVEJŠE: ujemanje po URL slug-u kategorije
+            cand_slug = urlparse(cand.get("url", "")).path.rstrip('/').split('/')[-1].lower()
+            if same_category_slugs and cand_slug in same_category_slugs:
+                return 0
+            # Fallback na product_type ujemanje
+            cand_ptype = cand.get("product_type", "")
             cand_parts = [p.strip().lower() for p in re.split(r'\s*[>/]\s*', cand_ptype) if p.strip()]
             if not cand_parts or not original_top_cat:
                 return 3
             cand_top = cand_parts[0]
             cand_sub = cand_parts[1] if len(cand_parts) > 1 else ""
-            # Točno iste vse ravni
             if cand_ptype.strip().lower() == original_ptype.strip().lower():
                 return 0
-            # Top + sub se ujemata
             if cand_top == original_top_cat and original_sub_cat and cand_sub == original_sub_cat:
                 return 0
-            # Samo top kategorija se ujema (sosednja)
             if cand_top == original_top_cat:
                 return 1
-            # Word overlap fallback (npr. "skin care" vs "face skin" delita "skin")
             orig_words = set(re.findall(r'[a-zA-ZčšžćđČŠŽĆĐ]+', original_ptype.lower()))
             cand_words = set(re.findall(r'[a-zA-ZčšžćđČŠŽĆĐ]+', cand_ptype.lower()))
             common = orig_words & cand_words
-            common = {w for w in common if len(w) > 3}  # filter prekratke ("za", "in")
+            common = {w for w in common if len(w) > 3}
             if len(common) >= 2:
                 return 2
             if len(common) >= 1:
@@ -5029,7 +5182,7 @@ async def xsell_suggest(data: dict):
         adjacent_cat = []
         other = []
         for c in candidates:
-            d = _cat_distance(c.get("product_type", ""))
+            d = _cat_distance(c)
             if d == 0:
                 same_cat.append(c)
             elif d <= 1:
@@ -5058,17 +5211,23 @@ async def xsell_suggest(data: dict):
             return f"{marker}SKU={c['sku']} | {c['title'][:80]} | {c['price']:.2f}€ | stock={c['stock']} | kategorija={c.get('product_type','')[:80]} | opis={c['description'][:140]}"
 
         # Razdeli v sekcije za prompt
-        same_cat_for_prompt = [c for c in candidates_for_ai if _cat_distance(c.get("product_type", "")) == 0]
-        adjacent_for_prompt = [c for c in candidates_for_ai if _cat_distance(c.get("product_type", "")) == 1]
-        other_for_prompt = [c for c in candidates_for_ai if _cat_distance(c.get("product_type", "")) >= 2]
+        same_cat_for_prompt = [c for c in candidates_for_ai if _cat_distance(c) == 0]
+        adjacent_for_prompt = [c for c in candidates_for_ai if _cat_distance(c) == 1]
+        other_for_prompt = [c for c in candidates_for_ai if _cat_distance(c) >= 2]
 
-        sections = []
-        if same_cat_for_prompt:
-            sections.append("🎯 ISTA KATEGORIJA (priporočam izbrati prvo + drugo iz tega seznama):\n" + "\n".join(_fmt_cand(c) for c in same_cat_for_prompt[:30]))
-        if adjacent_for_prompt:
-            sections.append("📂 SOSEDNJA KATEGORIJA:\n" + "\n".join(_fmt_cand(c) for c in adjacent_for_prompt[:25]))
-        if other_for_prompt:
-            sections.append("🔀 OSTALI (za cenovno smiseln add-on če nima boljše opcije):\n" + "\n".join(_fmt_cand(c) for c in other_for_prompt[:15]))
+        # Če imamo malo categorisanih kandidatov (feed verjetno nima product_type),
+        # potem damo VSE kandidate v "ostalo" da AI sam odloča.
+        if not original_ptype or (len(same_cat_for_prompt) + len(adjacent_for_prompt) < 5):
+            sections = ["📋 VSI KANDIDATI (kategorijski podatki niso jasni, izberi po nazivu/opisu):\n"
+                        + "\n".join(_fmt_cand(c) for c in candidates_for_ai[:70])]
+        else:
+            sections = []
+            if same_cat_for_prompt:
+                sections.append("🎯 ISTA KATEGORIJA — PRIORITETA (priporočam izbrati prvi 2 predloga iz tega seznama):\n" + "\n".join(_fmt_cand(c) for c in same_cat_for_prompt[:30]))
+            if adjacent_for_prompt:
+                sections.append("📂 SOSEDNJA KATEGORIJA:\n" + "\n".join(_fmt_cand(c) for c in adjacent_for_prompt[:25]))
+            if other_for_prompt:
+                sections.append("🔀 OSTALI (uporabi LE če nimaš dovolj iz zgornjih kategorij):\n" + "\n".join(_fmt_cand(c) for c in other_for_prompt[:15]))
         cand_text = "\n\n".join(sections)
 
         original_desc = (original.get("description") or "")[:500]
@@ -5078,32 +5237,31 @@ ORIGINALNI IZDELEK:
 SKU: {original.get('sku', '?')}
 Naziv: {original.get('title_full') or original.get('title', '?')}
 Cena: {original.get('price', 0):.2f}€
-Kategorija: {original_ptype or '(neznana)'}
+Kategorija: {original_ptype or '(neznana — sklepaj iz naziva in opisa)'}
 Opis: {original_desc}
 
-KATALOG MOŽNIH XSELL IZDELKOV (organiziran po kategorijski sorodnosti):
+KATALOG MOŽNIH XSELL IZDELKOV:
 
 {cand_text}
 
-KRITIČNO POMEMBNO — KATEGORIJSKO UJEMANJE:
-Originalni izdelek je iz kategorije "{original_ptype or 'neznana'}".
-Xsell predlogi MORAJO biti SMISELNI in iz SORODNE NAMENA. Npr:
-- Izdelek za "nega obraza" → drugi izdelki za nego obraza/telesa (NE krtače za čiščenje doma!)
-- Izdelek za "čiščenje doma" → drugi pripomočki za čiščenje (NE krema za obraz!)
-- Izdelek za "kuhinja" → kuhinjski pripomočki
-Če nimaš dovolj kandidatov iz iste kategorije, raje izberi LE 1-2 predloga kot da forsiraš nesmiselne kombinacije.
+KRITIČNO: Izberi 3 izdelke ki so res POVEZANI z originalnim izdelkom po NAMENU UPORABE.
+Npr: izdelek za nego obraza → drugi face/skin care izdelki (NE kuhinjski pripomočki).
+Če v katalogu obstajajo izdelki iz iste kategorije/namena, jih daj prednost.
+Če pa ne najdeš popolnoma sorodne kategorije, izberi izdelke ki so VSAJ delno povezani po uporabniku ali namenu uporabe.
 
-Izberi 3 NAJBOLJ SMISELNE Xsell predloge — DIVERZNO, vsak drugačnega tipa:
-1. KOMPLEMENTAREN: dopolnilo/add-on K ORIGINALNEMU IZDELKU (npr. nadomestne glave, pribor, polnilo) — MORA biti iz iste kategorije!
-2. KATEGORIJSKO PODOBEN: alternative izdelek za isti ali sorodni namen (kupec mogoče raje izbere drugega) — MORA biti iz iste ali sosednje kategorije!
-3. CENOVNO SMISELN: add-on z nižjo ceno ki POVEČUJE vrednost košarice — mora biti smiseln glede na originalno kategorijo (ne random poceni izdelek)
+OBVEZNO vrni 3 predloge — če nisi prepričan kateri so najbolj sorodni, raje izberi tiste z najbolj podobnim opisom/namenom uporabe.
 
-Za vsakega navedi:
+Vrni 3 raznolike predloge — vsakega drugačnega tipa:
+1. KOMPLEMENTAREN: dopolnilo/pribor (npr. nadomestne glave, polnilo, dodatek)
+2. KATEGORIJSKO PODOBEN: alternativa istega namena
+3. CENOVNO SMISELN: add-on po nižji ceni iz iste/sosednje kategorije
+
+Za vsakega:
 - SKU (točno iz seznama)
 - type ("komplementaren" | "kategorijsko_podoben" | "cenovno_smiseln")
-- reason: en stavek ZAKAJ je smiseln Xsell GLEDE NA KATEGORIJO originalnega izdelka (max 100 znakov, slovenščina)
+- reason: 1 stavek ZAKAJ se odlično dopolnjuje (max 100 znakov, slovenščina)
 
-VRNI EXACT JSON, brez dodatnega teksta:
+VRNI EXACT JSON, brez dodatnega teksta, OBVEZNO 3 predloge:
 {{
   "suggestions": [
     {{"sku": "...", "type": "komplementaren", "reason": "..."}},
@@ -5121,6 +5279,7 @@ VRNI EXACT JSON, brez dodatnega teksta:
         # Strip ```json fences
         ai_text = re.sub(r'^```(?:json)?\s*', '', ai_text)
         ai_text = re.sub(r'\s*```$', '', ai_text)
+        print(f"[xsell] AI response (first 600 chars): {ai_text[:600]}")
 
         try:
             ai_data = json.loads(ai_text)
@@ -5133,12 +5292,37 @@ VRNI EXACT JSON, brez dodatnega teksta:
                 return {"ok": False, "error": f"AI vrnil neveljaven JSON: {ai_text[:200]}"}
 
         # 5. Sestavi končni odgovor — dopolni z metadata
+        cand_by_sku = {c["sku"].upper(): c for c in candidates}
         suggestions_out = []
+        used_skus = set()
+
+        # === PRIORITY 1: Vstavi 1 scraped Maaarket cross-sell predlog (top spot) ===
+        if scraped_candidates:
+            sc = scraped_candidates[0]
+            suggestions_out.append({
+                "sku": sc["sku"],
+                "type": "maaarket_pick",
+                "reason": "Maaarket priporočilo: 'Kupci pogosto izberejo še'",
+                "title": sc["title"],
+                "price": sc["price"],
+                "stock": sc["stock"],
+                "stock30": sc["stock30"],
+                "url": sc.get("url", ""),
+                "image": sc.get("image", ""),
+            })
+            used_skus.add(sc["sku"].upper())
+
+        missing_skus = []
+        # === PRIORITY 2: AI predlogi (2 dodatna) ===
         for s in ai_data.get("suggestions", [])[:3]:
+            if len(suggestions_out) >= 3:
+                break
             sku = (s.get("sku") or "").strip().upper()
-            # Najdi v kandidatih
-            cand = next((c for c in candidates if c["sku"].upper() == sku), None)
+            if sku in used_skus:
+                continue
+            cand = cand_by_sku.get(sku)
             if not cand:
+                missing_skus.append(sku)
                 continue
             suggestions_out.append({
                 "sku": cand["sku"],
@@ -5151,6 +5335,36 @@ VRNI EXACT JSON, brez dodatnega teksta:
                 "url": cand.get("url", ""),
                 "image": cand.get("image", ""),
             })
+            used_skus.add(sku)
+
+        if missing_skus:
+            print(f"[xsell] WARN: AI returned SKUs not in candidates: {missing_skus}")
+
+        # Fallback: če AI ni vrnil dovolj predlogov, dopolni iz iste/sosednje kategorije
+        if len(suggestions_out) < 3 and (same_cat_for_prompt or adjacent_for_prompt):
+            type_order = ["komplementaren", "kategorijsko_podoben", "cenovno_smiseln"]
+            existing_types = {s["type"] for s in suggestions_out}
+            fallback_pool = same_cat_for_prompt + adjacent_for_prompt
+            print(f"[xsell] AI vrnil le {len(suggestions_out)}, dopolnjujem iz fallback pool-a ({len(fallback_pool)})")
+            for cand in fallback_pool:
+                if len(suggestions_out) >= 3:
+                    break
+                if cand["sku"].upper() in used_skus:
+                    continue
+                next_type = next((t for t in type_order if t not in existing_types), "kategorijsko_podoben")
+                existing_types.add(next_type)
+                suggestions_out.append({
+                    "sku": cand["sku"],
+                    "type": next_type,
+                    "reason": "Iz iste/sosednje kategorije (AI fallback)",
+                    "title": cand["title"],
+                    "price": cand["price"],
+                    "stock": cand["stock"],
+                    "stock30": cand["stock30"],
+                    "url": cand.get("url", ""),
+                    "image": cand.get("image", ""),
+                })
+                used_skus.add(cand["sku"].upper())
 
         result = {
             "original": {
