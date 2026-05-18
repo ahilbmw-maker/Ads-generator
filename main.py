@@ -3630,11 +3630,11 @@ async def merge_video_audio_session(
                 else:
                     s = get_subtitle_style_for_format(video_width, video_height)
                     vf = f"subtitles={sub_file}:force_style='FontName=Arial,FontSize={s['fontsize']},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline={s['outline']},Bold=1,Alignment=2,MarginV={s['marginv']}'"
-                cmd = ["ffmpeg", "-y", "-i", video_path, "-i", audio_path, "-vf", vf,
-                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-c:a", "aac",
+                cmd = ["ffmpeg", "-y", "-threads", "1", "-i", video_path, "-i", audio_path, "-vf", vf,
+                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac",
                        "-shortest", output_path]
             else:
-                cmd = ["ffmpeg", "-y", "-i", video_path, "-i", audio_path,
+                cmd = ["ffmpeg", "-y", "-threads", "1", "-i", video_path, "-i", audio_path,
                        "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac",
                        "-shortest", output_path]
 
@@ -3820,12 +3820,14 @@ async def merge_video_audio(
                     vf = sub_filter
                     cmd = [
                         "ffmpeg", "-y",
+                        "-threads", "1",          # Omeji na 1 thread (Render Pro = 1 CPU)
                         "-i", video_path,
                         "-i", audio_path,
                         "-vf", vf,
                         "-map", "0:v:0",
                         "-map", "1:a:0",
                         "-c:v", "libx264",
+                        "-preset", "veryfast",    # Hitrejše encoding + manj RAM
                         "-c:a", "aac",
                         "-shortest",
                         output_path
@@ -3834,6 +3836,7 @@ async def merge_video_audio(
                 # Samo audio zamenjava, video brez rekodiranja
                 cmd = [
                     "ffmpeg", "-y",
+                    "-threads", "1",
                     "-i", video_path,
                     "-i", audio_path,
                     "-map", "0:v:0",
