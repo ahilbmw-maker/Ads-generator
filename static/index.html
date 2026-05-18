@@ -10089,7 +10089,7 @@ function switchAnalizaTab(tab) {
   if (tab === 'meta') { anLoadStock(); anLoadMetaFromServer(); }
   if (tab === 'obrat14tt') { tt14LoadData(); }
   if (tab === 'ttkreative') { ttKrLoadData(); }
-  if (tab === 'beta') { betaLoadHistory(); }
+  if (tab === 'beta') { betaLoadHistory(true); }
   if (tab === 'cashflow') { cfLoadData(); }
   if (tab === 'shipping') { shipLoadData(); }
   try { localStorage.setItem('slx_active_subtab', tab); } catch(e) {}
@@ -14195,14 +14195,63 @@ async function betaLoadHistory() {
   } catch(e) { console.warn('history error', e); }
 }
 
-async function betaLoadFromHistory(filename) {
+async function betaLoadHistory(autoLoadLatest = false) {
+  try {
+    const el = document.getElementById('beta-history-list');
+    if (!el) return;
+    const r = await fetch('/beta-export-history');
+    const data = await r.json();
+    if (!data.ok || !data.exports || data.exports.length === 0) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:10px">Ni shranjenih exportov</div>';
+      return;
+    }
+
+    // Auto-load najnovejšega če še ni naložen
+    if (autoLoadLatest && !betaCampaigns.length && data.exports.length > 0) {
+      const latest = data.exports[0];
+      await betaLoadFromHistory(latest.filename, true);
+    }
+
+    el.innerHTML = data.exports.map(e => {
+      const cpp = e.total_purchases > 0 ? (e.total_spend / e.total_purchases).toFixed(2) : '—';
+      const tsParts = (e.timestamp || '').split('_');
+      const dateStr = tsParts[0] || e.date || '?';
+      const timeStr = (tsParts[1] || '').replace(/-/g, ':');
+      return `
+        <div onclick="betaLoadFromHistory('${e.filename}')"
+             style="padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;background:var(--surface);transition:all 0.15s"
+             onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--surface2)'"
+             onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <span style="font-size:11px;font-weight:700;color:var(--text);font-family:'DM Mono',monospace">${dateStr} ${timeStr}</span>
+            <span style="font-size:10px;background:var(--accent-dim);color:var(--accent);padding:1px 6px;border-radius:4px;font-weight:600">${e.campaign_count} kamp.</span>
+          </div>
+          <div style="font-size:10px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.original || ''}">${e.original || 'export.csv'}</div>
+          <div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">
+            ${e.total_spend.toFixed(0)}€ · ${e.total_purchases} nakup · CPP ${cpp}€
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    console.warn('beta history load', e);
+  }
+}
+
+async function betaLoadFromHistory(filename, isAutoLoad = false) {
   try {
     const res = await fetch(`/beta-export-load/${filename}`);
     const data = await res.json();
     if (!data.ok) return;
     betaCampaigns = data.campaigns || [];
     const fi = document.getElementById('beta-file-info');
-    if (fi) { fi.style.display='block'; fi.textContent = `📂 ${data.original||filename} (${data.date})`; }
+    if (fi) {
+      fi.style.display = 'block';
+      const badge = isAutoLoad
+        ? '<span style="background:rgba(34,197,94,0.15);color:#16a34a;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-right:6px">AUTO</span>'
+        : '<span style="background:rgba(58,111,255,0.15);color:var(--accent);padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-right:6px">📂</span>';
+      fi.innerHTML = `${badge}${data.original || filename} <span style="color:var(--text-tertiary);font-size:10px">(${data.date})</span>`;
+    }
     const total = betaCampaigns.length;
     const totalSpend = betaCampaigns.reduce((s,c)=>s+c.spend,0);
     const totalPurchases = betaCampaigns.reduce((s,c)=>s+c.purchases,0);
@@ -14228,6 +14277,7 @@ async function betaLoadFromHistory(filename) {
       </div>`;
     betaAnalyze();
   } catch(e) { console.warn('load history error', e); }
+}
 }
 // Render AI odgovora kot kompaktne kartice
 function betaRenderAI(txt) {
