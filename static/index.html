@@ -3126,11 +3126,11 @@ input[type="text"].error { border-color: var(--red) !important; }
           <!-- Iskalnik -->
           <div style="position:relative;flex:1">
             <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-tertiary);pointer-events:none;font-size:13px">🔍</span>
-            <input type="text" id="zalogaSearch" placeholder="Išči SKU, naziv, ID, pozicijo, opombo..." oninput="zalogaRender()" style="width:100%;padding:8px 12px 8px 32px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
+            <input type="text" id="zalogaSearch" placeholder="Išči SKU, naziv, ID, pozicijo, opombo..." oninput="_zalogaPage=1;zalogaRender()" style="width:100%;padding:8px 12px 8px 32px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
           </div>
           <!-- Samo na zalogi -->
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">
-            <input type="checkbox" id="zalogaOnlyStock" onchange="zalogaRender()" style="cursor:pointer;accent-color:var(--green);width:14px;height:14px">
+            <input type="checkbox" id="zalogaOnlyStock" onchange="_zalogaPage=1;zalogaRender()" style="cursor:pointer;accent-color:var(--green);width:14px;height:14px">
             <span>Samo na zalogi</span>
           </label>
           <!-- Stats -->
@@ -3154,6 +3154,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
       <!-- TABELA -->
       <div id="zalogaTable" style="display:flex;flex-direction:column;gap:3px"></div>
+      <div id="zalogaPagination"></div>
       <div id="zalogaEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:3rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">Naloži CSV za prikaz zaloge.</div>
 
     </div>
@@ -12099,7 +12100,20 @@ async function zalogaLoad() {
 function zalogaSortBy(col) {
   if (_zalogaSortCol === col) _zalogaSortDir *= -1;
   else { _zalogaSortCol = col; _zalogaSortDir = col === 'title' || col === 'product_sku' || col === 'note' || col === 'position' ? 1 : -1; }
+  _zalogaPage = 1;  // reset na 1. stran ob sortiranju
   zalogaRender();
+}
+
+// Paginacija — 100 vrstic na stran
+let _zalogaPage = 1;
+const _ZALOGA_PER_PAGE = 100;
+
+function zalogaGoToPage(n) {
+  _zalogaPage = Math.max(1, n);
+  zalogaRender();
+  // Scroll na vrh tabele
+  const wrap = document.getElementById('zalogaHeaderWrap');
+  if (wrap) wrap.scrollIntoView({behavior: 'smooth', block: 'start'});
 }
 
 function zalogaRender() {
@@ -12137,11 +12151,20 @@ function zalogaRender() {
     el.style.opacity = _zalogaSortCol === col ? '1' : '0.3';
   });
 
+  // Paginacija
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / _ZALOGA_PER_PAGE));
+  if (_zalogaPage > totalPages) _zalogaPage = 1;
+  const startIdx = (_zalogaPage - 1) * _ZALOGA_PER_PAGE;
+  const endIdx = Math.min(startIdx + _ZALOGA_PER_PAGE, totalItems);
+  const pageItems = items.slice(startIdx, endIdx);
+
   // Stats
   const statsEl = document.getElementById('zalogaStats');
   if (statsEl) {
     const totalStock = items.reduce((s, it) => s + (parseInt(it.stock)||0), 0);
-    statsEl.textContent = items.length + ' SKU · ' + totalStock.toLocaleString('sl-SI') + ' kos skupaj';
+    const pageStock = pageItems.reduce((s, it) => s + (parseInt(it.stock)||0), 0);
+    statsEl.innerHTML = `<strong>${totalItems}</strong> SKU · ${totalStock.toLocaleString('sl-SI')} kos skupaj <span style="opacity:0.6;margin-left:8px">• prikaz ${startIdx+1}-${endIdx} (${pageStock.toLocaleString('sl-SI')} kos)</span>`;
   }
 
   const tableEl = document.getElementById('zalogaTable');
@@ -12153,6 +12176,9 @@ function zalogaRender() {
     tableEl.innerHTML = '';
     empty.style.display = 'block';
     empty.textContent = search || onlyStock ? 'Ni rezultatov za trenutni filter.' : 'Naloži CSV za prikaz zaloge.';
+    // Skrij paginacijo
+    const pagWrap = document.getElementById('zalogaPagination');
+    if (pagWrap) pagWrap.innerHTML = '';
     return;
   }
 
@@ -12161,7 +12187,7 @@ function zalogaRender() {
 
   const GRID = '60px 280px 1fr 75px 65px 75px 95px 0.5fr';
 
-  tableEl.innerHTML = items.map(it => {
+  tableEl.innerHTML = pageItems.map(it => {
     const stock = parseInt(it.stock) || 0;
     const stock30 = parseInt(it.stock30) || 0;
     const price = parseFloat(it.price) || 0;
@@ -12184,6 +12210,47 @@ function zalogaRender() {
       + '<span style="color:var(--text-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.note) + '">' + esc(it.note||'—') + '</span>'
       + '</div>';
   }).join('');
+
+  // Render paginacijo
+  const pagWrap = document.getElementById('zalogaPagination');
+  if (pagWrap) {
+    if (totalPages <= 1) {
+      pagWrap.innerHTML = '';
+    } else {
+      // Smart numbered pagination: 1 ... 4 5 [6] 7 8 ... 36
+      const cur = _zalogaPage;
+      const last = totalPages;
+      const pages = [];
+      const addPage = (p) => pages.push(p);
+      const addDots = () => pages.push('...');
+
+      addPage(1);
+      if (cur > 4) addDots();
+      for (let i = Math.max(2, cur - 2); i <= Math.min(last - 1, cur + 2); i++) addPage(i);
+      if (cur < last - 3) addDots();
+      if (last > 1) addPage(last);
+
+      const btnStyle = 'min-width:34px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text);font-family:inherit;transition:all 0.1s';
+      const activeStyle = 'min-width:34px;padding:6px 10px;background:var(--accent);border:1px solid var(--accent);border-radius:6px;cursor:default;font-size:12px;font-weight:700;color:white;font-family:inherit';
+      const disabledStyle = 'min-width:34px;padding:6px 10px;background:transparent;border:1px solid var(--border);border-radius:6px;cursor:not-allowed;font-size:12px;color:var(--text-tertiary);font-family:inherit;opacity:0.5';
+
+      let html = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;padding:14px 0">';
+      html += `<button onclick="zalogaGoToPage(${cur - 1})" style="${cur <= 1 ? disabledStyle : btnStyle}" ${cur <= 1 ? 'disabled' : ''}>◀</button>`;
+      pages.forEach(p => {
+        if (p === '...') {
+          html += `<span style="color:var(--text-tertiary);padding:0 4px">…</span>`;
+        } else if (p === cur) {
+          html += `<button style="${activeStyle}">${p}</button>`;
+        } else {
+          html += `<button onclick="zalogaGoToPage(${p})" style="${btnStyle}">${p}</button>`;
+        }
+      });
+      html += `<button onclick="zalogaGoToPage(${cur + 1})" style="${cur >= last ? disabledStyle : btnStyle}" ${cur >= last ? 'disabled' : ''}>▶</button>`;
+      html += `<span style="margin-left:14px;font-size:11px;color:var(--text-tertiary);font-family:'DM Mono',monospace">stran ${cur} / ${last}</span>`;
+      html += '</div>';
+      pagWrap.innerHTML = html;
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════
