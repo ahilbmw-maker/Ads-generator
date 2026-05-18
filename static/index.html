@@ -8259,7 +8259,10 @@ async function prevzemiLoadHistory() {
         <div style="min-width:0">
           <div style="font-size:11px;font-weight:700;font-family:monospace;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rec.invoice_number || rec.record_id}</div>
           <div style="font-size:9px;color:var(--text-tertiary);margin-top:2px">${tsDate} · ${rec.item_count || 0} postavk</div>
-          <div style="font-size:9px;color:var(--text-tertiary)">${(rec.vendor_name || '').slice(0, 30)}</div>
+          <div style="font-size:9px;color:var(--text-tertiary);display:flex;align-items:center;gap:5px;margin-top:2px">
+            <span>${(rec.vendor_name || rec.supplier_name || '').slice(0, 24)}</span>
+            ${rec.vendor_id ? `<span style="font-family:monospace;background:rgba(58,111,255,0.12);color:var(--accent);padding:1px 5px;border-radius:3px;font-weight:700;font-size:9px">ID:${rec.vendor_id}</span>` : ''}
+          </div>
         </div>
         <button onclick="event.stopPropagation();prevzemiDeleteRecord('${rec.record_id}')" style="background:transparent;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:10px;padding:0;line-height:1">✕</button>
       </div>`;
