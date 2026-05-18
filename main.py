@@ -3631,7 +3631,7 @@ async def merge_video_audio_session(
                     s = get_subtitle_style_for_format(video_width, video_height)
                     vf = f"subtitles={sub_file}:force_style='FontName=Arial,FontSize={s['fontsize']},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline={s['outline']},Bold=1,Alignment=2,MarginV={s['marginv']}'"
                 cmd = ["ffmpeg", "-y", "-threads", "1", "-i", video_path, "-i", audio_path, "-vf", vf,
-                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac",
+                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
                        "-shortest", output_path]
             else:
                 cmd = ["ffmpeg", "-y", "-threads", "1", "-i", video_path, "-i", audio_path,
@@ -3742,25 +3742,8 @@ async def merge_video_audio(
                 with open(ass_path, "wb") as f:
                     f.write(ass_content_orig)
 
-            # Pripravi emoji overlay (če imamo emojis_json)
-            emoji_inputs = []  # tuples (png_path, start, end, segment_idx)
-            if emojis_json:
-                try:
-                    emoji_data = json.loads(emojis_json)
-                    for seg in emoji_data.get("segments", []):
-                        emoji = seg.get("emoji")
-                        if not emoji:
-                            continue
-                        start = float(seg.get("start", 0))
-                        end = float(seg.get("end", 0))
-                        if end <= start:
-                            continue
-                        png_path = _get_twemoji_png(emoji)
-                        if png_path:
-                            emoji_inputs.append((str(png_path), start, end))
-                    print(f"[merge] Emoji overlays prepared: {len(emoji_inputs)}")
-                except Exception as e:
-                    print(f"[merge] Emoji parsing failed: {e}")
+            # Emoji overlay je bil odstranjen za performance (8GB/4CPU optimization).
+            # Emojiji ostanejo le v podnapisih kot del besedila (če so v SRT/ASS).
 
             if has_srt:
                 # ASS karaoke ali SRT fallback
@@ -3771,67 +3754,21 @@ async def merge_video_audio(
                     s = get_subtitle_style_for_format(video_width, video_height)
                     sub_filter = f"subtitles={sub_file}:force_style='FontName=Arial,FontSize={s['fontsize']},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline={s['outline']},Bold=1,Alignment=2,MarginV={s['marginv']}'"
 
-                # Sestavi FFmpeg ukaz — z emoji overlay ali brez
-                if emoji_inputs and video_width > 0 and video_height > 0:
-                    # Emoji size = ~10% višine videa (pri 9:16 = ~192px za 1920 height)
-                    style_e = get_subtitle_style_for_format(video_width, video_height)
-                    emoji_size = max(int(video_height * 0.09), 80)
-                    # Emoji y position = 100px NAD podnapisi (kjer marginV je od dna)
-                    # Subtitle baseline ≈ height - marginV; emoji = height - marginV - subtitle_height - emoji_height - gap
-                    emoji_y = video_height - style_e["marginv"] - style_e["fontsize"] * 2 - emoji_size - 20
-                    emoji_y = max(emoji_y, 50)  # ne pod 50px od vrha
-
-                    # Build complex filter graph
-                    # Input 0 = video, Input 1 = audio, Inputs 2..N = PNG emojis
-                    inputs = ["-i", video_path, "-i", audio_path]
-                    for png_path, _, _ in emoji_inputs:
-                        inputs.extend(["-i", png_path])
-
-                    # Filter graph: scale every emoji, then chain overlays
-                    filter_parts = []
-                    # Subtitle filter first
-                    filter_parts.append(f"[0:v]{sub_filter}[v0]")
-
-                    last_label = "v0"
-                    for i, (_, start, end) in enumerate(emoji_inputs):
-                        emoji_input_idx = 2 + i  # offset za video+audio
-                        # Scale emoji
-                        filter_parts.append(f"[{emoji_input_idx}:v]scale={emoji_size}:{emoji_size}[e{i}]")
-                        # Overlay z časovnim pogojem (centered horizontally)
-                        next_label = f"v{i+1}"
-                        filter_parts.append(
-                            f"[{last_label}][e{i}]overlay=x=(W-w)/2:y={emoji_y}:enable='between(t,{start:.2f},{end:.2f})'[{next_label}]"
-                        )
-                        last_label = next_label
-
-                    filter_complex = ";".join(filter_parts)
-
-                    cmd = ["ffmpeg", "-y"] + inputs + [
-                        "-filter_complex", filter_complex,
-                        "-map", f"[{last_label}]",
-                        "-map", "1:a:0",
-                        "-c:v", "libx264",
-                        "-c:a", "aac",
-                        "-shortest",
-                        output_path
-                    ]
-                else:
-                    # Brez emoji overlay — stari flow
-                    vf = sub_filter
-                    cmd = [
-                        "ffmpeg", "-y",
-                        "-threads", "1",          # Omeji na 1 thread (Render Pro = 1 CPU)
-                        "-i", video_path,
-                        "-i", audio_path,
-                        "-vf", vf,
-                        "-map", "0:v:0",
-                        "-map", "1:a:0",
-                        "-c:v", "libx264",
-                        "-preset", "veryfast",    # Hitrejše encoding + manj RAM
-                        "-c:a", "aac",
-                        "-shortest",
-                        output_path
-                    ]
+                vf = sub_filter
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-threads", "1",
+                    "-i", video_path,
+                    "-i", audio_path,
+                    "-vf", vf,
+                    "-map", "0:v:0",
+                    "-map", "1:a:0",
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-c:a", "aac",
+                    "-shortest",
+                    output_path
+                ]
             else:
                 # Samo audio zamenjava, video brez rekodiranja
                 cmd = [
