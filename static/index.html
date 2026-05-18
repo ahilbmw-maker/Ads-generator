@@ -14278,7 +14278,6 @@ async function betaLoadFromHistory(filename, isAutoLoad = false) {
     betaAnalyze();
   } catch(e) { console.warn('load history error', e); }
 }
-}
 // Render AI odgovora kot kompaktne kartice
 function betaRenderAI(txt) {
   const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
