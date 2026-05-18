@@ -4763,21 +4763,64 @@ def _find_feed_product(sku_or_url: str, lang: str = "sl") -> Optional[dict]:
             if slug and p_slug == slug:
                 return {"g_id": g_id, **p}
 
-    # 2. Direct ID match
+    # 2. Direct ID match (g_id)
     if query in feed:
         return {"g_id": query, **feed[query]}
+    if query_up in feed:
+        return {"g_id": query_up, **feed[query_up]}
 
-    # 3. MPN (SKU) match
+    # 3. MPN (SKU) match — both cases
     for g_id, p in feed.items():
         if (p.get("mpn") or "").upper() == query_up:
             return {"g_id": g_id, **p}
 
-    # 4. SKU substring v title (zadnja možnost)
+    # 4. SKU substring v slug (URL)
+    query_lower = query.lower()
+    for g_id, p in feed.items():
+        slug = urlparse(p.get("url", "")).path.rstrip('/').split('/')[-1].lower()
+        if query_lower and query_lower in slug:
+            return {"g_id": g_id, **p}
+
+    # 5. SKU substring v title (zadnja možnost)
     for g_id, p in feed.items():
         if query_up in (p.get("title") or "").upper():
             return {"g_id": g_id, **p}
 
     return None
+
+
+@app.get("/xsell-debug")
+async def xsell_debug(lang: str = "sl"):
+    """Diagnostika: pokaže sample feed + stock data za debugging match-a."""
+    stock_lookup = _load_stock_lookup()
+    feed = feed_by_lang.get(lang, {})
+
+    sample_stock = []
+    for sku_up, st in list(stock_lookup.items())[:10]:
+        sample_stock.append({
+            "sku": st["sku"],
+            "product_id": st.get("product_id"),
+            "title": st.get("title", "")[:80],
+        })
+
+    sample_feed = []
+    for g_id, p in list(feed.items())[:10]:
+        slug = urlparse(p.get("url", "")).path.rstrip('/').split('/')[-1]
+        sample_feed.append({
+            "g_id": g_id,
+            "mpn": p.get("mpn", ""),
+            "title": (p.get("title") or "")[:80],
+            "slug": slug,
+            "has_description": bool(p.get("description")),
+        })
+
+    return {
+        "ok": True,
+        "stock_total": len(stock_lookup),
+        "feed_total": len(feed),
+        "sample_stock": sample_stock,
+        "sample_feed": sample_feed,
+    }
 
 
 @app.get("/xsell-feed-status")
@@ -4856,36 +4899,94 @@ async def xsell_suggest(data: dict):
             })
 
         # 3. Sestavi katalog kandidatov (presek zaloge + feed)
+        # Match po: MPN, product_id, slug v URL, ali ime izdelka (slov. ujemanje)
         candidates = []
         feed = feed_by_lang.get(lang, {})
-        feed_by_mpn = {}
+
+        # Naredi multiple lookup index-ov za feed
+        feed_by_mpn = {}      # SKU upper -> feed product
+        feed_by_gid = {}      # g_id -> feed product (običajno product_id)
+        feed_by_slug = {}     # last URL slug -> feed product
+        feed_by_title_norm = {}  # normalized title -> feed product
+
+        def _norm(s):
+            return re.sub(r'[^a-z0-9]', '', (s or '').lower())
+
         for g_id, p in feed.items():
-            mpn = (p.get("mpn") or "").upper()
+            feed_by_gid[g_id] = {"g_id": g_id, **p}
+            mpn = (p.get("mpn") or "").upper().strip()
             if mpn:
                 feed_by_mpn[mpn] = {"g_id": g_id, **p}
+            url = p.get("url") or ""
+            slug = urlparse(url).path.rstrip('/').split('/')[-1].lower() if url else ""
+            if slug:
+                feed_by_slug[slug] = {"g_id": g_id, **p}
+            title_norm = _norm(p.get("title", ""))
+            if title_norm:
+                feed_by_title_norm[title_norm] = {"g_id": g_id, **p}
 
+        # Pomožni iskalniki feed produktov po SKU/title
+        def _find_feed_for_stock_item(stock):
+            sku_up = stock["sku"].upper()
+            pid = (stock.get("product_id") or "").strip()
+            title = stock.get("title", "")
+            title_norm = _norm(title)
+            # 1. MPN match
+            if sku_up in feed_by_mpn:
+                return feed_by_mpn[sku_up]
+            # 2. product_id == g_id
+            if pid and pid in feed_by_gid:
+                return feed_by_gid[pid]
+            # 3. SKU == g_id (some feeds use SKU as id)
+            if sku_up in feed_by_gid:
+                return feed_by_gid[sku_up]
+            # 4. Naziv match (normaliziran)
+            if title_norm and title_norm in feed_by_title_norm:
+                return feed_by_title_norm[title_norm]
+            # 5. Substring v slug
+            if sku_up:
+                sku_lower = sku_up.lower()
+                for slug, fp in feed_by_slug.items():
+                    if sku_lower in slug:
+                        return fp
+            return None
+
+        matched_in_feed = 0
         for sku_up, stock in stock_lookup.items():
             if sku_up == original_sku:
                 continue
-            if stock["stock"] <= 0:
-                continue
-            fp = feed_by_mpn.get(sku_up)
+            # ⛔ stock filter ODSTRANJEN — vključi tudi izdelke s stock=0 (nova zaloga lahko pride takoj)
+            fp = _find_feed_for_stock_item(stock)
             if not fp:
                 continue
+            matched_in_feed += 1
             candidates.append({
                 "sku": stock["sku"],
                 "title": stock["title"] or fp.get("title", ""),
                 "price": stock["price"],
                 "stock": stock["stock"],
                 "stock30": stock["stock30"],
-                "description": (fp.get("description") or "")[:300],  # omeji za prompt
+                "description": (fp.get("description") or "")[:300],
                 "product_type": fp.get("product_type", ""),
                 "url": fp.get("url", ""),
                 "image": fp.get("image", ""),
             })
 
+        print(f"[xsell] Stock items: {len(stock_lookup)}, matched in feed: {matched_in_feed}, candidates: {len(candidates)}")
+
         if len(candidates) < 3:
-            return {"ok": False, "error": f"Premalo kandidatov ({len(candidates)}). Preveri zalogo in XML feed."}
+            return {
+                "ok": False,
+                "error": f"Premalo kandidatov ({len(candidates)}) za {len(stock_lookup)} izdelkov v zalogi. Verjetno se SKU-ji iz zaloge ne ujemajo z MPN/g_id v XML feed-u. Preveri feed format (admin debug).",
+                "debug": {
+                    "stock_items": len(stock_lookup),
+                    "feed_items": len(feed),
+                    "matched": matched_in_feed,
+                    "sample_stock_sku": list(stock_lookup.keys())[:5],
+                    "sample_feed_mpns": [feed_by_mpn[k]["mpn"] for k in list(feed_by_mpn.keys())[:5]],
+                    "sample_feed_gids": list(feed_by_gid.keys())[:5],
+                }
+            }
 
         # 4. AI Re-ranking — Claude izbere 3 najboljše
         candidates_for_ai = candidates[:80]  # omejimo da prompt ni prevelik
