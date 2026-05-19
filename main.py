@@ -5340,23 +5340,30 @@ VRNI EXACT JSON, brez dodatnega teksta, OBVEZNO 3 predloge:
         if missing_skus:
             print(f"[xsell] WARN: AI returned SKUs not in candidates: {missing_skus}")
 
-        # Fallback: če AI ni vrnil dovolj predlogov, dopolni iz iste/sosednje kategorije
-        if len(suggestions_out) < 3 and (same_cat_for_prompt or adjacent_for_prompt):
+        # Fallback: VEDNO dopolni do 3 predlogov, ne glede na vir
+        # Prioritetni vrstni red: same_cat > adjacent > other > kakršenkoli kandidat
+        if len(suggestions_out) < 3:
             type_order = ["komplementaren", "kategorijsko_podoben", "cenovno_smiseln"]
-            existing_types = {s["type"] for s in suggestions_out}
-            fallback_pool = same_cat_for_prompt + adjacent_for_prompt
-            print(f"[xsell] AI vrnil le {len(suggestions_out)}, dopolnjujem iz fallback pool-a ({len(fallback_pool)})")
+            existing_types = {s["type"] for s in suggestions_out if s["type"] in type_order}
+            # Zgradi fallback pool po prioritetah
+            fallback_pool = list(same_cat_for_prompt) + list(adjacent_for_prompt) + list(other_for_prompt)
+            # Če je še vedno prazno (ker ni kategorij), uporabi VSE kandidate
+            if not fallback_pool:
+                fallback_pool = candidates
+            print(f"[xsell] AI vrnil le {len(suggestions_out)}, dopolnjujem iz fallback pool-a ({len(fallback_pool)} kandidatov)")
+
             for cand in fallback_pool:
                 if len(suggestions_out) >= 3:
                     break
                 if cand["sku"].upper() in used_skus:
                     continue
+                # Najdi naslednji manjkajoči tip
                 next_type = next((t for t in type_order if t not in existing_types), "kategorijsko_podoben")
                 existing_types.add(next_type)
                 suggestions_out.append({
                     "sku": cand["sku"],
                     "type": next_type,
-                    "reason": "Iz iste/sosednje kategorije (AI fallback)",
+                    "reason": "Iz iste/sosednje kategorije (AI fallback)" if cand in same_cat_for_prompt or cand in adjacent_for_prompt else "Najboljši preostali kandidat (fallback)",
                     "title": cand["title"],
                     "price": cand["price"],
                     "stock": cand["stock"],
@@ -5365,6 +5372,8 @@ VRNI EXACT JSON, brez dodatnega teksta, OBVEZNO 3 predloge:
                     "image": cand.get("image", ""),
                 })
                 used_skus.add(cand["sku"].upper())
+
+        print(f"[xsell] Final suggestions count: {len(suggestions_out)}")
 
         result = {
             "original": {
