@@ -10411,6 +10411,16 @@ async def prevzemi_record_get(record_id: str):
         if not target.exists():
             raise HTTPException(status_code=404, detail="Record not found")
         parsed = json.loads(target.read_text(encoding='utf-8'))
+        # Vklju4i tudi meta info (supplier, vendor_id) v parsed payload
+        meta_path = PREVZEMI_DIR / rec_safe / 'meta.json'
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding='utf-8'))
+                parsed['_supplier_key'] = meta.get('supplier', '')
+                parsed['_supplier_name'] = meta.get('supplier_name', '')
+                parsed['_vendor_id'] = meta.get('vendor_id', '')
+            except Exception:
+                pass
         return {"ok": True, "parsed": parsed, "record_id": rec_safe}
     except HTTPException:
         raise
@@ -11742,6 +11752,44 @@ async def prevzemi_set_vendor_ids(data: dict):
         if not _save_vendor_ids(valid):
             return {"ok": False, "error": "Shranjevanje ni uspelo"}
         return {"ok": True, "saved": valid}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/prevzemi-update-supplier")
+async def prevzemi_update_supplier(data: dict):
+    """Posodobi supplier (in vendor_id) za posamezen prevzem.
+    Body: {"record_id": "...", "supplier": "motoprofil"}
+    """
+    try:
+        record_id = (data.get("record_id") or "").strip()
+        new_supplier = (data.get("supplier") or "").strip().lower()
+        if not record_id:
+            return {"ok": False, "error": "record_id manjka"}
+        if new_supplier not in SUPPLIER_NAMES:
+            return {"ok": False, "error": f"Neznan dobavitelj: {new_supplier}"}
+
+        rec_dir = PREVZEMI_DIR / record_id
+        meta_path = rec_dir / "meta.json"
+        if not meta_path.exists():
+            return {"ok": False, "error": "Prevzem ne obstaja"}
+
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        old_supplier = meta.get("supplier", "")
+        old_vendor_id = meta.get("vendor_id", "")
+
+        meta["supplier"] = new_supplier
+        meta["supplier_name"] = SUPPLIER_NAMES.get(new_supplier, new_supplier)
+        meta["vendor_id"] = _load_vendor_ids().get(new_supplier, "")
+
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[prevzemi-update] {record_id}: {old_supplier}({old_vendor_id}) -> {new_supplier}({meta['vendor_id']})")
+        return {
+            "ok": True,
+            "supplier": new_supplier,
+            "supplier_name": meta["supplier_name"],
+            "vendor_id": meta["vendor_id"],
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
