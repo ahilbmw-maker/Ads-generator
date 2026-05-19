@@ -3689,7 +3689,12 @@ input[type="text"].error { border-color: var(--red) !important; }
               </div>
               <div>
                 <span class="slabel" style="font-size:9px">DOBAVITELJ</span>
-                <div id="prevzemiVendor" style="font-size:13px;font-weight:600;margin-top:3px"></div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                  <div id="prevzemiVendor" style="font-size:13px;font-weight:600"></div>
+                  <button onclick="prevzemiOpenSupplierEditor()" id="prevzemiSupplierEditBtn" title="Spremeni dobavitelja (popravi vendor ID v XML-u)"
+                    style="background:transparent;border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--text-secondary);padding:2px 7px;cursor:pointer;font-family:inherit">✎ Uredi</button>
+                </div>
+                <div id="prevzemiVendorId" style="font-size:10px;color:var(--text-tertiary);font-family:monospace;margin-top:2px"></div>
               </div>
               <div>
                 <span class="slabel" style="font-size:9px">SKUPAJ</span>
@@ -8341,6 +8346,19 @@ function prevzemiRender() {
   document.getElementById('prevzemiVendor').textContent = prevzemiData.vendor_name || '—';
   document.getElementById('prevzemiTotal').textContent = prevzemiData.total_value || '—';
 
+  // Vendor ID info (iz meta.json — naložimo z record-om)
+  const vendorIdEl = document.getElementById('prevzemiVendorId');
+  if (vendorIdEl) {
+    const supKey = prevzemiData._supplier_key || '?';
+    const supName = prevzemiData._supplier_name || '';
+    const vid = prevzemiData._vendor_id || '';
+    if (vid) {
+      vendorIdEl.innerHTML = `<span style="color:var(--accent);font-weight:600">${supName}</span> · ID: <strong>${vid}</strong>`;
+    } else {
+      vendorIdEl.innerHTML = `<span style="color:#dc2626;font-weight:600">${supName || 'Neznano'}</span> · ID: <span style="color:#dc2626">PRAZEN</span>`;
+    }
+  }
+
   const items = prevzemiData.items || [];
 
   // ─── VALIDATION: sum items vs invoice total ───
@@ -8613,6 +8631,55 @@ async function prevzemiLoadHistory() {
     el.innerHTML = html;
   } catch(e) {
     el.innerHTML = '<div style="font-size:11px;color:#dc2626;text-align:center;padding:1rem">Napaka</div>';
+  }
+}
+
+async function prevzemiOpenSupplierEditor() {
+  if (!prevzemiRecordId) {
+    alert('Najprej naloži prevzem iz zgodovine');
+    return;
+  }
+  // Naloži trenutni mapping da vidimo opcije
+  let suppliers = {};
+  try {
+    const r = await fetch('/prevzemi-vendor-ids');
+    const d = await r.json();
+    if (d.ok) suppliers = d.suppliers || {};
+  } catch(e) {}
+
+  const currentSupplier = prevzemiData?._supplier_key || '';
+  const options = Object.values(suppliers).map(s => {
+    const isCurrent = s.supplier_key === currentSupplier;
+    return `${isCurrent ? '→ ' : '  '}${s.supplier_key} (${s.supplier_name}) → ID: ${s.vendor_id || 'PRAZEN'}`;
+  }).join('\n');
+
+  const inputMsg = `Trenutni dobavitelj: ${prevzemiData?._supplier_name || '?'} (ID: ${prevzemiData?._vendor_id || 'PRAZEN'})\n\nVnesi nov supplier_key:\n\n${options}`;
+  const newSupplier = prompt(inputMsg, currentSupplier);
+  if (!newSupplier || newSupplier.trim() === currentSupplier) return;
+
+  try {
+    const res = await fetch('/prevzemi-update-supplier', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({record_id: prevzemiRecordId, supplier: newSupplier.trim().toLowerCase()})
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert('⚠️ Napaka: ' + (data.error || 'unknown'));
+      return;
+    }
+    // Posodobi UI in pokaži potrditev
+    if (prevzemiData) {
+      prevzemiData._supplier_key = data.supplier;
+      prevzemiData._supplier_name = data.supplier_name;
+      prevzemiData._vendor_id = data.vendor_id;
+    }
+    prevzemiRender();
+    prevzemiLoadHistory();  // refresh history list
+
+    alert(`✓ Dobavitelj posodobljen: ${data.supplier_name}\nNov vendor ID: ${data.vendor_id}\n\n💡 Zdaj lahko ponovno generiraš XML — bo imel pravi SupplierID.`);
+  } catch(e) {
+    alert('Napaka: ' + e.message);
   }
 }
 
