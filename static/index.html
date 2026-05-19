@@ -3651,6 +3651,22 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
         </div>
 
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span class="slabel">🏷️ VENDOR ID-JI</span>
+            <button onclick="vendorIdsLoad()" title="Osveži"
+              style="background:transparent;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;color:var(--text-secondary);padding:2px 8px;font-family:inherit">↻</button>
+          </div>
+          <p style="font-size:10px;color:var(--text-tertiary);margin:0 0 8px;line-height:1.4">ID-ji dobaviteljev v računovodskem programu — vključeni v XML export kot <code style="font-size:10px;background:var(--surface2);padding:1px 4px;border-radius:3px">SupplierID</code></p>
+          <div id="vendorIdsList" style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:1rem">Nalagam...</div>
+          </div>
+          <button onclick="vendorIdsSave()" id="vendorIdsSaveBtn" style="margin-top:8px;width:100%;padding:7px;background:var(--accent);color:white;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:none">
+            💾 Shrani spremembe
+          </button>
+          <div id="vendorIdsStatus" style="margin-top:6px;font-size:10px;text-align:center;color:var(--text-tertiary)"></div>
+        </div>
+
       </div>
 
       <!-- DESNO: preview + export -->
@@ -3899,7 +3915,10 @@ function switchPage(page) {
   if (page === 'knjigovodstvo') { if(typeof knjLoadHistory==='function') knjLoadHistory(); }
   if (page === 'zaloga') { if(typeof lokLoadCacheStatus==='function') lokLoadCacheStatus(); }
   if (page === 'storage') { if(typeof storageLoad==='function') storageLoad(); }
-  if (page === 'prevzemi') { if(typeof prevzemiLoadHistory==='function') prevzemiLoadHistory(); }
+  if (page === 'prevzemi') {
+    if(typeof prevzemiLoadHistory==='function') prevzemiLoadHistory();
+    if(typeof vendorIdsLoad==='function') vendorIdsLoad();
+  }
   if (page === 'narocilnice') { setTimeout(() => { narcVecjaInitDrop(); narcDvojnikiInitDrop(); }, 100); }
   if (page === 'odprema') { odpLoadHistory(); }
   else { const b = document.getElementById('odp-bulk-bar'); if(b) b.style.display='none'; }
@@ -8473,6 +8492,95 @@ async function prevzemiGenerateXml() {
   } catch(e) {
     btn.textContent = '❌ ' + e.message;
     setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000);
+  }
+}
+
+// ═══ VENDOR ID-JI EDITOR ═══════════════════════════════════════════════════
+let _vendorIdsOriginal = {};
+
+async function vendorIdsLoad() {
+  try {
+    const res = await fetch('/prevzemi-vendor-ids');
+    const data = await res.json();
+    if (!data.ok) return;
+    _vendorIdsOriginal = {};
+    const wrap = document.getElementById('vendorIdsList');
+    if (!wrap) return;
+
+    const suppliers = Object.values(data.suppliers || {});
+    if (!suppliers.length) {
+      wrap.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:8px">Ni dobaviteljev</div>';
+      return;
+    }
+
+    wrap.innerHTML = suppliers.map(s => {
+      _vendorIdsOriginal[s.supplier_key] = s.vendor_id || '';
+      const isDefault = s.vendor_id === (data.defaults[s.supplier_key] || '');
+      const defaultBadge = isDefault && s.vendor_id ? '<span style="font-size:9px;color:#16a34a;font-weight:600;margin-left:6px">DEFAULT</span>' : '';
+      const customBadge = !isDefault && s.vendor_id ? '<span style="font-size:9px;color:var(--accent);font-weight:600;margin-left:6px">CUSTOM</span>' : '';
+      const emptyBadge = !s.vendor_id ? '<span style="font-size:9px;color:#dc2626;font-weight:600;margin-left:6px">PRAZEN</span>' : '';
+      return `
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;font-weight:700;color:var(--text);display:flex;align-items:center">${s.supplier_name}${defaultBadge}${customBadge}${emptyBadge}</div>
+            <div style="font-size:9px;color:var(--text-tertiary);font-family:monospace">${s.supplier_key}</div>
+          </div>
+          <input type="text" id="vid-${s.supplier_key}" value="${s.vendor_id || ''}" placeholder="ID"
+            oninput="vendorIdsCheckDirty()"
+            style="width:90px;padding:5px 7px;border:1px solid var(--border);border-radius:4px;font-size:11px;font-family:monospace;font-weight:600;background:var(--surface);color:var(--text)">
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    console.error('vendorIdsLoad error', e);
+  }
+}
+
+function vendorIdsCheckDirty() {
+  const btn = document.getElementById('vendorIdsSaveBtn');
+  if (!btn) return;
+  let dirty = false;
+  for (const key in _vendorIdsOriginal) {
+    const inp = document.getElementById('vid-' + key);
+    if (!inp) continue;
+    if (inp.value.trim() !== (_vendorIdsOriginal[key] || '').trim()) {
+      dirty = true;
+      break;
+    }
+  }
+  btn.style.display = dirty ? 'block' : 'none';
+}
+
+async function vendorIdsSave() {
+  const btn = document.getElementById('vendorIdsSaveBtn');
+  const status = document.getElementById('vendorIdsStatus');
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Shranjujem...'; }
+
+  const mapping = {};
+  for (const key in _vendorIdsOriginal) {
+    const inp = document.getElementById('vid-' + key);
+    if (inp) mapping[key] = inp.value.trim();
+  }
+  try {
+    const res = await fetch('/prevzemi-vendor-ids', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mapping})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (status) {
+        status.innerHTML = '<span style="color:#16a34a;font-weight:600">✓ Shranjeno</span>';
+        setTimeout(() => status.innerHTML = '', 3000);
+      }
+      await vendorIdsLoad();  // refresh prikaza
+    } else {
+      if (status) status.innerHTML = `<span style="color:#dc2626">⚠️ ${data.error || 'Napaka'}</span>`;
+    }
+  } catch (e) {
+    if (status) status.innerHTML = `<span style="color:#dc2626">⚠️ ${e.message}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '💾 Shrani spremembe'; }
   }
 }
 
