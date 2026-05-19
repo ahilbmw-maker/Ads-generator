@@ -2325,26 +2325,28 @@ SPLOŠNA PRAVILA:
 
 Vrni SAMO JSON: {{{batch_json_keys}}}"""
 
-                    # Retry do 3x
+                    # Retry do 3x z fallback na Sonnet po 2. retry-ju
                     batch_data = None
                     for attempt in range(3):
+                        # Prvi 2 poskusa Haiku, 3. poskus Sonnet (fallback če Haiku ne dela)
+                        model = "claude-haiku-4-5-20251001" if attempt < 2 else "claude-sonnet-4-6"
                         try:
-                            batch_text = await call_claude(batch_prompt, "claude-haiku-4-5-20251001", None, 3000)
+                            batch_text = await call_claude(batch_prompt, model, None, 4000)
                             batch_data = parse_json_response(batch_text)
                             if batch_data:
-                                # Preveri da so vsi jeziki iz batcha prisotni
                                 missing = [lang for lang in batch if lang not in batch_data]
                                 if missing:
-                                    print(f"[meta-stream] batch {batch} manjkajo jeziki: {missing}, retry {attempt+1}")
+                                    print(f"[meta-stream] batch {batch} ({model}) manjkajo jeziki: {missing}, retry {attempt+1}/3")
                                     batch_data = None
                                 else:
+                                    print(f"[meta-stream] batch {batch} ({model}) USPELO v {attempt+1}. poskusu")
                                     break
                             else:
-                                print(f"[meta-stream] batch {batch} JSON parse fail, retry {attempt+1}, response[:200]: {batch_text[:200]}")
+                                print(f"[meta-stream] batch {batch} ({model}) JSON parse fail, retry {attempt+1}/3, response[:200]: {batch_text[:200]}")
                         except Exception as e:
-                            print(f"[meta-stream] batch {batch} error attempt {attempt+1}: {e}")
+                            print(f"[meta-stream] batch {batch} ({model}) error attempt {attempt+1}/3: {type(e).__name__}: {e}")
                         if attempt < 2:
-                            await asyncio.sleep(5)
+                            await asyncio.sleep(2)  # 2s pavza, ne 5s
 
                     if batch_data:
                         full_result.update(batch_data)
