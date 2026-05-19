@@ -11648,13 +11648,102 @@ SUPPLIER_NAMES = {
 }
 
 # Vendor ID-ji v računovodskem sistemu (siluxar/nextis)
-SUPPLIER_VENDOR_IDS = {
+# Default vrednosti — če /data/prevzemi/vendor_ids.json ne obstaja, uporabi te
+SUPPLIER_VENDOR_IDS_DEFAULT = {
     "amio":       "000097",
     "abakus":     "D00003",
     "intercars":  "000177",
     "motoprofil": "P00010",
     "ikonka":     "000223",
 }
+
+VENDOR_IDS_FILE = PREVZEMI_DIR / "vendor_ids.json"
+
+
+def _load_vendor_ids() -> dict:
+    """Vrne vendor_id mapping iz JSON file-a (ali default če ni)."""
+    try:
+        if VENDOR_IDS_FILE.exists():
+            data = json.loads(VENDOR_IDS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception as e:
+        print(f"[vendor-ids] load error: {e}")
+    # Fallback na default
+    return dict(SUPPLIER_VENDOR_IDS_DEFAULT)
+
+
+def _save_vendor_ids(mapping: dict) -> bool:
+    """Shrani vendor_id mapping v JSON file."""
+    try:
+        VENDOR_IDS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        VENDOR_IDS_FILE.write_text(json.dumps(mapping, ensure_ascii=False, indent=2), encoding="utf-8")
+        return True
+    except Exception as e:
+        print(f"[vendor-ids] save error: {e}")
+        return False
+
+
+# Globalni accessor za vse mesta ki uporabljajo SUPPLIER_VENDOR_IDS
+# (vsakič preveri file — če je bil posodobljen brez restart-a, se to upošteva)
+class _VendorIdsProxy:
+    def __getitem__(self, key):
+        return _load_vendor_ids().get(key, "")
+    def get(self, key, default=""):
+        return _load_vendor_ids().get(key, default)
+    def items(self):
+        return _load_vendor_ids().items()
+    def keys(self):
+        return _load_vendor_ids().keys()
+    def values(self):
+        return _load_vendor_ids().values()
+    def __contains__(self, key):
+        return key in _load_vendor_ids()
+    def __iter__(self):
+        return iter(_load_vendor_ids())
+
+SUPPLIER_VENDOR_IDS = _VendorIdsProxy()
+
+
+@app.get("/prevzemi-vendor-ids")
+async def prevzemi_get_vendor_ids():
+    """Vrne trenutni vendor_id mapping + seznam vseh znanih dobaviteljev."""
+    current = _load_vendor_ids()
+    # Vključi tudi default supplier-je ki morda še niso shranjeni
+    all_suppliers = {}
+    for sup_key, sup_name in SUPPLIER_NAMES.items():
+        if sup_key == "unknown":
+            continue
+        all_suppliers[sup_key] = {
+            "supplier_key": sup_key,
+            "supplier_name": sup_name,
+            "vendor_id": current.get(sup_key, ""),
+            "is_default": current.get(sup_key) == SUPPLIER_VENDOR_IDS_DEFAULT.get(sup_key),
+        }
+    return {"ok": True, "suppliers": all_suppliers, "defaults": SUPPLIER_VENDOR_IDS_DEFAULT}
+
+
+@app.post("/prevzemi-vendor-ids")
+async def prevzemi_set_vendor_ids(data: dict):
+    """Shrani vendor_id mapping. Body: {"mapping": {"amio": "000097", "abakus": "D00003", ...}}"""
+    try:
+        mapping = data.get("mapping", {})
+        if not isinstance(mapping, dict):
+            return {"ok": False, "error": "mapping mora biti slovar"}
+        # Validacija — samo znani supplier_key-i
+        valid = {}
+        for k, v in mapping.items():
+            if k not in SUPPLIER_NAMES:
+                continue
+            if k == "unknown":
+                continue
+            v_str = str(v or "").strip()
+            valid[k] = v_str
+        if not _save_vendor_ids(valid):
+            return {"ok": False, "error": "Shranjevanje ni uspelo"}
+        return {"ok": True, "saved": valid}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.post("/prevzemi-backfill-vendor-ids")
