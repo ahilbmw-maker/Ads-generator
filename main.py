@@ -2299,6 +2299,10 @@ async def generate_multi_stream(req: MultiAdRequest):
                     "sl": {"pt": sl_pts, "hl": sl_hls},
                 }
 
+                # GLOBAL flag — če Haiku enkrat zavrne s 529, preskakuj Haiku za vse naslednje batch-e
+                # (ker je trenutno preobremenjen — Anthropic outage)
+                skip_haiku_for_rest = False
+
                 for batch in lang_batches:
                     yield f"data: {json.dumps({'type': 'progress', 'index': i, 'step': 'translating', 'langs': batch})}\n\n"
 
@@ -2325,11 +2329,19 @@ SPLOŠNA PRAVILA:
 
 Vrni SAMO JSON: {{{batch_json_keys}}}"""
 
-                    # Retry do 3x z fallback na Sonnet po 2. retry-ju
+                    # Retry do 3x — pri 529 overload se model preklopi na Sonnet
+                    # Če smo že kdaj v tem requestu videli 529, takoj uporabi Sonnet
                     batch_data = None
+                    last_error_was_529 = False
                     for attempt in range(3):
-                        # Prvi 2 poskusa Haiku, 3. poskus Sonnet (fallback če Haiku ne dela)
-                        model = "claude-haiku-4-5-20251001" if attempt < 2 else "claude-sonnet-4-6"
+                        # Izberi model:
+                        # - če je globalni flag prižgan (Haiku že failal nekje) → Sonnet
+                        # - če je trenutni batch že imel 529 → Sonnet
+                        # - sicer Haiku za prva 2 poskusa, Sonnet za 3.
+                        if skip_haiku_for_rest or last_error_was_529:
+                            model = "claude-sonnet-4-6"
+                        else:
+                            model = "claude-haiku-4-5-20251001" if attempt < 2 else "claude-sonnet-4-6"
                         try:
                             batch_text = await call_claude(batch_prompt, model, None, 4000)
                             batch_data = parse_json_response(batch_text)
@@ -2344,9 +2356,19 @@ Vrni SAMO JSON: {{{batch_json_keys}}}"""
                             else:
                                 print(f"[meta-stream] batch {batch} ({model}) JSON parse fail, retry {attempt+1}/3, response[:200]: {batch_text[:200]}")
                         except Exception as e:
-                            print(f"[meta-stream] batch {batch} ({model}) error attempt {attempt+1}/3: {type(e).__name__}: {e}")
+                            err_str = str(e)
+                            is_529 = '529' in err_str or 'overloaded' in err_str.lower()
+                            last_error_was_529 = is_529
+                            # Če je Haiku in 529, prižgi globalni flag — ne probaj več Haiku v naslednjih batch-ih
+                            if is_529 and 'haiku' in model.lower():
+                                if not skip_haiku_for_rest:
+                                    print(f"[meta-stream] 🚨 Haiku overloaded — preklopi na Sonnet za VSE naslednje batch-e")
+                                skip_haiku_for_rest = True
+                            print(f"[meta-stream] batch {batch} ({model}) error attempt {attempt+1}/3 [{'OVERLOADED' if is_529 else 'OTHER'}]: {type(e).__name__}: {err_str[:200]}")
+                        # Pavza pred retry-jem — daljša pri 529
                         if attempt < 2:
-                            await asyncio.sleep(2)  # 2s pavza, ne 5s
+                            wait_s = 8 if last_error_was_529 else 2
+                            await asyncio.sleep(wait_s)
 
                     if batch_data:
                         full_result.update(batch_data)
