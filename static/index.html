@@ -3205,7 +3205,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
       <!-- Toolbar -->
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-        <button onclick="vracilaCopyAll()" style="padding:8px 14px;background:var(--accent);color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📋 Kopiraj vse ID-je</button>
+        <button onclick="vracilaCopyAll()" style="padding:8px 14px;background:var(--accent);color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" title="Kopira ID-je v clipboard IN prenese CSV datoteko">📋 Kopiraj + CSV</button>
         <button onclick="vracilaArchive()" style="padding:8px 14px;background:white;color:var(--text);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📁 Zapri sejo</button>
         <button onclick="vracilaClearAll()" style="padding:8px 14px;background:white;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🗑 Briši vse</button>
         <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
@@ -17965,16 +17965,32 @@ function vracilaCopyAll() {
   // Kopiraj v starostnem vrstnem redu (od najstarejšega proti najnovejšemu — bolj logično za nalepke)
   const ordered = [...vracilaItems].reverse();
   const text = ordered.map(it => it.id).join('\n');
+
+  // 1. Kopiraj v clipboard
   navigator.clipboard.writeText(text).then(() => {
     const pill = document.getElementById('vracilaSavePill');
-    const prev = pill.innerHTML;
-    pill.innerHTML = `📋 Kopirano ${vracilaItems.length} ID-jev`;
+    pill.innerHTML = `📋 Kopirano + CSV prenesen (${vracilaItems.length})`;
     pill.style.background = 'rgba(58,111,255,0.1)';
     pill.style.color = 'var(--accent)';
-    setTimeout(() => vracilaSetSavingState('saved'), 2000);
+    setTimeout(() => vracilaSetSavingState('saved'), 2500);
   }).catch(err => {
     alert('Napaka pri kopiranju: ' + err.message);
   });
+
+  // 2. Generiraj CSV file (Windows CRLF line endings za kompatibilnost s starejšimi sistemi)
+  const csvContent = ordered.map(it => it.id).join('\r\n') + '\r\n';
+  const blob = new Blob([csvContent], {type: 'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  // Datum za ime: YYYY-MM-DD_HHMM
+  const now = new Date();
+  const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+  link.href = url;
+  link.download = `vracila_${stamp}_${ordered.length}id.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 async function vracilaArchive() {
