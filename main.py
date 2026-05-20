@@ -567,7 +567,10 @@ def _process_email_attachment(filename: str, content: bytes, subject: str, sende
             return result
 
         # Shrani enako kot ročni upload
-        invoice_num_safe = _safe_filename(parsed.get("invoice_number", "unknown"))
+        # Normaliziraj — odstrani presledke iz invoice_number (npr. 'FA 162383' → 'FA_162383')
+        if parsed.get('invoice_number'):
+            parsed['invoice_number'] = _normalize_invoice_number(parsed['invoice_number'])
+        invoice_num_safe = _safe_filename(parsed.get('invoice_number', 'unknown'))
         record_id = f"{ts}_{invoice_num_safe}"
         target_dir = PREVZEMI_DIR / record_id
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -10200,6 +10203,19 @@ def _safe_filename(name: str) -> str:
     return s[:120] or 'prevzem'
 
 
+def _normalize_invoice_number(num: str) -> str:
+    """Normalizira invoice številko — odstrani presledke, ohrani strukturo.
+    Primer: 'FA 162383/05/2026/U' → 'FA_162383/05/2026/U'
+    """
+    if not num:
+        return num
+    import re as _re
+    s = str(num).strip()
+    # Vsi presledki (in tabulatorji, newline) → _
+    s = _re.sub(r'\s+', '_', s)
+    return s
+
+
 @app.post("/prevzemi-parse-pdf")
 async def prevzemi_parse_pdf(file: UploadFile = File(...)):
     """Upload PDF invoice, parse with Claude API, save raw + parsed JSON to disk."""
@@ -10331,6 +10347,9 @@ IMPORTANT:
             return {"ok": False, "error": f"JSON parse failed: {last_err}. Raw response saved for debugging."}
 
         # Save to disk
+        # Normaliziraj — odstrani presledke iz invoice_number (npr. 'FA 162383' → 'FA_162383')
+        if parsed.get('invoice_number'):
+            parsed['invoice_number'] = _normalize_invoice_number(parsed['invoice_number'])
         invoice_num_safe = _safe_filename(parsed.get('invoice_number', 'unknown'))
         record_id = f"{ts}_{invoice_num_safe}"
         target_dir = PREVZEMI_DIR / record_id
@@ -10466,7 +10485,7 @@ async def prevzemi_generate_xls(req: PrevzemiXlsRequest):
         if not selected:
             return {"ok": False, "error": "No items selected"}
 
-        invoice_num = parsed.get('invoice_number', '')
+        invoice_num = _normalize_invoice_number(parsed.get('invoice_number', ''))
         invoice_date_str = parsed.get('invoice_date', '')
         try:
             from datetime import datetime
@@ -10573,7 +10592,7 @@ async def prevzemi_generate_xml(req: PrevzemiXmlRequest):
         if not selected:
             return {"ok": False, "error": "No items selected"}
 
-        invoice_num = parsed.get('invoice_number', '')
+        invoice_num = _normalize_invoice_number(parsed.get('invoice_number', ''))
         currency = parsed.get('currency', 'EUR')
 
         # Parse invoice date -> DD.MM.YYYY
@@ -11756,6 +11775,46 @@ async def prevzemi_set_vendor_ids(data: dict):
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/prevzemi-normalize-invoice-numbers")
+async def prevzemi_normalize_invoice_numbers():
+    """Backfill: posodobi vse obstoječe prevzeme tako, da odstrani presledke iz invoice_number."""
+    try:
+        updated = 0
+        skipped = 0
+        details = []
+        for d in PREVZEMI_DIR.iterdir():
+            if not d.is_dir():
+                continue
+            # parsed.json
+            parsed_path = d / "parsed.json"
+            meta_path = d / "meta.json"
+            if not parsed_path.exists():
+                continue
+            try:
+                parsed = json.loads(parsed_path.read_text(encoding="utf-8"))
+                old_num = parsed.get("invoice_number", "")
+                new_num = _normalize_invoice_number(old_num)
+                if old_num != new_num and new_num:
+                    parsed["invoice_number"] = new_num
+                    parsed_path.write_text(json.dumps(parsed, indent=2, ensure_ascii=False), encoding="utf-8")
+                    # Posodobi tudi meta.json
+                    if meta_path.exists():
+                        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                        if meta.get("invoice_number") != new_num:
+                            meta["invoice_number"] = new_num
+                            meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+                    updated += 1
+                    details.append({"record_id": d.name, "old": old_num, "new": new_num})
+                else:
+                    skipped += 1
+            except Exception as e:
+                skipped += 1
+                details.append({"record_id": d.name, "error": str(e)})
+        return {"ok": True, "updated": updated, "skipped": skipped, "details": details[:30]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.post("/prevzemi-update-supplier")
 async def prevzemi_update_supplier(data: dict):
     """Posodobi supplier (in vendor_id) za posamezen prevzem.
@@ -11892,6 +11951,9 @@ async def prevzemi_parse_supplier(file: UploadFile = File(...)):
         # Shrani na disk (enako kot /prevzemi-parse-pdf)
         from datetime import datetime
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        # Normaliziraj — odstrani presledke iz invoice_number (npr. 'FA 162383' → 'FA_162383')
+        if parsed.get('invoice_number'):
+            parsed['invoice_number'] = _normalize_invoice_number(parsed['invoice_number'])
         invoice_num_safe = _safe_filename(parsed.get('invoice_number', 'unknown'))
         record_id = f"{ts}_{invoice_num_safe}"
         target_dir = PREVZEMI_DIR / record_id
