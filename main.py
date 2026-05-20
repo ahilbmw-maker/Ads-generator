@@ -579,6 +579,12 @@ def _process_email_attachment(filename: str, content: bytes, subject: str, sende
         (target_dir / "parsed.json").write_text(
             json.dumps(parsed, indent=2, ensure_ascii=False), encoding="utf-8"
         )
+        # Override supplier če pattern invoice številke ali vendor_name kaže drugače
+        supplier = _override_supplier_by_invoice(
+            supplier,
+            parsed.get("invoice_number", ""),
+            parsed.get("vendor_name", "")
+        )
         (target_dir / "meta.json").write_text(json.dumps({
             "record_id": record_id,
             "source": "email",
@@ -10216,6 +10222,41 @@ def _normalize_invoice_number(num: str) -> str:
     return s
 
 
+def _override_supplier_by_invoice(supplier: str, invoice_number: str, vendor_name: str = "") -> str:
+    """Override supplier-ja na podlagi pattern-a invoice številke ali vendor name-a.
+    Kliče se PRED shranjevanjem da popravi napake AI parser-ja.
+
+    Pravila:
+    - Če invoice začne s "FA " (s presledkom) ali "FA_" (po normalizaciji) → MotoProfil
+    - Če vendor_name vsebuje "moto-profil" ali "motoprofil" → MotoProfil
+    - Sicer obdrži original supplier
+    """
+    if not invoice_number and not vendor_name:
+        return supplier
+    import re as _re
+    inv = str(invoice_number or "").strip()
+    vname = (vendor_name or "").lower()
+
+    # 1. Vendor name detection (najmočnejši signal)
+    if "moto-profil" in vname or "motoprofil" in vname or "moto profil" in vname:
+        return "motoprofil"
+    if "amio" in vname or "knurowska" in vname or "suban" in vname:
+        return "amio"
+    if "abakus" in vname:
+        return "abakus"
+    if "inter cars" in vname or "intercars" in vname or "inter-cars" in vname:
+        return "intercars"
+    if "ikonka" in vname or vname.startswith("kik "):
+        return "ikonka"
+
+    # 2. Invoice pattern: MotoProfil ima "FA XXXX/YY/YYYY/U" (s presledkom ali _)
+    # ali "FA_XXXX_YY_YYYY" iz CSV imena
+    if _re.match(r'^FA[\s_]\d+[/_]', inv, _re.IGNORECASE):
+        return "motoprofil"
+
+    return supplier
+
+
 @app.post("/prevzemi-parse-pdf")
 async def prevzemi_parse_pdf(file: UploadFile = File(...)):
     """Upload PDF invoice, parse with Claude API, save raw + parsed JSON to disk."""
@@ -10360,13 +10401,21 @@ IMPORTANT:
         # Save parsed JSON
         (target_dir / 'parsed.json').write_text(json.dumps(parsed, indent=2, ensure_ascii=False), encoding='utf-8')
         # Save metadata
+        # Override supplier če je AI napačno določil (npr. AMiO PDF endpoint vrne hard "amio" tudi za MotoProfil)
+        detected_supplier = _override_supplier_by_invoice(
+            'amio',
+            parsed.get('invoice_number', ''),
+            parsed.get('vendor_name', '')
+        )
+        if detected_supplier != 'amio':
+            print(f"[prevzemi-pdf] Supplier override: amio -> {detected_supplier} (invoice={parsed.get('invoice_number')}, vendor={parsed.get('vendor_name')})")
         meta = {
             'record_id': record_id,
             'original_filename': file.filename or 'invoice.pdf',
             'created_ts': ts,
-            'supplier': 'amio',
-            'supplier_name': SUPPLIER_NAMES.get('amio', 'AMiO'),
-            'vendor_id': SUPPLIER_VENDOR_IDS.get('amio', ''),
+            'supplier': detected_supplier,
+            'supplier_name': SUPPLIER_NAMES.get(detected_supplier, detected_supplier),
+            'vendor_id': SUPPLIER_VENDOR_IDS.get(detected_supplier, ''),
             'invoice_number': parsed.get('invoice_number', ''),
             'invoice_date': parsed.get('invoice_date', ''),
             'vendor_name': parsed.get('vendor_name', ''),
@@ -11882,17 +11931,31 @@ async def prevzemi_backfill_vendor_ids():
                 changed = False
 
                 supplier_key = (meta.get("supplier") or "").lower()
+                invoice_num = meta.get("invoice_number") or ""
+                vendor_name = meta.get("vendor_name") or ""
 
                 # Če supplier polje manjka, ga proba ugotoviti iz vendor_name
                 if not supplier_key:
-                    vname = (meta.get("vendor_name") or "").lower()
+                    vname_l = vendor_name.lower()
                     for sup, hints in VENDOR_NAME_HINTS.items():
-                        if any(h in vname for h in hints):
+                        if any(h in vname_l for h in hints):
                             supplier_key = sup
                             meta["supplier"] = sup
                             meta["supplier_name"] = SUPPLIER_NAMES.get(sup, sup)
                             changed = True
                             break
+
+                # OVERRIDE: če invoice ali vendor_name kažeta na drugega supplier-ja, popravi
+                # (npr. "FA 162383/..." invoice = MotoProfil, ne AMiO)
+                if supplier_key:
+                    detected = _override_supplier_by_invoice(supplier_key, invoice_num, vendor_name)
+                    if detected != supplier_key:
+                        print(f"[backfill] Override {d.name}: {supplier_key} -> {detected} (invoice={invoice_num}, vendor={vendor_name})")
+                        meta["supplier"] = detected
+                        meta["supplier_name"] = SUPPLIER_NAMES.get(detected, detected)
+                        meta["vendor_id"] = _load_vendor_ids().get(detected, "")
+                        supplier_key = detected
+                        changed = True
 
                 # Posodobi vendor_id če manjka in supplier obstaja v mapping-u
                 if supplier_key in SUPPLIER_VENDOR_IDS and not meta.get("vendor_id"):
@@ -11965,6 +12028,15 @@ async def prevzemi_parse_supplier(file: UploadFile = File(...)):
         # Save parsed JSON
         (target_dir / 'parsed.json').write_text(json.dumps(parsed, indent=2, ensure_ascii=False), encoding='utf-8')
         # Save metadata
+        # Override supplier če pattern invoice številke ali vendor_name kaže drugače
+        detected_supplier = _override_supplier_by_invoice(
+            supplier,
+            parsed.get('invoice_number', ''),
+            parsed.get('vendor_name', '')
+        )
+        if detected_supplier != supplier:
+            print(f"[prevzemi-supplier] Override: {supplier} -> {detected_supplier} (invoice={parsed.get('invoice_number')}, vendor={parsed.get('vendor_name')})")
+            supplier = detected_supplier
         meta = {
             'record_id': record_id,
             'original_filename': file.filename or 'invoice',
