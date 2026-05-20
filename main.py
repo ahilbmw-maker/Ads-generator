@@ -2530,12 +2530,13 @@ async def save_kreative_history(data: dict):
 
 @app.post("/analyze-product-kreative")
 async def analyze_product_kreative(data: dict):
-    """Prebere stran izdelka in generira A/B/C opcije za kreative."""
+    """Prebere stran izdelka in generira A/B/C opcije za kreative + pobere slike avtomatsko."""
     url = data.get("url", "").strip()
     if not url:
         return {"error": "Manjka URL."}
 
-    # Fetch page
+    # Fetch page enkrat (uporabi se za images extraction)
+    html = ""
     try:
         async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as hc:
             resp = await hc.get(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -2543,6 +2544,87 @@ async def analyze_product_kreative(data: dict):
     except Exception as e:
         return {"error": f"Ne morem prebrati strani: {e}"}
 
+    # === Extract images iz HTML-a (paralelno s Claude analizo) ===
+    images = []
+    try:
+        import re as _re
+        from urllib.parse import urljoin
+        # 1. Najprej iz og:image / twitter:image meta tagov (najbolj zanesljivo)
+        meta_imgs = _re.findall(
+            r'<meta[^>]+(?:property|name)=["\'](?:og:image(?::secure_url)?|twitter:image)["\'][^>]+content=["\']([^"\']+)["\']',
+            html, _re.IGNORECASE
+        )
+        meta_imgs += _re.findall(
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\'](?:og:image(?::secure_url)?|twitter:image)["\']',
+            html, _re.IGNORECASE
+        )
+
+        # 2. JSON-LD images (Schema.org Product)
+        for jsonld_match in _re.finditer(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html, _re.DOTALL | _re.IGNORECASE):
+            try:
+                import json as _json
+                ld = _json.loads(jsonld_match.group(1).strip())
+                ld_list = ld if isinstance(ld, list) else [ld]
+                for item in ld_list:
+                    if not isinstance(item, dict):
+                        continue
+                    img_field = item.get('image', '')
+                    if isinstance(img_field, str):
+                        meta_imgs.append(img_field)
+                    elif isinstance(img_field, list):
+                        meta_imgs.extend([x for x in img_field if isinstance(x, str)])
+                    elif isinstance(img_field, dict):
+                        meta_imgs.append(img_field.get('url', ''))
+            except Exception:
+                pass
+
+        # 3. <img> tagi v product gallery (filter)
+        img_srcs = _re.findall(r'<img[^>]+(?:data-src|src)=["\']([^"\']+)["\']', html, _re.IGNORECASE)
+
+        seen = set()
+        # Filter: prepoznaj product image, izloči junk
+        skip_words = ["logo", "icon", "favicon", "sprite", "banner", "flag",
+                     "payment", "badge", "star", "rating", "arrow", "tracking",
+                     "avatar", "pixel", "spacer", "loader", "spinner", "shield",
+                     "cart", "wishlist", "social", "share", "play-button", "checkout"]
+
+        # Najprej dodaj meta tag slike (visoka prioriteta)
+        for src in meta_imgs:
+            if not src or src.startswith("data:"):
+                continue
+            full = urljoin(url, src.strip())
+            if not any(ext in full.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+                continue
+            if any(w in full.lower() for w in skip_words):
+                continue
+            if full not in seen:
+                seen.add(full)
+                images.append(full)
+            if len(images) >= 8:
+                break
+
+        # Potem še preostanek iz <img> tagov
+        if len(images) < 8:
+            for src in img_srcs:
+                if not src or src.startswith("data:"):
+                    continue
+                full = urljoin(url, src.strip())
+                if not any(ext in full.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+                    continue
+                if any(w in full.lower() for w in skip_words):
+                    continue
+                # Filter na velikost: skip miniatures (-50x50, -100x100, -thumb, -small)
+                if any(suffix in full.lower() for suffix in ["-50x50", "-100x100", "-150x150", "-thumb", "-thumbnail", "_thumb", "/small/"]):
+                    continue
+                if full not in seen:
+                    seen.add(full)
+                    images.append(full)
+                if len(images) >= 8:
+                    break
+
+        print(f"[analyze-product-kreative] {url} - pobranih {len(images)} slik")
+    except Exception as e:
+        print(f"[analyze-product-kreative] Image extraction error: {e}")
 
     # Build prompt for Claude to analyze product
     tools = [{"type": "web_search_20250305", "name": "web_search"}]
@@ -2614,6 +2696,8 @@ Sedaj generiraj za izdelek na tej strani po ISTEM vzorcu:"""
     if not result:
         return {"error": "Ni uspelo analizirati izdelka. Poskusi znova."}
 
+    # Dodaj slike v rezultat
+    result["images"] = images
     return result
 
 
@@ -2722,6 +2806,36 @@ async def generate_kreative(data: dict):
             })
 
     # Prepare reference image parts for Gemini
+    # Pretvori URL slike v base64 najprej (pobere iz interneta)
+    if ref_images:
+        normalized = []
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as hc_dl:
+            for img in ref_images:
+                if not img:
+                    continue
+                # Že base64 data URL
+                if img.startswith("data:"):
+                    normalized.append(img)
+                    continue
+                # URL — pobere in pretvori v base64
+                if img.startswith("http://") or img.startswith("https://"):
+                    try:
+                        r = await hc_dl.get(img, headers={"User-Agent": "Mozilla/5.0"})
+                        if r.status_code == 200:
+                            import base64 as _b64
+                            content_type = r.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+                            if not content_type.startswith("image/"):
+                                content_type = "image/jpeg"
+                            b64_str = _b64.b64encode(r.content).decode("utf-8")
+                            normalized.append(f"data:{content_type};base64,{b64_str}")
+                        else:
+                            print(f"[generate-kreative] image fetch {img[:80]} failed: HTTP {r.status_code}")
+                    except Exception as e:
+                        print(f"[generate-kreative] image fetch error {img[:80]}: {e}")
+                        continue
+        ref_images = normalized
+        print(f"[generate-kreative] normalized {len(normalized)} ref images for Gemini upload")
+
     # Upload referenčne slike enkrat na Gemini Files API — z 48h cache
     file_uris = []
     if ref_images:
