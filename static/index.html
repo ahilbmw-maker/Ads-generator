@@ -1161,35 +1161,12 @@ input[type="text"].error { border-color: var(--red) !important; }
           <!-- Slike -->
           <div class="card" style="margin-bottom:12px">
             <span class="slabel">REFERENČNE SLIKE IZDELKA</span>
-
-            <!-- Avtomatsko pobrane slike iz spletne strani -->
-            <div id="kFetchedImagesWrap" style="display:none;margin-top:8px">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                <div style="font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:6px">
-                  <span style="font-size:13px">🌐</span>
-                  <span>Avtomatsko pobrane (klikni za izbiro/odznak):</span>
-                </div>
-                <div style="display:flex;gap:4px">
-                  <button onclick="kSelectAllFetched()" title="Izberi vse"
-                    style="background:transparent;border:1px solid var(--border);border-radius:4px;font-size:9px;color:var(--text-secondary);padding:2px 7px;cursor:pointer;font-family:inherit">✓ Vse</button>
-                  <button onclick="kDeselectAllFetched()" title="Odznači vse"
-                    style="background:transparent;border:1px solid var(--border);border-radius:4px;font-size:9px;color:var(--text-secondary);padding:2px 7px;cursor:pointer;font-family:inherit">✕ Nobene</button>
-                </div>
-              </div>
-              <div id="kFetchedImages" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-              <div style="font-size:10px;color:var(--text-tertiary);margin-top:6px;font-style:italic">💡 Avto-izbrane so prve 3 — odznači nepotrebne (manj slik = nižji stroški)</div>
+            <div id="kDropZone" class="k-dropzone" style="margin-top:8px" onclick="document.getElementById('kFileInput').click()">
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <span style="font-size:12px">Klikni, povleci ali prilepi slike (Ctrl+V)</span>
             </div>
-
-            <!-- Drag&drop za dodatne slike (fallback) -->
-            <div style="margin-top:10px">
-              <div style="font-size:10px;color:var(--text-tertiary);margin-bottom:4px">DODAJ ROČNO (če manjkajo, npr. svoje):</div>
-              <div id="kDropZone" class="k-dropzone" onclick="document.getElementById('kFileInput').click()">
-                <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text-tertiary);fill:none;stroke-width:1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                <span style="font-size:11px">Klikni, povleci ali prilepi (Ctrl+V)</span>
-              </div>
-              <input type="file" id="kFileInput" multiple accept="image/*" style="display:none" onchange="kHandleFiles(this.files)">
-              <div id="kUploadedImages" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
-            </div>
+            <input type="file" id="kFileInput" multiple accept="image/*" style="display:none" onchange="kHandleFiles(this.files)">
+            <div id="kUploadedImages" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
           </div>
 
           <!-- Generiraj -->
@@ -5373,10 +5350,6 @@ async function kAnalyze() {
   document.getElementById('kBulkBar').classList.remove('show');
   kSelectedImgCards.clear();
   window.kCardsData = [];
-  // Počisti prej izbrane slike
-  kSelectedImages = [];
-  const uploadedEl = document.getElementById('kUploadedImages');
-  if (uploadedEl) uploadedEl.innerHTML = '';
 
   try {
     const res = await fetch('/analyze-product-kreative', {
@@ -5391,24 +5364,6 @@ async function kAnalyze() {
     document.getElementById('kProductName').value = data.name || '';
     kRenderAB();
 
-    if (data.images && data.images.length) {
-      document.getElementById('kFetchedImagesWrap').style.display = 'block';
-      document.getElementById('kFetchedImages').innerHTML = data.images.map(src =>
-        '<div class="k-thumb-wrap"><img src="' + esc(src) + '" class="k-thumb" onclick="kToggleFetched(\'' + esc(src) + '\')" title="Klikni za izbiro"></div>'
-      ).join('');
-      // Auto-select prvih 3 (najbolj kvalitetne — meta tags so na vrhu)
-      const autoSelectCount = Math.min(3, data.images.length);
-      for (let i = 0; i < autoSelectCount; i++) {
-        kSelectedImages.push({src: data.images[i], type: 'fetched'});
-      }
-      // Posodobi vizualno markiranje
-      document.querySelectorAll('#kFetchedImages .k-thumb').forEach(img => {
-        img.classList.toggle('selected', !!kSelectedImages.find(x => x.src === img.src));
-      });
-    } else {
-      document.getElementById('kFetchedImagesWrap').style.display = 'none';
-    }
-
     document.getElementById('kAbcSection').style.display = 'block';
     kUpdateComboPreview();
     // Shrani v zgodovino
@@ -5420,34 +5375,6 @@ async function kAnalyze() {
 
   document.getElementById('kAnalyzeLoading').style.display = 'none';
   btn.disabled = false;
-}
-
-function kToggleFetched(src) {
-  const idx = kSelectedImages.findIndex(x => x.src === src);
-  if (idx >= 0) kSelectedImages.splice(idx, 1);
-  else kSelectedImages.push({src, type: 'fetched'});
-  document.querySelectorAll('#kFetchedImages .k-thumb').forEach(img => {
-    img.classList.toggle('selected', !!kSelectedImages.find(x => x.src === img.src));
-  });
-}
-
-function kSelectAllFetched() {
-  document.querySelectorAll('#kFetchedImages .k-thumb').forEach(img => {
-    const src = img.src;
-    if (!kSelectedImages.find(x => x.src === src)) {
-      kSelectedImages.push({src, type: 'fetched'});
-    }
-    img.classList.add('selected');
-  });
-}
-
-function kDeselectAllFetched() {
-  document.querySelectorAll('#kFetchedImages .k-thumb').forEach(img => {
-    const src = img.src;
-    const idx = kSelectedImages.findIndex(x => x.src === src);
-    if (idx >= 0) kSelectedImages.splice(idx, 1);
-    img.classList.remove('selected');
-  });
 }
 
 function kHandleFiles(files) {
