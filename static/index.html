@@ -1268,6 +1268,10 @@ input[type="text"].error { border-color: var(--red) !important; }
             style="padding:9px;background:#16a34a;color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%;opacity:0.35;transition:opacity 0.15s">
             <span id="hfGenTxt">Generiraj v Claude ↗</span>
           </button>
+          <button id="hfGenNewBtn" onclick="hfGenerateNew()" disabled
+            style="padding:9px;background:#0891b2;color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%;opacity:0.35;transition:opacity 0.15s">
+            <span id="hfGenNewTxt">NEW prompt — analiziraj ↗</span>
+          </button>
           <button id="hfGenOldBtn" onclick="hfGenerateOld()" disabled
             style="padding:9px;background:#f59e0b;color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%;opacity:0.35;transition:opacity 0.15s">
             <span id="hfGenOldTxt">OLD prompt ↗</span>
@@ -9831,6 +9835,16 @@ function hfUpdateGenBtn() {
     ? 'Generiraj v Claude ↗'
     : `Generiraj ${ready * 12} kreativ (${ready} × 12) ↗`;
 
+  const btnNew = document.getElementById('hfGenNewBtn');
+  if (btnNew) {
+    btnNew.disabled = ready === 0;
+    btnNew.style.opacity = ready === 0 ? '0.35' : '1';
+    btnNew.style.cursor = ready === 0 ? 'not-allowed' : 'pointer';
+    document.getElementById('hfGenNewTxt').textContent = ready === 0
+      ? 'NEW prompt — analiziraj ↗'
+      : `NEW prompt — analiziraj ${ready} ↗`;
+  }
+
   const btnOld = document.getElementById('hfGenOldBtn');
   if (btnOld) {
     btnOld.disabled = ready === 0;
@@ -9915,6 +9929,112 @@ function hfGenerate() {
     document.getElementById('hfGenStatus').style.display = 'block';
     document.getElementById('hfGenStatus').textContent = `✓ ${ready.length} produkt${ready.length>1?'i':''} kopirani — prilepi v Claude chat za generacijo.`;
     setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#16a34a'; }, 4000);
+  });
+}
+
+async function hfGenerateNew() {
+  const ready = hfSlots.filter(Boolean);
+  if (!ready.length) return;
+
+  const btn = document.getElementById('hfGenNewBtn');
+  const txt = document.getElementById('hfGenNewTxt');
+  const orig = txt.textContent;
+  btn.disabled = true;
+  btn.style.cursor = 'wait';
+  txt.textContent = `⏳ Analiziram ${ready.length} izdelek... (~${ready.length * 6}s)`;
+
+  // 1. Za vsak izdelek pokliči /analyze-product-kreative paralelno
+  let analyzed = [];
+  try {
+    const results = await Promise.all(ready.map(s => {
+      return fetch('/analyze-product-kreative', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url: s.url})
+      }).then(r => r.json()).catch(e => ({error: e.message}));
+    }));
+    analyzed = results.map((r, i) => ({slot: ready[i], analysis: r}));
+  } catch(e) {
+    document.getElementById('hfGenStatus').style.display = 'block';
+    document.getElementById('hfGenStatus').style.background = '#fef2f2';
+    document.getElementById('hfGenStatus').style.borderColor = '#fecaca';
+    document.getElementById('hfGenStatus').style.color = '#dc2626';
+    document.getElementById('hfGenStatus').textContent = `⚠ Napaka pri analizi: ${e.message}`;
+    btn.disabled = false;
+    btn.style.cursor = 'pointer';
+    txt.textContent = orig;
+    return;
+  }
+
+  // 2. Sestavi konkreten prompt z A×B kombinacijami za vsak izdelek
+  let msg = `Generiraj Higgsfield kreative za ${ready.length} produkt${ready.length > 1 ? 'e' : ''}. `;
+  msg += `Za vsak produkt 12 kreativ (model: nano-banana-2, ratio: 1:1, count: 4 per combo).\n\n`;
+  msg += `ZA VSAKO KOMBINACIJO (A × B) UPORABI TA PROMPT FORMAT:\n`;
+  msg += `"From these reference images create a new FB ad creative. `;
+  msg += `Try a more intense '[VIBE B]' background. `;
+  msg += `Do not include any text/words on the image except the device name in capital letters '[BRAND]'. `;
+  msg += `If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. `;
+  msg += `Highlight (can be through icons or text in English) that it is: [COPY A]. `;
+  msg += `Keep all text and icons well within the image borders — nothing should be cut off at the edges. Square 1:1 format."\n\n`;
+  msg += `═══════════════════════════════════════════════\n\n`;
+
+  analyzed.forEach((a, i) => {
+    const s = a.slot;
+    const an = a.analysis || {};
+    const aOpts = (an.aOptions || []).slice(0, 3);
+    const bOpts = (an.bOptions || []).slice(0, 3);
+    const name = (an.name || s.brand || '').toUpperCase();
+
+    msg += `--- PRODUKT ${i+1}: ${name} ---\n`;
+    msg += `URL: ${s.url}\n`;
+    msg += `Naslov: ${s.title}\n`;
+    msg += `Slike (${s.images.length}):\n${s.images.join('\n')}\n\n`;
+
+    if (aOpts.length && bOpts.length) {
+      msg += `KOMBINACIJE ZA ${name} (3 × 4 = 12 kreativ):\n\n`;
+
+      const combos = [
+        {label: 'A — MAIN + LIFESTYLE',     a: aOpts[0], b: bOpts[0]},
+        {label: 'B — HIGH-CONVERT + P/S',   a: aOpts[1] || aOpts[0], b: bOpts[1] || bOpts[0]},
+        {label: 'C — SCROLL STOPPER',       a: aOpts[2] || aOpts[0], b: bOpts[2] || bOpts[0]},
+      ];
+
+      combos.forEach((c, ci) => {
+        const copyA = (c.a?.text || '').replace(/"/g, "'");
+        const vibeB = (c.b?.text || '').replace(/"/g, "'");
+        msg += `${ci+1}) ${c.label}\n`;
+        msg += `   COPY A: "${copyA}" (${c.a?.label || ''})\n`;
+        msg += `   VIBE B: "${vibeB}" (${c.b?.label || ''})\n`;
+        msg += `   → Higgsfield call: count=4, prompt:\n`;
+        msg += `     "From these reference images create a new FB ad creative. Try a more intense '${vibeB}' background. Do not include any text/words on the image except the device name in capital letters '${name}'. If possible you can also create a logo from the name. Highlight (can be through icons or text in English) that it is: ${copyA}. Keep all text and icons well within the image borders — nothing should be cut off at the edges. Square 1:1 format."\n\n`;
+      });
+    } else {
+      msg += `⚠ Analiza ni vrnila A/B opcij — uporabi standardni postopek (fetch URL → naredi prompte → generiraj).\n\n`;
+    }
+  });
+
+  msg += `═══════════════════════════════════════════════\n\n`;
+  msg += `NAVODILA:\n`;
+  msg += `1. Za vsak produkt 3× kliči Higgsfield MCP (nano-banana-2, ratio 1:1, count: 4)\n`;
+  msg += `2. Uporabi natanko prompte zgoraj (z že vstavljenimi vrednostmi)\n`;
+  msg += `3. Ko končaš en produkt napiši: DONE [BRAND]\n`;
+  msg += `4. Greš na naslednjega in nadaljuj enako\n`;
+
+  navigator.clipboard.writeText(msg).then(() => {
+    btn.innerHTML = '<span>✓ Kopirano (NEW)! Prilepi v Claude</span>';
+    btn.style.background = '#0e7490';
+    btn.disabled = false;
+    btn.style.cursor = 'pointer';
+    document.getElementById('hfGenStatus').style.display = 'block';
+    document.getElementById('hfGenStatus').style.background = '#ecfeff';
+    document.getElementById('hfGenStatus').style.borderColor = '#a5f3fc';
+    document.getElementById('hfGenStatus').style.color = '#0e7490';
+    document.getElementById('hfGenStatus').textContent = `✓ NEW prompt z analiziranim A/B/C za ${analyzed.length} produkt${analyzed.length>1?'e':''} kopiran — prilepi v Claude chat.`;
+    setTimeout(() => {
+      btn.innerHTML = `<span id="hfGenNewTxt">${orig}</span>`;
+      btn.style.background = '#0891b2';
+      hfUpdateGenBtn();
+    }, 5000);
   });
 }
 
