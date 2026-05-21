@@ -618,7 +618,7 @@ def _parse_amio_pdf_bytes(content: bytes) -> dict:
     # (Tukaj dupliciramo ključno logiko da se izognemo HTTP loop)
     msg = client.messages.create(
         model="claude-sonnet-4-5",
-        max_tokens=16000,
+        max_tokens=20000,
         messages=[{
             "role": "user",
             "content": [
@@ -10415,7 +10415,7 @@ IMPORTANT:
         loop = asyncio.get_event_loop()
         message = await loop.run_in_executor(None, lambda: client.messages.create(
             model="claude-sonnet-4-5",
-            max_tokens=16000,
+            max_tokens=20000,
             messages=[{
                 "role": "user",
                 "content": [
@@ -11761,7 +11761,7 @@ def _parse_ikonka_pdf(content: bytes) -> dict:
 
     msg = client.messages.create(
         model="claude-sonnet-4-5",
-        max_tokens=16000,
+        max_tokens=20000,
         messages=[{
             "role": "user",
             "content": [
