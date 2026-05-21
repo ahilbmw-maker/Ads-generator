@@ -5591,7 +5591,10 @@ function kDownloadCard(idx) {
   const c = window.kCardsData?.[idx];
   if (!c?.url) return;
   const a = document.createElement('a');
-  const name = (c.combo||'kreativa').replace(/[^a-zA-Z0-9]/g,'_');
+  // Ime izdelka kot prefix (npr. WEEDZAP_PROBLEM_SOLUTION___BEST_14)
+  const productName = (document.getElementById('kProductName')?.value || '').trim().replace(/[^a-zA-Z0-9]/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
+  const combo = (c.combo||'kreativa').replace(/[^a-zA-Z0-9]/g,'_');
+  const name = productName ? `${productName}_${combo}` : combo;
   a.href = c.url; a.download = name + '_' + (idx+1) + '.png'; a.click();
 }
 
