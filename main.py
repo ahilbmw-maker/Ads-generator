@@ -10203,6 +10203,45 @@ PREVZEMI_DIR = Path("/data/prevzemi")
 PREVZEMI_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _clean_motoprofil_product_code(code: str) -> str:
+    """Odstrani MotoProfil prefiks iz product_code-a.
+    MotoProfil ima format '{PREFIKS} {SKU}' kjer je prefiks 2-4 črk (npr. ABS, AMT, WP, IZA, BLP).
+    Primeri:
+      'ABS SL1348'   → 'SL1348'
+      'AMT 62-002'   → '62-002'
+      'WP 038'       → '038'
+      'IZA 35.025A'  → '35.025A'
+      'BLP ADM55368' → 'ADM55368'
+    Če format ne ustreza (ni prefiks + presledek), vrne original.
+    """
+    if not code:
+        return code
+    import re as _re
+    s = str(code).strip()
+    # Odreži samo če se začne z 2-4 VELIKIMI črkami, sledi presledek, nato SKU
+    m = _re.match(r'^[A-Z]{2,4}\s+(\S.*)$', s)
+    if m:
+        return m.group(1).strip()
+    return s
+
+
+def _apply_motoprofil_prefix_cleanup(parsed: dict) -> dict:
+    """Če je dobavitelj MotoProfil, očisti prefikse iz vseh product_number-jev."""
+    if not parsed or not isinstance(parsed, dict):
+        return parsed
+    items = parsed.get("items", [])
+    cleaned_count = 0
+    for it in items:
+        old_code = it.get("product_number", "")
+        new_code = _clean_motoprofil_product_code(old_code)
+        if new_code != old_code:
+            it["product_number"] = new_code
+            cleaned_count += 1
+    if cleaned_count:
+        print(f"[motoprofil] Očiščenih {cleaned_count} prefiksov iz product_number")
+    return parsed
+
+
 def _safe_filename(name: str) -> str:
     import re as _re
     s = _re.sub(r'[^A-Za-z0-9_\-]', '_', name)
@@ -11561,7 +11600,9 @@ def _parse_motoprofil_csv(content: bytes, filename: str) -> dict:
         ilosc = (row.get("Ilosc") or "1").strip()
         cena = (row.get("Cena") or "0").strip().replace(",", ".")
 
-        product_code = f"{prefiks}_{indeks}".strip("_") if prefiks else indeks
+        # MotoProfil: uporabi SAMO indeks (SKU) brez prefiksa (ABS, AMT, WP, ...)
+        # Prefiks je dobaviteljeva interna oznaka, ne ga vključujemo v ProductCode.
+        product_code = indeks if indeks else prefiks
         try:
             qty = float(ilosc)
             unit_price = float(cena)
