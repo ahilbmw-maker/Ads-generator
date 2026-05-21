@@ -10369,24 +10369,8 @@ async def prevzemi_parse_pdf(file: UploadFile = File(...)):
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         safe_name = _safe_filename(file.filename or 'invoice.pdf')
 
-        # Use Claude to parse PDF
-        message = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=16000,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "application/pdf",
-                            "data": pdf_b64
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": """Parse this supplier invoice PDF and extract structured data. Return ONLY a valid JSON object — no markdown, no explanation, no text before or after.
+        # Use Claude to parse PDF — V EXECUTOR (da ne blokira event loop / healthz)
+        _pdf_prompt = """Parse this supplier invoice PDF and extract structured data. Return ONLY a valid JSON object — no markdown, no explanation, no text before or after.
 
 CRITICAL JSON RULES:
 - Use ONLY straight double quotes ("), never curly quotes (" ")
@@ -10427,10 +10411,29 @@ IMPORTANT:
 - Extract ALL items, do not skip any (typically 50-150 items)
 - If field missing, use empty string ""
 - Return ONLY the JSON object - NOTHING else"""
+
+        loop = asyncio.get_event_loop()
+        message = await loop.run_in_executor(None, lambda: client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=16000,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": pdf_b64
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": _pdf_prompt
                     }
                 ]
             }]
-        )
+        ))
 
         raw_text = message.content[0].text.strip()
         # Strip possible markdown
@@ -12110,7 +12113,9 @@ async def prevzemi_parse_supplier(file: UploadFile = File(...)):
         elif supplier == "abakus":
             parsed = _parse_abakus_xlsx(content)
         elif supplier == "ikonka":
-            parsed = _parse_ikonka_pdf(content)
+            # Ikonka rabi Claude (blocking) — v executor da ne blokira healthz
+            _loop = asyncio.get_event_loop()
+            parsed = await _loop.run_in_executor(None, lambda: _parse_ikonka_pdf(content))
         elif supplier == "amio":
             # Fallback na obstoječi PDF parser (Claude)
             return {"ok": False, "error": "Za AMiO uporabi /prevzemi-parse-pdf endpoint", "redirect": "amio"}
