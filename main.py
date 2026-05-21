@@ -540,7 +540,10 @@ def _process_email_attachment(filename: str, content: bytes, subject: str, sende
     }
 
     try:
-        if supplier == "amio":
+        if supplier == "amio_xml":
+            parsed = _parse_amio_xml(content)
+            supplier = "amio"
+        elif supplier == "amio":
             parsed = _parse_amio_pdf_bytes(content)
         elif supplier == "motoprofil":
             parsed = _parse_motoprofil_csv(content, filename)
@@ -11556,6 +11559,10 @@ def _detect_supplier(filename: str, content: bytes) -> str:
     except Exception:
         head = ""
 
+    # AMiO XML format (<invoice><document_number>FV/KK/...) — NOV, brez Claude
+    if "<invoice>" in head and ("fv/kk" in head or "amio" in head or "<product_number>" in head):
+        return "amio_xml"
+
     if "prefiks" in head and "indeks" in head:
         return "motoprofil"
     if "despatchadvice" in head or "eslog" in head or "sisshl" in head:
@@ -11568,6 +11575,87 @@ def _detect_supplier(filename: str, content: bytes) -> str:
         return "amio"
 
     return "unknown"
+
+
+def _parse_amio_xml(content: bytes) -> dict:
+    """Parse AMiO strukturiran XML (<invoice>...). Brez Claude — direktno iz XML.
+    Format: <invoice><document_number>, <items><item><product_number>...
+    """
+    import xml.etree.ElementTree as ET
+    from datetime import datetime
+
+    root = ET.fromstring(content)
+
+    def _txt(parent, tag, default=""):
+        el = parent.find(tag)
+        return el.text.strip() if el is not None and el.text else default
+
+    # Header
+    invoice_number = _txt(root, "document_number")
+    issue_date = _txt(root, "issue_date")  # 20-05-2026 (DD-MM-YYYY)
+    # Pretvori v YYYY-MM-DD
+    invoice_date = issue_date
+    if issue_date and "-" in issue_date:
+        parts = issue_date.split("-")
+        if len(parts) == 3 and len(parts[0]) == 2:  # DD-MM-YYYY
+            invoice_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
+
+    vendor_el = root.find("vendor")
+    vendor_name = _txt(vendor_el, "name", "AMiO") if vendor_el is not None else "AMiO"
+    vendor_tin = _txt(vendor_el, "tin") if vendor_el is not None else ""
+
+    customer_el = root.find("customer")
+    customer_name = _txt(customer_el, "name") if customer_el is not None else ""
+
+    totals_el = root.find("totals")
+    total_value = ""
+    currency = "EUR"
+    if totals_el is not None:
+        tv = _txt(totals_el, "total_value_eur")
+        if tv:
+            total_value = f"{tv} EUR"
+
+    # Items
+    items = []
+    for it in root.findall(".//item"):
+        qty_str = _txt(it, "quantity", "1").replace(",", ".")
+        price_str = _txt(it, "unit_price_eur", "0").replace(",", ".")
+        value_str = _txt(it, "value_eur", "0").replace(",", ".")
+        try:
+            qty = float(qty_str)
+        except ValueError:
+            qty = 1
+        try:
+            unit_price = float(price_str)
+        except ValueError:
+            unit_price = 0.0
+        try:
+            value = float(value_str)
+        except ValueError:
+            value = round(qty * unit_price, 2)
+
+        items.append({
+            "lp": _txt(it, "no"),
+            "product_number": _txt(it, "product_number"),
+            "product_name": _txt(it, "product_name"),
+            "ean": _txt(it, "ean"),
+            "qty": int(qty) if qty == int(qty) else qty,
+            "unit": _txt(it, "uom"),
+            "vat": _txt(it, "vat", "0%"),
+            "unit_price": unit_price,
+            "value": value,
+        })
+
+    return {
+        "invoice_number": invoice_number,
+        "invoice_date": invoice_date or datetime.now().strftime("%Y-%m-%d"),
+        "vendor_name": vendor_name,
+        "vendor_tin": vendor_tin,
+        "customer_name": customer_name,
+        "total_value": total_value,
+        "currency": currency,
+        "items": items,
+    }
 
 
 def _parse_motoprofil_csv(content: bytes, filename: str) -> dict:
@@ -12147,7 +12235,11 @@ async def prevzemi_parse_supplier(file: UploadFile = File(...)):
             return {"ok": False, "error": "Dobavitelj ni prepoznan. Podprti: AMiO, MotoProfil, Ikonka, Intercars, Abakus."}
 
         # Parse glede na dobavitelja
-        if supplier == "motoprofil":
+        if supplier == "amio_xml":
+            # AMiO strukturiran XML — parse brez Claude (instant, $0)
+            parsed = _parse_amio_xml(content)
+            supplier = "amio"  # za vendor_id mapping je amio
+        elif supplier == "motoprofil":
             parsed = _parse_motoprofil_csv(content, file.filename or "")
         elif supplier == "intercars":
             parsed = _parse_intercars_xml(content)
@@ -12158,8 +12250,8 @@ async def prevzemi_parse_supplier(file: UploadFile = File(...)):
             _loop = asyncio.get_event_loop()
             parsed = await _loop.run_in_executor(None, lambda: _parse_ikonka_pdf(content))
         elif supplier == "amio":
-            # Fallback na obstoječi PDF parser (Claude)
-            return {"ok": False, "error": "Za AMiO uporabi /prevzemi-parse-pdf endpoint", "redirect": "amio"}
+            # Fallback na obstoječi PDF parser (Claude) — če je PDF, ne XML
+            return {"ok": False, "error": "Za AMiO PDF uporabi /prevzemi-parse-pdf endpoint", "redirect": "amio"}
         else:
             return {"ok": False, "error": f"Parser za '{supplier}' še ni implementiran"}
 
