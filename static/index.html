@@ -5366,6 +5366,7 @@ async function kAnalyze() {
 
     document.getElementById('kAbcSection').style.display = 'block';
     kUpdateComboPreview();
+    kUpdateGenBtnState();  // gumb disabled dokler ni slik
     // Shrani v zgodovino
     kSaveToHistory(url, data.name, data.aOptions, data.bOptions);
   } catch(e) {
@@ -5395,6 +5396,17 @@ function kRenderUploadedImages() {
     '<div class="k-thumb-wrap"><img src="' + img.src + '" class="k-thumb selected">' +
     '<button class="k-thumb-del" onclick="kRemoveUploaded(' + kSelectedImages.indexOf(img) + ')">x</button></div>'
   ).join('');
+  kUpdateGenBtnState();
+}
+
+function kUpdateGenBtnState() {
+  const btn = document.getElementById('kGenBtn');
+  if (!btn) return;
+  const hasImages = kSelectedImages.length > 0;
+  btn.disabled = !hasImages;
+  btn.style.opacity = hasImages ? '1' : '0.4';
+  btn.style.cursor = hasImages ? 'pointer' : 'not-allowed';
+  btn.title = hasImages ? '' : 'Najprej dodaj vsaj 1 referenčno sliko izdelka';
 }
 
 function kRemoveUploaded(idx) {
@@ -5431,6 +5443,19 @@ async function kGenerate() {
     const err = document.getElementById('kError');
     err.textContent = 'Izberi vsaj 1x A (tekst) in 1x B (ozadje)!';
     err.classList.add('show'); return;
+  }
+  if (!kSelectedImages.length) {
+    const err = document.getElementById('kError');
+    err.textContent = '⚠️ Dodaj vsaj 1 referenčno sliko izdelka — brez slike Gemini ne ve kako izdelek izgleda!';
+    err.classList.add('show');
+    // Poudari drop zone da uporabnik opazi
+    const dz = document.getElementById('kDropZone');
+    if (dz) {
+      dz.style.borderColor = 'var(--red)';
+      dz.style.background = 'rgba(220,38,38,0.05)';
+      setTimeout(() => { dz.style.borderColor = ''; dz.style.background = ''; }, 2500);
+    }
+    return;
   }
   document.getElementById('kError').classList.remove('show');
   const btn = document.getElementById('kGenBtn');
