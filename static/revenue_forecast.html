@@ -24,7 +24,7 @@
     --shadow: 0 1px 2px rgba(0,0,0,0.05);
   }
   * { box-sizing: border-box; }
-  body { margin:0; padding:14px; background:#f9fafb; font-family:'DM Sans',-apple-system,sans-serif; color:var(--text); font-size:13px; line-height:1.4; }
+  body { margin:0; padding:14px 14px 40px; background:#f9fafb; font-family:'DM Sans',-apple-system,sans-serif; color:var(--text); font-size:13px; line-height:1.4; }
   .container { max-width: none; margin: 0; padding-left: 0; padding-right: 0; width: 100%; }
   .header { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px }
   .header > div:last-child { margin-left: auto; }
@@ -265,12 +265,12 @@
           <!-- Letni povzetek -->
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
             <div class="stat-box" style="background:rgba(83,74,183,0.06);border:1px solid var(--accent)">
-              <div class="stat-label" style="color:var(--accent)">Projekcija leta (razpon A–B)</div>
-              <div class="stat-value" id="yr-proj-revenue" style="color:var(--accent);font-size:14px">—</div>
+              <div class="stat-label" style="color:var(--accent)">Projekcija leta (promet)</div>
+              <div class="stat-value" id="yr-proj-revenue" style="color:var(--accent);font-size:18px">—</div>
             </div>
             <div class="stat-box" style="background:rgba(83,74,183,0.06);border:1px solid var(--accent)">
-              <div class="stat-label" style="color:var(--accent)">Naročila — razpon</div>
-              <div class="stat-value" id="yr-proj-orders" style="color:var(--accent);font-size:14px">—</div>
+              <div class="stat-label" style="color:var(--accent)">Projekcija leta (naročila)</div>
+              <div class="stat-value" id="yr-proj-orders" style="color:var(--accent);font-size:18px">—</div>
             </div>
             <div class="stat-box">
               <div class="stat-label">Doseženo do danes</div>
@@ -1243,15 +1243,8 @@ function renderYearly() {
   }
   const yoyFactor = yoyRatios.length ? yoyRatios.reduce((a,b)=>a+b,0)/yoyRatios.length : 1;
 
-  // === SCENARIJ A: SEZONSKI MODEL (2025 mesec × YoY faktor) ===
-  //   Predpostavi: rast vs 2025 se nadaljuje (zajame nov/dec praznike + rast)
-  // === SCENARIJ B: HIBRID — KONSERVATIVEN (trenutni dnevni nivo, brez rasti, le sezonska oblika) ===
-  //   Vzami povprečni dnevni promet zadnjih 30 dni, projektiraj prihodnje mesece
-  //   z relativnim sezonskim faktorjem (mesec/trenutni_mesec) — ohrani nivo, doda sezonskost
-  const relSeason = (m) => SEASONAL_IDX[m] / SEASONAL_IDX[curMonth];  // koliko mesec m vs trenutni
-
-  let projRevA = actualRev;  // sezonski
-  let projRevB = actualRev;  // hibrid
+  // === KONZERVATIVNI MODEL (2025 mesečni vzorec × YoY faktor) ===
+  let projRev = actualRev;
   const monthsProj = {};
 
   for (let m = 0; m < 12; m++) {
@@ -1259,45 +1252,42 @@ function renderYearly() {
     const md = months[m];
     if (m < curMonth) {
       const rev = md ? md.revenue : 0;
-      monthsProj[m] = { actual: rev, projA: rev, projB: rev, isCurrent: false, complete: true, days: md?md.days:0, dim, orders: md?md.orders:0 };
+      monthsProj[m] = { actual: rev, proj: rev, isCurrent: false, complete: true, days: md?md.days:0, dim, orders: md?md.orders:0 };
     } else if (m === curMonth) {
       const actualSoFar = md ? md.revenue : 0;
       const daysSoFar = md ? md.days : 0;
       const daysRemain = dim - daysSoFar;
       const dailySoFar = daysSoFar > 0 ? actualSoFar/daysSoFar : avg30Rev;
-      const fullA = actualSoFar + dailySoFar * daysRemain;
-      monthsProj[m] = { actual: actualSoFar, projA: fullA, projB: fullA, isCurrent: true, complete: false, days: daysSoFar, dim, orders: md?md.orders:0 };
-      projRevA += fullA; projRevB += fullA;
+      const full = actualSoFar + dailySoFar * daysRemain;
+      monthsProj[m] = { actual: actualSoFar, proj: full, isCurrent: true, complete: false, days: daysSoFar, dim, orders: md?md.orders:0 };
+      projRev += full - actualSoFar;  // dodaj samo ostanek (actualRev že vključuje doslej)
     } else {
-      // A: 2025 isti mesec × YoY faktor
-      const a = REV_2025_NET[m] * yoyFactor;
-      // B: trenutni dnevni nivo (avg30) × relativni sezonski faktor × dni v mesecu
-      const b = avg30Rev * relSeason(m) * dim;
-      monthsProj[m] = { actual: null, projA: a, projB: b, isCurrent: false, complete: false, days: 0, dim, orders: null };
-      projRevA += a; projRevB += b;
+      const p = REV_2025_NET[m] * yoyFactor;
+      monthsProj[m] = { actual: null, proj: p, isCurrent: false, complete: false, days: 0, dim, orders: null };
+      projRev += p;
     }
   }
 
-  // Projekcija naročil (uporabi povprečni AOV za pretvorbo)
-  const avgAOV = actualRev / Math.max(1, actualOrd);
-  const projOrdA = Math.round(projRevA / avgAOV);
-  const projOrdB = Math.round(projRevB / avgAOV);
+  // H1 / H2 polletja
+  const h1 = [0,1,2,3,4,5].reduce((s,m) => s + monthsProj[m].proj, 0);
+  const h2 = [6,7,8,9,10,11].reduce((s,m) => s + monthsProj[m].proj, 0);
 
-  // Prikaz: razpon B–A
-  const lo = Math.min(projRevA, projRevB);
-  const hi = Math.max(projRevA, projRevB);
-  document.getElementById('yr-proj-revenue').innerHTML = `${fmtCurrency(lo)} – ${fmtCurrency(hi)}`;
-  document.getElementById('yr-proj-orders').innerHTML = `${fmtNum(Math.min(projOrdA,projOrdB))} – ${fmtNum(Math.max(projOrdA,projOrdB))}`;
+  // Projekcija naročil (povprečni AOV)
+  const avgAOV = actualRev / Math.max(1, actualOrd);
+  const projOrd = Math.round(projRev / avgAOV);
+
+  document.getElementById('yr-proj-revenue').innerHTML = fmtCurrency(projRev);
+  document.getElementById('yr-proj-orders').innerHTML = fmtNum(projOrd);
   document.getElementById('yr-actual-revenue').textContent = fmtCurrency(actualRev) + ' · ' + fmtNum(actualOrd);
   document.getElementById('yr-daily-avg').textContent = fmtCurrency(avg30Rev) + ' · ' + fmtNum(Math.round(avg30Ord));
   document.getElementById('yr-method').innerHTML =
-    `<b>Konzervativni (A):</b> ${fmtCurrency(projRevA)} — 2025 mesečni vzorec × povprečna YoY rast ${yoyFactor.toFixed(2)}× (+${((yoyFactor-1)*100).toFixed(0)}% vs 2025). Temelji na povprečju vseh dosedanjih mesecev.<br>` +
-    `<b>Optimistični (B):</b> ${fmtCurrency(projRevB)} — trenutni dnevni nivo (Ø30d = ${fmtCurrency(avg30Rev)}/dan) × sezonski faktor 2025. Predpostavi da se zadnji (najboljši) nivo ohrani.<br>` +
-    `Realna ocena je verjetno vmes. Osnova: ${thisYear.length} dni 2026 · ${yoyRatios.length} popolnih mesecev za kalibracijo.`;
+    `<b>Metoda (konzervativna):</b> pretekli/tekoči meseci = dejansko, prihodnji meseci = 2025 isti mesec × povprečna YoY rast <b>${yoyFactor.toFixed(2)}×</b> (+${((yoyFactor-1)*100).toFixed(0)}% vs 2025).<br>` +
+    `<b>1. polletje (H1):</b> ${fmtCurrency(h1)} &nbsp;·&nbsp; <b>2. polletje (H2):</b> ${fmtCurrency(h2)} (${((h2/h1-1)*100>=0?'+':'')}${((h2/h1-1)*100).toFixed(0)}% vs H1, sezonski dvig nov/dec).<br>` +
+    `Osnova: ${thisYear.length} dni 2026 · ${yoyRatios.length} popolnih mesecev za kalibracijo. YoY se posodablja z vsakim novim mesecem.`;
 
-  // Tabela po mesecih (vsi meseci, z obema scenarijema za prihodnje)
-  let html = `<div style="display:grid;grid-template-columns:90px 70px 100px 110px 110px;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">
-    <span>Mesec</span><span style="text-align:right">Dni</span><span style="text-align:right">Dejansko</span><span style="text-align:right;color:var(--accent)">Konzerv. (A)</span><span style="text-align:right;color:#d97706">Optim. (B)</span>
+  // Tabela po mesecih
+  let html = `<div style="display:grid;grid-template-columns:110px 80px 120px 120px;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">
+    <span>Mesec</span><span style="text-align:right">Dni</span><span style="text-align:right">Dejansko</span><span style="text-align:right;color:var(--accent)">Napoved</span>
   </div>`;
 
   for (let m = 0; m < 12; m++) {
@@ -1305,19 +1295,33 @@ function renderYearly() {
     const isPast = m < curMonth;
     const isCur = m === curMonth;
     const bg = isCur ? 'rgba(83,74,183,0.06)' : (m > curMonth ? 'rgba(0,0,0,0.02)' : 'var(--surface)');
-    const dniCell = isPast ? `${mp.days}/${mp.dim}` : (isCur ? `${mp.days}/${mp.dim}` : `0/${mp.dim}`);
+    const dniCell = `${mp.days}/${mp.dim}`;
     const actualCell = (isPast || isCur) ? fmtCurrency(mp.actual) : '—';
-    const aCell = (m >= curMonth) ? fmtCurrency(mp.projA) : '—';
-    const bCell = (m > curMonth) ? fmtCurrency(mp.projB) : '—';
+    const projCell = (m >= curMonth) ? fmtCurrency(mp.proj) : fmtCurrency(mp.actual);
     const label = monthNames[m] + (isCur ? ' <span style="font-size:9px;color:var(--accent)">(tekoči)</span>' : (m>curMonth ? ' <span style="font-size:9px;color:var(--text-tertiary)">(napoved)</span>' : ''));
-    html += `<div style="display:grid;grid-template-columns:90px 70px 100px 110px 110px;gap:8px;padding:8px 10px;background:${bg};border:1px solid var(--border);border-radius:var(--radius);font-size:12px;align-items:center;margin-bottom:3px">
+    html += `<div style="display:grid;grid-template-columns:110px 80px 120px 120px;gap:8px;padding:8px 10px;background:${bg};border:1px solid var(--border);border-radius:var(--radius);font-size:12px;align-items:center;margin-bottom:3px">
       <span style="font-weight:600">${label}</span>
       <span style="text-align:right;color:var(--text-secondary)">${dniCell}</span>
       <span style="text-align:right;font-weight:600">${actualCell}</span>
-      <span style="text-align:right;color:var(--accent)">${aCell}</span>
-      <span style="text-align:right;color:#d97706">${bCell}</span>
+      <span style="text-align:right;color:${m>=curMonth?'var(--accent)':'var(--text-secondary)'}">${projCell}</span>
     </div>`;
+    // Vstavi H1 vmesno vsoto po juniju
+    if (m === 5) {
+      html += `<div style="display:grid;grid-template-columns:110px 80px 120px 120px;gap:8px;padding:8px 10px;background:rgba(83,74,183,0.1);border:1px solid var(--accent);border-radius:var(--radius);font-size:12px;align-items:center;margin-bottom:6px;font-weight:700">
+        <span style="color:var(--accent)">H1 (jan-jun)</span><span></span><span></span>
+        <span style="text-align:right;color:var(--accent)">${fmtCurrency(h1)}</span>
+      </div>`;
+    }
   }
+  // H2 vsota na koncu
+  html += `<div style="display:grid;grid-template-columns:110px 80px 120px 120px;gap:8px;padding:8px 10px;background:rgba(83,74,183,0.1);border:1px solid var(--accent);border-radius:var(--radius);font-size:12px;align-items:center;margin-top:3px;font-weight:700">
+    <span style="color:var(--accent)">H2 (jul-dec)</span><span></span><span></span>
+    <span style="text-align:right;color:var(--accent)">${fmtCurrency(h2)}</span>
+  </div>`;
+  html += `<div style="display:grid;grid-template-columns:110px 80px 120px 120px;gap:8px;padding:10px;background:var(--accent);border-radius:var(--radius);font-size:13px;align-items:center;margin-top:6px;font-weight:700;color:white">
+    <span>CELO LETO</span><span></span><span></span>
+    <span style="text-align:right">${fmtCurrency(projRev)}</span>
+  </div>`;
   document.getElementById('yearly-table').innerHTML = html;
 
   // Graf
@@ -1326,18 +1330,17 @@ function renderYearly() {
 
 function renderYearlyChart(monthsProj, year, curMonth) {
   const monthNames = ['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Avg','Sep','Okt','Nov','Dec'];
-  const labels = [], actualData = [], projAData = [], projBData = [];
+  const labels = [], actualData = [], projData = [];
 
   for (let m = 0; m < 12; m++) {
     labels.push(monthNames[m]);
     const mp = monthsProj[m];
     if (m < curMonth) {
-      actualData.push(mp.actual); projAData.push(null); projBData.push(null);
+      actualData.push(mp.actual); projData.push(null);
     } else if (m === curMonth) {
-      // tekoči — dejansko stolpec + projekcija ostanka (A=B isti)
-      actualData.push(mp.actual); projAData.push(mp.projA); projBData.push(null);
+      actualData.push(mp.actual); projData.push(mp.proj);
     } else {
-      actualData.push(null); projAData.push(mp.projA); projBData.push(mp.projB);
+      actualData.push(null); projData.push(mp.proj);
     }
   }
 
@@ -1348,8 +1351,7 @@ function renderYearlyChart(monthsProj, year, curMonth) {
       labels,
       datasets: [
         { label: 'Dejansko (€)', data: actualData, backgroundColor: '#534AB7', borderRadius: 4 },
-        { label: 'Konzervativni A (€)', data: projAData, backgroundColor: 'rgba(83,74,183,0.35)', borderColor: '#534AB7', borderWidth: 1, borderRadius: 4 },
-        { label: 'Optimistični B (€)', data: projBData, backgroundColor: 'rgba(217,119,6,0.3)', borderColor: '#d97706', borderWidth: 1, borderRadius: 4 },
+        { label: 'Napoved (€)', data: projData, backgroundColor: 'rgba(83,74,183,0.35)', borderColor: '#534AB7', borderWidth: 1, borderDash: [4,4], borderRadius: 4 },
       ]
     },
     options: {
