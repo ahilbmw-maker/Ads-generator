@@ -2395,9 +2395,10 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
               <span class="slabel" style="margin:0" id="tt14TableTitle">TIKTOK OBRAT (0)</span>
-              <input type="text" id="tt14Search" placeholder="🔍 Išči SKU ali naziv..." oninput="tt14RenderTable()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:240px">
+              <input type="text" id="tt14Search" placeholder="🔍 Išči SKU ali naziv..." oninput="tt14Page=1;tt14RenderTable()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:240px">
             </div>
             <div id="tt14Table" style="display:flex;flex-direction:column;gap:6px;overflow-x:auto"></div>
+            <div id="tt14Pagination"></div>
             <div id="tt14Empty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži TikTok poročilo za začetek.</div>
           </div>
         </div>
@@ -10702,9 +10703,28 @@ let tt14Data = [];  // TikTok kampanje (iz XLSX)
 let tt14Filter = 'all';
 let tt14Source = 'obrat';  // 'obrat' (samo 7d) ali 'stock' (komplet zaloga)
 let tt14StockData = [];  // komplet zaloga (iz /orodja-stock-data)
+let tt14SortCol = 'obrat14';  // privzeto sortiranje
+let tt14SortDir = -1;  // -1 = desc
+let tt14Page = 1;
+const TT14_PER_PAGE = 100;
+
+function tt14SortBy(col) {
+  if (tt14SortCol === col) tt14SortDir *= -1;
+  else { tt14SortCol = col; tt14SortDir = (col === 'sku' || col === 'title') ? 1 : -1; }
+  tt14Page = 1;
+  tt14RenderTable();
+}
+
+function tt14GoToPage(n) {
+  tt14Page = Math.max(1, n);
+  tt14RenderTable();
+  const el = document.getElementById('tt14TableTitle');
+  if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
 
 function tt14SetSource(src, btn) {
   tt14Source = src;
+  tt14Page = 1;
   document.querySelectorAll('.tt14-source-btn').forEach(b => {
     b.classList.remove('active');
     b.style.background = 'transparent';
@@ -10839,6 +10859,7 @@ async function tt14LoadData() {
 
 function tt14SetFilter(f, btn) {
   tt14Filter = f;
+  tt14Page = 1;
   document.querySelectorAll('.tt14-filter-btn').forEach(b => {
     b.style.background = 'transparent';
     b.style.color = 'var(--text-secondary)';
@@ -10953,9 +10974,19 @@ function tt14RenderTable() {
 
   if (search) items = items.filter(i => (i.sku + ' ' + i.title).toLowerCase().includes(search));
 
-  // Sortiraj: obrat source po obratu, stock source po zalogi
-  if (tt14Source === 'stock') items.sort((a, b) => (b.obrat14 - a.obrat14) || (b.stock - a.stock));
-  else items.sort((a, b) => b.obrat14 - a.obrat14);
+  // Sortiranje po izbranem stolpcu (klik na header)
+  items.sort((a, b) => {
+    const col = tt14SortCol;
+    if (col === 'sku' || col === 'title') {
+      const av = (a[col] || '').toString();
+      const bv = (b[col] || '').toString();
+      return av.localeCompare(bv, 'sl') * tt14SortDir;
+    }
+    // numerični stolpci
+    const av = parseFloat(a[col]) || 0;
+    const bv = parseFloat(b[col]) || 0;
+    return (av - bv) * tt14SortDir;
+  });
 
   const titlePrefix = tt14Source === 'stock' ? 'KOMPLET ZALOGA' : 'TIKTOK OBRAT';
   document.getElementById('tt14TableTitle').textContent = `${titlePrefix} (${items.length})`;
@@ -10964,26 +10995,29 @@ function tt14RenderTable() {
     tableEl.innerHTML = '';
     emptyEl.style.display = 'block';
     emptyEl.textContent = 'Ni zadetkov za ta filter.';
+    const pag = document.getElementById('tt14Pagination');
+    if (pag) pag.innerHTML = '';
     return;
   }
   emptyEl.style.display = 'none';
 
-  // Pri komplet zalogi omeji prikaz na 300 (drugače render prepočasen)
-  // Search/filter še vedno teče čez vse — omejimo samo render
+  // Paginacija — 100 vrstic na stran (kot Zaloga tab)
   const totalItems = items.length;
-  let limited = false;
-  if (tt14Source === 'stock' && items.length > 300) {
-    items = items.slice(0, 300);
-    limited = true;
-  }
+  const totalPages = Math.max(1, Math.ceil(totalItems / TT14_PER_PAGE));
+  if (tt14Page > totalPages) tt14Page = 1;
+  const startIdx = (tt14Page - 1) * TT14_PER_PAGE;
+  const endIdx = Math.min(startIdx + TT14_PER_PAGE, totalItems);
+  items = items.slice(startIdx, endIdx);
+
+  // Sort indikatorji v header-jih
+  const sortArrow = (col) => tt14SortCol === col ? (tt14SortDir === 1 ? ' ↑' : ' ↓') : ' ↕';
+  const hStyle = 'cursor:pointer;user-select:none';
 
   const GRID = '160px 1fr 100px 80px 70px 80px 90px 70px';
   const header = `<div style="display:grid;grid-template-columns:${GRID};gap:10px;padding:11px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--border);margin-bottom:4px">
-    <span>SKU</span><span>Naziv</span><span style="text-align:center">Status TT</span><span style="text-align:center">Kreirano</span><span style="text-align:right">Obrat 14d</span><span style="text-align:right">Spend</span><span style="text-align:right">Konv.</span><span style="text-align:right">Zaloga</span>
+    <span style="${hStyle}" onclick="tt14SortBy('sku')">SKU${sortArrow('sku')}</span><span style="${hStyle}" onclick="tt14SortBy('title')">Naziv${sortArrow('title')}</span><span style="text-align:center;${hStyle}" onclick="tt14SortBy('campaigns')">Status TT${sortArrow('campaigns')}</span><span style="text-align:center;${hStyle}" onclick="tt14SortBy('create_time')">Kreirano${sortArrow('create_time')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('obrat14')">Obrat 14d${sortArrow('obrat14')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('spend')">Spend${sortArrow('spend')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('conversions')">Konv.${sortArrow('conversions')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('stock')">Zaloga${sortArrow('stock')}</span>
   </div>`;
-  const limitNote = limited
-    ? `<div style="text-align:center;padding:10px;font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);border-radius:var(--radius);margin-bottom:4px">Prikazanih prvih 300 od ${totalItems} — uporabi iskanje za ostale</div>`
-    : '';
+  const limitNote = `<div style="text-align:center;padding:8px;font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);border-radius:var(--radius);margin-bottom:4px">Prikaz ${startIdx+1}–${endIdx} od ${totalItems} izdelkov</div>`;
 
   tableEl.innerHTML = header + limitNote + items.map(it => {
     const TT_ACTIVE_BG = '#639922';
@@ -11018,6 +11052,35 @@ function tt14RenderTable() {
       <div style="text-align:right;font-weight:600;color:${stockColor}">${it.stock}</div>
     </div>`;
   }).join('');
+
+  // Paginacija (smart numbered, kot Zaloga tab)
+  const pag = document.getElementById('tt14Pagination');
+  if (pag) {
+    if (totalPages <= 1) {
+      pag.innerHTML = '';
+    } else {
+      const cur = tt14Page, last = totalPages, pages = [];
+      pages.push(1);
+      if (cur > 4) pages.push('...');
+      for (let i = Math.max(2, cur - 2); i <= Math.min(last - 1, cur + 2); i++) pages.push(i);
+      if (cur < last - 3) pages.push('...');
+      if (last > 1) pages.push(last);
+      const btnStyle = 'min-width:34px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text);font-family:inherit';
+      const activeStyle = 'min-width:34px;padding:6px 10px;background:var(--accent);border:1px solid var(--accent);border-radius:6px;cursor:default;font-size:12px;font-weight:700;color:white;font-family:inherit';
+      const disStyle = 'min-width:34px;padding:6px 10px;background:transparent;border:1px solid var(--border);border-radius:6px;cursor:not-allowed;font-size:12px;color:var(--text-tertiary);font-family:inherit;opacity:0.5';
+      let html = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;padding:14px 0">';
+      html += `<button onclick="tt14GoToPage(${cur-1})" style="${cur<=1?disStyle:btnStyle}" ${cur<=1?'disabled':''}>◀</button>`;
+      pages.forEach(p => {
+        if (p === '...') html += `<span style="color:var(--text-tertiary);padding:0 4px">…</span>`;
+        else if (p === cur) html += `<button style="${activeStyle}">${p}</button>`;
+        else html += `<button onclick="tt14GoToPage(${p})" style="${btnStyle}">${p}</button>`;
+      });
+      html += `<button onclick="tt14GoToPage(${cur+1})" style="${cur>=last?disStyle:btnStyle}" ${cur>=last?'disabled':''}>▶</button>`;
+      html += `<span style="margin-left:14px;font-size:11px;color:var(--text-tertiary);font-family:'DM Mono',monospace">stran ${cur} / ${last}</span>`;
+      html += '</div>';
+      pag.innerHTML = html;
+    }
+  }
 }
 
 
