@@ -254,6 +254,44 @@
             </div>
           </div>
         </div>
+
+        <!-- LETNA NAPOVED -->
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div class="card-title" style="margin-bottom:0">📅 Letna napoved (projekcija celega leta)</div>
+            <button class="btn btn-soft" style="font-size:11px;padding:5px 10px" onclick="loadYearly()">↺ Naloži / osveži</button>
+          </div>
+
+          <!-- Letni povzetek -->
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
+            <div class="stat-box" style="background:rgba(83,74,183,0.06);border:1px solid var(--accent)">
+              <div class="stat-label" style="color:var(--accent)">Projekcija leta (promet)</div>
+              <div class="stat-value" id="yr-proj-revenue" style="color:var(--accent)">—</div>
+            </div>
+            <div class="stat-box" style="background:rgba(83,74,183,0.06);border:1px solid var(--accent)">
+              <div class="stat-label" style="color:var(--accent)">Projekcija leta (naročila)</div>
+              <div class="stat-value" id="yr-proj-orders" style="color:var(--accent)">—</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Doseženo do danes</div>
+              <div class="stat-value" id="yr-actual-revenue" style="font-size:15px">—</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Ø dan (zadnjih 30d)</div>
+              <div class="stat-value" id="yr-daily-avg" style="font-size:15px">—</div>
+            </div>
+          </div>
+
+          <!-- Graf po mesecih -->
+          <div style="margin-bottom:14px">
+            <div style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">PROMET PO MESECIH (dejansko + projekcija)</div>
+            <div style="position:relative;height:240px"><canvas id="chartYearly"></canvas></div>
+          </div>
+
+          <!-- Mesečna tabela -->
+          <div id="yearly-table" style="font-size:12px"></div>
+          <div id="yr-method" style="font-size:10px;color:var(--text-tertiary);margin-top:8px;font-style:italic"></div>
+        </div>
       </div>
 
       <!-- Zgodovina -->
@@ -1129,34 +1167,298 @@ async function importHistoricalFinals() {
 }
 // ─── /HISTORICAL FINALS ──────────────────────────────────────
 
+// ─── LETNA NAPOVED ────────────────────────────────────────────
+let chartYearly = null;
+let yearlyCache = [];
+
+async function loadYearly() {
+  try {
+    // Naloži vse podatke leta (do 400 dni nazaj)
+    const r = await fetch('/forecast2-history?days=400');
+    const data = await r.json();
+    if (!data.ok) { toast('Napaka pri nalaganju letnih podatkov', true); return; }
+    const days = Object.entries(data.days || {}).sort((a,b) => a[0].localeCompare(b[0]));
+    yearlyCache = days
+      .map(([date, d]) => ({ date, final: d.final }))
+      .filter(d => d.final && d.final.orders > 0);
+    renderYearly();
+  } catch(e) {
+    toast('Napaka: ' + e.message, true);
+  }
+}
+
+function renderYearly() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const yearPrefix = `${year}-`;
+
+  // Samo letošnji podatki
+  const thisYear = yearlyCache.filter(d => d.date.startsWith(yearPrefix));
+  if (!thisYear.length) {
+    document.getElementById('yearly-table').innerHTML = '<div class="empty" style="padding:1rem;text-align:center;color:var(--text-tertiary)">Ni podatkov za letošnje leto. Klikni "Naloži / osveži".</div>';
+    return;
+  }
+
+  // Grupiraj po mesecih
+  const months = {};  // 0-11 → {orders, revenue, days}
+  for (const d of thisYear) {
+    const m = parseInt(d.date.slice(5,7)) - 1;
+    if (!months[m]) months[m] = { orders: 0, revenue: 0, days: 0 };
+    months[m].orders += d.final.orders;
+    months[m].revenue += d.final.revenue;
+    months[m].days++;
+  }
+
+  // Dejanske vsote do danes
+  const actualRev = thisYear.reduce((s,d) => s + d.final.revenue, 0);
+  const actualOrd = thisYear.reduce((s,d) => s + d.final.orders, 0);
+
+  // Povprečje zadnjih 30 dni za projekcijo preostanka leta
+  const last30 = thisYear.slice(-30);
+  const avg30Rev = last30.reduce((s,d) => s + d.final.revenue, 0) / Math.max(1, last30.length);
+  const avg30Ord = last30.reduce((s,d) => s + d.final.orders, 0) / Math.max(1, last30.length);
+
+  // Koliko dni v letu je še preostalo (od jutri do 31.12)
+  const todayStr = getTodayLJ();
+  const endOfYear = new Date(year, 11, 31);
+  const todayDate = new Date(todayStr + 'T00:00:00');
+  const daysLeft = Math.max(0, Math.round((endOfYear - todayDate) / 86400000));
+
+  // Projekcija: dejansko + (povprečje × preostali dnevi)
+  const projRev = actualRev + avg30Rev * daysLeft;
+  const projOrd = actualOrd + Math.round(avg30Ord) * daysLeft;
+
+  document.getElementById('yr-proj-revenue').textContent = fmtCurrency(projRev);
+  document.getElementById('yr-proj-orders').textContent = fmtNum(projOrd);
+  document.getElementById('yr-actual-revenue').textContent = fmtCurrency(actualRev) + ' · ' + fmtNum(actualOrd);
+  document.getElementById('yr-daily-avg').textContent = fmtCurrency(avg30Rev) + ' · ' + fmtNum(Math.round(avg30Ord));
+  document.getElementById('yr-method').textContent =
+    `Projekcija = dejanski promet do danes + (Ø zadnjih ${last30.length} dni × ${daysLeft} preostalih dni). Osnova: ${thisYear.length} dni s podatki.`;
+
+  // Tabela po mesecih
+  const monthNames = ['Januar','Februar','Marec','April','Maj','Junij','Julij','Avgust','September','Oktober','November','December'];
+  const curMonth = now.getMonth();
+  let html = `<div style="display:grid;grid-template-columns:120px 80px 110px 90px 100px;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">
+    <span>Mesec</span><span style="text-align:right">Dni</span><span style="text-align:right">Naročila</span><span style="text-align:right">Promet</span><span style="text-align:right">Ø dan</span>
+  </div>`;
+
+  for (let m = 0; m <= curMonth; m++) {
+    const md = months[m];
+    if (!md) continue;
+    const daysInM = new Date(year, m+1, 0).getDate();
+    const isCurrentMonth = m === curMonth;
+    const avgDayRev = md.revenue / md.days;
+    // Za pretekle mesece prikaži dejansko, za trenutni mesec dodaj (projekcijo)
+    let prometCell = fmtCurrency(md.revenue);
+    let extraNote = '';
+    if (isCurrentMonth && md.days < daysInM) {
+      const projMonthRev = md.revenue + avg30Rev * (daysInM - md.days);
+      extraNote = `<div style="font-size:9px;color:var(--accent)">→ proj. ${fmtCurrency(projMonthRev)}</div>`;
+    }
+    const bg = isCurrentMonth ? 'rgba(83,74,183,0.06)' : 'var(--surface)';
+    html += `<div style="display:grid;grid-template-columns:120px 80px 110px 90px 100px;gap:8px;padding:8px 10px;background:${bg};border:1px solid var(--border);border-radius:var(--radius);font-size:12px;align-items:center;margin-bottom:3px">
+      <span style="font-weight:600">${monthNames[m]}${isCurrentMonth ? ' <span style="font-size:9px;color:var(--accent)">(tekoči)</span>' : ''}</span>
+      <span style="text-align:right;color:var(--text-secondary)">${md.days}/${daysInM}</span>
+      <span style="text-align:right">${fmtNum(md.orders)}</span>
+      <span style="text-align:right;font-weight:600">${prometCell}${extraNote}</span>
+      <span style="text-align:right;color:var(--text-secondary)">${fmtCurrency(avgDayRev)}</span>
+    </div>`;
+  }
+  document.getElementById('yearly-table').innerHTML = html;
+
+  // Graf po mesecih
+  renderYearlyChart(months, year, curMonth, avg30Rev);
+}
+
+function renderYearlyChart(months, year, curMonth, avg30Rev) {
+  const monthNames = ['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Avg','Sep','Okt','Nov','Dec'];
+  const labels = [], actualData = [], projData = [];
+
+  for (let m = 0; m < 12; m++) {
+    labels.push(monthNames[m]);
+    const md = months[m];
+    const daysInM = new Date(year, m+1, 0).getDate();
+    if (m < curMonth && md) {
+      // pretekli mesec — dejansko
+      actualData.push(md.revenue);
+      projData.push(null);
+    } else if (m === curMonth && md) {
+      // tekoči mesec — dejansko + projekcija
+      actualData.push(md.revenue);
+      projData.push(md.revenue + avg30Rev * (daysInM - md.days));
+    } else {
+      // prihodnji mesec — projekcija (celoten mesec)
+      actualData.push(null);
+      projData.push(avg30Rev * daysInM);
+    }
+  }
+
+  if (chartYearly) chartYearly.destroy();
+  chartYearly = new Chart(document.getElementById('chartYearly'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Dejansko (€)', data: actualData, backgroundColor: '#534AB7', borderRadius: 4 },
+        { label: 'Projekcija (€)', data: projData, backgroundColor: 'rgba(83,74,183,0.3)', borderColor: '#534AB7', borderWidth: 1, borderDash: [4,4], borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { font: { size: 10 }, color: '#888' } } },
+      scales: {
+        x: { ticks: { font: { size: 10 }, color: '#888' }, grid: { display: false } },
+        y: { ticks: { font: { size: 10 }, color: '#888', callback: v => (v/1000)+'k' }, grid: { color: 'rgba(128,128,128,0.1)' } }
+      }
+    }
+  });
+}
+// ─── /LETNA NAPOVED ───────────────────────────────────────────
+
 // ─── BULK IMPORT IRENEJEVIH PODATKOV ──────────────────────────
 
 const IRENEJ_FINALS = [
-  { date: "2026-04-16", orders: 1312, revenue: 33693.26 },
-  { date: "2026-04-17", orders: 1203, revenue: 29831.56 },
-  { date: "2026-04-18", orders: 1103, revenue: 26631.45 },
-  { date: "2026-04-19", orders: 1332, revenue: 34267.74 },
-  { date: "2026-04-20", orders: 1345, revenue: 38953.56 },
-  { date: "2026-04-21", orders: 1311, revenue: 42931.23 },
-  { date: "2026-04-22", orders: 1223, revenue: 33787.73 },
-  { date: "2026-04-23", orders: 1111, revenue: 29059.65 },
-  { date: "2026-04-24", orders: 1069, revenue: 30532.62 },
-  { date: "2026-04-25", orders: 1066, revenue: 26629.11 },
-  { date: "2026-04-26", orders: 1306, revenue: 32804.94 },
-  { date: "2026-04-27", orders: 1216, revenue: 32550.70 },
-  { date: "2026-04-28", orders: 1161, revenue: 30973.84 },
-  { date: "2026-04-29", orders: 1167, revenue: 39024.91 },
-  { date: "2026-04-30", orders: 1050, revenue: 27548.49 },
-  { date: "2026-05-01", orders: 1281, revenue: 33008.11 },
-  { date: "2026-05-02", orders: 1200, revenue: 30773.06 },
-  { date: "2026-05-03", orders: 1230, revenue: 32620.24 },
-  { date: "2026-05-04", orders: 1307, revenue: 39799.95 },
-  { date: "2026-05-05", orders: 1255, revenue: 38252.49 },
-  { date: "2026-05-06", orders: 1295, revenue: 44341.64 },
-  { date: "2026-05-07", orders: 1279, revenue: 37041.34 },
-  { date: "2026-05-08", orders: 1347, revenue: 37600.53 },
-  { date: "2026-05-09", orders: 1234, revenue: 33943.06 },
-  { date: "2026-05-10", orders: 1406, revenue: 39459.64 },
+  { date: "2026-01-01", orders: 980, revenue: 18552.94 },
+  { date: "2026-01-02", orders: 1274, revenue: 26583.55 },
+  { date: "2026-01-03", orders: 1358, revenue: 25324.59 },
+  { date: "2026-01-04", orders: 1578, revenue: 31210.01 },
+  { date: "2026-01-05", orders: 1446, revenue: 32797.38 },
+  { date: "2026-01-06", orders: 1415, revenue: 29725.97 },
+  { date: "2026-01-07", orders: 1454, revenue: 32300.83 },
+  { date: "2026-01-08", orders: 1500, revenue: 37516.92 },
+  { date: "2026-01-09", orders: 1443, revenue: 30329.1 },
+  { date: "2026-01-10", orders: 1509, revenue: 31046.46 },
+  { date: "2026-01-11", orders: 1484, revenue: 28567.09 },
+  { date: "2026-01-12", orders: 1423, revenue: 33576.35 },
+  { date: "2026-01-13", orders: 1311, revenue: 35451.96 },
+  { date: "2026-01-14", orders: 1393, revenue: 32597.5 },
+  { date: "2026-01-15", orders: 1330, revenue: 30120.34 },
+  { date: "2026-01-16", orders: 1224, revenue: 28026.45 },
+  { date: "2026-01-17", orders: 1283, revenue: 25317.87 },
+  { date: "2026-01-18", orders: 1495, revenue: 31703.57 },
+  { date: "2026-01-19", orders: 1273, revenue: 29626.67 },
+  { date: "2026-01-20", orders: 1274, revenue: 33037.4 },
+  { date: "2026-01-21", orders: 1198, revenue: 28370.98 },
+  { date: "2026-01-22", orders: 1155, revenue: 24777.26 },
+  { date: "2026-01-23", orders: 1152, revenue: 27052.39 },
+  { date: "2026-01-24", orders: 1196, revenue: 24964.28 },
+  { date: "2026-01-25", orders: 1263, revenue: 26281.29 },
+  { date: "2026-01-26", orders: 1222, revenue: 29598.58 },
+  { date: "2026-01-27", orders: 1132, revenue: 25726.5 },
+  { date: "2026-01-28", orders: 1142, revenue: 25683.5 },
+  { date: "2026-01-29", orders: 1227, revenue: 27926.09 },
+  { date: "2026-01-30", orders: 1140, revenue: 24807.88 },
+  { date: "2026-01-31", orders: 1262, revenue: 26693.49 },
+  { date: "2026-02-01", orders: 1376, revenue: 28189.66 },
+  { date: "2026-02-02", orders: 1256, revenue: 37622.66 },
+  { date: "2026-02-03", orders: 1291, revenue: 28988.91 },
+  { date: "2026-02-04", orders: 1271, revenue: 28840.48 },
+  { date: "2026-02-05", orders: 1350, revenue: 31309.93 },
+  { date: "2026-02-06", orders: 1222, revenue: 28785.45 },
+  { date: "2026-02-07", orders: 1332, revenue: 28256.05 },
+  { date: "2026-02-08", orders: 1286, revenue: 26760.64 },
+  { date: "2026-02-09", orders: 1363, revenue: 31809.47 },
+  { date: "2026-02-10", orders: 1250, revenue: 34055.31 },
+  { date: "2026-02-11", orders: 1184, revenue: 28734.03 },
+  { date: "2026-02-12", orders: 1125, revenue: 28814.68 },
+  { date: "2026-02-13", orders: 923, revenue: 20956.79 },
+  { date: "2026-02-14", orders: 1070, revenue: 21516.63 },
+  { date: "2026-02-15", orders: 1341, revenue: 28465.96 },
+  { date: "2026-02-16", orders: 1152, revenue: 26686.83 },
+  { date: "2026-02-17", orders: 1172, revenue: 32366.53 },
+  { date: "2026-02-18", orders: 1165, revenue: 27132.52 },
+  { date: "2026-02-19", orders: 1009, revenue: 22174.88 },
+  { date: "2026-02-20", orders: 1080, revenue: 23390.2 },
+  { date: "2026-02-21", orders: 1195, revenue: 24436.49 },
+  { date: "2026-02-22", orders: 1302, revenue: 27356.13 },
+  { date: "2026-02-23", orders: 1279, revenue: 32997.62 },
+  { date: "2026-02-24", orders: 1177, revenue: 31857.41 },
+  { date: "2026-02-25", orders: 1095, revenue: 24864.99 },
+  { date: "2026-02-26", orders: 1071, revenue: 27164.09 },
+  { date: "2026-02-27", orders: 998, revenue: 23889.52 },
+  { date: "2026-02-28", orders: 989, revenue: 21780.66 },
+  { date: "2026-03-01", orders: 1165, revenue: 25045.01 },
+  { date: "2026-03-02", orders: 1138, revenue: 28869.19 },
+  { date: "2026-03-03", orders: 1088, revenue: 27043.71 },
+  { date: "2026-03-04", orders: 1076, revenue: 30297.8 },
+  { date: "2026-03-05", orders: 1010, revenue: 23383.7 },
+  { date: "2026-03-06", orders: 938, revenue: 22261.6 },
+  { date: "2026-03-07", orders: 807, revenue: 16009.93 },
+  { date: "2026-03-08", orders: 1000, revenue: 21560.68 },
+  { date: "2026-03-09", orders: 1082, revenue: 28093.68 },
+  { date: "2026-03-10", orders: 1055, revenue: 28730.13 },
+  { date: "2026-03-11", orders: 1138, revenue: 28429.5 },
+  { date: "2026-03-12", orders: 1118, revenue: 26761.62 },
+  { date: "2026-03-13", orders: 1122, revenue: 24363.93 },
+  { date: "2026-03-14", orders: 1043, revenue: 21752.69 },
+  { date: "2026-03-15", orders: 1269, revenue: 26408.83 },
+  { date: "2026-03-16", orders: 1176, revenue: 31039.17 },
+  { date: "2026-03-17", orders: 1192, revenue: 33055.66 },
+  { date: "2026-03-18", orders: 1142, revenue: 28384.74 },
+  { date: "2026-03-19", orders: 1100, revenue: 24383.32 },
+  { date: "2026-03-20", orders: 975, revenue: 21733.78 },
+  { date: "2026-03-21", orders: 960, revenue: 19509.88 },
+  { date: "2026-03-22", orders: 1302, revenue: 27181.47 },
+  { date: "2026-03-23", orders: 1216, revenue: 28954.76 },
+  { date: "2026-03-24", orders: 1125, revenue: 30704.71 },
+  { date: "2026-03-25", orders: 1128, revenue: 26253.44 },
+  { date: "2026-03-26", orders: 1263, revenue: 27583.91 },
+  { date: "2026-03-27", orders: 1360, revenue: 29185.3 },
+  { date: "2026-03-28", orders: 1330, revenue: 26598.68 },
+  { date: "2026-03-29", orders: 1294, revenue: 27002.39 },
+  { date: "2026-03-30", orders: 1309, revenue: 30354.08 },
+  { date: "2026-03-31", orders: 1143, revenue: 32909.27 },
+  { date: "2026-04-01", orders: 1097, revenue: 25181.45 },
+  { date: "2026-04-02", orders: 1000, revenue: 22934.17 },
+  { date: "2026-04-03", orders: 868, revenue: 19601.06 },
+  { date: "2026-04-04", orders: 828, revenue: 16635.46 },
+  { date: "2026-04-05", orders: 952, revenue: 20951.33 },
+  { date: "2026-04-06", orders: 1035, revenue: 22931.09 },
+  { date: "2026-04-07", orders: 1053, revenue: 31308.29 },
+  { date: "2026-04-08", orders: 1056, revenue: 28078.04 },
+  { date: "2026-04-09", orders: 1032, revenue: 25814.9 },
+  { date: "2026-04-10", orders: 1113, revenue: 26212.31 },
+  { date: "2026-04-11", orders: 1181, revenue: 26335.75 },
+  { date: "2026-04-12", orders: 1159, revenue: 25732.17 },
+  { date: "2026-04-13", orders: 1216, revenue: 29370.28 },
+  { date: "2026-04-14", orders: 1316, revenue: 36906.88 },
+  { date: "2026-04-15", orders: 1314, revenue: 31300.68 },
+  { date: "2026-04-16", orders: 1312, revenue: 29968.97 },
+  { date: "2026-04-17", orders: 1203, revenue: 27371.48 },
+  { date: "2026-04-18", orders: 1103, revenue: 24067.69 },
+  { date: "2026-04-19", orders: 1332, revenue: 30787.59 },
+  { date: "2026-04-20", orders: 1345, revenue: 36366.91 },
+  { date: "2026-04-21", orders: 1311, revenue: 40038.95 },
+  { date: "2026-04-22", orders: 1222, revenue: 30807.15 },
+  { date: "2026-04-23", orders: 1111, revenue: 26540.38 },
+  { date: "2026-04-24", orders: 1068, revenue: 27864.61 },
+  { date: "2026-04-25", orders: 1066, revenue: 24666.48 },
+  { date: "2026-04-26", orders: 1306, revenue: 30312.93 },
+  { date: "2026-04-27", orders: 1216, revenue: 30401.0 },
+  { date: "2026-04-28", orders: 1161, revenue: 28851.47 },
+  { date: "2026-04-29", orders: 1167, revenue: 36186.33 },
+  { date: "2026-04-30", orders: 1050, revenue: 25154.76 },
+  { date: "2026-05-01", orders: 1281, revenue: 30492.66 },
+  { date: "2026-05-02", orders: 1200, revenue: 28874.11 },
+  { date: "2026-05-03", orders: 1230, revenue: 31167.86 },
+  { date: "2026-05-04", orders: 1307, revenue: 37475.65 },
+  { date: "2026-05-05", orders: 1255, revenue: 36276.29 },
+  { date: "2026-05-06", orders: 1294, revenue: 42408.07 },
+  { date: "2026-05-07", orders: 1279, revenue: 34684.6 },
+  { date: "2026-05-08", orders: 1347, revenue: 34785.51 },
+  { date: "2026-05-09", orders: 1234, revenue: 32232.97 },
+  { date: "2026-05-10", orders: 1406, revenue: 37183.02 },
+  { date: "2026-05-11", orders: 1387, revenue: 39932.44 },
+  { date: "2026-05-12", orders: 1316, revenue: 42281.28 },
+  { date: "2026-05-13", orders: 1228, revenue: 35881.26 },
+  { date: "2026-05-14", orders: 1210, revenue: 33954.62 },
+  { date: "2026-05-15", orders: 1128, revenue: 31929.28 },
+  { date: "2026-05-16", orders: 1240, revenue: 33594.27 },
+  { date: "2026-05-17", orders: 1387, revenue: 37021.17 },
+  { date: "2026-05-18", orders: 1190, revenue: 36121.44 },
+  { date: "2026-05-19", orders: 1241, revenue: 42526.08 },
+  { date: "2026-05-20", orders: 1109, revenue: 31150.23 },
+  { date: "2026-05-21", orders: 1042, revenue: 29222.94 },
 ];
 
 async function cleanupPhantoms() {
@@ -1172,7 +1474,7 @@ async function cleanupPhantoms() {
 }
 
 async function importIrenejFinals() {
-  if (!confirm(`Uvozim ${IRENEJ_FINALS.length} dni končnih podatkov (16.4. - 10.5.2026)?\n\nObstoječi končni podatki za te dni se BODO PREPISALI.`)) return;
+  if (!confirm(`Uvozim ${IRENEJ_FINALS.length} dni končnih podatkov (1.1. - 21.5.2026)?\n\nObstoječi končni podatki za te dni se BODO PREPISALI.`)) return;
   try {
     const r = await fetch('/forecast2-bulk-finals', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -1236,6 +1538,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loadToday();
   loadHistory();
+  loadYearly();
 
   // Auto-refresh every 60s
   setInterval(loadToday, 60 * 1000);
