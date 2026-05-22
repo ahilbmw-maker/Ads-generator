@@ -2370,6 +2370,16 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
 
           <div class="card" style="margin-top:12px">
+            <span class="slabel">VIR PODATKOV</span>
+            <p style="font-size:10px;color:var(--text-tertiary);margin:6px 0 8px;line-height:1.4">Obrat 7d prikaže ~200 SKU iz poročila. Komplet zaloga prikaže vse izdelke (3500+).</p>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <button class="tt14-source-btn active" id="tt14SrcObrat" onclick="tt14SetSource('obrat', this)" style="padding:8px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">📊 Obrat 7 dni (~200)</button>
+              <button class="tt14-source-btn" id="tt14SrcStock" onclick="tt14SetSource('stock', this)" style="padding:8px;text-align:left;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">📦 Komplet zaloga (vse)</button>
+            </div>
+            <div id="tt14StockInfo" style="margin-top:8px;font-size:10px;color:var(--text-tertiary);text-align:center"></div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
             <span class="slabel">PRIKAZ</span>
             <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
               <button class="tt14-filter-btn active" onclick="tt14SetFilter('all', this)" style="padding:8px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">📋 Vsi izdelki</button>
@@ -10690,6 +10700,47 @@ function ttKrGetResStatus(w, h) {
 
 let tt14Data = [];  // TikTok kampanje (iz XLSX)
 let tt14Filter = 'all';
+let tt14Source = 'obrat';  // 'obrat' (samo 7d) ali 'stock' (komplet zaloga)
+let tt14StockData = [];  // komplet zaloga (iz /orodja-stock-data)
+
+function tt14SetSource(src, btn) {
+  tt14Source = src;
+  document.querySelectorAll('.tt14-source-btn').forEach(b => {
+    b.classList.remove('active');
+    b.style.background = 'transparent';
+    b.style.color = 'var(--text-secondary)';
+  });
+  if (btn) {
+    btn.classList.add('active');
+    btn.style.background = 'var(--surface2)';
+    btn.style.color = 'var(--text)';
+  }
+  // Če preklopimo na komplet zalogo in še ni naložena, naloži jo
+  if (src === 'stock' && !tt14StockData.length) {
+    tt14LoadStock().then(() => tt14RenderTable());
+  } else {
+    tt14RenderTable();
+  }
+}
+
+async function tt14LoadStock() {
+  const info = document.getElementById('tt14StockInfo');
+  if (info) info.textContent = '⏳ Nalagam zalogo...';
+  try {
+    const res = await fetch('/orodja-stock-data');
+    const data = await res.json();
+    tt14StockData = data.items || [];
+    if (info) {
+      const dt = data.uploaded_at ? new Date(data.uploaded_at).toLocaleDateString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+      info.innerHTML = tt14StockData.length
+        ? `<span style="color:var(--green)">✓ ${data.total || tt14StockData.length} SKU${dt ? ' · ' + dt : ''}</span>`
+        : '<span style="color:var(--red)">⚠ Zaloga ni naložena (Zaloga tab)</span>';
+    }
+  } catch(e) {
+    tt14StockData = [];
+    if (info) info.innerHTML = '<span style="color:var(--red)">⚠ Napaka pri nalaganju zaloge</span>';
+  }
+}
 
 function tt14HandleDrop(e) {
   e.preventDefault();
@@ -10803,29 +10854,55 @@ function tt14RenderTable() {
 
   console.log('[tt14] tt14Data:', tt14Data.length, '_o14Items:', window._o14Items?.length);
 
-  if (!tt14Data.length && !window._o14Items?.length) {
+  if (!tt14Data.length && !window._o14Items?.length && !tt14StockData.length) {
     emptyEl.style.display = 'block';
     emptyEl.textContent = 'Naloži TikTok XLSX poročilo za začetek.';
     tableEl.innerHTML = '';
     return;
   }
 
-  // Začni z o14Items (obrat 14 dni) kot baza — enako kot pri FB tabu
+  // Začni z bazo glede na izbran vir
   const skuMap = {};
 
-  // 1. Dodaj vse SKU-je iz obrata 14 dni
-  if (window._o14Items?.length) {
-    for (const o14 of window._o14Items) {
-      const sku = (o14.sku || '').toUpperCase();
+  if (tt14Source === 'stock') {
+    // KOMPLET ZALOGA — vsi izdelki iz /orodja-stock-data (3500+)
+    for (const st of tt14StockData) {
+      const sku = (st.product_sku || st.sku || '').toUpperCase();
       if (!sku) continue;
       if (!skuMap[sku]) {
         skuMap[sku] = {
-          sku, title: o14.naziv || '',
+          sku, title: st.title || '',
           spend: 0, conversions: 0,
           status: 'none', campaigns: 0, active_campaigns: 0,
-          stock: o14.stock || 0, stock30: o14.stock30 || 0,
-          obrat14: o14.kolicina || o14.qty || 0,
+          stock: parseInt(st.stock) || 0, stock30: parseInt(st.stock30) || 0,
+          obrat14: parseInt(st.stock30) || 0, create_time: '',
         };
+      }
+    }
+    // Dodaj obrat 7d podatke kjer obstajajo (obrat14 vrednost)
+    if (window._o14Items?.length) {
+      for (const o14 of window._o14Items) {
+        const sku = (o14.sku || '').toUpperCase();
+        if (sku && skuMap[sku]) {
+          skuMap[sku].obrat14 = o14.kolicina || o14.qty || skuMap[sku].obrat14;
+        }
+      }
+    }
+  } else {
+    // OBRAT 7 DNI — samo SKU-ji iz obrata (~200) — kot do zdaj
+    if (window._o14Items?.length) {
+      for (const o14 of window._o14Items) {
+        const sku = (o14.sku || '').toUpperCase();
+        if (!sku) continue;
+        if (!skuMap[sku]) {
+          skuMap[sku] = {
+            sku, title: o14.naziv || '',
+            spend: 0, conversions: 0,
+            status: 'none', campaigns: 0, active_campaigns: 0,
+            stock: o14.stock || 0, stock30: o14.stock30 || 0,
+            obrat14: o14.kolicina || o14.qty || 0,
+          };
+        }
       }
     }
   }
@@ -10868,14 +10945,20 @@ function tt14RenderTable() {
   // Filter
   if (tt14Filter === 'with_ads') items = items.filter(i => i.status === 'active');
   else if (tt14Filter === 'paused') items = items.filter(i => i.status === 'inactive' && i.campaigns > 0);
-  else if (tt14Filter === 'without_ads') items = items.filter(i => i.campaigns === 0 && i.obrat14 > 0);
+  else if (tt14Filter === 'without_ads') {
+    // Pri komplet zalogi: brez TT oglasov + na zalogi. Pri obratu: brez oglasov + obrat>0
+    if (tt14Source === 'stock') items = items.filter(i => i.campaigns === 0 && i.stock > 0);
+    else items = items.filter(i => i.campaigns === 0 && i.obrat14 > 0);
+  }
 
   if (search) items = items.filter(i => (i.sku + ' ' + i.title).toLowerCase().includes(search));
 
-  // Sortiraj po obratu desc
-  items.sort((a, b) => b.obrat14 - a.obrat14);
+  // Sortiraj: obrat source po obratu, stock source po zalogi
+  if (tt14Source === 'stock') items.sort((a, b) => (b.obrat14 - a.obrat14) || (b.stock - a.stock));
+  else items.sort((a, b) => b.obrat14 - a.obrat14);
 
-  document.getElementById('tt14TableTitle').textContent = `TIKTOK OBRAT (${items.length})`;
+  const titlePrefix = tt14Source === 'stock' ? 'KOMPLET ZALOGA' : 'TIKTOK OBRAT';
+  document.getElementById('tt14TableTitle').textContent = `${titlePrefix} (${items.length})`;
 
   if (!items.length) {
     tableEl.innerHTML = '';
@@ -10885,12 +10968,24 @@ function tt14RenderTable() {
   }
   emptyEl.style.display = 'none';
 
+  // Pri komplet zalogi omeji prikaz na 300 (drugače render prepočasen)
+  // Search/filter še vedno teče čez vse — omejimo samo render
+  const totalItems = items.length;
+  let limited = false;
+  if (tt14Source === 'stock' && items.length > 300) {
+    items = items.slice(0, 300);
+    limited = true;
+  }
+
   const GRID = '160px 1fr 100px 80px 70px 80px 90px 70px';
   const header = `<div style="display:grid;grid-template-columns:${GRID};gap:10px;padding:11px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--border);margin-bottom:4px">
     <span>SKU</span><span>Naziv</span><span style="text-align:center">Status TT</span><span style="text-align:center">Kreirano</span><span style="text-align:right">Obrat 14d</span><span style="text-align:right">Spend</span><span style="text-align:right">Konv.</span><span style="text-align:right">Zaloga</span>
   </div>`;
+  const limitNote = limited
+    ? `<div style="text-align:center;padding:10px;font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);border-radius:var(--radius);margin-bottom:4px">Prikazanih prvih 300 od ${totalItems} — uporabi iskanje za ostale</div>`
+    : '';
 
-  tableEl.innerHTML = header + items.map(it => {
+  tableEl.innerHTML = header + limitNote + items.map(it => {
     const TT_ACTIVE_BG = '#639922';
     const TT_PAUSED_BG = '#EF9F27';
     const TT_EMPTY_BG = 'rgba(0,0,0,0.04)';
