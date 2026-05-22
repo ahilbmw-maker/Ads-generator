@@ -2482,14 +2482,38 @@ async def extract_videos(data: dict):
     if not image_b64:
         return {"error": "Ni slike."}
     loop = asyncio.get_event_loop()
-    msg = await loop.run_in_executor(None, lambda: client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=500,
-        messages=[{"role": "user", "content": [
-            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
-            {"type": "text", "text": "Extract all video filenames from this screenshot. Return ONLY a JSON array of filenames, nothing else. Example: [\"VIDEO (1).mp4\", \"VIDEO (2).mp4\"]. Extract exactly as written, preserve spaces and capitalization."}
-        ]}]
-    ))
+
+    _prompt = "Extract all video filenames from this screenshot. Return ONLY a JSON array of filenames, nothing else. Example: [\"VIDEO (1).mp4\", \"VIDEO (2).mp4\"]. Extract exactly as written, preserve spaces and capitalization."
+
+    def _call(model):
+        return client.messages.create(
+            model=model,
+            max_tokens=500,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
+                {"type": "text", "text": _prompt}
+            ]}]
+        )
+
+    # Retry do 3x — pri 529 overload preklopi na Sonnet
+    msg = None
+    last_err = None
+    for attempt in range(3):
+        # Prva 2 poskusa Haiku, 3. Sonnet (ali takoj Sonnet po 529)
+        model = "claude-haiku-4-5-20251001" if attempt == 0 else "claude-sonnet-4-6"
+        try:
+            msg = await loop.run_in_executor(None, lambda m=model: _call(m))
+            break
+        except Exception as e:
+            last_err = e
+            is_529 = '529' in str(e) or 'overloaded' in str(e).lower()
+            print(f"[extract-videos] ({model}) attempt {attempt+1}/3 error [{'OVERLOADED' if is_529 else 'OTHER'}]: {type(e).__name__}")
+            if attempt < 2:
+                await asyncio.sleep(2)
+
+    if msg is None:
+        return {"error": "Anthropic je trenutno preobremenjen (529). Poskusi znova čez nekaj sekund."}
+
     text = msg.content[0].text.strip()
     text = re.sub(r"```json\s*", "", text)
     text = re.sub(r"```\s*", "", text).strip()
