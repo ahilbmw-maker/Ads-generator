@@ -1069,7 +1069,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div>
   </div>
   <!-- ═══ FORECAST PAGE ═══ -->
-  <div class="page" id="page-forecast" style="margin:-2rem -2rem 0;height:calc(100vh - 2rem);overflow:hidden">
+  <div class="page" id="page-forecast" style="height:100vh;overflow:hidden">
     <iframe src="/static/revenue_forecast.html" style="width:100%;height:100%;border:none;display:block" allow="clipboard-write"></iframe>
   </div>
 
@@ -3928,6 +3928,15 @@ function switchPage(page) {
     }
   }
   closeMenu();
+  // Forecast page: nevtraliziraj body scroll + main padding (da ni 2. drsnika)
+  const mainEl2 = document.querySelector('.main');
+  if (page === 'forecast') {
+    document.body.style.overflow = 'hidden';
+    if (mainEl2) { mainEl2.style.padding = '0'; mainEl2.style.height = '100vh'; mainEl2.style.overflow = 'hidden'; }
+  } else {
+    document.body.style.overflow = '';
+    if (mainEl2) { mainEl2.style.padding = ''; mainEl2.style.height = ''; mainEl2.style.overflow = ''; }
+  }
   if (page === 'tiktok') { ttLoadSkus(); }
   if (page === 'zaloga') { zalogaLoad(); }
   if (page === 'xsell') { if(typeof xsellInit==='function') xsellInit(); }
