@@ -3541,6 +3541,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 async def generate_audio(data: dict):
     text = data.get("text", "").strip()
     lang = data.get("lang", "sl")
+    target_dur = float(data.get("target_duration", 0) or 0)  # dolžina videa v sekundah (0 = brez omejitve)
     if not text:
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": "Manjka tekst."}, status_code=400)
@@ -3552,34 +3553,67 @@ async def generate_audio(data: dict):
 
     voice_id = ELEVENLABS_VOICES.get(lang, "bu5eKETbFKC8G702EAU4")
 
-    try:
+    def _audio_duration(alignment: dict) -> float:
+        """Dejanska dolžina govora iz alignment (zadnji end time)."""
+        ends = alignment.get("character_end_times_seconds", [])
+        return float(ends[-1]) if ends else 0.0
+
+    async def _call_eleven(txt: str):
         async with httpx.AsyncClient(timeout=60.0) as hc:
-            # Uporabi /with-timestamps endpoint za alignment podatke
-            resp = await hc.post(
+            return await hc.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps",
-                headers={
-                    "xi-api-key": api_key,
-                    "Content-Type": "application/json",
-                },
+                headers={"xi-api-key": api_key, "Content-Type": "application/json"},
                 json={
-                    "text": text,
+                    "text": txt,
                     "model_id": ELEVENLABS_MODELS.get(lang, "eleven_multilingual_v2"),
                     "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
                 }
             )
 
-        if resp.status_code != 200:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"error": f"ElevenLabs napaka {resp.status_code}: {resp.text[:300]}"}, status_code=400)
+    def _shorten_text(txt: str, ratio: float) -> str:
+        """Skrajša tekst na ~ratio besed (odreže od konca po stavkih, ohrani smiselnost)."""
+        import re as _re
+        words_list = txt.split()
+        target_words = max(8, int(len(words_list) * ratio))
+        if target_words >= len(words_list):
+            return txt
+        # Odreži na target_words, nato nazaj do konca zadnjega celega stavka
+        truncated = " ".join(words_list[:target_words])
+        # Najdi zadnje ločilo (. ! ?) da ne odrežemo sredi stavka
+        m = list(_re.finditer(r'[.!?]', truncated))
+        if m and m[-1].end() > len(truncated) * 0.5:
+            return truncated[:m[-1].end()].strip()
+        return truncated.strip() + "."
 
-        result = resp.json()
-        
-        # Dekodira audio iz base64
+    try:
+        current_text = text
+        result = None
+        # Do 3 poskusi: generiraj → če predolg in imamo target → skrajšaj → ponovi
+        for attempt in range(3):
+            resp = await _call_eleven(current_text)
+            if resp.status_code != 200:
+                from fastapi.responses import JSONResponse
+                return JSONResponse({"error": f"ElevenLabs napaka {resp.status_code}: {resp.text[:300]}"}, status_code=400)
+            result = resp.json()
+            alignment = result.get("alignment", {})
+            actual_dur = _audio_duration(alignment)
+
+            # Ni omejitve ali se prilega → konec
+            if target_dur <= 0 or actual_dur <= target_dur:
+                print(f"[generate-audio] {lang} poskus {attempt+1}: {actual_dur:.1f}s (target {target_dur:.1f}s) ✓")
+                break
+
+            # Predolg → skrajšaj tekst proporcionalno (z malo rezerve)
+            ratio = (target_dur / actual_dur) * 0.92  # 8% rezerve
+            new_text = _shorten_text(current_text, ratio)
+            print(f"[generate-audio] {lang} poskus {attempt+1}: {actual_dur:.1f}s > {target_dur:.1f}s → skrajšam na {ratio:.0%} ({len(new_text.split())} besed)")
+            if new_text == current_text:
+                break  # ne moremo več skrajšati
+            current_text = new_text
+
         import base64
         audio_b64 = result.get("audio_base64", "")
         audio_bytes = base64.b64decode(audio_b64)
-        
-        # Generiraj SRT (za download) in ASS (za karaoke merge)
         alignment = result.get("alignment", {})
         srt = build_srt(alignment)
         ass = build_ass(alignment)
@@ -3589,7 +3623,9 @@ async def generate_audio(data: dict):
             "srt": srt,
             "ass": ass,
             "alignment": alignment,
-            "lang": lang
+            "lang": lang,
+            "duration": _audio_duration(alignment),
+            "final_text": current_text,  # skrajšan tekst (če je bil)
         }
 
     except Exception as e:
