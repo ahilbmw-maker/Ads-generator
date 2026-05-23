@@ -7195,7 +7195,7 @@ async function vadsGenerateAudio(langCode) {
     if (data.error || !data.audio_base64) throw new Error(data.error || 'Ni audia');
     const bytes = Uint8Array.from(atob(data.audio_base64), c => c.charCodeAt(0));
     const blob = new Blob([bytes], {type: 'audio/mpeg'});
-    return { blob, url: URL.createObjectURL(blob), srt: data.ass || data.srt || '', rawSrt: data.srt || '', alignment: data.alignment, duration: data.duration, shortened: data.shortened };
+    return { blob, url: URL.createObjectURL(blob), srt: data.ass || data.srt || '', rawSrt: data.srt || '', alignment: data.alignment, duration: data.duration, shortened: data.shortened, speed: data.speed, sped_up: data.sped_up };
   }
 
   try {
@@ -7237,11 +7237,13 @@ async function vadsGenerateAudio(langCode) {
           window._vadsAlignments[langCode] = a.alignment || null;
         }
         const srtUrl = URL.createObjectURL(new Blob([a.rawSrt], {type:'text/plain'}));
-        const durInfo = a.duration ? `<span style="color:${a.duration <= d + 0.5 ? 'var(--green)' : 'var(--red)'}">govor ${a.duration.toFixed(1)}s</span>` : '';
-        const shortNote = a.shortened ? ` <span style="color:var(--orange,#d97706)">· skrajšano da se prilega</span>` : '';
+        const durInfo = a.duration ? `<span style="color:${a.duration <= d + 0.6 ? 'var(--green)' : 'var(--red)'}">govor ${a.duration.toFixed(1)}s</span>` : '';
+        let adjNote = '';
+        if (a.sped_up && a.speed > 1.001) adjNote += ` <span style="color:#0891b2">· ${a.speed.toFixed(2)}× hitrost</span>`;
+        if (a.shortened) adjNote += ` <span style="color:#d97706">· skrajšano</span>`;
         blocksHtml += `
           <div style="margin-bottom:10px;padding:8px;background:var(--surface2);border-radius:var(--radius)">
-            <div style="font-size:10px;color:var(--accent);font-weight:600;margin-bottom:4px">📹 ${d}s video · ${durInfo}${shortNote}</div>
+            <div style="font-size:10px;color:var(--accent);font-weight:600;margin-bottom:4px">📹 ${d}s video · ${durInfo}${adjNote}</div>
             <audio controls style="width:100%;height:34px"><source src="${a.url}" type="audio/mpeg"></audio>
             <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
               <a href="${a.url}" download="${sku}_${langCode}_${d}s.mp3" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">⬇ MP3</a>
