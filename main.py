@@ -3336,36 +3336,69 @@ async def set_karantena_history(data: dict):
 async def generate_video_scripts(data: dict):
     input_text = data.get("input", "").strip()
     duration = data.get("duration", 15)
+    durations = data.get("durations", [])  # seznam dolžin videov (npr. [18,7,19,8])
     if not input_text:
         return {"error": "Manjka vnos."}
 
     mode = "url" if input_text.startswith("http") else "text"
     tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
-    # ~2.5 besede/sekundo za naravni govorni tempo, -1s buffer
-    words = max(20, min(120, int((duration - 1) * 2.5)))
 
-    prompt = f"""{'Preberi to stran in' if mode == 'url' else 'Na podlagi tega opisa'} ustvari voice over skripte za video oglas v 10 jezikih.
+    def _words_for(dur):
+        # ~2.0 besede/sekundo (realni voice-over tempo s pavzami) + 2s buffer
+        return max(8, min(110, int((dur - 2) * 2.0)))
+
+    # Unikatne dolžine (da ne generiramo isto skripto večkrat)
+    unique_durs = sorted(set(int(d) for d in durations if d and d > 0)) if durations else [int(duration)]
+
+    def _build_prompt(dur, words):
+        return f"""{'Preberi to stran in' if mode == 'url' else 'Na podlagi tega opisa'} ustvari voice over skripte za video oglas v 10 jezikih.
 
 {'Stran: ' + input_text if mode == 'url' else 'Opis: ' + input_text}
 
 Pravila:
-- Točno {words} besed na jezik (±5)
+- NAJVEČ {words} besed na jezik — RAJE MANJ kot več (govor se mora prilegati v {dur}s video, ne sme biti predolg)
 - Naravni govorni slog, kot da govori prijatelj
 - Poudarek na eni glavni koristi izdelka
 - Brez cen, brez "klikni", brez "naroči"
 - Konec z močno izjavo (ne pozivom k akciji)
+- POMEMBNO: vsak jezik ima različno dolžino besed — za daljše jezike (madžarščina, poljščina, grščina) uporabi MANJ besed da se prilega istemu času
 - SL: slovenščina, HR: hrvaščina (latinica), RS: srbščina (SAMO latinica), HU: madžarščina, CZ: češčina, SK: slovaščina, PL: poljščina, GR: grščina (grška pisava), RO: romunščina, BG: bolgarščina (SAMO cirilica)
 
 Vrni SAMO JSON brez markdown:
 {{"product": "ime izdelka", "sl": "...", "hr": "...", "rs": "...", "hu": "...", "cz": "...", "sk": "...", "pl": "...", "gr": "...", "ro": "...", "bg": "..."}}"""
 
     try:
-        text = await call_claude(prompt, "claude-sonnet-4-6", tools if tools else None, 10000)
-        data_parsed = parse_json_response(text)
-        if not data_parsed:
+        # Generiraj skripto za VSAKO unikatno dolžino (paralelno)
+        async def _gen_for_dur(dur):
+            words = _words_for(dur)
+            text = await call_claude(_build_prompt(dur, words), "claude-sonnet-4-6", tools if tools else None, 10000)
+            parsed = parse_json_response(text)
+            return dur, parsed
+
+        results = await asyncio.gather(*[_gen_for_dur(d) for d in unique_durs])
+
+        # scripts_by_dur: {18: {sl:..., hr:...}, 7: {...}}
+        scripts_by_dur = {}
+        product = ""
+        for dur, parsed in results:
+            if not parsed:
+                continue
+            if not product:
+                product = parsed.get("product", "")
+            scripts_by_dur[str(dur)] = {k: v for k, v in parsed.items() if k != "product"}
+
+        if not scripts_by_dur:
             return {"error": "Napaka pri generiranju skript."}
-        scripts = {k: v for k, v in data_parsed.items() if k != "product"}
-        return {"scripts": scripts, "product": data_parsed.get("product", "")}
+
+        # Za kompatibilnost: "scripts" = skripta za najkrajšo dolžino (privzeto)
+        first_dur = str(unique_durs[0]) if unique_durs else None
+        default_scripts = scripts_by_dur.get(first_dur, {})
+
+        return {
+            "scripts": default_scripts,         # privzeto (najkrajši) — kompatibilnost
+            "scripts_by_dur": scripts_by_dur,   # NOVO: skripte po dolžini
+            "product": product,
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -3541,7 +3574,6 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 async def generate_audio(data: dict):
     text = data.get("text", "").strip()
     lang = data.get("lang", "sl")
-    target_dur = float(data.get("target_duration", 0) or 0)  # dolžina videa v sekundah (0 = brez omejitve)
     if not text:
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": "Manjka tekst."}, status_code=400)
@@ -3553,67 +3585,34 @@ async def generate_audio(data: dict):
 
     voice_id = ELEVENLABS_VOICES.get(lang, "bu5eKETbFKC8G702EAU4")
 
-    def _audio_duration(alignment: dict) -> float:
-        """Dejanska dolžina govora iz alignment (zadnji end time)."""
-        ends = alignment.get("character_end_times_seconds", [])
-        return float(ends[-1]) if ends else 0.0
-
-    async def _call_eleven(txt: str):
+    try:
         async with httpx.AsyncClient(timeout=60.0) as hc:
-            return await hc.post(
+            # Uporabi /with-timestamps endpoint za alignment podatke
+            resp = await hc.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps",
-                headers={"xi-api-key": api_key, "Content-Type": "application/json"},
+                headers={
+                    "xi-api-key": api_key,
+                    "Content-Type": "application/json",
+                },
                 json={
-                    "text": txt,
+                    "text": text,
                     "model_id": ELEVENLABS_MODELS.get(lang, "eleven_multilingual_v2"),
                     "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
                 }
             )
 
-    def _shorten_text(txt: str, ratio: float) -> str:
-        """Skrajša tekst na ~ratio besed (odreže od konca po stavkih, ohrani smiselnost)."""
-        import re as _re
-        words_list = txt.split()
-        target_words = max(8, int(len(words_list) * ratio))
-        if target_words >= len(words_list):
-            return txt
-        # Odreži na target_words, nato nazaj do konca zadnjega celega stavka
-        truncated = " ".join(words_list[:target_words])
-        # Najdi zadnje ločilo (. ! ?) da ne odrežemo sredi stavka
-        m = list(_re.finditer(r'[.!?]', truncated))
-        if m and m[-1].end() > len(truncated) * 0.5:
-            return truncated[:m[-1].end()].strip()
-        return truncated.strip() + "."
+        if resp.status_code != 200:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": f"ElevenLabs napaka {resp.status_code}: {resp.text[:300]}"}, status_code=400)
 
-    try:
-        current_text = text
-        result = None
-        # Do 3 poskusi: generiraj → če predolg in imamo target → skrajšaj → ponovi
-        for attempt in range(3):
-            resp = await _call_eleven(current_text)
-            if resp.status_code != 200:
-                from fastapi.responses import JSONResponse
-                return JSONResponse({"error": f"ElevenLabs napaka {resp.status_code}: {resp.text[:300]}"}, status_code=400)
-            result = resp.json()
-            alignment = result.get("alignment", {})
-            actual_dur = _audio_duration(alignment)
+        result = resp.json()
 
-            # Ni omejitve ali se prilega → konec
-            if target_dur <= 0 or actual_dur <= target_dur:
-                print(f"[generate-audio] {lang} poskus {attempt+1}: {actual_dur:.1f}s (target {target_dur:.1f}s) ✓")
-                break
-
-            # Predolg → skrajšaj tekst proporcionalno (z malo rezerve)
-            ratio = (target_dur / actual_dur) * 0.92  # 8% rezerve
-            new_text = _shorten_text(current_text, ratio)
-            print(f"[generate-audio] {lang} poskus {attempt+1}: {actual_dur:.1f}s > {target_dur:.1f}s → skrajšam na {ratio:.0%} ({len(new_text.split())} besed)")
-            if new_text == current_text:
-                break  # ne moremo več skrajšati
-            current_text = new_text
-
+        # Dekodira audio iz base64
         import base64
         audio_b64 = result.get("audio_base64", "")
         audio_bytes = base64.b64decode(audio_b64)
+
+        # Generiraj SRT (za download) in ASS (za karaoke merge)
         alignment = result.get("alignment", {})
         srt = build_srt(alignment)
         ass = build_ass(alignment)
@@ -3623,9 +3622,7 @@ async def generate_audio(data: dict):
             "srt": srt,
             "ass": ass,
             "alignment": alignment,
-            "lang": lang,
-            "duration": _audio_duration(alignment),
-            "final_text": current_text,  # skrajšan tekst (če je bil)
+            "lang": lang
         }
 
     except Exception as e:
