@@ -3357,13 +3357,16 @@ async def generate_video_scripts(data: dict):
 {'Stran: ' + input_text if mode == 'url' else 'Opis: ' + input_text}
 
 Pravila:
-- Ciljaj na {words} besed na jezik (±3) — govor mora ZAPOLNITI {dur}s video, ne sme biti prekratek (sicer ostane tišina)
+- Ciljaj na ~{words} besed na jezik — govor mora ZAPOLNITI {dur}s video, ne prekratek ne predolg
 - Naravni govorni slog, kot da govori prijatelj
 - Poudarek na eni glavni koristi izdelka, dodaj podrobnosti da zapolniš čas
 - Brez cen, brez "klikni", brez "naroči"
 - Konec z močno izjavo (ne pozivom k akciji)
-- POMEMBNO: daljši video = VEČ besed/vsebine. {dur}s video naj ima poln, tekoč govor skozi celoten čas
-- Vsak jezik ima različno dolžino besed — za daljše jezike (madžarščina, poljščina, grščina) lahko malenkost manj besed
+- KLJUČNO — tempo govora se razlikuje po jezikih, prilagodi število besed:
+  · Hitrejši jeziki (manj besed za isti čas): madžarščina, poljščina, češčina, slovaščina — uporabi ~15% MANJ besed
+  · Daljše besede (počasneje): grščina, romunščina, bolgarščina — uporabi ~10% MANJ besed
+  · Slovenščina, hrvaščina, srbščina — standardno {words} besed
+- Cilj: vsak jezik naj traja PRIBLIŽNO {dur}s ko se prebere naglas (ne več!)
 - SL: slovenščina, HR: hrvaščina (latinica), RS: srbščina (SAMO latinica), HU: madžarščina, CZ: češčina, SK: slovaščina, PL: poljščina, GR: grščina (grška pisava), RO: romunščina, BG: bolgarščina (SAMO cirilica)
 
 Vrni SAMO JSON brez markdown:
@@ -3576,6 +3579,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 async def generate_audio(data: dict):
     text = data.get("text", "").strip()
     lang = data.get("lang", "sl")
+    target_dur = float(data.get("target_duration", 0) or 0)  # prava dolžina TEGA videa (0 = brez)
     if not text:
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": "Manjka tekst."}, status_code=400)
@@ -3587,34 +3591,67 @@ async def generate_audio(data: dict):
 
     voice_id = ELEVENLABS_VOICES.get(lang, "bu5eKETbFKC8G702EAU4")
 
-    try:
+    def _audio_dur(alignment: dict) -> float:
+        ends = alignment.get("character_end_times_seconds", [])
+        return float(ends[-1]) if ends else 0.0
+
+    def _shorten(txt: str, ratio: float) -> str:
+        """Skrajša tekst na ~ratio dolžine, ohrani cele stavke (ne reže sredi besede)."""
+        import re as _re
+        ratio = max(0.4, min(0.97, ratio))  # nikoli pod 40% (varovalka proti agresivnemu rezanju)
+        words_list = txt.split()
+        target_words = max(6, int(len(words_list) * ratio))
+        if target_words >= len(words_list):
+            return txt
+        truncated = " ".join(words_list[:target_words])
+        # Nazaj do zadnjega celega stavka
+        m = list(_re.finditer(r'[.!?]', truncated))
+        if m and m[-1].end() > len(truncated) * 0.55:
+            return truncated[:m[-1].end()].strip()
+        return truncated.strip().rstrip(',;:') + "."
+
+    async def _call(txt: str):
         async with httpx.AsyncClient(timeout=60.0) as hc:
-            # Uporabi /with-timestamps endpoint za alignment podatke
-            resp = await hc.post(
+            return await hc.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps",
-                headers={
-                    "xi-api-key": api_key,
-                    "Content-Type": "application/json",
-                },
+                headers={"xi-api-key": api_key, "Content-Type": "application/json"},
                 json={
-                    "text": text,
+                    "text": txt,
                     "model_id": ELEVENLABS_MODELS.get(lang, "eleven_multilingual_v2"),
                     "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
                 }
             )
 
-        if resp.status_code != 200:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"error": f"ElevenLabs napaka {resp.status_code}: {resp.text[:300]}"}, status_code=400)
+    try:
+        cur_text = text
+        result = None
+        shortened = False
+        # Tolerance: dovolimo da govor sega do target+0.3s (zadnja beseda)
+        tol = 0.3
+        for attempt in range(3):
+            resp = await _call(cur_text)
+            if resp.status_code != 200:
+                from fastapi.responses import JSONResponse
+                return JSONResponse({"error": f"ElevenLabs napaka {resp.status_code}: {resp.text[:300]}"}, status_code=400)
+            result = resp.json()
+            actual = _audio_dur(result.get("alignment", {}))
 
-        result = resp.json()
+            # Brez targeta ALI se prilega → konec
+            if target_dur <= 0 or actual <= target_dur + tol:
+                print(f"[generate-audio] {lang} #{attempt+1}: {actual:.1f}s (cilj {target_dur:.1f}s) ✓")
+                break
 
-        # Dekodira audio iz base64
+            # Presega → skrajšaj SAMO ta jezik proporcionalno
+            ratio = (target_dur / actual) * 0.93  # 7% rezerve
+            new_text = _shorten(cur_text, ratio)
+            print(f"[generate-audio] {lang} #{attempt+1}: {actual:.1f}s > {target_dur:.1f}s → skrajšam ({ratio:.0%})")
+            if new_text == cur_text:
+                break  # ne moremo več
+            cur_text = new_text
+            shortened = True
+
         import base64
         audio_b64 = result.get("audio_base64", "")
-        audio_bytes = base64.b64decode(audio_b64)
-
-        # Generiraj SRT (za download) in ASS (za karaoke merge)
         alignment = result.get("alignment", {})
         srt = build_srt(alignment)
         ass = build_ass(alignment)
@@ -3624,7 +3661,10 @@ async def generate_audio(data: dict):
             "srt": srt,
             "ass": ass,
             "alignment": alignment,
-            "lang": lang
+            "lang": lang,
+            "duration": _audio_dur(alignment),
+            "final_text": cur_text if shortened else text,
+            "shortened": shortened,
         }
 
     except Exception as e:
