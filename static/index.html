@@ -7092,6 +7092,8 @@ async function vadsGenerate() {
     if (data.error) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + data.error; btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:none;stroke-width:2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Generiraj skripte'; return; }
 
     vadsScripts = data.scripts || {};
+    window._vadsScriptsByDur = data.scripts_by_dur || {};  // {18: {sl,hr...}, 7: {...}}
+    window._vadsDurations = durations;  // dolžine po video indeksu
     status.textContent = '✓ Skripte generirane za ' + Object.keys(vadsScripts).length + ' jezikov';
     status.style.color = 'var(--green)';
     vadsSaveHistory(input, vadsScripts, data.product);
@@ -7123,6 +7125,26 @@ async function vadsGenerate() {
   btn.innerHTML = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:none;stroke-width:2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Generiraj skripte';
 }
 
+function vadsScriptForVideo(langCode, videoIdx) {
+  /** Vrne skripto prilagojeno dolžini določenega videa (če imamo scripts_by_dur). */
+  const byDur = window._vadsScriptsByDur || {};
+  const durs = window._vadsDurations || [];
+  // Dolžina tega videa
+  const vidDur = (videoIdx != null && durs[videoIdx]) ? Math.round(durs[videoIdx]) : null;
+  if (vidDur != null && byDur[String(vidDur)] && byDur[String(vidDur)][langCode]) {
+    return byDur[String(vidDur)][langCode];
+  }
+  // Fallback: najbližja razpoložljiva dolžina
+  if (vidDur != null && Object.keys(byDur).length) {
+    const avail = Object.keys(byDur).map(Number).sort((a,b) => Math.abs(a-vidDur) - Math.abs(b-vidDur));
+    for (const d of avail) {
+      if (byDur[String(d)] && byDur[String(d)][langCode]) return byDur[String(d)][langCode];
+    }
+  }
+  // Zadnji fallback: privzeta skripta
+  return vadsScripts[langCode] || '';
+}
+
 async function vadsGenerateAudio(langCode) {
   const script = vadsScripts[langCode];
   if (!script) return;
@@ -7139,21 +7161,11 @@ async function vadsGenerateAudio(langCode) {
     const res = await fetch('/generate-audio', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text: script, lang: langCode, target_duration: vadsDuration})
+      body: JSON.stringify({text: script, lang: langCode})
     });
 
     const data = await res.json();
     if (data.error) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + data.error; btn.disabled = false; btn.innerHTML = '🎙 Generiraj audio'; return; }
-
-    // Če je bil tekst skrajšan (audio bi bil daljši od videa), posodobi prikaz
-    if (data.final_text && data.final_text !== script) {
-      vadsScripts[langCode] = data.final_text;
-      const ta = document.getElementById('vadsScript-' + langCode);
-      if (ta) ta.value = data.final_text;
-      if (data.duration) {
-        status.textContent = `✓ Skrajšano na ${data.duration.toFixed(1)}s (video ${vadsDuration}s)`;
-      }
-    }
 
     // Konvertiraj base64 audio v blob
     const audioBytes = Uint8Array.from(atob(data.audio_base64), c => c.charCodeAt(0));
@@ -7320,11 +7332,45 @@ async function vadsBuildZipBlob(progressCallback) {
   let count = 0;
 
   if (hasVideos) {
+    // Per-video audio cache: če imamo scripts_by_dur in videe različnih dolžin,
+    // generiraj poseben audio za vsako (lang, dolžina) kombinacijo
+    const byDur = window._vadsScriptsByDur || {};
+    const durs = window._vadsDurations || [];
+    const hasMultiDur = Object.keys(byDur).length > 1;
+    // cache[lang][dur] = {blob, srt}
+    const perDurCache = {};
+
+    async function _getAudioForVideo(lang, vi) {
+      // Če ni multi-dur, uporabi obstoječi audio (kompatibilnost)
+      if (!hasMultiDur) return { blob: audioBlobs[lang], srt: srts[lang] };
+      const vidDur = durs[vi] ? Math.round(durs[vi]) : null;
+      if (vidDur == null) return { blob: audioBlobs[lang], srt: srts[lang] };
+      perDurCache[lang] = perDurCache[lang] || {};
+      if (perDurCache[lang][vidDur]) return perDurCache[lang][vidDur];
+      // Generiraj nov audio za to dolžino
+      const script = vadsScriptForVideo(lang, vi);
+      if (!script) return { blob: audioBlobs[lang], srt: srts[lang] };
+      try {
+        const res = await fetch('/generate-audio', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({text: script, lang})
+        });
+        const d = await res.json();
+        if (d.error || !d.audio_base64) return { blob: audioBlobs[lang], srt: srts[lang] };
+        const bytes = Uint8Array.from(atob(d.audio_base64), c => c.charCodeAt(0));
+        const result = { blob: new Blob([bytes], {type:'audio/mpeg'}), srt: d.ass || d.srt || '' };
+        perDurCache[lang][vidDur] = result;
+        return result;
+      } catch(e) {
+        return { blob: audioBlobs[lang], srt: srts[lang] };
+      }
+    }
+
     // Pripravi vse merge taske
     const tasks = [];
-    for (const [lang, blob] of Object.entries(audioBlobs)) {
+    for (const lang of Object.keys(audioBlobs)) {
       for (let vi = 0; vi < vadsVideoFiles.length; vi++) {
-        tasks.push({lang, blob, videoFile: vadsVideoFiles[vi], vi});
+        tasks.push({lang, videoFile: vadsVideoFiles[vi], vi});
       }
     }
     const total = tasks.length;
@@ -7332,20 +7378,21 @@ async function vadsBuildZipBlob(progressCallback) {
     const PARALLEL_LIMIT = 3;
 
     const runTask = async (task) => {
-      const {lang, blob, videoFile, vi} = task;
+      const {lang, videoFile, vi} = task;
+      // Pridobi pravi audio za dolžino tega videa
+      const {blob, srt} = await _getAudioForVideo(lang, vi);
       const formData = new FormData();
       formData.append('video', videoFile, videoFile.name);
       formData.append('audio', blob, 'audio.mp3');
       formData.append('lang', lang);
-      if (srts[lang]) {
-        const srtBlob = new Blob([srts[lang]], {type: 'text/plain'});
+      if (srt) {
+        const srtBlob = new Blob([srt], {type: 'text/plain'});
         formData.append('srt', srtBlob, 'subs.srt');
       }
       try {
         const res = await fetch('/merge-video-audio', {method: 'POST', body: formData});
         if (res.ok) {
           const videoBlob = await res.blob();
-          const suffix = vadsVideoFiles.length > 1 ? '_v' + (vi+1) : '';
           const sku = (document.getElementById('vadsSku')?.value || 'video').trim().toUpperCase() || 'VIDEO';
           const fname = sku + '_' + lang + '_v' + (vi+1) + '.mp4';
           zip.file(fname, videoBlob);
