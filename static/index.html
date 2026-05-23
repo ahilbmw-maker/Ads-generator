@@ -7165,80 +7165,96 @@ function vadsScriptForVideo(langCode, videoIdx) {
 }
 
 async function vadsGenerateAudio(langCode) {
-  const script = vadsScripts[langCode];
-  if (!script) return;
-
   const btn = document.getElementById('vadsAudioBtn-' + langCode);
   const status = document.getElementById('vadsAudioStatus-' + langCode);
   const player = document.getElementById('vadsAudioPlayer-' + langCode);
+
+  // Dolžine za katere generiramo (vse unikatne, ali samo privzeta če ni multi)
+  const byDur = window._vadsScriptsByDur || {};
+  const durKeys = Object.keys(byDur).map(Number).sort((a,b) => a-b);
+  const multiDur = durKeys.length > 1;
+  const sku = (document.getElementById('vadsSku')?.value || 'audio').trim().toUpperCase() || 'AUDIO';
 
   btn.disabled = true;
   btn.innerHTML = '<div class="vads-spinner" style="border-top-color:white"></div> Generiram...';
   status.textContent = 'ElevenLabs generira...';
 
-  try {
+  // Storage init
+  window._vadsAudioBlobs = window._vadsAudioBlobs || {};
+  window._vadsSrts = window._vadsSrts || {};
+  window._vadsAlignments = window._vadsAlignments || {};
+  window._vadsAudioByDur = window._vadsAudioByDur || {};  // [lang][dur] = {blob, srt, url}
+  window._vadsAudioByDur[langCode] = window._vadsAudioByDur[langCode] || {};
+
+  async function _genOne(text, dur) {
     const res = await fetch('/generate-audio', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text: script, lang: langCode})
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text, lang: langCode})
     });
-
     const data = await res.json();
-    if (data.error) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + data.error; btn.disabled = false; btn.innerHTML = '🎙 Generiraj audio'; return; }
+    if (data.error || !data.audio_base64) throw new Error(data.error || 'Ni audia');
+    const bytes = Uint8Array.from(atob(data.audio_base64), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], {type: 'audio/mpeg'});
+    return { blob, url: URL.createObjectURL(blob), srt: data.ass || data.srt || '', rawSrt: data.srt || '', alignment: data.alignment };
+  }
 
-    // Konvertiraj base64 audio v blob
-    const audioBytes = Uint8Array.from(atob(data.audio_base64), c => c.charCodeAt(0));
-    const blob = new Blob([audioBytes], {type: 'audio/mpeg'});
-    const url = URL.createObjectURL(blob);
+  try {
+    const hasVideo = vadsVideoFiles.length > 0;
 
-    // Shrani za merge
-    window._vadsAudioBlobs = window._vadsAudioBlobs || {};
-    window._vadsAudioBlobs[langCode] = blob;
-
-    // Shrani SRT in ASS
-    window._vadsSrts = window._vadsSrts || {};
-    window._vadsSrts[langCode] = data.ass || data.srt || '';
-
-    // Shrani alignment za emoji suggestion
-    window._vadsAlignments = window._vadsAlignments || {};
-    window._vadsAlignments[langCode] = data.alignment || null;
-
-    // Avtomatsko predlagaj emoji-je (background, ne blokira)
-    if (data.alignment && data.alignment.characters) {
-      fetch('/suggest-emojis', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({text: script, alignment: data.alignment, lang: langCode})
-      }).then(r => r.json()).then(em => {
-        if (em.ok && em.segments) {
-          window._vadsEmojis = window._vadsEmojis || {};
-          window._vadsEmojis[langCode] = em.segments;
-          const emojiCount = em.segments.filter(s => s.emoji).length;
-          console.log(`[emoji] ${langCode}: ${emojiCount}/${em.segments.length} segments`);
+    if (!multiDur) {
+      // Klasično: 1 audio (privzeta skripta)
+      const script = vadsScripts[langCode];
+      if (!script) { btn.disabled=false; btn.innerHTML='🎙 Generiraj audio'; return; }
+      const a = await _genOne(script, durKeys[0] || vadsDuration);
+      window._vadsAudioBlobs[langCode] = a.blob;
+      window._vadsSrts[langCode] = a.srt;
+      window._vadsAlignments[langCode] = a.alignment || null;
+      const srtUrl = URL.createObjectURL(new Blob([a.rawSrt], {type:'text/plain'}));
+      player.style.display = 'block';
+      player.innerHTML = `
+        <audio controls style="width:100%;height:36px"><source src="${a.url}" type="audio/mpeg"></audio>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+          <a href="${a.url}" download="${sku}_${langCode}_v1.mp3" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">⬇ MP3</a>
+          ${a.rawSrt ? `<a href="${srtUrl}" download="${sku}_${langCode}_v1.srt" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">📝 SRT</a>` : ''}
+          ${hasVideo ? `<button class="vads-audio-btn generate" style="font-size:11px" onclick="vadsMergeVideo('${langCode}', this)">🎬 Video</button>` : ''}
+          ${hasVideo && a.rawSrt ? `<button class="vads-audio-btn generate" style="font-size:11px;background:#7c3aed" onclick="vadsMergeVideoSrt('${langCode}', this)">🎬+📝 Video + podnapisi</button>` : ''}
+        </div>`;
+    } else {
+      // Multi-dur: generiraj audio za vsako dolžino → svoj player
+      player.style.display = 'block';
+      player.innerHTML = '';
+      let blocksHtml = '';
+      for (const d of durKeys) {
+        const text = (byDur[String(d)] && byDur[String(d)][langCode]) || '';
+        if (!text) continue;
+        status.textContent = `ElevenLabs ${d}s...`;
+        const a = await _genOne(text, d);
+        window._vadsAudioByDur[langCode][d] = a;
+        // Prvi (najkrajši) shranimo tudi v klasični slot za kompatibilnost
+        if (!window._vadsAudioBlobs[langCode]) {
+          window._vadsAudioBlobs[langCode] = a.blob;
+          window._vadsSrts[langCode] = a.srt;
+          window._vadsAlignments[langCode] = a.alignment || null;
         }
-      }).catch(e => console.log('[emoji] failed:', e));
+        const srtUrl = URL.createObjectURL(new Blob([a.rawSrt], {type:'text/plain'}));
+        blocksHtml += `
+          <div style="margin-bottom:10px;padding:8px;background:var(--surface2);border-radius:var(--radius)">
+            <div style="font-size:10px;color:var(--accent);font-weight:600;margin-bottom:4px">📹 ${d}s video</div>
+            <audio controls style="width:100%;height:34px"><source src="${a.url}" type="audio/mpeg"></audio>
+            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+              <a href="${a.url}" download="${sku}_${langCode}_${d}s.mp3" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">⬇ MP3</a>
+              ${a.rawSrt ? `<a href="${srtUrl}" download="${sku}_${langCode}_${d}s.srt" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">📝 SRT</a>` : ''}
+            </div>
+          </div>`;
+        player.innerHTML = blocksHtml;
+      }
+      if (hasVideo) {
+        player.innerHTML += `<div style="font-size:11px;color:var(--text-tertiary);padding:4px">🎬 Videi se zlijejo z ustrezno dolžino pri "Prenesi vse kot ZIP"</div>`;
+      }
     }
 
-    // SRT download URL (za ročni download)
-    const srtBlob = new Blob([data.srt || ''], {type: 'text/plain'});
-    const srtUrl = URL.createObjectURL(srtBlob);
-
-    player.style.display = 'block';
-    const hasVideo = vadsVideoFiles.length > 0;
-    const hasSrt = !!(data.srt);
-    player.innerHTML = `
-      <audio controls style="width:100%;height:36px">
-        <source src="${url}" type="audio/mpeg">
-      </audio>
-      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-        <a href="${url}" download="${(document.getElementById('vadsSku')?.value||'audio').trim().toUpperCase()}_${langCode}_v1.mp3" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">⬇ MP3</a>
-        ${hasSrt ? `<a href="${srtUrl}" download="${(document.getElementById('vadsSku')?.value||'audio').trim().toUpperCase()}_${langCode}_v1.srt" class="vads-audio-btn download" style="text-decoration:none;font-size:11px">📝 SRT</a>` : ''}
-        ${hasVideo ? `<button class="vads-audio-btn generate" style="font-size:11px" onclick="vadsMergeVideo('${langCode}', this)">🎬 Video</button>` : ''}
-        ${hasVideo && hasSrt ? `<button class="vads-audio-btn generate" style="font-size:11px;background:#7c3aed" onclick="vadsMergeVideoSrt('${langCode}', this)">🎬+📝 Video + podnapisi</button>` : ''}
-      </div>
-    `;
     status.style.color = 'var(--green)';
-    status.textContent = '✓ Audio + podnapisi pripravljeni';
+    status.textContent = multiDur ? `✓ ${durKeys.length} verzij pripravljenih` : '✓ Audio + podnapisi pripravljeni';
     const zb = document.getElementById('vadsZipBtn'); if(zb) zb.style.display='flex';
     btn.innerHTML = '🔄 Regeneriraj';
     btn.disabled = false;
@@ -7364,9 +7380,12 @@ async function vadsBuildZipBlob(progressCallback) {
       if (!hasMultiDur) return { blob: audioBlobs[lang], srt: srts[lang] };
       const vidDur = durs[vi] ? Math.round(durs[vi]) : null;
       if (vidDur == null) return { blob: audioBlobs[lang], srt: srts[lang] };
+      // Najprej preveri že-generiran audio (iz "Generiraj audio" gumba)
+      const pre = window._vadsAudioByDur?.[lang]?.[vidDur];
+      if (pre && pre.blob) return { blob: pre.blob, srt: pre.srt };
+      // Sicer generiraj sproti + cachiraj
       perDurCache[lang] = perDurCache[lang] || {};
       if (perDurCache[lang][vidDur]) return perDurCache[lang][vidDur];
-      // Generiraj nov audio za to dolžino
       const script = vadsScriptForVideo(lang, vi);
       if (!script) return { blob: audioBlobs[lang], srt: srts[lang] };
       try {
