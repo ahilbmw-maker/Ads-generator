@@ -3610,43 +3610,63 @@ async def generate_audio(data: dict):
             return truncated[:m[-1].end()].strip()
         return truncated.strip().rstrip(',;:') + "."
 
-    async def _call(txt: str):
+    async def _call(txt: str, speed: float = 1.0):
+        vs = {"stability": 0.5, "similarity_boost": 0.75}
+        # speed je podprt v eleven_multilingual_v2 (0.7–1.2). Za v3 ga izpustimo.
+        model = ELEVENLABS_MODELS.get(lang, "eleven_multilingual_v2")
+        if model != "eleven_v3" and abs(speed - 1.0) > 0.001:
+            vs["speed"] = round(max(0.7, min(1.2, speed)), 3)
         async with httpx.AsyncClient(timeout=60.0) as hc:
             return await hc.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps",
                 headers={"xi-api-key": api_key, "Content-Type": "application/json"},
-                json={
-                    "text": txt,
-                    "model_id": ELEVENLABS_MODELS.get(lang, "eleven_multilingual_v2"),
-                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
-                }
+                json={"text": txt, "model_id": model, "voice_settings": vs}
             )
 
     try:
         cur_text = text
+        cur_speed = 1.0
         result = None
         shortened = False
-        # Tolerance: dovolimo da govor sega do target+0.3s (zadnja beseda)
-        tol = 0.3
-        for attempt in range(3):
-            resp = await _call(cur_text)
+        sped_up = False
+        tol = 0.3              # govor sme segati do target+0.3s
+        MAX_SPEED = 1.15       # naravna meja hitrosti (nad tem zveni hitelo)
+
+        for attempt in range(4):
+            resp = await _call(cur_text, cur_speed)
             if resp.status_code != 200:
                 from fastapi.responses import JSONResponse
                 return JSONResponse({"error": f"ElevenLabs napaka {resp.status_code}: {resp.text[:300]}"}, status_code=400)
             result = resp.json()
             actual = _audio_dur(result.get("alignment", {}))
 
-            # Brez targeta ALI se prilega → konec
+            # Prilega se → konec
             if target_dur <= 0 or actual <= target_dur + tol:
-                print(f"[generate-audio] {lang} #{attempt+1}: {actual:.1f}s (cilj {target_dur:.1f}s) ✓")
+                print(f"[generate-audio] {lang} #{attempt+1}: {actual:.1f}s (cilj {target_dur:.1f}s, speed {cur_speed:.2f}) ✓")
                 break
 
-            # Presega → skrajšaj SAMO ta jezik proporcionalno
-            ratio = (target_dur / actual) * 0.93  # 7% rezerve
+            over_ratio = actual / target_dur  # koliko presega (npr. 1.20 = 20% predolg)
+
+            # 1. KORAK: poskusi s hitrostjo (do MAX_SPEED) — ohrani vso vsebino
+            #    Dejanska potrebna hitrost = trenutna × over_ratio
+            needed_speed = cur_speed * over_ratio
+            if needed_speed <= MAX_SPEED + 0.001:
+                cur_speed = round(needed_speed, 3)
+                sped_up = True
+                print(f"[generate-audio] {lang} #{attempt+1}: {actual:.1f}s > {target_dur:.1f}s → hitrost {cur_speed:.2f}× (ohranim vsebino)")
+                continue
+
+            # 2. KORAK: hitrost ni dovolj → nastavi MAX_SPEED + reži ostanek
+            cur_speed = MAX_SPEED
+            sped_up = True
+            # Po pospešitvi na MAX bo govor ~actual/MAX_SPEED. Koliko še reči?
+            after_speed = (actual / over_ratio) * (cur_speed)  # ocena pri novi hitrosti
+            # cilj: target. ratio rezanja glede na current text
+            ratio = (target_dur / actual) * cur_speed * 0.96
             new_text = _shorten(cur_text, ratio)
-            print(f"[generate-audio] {lang} #{attempt+1}: {actual:.1f}s > {target_dur:.1f}s → skrajšam ({ratio:.0%})")
+            print(f"[generate-audio] {lang} #{attempt+1}: {actual:.1f}s > {target_dur:.1f}s → max hitrost {cur_speed:.2f}× + rez ({ratio:.0%})")
             if new_text == cur_text:
-                break  # ne moremo več
+                break
             cur_text = new_text
             shortened = True
 
@@ -3665,6 +3685,8 @@ async def generate_audio(data: dict):
             "duration": _audio_dur(alignment),
             "final_text": cur_text if shortened else text,
             "shortened": shortened,
+            "speed": cur_speed,
+            "sped_up": sped_up,
         }
 
     except Exception as e:
