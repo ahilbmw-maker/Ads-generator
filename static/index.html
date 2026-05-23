@@ -7139,11 +7139,21 @@ async function vadsGenerateAudio(langCode) {
     const res = await fetch('/generate-audio', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text: script, lang: langCode})
+      body: JSON.stringify({text: script, lang: langCode, target_duration: vadsDuration})
     });
 
     const data = await res.json();
     if (data.error) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + data.error; btn.disabled = false; btn.innerHTML = '🎙 Generiraj audio'; return; }
+
+    // Če je bil tekst skrajšan (audio bi bil daljši od videa), posodobi prikaz
+    if (data.final_text && data.final_text !== script) {
+      vadsScripts[langCode] = data.final_text;
+      const ta = document.getElementById('vadsScript-' + langCode);
+      if (ta) ta.value = data.final_text;
+      if (data.duration) {
+        status.textContent = `✓ Skrajšano na ${data.duration.toFixed(1)}s (video ${vadsDuration}s)`;
+      }
+    }
 
     // Konvertiraj base64 audio v blob
     const audioBytes = Uint8Array.from(atob(data.audio_base64), c => c.charCodeAt(0));
