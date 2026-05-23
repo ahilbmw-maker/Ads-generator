@@ -1727,7 +1727,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div class="field" style="margin-top:10px">
             <span class="flabel" style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Trajanje skripte</span>
             <div id="vadsDurAuto" style="display:none;padding:8px 12px;background:var(--green-dim);border:1px solid var(--green-border);border-radius:var(--radius);font-size:12px;color:var(--green);font-weight:500">
-              🎬 Video: <span id="vadsVideoDurLabel">—</span>s → skripta prilagojena
+              🎬 Video: <span id="vadsVideoDurLabel">—</span> → skripta prilagojena
             </div>
             <div id="vadsDurManual" style="display:flex;gap:6px">
               <button class="mode-btn on" id="vadsDur-15" onclick="vadsSetDur(15)" style="flex:1;padding:8px;font-size:12px;font-weight:500;cursor:pointer;border-radius:var(--radius);border:1.5px solid var(--accent-border);background:var(--accent-dim);color:var(--accent);font-family:'DM Sans',sans-serif">15s</button>
@@ -7099,13 +7099,32 @@ async function vadsGenerate() {
     vadsSaveHistory(input, vadsScripts, data.product);
 
     // Prikaži skripte
+    const byDurAll = window._vadsScriptsByDur || {};
+    const durKeys = Object.keys(byDurAll).map(Number).sort((a,b) => a-b);
+    const multiDur = durKeys.length > 1;
+
     VADS_LANGS.forEach(l => {
       const card = document.getElementById('vadsCard-' + l.code);
       if (!card) return;
-      const script = vadsScripts[l.code] || '';
+
+      let scriptsHtml;
+      if (multiDur) {
+        // Prikaži skripto za vsako dolžino videa
+        scriptsHtml = durKeys.map(d => {
+          const txt = (byDurAll[String(d)] && byDurAll[String(d)][l.code]) || '';
+          const wc = txt.split(/\s+/).filter(Boolean).length;
+          return `<div style="margin-bottom:6px">
+            <div style="font-size:10px;color:var(--accent);font-weight:600;margin-bottom:2px">📹 ${d}s video · ${wc} besed</div>
+            <div class="vads-script" style="margin:0">${esc(txt)}</div>
+          </div>`;
+        }).join('');
+      } else {
+        scriptsHtml = `<div class="vads-script">${esc(vadsScripts[l.code] || '')}</div>`;
+      }
+
       card.innerHTML = `
         <div class="vads-lang-header">${l.flag} ${l.name}</div>
-        <div class="vads-script">${esc(script)}</div>
+        ${scriptsHtml}
         <div style="display:flex;gap:8px;align-items:center">
           <button class="vads-audio-btn generate" onclick="vadsGenerateAudio('${l.code}')" id="vadsAudioBtn-${l.code}">
             🎙 Generiraj audio
