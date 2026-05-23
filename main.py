@@ -3344,8 +3344,9 @@ async def generate_video_scripts(data: dict):
     tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
 
     def _words_for(dur):
-        # ~2.0 besede/sekundo (realni voice-over tempo s pavzami) + 2s buffer
-        return max(8, min(110, int((dur - 2) * 2.0)))
+        # ElevenLabs govori ~2.6 besede/s. Da govor ZAPOLNI video (ne pusti tišine),
+        # ciljamo na ~95% dolžine z 0.5s bufferjem na koncu.
+        return max(10, min(150, int((dur - 0.5) * 2.6)))
 
     # Unikatne dolžine (da ne generiramo isto skripto večkrat)
     unique_durs = sorted(set(int(d) for d in durations if d and d > 0)) if durations else [int(duration)]
@@ -3356,12 +3357,13 @@ async def generate_video_scripts(data: dict):
 {'Stran: ' + input_text if mode == 'url' else 'Opis: ' + input_text}
 
 Pravila:
-- NAJVEČ {words} besed na jezik — RAJE MANJ kot več (govor se mora prilegati v {dur}s video, ne sme biti predolg)
+- Ciljaj na {words} besed na jezik (±3) — govor mora ZAPOLNITI {dur}s video, ne sme biti prekratek (sicer ostane tišina)
 - Naravni govorni slog, kot da govori prijatelj
-- Poudarek na eni glavni koristi izdelka
+- Poudarek na eni glavni koristi izdelka, dodaj podrobnosti da zapolniš čas
 - Brez cen, brez "klikni", brez "naroči"
 - Konec z močno izjavo (ne pozivom k akciji)
-- POMEMBNO: vsak jezik ima različno dolžino besed — za daljše jezike (madžarščina, poljščina, grščina) uporabi MANJ besed da se prilega istemu času
+- POMEMBNO: daljši video = VEČ besed/vsebine. {dur}s video naj ima poln, tekoč govor skozi celoten čas
+- Vsak jezik ima različno dolžino besed — za daljše jezike (madžarščina, poljščina, grščina) lahko malenkost manj besed
 - SL: slovenščina, HR: hrvaščina (latinica), RS: srbščina (SAMO latinica), HU: madžarščina, CZ: češčina, SK: slovaščina, PL: poljščina, GR: grščina (grška pisava), RO: romunščina, BG: bolgarščina (SAMO cirilica)
 
 Vrni SAMO JSON brez markdown:
