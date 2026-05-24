@@ -11725,10 +11725,10 @@ function anRenderTable() {
   const search = (document.getElementById('anSearch')?.value || '').toLowerCase().trim();
   const skuMap = window._anSkuMap || {};
 
-  // Dynamični account seznam — preferira server podatke, fallback na config
-  const _effectiveAccounts = (window._anDynamicAccounts && window._anDynamicAccounts.length > 0)
-    ? window._anDynamicAccounts
-    : TARGET_ACCOUNTS;
+  // Dynamični account seznam — UNION server podatkov IN config (da so vsi vidni,
+  // tudi novi kot Colibrishop ki je v configu + v podatkih)
+  const _dynAccs = (window._anDynamicAccounts && window._anDynamicAccounts.length > 0) ? window._anDynamicAccounts : [];
+  const _effectiveAccounts = [...new Set([...TARGET_ACCOUNTS, ..._dynAccs])];
 
   // JS verzija smart_root — identična Python smart_root()
   // Maaa61lightBrown → Maaa61, M377grey → M377, SOLEBRACE_SM → SOLEBRACE
@@ -11781,7 +11781,19 @@ function anRenderTable() {
   });
 
   // FILTRI iznad tabele — checkboxi po accountih (kot v Obrat 14 dni)
-  if (!window._anCheckedAccounts) window._anCheckedAccounts = new Set(_effectiveAccounts.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
+  if (!window._anCheckedAccounts) {
+    window._anCheckedAccounts = new Set(_effectiveAccounts.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
+    window._anSeenAccounts = new Set(_effectiveAccounts);
+  } else {
+    // Dodaj NOVE accounte (prej nevidene, npr. Colibrishop) v checked — ohrani obstoječe izbire
+    window._anSeenAccounts = window._anSeenAccounts || new Set();
+    for (const a of _effectiveAccounts) {
+      if (!window._anSeenAccounts.has(a)) {
+        window._anSeenAccounts.add(a);
+        if (!ACC_DEFAULT_HIDDEN.has(a)) window._anCheckedAccounts.add(a);
+      }
+    }
+  }
   const checkedAccounts = window._anCheckedAccounts;
 
   // Filter: SKU obdržimo, če ima oglas na vsaj enem izbranem accountu
