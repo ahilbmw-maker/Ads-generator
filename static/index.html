@@ -2236,6 +2236,14 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div class="card">
           <span class="slabel">META ADS POROČILO</span>
           <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži CSV/XLS export iz FB Ads Manager poročila. Vsak upload se <strong>doda</strong> k obstoječim (več BM-jev).</p>
+          <div style="margin-bottom:8px">
+            <label style="font-size:10px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:4px">Ime ad accounta (če CSV nima stolpca)</label>
+            <input type="text" id="anMetaAccountName" placeholder="npr. Colibrishop" list="anMetaAccountList" style="width:100%;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
+            <datalist id="anMetaAccountList">
+              <option value="Colibrishop"><option value="Maaarket X"><option value="Maaarket ALL"><option value="Zipply."><option value="Easyzo"><option value="Thundershop ALL HU">
+            </datalist>
+            <div style="font-size:9px;color:var(--text-tertiary);margin-top:3px">Pusti prazno če CSV že vsebuje "Account name" stolpec</div>
+          </div>
           <div id="anMetaDropZone" class="k-dropzone" style="margin-top:8px;padding:14px;cursor:pointer" onclick="document.getElementById('anMetaInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="anMetaHandleDrop(event)">
             <span style="font-size:11px">📊 Klikni ali povleci CSV/XLS</span>
           </div>
@@ -3855,6 +3863,7 @@ const AD_ACCOUNTS_CONFIG = [
   { name: 'Thundershop ALL HU',    short: 'TS.HU',     hidden: false },
   { name: 'ThunderShop HR',        short: 'TS.HR',     hidden: true  },
   { name: 'ThunderShop RS',        short: 'TS.RS',     hidden: true  },
+  { name: 'Colibrishop',           short: 'Colibri',   hidden: false },
   // { name: 'Novi Account 1', short: 'NOV1', hidden: false },
   // { name: 'Novi Account 2', short: 'NOV2', hidden: true },  // privzeto skrit
 ];
@@ -12198,11 +12207,13 @@ async function anLoadMeta(file) {
 
     const formData = new FormData();
     formData.append('file', uploadFile, uploadFile.name);
+    const accName = (document.getElementById('anMetaAccountName')?.value || '').trim();
+    if (accName) formData.append('account_name', accName);
     const res = await fetch('/analiza-meta-upload', {method: 'POST', body: formData});
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    status.textContent = '✓ Naloženih ' + data.rows + ' vrstic';
+    status.textContent = '✓ Naloženih ' + data.rows_total + ' vrstic (+' + data.rows_added + ')' + (accName ? ' · ' + accName : '');
     status.style.color = 'var(--green)';
 
     document.getElementById('anMetaInput').value = '';
