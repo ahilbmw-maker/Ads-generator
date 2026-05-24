@@ -6486,6 +6486,59 @@ async def analiza_meta_upload(file: UploadFile = File(...), account_name: str = 
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/analiza-meta-debug")
+async def analiza_meta_debug():
+    """Diagnostika: kaj backend vidi v Meta podatkih (accounti, SKU match, vzorci)."""
+    if not META_ADS_FILE.exists():
+        return {"loaded": False, "msg": "META_ADS_FILE ne obstaja"}
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+        text = META_ADS_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        sep = ';' if text.split('\n',1)[0].count(';') > text.split('\n',1)[0].count(',') else ','
+        rows = [r for r in _csv.DictReader(_SIO(text), delimiter=sep) if r.get('Campaign name','').strip()]
+
+        known = _load_known_skus()
+
+        # Account distribucija (surovo)
+        from collections import Counter
+        acc_counter = Counter((r.get('Account name') or '—').strip() for r in rows)
+
+        # Za vsak account: koliko kampanj dobi SKU match
+        acc_match = {}
+        samples = {}
+        for r in rows:
+            acc = (r.get('Account name') or '—').strip()
+            name = r.get('Campaign name','').strip()
+            skus = extract_skus_from_text(name, known if known else None)
+            acc_match.setdefault(acc, {"total": 0, "matched": 0})
+            acc_match[acc]["total"] += 1
+            if skus:
+                acc_match[acc]["matched"] += 1
+            elif acc not in samples:
+                # shrani primer kampanje brez matcha
+                samples[acc] = {"campaign": name, "extracted_no_filter": extract_skus_from_text(name, None)}
+
+        # Ali so headerji v redu?
+        headers = list(rows[0].keys()) if rows else []
+        has_account_col = 'Account name' in headers
+
+        return {
+            "loaded": True,
+            "total_rows": len(rows),
+            "headers": headers,
+            "has_account_name_column": has_account_col,
+            "known_skus_count": len(known),
+            "accounts_raw": dict(acc_counter),
+            "account_match": acc_match,
+            "no_match_samples": samples,
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/analiza-meta-clear")
 async def analiza_meta_clear():
     """Počisti vse naložene Meta Ads CSV podatke."""
