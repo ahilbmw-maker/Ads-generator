@@ -6539,6 +6539,48 @@ async def analiza_meta_debug():
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.post("/analiza-meta-fix-account")
+async def analiza_meta_fix_account(data: dict):
+    """Popravi obstoječe vrstice brez Account name (—) → dodeli izbran account.
+    Uporabno če si naložil single-account CSV brez da bi vpisal ime accounta."""
+    new_account = (data.get("account_name") or "").strip()
+    if not new_account:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Manjka account_name."}, status_code=400)
+    if not META_ADS_FILE.exists():
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Ni naloženih Meta podatkov."}, status_code=400)
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+        text = META_ADS_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        sep = ';' if text.split('\n',1)[0].count(';') > text.split('\n',1)[0].count(',') else ','
+        reader = _csv.DictReader(_SIO(text), delimiter=sep)
+        rows = [r for r in reader if r.get('Campaign name','').strip()]
+
+        headers = list(rows[0].keys()) if rows else []
+        if 'Account name' not in headers:
+            headers.append('Account name')
+
+        fixed = 0
+        for r in rows:
+            if not (r.get('Account name') or '').strip():
+                r['Account name'] = new_account
+                fixed += 1
+
+        out = _SIO()
+        writer = _csv.DictWriter(out, fieldnames=headers, extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(rows)
+        META_ADS_FILE.write_text(out.getvalue(), encoding='utf-8')
+
+        return {"status": "ok", "fixed_rows": fixed, "account": new_account, "total_rows": len(rows)}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/analiza-meta-clear")
 async def analiza_meta_clear():
     """Počisti vse naložene Meta Ads CSV podatke."""
