@@ -6558,8 +6558,23 @@ async def analiza_meta_data():
 
             # Izvleci SKU-je iz imena (filtrirano po znanih SKU iz zaloge)
             skus = extract_skus_from_text(campaign_name, known_skus if known_skus else None)
-            # Dedupliciraj
             skus = list(dict.fromkeys(skus))
+
+            # FALLBACK: če kampanja ne najde SKU v glavni zalogi (npr. account z ločeno
+            # zalogo kot Colibrishop), izvleci kandidat brez whitelist filtra — da se
+            # kampanja vseeno prikaže in account dobi kljukico.
+            if not skus:
+                fb = extract_skus_from_text(campaign_name, None)  # UPPERCASE kandidati
+                if not fb:
+                    # mixed-case brand (SensaTouch, Hairrevive) → prvi smiseln token
+                    for raw in campaign_name.split():
+                        cl = re.sub(r'^[^\w]+|[^\w]+$', '', raw)
+                        if len(cl) >= 4 and any(c.isalpha() for c in cl) \
+                           and cl.upper() not in SKU_STOPWORDS \
+                           and not re.match(r'^\d+[A-Z]?$', cl, re.IGNORECASE) \
+                           and '.' not in cl:
+                            fb = [cl]; break
+                skus = list(dict.fromkeys(fb))
 
             for sku in skus:
                 if sku not in sku_data:
@@ -6627,13 +6642,28 @@ async def analiza_meta_data():
                 "accounts": accounts_with_status,
             })
 
-        # Zberi vse accounte dinamično iz podatkov (ne hardkodiran whitelist)
-        all_accounts = sorted(set(
-            acc_name
-            for d in sku_data.values()
-            for acc_name in d["accounts"].keys()
-            if acc_name and acc_name != '—'
-        ))
+        # Zberi vse accounte dinamično iz podatkov.
+        # POMEMBNO: ne samo iz sku_data (kampanje s prepoznanim SKU), ampak iz VSEH
+        # vrstic CSV — sicer accounti katerih SKU-ji niso v glavni zalogi (npr. Colibrishop
+        # z ločeno zalogo) ne dobijo kljukice, čeprav imajo kampanje.
+        all_accounts_set = set()
+        for d in sku_data.values():
+            for acc_name in d["accounts"].keys():
+                if acc_name and acc_name != '—':
+                    all_accounts_set.add(acc_name)
+        # Dodaj še accounte iz surovih vrstic (tudi brez SKU match)
+        try:
+            text2 = META_ADS_FILE.read_text(encoding="utf-8-sig", errors="replace")
+            sep2 = ';' if text2.split('\n',1)[0].count(';') > text2.split('\n',1)[0].count(',') else ','
+            import csv as _csv2
+            from io import StringIO as _SIO2
+            for r in _csv2.DictReader(_SIO2(text2), delimiter=sep2):
+                an = (r.get('Account name') or '').strip()
+                if an and an != '—':
+                    all_accounts_set.add(an)
+        except Exception as _e:
+            print(f"[meta] all_accounts raw scan err: {_e}")
+        all_accounts = sorted(all_accounts_set)
 
         meta = {}
         if META_ADS_META.exists():
