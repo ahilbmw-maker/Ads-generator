@@ -6393,8 +6393,9 @@ def extract_skus_from_text(text: str, known_skus: set = None) -> list[str]:
 
 
 @app.post("/analiza-meta-upload")
-async def analiza_meta_upload(file: UploadFile = File(...)):
-    """Sprejme CSV iz FB Ads Manager export, DODA k obstoječim (accumulate po Campaign name unikatnosti)."""
+async def analiza_meta_upload(file: UploadFile = File(...), account_name: str = Form("")):
+    """Sprejme CSV iz FB Ads Manager export, DODA k obstoječim (accumulate po Campaign name unikatnosti).
+    Če CSV nima 'Account name' stolpca (single-account izvoz), uporabi podani account_name."""
     try:
         import csv as _csv
         from io import StringIO as _SIO
@@ -6410,7 +6411,16 @@ async def analiza_meta_upload(file: UploadFile = File(...)):
         if not new_rows:
             return JSONResponse({"error": "CSV nima veljavnih vrstic."}, status_code=400)
 
+        # Če CSV nima Account name (ali je prazen) IN je podan account_name → napolni
+        acc_override = (account_name or "").strip()
+        if acc_override:
+            for r in new_rows:
+                if not (r.get('Account name') or '').strip():
+                    r['Account name'] = acc_override
+
         headers = list(new_rows[0].keys())
+        if 'Account name' not in headers:
+            headers.append('Account name')
 
         # Preberi obstoječe vrstice (če obstajajo)
         existing_rows = []
@@ -6651,7 +6661,7 @@ OBRAT14_FILE = DATA_DIR / "obrat_14dni.txt"
 OBRAT14_META = DATA_DIR / "obrat_14dni_meta.json"
 
 # Whitelist accounts za Obrat 14dni view
-TARGET_ACCOUNTS = ['Maaarket X', 'Maaarket ALL', 'Maaarket ALL2', 'Maaarket ALL3 + RS', 'Zipply.', 'si_SUBAN_Maaarket SK', 'Maaarket PL/RO', 'Maaarket HR', 'si_Suban_Maaarket HR', 'Easyzo', 'Thundershop ALL HU', 'ThunderShop HR', 'ThunderShop RS']
+TARGET_ACCOUNTS = ['Maaarket X', 'Maaarket ALL', 'Maaarket ALL2', 'Maaarket ALL3 + RS', 'Zipply.', 'si_SUBAN_Maaarket SK', 'Maaarket PL/RO', 'Maaarket HR', 'si_Suban_Maaarket HR', 'Easyzo', 'Thundershop ALL HU', 'ThunderShop HR', 'ThunderShop RS', 'Colibrishop']
 # Ko dobiš nova accounta, dodaj ju sem IN v AD_ACCOUNTS_CONFIG v index.html
 
 
