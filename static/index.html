@@ -2254,6 +2254,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div style="font-size:10px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">Naloženi CSV-ji:</div>
             <div id="anMetaUploadsList" style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text-secondary)"></div>
             <button onclick="anMetaFixAccount()" style="margin-top:8px;padding:4px 10px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🔧 Dodeli account praznim vrsticam</button>
+            <button onclick="anMetaRenameAccount()" style="margin-top:6px;padding:4px 10px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">✏️ Preimenuj account (odpravi podvojene)</button>
             <button onclick="anMetaClear()" style="margin-top:6px;padding:4px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🗑 Počisti vse &amp; začni znova</button>
           </div>
         </div>
@@ -3864,7 +3865,7 @@ const AD_ACCOUNTS_CONFIG = [
   { name: 'Thundershop ALL HU',    short: 'TS.HU',     hidden: false },
   { name: 'ThunderShop HR',        short: 'TS.HR',     hidden: true  },
   { name: 'ThunderShop RS',        short: 'TS.RS',     hidden: true  },
-  { name: 'Colibrishop',           short: 'Colibri',   hidden: false },
+  { name: 'Colibrishop_EU',        short: 'Colibri',   hidden: false },
   // { name: 'Novi Account 1', short: 'NOV1', hidden: false },
   // { name: 'Novi Account 2', short: 'NOV2', hidden: true },  // privzeto skrit
 ];
@@ -11415,7 +11416,8 @@ async function o14LoadData() {
     }
     o14Items = data.items || [];
     window._o14Items = o14Items; // deli z TikTok tabom
-    o14TargetAccounts = data.target_accounts || [];
+    // UNION: backend target_accounts + frontend config (da so vsi vidni, tudi novi kot Colibrishop)
+    o14TargetAccounts = [...new Set([...(data.target_accounts || []), ...TARGET_ACCOUNTS])];
 
     const info = document.getElementById('o14Info');
     if (info) {
@@ -11451,7 +11453,20 @@ function o14RenderTable() {
   let filtered = [...o14Items];
 
   // Whitelist account selection (ki so checkani)
-  const checkedAccounts = window._o14CheckedAccounts || new Set(o14TargetAccounts);
+  if (!window._o14CheckedAccounts) {
+    window._o14CheckedAccounts = new Set(o14TargetAccounts.filter(a => !ACC_DEFAULT_HIDDEN.has(a)));
+    window._o14SeenAccounts = new Set(o14TargetAccounts);
+  } else {
+    // Dodaj NOVE accounte (prej nevidene, npr. Colibrishop) — ohrani obstoječe izbire
+    window._o14SeenAccounts = window._o14SeenAccounts || new Set();
+    for (const a of o14TargetAccounts) {
+      if (!window._o14SeenAccounts.has(a)) {
+        window._o14SeenAccounts.add(a);
+        if (!ACC_DEFAULT_HIDDEN.has(a)) window._o14CheckedAccounts.add(a);
+      }
+    }
+  }
+  const checkedAccounts = window._o14CheckedAccounts;
 
   // Sidebar filtri (na podlagi VIDNIH/checkanih accountov)
   // active = vsaj en checkan account je active
@@ -12185,6 +12200,29 @@ function anMetaHandleDrop(ev) {
   ev.currentTarget.classList.remove('drag-over');
   const f = ev.dataTransfer.files[0];
   if (f) anLoadMeta(f);
+}
+
+async function anMetaRenameAccount() {
+  const from = prompt('Preimenuj account — vpiši TRENUTNO ime (ki ga želiš odstraniti):', 'Colibrishop');
+  if (!from || !from.trim()) return;
+  const to = prompt('V kateri account preimenovati? (pravo ime):', 'Colibrishop_EU');
+  if (!to || !to.trim()) return;
+  try {
+    const res = await fetch('/analiza-meta-rename-account', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({from_account: from.trim(), to_account: to.trim()})
+    });
+    const data = await res.json();
+    if (data.error) { alert('Napaka: ' + data.error); return; }
+    alert(`✓ Preimenovano "${data.from}" → "${data.to}" (${data.renamed_rows} vrstic).`);
+    delete window._anCheckedAccounts;
+    delete window._anSeenAccounts;
+    delete window._o14CheckedAccounts;
+    delete window._o14SeenAccounts;
+    await anLoadMetaFromServer();
+  } catch(e) {
+    alert('Napaka: ' + e.message);
+  }
 }
 
 async function anMetaFixAccount() {
