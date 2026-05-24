@@ -6581,6 +6581,48 @@ async def analiza_meta_fix_account(data: dict):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.post("/analiza-meta-rename-account")
+async def analiza_meta_rename_account(data: dict):
+    """Preimenuje account v vseh vrsticah: from_account → to_account.
+    Uporabno za odpravo podvojenih accountov (npr. Colibrishop → Colibrishop_EU)."""
+    from_acc = (data.get("from_account") or "").strip()
+    to_acc = (data.get("to_account") or "").strip()
+    if not from_acc or not to_acc:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Manjka from_account ali to_account."}, status_code=400)
+    if not META_ADS_FILE.exists():
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Ni naloženih Meta podatkov."}, status_code=400)
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+        text = META_ADS_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        sep = ';' if text.split('\n',1)[0].count(';') > text.split('\n',1)[0].count(',') else ','
+        reader = _csv.DictReader(_SIO(text), delimiter=sep)
+        rows = [r for r in reader if r.get('Campaign name','').strip()]
+        headers = list(rows[0].keys()) if rows else []
+        if 'Account name' not in headers:
+            headers.append('Account name')
+
+        renamed = 0
+        for r in rows:
+            if (r.get('Account name') or '').strip() == from_acc:
+                r['Account name'] = to_acc
+                renamed += 1
+
+        out = _SIO()
+        writer = _csv.DictWriter(out, fieldnames=headers, extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(rows)
+        META_ADS_FILE.write_text(out.getvalue(), encoding='utf-8')
+
+        return {"status": "ok", "renamed_rows": renamed, "from": from_acc, "to": to_acc}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/analiza-meta-clear")
 async def analiza_meta_clear():
     """Počisti vse naložene Meta Ads CSV podatke."""
@@ -6786,7 +6828,7 @@ OBRAT14_FILE = DATA_DIR / "obrat_14dni.txt"
 OBRAT14_META = DATA_DIR / "obrat_14dni_meta.json"
 
 # Whitelist accounts za Obrat 14dni view
-TARGET_ACCOUNTS = ['Maaarket X', 'Maaarket ALL', 'Maaarket ALL2', 'Maaarket ALL3 + RS', 'Zipply.', 'si_SUBAN_Maaarket SK', 'Maaarket PL/RO', 'Maaarket HR', 'si_Suban_Maaarket HR', 'Easyzo', 'Thundershop ALL HU', 'ThunderShop HR', 'ThunderShop RS', 'Colibrishop']
+TARGET_ACCOUNTS = ['Maaarket X', 'Maaarket ALL', 'Maaarket ALL2', 'Maaarket ALL3 + RS', 'Zipply.', 'si_SUBAN_Maaarket SK', 'Maaarket PL/RO', 'Maaarket HR', 'si_Suban_Maaarket HR', 'Easyzo', 'Thundershop ALL HU', 'ThunderShop HR', 'ThunderShop RS', 'Colibrishop_EU']
 # Ko dobiš nova accounta, dodaj ju sem IN v AD_ACCOUNTS_CONFIG v index.html
 
 
