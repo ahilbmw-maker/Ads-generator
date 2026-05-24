@@ -2253,7 +2253,8 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div id="anMetaUploads" style="margin-top:8px;display:none">
             <div style="font-size:10px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">Naloženi CSV-ji:</div>
             <div id="anMetaUploadsList" style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text-secondary)"></div>
-            <button onclick="anMetaClear()" style="margin-top:8px;padding:4px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🗑 Počisti vse &amp; začni znova</button>
+            <button onclick="anMetaFixAccount()" style="margin-top:8px;padding:4px 10px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🔧 Dodeli account praznim vrsticam</button>
+            <button onclick="anMetaClear()" style="margin-top:6px;padding:4px 10px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">🗑 Počisti vse &amp; začni znova</button>
           </div>
         </div>
 
@@ -12184,6 +12185,26 @@ function anMetaHandleDrop(ev) {
   ev.currentTarget.classList.remove('drag-over');
   const f = ev.dataTransfer.files[0];
   if (f) anLoadMeta(f);
+}
+
+async function anMetaFixAccount() {
+  const acc = prompt('Vpiši ime ad accounta za vrstice ki nimajo accounta (npr. Colibrishop):', 'Colibrishop');
+  if (!acc || !acc.trim()) return;
+  try {
+    const res = await fetch('/analiza-meta-fix-account', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({account_name: acc.trim()})
+    });
+    const data = await res.json();
+    if (data.error) { alert('Napaka: ' + data.error); return; }
+    alert(`✓ Dodeljen account "${data.account}" za ${data.fixed_rows} vrstic.`);
+    // Reset checked accounts da se nov account doda
+    delete window._anCheckedAccounts;
+    delete window._anSeenAccounts;
+    await anLoadMetaFromServer();
+  } catch(e) {
+    alert('Napaka: ' + e.message);
+  }
 }
 
 async function anLoadMeta(file) {
