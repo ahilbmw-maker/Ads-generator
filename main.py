@@ -9958,6 +9958,103 @@ async def forecast2_set_final(data: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.post("/forecast2-bulk-import")
+async def forecast2_bulk_import(data: dict):
+    """Bulk uvoz/posodobitev končnih dnevnih podatkov iz prilepljenega teksta.
+    Sprejme različne formate (TAB/presledek ločeno):
+      01.01.2026	980	€ 18.552,94
+      2026-01-01  980  18552.94
+    Prepiše obstoječe dni (posodobitev za storno/neprevzete pakete).
+    """
+    try:
+        text = data.get("text", "") or ""
+        if not text.strip():
+            return {"ok": False, "error": "Prazen tekst."}
+
+        imported = 0
+        skipped = 0
+        errors = []
+        sample = []
+
+        for raw_line in text.split('\n'):
+            line = raw_line.strip()
+            if not line:
+                continue
+            # Preskoči glave/seštevke
+            low = line.lower()
+            if low.startswith('dan') or low.startswith('skupaj') or low.startswith('total') or low.startswith('datum'):
+                continue
+
+            # Razdeli po tabih ALI 2+ presledkih
+            parts = re.split(r'\t+|\s{2,}', line)
+            if len(parts) < 3:
+                # morda en presledek loči — poskusi splitati na 3 dele od konca
+                parts = line.split()
+                if len(parts) < 3:
+                    skipped += 1
+                    continue
+
+            date_raw = parts[0].strip()
+
+            # Datum: DD.MM.YYYY ali YYYY-MM-DD
+            iso = None
+            m = re.match(r'^(\d{1,2})\.(\d{1,2})\.(\d{4})$', date_raw)
+            if m:
+                iso = f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+            elif re.match(r'^\d{4}-\d{2}-\d{2}$', date_raw):
+                iso = date_raw
+            if not iso:
+                skipped += 1
+                continue
+
+            # Naročila — drugi stolpec, samo številke
+            orders_raw = re.sub(r'[^\d]', '', parts[1])
+            orders = int(orders_raw) if orders_raw else 0
+
+            # Promet — zadnji stolpec (lahko vsebuje € in presledke)
+            rev_raw = " ".join(parts[2:]).replace('€', '').strip()
+            # Slovenski format: 18.552,94 (. tisočica, , decimalka)
+            # Angleški: 18552.94
+            if ',' in rev_raw and '.' in rev_raw:
+                # oba — predpostavi . = tisočica, , = decimalka
+                rev_clean = rev_raw.replace('.', '').replace(',', '.')
+            elif ',' in rev_raw:
+                # samo vejica = decimalka
+                rev_clean = rev_raw.replace(',', '.')
+            else:
+                rev_clean = rev_raw
+            rev_clean = re.sub(r'[^\d.]', '', rev_clean)
+            try:
+                revenue = float(rev_clean) if rev_clean else 0.0
+            except ValueError:
+                errors.append(f"{iso}: neveljaven promet '{rev_raw}'")
+                skipped += 1
+                continue
+
+            # Shrani (prepiše obstoječ final)
+            day = _forecast2_load_day(iso)
+            day["final"] = {
+                "orders": orders,
+                "revenue": revenue,
+                "_set_at": _lj_now().isoformat(),
+                "_source": "bulk_import",
+            }
+            _forecast2_save_day(iso, day)
+            imported += 1
+            if len(sample) < 3:
+                sample.append({"date": iso, "orders": orders, "revenue": revenue})
+
+        return {
+            "ok": True,
+            "imported": imported,
+            "skipped": skipped,
+            "errors": errors[:10],
+            "sample": sample,
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
 @app.get("/forecast2-history")
 async def forecast2_history(days: int = 60):
     """Vrne zgodovino zadnjih N dni — vsak dan z entries + final."""
