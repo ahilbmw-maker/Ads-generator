@@ -321,6 +321,18 @@
           </div>
         </div>
 
+        <!-- Bulk uvoz / posodobitev več dni naenkrat -->
+        <div style="padding:10px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:var(--radius);margin-bottom:12px">
+          <div style="font-size:11px;font-weight:600;color:#6366f1;margin-bottom:4px">📋 BULK UVOZ / POSODOBITEV (več dni naenkrat)</div>
+          <div style="font-size:10px;color:var(--text-secondary);margin-bottom:8px;line-height:1.4">Prilepi tabelo iz Excela/poročila (datum, naročila, promet). Obstoječi dnevi se <strong>prepišejo</strong> — uporabno za posodobitev po stornih/neprevzetih paketih.</div>
+          <textarea id="bulk-import-text" placeholder="01.01.2026&#9;980&#9;€ 18.552,94&#10;02.01.2026&#9;1274&#9;€ 26.583,55&#10;..." style="width:100%;min-height:90px;padding:8px 10px;background:var(--surface2,#f8f9fb);border:1px solid var(--border,#e5e7eb);border-radius:var(--radius);font-size:11px;font-family:'DM Mono',monospace;color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="bulkImport()" style="background:#6366f1;border-color:#6366f1">⬆ Uvozi / posodobi</button>
+            <label class="btn btn-soft" style="cursor:pointer;margin:0">📁 Naloži .txt/.csv<input type="file" id="bulk-import-file" accept=".txt,.csv,.tsv" style="display:none" onchange="bulkImportFile(event)"></label>
+            <span id="bulk-import-status" style="font-size:11px;color:var(--text-secondary)"></span>
+          </div>
+        </div>
+
         <div id="history-list">
           <div class="empty">Nalagam…</div>
         </div>
@@ -718,6 +730,51 @@ async function loadDay(date) {
   }
 }
 
+function bulkImportFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('bulk-import-text').value = e.target.result;
+    toast('Datoteka naložena — klikni "Uvozi / posodobi"');
+  };
+  reader.readAsText(file);
+  event.target.value = '';  // reset za ponoven izbor
+}
+
+async function bulkImport() {
+  const text = document.getElementById('bulk-import-text').value.trim();
+  const status = document.getElementById('bulk-import-status');
+  if (!text) { toast('Prilepi ali naloži podatke', true); return; }
+
+  status.textContent = '⏳ Uvažam...';
+  status.style.color = 'var(--text-secondary)';
+  try {
+    const r = await fetch('/forecast2-bulk-import', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ text })
+    });
+    const data = await r.json();
+    if (!data.ok) { status.textContent = '✗ ' + (data.error || 'napaka'); status.style.color = 'var(--red,#ef4444)'; return; }
+
+    status.textContent = `✓ Uvoženih ${data.imported} dni` + (data.skipped ? ` (${data.skipped} preskočenih)` : '');
+    status.style.color = '#16a34a';
+    toast(`✓ Uvoženih/posodobljenih ${data.imported} dni`);
+
+    // Osveži VSE poglede ki uporabljajo te podatke
+    await loadHistory();
+    if (typeof loadStats === 'function') loadStats();
+    if (typeof loadYearly === 'function') loadYearly();
+    if (typeof renderAnalytics === 'function') renderAnalytics();
+
+    // Počisti polje po uspešnem uvozu
+    document.getElementById('bulk-import-text').value = '';
+  } catch(e) {
+    status.textContent = '✗ ' + e.message;
+    status.style.color = 'var(--red,#ef4444)';
+  }
+}
+
 async function setFinal() {
   const date = document.getElementById('final-date').value;
   const orders = parseInt(document.getElementById('final-orders').value || 0);
@@ -735,6 +792,8 @@ async function setFinal() {
     if (!data.ok) { toast('Napaka: ' + (data.error||'unknown'), true); return; }
     toast('✓ Končni podatki shranjeni za ' + date);
     loadHistory();
+    if (typeof loadYearly === 'function') loadYearly();
+    if (typeof loadStats === 'function') loadStats();
   } catch(e) {
     toast('Napaka: ' + e.message, true);
   }
