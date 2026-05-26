@@ -2535,7 +2535,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div>
 
         <!-- ─── SCALING RECOMMENDER HERO ─── -->
-        <div style="background:linear-gradient(135deg,#7c3aed 0%,#a855f7 100%);color:white;border-radius:12px;padding:18px 22px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+        <div id="beta-recommender-hero" style="background:linear-gradient(135deg,#7c3aed 0%,#a855f7 100%);color:white;border-radius:12px;padding:18px 22px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
           <div style="flex:1;min-width:240px">
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.85;font-weight:600;margin-bottom:4px">🚀 SCALING RECOMMENDER</div>
             <div style="font-size:18px;font-weight:700;letter-spacing:-0.3px">Najdi SKU za inflated bid scaling</div>
@@ -10590,7 +10590,7 @@ function switchAnalizaTab(tab) {
   if (tab === 'meta') { anLoadStock(); anLoadMetaFromServer(); }
   if (tab === 'obrat14tt') { tt14LoadData(); }
   if (tab === 'ttkreative') { ttKrLoadData(); }
-  if (tab === 'beta') { betaLoadHistory(true); }
+  if (tab === 'beta') { betaLoadHistory(true); betaRestoreState(); }
   if (tab === 'cashflow') { cfLoadData(); }
   if (tab === 'shipping') { shipLoadData(); }
   try { localStorage.setItem('slx_active_subtab', tab); } catch(e) {}
@@ -14852,7 +14852,109 @@ function betaRunRecommender() {
   if (!window._betaSortDir) window._betaSortDir = 'desc';
   if (!window._betaSegFilter) window._betaSegFilter = 'all';
 
+  // Shrani na disk (kompakten povzetek — brez dnevnih arrayev) + skrij gumb
+  betaSaveStateToDisk();
+  betaToggleSelectBtn(false);
+
   betaRenderRecommenderTable();
+}
+
+// ─── SCALING STATE: disk shranjevanje + scale označevanje ───
+function betaToggleSelectBtn(show) {
+  const hero = document.getElementById('beta-recommender-hero');
+  if (hero) hero.style.display = show ? '' : 'none';
+}
+
+async function betaSaveStateToDisk() {
+  // Kompakten povzetek (brez campaign.days — preveliko)
+  const compact = (window._betaResults || []).map(r => ({
+    sku: betaExtractSku(r.campaign.name),
+    name: r.campaign.name,
+    tier: r.tier, score: r.score, action: r.action,
+    cpp: r.metrics.overallCPP, spend: r.campaign.spend,
+    purchases: r.campaign.purchases, days: r.metrics.dayCount,
+    freq: r.campaign.freq,
+    recentCPP: r.metrics.recentCPP, earlyCPP: r.metrics.earlyCPP,
+    signals: r.signals,
+  }));
+  const disq = (window._betaDisqualified || []).map(r => ({
+    sku: betaExtractSku(r.campaign.name), blockers: r.blockers,
+  }));
+  try {
+    await fetch('/scaling-state-save', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ results: { qualified: compact, disqualified: disq } })
+    });
+  } catch(e) {}
+}
+
+async function betaLoadScaledMap() {
+  // Naloži kateri SKU-ji so že skalirani (čez sezone)
+  try {
+    const r = await fetch('/scaling-state');
+    const data = await r.json();
+    window._betaScaledMap = (data.ok && data.scaled) ? data.scaled : {};
+    return data;
+  } catch(e) {
+    window._betaScaledMap = {};
+    return null;
+  }
+}
+
+async function betaMarkScaled(sku, scaled) {
+  try {
+    await fetch('/scaling-state-mark', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ sku, scaled })
+    });
+    if (!window._betaScaledMap) window._betaScaledMap = {};
+    if (scaled) window._betaScaledMap[sku] = { scaled_at: new Date().toISOString() };
+    else delete window._betaScaledMap[sku];
+    betaRenderRecommenderTable();
+  } catch(e) {}
+}
+
+async function betaArchiveList() {
+  if (!confirm('Arhiviram komplet seznam?\n\nGumb "Izberi kandidate" bo spet viden za novo analizo.\nOznake skaliranih kampanj OSTANEJO (za prepoznavo v prihodnje).')) return;
+  try {
+    await fetch('/scaling-state-archive', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ clear_scaled: false })
+    });
+  } catch(e) {}
+  window._betaResults = null;
+  window._betaDisqualified = null;
+  const wrap = document.getElementById('beta-recommender-result');
+  if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
+  betaToggleSelectBtn(true);
+}
+
+// Naloži shranjeno stanje ob odprtju (refresh ne izgubi)
+async function betaRestoreState() {
+  await betaLoadScaledMap();
+  try {
+    const r = await fetch('/scaling-state');
+    const data = await r.json();
+    if (data.ok && data.results && data.results.qualified && data.results.qualified.length) {
+      // Obnovi iz diska (kompakten format → adapter za render)
+      window._betaResults = data.results.qualified.map(c => ({
+        tier: c.tier, score: c.score, action: c.action, signals: c.signals || [],
+        campaign: { name: c.name, spend: c.spend, purchases: c.purchases, freq: c.freq, days: [] },
+        metrics: { overallCPP: c.cpp, targetCPP: 10, dayCount: c.days, recentCPP: c.recentCPP, earlyCPP: c.earlyCPP },
+      }));
+      window._betaDisqualified = (data.results.disqualified || []).map(d => ({
+        tier: 'DISQUALIFIED', blockers: d.blockers || [], campaign: { name: d.sku } }));
+      window._betaSortCol = window._betaSortCol || 'score';
+      window._betaSortDir = window._betaSortDir || 'desc';
+      window._betaSegFilter = window._betaSegFilter || 'all';
+      betaToggleSelectBtn(false);
+      betaRenderRecommenderTable();
+    } else {
+      betaToggleSelectBtn(true);
+    }
+  } catch(e) {
+    betaToggleSelectBtn(true);
+  }
 }
 
 // Barve po tier (ujemajo z mockup pristop B/C)
@@ -14923,14 +15025,18 @@ function betaRenderRecommenderTable() {
     return `<button onclick="betaSegFilter('${key}')" style="border:none;border-radius:999px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;${activeStyle}">${label} ${count}</button>`;
   };
 
+  const scaledMap = window._betaScaledMap || {};
+  const scaledCount = rows.filter(r => scaledMap[betaExtractSku(r.campaign.name)]).length;
+
   let html = `
     <div style="margin-bottom:14px;padding:14px 16px;background:linear-gradient(135deg,#0f172a,#1e293b);color:white;border-radius:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
         <div>
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.7;font-weight:700">🤖 Scaling Recommender</div>
           <div style="font-size:18px;font-weight:800;margin-top:3px">Analiza ${qualified.length} kvalificiranih SKU</div>
-          <div style="font-size:11px;opacity:0.7;margin-top:2px">${disqualified.length} ne ustreza kriterijem · MAX CPA 10€</div>
+          <div style="font-size:11px;opacity:0.7;margin-top:2px">${disqualified.length} ne ustreza kriterijem · MAX CPA 10€${scaledCount ? ` · ✅ ${scaledCount} skaliranih` : ''}</div>
         </div>
+        <button onclick="betaArchiveList()" style="padding:8px 16px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">📦 Arhiviraj seznam</button>
       </div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
@@ -14964,6 +15070,7 @@ function betaRenderRecommenderTable() {
             ${th('spend','Spend','right')}
             ${th('nakupi','Nak.','right')}
             <th style="text-align:center;padding:9px 10px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px">Akcija</th>
+            <th style="text-align:center;padding:9px 10px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px">✓ Skaliral</th>
           </tr>
         </thead>
         <tbody>
@@ -14974,13 +15081,16 @@ function betaRenderRecommenderTable() {
     const tc = BETA_TIER_COLORS[r.tier] || BETA_TIER_COLORS.HOLD;
     const cppColor = (r.metrics.overallCPP && r.metrics.overallCPP < r.metrics.targetCPP) ? '#0F6E56' : 'var(--text)';
     const shortAction = r.tier === 'HOT' ? '+50%' : r.tier === 'STRONG' ? '+25%' : r.tier === 'WATCH' ? 'opazuj' : r.tier === 'KILL' ? 'kill' : 'drži';
+    const isScaled = !!scaledMap[sku];
+    const rowBg = isScaled ? 'background:rgba(34,197,94,0.07)' : '';
 
     html += `
-      <tr onclick="betaToggleRow(${idx})" style="border-top:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <tr onclick="betaToggleRow(${idx})" style="border-top:1px solid var(--border);cursor:pointer;${rowBg}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='${isScaled ? 'rgba(34,197,94,0.07)' : ''}'">
         <td style="padding:10px">
           <div style="display:flex;align-items:center;gap:8px">
             <span style="width:7px;height:7px;border-radius:50%;background:${tc.dot};flex-shrink:0"></span>
-            <span style="font-weight:600;color:var(--text)">${sku}</span>
+            <span style="font-weight:600;color:var(--text);${isScaled?'text-decoration:line-through;opacity:0.6':''}">${sku}</span>
+            ${isScaled ? '<span style="font-size:9px;background:#16a34a;color:#fff;padding:1px 6px;border-radius:4px;font-weight:700">✓ SCALED</span>' : ''}
             <i class="ti ti-chevron-down" style="font-size:13px;color:var(--text-tertiary);margin-left:auto"></i>
           </div>
         </td>
@@ -14989,9 +15099,12 @@ function betaRenderRecommenderTable() {
         <td style="text-align:right;padding:10px;font-family:'DM Mono',monospace">${r.campaign.spend.toFixed(0)}€</td>
         <td style="text-align:right;padding:10px;color:var(--accent);font-weight:600;font-family:'DM Mono',monospace">${r.campaign.purchases}</td>
         <td style="text-align:center;padding:10px"><span style="font-size:11px;color:${tc.fg};font-weight:700">${shortAction}</span></td>
+        <td style="text-align:center;padding:10px" onclick="event.stopPropagation()">
+          <input type="checkbox" ${isScaled?'checked':''} onchange="betaMarkScaled('${sku.replace(/'/g,"\\'")}', this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:#16a34a">
+        </td>
       </tr>
       <tr id="beta-row-detail-${idx}" style="display:none;background:var(--surface2)">
-        <td colspan="6" style="padding:12px 16px">
+        <td colspan="7" style="padding:12px 16px">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
             <span style="font-size:10px;color:var(--text-tertiary);font-family:'DM Mono',monospace">${r.campaign.name.slice(0,80)}${r.campaign.name.length>80?'…':''}</span>
             <span style="font-size:13px;font-weight:700;color:${tc.fg}">${r.action}</span>
