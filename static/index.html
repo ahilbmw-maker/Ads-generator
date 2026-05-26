@@ -14983,6 +14983,33 @@ function betaSearchInput(val) {
   }
 }
 
+function betaCopyName(btn, idx) {
+  // Pridobi ime iz trenutno prikazanih (filtriranih+sortiranih) vrstic
+  const rows = window._betaVisibleRows || [];
+  const r = rows[idx];
+  const name = r ? r.campaign.name : '';
+  if (!name) return;
+  const done = () => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="ti ti-check" style="font-size:13px;color:#16a34a"></i>';
+    setTimeout(() => { btn.innerHTML = orig; }, 1200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(name).then(done).catch(() => {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = name; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch(e) {}
+      document.body.removeChild(ta); done();
+    });
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = name; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch(e) {}
+    document.body.removeChild(ta); done();
+  }
+}
+
 function betaSortBy(col) {
   if (window._betaSortCol === col) {
     window._betaSortDir = window._betaSortDir === 'asc' ? 'desc' : 'asc';
@@ -15085,6 +15112,7 @@ function betaRenderRecommenderTable() {
   }
 
   // Tabela
+  window._betaVisibleRows = rows;  // za betaCopyName + betaToggleRow (po filtru/sortu)
   const th = (col, label, align) => `<th onclick="betaSortBy('${col}')" style="text-align:${align};padding:9px 10px;font-size:10px;font-weight:700;color:${sortCol===col?'var(--accent)':'var(--text-secondary)'};text-transform:uppercase;letter-spacing:0.4px;cursor:pointer;user-select:none;white-space:nowrap">${label}${arrow(col)}</th>`;
 
   html += `
@@ -15119,6 +15147,7 @@ function betaRenderRecommenderTable() {
             <span style="width:7px;height:7px;border-radius:50%;background:${tc.dot};flex-shrink:0"></span>
             <span style="font-weight:600;color:var(--text);${isScaled?'text-decoration:line-through;opacity:0.6':''}">${sku}</span>
             ${isScaled ? '<span style="font-size:9px;background:#16a34a;color:#fff;padding:1px 6px;border-radius:4px;font-weight:700">✓ SCALED</span>' : ''}
+            <button onclick="event.stopPropagation();betaCopyName(this, ${idx})" title="Kopiraj ime kampanje" style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;color:var(--text-secondary);font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:3px"><i class="ti ti-copy" style="font-size:13px"></i></button>
             <i class="ti ti-chevron-down" style="font-size:13px;color:var(--text-tertiary);margin-left:auto"></i>
           </div>
         </td>
