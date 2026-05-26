@@ -2323,6 +2323,9 @@ input[type="text"].error { border-color: var(--red) !important; }
               <span style="font-size:11px">📊 Klikni ali povleci TXT/TSV</span>
             </div>
             <input type="file" id="o14Input" accept=".txt,.tsv,.csv" style="display:none" onchange="o14Upload(this.files[0])">
+            <div style="margin-top:10px;font-size:10px;color:var(--text-tertiary);text-align:center">— ali prilepi podatke —</div>
+            <textarea id="o14PasteText" placeholder="Prilepi tabelo iz Excela/sistema (SKU, Naziv, Količina)..." style="width:100%;min-height:70px;margin-top:6px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;font-family:'DM Mono',monospace;color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
+            <button onclick="o14UploadPaste()" style="width:100%;margin-top:6px;padding:7px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Naloži prilepljeno</button>
             <div id="o14Status" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
             <div id="o14Info" style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:none"></div>
           </div>
@@ -11362,6 +11365,26 @@ function o14HandleDrop(ev) {
   ev.currentTarget.classList.remove('drag-over');
   const f = ev.dataTransfer.files[0];
   if (f) o14Upload(f);
+}
+
+async function o14UploadPaste() {
+  const text = (document.getElementById('o14PasteText')?.value || '').trim();
+  if (!text) {
+    const status = document.getElementById('o14Status');
+    status.style.display = 'block';
+    status.textContent = '✗ Polje je prazno — prilepi podatke';
+    status.style.color = 'var(--red)';
+    return;
+  }
+  // Pretvori prilepljen text v File (isti endpoint kot upload)
+  const blob = new Blob([text], { type: 'text/plain' });
+  const file = new File([blob], 'obrat_paste.txt', { type: 'text/plain' });
+  await o14Upload(file);
+  // Po uspehu počisti polje
+  const status = document.getElementById('o14Status');
+  if (status && status.style.color === 'var(--green)') {
+    document.getElementById('o14PasteText').value = '';
+  }
 }
 
 async function o14Upload(file) {
