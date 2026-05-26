@@ -14991,8 +14991,9 @@ function betaCopyName(btn, idx) {
   if (!name) return;
   const done = () => {
     const orig = btn.innerHTML;
-    btn.innerHTML = '<i class="ti ti-check" style="font-size:13px;color:#16a34a"></i>';
-    setTimeout(() => { btn.innerHTML = orig; }, 1200);
+    btn.innerHTML = '✅';
+    btn.style.borderColor = '#16a34a';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.borderColor = 'var(--border)'; }, 1200);
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(name).then(done).catch(() => {
@@ -15147,8 +15148,8 @@ function betaRenderRecommenderTable() {
             <span style="width:7px;height:7px;border-radius:50%;background:${tc.dot};flex-shrink:0"></span>
             <span style="font-weight:600;color:var(--text);${isScaled?'text-decoration:line-through;opacity:0.6':''}">${sku}</span>
             ${isScaled ? '<span style="font-size:9px;background:#16a34a;color:#fff;padding:1px 6px;border-radius:4px;font-weight:700">✓ SCALED</span>' : ''}
-            <button onclick="event.stopPropagation();betaCopyName(this, ${idx})" title="Kopiraj ime kampanje" style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;color:var(--text-secondary);font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:3px"><i class="ti ti-copy" style="font-size:13px"></i></button>
-            <i class="ti ti-chevron-down" style="font-size:13px;color:var(--text-tertiary);margin-left:auto"></i>
+            <button onclick="event.stopPropagation();betaCopyName(this, ${idx})" title="Kopiraj ime kampanje" style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--text-secondary);font-family:'DM Sans',sans-serif;flex-shrink:0;line-height:1">📋</button>
+            <span style="font-size:11px;color:var(--text-tertiary);margin-left:auto">▾</span>
           </div>
         </td>
         <td style="text-align:center;padding:10px"><span style="background:${tc.bg};color:${tc.fg};font-size:12px;font-weight:700;padding:2px 9px;border-radius:6px">${r.score}</span></td>
