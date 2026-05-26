@@ -14952,8 +14952,8 @@ function betaRunRecommender() {
 
 function betaAnalyze() {
   if (!betaCampaigns.length) { alert('Najprej naloži CSV!'); return; }
-  document.getElementById('beta-results-card').style.display = 'block';
-  document.getElementById('beta-ai-card').style.display = 'block';
+  // Tabela ANALIZA KAMPANJ + AI PRIPOROČILA odstranjeni — tukaj gledamo SAMO
+  // Scaling Recommender (SKU za inflated bid scaling).
   betaRenderTable();
 }
 
