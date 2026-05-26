@@ -14807,7 +14807,7 @@ function betaAnalyzeScalingCandidate(campaign, targetCPP) {
 
 function betaRunRecommender() {
   if (!betaCampaigns.length) { alert('Najprej naloži CSV!'); return; }
-  const targetCPP = 15;  // Hard-coded target — odstranjeni inputi UI
+  const targetCPP = 10;  // Hard-coded target — MAX CPA 10€ (prej 15€)
 
   const results = betaCampaigns.map(c => betaAnalyzeScalingCandidate(c, targetCPP));
 
@@ -14822,112 +14822,176 @@ function betaRunRecommender() {
   const tierCounts = {HOT:0, STRONG:0, WATCH:0, HOLD:0, KILL:0};
   qualified.forEach(r => tierCounts[r.tier]++);
 
+  // Shrani rezultate globalno za sort/filter brez ponovne analize
+  window._betaResults = qualified;
+  window._betaDisqualified = disqualified;
+  if (!window._betaSortCol) window._betaSortCol = 'score';
+  if (!window._betaSortDir) window._betaSortDir = 'desc';
+  if (!window._betaSegFilter) window._betaSegFilter = 'all';
+
+  betaRenderRecommenderTable();
+}
+
+// Barve po tier (ujemajo z mockup pristop B/C)
+const BETA_TIER_COLORS = {
+  HOT:    { bg:'#FCEBEB', fg:'#A32D2D', dot:'#E24B4A' },
+  STRONG: { bg:'#FAECE7', fg:'#993C1D', dot:'#D85A30' },
+  WATCH:  { bg:'#FAEEDA', fg:'#854F0B', dot:'#EF9F27' },
+  HOLD:   { bg:'#E6F1FB', fg:'#185FA5', dot:'#378ADD' },
+  KILL:   { bg:'#EEEDFE', fg:'#3C3489', dot:'#7F77DD' },
+};
+
+function betaSegFilter(seg) {
+  window._betaSegFilter = seg;
+  betaRenderRecommenderTable();
+}
+
+function betaSortBy(col) {
+  if (window._betaSortCol === col) {
+    window._betaSortDir = window._betaSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    window._betaSortCol = col;
+    // privzeta smer: score/spend/nakupi padajoče, cpp naraščajoče
+    window._betaSortDir = (col === 'cpp') ? 'asc' : 'desc';
+  }
+  betaRenderRecommenderTable();
+}
+
+function betaToggleRow(idx) {
+  const el = document.getElementById('beta-row-detail-' + idx);
+  if (el) el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
+}
+
+function betaRenderRecommenderTable() {
+  const wrap = document.getElementById('beta-recommender-result');
+  if (!wrap) return;
+  const qualified = window._betaResults || [];
+  const disqualified = window._betaDisqualified || [];
+
+  const tierCounts = {HOT:0, STRONG:0, WATCH:0, HOLD:0, KILL:0};
+  qualified.forEach(r => tierCounts[r.tier]++);
+
+  const seg = window._betaSegFilter || 'all';
+  const sortCol = window._betaSortCol || 'score';
+  const sortDir = window._betaSortDir || 'desc';
+
+  // Filtriraj po segmentu
+  let rows = qualified.filter(r => seg === 'all' || r.tier === seg);
+
+  // Sortiraj
+  const getVal = (r) => {
+    if (sortCol === 'score') return r.score;
+    if (sortCol === 'cpp') return r.metrics.overallCPP || 0;
+    if (sortCol === 'spend') return r.campaign.spend || 0;
+    if (sortCol === 'nakupi') return r.campaign.purchases || 0;
+    return r.score;
+  };
+  rows.sort((a, b) => sortDir === 'asc' ? getVal(a) - getVal(b) : getVal(b) - getVal(a));
+
+  const arrow = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕';
+
+  // Segment pills
+  const pill = (key, label, count) => {
+    const active = seg === key;
+    const c = key === 'all' ? {bg:'var(--text)', fg:'#fff'} : {bg: BETA_TIER_COLORS[key].bg, fg: BETA_TIER_COLORS[key].fg};
+    const activeStyle = active
+      ? (key === 'all' ? `background:var(--text);color:var(--surface)` : `background:${BETA_TIER_COLORS[key].dot};color:#fff`)
+      : `background:${key==='all'?'var(--surface2)':c.bg};color:${key==='all'?'var(--text)':c.fg}`;
+    return `<button onclick="betaSegFilter('${key}')" style="border:none;border-radius:999px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;${activeStyle}">${label} ${count}</button>`;
+  };
+
   let html = `
-    <div style="margin-bottom:16px;padding:14px 16px;background:linear-gradient(135deg,#0f172a,#1e293b);color:white;border-radius:10px">
+    <div style="margin-bottom:14px;padding:14px 16px;background:linear-gradient(135deg,#0f172a,#1e293b);color:white;border-radius:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
         <div>
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.7;font-weight:700">🤖 Scaling Recommender</div>
           <div style="font-size:18px;font-weight:800;margin-top:3px">Analiza ${qualified.length} kvalificiranih SKU</div>
-          <div style="font-size:11px;opacity:0.7;margin-top:2px">${disqualified.length} ne ustreza kriterijem (premalo nakupov/dni/spend)</div>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${tierCounts.HOT > 0 ? `<span style="padding:5px 12px;background:#dc2626;border-radius:6px;font-size:11px;font-weight:700">🔥 ${tierCounts.HOT} HOT</span>` : ''}
-          ${tierCounts.STRONG > 0 ? `<span style="padding:5px 12px;background:#ea580c;border-radius:6px;font-size:11px;font-weight:700">💪 ${tierCounts.STRONG} STRONG</span>` : ''}
-          ${tierCounts.WATCH > 0 ? `<span style="padding:5px 12px;background:#ca8a04;border-radius:6px;font-size:11px;font-weight:700">👁️ ${tierCounts.WATCH} WATCH</span>` : ''}
-          ${tierCounts.HOLD > 0 ? `<span style="padding:5px 12px;background:#64748b;border-radius:6px;font-size:11px;font-weight:700">⏸️ ${tierCounts.HOLD} HOLD</span>` : ''}
-          ${tierCounts.KILL > 0 ? `<span style="padding:5px 12px;background:#7c3aed;border-radius:6px;font-size:11px;font-weight:700">🛑 ${tierCounts.KILL} KILL</span>` : ''}
+          <div style="font-size:11px;opacity:0.7;margin-top:2px">${disqualified.length} ne ustreza kriterijem · MAX CPA 10€</div>
         </div>
       </div>
     </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      ${pill('all','Vse', qualified.length)}
+      ${pill('HOT','🔥', tierCounts.HOT)}
+      ${pill('STRONG','💪', tierCounts.STRONG)}
+      ${pill('WATCH','👁️', tierCounts.WATCH)}
+      ${pill('HOLD','⏸️', tierCounts.HOLD)}
+      ${tierCounts.KILL > 0 ? pill('KILL','🛑', tierCounts.KILL) : ''}
+    </div>
   `;
 
-  if (qualified.length === 0) {
-    html += `<div style="padding:30px;text-align:center;color:var(--text-tertiary);background:var(--surface);border:1px dashed var(--border);border-radius:10px">
-      Nobena kampanja ni izpolnila minimalnih kriterijev (min. 10 nakupov, 3 dni, 30€ spend).
-    </div>`;
+  if (rows.length === 0) {
+    html += `<div style="padding:30px;text-align:center;color:var(--text-tertiary);background:var(--surface);border:1px dashed var(--border);border-radius:10px">Ni kampanj v tem segmentu.</div>`;
+    wrap.innerHTML = html;
+    wrap.style.display = 'block';
+    return;
   }
 
-  // Render qualified cards
-  for (const r of qualified) {
-    const sku = betaExtractSku(r.campaign.name);
-    const tierIcon = {HOT:'🔥', STRONG:'💪', WATCH:'👁️', HOLD:'⏸️', KILL:'🛑'}[r.tier];
+  // Tabela
+  const th = (col, label, align) => `<th onclick="betaSortBy('${col}')" style="text-align:${align};padding:9px 10px;font-size:10px;font-weight:700;color:${sortCol===col?'var(--accent)':'var(--text-secondary)'};text-transform:uppercase;letter-spacing:0.4px;cursor:pointer;user-select:none;white-space:nowrap">${label}${arrow(col)}</th>`;
 
-    // Mini chart (CPP po dnevih) — ASCII spark
-    const chartDays = r.campaign.days.filter(d => d.purchases > 0);
-    let sparkHtml = '';
-    if (chartDays.length >= 2) {
-      const cpps = chartDays.map(d => d.spend / d.purchases);
-      const min = Math.min(...cpps);
-      const max = Math.max(...cpps);
-      const range = max - min || 1;
-      const heights = cpps.map(v => 4 + (1 - (v - min) / range) * 24);  // padajoč CPP = višja črta
-      sparkHtml = `
-        <div style="margin-top:10px;padding:10px 12px;background:var(--surface2);border-radius:6px">
-          <div style="font-size:9px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;font-weight:700">📈 CPP trend (manjši = boljši)</div>
-          <div style="display:flex;align-items:flex-end;gap:2px;height:32px">
-            ${heights.map((h, i) => `<div title="${chartDays[i].day}: ${cpps[i].toFixed(2)}€" style="flex:1;height:${h}px;background:linear-gradient(to top,${r.color},${r.color}aa);border-radius:2px 2px 0 0;min-width:8px"></div>`).join('')}
-          </div>
-          <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-tertiary);margin-top:4px;font-family:'DM Mono',monospace">
-            <span>${chartDays[0].day}</span>
-            <span>${chartDays[chartDays.length-1].day}</span>
-          </div>
-        </div>
-      `;
-    }
+  html += `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:var(--surface2)">
+            <th style="text-align:left;padding:9px 10px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px">Kampanja</th>
+            ${th('score','Score','center')}
+            ${th('cpp','CPP','right')}
+            ${th('spend','Spend','right')}
+            ${th('nakupi','Nak.','right')}
+            <th style="text-align:center;padding:9px 10px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px">Akcija</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  rows.forEach((r, idx) => {
+    const sku = betaExtractSku(r.campaign.name);
+    const tc = BETA_TIER_COLORS[r.tier] || BETA_TIER_COLORS.HOLD;
+    const cppColor = (r.metrics.overallCPP && r.metrics.overallCPP < r.metrics.targetCPP) ? '#0F6E56' : 'var(--text)';
+    const shortAction = r.tier === 'HOT' ? '+50%' : r.tier === 'STRONG' ? '+25%' : r.tier === 'WATCH' ? 'opazuj' : r.tier === 'KILL' ? 'kill' : 'drži';
 
     html += `
-      <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${r.color};border-radius:10px;padding:16px 18px;margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
-          <div style="flex:1;min-width:240px">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span style="padding:3px 10px;background:${r.color};color:white;border-radius:5px;font-size:11px;font-weight:800;letter-spacing:0.5px">${tierIcon} ${r.tier}</span>
-              <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text-tertiary);background:var(--surface2);padding:2px 7px;border-radius:3px">SCORE ${r.score}</span>
-            </div>
-            <div style="font-size:18px;font-weight:800;color:var(--text);margin-top:8px;letter-spacing:-0.3px">${sku}</div>
-            <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-family:'DM Mono',monospace">${r.campaign.name.slice(0, 70)}${r.campaign.name.length > 70 ? '…' : ''}</div>
+      <tr onclick="betaToggleRow(${idx})" style="border-top:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+        <td style="padding:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="width:7px;height:7px;border-radius:50%;background:${tc.dot};flex-shrink:0"></span>
+            <span style="font-weight:600;color:var(--text)">${sku}</span>
+            <i class="ti ti-chevron-down" style="font-size:13px;color:var(--text-tertiary);margin-left:auto"></i>
           </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-tertiary);font-weight:700">PRIPOROČILO</div>
-            <div style="font-size:14px;font-weight:700;color:${r.color};margin-top:3px;letter-spacing:-0.3px">${r.action}</div>
+        </td>
+        <td style="text-align:center;padding:10px"><span style="background:${tc.bg};color:${tc.fg};font-size:12px;font-weight:700;padding:2px 9px;border-radius:6px">${r.score}</span></td>
+        <td style="text-align:right;padding:10px;color:${cppColor};font-weight:600;font-family:'DM Mono',monospace">${r.metrics.overallCPP ? r.metrics.overallCPP.toFixed(2) : '—'}€</td>
+        <td style="text-align:right;padding:10px;font-family:'DM Mono',monospace">${r.campaign.spend.toFixed(0)}€</td>
+        <td style="text-align:right;padding:10px;color:var(--accent);font-weight:600;font-family:'DM Mono',monospace">${r.campaign.purchases}</td>
+        <td style="text-align:center;padding:10px"><span style="font-size:11px;color:${tc.fg};font-weight:700">${shortAction}</span></td>
+      </tr>
+      <tr id="beta-row-detail-${idx}" style="display:none;background:var(--surface2)">
+        <td colspan="6" style="padding:12px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+            <span style="font-size:10px;color:var(--text-tertiary);font-family:'DM Mono',monospace">${r.campaign.name.slice(0,80)}${r.campaign.name.length>80?'…':''}</span>
+            <span style="font-size:13px;font-weight:700;color:${tc.fg}">${r.action}</span>
           </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-top:14px">
-          <div style="background:var(--surface2);padding:8px 10px;border-radius:6px">
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700">CPP</div>
-            <div style="font-size:17px;font-weight:800;color:${r.metrics.overallCPP < r.metrics.targetCPP ? '#16a34a' : '#dc2626'};margin-top:2px;font-family:'DM Mono',monospace">${r.metrics.overallCPP ? r.metrics.overallCPP.toFixed(2) : '—'}€</div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px">
+            <span style="font-size:12px"><span style="color:var(--text-tertiary)">Dni</span> <span style="font-weight:600">${r.metrics.dayCount}</span></span>
+            <span style="font-size:12px"><span style="color:var(--text-tertiary)">Freq</span> <span style="font-weight:600;color:${r.campaign.freq>3?'#dc2626':'var(--text)'}">${r.campaign.freq.toFixed(1)}</span></span>
+            ${r.metrics.recentCPP!==null && r.metrics.earlyCPP!==null ? `<span style="font-size:12px"><span style="color:var(--text-tertiary)">CPP trend</span> <span style="font-weight:600">${r.metrics.earlyCPP.toFixed(2)}€ → ${r.metrics.recentCPP.toFixed(2)}€</span></span>` : ''}
           </div>
-          <div style="background:var(--surface2);padding:8px 10px;border-radius:6px">
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700">Spend</div>
-            <div style="font-size:17px;font-weight:800;color:var(--text);margin-top:2px;font-family:'DM Mono',monospace">${r.campaign.spend.toFixed(0)}€</div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700;margin-bottom:6px">📊 Zakaj ${r.tier} — trend signali</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${r.signals.map(s => `<span style="font-size:11px;background:var(--surface);padding:3px 9px;border-radius:6px;color:var(--text);border:1px solid var(--border);display:inline-flex;gap:5px;align-items:center"><span>${s.icon}</span><span>${s.text}</span></span>`).join('')}
           </div>
-          <div style="background:var(--surface2);padding:8px 10px;border-radius:6px">
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700">Nakupi</div>
-            <div style="font-size:17px;font-weight:800;color:var(--accent);margin-top:2px;font-family:'DM Mono',monospace">${r.campaign.purchases}</div>
-          </div>
-          <div style="background:var(--surface2);padding:8px 10px;border-radius:6px">
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700">Dni</div>
-            <div style="font-size:17px;font-weight:800;color:var(--text);margin-top:2px;font-family:'DM Mono',monospace">${r.metrics.dayCount}</div>
-          </div>
-          <div style="background:var(--surface2);padding:8px 10px;border-radius:6px">
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700">Freq</div>
-            <div style="font-size:17px;font-weight:800;color:${r.campaign.freq > 3 ? '#dc2626' : 'var(--text)'};margin-top:2px;font-family:'DM Mono',monospace">${r.campaign.freq.toFixed(1)}</div>
-          </div>
-        </div>
-
-        ${sparkHtml}
-
-        <div style="margin-top:12px">
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);font-weight:700;margin-bottom:6px">📊 Trend signali</div>
-          <div style="display:flex;flex-direction:column;gap:4px">
-            ${r.signals.map(s => `<div style="font-size:12px;color:var(--text);display:flex;gap:8px;line-height:1.4"><span style="flex-shrink:0">${s.icon}</span><span>${s.text}</span></div>`).join('')}
-          </div>
-        </div>
-      </div>
+        </td>
+      </tr>
     `;
-  }
+  });
 
-  // Disqualified — collapsed summary
+  html += `</tbody></table></div>
+    <div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;text-align:center">Prikaz ${rows.length} ${seg==='all'?'kvalificiranih':seg} · klik na vrstico za razloge · klik na glavo stolpca za sortiranje</div>
+  `;
+
+  // Disqualified
   if (disqualified.length > 0) {
     html += `
       <details style="margin-top:14px">
@@ -14959,7 +15023,7 @@ function betaAnalyze() {
 
 function betaRenderTable() {
   const minSpend = 5;  // Hard-coded default
-  const targetCPP = 15;  // Hard-coded default
+  const targetCPP = 10;  // MAX CPA 10€
   const sort = document.getElementById('beta-sort')?.value || 'cpp_asc';
   const filter = document.getElementById('beta-filter-status')?.value || 'all';
 
