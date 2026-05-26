@@ -57,6 +57,7 @@ FORECAST_ENTRIES_FILE = DATA_DIR / "forecast_entries.json"
 FORECAST_DELETED_FILE = DATA_DIR / "forecast_deleted.json"
 FORECAST_HISTORY_FILE = DATA_DIR / "forecast_history.json"
 SPOROCANJE_FILE = DATA_DIR / "sporocanje_common.json"
+SCALING_STATE_FILE = DATA_DIR / "scaling_state.json"  # Scaling Recommender: shranjeni rezultati + scale zgodovina
 
 # ─── ECONT GEO (cities / streets / quarters lookup) ──────────────────────────
 def _load_econt_geo():
@@ -10053,6 +10054,75 @@ async def forecast2_bulk_import(data: dict):
         }
     except Exception as e:
         import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+# ─── SCALING RECOMMENDER STATE ───────────────────────────────────────────────
+def _scaling_state_load() -> dict:
+    if SCALING_STATE_FILE.exists():
+        try:
+            return json.loads(SCALING_STATE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"results": None, "saved_at": None, "scaled": {}}
+
+def _scaling_state_save(state: dict):
+    SCALING_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+
+@app.get("/scaling-state")
+async def scaling_state_get():
+    """Vrne shranjene scaling rezultate + scale zgodovino (skalirane kampanje)."""
+    try:
+        return {"ok": True, **_scaling_state_load()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.post("/scaling-state-save")
+async def scaling_state_save(data: dict):
+    """Shrani trenutne scaling rezultate (po kliku Izberi kandidate)."""
+    try:
+        state = _scaling_state_load()
+        state["results"] = data.get("results")
+        state["saved_at"] = _lj_now().isoformat()
+        _scaling_state_save(state)
+        return {"ok": True, "saved_at": state["saved_at"]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.post("/scaling-state-mark")
+async def scaling_state_mark(data: dict):
+    """Označi/odznači kampanjo kot skalirano. Ključ = SKU (obstojno čez sezone)."""
+    try:
+        sku = (data.get("sku") or "").strip()
+        if not sku:
+            return {"ok": False, "error": "Manjka sku."}
+        scaled_flag = bool(data.get("scaled", True))
+        state = _scaling_state_load()
+        if "scaled" not in state or not isinstance(state["scaled"], dict):
+            state["scaled"] = {}
+        if scaled_flag:
+            state["scaled"][sku] = {
+                "scaled_at": _lj_now().isoformat(),
+                "note": data.get("note", ""),
+            }
+        else:
+            state["scaled"].pop(sku, None)
+        _scaling_state_save(state)
+        return {"ok": True, "sku": sku, "scaled": scaled_flag, "total_scaled": len(state["scaled"])}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.post("/scaling-state-archive")
+async def scaling_state_archive(data: dict):
+    """Arhivira komplet seznam — počisti shranjene rezultate (gumb Izberi kandidate spet viden).
+    Scale zgodovina (skalirane kampanje) OSTANE za prepoznavo v prihodnje."""
+    try:
+        state = _scaling_state_load()
+        keep_scaled = state.get("scaled", {})
+        if data.get("clear_scaled"):
+            keep_scaled = {}  # počisti tudi zgodovino če izrecno zahtevano
+        _scaling_state_save({"results": None, "saved_at": None, "scaled": keep_scaled})
+        return {"ok": True}
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
 @app.get("/forecast2-history")
