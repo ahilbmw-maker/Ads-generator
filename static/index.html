@@ -14971,6 +14971,18 @@ function betaSegFilter(seg) {
   betaRenderRecommenderTable();
 }
 
+function betaSearchInput(val) {
+  window._betaSearch = val;
+  betaRenderRecommenderTable();
+  // Ohrani fokus + kurzor na koncu (re-render uniči input)
+  const inp = document.getElementById('beta-search');
+  if (inp) {
+    inp.focus();
+    const len = inp.value.length;
+    inp.setSelectionRange(len, len);
+  }
+}
+
 function betaSortBy(col) {
   if (window._betaSortCol === col) {
     window._betaSortDir = window._betaSortDir === 'asc' ? 'desc' : 'asc';
@@ -14999,9 +15011,17 @@ function betaRenderRecommenderTable() {
   const seg = window._betaSegFilter || 'all';
   const sortCol = window._betaSortCol || 'score';
   const sortDir = window._betaSortDir || 'desc';
+  const search = (window._betaSearch || '').toLowerCase().trim();
 
-  // Filtriraj po segmentu
+  // Filtriraj po segmentu + iskanju (SKU ali ime kampanje)
   let rows = qualified.filter(r => seg === 'all' || r.tier === seg);
+  if (search) {
+    rows = rows.filter(r => {
+      const sku = betaExtractSku(r.campaign.name).toLowerCase();
+      const name = (r.campaign.name || '').toLowerCase();
+      return sku.includes(search) || name.includes(search);
+    });
+  }
 
   // Sortiraj
   const getVal = (r) => {
@@ -15039,20 +15059,28 @@ function betaRenderRecommenderTable() {
         <button onclick="betaArchiveList()" style="padding:8px 16px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">📦 Arhiviraj seznam</button>
       </div>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-      ${pill('all','Vse', qualified.length)}
-      ${pill('HOT','🔥', tierCounts.HOT)}
-      ${pill('STRONG','💪', tierCounts.STRONG)}
-      ${pill('WATCH','👁️', tierCounts.WATCH)}
-      ${pill('HOLD','⏸️', tierCounts.HOLD)}
-      ${tierCounts.KILL > 0 ? pill('KILL','🛑', tierCounts.KILL) : ''}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${pill('all','Vse', qualified.length)}
+        ${pill('HOT','🔥', tierCounts.HOT)}
+        ${pill('STRONG','💪', tierCounts.STRONG)}
+        ${pill('WATCH','👁️', tierCounts.WATCH)}
+        ${pill('HOLD','⏸️', tierCounts.HOLD)}
+        ${tierCounts.KILL > 0 ? pill('KILL','🛑', tierCounts.KILL) : ''}
+      </div>
+      <input type="text" id="beta-search" placeholder="🔍 Išči SKU / kampanjo..." value="${(window._betaSearch||'').replace(/"/g,'&quot;')}" oninput="betaSearchInput(this.value)" style="flex:1;min-width:180px;padding:7px 12px;background:var(--surface);border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
     </div>
   `;
 
   if (rows.length === 0) {
-    html += `<div style="padding:30px;text-align:center;color:var(--text-tertiary);background:var(--surface);border:1px dashed var(--border);border-radius:10px">Ni kampanj v tem segmentu.</div>`;
+    const msg = search ? `Ni zadetkov za "${search}".` : 'Ni kampanj v tem segmentu.';
+    html += `<div style="padding:30px;text-align:center;color:var(--text-tertiary);background:var(--surface);border:1px dashed var(--border);border-radius:10px">${msg}</div>`;
     wrap.innerHTML = html;
     wrap.style.display = 'block';
+    if (search) {
+      const inp = document.getElementById('beta-search');
+      if (inp) { inp.focus(); const l = inp.value.length; inp.setSelectionRange(l, l); }
+    }
     return;
   }
 
@@ -15124,7 +15152,7 @@ function betaRenderRecommenderTable() {
   });
 
   html += `</tbody></table></div>
-    <div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;text-align:center">Prikaz ${rows.length} ${seg==='all'?'kvalificiranih':seg} · klik na vrstico za razloge · klik na glavo stolpca za sortiranje</div>
+    <div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;text-align:center">Prikaz ${rows.length} ${seg==='all'?'kvalificiranih':seg}${search?` · iskanje "${search}"`:''} · klik na vrstico za razloge · klik na glavo stolpca za sortiranje</div>
   `;
 
   // Disqualified
