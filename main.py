@@ -2954,6 +2954,29 @@ LANG_NAMES = {
     "GR": "Greek", "SL": "Slovenian"
 }
 
+# Per-jezik opozorila za image prevod (Gemini meša sorodne jezike).
+# Poudarek na pogostih pasteh + nekaj ključnih pravilnih besed.
+LANG_TRANSLATE_HINTS = {
+    "SL": ("This is SLOVENIAN, NOT Czech or Slovak. "
+           "Common words: done/finished='GOTOVO' (never 'hotovo' which is Czech), "
+           "blow='PIHNI', cover='POKRIJ/PREKRIJ', now='ZDAJ', new='NOVO', "
+           "buy='KUPI', order='NAROČI'. Use Slovenian diacritics č, š, ž correctly."),
+    "HR": ("This is CROATIAN, NOT Serbian or Slovenian. "
+           "Use Croatian forms: 'tko' not 'ko', 'što' not 'šta'. "
+           "done='GOTOVO', buy='KUPI', now='SADA', new='NOVO'. Diacritics: č, ć, š, ž, đ."),
+    "RS": ("This is SERBIAN in LATIN script (not Cyrillic, not Croatian). "
+           "Use Serbian forms: 'šta' not 'što'. done='GOTOVO', buy='KUPI', now='SADA'."),
+    "SK": ("This is SLOVAK, NOT Czech or Slovenian. "
+           "done='HOTOVO', buy='KÚPIŤ', now='TERAZ'. Slovak-specific letters: ľ, ô, ŕ."),
+    "CZ": ("This is CZECH, NOT Slovak or Slovenian. "
+           "done='HOTOVO', buy='KOUPIT', now='TEĎ/NYNÍ'. Czech-specific: ř, ě, ů."),
+    "PL": ("This is POLISH. done='GOTOWE', buy='KUP', now='TERAZ'. Letters: ą, ę, ł, ń, ó, ś, ź, ż."),
+    "HU": ("This is HUNGARIAN (not a Slavic language). done='KÉSZ', buy='VÁSÁROLJ', now='MOST'. Letters: á, é, í, ó, ö, ő, ú, ü, ű."),
+    "RO": ("This is ROMANIAN. done='GATA', buy='CUMPĂRĂ', now='ACUM'. Letters: ă, â, î, ș, ț."),
+    "BG": ("This is BULGARIAN in CYRILLIC script. done='ГОТОВО', buy='КУПИ', now='СЕГА'. Use Cyrillic only."),
+    "GR": ("This is GREEK in Greek script. done='ΕΤΟΙΜΟ', buy='ΑΓΟΡΑΣΕ', now='ΤΩΡΑ'. Use Greek alphabet only."),
+}
+
 @app.post("/localize-kreativa")
 async def localize_kreativa(data: dict):
     """Prevede tekst na hero kreativu v izbrane jezike z Gemini."""
@@ -2988,13 +3011,19 @@ async def localize_kreativa(data: dict):
         lang_name = LANG_NAMES.get(lang_code, lang_code)
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={gemini_key}"
         brand_note = f" Do NOT translate these brand/product names (keep exactly as-is): {brand}." if brand else ""
+        # Per-jezik opozorila — preprečijo mešanje sorodnih jezikov (npr. SL "hotovo" je češko)
+        lang_hint = LANG_TRANSLATE_HINTS.get(lang_code, "")
         prompt = (
             f"Edit this image to translate all visible text into {lang_name}. "
             f"Keep EVERYTHING exactly the same — same people, same background, same layout, same design, same product, same icons, same colors, same fonts. "
             f"ONLY translate the text that is NOT a brand name or logo."
             f"{brand_note} "
             f"Do NOT translate or modify any brand names, logos, or product names. "
-            f"Keep all text in the same position, same style, same size."
+            f"Keep all text in the same position, same style, same size. "
+            f"CRITICAL TRANSLATION QUALITY: Use ONLY correct, native {lang_name}. "
+            f"Do NOT use words from other similar/neighboring languages. "
+            f"Translate the MEANING correctly, not phonetically. "
+            f"{lang_hint}"
         )
         payload = {
             "contents": [{"parts": [
