@@ -324,6 +324,7 @@
   <input type="text" class="search-input" placeholder="🔍 Išči SKU ali ID..." oninput="setSearch(this.value)" id="searchInput">
   <span style="color:var(--border);margin:0 4px">|</span>
   <button class="filter-btn" onclick="taskFilter('resolved',null);this.classList.add('active')" style="color:var(--green)">✓ Urejeni</button>
+  <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti 2x+ in združena</button>
 </div>
 </div><!-- /sticky -->
 
@@ -892,6 +893,9 @@ function taskFilter(f, card) {
     filtersBar.style.display = 'flex';
     renderTable(allRows);
   }
+  // Gumb "Počisti 2x+/združena" vidiš SAMO v filtru "Razlika <7€"
+  const cleanBtn = document.getElementById('cleanQtyMergedBtn');
+  if (cleanBtn) cleanBtn.style.display = (f === 'lowval') ? 'inline-flex' : 'none';
 }
 
 function setFilter(f, btn) {
@@ -1304,6 +1308,48 @@ function multiClearResolved() {
   saveTableToStorage();
   updateStats(allRows);
   renderMultiView(allRows);
+}
+
+function cleanQtyMerged() {
+  if (!allRows.length) return;
+
+  // Preštej koliko postavk ima vsak ID (za "Združeno" detekcijo) — čez VSE
+  const idCounts = {};
+  allRows.forEach(r => { idCounts[r.id] = (idCounts[r.id] || 0) + 1; });
+
+  // Najprej izberi SAMO naročila ki so v filtru "Razlika <7€" (lowval),
+  // enaka logika kot v renderTable
+  const lowvalRows = allRows.filter(r =>
+    !r.isNull && r.razlikaNum !== null && !isNaN(r.razlikaNum) && Math.abs(r.razlikaNum) < 7
+  );
+
+  // Od teh počisti tiste s količino >1 (2x,3x...) ALI združene (isti ID večkrat)
+  const toRemove = lowvalRows.filter(r => (r.qty || 1) > 1 || idCounts[r.id] > 1);
+  if (!toRemove.length) {
+    alert('V filtru "Razlika <7€" ni naročil s količino 2x+ ali združenih za počistiti.');
+    return;
+  }
+
+  const removeIds = [...new Set(toRemove.map(r => r.id))];
+  const qtyCount = toRemove.filter(r => (r.qty || 1) > 1).length;
+  const mergedCount = toRemove.filter(r => idCounts[r.id] > 1).length;
+
+  if (!confirm(`Počistim ${toRemove.length} naročil iz filtra "Razlika <7€"?\n\n• ${qtyCount} s količino 2x+\n• ${mergedCount} združenih (skupaj ${removeIds.length} unikatnih ID)\n\nOstanejo samo prava majhna odstopanja. To jih odstrani iz seznama (ne vpliva na sistem).`)) return;
+
+  // Odstrani SAMO te konkretne vrstice (po id+sku+valuta ključu)
+  const removeKeys = new Set(toRemove.map(r => r.id + '|' + r.sku + '|' + r.currency));
+  allRows = allRows.filter(r => !removeKeys.has(r.id + '|' + r.sku + '|' + r.currency));
+
+  // Posodobi shranjeno tabelo (localStorage)
+  try {
+    localStorage.setItem('price_checker_table', JSON.stringify(allRows));
+  } catch(e) {}
+
+  // Osveži prikaz
+  updateStats(allRows);
+  renderTable(allRows);
+
+  alert(`✓ Počiščeno ${toRemove.length} naročil iz "Razlika <7€" (${removeIds.length} ID-jev).`);
 }
 
 function clearTable() {
