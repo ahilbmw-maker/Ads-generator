@@ -15019,6 +15019,21 @@ function betaExtractSkuOnly(name) {
   return name;  // fallback: celo ime če nič ne najdemo
 }
 
+// Ali kampanja ima prepoznan SKU? (če betaExtractSkuOnly vrne celo ime = ni SKU)
+function betaHasSku(name) {
+  if (!name) return false;
+  const sku = betaExtractSkuOnly(name);
+  // Če vrne celo ime (fallback) ali vsebuje presledke/oklepaje = ni prepoznan SKU
+  if (sku === name) return false;
+  if (/[\s\[\]#@|]/.test(sku)) return false;
+  return sku.length >= 4;
+}
+
+function betaToggleNoSku() {
+  window._betaShowNoSku = !window._betaShowNoSku;
+  betaRenderRecommenderTable();
+}
+
 function betaCopyName(btn, idx) {
   // Pridobi ime iz trenutno prikazanih (filtriranih+sortiranih) vrstic
   const rows = window._betaVisibleRows || [];
@@ -15076,12 +15091,21 @@ function betaRenderRecommenderTable() {
   const sortCol = window._betaSortCol || 'score';
   const sortDir = window._betaSortDir || 'desc';
   const search = (window._betaSearch || '').toLowerCase().trim();
+  const showNoSku = window._betaShowNoSku || false;  // privzeto skrij brez-SKU
 
   // Filtriraj po segmentu + iskanju (SKU ali ime kampanje)
   let rows = qualified.filter(r => seg === 'all' || r.tier === seg);
+
+  // Skrij kampanje brez prepoznanega SKU (catalog/remarketing) razen če gumb vklopljen
+  const allWithSku = rows.filter(r => betaHasSku(r.campaign.name));
+  const noSkuCount = rows.length - allWithSku.length;
+  if (!showNoSku) {
+    rows = allWithSku;
+  }
+
   if (search) {
     rows = rows.filter(r => {
-      const sku = betaExtractSku(r.campaign.name).toLowerCase();
+      const sku = betaExtractSkuOnly(r.campaign.name).toLowerCase();
       const name = (r.campaign.name || '').toLowerCase();
       return sku.includes(search) || name.includes(search);
     });
@@ -15118,7 +15142,7 @@ function betaRenderRecommenderTable() {
         <div>
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.7;font-weight:700">🤖 Scaling Recommender</div>
           <div style="font-size:18px;font-weight:800;margin-top:3px">Analiza ${qualified.length} kvalificiranih SKU</div>
-          <div style="font-size:11px;opacity:0.7;margin-top:2px">${disqualified.length} ne ustreza kriterijem · MAX CPA 10€${scaledCount ? ` · ✅ ${scaledCount} skaliranih` : ''}</div>
+          <div style="font-size:11px;opacity:0.7;margin-top:2px">${disqualified.length} ne ustreza kriterijem · MAX CPA 10€${scaledCount ? ` · ✅ ${scaledCount} skaliranih` : ''}${noSkuCount && !showNoSku ? ` · 🙈 ${noSkuCount} skritih (brez SKU)` : ''}</div>
         </div>
         <button onclick="betaArchiveList()" style="padding:8px 16px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">📦 Arhiviraj seznam</button>
       </div>
@@ -15132,7 +15156,8 @@ function betaRenderRecommenderTable() {
         ${pill('HOLD','⏸️', tierCounts.HOLD)}
         ${tierCounts.KILL > 0 ? pill('KILL','🛑', tierCounts.KILL) : ''}
       </div>
-      <input type="text" id="beta-search" placeholder="🔍 Išči SKU / kampanjo..." value="${(window._betaSearch||'').replace(/"/g,'&quot;')}" oninput="betaSearchInput(this.value)" style="flex:1;min-width:180px;padding:7px 12px;background:var(--surface);border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
+      ${noSkuCount > 0 || showNoSku ? `<button onclick="betaToggleNoSku()" style="border:1px solid ${showNoSku?'var(--accent)':'var(--border)'};background:${showNoSku?'var(--accent)':'transparent'};color:${showNoSku?'#fff':'var(--text-secondary)'};border-radius:999px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">${showNoSku ? '🙈 Skrij brez-SKU' : `👁️ Prikaži skrite (${noSkuCount})`}</button>` : ''}
+      <input type="text" id="beta-search" placeholder="🔍 Išči SKU / kampanjo..." value="${(window._betaSearch||'').replace(/"/g,'&quot;')}" oninput="betaSearchInput(this.value)" style="flex:1;min-width:160px;padding:7px 12px;background:var(--surface);border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
     </div>
   `;
 
