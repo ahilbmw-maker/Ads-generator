@@ -14670,13 +14670,10 @@ function betaParseCSV(text) {
 // ═══ SCALING RECOMMENDER — INFLATED BID ALGORITEM ═══════════════════════════
 
 function betaExtractSku(campaignName) {
-  // Maaarket campaign convention: SKU je ponavadi v imenu kampanje
-  // Vzami zadnje besede ali kar prepoznamo kot SKU
+  // Deleguje na betaExtractSkuOnly (pravilno lušči SKU iz imena kampanje,
+  // ignorira [ALL], #BidCap, @STOP, "- #BidCap -" itd.)
   if (!campaignName) return campaignName;
-  // Heuristika: poišči BIG CAPS besedo ali pa zadnji segment po " - "
-  const segments = campaignName.split(' - ').map(s => s.trim());
-  // Zadnji segment je ponavadi SKU
-  return segments[segments.length - 1] || campaignName;
+  return betaExtractSkuOnly(campaignName);
 }
 
 function betaCalcLinearTrend(values) {
@@ -14999,7 +14996,8 @@ function betaExtractSkuOnly(name) {
     .replace(/\([^)]*\)/g, ' ')        // (...)
     .replace(/#\w+/g, ' ')             // #BidCap
     .replace(/@\w+/g, ' ')             // @STOP
-    .replace(/[|⛔🔰🟡🟢🔴⏳✨⛄💣🎯•]/g, ' '); // emoji/znaki
+    .replace(/[^\x00-\x7F]/g, ' ')     // vsi ne-ASCII znaki (emoji, ⛔🌸 itd.)
+    .replace(/[|]/g, ' ');             // pipe
   // Kandidati: UPPERCASE besede, dovolj dolge, niso stopwords
   const candidates = [];
   for (const raw of cleaned.split(/\s+/)) {
