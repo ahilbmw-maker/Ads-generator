@@ -324,7 +324,6 @@
   <input type="text" class="search-input" placeholder="🔍 Išči SKU ali ID..." oninput="setSearch(this.value)" id="searchInput">
   <span style="color:var(--border);margin:0 4px">|</span>
   <button class="filter-btn" onclick="taskFilter('resolved',null);this.classList.add('active')" style="color:var(--green)">✓ Urejeni</button>
-  <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:var(--orange);border-color:var(--orange);background:var(--orange-dim);font-weight:600">🧹 Počisti 2x+ in združena</button>
 </div>
 </div><!-- /sticky -->
 
@@ -893,10 +892,6 @@ function taskFilter(f, card) {
     filtersBar.style.display = 'flex';
     renderTable(allRows);
   }
-
-  // Gumb "Počisti 2x+ in združena" viden samo pri filtru Razlika <7€ (lowval)
-  const cleanBtn = document.getElementById('cleanQtyMergedBtn');
-  if (cleanBtn) cleanBtn.style.display = (f === 'lowval') ? 'inline-flex' : 'none';
 }
 
 function setFilter(f, btn) {
@@ -1311,48 +1306,6 @@ function multiClearResolved() {
   renderMultiView(allRows);
 }
 
-function cleanQtyMerged() {
-  if (!allRows.length) return;
-
-  // Preštej koliko postavk ima vsak ID (za "Združeno" detekcijo) — čez VSE
-  const idCounts = {};
-  allRows.forEach(r => { idCounts[r.id] = (idCounts[r.id] || 0) + 1; });
-
-  // Najprej izberi SAMO naročila ki so v filtru "Razlika <7€" (lowval),
-  // enaka logika kot v renderTable
-  const lowvalRows = allRows.filter(r =>
-    !r.isNull && r.razlikaNum !== null && !isNaN(r.razlikaNum) && Math.abs(r.razlikaNum) < 7
-  );
-
-  // Od teh počisti tiste s količino >1 (2x,3x...) ALI združene (isti ID večkrat)
-  const toRemove = lowvalRows.filter(r => (r.qty || 1) > 1 || idCounts[r.id] > 1);
-  if (!toRemove.length) {
-    alert('V filtru "Razlika <7€" ni naročil s količino 2x+ ali združenih za počistiti.');
-    return;
-  }
-
-  const removeIds = [...new Set(toRemove.map(r => r.id))];
-  const qtyCount = toRemove.filter(r => (r.qty || 1) > 1).length;
-  const mergedCount = toRemove.filter(r => idCounts[r.id] > 1).length;
-
-  if (!confirm(`Počistim ${toRemove.length} naročil iz filtra "Razlika <7€"?\n\n• ${qtyCount} s količino 2x+\n• ${mergedCount} združenih (skupaj ${removeIds.length} unikatnih ID)\n\nOstanejo samo prava majhna odstopanja. To jih odstrani iz seznama (ne vpliva na sistem).`)) return;
-
-  // Odstrani SAMO te konkretne vrstice (po id+sku ključu, da ne počisti istega SKU v drugem tabu)
-  const removeKeys = new Set(toRemove.map(r => r.id + '|' + r.sku + '|' + r.currency));
-  allRows = allRows.filter(r => !removeKeys.has(r.id + '|' + r.sku + '|' + r.currency));
-
-  // Posodobi shranjeno tabelo (localStorage)
-  try {
-    localStorage.setItem('price_checker_table', JSON.stringify(allRows));
-  } catch(e) {}
-
-  // Osveži prikaz
-  updateStats(allRows);
-  renderTable(allRows);
-
-  alert(`✓ Počiščeno ${toRemove.length} naročil iz "Razlika <7€" (${removeIds.length} ID-jev).`);
-}
-
 function clearTable() {
   if (!confirm('Zbriši cel seznam? Vseh urejenih oznak bo izgubljeno.')) return;
   allRows = [];
@@ -1552,11 +1505,24 @@ function analyzeDemo() {
     <div class="calc-section" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:8px">
         <div class="calc-label" style="margin:0">Popust %</div>
-        <input class="calc-input" type="number" id="calcPopust" value="25" step="1" min="0" max="90" oninput="calcUpdate()" onfocus="this.select()" style="width:60px;padding:5px 8px;font-size:13px">
+        <input class="calc-input" type="number" id="calcPopust" value="25" step="1" min="0" max="90" oninput="calcUpdate(true)" onfocus="this.select()" style="width:60px;padding:5px 8px;font-size:13px">
+        <select id="calcPopustSelect" onchange="calcPopustSelectChange(this)" style="border:1px solid #e2e8f0;border-radius:5px;padding:4px 6px;font-size:12px;background:white;color:#0f172a;cursor:pointer;font-family:inherit">
+          <option value="">▼</option>
+          <option value="10">10%</option>
+          <option value="15">15%</option>
+          <option value="20">20%</option>
+          <option value="25">25%</option>
+          <option value="30">30%</option>
+          <option value="35">35%</option>
+          <option value="40">40%</option>
+          <option value="45">45%</option>
+          <option value="50">50%</option>
+          <option value="55">55%</option>
+        </select>
         <button class="calc-preset active" onclick="calcSetPopust(25)" style="font-size:11px;padding:3px 8px">25%</button>
       </div>
       <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
-        <input type="checkbox" id="calcRound" checked onchange="calcUpdate()" style="cursor:pointer;width:14px;height:14px;accent-color:#4f6ef7">
+        <input type="checkbox" id="calcRound" checked onchange="calcInitialFill()" style="cursor:pointer;width:14px;height:14px;accent-color:#4f6ef7">
         <span style="font-size:11px;color:#475569">X.99</span>
       </label>
     </div>
@@ -1588,18 +1554,29 @@ const CALC_COUNTRIES = [
 function calcOpen() {
   document.body.classList.add('calc-open');
   document.getElementById('calcPanel').classList.add('open');
-  calcUpdate();
+  // Vedno reset popusta na 25% ob odprtju (default)
+  document.getElementById('calcPopust').value = 25;
+  calcUpdate();         // zgradi vrstice (če še niso)
+  calcInitialFill();    // napolni vse cene s suggested
 }
 function calcClose() {
   document.body.classList.remove('calc-open');
   document.getElementById('calcPanel').classList.remove('open');
 }
 
+function calcPopustSelectChange(sel) {
+  if (sel.value) {
+    document.getElementById('calcPopust').value = sel.value;
+    sel.value = '';  // reset select da pokaže ▼
+    calcUpdate(true);  // samo NOVA preračun, cene ostanejo
+  }
+}
+
 function calcSetPopust(pct) {
   document.getElementById('calcPopust').value = pct;
   document.querySelectorAll('.calc-preset').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.calc-preset').forEach(b => { if (b.textContent.trim() === pct+'%') b.classList.add('active'); });
-  calcUpdate();
+  calcUpdate(true);  // samo NOVA preračun, cene ostanejo
 }
 
 function calcRoundPrice(raw, curr) {
@@ -1630,7 +1607,7 @@ function calcFormatPrice(v, curr) {
   return v.toFixed(2);
 }
 
-function calcUpdate() {
+function calcUpdate(recalcOnly) {
   // NC in RVC sta fiksni vrednosti (skrita pred uporabnikom)
   const NC = 3.50;
   const RVC = 6.30;
@@ -1657,12 +1634,30 @@ function calcUpdate() {
   CALC_COUNTRIES.forEach(c => {
     const inp = document.getElementById('calc-' + c.code);
     if (!inp) return;
+    if (!recalcOnly) {
+      const rate = CALC_RATES[c.curr] || 1;
+      const baseFin = (NC + RVC + c.ship) * c.vat * (1 - popust) * rate;
+      const suggested = calcRoundPrice(baseFin, c.curr);
+      // Posodobi cene SAMO ob prvem odprtju (ne ob spremembi popusta/X.99)
+      if (document.activeElement !== inp && (!inp.value || inp.value === '')) {
+        inp.value = c.dec === 0 ? Math.round(suggested) : parseFloat(suggested.toFixed(2));
+      }
+    }
+    calcUpdateRow(c.code, NC, RVC, popust);
+  });
+}
+
+// Začetno polnjenje ob odprtju panela (vse cene = suggested)
+function calcInitialFill() {
+  const NC = 3.50, RVC = 6.30;
+  const popust = parseFloat(document.getElementById('calcPopust').value) / 100;
+  CALC_COUNTRIES.forEach(c => {
+    const inp = document.getElementById('calc-' + c.code);
+    if (!inp) return;
     const rate = CALC_RATES[c.curr] || 1;
     const baseFin = (NC + RVC + c.ship) * c.vat * (1 - popust) * rate;
     const suggested = calcRoundPrice(baseFin, c.curr);
-    if (document.activeElement !== inp) {
-      inp.value = c.dec === 0 ? Math.round(suggested) : parseFloat(suggested.toFixed(2));
-    }
+    inp.value = c.dec === 0 ? Math.round(suggested) : parseFloat(suggested.toFixed(2));
     calcUpdateRow(c.code, NC, RVC, popust);
   });
 }
