@@ -198,6 +198,8 @@
     min-width: 30px; text-align: center; font-size: 15px; font-weight: 800;
     font-variant-numeric: tabular-nums;
   }
+  .qty-step > div[onclick] { cursor: pointer; border-radius: 6px; transition: background 0.12s; }
+  .qty-step > div[onclick]:hover { background: var(--panel3); }
   .qty-need { font-size: 10px; color: var(--text-faint); }
   .qty-mismatch .qty-val { color: var(--warn); }
 
@@ -315,17 +317,23 @@
       line-height: 1.4; color: var(--text);
     }
 
-    /* Spodnja vrsta: qty stepper + akcije, VELIKI */
+    /* Spodnja vrsta: qty stepper + akcije, VELIKI (Koncept 2) */
     .item .qty-step {
-      order: 4; justify-content: center; gap: 16px;
+      order: 4; justify-content: center; gap: 14px;
       background: var(--panel3); border-radius: 12px; padding: 8px;
     }
     .qty-btn { width: 48px; height: 48px; font-size: 24px; border-radius: 11px; }
-    .qty-val { font-size: 22px; min-width: 44px; }
+    .qty-val { font-size: 24px; min-width: 44px; }
     .qty-need { font-size: 12px; }
+    /* cifra je klikabilna za direkten vnos */
+    .qty-step > div[onclick] {
+      cursor: pointer; border-radius: 8px; padding: 2px 8px;
+      transition: background 0.12s;
+    }
+    .qty-step > div[onclick]:active { background: var(--panel); }
 
     .item-actions { order: 5; gap: 10px; }
-    .act-btn { padding: 15px 0; font-size: 18px; border-radius: 12px; font-weight: 800; }
+    .act-btn { padding: 16px 0; font-size: 19px; border-radius: 12px; font-weight: 800; }
 
     /* SKU + poz v isto vrsto z flex wrapper */
     .item-mobile-top {
