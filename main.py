@@ -1058,6 +1058,64 @@ async def zaloga_archive():
         return {"ok": False, "error": str(e)}
 
 
+@app.get("/zaloga-history")
+async def zaloga_history():
+    """Seznam arhiviranih sej nabiranja (povzetki)."""
+    try:
+        out = []
+        for f in sorted(ZALOGA_ARCHIVE_DIR.glob("*.json"), reverse=True):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                items = data.get("items", [])
+                total = len(items)
+                ok = sum(1 for it in items if it.get("status") == "ok")
+                ni = sum(1 for it in items if it.get("status") == "ni")
+                qty_need = sum(int(it.get("qty", 0) or 0) for it in items)
+                qty_picked = sum(int(it.get("picked", 0) or 0) for it in items if it.get("status") == "ok")
+                out.append({
+                    "filename": f.name,
+                    "archived_at": data.get("archived_at"),
+                    "total": total, "ok": ok, "ni": ni,
+                    "qty_need": qty_need, "qty_picked": qty_picked,
+                    "pct": round((ok + ni) / total * 100) if total else 0,
+                })
+            except Exception:
+                continue
+        return {"ok": True, "sessions": out}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/zaloga-history/{filename}")
+async def zaloga_history_detail(filename: str):
+    """Polna vsebina ene arhivirane seje."""
+    try:
+        if "/" in filename or "\\" in filename or ".." in filename:
+            return {"ok": False, "error": "neveljavno ime"}
+        f = ZALOGA_ARCHIVE_DIR / filename
+        if not f.exists():
+            return {"ok": False, "error": "ni najdeno"}
+        data = json.loads(f.read_text(encoding="utf-8"))
+        return {"ok": True, "filename": filename, **data}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.delete("/zaloga-history/{filename}")
+async def zaloga_history_delete(filename: str):
+    """Izbriše arhivirano sejo."""
+    try:
+        if "/" in filename or "\\" in filename or ".." in filename:
+            return {"ok": False, "error": "neveljavno ime"}
+        f = ZALOGA_ARCHIVE_DIR / filename
+        if not f.exists():
+            return {"ok": False, "error": "ni najdeno"}
+        f.unlink()
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/zaloga", response_class=HTMLResponse)
 def zaloga_page():
     return FileResponse("static/zaloga.html")
