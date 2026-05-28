@@ -482,6 +482,16 @@ input[type="text"].error { border-color: var(--red) !important; }
 .sp-common-meta{display:flex;gap:6px;align-items:center}
 .sp-cnt{font-size:10px;padding:1px 7px;border-radius:20px;background:rgba(16,163,74,0.12);color:#0a6e31;font-weight:600}
 .sp-lang-tag{font-size:10px;padding:1px 7px;border-radius:20px;background:rgba(83,74,183,0.12);color:#534AB7;font-weight:600}
+@keyframes zalogaOnlinePulse {
+  0% { box-shadow:0 0 0 0 rgba(255,255,255,0.7); }
+  70% { box-shadow:0 0 0 6px rgba(255,255,255,0); }
+  100% { box-shadow:0 0 0 0 rgba(255,255,255,0); }
+}
+.zaloga-online-dot {
+  width:7px; height:7px; border-radius:50%; background:#fff;
+  box-shadow:0 0 0 0 rgba(255,255,255,0.7);
+  animation: zalogaOnlinePulse 1.8s infinite;
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -668,15 +678,35 @@ input[type="text"].error { border-color: var(--red) !important; }
         <p id="homeDateStr">Nalagam...</p>
       </div>
 
-      <a href="/zaloga" style="text-decoration:none;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,#2dd4a7,#4f6ef7);border-radius:14px;padding:18px 20px;margin-bottom:24px;box-shadow:0 4px 16px rgba(79,110,247,0.25)">
-        <div style="width:46px;height:46px;border-radius:11px;background:rgba(255,255,255,0.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <svg viewBox="0 0 24 24" style="width:24px;height:24px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+      <a href="/zaloga" id="zalogaBigBtn" style="text-decoration:none;display:block;background:linear-gradient(135deg,#2dd4a7,#4f6ef7);border-radius:14px;padding:18px 20px;margin-bottom:24px;box-shadow:0 4px 16px rgba(79,110,247,0.25)">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="width:46px;height:46px;border-radius:11px;background:rgba(255,255,255,0.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg viewBox="0 0 24 24" style="width:24px;height:24px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          </div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:17px;font-weight:700;color:#fff;letter-spacing:-0.2px">📦 Nabiranje zaloge</span>
+              <span id="zalogaOnline" style="display:none;align-items:center;gap:5px;background:rgba(255,255,255,0.25);padding:2px 9px;border-radius:20px">
+                <span class="zaloga-online-dot"></span>
+                <span style="font-size:10px;font-weight:700;color:#fff;letter-spacing:0.3px">ONLINE</span>
+              </span>
+            </div>
+            <div id="zalogaBigDesc" style="font-size:12px;color:rgba(255,255,255,0.85);margin-top:1px">Seznami za skladišče · optimizirano za mobilnik</div>
+          </div>
+          <div id="zalogaBigPctWrap" style="display:none;text-align:right;flex-shrink:0">
+            <div id="zalogaBigPct" style="font-size:24px;font-weight:800;color:#fff;line-height:1">0%</div>
+            <div style="font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px">nabrano</div>
+          </div>
+          <svg id="zalogaBigChevron" viewBox="0 0 24 24" style="width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
-        <div style="flex:1">
-          <div style="font-size:17px;font-weight:700;color:#fff;letter-spacing:-0.2px">📦 Nabiranje zaloge</div>
-          <div style="font-size:12px;color:rgba(255,255,255,0.85);margin-top:1px">Seznami za skladišče · optimizirano za mobilnik</div>
+        <div id="zalogaBigProg" style="display:none;margin-top:14px">
+          <div style="display:flex;height:8px;border-radius:10px;overflow:hidden;background:rgba(255,255,255,0.25)">
+            <div id="zbProgOk" style="width:0%;background:#fff"></div>
+            <div id="zbProgNi" style="width:0%;background:#ffd5d3"></div>
+            <div id="zbProgTodo" style="width:0%;background:rgba(255,255,255,0.4)"></div>
+          </div>
+          <div id="zalogaBigBreak" style="font-size:11px;color:rgba(255,255,255,0.9);margin-top:7px"></div>
         </div>
-        <svg viewBox="0 0 24 24" style="width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
       </a>
 
       <div style="margin-bottom:24px">
@@ -18896,6 +18926,88 @@ async function vracilaHistoryDelete(filename) {
     <div id="kAsanaStatus" style="font-size:12px;margin-top:8px;min-height:18px"></div>
   </div>
 </div>
+
+<script>
+// ═══ Zaloga: live Online status + napredek na velikem gumbu ═══
+(function zalogaLiveStatus() {
+  function pctParts(items) {
+    const total = items.length;
+    if (!total) return null;
+    const ok = items.filter(it => it.status === 'ok').length;
+    const ni = items.filter(it => it.status === 'ni').length;
+    const pctOk = Math.round(ok / total * 100);
+    const pctNi = Math.round(ni / total * 100);
+    const pctTodo = 100 - pctOk - pctNi;
+    return { total, ok, ni, pctOk, pctNi, pctTodo, done: ok + ni };
+  }
+
+  function breakdownText(s) {
+    const p = [];
+    if (s.pctOk > 0) p.push(`${s.pctOk}% nabrano`);
+    if (s.pctNi > 0) p.push(`${s.pctNi}% ni najdeno`);
+    if (s.pctTodo > 0) p.push(`${s.pctTodo}% še nabirajo`);
+    return p.join(' · ');
+  }
+
+  function setInactive() {
+    const online = document.getElementById('zalogaOnline');
+    const pctWrap = document.getElementById('zalogaBigPctWrap');
+    const prog = document.getElementById('zalogaBigProg');
+    const chevron = document.getElementById('zalogaBigChevron');
+    const desc = document.getElementById('zalogaBigDesc');
+    if (online) online.style.display = 'none';
+    if (pctWrap) pctWrap.style.display = 'none';
+    if (prog) prog.style.display = 'none';
+    if (chevron) chevron.style.display = '';
+    if (desc) desc.textContent = 'Seznami za skladišče · optimizirano za mobilnik';
+  }
+
+  function setActive(s) {
+    const online = document.getElementById('zalogaOnline');
+    const pctWrap = document.getElementById('zalogaBigPctWrap');
+    const prog = document.getElementById('zalogaBigProg');
+    const chevron = document.getElementById('zalogaBigChevron');
+    const desc = document.getElementById('zalogaBigDesc');
+    if (online) online.style.display = 'inline-flex';
+    if (pctWrap) pctWrap.style.display = 'block';
+    if (prog) prog.style.display = 'block';
+    if (chevron) chevron.style.display = 'none';
+    if (desc) desc.textContent = `Aktivno nabiranje · ${s.done} / ${s.total} postavk`;
+    const pctEl = document.getElementById('zalogaBigPct');
+    if (pctEl) pctEl.textContent = s.pctOk + '%';
+    const o = document.getElementById('zbProgOk');
+    const n = document.getElementById('zbProgNi');
+    const t = document.getElementById('zbProgTodo');
+    if (o) o.style.width = s.pctOk + '%';
+    if (n) n.style.width = s.pctNi + '%';
+    if (t) t.style.width = s.pctTodo + '%';
+    const brk = document.getElementById('zalogaBigBreak');
+    if (brk) brk.textContent = breakdownText(s);
+  }
+
+  async function poll() {
+    const btn = document.getElementById('zalogaBigBtn');
+    if (!btn) return;
+    try {
+      const r = await fetch('/zaloga-current');
+      const data = await r.json();
+      if (data.ok && data.items && data.items.length) {
+        const s = pctParts(data.items);
+        if (s) setActive(s); else setInactive();
+      } else {
+        setInactive();
+      }
+    } catch (e) {
+      setInactive();
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    poll();
+    setInterval(poll, 15000);
+  });
+})();
+</script>
 
 </body>
 </html>
