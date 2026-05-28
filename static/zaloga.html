@@ -250,7 +250,14 @@
   .manko-item .msku { font-weight: 800; font-size: 13px; }
   .manko-item .mqty { font-size: 11px; color: var(--ni); font-weight: 700; }
   .manko-item .mnaziv { font-size: 11px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .manko-item .mpoz { font-size: 10px; color: var(--text-faint); margin-top: 2px; }
+  .manko-item .mpoz-badge {
+    display: inline-block; margin-top: 7px;
+    font-size: 15px; font-weight: 800; letter-spacing: 0.3px;
+    color: var(--ni); background: var(--ni-bg);
+    border: 1px solid var(--ni-border); border-radius: 8px;
+    padding: 4px 11px;
+  }
+  .manko-item .mpoz-detail { font-size: 10px; color: var(--text-faint); margin-top: 5px; }
   .manko-empty { text-align: center; color: var(--text-faint); font-size: 12px; padding: 20px; }
 
   .stat-rows { display: flex; flex-direction: column; gap: 10px; }
@@ -493,6 +500,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260528k"></script>
+<script src="/static/zaloga.js?v=20260528l"></script>
 </body>
 </html>
