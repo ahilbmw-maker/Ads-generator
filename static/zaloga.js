@@ -9,6 +9,8 @@ const GROUP_ORDER = (g) => {
   if (/^P\d+$/.test(g)) return [1, parseInt(g.slice(1))];
   if (g === 'Paleta') return [2, 0];
   if (g === 'Pod Mizo') return [2, 1];
+  if (g === 'Ikonka') return [2, 2];
+  if (g === 'Amio') return [2, 3];
   if (g === 'Ni podatka') return [3, 0];
   return [2, g];
 };
@@ -241,7 +243,8 @@ function renderSidebar() {
             <span class="mqty">manjka ${missingQty}${it.status==='ni'?' (cela)':''}</span>
           </div>
           <div class="mnaziv" title="${esc(it.naziv)}">${esc(it.naziv)}</div>
-          <div class="mpoz">📍 ${esc(it.poz)} · potrebno ${it.qty}, nabrano ${it.status==='ni'?0:it.picked}</div>
+          <div class="mpoz-badge">📍 ${esc(it.poz)}</div>
+          <div class="mpoz-detail">potrebno ${it.qty} · nabrano ${it.status==='ni'?0:it.picked}</div>
         </div>`;
     }).join('');
   }
