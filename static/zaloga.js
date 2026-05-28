@@ -109,8 +109,8 @@ function render() {
           <span class="shelf-count">${items.length} postavk</span>
           <div class="shelf-head-spacer"></div>
           <div class="shelf-prog">
-            <div class="shelf-prog-bar"><div class="shelf-prog-fill" style="width:${stat.pct}%"></div></div>
-            <span class="shelf-prog-pct" style="color:${stat.pct===100?'var(--ok)':'var(--text)'}">${stat.pct}%</span>
+            <div class="shelf-prog-bar prog-seg-wrap">${progBarSegments(stat)}</div>
+            <span class="shelf-prog-pct" style="color:${stat.pctOk===100?'var(--ok)':'var(--text)'}">${stat.pctOk}%</span>
           </div>
         </div>
         <div class="shelf-body">
@@ -189,10 +189,34 @@ function commitQty(idx, val) {
 // ── Statistika skupine ──
 function groupStat(items) {
   const total = items.length;
-  const done = items.filter(it => it.status === 'ok' || it.status === 'ni').length;
   const ok = items.filter(it => it.status === 'ok').length;
-  const pct = total ? Math.round(done / total * 100) : 0;
-  return { total, done, ok, pct };
+  const ni = items.filter(it => it.status === 'ni').length;
+  const todo = total - ok - ni;
+  const done = ok + ni;
+  // odstotki (zaokroženi tako da vsota = 100)
+  const pctOk = total ? Math.round(ok / total * 100) : 0;
+  const pctNi = total ? Math.round(ni / total * 100) : 0;
+  const pctTodo = total ? (100 - pctOk - pctNi) : 0;
+  const pct = total ? Math.round(done / total * 100) : 0;  // skupno obdelano (compat)
+  return { total, done, ok, ni, todo, pct, pctOk, pctNi, pctTodo };
+}
+
+// ── Tekstovni razrez (npr. "90% nabrano · 5% ni najdeno · 5% še nabirajo") ──
+function statBreakdownText(s) {
+  if (!s.total) return '';
+  const parts = [];
+  if (s.pctOk > 0) parts.push(`${s.pctOk}% nabrano`);
+  if (s.pctNi > 0) parts.push(`${s.pctNi}% ni najdeno`);
+  if (s.pctTodo > 0) parts.push(`${s.pctTodo}% še nabirajo`);
+  return parts.join(' · ');
+}
+
+// ── Segmentiran bar (zeleno / rdeče / sivo) ──
+function progBarSegments(s) {
+  return `
+    <div class="prog-seg prog-seg-ok" style="width:${s.pctOk}%"></div>
+    <div class="prog-seg prog-seg-ni" style="width:${s.pctNi}%"></div>
+    <div class="prog-seg prog-seg-todo" style="width:${s.pctTodo}%"></div>`;
 }
 
 // ── Sidebar ──
@@ -244,16 +268,20 @@ function renderSidebar() {
 
 // ── Global stat (top ring) ──
 function updateGlobalStat() {
-  const total = ITEMS.length;
-  const done = ITEMS.filter(it => it.status === 'ok' || it.status === 'ni').length;
-  const pct = total ? Math.round(done / total * 100) : 0;
+  const stat = groupStat(ITEMS);
   const ring = document.getElementById('globalRing');
   const circ = 2 * Math.PI * 18; // 113
-  if (ring) ring.style.strokeDashoffset = circ * (1 - pct/100);
+  // ring kaže delež NABRANO (zeleno)
+  if (ring) ring.style.strokeDashoffset = circ * (1 - stat.pctOk/100);
   const pctEl = document.getElementById('globalPct');
-  if (pctEl) pctEl.textContent = pct + '%';
+  if (pctEl) {
+    pctEl.textContent = stat.pctOk + '%';
+    pctEl.style.color = stat.pctOk===100 ? 'var(--ok)' : 'var(--text)';
+  }
   const doneEl = document.getElementById('globalDone');
-  if (doneEl) doneEl.textContent = `${done} / ${total}`;
+  if (doneEl) doneEl.textContent = `${stat.done} / ${stat.total}`;
+  const breakEl = document.getElementById('globalBreak');
+  if (breakEl) breakEl.textContent = statBreakdownText(stat) || 'skupna uspešnost';
 }
 
 // ── Toggle zavihek (persist per naprava) ──
@@ -304,10 +332,10 @@ function refreshShelfProgress(group) {
   const stat = groupStat(items);
   const shelf = document.getElementById('shelf-' + cssId(group));
   if (!shelf) return;
-  const fill = shelf.querySelector('.shelf-prog-fill');
+  const bar = shelf.querySelector('.shelf-prog-bar');
   const pct = shelf.querySelector('.shelf-prog-pct');
-  if (fill) fill.style.width = stat.pct + '%';
-  if (pct) { pct.textContent = stat.pct + '%'; pct.style.color = stat.pct===100 ? 'var(--ok)' : 'var(--text)'; }
+  if (bar) bar.innerHTML = progBarSegments(stat);
+  if (pct) { pct.textContent = stat.pctOk + '%'; pct.style.color = stat.pctOk===100 ? 'var(--ok)' : 'var(--text)'; }
 }
 
 // ── Osveži sidebar ──
