@@ -170,6 +170,8 @@
     transition: background 0.12s;
     margin: 0;
   }
+  /* desktop: wrapper je "transparenten" → sku in poz ostaneta direktna grid-otroka */
+  .item-mobile-top { display: contents; }
   .item:hover { background: var(--panel2); }
   .item.ok { background: var(--ok-bg); }
   .item.ni { background: var(--ni-bg); }
@@ -399,6 +401,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="/static/zaloga.js?v=20260528d"></script>
+<script src="/static/zaloga.js?v=20260528e"></script>
 </body>
 </html>
