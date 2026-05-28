@@ -142,17 +142,19 @@ function itemRow(it) {
         <span class="poz">${esc(it.poz)}</span>
       </div>
       <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}</span>
-      <div class="qty-step ${mismatch}">
-        <button class="qty-btn" onclick="changeQty(${it.idx}, -1)">−</button>
-        <div style="display:flex;flex-direction:column;align-items:center" onclick="editQty(${it.idx})" title="Klikni za vnos števila">
-          <span class="qty-val" id="qtyval-${it.idx}">${it.picked}</span>
-          <span class="qty-need">/ ${it.qty}</span>
+      <div class="item-bottom">
+        <div class="qty-step ${mismatch}">
+          <button class="qty-btn" onclick="changeQty(${it.idx}, -1)">−</button>
+          <div style="display:flex;flex-direction:column;align-items:center" onclick="editQty(${it.idx})" title="Klikni za vnos števila">
+            <span class="qty-val" id="qtyval-${it.idx}">${it.picked}</span>
+            <span class="qty-need">/ ${it.qty}</span>
+          </div>
+          <button class="qty-btn" onclick="changeQty(${it.idx}, 1)">+</button>
         </div>
-        <button class="qty-btn" onclick="changeQty(${it.idx}, 1)">+</button>
-      </div>
-      <div class="item-actions">
-        <button class="act-btn act-ok ${it.status==='ok'?'active':''}" onclick="setStatus(${it.idx}, 'ok')" title="Nabrano">✓</button>
-        <button class="act-btn act-ni ${it.status==='ni'?'active':''}" onclick="setStatus(${it.idx}, 'ni')" title="Ni na zalogi">✕</button>
+        <div class="item-actions">
+          <button class="act-btn act-ok ${it.status==='ok'?'active':''}" onclick="setStatus(${it.idx}, 'ok')" title="Nabrano">✓</button>
+          <button class="act-btn act-ni ${it.status==='ni'?'active':''}" onclick="setStatus(${it.idx}, 'ni')" title="Ni na zalogi">✕</button>
+        </div>
       </div>
     </div>`;
 }
