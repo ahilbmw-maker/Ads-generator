@@ -116,7 +116,7 @@ function render() {
         <div class="shelf-body">
           <div class="item-head">
             <span>ID naročila</span><span>SKU</span><span>Pozicija</span>
-            <span>Naziv</span><span>Količina</span><span>Status</span>
+            <span>Naziv</span><span class="h-qty">Količina</span><span class="h-status">Status</span>
           </div>
           ${items.map(it => itemRow(it)).join('')}
         </div>
