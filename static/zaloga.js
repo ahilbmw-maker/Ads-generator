@@ -137,8 +137,10 @@ function itemRow(it) {
   return `
     <div class="item ${cls}" id="item-${it.idx}">
       <span class="id-col">${esc(it.id || '—')}</span>
-      <span class="sku">${esc(it.sku)}</span>
-      <span class="poz">${esc(it.poz)}</span>
+      <div class="item-mobile-top">
+        <span class="sku">${esc(it.sku)}</span>
+        <span class="poz">${esc(it.poz)}</span>
+      </div>
       <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}</span>
       <div class="qty-step ${mismatch}">
         <button class="qty-btn" onclick="changeQty(${it.idx}, -1)">−</button>
