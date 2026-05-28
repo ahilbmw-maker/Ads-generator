@@ -142,8 +142,8 @@ function itemRow(it) {
       <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}</span>
       <div class="qty-step ${mismatch}">
         <button class="qty-btn" onclick="changeQty(${it.idx}, -1)">−</button>
-        <div style="display:flex;flex-direction:column;align-items:center">
-          <span class="qty-val">${it.picked}</span>
+        <div style="display:flex;flex-direction:column;align-items:center" onclick="editQty(${it.idx})" title="Klikni za vnos števila">
+          <span class="qty-val" id="qtyval-${it.idx}">${it.picked}</span>
           <span class="qty-need">/ ${it.qty}</span>
         </div>
         <button class="qty-btn" onclick="changeQty(${it.idx}, 1)">+</button>
@@ -153,6 +153,33 @@ function itemRow(it) {
         <button class="act-btn act-ni ${it.status==='ni'?'active':''}" onclick="setStatus(${it.idx}, 'ni')" title="Ni na zalogi">✕</button>
       </div>
     </div>`;
+}
+
+// ── Direkten vnos količine (klik na cifro) ──
+function editQty(idx) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  const span = document.getElementById('qtyval-' + idx);
+  if (!span || span.querySelector('input')) return;  // že v urejanju
+  const cur = it.picked;
+  // Zamenjaj span vsebino z inputom
+  span.innerHTML = `<input type="number" inputmode="numeric" value="${cur}" min="0"
+    style="width:64px;text-align:center;font-size:20px;font-weight:800;padding:4px;border:2px solid var(--accent);border-radius:8px;background:var(--panel);color:var(--text);font-family:inherit"
+    onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter')this.blur()" onblur="commitQty(${idx}, this.value)">`;
+  const inp = span.querySelector('input');
+  inp.focus();
+  inp.select();
+}
+
+function commitQty(idx, val) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  let n = parseInt(val);
+  if (isNaN(n) || n < 0) n = 0;
+  it.picked = n;
+  refreshItem(it);
+  refreshSidebarAndStats();
+  saveItem(idx, { picked: it.picked });
 }
 
 // ── Statistika skupine ──
