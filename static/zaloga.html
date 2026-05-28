@@ -7,6 +7,7 @@
 <style>
   :root {
     --bg: #eef1f8;
+    --shelf-bg: #faf7ef;
     --panel: #ffffff;
     --panel2: #f8fafd;
     --panel3: #eef1f7;
@@ -214,8 +215,11 @@
     cursor: pointer; transition: all 0.12s; display: grid; place-items: center;
     color: var(--text-dim);
   }
-  .act-ok:hover, .act-ok.active { background: var(--ok); border-color: var(--ok); color: #06281f; }
-  .act-ni:hover, .act-ni.active { background: var(--ni); border-color: var(--ni); color: #2e0810; }
+  /* privzeto že barvana — takoj jasno kaj je kaj */
+  .act-ok { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok); }
+  .act-ni { background: var(--ni-bg); border-color: var(--ni-border); color: var(--ni); }
+  .act-ok:hover, .act-ok.active { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .act-ni:hover, .act-ni.active { background: var(--ni); border-color: var(--ni); color: #fff; }
 
   /* low stock tag */
   .tag-low {
@@ -295,8 +299,8 @@
     /* Skrij tabelo-glavo na mobile (kartice ne rabijo) */
     .item-head { display: none; }
 
-    /* Sivo ozadje za polico — kartice "plavajo" na sivem */
-    .shelf-body { padding: 12px; background: var(--bg); }
+    /* Toplo kremno ozadje za polico — kartice "plavajo" */
+    .shelf-body { padding: 12px; background: var(--shelf-bg); }
 
     /* ITEM = bela KARTICA, ločena z razmikom */
     .item {
@@ -482,6 +486,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260528g"></script>
+<script src="/static/zaloga.js?v=20260528h"></script>
 </body>
 </html>
