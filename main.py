@@ -956,6 +956,9 @@ async def zaloga_upload(file: UploadFile = File(...)):
                 qty = int(float(qty_raw)) if qty_raw else 0
             except ValueError:
                 qty = 0
+            # Nizka zaloga = če Opomba stolpec vsebuje "NIZKA ZALOGA" (NE iz količine)
+            opomba = col("Opomba", "opomba", "Note")
+            is_low = "NIZKA" in opomba.upper()
             items.append({
                 "idx": i,
                 "id": col("ID naročila", "ID", "id"),
@@ -966,7 +969,7 @@ async def zaloga_upload(file: UploadFile = File(...)):
                 "group": _zaloga_group(poz),
                 "status": "",         # "" | "ok" | "ni"
                 "picked": qty,        # koliko dejansko nabrано (privzeto = potrebna)
-                "low": qty < 5,       # nizka zaloga tag
+                "low": is_low,        # nizka zaloga tag — iz Opomba stolpca
             })
 
         data = {
