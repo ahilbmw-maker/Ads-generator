@@ -93,7 +93,7 @@
   .btn-sm { padding: 6px 11px; font-size: 12px; }
 
   /* ─── LAYOUT ─── */
-  .wrap { max-width: 1500px; margin: 0; padding: 22px; display: grid; grid-template-columns: 1fr 380px; gap: 22px; align-items: start; }
+  .wrap { max-width: 1600px; margin: 0 auto; padding: 22px; display: grid; grid-template-columns: 1fr 380px; gap: 22px; align-items: start; }
   @media (max-width: 1100px) { .wrap { grid-template-columns: 1fr; } }
 
   /* ─── UPLOAD ZONE ─── */
@@ -355,6 +355,63 @@
     .qty-btn { width: 44px; height: 44px; }
     .item .sku { font-size: 18px; }
   }
+  /* ─── Zgodovina modal ─── */
+  .hist-overlay {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.55); backdrop-filter: blur(3px);
+    align-items: flex-start; justify-content: center; padding: 40px 16px;
+    overflow-y: auto;
+  }
+  .hist-overlay.show { display: flex; }
+  .hist-modal {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
+    width: 100%; max-width: 880px; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    overflow: hidden; animation: histPop 0.2s ease;
+  }
+  @keyframes histPop { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .hist-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 22px; border-bottom: 1px solid var(--border);
+  }
+  .hist-head h2 { font-size: 18px; font-weight: 800; }
+  .hist-close {
+    background: var(--panel3); border: 1px solid var(--border2); color: var(--text);
+    width: 34px; height: 34px; border-radius: 9px; cursor: pointer; font-size: 15px;
+  }
+  .hist-close:hover { background: var(--ni); border-color: var(--ni); color: #fff; }
+  .hist-body { padding: 18px 22px; max-height: 70vh; overflow-y: auto; }
+  .hist-sess {
+    border: 1px solid var(--border); border-radius: 13px; padding: 14px 16px;
+    margin-bottom: 12px; transition: border-color 0.12s;
+  }
+  .hist-sess:hover { border-color: var(--accent); }
+  .hist-sess-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .hist-sess-date { font-weight: 800; font-size: 15px; }
+  .hist-sess-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+  .hist-sess-meta b { color: var(--text); }
+  .hist-sess-meta .ok { color: var(--ok); }
+  .hist-sess-meta .ni { color: var(--ni); }
+  .hist-sess-prog { flex: 1; min-width: 120px; height: 7px; background: var(--panel3); border-radius: 5px; overflow: hidden; }
+  .hist-sess-prog > div { height: 100%; background: var(--ok); border-radius: 5px; }
+  .hist-sess-pct { font-weight: 800; font-size: 13px; min-width: 42px; text-align: right; }
+  .hist-sess-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .hist-sess-actions button {
+    background: var(--panel3); border: 1px solid var(--border2); color: var(--text);
+    padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;
+  }
+  .hist-sess-actions .del:hover { background: var(--ni); border-color: var(--ni); color: #fff; }
+  .hist-sess-actions .open:hover { background: var(--accent); border-color: var(--accent); }
+  .hist-detail { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .hist-detail-row { display: grid; grid-template-columns: 110px 1fr 70px 80px; gap: 10px; padding: 6px 0; font-size: 12px; border-bottom: 1px solid var(--border); align-items: center; }
+  .hist-detail-row .hsku { font-weight: 700; }
+  .hist-detail-row .hst-ok { color: var(--ok); font-weight: 700; }
+  .hist-detail-row .hst-ni { color: var(--ni); font-weight: 700; }
+  .hist-empty { text-align: center; color: var(--text-dim); padding: 40px 0; }
+  @media (max-width: 768px) {
+    .hist-overlay { padding: 16px 10px; }
+    .hist-detail-row { grid-template-columns: 1fr auto; }
+    .hist-detail-row .hpoz, .hist-detail-row .hqty { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -389,6 +446,7 @@
     <input type="file" id="csvInput" accept=".csv" style="display:none">
   </label>
   <button class="btn btn-ghost btn-sm" id="archiveBtn" onclick="archiveSession()" style="display:none">📦 Arhiviraj</button>
+  <button class="btn btn-ghost btn-sm" onclick="openHistory()">🕓 Zgodovina</button>
 </div>
 
 <div class="wrap" id="wrap">
@@ -401,6 +459,17 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="/static/zaloga.js?v=20260528e"></script>
+<!-- Zgodovina modal -->
+<div class="hist-overlay" id="histOverlay" onclick="if(event.target===this)closeHistory()">
+  <div class="hist-modal">
+    <div class="hist-head">
+      <h2 id="histTitle">🕓 Zgodovina nabiranj</h2>
+      <button class="hist-close" onclick="closeHistory()">✕</button>
+    </div>
+    <div class="hist-body" id="histBody"></div>
+  </div>
+</div>
+
+<script src="/static/zaloga.js?v=20260528f"></script>
 </body>
 </html>
