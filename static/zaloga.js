@@ -386,6 +386,105 @@ async function pollSync() {
   } catch(e) {}
 }
 
+// ═══ ZGODOVINA ═══
+async function openHistory() {
+  const ov = document.getElementById('histOverlay');
+  ov.classList.add('show');
+  const body = document.getElementById('histBody');
+  body.innerHTML = '<div class="hist-empty">⏳ Nalagam...</div>';
+  try {
+    const r = await fetch('/zaloga-history');
+    const data = await r.json();
+    if (!data.ok || !data.sessions || !data.sessions.length) {
+      body.innerHTML = '<div class="hist-empty">Ni arhiviranih nabiranj.</div>';
+      return;
+    }
+    body.innerHTML = data.sessions.map(histSessRow).join('');
+  } catch(e) {
+    body.innerHTML = '<div class="hist-empty">✗ Napaka pri nalaganju.</div>';
+  }
+}
+
+function closeHistory() {
+  document.getElementById('histOverlay').classList.remove('show');
+}
+
+function histDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric'}) +
+      ' · ' + d.toLocaleTimeString('sl-SI', {hour:'2-digit',minute:'2-digit'});
+  } catch(e) { return iso; }
+}
+
+function histSessRow(s) {
+  return `
+    <div class="hist-sess" id="hsess-${cssId(s.filename)}">
+      <div class="hist-sess-top">
+        <span class="hist-sess-date">${histDate(s.archived_at)}</span>
+        <div class="hist-sess-prog"><div style="width:${s.pct}%"></div></div>
+        <span class="hist-sess-pct" style="color:${s.pct===100?'var(--ok)':'var(--text)'}">${s.pct}%</span>
+      </div>
+      <div class="hist-sess-meta">
+        <span>Postavk: <b>${s.total}</b></span>
+        <span class="ok">Nabrano: <b>${s.ok}</b></span>
+        <span class="ni">Manjka: <b>${s.ni}</b></span>
+        <span>Kosov: <b>${s.qty_picked} / ${s.qty_need}</b></span>
+      </div>
+      <div class="hist-sess-actions">
+        <button class="open" onclick="histToggleDetail('${jsStr(s.filename)}')">📋 Podrobnosti</button>
+        <button class="del" onclick="histDelete('${jsStr(s.filename)}')">🗑 Izbriši</button>
+      </div>
+      <div class="hist-detail" id="hdet-${cssId(s.filename)}" style="display:none"></div>
+    </div>`;
+}
+
+async function histToggleDetail(filename) {
+  const det = document.getElementById('hdet-' + cssId(filename));
+  if (!det) return;
+  if (det.style.display !== 'none') { det.style.display = 'none'; det.innerHTML = ''; return; }
+  det.style.display = 'block';
+  det.innerHTML = '<div style="padding:10px 0;color:var(--text-dim);font-size:12px">⏳ Nalagam...</div>';
+  try {
+    const r = await fetch('/zaloga-history/' + encodeURIComponent(filename));
+    const data = await r.json();
+    if (!data.ok || !data.items) { det.innerHTML = '<div style="padding:8px 0;color:var(--text-dim)">Ni podatkov.</div>'; return; }
+    det.innerHTML = data.items.map(it => {
+      const st = it.status === 'ok' ? '<span class="hst-ok">✓ OK</span>'
+        : it.status === 'ni' ? '<span class="hst-ni">✕ NI</span>' : '—';
+      return `<div class="hist-detail-row">
+        <span class="hsku">${esc(it.sku)}</span>
+        <span class="hnaziv" title="${esc(it.naziv)}">${esc(it.naziv)}</span>
+        <span class="hpoz">${esc(it.poz)}</span>
+        <span class="hqty">${it.status==='ok'?it.picked:0} / ${it.qty}</span>
+        <span>${st}</span>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    det.innerHTML = '<div style="padding:8px 0;color:var(--ni)">✗ Napaka.</div>';
+  }
+}
+
+async function histDelete(filename) {
+  if (!confirm('Izbrišem to arhivirano nabiranje?\n\nDejanje je nepovratno.')) return;
+  try {
+    const r = await fetch('/zaloga-history/' + encodeURIComponent(filename), { method: 'DELETE' });
+    const data = await r.json();
+    if (data.ok) {
+      const el = document.getElementById('hsess-' + cssId(filename));
+      if (el) el.remove();
+      toast('✓ Izbrisano');
+      const body = document.getElementById('histBody');
+      if (body && !body.querySelector('.hist-sess')) {
+        body.innerHTML = '<div class="hist-empty">Ni arhiviranih nabiranj.</div>';
+      }
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
 // ── Init ──
 loadSession();
 setInterval(pollSync, 15000);
