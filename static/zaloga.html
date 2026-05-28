@@ -6,26 +6,26 @@
 <title>Nabiranje zaloge — Maaarket</title>
 <style>
   :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --panel2: #1e222b;
-    --panel3: #262b36;
-    --border: #2c323d;
-    --border2: #3a4150;
-    --text: #e8ebf0;
-    --text-dim: #9aa3b2;
-    --text-faint: #626b7a;
-    --accent: #4f8ef7;
-    --accent-dim: #1d2f4d;
-    --ok: #2dd4a7;
-    --ok-bg: rgba(45,212,167,0.13);
-    --ok-border: rgba(45,212,167,0.4);
-    --ni: #f7546a;
-    --ni-bg: rgba(247,84,106,0.13);
-    --ni-border: rgba(247,84,106,0.4);
-    --warn: #f5a524;
-    --warn-bg: rgba(245,165,36,0.14);
-    --shadow: 0 8px 24px rgba(0,0,0,0.4);
+    --bg: #eef1f8;
+    --panel: #ffffff;
+    --panel2: #f8fafd;
+    --panel3: #eef1f7;
+    --border: #e4e8f0;
+    --border2: #d4dae6;
+    --text: #0f172a;
+    --text-dim: #5a6478;
+    --text-faint: #94a0b3;
+    --accent: #4f6ef7;
+    --accent-dim: #e8edfe;
+    --ok: #16a34a;
+    --ok-bg: #e7f6ec;
+    --ok-border: #b8e6c4;
+    --ni: #e2453f;
+    --ni-bg: #fdeceb;
+    --ni-border: #f6c7c4;
+    --warn: #d97706;
+    --warn-bg: #fdf0dc;
+    --shadow: 0 4px 16px rgba(15,23,42,0.08);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -39,16 +39,13 @@
     max-width: 100%;
   }
   body {
-    background-image:
-      radial-gradient(circle at 15% -5%, rgba(79,142,247,0.08), transparent 40%),
-      radial-gradient(circle at 100% 0%, rgba(45,212,167,0.05), transparent 35%);
     min-height: 100vh;
   }
 
   /* ─── HEADER ─── */
   .topbar {
     position: sticky; top: 0; z-index: 50;
-    background: rgba(15,17,21,0.92);
+    background: rgba(255,255,255,0.95);
     backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--border);
     padding: 14px 22px;
@@ -147,39 +144,42 @@
   }
   .shelf-prog-pct { font-size: 13px; font-weight: 800; min-width: 42px; text-align: right; }
 
-  .shelf-body { display: none; padding: 0 12px 12px; }
+  .shelf-body { display: none; padding: 0; }
   .shelf.open .shelf-body { display: block; animation: slideDown 0.25s ease; }
   @keyframes slideDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 
-  /* ─── ITEM TABLE HEADER ─── */
+  /* ─── ITEM TABLE HEADER (Koncept A) ─── */
   .item-head {
     display: grid;
-    grid-template-columns: 100px 64px 80px 1fr 120px 96px;
-    gap: 10px; padding: 8px 12px;
-    font-size: 10px; font-weight: 700; color: var(--text-faint);
-    text-transform: uppercase; letter-spacing: 0.6px;
+    grid-template-columns: 90px 120px 78px 1fr 130px 90px;
+    gap: 14px; padding: 9px 14px;
+    font-size: 10px; font-weight: 600; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.5px;
     border-bottom: 1px solid var(--border);
+    text-align: left;
   }
+  .item-head .h-qty, .item-head .h-status { text-align: center; }
 
-  /* ─── ITEM ROW ─── */
+  /* ─── ITEM ROW (Koncept A) ─── */
   .item {
     display: grid;
-    grid-template-columns: 100px 64px 80px 1fr 120px 96px;
-    gap: 10px; align-items: center;
-    padding: 11px 12px; border-radius: 10px;
-    border: 1px solid transparent;
-    transition: background 0.15s, border-color 0.15s;
-    margin-top: 4px;
+    grid-template-columns: 90px 120px 78px 1fr 130px 90px;
+    gap: 14px; align-items: center;
+    padding: 12px 14px;
+    border: none; border-bottom: 1px solid var(--border);
+    transition: background 0.12s;
+    margin: 0;
   }
   .item:hover { background: var(--panel2); }
-  .item.ok { background: var(--ok-bg); border-color: var(--ok-border); }
-  .item.ni { background: var(--ni-bg); border-color: var(--ni-border); }
+  .item.ok { background: var(--ok-bg); }
+  .item.ni { background: var(--ni-bg); }
+  .item:last-child { border-bottom: none; }
 
-  .item .sku { font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .item .sku { font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; text-align: left; overflow: hidden; text-overflow: ellipsis; }
   .item .poz {
-    font-size: 12px; font-weight: 700; color: var(--accent);
-    background: var(--accent-dim); padding: 3px 8px; border-radius: 7px;
-    text-align: center; letter-spacing: 0.3px;
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    background: var(--accent-dim); padding: 4px 9px; border-radius: 7px;
+    text-align: center; letter-spacing: 0.2px; justify-self: start;
   }
   .item .naziv { font-size: 13px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item .id-col { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
@@ -399,6 +399,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="/static/zaloga.js?v=20260528a"></script>
+<script src="/static/zaloga.js?v=20260528b"></script>
 </body>
 </html>
