@@ -911,11 +911,18 @@ ZALOGA_ARCHIVE_DIR = ZALOGA_DIR / "archive"
 ZALOGA_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _zaloga_group(poz: str) -> str:
-    """Razvrsti pozicijo v skupino (zavihek). 01-1C→Polica 01, P13-C→P13, Ni podatka/Paleta/Pod Mizo ostanejo."""
+def _zaloga_group(poz: str, sku: str = "") -> str:
+    """Razvrsti pozicijo v skupino (zavihek). 01-1C→Polica 01, P13-C→P13, Ni podatka/Paleta/Pod Mizo ostanejo.
+    Če ni podatka o poziciji, razvrsti po predponi SKU: KX*→Ikonka, 0*→Amio."""
     import re as _re
     poz = (poz or "").strip()
     if not poz or poz.lower() == "ni podatka":
+        # brez pozicije → poskusi razvrstiti po predponi SKU
+        s = (sku or "").strip()
+        if s.upper().startswith("KX"):
+            return "Ikonka"
+        if s.startswith("0"):
+            return "Amio"
         return "Ni podatka"
     if poz in ("Paleta", "Pod Mizo"):
         return poz
@@ -966,7 +973,7 @@ async def zaloga_upload(file: UploadFile = File(...)):
                 "naziv": col("Naziv", "naziv", "Name"),
                 "qty": qty,            # potrebna količina
                 "poz": poz or "Ni podatka",
-                "group": _zaloga_group(poz),
+                "group": _zaloga_group(poz, sku),
                 "status": "",         # "" | "ok" | "ni"
                 "picked": qty,        # koliko dejansko nabrано (privzeto = potrebna)
                 "low": is_low,        # nizka zaloga tag — iz Opomba stolpca
