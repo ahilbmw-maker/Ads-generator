@@ -144,6 +144,12 @@
     transition: width 0.4s ease;
   }
   .shelf-prog-pct { font-size: 13px; font-weight: 800; min-width: 42px; text-align: right; }
+  /* Segmentiran bar: nabrano (zeleno) / ni najdeno (rdeče) / še nabirajo (sivo) */
+  .prog-seg-wrap { display: flex; }
+  .prog-seg { height: 100%; transition: width 0.4s ease; }
+  .prog-seg-ok { background: linear-gradient(90deg, var(--ok), #36e0b4); }
+  .prog-seg-ni { background: var(--ni); }
+  .prog-seg-todo { background: var(--panel3); }
 
   .shelf-body { display: none; padding: 0; }
   .shelf.open .shelf-body { display: block; animation: slideDown 0.25s ease; }
@@ -453,7 +459,7 @@
     </div>
     <div class="meta">
       <div class="big" id="globalDone">0 / 0</div>
-      <div class="small">skupna uspešnost</div>
+      <div class="small" id="globalBreak">skupna uspešnost</div>
     </div>
   </div>
 
@@ -486,6 +492,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260528i"></script>
+<script src="/static/zaloga.js?v=20260528j"></script>
 </body>
 </html>
