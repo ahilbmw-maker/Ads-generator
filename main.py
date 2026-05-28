@@ -903,6 +903,163 @@ async def vracila_history_detail(filename: str):
         return {"ok": False, "error": str(e)}
 
 
+# ─── ZALOGA / NABIRANJE (picking list za skladišče) ──────────────────────────
+ZALOGA_DIR = DATA_DIR / "zaloga"
+ZALOGA_DIR.mkdir(parents=True, exist_ok=True)
+ZALOGA_CURRENT = ZALOGA_DIR / "current.json"
+ZALOGA_ARCHIVE_DIR = ZALOGA_DIR / "archive"
+ZALOGA_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _zaloga_group(poz: str) -> str:
+    """Razvrsti pozicijo v skupino (zavihek). 01-1C→Polica 01, P13-C→P13, Ni podatka/Paleta/Pod Mizo ostanejo."""
+    import re as _re
+    poz = (poz or "").strip()
+    if not poz or poz.lower() == "ni podatka":
+        return "Ni podatka"
+    if poz in ("Paleta", "Pod Mizo"):
+        return poz
+    m = _re.match(r'^(\d{2})-', poz)
+    if m:
+        return "Polica " + m.group(1)
+    m = _re.match(r'^(P\d+)-', poz)
+    if m:
+        return m.group(1)
+    return poz
+
+
+@app.post("/zaloga-upload")
+async def zaloga_upload(file: UploadFile = File(...)):
+    """Naloži CSV za nabiranje. Parsira ID, SKU, Naziv, Količina, Pozicija SL → skupine.
+    Ustvari novo aktivno sejo (current.json). Obstoječa se prepiše."""
+    try:
+        import csv as _csv, io as _io
+        from datetime import datetime as _dt
+        raw = await file.read()
+        text = raw.decode("utf-8-sig", errors="replace")
+        reader = _csv.DictReader(_io.StringIO(text))
+
+        items = []
+        for i, row in enumerate(reader):
+            # Sprejmi različne variante imen stolpcev
+            def col(*names):
+                for n in names:
+                    if n in row and row[n] is not None:
+                        return str(row[n]).strip()
+                return ""
+            sku = col("SKU", "sku")
+            if not sku:
+                continue
+            poz = col("Pozicija SL", "Pozicija", "pozicija SL", "pozicija")
+            qty_raw = col("Količina", "Kolicina", "kolicina", "qty")
+            try:
+                qty = int(float(qty_raw)) if qty_raw else 0
+            except ValueError:
+                qty = 0
+            items.append({
+                "idx": i,
+                "id": col("ID naročila", "ID", "id"),
+                "sku": sku,
+                "naziv": col("Naziv", "naziv", "Name"),
+                "qty": qty,            # potrebna količina
+                "poz": poz or "Ni podatka",
+                "group": _zaloga_group(poz),
+                "status": "",         # "" | "ok" | "ni"
+                "picked": qty,        # koliko dejansko nabrано (privzeto = potrebna)
+                "low": qty < 5,       # nizka zaloga tag
+            })
+
+        data = {
+            "started_at": _dt.now().isoformat(),
+            "updated_at": _dt.now().isoformat(),
+            "filename": file.filename,
+            "items": items,
+        }
+        ZALOGA_CURRENT.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        # Statistika skupin
+        groups = {}
+        for it in items:
+            groups[it["group"]] = groups.get(it["group"], 0) + 1
+        return {"ok": True, "count": len(items), "groups": groups}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/zaloga-current")
+async def zaloga_current_get():
+    """Vrne aktivno sejo nabiranja (vsi nabiralci berejo isto)."""
+    try:
+        if ZALOGA_CURRENT.exists():
+            data = json.loads(ZALOGA_CURRENT.read_text(encoding="utf-8"))
+            return {"ok": True, **data}
+        return {"ok": True, "items": [], "started_at": None}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/zaloga-update-item")
+async def zaloga_update_item(data: dict):
+    """Posodobi eno postavko (status/picked) — kliče se LIVE ob vsaki spremembi.
+    Več nabiralcev hkrati: zaklepamo z atomarnim read-modify-write na idx."""
+    try:
+        from datetime import datetime as _dt
+        if not ZALOGA_CURRENT.exists():
+            return {"ok": False, "error": "Ni aktivne seje"}
+        idx = data.get("idx")
+        if idx is None:
+            return {"ok": False, "error": "Manjka idx"}
+        sess = json.loads(ZALOGA_CURRENT.read_text(encoding="utf-8"))
+        found = False
+        for it in sess.get("items", []):
+            if it.get("idx") == idx:
+                if "status" in data:
+                    it["status"] = data["status"]
+                if "picked" in data:
+                    try:
+                        it["picked"] = max(0, int(data["picked"]))
+                    except (ValueError, TypeError):
+                        pass
+                found = True
+                break
+        if not found:
+            return {"ok": False, "error": "Postavka ne obstaja"}
+        sess["updated_at"] = _dt.now().isoformat()
+        ZALOGA_CURRENT.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/zaloga-archive")
+async def zaloga_archive():
+    """Arhivira aktivno sejo nabiranja in resetira."""
+    try:
+        from datetime import datetime as _dt
+        if not ZALOGA_CURRENT.exists():
+            return {"ok": False, "error": "Ni aktivne seje"}
+        data = json.loads(ZALOGA_CURRENT.read_text(encoding="utf-8"))
+        items = data.get("items", [])
+        if not items:
+            ZALOGA_CURRENT.unlink()
+            return {"ok": True, "message": "Prazna seja izbrisana"}
+        ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+        archive_name = f"{ts}_{len(items)}items.json"
+        data["archived_at"] = _dt.now().isoformat()
+        (ZALOGA_ARCHIVE_DIR / archive_name).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        ZALOGA_CURRENT.unlink()
+        return {"ok": True, "archived": archive_name, "items": len(items)}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/zaloga", response_class=HTMLResponse)
+def zaloga_page():
+    return FileResponse("static/zaloga.html")
+
+
 @app.delete("/vracila-history/{filename}")
 async def vracila_history_delete(filename: str):
     """Briše arhiv."""
