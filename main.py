@@ -1176,11 +1176,14 @@ def _rvc_parse(text: str) -> dict:
         # če RVC/nar ni podan, izračunaj
         if rvc_nar is None and skupaj and orders:
             rvc_nar = round(skupaj / orders, 2)
+        # RVC bruto = skupaj / naročila (brez odbitka poštnine)
+        rvc_bruto = round(skupaj / orders, 2) if (skupaj and orders) else None
         row = {
             "trg": name,
             "narocila": int(orders) if orders is not None else 0,
             "postnina": postnina,
             "rvc_nar": rvc_nar,
+            "rvc_bruto": rvc_bruto,
             "skupaj": skupaj,
         }
         if is_total:
@@ -1232,6 +1235,17 @@ async def rvc_current():
             return {"ok": True, "markets": [], "total": None, "previous": None, "updated_at": None}
         data = json.loads(RVC_FILE.read_text(encoding="utf-8"))
         return {"ok": True, **data}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/rvc-clear")
+async def rvc_clear():
+    """Počisti RVC tabelo (za nov dan)."""
+    try:
+        if RVC_FILE.exists():
+            RVC_FILE.unlink()
+        return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
