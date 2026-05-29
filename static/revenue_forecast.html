@@ -1754,7 +1754,14 @@ function rvcDelta(now, prev, isCurrency) {
   const up = diff > 0;
   const cls = up ? 'rvc-up' : 'rvc-down';
   const arr = up ? '▲' : '▼';
-  const val = isCurrency ? rvcEur(Math.abs(diff)) : Math.abs(diff);
+  const absDiff = Math.abs(diff);
+  let val;
+  if (isCurrency) {
+    val = rvcEur(absDiff);
+  } else {
+    // cela števila (naročila) brez decimalk, sicer 2 decimalki
+    val = Number.isInteger(absDiff) ? absDiff : absDiff.toFixed(2);
+  }
   const sign = up ? '+' : '−';
   return `<span class="${cls}">${arr} ${sign}${val} (${sign}${Math.abs(pct).toFixed(1)}%)</span>`;
 }
@@ -1839,7 +1846,7 @@ function rvcRender(data) {
   // Tabela
   const rows = markets.map(m => {
     const p = prevMap[m.trg];
-    const dRvc = p ? rvcDelta(m.rvc_nar, p.rvc_nar, false) : '<span class="rvc-flat">nov</span>';
+    const dRvc = p ? rvcDelta(m.rvc_nar, p.rvc_nar, true) : '<span class="rvc-flat">nov</span>';
     const dNar = p ? rvcDelta(m.narocila, p.narocila, false) : '<span class="rvc-flat">nov</span>';
     return `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:10px 10px;font-weight:600">${m.trg.replace('Maaarket.','')}</td>
