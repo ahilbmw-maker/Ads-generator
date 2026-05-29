@@ -86,6 +86,13 @@
   .day-section { margin-bottom:16px; }
   .day-section-title { font-weight:600; font-size:12px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
   .final-form { display:grid; grid-template-columns: 200px 1fr 1fr 120px; gap:10px; align-items:end; }
+  .page-tabs { display:flex; gap:6px; margin-bottom:14px; border-bottom:2px solid var(--border); }
+  .page-tab { padding:9px 18px; font-weight:600; font-size:13px; cursor:pointer; border:none; background:transparent; color:var(--text-secondary); border-bottom:2px solid transparent; margin-bottom:-2px; transition:all 0.15s; font-family:inherit; }
+  .page-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .page-tab:hover:not(.active) { color:var(--text); }
+  .rvc-up { color:#16a34a; }
+  .rvc-down { color:#dc2626; }
+  .rvc-flat { color:var(--text-tertiary); }
 </style>
 </head>
 <body>
@@ -101,6 +108,12 @@
   </div>
   </div>
 
+  <div class="page-tabs">
+    <button class="page-tab active" id="ptab-napoved" onclick="switchRvcPage('napoved')">📊 Napoved prometa</button>
+    <button class="page-tab" id="ptab-rvc" onclick="switchRvcPage('rvc')">💰 RVC Maaarket</button>
+  </div>
+
+  <div id="page-napoved">
   <div class="grid-main">
     <!-- LEVO: Vnos -->
     <div>
@@ -339,6 +352,56 @@
       </div>
     </div>
   </div>
+  </div>
+
+  <div id="page-rvc" style="display:none">
+    <div class="grid-main">
+      <div>
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-title">Nov vnos RVC</div>
+          <div style="font-size:10px;color:var(--text-secondary);margin-bottom:8px;line-height:1.4">Prilepi izpis iz sistema. Stolpca <strong>Facebook</strong> in <strong>Google</strong> se ignorirata. Trenutni vnos postane primerjava (prej).</div>
+          <textarea id="rvc-input" placeholder="Trgovina&#9;Število naročil&#9;Stroški Facebook&#9;..." style="width:100%;height:140px;font-family:ui-monospace,monospace;font-size:11px;resize:vertical"></textarea>
+          <button class="btn btn-primary" style="margin-top:10px" onclick="rvcSave()">Obdelaj in shrani</button>
+          <div id="rvc-meta" style="font-size:10px;color:var(--text-tertiary);margin-top:8px"></div>
+        </div>
+      </div>
+      <div>
+        <div id="rvc-empty" class="card">
+          <div class="empty" style="padding:1.5rem;text-align:center;color:var(--text-tertiary)">Še ni vnosa. Prilepi izpis na levi in klikni "Obdelaj in shrani".</div>
+        </div>
+        <div id="rvc-content" style="display:none">
+          <div class="card" style="margin-bottom:12px">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+              <div style="background:var(--surface2);border-radius:var(--radius);padding:12px">
+                <div class="label" style="margin-bottom:2px">RVC / naročilo</div>
+                <div style="font-size:22px;font-weight:700" id="rvc-kpi-rvc">—</div>
+                <div style="font-size:11px;font-weight:600;margin-top:2px" id="rvc-kpi-rvc-d"></div>
+              </div>
+              <div style="background:var(--surface2);border-radius:var(--radius);padding:12px">
+                <div class="label" style="margin-bottom:2px">RVC skupaj</div>
+                <div style="font-size:22px;font-weight:700" id="rvc-kpi-skup">—</div>
+                <div style="font-size:11px;font-weight:600;margin-top:2px" id="rvc-kpi-skup-d"></div>
+              </div>
+              <div style="background:var(--surface2);border-radius:var(--radius);padding:12px">
+                <div class="label" style="margin-bottom:2px">Naročil skupaj</div>
+                <div style="font-size:22px;font-weight:700" id="rvc-kpi-nar">—</div>
+                <div style="font-size:11px;font-weight:600;margin-top:2px" id="rvc-kpi-nar-d"></div>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-title">RVC / naročilo po trgih</div>
+            <div style="position:relative;width:100%;height:260px"><canvas id="rvc-chart"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Pregled po trgih</div>
+            <div id="rvc-table" style="font-size:12px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <div id="toast" class="toast"></div>
@@ -1653,6 +1716,152 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-refresh every 60s
   setInterval(loadToday, 60 * 1000);
 });
+
+// ═══ RVC Maaarket ═══
+let rvcChart = null;
+
+function switchRvcPage(p) {
+  document.getElementById('page-napoved').style.display = (p === 'napoved') ? '' : 'none';
+  document.getElementById('page-rvc').style.display = (p === 'rvc') ? '' : 'none';
+  document.getElementById('ptab-napoved').classList.toggle('active', p === 'napoved');
+  document.getElementById('ptab-rvc').classList.toggle('active', p === 'rvc');
+  if (p === 'rvc') rvcLoad();
+}
+
+function rvcEur(n) {
+  if (n === null || n === undefined) return '—';
+  return Number(n).toLocaleString('sl-SI', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+}
+
+function rvcDelta(now, prev, isCurrency) {
+  if (prev === null || prev === undefined || now === null || now === undefined) {
+    return '<span class="rvc-flat">— ni primerjave</span>';
+  }
+  const diff = now - prev;
+  const pct = prev !== 0 ? (diff / prev * 100) : 0;
+  if (Math.abs(diff) < 0.005) return '<span class="rvc-flat">→ brez spremembe</span>';
+  const up = diff > 0;
+  const cls = up ? 'rvc-up' : 'rvc-down';
+  const arr = up ? '▲' : '▼';
+  const val = isCurrency ? rvcEur(Math.abs(diff)) : Math.abs(diff);
+  const sign = up ? '+' : '−';
+  return `<span class="${cls}">${arr} ${sign}${val} (${sign}${Math.abs(pct).toFixed(1)}%)</span>`;
+}
+
+async function rvcSave() {
+  const text = document.getElementById('rvc-input').value;
+  if (!text.trim()) { toast('Prilepi izpis', true); return; }
+  try {
+    const r = await fetch('/rvc-save', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ text })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      toast('✓ Shranjeno');
+      document.getElementById('rvc-input').value = '';
+      rvcRender(data);
+    } else {
+      toast('✗ ' + (data.error || 'napaka'), true);
+    }
+  } catch(e) { toast('✗ ' + e.message, true); }
+}
+
+async function rvcLoad() {
+  try {
+    const r = await fetch('/rvc-current');
+    const data = await r.json();
+    if (data.ok && data.markets && data.markets.length) {
+      rvcRender(data);
+    } else {
+      document.getElementById('rvc-empty').style.display = '';
+      document.getElementById('rvc-content').style.display = 'none';
+    }
+  } catch(e) {
+    document.getElementById('rvc-empty').style.display = '';
+    document.getElementById('rvc-content').style.display = 'none';
+  }
+}
+
+function rvcPrevMap(prev) {
+  const m = {};
+  if (prev && prev.markets) prev.markets.forEach(x => { m[x.trg] = x; });
+  return m;
+}
+
+function rvcRender(data) {
+  document.getElementById('rvc-empty').style.display = 'none';
+  document.getElementById('rvc-content').style.display = '';
+
+  const markets = data.markets || [];
+  const total = data.total || {};
+  const prev = data.previous || null;
+  const prevMap = rvcPrevMap(prev);
+  const prevTotal = prev && prev.total ? prev.total : null;
+
+  // KPI kartice
+  document.getElementById('rvc-kpi-rvc').textContent = rvcEur(total.rvc_nar);
+  document.getElementById('rvc-kpi-skup').textContent = rvcEur(total.skupaj);
+  document.getElementById('rvc-kpi-nar').textContent = total.narocila ?? '—';
+  document.getElementById('rvc-kpi-rvc-d').innerHTML = rvcDelta(total.rvc_nar, prevTotal ? prevTotal.rvc_nar : null, true);
+  document.getElementById('rvc-kpi-skup-d').innerHTML = rvcDelta(total.skupaj, prevTotal ? prevTotal.skupaj : null, true);
+  document.getElementById('rvc-kpi-nar-d').innerHTML = rvcDelta(total.narocila, prevTotal ? prevTotal.narocila : null, false);
+
+  // Tabela
+  const rows = markets.map(m => {
+    const p = prevMap[m.trg];
+    const dCell = p ? rvcDelta(m.rvc_nar, p.rvc_nar, false) : '<span class="rvc-flat">nov</span>';
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:7px 8px;font-weight:600">${m.trg.replace('Maaarket.','')}</td>
+      <td style="padding:7px 8px;text-align:right">${m.narocila}</td>
+      <td style="padding:7px 8px;text-align:right;color:var(--text-secondary)">${rvcEur(m.postnina)}</td>
+      <td style="padding:7px 8px;text-align:right;color:var(--accent);font-weight:600">${rvcEur(m.rvc_nar)}</td>
+      <td style="padding:7px 8px;text-align:right">${dCell}</td>
+      <td style="padding:7px 8px;text-align:right">${rvcEur(m.skupaj)}</td>
+    </tr>`;
+  }).join('');
+  const totRow = `<tr style="border-top:2px solid var(--border);font-weight:700">
+    <td style="padding:9px 8px">SKUPAJ</td>
+    <td style="padding:9px 8px;text-align:right">${total.narocila ?? ''}</td>
+    <td style="padding:9px 8px;text-align:right">${rvcEur(total.postnina)}</td>
+    <td style="padding:9px 8px;text-align:right;color:var(--accent)">${rvcEur(total.rvc_nar)}</td>
+    <td style="padding:9px 8px;text-align:right"></td>
+    <td style="padding:9px 8px;text-align:right">${rvcEur(total.skupaj)}</td>
+  </tr>`;
+  document.getElementById('rvc-table').innerHTML = `
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="text-align:left;color:var(--text-secondary);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border)">
+        <th style="padding:7px 8px">Trg</th><th style="padding:7px 8px;text-align:right">Naročil</th>
+        <th style="padding:7px 8px;text-align:right">Poštnina</th><th style="padding:7px 8px;text-align:right">RVC/nar.</th>
+        <th style="padding:7px 8px;text-align:right">Δ</th><th style="padding:7px 8px;text-align:right">Skupaj</th>
+      </tr></thead>
+      <tbody>${rows}</tbody><tfoot>${totRow}</tfoot>
+    </table>`;
+
+  // Graf — prej (siva) vs nov (zelena)
+  const labels = markets.map(m => m.trg.replace('Maaarket.',''));
+  const nowData = markets.map(m => m.rvc_nar);
+  const prevData = markets.map(m => { const p = prevMap[m.trg]; return p ? p.rvc_nar : null; });
+  const hasPrev = prevData.some(x => x !== null);
+  const datasets = [];
+  if (hasPrev) datasets.push({ label:'Prej', data:prevData, backgroundColor:'#d1d5db', borderRadius:3 });
+  datasets.push({ label:'Nov', data:nowData, backgroundColor:'#1D9E75', borderRadius:3 });
+
+  if (rvcChart) rvcChart.destroy();
+  rvcChart = new Chart(document.getElementById('rvc-chart'), {
+    type:'bar',
+    data:{ labels, datasets },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:hasPrev, position:'top', labels:{boxWidth:10,font:{size:11}} } },
+      scales:{ y:{ ticks:{ callback:v=>v+' €' } }, x:{ ticks:{ autoSkip:false, font:{size:11} } } } }
+  });
+
+  // meta
+  if (data.updated_at) {
+    const d = new Date(data.updated_at);
+    document.getElementById('rvc-meta').textContent = 'Zadnji vnos: ' + d.toLocaleString('sl-SI');
+  }
+}
 </script>
 </body>
 </html>
