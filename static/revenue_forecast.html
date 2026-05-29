@@ -102,7 +102,7 @@
       <h1>📊 Napoved prometa</h1>
       <div class="subtitle">Vsak dan ima svoj fajl, brez prepisovanja</div>
     </div>
-    <div>
+    <div id="cleanup-wrap">
       <button class="btn btn-soft" onclick="cleanupPhantoms()" style="background:#fee2e2;border-color:#fca5a5">🧹 Počisti prazne</button>
     </div>
   </div>
@@ -371,11 +371,16 @@
         </div>
         <div id="rvc-content" style="display:none">
           <div class="card" style="margin-bottom:12px">
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
               <div style="background:var(--surface2);border-radius:var(--radius);padding:12px">
                 <div class="label" style="margin-bottom:2px">RVC / naročilo</div>
                 <div style="font-size:22px;font-weight:700" id="rvc-kpi-rvc">—</div>
                 <div style="font-size:11px;font-weight:600;margin-top:2px" id="rvc-kpi-rvc-d"></div>
+              </div>
+              <div style="background:var(--surface2);border-radius:var(--radius);padding:12px">
+                <div class="label" style="margin-bottom:2px">RVC bruto / nar.</div>
+                <div style="font-size:22px;font-weight:700" id="rvc-kpi-bruto">—</div>
+                <div style="font-size:11px;font-weight:600;margin-top:2px" id="rvc-kpi-bruto-d"></div>
               </div>
               <div style="background:var(--surface2);border-radius:var(--radius);padding:12px">
                 <div class="label" style="margin-bottom:2px">RVC skupaj</div>
@@ -394,8 +399,11 @@
             <div style="position:relative;width:100%;height:260px"><canvas id="rvc-chart"></canvas></div>
           </div>
           <div class="card">
-            <div class="card-title">Pregled po trgih</div>
-            <div id="rvc-table" style="font-size:12px"></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div class="card-title" style="margin-bottom:0">Pregled po trgih</div>
+              <button class="btn btn-soft" style="background:#fee2e2;border-color:#fca5a5;padding:6px 12px;font-size:12px" onclick="rvcClear()">🗑 Počisti tabelo (nov dan)</button>
+            </div>
+            <div id="rvc-table" style="font-size:14px"></div>
           </div>
         </div>
       </div>
@@ -1725,6 +1733,9 @@ function switchRvcPage(p) {
   document.getElementById('page-rvc').style.display = (p === 'rvc') ? '' : 'none';
   document.getElementById('ptab-napoved').classList.toggle('active', p === 'napoved');
   document.getElementById('ptab-rvc').classList.toggle('active', p === 'rvc');
+  // "Počisti prazne" gumb je relevanten samo za Napoved
+  const cw = document.getElementById('cleanup-wrap');
+  if (cw) cw.style.display = (p === 'napoved') ? '' : 'none';
   if (p === 'rvc') rvcLoad();
 }
 
@@ -1767,6 +1778,22 @@ async function rvcSave() {
   } catch(e) { toast('✗ ' + e.message, true); }
 }
 
+async function rvcClear() {
+  if (!confirm('Počistim RVC tabelo?\n\nPodatki se izbrišejo (za nov dan). Dejanje je nepovratno.')) return;
+  try {
+    const r = await fetch('/rvc-clear', { method: 'POST' });
+    const data = await r.json();
+    if (data.ok) {
+      toast('✓ Počiščeno');
+      document.getElementById('rvc-empty').style.display = '';
+      document.getElementById('rvc-content').style.display = 'none';
+      if (rvcChart) { rvcChart.destroy(); rvcChart = null; }
+    } else {
+      toast('✗ ' + (data.error || 'napaka'), true);
+    }
+  } catch(e) { toast('✗ ' + e.message, true); }
+}
+
 async function rvcLoad() {
   try {
     const r = await fetch('/rvc-current');
@@ -1801,39 +1828,48 @@ function rvcRender(data) {
 
   // KPI kartice
   document.getElementById('rvc-kpi-rvc').textContent = rvcEur(total.rvc_nar);
+  document.getElementById('rvc-kpi-bruto').textContent = rvcEur(total.rvc_bruto);
   document.getElementById('rvc-kpi-skup').textContent = rvcEur(total.skupaj);
   document.getElementById('rvc-kpi-nar').textContent = total.narocila ?? '—';
   document.getElementById('rvc-kpi-rvc-d').innerHTML = rvcDelta(total.rvc_nar, prevTotal ? prevTotal.rvc_nar : null, true);
+  document.getElementById('rvc-kpi-bruto-d').innerHTML = rvcDelta(total.rvc_bruto, prevTotal ? prevTotal.rvc_bruto : null, true);
   document.getElementById('rvc-kpi-skup-d').innerHTML = rvcDelta(total.skupaj, prevTotal ? prevTotal.skupaj : null, true);
   document.getElementById('rvc-kpi-nar-d').innerHTML = rvcDelta(total.narocila, prevTotal ? prevTotal.narocila : null, false);
 
   // Tabela
   const rows = markets.map(m => {
     const p = prevMap[m.trg];
-    const dCell = p ? rvcDelta(m.rvc_nar, p.rvc_nar, false) : '<span class="rvc-flat">nov</span>';
+    const dRvc = p ? rvcDelta(m.rvc_nar, p.rvc_nar, false) : '<span class="rvc-flat">nov</span>';
+    const dNar = p ? rvcDelta(m.narocila, p.narocila, false) : '<span class="rvc-flat">nov</span>';
     return `<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:7px 8px;font-weight:600">${m.trg.replace('Maaarket.','')}</td>
-      <td style="padding:7px 8px;text-align:right">${m.narocila}</td>
-      <td style="padding:7px 8px;text-align:right;color:var(--text-secondary)">${rvcEur(m.postnina)}</td>
-      <td style="padding:7px 8px;text-align:right;color:var(--accent);font-weight:600">${rvcEur(m.rvc_nar)}</td>
-      <td style="padding:7px 8px;text-align:right">${dCell}</td>
-      <td style="padding:7px 8px;text-align:right">${rvcEur(m.skupaj)}</td>
+      <td style="padding:10px 10px;font-weight:600">${m.trg.replace('Maaarket.','')}</td>
+      <td style="padding:10px 10px;text-align:right">${m.narocila}</td>
+      <td style="padding:10px 10px;text-align:right;font-size:12px">${dNar}</td>
+      <td style="padding:10px 10px;text-align:right;color:var(--text-secondary)">${rvcEur(m.postnina)}</td>
+      <td style="padding:10px 10px;text-align:right;color:var(--accent);font-weight:600">${rvcEur(m.rvc_nar)}</td>
+      <td style="padding:10px 10px;text-align:right;font-size:12px">${dRvc}</td>
+      <td style="padding:10px 10px;text-align:right;font-weight:600">${rvcEur(m.rvc_bruto)}</td>
+      <td style="padding:10px 10px;text-align:right">${rvcEur(m.skupaj)}</td>
     </tr>`;
   }).join('');
   const totRow = `<tr style="border-top:2px solid var(--border);font-weight:700">
-    <td style="padding:9px 8px">SKUPAJ</td>
-    <td style="padding:9px 8px;text-align:right">${total.narocila ?? ''}</td>
-    <td style="padding:9px 8px;text-align:right">${rvcEur(total.postnina)}</td>
-    <td style="padding:9px 8px;text-align:right;color:var(--accent)">${rvcEur(total.rvc_nar)}</td>
-    <td style="padding:9px 8px;text-align:right"></td>
-    <td style="padding:9px 8px;text-align:right">${rvcEur(total.skupaj)}</td>
+    <td style="padding:11px 10px">SKUPAJ</td>
+    <td style="padding:11px 10px;text-align:right">${total.narocila ?? ''}</td>
+    <td style="padding:11px 10px;text-align:right;font-size:12px">${rvcDelta(total.narocila, prevTotal ? prevTotal.narocila : null, false)}</td>
+    <td style="padding:11px 10px;text-align:right">${rvcEur(total.postnina)}</td>
+    <td style="padding:11px 10px;text-align:right;color:var(--accent)">${rvcEur(total.rvc_nar)}</td>
+    <td style="padding:11px 10px;text-align:right"></td>
+    <td style="padding:11px 10px;text-align:right">${rvcEur(total.rvc_bruto)}</td>
+    <td style="padding:11px 10px;text-align:right">${rvcEur(total.skupaj)}</td>
   </tr>`;
   document.getElementById('rvc-table').innerHTML = `
     <table style="width:100%;border-collapse:collapse">
-      <thead><tr style="text-align:left;color:var(--text-secondary);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border)">
-        <th style="padding:7px 8px">Trg</th><th style="padding:7px 8px;text-align:right">Naročil</th>
-        <th style="padding:7px 8px;text-align:right">Poštnina</th><th style="padding:7px 8px;text-align:right">RVC/nar.</th>
-        <th style="padding:7px 8px;text-align:right">Δ</th><th style="padding:7px 8px;text-align:right">Skupaj</th>
+      <thead><tr style="text-align:left;color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border)">
+        <th style="padding:9px 10px">Trg</th><th style="padding:9px 10px;text-align:right">Naročil</th>
+        <th style="padding:9px 10px;text-align:right">Naročila Δ</th>
+        <th style="padding:9px 10px;text-align:right">Poštnina</th><th style="padding:9px 10px;text-align:right">RVC/nar.</th>
+        <th style="padding:9px 10px;text-align:right">RVC Δ</th>
+        <th style="padding:9px 10px;text-align:right">RVC bruto</th><th style="padding:9px 10px;text-align:right">Skupaj</th>
       </tr></thead>
       <tbody>${rows}</tbody><tfoot>${totRow}</tfoot>
     </table>`;
