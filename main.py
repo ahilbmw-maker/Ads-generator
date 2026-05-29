@@ -56,6 +56,7 @@ KREATIVE_HISTORY_FILE = DATA_DIR / "kreative_history.json"
 FORECAST_ENTRIES_FILE = DATA_DIR / "forecast_entries.json"
 FORECAST_DELETED_FILE = DATA_DIR / "forecast_deleted.json"
 FORECAST_HISTORY_FILE = DATA_DIR / "forecast_history.json"
+RVC_FILE = DATA_DIR / "rvc_maaarket.json"  # RVC Maaarket: zadnji vnos (prepiše se ob novem)
 SPOROCANJE_FILE = DATA_DIR / "sporocanje_common.json"
 SCALING_STATE_FILE = DATA_DIR / "scaling_state.json"  # Scaling Recommender: shranjeni rezultati + scale zgodovina
 
@@ -1126,6 +1127,113 @@ async def zaloga_history_delete(filename: str):
 @app.get("/zaloga", response_class=HTMLResponse)
 def zaloga_page():
     return FileResponse("static/zaloga.html")
+
+
+# ═══ RVC Maaarket ═══
+def _rvc_num(s):
+    """Parsira evropski zapis '4.440,69 €' → 4440.69. Vrne None če ni številka."""
+    s = (s or "").replace("€", "").replace("\xa0", "").strip()
+    if not s:
+        return None
+    s = s.replace(".", "").replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _rvc_parse(text: str) -> dict:
+    """Parsira prilepljen RVC izpis. Ignorira stolpca Facebook in Google.
+    Vrne {markets:[{trg,narocila,postnina,rvc_nar,skupaj}], total:{...}}."""
+    import re as _re
+    chunks = _re.split(r'(?=Maaarket\.|SKUPAJ)', text or "", flags=_re.IGNORECASE)
+    markets = []
+    total = None
+    for ch in chunks:
+        ch = ch.strip()
+        if not ch or ch.lower().startswith("trgovina"):
+            continue
+        toks = [t.strip() for t in _re.split(r'[\t\n]+', ch) if t.strip()]
+        if not toks:
+            continue
+        name = toks[0]
+        nums = [_rvc_num(t) for t in toks[1:]]
+        is_total = name.upper().startswith("SKUPAJ")
+        if is_total:
+            # naročila, FB(0), Google(0), poštnina, RVC/nar, skupaj
+            orders = nums[0] if len(nums) > 0 else None
+            postnina = nums[3] if len(nums) > 3 else None
+            rvc_nar = nums[4] if len(nums) > 4 else None
+            skupaj = nums[5] if len(nums) > 5 else None
+        else:
+            # FB+Google sta prazni vrstici (split ju je odstranil) →
+            # naročila, poštnina, [RVC/nar], skupaj
+            orders = nums[0] if len(nums) > 0 else None
+            rest = nums[1:]
+            skupaj = rest[-1] if rest else None
+            postnina = rest[0] if len(rest) >= 1 else None
+            rvc_nar = rest[-2] if len(rest) >= 3 else None
+        # če RVC/nar ni podan, izračunaj
+        if rvc_nar is None and skupaj and orders:
+            rvc_nar = round(skupaj / orders, 2)
+        row = {
+            "trg": name,
+            "narocila": int(orders) if orders is not None else 0,
+            "postnina": postnina,
+            "rvc_nar": rvc_nar,
+            "skupaj": skupaj,
+        }
+        if is_total:
+            total = row
+        else:
+            markets.append(row)
+    return {"markets": markets, "total": total}
+
+
+@app.post("/rvc-save")
+async def rvc_save(data: dict):
+    """Parsira in shrani RVC vnos. Trenutni postane 'previous' za primerjavo."""
+    try:
+        from datetime import datetime as _dt
+        text = (data or {}).get("text", "")
+        parsed = _rvc_parse(text)
+        if not parsed["markets"] and not parsed["total"]:
+            return {"ok": False, "error": "ni veljavnih vrstic — preveri format"}
+        # preberi obstoječega (postane previous)
+        prev = None
+        if RVC_FILE.exists():
+            try:
+                old = json.loads(RVC_FILE.read_text(encoding="utf-8"))
+                prev = {
+                    "updated_at": old.get("updated_at"),
+                    "markets": old.get("markets", []),
+                    "total": old.get("total"),
+                }
+            except Exception:
+                prev = None
+        out = {
+            "updated_at": _dt.now().isoformat(),
+            "markets": parsed["markets"],
+            "total": parsed["total"],
+            "previous": prev,
+        }
+        RVC_FILE.parent.mkdir(parents=True, exist_ok=True)
+        RVC_FILE.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"ok": True, **out}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/rvc-current")
+async def rvc_current():
+    """Vrne zadnji shranjeni RVC vnos (z 'previous' za primerjavo)."""
+    try:
+        if not RVC_FILE.exists():
+            return {"ok": True, "markets": [], "total": None, "previous": None, "updated_at": None}
+        data = json.loads(RVC_FILE.read_text(encoding="utf-8"))
+        return {"ok": True, **data}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.delete("/vracila-history/{filename}")
