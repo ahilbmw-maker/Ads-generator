@@ -204,6 +204,74 @@ def extract_slug(url: str) -> Optional[str]:
     return parts[-1].lower() if parts else None
 
 
+def _extract_brand_sku(brand: str, image_url: str) -> Optional[str]:
+    """Za Ikonka/Amio izlušči zanesljiv SKU iz image_link URL-ja.
+    Ikonka: '...cache/ikonka{SKU}{ostalo}-{hash}.jpeg' → SKU takoj za 'ikonka'
+    Amio:   '...cache/amio{XXXX}-{SKU}-{ostalo}-{hash}.jpeg' → SKU za prvim '-'
+    Vrne SKU (upper) ali None."""
+    import re as _re
+    if not brand or not image_url:
+        return None
+    b = brand.strip().lower()
+    # zajemi del datoteke za '/cache/'
+    m = _re.search(r'/cache/(.+)$', image_url)
+    fname = (m.group(1) if m else image_url).lower()
+
+    if b == "ikonka":
+        # ikonka{SKU}... — SKU je alfanumerični niz takoj za 'ikonka' do prvega '-' ali do hash
+        mm = _re.search(r'ikonka([a-z]{0,3}\d[a-z0-9]*)', fname)
+        if mm:
+            raw = mm.group(1)
+            # SKU je tipično tip 'kx7975' (črke+številke); odreži morebitno podvojitev/hash rep
+            # vzemi vzorec črk + številk na začetku
+            m2 = _re.match(r'([a-z]+\d+)', raw)
+            return (m2.group(1) if m2 else raw).upper()
+
+    if b == "amio":
+        # amio{nekaj}-{SKU}-... → SKU za prvim '-'
+        mm = _re.search(r'amio[^-]*-([a-z0-9]+)-', fname)
+        if mm:
+            return mm.group(1).upper()
+
+    return None
+
+
+def _sl_slugify(s: str) -> str:
+    """Pretvori naziv v slug enako kot Maaarket (č→c, š→s, ž→z, presledki/ločila→vezaji)."""
+    import re as _re
+    if not s:
+        return ""
+    s = s.lower()
+    for a, b in (('č','c'),('š','s'),('ž','z'),('ć','c'),('đ','d'),('á','a'),('é','e'),('í','i'),('ó','o'),('ú','u')):
+        s = s.replace(a, b)
+    s = _re.sub(r'[^a-z0-9]+', '-', s).strip('-')
+    return s
+
+
+def _sku_in_image_url(sku: str, joined_urls: str) -> bool:
+    """Preveri ali se SKU pojavi v image URL kot zaključek 'image tokena'.
+    Image pot je oblike {kategorija}{SKU}{index}-{hash}.jpeg, npr. 'dom-in-vrtsilux381-silux38-...'.
+    SKU mora biti tik pred ločilom/koncem ALI pred enojno števko-indeksom (1-9) ki ji sledi ločilo.
+    Tako 'silux38' ujame '...silux38-...' in '...silux381-...', a 'silux1' NE ujame '...silux18-...'
+    (ker bi za silux1 sledil '8' kot dvomestni nadaljnji znak, ne enojni index)."""
+    import re as _re
+    sl = sku.lower().strip()
+    if len(sl) < 3:
+        return False
+    # razdeli URL na tokene po ločilih
+    tokens = _re.split(r'[-_./]', joined_urls)
+    for tok in tokens:
+        if not tok:
+            continue
+        # token konča s SKU (npr. '...silux38') → točno
+        if tok.endswith(sl):
+            return True
+        # token konča s SKU + enojna števka indeksa (npr. 'silux381' = silux38 + slika 1)
+        if len(tok) >= len(sl) + 1 and tok[-1] in '123456789' and tok[:-1].endswith(sl):
+            return True
+    return False
+
+
 def parse_feed(xml_content: str) -> dict:
     """Parse Google Shopping XML feed.
     Vrne: {g_id: {url, path, title, description, price, mpn, brand, product_type, image, availability}}
@@ -232,6 +300,15 @@ def parse_feed(xml_content: str) -> dict:
                 el = item.find(tag)
                 return el.text.strip() if el is not None and el.text else ""
 
+            # vse slike (glavna + dodatne) — za SKU match v URL-ju
+            all_imgs = []
+            main_img = _get('image_link')
+            if main_img:
+                all_imgs.append(main_img)
+            for ael in item.findall(f'{{{G}}}additional_image_link'):
+                if ael.text and ael.text.strip():
+                    all_imgs.append(ael.text.strip())
+
             products[g_id] = {
                 "url": url,
                 "path": path,
@@ -243,7 +320,8 @@ def parse_feed(xml_content: str) -> dict:
                 "brand": _get('brand'),
                 "product_type": _get('product_type'),
                 "google_category": _get('google_product_category'),
-                "image": _get('image_link'),
+                "image": main_img,
+                "all_images": all_imgs,
                 "availability": _get('availability'),
             }
     except ET.ParseError:
@@ -276,21 +354,38 @@ async def fetch_all_feeds():
 
     # SLO slik-indeks (zgradi 1x ob osvežitvi) — za hitri SKU→slika lookup
     global sl_image_index
-    new_img_idx = {"mpn": {}, "slug": {}, "title": {}}
+    new_img_idx = {
+        "slug": {},       # feed slug (= sluggificiran naziv) → slika
+        "title_slug": {}, # sluggificiran naziv → slika (za naziv match)
+        "img_corpus": [], # [(slika, "vse image poti zlepljene lowercase")] za SKU-v-URL match
+        "mpn": {},        # če bi feed kdaj imel mpn
+        "sku_exact": {},  # zanesljiv SKU (Ikonka/Amio iz image URL) UPPER → slika
+    }
     sl_feed = feed_by_lang.get("sl", {})
     for g_id, prod in sl_feed.items():
         img = prod.get("image", "")
         if not img:
             continue
-        mpn = (prod.get("mpn") or "").strip().upper()
-        if mpn:
-            new_img_idx["mpn"].setdefault(mpn, img)
+        # Ikonka/Amio: zanesljiv SKU iz image URL
+        bsku = _extract_brand_sku(prod.get("brand", ""), img)
+        if bsku:
+            new_img_idx["sku_exact"].setdefault(bsku, img)
+        # slug izdelka
         slug = (extract_slug(prod.get("url", "")) or "").lower()
         if slug:
             new_img_idx["slug"].setdefault(slug, img)
-        title = (prod.get("title") or "").lower()
-        if title:
-            new_img_idx["title"].setdefault(title, img)
+        # sluggificiran naziv
+        tslug = _sl_slugify(prod.get("title", ""))
+        if tslug:
+            new_img_idx["title_slug"].setdefault(tslug, img)
+        # mpn (če obstaja)
+        mpn = (prod.get("mpn") or "").strip().upper()
+        if mpn:
+            new_img_idx["mpn"].setdefault(mpn, img)
+        # korpus vseh image poti (za SKU-v-URL match)
+        all_imgs = prod.get("all_images") or [img]
+        joined = " ".join(all_imgs).lower()
+        new_img_idx["img_corpus"].append((img, joined))
     sl_image_index = new_img_idx
 
     last_fetch = datetime.now()
@@ -3710,7 +3805,8 @@ async def narocilnice_lookup(data: dict):
 @app.post("/zaloga-sku-images")
 async def zaloga_sku_images(data: dict):
     """Vrne slike izdelkov po SKU iz SLO feed-a (za preview v nabiranju).
-    Uporablja predzgrajen sl_image_index (O(1) za točne zadetke).
+    Feed nima mpn; SKU je vgrajen v image_link URL, slug = sluggificiran naziv.
+    Strategija: SKU v image URL → sluggificiran naziv == feed slug.
     Vhod: {skus: [...], naziv_map: {SKU: naziv}}. Izhod: {images: {SKU: url}}."""
     skus = data.get("skus", [])
     naziv_map = data.get("naziv_map", {})
@@ -3719,73 +3815,112 @@ async def zaloga_sku_images(data: dict):
     try:
         await ensure_cache_fresh()
         idx = sl_image_index or {}
-        mpn_idx = idx.get("mpn", {})
         slug_idx = idx.get("slug", {})
-        title_idx = idx.get("title", {})
-        if not mpn_idx and not slug_idx and not title_idx:
+        tslug_idx = idx.get("title_slug", {})
+        img_corpus = idx.get("img_corpus", [])
+        mpn_idx = idx.get("mpn", {})
+        sku_exact = idx.get("sku_exact", {})
+        if not img_corpus and not slug_idx:
             return {"ok": True, "images": {}, "note": "feed prazen", "feed_size": 0}
 
         out = {}
-        unresolved = []   # SKU-ji brez točnega zadetka → substring fallback
-        matched_by = {"mpn": 0, "slug": 0, "substring": 0, "naziv": 0, "none": 0}
+        matched_by = {"brand_sku": 0, "image_url": 0, "naziv_slug": 0, "slug": 0, "mpn": 0, "none": 0}
+        unresolved = []
 
-        # Faza 1: O(1) točni zadetki (mpn ali slug == SKU)
+        # Faza 1: zanesljiv SKU (Ikonka/Amio iz image URL) — O(1), najmočnejši
         for raw in skus:
             sku = str(raw).strip()
-            su = sku.upper(); sl = sku.lower()
-            if su in mpn_idx:
-                out[sku] = mpn_idx[su]; matched_by["mpn"] += 1
-            elif sl in slug_idx:
-                out[sku] = slug_idx[sl]; matched_by["slug"] += 1
+            su = sku.upper()
+            found = None
+            if su in sku_exact:
+                found = sku_exact[su]; matched_by["brand_sku"] += 1
+            elif su in mpn_idx:
+                found = mpn_idx[su]; matched_by["mpn"] += 1
+            if not found:
+                for img, joined in img_corpus:
+                    if _sku_in_image_url(sku, joined):
+                        found = img; matched_by["image_url"] += 1; break
+            if found:
+                out[sku] = found
             else:
                 unresolved.append(sku)
 
-        # Faza 2: substring (SKU v title/slug) — iteracija samo za nerešene
+        # Faza 2: sluggificiran naziv == feed slug (ali title_slug)
         if unresolved:
-            title_items = list(title_idx.items())
-            slug_items = list(slug_idx.items())
             still = []
             for sku in unresolved:
-                sl = sku.lower()
+                naziv = naziv_map.get(sku) or ""
+                nslug = _sl_slugify(naziv)
                 found = None
-                for t, img in title_items:
-                    if sl in t:
-                        found = img; break
-                if not found:
-                    for s, img in slug_items:
-                        if sl in s:
-                            found = img; break
+                if nslug:
+                    # točen slug
+                    if nslug in slug_idx:
+                        found = slug_idx[nslug]
+                    elif nslug in tslug_idx:
+                        found = tslug_idx[nslug]
+                    else:
+                        # prefix match (slug se lahko konča z dodatki kot -premium)
+                        for s, img in slug_idx.items():
+                            if s.startswith(nslug) or nslug.startswith(s):
+                                if abs(len(s) - len(nslug)) <= 15:
+                                    found = img; break
                 if found:
-                    out[sku] = found; matched_by["substring"] += 1
+                    out[sku] = found; matched_by["naziv_slug"] += 1
                 else:
                     still.append(sku)
             unresolved = still
 
-        # Faza 3: naziv fallback (prve 3 značilne besede) — samo za še nerešene
-        if unresolved:
-            title_items = list(title_idx.items())
-            for sku in unresolved:
-                naziv = (naziv_map.get(sku) or "").strip().lower()
-                if not naziv:
-                    matched_by["none"] += 1; continue
-                words = [w for w in naziv.split() if len(w) > 3][:3]
-                if not words:
-                    matched_by["none"] += 1; continue
-                best = 0; found = None
-                for t, img in title_items:
-                    score = sum(1 for w in words if w in t)
-                    if score > best and score >= 2:
-                        best = score; found = img
-                if found:
-                    out[sku] = found; matched_by["naziv"] += 1
-                else:
-                    matched_by["none"] += 1
+        for sku in unresolved:
+            matched_by["none"] += 1
 
-        return {"ok": True, "images": out, "feed_size": len(mpn_idx),
+        resp = {"ok": True, "images": out, "feed_size": len(img_corpus),
                 "matched": len(out), "total": len(skus), "match_stats": matched_by}
+        if data.get("debug"):
+            resp["unresolved"] = unresolved[:50]
+        return resp
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e), "images": {}}
+
+
+@app.get("/zaloga-sku-debug")
+async def zaloga_sku_debug(skus: str = "", nazivi: str = ""):
+    """Hitri pregled: /zaloga-sku-debug?skus=silux38,KX7907&nazivi=Naziv1|Naziv2
+    Pove za vsak SKU kako (in če) se najde slika."""
+    await ensure_cache_fresh()
+    sl_feed = feed_by_lang.get("sl", {})
+    sku_list = [s.strip() for s in skus.split(",") if s.strip()]
+    naziv_list = [n.strip() for n in nazivi.split("|")] if nazivi else []
+    out = {"feed_size": len(sl_feed), "results": {}}
+    if not sku_list:
+        return {"napotek": "uporabi ?skus=SKU1,SKU2 (in po želji &nazivi=Naziv1|Naziv2)", **out}
+    for i, sku in enumerate(sku_list):
+        naziv = naziv_list[i] if i < len(naziv_list) else ""
+        nslug = _sl_slugify(naziv)
+        su = sku.upper()
+        hits = []
+        for g_id, prod in sl_feed.items():
+            img = prod.get("image", "")
+            all_imgs = prod.get("all_images") or ([img] if img else [])
+            joined = " ".join(all_imgs).lower()
+            slug = (extract_slug(prod.get("url", "")) or "").lower()
+            bsku = _extract_brand_sku(prod.get("brand", ""), img)
+            via = None
+            if bsku and bsku == su:
+                via = f"brand_sku({prod.get('brand')})"
+            elif _sku_in_image_url(sku, joined):
+                via = "image_url"
+            elif nslug and (slug == nslug or _sl_slugify(prod.get("title","")) == nslug):
+                via = "naziv_slug"
+            if via:
+                hits.append({"g_id": g_id, "brand": prod.get("brand",""),
+                             "title": (prod.get("title") or "")[:50],
+                             "ima_sliko": bool(img), "kje": via, "img": img[:85]})
+        out["results"][sku] = {
+            "naziv": naziv, "naziv_slug": nslug,
+            "najden": len(hits) > 0, "st_zadetkov": len(hits), "zadetki": hits[:3]
+        }
+    return out
 
 
 @app.post("/narocilnice-history-set")
