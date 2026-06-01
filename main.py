@@ -520,6 +520,9 @@ async def fetch_all_feeds():
 
 
 FEED_CACHE_FILE = DATA_DIR / "feed_cache.json"
+# Verzija formata indeksa. Dvigni ob spremembi ekstrakcijske logike (sku_url, kategorije ipd.),
+# da se star/pokvarjen disk cache samodejno zavrže in zgradi znova s popravljeno kodo.
+CACHE_FORMAT_VERSION = 2
 
 
 def _save_feed_cache_to_disk():
@@ -527,6 +530,7 @@ def _save_feed_cache_to_disk():
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         payload = {
+            "format_version": CACHE_FORMAT_VERSION,
             "saved_at": (last_fetch or datetime.now()).isoformat(),
             "feed_by_lang": feed_by_lang,
             "slug_to_id": slug_to_id,
@@ -541,12 +545,17 @@ def _save_feed_cache_to_disk():
 
 
 def _load_feed_cache_from_disk() -> bool:
-    """Naloži feed cache z diska, če obstaja in je svež (<24h). Vrne True ob uspehu."""
+    """Naloži feed cache z diska, če obstaja, je svež (<TTL) in pravilne format verzije.
+    Vrne True ob uspehu."""
     global feed_by_lang, slug_to_id, sl_image_index, last_fetch
     try:
         if not FEED_CACHE_FILE.exists():
             return False
         payload = json.loads(FEED_CACHE_FILE.read_text(encoding="utf-8"))
+        # zavrzi star format (npr. pokvarjen sku_url indeks iz prejšnje verzije ekstrakcije)
+        if payload.get("format_version") != CACHE_FORMAT_VERSION:
+            print(f"[feed cache] format verzija se ne ujema (disk={payload.get('format_version')}, koda={CACHE_FORMAT_VERSION}) — bo zgrajen znova")
+            return False
         saved_at = datetime.fromisoformat(payload["saved_at"])
         if datetime.now() - saved_at > timedelta(hours=CACHE_TTL_HOURS):
             print("[feed cache] disk cache zastarel, bo osvežen")
@@ -1526,6 +1535,9 @@ async def zaloga_extra_box(data: dict):
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e)}
+
+
+@app.post("/zaloga-archive")
 async def zaloga_archive(data: dict = None):
     """Arhivira aktivno sejo nabiranja za trg in resetira."""
     try:
