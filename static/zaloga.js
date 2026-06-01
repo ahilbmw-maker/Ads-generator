@@ -1,7 +1,8 @@
 // ═══ NABIRANJE ZALOGE — logika ═══
 let ITEMS = [];           // vse postavke iz seje
 let SESSION = null;       // celotna seja
-let MARKET = 'slo';       // aktivni trg: 'slo' | 'rs'
+const MARKET_KEY = 'zaloga_market';  // localStorage: aktivni trg (ostane ob osvežitvi)
+let MARKET = (function(){ try { return localStorage.getItem(MARKET_KEY) || 'slo'; } catch(e){ return 'slo'; } })();
 const EXPANDED_KEY = 'zaloga_expanded';  // localStorage: kateri zavihki odprti (per naprava)
 
 // market query suffix za fetch klice
@@ -15,11 +16,20 @@ function isRS() { return MARKET === 'rs'; }
 function switchMarket(m) {
   if (m === MARKET) return;
   MARKET = m;
+  try { localStorage.setItem(MARKET_KEY, m); } catch(e) {}
   document.getElementById('mtab-slo').classList.toggle('active', m === 'slo');
   document.getElementById('mtab-rs').classList.toggle('active', m === 'rs');
   setExpanded({});  // počisti odprte zavihke ob preklopu
   lastUpdate = null;
   loadSession();
+}
+
+// ── Ob nalaganju: označi shranjeni trg ──
+function initMarketTab() {
+  const slo = document.getElementById('mtab-slo');
+  const rs = document.getElementById('mtab-rs');
+  if (slo) slo.classList.toggle('active', MARKET === 'slo');
+  if (rs) rs.classList.toggle('active', MARKET === 'rs');
 }
 
 // ── Skupine ──
@@ -236,18 +246,17 @@ function itemRow(it) {
        <button class="item-unlock" onclick="unlockItem(${it.idx})" title="Odkleni">🔓</button>`
     : '';
 
-  // RS: opomba polje (dodatni box) — pod gumbi
+  // RS: opomba polje (dodatni box) — kompaktno, pod gumbi
   const opombaRow = rs ? `
       <div class="item-opomba">
-        <span class="iop-icon">📝</span>
-        <span class="iop-label">Opomba — dodatni box:</span>
+        <span class="iop-label">📝 Opomba — dodatni box:</span>
         <input type="text" class="iop-input" value="${esc(it.opomba || '')}" placeholder="npr. Box 3, 2 kos"
           onclick="event.stopPropagation()" onblur="commitOpomba(${it.idx}, this.value)"
           onkeydown="if(event.key==='Enter')this.blur()">
       </div>` : '';
 
   return `
-    <div class="item ${cls} ${locked?'item-locked':''}" id="item-${it.idx}">
+    <div class="item ${cls} ${locked?'item-locked':''} ${rs?'item-rs':''}" id="item-${it.idx}">
       <span class="id-col">${esc(it.id || '—')}</span>
       <div class="item-mobile-top">
         <span class="sku">${esc(it.sku)}</span>
@@ -728,5 +737,6 @@ async function copySkuFromManko(el, sku) {
 }
 
 // ── Init ──
+initMarketTab();
 loadSession();
 setInterval(pollSync, 15000);
