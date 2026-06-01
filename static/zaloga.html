@@ -106,6 +106,8 @@
   /* ─── LAYOUT ─── */
   .wrap { max-width: 100%; margin: 0; padding: 22px; display: grid; grid-template-columns: minmax(0, 1fr) 480px; gap: 22px; align-items: start; }
   @media (max-width: 1100px) { .wrap { grid-template-columns: 1fr; } }
+  /* #mobileBoxBar je samo za mobile — na desktopu vedno skrit (JS ga prikaže le na ≤768px) */
+  @media (min-width: 769px) { #mobileBoxBar { display: none !important; } }
 
   /* ─── UPLOAD ZONE ─── */
   .upload-card {
@@ -126,6 +128,11 @@
   .shelf-head { border-radius: 13px 13px 0 0; }
   .shelf:not(.open) .shelf-head { border-radius: 13px; }
   .shelf.open { border-color: var(--border2); box-shadow: var(--shadow); }
+  /* Dokončana polica (vsaka postavka ✓ ali ✗) — svetlo zelena čez celo vrstico */
+  .shelf-done { background: var(--ok-bg); border-color: var(--ok); }
+  .shelf-done .shelf-head:hover { background: rgba(22,163,74,0.10); }
+  .shelf-done .shelf-name { color: var(--ok); }
+  .shelf-done .shelf-chevron { color: var(--ok); }
   .shelf-head {
     display: flex; align-items: center; gap: 14px;
     padding: 16px 18px; cursor: pointer; user-select: none;
@@ -408,14 +415,22 @@
     .manko-list { max-height: none; }
     .side-card { padding: 16px; }
 
-    /* RS box-bar mobile: vse v 1 vrstici — ikona + dropdown levo, gumb desno (po vsebini) */
-    .shelf-box-bar { padding: 8px; gap: 8px; flex-wrap: nowrap; position: static; }
-    .shelf-box-bar .sbb-icon { flex-shrink: 0; }
-    .shelf-box-bar .sbb-label { display: none; }
-    .shelf-box-bar .sbb-input { width: 70px; flex: 0 0 70px; min-width: 0; height: 42px; }
-    .shelf-box-bar .sbb-select { flex: 0 0 auto; min-width: 96px; width: auto; height: 42px; font-size: 15px; padding: 0 8px; }
-    .shelf-box-bar .sbb-save { margin-left: auto; flex-shrink: 0; height: 42px; padding: 0 14px; font-size: 13px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
-    .shelf-box-bar .sbb-locked { flex-basis: 100%; order: 5; width: 100%; text-align: center; }
+    /* RS box-bar mobile: inline bar v polici SKRIJEMO — uporabimo spodnji sticky bar */
+    .shelf-body > .shelf-box-bar { display: none; }
+    /* Spodnji sticky bar: ikona + dropdown levo, gumb desno (po vsebini), vse v 1 vrstici */
+    #mobileBoxBar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+      background: var(--panel); border-top: 2px solid var(--accent);
+      box-shadow: 0 -3px 14px rgba(0,0,0,0.12); padding: 8px 10px;
+      padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+    #mobileBoxBar .shelf-box-bar { background: none; border: none; border-radius: 0;
+      margin: 0; padding: 0; gap: 8px; flex-wrap: nowrap; }
+    #mobileBoxBar .sbb-icon { flex-shrink: 0; }
+    #mobileBoxBar .sbb-label { display: none; }
+    #mobileBoxBar .sbb-select { flex: 0 0 auto; min-width: 104px; width: auto; height: 42px; font-size: 15px; padding: 0 8px; }
+    #mobileBoxBar .sbb-save { margin-left: auto; flex-shrink: 0; height: 42px; padding: 0 12px; font-size: 13px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+    #mobileBoxBar .sbb-locked { display: none; }
+    /* prostor na dnu, da zadnja polica ni skrita pod sticky barom */
+    .wrap { padding-bottom: 80px; }
 
     /* RS opomba mobile: POD gumbi (order 5), vgrajen label ostane v vrsti */
     .item-opomba {
@@ -727,6 +742,9 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- RS mobile: sticky box-bar pritrjen na dno (prikazan ko je polica odprta) -->
+<div id="mobileBoxBar" style="display:none"></div>
+
 <!-- Zgodovina modal -->
 <div class="hist-overlay" id="histOverlay" onclick="if(event.target===this)closeHistory()">
   <div class="hist-modal">
@@ -738,6 +756,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601C"></script>
+<script src="/static/zaloga.js?v=20260601E"></script>
 </body>
 </html>
