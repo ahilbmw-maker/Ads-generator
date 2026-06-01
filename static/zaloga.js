@@ -78,9 +78,11 @@ async function fetchSkuImages() {
   try {
     const skus = [...new Set(ITEMS.map(it => it.sku).filter(Boolean))];
     if (!skus.length) return;
+    const naziv_map = {};
+    ITEMS.forEach(it => { if (it.sku && it.naziv) naziv_map[it.sku] = it.naziv; });
     const r = await fetch('/zaloga-sku-images', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ skus })
+      body: JSON.stringify({ skus, naziv_map })
     });
     const data = await r.json();
     if (data.ok && data.images) {
@@ -197,7 +199,7 @@ function render() {
         <div class="shelf-body">
           ${isRS() ? shelfBoxBar(g, items) : ''}
           <div class="item-head">
-            <span>ID naročila</span><span>SKU</span><span>Pozicija</span>
+            <span>ID naročila</span><span>Slika</span><span>SKU</span><span>Pozicija</span>
             <span>Naziv</span><span class="h-qty">Količina</span><span class="h-status">Status</span>
           </div>
           ${items.map(it => itemRow(it)).join('')}
