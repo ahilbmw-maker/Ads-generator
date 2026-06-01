@@ -211,7 +211,16 @@ function syncFilterToggleLabel() {
   const btn = document.getElementById('filterToggle');
   if (!lbl) return;
   const on = getDoneFilter();
-  lbl.textContent = on ? 'Prikaži vse' : 'Samo odprto';
+  // preštej police: skupaj vse, in koliko nedokončanih (todo > 0)
+  const groups = groupItems();
+  let total = 0, open = 0;
+  Object.values(groups).forEach(items => {
+    const s = groupStat(items);
+    total++;
+    if (!(s.total > 0 && s.todo === 0)) open++;  // ni dokončana
+  });
+  // število kaže, koliko polic bo vidnih PO kliku
+  lbl.textContent = on ? `Prikaži vse (${total})` : `Samo odprto (${open})`;
   if (btn) btn.classList.toggle('filter-active', on);
 }
 function toggleDoneFilter() {
@@ -933,6 +942,7 @@ function setStatus(idx, status) {
   refreshShelfProgress(it.group);
   refreshSidebarAndStats();
   updateGlobalStat();
+  syncFilterToggleLabel();  // osveži števec polic na gumbu filtra
   if (isRS()) refreshBoxCounters();  // posodobi globalni števec obkljukanih brez boxa
   saveItem(idx, { status: it.status });
 }
