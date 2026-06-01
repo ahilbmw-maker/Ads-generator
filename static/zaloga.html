@@ -67,6 +67,12 @@
   }
   .brand h1 { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
   .brand .sub { font-size: 11px; color: var(--text-faint); font-weight: 500; }
+  /* gumb filtra "Samo odprto / Prikaži vse" */
+  .filter-toggle { font-weight: 700; white-space: nowrap; }
+  .filter-toggle.filter-active {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+  .filter-toggle.filter-active:hover { filter: brightness(1.05); }
 
   .topbar-spacer { flex: 1; }
   .market-tabs {
@@ -325,7 +331,7 @@
       display: flex; flex-direction: column;
       background: var(--panel);
       border-bottom: none; border-top: 1px solid var(--border);
-      box-shadow: 0 -4px 16px rgba(0,0,0,0.08);
+      box-shadow: 0 -3px 5px rgba(0,0,0,0.06);
       backdrop-filter: none;
     }
     /* vrstni red v nogi: progress bar (1) → tabi (2) → topbar Home+logo+naslov+% (3) */
@@ -788,11 +794,10 @@
 <div class="topbar">
   <a href="/" class="btn btn-ghost btn-sm" style="text-decoration:none" title="Nazaj na nadzorno ploščo">🏠 Domov</a>
   <div class="brand">
-    <div class="logo">📦</div>
-    <div>
-      <h1>Nabiranje zaloge</h1>
-      <div class="sub">maaarket · skladišče · v3</div>
-    </div>
+    <div class="logo">🛒</div>
+    <button class="btn btn-ghost btn-sm filter-toggle" id="filterToggle" onclick="toggleDoneFilter()" title="Skrij/prikaži dokončane police">
+      <span id="filterToggleLabel">Samo odprto</span>
+    </button>
   </div>
   <div class="topbar-spacer"></div>
 
@@ -844,6 +849,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601V"></script>
+<script src="/static/zaloga.js?v=20260601Y"></script>
 </body>
 </html>
