@@ -227,7 +227,7 @@ function render() {
           <div class="shelf-head-spacer"></div>
           <div class="shelf-prog">
             <div class="shelf-prog-bar prog-seg-wrap">${progBarSegments(stat)}</div>
-            <span class="shelf-prog-pct" style="color:${stat.pctOk===100?'var(--ok)':'var(--text)'}">${isDone ? '✓ ' : ''}${stat.pctOk}%</span>
+            <span class="shelf-prog-pct" style="color:var(--text)">${isDone ? '✓ ' : ''}${stat.pctOk}%</span>
           </div>
         </div>
         <div class="shelf-body">
@@ -937,7 +937,7 @@ function refreshShelfProgress(group) {
   const bar = shelf.querySelector('.shelf-prog-bar');
   const pct = shelf.querySelector('.shelf-prog-pct');
   if (bar) bar.innerHTML = progBarSegments(stat);
-  if (pct) { pct.textContent = (isDone ? '✓ ' : '') + stat.pctOk + '%'; pct.style.color = stat.pctOk===100 ? 'var(--ok)' : 'var(--text)'; }
+  if (pct) { pct.textContent = (isDone ? '✓ ' : '') + stat.pctOk + '%'; pct.style.color = 'var(--text)'; }
   // mobilno obarvano ozadje glave (predlog 3) — posodobi sproti ob kliku ✓/✗
   const fill = shelf.querySelector('.shelf-head-fill');
   if (fill) {
