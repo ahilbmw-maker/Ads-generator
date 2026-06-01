@@ -907,9 +907,33 @@ async def vracila_history_detail(filename: str):
 # ─── ZALOGA / NABIRANJE (picking list za skladišče) ──────────────────────────
 ZALOGA_DIR = DATA_DIR / "zaloga"
 ZALOGA_DIR.mkdir(parents=True, exist_ok=True)
-ZALOGA_CURRENT = ZALOGA_DIR / "current.json"
+ZALOGA_CURRENT = ZALOGA_DIR / "current.json"  # legacy SLO (nazaj-združljivost)
 ZALOGA_ARCHIVE_DIR = ZALOGA_DIR / "archive"
 ZALOGA_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _zaloga_market(m: str) -> str:
+    """Normalizira market kodo. Privzeto 'slo'."""
+    m = (m or "slo").strip().lower()
+    return m if m in ("slo", "rs") else "slo"
+
+
+def _zaloga_current_path(market: str) -> Path:
+    """Pot do aktivne seje za trg. SLO uporablja legacy current.json."""
+    market = _zaloga_market(market)
+    if market == "slo":
+        return ZALOGA_CURRENT  # legacy pot ostane
+    return ZALOGA_DIR / f"current_{market}.json"
+
+
+def _zaloga_archive_dir(market: str) -> Path:
+    """Arhiv mapa za trg. SLO uporablja legacy archive/."""
+    market = _zaloga_market(market)
+    if market == "slo":
+        return ZALOGA_ARCHIVE_DIR  # legacy pot ostane
+    d = ZALOGA_DIR / f"archive_{market}"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def _zaloga_group(poz: str, sku: str = "") -> str:
@@ -937,9 +961,9 @@ def _zaloga_group(poz: str, sku: str = "") -> str:
 
 
 @app.post("/zaloga-upload")
-async def zaloga_upload(file: UploadFile = File(...)):
+async def zaloga_upload(file: UploadFile = File(...), market: str = "slo"):
     """Naloži CSV za nabiranje. Parsira ID, SKU, Naziv, Količina, Pozicija SL → skupine.
-    Ustvari novo aktivno sejo (current.json). Obstoječa se prepiše."""
+    Ustvari novo aktivno sejo za izbrani trg. Obstoječa se prepiše."""
     try:
         import csv as _csv, io as _io
         from datetime import datetime as _dt
@@ -984,9 +1008,10 @@ async def zaloga_upload(file: UploadFile = File(...)):
             "started_at": _dt.now().isoformat(),
             "updated_at": _dt.now().isoformat(),
             "filename": file.filename,
+            "market": _zaloga_market(market),
             "items": items,
         }
-        ZALOGA_CURRENT.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        _zaloga_current_path(market).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         # Statistika skupin
         groups = {}
         for it in items:
@@ -998,11 +1023,12 @@ async def zaloga_upload(file: UploadFile = File(...)):
 
 
 @app.get("/zaloga-current")
-async def zaloga_current_get():
-    """Vrne aktivno sejo nabiranja (vsi nabiralci berejo isto)."""
+async def zaloga_current_get(market: str = "slo"):
+    """Vrne aktivno sejo nabiranja za trg (vsi nabiralci berejo isto)."""
     try:
-        if ZALOGA_CURRENT.exists():
-            data = json.loads(ZALOGA_CURRENT.read_text(encoding="utf-8"))
+        path = _zaloga_current_path(market)
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
             return {"ok": True, **data}
         return {"ok": True, "items": [], "started_at": None}
     except Exception as e:
@@ -1015,12 +1041,13 @@ async def zaloga_update_item(data: dict):
     Več nabiralcev hkrati: zaklepamo z atomarnim read-modify-write na idx."""
     try:
         from datetime import datetime as _dt
-        if not ZALOGA_CURRENT.exists():
+        path = _zaloga_current_path(data.get("market", "slo"))
+        if not path.exists():
             return {"ok": False, "error": "Ni aktivne seje"}
         idx = data.get("idx")
         if idx is None:
             return {"ok": False, "error": "Manjka idx"}
-        sess = json.loads(ZALOGA_CURRENT.read_text(encoding="utf-8"))
+        sess = json.loads(path.read_text(encoding="utf-8"))
         found = False
         for it in sess.get("items", []):
             if it.get("idx") == idx:
@@ -1036,7 +1063,7 @@ async def zaloga_update_item(data: dict):
         if not found:
             return {"ok": False, "error": "Postavka ne obstaja"}
         sess["updated_at"] = _dt.now().isoformat()
-        ZALOGA_CURRENT.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
         return {"ok": True}
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -1044,22 +1071,25 @@ async def zaloga_update_item(data: dict):
 
 
 @app.post("/zaloga-archive")
-async def zaloga_archive():
-    """Arhivira aktivno sejo nabiranja in resetira."""
+async def zaloga_archive(data: dict = None):
+    """Arhivira aktivno sejo nabiranja za trg in resetira."""
     try:
         from datetime import datetime as _dt
-        if not ZALOGA_CURRENT.exists():
+        market = _zaloga_market((data or {}).get("market", "slo"))
+        path = _zaloga_current_path(market)
+        adir = _zaloga_archive_dir(market)
+        if not path.exists():
             return {"ok": False, "error": "Ni aktivne seje"}
-        data = json.loads(ZALOGA_CURRENT.read_text(encoding="utf-8"))
-        items = data.get("items", [])
+        sess = json.loads(path.read_text(encoding="utf-8"))
+        items = sess.get("items", [])
         if not items:
-            ZALOGA_CURRENT.unlink()
+            path.unlink()
             return {"ok": True, "message": "Prazna seja izbrisana"}
         ts = _dt.now().strftime("%Y%m%d_%H%M%S")
         archive_name = f"{ts}_{len(items)}items.json"
-        data["archived_at"] = _dt.now().isoformat()
-        (ZALOGA_ARCHIVE_DIR / archive_name).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        ZALOGA_CURRENT.unlink()
+        sess["archived_at"] = _dt.now().isoformat()
+        (adir / archive_name).write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        path.unlink()
         return {"ok": True, "archived": archive_name, "items": len(items)}
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -1067,11 +1097,12 @@ async def zaloga_archive():
 
 
 @app.get("/zaloga-history")
-async def zaloga_history():
-    """Seznam arhiviranih sej nabiranja (povzetki)."""
+async def zaloga_history(market: str = "slo"):
+    """Seznam arhiviranih sej nabiranja za trg (povzetki)."""
     try:
+        adir = _zaloga_archive_dir(market)
         out = []
-        for f in sorted(ZALOGA_ARCHIVE_DIR.glob("*.json"), reverse=True):
+        for f in sorted(adir.glob("*.json"), reverse=True):
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 items = data.get("items", [])
@@ -1095,12 +1126,12 @@ async def zaloga_history():
 
 
 @app.get("/zaloga-history/{filename}")
-async def zaloga_history_detail(filename: str):
+async def zaloga_history_detail(filename: str, market: str = "slo"):
     """Polna vsebina ene arhivirane seje."""
     try:
         if "/" in filename or "\\" in filename or ".." in filename:
             return {"ok": False, "error": "neveljavno ime"}
-        f = ZALOGA_ARCHIVE_DIR / filename
+        f = _zaloga_archive_dir(market) / filename
         if not f.exists():
             return {"ok": False, "error": "ni najdeno"}
         data = json.loads(f.read_text(encoding="utf-8"))
@@ -1110,12 +1141,12 @@ async def zaloga_history_detail(filename: str):
 
 
 @app.delete("/zaloga-history/{filename}")
-async def zaloga_history_delete(filename: str):
+async def zaloga_history_delete(filename: str, market: str = "slo"):
     """Izbriše arhivirano sejo."""
     try:
         if "/" in filename or "\\" in filename or ".." in filename:
             return {"ok": False, "error": "neveljavno ime"}
-        f = ZALOGA_ARCHIVE_DIR / filename
+        f = _zaloga_archive_dir(market) / filename
         if not f.exists():
             return {"ok": False, "error": "ni najdeno"}
         f.unlink()
