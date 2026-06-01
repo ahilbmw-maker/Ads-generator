@@ -140,6 +140,19 @@
   .shelf-head { border-radius: 13px 13px 0 0; }
   .shelf:not(.open) .shelf-head { border-radius: 13px; }
   .shelf.open { border-color: var(--border2); box-shadow: var(--shadow); }
+  /* desktop: izrazitejša obroba okoli polic (boljša vidljivost) */
+  @media (min-width: 769px) {
+    .shelf { border-color: var(--border2); }
+    .shelf:hover { border-color: var(--text-faint); }
+  }
+  /* animacija samodejnega skrivanja dokončane police (filter Samo odprto) */
+  .shelf-hiding {
+    opacity: 0; transform: translateX(12px);
+    max-height: 0 !important; margin: 0 !important; padding: 0 !important;
+    overflow: hidden;
+    transition: opacity 0.35s ease, transform 0.35s ease, max-height 0.4s ease, margin 0.4s ease;
+    pointer-events: none;
+  }
   /* Dokončana polica (vsaka postavka ✓ ali ✗) — svetlo zelena čez celo vrstico */
   .shelf-done { background: var(--ok-bg); }
   .shelf-done .shelf-head:hover { background: rgba(22,163,74,0.10); }
@@ -855,6 +868,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601AA"></script>
+<script src="/static/zaloga.js?v=20260601AB"></script>
 </body>
 </html>
