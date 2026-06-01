@@ -53,6 +53,7 @@
     backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--border);
   }
+  .mobile-prog.prog-seg-wrap { display: none; }  /* samo mobile (v nogi) */
   .topbar {
     padding: 14px 22px;
     display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
@@ -317,22 +318,45 @@
   @media (max-width: 768px) {
     body { overflow-x: clip; }
 
+    /* ══ MOBILE: cel meni gre v FIKSNO NOGO na dnu; vrh prazen za izdelke ══ */
+    .sticky-header {
+      position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 60;
+      display: flex; flex-direction: column;
+      background: var(--panel);
+      border-bottom: none; border-top: 1px solid var(--border);
+      box-shadow: 0 -4px 16px rgba(0,0,0,0.08);
+      backdrop-filter: none;
+    }
+    /* vrstni red v nogi: progress bar (1) → tabi (2) → topbar Home+logo+naslov+% (3) */
+    .mobile-prog.prog-seg-wrap { order: 1; display: flex; height: 5px; background: var(--panel3); overflow: hidden; }
+    .mobile-prog > .prog-seg-wrap { height: 100%; display: flex; }
+    .market-tabs { order: 2; padding: 0 8px; overflow-x: auto; border-top: 1px solid var(--border); }
+    .topbar { order: 3; padding: 8px 12px; gap: 8px; flex-wrap: nowrap; align-items: center; border-top: 1px solid var(--border); }
+
     /* Topbar kompaktnejši */
-    .topbar { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
-    .brand h1 { font-size: 15px; }
-    .brand .sub { font-size: 10px; }
-    .brand .logo { width: 30px; height: 30px; font-size: 16px; }
-    .global-stat { padding: 8px 12px; gap: 6px; width: 100%; box-sizing: border-box; min-width: 0; }
-    .global-stat .gs-pct { font-size: 16px; }
-    .global-stat .gs-done { font-size: 12px; }
+    .brand { gap: 7px; flex: 1; min-width: 0; }
+    .brand h1 { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .brand .sub { display: none; }  /* podnaslov skrit na mobile */
+    .brand .logo { width: 26px; height: 26px; font-size: 14px; flex-shrink: 0; }
+    /* Home gumb PRED logo (prvi v topbar) */
+    .topbar > a[href="/"] { order: -1; flex: 0 0 auto; padding: 5px 9px; font-size: 13px; }
     .topbar-spacer { display: none; }
-    .market-tabs { padding: 0 8px; overflow-x: auto; border-top: 1px solid var(--border); }
     .market-tab { padding: 11px 12px; font-size: 12px; white-space: nowrap; }
-    .topbar label.btn, .topbar button.btn { flex: 1; text-align: center; }
     /* Skrij akcijske gumbe (Naloži CSV, Arhiviraj, Zgodovina, Osveži slike) na mobilnem */
     .topbar-action { display: none !important; }
 
-    /* Wrap = en stolpec, brez fiksne širine */
+    /* global-stat: na mobile samo kompakten % + done v topbar vrstici (bar je zgoraj v nogi) */
+    .global-stat {
+      order: 5; flex: 0 0 auto; width: auto; padding: 0; background: none; min-width: 0;
+      display: flex; align-items: baseline; gap: 5px; box-sizing: border-box;
+    }
+    .global-stat .global-stat-head { display: flex; align-items: baseline; gap: 5px; }
+    .global-stat .gs-pct { font-size: 15px; font-weight: 800; }
+    .global-stat .gs-done { font-size: 10px; color: var(--text-dim); }
+    .global-stat .gs-bar { display: none; }   /* bar je v .mobile-prog na vrhu noge */
+    .global-stat .gs-break { display: none; } /* podroben razrez skrit v nogi (premalo prostora) */
+
+    /* prostor na dnu seznamov nastavljen spodaj (var --footer-h) */
     .wrap { padding: 12px; gap: 14px; grid-template-columns: minmax(0, 1fr); max-width: 100%; }
 
     /* Sidebar gre POD sezname (ne sticky ob strani) */
@@ -435,10 +459,9 @@
     /* RS box-bar mobile: inline bar v polici SKRIJEMO — uporabimo spodnji sticky bar */
     .shelf-body > .shelf-box-bar { display: none; }
     /* Spodnji sticky bar: ikona + dropdown levo, gumb desno (po vsebini), vse v 1 vrstici */
-    #mobileBoxBar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    #mobileBoxBar { position: fixed; left: 0; right: 0; bottom: var(--footer-h, 0px); z-index: 59;
       background: var(--panel); border-top: 2px solid var(--accent);
-      box-shadow: 0 -3px 14px rgba(0,0,0,0.12); padding: 8px 10px;
-      padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+      box-shadow: 0 -3px 14px rgba(0,0,0,0.12); padding: 8px 10px; }
     #mobileBoxBar .shelf-box-bar { background: none; border: none; border-radius: 0;
       margin: 0; padding: 0; gap: 8px; flex-wrap: nowrap; }
     #mobileBoxBar .sbb-icon { flex-shrink: 0; }
@@ -447,8 +470,9 @@
     #mobileBoxBar .sbb-count { flex-shrink: 0; font-size: 14px; padding: 6px 9px; }
     #mobileBoxBar .sbb-save { margin-left: auto; flex-shrink: 0; height: 42px; padding: 0 12px; font-size: 13px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
     #mobileBoxBar .sbb-locked { display: none; }
-    /* prostor na dnu, da zadnja polica ni skrita pod sticky barom */
-    .wrap { padding-bottom: 80px; }
+    /* prostor na dnu: noga (~110px); ko je RS box-bar viden, še dodatno */
+    .wrap { padding-bottom: calc(var(--footer-h, 110px) + 24px); }
+    body.has-boxbar .wrap { padding-bottom: calc(var(--footer-h, 110px) + 80px); }
 
     /* RS opomba mobile: POD gumbi (order 5), vgrajen label ostane v vrsti */
     .item-opomba {
@@ -621,10 +645,11 @@
   .bxd-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 16px; }
   .bxd-create { display: flex; gap: 8px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
   .bxd-new-input {
-    flex: 1; height: 46px; font-size: 15px; border: 1.5px solid var(--accent);
+    flex: 1; min-width: 0; height: 46px; font-size: 15px; border: 1.5px solid var(--accent);
     border-radius: 10px; padding: 0 12px; background: var(--panel); color: var(--text); font-family: inherit;
   }
   .bxd-create-btn {
+    flex-shrink: 0;
     background: var(--ok); color: #fff; border: none; padding: 0 16px;
     border-radius: 10px; font-weight: 700; font-size: 13px; cursor: pointer; white-space: nowrap; font-family: inherit;
   }
@@ -726,6 +751,7 @@
 <body>
 
 <div class="sticky-header">
+<div class="mobile-prog prog-seg-wrap" id="mobileProg"></div>
 <div class="topbar">
   <a href="/" class="btn btn-ghost btn-sm" style="text-decoration:none" title="Nazaj na nadzorno ploščo">🏠 Domov</a>
   <div class="brand">
@@ -785,6 +811,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601K"></script>
+<script src="/static/zaloga.js?v=20260601N"></script>
 </body>
 </html>
