@@ -5,7 +5,6 @@ python-multipart
 httpx
 openpyxl
 pdfplumber
-imageio[ffmpeg]
 static-ffmpeg
 reportlab
 google-api-python-client>=2.0.0
