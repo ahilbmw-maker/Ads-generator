@@ -257,11 +257,46 @@ def _sl_slugify(s: str) -> str:
 
 
 _FEED_CATEGORIES = [
-    "racunalnistvo-in-telefonija", "zdravje-in-lepota", "dom-in-vrt", "avto-moto",
-    "pametne-ure", "rocne-ure", "za-otroke", "gospodinjstvo", "potovanja",
-    "kozmetika", "akumulator", "slusalke", "pajkice", "products", "ostalo",
-    "kabli", "slike", "a-mobile",
+    "a-mobile", "adapterji-za-zarnice", "akumulator", "avto-antene",
+    "avto-moto", "avto-ventilatorji", "bluetooth-zvocniki", "centralno-zaklepanje",
+    "cevi-in-crpalke", "ciscenje-sesanje-in-likanje", "ciscenje-vozila", "dekorativni-program",
+    "dnevne-luci", "dodatki-za-avto", "dodatki-za-mobilni-telefon", "dodatki-za-tv-in-racunalnik",
+    "dom-in-vrt", "druge-igrace", "drzala-telefona", "dusilci",
+    "dvigalke", "figure-zivali", "fm-oddajniki", "gospodinjski-aparati",
+    "gospodinjstvo", "hisni-tekstil", "hlace", "hlajenje-in-ogrevanje",
+    "igrace", "igre-na-prostem", "jakne-brezrokavniki", "kampiranje-piknik-plaza",
+    "kolesarjenje", "kompleti", "kopalke", "kostumi-in-dodatki",
+    "kozmetika", "kozmetika-in-nega", "kreativne-igrace", "krila",
+    "kuhinjski-pribor", "licenje", "moda-za-nosecnice", "modni-dodatki",
+    "napihljive-blazine-in-obroci", "nega-las", "nega-obraza", "nega-telesa",
+    "oblacila-in-obutev", "obleke", "obutev-in-dodatki", "okrasni-pokrovi-koles",
+    "opozorilne-luci", "organizatorji", "organizatorji-za-avto", "orodja-in-aparati",
+    "osebna-nega", "ostalo", "osvezilci-zraka-za-avto", "otroska-kolesa",
+    "otroska-moda", "pajkice", "pametna-hisa", "pametne-ure",
+    "parkirni-senzorji", "plisaste-igrace", "pohistvo", "pohodnistvo",
+    "pokrivala-za-avto", "polnilci-za-akumulatorje", "polnjenje-naprav", "popravilo-pnevmatike",
+    "posode-za-hrano-in-vodo", "potovanja", "poucne-igrace", "povodci",
+    "prestavne-rocice", "prevleke-sedezev-in-otroski-sedezi", "prevleke-volana", "pripomocki-za-kopalnico",
+    "pripomocki-za-kuhinjo", "products", "racunalnistvo-in-telefonija", "rc-modeli",
+    "rocne-ure", "rocno-orodje", "slike", "slusalke",
+    "spodnje-perilo", "sport", "sport-in-prosti-cas", "sportna-oprema",
+    "sportna-vadba", "sprostitev-in-dobro-pocutje", "svetilke-in-luci", "tehnika-in-orodje",
+    "topi-majice", "transport-ljubljenckov", "transportni-trakovi-in-elasticne-vrvi", "ure",
+    "usb-avto-polnilci", "usb-kabli", "ustvarjanje", "vse-za-vrt",
+    "vticnice-in-varovalke", "xenon-kiti", "za-otroke", "za-potovanje",
+    "za-zivali", "zabava-za-ljubljence", "zabavna-elektronika", "zari",
+    "zarnice-za-avto", "zdravje-in-lepota", "zenski-kombinezoni",
 ]
+
+# Dodatne kategorije, samodejno odkrite iz feeda (varovalo za morebitne nove).
+_FEED_CATEGORIES_DYNAMIC: set = set()
+
+
+def _all_feed_categories():
+    """Združen seznam (ročne + dinamično odkrite), daljše najprej,
+    da 'zdravje-in-lepota' preveri pred 'zdravje' in 'za-zivali' pred 'za'."""
+    cats = set(_FEED_CATEGORIES) | _FEED_CATEGORIES_DYNAMIC
+    return sorted(cats, key=len, reverse=True)
 
 def _sku_in_image_url(sku: str, joined_urls: str, strict: bool = False) -> bool:
     """Maaarket image URL je oblike: .../cache/{kategorija}{SKU}{naziv-slike}-{hash}.ext
@@ -277,7 +312,7 @@ def _sku_in_image_url(sku: str, joined_urls: str, strict: bool = False) -> bool:
     u = joined_urls.lower()
 
     # 1) Najmočnejše: kategorija neposredno pred SKU (z opcijskim '2020' vmes, ki ga feed včasih vrine)
-    for cat in _FEED_CATEGORIES:
+    for cat in _all_feed_categories():
         for sep in ("", "2020"):
             needle = cat + sep + sl
             pos = u.find(needle)
