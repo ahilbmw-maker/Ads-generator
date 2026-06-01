@@ -455,9 +455,12 @@ function createAndAdd(idx, kos) {
   addToExtraBox(idx, box, kos);
 }
 
+let _extraBoxBusy = false;  // zaščita pred dvojnim klikom (mobile)
 async function addToExtraBox(idx, box, kos) {
+  if (_extraBoxBusy) return;  // klic že poteka — prepreči dvojno dodajanje
   const it = ITEMS.find(x => x.idx === idx);
   if (!it) return;
+  _extraBoxBusy = true;
   try {
     const r = await fetch('/zaloga-extra-box', {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -474,6 +477,7 @@ async function addToExtraBox(idx, box, kos) {
       toast('✗ ' + (data.error || 'napaka'));
     }
   } catch(e) { toast('✗ ' + e.message); }
+  finally { _extraBoxBusy = false; }
 }
 
 async function removeFromExtraBox(box, sku) {
@@ -791,6 +795,8 @@ function updateGlobalStat() {
   const stat = groupStat(ITEMS);
   const bar = document.getElementById('globalBar');
   if (bar) bar.innerHTML = progBarSegments(stat);
+  const mprog = document.getElementById('mobileProg');
+  if (mprog) mprog.innerHTML = progBarSegments(stat);  // noga (mobile) — isti segmenti
   const pctEl = document.getElementById('globalPct');
   if (pctEl) {
     pctEl.textContent = stat.pctOk + '%';
@@ -808,6 +814,14 @@ function updateGlobalStat() {
 function updateStickyOffset() {
   const hdr = document.querySelector('.sticky-header');
   if (!hdr) return;
+  // Na mobile je header FIKSNA NOGA (dno) — vrh je prazen, zato se glava police lepi na top:0.
+  if (isMobile()) {
+    document.documentElement.style.setProperty('--sticky-h', '0px');
+    // izmeri višino noge → RS box-bar in spodnji odmik seznamov se prilagodita
+    const fh = Math.round(hdr.getBoundingClientRect().height);
+    document.documentElement.style.setProperty('--footer-h', fh + 'px');
+    return;
+  }
   const h = Math.round(hdr.getBoundingClientRect().height);
   document.documentElement.style.setProperty('--sticky-h', h + 'px');
 }
@@ -841,15 +855,17 @@ function isMobile() {
 function updateMobileBoxBar() {
   const host = document.getElementById('mobileBoxBar');
   if (!host) return;
-  if (!isRS() || !isMobile()) { host.innerHTML = ''; host.style.display = 'none'; return; }
+  const hide = () => { host.innerHTML = ''; host.style.display = 'none'; document.body.classList.remove('has-boxbar'); };
+  if (!isRS() || !isMobile()) { hide(); return; }
   const expanded = getExpanded();
   const openGroups = Object.keys(expanded).filter(k => expanded[k]);
-  if (!openGroups.length) { host.innerHTML = ''; host.style.display = 'none'; return; }
+  if (!openGroups.length) { hide(); return; }
   const group = openGroups[0];  // na mobile je odprta le ena
   const items = (ITEMS || []).filter(it => it.group === group);
-  if (!items.length) { host.innerHTML = ''; host.style.display = 'none'; return; }
+  if (!items.length) { hide(); return; }
   host.innerHTML = shelfBoxBar(group, items, true);  // true = mobilna varianta (brez label)
   host.style.display = 'block';
+  document.body.classList.add('has-boxbar');
 }
 
 // ── Spremeni količino ──
