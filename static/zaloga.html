@@ -79,21 +79,17 @@
   .market-tab:hover:not(.active) { color: var(--text); }
 
   .global-stat {
-    display: flex; align-items: center; gap: 14px;
+    display: flex; flex-direction: column; gap: 6px;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 8px 16px;
+    padding: 9px 16px; min-width: 230px;
   }
-  .global-stat .ring { position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .global-stat .ring svg { display: block; transform: rotate(-90deg); }
-  .global-stat .ring .pct {
-    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 800; color: var(--text); line-height: 1;
-  }
-  .global-stat .meta { display: flex; flex-direction: column; }
-  .global-stat .meta .big { font-size: 15px; font-weight: 800; }
-  .global-stat .meta .small { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.6px; }
+  .global-stat-head { display: flex; align-items: baseline; gap: 10px; }
+  .global-stat .gs-pct { font-size: 17px; font-weight: 800; color: var(--text); }
+  .global-stat .gs-done { font-size: 13px; font-weight: 700; color: var(--text-dim); margin-left: auto; }
+  .global-stat .gs-bar { display: flex; height: 8px; border-radius: 6px; overflow: hidden; background: var(--panel3); }
+  .global-stat .gs-break { font-size: 10px; color: var(--text-faint); }
 
   .btn {
     border: 1px solid var(--border2); background: var(--panel2);
@@ -303,11 +299,9 @@
     .brand h1 { font-size: 15px; }
     .brand .sub { font-size: 10px; }
     .brand .logo { width: 30px; height: 30px; font-size: 16px; }
-    .global-stat { padding: 6px 10px; gap: 8px; width: 100%; box-sizing: border-box; }
-    .global-stat .ring { width: 38px; height: 38px; flex-shrink: 0; }
-    .global-stat .ring svg { width: 38px; height: 38px; }
-    .global-stat .meta .big { font-size: 13px; }
-    .global-stat .meta .small { font-size: 9px; }
+    .global-stat { padding: 8px 12px; gap: 6px; width: 100%; box-sizing: border-box; min-width: 0; }
+    .global-stat .gs-pct { font-size: 16px; }
+    .global-stat .gs-done { font-size: 12px; }
     .topbar-spacer { display: none; }
     .market-tabs { padding: 0 8px; overflow-x: auto; border-top: 1px solid var(--border); }
     .market-tab { padding: 11px 12px; font-size: 12px; white-space: nowrap; }
@@ -459,6 +453,87 @@
     .hist-detail-row { grid-template-columns: 1fr auto; }
     .hist-detail-row .hpoz, .hist-detail-row .hqty { display: none; }
   }
+  /* ═══ RS: BOX / OPOMBA / SIDEBAR TABI ═══ */
+  .shelf-box-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--info-bg, #e8edfe); border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 10px;
+  }
+  .sbb-icon { font-size: 18px; }
+  .sbb-label { font-size: 13px; font-weight: 700; color: var(--accent); }
+  .sbb-input {
+    width: 80px; height: 34px; text-align: center; font-size: 15px; font-weight: 700;
+    border: 1.5px solid var(--accent); border-radius: 8px; background: var(--panel);
+    color: var(--text); font-family: inherit;
+  }
+  .sbb-save {
+    background: var(--accent); color: #fff; border: none; padding: 8px 16px;
+    border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer;
+    font-family: inherit; margin-left: auto;
+  }
+  .sbb-save:hover { filter: brightness(1.05); }
+  .sbb-locked { font-size: 11px; color: var(--ok); font-weight: 700; }
+
+  .item-locked { opacity: 0.88; }
+  .item-box-badge {
+    font-size: 11px; font-weight: 800; color: var(--ok);
+    background: var(--ok-bg); border: 1px solid var(--ok-border);
+    border-radius: 6px; padding: 2px 8px; margin-left: 6px; white-space: nowrap;
+  }
+  .item-unlock {
+    background: none; border: 0.5px solid var(--border2); color: var(--text-dim);
+    border-radius: 6px; padding: 2px 7px; font-size: 11px; cursor: pointer; margin-left: 4px;
+  }
+  .item-unlock:hover { background: var(--panel3); }
+
+  .item-opomba {
+    display: flex; align-items: center; gap: 8px; margin-top: 10px;
+    background: var(--info-bg, #e8edfe); border: 1px dashed var(--accent);
+    border-radius: 8px; padding: 7px 10px;
+  }
+  .iop-icon { font-size: 15px; flex-shrink: 0; }
+  .iop-label { font-size: 11px; font-weight: 600; color: var(--accent); white-space: nowrap; flex-shrink: 0; }
+  .iop-input {
+    flex: 1; height: 32px; font-size: 13px; border: 1px solid var(--border2);
+    border-radius: 7px; background: var(--panel); color: var(--text);
+    font-family: inherit; padding: 0 8px; min-width: 60px;
+  }
+
+  /* Sidebar tabi (RS) */
+  .side-card-tabs { padding: 0 !important; overflow: hidden; }
+  .side-tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .side-tab {
+    flex: 1; padding: 12px 8px; border: none; background: transparent;
+    color: var(--text-dim); font-weight: 700; font-size: 12px; cursor: pointer;
+    border-bottom: 3px solid transparent; margin-bottom: -1px; font-family: inherit;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+  }
+  .side-tab-opombe.active { color: #185FA5; border-bottom-color: #378ADD; background: #E6F1FB; }
+  .side-tab-manjko.active { color: var(--ni); border-bottom-color: var(--ni); background: var(--ni-bg); }
+  .side-tab-boxi.active { color: var(--ok); border-bottom-color: var(--ok); background: var(--ok-bg); }
+  .st-badge { font-size: 10px; padding: 1px 7px; border-radius: 20px; color: #fff; }
+  .st-blue { background: #378ADD; }
+  .st-red { background: var(--ni); }
+  .side-tab-body { padding: 13px; max-height: 60vh; overflow-y: auto; }
+
+  /* Opomba item (modra) */
+  .opomba-item { border: 1px solid #85B7EB; background: #E6F1FB; border-radius: 11px; padding: 11px 12px; margin-bottom: 9px; }
+  .opomba-item .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .opomba-item .osku { font-weight: 800; font-size: 13px; color: #042C53; }
+  .opomba-item .oboxnote { font-size: 11px; color: #185FA5; font-weight: 700; }
+  .opomba-item .onaziv { font-size: 11px; color: #185FA5; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .opomba-item .opoz-badge {
+    display: inline-block; margin-top: 7px; font-size: 14px; font-weight: 800;
+    color: #042C53; background: #B5D4F4; border: 1px solid #378ADD; border-radius: 8px; padding: 4px 11px;
+  }
+
+  /* Boxi tab */
+  .box-group { border: 1px solid var(--ok-border); border-radius: 11px; padding: 10px 12px; margin-bottom: 9px; }
+  .box-group-head { font-weight: 800; font-size: 14px; color: var(--ok); margin-bottom: 6px; }
+  .box-group-count { font-size: 10px; background: var(--ok); color: #fff; padding: 1px 7px; border-radius: 20px; margin-left: 4px; }
+  .box-line { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px; border-top: 1px solid var(--border); }
+  .box-line-sku { font-weight: 700; }
+  .box-line-poz { color: var(--text-dim); font-size: 11px; }
 </style>
 </head>
 <body>
@@ -476,18 +551,12 @@
   <div class="topbar-spacer"></div>
 
   <div class="global-stat" id="globalStat" style="display:none">
-    <div class="ring">
-      <svg width="44" height="44">
-        <circle cx="22" cy="22" r="18" fill="none" stroke="var(--panel3)" stroke-width="5"></circle>
-        <circle id="globalRing" cx="22" cy="22" r="18" fill="none" stroke="var(--ok)" stroke-width="5"
-          stroke-linecap="round" stroke-dasharray="113" stroke-dashoffset="113"></circle>
-      </svg>
-      <div class="pct" id="globalPct">0%</div>
+    <div class="global-stat-head">
+      <span class="gs-pct" id="globalPct">0%</span>
+      <span class="gs-done" id="globalDone">0 / 0</span>
     </div>
-    <div class="meta">
-      <div class="big" id="globalDone">0 / 0</div>
-      <div class="small" id="globalBreak">skupna uspešnost</div>
-    </div>
+    <div class="gs-bar prog-seg-wrap" id="globalBar"></div>
+    <div class="gs-break" id="globalBreak">skupna uspešnost</div>
   </div>
 
   <label class="btn btn-ghost btn-sm" style="cursor:pointer">
@@ -525,6 +594,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260528q"></script>
+<script src="/static/zaloga.js?v=20260528r"></script>
 </body>
 </html>
