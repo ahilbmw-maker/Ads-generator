@@ -207,30 +207,32 @@ function setDoneFilter(on) {
   localStorage.setItem('zaloga_only_open', on ? '1' : '0');
 }
 function syncFilterToggleLabel() {
-  const lbl = document.getElementById('filterToggleLabel');
-  const btn = document.getElementById('filterToggle');
-  if (!lbl) return;
+  const lbl = document.getElementById('filterSwitchLabel');
+  const input = document.getElementById('filterSwitchInput');
   const on = getDoneFilter();
-  if (btn) btn.classList.toggle('filter-active', on);
-  // najprej nastavi osnovni napis (vedno viden, tudi če štetje spodleti)
-  let label = on ? 'Prikaži vse' : 'Samo odprto';
+  if (input) input.checked = on;   // stikalo odraža stanje
+  if (!lbl) return;
+  // oznaka je VEDNO "Samo odprto" (+ število nedokončanih); nikoli prazna
+  let label = 'Samo odprto';
   try {
     const groups = groupItems();
-    let total = 0, open = 0;
+    let open = 0;
     Object.values(groups).forEach(items => {
       const s = groupStat(items);
-      total++;
       if (!(s.total > 0 && s.todo === 0)) open++;  // ni dokončana
     });
-    label = on ? `Prikaži vse (${total})` : `Samo odprto (${open})`;
-  } catch (e) { /* če štetje spodleti, ostane osnovni napis brez številke */ }
+    label = `Samo odprto (${open})`;
+  } catch (e) { /* če štetje spodleti, ostane "Samo odprto" brez številke */ }
   lbl.textContent = label;
 }
-function toggleDoneFilter() {
-  setDoneFilter(!getDoneFilter());
-  render();              // render na koncu sam pokliče syncFilterToggleLabel()
-  syncFilterToggleLabel();  // + še enkrat takoj, da je napis zagotovo osvežen
+// stikalo: checked = prikaži samo odprte (filter ON), unchecked = vse
+function setDoneFilterMode(on) {
+  setDoneFilter(!!on);
+  render();                 // render sam pokliče syncFilterToggleLabel()
+  syncFilterToggleLabel();  // + takoj, da sta stikalo in oznaka zagotovo osvežena
 }
+// ohrani staro ime za morebitne klice (preklopi stanje)
+function toggleDoneFilter() { setDoneFilterMode(!getDoneFilter()); }
 
 // ── Render ──
 function render() {
@@ -798,7 +800,9 @@ function renderSidebar() {
       <div class="sidebar">
         ${statCard}
         <div class="side-card">
-          <h3>⚠️ Manjko ${manko.length ? `<span class="badge">${manko.length}</span>` : ''}</h3>
+          <h3>⚠️ Manjko ${manko.length ? `<span class="badge">${manko.length}</span>` : ''}
+            ${manko.length ? `<button class="manko-copy-all" onclick="copyAllManko(this)" title="Kopiraj vse manjkajoče (SKU + količina)">⎘ Kopiraj vse</button>` : ''}
+          </h3>
           <div class="manko-list">${mankoHtml}</div>
         </div>
       </div>`;
@@ -809,7 +813,9 @@ function renderSidebar() {
   if (SIDEBAR_TAB === 'opombe') {
     tabContent = opombe.length ? opombe.map(opombaItemHtml).join('') : '<div class="manko-empty">Ni opomb.</div>';
   } else if (SIDEBAR_TAB === 'manjko') {
-    tabContent = manko.length ? manko.map(mankoItemHtml).join('') : '<div class="manko-empty">Ni manjka 🎉</div>';
+    tabContent = manko.length
+      ? `<button class="manko-copy-all manko-copy-all-rs" onclick="copyAllManko(this)" title="Kopiraj vse manjkajoče (SKU + količina)">⎘ Kopiraj vse</button>` + manko.map(mankoItemHtml).join('')
+      : '<div class="manko-empty">Ni manjka 🎉</div>';
   } else {
     tabContent = boxiHtml();
   }
@@ -1233,6 +1239,33 @@ async function copySkuFromManko(el, sku) {
     document.execCommand('copy');
     document.body.removeChild(ta);
     toast('✓ ' + sku + ' kopirano');
+  }
+}
+
+// Kopiraj VSE manjkajoče postavke: vsaka v svojo vrstico "SKU količinx"
+async function copyAllManko(btn) {
+  const manko = ITEMS.filter(it => it.status === 'ni' || (it.status === 'ok' && it.picked < it.qty));
+  if (!manko.length) { toast('Ni manjkajočih postavk'); return; }
+  const text = manko.map(it => {
+    const missingQty = it.status === 'ni' ? it.qty : (it.qty - it.picked);
+    return `${it.sku} ${missingQty}x`;
+  }).join('\n');
+  const flash = (ok) => {
+    if (!btn) { toast(ok ? '✓ Kopirano' : '✗ Napaka'); return; }
+    const orig = btn.innerHTML;
+    btn.innerHTML = ok ? '✓ Kopirano!' : '✗ Napaka';
+    btn.classList.toggle('copied', ok);
+    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 1600);
+  };
+  try {
+    await navigator.clipboard.writeText(text);
+    flash(true);
+  } catch(e) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); flash(true); } catch(_) { flash(false); }
+    document.body.removeChild(ta);
   }
 }
 
