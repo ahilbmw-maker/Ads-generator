@@ -199,10 +199,32 @@ function groupItems() {
   return groups;
 }
 
+// ── Filter "Samo odprto": skrij dokončane (100%) police ──
+function getDoneFilter() {
+  return localStorage.getItem('zaloga_only_open') === '1';
+}
+function setDoneFilter(on) {
+  localStorage.setItem('zaloga_only_open', on ? '1' : '0');
+}
+function syncFilterToggleLabel() {
+  const lbl = document.getElementById('filterToggleLabel');
+  const btn = document.getElementById('filterToggle');
+  if (!lbl) return;
+  const on = getDoneFilter();
+  lbl.textContent = on ? 'Prikaži vse' : 'Samo odprto';
+  if (btn) btn.classList.toggle('filter-active', on);
+}
+function toggleDoneFilter() {
+  setDoneFilter(!getDoneFilter());
+  syncFilterToggleLabel();
+  render();
+}
+
 // ── Render ──
 function render() {
   const groups = groupItems();
   const expanded = getExpanded();
+  const onlyOpen = getDoneFilter();
   const groupNames = Object.keys(groups).sort((a,b) => {
     const ga = GROUP_ORDER(a), gb = GROUP_ORDER(b);
     if (ga[0] !== gb[0]) return ga[0] - gb[0];
@@ -211,12 +233,15 @@ function render() {
   });
 
   let html = '<div class="shelves">';
+  let hiddenDone = 0;
   groupNames.forEach(g => {
     const items = groups[g];
     const isOpen = !!expanded[g];
     const stat = groupStat(items);
     // polica je "dokončana" ko ima vsaka postavka odločitev (✓ ali ✗) — nobena ni več todo
     const isDone = stat.total > 0 && stat.todo === 0;
+    // filter "Samo odprto": skrij dokončane police (a pusti odprto, če jo ravno gledaš)
+    if (onlyOpen && isDone && !expanded[g]) { hiddenDone++; return; }
     html += `
       <div class="shelf ${isOpen ? 'open' : ''}${isDone ? ' shelf-done' : ''}" id="shelf-${cssId(g)}">
         <div class="shelf-head" onclick="toggleShelf('${jsStr(g)}')">
@@ -242,6 +267,10 @@ function render() {
   });
   // RS: sekcija dodatnih boxov (viški) — pod zadnjo polico
   if (isRS()) html += extraBoxesSection();
+  // filter aktiven in vse police dokončane → sporočilo
+  if (onlyOpen && hiddenDone > 0 && !html.includes('class="shelf ')) {
+    html += `<div class="empty-state"><div class="icon">✓</div>Vse police so dokončane!<br><span style="font-size:13px;color:var(--text-dim)">${hiddenDone} dokončanih skritih — klikni "Prikaži vse"</span></div>`;
+  }
   html += '</div>';
 
   // Sidebar (manjko + skupna statistika)
@@ -252,6 +281,7 @@ function render() {
   document.body.classList.toggle('market-rs', isRS());
   updateGlobalStat();
   updateMobileBoxBar();  // poskrbi za prikaz (RS+mobile) ali skritje (SLO/desktop)
+  syncFilterToggleLabel();
 }
 
 // ── RS: zbir zasedenih box številk (1..100) ──
@@ -845,6 +875,19 @@ function toggleShelf(g) {
   if (el) el.classList.toggle('open');
   // osveži spodnji sticky box-bar (sam poskrbi za skritje na SLO/desktop)
   updateMobileBoxBar();
+
+  // UX: ob ZAPIRANJU police — če je njena glava ušla nad vrh zaslona (ker se je
+  // vsebina nad scrollom skrčila), jo prikaži nazaj, da ni treba ročno skrolati gor.
+  if (!willOpen && el) {
+    const head = el.querySelector('.shelf-head');
+    const r = (head || el).getBoundingClientRect();
+    // koliko prostora je zgoraj zasedeno (na desktopu lepljiv header; na mobile noga je spodaj → 0)
+    const topOffset = isMobile() ? 0 : (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sticky-h')) || 0);
+    if (r.top < topOffset) {
+      const y = window.scrollY + r.top - topOffset - 8;  // 8px zraka nad glavo
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    }
+  }
 }
 
 // Ali smo na mobilnem (ozek zaslon) — usklajeno z @media (max-width: 768px)
