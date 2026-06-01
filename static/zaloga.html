@@ -330,8 +330,8 @@
       backdrop-filter: none;
     }
     /* vrstni red v nogi: progress bar (1) → tabi (2) → topbar Home+logo+naslov+% (3) */
-    .mobile-prog.prog-seg-wrap { order: 1; display: flex; height: 5px; background: var(--panel3); overflow: hidden; }
-    .mobile-prog > .prog-seg-wrap { height: 100%; display: flex; }
+    .mobile-prog.prog-seg-wrap { order: 1; display: flex; width: 100%; height: 5px; background: var(--panel3); overflow: hidden; }
+    .mobile-prog .prog-seg { height: 100%; flex-shrink: 0; }   /* %-širine se ne smejo krčiti */
     .market-tabs { order: 2; padding: 0 8px; overflow-x: auto; border-top: 1px solid var(--border); }
     .topbar { order: 3; padding: 8px 12px; gap: 8px; flex-wrap: nowrap; align-items: center; border-top: 1px solid var(--border); }
 
@@ -398,6 +398,7 @@
     /* SLO mobile: glava ODPRTE police se lepi na sam vrh (noga je spodaj) — brez špranje */
     body.market-slo .shelf.open .shelf-head {
       position: sticky; top: 0; z-index: 30;
+      background: var(--panel);   /* trdno ozadje, da vsebina ne presijava skozi sticky glavo */
       box-shadow: 0 2px 8px rgba(0,0,0,0.10);
       border-radius: 0;
     }
@@ -840,6 +841,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601O"></script>
+<script src="/static/zaloga.js?v=20260601Q"></script>
 </body>
 </html>
