@@ -248,28 +248,43 @@ def _sl_slugify(s: str) -> str:
     return s
 
 
+_FEED_CATEGORIES = [
+    "racunalnistvo-in-telefonija", "zdravje-in-lepota", "dom-in-vrt", "avto-moto",
+    "pametne-ure", "rocne-ure", "za-otroke", "gospodinjstvo", "potovanja",
+    "kozmetika", "akumulator", "slusalke", "pajkice", "products", "ostalo",
+    "kabli", "slike", "a-mobile",
+]
+
 def _sku_in_image_url(sku: str, joined_urls: str) -> bool:
-    """Preveri ali se SKU pojavi v image URL kot zaključek 'image tokena'.
-    Image pot je oblike {kategorija}{SKU}{index}-{hash}.jpeg, npr. 'dom-in-vrtsilux381-silux38-...'.
-    SKU mora biti tik pred ločilom/koncem ALI pred enojno števko-indeksom (1-9) ki ji sledi ločilo.
-    Tako 'silux38' ujame '...silux38-...' in '...silux381-...', a 'silux1' NE ujame '...silux18-...'
-    (ker bi za silux1 sledil '8' kot dvomestni nadaljnji znak, ne enojni index)."""
+    """Maaarket image URL je oblike: .../cache/{kategorija}{SKU}{naziv-slike}-{hash}.ext
+    SKU pride TAKOJ za kategorijo (npr. 'dom-in-vrt'+'wave-1'+'izdelek-brez-naslova...').
+    Najprej poskusi {kategorija}{SKU} ujemanje (najzanesljiveje). Sicer fallback na
+    pojavitev SKU z mejo (za SKU ne sme slediti dodatna številka, da silux38≠silux380).
+    Podpira SKU z vezaji (wave-1, swc-09-l)."""
     import re as _re
     sl = sku.lower().strip()
-    if len(sl) < 3:
+    if len(sl) < 2:
         return False
-    # razdeli URL na tokene po ločilih
-    tokens = _re.split(r'[-_./]', joined_urls)
-    for tok in tokens:
-        if not tok:
-            continue
-        # token konča s SKU (npr. '...silux38') → točno
-        if tok.endswith(sl):
-            return True
-        # token konča s SKU + enojna števka indeksa (npr. 'silux381' = silux38 + slika 1)
-        if len(tok) >= len(sl) + 1 and tok[-1] in '123456789' and tok[:-1].endswith(sl):
-            return True
-    return False
+    u = joined_urls.lower()
+
+    # 1) Najmočnejše: kategorija neposredno pred SKU (z opcijskim '2020' vmes, ki ga feed včasih vrine)
+    for cat in _FEED_CATEGORIES:
+        for sep in ("", "2020"):
+            needle = cat + sep + sl
+            pos = u.find(needle)
+            while pos != -1:
+                after = u[pos + len(needle):]
+                if after == '' or not after[0].isdigit():
+                    return True
+                if len(after) == 1 or not after[1].isdigit():
+                    return True
+                pos = u.find(needle, pos + 1)
+
+    # 2) Fallback: SKU kjerkoli, z mejo da mu ne sledi nadaljnja številka in
+    #    da pred njim ni alfanumerik (da ne ujamemo sredine daljše kode)
+    esc = _re.escape(sl)
+    pat = r'(?<![a-z0-9])' + esc + r'(?![0-9])'
+    return _re.search(pat, u) is not None
 
 
 def parse_feed(xml_content: str) -> dict:
