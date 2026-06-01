@@ -1565,8 +1565,28 @@ async def zaloga_update_item(data: dict):
         if not found:
             return {"ok": False, "error": "Postavka ne obstaja"}
         sess["updated_at"] = _dt.now().isoformat()
+
+        # ── ČASOVNICA NABIRANJA ──
+        # Začni ob PRVI potrjeni postavki (status ok/ni). Konec ko so VSE obdelane (100%).
+        items_all = sess.get("items", [])
+        total = len(items_all)
+        obdelanih = sum(1 for it in items_all if it.get("status") in ("ok", "ni"))
+        # start: prva potrditev
+        if obdelanih > 0 and not sess.get("pick_started_at"):
+            sess["pick_started_at"] = sess["updated_at"]
+        # konec: vse obdelano → zabeleži končni čas (samo prvič)
+        if total > 0 and obdelanih >= total:
+            if not sess.get("pick_finished_at"):
+                sess["pick_finished_at"] = sess["updated_at"]
+        else:
+            # padlo pod 100% (npr. preklic statusa) → časovnica spet teče
+            if sess.get("pick_finished_at"):
+                sess["pick_finished_at"] = None
+
         path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
-        return {"ok": True}
+        return {"ok": True,
+                "pick_started_at": sess.get("pick_started_at"),
+                "pick_finished_at": sess.get("pick_finished_at")}
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e)}
@@ -1773,12 +1793,25 @@ async def zaloga_history(market: str = "slo"):
                 ni = sum(1 for it in items if it.get("status") == "ni")
                 qty_need = sum(int(it.get("qty", 0) or 0) for it in items)
                 qty_picked = sum(int(it.get("picked", 0) or 0) for it in items if it.get("status") == "ok")
+                # trajanje nabiranja (sekunde) iz časovnice
+                pick_secs = None
+                ps = data.get("pick_started_at")
+                pf = data.get("pick_finished_at") or data.get("archived_at")
+                if ps and pf:
+                    try:
+                        from datetime import datetime as _dt2
+                        pick_secs = max(0, int((_dt2.fromisoformat(pf) - _dt2.fromisoformat(ps)).total_seconds()))
+                    except Exception:
+                        pick_secs = None
                 out.append({
                     "filename": f.name,
                     "archived_at": data.get("archived_at"),
                     "total": total, "ok": ok, "ni": ni,
                     "qty_need": qty_need, "qty_picked": qty_picked,
                     "pct": round((ok + ni) / total * 100) if total else 0,
+                    "pick_started_at": data.get("pick_started_at"),
+                    "pick_finished_at": data.get("pick_finished_at"),
+                    "pick_secs": pick_secs,
                 })
             except Exception:
                 continue
