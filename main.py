@@ -192,6 +192,14 @@ slug_to_id: dict = {}
 sl_image_index: dict = {}   # SLO slike: { "mpn_upper": img, "slug_lower": img, "title_lower": img } za hitri lookup
 last_fetch: Optional[datetime] = None
 CACHE_TTL_HOURS = 24
+_feed_lock: Optional["asyncio.Lock"] = None  # prepreči sočasne prenose feeda
+
+
+def _get_feed_lock() -> "asyncio.Lock":
+    global _feed_lock
+    if _feed_lock is None:
+        _feed_lock = asyncio.Lock()
+    return _feed_lock
 
 
 def is_cache_stale():
@@ -467,10 +475,20 @@ def _load_feed_cache_from_disk() -> bool:
 
 
 async def ensure_cache_fresh():
-    if is_cache_stale():
-        # poskusi z diska (hitro), sicer prenesi feed (počasi)
-        if not _load_feed_cache_from_disk():
-            await fetch_all_feeds()
+    if not is_cache_stale():
+        return
+    # poskusi z diska brez locka (hitro)
+    if _load_feed_cache_from_disk():
+        return
+    # potrebujemo prenos — a samo EN naenkrat, ostale zahteve počakajo nanj
+    lock = _get_feed_lock()
+    async with lock:
+        # ponovni pregled: med čakanjem je morda nekdo drug že napolnil cache
+        if not is_cache_stale():
+            return
+        if _load_feed_cache_from_disk():
+            return
+        await fetch_all_feeds()
 
 
 def detect_brand(url: str) -> Optional[str]:
@@ -507,30 +525,41 @@ def find_product_urls(source_url: Optional[str]) -> dict:
 
 @app.on_event("startup")
 async def startup_event():
-    # FFmpeg warm-up — sproži download/extract če manjka, da prvi /merge-video-audio ne čaka
+    # Startup mora biti HITER, da Render health check (/healthz) takoj uspe.
+    # Vse počasne operacije (FFmpeg download, feed prenos) gredo v ozadje.
+
+    # Feed cache: disk je hiter (preživi deploy), zato ga poskusimo takoj (ms).
+    # Če diska ni / je zastarel, NE blokiramo zagona — prenos gre v ozadje.
+    loaded = _load_feed_cache_from_disk()
+    if not loaded:
+        asyncio.create_task(fetch_all_feeds())
+
+    # FFmpeg warm-up v ozadju (lahko traja do 30s ob prvem zagonu) — ne sme blokirati startupa
+    asyncio.create_task(_ffmpeg_warmup())
+
+    asyncio.create_task(daily_refresh())
+    asyncio.create_task(_daily_cashflow_sync())
+    asyncio.create_task(_email_polling_loop())
+
+
+async def _ffmpeg_warmup():
+    """FFmpeg priprava v ozadju, da prvi /merge-video-audio ne čaka in startup ni blokiran."""
     try:
         import static_ffmpeg
         static_ffmpeg.add_paths()
         import subprocess
-        result = subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=30)
+        # teci v thread executorju, da ne blokira event loopa
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=60)
+        )
         if result.returncode == 0:
             print(f"[startup] FFmpeg ready: {result.stdout.decode()[:60]}")
         else:
             print(f"[startup] FFmpeg warning: returncode={result.returncode}")
     except Exception as e:
         print(f"[startup] FFmpeg warm-up failed: {e}")
-
-    # Najprej poskusi naložiti feed cache z diska (preživi deploy, ni 10s zamika).
-    # Če disk nima svežega cache-a, prenesi feed v ozadju (ne blokira zagona).
-    if _load_feed_cache_from_disk():
-        # disk cache svež → osveži v ozadju šele ob naslednjem dnevnem ciklu
-        pass
-    else:
-        # ni svežega diska → prenesi zdaj (prvi zagon ali zastarel cache)
-        await fetch_all_feeds()
-    asyncio.create_task(daily_refresh())
-    asyncio.create_task(_daily_cashflow_sync())
-    asyncio.create_task(_email_polling_loop())
 
 
 async def daily_refresh():
@@ -3902,15 +3931,18 @@ async def zaloga_sku_images(data: dict):
     if not skus:
         return {"ok": True, "images": {}}
     try:
-        await ensure_cache_fresh()
         idx = sl_image_index or {}
+        # Če cache ni pripravljen, NE čakaj na prenos (sicer 17-39s blokada → Render restart).
+        # Sproži osvežitev v ozadju in takoj vrni prazno; slike pridejo ob naslednjem klicu.
+        if not idx.get("img_corpus") and not idx.get("slug"):
+            if is_cache_stale():
+                asyncio.create_task(ensure_cache_fresh())
+            return {"ok": True, "images": {}, "note": "feed se nalaga, poskusi ponovno", "feed_size": 0}
         slug_idx = idx.get("slug", {})
         tslug_idx = idx.get("title_slug", {})
         img_corpus = idx.get("img_corpus", [])
         mpn_idx = idx.get("mpn", {})
         sku_exact = idx.get("sku_exact", {})
-        if not img_corpus and not slug_idx:
-            return {"ok": True, "images": {}, "note": "feed prazen", "feed_size": 0}
 
         out = {}
         matched_by = {"brand_sku": 0, "image_url": 0, "base_sku": 0, "naziv_slug": 0, "slug": 0, "mpn": 0, "none": 0}
