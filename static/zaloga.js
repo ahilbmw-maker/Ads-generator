@@ -855,7 +855,61 @@ function updateGlobalStat() {
   if (doneEl) doneEl.textContent = `${stat.done} / ${stat.total}`;
   const breakEl = document.getElementById('globalBreak');
   if (breakEl) breakEl.textContent = statBreakdownText(stat) || 'skupna uspešnost';
+  updatePickTimer();
   updateStickyOffset();  // višina headerja se lahko spremeni (global-stat se prikaže)
+}
+
+// ═══ ČASOVNICA NABIRANJA (desktop) ═══
+// Bere SESSION.pick_started_at / pick_finished_at (server-side). Teče živo do 100%.
+let _pickTimerInt = null;
+
+function _fmtDur(secs) {
+  secs = Math.max(0, Math.floor(secs));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  const pad = n => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+function updatePickTimer() {
+  const wrap = document.getElementById('globalTimer');
+  const timeEl = document.getElementById('gsTimerTime');
+  const lblEl = document.getElementById('gsTimerLbl');
+  if (!wrap || !timeEl || !lblEl) return;
+  const sess = SESSION || {};
+  const startStr = sess.pick_started_at;
+  const finishStr = sess.pick_finished_at;
+
+  // ustavi obstoječi tick (ponovno nastavimo po potrebi)
+  if (_pickTimerInt) { clearInterval(_pickTimerInt); _pickTimerInt = null; }
+
+  if (!startStr) {
+    // še ni začetka
+    wrap.classList.remove('running', 'done');
+    timeEl.textContent = '00:00';
+    lblEl.textContent = 'čaka prvo postavko';
+    return;
+  }
+  const startMs = new Date(startStr).getTime();
+
+  if (finishStr) {
+    // končano — fiksen čas
+    const finMs = new Date(finishStr).getTime();
+    wrap.classList.remove('running');
+    wrap.classList.add('done');
+    timeEl.textContent = '🏁 ' + _fmtDur((finMs - startMs) / 1000);
+    lblEl.textContent = 'končni čas';
+    return;
+  }
+
+  // teče — živ tick
+  wrap.classList.remove('done');
+  wrap.classList.add('running');
+  lblEl.textContent = 'čas nabiranja';
+  const tick = () => { timeEl.textContent = _fmtDur((Date.now() - startMs) / 1000); };
+  tick();
+  _pickTimerInt = setInterval(tick, 1000);
 }
 
 // Izmeri višino lepljivega vrha (header) → CSS var --sticky-h, da glava police lahko
@@ -1044,10 +1098,20 @@ function refreshSidebarAndStats() {
 // ── Live save na disk ──
 async function saveItem(idx, patch) {
   try {
-    await fetch('/zaloga-update-item', {
+    const r = await fetch('/zaloga-update-item', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ idx, market: MARKET, ...patch })
     });
+    const data = await r.json();
+    if (data && data.ok && SESSION) {
+      // osveži časovnico (server pove, kdaj se je začelo/končalo nabiranje)
+      const prevStart = SESSION.pick_started_at, prevFin = SESSION.pick_finished_at;
+      SESSION.pick_started_at = data.pick_started_at || null;
+      SESSION.pick_finished_at = data.pick_finished_at || null;
+      if (prevStart !== SESSION.pick_started_at || prevFin !== SESSION.pick_finished_at) {
+        updatePickTimer();
+      }
+    }
   } catch(e) { /* tiho — nabiralec ne sme biti moten */ }
 }
 
@@ -1098,6 +1162,13 @@ async function pollSync() {
     const data = await r.json();
     if (data.ok && data.updated_at && data.updated_at !== lastUpdate) {
       lastUpdate = data.updated_at;
+      // osveži časovnico (drugi nabiralec je morda začel/končal)
+      if (SESSION) {
+        const ps = SESSION.pick_started_at, pf = SESSION.pick_finished_at;
+        SESSION.pick_started_at = data.pick_started_at || null;
+        SESSION.pick_finished_at = data.pick_finished_at || null;
+        if (ps !== SESSION.pick_started_at || pf !== SESSION.pick_finished_at) updatePickTimer();
+      }
       // posodobi samo statuse/picked (ne uniči odprtih zavihkov)
       let changed = false;
       data.items.forEach(srv => {
@@ -1162,6 +1233,7 @@ function histSessRow(s) {
         <span class="ok">Nabrano: <b>${s.ok}</b></span>
         <span class="ni">Manjka: <b>${s.ni}</b></span>
         <span>Kosov: <b>${s.qty_picked} / ${s.qty_need}</b></span>
+        ${s.pick_secs != null ? `<span title="Čas nabiranja (od prve do zadnje postavke)">⏱ <b>${_fmtDur(s.pick_secs)}</b></span>` : ''}
       </div>
       <div class="hist-sess-actions">
         <button class="open" onclick="histToggleDetail('${jsStr(s.filename)}')">📋 Podrobnosti</button>
