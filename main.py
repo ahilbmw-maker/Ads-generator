@@ -269,7 +269,7 @@ _FEED_CATEGORIES = [
     "kozmetika", "kozmetika-in-nega", "kreativne-igrace", "krila",
     "kuhinjski-pribor", "licenje", "moda-za-nosecnice", "modni-dodatki",
     "napihljive-blazine-in-obroci", "nega-las", "nega-obraza", "nega-telesa",
-    "oblacila-in-obutev", "obleke", "obutev-in-dodatki", "okrasni-pokrovi-koles",
+    "oblacila", "oblacila-in-obutev", "obleke", "obutev", "obutev-in-dodatki", "okrasni-pokrovi-koles",
     "opozorilne-luci", "organizatorji", "organizatorji-za-avto", "orodja-in-aparati",
     "osebna-nega", "ostalo", "osvezilci-zraka-za-avto", "otroska-kolesa",
     "otroska-moda", "pajkice", "pametna-hisa", "pametne-ure",
@@ -339,6 +339,12 @@ def _sku_in_image_url(sku: str, joined_urls: str, strict: bool = False) -> bool:
     esc = _re.escape(sl)
     pat = r'(?<![a-z0-9])' + esc + r'(?![0-9])'
     return _re.search(pat, u) is not None
+
+
+def _norm_sku(s: str) -> str:
+    """Normalizira SKU za ujemanje: lowercase + podčrtaj→vezaj.
+    Zaloga ima včasih 'ELIPACK_black', feed v URL 'elipack-black' — oba postaneta 'elipack-black'."""
+    return s.lower().strip().replace('_', '-')
 
 
 def _extract_skus_from_image_url(image_url: str) -> list:
@@ -522,7 +528,7 @@ async def fetch_all_feeds():
 FEED_CACHE_FILE = DATA_DIR / "feed_cache.json"
 # Verzija formata indeksa. Dvigni ob spremembi ekstrakcijske logike (sku_url, kategorije ipd.),
 # da se star/pokvarjen disk cache samodejno zavrže in zgradi znova s popravljeno kodo.
-CACHE_FORMAT_VERSION = 2
+CACHE_FORMAT_VERSION = 3
 
 
 def _save_feed_cache_to_disk():
@@ -4057,6 +4063,7 @@ async def zaloga_sku_images(data: dict):
             sku = str(raw).strip()
             su = sku.upper()
             sl = sku.lower()
+            snorm = _norm_sku(sku)  # podčrtaj→vezaj (ELIPACK_black → elipack-black)
             found = None
             if su in sku_exact:
                 found = sku_exact[su]; matched_by["brand_sku"] += 1
@@ -4064,6 +4071,8 @@ async def zaloga_sku_images(data: dict):
                 found = mpn_idx[su]; matched_by["mpn"] += 1
             elif sl in sku_url:
                 found = sku_url[sl]; matched_by["image_url"] += 1
+            elif snorm in sku_url:
+                found = sku_url[snorm]; matched_by["image_url"] += 1
             if found:
                 out[sku] = found
             else:
@@ -4075,7 +4084,7 @@ async def zaloga_sku_images(data: dict):
         if unresolved:
             still = []
             for sku in unresolved:
-                sl = sku.lower()
+                sl = _norm_sku(sku)  # podčrtaj→vezaj tudi pri base trim
                 found = None
                 base = sl
                 while len(base) > 4:
