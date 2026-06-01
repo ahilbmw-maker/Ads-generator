@@ -341,6 +341,57 @@ def _sku_in_image_url(sku: str, joined_urls: str, strict: bool = False) -> bool:
     return _re.search(pat, u) is not None
 
 
+def _extract_skus_from_image_url(image_url: str) -> list:
+    """Izlušči kandidat-SKU(je) iz Maaarket image URL-ja za predizračunan indeks.
+    SKU se v URL-ju skoraj vedno pojavi obdan z vezaji: '...-silux100-...', '...-maaa61-...',
+    '...-pma-520-...' (SKU z vezajem = dva zaporedna tokena). Filename razbijemo po vezajih
+    in kot kandidate vzamemo posamezne tokene IN zlepljene pare/trojke (za SKU z vezaji).
+    Vrne seznam normaliziranih kandidatov (lowercase). Hash (zadnji token) izpustimo."""
+    import re as _re
+    fname = image_url.rsplit('/', 1)[-1].lower()
+    fname = _re.sub(r'\.(jpe?g|png|webp|gif)$', '', fname)
+    toks = [t for t in fname.split('-') if t]
+    if not toks:
+        return []
+    # zadnji token je hash (dolg hex) — izpusti
+    if len(toks) > 1 and _re.fullmatch(r'[0-9a-f]{6,}', toks[-1]):
+        toks = toks[:-1]
+    out = []
+    n = len(toks)
+    # PRVI del filename-a: {kategorija}{SKU}{začetek naziva}. Odstrani znano kategorijo z
+    # ZAČETKA celotnega filename-a (ne razbitega), da ohranimo SKU z vezaji (wave-1).
+    # Nato dodaj prefikse preostanka — pravi SKU se ujame na enem prefiksu.
+    for cat in _all_feed_categories():
+        matched_cat = False
+        for sep in ("2020", ""):
+            pref = cat + sep
+            if fname.startswith(pref) and len(fname) > len(pref):
+                rest = fname[len(pref):]
+                for L in range(3, min(len(rest), 16) + 1):
+                    cand = rest[:L].rstrip('-')
+                    if len(cand) >= 3:
+                        out.append(cand)
+                matched_cat = True
+                break
+        if matched_cat:
+            break
+    for i, t in enumerate(toks):
+        if i == 0:
+            continue
+        if len(t) >= 2:
+            out.append(t)
+        # SKU z vezajem: zlepi 2 ali 3 zaporedne tokene (pma-520, swc-09-l)
+        if i + 1 < n:
+            two = t + '-' + toks[i+1]
+            if len(two) >= 4:
+                out.append(two)
+        if i + 2 < n:
+            three = t + '-' + toks[i+1] + '-' + toks[i+2]
+            if len(three) >= 6:
+                out.append(three)
+    return out
+
+
 def parse_feed(xml_content: str) -> dict:
     """Parse Google Shopping XML feed.
     Vrne: {g_id: {url, path, title, description, price, mpn, brand, product_type, image, availability}}
@@ -426,9 +477,10 @@ async def fetch_all_feeds():
     new_img_idx = {
         "slug": {},       # feed slug (= sluggificiran naziv) → slika
         "title_slug": {}, # sluggificiran naziv → slika (za naziv match)
-        "img_corpus": [], # [(slika, "vse image poti zlepljene lowercase")] za SKU-v-URL match
+        "img_corpus": [], # [(slika, "vse image poti zlepljene lowercase")] — legacy/fallback
         "mpn": {},        # če bi feed kdaj imel mpn
         "sku_exact": {},  # zanesljiv SKU (Ikonka/Amio iz image URL) UPPER → slika
+        "sku_url": {},    # PREDIZRAČUNAN: SKU (lowercase, iz image URL) → slika, O(1) lookup
     }
     sl_feed = feed_by_lang.get("sl", {})
     for g_id, prod in sl_feed.items():
@@ -451,10 +503,14 @@ async def fetch_all_feeds():
         mpn = (prod.get("mpn") or "").strip().upper()
         if mpn:
             new_img_idx["mpn"].setdefault(mpn, img)
-        # korpus vseh image poti (za SKU-v-URL match)
+        # korpus vseh image poti (za SKU-v-URL match) — legacy fallback
         all_imgs = prod.get("all_images") or [img]
         joined = " ".join(all_imgs).lower()
         new_img_idx["img_corpus"].append((img, joined))
+        # PREDIZRAČUNAN sku_url indeks: izlušči SKU iz vsake image poti → O(1) lookup
+        for one_img in all_imgs:
+            for sk in _extract_skus_from_image_url(one_img):
+                new_img_idx["sku_url"].setdefault(sk, img)
     sl_image_index = new_img_idx
 
     last_fetch = datetime.now()
@@ -3969,63 +4025,53 @@ async def zaloga_sku_images(data: dict):
         idx = sl_image_index or {}
         # Če cache ni pripravljen, NE čakaj na prenos (sicer 17-39s blokada → Render restart).
         # Sproži osvežitev v ozadju in takoj vrni prazno; slike pridejo ob naslednjem klicu.
-        if not idx.get("img_corpus") and not idx.get("slug"):
+        if not idx.get("sku_url") and not idx.get("slug"):
             if is_cache_stale():
                 asyncio.create_task(ensure_cache_fresh())
             return {"ok": True, "images": {}, "note": "feed se nalaga, poskusi ponovno", "feed_size": 0}
         slug_idx = idx.get("slug", {})
         tslug_idx = idx.get("title_slug", {})
-        img_corpus = idx.get("img_corpus", [])
         mpn_idx = idx.get("mpn", {})
         sku_exact = idx.get("sku_exact", {})
+        sku_url = idx.get("sku_url", {})  # PREDIZRAČUNAN SKU→slika (O(1))
 
         out = {}
         matched_by = {"brand_sku": 0, "image_url": 0, "base_sku": 0, "naziv_slug": 0, "slug": 0, "mpn": 0, "none": 0}
         unresolved = []
 
-        # Faza 1: zanesljiv SKU (Ikonka/Amio iz image URL) — O(1), najmočnejši
+        # Faza 1: O(1) lookup po predizračunanih indeksih (brand SKU, mpn, sku_url).
+        # Nobene linearne preiskave korpusa — zato hitro tudi za 200 SKU × 9000 izdelkov.
         for raw in skus:
             sku = str(raw).strip()
             su = sku.upper()
+            sl = sku.lower()
             found = None
             if su in sku_exact:
                 found = sku_exact[su]; matched_by["brand_sku"] += 1
             elif su in mpn_idx:
                 found = mpn_idx[su]; matched_by["mpn"] += 1
-            if not found:
-                for img, joined in img_corpus:
-                    if _sku_in_image_url(sku, joined):
-                        found = img; matched_by["image_url"] += 1; break
+            elif sl in sku_url:
+                found = sku_url[sl]; matched_by["image_url"] += 1
             if found:
                 out[sku] = found
             else:
                 unresolved.append(sku)
 
         # Faza 1b: osnovni SKU (child/variant) — če točen SKU ni našel slike,
-        # postopno krajšaj z desne (Maaa61black → Maaa61blac → ... → Maaa61) in poskusi
-        # vsak skrajšani SKU v korpusu. Pripona variante je poljubna (črke ali številke),
-        # zato ne ugibamo meje — vzamemo najdaljši skrajšani SKU, ki ima zadetek v feedu.
+        # postopno krajšaj z desne (Maaa61black → ... → Maaa61) in preveri v O(1) sku_url.
+        # Min dolžina 4, da ne ujamemo prekratke/skupne osnove.
         if unresolved:
             still = []
             for sku in unresolved:
+                sl = sku.lower()
                 found = None
-                # krajšaj do minimalne dolžine 4 (da ne ujamemo prekratke/skupne osnove).
-                # strict=True: samo kategorija+SKU, brez ohlapnega fallbacka, da različni
-                # izdelki s skupnim prefiksom (silux...) ne dajo lažnega zadetka.
-                base = sku
+                base = sl
                 while len(base) > 4:
                     base = base[:-1]
-                    for img, joined in img_corpus:
-                        if _sku_in_image_url(base, joined, strict=True):
-                            found = img; break
-                    if found:
-                        break
-                # poskusi tudi osnovo dolžine točno 4 (npr. M248)
-                if not found and len(sku) > 4:
-                    base4 = sku[:4]
-                    for img, joined in img_corpus:
-                        if _sku_in_image_url(base4, joined, strict=True):
-                            found = img; break
+                    if base in sku_url:
+                        found = sku_url[base]; break
+                if not found and len(sl) > 4 and sl[:4] in sku_url:
+                    found = sku_url[sl[:4]]
                 if found:
                     out[sku] = found; matched_by["base_sku"] += 1
                 else:
@@ -4060,7 +4106,7 @@ async def zaloga_sku_images(data: dict):
         for sku in unresolved:
             matched_by["none"] += 1
 
-        resp = {"ok": True, "images": out, "feed_size": len(img_corpus),
+        resp = {"ok": True, "images": out, "feed_size": len(sku_url),
                 "matched": len(out), "total": len(skus), "match_stats": matched_by}
         if data.get("debug"):
             resp["unresolved"] = unresolved[:50]
