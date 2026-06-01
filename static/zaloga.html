@@ -104,7 +104,7 @@
   .btn-sm { padding: 6px 11px; font-size: 12px; }
 
   /* ─── LAYOUT ─── */
-  .wrap { max-width: 100%; margin: 0; padding: 22px; display: grid; grid-template-columns: 1fr 380px; gap: 22px; align-items: start; }
+  .wrap { max-width: 100%; margin: 0; padding: 22px; display: grid; grid-template-columns: 1fr 330px; gap: 22px; align-items: start; }
   @media (max-width: 1100px) { .wrap { grid-template-columns: 1fr; } }
 
   /* ─── UPLOAD ZONE ─── */
@@ -387,6 +387,17 @@
     /* Sidebar kartice */
     .manko-list { max-height: none; }
     .side-card { padding: 16px; }
+
+    /* RS box-bar mobile: gumb v novo vrsto, nič odrezanega */
+    .shelf-box-bar { padding: 12px; gap: 10px; }
+    .shelf-box-bar .sbb-input { flex: 1; min-width: 0; width: auto; }
+    .shelf-box-bar .sbb-save { margin-left: 0; width: 100%; order: 5; height: 46px; font-size: 14px; }
+    .shelf-box-bar .sbb-locked { order: 4; }
+
+    /* RS opomba mobile: polna širina, label nad inputom */
+    .item-opomba { flex-direction: column; align-items: stretch; gap: 6px; }
+    .item-opomba .iop-input { max-width: 100%; height: 38px; font-size: 14px; }
+    .item-box-badge { font-size: 13px; padding: 4px 10px; }
   }
 
   /* Zelo ozki telefoni */
@@ -456,23 +467,24 @@
   /* ═══ RS: BOX / OPOMBA / SIDEBAR TABI ═══ */
   .shelf-box-bar {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    background: var(--info-bg, #e8edfe); border-radius: 10px;
-    padding: 10px 12px; margin-bottom: 10px;
+    background: var(--accent); border-radius: 10px;
+    padding: 11px 14px; margin-bottom: 14px;
+    box-shadow: 0 2px 8px rgba(79,110,247,0.25);
   }
-  .sbb-icon { font-size: 18px; }
-  .sbb-label { font-size: 13px; font-weight: 700; color: var(--accent); }
+  .sbb-icon { font-size: 19px; filter: brightness(0) invert(1); }
+  .sbb-label { font-size: 13px; font-weight: 800; color: #fff; }
   .sbb-input {
-    width: 80px; height: 34px; text-align: center; font-size: 15px; font-weight: 700;
-    border: 1.5px solid var(--accent); border-radius: 8px; background: var(--panel);
+    width: 90px; height: 36px; text-align: center; font-size: 15px; font-weight: 700;
+    border: 2px solid #fff; border-radius: 8px; background: #fff;
     color: var(--text); font-family: inherit;
   }
   .sbb-save {
-    background: var(--accent); color: #fff; border: none; padding: 8px 16px;
-    border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer;
+    background: #fff; color: var(--accent); border: none; padding: 9px 18px;
+    border-radius: 8px; font-weight: 800; font-size: 13px; cursor: pointer;
     font-family: inherit; margin-left: auto;
   }
-  .sbb-save:hover { filter: brightness(1.05); }
-  .sbb-locked { font-size: 11px; color: var(--ok); font-weight: 700; }
+  .sbb-save:hover { filter: brightness(0.95); }
+  .sbb-locked { font-size: 12px; color: #fff; font-weight: 700; background: rgba(255,255,255,0.25); padding: 3px 9px; border-radius: 6px; }
 
   .item-locked { opacity: 0.88; }
   .item-box-badge {
@@ -487,16 +499,16 @@
   .item-unlock:hover { background: var(--panel3); }
 
   .item-opomba {
-    display: flex; align-items: center; gap: 8px; margin-top: 10px;
-    background: var(--info-bg, #e8edfe); border: 1px dashed var(--accent);
-    border-radius: 8px; padding: 7px 10px;
+    display: flex; align-items: center; gap: 8px;
+    grid-column: 1 / -1;
+    background: var(--info-bg, #eef1fe); border: 1px dashed var(--accent);
+    border-radius: 7px; padding: 5px 10px; margin-top: 4px;
   }
-  .iop-icon { font-size: 15px; flex-shrink: 0; }
   .iop-label { font-size: 11px; font-weight: 600; color: var(--accent); white-space: nowrap; flex-shrink: 0; }
   .iop-input {
-    flex: 1; height: 32px; font-size: 13px; border: 1px solid var(--border2);
-    border-radius: 7px; background: var(--panel); color: var(--text);
-    font-family: inherit; padding: 0 8px; min-width: 60px;
+    flex: 1; height: 28px; font-size: 12px; border: 1px solid var(--border2);
+    border-radius: 6px; background: var(--panel); color: var(--text);
+    font-family: inherit; padding: 0 8px; min-width: 60px; max-width: 220px;
   }
 
   /* Sidebar tabi (RS) */
@@ -594,6 +606,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260528r"></script>
+<script src="/static/zaloga.js?v=20260528s"></script>
 </body>
 </html>
