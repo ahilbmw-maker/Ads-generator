@@ -744,6 +744,27 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
           <div id="zalogaBigBreak" style="font-size:11px;color:rgba(255,255,255,0.9);margin-top:7px"></div>
         </div>
+        <!-- ČASOVNICE NABIRANJA (SLO + RS) -->
+        <div id="zalogaTimers" style="display:none;margin-top:12px;flex-direction:column;gap:8px">
+          <div class="zaloga-timer-row" id="ztRow-slo" style="display:none;align-items:center;gap:10px;background:rgba(255,255,255,0.14);border-radius:10px;padding:9px 12px">
+            <span style="font-size:12px;font-weight:800;color:#fff;width:42px;flex-shrink:0">🇸🇮 SI</span>
+            <div style="flex:1;min-width:0"><div style="display:flex;height:6px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,0.25)"><div id="ztBar-slo-ok" style="width:0%;background:#fff"></div><div id="ztBar-slo-ni" style="width:0%;background:#ffd5d3"></div></div></div>
+            <span id="ztPct-slo" style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.9);flex-shrink:0">0%</span>
+            <div style="display:flex;align-items:center;gap:5px;padding-left:10px;border-left:1px solid rgba(255,255,255,0.3);flex-shrink:0">
+              <span id="ztDot-slo" style="width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.4);display:inline-block"></span>
+              <span id="ztTime-slo" style="font-size:16px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">00:00</span>
+            </div>
+          </div>
+          <div class="zaloga-timer-row" id="ztRow-rs" style="display:none;align-items:center;gap:10px;background:rgba(255,255,255,0.14);border-radius:10px;padding:9px 12px">
+            <span style="font-size:12px;font-weight:800;color:#fff;width:42px;flex-shrink:0">🇷🇸 RS</span>
+            <div style="flex:1;min-width:0"><div style="display:flex;height:6px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,0.25)"><div id="ztBar-rs-ok" style="width:0%;background:#fff"></div><div id="ztBar-rs-ni" style="width:0%;background:#ffd5d3"></div></div></div>
+            <span id="ztPct-rs" style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.9);flex-shrink:0">0%</span>
+            <div style="display:flex;align-items:center;gap:5px;padding-left:10px;border-left:1px solid rgba(255,255,255,0.3);flex-shrink:0">
+              <span id="ztDot-rs" style="width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.4);display:inline-block"></span>
+              <span id="ztTime-rs" style="font-size:16px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">00:00</span>
+            </div>
+          </div>
+        </div>
       </a>
 
       <div style="margin-bottom:24px">
@@ -19282,24 +19303,93 @@ async function vracilaHistoryDelete(filename) {
   async function poll() {
     const btn = document.getElementById('zalogaBigBtn');
     if (!btn) return;
-    try {
-      const r = await fetch('/zaloga-current');
-      const data = await r.json();
-      if (data.ok && data.items && data.items.length) {
-        const s = pctParts(data.items);
-        if (s) setActive(s); else setInactive();
-      } else {
-        setInactive();
-      }
-    } catch (e) {
+    // SLO (privzeti prikaz % na kartici ostane SLO) + RS — oba za časovnice
+    let sloData = null, rsData = null;
+    try { sloData = await (await fetch('/zaloga-current?market=slo')).json(); } catch(e) {}
+    try { rsData = await (await fetch('/zaloga-current?market=rs')).json(); } catch(e) {}
+
+    // glavni % na kartici = SLO (kot doslej), fallback na RS če SLO ni aktiven
+    const sloActive = sloData && sloData.ok && sloData.items && sloData.items.length;
+    const rsActive = rsData && rsData.ok && rsData.items && rsData.items.length;
+    if (sloActive) {
+      const s = pctParts(sloData.items);
+      if (s) setActive(s); else setInactive();
+    } else if (rsActive) {
+      const s = pctParts(rsData.items);
+      if (s) setActive(s); else setInactive();
+    } else {
       setInactive();
     }
+
+    // časovnice obeh trgov
+    ZALOGA_SESS.slo = sloActive ? sloData : null;
+    ZALOGA_SESS.rs = rsActive ? rsData : null;
+    const anyActive = sloActive || rsActive;
+    const timers = document.getElementById('zalogaTimers');
+    if (timers) timers.style.display = anyActive ? 'flex' : 'none';
+    renderTimerRow('slo', ZALOGA_SESS.slo);
+    renderTimerRow('rs', ZALOGA_SESS.rs);
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  // ── Časovnice na Domov ──
+  const ZALOGA_SESS = { slo: null, rs: null };
+  let _homeTimerInt = null;
+
+  function _fmtDur(secs) {
+    secs = Math.max(0, Math.floor(secs));
+    const h = Math.floor(secs/3600), m = Math.floor((secs%3600)/60), s = secs%60;
+    const pad = n => String(n).padStart(2,'0');
+    return h>0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  }
+
+  function renderTimerRow(market, data) {
+    const row = document.getElementById('ztRow-' + market);
+    if (!row) return;
+    if (!data) { row.style.display = 'none'; return; }
+    row.style.display = 'flex';
+    const s = pctParts(data.items) || { pctOk:0, pctNi:0 };
+    const ok = document.getElementById('ztBar-'+market+'-ok');
+    const ni = document.getElementById('ztBar-'+market+'-ni');
+    const pct = document.getElementById('ztPct-'+market);
+    if (ok) ok.style.width = s.pctOk + '%';
+    if (ni) ni.style.width = s.pctNi + '%';
+    if (pct) pct.textContent = (s.pctOk === 100 ? '✓100%' : s.pctOk + '%');
+  }
+
+  // živ tick — posodobi samo čase (vsako sekundo), brez mreže
+  function tickHomeTimers() {
+    ['slo','rs'].forEach(market => {
+      const data = ZALOGA_SESS[market];
+      const timeEl = document.getElementById('ztTime-'+market);
+      const dotEl = document.getElementById('ztDot-'+market);
+      if (!data || !timeEl) return;
+      const startStr = data.pick_started_at, finStr = data.pick_finished_at;
+      if (!startStr) {
+        timeEl.textContent = '00:00';
+        if (dotEl) { dotEl.style.background = 'rgba(255,255,255,0.4)'; dotEl.style.animation = ''; }
+        return;
+      }
+      const startMs = new Date(startStr).getTime();
+      if (finStr) {
+        timeEl.textContent = '🏁 ' + _fmtDur((new Date(finStr).getTime() - startMs)/1000);
+        if (dotEl) { dotEl.style.background = '#bbf7d0'; dotEl.style.animation = ''; }
+      } else {
+        timeEl.textContent = _fmtDur((Date.now() - startMs)/1000);
+        if (dotEl) { dotEl.style.background = '#bbf7d0'; dotEl.style.animation = 'zalogaOnlinePulse 1.5s infinite'; }
+      }
+    });
+  }
+
+  function startHomeZaloga() {
     poll();
-    setInterval(poll, 15000);
-  });
+    setInterval(poll, 15000);          // osveži podatke (oba trga) vsakih 15s
+    _homeTimerInt = setInterval(tickHomeTimers, 1000);  // živ tick časovnic
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startHomeZaloga);
+  } else {
+    startHomeZaloga();  // DOM že naložen — zaženi takoj
+  }
 })();
 </script>
 
