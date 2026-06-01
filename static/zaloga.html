@@ -63,6 +63,18 @@
   .brand .sub { font-size: 11px; color: var(--text-faint); font-weight: 500; }
 
   .topbar-spacer { flex: 1; }
+  .market-tabs {
+    display: flex; gap: 4px; padding: 0 22px; background: rgba(255,255,255,0.95);
+    border-bottom: 1px solid var(--border); position: sticky; top: 71px; z-index: 49;
+  }
+  .market-tab {
+    padding: 12px 20px; font-weight: 700; font-size: 14px; cursor: pointer;
+    border: none; background: transparent; color: var(--text-dim);
+    border-bottom: 3px solid transparent; margin-bottom: -1px;
+    transition: all 0.15s; font-family: inherit;
+  }
+  .market-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .market-tab:hover:not(.active) { color: var(--text); }
 
   .global-stat {
     display: flex; align-items: center; gap: 14px;
@@ -293,6 +305,8 @@
     .global-stat .meta .big { font-size: 13px; }
     .global-stat .meta .small { font-size: 9px; }
     .topbar-spacer { display: none; }
+    .market-tabs { padding: 0 8px; top: auto; position: static; overflow-x: auto; }
+    .market-tab { padding: 11px 12px; font-size: 12px; white-space: nowrap; }
     .topbar label.btn, .topbar button.btn { flex: 1; text-align: center; }
 
     /* Wrap = en stolpec, brez fiksne širine */
@@ -479,6 +493,11 @@
   <button class="btn btn-ghost btn-sm" onclick="openHistory()">🕓 Zgodovina</button>
 </div>
 
+<div class="market-tabs">
+  <button class="market-tab active" id="mtab-slo" onclick="switchMarket('slo')">🇸🇮 Nabiranje zaloge SLO</button>
+  <button class="market-tab" id="mtab-rs" onclick="switchMarket('rs')">🇷🇸 Nabiranje zaloge RS</button>
+</div>
+
 <div class="wrap" id="wrap">
   <div class="empty-state" id="emptyState">
     <div class="icon">📋</div>
@@ -500,6 +519,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260528m"></script>
+<script src="/static/zaloga.js?v=20260528n"></script>
 </body>
 </html>
