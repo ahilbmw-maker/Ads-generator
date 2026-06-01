@@ -3686,6 +3686,68 @@ async def narocilnice_lookup(data: dict):
     return {"urls": results}
 
 
+@app.post("/zaloga-sku-images")
+async def zaloga_sku_images(data: dict):
+    """Vrne slike izdelkov po SKU iz SLO feed-a (za preview v nabiranju).
+    Vhod: {skus: ["SKU1", "SKU2", ...]}. Izhod: {images: {SKU: image_url}}."""
+    skus = data.get("skus", [])
+    if not skus:
+        return {"ok": True, "images": {}}
+    try:
+        await ensure_cache_fresh()
+        sl_feed = feed_by_lang.get("sl", {})
+        if not sl_feed:
+            return {"ok": True, "images": {}, "note": "feed prazen"}
+
+        # Zgradi MPN index (SKU upper -> image)
+        mpn_img = {}
+        slug_img = {}
+        title_img = {}
+        for g_id, prod in sl_feed.items():
+            img = prod.get("image", "")
+            if not img:
+                continue
+            mpn = (prod.get("mpn") or "").strip().upper()
+            if mpn:
+                mpn_img[mpn] = img
+            slug = (extract_slug(prod.get("url", "")) or "").upper()
+            if slug:
+                slug_img.setdefault(slug, img)
+            title = (prod.get("title") or "").upper()
+            if title:
+                title_img.setdefault(title, img)
+
+        out = {}
+        for raw in skus:
+            sku = str(raw).strip()
+            su = sku.upper()
+            # 1. točen MPN match (najbolj zanesljivo)
+            if su in mpn_img:
+                out[sku] = mpn_img[su]
+                continue
+            # 2. SKU kot slug
+            if su in slug_img:
+                out[sku] = slug_img[su]
+                continue
+            # 3. SKU vsebovan v title ali slug (delni)
+            found = None
+            for t, img in title_img.items():
+                if su in t:
+                    found = img
+                    break
+            if not found:
+                for s, img in slug_img.items():
+                    if su in s:
+                        found = img
+                        break
+            if found:
+                out[sku] = found
+        return {"ok": True, "images": out}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e), "images": {}}
+
+
 @app.post("/narocilnice-history-set")
 async def set_narocilnice_history(data: dict):
     """Nastavi celotno zgodovino (za brisanje)."""
