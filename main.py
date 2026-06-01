@@ -255,12 +255,13 @@ _FEED_CATEGORIES = [
     "kabli", "slike", "a-mobile",
 ]
 
-def _sku_in_image_url(sku: str, joined_urls: str) -> bool:
+def _sku_in_image_url(sku: str, joined_urls: str, strict: bool = False) -> bool:
     """Maaarket image URL je oblike: .../cache/{kategorija}{SKU}{naziv-slike}-{hash}.ext
     SKU pride TAKOJ za kategorijo (npr. 'dom-in-vrt'+'wave-1'+'izdelek-brez-naslova...').
     Najprej poskusi {kategorija}{SKU} ujemanje (najzanesljiveje). Sicer fallback na
     pojavitev SKU z mejo (za SKU ne sme slediti dodatna številka, da silux38≠silux380).
-    Podpira SKU z vezaji (wave-1, swc-09-l)."""
+    Podpira SKU z vezaji (wave-1, swc-09-l).
+    strict=True: samo kategorija+SKU ujemanje (brez ohlapnega fallbacka) — za base-SKU trim."""
     import re as _re
     sl = sku.lower().strip()
     if len(sl) < 2:
@@ -274,14 +275,24 @@ def _sku_in_image_url(sku: str, joined_urls: str) -> bool:
             pos = u.find(needle)
             while pos != -1:
                 after = u[pos + len(needle):]
-                if after == '' or not after[0].isdigit():
-                    return True
-                if len(after) == 1 or not after[1].isdigit():
-                    return True
+                if strict:
+                    # strict (base-SKU trim): za osnovo mora slediti vezaj ali enojni indeks,
+                    # NE poljubna črka (da 'silu'+'x...' ne velja za zadetek)
+                    if after == '' or after[0] in '-_':
+                        return True
+                    if after[0].isdigit() and (len(after) == 1 or not after[1].isdigit()):
+                        return True
+                else:
+                    if after == '' or not after[0].isdigit():
+                        return True
+                    if len(after) == 1 or not after[1].isdigit():
+                        return True
                 pos = u.find(needle, pos + 1)
 
     # 2) Fallback: SKU kjerkoli, z mejo da mu ne sledi nadaljnja številka in
     #    da pred njim ni alfanumerik (da ne ujamemo sredine daljše kode)
+    if strict:
+        return False
     esc = _re.escape(sl)
     pat = r'(?<![a-z0-9])' + esc + r'(?![0-9])'
     return _re.search(pat, u) is not None
@@ -404,12 +415,62 @@ async def fetch_all_feeds():
     sl_image_index = new_img_idx
 
     last_fetch = datetime.now()
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Done. Slug index: {len(slug_to_id)}, slike: {len(sl_image_index.get('mpn',{}))} mpn / {len(sl_image_index.get('slug',{}))} slug")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Done. Slug index: {len(slug_to_id)}, slike: {len(sl_image_index.get('img_corpus',[]))} izdelkov")
+    # shrani na disk, da preživi deploy/restart
+    _save_feed_cache_to_disk()
+
+
+FEED_CACHE_FILE = DATA_DIR / "feed_cache.json"
+
+
+def _save_feed_cache_to_disk():
+    """Shrani feed cache + indekse na persistent disk (/data), da preživijo deploy."""
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "saved_at": (last_fetch or datetime.now()).isoformat(),
+            "feed_by_lang": feed_by_lang,
+            "slug_to_id": slug_to_id,
+            "sl_image_index": sl_image_index,
+        }
+        tmp = FEED_CACHE_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(FEED_CACHE_FILE)
+        print(f"[feed cache] shranjen na disk ({FEED_CACHE_FILE})")
+    except Exception as e:
+        print(f"[feed cache] shranjevanje spodletelo: {e}")
+
+
+def _load_feed_cache_from_disk() -> bool:
+    """Naloži feed cache z diska, če obstaja in je svež (<24h). Vrne True ob uspehu."""
+    global feed_by_lang, slug_to_id, sl_image_index, last_fetch
+    try:
+        if not FEED_CACHE_FILE.exists():
+            return False
+        payload = json.loads(FEED_CACHE_FILE.read_text(encoding="utf-8"))
+        saved_at = datetime.fromisoformat(payload["saved_at"])
+        if datetime.now() - saved_at > timedelta(hours=CACHE_TTL_HOURS):
+            print("[feed cache] disk cache zastarel, bo osvežen")
+            return False
+        feed_by_lang = payload.get("feed_by_lang", {})
+        slug_to_id = payload.get("slug_to_id", {})
+        sl_image_index = payload.get("sl_image_index", {})
+        # img_corpus se v JSON serializira kot seznam seznamov [img, joined] → pretvori nazaj v tuple
+        if "img_corpus" in sl_image_index:
+            sl_image_index["img_corpus"] = [tuple(x) for x in sl_image_index["img_corpus"]]
+        last_fetch = saved_at
+        print(f"[feed cache] naložen z diska ({len(feed_by_lang.get('sl',{}))} SLO izdelkov, star {(datetime.now()-saved_at).seconds//60} min)")
+        return True
+    except Exception as e:
+        print(f"[feed cache] nalaganje spodletelo: {e}")
+        return False
 
 
 async def ensure_cache_fresh():
     if is_cache_stale():
-        await fetch_all_feeds()
+        # poskusi z diska (hitro), sicer prenesi feed (počasi)
+        if not _load_feed_cache_from_disk():
+            await fetch_all_feeds()
 
 
 def detect_brand(url: str) -> Optional[str]:
@@ -459,7 +520,14 @@ async def startup_event():
     except Exception as e:
         print(f"[startup] FFmpeg warm-up failed: {e}")
 
-    await fetch_all_feeds()
+    # Najprej poskusi naložiti feed cache z diska (preživi deploy, ni 10s zamika).
+    # Če disk nima svežega cache-a, prenesi feed v ozadju (ne blokira zagona).
+    if _load_feed_cache_from_disk():
+        # disk cache svež → osveži v ozadju šele ob naslednjem dnevnem ciklu
+        pass
+    else:
+        # ni svežega diska → prenesi zdaj (prvi zagon ali zastarel cache)
+        await fetch_all_feeds()
     asyncio.create_task(daily_refresh())
     asyncio.create_task(_daily_cashflow_sync())
     asyncio.create_task(_email_polling_loop())
@@ -467,7 +535,13 @@ async def startup_event():
 
 async def daily_refresh():
     while True:
-        await asyncio.sleep(CACHE_TTL_HOURS * 3600)
+        # počakaj do poteka TTL glede na zadnji prenos (ne fiksno 24h od zagona)
+        if last_fetch:
+            age = (datetime.now() - last_fetch).total_seconds()
+            wait = max(60, CACHE_TTL_HOURS * 3600 - age)
+        else:
+            wait = CACHE_TTL_HOURS * 3600
+        await asyncio.sleep(wait)
         await fetch_all_feeds()
 
 
@@ -3839,7 +3913,7 @@ async def zaloga_sku_images(data: dict):
             return {"ok": True, "images": {}, "note": "feed prazen", "feed_size": 0}
 
         out = {}
-        matched_by = {"brand_sku": 0, "image_url": 0, "naziv_slug": 0, "slug": 0, "mpn": 0, "none": 0}
+        matched_by = {"brand_sku": 0, "image_url": 0, "base_sku": 0, "naziv_slug": 0, "slug": 0, "mpn": 0, "none": 0}
         unresolved = []
 
         # Faza 1: zanesljiv SKU (Ikonka/Amio iz image URL) — O(1), najmočnejši
@@ -3859,6 +3933,37 @@ async def zaloga_sku_images(data: dict):
                 out[sku] = found
             else:
                 unresolved.append(sku)
+
+        # Faza 1b: osnovni SKU (child/variant) — če točen SKU ni našel slike,
+        # postopno krajšaj z desne (Maaa61black → Maaa61blac → ... → Maaa61) in poskusi
+        # vsak skrajšani SKU v korpusu. Pripona variante je poljubna (črke ali številke),
+        # zato ne ugibamo meje — vzamemo najdaljši skrajšani SKU, ki ima zadetek v feedu.
+        if unresolved:
+            still = []
+            for sku in unresolved:
+                found = None
+                # krajšaj do minimalne dolžine 4 (da ne ujamemo prekratke/skupne osnove).
+                # strict=True: samo kategorija+SKU, brez ohlapnega fallbacka, da različni
+                # izdelki s skupnim prefiksom (silux...) ne dajo lažnega zadetka.
+                base = sku
+                while len(base) > 4:
+                    base = base[:-1]
+                    for img, joined in img_corpus:
+                        if _sku_in_image_url(base, joined, strict=True):
+                            found = img; break
+                    if found:
+                        break
+                # poskusi tudi osnovo dolžine točno 4 (npr. M248)
+                if not found and len(sku) > 4:
+                    base4 = sku[:4]
+                    for img, joined in img_corpus:
+                        if _sku_in_image_url(base4, joined, strict=True):
+                            found = img; break
+                if found:
+                    out[sku] = found; matched_by["base_sku"] += 1
+                else:
+                    still.append(sku)
+            unresolved = still
 
         # Faza 2: sluggificiran naziv == feed slug (ali title_slug)
         if unresolved:
