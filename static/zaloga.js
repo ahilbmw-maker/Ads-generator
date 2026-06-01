@@ -248,22 +248,65 @@ function render() {
   updateGlobalStat();
 }
 
+// ── RS: zbir zasedenih box številk (1..100) ──
+// Box je "zaseden", če ima vsaj eno zaklenjeno postavko ALI je dodatni box.
+function usedBoxNumbers() {
+  const used = new Set();
+  (ITEMS || []).forEach(it => {
+    if (it.locked && it.box != null && String(it.box).trim() !== '') {
+      const n = parseInt(String(it.box).trim(), 10);
+      if (!isNaN(n)) used.add(n);
+    }
+  });
+  const xb = getExtraBoxes();
+  Object.keys(xb).forEach(b => {
+    const n = parseInt(String(b).trim(), 10);
+    if (!isNaN(n)) used.add(n);
+  });
+  return used;
+}
+
+// Najmanjša neuporabljena številka boxa (1..100), oz. '' če so vse zasedene
+function nextFreeBox() {
+  const used = usedBoxNumbers();
+  for (let i = 1; i <= 100; i++) if (!used.has(i)) return String(i);
+  return '';
+}
+
 // ── RS: box vrstica pri polici ──
 function shelfBoxBar(group, items) {
   // koliko obkljukanih (ok) IN še ne zaklenjenih
   const pending = items.filter(it => it.status === 'ok' && !it.locked).length;
   const lockedCount = items.filter(it => it.locked).length;
+  const used = usedBoxNumbers();
+  const suggested = nextFreeBox();
+  // opcije BOX1..BOX100; zasedeni dobijo ✓ in so onemogočeni za novo izbiro? Ne — dovolimo izbiro
+  // (uporabnik lahko dodaja v obstoječi box). Zasedeni so označeni z ✓.
+  let opts = '';
+  for (let i = 1; i <= 100; i++) {
+    const isUsed = used.has(i);
+    const sel = (String(i) === suggested) ? ' selected' : '';
+    opts += `<option value="${i}"${sel}${isUsed ? ' data-used="1"' : ''}>${isUsed ? '✓ ' : ''}BOX${i}</option>`;
+  }
   return `
     <div class="shelf-box-bar" onclick="event.stopPropagation()">
       <span class="sbb-icon">📦</span>
-      <span class="sbb-label">Št. Boxa:</span>
-      <input type="number" class="sbb-input" id="boxinput-${cssId(group)}" placeholder="npr. 1" min="1"
-        onclick="event.stopPropagation()">
+      <span class="sbb-label">Box:</span>
+      <select class="sbb-select" id="boxinput-${cssId(group)}" onclick="event.stopPropagation()" onchange="markBoxSelect(this)">
+        ${opts}
+      </select>
       <button class="sbb-save" onclick="lockBox('${jsStr(group)}')">
         🔒 Shrani in zakleni${pending ? ` (${pending})` : ''}
       </button>
       ${lockedCount ? `<span class="sbb-locked">${lockedCount} zaklenjenih</span>` : ''}
     </div>`;
+}
+
+// vizualno označi, ali je izbrani box že zaseden (zelena obroba)
+function markBoxSelect(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  if (opt && opt.getAttribute('data-used') === '1') sel.classList.add('sbb-select-used');
+  else sel.classList.remove('sbb-select-used');
 }
 
 // ── RS: zakleni obkljukane v polici ──
@@ -428,6 +471,23 @@ async function removeFromExtraBox(box, sku) {
   } catch(e) { toast('✗ ' + e.message); }
 }
 
+// Preimenuj (uredi številko) dodatnega boxa
+async function renameExtraBox(oldBox) {
+  const nw = prompt(`Nova številka za Box ${oldBox}:`, oldBox);
+  if (nw === null) return;                 // preklic
+  const newBox = String(nw).trim();
+  if (!newBox || newBox === String(oldBox)) return;
+  try {
+    const r = await fetch('/zaloga-extra-box', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'rename_box', box: oldBox, new_box: newBox })
+    });
+    const data = await r.json();
+    if (data.ok) { if(SESSION) SESSION.extra_boxes = data.extra_boxes; render(); toast(`✓ Box ${oldBox} → ${newBox}`); }
+    else toast('✗ ' + (data.error||'napaka'));
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
 // ── RS: sekcija "Dodatni boxi (viški)" ──
 function extraBoxesSection() {
   const boxes = getExtraBoxes();
@@ -445,7 +505,7 @@ function extraBoxesSection() {
     return `
       <div class="ebx-card">
         <div class="ebx-head">
-          <span class="ebx-name">📦 Box ${esc(b)}</span>
+          <span class="ebx-name">📦 Box ${esc(b)} <button class="ebx-rename" onclick="renameExtraBox('${jsStr(b)}')" title="Uredi številko boxa">✏️</button></span>
           <span class="ebx-meta">${totalKos} kos · ${items.length} ${items.length===1?'izdelek':(items.length===2?'izdelka':'izdelkov')}</span>
         </div>
         ${lines}
