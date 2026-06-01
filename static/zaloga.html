@@ -220,10 +220,11 @@
     background: var(--poz-bg); padding: 4px 9px; border-radius: 7px;
     text-align: center; letter-spacing: 0.5px; justify-self: start;
   }
-  /* poz-col: ovije pozicijo + (pri zaklenjenih) BOX značko */
-  .poz-col { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; justify-self: start; }
-  .item-box-wrap { display: inline-flex; align-items: center; gap: 4px; }
   .item .naziv { font-size: 13px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* naziv-wrap zasede stolpec naziva: naziv levo, BOX+odkleni (zaklenjen) desno */
+  .item-naziv-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .item-naziv-wrap .naziv { flex: 1; min-width: 0; }
+  .item-box-inline { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .item .id-col { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 
   /* qty stepper */
@@ -373,15 +374,13 @@
       font-size: 16px; font-weight: 700; order: 2; align-self: center;
       padding: 6px 14px; border-radius: 9px; letter-spacing: 0.3px;
     }
-    /* mobile: pozicija + BOX v vrsti, poravnano desno */
-    .poz-col { flex-direction: row; align-items: center; gap: 8px; flex-shrink: 0; }
-    .item-box-wrap { display: inline-flex; align-items: center; gap: 5px; }
-    .item-box-badge { font-size: 13px; padding: 5px 11px; }
     /* Naziv polna širina */
     .item .naziv {
-      font-size: 14px; order: 3; white-space: normal;
+      font-size: 14px; white-space: normal;
       line-height: 1.4; color: var(--text-dim);
     }
+    .item-naziv-wrap { order: 3; display: block; }
+    .item-box-inline { display: none; }  /* desktop-only; na mobile uporabimo item-locked-row */
 
     /* Spodnja vrsta: stepper + ✓ + ✕ v ENI vrstici */
     .item-bottom {
@@ -451,6 +450,10 @@
     .item-opomba .iop-input { height: 46px; font-size: 15px; }
     .item-opomba .iop-tobox { padding: 0 12px; font-size: 12px; }
     .iop-saved-tag { right: 80px; }
+    /* zaklenjena vrsta (BOX + Odkleni) na istem mestu kot opomba */
+    .item-locked-row { display: flex; align-items: center; gap: 8px; order: 5; margin-top: 4px; }
+    .item-locked-row .item-unlock { margin-left: auto; height: 44px; font-size: 14px; padding: 0 16px; }
+    .item-locked-row .item-box-badge { font-size: 15px; padding: 9px 15px; }
   }
 
   /* Zelo ozki telefoni */
@@ -552,13 +555,16 @@
 
   .item-locked { opacity: 0.88; }
   .item-box-badge {
-    font-size: 11px; font-weight: 700; color: #fff;
+    font-size: 14px; font-weight: 700; color: #fff;
     background: var(--box-bg); border: none;
-    border-radius: 6px; padding: 3px 9px; white-space: nowrap;
+    border-radius: 8px; padding: 7px 13px; white-space: nowrap;
   }
+  /* spodnja vrsta zaklenjenega izdelka — samo MOBILE; na desktopu skrita (inline namesto tega) */
+  @media (min-width: 769px) { .item-locked-row { display: none; } }
   .item-unlock {
-    background: none; border: 0.5px solid var(--border2); color: var(--text-dim);
-    border-radius: 6px; padding: 2px 7px; font-size: 11px; cursor: pointer; margin-left: 4px;
+    background: var(--panel); border: 0.5px solid var(--border2); color: var(--text-dim);
+    border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: inherit; white-space: nowrap;
   }
   .item-unlock:hover { background: var(--panel3); }
 
@@ -771,6 +777,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601H"></script>
+<script src="/static/zaloga.js?v=20260601J"></script>
 </body>
 </html>
