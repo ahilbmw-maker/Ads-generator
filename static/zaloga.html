@@ -133,10 +133,9 @@
   .shelf:not(.open) .shelf-head { border-radius: 13px; }
   .shelf.open { border-color: var(--border2); box-shadow: var(--shadow); }
   /* Dokončana polica (vsaka postavka ✓ ali ✗) — svetlo zelena čez celo vrstico */
-  .shelf-done { background: var(--ok-bg); border-color: var(--ok); }
+  .shelf-done { background: var(--ok-bg); }
   .shelf-done .shelf-head:hover { background: rgba(22,163,74,0.10); }
-  .shelf-done .shelf-name { color: var(--ok); }
-  .shelf-done .shelf-chevron { color: var(--ok); }
+  /* pri 100%: ime, %, chevron in obroba ostanejo nevtralni (le ozadje je zeleno) */
   .shelf-head {
     display: flex; align-items: center; gap: 14px;
     padding: 16px 18px; cursor: pointer; user-select: none;
@@ -378,8 +377,8 @@
        — polni barvi z ~40% prosojnostjo: bolj vidno kot pastelni -bg, besedilo ostane berljivo */
     .shelf-head-fill {
       display: block; position: absolute; inset: 0; z-index: 0; pointer-events: none;
-      --fill-ok-col: color-mix(in srgb, var(--ok) 42%, transparent);
-      --fill-ni-col: color-mix(in srgb, var(--ni) 42%, transparent);
+      --fill-ok-col: color-mix(in srgb, var(--ok) 40%, transparent);
+      --fill-ni-col: color-mix(in srgb, var(--ni) 40%, transparent);
       background:
         linear-gradient(90deg,
           var(--fill-ok-col) 0, var(--fill-ok-col) var(--fill-ok, 0%),
@@ -845,6 +844,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601S"></script>
+<script src="/static/zaloga.js?v=20260601U"></script>
 </body>
 </html>
