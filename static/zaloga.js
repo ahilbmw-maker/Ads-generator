@@ -276,11 +276,15 @@ function nextFreeBox() {
   return '';
 }
 
+// Globalno število obkljukanih (status ok) izdelkov BREZ dodeljenega boxa — čez vse police
+function globalPendingCount() {
+  return (ITEMS || []).filter(it => it.status === 'ok' && !it.locked).length;
+}
+
 // ── RS: box vrstica pri polici ──
 function shelfBoxBar(group, items, mobileMode) {
-  // koliko obkljukanih (ok) IN še ne zaklenjenih
-  const pending = items.filter(it => it.status === 'ok' && !it.locked).length;
   const lockedCount = items.filter(it => it.locked).length;
+  const globalPending = globalPendingCount();  // obkljukani brez boxa — čez VSE police
   const used = usedBoxNumbers();
   const suggested = nextFreeBox();
   // opcije BOX1..BOX100; zasedeni dobijo ✓ (dovolimo izbiro — lahko dodajaš v obstoječi box)
@@ -293,6 +297,10 @@ function shelfBoxBar(group, items, mobileMode) {
   // unikatni id: mobilni sticky bar uporablja predpono "m-", da se ne podvaja z inline barom
   const inputId = (mobileMode ? 'mboxinput-' : 'boxinput-') + cssId(group);
   const cls = 'shelf-box-bar' + (mobileMode ? ' shelf-box-bar-mobile' : '');
+  // značka: koliko obkljukanih čaka na box (globalno). Mobile = samo število, desktop = "N čaka"
+  const countBadge = globalPending
+    ? `<span class="sbb-count" title="Obkljukanih brez boxa (čez vse police)">✓ ${globalPending}${mobileMode ? '' : ' čaka'}</span>`
+    : '';
   return `
     <div class="${cls}" onclick="event.stopPropagation()">
       <span class="sbb-icon">📦</span>
@@ -300,8 +308,9 @@ function shelfBoxBar(group, items, mobileMode) {
       <select class="sbb-select" id="${inputId}" onclick="event.stopPropagation()" onchange="markBoxSelect(this)">
         ${opts}
       </select>
+      ${countBadge}
       <button class="sbb-save" onclick="lockBox('${jsStr(group)}', ${mobileMode ? 'true' : 'false'})">
-        🔒 Shrani in zakleni${pending ? ` (${pending})` : ''}
+        🔒 ${mobileMode ? 'Zakleni' : 'Shrani in zakleni'}
       </button>
       ${lockedCount ? `<span class="sbb-locked">${lockedCount} zaklenjenih</span>` : ''}
     </div>`;
@@ -314,24 +323,24 @@ function markBoxSelect(sel) {
   else sel.classList.remove('sbb-select-used');
 }
 
-// ── RS: zakleni obkljukane v polici ──
+// ── RS: zakleni VSE obkljukane (čez vse police) v izbrani box ──
 async function lockBox(group, mobileMode) {
   const id = (mobileMode ? 'mboxinput-' : 'boxinput-') + cssId(group);
   const inp = document.getElementById(id);
   const box = inp ? inp.value.trim() : '';
-  if (!box) { toast('Vpiši št. boxa'); if (inp) inp.focus(); return; }
+  if (!box) { toast('Izberi box'); if (inp) inp.focus(); return; }
+  const pending = globalPendingCount();
+  if (!pending) { toast('Ni obkljukanih izdelkov brez boxa'); return; }
   try {
     const r = await fetch('/zaloga-lock-box', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ market: MARKET, group, box })
+      body: JSON.stringify({ market: MARKET, global: true, box })
     });
     const data = await r.json();
     if (data.ok) {
-      // posodobi lokalno
+      // posodobi lokalno — VSE police
       ITEMS.forEach(it => {
-        if (it.group === group && it.status === 'ok' && !it.locked) {
-          it.box = box; it.locked = true;
-        }
+        if (it.status === 'ok' && !it.locked) { it.box = box; it.locked = true; }
       });
       toast(`✓ ${data.locked} postavk → Box ${box}`);
       render();
@@ -836,7 +845,32 @@ function setStatus(idx, status) {
   refreshShelfProgress(it.group);
   refreshSidebarAndStats();
   updateGlobalStat();
+  if (isRS()) refreshBoxCounters();  // posodobi globalni števec obkljukanih brez boxa
   saveItem(idx, { status: it.status });
+}
+
+// RS: osveži globalni števec (✓ N) v vseh box-barih + spodnji mobilni bar
+function refreshBoxCounters() {
+  const n = globalPendingCount();
+  document.querySelectorAll('.shelf-box-bar').forEach(bar => {
+    if (bar.closest('#mobileBoxBar')) return;  // mobilni posodobimo posebej spodaj
+    let badge = bar.querySelector('.sbb-count');
+    if (n > 0) {
+      const txt = `✓ ${n} čaka`;
+      if (badge) badge.textContent = txt;
+      else {
+        badge = document.createElement('span');
+        badge.className = 'sbb-count';
+        badge.title = 'Obkljukanih brez boxa (čez vse police)';
+        badge.textContent = txt;
+        const sel = bar.querySelector('.sbb-select');
+        if (sel) sel.insertAdjacentElement('afterend', badge);
+      }
+    } else if (badge) {
+      badge.remove();
+    }
+  });
+  updateMobileBoxBar();
 }
 
 // ── Osveži eno vrstico (in-place) ──
