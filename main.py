@@ -1439,21 +1439,23 @@ async def zaloga_lock_box(data: dict):
             path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
             return {"ok": True, "unlocked": uidx}
 
-        # Zaklep obkljukanih v polici
+        # Zaklep obkljukanih — globalno (vse police) ali samo ena polica
+        is_global = bool(data.get("global"))
         group = data.get("group")
         box = str(data.get("box", "")).strip()
-        if not group:
-            return {"ok": False, "error": "Manjka group"}
         if not box:
             return {"ok": False, "error": "Manjka št. boxa"}
+        if not is_global and not group:
+            return {"ok": False, "error": "Manjka group"}
         locked_count = 0
         for it in sess.get("items", []):
-            if it.get("group") == group and it.get("status") == "ok" and not it.get("locked"):
-                it["box"] = box
-                it["locked"] = True
-                locked_count += 1
+            if it.get("status") == "ok" and not it.get("locked"):
+                if is_global or it.get("group") == group:
+                    it["box"] = box
+                    it["locked"] = True
+                    locked_count += 1
         if locked_count == 0:
-            return {"ok": False, "error": "Ni obkljukanih (in še odklenjenih) postavk v tej polici"}
+            return {"ok": False, "error": "Ni obkljukanih (in še odklenjenih) postavk"}
         sess["updated_at"] = _dt.now().isoformat()
         path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
         return {"ok": True, "locked": locked_count, "box": box}
