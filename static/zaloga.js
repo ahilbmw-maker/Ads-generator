@@ -63,12 +63,62 @@ async function loadSession() {
       render();
       document.getElementById('archiveBtn').style.display = '';
       document.getElementById('globalStat').style.display = '';
+      fetchSkuImages();  // v ozadju naloži slike izdelkov
     } else {
       showEmpty();
     }
   } catch(e) {
     showEmpty();
   }
+}
+
+// ── Slike izdelkov (preview za nove delavce) ──
+let SKU_IMAGES = {};   // { SKU: url }
+async function fetchSkuImages() {
+  try {
+    const skus = [...new Set(ITEMS.map(it => it.sku).filter(Boolean))];
+    if (!skus.length) return;
+    const r = await fetch('/zaloga-sku-images', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ skus })
+    });
+    const data = await r.json();
+    if (data.ok && data.images) {
+      SKU_IMAGES = data.images;
+      applySkuImages();
+    }
+  } catch(e) { /* tiho — slike niso kritične */ }
+}
+
+// Vstavi sličice v že izrisane postavke (brez polnega re-renderja)
+function applySkuImages() {
+  ITEMS.forEach(it => {
+    const url = SKU_IMAGES[it.sku];
+    if (!url) return;
+    const holder = document.querySelector(`#imgthumb-${it.idx}`);
+    if (holder && !holder.dataset.loaded) {
+      holder.dataset.loaded = '1';
+      holder.innerHTML = `<img src="${esc(url)}" alt="" loading="lazy" onclick="event.stopPropagation();openImgPreview('${jsStr(url)}','${jsStr(it.sku)}')">`;
+      holder.classList.add('has-img');
+    }
+  });
+}
+
+// Povečava slike
+function openImgPreview(url, sku) {
+  const html = `
+    <div class="img-preview-overlay" id="imgPreviewOverlay" onclick="closeImgPreview()">
+      <div class="img-preview-box" onclick="event.stopPropagation()">
+        <img src="${esc(url)}" alt="${esc(sku)}">
+        <div class="img-preview-sku">${esc(sku)}</div>
+        <button class="img-preview-close" onclick="closeImgPreview()">✕ Zapri</button>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+function closeImgPreview() {
+  const o = document.getElementById('imgPreviewOverlay');
+  if (o) o.remove();
 }
 
 function showEmpty() {
@@ -401,10 +451,18 @@ function itemRow(it) {
         <button class="iop-tobox" onclick="event.stopPropagation();openBoxDialog(${it.idx})" title="Dodaj v dodatni box">⤓ V box</button>
       </div>` : '';
 
+  // sličica izdelka (če že naložena)
+  const imgUrl = SKU_IMAGES[it.sku];
+  const thumbInner = imgUrl
+    ? `<img src="${esc(imgUrl)}" alt="" loading="lazy" onclick="event.stopPropagation();openImgPreview('${jsStr(imgUrl)}','${jsStr(it.sku)}')">`
+    : '';
+  const thumb = `<span class="item-thumb ${imgUrl?'has-img':''}" id="imgthumb-${it.idx}" ${imgUrl?'data-loaded="1"':''}>${thumbInner}</span>`;
+
   return `
     <div class="item ${cls} ${locked?'item-locked':''} ${rs?'item-rs':''}" id="item-${it.idx}">
       <span class="id-col">${esc(it.id || '—')}</span>
       <div class="item-mobile-top">
+        ${thumb}
         <span class="sku">${esc(it.sku)}</span>
         <span class="poz">${esc(it.poz)} ${boxBadge}</span>
       </div>
