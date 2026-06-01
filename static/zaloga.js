@@ -154,6 +154,8 @@ function render() {
         </div>
       </div>`;
   });
+  // RS: sekcija dodatnih boxov (viški) — pod zadnjo polico
+  if (isRS()) html += extraBoxesSection();
   html += '</div>';
 
   // Sidebar (manjko + skupna statistika)
@@ -252,6 +254,131 @@ function commitOpomba(idx, val, el) {
   }
 }
 
+// ── RS: dostop do dodatnih boxov ──
+function getExtraBoxes() {
+  return (SESSION && SESSION.extra_boxes) ? SESSION.extra_boxes : {};
+}
+
+// ── RS: odpri dialog "V box" za postavko ──
+function openBoxDialog(idx) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  // kos iz opombe (prvo število) ali privzeto qty
+  let kos = it.qty || 1;
+  const m = (it.opomba || '').match(/\d+/);
+  if (m) kos = parseInt(m[0]);
+  if (!kos || kos < 1) kos = 1;
+
+  const boxes = getExtraBoxes();
+  const keys = Object.keys(boxes).sort((a,b)=>String(a).localeCompare(String(b),'sl',{numeric:true}));
+
+  const existing = keys.length ? keys.map(b => {
+    const totalKos = boxes[b].reduce((s,e)=>s+(e.kos||0),0);
+    return `<button class="bxd-pick" onclick="addToExtraBox(${idx}, '${jsStr(b)}', ${kos})">
+      <span class="bxd-pick-ico">📦</span>
+      <span class="bxd-pick-name">Box ${esc(b)}</span>
+      <span class="bxd-pick-kos">${totalKos} kos</span>
+    </button>`;
+  }).join('') : '<div class="bxd-empty">Še ni dodatnih boxov — ustvari prvega zgoraj.</div>';
+
+  const html = `
+    <div class="bxd-overlay" id="bxdOverlay" onclick="if(event.target===this)closeBoxDialog()">
+      <div class="bxd-modal">
+        <div class="bxd-title">${esc(it.sku)} × ${kos} → v kateri dodatni box?</div>
+        <div class="bxd-create">
+          <input type="text" id="bxdNewNum" class="bxd-new-input" placeholder="Nova št. boxa (npr. 99)"
+            inputmode="numeric" onkeydown="if(event.key==='Enter')createAndAdd(${idx}, ${kos})">
+          <button class="bxd-create-btn" onclick="createAndAdd(${idx}, ${kos})">➕ Ustvari</button>
+        </div>
+        ${keys.length ? '<div class="bxd-or">ali izberi obstoječega:</div>' : ''}
+        <div class="bxd-list">${existing}</div>
+        <button class="bxd-cancel" onclick="closeBoxDialog()">Prekliči</button>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(()=>{ const el=document.getElementById('bxdNewNum'); if(el) el.focus(); }, 50);
+}
+
+function closeBoxDialog() {
+  const o = document.getElementById('bxdOverlay');
+  if (o) o.remove();
+}
+
+function createAndAdd(idx, kos) {
+  const inp = document.getElementById('bxdNewNum');
+  const box = inp ? inp.value.trim() : '';
+  if (!box) { toast('Vpiši št. novega boxa'); if(inp) inp.focus(); return; }
+  addToExtraBox(idx, box, kos);
+}
+
+async function addToExtraBox(idx, box, kos) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  try {
+    const r = await fetch('/zaloga-extra-box', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'add', box, sku: it.sku, naziv: it.naziv, idx, kos })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      if (SESSION) SESSION.extra_boxes = data.extra_boxes;
+      // backend morda označi nabrano če cel kos
+      await loadSession();
+      closeBoxDialog();
+      toast(`✓ ${it.sku} × ${kos} → Box ${box}`);
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+async function removeFromExtraBox(box, sku) {
+  if (!confirm(`Odstranim ${sku} iz Box ${box}?`)) return;
+  try {
+    const r = await fetch('/zaloga-extra-box', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'remove_item', box, sku })
+    });
+    const data = await r.json();
+    if (data.ok) { if(SESSION) SESSION.extra_boxes = data.extra_boxes; render(); toast('✓ Odstranjeno'); }
+    else toast('✗ ' + (data.error||'napaka'));
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+// ── RS: sekcija "Dodatni boxi (viški)" ──
+function extraBoxesSection() {
+  const boxes = getExtraBoxes();
+  const keys = Object.keys(boxes).sort((a,b)=>String(a).localeCompare(String(b),'sl',{numeric:true}));
+  if (!keys.length) return '';  // skrito dokler ni vsaj 1
+  const cards = keys.map(b => {
+    const items = boxes[b];
+    const totalKos = items.reduce((s,e)=>s+(e.kos||0),0);
+    const lines = items.map(e => `
+      <div class="ebx-line">
+        <span class="ebx-line-sku" onclick="copySkuFromManko(this,'${esc(e.sku)}')" title="Kopiraj SKU" style="cursor:pointer">${esc(e.sku)} <span class="mpoz-copy-icon">⎘</span></span>
+        <span class="ebx-line-kos">× ${e.kos}</span>
+        <button class="ebx-line-del" onclick="removeFromExtraBox('${jsStr(b)}','${jsStr(e.sku)}')" title="Odstrani">✕</button>
+      </div>`).join('');
+    return `
+      <div class="ebx-card">
+        <div class="ebx-head">
+          <span class="ebx-name">📦 Box ${esc(b)}</span>
+          <span class="ebx-meta">${totalKos} kos · ${items.length} ${items.length===1?'izdelek':(items.length===2?'izdelka':'izdelkov')}</span>
+        </div>
+        ${lines}
+      </div>`;
+  }).join('');
+  return `
+    <div class="extra-boxes-section">
+      <div class="ebx-section-head">
+        <span class="ebx-section-ico">🗄️</span>
+        <span class="ebx-section-title">Dodatni boxi (viški)</span>
+        <span class="ebx-section-count">${keys.length} box${keys.length===1?'':(keys.length===2?'a':'ov')}</span>
+      </div>
+      ${cards}
+    </div>`;
+}
+
 function itemRow(it) {
   const cls = it.status === 'ok' ? 'ok' : it.status === 'ni' ? 'ni' : '';
   const mismatch = it.picked !== it.qty ? 'qty-mismatch' : '';
@@ -264,13 +391,14 @@ function itemRow(it) {
        <button class="item-unlock" onclick="unlockItem(${it.idx})" title="Odkleni">🔓</button>`
     : '';
 
-  // RS: opomba polje (dodatni box) — kompaktno, pod gumbi
+  // RS: opomba polje (dodatni box) — vgrajen label + gumb "V box"
   const opombaRow = rs ? `
       <div class="item-opomba">
-        <span class="iop-label">📝 Opomba — dodatni box:</span>
-        <input type="text" class="iop-input" value="${esc(it.opomba || '')}" placeholder="npr. Box 3, 2 kos"
+        <div class="iop-prefix">📝 Dodatni box</div>
+        <input type="text" class="iop-input" value="${esc(it.opomba || '')}" placeholder="npr. 2 kos"
           onclick="event.stopPropagation()" onblur="commitOpomba(${it.idx}, this.value, this)"
-          onkeydown="if(event.key==='Enter')this.blur()">
+          onkeydown="if(event.key==='Enter')openBoxDialog(${it.idx})">
+        <button class="iop-tobox" onclick="event.stopPropagation();openBoxDialog(${it.idx})" title="Dodaj v dodatni box">⤓ V box</button>
       </div>` : '';
 
   return `
