@@ -92,6 +92,37 @@ async function fetchSkuImages() {
   } catch(e) { /* tiho — slike niso kritične */ }
 }
 
+// Ročna prisilna osvežitev feed cache-a (po dodajanju novega izdelka).
+// Obide tedenski TTL, nato znova naloži slike v trenutni seji.
+async function refreshFeed() {
+  const btn = document.getElementById('refreshFeedBtn');
+  if (!btn) return;
+  if (btn.dataset.busy === '1') return;
+  const orig = btn.innerHTML;
+  btn.dataset.busy = '1';
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Osvežujem…';
+  try {
+    const r = await fetch('/zaloga-refresh-feed', { method: 'POST' });
+    const data = await r.json();
+    if (data.ok) {
+      btn.innerHTML = '✓ Osveženo';
+      // znova poberi slike za trenutno sejo
+      await fetchSkuImages();
+    } else {
+      btn.innerHTML = (data.note && data.note.indexOf('poteka') >= 0) ? '⏳ Že teče…' : '✗ Napaka';
+    }
+  } catch(e) {
+    btn.innerHTML = '✗ Napaka';
+  } finally {
+    setTimeout(() => {
+      btn.innerHTML = orig;
+      btn.disabled = false;
+      btn.dataset.busy = '0';
+    }, 2500);
+  }
+}
+
 // Vstavi sličice v že izrisane postavke (brez polnega re-renderja)
 function applySkuImages() {
   ITEMS.forEach(it => {
