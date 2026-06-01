@@ -261,7 +261,7 @@ function renderSidebar() {
             <span class="mqty">manjka ${missingQty}${it.status==='ni'?' (cela)':''}</span>
           </div>
           <div class="mnaziv" title="${esc(it.naziv)}">${esc(it.naziv)}</div>
-          <div class="mpoz-badge">📍 ${esc(it.poz)}</div>
+          <div class="mpoz-badge" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Klikni za kopiranje SKU" style="cursor:pointer;user-select:none">📍 ${esc(it.poz)} <span class="mpoz-copy-icon">⎘</span></div>
           <div class="mpoz-detail">potrebno ${it.qty} · nabrano ${it.status==='ni'?0:it.picked}</div>
         </div>`;
     }).join('');
@@ -537,6 +537,32 @@ async function histDelete(filename) {
       toast('✗ ' + (data.error || 'napaka'));
     }
   } catch(e) { toast('✗ ' + e.message); }
+}
+
+// ── Kopiraj SKU iz manjka ──
+async function copySkuFromManko(el, sku) {
+  try {
+    await navigator.clipboard.writeText(sku);
+    const orig = el.innerHTML;
+    el.innerHTML = `✓ ${esc(sku)} — kopirano!`;
+    el.style.background = 'var(--ok)';
+    el.style.color = '#fff';
+    el.style.borderColor = 'var(--ok)';
+    setTimeout(() => {
+      el.innerHTML = orig;
+      el.style.background = '';
+      el.style.color = '';
+      el.style.borderColor = '';
+    }, 1600);
+  } catch(e) {
+    // fallback za starejše brskalnike
+    const ta = document.createElement('textarea');
+    ta.value = sku; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('✓ ' + sku + ' kopirano');
+  }
 }
 
 // ── Init ──
