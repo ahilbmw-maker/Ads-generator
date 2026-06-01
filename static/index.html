@@ -25,14 +25,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .mobile-tabbar { display: none; }
 
 @media(max-width: 600px) {
-  .hamburger {
-    display: flex !important; flex-direction: column; justify-content: center; gap: 4px;
-    position: fixed; top: 12px; left: 12px; z-index: 10000;
-    width: 44px; height: 44px; padding: 10px;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
-    cursor: pointer;
-  }
-  .hamburger span { display: block; width: 100%; height: 2px; background: var(--text); border-radius: 2px; transition: all 0.2s; }
+  .hamburger { display: none !important; }
   .overlay {
     display: block !important; position: fixed; inset: 0; z-index: 9998;
     background: rgba(0,0,0,0.5); opacity: 0; pointer-events: none; transition: opacity 0.25s;
@@ -45,7 +38,8 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     box-shadow: 2px 0 16px rgba(0,0,0,0.15);
   }
   .sidebar.open { transform: translateX(0); }
-  .main { padding: 0.75rem 0.75rem 5rem; max-width: 100%; overflow-x: hidden; padding-top: 64px; }
+  .main { padding: 0.75rem 0.6rem 5rem; max-width: 100%; overflow-x: hidden; }
+  .home-wrap { padding: 16px 12px !important; }
   body { display: block; }
   #page-meta { max-width: 100%; overflow-x: hidden; }
   input[type="text"] { max-width: 100%; min-width: 0; }
