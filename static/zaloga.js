@@ -945,6 +945,29 @@ function setStatus(idx, status) {
   syncFilterToggleLabel();  // osveži števec polic na gumbu filtra
   if (isRS()) refreshBoxCounters();  // posodobi globalni števec obkljukanih brez boxa
   saveItem(idx, { status: it.status });
+  // filter "Samo odprto": če polica ravno postane dokončana, jo samodejno skrij (brez osvežitve)
+  maybeAutoHideShelf(it.group);
+}
+
+// Če je filter "Samo odprto" aktiven in je polica zdaj dokončana (vse postavke obdelane),
+// jo z rahlo animacijo skrij — brez ročne osvežitve.
+function maybeAutoHideShelf(group) {
+  if (!getDoneFilter()) return;
+  const groups = groupItems();
+  const items = groups[group] || [];
+  const stat = groupStat(items);
+  const isDone = stat.total > 0 && stat.todo === 0;
+  if (!isDone) return;
+  const el = document.getElementById('shelf-' + cssId(group));
+  if (!el || el.classList.contains('shelf-hiding')) return;
+  el.classList.add('shelf-hiding');           // sproži fade/collapse animacijo (CSS)
+  setTimeout(() => {
+    // odstrani iz pogleda (zapri + render, da se odšteje iz seznama)
+    const expanded = getExpanded();
+    delete expanded[group];
+    setExpanded(expanded);
+    render();
+  }, 420);  // ujema se s trajanjem CSS animacije
 }
 
 // RS: osveži globalni števec (✓ N) v vseh box-barih + spodnji mobilni bar
