@@ -1002,6 +1002,9 @@ async def zaloga_upload(file: UploadFile = File(...), market: str = "slo"):
                 "status": "",         # "" | "ok" | "ni"
                 "picked": qty,        # koliko dejansko nabrано (privzeto = potrebna)
                 "low": is_low,        # nizka zaloga tag — iz Opomba stolpca
+                "box": "",            # RS: glavni box (zaklenjen ob Shrani)
+                "locked": False,      # RS: zaklenjeno (box dodeljen)
+                "opomba": "",         # RS: dodatni box (prosto, neodvisno od glavnega)
             })
 
         data = {
@@ -1058,6 +1061,8 @@ async def zaloga_update_item(data: dict):
                         it["picked"] = max(0, int(data["picked"]))
                     except (ValueError, TypeError):
                         pass
+                if "opomba" in data:
+                    it["opomba"] = str(data["opomba"]).strip()
                 found = True
                 break
         if not found:
@@ -1065,6 +1070,52 @@ async def zaloga_update_item(data: dict):
         sess["updated_at"] = _dt.now().isoformat()
         path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
         return {"ok": True}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/zaloga-lock-box")
+async def zaloga_lock_box(data: dict):
+    """RS: zakleni vse obkljukane (status=ok) IN še ne zaklenjene postavke v polici → dodeli box.
+    Ali odkleni eno postavko (unlock=idx)."""
+    try:
+        from datetime import datetime as _dt
+        path = _zaloga_current_path(data.get("market", "rs"))
+        if not path.exists():
+            return {"ok": False, "error": "Ni aktivne seje"}
+        sess = json.loads(path.read_text(encoding="utf-8"))
+
+        # Odklep ene postavke
+        if "unlock_idx" in data:
+            uidx = data["unlock_idx"]
+            for it in sess.get("items", []):
+                if it.get("idx") == uidx:
+                    it["locked"] = False
+                    it["box"] = ""
+                    break
+            sess["updated_at"] = _dt.now().isoformat()
+            path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+            return {"ok": True, "unlocked": uidx}
+
+        # Zaklep obkljukanih v polici
+        group = data.get("group")
+        box = str(data.get("box", "")).strip()
+        if not group:
+            return {"ok": False, "error": "Manjka group"}
+        if not box:
+            return {"ok": False, "error": "Manjka št. boxa"}
+        locked_count = 0
+        for it in sess.get("items", []):
+            if it.get("group") == group and it.get("status") == "ok" and not it.get("locked"):
+                it["box"] = box
+                it["locked"] = True
+                locked_count += 1
+        if locked_count == 0:
+            return {"ok": False, "error": "Ni obkljukanih (in še odklenjenih) postavk v tej polici"}
+        sess["updated_at"] = _dt.now().isoformat()
+        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True, "locked": locked_count, "box": box}
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e)}
@@ -1085,6 +1136,12 @@ async def zaloga_archive(data: dict = None):
         if not items:
             path.unlink()
             return {"ok": True, "message": "Prazna seja izbrisana"}
+        # RS: opozori če so nabrane (ok) postavke brez dodeljenega boxa — razen če force
+        if market == "rs" and not (data or {}).get("force"):
+            no_box = sum(1 for it in items if it.get("status") == "ok" and not it.get("box"))
+            if no_box > 0:
+                return {"ok": False, "warn_no_box": no_box,
+                        "error": f"{no_box} nabranih postavk nima dodeljenega boxa"}
         ts = _dt.now().strftime("%Y%m%d_%H%M%S")
         archive_name = f"{ts}_{len(items)}items.json"
         sess["archived_at"] = _dt.now().isoformat()
