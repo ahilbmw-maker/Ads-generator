@@ -104,7 +104,7 @@
   .btn-sm { padding: 6px 11px; font-size: 12px; }
 
   /* ─── LAYOUT ─── */
-  .wrap { max-width: 100%; margin: 0; padding: 22px; display: grid; grid-template-columns: 1fr 330px; gap: 22px; align-items: start; }
+  .wrap { max-width: 100%; margin: 0; padding: 22px; display: grid; grid-template-columns: 1fr 480px; gap: 22px; align-items: start; }
   @media (max-width: 1100px) { .wrap { grid-template-columns: 1fr; } }
 
   /* ─── UPLOAD ZONE ─── */
@@ -467,24 +467,23 @@
   /* ═══ RS: BOX / OPOMBA / SIDEBAR TABI ═══ */
   .shelf-box-bar {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    background: var(--accent); border-radius: 10px;
-    padding: 11px 14px; margin-bottom: 14px;
-    box-shadow: 0 2px 8px rgba(79,110,247,0.25);
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px; margin-bottom: 14px;
   }
-  .sbb-icon { font-size: 19px; filter: brightness(0) invert(1); }
-  .sbb-label { font-size: 13px; font-weight: 800; color: #fff; }
+  .sbb-icon { font-size: 19px; }
+  .sbb-label { font-size: 13px; font-weight: 700; color: var(--accent); }
   .sbb-input {
     width: 90px; height: 36px; text-align: center; font-size: 15px; font-weight: 700;
-    border: 2px solid #fff; border-radius: 8px; background: #fff;
+    border: 1.5px solid var(--border2); border-radius: 8px; background: var(--panel);
     color: var(--text); font-family: inherit;
   }
   .sbb-save {
-    background: #fff; color: var(--accent); border: none; padding: 9px 18px;
-    border-radius: 8px; font-weight: 800; font-size: 13px; cursor: pointer;
+    background: var(--accent); color: #fff; border: none; padding: 9px 18px;
+    border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer;
     font-family: inherit; margin-left: auto;
   }
-  .sbb-save:hover { filter: brightness(0.95); }
-  .sbb-locked { font-size: 12px; color: #fff; font-weight: 700; background: rgba(255,255,255,0.25); padding: 3px 9px; border-radius: 6px; }
+  .sbb-save:hover { filter: brightness(1.05); }
+  .sbb-locked { font-size: 12px; color: var(--ok); font-weight: 700; background: var(--ok-bg); padding: 3px 9px; border-radius: 6px; }
 
   .item-locked { opacity: 0.88; }
   .item-box-badge {
@@ -606,6 +605,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260528s"></script>
+<script src="/static/zaloga.js?v=20260528t"></script>
 </body>
 </html>
