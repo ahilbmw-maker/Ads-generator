@@ -20,6 +20,7 @@
     --accent-dim: #e8edfe;
     --poz-bg: #334155;
     --poz-bg-hover: #1e293b;
+    --box-bg: #854f0b;
     --ok: #16a34a;
     --ok-bg: #e7f6ec;
     --ok-border: #b8e6c4;
@@ -219,6 +220,9 @@
     background: var(--poz-bg); padding: 4px 9px; border-radius: 7px;
     text-align: center; letter-spacing: 0.5px; justify-self: start;
   }
+  /* poz-col: ovije pozicijo + (pri zaklenjenih) BOX značko */
+  .poz-col { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; justify-self: start; }
+  .item-box-wrap { display: inline-flex; align-items: center; gap: 4px; }
   .item .naziv { font-size: 13px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item .id-col { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 
@@ -369,6 +373,10 @@
       font-size: 16px; font-weight: 700; order: 2; align-self: center;
       padding: 6px 14px; border-radius: 9px; letter-spacing: 0.3px;
     }
+    /* mobile: pozicija + BOX v vrsti, poravnano desno */
+    .poz-col { flex-direction: row; align-items: center; gap: 8px; flex-shrink: 0; }
+    .item-box-wrap { display: inline-flex; align-items: center; gap: 5px; }
+    .item-box-badge { font-size: 13px; padding: 5px 11px; }
     /* Naziv polna širina */
     .item .naziv {
       font-size: 14px; order: 3; white-space: normal;
@@ -443,7 +451,6 @@
     .item-opomba .iop-input { height: 46px; font-size: 15px; }
     .item-opomba .iop-tobox { padding: 0 12px; font-size: 12px; }
     .iop-saved-tag { right: 80px; }
-    .item-box-badge { font-size: 13px; padding: 4px 10px; }
   }
 
   /* Zelo ozki telefoni */
@@ -545,9 +552,9 @@
 
   .item-locked { opacity: 0.88; }
   .item-box-badge {
-    font-size: 11px; font-weight: 800; color: var(--ok);
-    background: var(--ok-bg); border: 1px solid var(--ok-border);
-    border-radius: 6px; padding: 2px 8px; margin-left: 6px; white-space: nowrap;
+    font-size: 11px; font-weight: 700; color: #fff;
+    background: var(--box-bg); border: none;
+    border-radius: 6px; padding: 3px 9px; white-space: nowrap;
   }
   .item-unlock {
     background: none; border: 0.5px solid var(--border2); color: var(--text-dim);
@@ -764,6 +771,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601F"></script>
+<script src="/static/zaloga.js?v=20260601H"></script>
 </body>
 </html>
