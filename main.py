@@ -191,7 +191,7 @@ feed_by_lang: dict = {}
 slug_to_id: dict = {}
 sl_image_index: dict = {}   # SLO slike: { "mpn_upper": img, "slug_lower": img, "title_lower": img } za hitri lookup
 last_fetch: Optional[datetime] = None
-CACHE_TTL_HOURS = 24
+CACHE_TTL_HOURS = 168  # 7 dni — slike/SKU se redko spreminjajo, ni potrebe po pogostem osveževanju
 _feed_lock: Optional["asyncio.Lock"] = None  # prepreči sočasne prenose feeda
 
 
@@ -537,7 +537,7 @@ async def startup_event():
     # FFmpeg warm-up v ozadju (lahko traja do 30s ob prvem zagonu) — ne sme blokirati startupa
     asyncio.create_task(_ffmpeg_warmup())
 
-    asyncio.create_task(daily_refresh())
+    asyncio.create_task(periodic_refresh())
     asyncio.create_task(_daily_cashflow_sync())
     asyncio.create_task(_email_polling_loop())
 
@@ -562,9 +562,9 @@ async def _ffmpeg_warmup():
         print(f"[startup] FFmpeg warm-up failed: {e}")
 
 
-async def daily_refresh():
+async def periodic_refresh():
     while True:
-        # počakaj do poteka TTL glede na zadnji prenos (ne fiksno 24h od zagona)
+        # počakaj do poteka TTL (7 dni) glede na zadnji prenos
         if last_fetch:
             age = (datetime.now() - last_fetch).total_seconds()
             wait = max(60, CACHE_TTL_HOURS * 3600 - age)
@@ -4033,6 +4033,29 @@ async def zaloga_sku_images(data: dict):
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e), "images": {}}
+
+
+@app.post("/zaloga-refresh-feed")
+async def zaloga_refresh_feed():
+    """Ročna prisilna osvežitev feed cache-a (obide 7-dnevni TTL).
+    Uporabno ko dodaš nov izdelek in želiš slike takoj, brez čakanja na tedensko osvežitev.
+    Uporablja isti lock kot samodejni prenos, da se ne prekrivata."""
+    lock = _get_feed_lock()
+    if lock.locked():
+        return {"ok": False, "note": "osvežitev že poteka, počakaj trenutek"}
+    try:
+        async with lock:
+            await fetch_all_feeds()
+        idx = sl_image_index or {}
+        return {
+            "ok": True,
+            "note": "feed osvežen",
+            "feed_size": len(idx.get("img_corpus", [])),
+            "sku_exact": len(idx.get("sku_exact", {})),
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
 
 
 @app.get("/zaloga-sku-debug")
