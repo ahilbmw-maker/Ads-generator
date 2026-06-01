@@ -3689,60 +3689,80 @@ async def narocilnice_lookup(data: dict):
 @app.post("/zaloga-sku-images")
 async def zaloga_sku_images(data: dict):
     """Vrne slike izdelkov po SKU iz SLO feed-a (za preview v nabiranju).
-    Vhod: {skus: ["SKU1", "SKU2", ...]}. Izhod: {images: {SKU: image_url}}."""
+    Vhod: {skus: ["SKU1", ...]}. Izhod: {images: {SKU: image_url}}.
+    Matchanje enako kot narocilnice-lookup: mpn → SKU v title/slug → naziv besede."""
     skus = data.get("skus", [])
+    naziv_map = data.get("naziv_map", {})  # opcijsko: {SKU: naziv} za fallback
     if not skus:
         return {"ok": True, "images": {}}
     try:
         await ensure_cache_fresh()
         sl_feed = feed_by_lang.get("sl", {})
         if not sl_feed:
-            return {"ok": True, "images": {}, "note": "feed prazen"}
+            return {"ok": True, "images": {}, "note": "feed prazen", "feed_size": 0}
 
-        # Zgradi MPN index (SKU upper -> image)
+        # indeksi
         mpn_img = {}
-        slug_img = {}
-        title_img = {}
         for g_id, prod in sl_feed.items():
             img = prod.get("image", "")
             if not img:
                 continue
             mpn = (prod.get("mpn") or "").strip().upper()
             if mpn:
-                mpn_img[mpn] = img
-            slug = (extract_slug(prod.get("url", "")) or "").upper()
-            if slug:
-                slug_img.setdefault(slug, img)
-            title = (prod.get("title") or "").upper()
-            if title:
-                title_img.setdefault(title, img)
+                mpn_img.setdefault(mpn, img)
 
         out = {}
+        matched_by = {"mpn": 0, "title_slug": 0, "naziv": 0, "none": 0}
         for raw in skus:
             sku = str(raw).strip()
             su = sku.upper()
-            # 1. točen MPN match (najbolj zanesljivo)
-            if su in mpn_img:
-                out[sku] = mpn_img[su]
-                continue
-            # 2. SKU kot slug
-            if su in slug_img:
-                out[sku] = slug_img[su]
-                continue
-            # 3. SKU vsebovan v title ali slug (delni)
+            sl = sku.lower()
             found = None
-            for t, img in title_img.items():
-                if su in t:
-                    found = img
-                    break
-            if not found:
-                for s, img in slug_img.items():
-                    if su in s:
+
+            # 1. točen MPN
+            if su in mpn_img:
+                found = mpn_img[su]
+                matched_by["mpn"] += 1
+
+            # 2. SKU v title ali slug (kot narocilnice-lookup)
+            if not found and sl:
+                for g_id, prod in sl_feed.items():
+                    img = prod.get("image", "")
+                    if not img:
+                        continue
+                    title = (prod.get("title") or "").lower()
+                    slug = (extract_slug(prod.get("url", "")) or "").lower()
+                    if sl in title or sl in slug:
                         found = img
+                        matched_by["title_slug"] += 1
                         break
+
+            # 3. fallback po nazivu (prve 3 značilne besede)
+            if not found:
+                naziv = (naziv_map.get(sku) or "").strip().lower()
+                if naziv:
+                    words = [w for w in naziv.split() if len(w) > 3][:3]
+                    if words:
+                        best = 0
+                        for g_id, prod in sl_feed.items():
+                            img = prod.get("image", "")
+                            if not img:
+                                continue
+                            title = (prod.get("title") or "").lower()
+                            score = sum(1 for w in words if w in title)
+                            if score > best and score >= 2:
+                                best = score
+                                found = img
+                        if found:
+                            matched_by["naziv"] += 1
+
             if found:
                 out[sku] = found
-        return {"ok": True, "images": out}
+            else:
+                matched_by["none"] += 1
+
+        return {"ok": True, "images": out, "feed_size": len(sl_feed),
+                "matched": len(out), "total": len(skus), "match_stats": matched_by}
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e), "images": {}}
