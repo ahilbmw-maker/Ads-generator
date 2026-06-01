@@ -388,15 +388,19 @@
     .manko-list { max-height: none; }
     .side-card { padding: 16px; }
 
-    /* RS box-bar mobile: gumb v novo vrsto, nič odrezanega */
-    .shelf-box-bar { padding: 12px; gap: 10px; }
-    .shelf-box-bar .sbb-input { flex: 1; min-width: 0; width: auto; }
-    .shelf-box-bar .sbb-save { margin-left: 0; width: 100%; order: 5; height: 46px; font-size: 14px; }
-    .shelf-box-bar .sbb-locked { order: 4; }
+    /* RS box-bar mobile: label v svojo vrsto, input+gumb skupaj */
+    .shelf-box-bar { padding: 12px; gap: 8px; }
+    .shelf-box-bar .sbb-icon, .shelf-box-bar .sbb-label { }
+    .shelf-box-bar .sbb-input { flex: 1; min-width: 70px; width: auto; }
+    .shelf-box-bar .sbb-save { margin-left: 0; flex: 1.4; height: 44px; font-size: 13px; white-space: nowrap; }
+    .shelf-box-bar .sbb-locked { order: 5; width: 100%; text-align: center; }
 
-    /* RS opomba mobile: polna širina, label nad inputom */
-    .item-opomba { flex-direction: column; align-items: stretch; gap: 6px; }
-    .item-opomba .iop-input { max-width: 100%; height: 38px; font-size: 14px; }
+    /* RS opomba mobile: POD gumbi (order 5), polna širina, label nad inputom, velik vnos */
+    .item-opomba {
+      flex-direction: column; align-items: stretch; gap: 6px;
+      order: 5; margin-top: 2px;
+    }
+    .item-opomba .iop-input { max-width: 100%; height: 46px; font-size: 15px; padding: 0 12px; }
     .item-box-badge { font-size: 13px; padding: 4px 10px; }
   }
 
@@ -499,7 +503,7 @@
 
   .item-opomba {
     display: flex; align-items: center; gap: 8px;
-    grid-column: 1 / -1;
+    grid-column: 1 / -1; position: relative;
     background: var(--info-bg, #eef1fe); border: 1px dashed var(--accent);
     border-radius: 7px; padding: 5px 10px; margin-top: 4px;
   }
@@ -507,8 +511,15 @@
   .iop-input {
     flex: 1; height: 28px; font-size: 12px; border: 1px solid var(--border2);
     border-radius: 6px; background: var(--panel); color: var(--text);
-    font-family: inherit; padding: 0 8px; min-width: 60px; max-width: 220px;
+    font-family: inherit; padding: 0 8px; min-width: 60px; max-width: 220px; transition: all 0.2s;
   }
+  .iop-saved-tag {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    font-size: 11px; font-weight: 700; color: var(--ok);
+    background: var(--panel); padding: 2px 8px; border-radius: 6px;
+    pointer-events: none; animation: iopFade 0.2s ease;
+  }
+  @keyframes iopFade { from { opacity: 0; } to { opacity: 1; } }
 
   /* Sidebar tabi (RS) */
   .side-card-tabs { padding: 0 !important; overflow: hidden; }
@@ -605,6 +616,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260528t"></script>
+<script src="/static/zaloga.js?v=20260528u"></script>
 </body>
 </html>
