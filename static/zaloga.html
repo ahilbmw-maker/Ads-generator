@@ -18,6 +18,8 @@
     --text-faint: #94a0b3;
     --accent: #4f6ef7;
     --accent-dim: #e8edfe;
+    --poz-bg: #334155;
+    --poz-bg-hover: #1e293b;
     --ok: #16a34a;
     --ok-bg: #e7f6ec;
     --ok-border: #b8e6c4;
@@ -213,9 +215,9 @@
 
   .item .sku { font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; text-align: left; overflow: hidden; text-overflow: ellipsis; }
   .item .poz {
-    font-size: 12px; font-weight: 600; color: var(--accent);
-    background: var(--accent-dim); padding: 4px 9px; border-radius: 7px;
-    text-align: center; letter-spacing: 0.2px; justify-self: start;
+    font-size: 12px; font-weight: 700; color: #fff;
+    background: var(--poz-bg); padding: 4px 9px; border-radius: 7px;
+    text-align: center; letter-spacing: 0.5px; justify-self: start;
   }
   .item .naziv { font-size: 13px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item .id-col { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
@@ -426,7 +428,8 @@
       margin: 0; padding: 0; gap: 8px; flex-wrap: nowrap; }
     #mobileBoxBar .sbb-icon { flex-shrink: 0; }
     #mobileBoxBar .sbb-label { display: none; }
-    #mobileBoxBar .sbb-select { flex: 0 0 auto; min-width: 104px; width: auto; height: 42px; font-size: 15px; padding: 0 8px; }
+    #mobileBoxBar .sbb-select { flex: 0 0 auto; min-width: 96px; width: auto; height: 42px; font-size: 15px; padding: 0 8px; }
+    #mobileBoxBar .sbb-count { flex-shrink: 0; font-size: 14px; padding: 6px 9px; }
     #mobileBoxBar .sbb-save { margin-left: auto; flex-shrink: 0; height: 42px; padding: 0 12px; font-size: 13px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
     #mobileBoxBar .sbb-locked { display: none; }
     /* prostor na dnu, da zadnja polica ni skrita pod sticky barom */
@@ -534,6 +537,11 @@
   }
   .sbb-save:hover { filter: brightness(1.05); }
   .sbb-locked { font-size: 12px; color: var(--ok); font-weight: 700; background: var(--ok-bg); padding: 3px 9px; border-radius: 6px; }
+  .sbb-count {
+    display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
+    font-size: 14px; font-weight: 800; color: var(--ok); background: var(--ok-bg);
+    border: 1px solid var(--ok); padding: 6px 11px; border-radius: 8px; white-space: nowrap;
+  }
 
   .item-locked { opacity: 0.88; }
   .item-box-badge {
@@ -756,6 +764,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601E"></script>
+<script src="/static/zaloga.js?v=20260601F"></script>
 </body>
 </html>
