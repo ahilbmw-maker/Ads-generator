@@ -544,23 +544,34 @@ function itemRow(it) {
   const rs = isRS();
   const locked = rs && it.locked;
 
-  // RS: box značka + odkleni gumb (ločeno od pozicije, desno)
-  const boxBadge = locked
-    ? `<span class="item-box-wrap">
-         <span class="item-box-badge">📦 BOX ${esc(it.box)}</span>
-         <button class="item-unlock" onclick="unlockItem(${it.idx})" title="Odkleni">🔓</button>
-       </span>`
-    : '';
-
-  // RS: opomba polje (dodatni box) — vgrajen label + gumb "V box"
-  const opombaRow = rs ? `
+  // RS spodnja vrsta:
+  //  - ZAKLENJEN: na MOBILE → spodnja vrsta (BOX + Odkleni); na DESKTOP → inline v vrstici izdelka
+  //  - ODKLENJEN: polje "Dodatni box" za vnos razlike + gumb V box
+  let opombaRow = '';
+  let boxInline = '';  // desktop: BOX značka + odkleni v isti vrstici (prazen prostor desno od naziva)
+  if (rs && locked) {
+    // mobilna spodnja vrsta (skrita na desktopu prek CSS)
+    opombaRow = `
+      <div class="item-locked-row">
+        <span class="item-box-badge">📦 BOX ${esc(it.box)} 🔒</span>
+        <button class="item-unlock" onclick="event.stopPropagation();unlockItem(${it.idx})" title="Odkleni in uredi">🔓 Odkleni</button>
+      </div>`;
+    // desktop inline (skrit na mobile prek CSS)
+    boxInline = `
+      <div class="item-box-inline">
+        <span class="item-box-badge">📦 BOX ${esc(it.box)} 🔒</span>
+        <button class="item-unlock" onclick="event.stopPropagation();unlockItem(${it.idx})" title="Odkleni in uredi">🔓 Odkleni</button>
+      </div>`;
+  } else if (rs) {
+    opombaRow = `
       <div class="item-opomba">
         <div class="iop-prefix">📝 Dodatni box</div>
         <input type="text" class="iop-input" value="${esc(it.opomba || '')}" placeholder="npr. 2 kos"
           onclick="event.stopPropagation()" onblur="commitOpomba(${it.idx}, this.value, this)"
           onkeydown="if(event.key==='Enter')openBoxDialog(${it.idx})">
         <button class="iop-tobox" onclick="event.stopPropagation();openBoxDialog(${it.idx})" title="Dodaj v dodatni box">⤓ V box</button>
-      </div>` : '';
+      </div>`;
+  }
 
   // sličica izdelka (če že naložena)
   const imgUrl = SKU_IMAGES[it.sku];
@@ -575,12 +586,12 @@ function itemRow(it) {
       <div class="item-mobile-top">
         ${thumb}
         <span class="sku">${esc(it.sku)}</span>
-        <span class="poz-col">
-          <span class="poz">${esc(it.poz)}</span>
-          ${boxBadge}
-        </span>
+        <span class="poz">${esc(it.poz)}</span>
       </div>
-      <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}</span>
+      <div class="item-naziv-wrap">
+        <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}</span>
+        ${boxInline}
+      </div>
       <div class="item-bottom">
         <div class="qty-step ${mismatch}">
           <button class="qty-btn" onclick="changeQty(${it.idx}, -1)">−</button>
