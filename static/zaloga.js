@@ -938,6 +938,12 @@ function refreshShelfProgress(group) {
   const pct = shelf.querySelector('.shelf-prog-pct');
   if (bar) bar.innerHTML = progBarSegments(stat);
   if (pct) { pct.textContent = (isDone ? '✓ ' : '') + stat.pctOk + '%'; pct.style.color = stat.pctOk===100 ? 'var(--ok)' : 'var(--text)'; }
+  // mobilno obarvano ozadje glave (predlog 3) — posodobi sproti ob kliku ✓/✗
+  const fill = shelf.querySelector('.shelf-head-fill');
+  if (fill) {
+    fill.style.setProperty('--fill-ok', stat.pctOk + '%');
+    fill.style.setProperty('--fill-ni', (stat.pctOk + stat.pctNi) + '%');
+  }
 }
 
 // ── Osveži sidebar ──
