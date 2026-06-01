@@ -1534,6 +1534,31 @@ async def zaloga_extra_box(data: dict):
             if box in boxes:
                 del boxes[box]
 
+        elif action == "rename_box":
+            old = str(data.get("box", "")).strip()
+            new = str(data.get("new_box", "")).strip()
+            if not new:
+                return {"ok": False, "error": "Manjka nova št. boxa"}
+            if old not in boxes:
+                return {"ok": False, "error": "Box ne obstaja"}
+            if new == old:
+                pass  # nič za narediti
+            elif new in boxes:
+                # nova št. že obstaja → zlij postavke (isti sku združi kose)
+                target = boxes[new]
+                for entry in boxes[old]:
+                    merged = False
+                    for t in target:
+                        if t.get("sku") == entry.get("sku"):
+                            t["kos"] = t.get("kos", 0) + entry.get("kos", 0)
+                            merged = True
+                            break
+                    if not merged:
+                        target.append(entry)
+                del boxes[old]
+            else:
+                boxes[new] = boxes.pop(old)
+
         sess["extra_boxes"] = boxes
         sess["updated_at"] = _dt.now().isoformat()
         path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
