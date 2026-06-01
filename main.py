@@ -597,6 +597,162 @@ async def ensure_cache_fresh():
         await fetch_all_feeds()
 
 
+# ════════════════════════════════════════════════════════════════════
+#  SKENIRANJE / INVENTURA — mapiranje črtne kode (kod_kreskowy) → koda (kod)
+#  Skener vrne EAN/črtno kodo; mi jo prevedemo v dobaviteljevo kodo (npr. KX3116_2).
+#  Zasnova je razširljiva: dodatne dobavitelje dodaš v BARCODE_FEEDS.
+# ════════════════════════════════════════════════════════════════════
+BARCODE_FEEDS = {
+    # ime_dobavitelja: XML URL
+    "ikonka": "https://api.ikonka.eu/d7121f05b75c448860ed5467ac1ba3caf2f307c2.xml?variant=b&lang=pl&currency=PLN",
+    "amio": "https://amio.pl/xml?id=107&hash=c8c74346b9948675a93f531e4212318a9598e07dd97e48742e3fba5b0b4a68e1",
+}
+BARCODE_CACHE_FILE = DATA_DIR / "barcode_cache.json"
+BARCODE_CACHE_VERSION = 1
+BARCODE_TTL_HOURS = 168  # 7 dni
+
+barcode_index: dict = {}          # kod_kreskowy (normaliziran) → {"kod":..., "supplier":..., "name":...}
+barcode_last_fetch: Optional[datetime] = None
+_barcode_lock: Optional[asyncio.Lock] = None
+
+
+def _get_barcode_lock() -> asyncio.Lock:
+    global _barcode_lock
+    if _barcode_lock is None:
+        _barcode_lock = asyncio.Lock()
+    return _barcode_lock
+
+
+def _norm_barcode(s: str) -> str:
+    """Normaliziraj črtno kodo: samo števke (skenerji včasih dodajo presledke/CR)."""
+    import re as _re
+    return _re.sub(r"\D", "", (s or "").strip())
+
+
+def _parse_barcode_feed(xml_text: str, supplier: str) -> dict:
+    """Parsira dobaviteljev XML in vrne {kod_kreskowy → {kod, supplier, name}}.
+    Robusten na različne sheme: išče <kod> in <kod_kreskowy> v vsakem <produkt>/<product>/<offer>."""
+    import re as _re
+    out = {}
+    try:
+        root = ET.fromstring(xml_text)
+    except Exception as e:
+        print(f"[barcode] {supplier}: XML parse napaka: {e}")
+        return out
+
+    # Poišči vse elemente, ki vsebujejo otroka s SKU + črtno kodo (ne glede na shemo/namespace)
+    # Ikonka: <kod> (SKU) + <kod_kreskowy> (EAN);  Amio: <PN> (SKU) + <EAN>
+    def _localname(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1].lower() if tag else ""
+
+    SKU_TAGS = ("kod", "pn", "sku", "symbol", "index")          # ime polja za SKU
+    BARCODE_TAGS = ("kod_kreskowy", "ean", "ean13", "barcode", "gtin")  # črtna koda
+    NAME_TAGS = ("nazwa", "name", "naziv", "title", "nazev")
+
+    for el in root.iter():
+        kod = None
+        barcode = None
+        name = None
+        for child in list(el):
+            ln = _localname(child.tag)
+            txt = (child.text or "").strip()
+            if not txt:
+                continue
+            if kod is None and ln in SKU_TAGS:
+                kod = txt
+            elif barcode is None and ln in BARCODE_TAGS:
+                barcode = txt
+            elif name is None and ln in NAME_TAGS:
+                name = txt
+        if kod and barcode:
+            nb = _norm_barcode(barcode)
+            if nb:
+                # prvi zmaga (ne povozi); če bi bil isti barcode pri dveh kodah, obdrži prvega
+                out.setdefault(nb, {"kod": kod, "supplier": supplier, "name": name or ""})
+    print(f"[barcode] {supplier}: {len(out)} barkod")
+    return out
+
+
+def _save_barcode_cache():
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "format_version": BARCODE_CACHE_VERSION,
+            "saved_at": (barcode_last_fetch or datetime.now()).isoformat(),
+            "barcode_index": barcode_index,
+        }
+        tmp = BARCODE_CACHE_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(BARCODE_CACHE_FILE)
+        print(f"[barcode cache] shranjen ({len(barcode_index)} barkod)")
+    except Exception as e:
+        print(f"[barcode cache] shranjevanje spodletelo: {e}")
+
+
+def _load_barcode_cache() -> bool:
+    global barcode_index, barcode_last_fetch
+    try:
+        if not BARCODE_CACHE_FILE.exists():
+            return False
+        payload = json.loads(BARCODE_CACHE_FILE.read_text(encoding="utf-8"))
+        if payload.get("format_version") != BARCODE_CACHE_VERSION:
+            return False
+        saved_at = datetime.fromisoformat(payload["saved_at"])
+        if datetime.now() - saved_at > timedelta(hours=BARCODE_TTL_HOURS):
+            return False
+        barcode_index = payload.get("barcode_index", {})
+        barcode_last_fetch = saved_at
+        print(f"[barcode cache] naložen ({len(barcode_index)} barkod, star {(datetime.now()-saved_at).seconds//60} min)")
+        return True
+    except Exception as e:
+        print(f"[barcode cache] nalaganje spodletelo: {e}")
+        return False
+
+
+async def fetch_barcode_feeds():
+    """Potegni vse dobaviteljeve XML in zgradi barcode_index (kod_kreskowy → kod)."""
+    global barcode_index, barcode_last_fetch
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Fetching barcode feeds...")
+    new_idx = {}
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as hc:
+        for supplier, url in BARCODE_FEEDS.items():
+            try:
+                resp = await hc.get(url)
+                if resp.status_code == 200:
+                    new_idx.update(_parse_barcode_feed(resp.text, supplier))
+                else:
+                    print(f"[barcode] {supplier}: HTTP {resp.status_code}")
+            except Exception as e:
+                print(f"[barcode] {supplier}: {e}")
+    if new_idx:
+        barcode_index = new_idx
+        barcode_last_fetch = datetime.now()
+        _save_barcode_cache()
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Barcode index: {len(barcode_index)} kod")
+
+
+def _barcode_is_stale() -> bool:
+    if not barcode_index:
+        return True
+    if barcode_last_fetch is None:
+        return True
+    return datetime.now() - barcode_last_fetch > timedelta(hours=BARCODE_TTL_HOURS)
+
+
+async def ensure_barcode_fresh():
+    if not _barcode_is_stale():
+        return
+    if _load_barcode_cache():
+        return
+    lock = _get_barcode_lock()
+    async with lock:
+        if not _barcode_is_stale():
+            return
+        if _load_barcode_cache():
+            return
+        await fetch_barcode_feeds()
+
+
 def detect_brand(url: str) -> Optional[str]:
     if not url:
         return None
@@ -4185,6 +4341,50 @@ async def zaloga_refresh_feed():
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e)}
+
+
+# ── SKENIRANJE / INVENTURA endpointi ──
+@app.post("/skeniranje-lookup")
+async def skeniranje_lookup(data: dict):
+    """Preslikaj eno ali več črtnih kod v dobaviteljevo kodo.
+    Vhod: {barcodes: ["5903039773509", ...]}  ali  {barcode: "..."}.
+    Izhod: {ok, results: {barcode: {kod, supplier, name} | null}, ready}."""
+    await ensure_barcode_fresh()
+    raw = data.get("barcodes")
+    if raw is None and data.get("barcode") is not None:
+        raw = [data.get("barcode")]
+    raw = raw or []
+    results = {}
+    for b in raw:
+        nb = _norm_barcode(str(b))
+        hit = barcode_index.get(nb)
+        results[str(b)] = hit if hit else None
+    return {"ok": True, "ready": bool(barcode_index), "count": len(barcode_index), "results": results}
+
+
+@app.post("/skeniranje-refresh")
+async def skeniranje_refresh():
+    """Ročna osvežitev barkoda-indeksa (potegne dobaviteljeve XML znova)."""
+    lock = _get_barcode_lock()
+    if lock.locked():
+        return {"ok": False, "note": "osvežitev že poteka"}
+    try:
+        async with lock:
+            await fetch_barcode_feeds()
+        return {"ok": True, "note": "barkode osvežene", "count": len(barcode_index)}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/skeniranje-status")
+async def skeniranje_status():
+    """Diagnostika: koliko barkod je naloženih + primer."""
+    await ensure_barcode_fresh()
+    sample = dict(list(barcode_index.items())[:3])
+    return {"ok": True, "count": len(barcode_index),
+            "last_fetch": barcode_last_fetch.isoformat() if barcode_last_fetch else None,
+            "sample": sample}
 
 
 @app.get("/zaloga-sku-debug")
