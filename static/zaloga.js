@@ -220,6 +220,7 @@ function render() {
     html += `
       <div class="shelf ${isOpen ? 'open' : ''}${isDone ? ' shelf-done' : ''}" id="shelf-${cssId(g)}">
         <div class="shelf-head" onclick="toggleShelf('${jsStr(g)}')">
+          <span class="shelf-head-fill" aria-hidden="true" style="--fill-ok:${stat.pctOk}%;--fill-ni:${stat.pctOk + stat.pctNi}%"></span>
           <span class="shelf-chevron">▶</span>
           <span class="shelf-name">${esc(g)}</span>
           <span class="shelf-count">${items.length} postavk</span>
