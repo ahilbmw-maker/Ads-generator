@@ -67,7 +67,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     display: flex;
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    height: 58px;
+    height: clamp(56px, 15vw, 68px);
     background: var(--surface);
     border-top: 1px solid var(--border);
     z-index: 9999;
@@ -89,8 +89,8 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     background: transparent;
     font-family: 'DM Sans', sans-serif;
   }
-  .tab-item svg { width: 18px; height: 18px; flex-shrink: 0; }
-  .tab-item span { font-size: 9px; font-weight: 500; color: var(--text-tertiary); }
+  .tab-item svg { width: clamp(18px, 5.5vw, 24px); height: clamp(18px, 5.5vw, 24px); flex-shrink: 0; }
+  .tab-item span { font-size: clamp(9px, 2.8vw, 12px); font-weight: 500; color: var(--text-tertiary); }
   .tab-item.active span { color: var(--accent); }
   .tab-item.active svg { opacity: 1; }
   .tab-item svg { opacity: 0.4; }
@@ -101,6 +101,13 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   .pages-inner { display: flex; transition: transform 0.3s ease; will-change: transform; }
   .pages-inner .page { display: block; min-width: 100%; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
   .pages-inner .page.active { opacity: 1; pointer-events: auto; }
+}
+
+/* Ozki telefoni: zaloga kartica — % in chevron ne stiskata naslova */
+@media(max-width: 380px) {
+  #zalogaBigChevron { display: none !important; }
+  #zalogaBigPctWrap { align-self: flex-start; }
+  #zalogaBigPct { font-size: 19px !important; }
 }
 
 /* ── SIDEBAR ── */
@@ -714,23 +721,23 @@ input[type="text"].error { border-color: var(--red) !important; }
         <p id="homeDateStr">Nalagam...</p>
       </div>
 
-      <a href="/zaloga" id="zalogaBigBtn" style="text-decoration:none;display:block;background:linear-gradient(135deg,#2dd4a7,#4f6ef7);border-radius:14px;padding:18px 20px;margin-bottom:24px;box-shadow:0 4px 16px rgba(79,110,247,0.25)">
-        <div style="display:flex;align-items:center;gap:14px">
-          <div style="width:46px;height:46px;border-radius:11px;background:rgba(255,255,255,0.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <a href="/zaloga" id="zalogaBigBtn" style="text-decoration:none;display:block;background:linear-gradient(135deg,#2dd4a7,#4f6ef7);border-radius:14px;padding:clamp(14px,4vw,18px) clamp(14px,4vw,20px);margin-bottom:24px;box-shadow:0 4px 16px rgba(79,110,247,0.25)">
+        <div style="display:flex;align-items:center;gap:clamp(10px,3vw,14px)">
+          <div style="width:clamp(40px,11vw,46px);height:clamp(40px,11vw,46px);border-radius:11px;background:rgba(255,255,255,0.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <svg viewBox="0 0 24 24" style="width:24px;height:24px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
           </div>
-          <div style="flex:1">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="font-size:17px;font-weight:700;color:#fff;letter-spacing:-0.2px">📦 Nabiranje zaloge</span>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:clamp(15px,4.2vw,17px);font-weight:700;color:#fff;letter-spacing:-0.2px">📦 Nabiranje zaloge</span>
               <span id="zalogaOnline" style="display:none;align-items:center;gap:5px;background:rgba(255,255,255,0.25);padding:2px 9px;border-radius:20px">
                 <span class="zaloga-online-dot"></span>
                 <span style="font-size:10px;font-weight:700;color:#fff;letter-spacing:0.3px">ONLINE</span>
               </span>
             </div>
-            <div id="zalogaBigDesc" style="font-size:12px;color:rgba(255,255,255,0.85);margin-top:1px">Seznami za skladišče · optimizirano za mobilnik</div>
+            <div id="zalogaBigDesc" style="font-size:clamp(11px,3vw,12px);color:rgba(255,255,255,0.85);margin-top:1px">Seznami za skladišče · optimizirano za mobilnik</div>
           </div>
           <div id="zalogaBigPctWrap" style="display:none;text-align:right;flex-shrink:0">
-            <div id="zalogaBigPct" style="font-size:24px;font-weight:800;color:#fff;line-height:1">0%</div>
+            <div id="zalogaBigPct" style="font-size:clamp(20px,6vw,24px);font-weight:800;color:#fff;line-height:1">0%</div>
             <div style="font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px">nabrano</div>
           </div>
           <svg id="zalogaBigChevron" viewBox="0 0 24 24" style="width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
