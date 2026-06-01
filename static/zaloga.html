@@ -85,11 +85,11 @@
     border-radius: 12px;
     padding: 8px 16px;
   }
-  .global-stat .ring { position: relative; width: 44px; height: 44px; }
-  .global-stat .ring svg { transform: rotate(-90deg); }
+  .global-stat .ring { position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .global-stat .ring svg { display: block; transform: rotate(-90deg); }
   .global-stat .ring .pct {
-    position: absolute; inset: 0; display: grid; place-items: center;
-    font-size: 11px; font-weight: 800; color: var(--text);
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 800; color: var(--text); line-height: 1;
   }
   .global-stat .meta { display: flex; flex-direction: column; }
   .global-stat .meta .big { font-size: 15px; font-weight: 800; }
@@ -525,6 +525,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260528p"></script>
+<script src="/static/zaloga.js?v=20260528q"></script>
 </body>
 </html>
