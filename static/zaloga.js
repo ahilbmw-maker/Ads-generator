@@ -226,12 +226,30 @@ async function unlockItem(idx) {
 }
 
 // ── RS: shrani opombo (dodatni box) ──
-function commitOpomba(idx, val) {
+function commitOpomba(idx, val, el) {
   const it = ITEMS.find(x => x.idx === idx);
   if (!it) return;
-  it.opomba = (val || '').trim();
+  const newVal = (val || '').trim();
+  const changed = it.opomba !== newVal;
+  it.opomba = newVal;
   saveItem(idx, { opomba: it.opomba });
   refreshSidebarAndStats();
+  // vizualni feedback "shranjeno"
+  if (el && changed) {
+    el.classList.add('iop-saved');
+    el.style.borderColor = 'var(--ok)';
+    el.style.background = 'var(--ok-bg)';
+    const tag = document.createElement('span');
+    tag.className = 'iop-saved-tag';
+    tag.textContent = '✓ shranjeno';
+    el.parentElement.appendChild(tag);
+    setTimeout(() => {
+      el.style.borderColor = '';
+      el.style.background = '';
+      el.classList.remove('iop-saved');
+      tag.remove();
+    }, 1500);
+  }
 }
 
 function itemRow(it) {
@@ -251,7 +269,7 @@ function itemRow(it) {
       <div class="item-opomba">
         <span class="iop-label">📝 Opomba — dodatni box:</span>
         <input type="text" class="iop-input" value="${esc(it.opomba || '')}" placeholder="npr. Box 3, 2 kos"
-          onclick="event.stopPropagation()" onblur="commitOpomba(${it.idx}, this.value)"
+          onclick="event.stopPropagation()" onblur="commitOpomba(${it.idx}, this.value, this)"
           onkeydown="if(event.key==='Enter')this.blur()">
       </div>` : '';
 
