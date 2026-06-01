@@ -248,7 +248,7 @@ function render() {
 
   document.getElementById('wrap').innerHTML = html;
   updateGlobalStat();
-  if (isRS()) updateMobileBoxBar();
+  updateMobileBoxBar();  // poskrbi za prikaz (RS+mobile) ali skritje (SLO/desktop)
 }
 
 // ── RS: zbir zasedenih box številk (1..100) ──
@@ -544,10 +544,12 @@ function itemRow(it) {
   const rs = isRS();
   const locked = rs && it.locked;
 
-  // RS: box značka ali odkleni gumb
+  // RS: box značka + odkleni gumb (ločeno od pozicije, desno)
   const boxBadge = locked
-    ? `<span class="item-box-badge">📦 BOX ${esc(it.box)}</span>
-       <button class="item-unlock" onclick="unlockItem(${it.idx})" title="Odkleni">🔓</button>`
+    ? `<span class="item-box-wrap">
+         <span class="item-box-badge">📦 BOX ${esc(it.box)}</span>
+         <button class="item-unlock" onclick="unlockItem(${it.idx})" title="Odkleni">🔓</button>
+       </span>`
     : '';
 
   // RS: opomba polje (dodatni box) — vgrajen label + gumb "V box"
@@ -573,7 +575,10 @@ function itemRow(it) {
       <div class="item-mobile-top">
         ${thumb}
         <span class="sku">${esc(it.sku)}</span>
-        <span class="poz">${esc(it.poz)} ${boxBadge}</span>
+        <span class="poz-col">
+          <span class="poz">${esc(it.poz)}</span>
+          ${boxBadge}
+        </span>
       </div>
       <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}</span>
       <div class="item-bottom">
@@ -800,8 +805,8 @@ function toggleShelf(g) {
   setExpanded(expanded);
   const el = document.getElementById('shelf-' + cssId(g));
   if (el) el.classList.toggle('open');
-  // RS: osveži spodnji sticky box-bar (mobile)
-  if (isRS()) updateMobileBoxBar();
+  // osveži spodnji sticky box-bar (sam poskrbi za skritje na SLO/desktop)
+  updateMobileBoxBar();
 }
 
 // Ali smo na mobilnem (ozek zaslon) — usklajeno z @media (max-width: 768px)
@@ -1111,4 +1116,4 @@ initMarketTab();
 loadSession();
 setInterval(pollSync, 15000);
 // ob spremembi velikosti / rotaciji osveži mobilni box-bar (pojavi/skrije se po potrebi)
-window.addEventListener('resize', () => { if (isRS()) updateMobileBoxBar(); });
+window.addEventListener('resize', () => { updateMobileBoxBar(); });
