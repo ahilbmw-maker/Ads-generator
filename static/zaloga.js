@@ -211,22 +211,25 @@ function syncFilterToggleLabel() {
   const btn = document.getElementById('filterToggle');
   if (!lbl) return;
   const on = getDoneFilter();
-  // preštej police: skupaj vse, in koliko nedokončanih (todo > 0)
-  const groups = groupItems();
-  let total = 0, open = 0;
-  Object.values(groups).forEach(items => {
-    const s = groupStat(items);
-    total++;
-    if (!(s.total > 0 && s.todo === 0)) open++;  // ni dokončana
-  });
-  // število kaže, koliko polic bo vidnih PO kliku
-  lbl.textContent = on ? `Prikaži vse (${total})` : `Samo odprto (${open})`;
   if (btn) btn.classList.toggle('filter-active', on);
+  // najprej nastavi osnovni napis (vedno viden, tudi če štetje spodleti)
+  let label = on ? 'Prikaži vse' : 'Samo odprto';
+  try {
+    const groups = groupItems();
+    let total = 0, open = 0;
+    Object.values(groups).forEach(items => {
+      const s = groupStat(items);
+      total++;
+      if (!(s.total > 0 && s.todo === 0)) open++;  // ni dokončana
+    });
+    label = on ? `Prikaži vse (${total})` : `Samo odprto (${open})`;
+  } catch (e) { /* če štetje spodleti, ostane osnovni napis brez številke */ }
+  lbl.textContent = label;
 }
 function toggleDoneFilter() {
   setDoneFilter(!getDoneFilter());
-  syncFilterToggleLabel();
-  render();
+  render();              // render na koncu sam pokliče syncFilterToggleLabel()
+  syncFilterToggleLabel();  // + še enkrat takoj, da je napis zagotovo osvežen
 }
 
 // ── Render ──
