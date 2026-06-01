@@ -100,17 +100,34 @@
   .market-tab:hover:not(.active) { color: var(--text); }
 
   .global-stat {
-    display: flex; flex-direction: column; gap: 6px;
+    display: flex; flex-direction: row; align-items: center; gap: 14px;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 9px 16px; min-width: 230px;
   }
+  .global-stat .gs-main { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 200px; }
   .global-stat-head { display: flex; align-items: baseline; gap: 10px; }
   .global-stat .gs-pct { font-size: 17px; font-weight: 800; color: var(--text); }
   .global-stat .gs-done { font-size: 13px; font-weight: 700; color: var(--text-dim); margin-left: auto; }
   .global-stat .gs-bar { display: flex; height: 8px; border-radius: 6px; overflow: hidden; background: var(--panel3); }
   .global-stat .gs-break { font-size: 10px; color: var(--text-faint); }
+  /* časovnica nabiranja (desno od bara, samo desktop) */
+  .gs-timer {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    padding-left: 14px; border-left: 1px solid var(--border); flex-shrink: 0;
+  }
+  .gs-timer-val { display: flex; align-items: center; gap: 5px; }
+  .gs-timer-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--border2);
+    display: inline-block; flex-shrink: 0;
+  }
+  .gs-timer.running .gs-timer-dot { background: var(--ok); animation: gsTimerPulse 1.5s infinite; }
+  @keyframes gsTimerPulse { 0%,100% { opacity:1 } 50% { opacity:0.35 } }
+  #gsTimerTime { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; color: var(--text-dim); }
+  .gs-timer.running #gsTimerTime { color: var(--text); }
+  .gs-timer.done #gsTimerTime { color: var(--ok); }
+  .gs-timer-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-faint); white-space: nowrap; }
 
   .btn {
     border: 1px solid var(--border2); background: var(--panel2);
@@ -391,11 +408,13 @@
       border: none; border-radius: 0;   /* odstrani okvir iz desktop stila (v nogi ni potreben) */
       display: flex; align-items: baseline; gap: 5px; box-sizing: border-box;
     }
+    .global-stat .gs-main { display: flex; flex-direction: row; align-items: baseline; gap: 5px; min-width: 0; flex: 0 0 auto; }
     .global-stat .global-stat-head { display: flex; align-items: baseline; gap: 5px; }
     .global-stat .gs-pct { font-size: 15px; font-weight: 800; }
     .global-stat .gs-done { font-size: 10px; color: var(--text-dim); }
     .global-stat .gs-bar { display: none; }   /* bar je v .mobile-prog na vrhu noge */
     .global-stat .gs-break { display: none; } /* podroben razrez skrit v nogi (premalo prostora) */
+    .gs-timer { display: none; }   /* časovnica samo na desktopu */
 
     /* prostor na dnu seznamov nastavljen spodaj (var --footer-h) */
     .wrap { padding: 12px; gap: 14px; grid-template-columns: minmax(0, 1fr); max-width: 100%; }
@@ -841,12 +860,18 @@
   <div class="topbar-spacer"></div>
 
   <div class="global-stat" id="globalStat" style="display:none">
-    <div class="global-stat-head">
-      <span class="gs-pct" id="globalPct">0%</span>
-      <span class="gs-done" id="globalDone">0 / 0</span>
+    <div class="gs-main">
+      <div class="global-stat-head">
+        <span class="gs-pct" id="globalPct">0%</span>
+        <span class="gs-done" id="globalDone">0 / 0</span>
+      </div>
+      <div class="gs-bar prog-seg-wrap" id="globalBar"></div>
+      <div class="gs-break" id="globalBreak">skupna uspešnost</div>
     </div>
-    <div class="gs-bar prog-seg-wrap" id="globalBar"></div>
-    <div class="gs-break" id="globalBreak">skupna uspešnost</div>
+    <div class="gs-timer" id="globalTimer" title="Čas nabiranja">
+      <div class="gs-timer-val"><span class="gs-timer-dot" id="gsTimerDot"></span><span id="gsTimerTime">00:00</span></div>
+      <div class="gs-timer-lbl" id="gsTimerLbl">čaka prvo postavko</div>
+    </div>
   </div>
 
   <label class="btn btn-ghost btn-sm topbar-action" style="cursor:pointer">
@@ -888,6 +913,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601AE"></script>
+<script src="/static/zaloga.js?v=20260601AF"></script>
 </body>
 </html>
