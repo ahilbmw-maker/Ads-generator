@@ -247,6 +247,8 @@ function render() {
   html += renderSidebar();
 
   document.getElementById('wrap').innerHTML = html;
+  document.body.classList.toggle('market-slo', !isRS());
+  document.body.classList.toggle('market-rs', isRS());
   updateGlobalStat();
   updateMobileBoxBar();  // poskrbi za prikaz (RS+mobile) ali skritje (SLO/desktop)
 }
@@ -798,6 +800,16 @@ function updateGlobalStat() {
   if (doneEl) doneEl.textContent = `${stat.done} / ${stat.total}`;
   const breakEl = document.getElementById('globalBreak');
   if (breakEl) breakEl.textContent = statBreakdownText(stat) || 'skupna uspešnost';
+  updateStickyOffset();  // višina headerja se lahko spremeni (global-stat se prikaže)
+}
+
+// Izmeri višino lepljivega vrha (header) → CSS var --sticky-h, da glava police lahko
+// nalepi točno pod njim (višina ni fiksna: global-stat se prikaže/skrije, gumbi se ovijejo).
+function updateStickyOffset() {
+  const hdr = document.querySelector('.sticky-header');
+  if (!hdr) return;
+  const h = Math.round(hdr.getBoundingClientRect().height);
+  document.documentElement.style.setProperty('--sticky-h', h + 'px');
 }
 
 // ── Toggle zavihek (persist per naprava) ──
@@ -1127,4 +1139,4 @@ initMarketTab();
 loadSession();
 setInterval(pollSync, 15000);
 // ob spremembi velikosti / rotaciji osveži mobilni box-bar (pojavi/skrije se po potrebi)
-window.addEventListener('resize', () => { updateMobileBoxBar(); });
+window.addEventListener('resize', () => { updateMobileBoxBar(); updateStickyOffset(); });
