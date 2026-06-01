@@ -350,6 +350,7 @@
     /* global-stat: na mobile samo kompakten % + done v topbar vrstici (bar je zgoraj v nogi) */
     .global-stat {
       order: 5; flex: 0 0 auto; width: auto; padding: 0; background: none; min-width: 0;
+      border: none; border-radius: 0;   /* odstrani okvir iz desktop stila (v nogi ni potreben) */
       display: flex; align-items: baseline; gap: 5px; box-sizing: border-box;
     }
     .global-stat .global-stat-head { display: flex; align-items: baseline; gap: 5px; }
@@ -373,13 +374,16 @@
     }
     .shelf.open .shelf-head { border-radius: 10px 10px 0 0; }
     .shelf:not(.open) .shelf-head { border-radius: 10px; }
-    /* obarvano ozadje: zeleno do --fill-ok, rdeče do --fill-ni (= ok+ni) */
+    /* obarvano ozadje: zeleno do --fill-ok, rdeče do --fill-ni (= ok+ni)
+       — polni barvi z ~40% prosojnostjo: bolj vidno kot pastelni -bg, besedilo ostane berljivo */
     .shelf-head-fill {
       display: block; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+      --fill-ok-col: color-mix(in srgb, var(--ok) 42%, transparent);
+      --fill-ni-col: color-mix(in srgb, var(--ni) 42%, transparent);
       background:
         linear-gradient(90deg,
-          var(--ok-bg) 0, var(--ok-bg) var(--fill-ok, 0%),
-          var(--ni-bg) var(--fill-ok, 0%), var(--ni-bg) var(--fill-ni, 0%),
+          var(--fill-ok-col) 0, var(--fill-ok-col) var(--fill-ok, 0%),
+          var(--fill-ni-col) var(--fill-ok, 0%), var(--fill-ni-col) var(--fill-ni, 0%),
           transparent var(--fill-ni, 0%));
     }
     /* vsebina nad ozadjem */
@@ -841,6 +845,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601Q"></script>
+<script src="/static/zaloga.js?v=20260601S"></script>
 </body>
 </html>
