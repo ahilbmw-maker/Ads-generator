@@ -67,14 +67,23 @@
   }
   .brand h1 { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
   .brand .sub { font-size: 11px; color: var(--text-faint); font-weight: 500; }
-  /* gumb filtra "Samo odprto / Prikaži vse" */
-  .filter-toggle { font-weight: 700; white-space: nowrap; color: var(--text); }
-  .filter-toggle #filterToggleLabel { color: inherit; }
-  .filter-toggle.filter-active {
-    background: var(--accent); color: #fff; border-color: var(--accent);
+  /* iOS-stikalo za filter "Samo odprto" */
+  .filter-switch { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; flex-shrink: 0; }
+  .filter-switch-label { font-size: 12px; font-weight: 700; color: var(--text-dim); white-space: nowrap; }
+  .filter-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .filter-switch-track {
+    position: relative; width: 42px; height: 24px; border-radius: 12px;
+    background: var(--border2); transition: background 0.2s; flex-shrink: 0;
   }
-  .filter-toggle.filter-active #filterToggleLabel { color: #fff; }
-  .filter-toggle.filter-active:hover { filter: brightness(1.05); }
+  .filter-switch-knob {
+    position: absolute; top: 2px; left: 2px; width: 20px; height: 20px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    transition: left 0.2s;
+  }
+  .filter-switch input:checked ~ .filter-switch-track { background: var(--ok); }
+  .filter-switch input:checked ~ .filter-switch-track .filter-switch-knob { left: 20px; }
+  .filter-switch input:checked ~ .filter-switch-label,
+  .filter-switch:has(input:checked) .filter-switch-label { color: var(--text); }
 
   .topbar-spacer { flex: 1; }
   .market-tabs {
@@ -295,7 +304,16 @@
   .sidebar { position: sticky; top: 116px; display: flex; flex-direction: column; gap: 16px; }
   .side-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
   .side-card h3 { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-dim); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
-  .side-card h3 .badge { background: var(--ni); color: #fff; font-size: 11px; padding: 1px 8px; border-radius: 20px; margin-left: auto; }
+  .side-card h3 .badge { background: var(--ni); color: #fff; font-size: 11px; padding: 1px 8px; border-radius: 20px; }
+  /* gumb "Kopiraj vse" v sekciji Manjko */
+  .manko-copy-all {
+    margin-left: auto; font-size: 11px; font-weight: 700; text-transform: none; letter-spacing: 0;
+    background: var(--panel3); color: var(--text-dim); border: 1px solid var(--border2);
+    border-radius: 8px; padding: 5px 10px; cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .manko-copy-all:hover { background: var(--panel2); color: var(--text); }
+  .manko-copy-all.copied { background: var(--ok); color: #fff; border-color: var(--ok); }
+  .manko-copy-all-rs { display: block; width: 100%; margin: 0 0 10px; text-align: center; }
 
   .manko-list { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
   .manko-item {
@@ -814,9 +832,11 @@
       <h1>Nabiranje zaloge</h1>
       <div class="sub">maaarket · skladišče · v3</div>
     </div>
-    <button class="btn btn-ghost btn-sm filter-toggle" id="filterToggle" onclick="toggleDoneFilter()" title="Skrij/prikaži dokončane police">
-      <span id="filterToggleLabel">Samo odprto</span>
-    </button>
+    <label class="filter-switch" title="Prikaži samo nedokončane police">
+      <span class="filter-switch-label" id="filterSwitchLabel">Samo odprto</span>
+      <input type="checkbox" id="filterSwitchInput" onchange="setDoneFilterMode(this.checked)">
+      <span class="filter-switch-track" aria-hidden="true"><span class="filter-switch-knob"></span></span>
+    </label>
   </div>
   <div class="topbar-spacer"></div>
 
@@ -868,6 +888,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601AC"></script>
+<script src="/static/zaloga.js?v=20260601AE"></script>
 </body>
 </html>
