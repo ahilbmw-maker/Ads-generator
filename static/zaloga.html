@@ -39,7 +39,7 @@
     font-size: 14px;
     line-height: 1.45;
     -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
+    overflow-x: clip;
     max-width: 100%;
   }
   body {
@@ -315,7 +315,7 @@
 
   /* ══════════════ MOBILE ══════════════ */
   @media (max-width: 768px) {
-    body { overflow-x: hidden; }
+    body { overflow-x: clip; }
 
     /* Topbar kompaktnejši */
     .topbar { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
@@ -345,6 +345,14 @@
     .shelf-prog { width: 100%; order: 5; margin-top: 4px; }
     .shelf-prog-bar { flex: 1; width: auto; }
     .shelf-head-spacer { display: none; }
+    /* SLO mobile: glava ODPRTE police se lepi na vrh (pod glavnim headerjem),
+       da je med drsenjem skozi police vedno vidno ime + napredek police */
+    body.market-slo .shelf.open .shelf-head {
+      position: sticky; top: calc(var(--sticky-h, 116px) - 1px); z-index: 30;
+      background: var(--panel); border-radius: 13px 13px 0 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    body.market-slo .shelf-done.open .shelf-head { background: var(--ok-bg); }
 
     /* Skrij tabelo-glavo na mobile (kartice ne rabijo) */
     .item-head { display: none; }
@@ -777,6 +785,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601J"></script>
+<script src="/static/zaloga.js?v=20260601K"></script>
 </body>
 </html>
