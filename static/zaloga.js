@@ -1,7 +1,25 @@
 // ═══ NABIRANJE ZALOGE — logika ═══
 let ITEMS = [];           // vse postavke iz seje
 let SESSION = null;       // celotna seja
+let MARKET = 'slo';       // aktivni trg: 'slo' | 'rs'
 const EXPANDED_KEY = 'zaloga_expanded';  // localStorage: kateri zavihki odprti (per naprava)
+
+// market query suffix za fetch klice
+function mq(extra) {
+  const sep = extra && extra.includes('?') ? '&' : '?';
+  return (extra || '') + sep + 'market=' + MARKET;
+}
+
+// ── Preklop trga ──
+function switchMarket(m) {
+  if (m === MARKET) return;
+  MARKET = m;
+  document.getElementById('mtab-slo').classList.toggle('active', m === 'slo');
+  document.getElementById('mtab-rs').classList.toggle('active', m === 'rs');
+  setExpanded({});  // počisti odprte zavihke ob preklopu
+  lastUpdate = null;
+  loadSession();
+}
 
 // ── Skupine ──
 const GROUP_ORDER = (g) => {
@@ -26,7 +44,7 @@ function setExpanded(map) {
 // ── Nalaganje seje ──
 async function loadSession() {
   try {
-    const r = await fetch('/zaloga-current');
+    const r = await fetch(mq('/zaloga-current'));
     const data = await r.json();
     if (data.ok && data.items && data.items.length) {
       SESSION = data;
@@ -62,7 +80,7 @@ document.getElementById('csvInput').addEventListener('change', async (e) => {
   const fd = new FormData();
   fd.append('file', file);
   try {
-    const r = await fetch('/zaloga-upload', { method: 'POST', body: fd });
+    const r = await fetch(mq('/zaloga-upload'), { method: 'POST', body: fd });
     const data = await r.json();
     if (data.ok) {
       toast(`✓ Naloženih ${data.count} postavk`);
@@ -356,7 +374,7 @@ async function saveItem(idx, patch) {
   try {
     await fetch('/zaloga-update-item', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ idx, ...patch })
+      body: JSON.stringify({ idx, market: MARKET, ...patch })
     });
   } catch(e) { /* tiho — nabiralec ne sme biti moten */ }
 }
@@ -365,7 +383,10 @@ async function saveItem(idx, patch) {
 async function archiveSession() {
   if (!confirm('Arhiviram trenutno nabiranje?\n\nSeznam se zaključi in shrani v zgodovino. Nov CSV lahko naložiš za novo nabiranje.')) return;
   try {
-    const r = await fetch('/zaloga-archive', { method: 'POST' });
+    const r = await fetch('/zaloga-archive', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ market: MARKET })
+    });
     const data = await r.json();
     if (data.ok) {
       toast('✓ Arhivirano');
@@ -396,7 +417,7 @@ let lastUpdate = null;
 async function pollSync() {
   if (!ITEMS.length) return;
   try {
-    const r = await fetch('/zaloga-current');
+    const r = await fetch(mq('/zaloga-current'));
     const data = await r.json();
     if (data.ok && data.updated_at && data.updated_at !== lastUpdate) {
       lastUpdate = data.updated_at;
@@ -426,7 +447,7 @@ async function openHistory() {
   const body = document.getElementById('histBody');
   body.innerHTML = '<div class="hist-empty">⏳ Nalagam...</div>';
   try {
-    const r = await fetch('/zaloga-history');
+    const r = await fetch(mq('/zaloga-history'));
     const data = await r.json();
     if (!data.ok || !data.sessions || !data.sessions.length) {
       body.innerHTML = '<div class="hist-empty">Ni arhiviranih nabiranj.</div>';
@@ -480,7 +501,7 @@ async function histToggleDetail(filename) {
   det.style.display = 'block';
   det.innerHTML = '<div style="padding:10px 0;color:var(--text-dim);font-size:12px">⏳ Nalagam...</div>';
   try {
-    const r = await fetch('/zaloga-history/' + encodeURIComponent(filename));
+    const r = await fetch(mq('/zaloga-history/' + encodeURIComponent(filename)));
     const data = await r.json();
     if (!data.ok || !data.items) { det.innerHTML = '<div style="padding:8px 0;color:var(--text-dim)">Ni podatkov.</div>'; return; }
     det.innerHTML = data.items.map(it => {
@@ -502,7 +523,7 @@ async function histToggleDetail(filename) {
 async function histDelete(filename) {
   if (!confirm('Izbrišem to arhivirano nabiranje?\n\nDejanje je nepovratno.')) return;
   try {
-    const r = await fetch('/zaloga-history/' + encodeURIComponent(filename), { method: 'DELETE' });
+    const r = await fetch(mq('/zaloga-history/' + encodeURIComponent(filename)), { method: 'DELETE' });
     const data = await r.json();
     if (data.ok) {
       const el = document.getElementById('hsess-' + cssId(filename));
