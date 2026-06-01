@@ -189,6 +189,7 @@ MAAARKET_FEEDS = {
 G = "http://base.google.com/ns/1.0"
 feed_by_lang: dict = {}
 slug_to_id: dict = {}
+sl_image_index: dict = {}   # SLO slike: { "mpn_upper": img, "slug_lower": img, "title_lower": img } za hitri lookup
 last_fetch: Optional[datetime] = None
 CACHE_TTL_HOURS = 24
 
@@ -272,8 +273,28 @@ async def fetch_all_feeds():
             if slug and slug not in new_slug_to_id:
                 new_slug_to_id[slug] = g_id
     slug_to_id = new_slug_to_id
+
+    # SLO slik-indeks (zgradi 1x ob osvežitvi) — za hitri SKU→slika lookup
+    global sl_image_index
+    new_img_idx = {"mpn": {}, "slug": {}, "title": {}}
+    sl_feed = feed_by_lang.get("sl", {})
+    for g_id, prod in sl_feed.items():
+        img = prod.get("image", "")
+        if not img:
+            continue
+        mpn = (prod.get("mpn") or "").strip().upper()
+        if mpn:
+            new_img_idx["mpn"].setdefault(mpn, img)
+        slug = (extract_slug(prod.get("url", "")) or "").lower()
+        if slug:
+            new_img_idx["slug"].setdefault(slug, img)
+        title = (prod.get("title") or "").lower()
+        if title:
+            new_img_idx["title"].setdefault(title, img)
+    sl_image_index = new_img_idx
+
     last_fetch = datetime.now()
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Done. Slug index: {len(slug_to_id)}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Done. Slug index: {len(slug_to_id)}, slike: {len(sl_image_index.get('mpn',{}))} mpn / {len(sl_image_index.get('slug',{}))} slug")
 
 
 async def ensure_cache_fresh():
@@ -3689,79 +3710,78 @@ async def narocilnice_lookup(data: dict):
 @app.post("/zaloga-sku-images")
 async def zaloga_sku_images(data: dict):
     """Vrne slike izdelkov po SKU iz SLO feed-a (za preview v nabiranju).
-    Vhod: {skus: ["SKU1", ...]}. Izhod: {images: {SKU: image_url}}.
-    Matchanje enako kot narocilnice-lookup: mpn → SKU v title/slug → naziv besede."""
+    Uporablja predzgrajen sl_image_index (O(1) za točne zadetke).
+    Vhod: {skus: [...], naziv_map: {SKU: naziv}}. Izhod: {images: {SKU: url}}."""
     skus = data.get("skus", [])
-    naziv_map = data.get("naziv_map", {})  # opcijsko: {SKU: naziv} za fallback
+    naziv_map = data.get("naziv_map", {})
     if not skus:
         return {"ok": True, "images": {}}
     try:
         await ensure_cache_fresh()
-        sl_feed = feed_by_lang.get("sl", {})
-        if not sl_feed:
+        idx = sl_image_index or {}
+        mpn_idx = idx.get("mpn", {})
+        slug_idx = idx.get("slug", {})
+        title_idx = idx.get("title", {})
+        if not mpn_idx and not slug_idx and not title_idx:
             return {"ok": True, "images": {}, "note": "feed prazen", "feed_size": 0}
 
-        # indeksi
-        mpn_img = {}
-        for g_id, prod in sl_feed.items():
-            img = prod.get("image", "")
-            if not img:
-                continue
-            mpn = (prod.get("mpn") or "").strip().upper()
-            if mpn:
-                mpn_img.setdefault(mpn, img)
-
         out = {}
-        matched_by = {"mpn": 0, "title_slug": 0, "naziv": 0, "none": 0}
+        unresolved = []   # SKU-ji brez točnega zadetka → substring fallback
+        matched_by = {"mpn": 0, "slug": 0, "substring": 0, "naziv": 0, "none": 0}
+
+        # Faza 1: O(1) točni zadetki (mpn ali slug == SKU)
         for raw in skus:
             sku = str(raw).strip()
-            su = sku.upper()
-            sl = sku.lower()
-            found = None
-
-            # 1. točen MPN
-            if su in mpn_img:
-                found = mpn_img[su]
-                matched_by["mpn"] += 1
-
-            # 2. SKU v title ali slug (kot narocilnice-lookup)
-            if not found and sl:
-                for g_id, prod in sl_feed.items():
-                    img = prod.get("image", "")
-                    if not img:
-                        continue
-                    title = (prod.get("title") or "").lower()
-                    slug = (extract_slug(prod.get("url", "")) or "").lower()
-                    if sl in title or sl in slug:
-                        found = img
-                        matched_by["title_slug"] += 1
-                        break
-
-            # 3. fallback po nazivu (prve 3 značilne besede)
-            if not found:
-                naziv = (naziv_map.get(sku) or "").strip().lower()
-                if naziv:
-                    words = [w for w in naziv.split() if len(w) > 3][:3]
-                    if words:
-                        best = 0
-                        for g_id, prod in sl_feed.items():
-                            img = prod.get("image", "")
-                            if not img:
-                                continue
-                            title = (prod.get("title") or "").lower()
-                            score = sum(1 for w in words if w in title)
-                            if score > best and score >= 2:
-                                best = score
-                                found = img
-                        if found:
-                            matched_by["naziv"] += 1
-
-            if found:
-                out[sku] = found
+            su = sku.upper(); sl = sku.lower()
+            if su in mpn_idx:
+                out[sku] = mpn_idx[su]; matched_by["mpn"] += 1
+            elif sl in slug_idx:
+                out[sku] = slug_idx[sl]; matched_by["slug"] += 1
             else:
-                matched_by["none"] += 1
+                unresolved.append(sku)
 
-        return {"ok": True, "images": out, "feed_size": len(sl_feed),
+        # Faza 2: substring (SKU v title/slug) — iteracija samo za nerešene
+        if unresolved:
+            title_items = list(title_idx.items())
+            slug_items = list(slug_idx.items())
+            still = []
+            for sku in unresolved:
+                sl = sku.lower()
+                found = None
+                for t, img in title_items:
+                    if sl in t:
+                        found = img; break
+                if not found:
+                    for s, img in slug_items:
+                        if sl in s:
+                            found = img; break
+                if found:
+                    out[sku] = found; matched_by["substring"] += 1
+                else:
+                    still.append(sku)
+            unresolved = still
+
+        # Faza 3: naziv fallback (prve 3 značilne besede) — samo za še nerešene
+        if unresolved:
+            title_items = list(title_idx.items())
+            for sku in unresolved:
+                naziv = (naziv_map.get(sku) or "").strip().lower()
+                if not naziv:
+                    matched_by["none"] += 1; continue
+                words = [w for w in naziv.split() if len(w) > 3][:3]
+                if not words:
+                    matched_by["none"] += 1; continue
+                best = 0; found = None
+                for t, img in title_items:
+                    score = sum(1 for w in words if w in t)
+                    if score > best and score >= 2:
+                        best = score; found = img
+                if found:
+                    out[sku] = found; matched_by["naziv"] += 1
+                else:
+                    matched_by["none"] += 1
+
+        return {"ok": True, "images": out, "feed_size": len(mpn_idx),
                 "matched": len(out), "total": len(skus), "match_stats": matched_by}
     except Exception as e:
         import traceback; traceback.print_exc()
