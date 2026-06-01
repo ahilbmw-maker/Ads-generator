@@ -215,8 +215,10 @@ function render() {
     const items = groups[g];
     const isOpen = !!expanded[g];
     const stat = groupStat(items);
+    // polica je "dokončana" ko ima vsaka postavka odločitev (✓ ali ✗) — nobena ni več todo
+    const isDone = stat.total > 0 && stat.todo === 0;
     html += `
-      <div class="shelf ${isOpen ? 'open' : ''}" id="shelf-${cssId(g)}">
+      <div class="shelf ${isOpen ? 'open' : ''}${isDone ? ' shelf-done' : ''}" id="shelf-${cssId(g)}">
         <div class="shelf-head" onclick="toggleShelf('${jsStr(g)}')">
           <span class="shelf-chevron">▶</span>
           <span class="shelf-name">${esc(g)}</span>
@@ -224,7 +226,7 @@ function render() {
           <div class="shelf-head-spacer"></div>
           <div class="shelf-prog">
             <div class="shelf-prog-bar prog-seg-wrap">${progBarSegments(stat)}</div>
-            <span class="shelf-prog-pct" style="color:${stat.pctOk===100?'var(--ok)':'var(--text)'}">${stat.pctOk}%</span>
+            <span class="shelf-prog-pct" style="color:${stat.pctOk===100?'var(--ok)':'var(--text)'}">${isDone ? '✓ ' : ''}${stat.pctOk}%</span>
           </div>
         </div>
         <div class="shelf-body">
@@ -246,6 +248,7 @@ function render() {
 
   document.getElementById('wrap').innerHTML = html;
   updateGlobalStat();
+  if (isRS()) updateMobileBoxBar();
 }
 
 // ── RS: zbir zasedenih box številk (1..100) ──
@@ -274,28 +277,30 @@ function nextFreeBox() {
 }
 
 // ── RS: box vrstica pri polici ──
-function shelfBoxBar(group, items) {
+function shelfBoxBar(group, items, mobileMode) {
   // koliko obkljukanih (ok) IN še ne zaklenjenih
   const pending = items.filter(it => it.status === 'ok' && !it.locked).length;
   const lockedCount = items.filter(it => it.locked).length;
   const used = usedBoxNumbers();
   const suggested = nextFreeBox();
-  // opcije BOX1..BOX100; zasedeni dobijo ✓ in so onemogočeni za novo izbiro? Ne — dovolimo izbiro
-  // (uporabnik lahko dodaja v obstoječi box). Zasedeni so označeni z ✓.
+  // opcije BOX1..BOX100; zasedeni dobijo ✓ (dovolimo izbiro — lahko dodajaš v obstoječi box)
   let opts = '';
   for (let i = 1; i <= 100; i++) {
     const isUsed = used.has(i);
     const sel = (String(i) === suggested) ? ' selected' : '';
     opts += `<option value="${i}"${sel}${isUsed ? ' data-used="1"' : ''}>${isUsed ? '✓ ' : ''}BOX${i}</option>`;
   }
+  // unikatni id: mobilni sticky bar uporablja predpono "m-", da se ne podvaja z inline barom
+  const inputId = (mobileMode ? 'mboxinput-' : 'boxinput-') + cssId(group);
+  const cls = 'shelf-box-bar' + (mobileMode ? ' shelf-box-bar-mobile' : '');
   return `
-    <div class="shelf-box-bar" onclick="event.stopPropagation()">
+    <div class="${cls}" onclick="event.stopPropagation()">
       <span class="sbb-icon">📦</span>
       <span class="sbb-label">Box:</span>
-      <select class="sbb-select" id="boxinput-${cssId(group)}" onclick="event.stopPropagation()" onchange="markBoxSelect(this)">
+      <select class="sbb-select" id="${inputId}" onclick="event.stopPropagation()" onchange="markBoxSelect(this)">
         ${opts}
       </select>
-      <button class="sbb-save" onclick="lockBox('${jsStr(group)}')">
+      <button class="sbb-save" onclick="lockBox('${jsStr(group)}', ${mobileMode ? 'true' : 'false'})">
         🔒 Shrani in zakleni${pending ? ` (${pending})` : ''}
       </button>
       ${lockedCount ? `<span class="sbb-locked">${lockedCount} zaklenjenih</span>` : ''}
@@ -310,8 +315,9 @@ function markBoxSelect(sel) {
 }
 
 // ── RS: zakleni obkljukane v polici ──
-async function lockBox(group) {
-  const inp = document.getElementById('boxinput-' + cssId(group));
+async function lockBox(group, mobileMode) {
+  const id = (mobileMode ? 'mboxinput-' : 'boxinput-') + cssId(group);
+  const inp = document.getElementById(id);
   const box = inp ? inp.value.trim() : '';
   if (!box) { toast('Vpiši št. boxa'); if (inp) inp.focus(); return; }
   try {
@@ -329,6 +335,7 @@ async function lockBox(group) {
       });
       toast(`✓ ${data.locked} postavk → Box ${box}`);
       render();
+      if (isRS()) updateMobileBoxBar();  // osveži spodnji bar (nov predlog boxa)
     } else {
       toast('✗ ' + (data.error || 'napaka'));
     }
@@ -771,11 +778,41 @@ function updateGlobalStat() {
 // ── Toggle zavihek (persist per naprava) ──
 function toggleShelf(g) {
   const expanded = getExpanded();
-  expanded[g] = !expanded[g];
+  const willOpen = !expanded[g];
+  // Na mobile: samo 1 polica naenkrat (accordion) — zapri ostale ob odpiranju nove
+  if (willOpen && isMobile()) {
+    Object.keys(expanded).forEach(k => { if (k !== g) delete expanded[k]; });
+    document.querySelectorAll('.shelf.open').forEach(el => {
+      if (el.id !== 'shelf-' + cssId(g)) el.classList.remove('open');
+    });
+  }
+  expanded[g] = willOpen;
   if (!expanded[g]) delete expanded[g];
   setExpanded(expanded);
   const el = document.getElementById('shelf-' + cssId(g));
   if (el) el.classList.toggle('open');
+  // RS: osveži spodnji sticky box-bar (mobile)
+  if (isRS()) updateMobileBoxBar();
+}
+
+// Ali smo na mobilnem (ozek zaslon) — usklajeno z @media (max-width: 768px)
+function isMobile() {
+  return window.matchMedia('(max-width: 768px)').matches;
+}
+
+// RS mobile: posodobi spodnji sticky box-bar glede na trenutno odprto polico
+function updateMobileBoxBar() {
+  const host = document.getElementById('mobileBoxBar');
+  if (!host) return;
+  if (!isRS() || !isMobile()) { host.innerHTML = ''; host.style.display = 'none'; return; }
+  const expanded = getExpanded();
+  const openGroups = Object.keys(expanded).filter(k => expanded[k]);
+  if (!openGroups.length) { host.innerHTML = ''; host.style.display = 'none'; return; }
+  const group = openGroups[0];  // na mobile je odprta le ena
+  const items = (ITEMS || []).filter(it => it.group === group);
+  if (!items.length) { host.innerHTML = ''; host.style.display = 'none'; return; }
+  host.innerHTML = shelfBoxBar(group, items, true);  // true = mobilna varianta (brez label)
+  host.style.display = 'block';
 }
 
 // ── Spremeni količino ──
@@ -816,10 +853,12 @@ function refreshShelfProgress(group) {
   const stat = groupStat(items);
   const shelf = document.getElementById('shelf-' + cssId(group));
   if (!shelf) return;
+  const isDone = stat.total > 0 && stat.todo === 0;
+  shelf.classList.toggle('shelf-done', isDone);
   const bar = shelf.querySelector('.shelf-prog-bar');
   const pct = shelf.querySelector('.shelf-prog-pct');
   if (bar) bar.innerHTML = progBarSegments(stat);
-  if (pct) { pct.textContent = stat.pctOk + '%'; pct.style.color = stat.pctOk===100 ? 'var(--ok)' : 'var(--text)'; }
+  if (pct) { pct.textContent = (isDone ? '✓ ' : '') + stat.pctOk + '%'; pct.style.color = stat.pctOk===100 ? 'var(--ok)' : 'var(--text)'; }
 }
 
 // ── Osveži sidebar ──
@@ -1037,3 +1076,5 @@ async function copySkuFromManko(el, sku) {
 initMarketTab();
 loadSession();
 setInterval(pollSync, 15000);
+// ob spremembi velikosti / rotaciji osveži mobilni box-bar (pojavi/skrije se po potrebi)
+window.addEventListener('resize', () => { if (isRS()) updateMobileBoxBar(); });
