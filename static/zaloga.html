@@ -104,7 +104,7 @@
   .btn-sm { padding: 6px 11px; font-size: 12px; }
 
   /* ─── LAYOUT ─── */
-  .wrap { max-width: 100%; margin: 0; padding: 22px; display: grid; grid-template-columns: 1fr 480px; gap: 22px; align-items: start; }
+  .wrap { max-width: 100%; margin: 0; padding: 22px; display: grid; grid-template-columns: minmax(0, 1fr) 480px; gap: 22px; align-items: start; }
   @media (max-width: 1100px) { .wrap { grid-template-columns: 1fr; } }
 
   /* ─── UPLOAD ZONE ─── */
@@ -308,7 +308,7 @@
     .topbar label.btn, .topbar button.btn { flex: 1; text-align: center; }
 
     /* Wrap = en stolpec, brez fiksne širine */
-    .wrap { padding: 12px; gap: 14px; grid-template-columns: 1fr; max-width: 100%; }
+    .wrap { padding: 12px; gap: 14px; grid-template-columns: minmax(0, 1fr); max-width: 100%; }
 
     /* Sidebar gre POD sezname (ne sticky ob strani) */
     .sidebar { position: static; top: auto; order: 99; }
@@ -689,6 +689,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260528v"></script>
+<script src="/static/zaloga.js?v=20260528w"></script>
 </body>
 </html>
