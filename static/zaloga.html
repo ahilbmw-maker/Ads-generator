@@ -68,10 +68,12 @@
   .brand h1 { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
   .brand .sub { font-size: 11px; color: var(--text-faint); font-weight: 500; }
   /* gumb filtra "Samo odprto / Prikaži vse" */
-  .filter-toggle { font-weight: 700; white-space: nowrap; }
+  .filter-toggle { font-weight: 700; white-space: nowrap; color: var(--text); }
+  .filter-toggle #filterToggleLabel { color: inherit; }
   .filter-toggle.filter-active {
     background: var(--accent); color: #fff; border-color: var(--accent);
   }
+  .filter-toggle.filter-active #filterToggleLabel { color: #fff; }
   .filter-toggle.filter-active:hover { filter: brightness(1.05); }
 
   .topbar-spacer { flex: 1; }
@@ -342,7 +344,7 @@
 
     /* Topbar kompaktnejši */
     .brand { gap: 7px; flex: 1; min-width: 0; }
-    .brand h1 { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .brand-title { display: none; }  /* na mobile naslov skrit — gumb ga nadomesti */
     .brand .sub { display: none; }  /* podnaslov skrit na mobile */
     .brand .logo { width: 26px; height: 26px; font-size: 14px; flex-shrink: 0; }
     /* Home gumb PRED logo (prvi v topbar) */
@@ -795,6 +797,10 @@
   <a href="/" class="btn btn-ghost btn-sm" style="text-decoration:none" title="Nazaj na nadzorno ploščo">🏠 Domov</a>
   <div class="brand">
     <div class="logo">🛒</div>
+    <div class="brand-title">
+      <h1>Nabiranje zaloge</h1>
+      <div class="sub">maaarket · skladišče · v3</div>
+    </div>
     <button class="btn btn-ghost btn-sm filter-toggle" id="filterToggle" onclick="toggleDoneFilter()" title="Skrij/prikaži dokončane police">
       <span id="filterToggleLabel">Samo odprto</span>
     </button>
@@ -849,6 +855,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601Y"></script>
+<script src="/static/zaloga.js?v=20260601AA"></script>
 </body>
 </html>
