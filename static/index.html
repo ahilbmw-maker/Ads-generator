@@ -3206,6 +3206,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border)">
       <button class="zaloga-tab-btn active" id="zalogaTab-zaloga" onclick="switchZalogaTab('zaloga')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📦 Zaloga</button>
       <button class="zaloga-tab-btn" id="zalogaTab-vracila" onclick="switchZalogaTab('vracila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">↩️ Vračila</button>
+      <button class="zaloga-tab-btn" id="zalogaTab-skeniranje" onclick="switchZalogaTab('skeniranje')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📷 Skeniranje</button>
     </div>
 
     <!-- ── ZALOGA SUBPAGE ── -->
@@ -3345,6 +3346,66 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
 
     </div><!-- /vracila subpage -->
+
+    <!-- ── SKENIRANJE / INVENTURA SUBPAGE ── -->
+    <div id="zalogaSubpage-skeniranje" style="display:none;padding:14px;max-width:1500px;width:100%;margin:0">
+
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap;gap:12px">
+        <div>
+          <h1 style="font-size:22px;font-weight:700;letter-spacing:-0.5px;margin:0">📷 Skeniranje · Inventura</h1>
+          <div id="skenInfo" style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Skeniraj črtno kodo — pretvori v dobaviteljevo kodo</div>
+        </div>
+        <div id="skenFeedPill" style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(148,163,184,0.12);color:var(--text-secondary);border-radius:100px;font-size:11px;font-weight:600">⏳ Nalagam bazo kod…</div>
+      </div>
+
+      <!-- Scanner Hero -->
+      <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border-radius:14px;margin-bottom:14px;overflow:hidden">
+        <div style="padding:8px 18px;background:rgba(0,0,0,0.3);display:flex;justify-content:space-between;align-items:center;font-size:11px;font-family:'DM Mono',monospace;color:rgba(255,255,255,0.85)">
+          <span><span style="width:8px;height:8px;background:#22c55e;border-radius:50%;display:inline-block;margin-right:6px;box-shadow:0 0 8px #22c55e;animation:vracilaPulseDot 1.5s infinite"></span>INVENTURA · LIVE</span>
+          <span id="skenStatusLine" style="opacity:0.55">kod v bazi: …</span>
+        </div>
+        <div style="padding:24px 28px;display:flex;gap:18px;align-items:center;position:relative">
+          <div style="position:absolute;left:0;top:0;right:0;bottom:0;background:repeating-linear-gradient(90deg,transparent,transparent 60px,rgba(34,211,238,0.04) 60px,rgba(34,211,238,0.04) 61px);pointer-events:none"></div>
+          <div style="position:relative;z-index:1;flex:1">
+            <div style="font-family:'DM Mono',monospace;color:#22d3ee;font-size:10px;letter-spacing:1.5px;font-weight:700;margin-bottom:2px">SCAN_BARCODE</div>
+            <input id="skenScanInput" type="text" autocomplete="off" placeholder="pikni črtno kodo…" style="width:100%;background:transparent;border:none;outline:none;font-size:34px;font-weight:800;color:#f8fafc;font-family:'DM Mono',monospace;letter-spacing:2px;padding:2px 0">
+          </div>
+          <div style="position:relative;z-index:1;display:flex;flex-direction:column;gap:4px;align-items:flex-end;text-align:right;flex-shrink:0">
+            <div id="skenCount" style="font-size:44px;font-weight:900;font-family:'DM Mono',monospace;color:#22d3ee;line-height:1;letter-spacing:-2px">0</div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.5);font-family:'DM Mono',monospace">Vrstic · <span id="skenTotalQty">0</span> kos</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Zadnji rezultat / opozorilo -->
+      <div id="skenAlert" style="display:none;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;align-items:center;gap:8px"></div>
+
+      <!-- Toolbar -->
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <button onclick="skenCopyAll()" style="padding:8px 14px;background:var(--accent);color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" title="Kopira kode + količine (vsako v svojo vrstico)">📋 Kopiraj vse (kod + količina)</button>
+        <button onclick="skenClearAll()" style="padding:8px 14px;background:white;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🗑 Briši vse</button>
+        <button onclick="skenRefreshBaza()" style="padding:8px 14px;background:white;color:var(--text);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" title="Ponovno potegni bazo kod od dobaviteljev">🔄 Osveži bazo kod</button>
+      </div>
+
+      <!-- Tabela skeniranih -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:var(--surface2)">
+              <th style="text-align:left;padding:7px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-tertiary);border-bottom:1px solid var(--border);width:42px">#</th>
+              <th style="text-align:left;padding:7px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-tertiary);border-bottom:1px solid var(--border)">Koda</th>
+              <th style="text-align:left;padding:7px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-tertiary);border-bottom:1px solid var(--border)">Črtna koda</th>
+              <th style="text-align:center;padding:7px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-tertiary);border-bottom:1px solid var(--border);width:120px">Količina</th>
+              <th style="text-align:right;padding:7px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-tertiary);border-bottom:1px solid var(--border);width:90px">Akcije</th>
+            </tr>
+          </thead>
+          <tbody id="skenTableBody"></tbody>
+        </table>
+        <div id="skenEmptyMsg" style="padding:40px 20px;text-align:center;color:var(--text-tertiary);font-size:13px">📷 Pripravljeno — skener naj pikne prvo črtno kodo</div>
+      </div>
+
+    </div><!-- /skeniranje subpage -->
 
   </div><!-- /page-zaloga -->
 
@@ -18457,7 +18518,7 @@ function _vracilaAgo(iso) {
 }
 
 function switchZalogaTab(tab) {
-  ['zaloga', 'vracila'].forEach(t => {
+  ['zaloga', 'vracila', 'skeniranje'].forEach(t => {
     const btn = document.getElementById('zalogaTab-' + t);
     const sub = document.getElementById('zalogaSubpage-' + t);
     if (t === tab) {
@@ -18471,6 +18532,8 @@ function switchZalogaTab(tab) {
   try { localStorage.setItem('slx_zaloga_tab', tab); } catch(e) {}
   if (tab === 'vracila') {
     vracilaInit();
+  } else if (tab === 'skeniranje') {
+    skeniranjeInit();
   }
 }
 
@@ -18832,6 +18895,200 @@ async function vracilaToggleHistory() {
   } else {
     wrap.style.display = 'block';
     await vracilaLoadHistory();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SKENIRANJE / INVENTURA — barkoda → dobaviteljeva koda
+//  Dvojniki štejejo količino (ne podvajajo vrstic). Seja v localStorage.
+// ═══════════════════════════════════════════════════════════════
+let skenItems = [];        // [{kod, barcode, name, qty, supplier}]
+let skenBazaReady = false;
+const SKEN_LS_KEY = 'slx_skeniranje_session';
+
+function skenLoadLS() {
+  try { const r = localStorage.getItem(SKEN_LS_KEY); if (r) skenItems = JSON.parse(r) || []; } catch(e) { skenItems = []; }
+}
+function skenSaveLS() {
+  try { localStorage.setItem(SKEN_LS_KEY, JSON.stringify(skenItems)); } catch(e) {}
+}
+
+async function skeniranjeInit() {
+  skenLoadLS();
+  skenRender();
+  // preveri bazo kod (status)
+  try {
+    const r = await fetch('/skeniranje-status');
+    const d = await r.json();
+    skenBazaReady = !!(d.ok && d.count > 0);
+    const pill = document.getElementById('skenFeedPill');
+    const statusLine = document.getElementById('skenStatusLine');
+    if (skenBazaReady) {
+      if (pill) { pill.textContent = '✓ Baza kod pripravljena (' + d.count + ')'; pill.style.background = 'rgba(34,197,94,0.1)'; pill.style.color = '#16a34a'; }
+      if (statusLine) statusLine.textContent = 'kod v bazi: ' + d.count;
+    } else {
+      if (pill) { pill.textContent = '⏳ Bazo gradim — počakaj ~10s'; }
+      if (statusLine) statusLine.textContent = 'kod v bazi: gradim…';
+      // poskusi znova čez nekaj sekund (server gradi v ozadju)
+      setTimeout(skeniranjeInit, 6000);
+    }
+  } catch(e) {
+    const pill = document.getElementById('skenFeedPill');
+    if (pill) { pill.textContent = '✗ Napaka pri bazi kod'; pill.style.color = '#dc2626'; }
+  }
+  // fokus na vnos
+  const inp = document.getElementById('skenScanInput');
+  if (inp) {
+    inp.focus();
+    if (!inp._skenBound) {
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); skenHandleScan(inp.value); inp.value = ''; }
+      });
+      inp._skenBound = true;
+    }
+  }
+}
+
+async function skenHandleScan(raw) {
+  const barcode = (raw || '').trim();
+  if (!barcode) return;
+  // pošlji na strežnik za preslikavo
+  let hit = null;
+  try {
+    const r = await fetch('/skeniranje-lookup', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ barcode })
+    });
+    const d = await r.json();
+    if (d.ok && d.results) hit = d.results[barcode] || null;
+  } catch(e) { skenShowAlert('✗ Napaka pri iskanju kode', 'err'); return; }
+
+  if (!hit) {
+    skenShowAlert(`⚠️ Črtna koda <strong>${skenEsc(barcode)}</strong> ni najdena v bazi`, 'err');
+    return;
+  }
+  // dvojnik? → povečaj količino
+  const existing = skenItems.find(x => x.kod === hit.kod);
+  if (existing) {
+    existing.qty += 1;
+    skenShowAlert(`+1 <strong>${skenEsc(hit.kod)}</strong> (skupaj ${existing.qty})`, 'ok');
+  } else {
+    skenItems.unshift({ kod: hit.kod, barcode, name: hit.name || '', qty: 1, supplier: hit.supplier || '' });
+    skenShowAlert(`✓ <strong>${skenEsc(hit.kod)}</strong> dodan`, 'ok');
+  }
+  skenSaveLS();
+  skenRender();
+}
+
+function skenEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function skenShowAlert(html, kind) {
+  const el = document.getElementById('skenAlert');
+  if (!el) return;
+  const ok = kind === 'ok';
+  el.style.display = 'flex';
+  el.style.background = ok ? 'rgba(34,197,94,0.08)' : 'rgba(220,38,38,0.08)';
+  el.style.border = '1px solid ' + (ok ? '#86efac' : '#fca5a5');
+  el.style.color = ok ? '#166534' : '#991b1b';
+  el.innerHTML = html;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = 'none'; }, 2500);
+}
+
+function skenRender() {
+  const tbody = document.getElementById('skenTableBody');
+  const empty = document.getElementById('skenEmptyMsg');
+  const countEl = document.getElementById('skenCount');
+  const qtyEl = document.getElementById('skenTotalQty');
+  if (!tbody) return;
+  const totalQty = skenItems.reduce((s,x) => s + x.qty, 0);
+  if (countEl) countEl.textContent = String(skenItems.length);
+  if (qtyEl) qtyEl.textContent = String(totalQty);
+  if (skenItems.length === 0) {
+    tbody.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  tbody.innerHTML = skenItems.map((x, i) => `
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 12px;font-size:12px;color:var(--text-tertiary);font-family:'DM Mono',monospace">${i+1}</td>
+      <td style="padding:8px 12px;font-size:14px;font-weight:700;font-family:'DM Mono',monospace">${skenEsc(x.kod)}</td>
+      <td style="padding:8px 12px;font-size:12px;color:var(--text-secondary);font-family:'DM Mono',monospace">${skenEsc(x.barcode)}${x.name ? `<div style="font-size:10px;color:var(--text-tertiary);font-family:inherit">${skenEsc(x.name)}</div>` : ''}</td>
+      <td style="padding:8px 12px;text-align:center">
+        <div style="display:inline-flex;align-items:center;gap:6px">
+          <button onclick="skenQty(${i},-1)" style="width:26px;height:26px;border:1px solid var(--border);background:var(--surface);border-radius:6px;cursor:pointer;font-weight:700;font-family:inherit">−</button>
+          <span style="min-width:26px;text-align:center;font-weight:800;font-size:15px;font-family:'DM Mono',monospace">${x.qty}</span>
+          <button onclick="skenQty(${i},1)" style="width:26px;height:26px;border:1px solid var(--border);background:var(--surface);border-radius:6px;cursor:pointer;font-weight:700;font-family:inherit">+</button>
+        </div>
+      </td>
+      <td style="padding:8px 12px;text-align:right">
+        <button onclick="skenRemove(${i})" style="padding:4px 10px;background:white;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🗑</button>
+      </td>
+    </tr>`).join('');
+}
+
+function skenQty(i, delta) {
+  if (!skenItems[i]) return;
+  skenItems[i].qty += delta;
+  if (skenItems[i].qty <= 0) skenItems.splice(i, 1);
+  skenSaveLS();
+  skenRender();
+}
+
+function skenRemove(i) {
+  if (!skenItems[i]) return;
+  skenItems.splice(i, 1);
+  skenSaveLS();
+  skenRender();
+}
+
+function skenCopyAll() {
+  if (skenItems.length === 0) { alert('Tabela je prazna'); return; }
+  // format: "KOD količinx" vsako v svojo vrstico
+  const text = skenItems.map(x => `${x.kod} ${x.qty}x`).join('\n');
+  const done = () => skenShowAlert(`✓ Kopirano <strong>${skenItems.length}</strong> kod`, 'ok');
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(done).catch(() => skenCopyFallback(text, done));
+  } else {
+    skenCopyFallback(text, done);
+  }
+}
+function skenCopyFallback(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+function skenClearAll() {
+  if (skenItems.length === 0) { alert('Tabela je že prazna'); return; }
+  const n = skenItems.length;
+  if (!confirm(`Izbrisati vseh ${n} skeniranih vrstic?`)) return;
+  skenItems = [];
+  skenSaveLS();
+  skenRender();
+  skenShowAlert(`✓ Izbrisano`, 'ok');
+}
+
+async function skenRefreshBaza() {
+  const pill = document.getElementById('skenFeedPill');
+  if (pill) pill.textContent = '🔄 Osvežujem bazo kod…';
+  try {
+    const r = await fetch('/skeniranje-refresh', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      skenBazaReady = d.count > 0;
+      if (pill) { pill.textContent = '✓ Baza osvežena (' + d.count + ')'; pill.style.background = 'rgba(34,197,94,0.1)'; pill.style.color = '#16a34a'; }
+      const sl = document.getElementById('skenStatusLine'); if (sl) sl.textContent = 'kod v bazi: ' + d.count;
+    } else {
+      if (pill) pill.textContent = '✗ ' + (d.note || d.error || 'napaka');
+    }
+  } catch(e) {
+    if (pill) pill.textContent = '✗ Napaka';
   }
 }
 
