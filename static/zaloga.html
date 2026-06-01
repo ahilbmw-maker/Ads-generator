@@ -140,9 +140,11 @@
   .shelf-head {
     display: flex; align-items: center; gap: 14px;
     padding: 16px 18px; cursor: pointer; user-select: none;
-    transition: background 0.15s;
+    transition: background 0.15s; position: relative;
   }
   .shelf-head:hover { background: var(--panel2); }
+  /* obarvano ozadje glave (samo mobile, predlog 3) — na desktopu skrito */
+  .shelf-head-fill { display: none; }
   .shelf-chevron {
     font-size: 14px; color: var(--text-faint); transition: transform 0.25s;
     width: 16px; text-align: center;
@@ -363,20 +365,47 @@
     .sidebar { position: static; top: auto; order: 99; }
 
     /* Shelf head — kompakten, progress v novo vrsto */
-    .shelf-head { padding: 14px; gap: 10px; flex-wrap: wrap; }
-    .shelf-name { font-size: 16px; }
-    .shelf-count { font-size: 10px; }
-    .shelf-prog { width: 100%; order: 5; margin-top: 4px; }
-    .shelf-prog-bar { flex: 1; width: auto; }
-    .shelf-head-spacer { display: none; }
-    /* SLO mobile: glava ODPRTE police se lepi na vrh (pod glavnim headerjem),
-       da je med drsenjem skozi police vedno vidno ime + napredek police */
-    body.market-slo .shelf.open .shelf-head {
-      position: sticky; top: calc(var(--sticky-h, 116px) - 1px); z-index: 30;
-      background: var(--panel); border-radius: 13px 13px 0 0;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    /* ══ PREDLOG 3: kompaktna polica, napredek = obarvano ozadje ══ */
+    .shelf { border-radius: 10px; }
+    .shelf-head {
+      padding: 11px 13px; gap: 9px; flex-wrap: nowrap;
+      border-radius: 10px; overflow: hidden;
     }
-    body.market-slo .shelf-done.open .shelf-head { background: var(--ok-bg); }
+    .shelf.open .shelf-head { border-radius: 10px 10px 0 0; }
+    .shelf:not(.open) .shelf-head { border-radius: 10px; }
+    /* obarvano ozadje: zeleno do --fill-ok, rdeče do --fill-ni (= ok+ni) */
+    .shelf-head-fill {
+      display: block; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        linear-gradient(90deg,
+          var(--ok-bg) 0, var(--ok-bg) var(--fill-ok, 0%),
+          var(--ni-bg) var(--fill-ok, 0%), var(--ni-bg) var(--fill-ni, 0%),
+          transparent var(--fill-ni, 0%));
+    }
+    /* vsebina nad ozadjem */
+    .shelf-chevron, .shelf-name, .shelf-count, .shelf-prog { position: relative; z-index: 1; }
+    .shelf-chevron { font-size: 11px; width: 12px; }
+    .shelf-name { font-size: 15px; white-space: nowrap; }
+    .shelf-count { font-size: 9px; padding: 2px 7px; white-space: nowrap; }
+    .shelf-head-spacer { display: block; flex: 1; }
+    /* skrij ločeni bar; ostane samo % (ozadje nadomesti bar) */
+    .shelf-prog { width: auto; order: 0; margin: 0; gap: 0; }
+    .shelf-prog-bar { display: none; }
+    .shelf-prog-pct {
+      font-size: 13px; min-width: 0; background: var(--panel);
+      padding: 1px 7px; border-radius: 6px;
+    }
+    /* SLO mobile: glava ODPRTE police se lepi na sam vrh (noga je spodaj) — brez špranje */
+    body.market-slo .shelf.open .shelf-head {
+      position: sticky; top: 0; z-index: 30;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+      border-radius: 0;
+    }
+    /* glava prilepljene police sega čez stranski padding do robov zaslona (brez špranje) */
+    body.market-slo .shelf.open {
+      margin-left: -12px; margin-right: -12px; border-radius: 0; border-left: none; border-right: none;
+    }
+    body.market-slo .shelf.open .shelf-body { padding-left: 24px; padding-right: 24px; }
 
     /* Skrij tabelo-glavo na mobile (kartice ne rabijo) */
     .item-head { display: none; }
@@ -811,6 +840,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260601N"></script>
+<script src="/static/zaloga.js?v=20260601O"></script>
 </body>
 </html>
