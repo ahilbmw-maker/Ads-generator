@@ -9,6 +9,7 @@ function mq(extra) {
   const sep = extra && extra.includes('?') ? '&' : '?';
   return (extra || '') + sep + 'market=' + MARKET;
 }
+function isRS() { return MARKET === 'rs'; }
 
 // ── Preklop trga ──
 function switchMarket(m) {
@@ -134,6 +135,7 @@ function render() {
           </div>
         </div>
         <div class="shelf-body">
+          ${isRS() ? shelfBoxBar(g, items) : ''}
           <div class="item-head">
             <span>ID naročila</span><span>SKU</span><span>Pozicija</span>
             <span>Naziv</span><span class="h-qty">Količina</span><span class="h-status">Status</span>
@@ -151,15 +153,105 @@ function render() {
   updateGlobalStat();
 }
 
+// ── RS: box vrstica pri polici ──
+function shelfBoxBar(group, items) {
+  // koliko obkljukanih (ok) IN še ne zaklenjenih
+  const pending = items.filter(it => it.status === 'ok' && !it.locked).length;
+  const lockedCount = items.filter(it => it.locked).length;
+  return `
+    <div class="shelf-box-bar" onclick="event.stopPropagation()">
+      <span class="sbb-icon">📦</span>
+      <span class="sbb-label">Št. Boxa:</span>
+      <input type="number" class="sbb-input" id="boxinput-${cssId(group)}" placeholder="npr. 1" min="1"
+        onclick="event.stopPropagation()">
+      <button class="sbb-save" onclick="lockBox('${jsStr(group)}')">
+        🔒 Shrani in zakleni${pending ? ` (${pending})` : ''}
+      </button>
+      ${lockedCount ? `<span class="sbb-locked">${lockedCount} zaklenjenih</span>` : ''}
+    </div>`;
+}
+
+// ── RS: zakleni obkljukane v polici ──
+async function lockBox(group) {
+  const inp = document.getElementById('boxinput-' + cssId(group));
+  const box = inp ? inp.value.trim() : '';
+  if (!box) { toast('Vpiši št. boxa'); if (inp) inp.focus(); return; }
+  try {
+    const r = await fetch('/zaloga-lock-box', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ market: MARKET, group, box })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      // posodobi lokalno
+      ITEMS.forEach(it => {
+        if (it.group === group && it.status === 'ok' && !it.locked) {
+          it.box = box; it.locked = true;
+        }
+      });
+      toast(`✓ ${data.locked} postavk → Box ${box}`);
+      render();
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+// ── RS: odkleni eno postavko ──
+async function unlockItem(idx) {
+  if (!confirm('Odklenem to postavko?\n\nBox dodelitev se odstrani, lahko jo ponovno zakleneš.')) return;
+  try {
+    const r = await fetch('/zaloga-lock-box', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ market: MARKET, unlock_idx: idx })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      const it = ITEMS.find(x => x.idx === idx);
+      if (it) { it.locked = false; it.box = ''; }
+      toast('✓ Odklenjeno');
+      render();
+    } else { toast('✗ ' + (data.error || 'napaka')); }
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+// ── RS: shrani opombo (dodatni box) ──
+function commitOpomba(idx, val) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  it.opomba = (val || '').trim();
+  saveItem(idx, { opomba: it.opomba });
+  refreshSidebarAndStats();
+}
+
 function itemRow(it) {
   const cls = it.status === 'ok' ? 'ok' : it.status === 'ni' ? 'ni' : '';
   const mismatch = it.picked !== it.qty ? 'qty-mismatch' : '';
+  const rs = isRS();
+  const locked = rs && it.locked;
+
+  // RS: box značka ali odkleni gumb
+  const boxBadge = locked
+    ? `<span class="item-box-badge">📦 BOX ${esc(it.box)}</span>
+       <button class="item-unlock" onclick="unlockItem(${it.idx})" title="Odkleni">🔓</button>`
+    : '';
+
+  // RS: opomba polje (dodatni box) — pod gumbi
+  const opombaRow = rs ? `
+      <div class="item-opomba">
+        <span class="iop-icon">📝</span>
+        <span class="iop-label">Opomba — dodatni box:</span>
+        <input type="text" class="iop-input" value="${esc(it.opomba || '')}" placeholder="npr. Box 3, 2 kos"
+          onclick="event.stopPropagation()" onblur="commitOpomba(${it.idx}, this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()">
+      </div>` : '';
+
   return `
-    <div class="item ${cls}" id="item-${it.idx}">
+    <div class="item ${cls} ${locked?'item-locked':''}" id="item-${it.idx}">
       <span class="id-col">${esc(it.id || '—')}</span>
       <div class="item-mobile-top">
         <span class="sku">${esc(it.sku)}</span>
-        <span class="poz">${esc(it.poz)}</span>
+        <span class="poz">${esc(it.poz)} ${boxBadge}</span>
       </div>
       <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}</span>
       <div class="item-bottom">
@@ -176,6 +268,7 @@ function itemRow(it) {
           <button class="act-btn act-ni ${it.status==='ni'?'active':''}" onclick="setStatus(${it.idx}, 'ni')" title="Ni na zalogi">✕</button>
         </div>
       </div>
+      ${opombaRow}
     </div>`;
 }
 
@@ -240,60 +333,124 @@ function progBarSegments(s) {
 }
 
 // ── Sidebar ──
+let SIDEBAR_TAB = 'opombe';  // RS aktivni tab
+
+function mankoItemHtml(it) {
+  const missingQty = it.status === 'ni' ? it.qty : (it.qty - it.picked);
+  return `
+    <div class="manko-item">
+      <div class="top">
+        <span class="msku">${esc(it.sku)}</span>
+        <span class="mqty">manjka ${missingQty}${it.status==='ni'?' (cela)':''}</span>
+      </div>
+      <div class="mnaziv" title="${esc(it.naziv)}">${esc(it.naziv)}</div>
+      <div class="mpoz-badge" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Klikni za kopiranje SKU" style="cursor:pointer;user-select:none">📍 ${esc(it.poz)} <span class="mpoz-copy-icon">⎘</span></div>
+      <div class="mpoz-detail">potrebno ${it.qty} · nabrano ${it.status==='ni'?0:it.picked}</div>
+    </div>`;
+}
+
+function opombaItemHtml(it) {
+  return `
+    <div class="opomba-item">
+      <div class="top">
+        <span class="osku">${esc(it.sku)}</span>
+        <span class="oboxnote">${esc(it.opomba)}</span>
+      </div>
+      <div class="onaziv" title="${esc(it.naziv)}">${esc(it.naziv)}</div>
+      <div class="opoz-badge" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Klikni za kopiranje SKU" style="cursor:pointer;user-select:none">📍 ${esc(it.poz)} <span class="mpoz-copy-icon">⎘</span></div>
+    </div>`;
+}
+
+function boxiHtml() {
+  // zberi zaklenjene postavke po boxu
+  const boxes = {};
+  ITEMS.forEach(it => {
+    if (it.locked && it.box) (boxes[it.box] = boxes[it.box] || []).push(it);
+  });
+  const keys = Object.keys(boxes).sort((a,b) => String(a).localeCompare(String(b),'sl',{numeric:true}));
+  if (!keys.length) return '<div class="manko-empty">Še ni zaklenjenih boxov.</div>';
+  return keys.map(b => `
+    <div class="box-group">
+      <div class="box-group-head">📦 BOX ${esc(b)} <span class="box-group-count">${boxes[b].length}</span></div>
+      ${boxes[b].map(it => `
+        <div class="box-line">
+          <span class="box-line-sku" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Kopiraj SKU" style="cursor:pointer">${esc(it.sku)} <span class="mpoz-copy-icon">⎘</span></span>
+          <span class="box-line-poz">${esc(it.poz)}</span>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
 function renderSidebar() {
   const manko = ITEMS.filter(it => it.status === 'ni' || (it.status === 'ok' && it.picked < it.qty));
+  const opombe = ITEMS.filter(it => it.opomba && it.opomba.trim());
   const totalOk = ITEMS.filter(it => it.status === 'ok').length;
   const totalNi = ITEMS.filter(it => it.status === 'ni').length;
   const totalDone = totalOk + totalNi;
   const totalQtyNeed = ITEMS.reduce((s,it) => s + it.qty, 0);
   const totalQtyPicked = ITEMS.filter(it=>it.status==='ok').reduce((s,it) => s + it.picked, 0);
 
-  let mankoHtml;
-  if (manko.length === 0) {
-    mankoHtml = '<div class="manko-empty">Zaenkrat ni manjkajočih postavk 🎉</div>';
+  const statCard = `
+    <div class="side-card">
+      <h3>📊 Skupna statistika</h3>
+      <div class="stat-rows">
+        <div class="stat-row"><span class="lbl">Vseh postavk</span><span class="val">${ITEMS.length}</span></div>
+        <div class="stat-row"><span class="lbl">Obdelanih</span><span class="val">${totalDone}</span></div>
+        <div class="stat-row"><span class="lbl">Nabrano (OK)</span><span class="val ok">${totalOk}</span></div>
+        <div class="stat-row"><span class="lbl">Manjka (NI)</span><span class="val ni">${totalNi}</span></div>
+        <div class="stat-row" style="border-top:1px solid var(--border);padding-top:10px;margin-top:2px">
+          <span class="lbl">Kosov nabrano</span><span class="val">${totalQtyPicked} / ${totalQtyNeed}</span></div>
+      </div>
+    </div>`;
+
+  if (!isRS()) {
+    // SLO — samo Manjko
+    const mankoHtml = manko.length === 0
+      ? '<div class="manko-empty">Zaenkrat ni manjkajočih postavk 🎉</div>'
+      : manko.map(mankoItemHtml).join('');
+    return `
+      <div class="sidebar">
+        ${statCard}
+        <div class="side-card">
+          <h3>⚠️ Manjko ${manko.length ? `<span class="badge">${manko.length}</span>` : ''}</h3>
+          <div class="manko-list">${mankoHtml}</div>
+        </div>
+      </div>`;
+  }
+
+  // RS — tabi Opombe / Manjko / Boxi
+  let tabContent;
+  if (SIDEBAR_TAB === 'opombe') {
+    tabContent = opombe.length ? opombe.map(opombaItemHtml).join('') : '<div class="manko-empty">Ni opomb.</div>';
+  } else if (SIDEBAR_TAB === 'manjko') {
+    tabContent = manko.length ? manko.map(mankoItemHtml).join('') : '<div class="manko-empty">Ni manjka 🎉</div>';
   } else {
-    mankoHtml = manko.map(it => {
-      const missingQty = it.status === 'ni' ? it.qty : (it.qty - it.picked);
-      return `
-        <div class="manko-item">
-          <div class="top">
-            <span class="msku">${esc(it.sku)}</span>
-            <span class="mqty">manjka ${missingQty}${it.status==='ni'?' (cela)':''}</span>
-          </div>
-          <div class="mnaziv" title="${esc(it.naziv)}">${esc(it.naziv)}</div>
-          <div class="mpoz-badge" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Klikni za kopiranje SKU" style="cursor:pointer;user-select:none">📍 ${esc(it.poz)} <span class="mpoz-copy-icon">⎘</span></div>
-          <div class="mpoz-detail">potrebno ${it.qty} · nabrano ${it.status==='ni'?0:it.picked}</div>
-        </div>`;
-    }).join('');
+    tabContent = boxiHtml();
   }
 
   return `
     <div class="sidebar">
-      <div class="side-card">
-        <h3>📊 Skupna statistika</h3>
-        <div class="stat-rows">
-          <div class="stat-row"><span class="lbl">Vseh postavk</span><span class="val">${ITEMS.length}</span></div>
-          <div class="stat-row"><span class="lbl">Obdelanih</span><span class="val">${totalDone}</span></div>
-          <div class="stat-row"><span class="lbl">Nabrano (OK)</span><span class="val ok">${totalOk}</span></div>
-          <div class="stat-row"><span class="lbl">Manjka (NI)</span><span class="val ni">${totalNi}</span></div>
-          <div class="stat-row" style="border-top:1px solid var(--border);padding-top:10px;margin-top:2px">
-            <span class="lbl">Kosov nabrano</span><span class="val">${totalQtyPicked} / ${totalQtyNeed}</span></div>
+      ${statCard}
+      <div class="side-card side-card-tabs">
+        <div class="side-tabs">
+          <button class="side-tab side-tab-opombe ${SIDEBAR_TAB==='opombe'?'active':''}" onclick="setSidebarTab('opombe')">📝 Opombe ${opombe.length?`<span class="st-badge st-blue">${opombe.length}</span>`:''}</button>
+          <button class="side-tab side-tab-manjko ${SIDEBAR_TAB==='manjko'?'active':''}" onclick="setSidebarTab('manjko')">⚠️ Manjko ${manko.length?`<span class="st-badge st-red">${manko.length}</span>`:''}</button>
+          <button class="side-tab side-tab-boxi ${SIDEBAR_TAB==='boxi'?'active':''}" onclick="setSidebarTab('boxi')">📦 Boxi</button>
         </div>
-      </div>
-      <div class="side-card">
-        <h3>⚠️ Manjko ${manko.length ? `<span class="badge">${manko.length}</span>` : ''}</h3>
-        <div class="manko-list">${mankoHtml}</div>
+        <div class="side-tab-body side-tab-${SIDEBAR_TAB}">${tabContent}</div>
       </div>
     </div>`;
 }
 
-// ── Global stat (top ring) ──
+function setSidebarTab(tab) {
+  SIDEBAR_TAB = tab;
+  refreshSidebarAndStats();
+}
+
+// ── Global stat (top bar) ──
 function updateGlobalStat() {
   const stat = groupStat(ITEMS);
-  const ring = document.getElementById('globalRing');
-  const circ = 2 * Math.PI * 18; // 113
-  // ring kaže delež NABRANO (zeleno)
-  if (ring) ring.style.strokeDashoffset = circ * (1 - stat.pctOk/100);
+  const bar = document.getElementById('globalBar');
+  if (bar) bar.innerHTML = progBarSegments(stat);
   const pctEl = document.getElementById('globalPct');
   if (pctEl) {
     pctEl.textContent = stat.pctOk + '%';
@@ -380,18 +537,23 @@ async function saveItem(idx, patch) {
 }
 
 // ── Arhiviraj ──
-async function archiveSession() {
-  if (!confirm('Arhiviram trenutno nabiranje?\n\nSeznam se zaključi in shrani v zgodovino. Nov CSV lahko naložiš za novo nabiranje.')) return;
+async function archiveSession(force) {
+  if (!force && !confirm('Arhiviram trenutno nabiranje?\n\nSeznam se zaključi in shrani v zgodovino. Nov CSV lahko naložiš za novo nabiranje.')) return;
   try {
     const r = await fetch('/zaloga-archive', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ market: MARKET })
+      body: JSON.stringify({ market: MARKET, force: !!force })
     });
     const data = await r.json();
     if (data.ok) {
       toast('✓ Arhivirano');
       setExpanded({});  // počisti odprte zavihke
       showEmpty();
+    } else if (data.warn_no_box) {
+      // RS opozorilo: nabrane postavke brez boxa
+      if (confirm(`⚠️ ${data.warn_no_box} nabranih postavk NIMA dodeljenega boxa!\n\nZa carinski pregled mora biti vsaka postavka v boxu.\n\nVseeno arhiviram?`)) {
+        archiveSession(true);
+      }
     } else {
       toast('✗ ' + (data.error || 'napaka'));
     }
