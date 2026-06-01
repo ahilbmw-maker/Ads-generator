@@ -1013,6 +1013,7 @@ async def zaloga_upload(file: UploadFile = File(...), market: str = "slo"):
             "filename": file.filename,
             "market": _zaloga_market(market),
             "items": items,
+            "extra_boxes": {},   # RS: dodatni boxi (viški) — { "99": [{sku, naziv, kos}], ... }
         }
         _zaloga_current_path(market).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         # Statistika skupin
@@ -1121,7 +1122,85 @@ async def zaloga_lock_box(data: dict):
         return {"ok": False, "error": str(e)}
 
 
-@app.post("/zaloga-archive")
+@app.post("/zaloga-extra-box")
+async def zaloga_extra_box(data: dict):
+    """RS dodatni boxi (viški). Akcije:
+    - add: doda postavko (sku, kos) v box (ustvari box če ne obstaja)
+    - remove_item: odstrani postavko iz boxa
+    - delete_box: izbriše cel box
+    Vrne posodobljen extra_boxes."""
+    try:
+        from datetime import datetime as _dt
+        path = _zaloga_current_path(data.get("market", "rs"))
+        if not path.exists():
+            return {"ok": False, "error": "Ni aktivne seje"}
+        sess = json.loads(path.read_text(encoding="utf-8"))
+        boxes = sess.get("extra_boxes") or {}
+        action = data.get("action", "add")
+
+        if action == "add":
+            box = str(data.get("box", "")).strip()
+            sku = str(data.get("sku", "")).strip()
+            naziv = str(data.get("naziv", "")).strip()
+            idx = data.get("idx")
+            try:
+                kos = max(1, int(data.get("kos", 1)))
+            except (ValueError, TypeError):
+                kos = 1
+            if not box:
+                return {"ok": False, "error": "Manjka št. boxa"}
+            if not sku:
+                return {"ok": False, "error": "Manjka SKU"}
+            lst = boxes.get(box, [])
+            # če isti sku že v boxu, prištej kose
+            merged = False
+            for entry in lst:
+                if entry.get("sku") == sku:
+                    entry["kos"] = entry.get("kos", 0) + kos
+                    merged = True
+                    break
+            if not merged:
+                lst.append({"idx": idx, "sku": sku, "naziv": naziv, "kos": kos})
+            boxes[box] = lst
+
+            # Označi postavko nabrano SAMO če je cel kos (kos >= qty) v box
+            if idx is not None:
+                for it in sess.get("items", []):
+                    if it.get("idx") == idx:
+                        try:
+                            need = int(it.get("qty", 0) or 0)
+                        except (ValueError, TypeError):
+                            need = 0
+                        # seštej vse kose tega sku po vseh extra boxih
+                        total_in_boxes = 0
+                        for bx_items in boxes.values():
+                            for e in bx_items:
+                                if e.get("sku") == it.get("sku"):
+                                    total_in_boxes += e.get("kos", 0)
+                        if need and total_in_boxes >= need:
+                            it["status"] = "ok"
+                        break
+
+        elif action == "remove_item":
+            box = str(data.get("box", "")).strip()
+            sku = str(data.get("sku", "")).strip()
+            if box in boxes:
+                boxes[box] = [e for e in boxes[box] if e.get("sku") != sku]
+                if not boxes[box]:
+                    del boxes[box]
+
+        elif action == "delete_box":
+            box = str(data.get("box", "")).strip()
+            if box in boxes:
+                del boxes[box]
+
+        sess["extra_boxes"] = boxes
+        sess["updated_at"] = _dt.now().isoformat()
+        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True, "extra_boxes": boxes}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
 async def zaloga_archive(data: dict = None):
     """Arhivira aktivno sejo nabiranja za trg in resetira."""
     try:
