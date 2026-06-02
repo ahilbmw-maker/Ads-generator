@@ -133,6 +133,7 @@
     font-weight: 700; white-space: nowrap; gap: 6px;
   }
   .gs-packing-btn:hover { filter: brightness(1.08); }
+  @media (max-width: 768px) { .gs-packing-btn { display: none !important; } }
 
   .btn {
     border: 1px solid var(--border2); background: var(--panel2);
@@ -469,7 +470,7 @@
       font-size: 13px; min-width: 0; background: var(--panel);
       padding: 1px 7px; border-radius: 6px;
     }
-    /* SLO mobile: glava ODPRTE police se lepi na sam vrh (noga je spodaj) — brez špranje */
+    /* glava ODPRTE police se lepi na vrh; pri RS pod box-barom (če je viden) */
     body.market-slo .shelf.open .shelf-head,
     body.market-rs .shelf.open .shelf-head {
       position: sticky; top: 0; z-index: 30;
@@ -477,6 +478,10 @@
       box-shadow: 0 3px 5px rgba(0,0,0,0.06);
       border-radius: 0;
     }
+    /* RS: ko je box-bar zgoraj viden, se glava police lepi POD njim (ne za njim) */
+    body.market-rs.has-boxbar .shelf.open .shelf-head { top: var(--boxbar-h, 58px); }
+    /* RS: ko je box-bar viden, vsebina dobi prostor na vrhu (da prva polica ni za box-barom) */
+    body.market-rs.has-boxbar .wrap { padding-top: var(--boxbar-h, 58px); }
     /* glava prilepljene police sega čez stranski padding do robov zaslona (brez špranje) */
     body.market-slo .shelf.open,
     body.market-rs .shelf.open {
@@ -566,9 +571,10 @@
     /* RS box-bar mobile: inline bar v polici SKRIJEMO — uporabimo spodnji sticky bar */
     .shelf-body > .shelf-box-bar { display: none; }
     /* Spodnji sticky bar: ikona + dropdown levo, gumb desno (po vsebini), vse v 1 vrstici */
-    #mobileBoxBar { position: fixed; left: 0; right: 0; bottom: var(--footer-h, 0px); z-index: 59;
-      background: var(--panel); border-top: 2px solid var(--accent);
-      box-shadow: 0 -3px 14px rgba(0,0,0,0.12); padding: 8px 10px; }
+    /* box-bar na VRHU (sticky zgoraj) — viden ko je polica odprta; police se lepijo pod njim */
+    #mobileBoxBar { position: fixed; left: 0; right: 0; top: 0; z-index: 58;
+      background: var(--panel); border-bottom: 2px solid var(--accent);
+      box-shadow: 0 3px 14px rgba(0,0,0,0.12); padding: 8px 10px; }
     #mobileBoxBar .shelf-box-bar { background: none; border: none; border-radius: 0;
       margin: 0; padding: 0; gap: 8px; flex-wrap: nowrap; }
     #mobileBoxBar .sbb-icon { flex-shrink: 0; }
@@ -577,9 +583,8 @@
     #mobileBoxBar .sbb-count { flex-shrink: 0; font-size: 14px; padding: 6px 9px; }
     #mobileBoxBar .sbb-save { margin-left: auto; flex-shrink: 0; height: 42px; padding: 0 12px; font-size: 13px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
     #mobileBoxBar .sbb-locked { display: none; }
-    /* prostor na dnu: noga (~110px); ko je RS box-bar viden, še dodatno */
-    .wrap { padding-bottom: calc(var(--footer-h, 110px) + 24px); }
-    body.has-boxbar .wrap { padding-bottom: calc(var(--footer-h, 110px) + 80px); }
+    /* prostor na dnu: noga (~110px) + zrak (box-bar je zdaj zgoraj, ne spodaj) */
+    .wrap { padding-bottom: calc(var(--footer-h, 110px) + 32px); }
 
     /* RS opomba mobile: POD gumbi (order 5), vgrajen label ostane v vrsti */
     .item-opomba {
@@ -999,6 +1004,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260602AO"></script>
+<script src="/static/zaloga.js?v=20260602AQ"></script>
 </body>
 </html>
