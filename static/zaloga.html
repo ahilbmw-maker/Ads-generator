@@ -127,6 +127,12 @@
   .gs-timer.running #gsTimerTime { color: var(--text); }
   .gs-timer.done #gsTimerTime { color: var(--ok); }
   .gs-timer-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-faint); white-space: nowrap; }
+  /* gumb Packing lista — levo od bara/časovnice, samo RS ko obstajajo boxi */
+  .gs-packing-btn {
+    flex-shrink: 0; background: var(--accent); color: #fff; border: none;
+    font-weight: 700; white-space: nowrap; gap: 6px;
+  }
+  .gs-packing-btn:hover { filter: brightness(1.08); }
 
   .btn {
     border: 1px solid var(--border2); background: var(--panel2);
@@ -862,8 +868,6 @@
   .cak-chip-x { color: var(--text-faint); cursor: pointer; }
   .cak-chip-x:hover { color: var(--ni); }
   .cak-return { margin-top: 10px; background: none; border: none; color: var(--text-faint); font-size: 12px; cursor: pointer; text-decoration: underline; }
-  .cak-pdf { width: 100%; margin-top: 6px; height: 46px; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font-weight: 800; font-size: 14px; cursor: pointer; }
-  .cak-pdf:hover { filter: brightness(1.05); }
 
   /* Povečava slike izdelka */
   .img-preview-overlay {
@@ -939,6 +943,8 @@
   </div>
   <div class="topbar-spacer"></div>
 
+  <button class="btn btn-sm gs-packing-btn" id="packingPdfBtn" onclick="cakajPdf()" style="display:none" title="Carinska packing lista (PDF)">📄 Packing lista</button>
+
   <div class="global-stat" id="globalStat" style="display:none">
     <div class="gs-main">
       <div class="global-stat-head">
@@ -993,6 +999,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260602AM"></script>
+<script src="/static/zaloga.js?v=20260602AN"></script>
 </body>
 </html>
