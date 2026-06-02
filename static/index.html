@@ -745,7 +745,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div style="display:flex;align-items:center;gap:10px;margin-top:7px">
             <div id="zalogaBigBreak" style="font-size:11px;color:rgba(255,255,255,0.9)"></div>
             <div id="zalogaBigTimer" style="display:none;align-items:center;gap:5px;margin-left:auto;flex-shrink:0">
-              <span id="zbtTime" style="font-size:15px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">0:00:00</span>
+              <span id="zbtTime" style="font-size:15px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;display:inline-block;min-width:82px;text-align:right">0:00:00</span>
             </div>
           </div>
         </div>
@@ -756,7 +756,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div style="flex:1;min-width:0"><div style="display:flex;height:6px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,0.25)"><div id="ztBar-slo-ok" style="width:0%;background:#fff"></div><div id="ztBar-slo-ni" style="width:0%;background:#ffd5d3"></div></div></div>
             <span id="ztPct-slo" style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.9);flex-shrink:0">0%</span>
             <div style="display:flex;align-items:center;gap:5px;padding-left:10px;border-left:1px solid rgba(255,255,255,0.3);flex-shrink:0">
-              <span id="ztTime-slo" style="font-size:16px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">0:00:00</span>
+              <span id="ztTime-slo" style="font-size:16px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;display:inline-block;min-width:86px;text-align:right">0:00:00</span>
             </div>
           </div>
           <div class="zaloga-timer-row" id="ztRow-rs" style="display:none;align-items:center;gap:10px;background:rgba(255,255,255,0.14);border-radius:10px;padding:9px 12px">
@@ -764,7 +764,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div style="flex:1;min-width:0"><div style="display:flex;height:6px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,0.25)"><div id="ztBar-rs-ok" style="width:0%;background:#fff"></div><div id="ztBar-rs-ni" style="width:0%;background:#ffd5d3"></div></div></div>
             <span id="ztPct-rs" style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.9);flex-shrink:0">0%</span>
             <div style="display:flex;align-items:center;gap:5px;padding-left:10px;border-left:1px solid rgba(255,255,255,0.3);flex-shrink:0">
-              <span id="ztTime-rs" style="font-size:16px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">0:00:00</span>
+              <span id="ztTime-rs" style="font-size:16px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;display:inline-block;min-width:86px;text-align:right">0:00:00</span>
             </div>
           </div>
         </div>
@@ -19342,11 +19342,13 @@ async function vracilaHistoryDelete(filename) {
     const timers = document.getElementById('zalogaTimers');
     const bigTimer = document.getElementById('zalogaBigTimer');
     if (bothActive) {
-      // oba trga → ločeni vrstici (vsak svoj bar + čas), glavni čas + VRHNJI BAR skrit
+      // oba trga → ločeni vrstici (vsak svoj bar + čas), glavni čas + VRHNJI BAR + zgornji % skrit
       if (timers) timers.style.display = 'flex';
       if (bigTimer) bigTimer.style.display = 'none';
       const bigProg = document.getElementById('zalogaBigProg');
       if (bigProg) bigProg.style.display = 'none';   // odpade pri 2 hkratnih zalogah
+      const pctWrap = document.getElementById('zalogaBigPctWrap');
+      if (pctWrap) pctWrap.style.display = 'none';    // "100% nabrano" zgoraj desno odpade
       renderTimerRow('slo', ZALOGA_SESS.slo);
       renderTimerRow('rs', ZALOGA_SESS.rs);
     } else {
@@ -19355,6 +19357,8 @@ async function vracilaHistoryDelete(filename) {
       if (bigTimer) bigTimer.style.display = oneActive ? 'flex' : 'none';
       const bigProg = document.getElementById('zalogaBigProg');
       if (bigProg && oneActive) bigProg.style.display = 'block';
+      const pctWrap = document.getElementById('zalogaBigPctWrap');
+      if (pctWrap && oneActive) pctWrap.style.display = 'block';
     }
     // zapomni si, kateri trg je edini aktiven (za tick glavnega časa)
     ZALOGA_SESS._single = oneActive ? (sloActive ? 'slo' : 'rs') : null;
