@@ -1759,6 +1759,145 @@ async def zaloga_extra_box(data: dict):
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/zaloga-cakajoce")
+async def zaloga_cakajoce(data: dict):
+    """RS 'Čakajoče' — velike postavke za razdelitev v več packing boxov (carinska lista).
+    Akcije:
+    - transfer: prenese postavko iz police v čakajoče (izgine iz police)
+    - return: vrne postavko nazaj v polico (iz čakajočih)
+    - assign: dodeli N kosov postavke v packing box (box = posoda za več izdelkov)
+    - remove_assign: odstrani dodelitev (sku iz packing boxa)
+    - delete_pbox: izbriše cel packing box (vse dodelitve)
+    Struktura v seji:
+      cakajoce: [{idx, sku, naziv, qty, poz}]
+      packing_boxes: { "20": [{sku, naziv, kos}], "21": [...] }
+    Postavka šteje kot nabrana (status ok), ko je vseh qty kosov dodeljenih v bokse."""
+    try:
+        from datetime import datetime as _dt
+        path = _zaloga_current_path(data.get("market", "rs"))
+        if not path.exists():
+            return {"ok": False, "error": "Ni aktivne seje"}
+        sess = json.loads(path.read_text(encoding="utf-8"))
+        cakajoce = sess.get("cakajoce") or []
+        pboxes = sess.get("packing_boxes") or {}
+        action = data.get("action", "")
+
+        def _assigned_for(sku):
+            """Koliko kosov tega SKU je že dodeljenih v packing bokse."""
+            tot = 0
+            for items in pboxes.values():
+                for e in items:
+                    if e.get("sku") == sku:
+                        tot += e.get("kos", 0)
+            return tot
+
+        def _sync_item_status(idx, sku):
+            """Postavka v cakajoce: nabrana (ok) ko so vsi kosi dodeljeni."""
+            for c in cakajoce:
+                if c.get("idx") == idx:
+                    need = int(c.get("qty", 0) or 0)
+                    c["assigned"] = _assigned_for(sku)
+                    c["done"] = bool(need and c["assigned"] >= need)
+                    return c
+            return None
+
+        if action == "transfer":
+            idx = data.get("idx")
+            if idx is None:
+                return {"ok": False, "error": "Manjka idx"}
+            # poišči postavko v items, jo prestavi v cakajoce in odstrani iz police
+            moved = None
+            for it in sess.get("items", []):
+                if it.get("idx") == idx:
+                    moved = {
+                        "idx": it.get("idx"), "sku": it.get("sku", ""),
+                        "naziv": it.get("naziv", ""), "qty": int(it.get("qty", 0) or 0),
+                        "poz": it.get("poz", ""), "assigned": 0, "done": False,
+                    }
+                    break
+            if not moved:
+                return {"ok": False, "error": "Postavka ni najdena"}
+            # ni dvojnikov
+            if not any(c.get("idx") == idx for c in cakajoce):
+                cakajoce.append(moved)
+            # odstrani iz police (items)
+            sess["items"] = [it for it in sess.get("items", []) if it.get("idx") != idx]
+
+        elif action == "return":
+            idx = data.get("idx")
+            entry = next((c for c in cakajoce if c.get("idx") == idx), None)
+            if not entry:
+                return {"ok": False, "error": "Ni v čakajočih"}
+            # vrni v polico kot todo postavko
+            sess.setdefault("items", []).append({
+                "idx": entry["idx"], "sku": entry["sku"], "naziv": entry["naziv"],
+                "qty": entry["qty"], "picked": 0, "status": "", "poz": entry.get("poz", ""),
+                "locked": False, "box": "",
+            })
+            cakajoce = [c for c in cakajoce if c.get("idx") != idx]
+            # počisti dodelitve tega sku iz packing boxov
+            for b in list(pboxes.keys()):
+                pboxes[b] = [e for e in pboxes[b] if e.get("sku") != entry["sku"]]
+                if not pboxes[b]:
+                    del pboxes[b]
+
+        elif action == "assign":
+            idx = data.get("idx")
+            box = str(data.get("box", "")).strip()
+            sku = str(data.get("sku", "")).strip()
+            naziv = str(data.get("naziv", "")).strip()
+            try:
+                kos = max(1, int(data.get("kos", 1)))
+            except (ValueError, TypeError):
+                kos = 1
+            if not box or not sku:
+                return {"ok": False, "error": "Manjka box ali SKU"}
+            lst = pboxes.get(box, [])
+            merged = False
+            for e in lst:
+                if e.get("sku") == sku:
+                    e["kos"] = e.get("kos", 0) + kos
+                    merged = True
+                    break
+            if not merged:
+                lst.append({"sku": sku, "naziv": naziv, "kos": kos})
+            pboxes[box] = lst
+            sess["packing_boxes"] = pboxes
+            _sync_item_status(idx, sku)
+
+        elif action == "remove_assign":
+            box = str(data.get("box", "")).strip()
+            sku = str(data.get("sku", "")).strip()
+            idx = data.get("idx")
+            if box in pboxes:
+                pboxes[box] = [e for e in pboxes[box] if e.get("sku") != sku]
+                if not pboxes[box]:
+                    del pboxes[box]
+            sess["packing_boxes"] = pboxes
+            if idx is not None:
+                _sync_item_status(idx, sku)
+
+        elif action == "delete_pbox":
+            box = str(data.get("box", "")).strip()
+            if box in pboxes:
+                del pboxes[box]
+            sess["packing_boxes"] = pboxes
+            # osveži vse statuse
+            for c in cakajoce:
+                _sync_item_status(c.get("idx"), c.get("sku"))
+        else:
+            return {"ok": False, "error": "Neznana akcija"}
+
+        sess["cakajoce"] = cakajoce
+        sess["packing_boxes"] = pboxes
+        sess["updated_at"] = _dt.now().isoformat()
+        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True, "cakajoce": cakajoce, "packing_boxes": pboxes}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
 @app.post("/zaloga-archive")
 async def zaloga_archive(data: dict = None):
     """Arhivira aktivno sejo nabiranja za trg in resetira."""
@@ -9134,6 +9273,90 @@ INVENTURA_CURRENT = INVENTURA_DIR / "_current.json"
 
 DEJAVU_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 DEJAVU_BOLD    = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+
+@app.post("/zaloga-packing-pdf")
+async def zaloga_packing_pdf(data: dict):
+    """Carinska packing lista (PDF) iz RS packing_boxes.
+    Za vsak box izpiše izdelke: naziv + koda + količina kosov.
+    Vhod: {market}. Bere packing_boxes iz aktivne RS seje."""
+    try:
+        import io
+        path = _zaloga_current_path(data.get("market", "rs"))
+        if not path.exists():
+            return JSONResponse({"error": "Ni aktivne seje"}, status_code=400)
+        sess = json.loads(path.read_text(encoding="utf-8"))
+        pboxes = sess.get("packing_boxes") or {}
+        if not pboxes:
+            return JSONResponse({"error": "Ni packing boxov"}, status_code=400)
+
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        pdfmetrics.registerFont(TTFont("DejaVu", DEJAVU_REGULAR))
+        pdfmetrics.registerFont(TTFont("DejaVu-Bold", DEJAVU_BOLD))
+
+        datum = datetime.now().strftime("%d. %m. %Y  %H:%M")
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4,
+            leftMargin=1.5*cm, rightMargin=1.5*cm, topMargin=2*cm, bottomMargin=2*cm)
+
+        s_title = ParagraphStyle("t", fontSize=15, fontName="DejaVu-Bold", spaceAfter=3)
+        s_sub   = ParagraphStyle("s", fontSize=9, fontName="DejaVu", textColor=colors.HexColor("#64748b"), spaceAfter=14)
+        s_box   = ParagraphStyle("b", fontSize=12, fontName="DejaVu-Bold", spaceBefore=10, spaceAfter=5, textColor=colors.HexColor("#1e293b"))
+        s_hdr   = ParagraphStyle("h", fontSize=9, fontName="DejaVu-Bold", textColor=colors.white, alignment=0, leading=12)
+        s_cell  = ParagraphStyle("c", fontSize=9, fontName="DejaVu", leading=12)
+        s_code  = ParagraphStyle("k", fontSize=9, fontName="DejaVu-Bold", leading=12)
+        s_qty   = ParagraphStyle("q", fontSize=9, fontName="DejaVu-Bold", alignment=1, leading=12)
+
+        total_boxes = len(pboxes)
+        total_pcs = sum(e.get("kos", 0) for items in pboxes.values() for e in items)
+
+        story = [
+            Paragraph("PACKING LISTA / SPECIFIKACIJA", s_title),
+            Paragraph(f"Datum: {datum}  |  Št. boxov: {total_boxes}  |  Skupaj kosov: {total_pcs}", s_sub),
+        ]
+
+        # sortiraj bokse po številki (numerično če gre)
+        def _boxkey(b):
+            try: return (0, int(b))
+            except (ValueError, TypeError): return (1, b)
+        for box in sorted(pboxes.keys(), key=_boxkey):
+            items = pboxes[box]
+            box_pcs = sum(e.get("kos", 0) for e in items)
+            story.append(Paragraph(f"📦 BOX {box}  ·  {len(items)} izdelkov  ·  {box_pcs} kosov", s_box))
+            tdata = [[Paragraph("Naziv", s_hdr), Paragraph("Koda", s_hdr), Paragraph("Kosov", s_hdr)]]
+            for e in items:
+                tdata.append([
+                    Paragraph(str(e.get("naziv") or ""), s_cell),
+                    Paragraph(str(e.get("sku") or ""), s_code),
+                    Paragraph(str(e.get("kos") or 0), s_qty),
+                ])
+            t = Table(tdata, colWidths=[11.0*cm, 4.5*cm, 2.0*cm], repeatRows=1)
+            t.setStyle(TableStyle([
+                ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1e293b")),
+                ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+                ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                ("TOPPADDING", (0,0), (-1,-1), 4),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+                ("LEFTPADDING", (0,0), (-1,-1), 6),
+                ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
+            ]))
+            story.append(t)
+
+        doc.build(story)
+        buf.seek(0)
+        fn = f"packing_lista_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.pdf"
+        return StreamingResponse(buf, media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{fn}"'})
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 def inventura_cleanup():
