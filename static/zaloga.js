@@ -298,6 +298,20 @@ function render() {
   updateGlobalStat();
   updateMobileBoxBar();  // poskrbi za prikaz (RS+mobile) ali skritje (SLO/desktop)
   syncFilterToggleLabel();
+  updatePackingBtn();    // zgornji gumb "Packing lista" (samo RS + ko obstajajo boxi)
+}
+
+// prikaži/skrij zgornji gumb za carinski PDF (samo RS in ko obstaja vsaj 1 packing box)
+function updatePackingBtn() {
+  const btn = document.getElementById('packingPdfBtn');
+  if (!btn) return;
+  const boxes = getPackingBoxes();
+  const show = isRS() && Object.keys(boxes).length > 0;
+  btn.style.display = show ? 'inline-flex' : 'none';
+  if (show) {
+    const n = Object.keys(boxes).length;
+    btn.textContent = `📄 Packing lista (${n})`;
+  }
 }
 
 // ── RS: zbir zasedenih box številk (1..100) ──
@@ -706,7 +720,6 @@ function cakajoceSection() {
         <span class="cak-section-count">${list.length}</span>
       </div>
       ${rows}
-      ${totalBoxes > 0 ? `<button class="cak-pdf" onclick="cakajPdf()">📄 Carinska packing lista (PDF) · ${totalBoxes} box${totalBoxes===1?'':'ov'}</button>` : ''}
     </div>`;
 }
 
