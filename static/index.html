@@ -745,8 +745,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div style="display:flex;align-items:center;gap:10px;margin-top:7px">
             <div id="zalogaBigBreak" style="font-size:11px;color:rgba(255,255,255,0.9)"></div>
             <div id="zalogaBigTimer" style="display:none;align-items:center;gap:5px;margin-left:auto;flex-shrink:0">
-              <span id="zbtDot" style="width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.4);display:inline-block"></span>
-              <span id="zbtTime" style="font-size:15px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">00:00</span>
+              <span id="zbtTime" style="font-size:15px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">0:00:00</span>
             </div>
           </div>
         </div>
@@ -757,8 +756,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div style="flex:1;min-width:0"><div style="display:flex;height:6px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,0.25)"><div id="ztBar-slo-ok" style="width:0%;background:#fff"></div><div id="ztBar-slo-ni" style="width:0%;background:#ffd5d3"></div></div></div>
             <span id="ztPct-slo" style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.9);flex-shrink:0">0%</span>
             <div style="display:flex;align-items:center;gap:5px;padding-left:10px;border-left:1px solid rgba(255,255,255,0.3);flex-shrink:0">
-              <span id="ztDot-slo" style="width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.4);display:inline-block"></span>
-              <span id="ztTime-slo" style="font-size:16px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">00:00</span>
+              <span id="ztTime-slo" style="font-size:16px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">0:00:00</span>
             </div>
           </div>
           <div class="zaloga-timer-row" id="ztRow-rs" style="display:none;align-items:center;gap:10px;background:rgba(255,255,255,0.14);border-radius:10px;padding:9px 12px">
@@ -766,8 +764,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div style="flex:1;min-width:0"><div style="display:flex;height:6px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,0.25)"><div id="ztBar-rs-ok" style="width:0%;background:#fff"></div><div id="ztBar-rs-ni" style="width:0%;background:#ffd5d3"></div></div></div>
             <span id="ztPct-rs" style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.9);flex-shrink:0">0%</span>
             <div style="display:flex;align-items:center;gap:5px;padding-left:10px;border-left:1px solid rgba(255,255,255,0.3);flex-shrink:0">
-              <span id="ztDot-rs" style="width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.4);display:inline-block"></span>
-              <span id="ztTime-rs" style="font-size:16px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">00:00</span>
+              <span id="ztTime-rs" style="font-size:16px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">0:00:00</span>
             </div>
           </div>
         </div>
@@ -19259,7 +19256,17 @@ async function vracilaHistoryDelete(filename) {
     const pctOk = Math.round(ok / total * 100);
     const pctNi = Math.round(ni / total * 100);
     const pctTodo = 100 - pctOk - pctNi;
-    return { total, ok, ni, pctOk, pctNi, pctTodo, done: ok + ni };
+    // po kosih (za graf — delni manjko = rdeč košček)
+    let qNeed=0, qOk=0, qMiss=0;
+    items.forEach(it => {
+      const q = it.qty || 0; qNeed += q;
+      if (it.status === 'ok') { qOk += (it.picked||0); qMiss += Math.max(0, q-(it.picked||0)); }
+      else if (it.status === 'ni') { qMiss += q; }
+    });
+    const qPctOk = qNeed ? Math.round(qOk/qNeed*100) : 0;
+    const qPctNi = qNeed ? Math.round(qMiss/qNeed*100) : 0;
+    const qPctTodo = qNeed ? Math.max(0, 100-qPctOk-qPctNi) : 0;
+    return { total, ok, ni, pctOk, pctNi, pctTodo, done: ok + ni, qPctOk, qPctNi, qPctTodo };
   }
 
   function breakdownText(s) {
@@ -19295,13 +19302,13 @@ async function vracilaHistoryDelete(filename) {
     if (chevron) chevron.style.display = 'none';
     if (desc) desc.textContent = `Aktivno nabiranje · ${s.done} / ${s.total} postavk`;
     const pctEl = document.getElementById('zalogaBigPct');
-    if (pctEl) pctEl.textContent = s.pctOk + '%';
+    if (pctEl) pctEl.textContent = s.pctOk + '%';   // % po postavkah
     const o = document.getElementById('zbProgOk');
     const n = document.getElementById('zbProgNi');
     const t = document.getElementById('zbProgTodo');
-    if (o) o.style.width = s.pctOk + '%';
-    if (n) n.style.width = s.pctNi + '%';
-    if (t) t.style.width = s.pctTodo + '%';
+    if (o) o.style.width = s.qPctOk + '%';   // bar po kosih (delni manjko viden)
+    if (n) n.style.width = s.qPctNi + '%';
+    if (t) t.style.width = s.qPctTodo + '%';
     const brk = document.getElementById('zalogaBigBreak');
     if (brk) brk.textContent = breakdownText(s);
   }
@@ -19335,15 +19342,19 @@ async function vracilaHistoryDelete(filename) {
     const timers = document.getElementById('zalogaTimers');
     const bigTimer = document.getElementById('zalogaBigTimer');
     if (bothActive) {
-      // oba trga → ločeni vrstici (vsak svoj bar + čas), glavni čas skrit
+      // oba trga → ločeni vrstici (vsak svoj bar + čas), glavni čas + VRHNJI BAR skrit
       if (timers) timers.style.display = 'flex';
       if (bigTimer) bigTimer.style.display = 'none';
+      const bigProg = document.getElementById('zalogaBigProg');
+      if (bigProg) bigProg.style.display = 'none';   // odpade pri 2 hkratnih zalogah
       renderTimerRow('slo', ZALOGA_SESS.slo);
       renderTimerRow('rs', ZALOGA_SESS.rs);
     } else {
-      // en trg (ali noben) → ne podvajaj; čas pripni h glavni vrstici
+      // en trg (ali noben) → ne podvajaj; čas pripni h glavni vrstici, vrhnji bar viden
       if (timers) timers.style.display = 'none';
       if (bigTimer) bigTimer.style.display = oneActive ? 'flex' : 'none';
+      const bigProg = document.getElementById('zalogaBigProg');
+      if (bigProg && oneActive) bigProg.style.display = 'block';
     }
     // zapomni si, kateri trg je edini aktiven (za tick glavnega časa)
     ZALOGA_SESS._single = oneActive ? (sloActive ? 'slo' : 'rs') : null;
@@ -19357,7 +19368,7 @@ async function vracilaHistoryDelete(filename) {
     secs = Math.max(0, Math.floor(secs));
     const h = Math.floor(secs/3600), m = Math.floor((secs%3600)/60), s = secs%60;
     const pad = n => String(n).padStart(2,'0');
-    return h>0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+    return `${h}:${pad(m)}:${pad(s)}`;   // vedno H:MM:SS (npr. 0:00:00)
   }
 
   function renderTimerRow(market, data) {
@@ -19365,42 +19376,36 @@ async function vracilaHistoryDelete(filename) {
     if (!row) return;
     if (!data) { row.style.display = 'none'; return; }
     row.style.display = 'flex';
-    const s = pctParts(data.items) || { pctOk:0, pctNi:0 };
+    const s = pctParts(data.items) || { pctOk:0, pctNi:0, qPctOk:0, qPctNi:0 };
     const ok = document.getElementById('ztBar-'+market+'-ok');
     const ni = document.getElementById('ztBar-'+market+'-ni');
     const pct = document.getElementById('ztPct-'+market);
-    if (ok) ok.style.width = s.pctOk + '%';
-    if (ni) ni.style.width = s.pctNi + '%';
-    if (pct) pct.textContent = (s.pctOk === 100 ? '✓100%' : s.pctOk + '%');
+    if (ok) ok.style.width = s.qPctOk + '%';   // bar po kosih (delni manjko = rdeč košček)
+    if (ni) ni.style.width = s.qPctNi + '%';
+    if (pct) pct.textContent = (s.pctOk === 100 ? '✓100%' : s.pctOk + '%');  // % po postavkah
   }
 
-  // posodobi par (čas + pika) iz seje
-  function _applyTimer(data, timeEl, dotEl) {
+  // posodobi čas iz seje (brez pike — ONLINE je že v naslovu kartice)
+  function _applyTimer(data, timeEl) {
     if (!data || !timeEl) return;
     const startStr = data.pick_started_at, finStr = data.pick_finished_at;
-    if (!startStr) {
-      timeEl.textContent = '00:00';
-      if (dotEl) { dotEl.style.background = 'rgba(255,255,255,0.4)'; dotEl.style.animation = ''; }
-      return;
-    }
+    if (!startStr) { timeEl.textContent = '0:00:00'; return; }
     const startMs = new Date(startStr).getTime();
     if (finStr) {
       timeEl.textContent = '🏁 ' + _fmtDur((new Date(finStr).getTime() - startMs)/1000);
-      if (dotEl) { dotEl.style.background = '#bbf7d0'; dotEl.style.animation = ''; }
     } else {
       timeEl.textContent = _fmtDur((Date.now() - startMs)/1000);
-      if (dotEl) { dotEl.style.background = '#bbf7d0'; dotEl.style.animation = 'zalogaOnlinePulse 1.5s infinite'; }
     }
   }
 
   // živ tick — posodobi samo čase (vsako sekundo), brez mreže
   function tickHomeTimers() {
     // ločeni vrstici (oba trga)
-    _applyTimer(ZALOGA_SESS.slo, document.getElementById('ztTime-slo'), document.getElementById('ztDot-slo'));
-    _applyTimer(ZALOGA_SESS.rs, document.getElementById('ztTime-rs'), document.getElementById('ztDot-rs'));
+    _applyTimer(ZALOGA_SESS.slo, document.getElementById('ztTime-slo'));
+    _applyTimer(ZALOGA_SESS.rs, document.getElementById('ztTime-rs'));
     // glavni čas (en sam aktiven trg)
     if (ZALOGA_SESS._single) {
-      _applyTimer(ZALOGA_SESS[ZALOGA_SESS._single], document.getElementById('zbtTime'), document.getElementById('zbtDot'));
+      _applyTimer(ZALOGA_SESS[ZALOGA_SESS._single], document.getElementById('zbtTime'));
     }
   }
 
