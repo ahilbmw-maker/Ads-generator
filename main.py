@@ -1510,6 +1510,8 @@ async def zaloga_upload(file: UploadFile = File(...), market: str = "slo"):
             "market": _zaloga_market(market),
             "items": items,
             "extra_boxes": {},   # RS: dodatni boxi (viški) — { "99": [{sku, naziv, kos}], ... }
+            "pick_started_at": None,   # časovnica nabiranja — nova seja vedno začne pri 0
+            "pick_finished_at": None,
         }
         _zaloga_current_path(market).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         # Statistika skupin
@@ -1571,6 +1573,17 @@ async def zaloga_update_item(data: dict):
         items_all = sess.get("items", [])
         total = len(items_all)
         obdelanih = sum(1 for it in items_all if it.get("status") in ("ok", "ni"))
+        # varovalka: če je pick_started_at ostanek prejšnje seje (starejši od začetka te seje),
+        # ga zavrzi — sicer bi čas "skočil" na staro vrednost namesto 0:00:00
+        ps_cur = sess.get("pick_started_at")
+        sess_start = sess.get("started_at")
+        if ps_cur and sess_start:
+            try:
+                if _dt.fromisoformat(ps_cur) < _dt.fromisoformat(sess_start):
+                    sess["pick_started_at"] = None
+                    sess["pick_finished_at"] = None
+            except Exception:
+                pass
         # start: prva potrditev
         if obdelanih > 0 and not sess.get("pick_started_at"):
             sess["pick_started_at"] = sess["updated_at"]
