@@ -621,11 +621,21 @@ let CAKAJ_BOX = {};      // idx → izbrana št. boxa
 function getCakajoce() { return (SESSION && SESSION.cakajoce) ? SESSION.cakajoce : []; }
 function getPackingBoxes() { return (SESSION && SESSION.packing_boxes) ? SESSION.packing_boxes : {}; }
 
-function _nextBoxNum() {
-  // predlagaj naslednjo prosto številko boxa
+function _usedBoxNums() {
+  // VSE zasedene številke boxov: police (zaklenjene/box postavke) + čakajoče (packing_boxes)
+  const used = new Set();
   const pb = getPackingBoxes();
+  Object.keys(pb).forEach(b => used.add(String(b)));
+  (ITEMS || []).forEach(it => { if (it.box && it.status === 'ok') used.add(String(it.box)); });
+  return used;
+}
+
+function _nextBoxNum() {
+  // predlagaj naslednjo prosto številko — VIŠJO od vseh zasedenih (police + čakajoče),
+  // da se NIKOLI ne prekriva z boxom iz police
+  const used = _usedBoxNums();
   let max = 0;
-  Object.keys(pb).forEach(b => { const n = parseInt(b); if (!isNaN(n) && n > max) max = n; });
+  used.forEach(b => { const n = parseInt(b); if (!isNaN(n) && n > max) max = n; });
   return String(max + 1 || 1);
 }
 
@@ -704,7 +714,15 @@ function cakajoceSection() {
             <div class="cak-boxlbl">V kateri box?</div>
             <div class="cak-boxbtns">
               ${boxBtns}
-              <button class="cak-boxbtn cak-newbox${Object.keys(pboxes).every(b=>String(b)!==String(selBox))?' active':''}" onclick="cakajPickBox(${c.idx},'${jsStr(_nextBoxNum())}')">＋ Nov (${_nextBoxNum()})</button>
+              <button class="cak-boxbtn cak-newbox${!_usedBoxNums().has(String(selBox))?' active':''}" onclick="cakajPickBox(${c.idx},'${jsStr(_nextBoxNum())}')">＋ Nov (${_nextBoxNum()})</button>
+            </div>
+            <div class="cak-boxmanual">
+              <span class="cak-boxmanual-lbl">ali ročno:</span>
+              <input type="text" inputmode="numeric" class="cak-boxinput" value="${esc(String(selBox))}"
+                onclick="event.stopPropagation()"
+                onchange="cakajPickBox(${c.idx}, this.value.trim())"
+                onkeydown="if(event.key==='Enter'){this.blur();}"
+                placeholder="št. boxa">
             </div>
           </div>
           <button class="cak-save" onclick="cakajAssign(${c.idx})">✓ Dodaj ${curVal} kos v BOX ${esc(selBox)}</button>
@@ -763,6 +781,8 @@ function cakajStep(idx, delta, ostane) {
 }
 
 function cakajPickBox(idx, box) {
+  box = String(box || '').trim();
+  if (!box) return;   // prazen vnos → ignoriraj
   CAKAJ_BOX[idx] = box;
   render();
 }
