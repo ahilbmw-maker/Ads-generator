@@ -313,6 +313,8 @@ function updatePackingBtn() {
   });
   Object.keys(pboxes).forEach(b => lockedBoxes.add(String(b)));
   const show = isRS() && lockedBoxes.size > 0;
+  // na mobile gumb NIKOLI (prekriva se s 'Samo odprto' ipd.) — CSS ga skrije, a inline display bi to premagal
+  if (isMobile()) { btn.style.display = 'none'; return; }
   btn.style.display = show ? 'inline-flex' : 'none';
   if (show) btn.textContent = `📄 Packing lista (${lockedBoxes.size})`;
 }
@@ -1005,7 +1007,7 @@ function progBarSegments(s) {
 }
 
 // ── Sidebar ──
-let SIDEBAR_TAB = 'opombe';  // RS aktivni tab
+let SIDEBAR_TAB = 'manjko';  // RS aktivni tab (Opombe odstranjen)
 
 function mankoItemHtml(it) {
   const missingQty = it.status === 'ni' ? it.qty : (it.qty - it.picked);
@@ -1098,16 +1100,15 @@ function renderSidebar() {
       </div>`;
   }
 
-  // RS — tabi Opombe / Manjko / Boxi
+  // RS — tabi Manjko / Boxi (Opombe odstranjen)
   let tabContent;
-  if (SIDEBAR_TAB === 'opombe') {
-    tabContent = opombe.length ? opombe.map(opombaItemHtml).join('') : '<div class="manko-empty">Ni opomb.</div>';
-  } else if (SIDEBAR_TAB === 'manjko') {
+  if (SIDEBAR_TAB === 'boxi') {
+    tabContent = boxiHtml();
+  } else {
+    // privzeto Manjko (tudi če bi SIDEBAR_TAB ostal star 'opombe')
     tabContent = manko.length
       ? `<button class="manko-copy-all manko-copy-all-rs" onclick="copyAllManko(this)" title="Kopiraj vse manjkajoče (SKU + količina)">⎘ Kopiraj vse</button>` + manko.map(mankoItemHtml).join('')
       : '<div class="manko-empty">Ni manjka 🎉</div>';
-  } else {
-    tabContent = boxiHtml();
   }
 
   return `
@@ -1115,11 +1116,10 @@ function renderSidebar() {
       ${statCard}
       <div class="side-card side-card-tabs">
         <div class="side-tabs">
-          <button class="side-tab side-tab-opombe ${SIDEBAR_TAB==='opombe'?'active':''}" onclick="setSidebarTab('opombe')">📝 Opombe ${opombe.length?`<span class="st-badge st-blue">${opombe.length}</span>`:''}</button>
-          <button class="side-tab side-tab-manjko ${SIDEBAR_TAB==='manjko'?'active':''}" onclick="setSidebarTab('manjko')">⚠️ Manjko ${manko.length?`<span class="st-badge st-red">${manko.length}</span>`:''}</button>
+          <button class="side-tab side-tab-manjko ${SIDEBAR_TAB!=='boxi'?'active':''}" onclick="setSidebarTab('manjko')">⚠️ Manjko ${manko.length?`<span class="st-badge st-red">${manko.length}</span>`:''}</button>
           <button class="side-tab side-tab-boxi ${SIDEBAR_TAB==='boxi'?'active':''}" onclick="setSidebarTab('boxi')">📦 Boxi</button>
         </div>
-        <div class="side-tab-body side-tab-${SIDEBAR_TAB}">${tabContent}</div>
+        <div class="side-tab-body side-tab-${SIDEBAR_TAB==='boxi'?'boxi':'manjko'}">${tabContent}</div>
       </div>
     </div>`;
 }
@@ -1272,6 +1272,11 @@ function updateMobileBoxBar() {
   host.innerHTML = shelfBoxBar(group, items, true);  // true = mobilna varianta (brez label)
   host.style.display = 'block';
   document.body.classList.add('has-boxbar');
+  // izmeri višino box-bara → police se lepijo točno pod njim
+  requestAnimationFrame(() => {
+    const h = Math.round(host.getBoundingClientRect().height);
+    if (h > 0) document.documentElement.style.setProperty('--boxbar-h', h + 'px');
+  });
 }
 
 // ── Spremeni količino ──
