@@ -281,6 +281,8 @@ function render() {
   });
   // RS: sekcija dodatnih boxov (viški) — pod zadnjo polico
   if (isRS()) html += extraBoxesSection();
+  // RS: sekcija "Čakajoče" (velike postavke za razdelitev) — čisto na koncu
+  if (isRS()) html += cakajoceSection();
   // filter aktiven in vse police dokončane → sporočilo
   if (onlyOpen && hiddenDone > 0 && !html.includes('class="shelf ')) {
     html += `<div class="empty-state"><div class="icon">✓</div>Vse police so dokončane!<br><span style="font-size:13px;color:var(--text-dim)">${hiddenDone} dokončanih skritih — klikni "Prikaži vse"</span></div>`;
@@ -590,6 +592,259 @@ function extraBoxesSection() {
     </div>`;
 }
 
+// ════════════════════════════════════════════════════════════════
+//  ČAKAJOČE — velike postavke za razdelitev v več packing boxov (carina)
+// ════════════════════════════════════════════════════════════════
+let CAKAJ_OPEN = null;   // idx odprte (razširjene) postavke
+let CAKAJ_KOS = {};      // idx → trenutna vrednost sliderja
+let CAKAJ_BOX = {};      // idx → izbrana št. boxa
+
+function getCakajoce() { return (SESSION && SESSION.cakajoce) ? SESSION.cakajoce : []; }
+function getPackingBoxes() { return (SESSION && SESSION.packing_boxes) ? SESSION.packing_boxes : {}; }
+
+function _nextBoxNum() {
+  // predlagaj naslednjo prosto številko boxa
+  const pb = getPackingBoxes();
+  let max = 0;
+  Object.keys(pb).forEach(b => { const n = parseInt(b); if (!isNaN(n) && n > max) max = n; });
+  return String(max + 1 || 1);
+}
+
+function cakajoceSection() {
+  const list = getCakajoce();
+  const pboxes = getPackingBoxes();
+  if (!list.length) return '';   // skrito dokler ni vsaj 1
+
+  const rows = list.map(c => {
+    const need = c.qty || 0;
+    const assigned = c.assigned || 0;
+    const ostane = Math.max(0, need - assigned);
+    const isOpen = CAKAJ_OPEN === c.idx;
+    const isDone = c.done || ostane === 0;
+    const boxCount = Object.keys(pboxes).filter(b => pboxes[b].some(e => e.sku === c.sku)).length;
+
+    if (!isOpen) {
+      // DROBNA vrstica (zaprta)
+      return `
+        <div class="cak-row" onclick="cakajToggle(${c.idx})">
+          <span class="cak-chev">▶</span>
+          <span class="cak-sku">${esc(c.sku)}</span>
+          <span class="cak-naziv">${esc(c.naziv)}</span>
+          ${isDone
+            ? `<span class="cak-done">✓ razdeljeno</span>`
+            : `<span class="cak-rem">še <b>${ostane}</b>/${need}</span>`}
+          <span class="cak-boxcount">${boxCount} box</span>
+        </div>`;
+    }
+
+    // RAZŠIRJENA vrstica (slider razdelilnik)
+    const cur = (CAKAJ_KOS[c.idx] != null) ? CAKAJ_KOS[c.idx] : Math.min(ostane, ostane);
+    const curVal = Math.max(0, Math.min(cur, ostane));
+    const selBox = CAKAJ_BOX[c.idx] || _nextBoxNum();
+    const pctFill = ostane ? Math.round(curVal / ostane * 100) : 0;
+    const poShran = Math.max(0, ostane - curVal);
+
+    // obstoječi boxi (gumbi za izbiro)
+    const boxBtns = Object.keys(pboxes).sort((a,b)=>String(a).localeCompare(String(b),'sl',{numeric:true})).map(b => {
+      const bItems = pboxes[b];
+      const bKos = bItems.reduce((s,e)=>s+(e.kos||0),0);
+      const active = String(selBox) === String(b);
+      return `<button class="cak-boxbtn${active?' active':''}" onclick="cakajPickBox(${c.idx},'${jsStr(b)}')">
+        <b>📦 BOX ${esc(b)}</b><small>${bKos} kos · ${bItems.length} izd.</small></button>`;
+    }).join('');
+
+    // že dodeljeni boxi te postavke
+    const myBoxes = Object.keys(pboxes).filter(b => pboxes[b].some(e => e.sku === c.sku))
+      .sort((a,b)=>String(a).localeCompare(String(b),'sl',{numeric:true}))
+      .map(b => {
+        const e = pboxes[b].find(x => x.sku === c.sku);
+        return `<span class="cak-chip">📦 BOX${esc(b)} · ${e.kos} <span class="cak-chip-x" onclick="cakajRemoveAssign(${c.idx},'${jsStr(b)}')" title="Odstrani">✕</span></span>`;
+      }).join('');
+
+    return `
+      <div class="cak-row-open">
+        <div class="cak-head" onclick="cakajToggle(${c.idx})">
+          <span class="cak-chev">▼</span>
+          <span class="cak-sku">${esc(c.sku)}</span>
+          <span class="cak-naziv">${esc(c.naziv)}</span>
+          <span class="cak-rem">še <b>${ostane}</b>/${need}</span>
+        </div>
+        <div class="cak-body">
+          ${ostane > 0 ? `
+          <div class="cak-slider" onpointerdown="cakajSliderDown(event,${c.idx},${ostane})">
+            <div class="cak-slider-fill" style="width:${pctFill}%"></div>
+            <div class="cak-slider-val"><b id="cakVal-${c.idx}">${curVal}</b> kosov v box</div>
+          </div>
+          <div class="cak-slider-meta"><span>0</span><span>ostane: <b>${poShran}</b></span><span>${ostane}</span></div>
+          <div class="cak-controls">
+            <button class="cak-pm" onclick="cakajStep(${c.idx},-1,${ostane})">−</button>
+            <button class="cak-pm" onclick="cakajStep(${c.idx},1,${ostane})">+</button>
+            <button class="cak-all" onclick="cakajStep(${c.idx},9999,${ostane})">Vse (${ostane})</button>
+          </div>
+          <div class="cak-boxrow">
+            <div class="cak-boxlbl">V kateri box?</div>
+            <div class="cak-boxbtns">
+              ${boxBtns}
+              <button class="cak-boxbtn cak-newbox${Object.keys(pboxes).every(b=>String(b)!==String(selBox))?' active':''}" onclick="cakajPickBox(${c.idx},'${jsStr(_nextBoxNum())}')">＋ Nov (${_nextBoxNum()})</button>
+            </div>
+          </div>
+          <button class="cak-save" onclick="cakajAssign(${c.idx})">✓ Dodaj ${curVal} kos v BOX ${esc(selBox)}</button>
+          ` : `<div class="cak-complete">✓ Vse razdeljeno (${need} kosov)</div>`}
+          ${myBoxes ? `<div class="cak-mychips">${myBoxes}</div>` : ''}
+          <button class="cak-return" onclick="cakajReturn(${c.idx})">↩ Vrni v polico</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  const totalBoxes = Object.keys(pboxes).length;
+
+  return `
+    <div class="cak-section">
+      <div class="cak-section-head">
+        <span>⏳</span>
+        <span class="cak-section-title">Čakajoče · razdelitev v bokse</span>
+        <span class="cak-section-count">${list.length}</span>
+      </div>
+      ${rows}
+      ${totalBoxes > 0 ? `<button class="cak-pdf" onclick="cakajPdf()">📄 Carinska packing lista (PDF) · ${totalBoxes} box${totalBoxes===1?'':'ov'}</button>` : ''}
+    </div>`;
+}
+
+async function prenesiVCakajoce(idx) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  if (!confirm(`Prenesti "${it.sku}" (${it.qty} kos) v čakajoče za razdelitev v bokse?\nPostavka bo odstranjena iz police.`)) return;
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'transfer', idx })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      SESSION.cakajoce = d.cakajoce;
+      SESSION.packing_boxes = d.packing_boxes;
+      // odstrani iz lokalnega ITEMS
+      ITEMS = ITEMS.filter(x => x.idx !== idx);
+      CAKAJ_OPEN = idx;  // odpri jo takoj
+      render();
+    } else { alert(d.error || 'Napaka'); }
+  } catch(e) { alert('Napaka pri prenosu'); }
+}
+
+function cakajToggle(idx) {
+  CAKAJ_OPEN = (CAKAJ_OPEN === idx) ? null : idx;
+  render();
+}
+
+function cakajStep(idx, delta, ostane) {
+  let v = (CAKAJ_KOS[idx] != null) ? CAKAJ_KOS[idx] : ostane;
+  if (delta === 9999) v = ostane;
+  else v = Math.max(0, Math.min(ostane, v + delta));
+  CAKAJ_KOS[idx] = v;
+  render();
+}
+
+function cakajPickBox(idx, box) {
+  CAKAJ_BOX[idx] = box;
+  render();
+}
+
+// slider drag (pointer)
+function cakajSliderDown(ev, idx, ostane) {
+  ev.preventDefault();
+  const track = ev.currentTarget;
+  const setFromX = (clientX) => {
+    const r = track.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    CAKAJ_KOS[idx] = Math.round(ratio * ostane);
+    // posodobi samo prikaz med vlečenjem (brez polnega renderja za gladkost)
+    const fill = track.querySelector('.cak-slider-fill');
+    const val = document.getElementById('cakVal-' + idx);
+    if (fill) fill.style.width = Math.round(ratio*100) + '%';
+    if (val) val.textContent = CAKAJ_KOS[idx];
+  };
+  setFromX(ev.clientX);
+  const move = (e) => setFromX(e.clientX);
+  const up = () => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    render();  // poln render ob koncu (osveži "ostane", gumb)
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+}
+
+async function cakajAssign(idx) {
+  const c = getCakajoce().find(x => x.idx === idx);
+  if (!c) return;
+  const ostane = Math.max(0, (c.qty||0) - (c.assigned||0));
+  const kos = (CAKAJ_KOS[idx] != null) ? CAKAJ_KOS[idx] : ostane;
+  if (kos <= 0) { alert('Izberi količino'); return; }
+  const box = CAKAJ_BOX[idx] || _nextBoxNum();
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'assign', idx, box, sku: c.sku, naziv: c.naziv, kos })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      SESSION.cakajoce = d.cakajoce;
+      SESSION.packing_boxes = d.packing_boxes;
+      delete CAKAJ_KOS[idx];   // reset slider
+      delete CAKAJ_BOX[idx];
+      render();
+    } else { alert(d.error || 'Napaka'); }
+  } catch(e) { alert('Napaka pri shranjevanju'); }
+}
+
+async function cakajRemoveAssign(idx, box) {
+  const c = getCakajoce().find(x => x.idx === idx);
+  if (!c) return;
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'remove_assign', idx, box, sku: c.sku })
+    });
+    const d = await r.json();
+    if (d.ok) { SESSION.cakajoce = d.cakajoce; SESSION.packing_boxes = d.packing_boxes; render(); }
+  } catch(e) {}
+}
+
+async function cakajReturn(idx) {
+  if (!confirm('Vrniti postavko nazaj v polico? Vse dodelitve v bokse za to postavko bodo odstranjene.')) return;
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'return', idx })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      SESSION.cakajoce = d.cakajoce;
+      SESSION.packing_boxes = d.packing_boxes;
+      if (CAKAJ_OPEN === idx) CAKAJ_OPEN = null;
+      await loadSession();  // ponovno naloži, da se postavka vrne v ITEMS
+      render();
+    }
+  } catch(e) {}
+}
+
+function cakajPdf() {
+  // prenesi PDF (POST → blob)
+  fetch('/zaloga-packing-pdf', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ market: MARKET })
+  }).then(r => {
+    if (!r.ok) return r.json().then(e => { throw new Error(e.error||'Napaka'); });
+    return r.blob();
+  }).then(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'packing_lista.pdf';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }).catch(e => alert(e.message || 'Napaka pri PDF'));
+}
+
 function itemRow(it) {
   const cls = it.status === 'ok' ? 'ok' : it.status === 'ni' ? 'ni' : '';
   const mismatch = it.picked !== it.qty ? 'qty-mismatch' : '';
@@ -617,11 +872,7 @@ function itemRow(it) {
   } else if (rs) {
     opombaRow = `
       <div class="item-opomba">
-        <div class="iop-prefix">📝 Dodatni box</div>
-        <input type="text" class="iop-input" value="${esc(it.opomba || '')}" placeholder="npr. 2 kos"
-          onclick="event.stopPropagation()" onblur="commitOpomba(${it.idx}, this.value, this)"
-          onkeydown="if(event.key==='Enter')openBoxDialog(${it.idx})">
-        <button class="iop-tobox" onclick="event.stopPropagation();openBoxDialog(${it.idx})" title="Dodaj v dodatni box">⤓ V box</button>
+        <button class="iop-cakaj" onclick="event.stopPropagation();prenesiVCakajoce(${it.idx})" title="Prenesi v čakajoče (razdelitev v več boxov)">⏳ Prenesi v čakajoče</button>
       </div>`;
   }
 
