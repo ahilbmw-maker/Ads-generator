@@ -2549,19 +2549,26 @@ async def call_claude(prompt: str, model: str, tools=None, max_tokens: int = 400
     if tools:
         kwargs["tools"] = tools
 
-    for attempt in range(3):
+    for attempt in range(4):
         try:
             msg = await loop.run_in_executor(None, lambda: client.messages.create(**kwargs))
             return "".join(b.text for b in msg.content if hasattr(b, "text"))
         except anthropic.RateLimitError:
-            if attempt < 2:
+            if attempt < 3:
                 wait = (attempt + 1) * 20
-                print(f"  Rate limit, waiting {wait}s...")
+                print(f"  Rate limit (429), waiting {wait}s...")
                 await asyncio.sleep(wait)
             else:
                 raise
         except Exception as e:
-            raise
+            # 529 Overloaded = Anthropic preobremenjen → poskusi znova z backoff
+            is_529 = '529' in str(e) or 'overloaded' in str(e).lower()
+            if is_529 and attempt < 3:
+                wait = (attempt + 1) * 4   # 4s, 8s, 12s
+                print(f"  Overloaded (529), waiting {wait}s... (poskus {attempt+1}/4)")
+                await asyncio.sleep(wait)
+            else:
+                raise
     return ""
 
 
