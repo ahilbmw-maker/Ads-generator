@@ -39,7 +39,6 @@
     font-size: 14px;
     line-height: 1.45;
     -webkit-font-smoothing: antialiased;
-    overflow-x: clip;
     max-width: 100%;
   }
   body {
@@ -434,7 +433,7 @@
     .shelf { border-radius: 10px; }
     .shelf-head {
       padding: 11px 13px; gap: 9px; flex-wrap: nowrap;
-      border-radius: 10px; overflow: hidden;
+      border-radius: 10px;
     }
     .shelf.open .shelf-head { border-radius: 10px 10px 0 0; }
     .shelf:not(.open) .shelf-head { border-radius: 10px; }
@@ -442,6 +441,7 @@
        — polni barvi z ~40% prosojnostjo: bolj vidno kot pastelni -bg, besedilo ostane berljivo */
     .shelf-head-fill {
       display: block; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+      border-radius: inherit; overflow: hidden;   /* ozadje sledi zaokroženju glave (nadomesti overflow na .shelf-head) */
       --fill-ok-col: color-mix(in srgb, var(--ok) 40%, transparent);
       --fill-ni-col: color-mix(in srgb, var(--ni) 40%, transparent);
       background:
@@ -941,6 +941,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260602AJ"></script>
+<script src="/static/zaloga.js?v=20260602AK"></script>
 </body>
 </html>
