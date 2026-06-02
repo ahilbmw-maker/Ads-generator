@@ -301,17 +301,20 @@ function render() {
   updatePackingBtn();    // zgornji gumb "Packing lista" (samo RS + ko obstajajo boxi)
 }
 
-// prikaži/skrij zgornji gumb za carinski PDF (samo RS in ko obstaja vsaj 1 packing box)
+// prikaži/skrij zgornji gumb za carinski PDF (RS + ko obstaja kakšen box: zaklenjene postavke ALI razdeljeni)
 function updatePackingBtn() {
   const btn = document.getElementById('packingPdfBtn');
   if (!btn) return;
-  const boxes = getPackingBoxes();
-  const show = isRS() && Object.keys(boxes).length > 0;
+  const pboxes = getPackingBoxes();
+  // boxi iz polic (zaklenjene postavke z box oznako)
+  const lockedBoxes = new Set();
+  (ITEMS || []).forEach(it => {
+    if (it.box && it.status === 'ok') lockedBoxes.add(String(it.box));
+  });
+  Object.keys(pboxes).forEach(b => lockedBoxes.add(String(b)));
+  const show = isRS() && lockedBoxes.size > 0;
   btn.style.display = show ? 'inline-flex' : 'none';
-  if (show) {
-    const n = Object.keys(boxes).length;
-    btn.textContent = `📄 Packing lista (${n})`;
-  }
+  if (show) btn.textContent = `📄 Packing lista (${lockedBoxes.size})`;
 }
 
 // ── RS: zbir zasedenih box številk (1..100) ──
