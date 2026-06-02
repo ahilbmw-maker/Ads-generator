@@ -259,7 +259,7 @@ function render() {
     html += `
       <div class="shelf ${isOpen ? 'open' : ''}${isDone ? ' shelf-done' : ''}" id="shelf-${cssId(g)}">
         <div class="shelf-head" onclick="toggleShelf('${jsStr(g)}')">
-          <span class="shelf-head-fill" aria-hidden="true" style="--fill-ok:${stat.pctOk}%;--fill-ni:${stat.pctOk + stat.pctNi}%"></span>
+          <span class="shelf-head-fill" aria-hidden="true" style="--fill-ok:${stat.qPctOk}%;--fill-ni:${stat.qPctOk + stat.qPctNi}%"></span>
           <span class="shelf-chevron">▶</span>
           <span class="shelf-name">${esc(g)}</span>
           <span class="shelf-count">${items.length} postavk</span>
@@ -565,7 +565,8 @@ function extraBoxesSection() {
     const totalKos = items.reduce((s,e)=>s+(e.kos||0),0);
     const lines = items.map(e => `
       <div class="ebx-line">
-        <span class="ebx-line-sku" onclick="copySkuFromManko(this,'${esc(e.sku)}')" title="Kopiraj SKU" style="cursor:pointer">${esc(e.sku)} <span class="mpoz-copy-icon">⎘</span></span>
+        <span class="ebx-line-sku">${esc(e.sku)}</span>
+        <button class="ebx-copy-btn" onclick="copySkuFromManko(this,'${esc(e.sku)}')" title="Kopiraj kodo">📋 Kopiraj</button>
         <span class="ebx-line-kos">× ${e.kos}</span>
         <button class="ebx-line-del" onclick="removeFromExtraBox('${jsStr(b)}','${jsStr(e.sku)}')" title="Odstrani">✕</button>
       </div>`).join('');
@@ -695,12 +696,27 @@ function groupStat(items) {
   const ni = items.filter(it => it.status === 'ni').length;
   const todo = total - ok - ni;
   const done = ok + ni;
-  // odstotki (zaokroženi tako da vsota = 100)
+  // odstotki po POSTAVKAH (zaokroženi tako da vsota = 100)
   const pctOk = total ? Math.round(ok / total * 100) : 0;
   const pctNi = total ? Math.round(ni / total * 100) : 0;
   const pctTodo = total ? (100 - pctOk - pctNi) : 0;
   const pct = total ? Math.round(done / total * 100) : 0;  // skupno obdelano (compat)
-  return { total, done, ok, ni, todo, pct, pctOk, pctNi, pctTodo };
+
+  // odstotki po KOSIH (za natančnejši graf — delni manjko se vidi kot rdeč košček)
+  let qNeed = 0, qOk = 0, qMiss = 0, qTodo = 0;
+  items.forEach(it => {
+    const q = it.qty || 0;
+    qNeed += q;
+    if (it.status === 'ok') { qOk += it.picked; qMiss += Math.max(0, q - it.picked); }
+    else if (it.status === 'ni') { qMiss += q; }
+    else { qTodo += q; }
+  });
+  const qPctOk = qNeed ? Math.round(qOk / qNeed * 100) : 0;
+  const qPctNi = qNeed ? Math.round(qMiss / qNeed * 100) : 0;
+  const qPctTodo = qNeed ? Math.max(0, 100 - qPctOk - qPctNi) : 0;
+
+  return { total, done, ok, ni, todo, pct, pctOk, pctNi, pctTodo,
+           qNeed, qOk, qMiss, qTodo, qPctOk, qPctNi, qPctTodo };
 }
 
 // ── Tekstovni razrez (npr. "90% nabrano · 5% ni najdeno · 5% še nabirajo") ──
@@ -713,12 +729,12 @@ function statBreakdownText(s) {
   return parts.join(' · ');
 }
 
-// ── Segmentiran bar (zeleno / rdeče / sivo) ──
+// ── Segmentiran bar (zeleno / rdeče / sivo) — po KOSIH (delni manjko = rdeč košček) ──
 function progBarSegments(s) {
   return `
-    <div class="prog-seg prog-seg-ok" style="width:${s.pctOk}%"></div>
-    <div class="prog-seg prog-seg-ni" style="width:${s.pctNi}%"></div>
-    <div class="prog-seg prog-seg-todo" style="width:${s.pctTodo}%"></div>`;
+    <div class="prog-seg prog-seg-ok" style="width:${s.qPctOk}%"></div>
+    <div class="prog-seg prog-seg-ni" style="width:${s.qPctNi}%"></div>
+    <div class="prog-seg prog-seg-todo" style="width:${s.qPctTodo}%"></div>`;
 }
 
 // ── Sidebar ──
@@ -777,6 +793,12 @@ function renderSidebar() {
   const totalDone = totalOk + totalNi;
   const totalQtyNeed = ITEMS.reduce((s,it) => s + it.qty, 0);
   const totalQtyPicked = ITEMS.filter(it=>it.status==='ok').reduce((s,it) => s + it.picked, 0);
+  // manjkajoči KOSI: "ni" → cela količina; "ok" z delnim primanjkljajem → razlika
+  const totalQtyMissing = ITEMS.reduce((s,it) => {
+    if (it.status === 'ni') return s + it.qty;
+    if (it.status === 'ok' && it.picked < it.qty) return s + (it.qty - it.picked);
+    return s;
+  }, 0);
 
   const statCard = `
     <div class="side-card">
@@ -785,7 +807,8 @@ function renderSidebar() {
         <div class="stat-row"><span class="lbl">Vseh postavk</span><span class="val">${ITEMS.length}</span></div>
         <div class="stat-row"><span class="lbl">Obdelanih</span><span class="val">${totalDone}</span></div>
         <div class="stat-row"><span class="lbl">Nabrano (OK)</span><span class="val ok">${totalOk}</span></div>
-        <div class="stat-row"><span class="lbl">Manjka (NI)</span><span class="val ni">${totalNi}</span></div>
+        <div class="stat-row"><span class="lbl">Manjka (postavk)</span><span class="val ni">${totalNi}</span></div>
+        <div class="stat-row"><span class="lbl">Manjka (kosov)</span><span class="val ni">${totalQtyMissing}</span></div>
         <div class="stat-row" style="border-top:1px solid var(--border);padding-top:10px;margin-top:2px">
           <span class="lbl">Kosov nabrano</span><span class="val">${totalQtyPicked} / ${totalQtyNeed}</span></div>
       </div>
@@ -869,7 +892,7 @@ function _fmtDur(secs) {
   const m = Math.floor((secs % 3600) / 60);
   const s = secs % 60;
   const pad = n => String(n).padStart(2, '0');
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  return `${h}:${pad(m)}:${pad(s)}`;   // vedno H:MM:SS (npr. 0:00:00)
 }
 
 function updatePickTimer() {
@@ -1077,11 +1100,11 @@ function refreshShelfProgress(group) {
   const pct = shelf.querySelector('.shelf-prog-pct');
   if (bar) bar.innerHTML = progBarSegments(stat);
   if (pct) { pct.textContent = (isDone ? '✓ ' : '') + stat.pctOk + '%'; pct.style.color = 'var(--text)'; }
-  // mobilno obarvano ozadje glave (predlog 3) — posodobi sproti ob kliku ✓/✗
+  // mobilno obarvano ozadje glave (predlog 3) — posodobi sproti ob kliku ✓/✗ (po KOSIH)
   const fill = shelf.querySelector('.shelf-head-fill');
   if (fill) {
-    fill.style.setProperty('--fill-ok', stat.pctOk + '%');
-    fill.style.setProperty('--fill-ni', (stat.pctOk + stat.pctNi) + '%');
+    fill.style.setProperty('--fill-ok', stat.qPctOk + '%');
+    fill.style.setProperty('--fill-ni', (stat.qPctOk + stat.qPctNi) + '%');
   }
 }
 
