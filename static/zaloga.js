@@ -711,6 +711,7 @@ function cakajoceSection() {
   const list = getCakajoce();
   const pboxes = getPackingBoxes();
   if (!list.length) return '';   // skrito dokler ni vsaj 1
+  const onlyOpen = getDoneFilter();
 
   const rows = list.map(c => {
     const need = c.qty || 0;
@@ -720,10 +721,13 @@ function cakajoceSection() {
     const isDone = c.done || ostane === 0;
     const boxCount = Object.keys(pboxes).filter(b => pboxes[b].some(e => e.sku === c.sku)).length;
 
+    // filter "Samo odprto": skrij zaključene (razdeljene) čakajoče — razen če so odprte
+    if (onlyOpen && isDone && !isOpen) return '';
+
     if (!isOpen) {
-      // DROBNA vrstica (zaprta)
+      // DROBNA vrstica (zaprta) — done obarvana svetlo zeleno
       return `
-        <div class="cak-row" onclick="cakajToggle(${c.idx})">
+        <div class="cak-row${isDone ? ' cak-row-done' : ''}" onclick="cakajToggle(${c.idx})">
           <span class="cak-chev">▶</span>
           <span class="cak-sku">${esc(c.sku)}</span>
           <span class="cak-naziv">${esc(c.naziv)}</span>
@@ -1247,8 +1251,21 @@ function printHsplus() {
   w.document.close();
 }
 
+// Je postavka v manjku? Manjko = ni-postavka ali ok z delnim manjkom.
+// IZJEMA: če je HS PLUS in dobava (hsplus_qty) pokrije CELOTEN manjko → ni več manjko (danes pride).
+function _isManko(it) {
+  let manjka = 0;
+  if (it.status === 'ni') manjka = it.qty || 0;
+  else if (it.status === 'ok' && it.picked < it.qty) manjka = it.qty - it.picked;
+  else return false;
+  if (manjka <= 0) return false;
+  // HS PLUS pokritje: če dobava pokrije ves manjko, odstrani iz Manjko
+  if (it.hsplus && (it.hsplus_qty != null) && it.hsplus_qty >= manjka) return false;
+  return true;
+}
+
 function renderSidebar() {
-  const manko = ITEMS.filter(it => it.status === 'ni' || (it.status === 'ok' && it.picked < it.qty));
+  const manko = ITEMS.filter(_isManko);
   const opombe = ITEMS.filter(it => it.opomba && it.opomba.trim());
   const totalOk = ITEMS.filter(it => it.status === 'ok').length;
   const totalNi = ITEMS.filter(it => it.status === 'ni').length;
@@ -1867,7 +1884,7 @@ async function copySkuFromManko(el, sku) {
 
 // Kopiraj VSE manjkajoče postavke: vsaka v svojo vrstico "SKU količinx"
 async function copyAllManko(btn) {
-  const manko = ITEMS.filter(it => it.status === 'ni' || (it.status === 'ok' && it.picked < it.qty));
+  const manko = ITEMS.filter(_isManko);
   if (!manko.length) { toast('Ni manjkajočih postavk'); return; }
   const text = manko.map(it => {
     const missingQty = it.status === 'ni' ? it.qty : (it.qty - it.picked);
