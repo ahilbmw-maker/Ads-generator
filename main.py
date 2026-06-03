@@ -1661,6 +1661,9 @@ async def zaloga_import_ikonka(file: UploadFile = File(...), market: str = "rs")
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e)}
+
+
+@app.get("/zaloga-current")
 async def zaloga_current_get(market: str = "slo"):
     """Vrne aktivno sejo nabiranja za trg (vsi nabiralci berejo isto)."""
     try:
