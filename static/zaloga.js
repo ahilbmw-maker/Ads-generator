@@ -741,14 +741,16 @@ function cakajoceSection() {
     const pctFill = ostane ? Math.round(curVal / ostane * 100) : 0;
     const poShran = Math.max(0, ostane - curVal);
 
-    // obstoječi boxi (gumbi za izbiro)
-    const boxBtns = Object.keys(pboxes).sort((a,b)=>String(a).localeCompare(String(b),'sl',{numeric:true})).map(b => {
-      const bItems = pboxes[b];
-      const bKos = bItems.reduce((s,e)=>s+(e.kos||0),0);
-      const active = String(selBox) === String(b);
-      return `<button class="cak-boxbtn${active?' active':''}" onclick="cakajPickBox(${c.idx},'${jsStr(b)}')">
-        <b>📦 BOX ${esc(b)}</b><small>${bKos} kos · ${bItems.length} izd.</small></button>`;
-    }).join('');
+    // obstoječi boxi za izbiro: VEDNO dropdown (tudi pri 1-3, da ne zavzame vrstic na mobile)
+    const boxKeys = Object.keys(pboxes).sort((a,b)=>String(a).localeCompare(String(b),'sl',{numeric:true}));
+    const boxDropdown = boxKeys.length ? `
+      <select class="cak-boxselect" onclick="event.stopPropagation()" onchange="cakajPickBox(${c.idx}, this.value)">
+        <option value="" ${!boxKeys.includes(String(selBox))?'selected':''} disabled>Izberi obstoječi box…</option>
+        ${boxKeys.map(b => {
+          const bKos = pboxes[b].reduce((s,e)=>s+(e.kos||0),0);
+          return `<option value="${esc(b)}" ${String(selBox)===String(b)?'selected':''}>📦 BOX ${esc(b)} · ${bKos} kos · ${pboxes[b].length} izd.</option>`;
+        }).join('')}
+      </select>` : '';
 
     // že dodeljeni boxi te postavke
     const myBoxes = Object.keys(pboxes).filter(b => pboxes[b].some(e => e.sku === c.sku))
@@ -781,7 +783,7 @@ function cakajoceSection() {
           <div class="cak-boxrow">
             <div class="cak-boxlbl">V kateri box?</div>
             <div class="cak-boxbtns">
-              ${boxBtns}
+              ${boxDropdown}
               <button class="cak-boxbtn cak-newbox${!_usedBoxNums().has(String(selBox))?' active':''}" onclick="cakajPickBox(${c.idx},'${jsStr(_nextBoxNum())}')">＋ Nov (${_nextBoxNum()})</button>
             </div>
             <div class="cak-boxmanual">
@@ -1150,11 +1152,11 @@ function mankoItemHtml(it) {
   return `
     <div class="manko-item">
       <div class="top">
-        <span class="msku">${esc(it.sku)}</span>
+        <span class="msku" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Klikni za kopiranje SKU" style="cursor:pointer;user-select:none">${esc(it.sku)} <span class="mpoz-copy-icon">⎘</span></span>
         <span class="mqty">manjka ${missingQty}${it.status==='ni'?' (cela)':''}</span>
       </div>
       <div class="mnaziv" title="${esc(it.naziv)}">${esc(it.naziv)}</div>
-      <div class="mpoz-badge" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Klikni za kopiranje SKU" style="cursor:pointer;user-select:none">📍 ${esc(it.poz)} <span class="mpoz-copy-icon">⎘</span></div>
+      <div class="mpoz-badge mpoz-jump" onclick="jumpToItem(${it.idx})" title="Klikni za skok na postavko" style="cursor:pointer;user-select:none">📍 ${esc(it.poz)} <span class="mpoz-jump-icon">↗</span></div>
       <div class="mpoz-detail">potrebno ${it.qty} · nabrano ${it.status==='ni'?0:it.picked}</div>
     </div>`;
 }
@@ -1190,18 +1192,59 @@ function boxiHtml() {
     </div>`).join('');
 }
 
+function _hsplusManjko() {
+  // SKU-ji ki so HKRATI na HS PLUS seznamu (hsplus) IN v manjku.
+  // Manjko = ni-postavke (cela qty) + ok-postavke z delnim manjkom (qty - picked).
+  const out = [];
+  (ITEMS || []).forEach(it => {
+    if (!it.hsplus) return;
+    let manjka = 0;
+    if (it.status === 'ni') manjka = it.qty || 0;                       // cela postavka manjka
+    else if (it.status === 'ok' && it.picked < it.qty) manjka = it.qty - it.picked;  // delni manjko
+    else if (it.status === '' ) manjka = it.qty || 0;                   // še ne obdelano → rabimo vse
+    if (manjka > 0) out.push({ sku: it.sku, naziv: it.naziv, poz: it.poz, manjka });
+  });
+  out.sort((a,b) => (a.poz||'').localeCompare(b.poz||'', 'sl', {numeric:true}));
+  return out;
+}
+
 function hsplusHtml() {
-  // postavke označene s HS PLUS (pridejo danes — naj se ne označijo kot "ni zaloge")
-  const hs = ITEMS.filter(it => it.hsplus);
-  if (!hs.length) return '<div class="manko-empty">Ni HS PLUS izdelkov. Naloži HS PLUS seznam.</div>';
-  // sortiraj po poziciji
-  hs.sort((a,b) => (a.poz||'').localeCompare(b.poz||'', 'sl', {numeric:true}));
-  return `<div class="hsplus-hint">📦 Ti izdelki pridejo danes — ne označuj kot "ni zaloge".</div>` +
-    hs.map(it => `
+  const list = _hsplusManjko();
+  if (!list.length) return '<div class="manko-empty">Ni HS PLUS izdelkov v manjku.</div>';
+  return `
+    <div class="hsplus-hint">📦 Ti izdelki pridejo danes — pobrati je treba prikazano količino iz HS PLUS prihoda.</div>
+    <button class="hsplus-print-btn" onclick="printHsplus()">🖨️ Natisni seznam</button>
+    ${list.map(it => `
       <div class="box-line hsplus-line">
         <span class="box-line-sku" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Kopiraj SKU" style="cursor:pointer">${esc(it.sku)} <span class="mpoz-copy-icon">⎘</span></span>
-        <span class="box-line-poz">${esc(it.poz)}</span>
-      </div>`).join('');
+        <span class="hsplus-right"><span class="hsplus-qty">${it.manjka} kos</span><span class="box-line-poz">${esc(it.poz)}</span></span>
+      </div>`).join('')}`;
+}
+
+// Natisni HS PLUS seznam (SKU + količina + pozicija)
+function printHsplus() {
+  const list = _hsplusManjko();
+  if (!list.length) { alert('Ni HS PLUS izdelkov v manjku.'); return; }
+  const danes = new Date().toLocaleDateString('sl-SI');
+  const rows = list.map(it => `<tr><td>${esc(it.sku)}</td><td style="text-align:center;font-weight:700">${it.manjka}</td><td>${esc(it.poz)}</td></tr>`).join('');
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>HS PLUS seznam</title>
+    <style>
+      body{font-family:Arial,sans-serif;padding:24px;color:#111}
+      h1{font-size:20px;margin:0 0 4px}
+      .sub{color:#666;font-size:13px;margin-bottom:18px}
+      table{width:100%;border-collapse:collapse}
+      th,td{border:1px solid #ccc;padding:8px 10px;font-size:14px;text-align:left}
+      th{background:#f0f0f0;text-transform:uppercase;font-size:12px;letter-spacing:0.5px}
+      tr:nth-child(even) td{background:#fafafa}
+    </style></head><body>
+    <h1>📦 HS PLUS — seznam za pobrati</h1>
+    <div class="sub">${danes} · ${list.length} izdelkov · pobrati iz današnjega HS PLUS prihoda</div>
+    <table><thead><tr><th>SKU</th><th style="text-align:center">Količina</th><th>Pozicija</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <script>window.onload=function(){window.print();}<\/script>
+    </body></html>`);
+  w.document.close();
 }
 
 function renderSidebar() {
@@ -1233,7 +1276,7 @@ function renderSidebar() {
       </div>
     </div>`;
 
-  const hsCount = ITEMS.filter(it => it.hsplus).length;
+  const hsCount = _hsplusManjko().length;   // samo HS PLUS ki so v manjku
 
   if (!isRS()) {
     // SLO — tabi Manjko + HS PLUS (HS PLUS samo če obstaja kak označen)
@@ -1399,6 +1442,19 @@ function toggleShelf(g) {
   // osveži spodnji sticky box-bar (sam poskrbi za skritje na SLO/desktop)
   updateMobileBoxBar();
 
+  // UX mobile: ob ODPIRANJU police skoči na njen vrh (ker se stara zapre, layout se
+  // skrči in scroll bi sicer pristal na napačnem mestu — pogosto vrglo na dno).
+  if (willOpen && isMobile() && el) {
+    // počakaj na skrčenje stare police (layout se posodobi), nato izmeri in scrollaj
+    requestAnimationFrame(() => { requestAnimationFrame(() => {
+      const boxbarH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--boxbar-h')) || 0;
+      const r = el.getBoundingClientRect();
+      const y = window.scrollY + r.top - boxbarH - 8;   // glava police tik pod box-barom
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    }); });
+    return;
+  }
+
   // UX: ob ZAPIRANJU police — če je njena glava ušla nad vrh zaslona (ker se je
   // vsebina nad scrollom skrčila), jo prikaži nazaj, da ni treba ročno skrolati gor.
   if (!willOpen && el) {
@@ -1411,6 +1467,29 @@ function toggleShelf(g) {
       window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
     }
   }
+}
+
+// Skoči na postavko: odpri njeno polico (če zaprta) in scrollaj+osvetli kartico.
+function jumpToItem(idx) {
+  const it = (ITEMS || []).find(x => x.idx === idx);
+  if (!it) return;
+  const g = it.group;
+  // odpri polico če ni odprta
+  const expanded = getExpanded();
+  if (!expanded[g]) {
+    toggleShelf(g);   // odpre in re-renderira
+  }
+  // po renderju scrollaj do postavke + osvetli
+  setTimeout(() => {
+    const card = document.getElementById('item-' + idx);
+    if (!card) return;
+    const topOffset = isMobile() ? (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--boxbar-h')) || 70) : (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sticky-h')) || 0);
+    const r = card.getBoundingClientRect();
+    const y = window.scrollY + r.top - topOffset - 16;
+    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    card.classList.add('item-jump-flash');
+    setTimeout(() => card.classList.remove('item-jump-flash'), 1600);
+  }, 80);
 }
 
 // Ali smo na mobilnem (ozek zaslon) — usklajeno z @media (max-width: 768px)
