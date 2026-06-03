@@ -15194,7 +15194,24 @@ BADGE_STATE = BADGE_DIR / "state.json"
 BADGE_MODEL = "claude-sonnet-4-6"
 BADGE_TR_LOCALES = ["bg", "bs", "cs", "el", "hr", "hu", "it", "pl", "ro", "sk", "sr"]
 BADGE_EXCLUDE = {"de", "de-AT"}
-BADGE_DESC_MAX = 600
+BADGE_DESC_MAX = 900
+
+
+def _badge_kategorija(product_code):
+    """Določi kategorijo iz product_code za boljši kontekst značke.
+    - same številke (npr. 02187) → avto-moto
+    - KX* → Ikonka, prosti čas / dom / hobi
+    - drugo → brez specifičnega (mešano: elektronika ipd.)"""
+    pc = str(product_code or "").strip()
+    if not pc:
+        return ""
+    if pc[0].isdigit():
+        return ("Kontekst: ta izdelek je AVTOMOBILSKI / MOTO dodatek. "
+                "Besede kot 'vzglavnik' pomenijo naslon za glavo v avtu (ne postelje), "
+                "'držalo' je za avto ipd.")
+    if pc.upper().startswith("KX"):
+        return "Kontekst: ta izdelek je za prosti čas, dom ali hobi."
+    return ""
 
 
 def _badge_state():
@@ -15224,7 +15241,8 @@ def _badge_desc(lead, content):
     return d[:BADGE_DESC_MAX]
 
 
-def _badge_prompt_sl(title, desc):
+def _badge_prompt_sl(title, desc, kategorija=""):
+    kat = f"\n{kategorija}\n" if kategorija else ""
     return f"""Si copywriter za slovenski e-commerce. Napiši title_suffix značko za spodnji produkt.
 
 PRAVILA:
@@ -15233,8 +15251,9 @@ PRAVILA:
 - Jezik: slovenščina
 - Značka naj opiše ključno lastnost ali korist produkta
 - NE uporabljaj generičnih fraz kot "Hitra dostava", "Preverjena kvaliteta"
+- Upoštevaj kontekst izdelka (avto/dom/...) — ne prevajaj besed dobesedno če pomen ne ustreza
 - Primeri dobrih značk: 🛞 Popravilo v sili, ⚡ 3× hitreje polni, 🧲 Drži brez truda, 📺 Zabava zadaj
-
+{kat}
 Produkt:
 Naslov: {title}
 Opis: {desc}
@@ -15242,7 +15261,7 @@ Opis: {desc}
 Odgovori SAMO z značko, brez razlage. Npr: ⚡ Hitro polnjenje"""
 
 
-def _badge_prompt_tr(per_locale):
+def _badge_prompt_tr(per_locale, kategorija=""):
     bloki = []
     for loc in BADGE_TR_LOCALES:
         d = per_locale.get(loc)
@@ -15250,6 +15269,7 @@ def _badge_prompt_tr(per_locale):
             bloki.append(f"[{loc}] Naslov: {d['title']}\n     Opis: {d['desc']}")
     produkti = "\n".join(bloki)
     json_predloga = "{" + ", ".join(f'"{l}": "🔧 ..."' for l in BADGE_TR_LOCALES) + "}"
+    kat = f"\n{kategorija}\n" if kategorija else ""
     return f"""Si copywriter za e-commerce v več jezikih. Napiši title_suffix značko za spodnji produkt v vseh spodaj navedenih jezikih.
 
 PRAVILA:
@@ -15259,8 +15279,9 @@ PRAVILA:
 - sr (srbščina): OBVEZNO latinica, nikoli cirilica
 - bg (bolgarščina): cirilica
 - Značka naj opiše ključno lastnost ali korist produkta
+- Upoštevaj kontekst izdelka (avto/dom/...) — ne prevajaj dobesedno če pomen ne ustreza
 - NE uporabljaj generičnih fraz
-
+{kat}
 Produkt (isti produkt v 11 jezikih):
 {produkti}
 
@@ -15339,12 +15360,18 @@ async def badge_submit(data: dict):
             for i in range(limit):
                 r = rows[i]
                 desc = _badge_desc(r.get("lead", ""), r.get("content", ""))
+                kat = _badge_kategorija(r.get("product_code", ""))
                 requests.append({
                     "custom_id": f"sl-{i}",
                     "params": {"model": BADGE_MODEL, "max_tokens": 60,
-                               "messages": [{"role": "user", "content": _badge_prompt_sl(r.get("title",""), desc)}]},
+                               "messages": [{"role": "user", "content": _badge_prompt_sl(r.get("title",""), desc, kat)}]},
                 })
         else:
+            # TR CSV nima product_code → kategorijo dobimo iz SL CSV po istem indeksu
+            sl_codes = []
+            sl_src = BADGE_DIR / "input_sl.csv"
+            if sl_src.exists():
+                sl_codes = [r.get("product_code", "") for r in csv.DictReader(sl_src.open(encoding="utf-8"))]
             # grupiraj po indeksu prek locale
             from collections import defaultdict
             by = defaultdict(list)
@@ -15362,10 +15389,11 @@ async def badge_submit(data: dict):
                     if i < len(by[loc]):
                         rr = by[loc][i]
                         per[loc] = {"title": rr.get("title",""), "desc": _badge_desc(rr.get("lead",""), rr.get("content",""))}
+                kat = _badge_kategorija(sl_codes[i]) if i < len(sl_codes) else ""
                 requests.append({
                     "custom_id": f"tr-{i}",
                     "params": {"model": BADGE_MODEL, "max_tokens": 300,
-                               "messages": [{"role": "user", "content": _badge_prompt_tr(per)}]},
+                               "messages": [{"role": "user", "content": _badge_prompt_tr(per, kat)}]},
                 })
 
         if not requests:
