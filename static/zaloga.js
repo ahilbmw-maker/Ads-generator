@@ -19,9 +19,16 @@ function switchMarket(m) {
   try { localStorage.setItem(MARKET_KEY, m); } catch(e) {}
   document.getElementById('mtab-slo').classList.toggle('active', m === 'slo');
   document.getElementById('mtab-rs').classList.toggle('active', m === 'rs');
+  _toggleImportBtn();
   setExpanded({});  // počisti odprte zavihke ob preklopu
   lastUpdate = null;
   loadSession();
+}
+
+// Gumb "Uvoz dobavnice" je samo na RS trgu
+function _toggleImportBtn() {
+  const b = document.getElementById('importIkonkaBtn');
+  if (b) b.style.display = (MARKET === 'rs') ? 'inline-flex' : 'none';
 }
 
 // ── Ob nalaganju: označi shranjeni trg ──
@@ -30,6 +37,7 @@ function initMarketTab() {
   const rs = document.getElementById('mtab-rs');
   if (slo) slo.classList.toggle('active', MARKET === 'slo');
   if (rs) rs.classList.toggle('active', MARKET === 'rs');
+  _toggleImportBtn();
 }
 
 // ── Skupine ──
@@ -40,6 +48,7 @@ const GROUP_ORDER = (g) => {
   if (g === 'Pod Mizo') return [2, 1];
   if (g === 'Ikonka') return [2, 2];
   if (g === 'Amio') return [2, 3];
+  if (g === 'neznano') return [2, 4];
   if (g === 'Ni podatka') return [3, 0];
   return [2, g];
 };
@@ -188,7 +197,55 @@ document.getElementById('csvInput').addEventListener('change', async (e) => {
   e.target.value = '';
 });
 
-// ── Grupiraj postavke ──
+// ── Uvoz dobavnice (RS): doda police Ikonka/Amio/neznano + kol>1 v čakajoče ──
+document.getElementById('importInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  toast('⏳ Uvažam dobavnico...');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch(mq('/zaloga-import-ikonka'), { method: 'POST', body: fd });
+    const data = await r.json();
+    if (data.ok) {
+      const g = data.groups || {};
+      const gtxt = Object.keys(g).length ? ' (' + Object.entries(g).map(([k,v])=>`${k}: ${v}`).join(', ') + ')' : '';
+      toast(`✓ Uvoženo: ${data.added_police} na police${gtxt}, ${data.added_cakajoce} v čakajoče`);
+      await loadSession();
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(err) {
+    toast('✗ ' + err.message);
+  }
+  e.target.value = '';
+});
+
+// ── HS PLUS (oba trga): označi obstoječe postavke po SKU z vizualno značko ──
+// Pomen: izdelek pride danes (v sistemu je, fizično še ne) → nabiralec naj ne označi "ni zaloge".
+document.getElementById('hsplusInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  toast('⏳ Označujem HS PLUS...');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch(mq('/zaloga-hsplus-upload'), { method: 'POST', body: fd });
+    const data = await r.json();
+    if (data.ok) {
+      let t = `✓ HS PLUS: označenih ${data.matched} postavk`;
+      if (data.unmatched > 0) t += ` (${data.unmatched} SKU ni v seznamu)`;
+      toast(t);
+      await loadSession();
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(err) {
+    toast('✗ ' + err.message);
+  }
+  e.target.value = '';
+});
+
 function groupItems() {
   const groups = {};
   ITEMS.forEach(it => {
@@ -320,7 +377,8 @@ function updatePackingBtn() {
 }
 
 // ── RS: zbir zasedenih box številk (1..100) ──
-// Box je "zaseden", če ima vsaj eno zaklenjeno postavko ALI je dodatni box.
+// Box je "zaseden", če ima vsaj eno zaklenjeno postavko, je dodatni box,
+// ALI je uporabljen v čakajočih (packing_boxes) — vse sinhrono, da predlog ne trči.
 function usedBoxNumbers() {
   const used = new Set();
   (ITEMS || []).forEach(it => {
@@ -331,6 +389,12 @@ function usedBoxNumbers() {
   });
   const xb = getExtraBoxes();
   Object.keys(xb).forEach(b => {
+    const n = parseInt(String(b).trim(), 10);
+    if (!isNaN(n)) used.add(n);
+  });
+  // čakajoče (packing_boxes) — da police in čakajoče delijo isti prostor številk
+  const pb = (typeof getPackingBoxes === 'function') ? getPackingBoxes() : {};
+  Object.keys(pb || {}).forEach(b => {
     const n = parseInt(String(b).trim(), 10);
     if (!isNaN(n)) used.add(n);
   });
@@ -622,10 +686,14 @@ function getCakajoce() { return (SESSION && SESSION.cakajoce) ? SESSION.cakajoce
 function getPackingBoxes() { return (SESSION && SESSION.packing_boxes) ? SESSION.packing_boxes : {}; }
 
 function _usedBoxNums() {
-  // VSE zasedene številke boxov: police (zaklenjene/box postavke) + čakajoče (packing_boxes)
+  // VSE zasedene številke (police zaklenjene + viški + čakajoče) — isti vir kot usedBoxNumbers().
+  // Dodatno zajamemo še ok-postavke z box (tudi nezaklenjene), za predlog v čakajočih.
   const used = new Set();
-  const pb = getPackingBoxes();
-  Object.keys(pb).forEach(b => used.add(String(b)));
+  // baza: usedBoxNumbers() vrne števila (police locked + viški + packing_boxes)
+  if (typeof usedBoxNumbers === 'function') {
+    usedBoxNumbers().forEach(n => used.add(String(n)));
+  }
+  // ok-postavke z dodeljenim boxom (tudi če še niso zaklenjene)
   (ITEMS || []).forEach(it => { if (it.box && it.status === 'ok') used.add(String(it.box)); });
   return used;
 }
@@ -930,7 +998,7 @@ function itemRow(it) {
         <span class="poz">${esc(it.poz)}</span>
       </div>
       <div class="item-naziv-wrap">
-        <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}</span>
+        <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}${it.hsplus ? '<span class="tag-hsplus">📦 HS PLUS</span>' : ''}</span>
         ${boxInline}
       </div>
       <div class="item-bottom">
