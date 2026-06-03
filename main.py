@@ -15550,16 +15550,16 @@ _BADGE_HTML = r"""<!DOCTYPE html>
     <h2><span class="step-num">1</span> Naloži CSV</h2>
     <div class="row">
       <label class="lbl">SL CSV:</label>
-      <input type="file" id="fileSl" accept=".csv">
+      <input type="file" id="fileSL" accept=".csv">
       <button onclick="upload('sl')">Naloži SL</button>
     </div>
-    <div class="info" id="infoSl"></div>
+    <div class="info" id="infoSL"></div>
     <div class="row" style="margin-top:10px">
       <label class="lbl">Prevodi CSV:</label>
-      <input type="file" id="fileTr" accept=".csv">
+      <input type="file" id="fileTR" accept=".csv">
       <button onclick="upload('tr')">Naloži prevode</button>
     </div>
-    <div class="info" id="infoTr"></div>
+    <div class="info" id="infoTR"></div>
   </div>
 
   <div class="card">
@@ -15582,8 +15582,8 @@ _BADGE_HTML = r"""<!DOCTYPE html>
       <button class="sec" onclick="status('sl')">↻ Status SL</button>
       <button class="sec" onclick="status('tr')">↻ Status prevodi</button>
     </div>
-    <div class="info" id="infoStatusSl"></div>
-    <div class="info" id="infoStatusTr"></div>
+    <div class="info" id="infoStatusSL"></div>
+    <div class="info" id="infoStatusTR"></div>
     <div class="row" style="margin-top:12px">
       <button onclick="build('sl')">🔧 Sestavi SL NEW</button>
       <button onclick="build('tr')">🔧 Sestavi prevode NEW</button>
