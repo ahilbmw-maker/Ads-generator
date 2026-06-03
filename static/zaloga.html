@@ -877,6 +877,17 @@
   .cak-boxmanual-lbl { font-size: 12px; color: var(--text-faint); }
   .cak-boxinput { width: 110px; height: 38px; border: 2px solid var(--border2); border-radius: 9px; background: var(--panel); color: var(--text); font-family: inherit; font-size: 14px; font-weight: 700; text-align: center; padding: 0 10px; }
   .cak-boxinput:focus { outline: none; border-color: var(--accent); }
+  /* hitra razdelitev v več boxov */
+  .cak-bulk { margin-top: 12px; padding: 12px; background: var(--shelf-bg, #f0fdf4); border: 1px dashed var(--border2); border-radius: 10px; }
+  .cak-bulk-lbl { font-size: 13px; font-weight: 800; color: var(--text-dim); margin-bottom: 8px; }
+  .cak-bulk-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .cak-bulk-kos, .cak-bulk-start { width: 80px; height: 40px; border: 2px solid var(--border2); border-radius: 9px; background: var(--panel); color: var(--text); font-family: inherit; font-size: 15px; font-weight: 700; text-align: center; }
+  .cak-bulk-kos:focus, .cak-bulk-start:focus { outline: none; border-color: var(--accent); }
+  .cak-bulk-x { font-size: 16px; font-weight: 700; color: var(--text-faint); }
+  .cak-bulk-info { font-size: 13px; color: var(--text-dim); }
+  .cak-bulk-btn { height: 40px; padding: 0 18px; border: none; border-radius: 9px; background: #7c3aed; color: #fff; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .cak-bulk-btn:hover { filter: brightness(1.08); }
+  .cak-bulk-hint { font-size: 11px; color: var(--text-faint); margin-top: 6px; }
   .cak-save { width: 100%; height: 46px; border-radius: 10px; border: none; background: var(--ok); color: #fff; font-weight: 800; font-size: 14px; cursor: pointer; }
   .cak-save:hover { filter: brightness(1.05); }
   .cak-complete { text-align: center; padding: 12px; color: var(--ok); font-weight: 700; }
@@ -918,6 +929,7 @@
   .st-badge { font-size: 10px; padding: 1px 7px; border-radius: 20px; color: #fff; }
   .st-blue { background: #378ADD; }
   .st-red { background: var(--ni); }
+  .st-purple { background: #7c3aed; }
   .side-tab-body { padding: 13px; max-height: 60vh; overflow-y: auto; }
 
   /* Opomba item (modra) */
@@ -933,11 +945,18 @@
 
   /* Boxi tab */
   .box-group { border: 1px solid var(--ok-border); border-radius: 11px; padding: 10px 12px; margin-bottom: 9px; }
-  .box-group-head { font-weight: 800; font-size: 14px; color: var(--ok); margin-bottom: 6px; }
-  .box-group-count { font-size: 10px; background: var(--ok); color: #fff; padding: 1px 7px; border-radius: 20px; margin-left: 4px; }
+  .box-group-head { font-weight: 800; font-size: 14px; color: var(--ok); margin-bottom: 6px; border: 1px solid transparent; border-radius: 7px; padding: 3px 8px; display: inline-block; }
+  .box-group-count { font-size: 10px; background: rgba(0,0,0,0.18); color: inherit; padding: 1px 7px; border-radius: 20px; margin-left: 4px; }
   .box-line { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px; border-top: 1px solid var(--border); }
   .box-line-sku { font-weight: 700; }
   .box-line-poz { color: var(--text-dim); font-size: 11px; }
+  /* HS PLUS tab */
+  .side-tab-hsplus.active { color: #7c3aed; border-bottom-color: #7c3aed; }
+  .hsplus-hint { font-size: 11px; color: #6d28d9; background: #f3e8ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+  .hsplus-line { border-top-color: #ede9fe; }
+  /* barvni box badge (barva pride inline iz boxStyle) */
+  .item-box-badge { border: 1px solid; border-radius: 7px; padding: 3px 9px; font-weight: 800; font-size: 12px; }
+  .cak-chip { border: 1px solid; }
 </style>
 </head>
 <body>
@@ -1024,6 +1043,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260602AU"></script>
+<script src="/static/zaloga.js?v=20260602AW"></script>
 </body>
 </html>
