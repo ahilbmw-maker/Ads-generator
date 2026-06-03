@@ -15186,6 +15186,7 @@ async def shipping_debug():
 #  (batch ID, naloženi CSV) je na DATA_DIR (perzistenten disk).
 # ════════════════════════════════════════════════════════════════════
 import html as _html_mod
+import csv      # csv ni globalno importiran v tem projektu (json in re sta — glej vrh datoteke)
 
 BADGE_DIR = DATA_DIR / "badge_generator"
 BADGE_DIR.mkdir(exist_ok=True, parents=True)
