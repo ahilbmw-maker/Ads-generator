@@ -1441,6 +1441,51 @@ def _zaloga_archive_dir(market: str) -> Path:
     return d
 
 
+# ── HS PLUS trajna shramba (oznaka velja 5 koledarskih dni, čez seje/arhive) ──
+HSPLUS_DAYS = 5   # dan uvoza = dan 1 → velja še +4 dni
+
+def _hsplus_store_path(market: str) -> Path:
+    return ZALOGA_DIR / f"hsplus_active_{_zaloga_market(market)}.json"
+
+def _hsplus_load_active(market: str) -> dict:
+    """Vrne {sku: expires_isodate} samo za SKU-je, ki ŠE NISO potekli (počisti potekle)."""
+    from datetime import date as _date
+    p = _hsplus_store_path(market)
+    if not p.exists():
+        return {}
+    try:
+        store = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    today = _date.today().isoformat()
+    active = {sku: exp for sku, exp in store.items() if str(exp) >= today}
+    if len(active) != len(store):   # počisti potekle z diska
+        _zaloga_atomic_write(p, active)
+    return active
+
+def _hsplus_save_active(market: str, sku_list):
+    """Dodaj/osveži SKU-je z rokom = danes + (HSPLUS_DAYS-1) dni (dan uvoza = dan 1)."""
+    from datetime import date as _date, timedelta as _td
+    active = _hsplus_load_active(market)
+    expires = (_date.today() + _td(days=HSPLUS_DAYS - 1)).isoformat()
+    for sku in sku_list:
+        active[str(sku)] = expires   # najnovejši uvoz podaljša rok
+    _zaloga_atomic_write(_hsplus_store_path(market), active)
+
+def _hsplus_mark_items(market: str, items: list):
+    """Označi postavke v seji s HS PLUS, če je SKU v aktivni shrambi (brez qty).
+    Vrne število označenih."""
+    active = _hsplus_load_active(market)
+    if not active:
+        return 0
+    n = 0
+    for it in items:
+        if str(it.get("sku", "")).strip() in active:
+            it["hsplus"] = True   # samo oznaka, brez hsplus_qty (prenesena oznaka)
+            n += 1
+    return n
+
+
 def _zaloga_group(poz: str, sku: str = "") -> str:
     """Razvrsti pozicijo v skupino (zavihek). 01-1C→Polica 01, P13-C→P13, Ni podatka/Paleta/Pod Mizo ostanejo.
     Če ni podatka o poziciji, razvrsti po predponi SKU: KX*→Ikonka, 0*→Amio."""
@@ -1511,6 +1556,9 @@ async def zaloga_upload(file: UploadFile = File(...), market: str = "slo"):
                 "locked": False,      # RS: zaklenjeno (box dodeljen)
                 "opomba": "",         # RS: dodatni box (prosto, neodvisno od glavnega)
             })
+
+        # HS PLUS: prenesi aktivne oznake (5-dnevno okno) na nove postavke po SKU
+        _hsplus_mark_items(market, items)
 
         data = {
             "started_at": _dt.now().isoformat(),
@@ -1650,6 +1698,8 @@ async def zaloga_import_ikonka(file: UploadFile = File(...), market: str = "rs")
             next_idx += 1
 
         sess["updated_at"] = _dt.now().isoformat()
+        # HS PLUS: prenesi aktivne oznake (5-dnevno okno) na vse postavke seje po SKU
+        _hsplus_mark_items(market, sess.get("items", []))
         # uvoz doda nove postavke → nabiranje se začne na novo: resetiraj časovnico,
         # da šteje od PRVE nabrane postavke (0:00:01), ne od starega ostanka
         sess["started_at"] = _dt.now().isoformat()
@@ -1749,6 +1799,9 @@ async def zaloga_hsplus_upload(file: UploadFile = File(...), market: str = "slo"
                 it["hsplus_qty"] = hs_skus[sku]   # količina ki danes pride
                 matched += 1
             # ne brišemo obstoječih oznak, ki niso v tem seznamu — pusti kot so
+
+        # trajna shramba: oznaka velja 5 koledarskih dni (čez seje/arhive)
+        _hsplus_save_active(market, list(hs_skus.keys()))
 
         sess["updated_at"] = _dt.now().isoformat()
         _zaloga_atomic_write(path, sess)
