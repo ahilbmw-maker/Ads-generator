@@ -1688,7 +1688,7 @@ async def zaloga_hsplus_upload(file: UploadFile = File(...), market: str = "slo"
         raw = await file.read()
         fname = (file.filename or "").lower()
 
-        hs_skus = set()
+        hs_skus = {}
         if fname.endswith(".xlsx") or fname.endswith(".xls"):
             try:
                 import openpyxl
@@ -1696,18 +1696,23 @@ async def zaloga_hsplus_upload(file: UploadFile = File(...), market: str = "slo"
                 ws = wb.active
                 rows_iter = ws.iter_rows(values_only=True)
                 header = next(rows_iter, None)
-                # poišči indeks stolpca sku (privzeto 0)
-                sku_i = 0
+                # poišči indeks stolpca sku + stock
+                sku_i, stock_i = 0, 1
                 if header:
                     for i, h in enumerate(header):
-                        if str(h or "").strip().lower() == "sku":
-                            sku_i = i; break
+                        hl = str(h or "").strip().lower()
+                        if hl == "sku": sku_i = i
+                        elif hl in ("stock", "kolicina", "količina", "qty"): stock_i = i
                 for r in rows_iter:
                     if not r or len(r) <= sku_i:
                         continue
                     s = str(r[sku_i] or "").strip()
                     if s:
-                        hs_skus.add(s)
+                        q = 0
+                        if stock_i is not None and len(r) > stock_i:
+                            try: q = int(float(str(r[stock_i]).replace(",", ".")))
+                            except (ValueError, TypeError): q = 0
+                        hs_skus[s] = q
             except Exception as ex:
                 return {"ok": False, "error": f"Excel branje ni uspelo: {ex}"}
         else:
@@ -1716,13 +1721,16 @@ async def zaloga_hsplus_upload(file: UploadFile = File(...), market: str = "slo"
             delim = ";" if text.count(";") >= text.count(",") else ","
             reader = _csv.DictReader(_io.StringIO(text), delimiter=delim)
             for row in reader:
-                # najdi sku stolpec ne glede na velikost črk
+                sval, qval = "", 0
                 for k, v in row.items():
-                    if str(k or "").strip().lower() == "sku":
-                        s = str(v or "").strip()
-                        if s:
-                            hs_skus.add(s)
-                        break
+                    kl = str(k or "").strip().lower()
+                    if kl == "sku":
+                        sval = str(v or "").strip()
+                    elif kl in ("stock", "kolicina", "količina", "qty"):
+                        try: qval = int(float(str(v or "0").replace(",", ".")))
+                        except (ValueError, TypeError): qval = 0
+                if sval:
+                    hs_skus[sval] = qval
 
         if not hs_skus:
             return {"ok": False, "error": "V datoteki ni najdenih SKU-jev (stolpec 'sku')"}
@@ -1735,8 +1743,10 @@ async def zaloga_hsplus_upload(file: UploadFile = File(...), market: str = "slo"
 
         matched = 0
         for it in items:
-            if str(it.get("sku", "")).strip() in hs_skus:
+            sku = str(it.get("sku", "")).strip()
+            if sku in hs_skus:
                 it["hsplus"] = True
+                it["hsplus_qty"] = hs_skus[sku]   # količina ki danes pride
                 matched += 1
             # ne brišemo obstoječih oznak, ki niso v tem seznamu — pusti kot so
 
