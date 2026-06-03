@@ -322,6 +322,13 @@
     padding: 1px 6px; border-radius: 5px; text-transform: uppercase;
     letter-spacing: 0.4px; margin-left: 6px; white-space: nowrap;
   }
+  /* HS PLUS — izdelek pride danes (v sistemu je, fizično še ne); nabiralec naj ne označi "ni zaloge" */
+  .tag-hsplus {
+    font-size: 9px; font-weight: 800; color: #fff;
+    background: #7c3aed; border: 1px solid #6d28d9;
+    padding: 1px 6px; border-radius: 5px; text-transform: uppercase;
+    letter-spacing: 0.4px; margin-left: 6px; white-space: nowrap;
+  }
 
   /* ─── SIDEBAR (manjko) ─── desktop: fiksen ob skrolanju, pod sticky headerjem (~151px) */
   .sidebar {
@@ -563,6 +570,7 @@
     .item-mobile-top .sku { flex: 1; min-width: 0; }
 
     .tag-low { font-size: 10px; padding: 2px 7px; }
+    .tag-hsplus { font-size: 10px; padding: 2px 7px; }
 
     /* Sidebar kartice */
     .manko-list { max-height: none; }
@@ -973,6 +981,14 @@
     📁 Naloži CSV
     <input type="file" id="csvInput" accept=".csv" style="display:none">
   </label>
+  <label class="btn btn-ghost btn-sm topbar-action rs-only-action" id="importIkonkaBtn" style="cursor:pointer;display:none">
+    📥 Uvoz dobavnice
+    <input type="file" id="importInput" accept=".csv,.xls,.xlsx" style="display:none">
+  </label>
+  <label class="btn btn-ghost btn-sm topbar-action" id="hsplusBtn" style="cursor:pointer">
+    📦 HS PLUS
+    <input type="file" id="hsplusInput" accept=".csv,.xls,.xlsx" style="display:none">
+  </label>
   <button class="btn btn-ghost btn-sm topbar-action" id="archiveBtn" onclick="archiveSession()" style="display:none">📦 Arhiviraj</button>
   <button class="btn btn-ghost btn-sm topbar-action" onclick="openHistory()">🕓 Zgodovina</button>
   <button class="btn btn-ghost btn-sm topbar-action" id="refreshFeedBtn" onclick="refreshFeed()" title="Ponovno potegni slike iz feeda (npr. po dodajanju novega izdelka)">🔄 Osveži slike</button>
@@ -1008,6 +1024,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260602AR"></script>
+<script src="/static/zaloga.js?v=20260602AU"></script>
 </body>
 </html>
