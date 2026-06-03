@@ -15177,3 +15177,474 @@ async def shipping_debug():
     except Exception as e:
         import traceback
         return {"error": str(e), "traceback": traceback.format_exc()}
+
+
+# ════════════════════════════════════════════════════════════════════
+#  BADGE GENERATOR (skrita stran /badge-generator) — enkratna naloga
+#  Zamenja title_suffix v dveh CSV-jih z AI-generiranimi značkami prek
+#  Anthropic Message Batches API. Batch teče do 12h v ozadju; stanje
+#  (batch ID, naloženi CSV) je na DATA_DIR (perzistenten disk).
+# ════════════════════════════════════════════════════════════════════
+import html as _html_mod
+
+BADGE_DIR = DATA_DIR / "badge_generator"
+BADGE_DIR.mkdir(exist_ok=True, parents=True)
+BADGE_STATE = BADGE_DIR / "state.json"
+BADGE_MODEL = "claude-sonnet-4-6"
+BADGE_TR_LOCALES = ["bg", "bs", "cs", "el", "hr", "hu", "it", "pl", "ro", "sk", "sr"]
+BADGE_EXCLUDE = {"de", "de-AT"}
+BADGE_DESC_MAX = 600
+
+
+def _badge_state():
+    if BADGE_STATE.exists():
+        try:
+            return json.loads(BADGE_STATE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def _badge_save_state(st):
+    BADGE_STATE.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _badge_clean_html(s):
+    if not s:
+        return ""
+    s = re.sub(r"<[^>]+>", " ", str(s))
+    s = _html_mod.unescape(s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _badge_desc(lead, content):
+    d = (_badge_clean_html(lead) + " " + _badge_clean_html(content)).strip()
+    return d[:BADGE_DESC_MAX]
+
+
+def _badge_prompt_sl(title, desc):
+    return f"""Si copywriter za slovenski e-commerce. Napiši title_suffix značko za spodnji produkt.
+
+PRAVILA:
+- Format: 1 emoji + 1 beseda ali kratek izraz
+- Maksimalno 19 znakov skupaj (emoji = 1 znak)
+- Jezik: slovenščina
+- Značka naj opiše ključno lastnost ali korist produkta
+- NE uporabljaj generičnih fraz kot "Hitra dostava", "Preverjena kvaliteta"
+- Primeri dobrih značk: 🛞 Popravilo v sili, ⚡ 3× hitreje polni, 🧲 Drži brez truda, 📺 Zabava zadaj
+
+Produkt:
+Naslov: {title}
+Opis: {desc}
+
+Odgovori SAMO z značko, brez razlage. Npr: ⚡ Hitro polnjenje"""
+
+
+def _badge_prompt_tr(per_locale):
+    bloki = []
+    for loc in BADGE_TR_LOCALES:
+        d = per_locale.get(loc)
+        if d:
+            bloki.append(f"[{loc}] Naslov: {d['title']}\n     Opis: {d['desc']}")
+    produkti = "\n".join(bloki)
+    json_predloga = "{" + ", ".join(f'"{l}": "🔧 ..."' for l in BADGE_TR_LOCALES) + "}"
+    return f"""Si copywriter za e-commerce v več jezikih. Napiši title_suffix značko za spodnji produkt v vseh spodaj navedenih jezikih.
+
+PRAVILA:
+- Format: 1 emoji + 1 beseda ali kratek izraz
+- Maksimalno 19 znakov skupaj (emoji = 1 znak)
+- Vsaka značka v svojem jeziku
+- sr (srbščina): OBVEZNO latinica, nikoli cirilica
+- bg (bolgarščina): cirilica
+- Značka naj opiše ključno lastnost ali korist produkta
+- NE uporabljaj generičnih fraz
+
+Produkt (isti produkt v 11 jezikih):
+{produkti}
+
+Odgovori SAMO v JSON formatu (brez markdown, brez razlage):
+{json_predloga}"""
+
+
+# srbska cirilica → latinica (varovalka)
+_BADGE_CYR2LAT = {
+    'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Ђ':'Đ','Е':'E','Ж':'Ž','З':'Z','И':'I','Ј':'J',
+    'К':'K','Л':'L','Љ':'Lj','М':'M','Н':'N','Њ':'Nj','О':'O','П':'P','Р':'R','С':'S','Т':'T',
+    'Ћ':'Ć','У':'U','Ф':'F','Х':'H','Ц':'C','Ч':'Č','Џ':'Dž','Ш':'Š',
+    'а':'a','б':'b','в':'v','г':'g','д':'d','ђ':'đ','е':'e','ж':'ž','з':'z','и':'i','ј':'j',
+    'к':'k','л':'l','љ':'lj','м':'m','н':'n','њ':'nj','о':'o','п':'p','р':'r','с':'s','т':'t',
+    'ћ':'ć','у':'u','ф':'f','х':'h','ц':'c','ч':'č','џ':'dž','ш':'š',
+}
+
+def _badge_cyr2lat(s):
+    return "".join(_BADGE_CYR2LAT.get(ch, ch) for ch in s)
+
+def _badge_has_cyr(s):
+    return any('\u0400' <= ch <= '\u04FF' for ch in s)
+
+def _badge_clean(s):
+    s = (s or "").strip().split("\n")[0].strip()
+    return s.strip('"').strip("'").strip()
+
+
+@app.post("/badge-upload")
+async def badge_upload(kind: str = Form(...), file: UploadFile = File(...)):
+    """Naloži CSV (kind=sl ali kind=tr). Shrani na disk + zabeleži osnovne info."""
+    try:
+        if kind not in ("sl", "tr"):
+            return {"ok": False, "error": "kind mora biti sl ali tr"}
+        raw = await file.read()
+        dest = BADGE_DIR / f"input_{kind}.csv"
+        dest.write_bytes(raw)
+        # preštej vrstice
+        import io as _io
+        rdr = csv.DictReader(_io.StringIO(raw.decode("utf-8")))
+        rows = list(rdr)
+        fields = rdr.fieldnames or []
+        info = {"rows": len(rows), "fields": list(fields)}
+        if kind == "tr":
+            from collections import Counter
+            locs = Counter(r.get("locale", "") for r in rows)
+            info["locales"] = dict(locs)
+            info["products"] = locs.get("bg", 0)  # 1 locale = št. produktov
+        st = _badge_state()
+        st[f"input_{kind}"] = {"filename": file.filename, **info}
+        _badge_save_state(st)
+        return {"ok": True, "kind": kind, **info}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/badge-submit")
+async def badge_submit(data: dict):
+    """Pripravi batch zahtevke in odda na Anthropic Batches API.
+    data: {kind: 'sl'|'tr', demo: int (0=vse)}"""
+    try:
+        kind = data.get("kind")
+        demo = int(data.get("demo", 0) or 0)
+        if kind not in ("sl", "tr"):
+            return {"ok": False, "error": "kind mora biti sl ali tr"}
+        src = BADGE_DIR / f"input_{kind}.csv"
+        if not src.exists():
+            return {"ok": False, "error": f"Najprej naloži {kind} CSV"}
+
+        rows = list(csv.DictReader(src.open(encoding="utf-8")))
+        requests = []
+
+        if kind == "sl":
+            limit = demo if demo > 0 else len(rows)
+            for i in range(limit):
+                r = rows[i]
+                desc = _badge_desc(r.get("lead", ""), r.get("content", ""))
+                requests.append({
+                    "custom_id": f"sl-{i}",
+                    "params": {"model": BADGE_MODEL, "max_tokens": 60,
+                               "messages": [{"role": "user", "content": _badge_prompt_sl(r.get("title",""), desc)}]},
+                })
+        else:
+            # grupiraj po indeksu prek locale
+            from collections import defaultdict
+            by = defaultdict(list)
+            for r in rows:
+                loc = r.get("locale", "")
+                if loc in BADGE_EXCLUDE:
+                    continue
+                if loc in BADGE_TR_LOCALES:
+                    by[loc].append(r)
+            n = len(by[BADGE_TR_LOCALES[0]])
+            limit = demo if demo > 0 else n
+            for i in range(limit):
+                per = {}
+                for loc in BADGE_TR_LOCALES:
+                    if i < len(by[loc]):
+                        rr = by[loc][i]
+                        per[loc] = {"title": rr.get("title",""), "desc": _badge_desc(rr.get("lead",""), rr.get("content",""))}
+                requests.append({
+                    "custom_id": f"tr-{i}",
+                    "params": {"model": BADGE_MODEL, "max_tokens": 300,
+                               "messages": [{"role": "user", "content": _badge_prompt_tr(per)}]},
+                })
+
+        if not requests:
+            return {"ok": False, "error": "Ni zahtevkov"}
+
+        # oddaj batch
+        batch = client.messages.batches.create(requests=requests)
+        st = _badge_state()
+        st[f"batch_{kind}"] = {
+            "id": batch.id, "status": batch.processing_status,
+            "count": len(requests), "demo": demo,
+            "submitted_at": datetime.now().isoformat(),
+        }
+        _badge_save_state(st)
+        return {"ok": True, "kind": kind, "batch_id": batch.id, "count": len(requests),
+                "status": batch.processing_status}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/badge-status")
+async def badge_status(kind: str):
+    """Preveri status batcha (ne blokira — samo poizve)."""
+    try:
+        st = _badge_state()
+        b = st.get(f"batch_{kind}")
+        if not b:
+            return {"ok": False, "error": "Ni oddanega batcha"}
+        batch = client.messages.batches.retrieve(b["id"])
+        counts = batch.request_counts
+        b["status"] = batch.processing_status
+        b["counts"] = {"processing": counts.processing, "succeeded": counts.succeeded,
+                       "errored": counts.errored, "canceled": counts.canceled, "expired": counts.expired}
+        st[f"batch_{kind}"] = b
+        _badge_save_state(st)
+        return {"ok": True, "kind": kind, "status": batch.processing_status,
+                "counts": b["counts"], "total": b["count"], "id": b["id"]}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/badge-build")
+async def badge_build(data: dict):
+    """Prevzemi rezultate batcha + sestavi NEW CSV (ista struktura, LF, brez DE/de-AT za tr)."""
+    try:
+        kind = data.get("kind")
+        st = _badge_state()
+        b = st.get(f"batch_{kind}")
+        if not b:
+            return {"ok": False, "error": "Ni oddanega batcha"}
+
+        # prevzemi rezultate prek custom_id
+        results = {}
+        errors = 0
+        for r in client.messages.batches.results(b["id"]):
+            if r.result.type == "succeeded":
+                results[r.custom_id] = r.result.message.content[0].text
+            elif r.result.type == "errored":
+                errors += 1
+
+        src = BADGE_DIR / f"input_{kind}.csv"
+        rows = list(csv.DictReader(src.open(encoding="utf-8")))
+        fields = list(rows[0].keys()) if rows else []
+        miss = 0; cyr_fixed = 0; parse_fail = 0
+
+        if kind == "sl":
+            for i, row in enumerate(rows):
+                cid = f"sl-{i}"
+                if cid in results:
+                    row["title_suffix"] = _badge_clean(results[cid])
+                else:
+                    miss += 1
+            outp = BADGE_DIR / "maaarket-suffux-sl-NEW.csv"
+            with outp.open("w", encoding="utf-8", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
+                w.writeheader(); w.writerows(rows)
+            out_rows_count = len(rows)
+        else:
+            # razčleni JSON na produkt
+            parsed = {}
+            def get_badges(idx):
+                nonlocal parse_fail
+                if idx in parsed: return parsed[idx]
+                raw = results.get(f"tr-{idx}")
+                if not raw:
+                    parsed[idx] = {}; return {}
+                m = re.search(r"\{.*\}", raw, re.S)
+                if not m:
+                    parse_fail += 1; parsed[idx] = {}; return {}
+                try:
+                    parsed[idx] = json.loads(m.group(0))
+                except Exception:
+                    parse_fail += 1; parsed[idx] = {}
+                return parsed[idx]
+
+            from collections import defaultdict
+            loc_counter = defaultdict(int)
+            out_rows = []
+            for row in rows:
+                loc = row.get("locale", "")
+                if loc in BADGE_EXCLUDE:
+                    continue
+                idx = loc_counter[loc]; loc_counter[loc] += 1
+                badges = get_badges(idx)
+                badge = _badge_clean(badges.get(loc, "")) if badges else ""
+                if badge:
+                    if loc == "sr" and _badge_has_cyr(badge):
+                        badge = _badge_cyr2lat(badge); cyr_fixed += 1
+                    row["title_suffix"] = badge
+                else:
+                    miss += 1
+                out_rows.append(row)
+            outp = BADGE_DIR / "maaarket-suffux-translations-NEW.csv"
+            with outp.open("w", encoding="utf-8", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
+                w.writeheader(); w.writerows(out_rows)
+            out_rows_count = len(out_rows)
+
+        st[f"build_{kind}"] = {"built_at": datetime.now().isoformat(), "rows": out_rows_count,
+                               "missing": miss, "errors": errors, "cyr_fixed": cyr_fixed,
+                               "parse_fail": parse_fail, "file": outp.name}
+        _badge_save_state(st)
+        return {"ok": True, "kind": kind, "rows": out_rows_count, "missing": miss,
+                "errors": errors, "cyr_fixed": cyr_fixed, "parse_fail": parse_fail}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/badge-download")
+async def badge_download(kind: str):
+    """Prenese sestavljen NEW CSV."""
+    fn = "maaarket-suffux-sl-NEW.csv" if kind == "sl" else "maaarket-suffux-translations-NEW.csv"
+    path = BADGE_DIR / fn
+    if not path.exists():
+        return JSONResponse({"error": "Datoteka še ni sestavljena"}, status_code=404)
+    return FileResponse(str(path), media_type="text/csv", filename=fn)
+
+
+@app.get("/badge-generator", response_class=HTMLResponse)
+async def badge_generator_page():
+    """Skrita stran (ni v meniju) za badge generator."""
+    return HTMLResponse(_BADGE_HTML)
+
+
+_BADGE_HTML = r"""<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Badge Generator (interno)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', system-ui, sans-serif; background: #f1f5f9; color: #0f172a; padding: 24px; max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #64748b; font-size: 13px; margin-bottom: 20px; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .step-num { background: #3b82f6; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  label.lbl { font-weight: 600; font-size: 13px; min-width: 110px; }
+  input[type=file] { font-size: 13px; }
+  button { font-family: inherit; font-size: 14px; font-weight: 700; padding: 9px 16px; border-radius: 9px; border: none; cursor: pointer; background: #3b82f6; color: #fff; }
+  button:hover { filter: brightness(1.08); }
+  button.sec { background: #e2e8f0; color: #0f172a; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .info { font-size: 12px; color: #64748b; margin-top: 6px; white-space: pre-wrap; }
+  .badge-pill { display: inline-block; background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+  .warn { background: #fef3c7; border: 1px solid #fde68a; color: #92400e; font-size: 12px; padding: 8px 12px; border-radius: 8px; margin-bottom: 14px; }
+  .ok { color: #16a34a; } .err { color: #dc2626; }
+  progress { width: 100%; height: 10px; }
+</style>
+</head>
+<body>
+  <h1>🏷️ Badge Generator</h1>
+  <div class="sub">Interno orodje — zamenjava title_suffix prek Anthropic Batch API. Batch teče do 12h v ozadju.</div>
+  <div class="warn">⚠️ Enkratna naloga. Batch se procesira na Anthropicovih strežnikih — to stran lahko zapreš in se vrneš kasneje. Stanje se ohrani.</div>
+
+  <div class="card">
+    <h2><span class="step-num">1</span> Naloži CSV</h2>
+    <div class="row">
+      <label class="lbl">SL CSV:</label>
+      <input type="file" id="fileSl" accept=".csv">
+      <button onclick="upload('sl')">Naloži SL</button>
+    </div>
+    <div class="info" id="infoSl"></div>
+    <div class="row" style="margin-top:10px">
+      <label class="lbl">Prevodi CSV:</label>
+      <input type="file" id="fileTr" accept=".csv">
+      <button onclick="upload('tr')">Naloži prevode</button>
+    </div>
+    <div class="info" id="infoTr"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">2</span> Oddaj batch</h2>
+    <div class="row">
+      <label class="lbl"><input type="checkbox" id="demoChk"> Samo demo</label>
+      <input type="number" id="demoN" value="10" style="width:70px" min="1"> produktov
+    </div>
+    <div class="info">Brez kljukice = vsi produkti (~$26, do 12h). Z demo = test na N produktih.</div>
+    <div class="row" style="margin-top:10px">
+      <button onclick="submitB('sl')">▶ Oddaj SL batch</button>
+      <button onclick="submitB('tr')">▶ Oddaj prevode batch</button>
+    </div>
+    <div class="info" id="infoSubmit"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">3</span> Status & prenos</h2>
+    <div class="row">
+      <button class="sec" onclick="status('sl')">↻ Status SL</button>
+      <button class="sec" onclick="status('tr')">↻ Status prevodi</button>
+    </div>
+    <div class="info" id="infoStatusSl"></div>
+    <div class="info" id="infoStatusTr"></div>
+    <div class="row" style="margin-top:12px">
+      <button onclick="build('sl')">🔧 Sestavi SL NEW</button>
+      <button onclick="build('tr')">🔧 Sestavi prevode NEW</button>
+    </div>
+    <div class="info" id="infoBuild"></div>
+    <div class="row" style="margin-top:12px">
+      <a href="/badge-download?kind=sl"><button class="sec">⬇ Prenesi SL NEW</button></a>
+      <a href="/badge-download?kind=tr"><button class="sec">⬇ Prenesi prevode NEW</button></a>
+    </div>
+  </div>
+
+<script>
+async function upload(kind) {
+  const f = document.getElementById('file'+kind.toUpperCase()).files[0];
+  const el = document.getElementById('info'+kind.toUpperCase());
+  if (!f) { el.textContent = 'Izberi datoteko.'; return; }
+  el.textContent = 'Nalagam...';
+  const fd = new FormData(); fd.append('kind', kind); fd.append('file', f);
+  try {
+    const r = await fetch('/badge-upload', { method:'POST', body: fd });
+    const d = await r.json();
+    if (d.ok) {
+      let t = `✓ Naloženo: ${d.rows} vrstic`;
+      if (d.products) t += ` · ${d.products} produktov · jeziki: ${Object.keys(d.locales).join(', ')}`;
+      el.innerHTML = '<span class="ok">'+t+'</span>';
+    } else el.innerHTML = '<span class="err">✗ '+d.error+'</span>';
+  } catch(e) { el.innerHTML = '<span class="err">✗ napaka</span>'; }
+}
+async function submitB(kind) {
+  const demo = document.getElementById('demoChk').checked ? parseInt(document.getElementById('demoN').value)||10 : 0;
+  const el = document.getElementById('infoSubmit');
+  el.textContent = 'Oddajam batch...';
+  try {
+    const r = await fetch('/badge-submit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({kind, demo}) });
+    const d = await r.json();
+    if (d.ok) el.innerHTML = `<span class="ok">✓ ${kind.toUpperCase()} batch oddan: ${d.count} zahtevkov · ID ${d.batch_id} · status ${d.status}</span>`;
+    else el.innerHTML = '<span class="err">✗ '+d.error+'</span>';
+  } catch(e) { el.innerHTML = '<span class="err">✗ napaka</span>'; }
+}
+async function status(kind) {
+  const el = document.getElementById('infoStatus'+kind.toUpperCase());
+  el.textContent = 'Preverjam...';
+  try {
+    const r = await fetch('/badge-status?kind='+kind);
+    const d = await r.json();
+    if (d.ok) {
+      const c = d.counts;
+      el.innerHTML = `<b>${kind.toUpperCase()}</b>: ${d.status} — ✓${c.succeeded} ⏳${c.processing} ✗${c.errored} / ${d.total}`;
+    } else el.innerHTML = '<span class="err">✗ '+d.error+'</span>';
+  } catch(e) { el.innerHTML = '<span class="err">✗ napaka</span>'; }
+}
+async function build(kind) {
+  const el = document.getElementById('infoBuild');
+  el.textContent = 'Sestavljam NEW CSV...';
+  try {
+    const r = await fetch('/badge-build', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({kind}) });
+    const d = await r.json();
+    if (d.ok) el.innerHTML = `<span class="ok">✓ ${kind.toUpperCase()} sestavljen: ${d.rows} vrstic · manjka ${d.missing} · napak ${d.errors}${d.cyr_fixed?' · sr lat. popravkov '+d.cyr_fixed:''}${d.parse_fail?' · JSON fail '+d.parse_fail:''}</span>`;
+    else el.innerHTML = '<span class="err">✗ '+d.error+'</span>';
+  } catch(e) { el.innerHTML = '<span class="err">✗ napaka</span>'; }
+}
+</script>
+</body>
+</html>"""
