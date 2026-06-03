@@ -1524,7 +1524,134 @@ async def zaloga_upload(file: UploadFile = File(...), market: str = "slo"):
         return {"ok": False, "error": str(e)}
 
 
-@app.get("/zaloga-current")
+def _zaloga_import_group(sku: str) -> str:
+    """Razvrsti uvoženo postavko po predponi SKU: KX*→Ikonka, številka→Amio, drugo→neznano."""
+    s = (sku or "").strip().upper()
+    if s.startswith("KX"):
+        return "Ikonka"
+    if s and s[0].isdigit():
+        return "Amio"
+    return "neznano"
+
+
+@app.post("/zaloga-import-ikonka")
+async def zaloga_import_ikonka(file: UploadFile = File(...), market: str = "rs"):
+    """Uvoz dobavnice (CSV/XLS) — DODA k obstoječi RS seji.
+    Format: ločilo ';', BOM, količine kot '1,000'. Stolpci (prvi 3):
+      NazivMaterial_Ang = SKU, NazivMaterial = naziv, Kolicina = količina.
+    Razvrstitev: KX*→Ikonka, 0*/št→Amio, drugo→neznano.
+    Količina = 1 → na polico; količina > 1 → v čakajoče (razdelitev v bokse)."""
+    try:
+        import csv as _csv, io as _io
+        from datetime import datetime as _dt
+        raw = await file.read()
+        fname = (file.filename or "").lower()
+
+        parsed_rows = []  # (sku, naziv, kol)
+
+        if fname.endswith(".xls") or fname.endswith(".xlsx"):
+            # Excel: preberi prek openpyxl (xlsx) ali xlrd (xls)
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(_io.BytesIO(raw), read_only=True, data_only=True)
+                ws = wb.active
+                rows_iter = ws.iter_rows(values_only=True)
+                header = next(rows_iter, None)
+                for r in rows_iter:
+                    if not r or len(r) < 3:
+                        continue
+                    parsed_rows.append((str(r[0] or "").strip(), str(r[1] or "").strip(), r[2]))
+            except Exception as ex:
+                return {"ok": False, "error": f"Excel branje ni uspelo: {ex}. Shrani kot CSV."}
+        else:
+            # CSV: ločilo ';', BOM odstrani z utf-8-sig
+            text = raw.decode("utf-8-sig", errors="replace")
+            # zaznaj ločilo (privzeto ';', sicer ',')
+            delim = ";" if text.count(";") >= text.count(",") else ","
+            reader = _csv.reader(_io.StringIO(text), delimiter=delim)
+            rowlist = list(reader)
+            # preskoči glavo (prva vrstica)
+            for r in rowlist[1:]:
+                if not r or len(r) < 3:
+                    continue
+                parsed_rows.append((r[0].strip(), r[1].strip(), r[2]))
+
+        def _parse_kol(v):
+            """'1,000' / '3,000' / 1.0 / '2' → int."""
+            if v is None:
+                return 0
+            s = str(v).strip().replace(",", ".")
+            try:
+                return int(float(s))
+            except ValueError:
+                return 0
+
+        # naloži obstoječo sejo (ali ustvari novo) — DODAMO k njej
+        mk = _zaloga_market(market)
+        path = _zaloga_current_path(market)
+        if path.exists():
+            sess = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            sess = {
+                "started_at": _dt.now().isoformat(),
+                "filename": file.filename, "market": mk,
+                "items": [], "extra_boxes": {}, "cakajoce": [], "packing_boxes": {},
+                "pick_started_at": None, "pick_finished_at": None,
+            }
+        sess.setdefault("items", [])
+        sess.setdefault("cakajoce", [])
+        sess.setdefault("packing_boxes", {})
+
+        # naslednji prosti idx (čez items + cakajoce, da so unikatni)
+        max_idx = -1
+        for it in sess["items"]:
+            max_idx = max(max_idx, int(it.get("idx", -1)))
+        for c in sess["cakajoce"]:
+            max_idx = max(max_idx, int(c.get("idx", -1)))
+        next_idx = max_idx + 1
+
+        added_police = 0
+        added_cakajoce = 0
+        groups_added = {}
+
+        for sku, naziv, kol_raw in parsed_rows:
+            if not sku:
+                continue
+            kol = _parse_kol(kol_raw)
+            if kol <= 0:
+                continue
+            grp = _zaloga_import_group(sku)
+            if kol == 1:
+                # na polico
+                sess["items"].append({
+                    "idx": next_idx, "id": "", "sku": sku, "naziv": naziv,
+                    "qty": 1, "poz": "Ni podatka", "group": grp,
+                    "status": "", "picked": 1, "low": False,
+                    "box": "", "locked": False, "opomba": "",
+                })
+                added_police += 1
+                groups_added[grp] = groups_added.get(grp, 0) + 1
+            else:
+                # količina > 1 → čakajoče (razdelitev v bokse)
+                sess["cakajoce"].append({
+                    "idx": next_idx, "sku": sku, "naziv": naziv,
+                    "qty": kol, "poz": grp, "assigned": 0, "done": False,
+                })
+                added_cakajoce += 1
+            next_idx += 1
+
+        sess["updated_at"] = _dt.now().isoformat()
+        # uvoz doda nove postavke → nabiranje se začne na novo: resetiraj časovnico,
+        # da šteje od PRVE nabrane postavke (0:00:01), ne od starega ostanka
+        sess["started_at"] = _dt.now().isoformat()
+        sess["pick_started_at"] = None
+        sess["pick_finished_at"] = None
+        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True, "added_police": added_police, "added_cakajoce": added_cakajoce,
+                "groups": groups_added, "total": added_police + added_cakajoce}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
 async def zaloga_current_get(market: str = "slo"):
     """Vrne aktivno sejo nabiranja za trg (vsi nabiralci berejo isto)."""
     try:
@@ -1534,6 +1661,79 @@ async def zaloga_current_get(market: str = "slo"):
             return {"ok": True, **data}
         return {"ok": True, "items": [], "started_at": None}
     except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/zaloga-hsplus-upload")
+async def zaloga_hsplus_upload(file: UploadFile = File(...), market: str = "slo"):
+    """Uvoz 'HS PLUS' seznama (XLSX/CSV s stolpcema sku, stock).
+    Označi OBSTOJEČE postavke v seji (ujemanje po SKU) z vizualno značko HS PLUS.
+    Pomeni: izdelek danes pride k nam (v sistemu je, fizično še ne) — nabiralci naj
+    ga NE označijo kot 'ni zaloge'. Samo oznaka, nič drugega."""
+    try:
+        import io as _io
+        from datetime import datetime as _dt
+        raw = await file.read()
+        fname = (file.filename or "").lower()
+
+        hs_skus = set()
+        if fname.endswith(".xlsx") or fname.endswith(".xls"):
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(_io.BytesIO(raw), read_only=True, data_only=True)
+                ws = wb.active
+                rows_iter = ws.iter_rows(values_only=True)
+                header = next(rows_iter, None)
+                # poišči indeks stolpca sku (privzeto 0)
+                sku_i = 0
+                if header:
+                    for i, h in enumerate(header):
+                        if str(h or "").strip().lower() == "sku":
+                            sku_i = i; break
+                for r in rows_iter:
+                    if not r or len(r) <= sku_i:
+                        continue
+                    s = str(r[sku_i] or "").strip()
+                    if s:
+                        hs_skus.add(s)
+            except Exception as ex:
+                return {"ok": False, "error": f"Excel branje ni uspelo: {ex}"}
+        else:
+            import csv as _csv
+            text = raw.decode("utf-8-sig", errors="replace")
+            delim = ";" if text.count(";") >= text.count(",") else ","
+            reader = _csv.DictReader(_io.StringIO(text), delimiter=delim)
+            for row in reader:
+                # najdi sku stolpec ne glede na velikost črk
+                for k, v in row.items():
+                    if str(k or "").strip().lower() == "sku":
+                        s = str(v or "").strip()
+                        if s:
+                            hs_skus.add(s)
+                        break
+
+        if not hs_skus:
+            return {"ok": False, "error": "V datoteki ni najdenih SKU-jev (stolpec 'sku')"}
+
+        path = _zaloga_current_path(market)
+        if not path.exists():
+            return {"ok": False, "error": "Ni aktivne seje — najprej naloži seznam za nabiranje"}
+        sess = json.loads(path.read_text(encoding="utf-8"))
+        items = sess.get("items", [])
+
+        matched = 0
+        for it in items:
+            if str(it.get("sku", "")).strip() in hs_skus:
+                it["hsplus"] = True
+                matched += 1
+            # ne brišemo obstoječih oznak, ki niso v tem seznamu — pusti kot so
+
+        sess["updated_at"] = _dt.now().isoformat()
+        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True, "hs_count": len(hs_skus), "matched": matched,
+                "unmatched": len(hs_skus) - matched}
+    except Exception as e:
+        import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e)}
 
 
