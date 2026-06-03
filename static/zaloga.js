@@ -755,7 +755,7 @@ function cakajoceSection() {
       .sort((a,b)=>String(a).localeCompare(String(b),'sl',{numeric:true}))
       .map(b => {
         const e = pboxes[b].find(x => x.sku === c.sku);
-        return `<span class="cak-chip">📦 BOX${esc(b)} · ${e.kos} <span class="cak-chip-x" onclick="cakajRemoveAssign(${c.idx},'${jsStr(b)}')" title="Odstrani">✕</span></span>`;
+        return `<span class="cak-chip" style="${boxStyle(b)}">📦 BOX${esc(b)} · ${e.kos} <span class="cak-chip-x" onclick="cakajRemoveAssign(${c.idx},'${jsStr(b)}')" title="Odstrani">✕</span></span>`;
       }).join('');
 
     return `
@@ -794,6 +794,17 @@ function cakajoceSection() {
             </div>
           </div>
           <button class="cak-save" onclick="cakajAssign(${c.idx})">✓ Dodaj ${curVal} kos v BOX ${esc(selBox)}</button>
+          <div class="cak-bulk">
+            <div class="cak-bulk-lbl">⚡ Hitra razdelitev v več boxov</div>
+            <div class="cak-bulk-row">
+              <input type="number" min="1" class="cak-bulk-kos" id="cakBulkKos${c.idx}" placeholder="kos/box" onclick="event.stopPropagation()">
+              <span class="cak-bulk-x">×</span>
+              <span class="cak-bulk-info">od BOX</span>
+              <input type="number" min="1" class="cak-bulk-start" id="cakBulkStart${c.idx}" value="${_nextBoxNum()}" onclick="event.stopPropagation()">
+              <button class="cak-bulk-btn" onclick="cakajAssignBulk(${c.idx})">Razdeli</button>
+            </div>
+            <div class="cak-bulk-hint">Razdeli ${ostane} kos po N v zaporedne bokse. Ostanek (če ni deljivo) ostane.</div>
+          </div>
           ` : `<div class="cak-complete">✓ Vse razdeljeno (${need} kosov)</div>`}
           ${myBoxes ? `<div class="cak-mychips">${myBoxes}</div>` : ''}
           <button class="cak-return" onclick="cakajReturn(${c.idx})">↩ Vrni v polico</button>
@@ -903,6 +914,43 @@ async function cakajAssign(idx) {
   } catch(e) { alert('Napaka pri shranjevanju'); }
 }
 
+// Hitra razdelitev: X kosov po N v zaporedne bokse od start_box naprej
+async function cakajAssignBulk(idx) {
+  const c = getCakajoce().find(x => x.idx === idx);
+  if (!c) return;
+  const kosEl = document.getElementById('cakBulkKos' + idx);
+  const startEl = document.getElementById('cakBulkStart' + idx);
+  const kosPerBox = parseInt(kosEl && kosEl.value);
+  const startBox = parseInt(startEl && startEl.value);
+  if (!kosPerBox || kosPerBox < 1) { alert('Vnesi količino na box'); return; }
+  if (!startBox || startBox < 1) { alert('Vnesi začetno št. boxa'); return; }
+  const ostane = Math.max(0, (c.qty||0) - (c.assigned||0));
+  const nBoxes = Math.floor(ostane / kosPerBox);
+  if (nBoxes < 1) { alert(`Premalo kosov (${ostane}) za en box po ${kosPerBox}`); return; }
+  const ostanek = ostane - nBoxes * kosPerBox;
+  const zadnji = startBox + nBoxes - 1;
+  let msg = `Razdelim ${nBoxes * kosPerBox} kos v ${nBoxes} boxov (BOX ${startBox}–${zadnji}, po ${kosPerBox}).`;
+  if (ostanek > 0) msg += `\nOstane ${ostanek} kos nerazdeljenih.`;
+  if (!confirm(msg)) return;
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'assign_bulk', idx, sku: c.sku, naziv: c.naziv,
+                             kos_per_box: kosPerBox, start_box: startBox })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      SESSION.cakajoce = d.cakajoce;
+      SESSION.packing_boxes = d.packing_boxes;
+      delete CAKAJ_KOS[idx]; delete CAKAJ_BOX[idx];
+      let t = `✓ Razdeljeno v ${d.created_boxes.length} boxov`;
+      if (d.ostanek > 0) t += ` (${d.ostanek} ostane)`;
+      toast(t);
+      render();
+    } else { alert(d.error || 'Napaka'); }
+  } catch(e) { alert('Napaka pri shranjevanju'); }
+}
+
 async function cakajRemoveAssign(idx, box) {
   const c = getCakajoce().find(x => x.idx === idx);
   if (!c) return;
@@ -966,13 +1014,13 @@ function itemRow(it) {
     // mobilna spodnja vrsta (skrita na desktopu prek CSS)
     opombaRow = `
       <div class="item-locked-row">
-        <span class="item-box-badge">📦 BOX ${esc(it.box)} 🔒</span>
+        <span class="item-box-badge" style="${boxStyle(it.box)}">📦 BOX ${esc(it.box)} 🔒</span>
         <button class="item-unlock" onclick="event.stopPropagation();unlockItem(${it.idx})" title="Odkleni in uredi">🔓 Odkleni</button>
       </div>`;
     // desktop inline (skrit na mobile prek CSS)
     boxInline = `
       <div class="item-box-inline">
-        <span class="item-box-badge">📦 BOX ${esc(it.box)} 🔒</span>
+        <span class="item-box-badge" style="${boxStyle(it.box)}">📦 BOX ${esc(it.box)} 🔒</span>
         <button class="item-unlock" onclick="event.stopPropagation();unlockItem(${it.idx})" title="Odkleni in uredi">🔓 Odkleni</button>
       </div>`;
   } else if (rs) {
@@ -1133,13 +1181,27 @@ function boxiHtml() {
   if (!keys.length) return '<div class="manko-empty">Še ni zaklenjenih boxov.</div>';
   return keys.map(b => `
     <div class="box-group">
-      <div class="box-group-head">📦 BOX ${esc(b)} <span class="box-group-count">${boxes[b].length}</span></div>
+      <div class="box-group-head" style="${boxStyle(b)}">📦 BOX ${esc(b)} <span class="box-group-count">${boxes[b].length}</span></div>
       ${boxes[b].map(it => `
         <div class="box-line">
           <span class="box-line-sku" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Kopiraj SKU" style="cursor:pointer">${esc(it.sku)} <span class="mpoz-copy-icon">⎘</span></span>
           <span class="box-line-poz">${esc(it.poz)}</span>
         </div>`).join('')}
     </div>`).join('');
+}
+
+function hsplusHtml() {
+  // postavke označene s HS PLUS (pridejo danes — naj se ne označijo kot "ni zaloge")
+  const hs = ITEMS.filter(it => it.hsplus);
+  if (!hs.length) return '<div class="manko-empty">Ni HS PLUS izdelkov. Naloži HS PLUS seznam.</div>';
+  // sortiraj po poziciji
+  hs.sort((a,b) => (a.poz||'').localeCompare(b.poz||'', 'sl', {numeric:true}));
+  return `<div class="hsplus-hint">📦 Ti izdelki pridejo danes — ne označuj kot "ni zaloge".</div>` +
+    hs.map(it => `
+      <div class="box-line hsplus-line">
+        <span class="box-line-sku" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Kopiraj SKU" style="cursor:pointer">${esc(it.sku)} <span class="mpoz-copy-icon">⎘</span></span>
+        <span class="box-line-poz">${esc(it.poz)}</span>
+      </div>`).join('');
 }
 
 function renderSidebar() {
@@ -1171,29 +1233,39 @@ function renderSidebar() {
       </div>
     </div>`;
 
+  const hsCount = ITEMS.filter(it => it.hsplus).length;
+
   if (!isRS()) {
-    // SLO — samo Manjko
-    const mankoHtml = manko.length === 0
-      ? '<div class="manko-empty">Zaenkrat ni manjkajočih postavk 🎉</div>'
-      : manko.map(mankoItemHtml).join('');
+    // SLO — tabi Manjko + HS PLUS (HS PLUS samo če obstaja kak označen)
+    let tabContent;
+    if (SIDEBAR_TAB === 'hsplus') {
+      tabContent = hsplusHtml();
+    } else {
+      tabContent = manko.length
+        ? `<button class="manko-copy-all manko-copy-all-rs" onclick="copyAllManko(this)" title="Kopiraj vse manjkajoče (SKU + količina)">⎘ Kopiraj vse</button>` + manko.map(mankoItemHtml).join('')
+        : '<div class="manko-empty">Zaenkrat ni manjkajočih postavk 🎉</div>';
+    }
     return `
       <div class="sidebar">
         ${statCard}
-        <div class="side-card">
-          <h3>⚠️ Manjko ${manko.length ? `<span class="badge">${manko.length}</span>` : ''}
-            ${manko.length ? `<button class="manko-copy-all" onclick="copyAllManko(this)" title="Kopiraj vse manjkajoče (SKU + količina)">⎘ Kopiraj vse</button>` : ''}
-          </h3>
-          <div class="manko-list">${mankoHtml}</div>
+        <div class="side-card side-card-tabs">
+          <div class="side-tabs">
+            <button class="side-tab side-tab-manjko ${SIDEBAR_TAB!=='hsplus'?'active':''}" onclick="setSidebarTab('manjko')">⚠️ Manjko ${manko.length?`<span class="st-badge st-red">${manko.length}</span>`:''}</button>
+            ${hsCount ? `<button class="side-tab side-tab-hsplus ${SIDEBAR_TAB==='hsplus'?'active':''}" onclick="setSidebarTab('hsplus')">📦 HS PLUS <span class="st-badge st-purple">${hsCount}</span></button>` : ''}
+          </div>
+          <div class="side-tab-body">${tabContent}</div>
         </div>
       </div>`;
   }
 
-  // RS — tabi Manjko / Boxi (Opombe odstranjen)
+  // RS — tabi Manjko / Boxi / HS PLUS
   let tabContent;
   if (SIDEBAR_TAB === 'boxi') {
     tabContent = boxiHtml();
+  } else if (SIDEBAR_TAB === 'hsplus') {
+    tabContent = hsplusHtml();
   } else {
-    // privzeto Manjko (tudi če bi SIDEBAR_TAB ostal star 'opombe')
+    // privzeto Manjko
     tabContent = manko.length
       ? `<button class="manko-copy-all manko-copy-all-rs" onclick="copyAllManko(this)" title="Kopiraj vse manjkajoče (SKU + količina)">⎘ Kopiraj vse</button>` + manko.map(mankoItemHtml).join('')
       : '<div class="manko-empty">Ni manjka 🎉</div>';
@@ -1204,10 +1276,11 @@ function renderSidebar() {
       ${statCard}
       <div class="side-card side-card-tabs">
         <div class="side-tabs">
-          <button class="side-tab side-tab-manjko ${SIDEBAR_TAB!=='boxi'?'active':''}" onclick="setSidebarTab('manjko')">⚠️ Manjko ${manko.length?`<span class="st-badge st-red">${manko.length}</span>`:''}</button>
+          <button class="side-tab side-tab-manjko ${(SIDEBAR_TAB!=='boxi'&&SIDEBAR_TAB!=='hsplus')?'active':''}" onclick="setSidebarTab('manjko')">⚠️ Manjko ${manko.length?`<span class="st-badge st-red">${manko.length}</span>`:''}</button>
           <button class="side-tab side-tab-boxi ${SIDEBAR_TAB==='boxi'?'active':''}" onclick="setSidebarTab('boxi')">📦 Boxi</button>
+          ${hsCount ? `<button class="side-tab side-tab-hsplus ${SIDEBAR_TAB==='hsplus'?'active':''}" onclick="setSidebarTab('hsplus')">📦 HS PLUS <span class="st-badge st-purple">${hsCount}</span></button>` : ''}
         </div>
-        <div class="side-tab-body side-tab-${SIDEBAR_TAB==='boxi'?'boxi':'manjko'}">${tabContent}</div>
+        <div class="side-tab-body">${tabContent}</div>
       </div>
     </div>`;
 }
@@ -1526,6 +1599,22 @@ async function archiveSession(force) {
 function esc(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function jsStr(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function cssId(s) { return String(s).replace(/[^a-zA-Z0-9]/g, '_'); }
+
+// Barva boxa iz številke — konsistentno (BOX1 vedno ista barva, BOX2 druga...).
+// Uporablja zlati kot (137.5°) za dobro razpršene, razločljive odtenke.
+function boxColor(boxNum) {
+  const n = parseInt(String(boxNum).replace(/\D/g, '')) || 0;
+  const hue = (n * 137.508) % 360;       // zlati kot → enakomerno razpršene barve
+  return {
+    bg: `hsl(${hue}, 70%, 92%)`,
+    border: `hsl(${hue}, 65%, 62%)`,
+    text: `hsl(${hue}, 70%, 30%)`,
+  };
+}
+function boxStyle(boxNum) {
+  const c = boxColor(boxNum);
+  return `background:${c.bg};border-color:${c.border};color:${c.text}`;
+}
 
 let toastTimer;
 function toast(msg) {
