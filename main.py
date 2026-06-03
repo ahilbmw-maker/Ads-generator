@@ -2087,11 +2087,14 @@ async def zaloga_cakajoce(data: dict):
             entry = next((c for c in cakajoce if c.get("idx") == idx), None)
             if not entry:
                 return {"ok": False, "error": "Ni v čakajočih"}
-            # vrni v polico kot todo postavko
+            # vrni v polico kot todo postavko — group MORA biti nastavljen (sicer pristane v "undefined")
+            _poz = entry.get("poz", "")
+            _sku = entry.get("sku", "")
             sess.setdefault("items", []).append({
-                "idx": entry["idx"], "sku": entry["sku"], "naziv": entry["naziv"],
-                "qty": entry["qty"], "picked": 0, "status": "", "poz": entry.get("poz", ""),
-                "locked": False, "box": "",
+                "idx": entry["idx"], "sku": _sku, "naziv": entry["naziv"],
+                "qty": entry["qty"], "picked": 0, "status": "", "poz": _poz,
+                "group": _zaloga_group(_poz, _sku),   # ← izračunaj polico nazaj iz pozicije/SKU
+                "locked": False, "box": "", "low": False, "opomba": "",
             })
             cakajoce = [c for c in cakajoce if c.get("idx") != idx]
             # počisti dodelitve tega sku iz packing boxov
@@ -2123,6 +2126,60 @@ async def zaloga_cakajoce(data: dict):
             pboxes[box] = lst
             sess["packing_boxes"] = pboxes
             _sync_item_status(idx, sku)
+
+        elif action == "assign_bulk":
+            # Razdeli X kosov v VEČ boxov naenkrat: po kos_per_box v vsak zaporedni box,
+            # od start_box naprej. Ostanek (če ni deljivo) ostane nerazdeljen.
+            idx = data.get("idx")
+            sku = str(data.get("sku", "")).strip()
+            naziv = str(data.get("naziv", "")).strip()
+            try:
+                kos_per_box = max(1, int(data.get("kos_per_box", 1)))
+            except (ValueError, TypeError):
+                return {"ok": False, "error": "Neveljavna količina na box"}
+            try:
+                start_box = int(str(data.get("start_box", "")).strip())
+            except (ValueError, TypeError):
+                return {"ok": False, "error": "Neveljavna začetna št. boxa"}
+            if not sku:
+                return {"ok": False, "error": "Manjka SKU"}
+            # koliko kosov je še nerazdeljenih za to postavko
+            entry = next((c for c in cakajoce if c.get("idx") == idx), None)
+            if not entry:
+                return {"ok": False, "error": "Ni v čakajočih"}
+            need = int(entry.get("qty", 0) or 0)
+            already = _assigned_for(sku)
+            remaining = need - already
+            if remaining <= 0:
+                return {"ok": False, "error": "Ni več kosov za razdeliti"}
+            n_boxes = remaining // kos_per_box   # cele škatle; ostanek ostane
+            if n_boxes <= 0:
+                return {"ok": False, "error": f"Premalo kosov ({remaining}) za en box po {kos_per_box}"}
+            box_num = start_box
+            created = []
+            for _ in range(n_boxes):
+                b = str(box_num)
+                lst = pboxes.get(b, [])
+                merged = False
+                for e in lst:
+                    if e.get("sku") == sku:
+                        e["kos"] = e.get("kos", 0) + kos_per_box
+                        merged = True
+                        break
+                if not merged:
+                    lst.append({"sku": sku, "naziv": naziv, "kos": kos_per_box})
+                pboxes[b] = lst
+                created.append(b)
+                box_num += 1
+            sess["packing_boxes"] = pboxes
+            _sync_item_status(idx, sku)
+            ostanek = remaining - (n_boxes * kos_per_box)
+            sess["cakajoce"] = cakajoce
+            sess["packing_boxes"] = pboxes
+            sess["updated_at"] = _dt.now().isoformat()
+            _zaloga_atomic_write(path, sess)
+            return {"ok": True, "cakajoce": cakajoce, "packing_boxes": pboxes,
+                    "created_boxes": created, "ostanek": ostanek}
 
         elif action == "remove_assign":
             box = str(data.get("box", "")).strip()
