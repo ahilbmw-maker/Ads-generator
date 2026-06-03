@@ -1422,6 +1422,15 @@ def _zaloga_current_path(market: str) -> Path:
     return ZALOGA_DIR / f"current_{market}.json"
 
 
+def _zaloga_atomic_write(path: Path, data: dict):
+    """Atomično zapiši sejo: najprej v .tmp, nato os.replace (atomično na istem disku).
+    Tako prekinjen zapis (restart/deploy sredi pisanja) NE pokvari obstoječe datoteke."""
+    import os as _os
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    _os.replace(str(tmp), str(path))  # atomično
+
+
 def _zaloga_archive_dir(market: str) -> Path:
     """Arhiv mapa za trg. SLO uporablja legacy archive/."""
     market = _zaloga_market(market)
@@ -1513,7 +1522,7 @@ async def zaloga_upload(file: UploadFile = File(...), market: str = "slo"):
             "pick_started_at": None,   # časovnica nabiranja — nova seja vedno začne pri 0
             "pick_finished_at": None,
         }
-        _zaloga_current_path(market).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        _zaloga_atomic_write(_zaloga_current_path(market), data)
         # Statistika skupin
         groups = {}
         for it in items:
@@ -1646,7 +1655,7 @@ async def zaloga_import_ikonka(file: UploadFile = File(...), market: str = "rs")
         sess["started_at"] = _dt.now().isoformat()
         sess["pick_started_at"] = None
         sess["pick_finished_at"] = None
-        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        _zaloga_atomic_write(path, sess)
         return {"ok": True, "added_police": added_police, "added_cakajoce": added_cakajoce,
                 "groups": groups_added, "total": added_police + added_cakajoce}
     except Exception as e:
@@ -1729,12 +1738,59 @@ async def zaloga_hsplus_upload(file: UploadFile = File(...), market: str = "slo"
             # ne brišemo obstoječih oznak, ki niso v tem seznamu — pusti kot so
 
         sess["updated_at"] = _dt.now().isoformat()
-        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        _zaloga_atomic_write(path, sess)
         return {"ok": True, "hs_count": len(hs_skus), "matched": matched,
                 "unmatched": len(hs_skus) - matched}
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e)}
+
+
+@app.get("/zaloga-debug")
+async def zaloga_debug():
+    """Diagnostika: pokaže vsebino /data/zaloga (ali current seje obstajajo, velikost, čas,
+    koliko postavk). Za ugotavljanje, ali so podatki še na disku."""
+    try:
+        from datetime import datetime as _dtd
+        info = {"ZALOGA_DIR": str(ZALOGA_DIR), "exists": ZALOGA_DIR.exists(), "files": []}
+        if ZALOGA_DIR.exists():
+            for f in sorted(ZALOGA_DIR.iterdir()):
+                entry = {"name": f.name, "is_dir": f.is_dir()}
+                if f.is_file():
+                    entry["size_kb"] = round(f.stat().st_size / 1024, 1)
+                    entry["modified"] = _dtd.fromtimestamp(f.stat().st_mtime).isoformat()
+                    # če je current seja, preštej postavke
+                    if f.name.startswith("current"):
+                        try:
+                            d = json.loads(f.read_text(encoding="utf-8"))
+                            entry["items"] = len(d.get("items", []))
+                            entry["cakajoce"] = len(d.get("cakajoce", []))
+                            entry["filename"] = d.get("filename", "")
+                            entry["started_at"] = d.get("started_at", "")
+                            entry["pick_started_at"] = d.get("pick_started_at", "")
+                        except Exception as ex:
+                            entry["read_error"] = str(ex)
+                info["files"].append(entry)
+        # arhiv
+        arch = ZALOGA_DIR / "archive"
+        if arch.exists():
+            info["archive_files"] = []
+            for f in sorted(arch.iterdir()):
+                if f.is_file():
+                    info["archive_files"].append({
+                        "name": f.name, "size_kb": round(f.stat().st_size / 1024, 1),
+                        "modified": _dtd.fromtimestamp(f.stat().st_mtime).isoformat(),
+                    })
+                elif f.is_dir():
+                    for ff in sorted(f.iterdir()):
+                        info["archive_files"].append({
+                            "name": f"{f.name}/{ff.name}", "size_kb": round(ff.stat().st_size / 1024, 1),
+                            "modified": _dtd.fromtimestamp(ff.stat().st_mtime).isoformat(),
+                        })
+        return info
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "traceback": traceback.format_exc()}
 
 
 @app.post("/zaloga-update-item")
@@ -1796,7 +1852,7 @@ async def zaloga_update_item(data: dict):
             if sess.get("pick_finished_at"):
                 sess["pick_finished_at"] = None
 
-        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        _zaloga_atomic_write(path, sess)
         return {"ok": True,
                 "pick_started_at": sess.get("pick_started_at"),
                 "pick_finished_at": sess.get("pick_finished_at")}
@@ -1825,7 +1881,7 @@ async def zaloga_lock_box(data: dict):
                     it["box"] = ""
                     break
             sess["updated_at"] = _dt.now().isoformat()
-            path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+            _zaloga_atomic_write(path, sess)
             return {"ok": True, "unlocked": uidx}
 
         # Zaklep obkljukanih — globalno (vse police) ali samo ena polica
@@ -1846,7 +1902,7 @@ async def zaloga_lock_box(data: dict):
         if locked_count == 0:
             return {"ok": False, "error": "Ni obkljukanih (in še odklenjenih) postavk"}
         sess["updated_at"] = _dt.now().isoformat()
-        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        _zaloga_atomic_write(path, sess)
         return {"ok": True, "locked": locked_count, "box": box}
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -1952,7 +2008,7 @@ async def zaloga_extra_box(data: dict):
 
         sess["extra_boxes"] = boxes
         sess["updated_at"] = _dt.now().isoformat()
-        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        _zaloga_atomic_write(path, sess)
         return {"ok": True, "extra_boxes": boxes}
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -2091,7 +2147,7 @@ async def zaloga_cakajoce(data: dict):
         sess["cakajoce"] = cakajoce
         sess["packing_boxes"] = pboxes
         sess["updated_at"] = _dt.now().isoformat()
-        path.write_text(json.dumps(sess, ensure_ascii=False), encoding="utf-8")
+        _zaloga_atomic_write(path, sess)
         return {"ok": True, "cakajoce": cakajoce, "packing_boxes": pboxes}
     except Exception as e:
         import traceback; traceback.print_exc()
