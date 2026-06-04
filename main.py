@@ -1720,6 +1720,24 @@ async def zaloga_current_get(market: str = "slo"):
         path = _zaloga_current_path(market)
         if path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
+            # SAMO-POPRAVILO STARIH SEJ: časovnica mora izhajati iz dejanskih znamk
+            # nabiranja (picked_at), ne iz starega pick_started_at (ki je bil čas uploada).
+            its = data.get("items", [])
+            stamps = [it.get("picked_at") for it in its if it.get("picked_at")]
+            if stamps:
+                real_start = min(stamps)
+            else:
+                # seja še nima nobene prave znamke → časovnica naj kaže 0:00:00,
+                # tudi če stari pick_started_at obstaja (bil je čas uploada)
+                real_start = None
+            if data.get("pick_started_at") != real_start:
+                data["pick_started_at"] = real_start
+                if real_start is None:
+                    data["pick_finished_at"] = None
+                try:
+                    _zaloga_atomic_write(path, data)
+                except Exception:
+                    pass
             return {"ok": True, **data}
         return {"ok": True, "items": [], "started_at": None}
     except Exception as e:
@@ -1872,11 +1890,22 @@ async def zaloga_update_item(data: dict):
         if idx is None:
             return {"ok": False, "error": "Manjka idx"}
         sess = json.loads(path.read_text(encoding="utf-8"))
+        now_iso = _dt.now().isoformat()
         found = False
         for it in sess.get("items", []):
             if it.get("idx") == idx:
                 if "status" in data:
+                    prev_status = it.get("status")
                     it["status"] = data["status"]
+                    # ČASOVNICA: zabeleži DEJANSKI trenutek nabiranja (samo ob prvem prehodu
+                    # iz nepotrjeno → ok/ni). To je edini vir resnice za začetek časovnice —
+                    # nikoli čas uploada ali predhodno naložen status.
+                    if data["status"] in ("ok", "ni") and prev_status not in ("ok", "ni") \
+                            and not it.get("picked_at"):
+                        it["picked_at"] = now_iso
+                    # preklic statusa → pobriši pick znamko (da časovnica spet pravilno reagira)
+                    elif data["status"] not in ("ok", "ni"):
+                        it["picked_at"] = None
                 if "picked" in data:
                     try:
                         it["picked"] = max(0, int(data["picked"]))
@@ -1888,31 +1917,21 @@ async def zaloga_update_item(data: dict):
                 break
         if not found:
             return {"ok": False, "error": "Postavka ne obstaja"}
-        sess["updated_at"] = _dt.now().isoformat()
+        sess["updated_at"] = now_iso
 
         # ── ČASOVNICA NABIRANJA ──
-        # Začni ob PRVI potrjeni postavki (status ok/ni). Konec ko so VSE obdelane (100%).
+        # Začetek = DEJANSKI čas najzgodnejše nabrane postavke (it["picked_at"]).
+        # Konec = ko so VSE obdelane (100%). Nikoli se ne veže na čas uploada.
         items_all = sess.get("items", [])
         total = len(items_all)
+        picked_ats = [it.get("picked_at") for it in items_all if it.get("picked_at")]
         obdelanih = sum(1 for it in items_all if it.get("status") in ("ok", "ni"))
-        # varovalka: če je pick_started_at ostanek prejšnje seje (starejši od začetka te seje),
-        # ga zavrzi — sicer bi čas "skočil" na staro vrednost namesto 0:00:00
-        ps_cur = sess.get("pick_started_at")
-        sess_start = sess.get("started_at")
-        if ps_cur and sess_start:
-            try:
-                if _dt.fromisoformat(ps_cur) < _dt.fromisoformat(sess_start):
-                    sess["pick_started_at"] = None
-                    sess["pick_finished_at"] = None
-            except Exception:
-                pass
-        # start: prva potrditev
-        if obdelanih > 0 and not sess.get("pick_started_at"):
-            sess["pick_started_at"] = sess["updated_at"]
+        # vir resnice: najzgodnejša dejanska znamka nabiranja (ali None, če še nič)
+        sess["pick_started_at"] = min(picked_ats) if picked_ats else None
         # konec: vse obdelano → zabeleži končni čas (samo prvič)
-        if total > 0 and obdelanih >= total:
+        if total > 0 and obdelanih >= total and sess.get("pick_started_at"):
             if not sess.get("pick_finished_at"):
-                sess["pick_finished_at"] = sess["updated_at"]
+                sess["pick_finished_at"] = now_iso
         else:
             # padlo pod 100% (npr. preklic statusa) → časovnica spet teče
             if sess.get("pick_finished_at"):
