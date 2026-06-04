@@ -1353,6 +1353,32 @@ function setSidebarTab(tab) {
 // ── Global stat (top bar) ──
 function updateGlobalStat() {
   const stat = groupStat(ITEMS);
+  // ČAKAJOČE (RS uvoz, kol>1): vsaka šteje kot 1 postavka v SKUPNI statistiki.
+  // done:true (razdeljena v bokse) = nabrana (ok); sicer = še nabirajo (todo).
+  const cak = getCakajoce();
+  if (cak && cak.length) {
+    let cOk = 0;
+    cak.forEach(c => { if (c.done) cOk++; });
+    const cTodo = cak.length - cOk;
+    stat.total += cak.length;
+    stat.ok    += cOk;
+    stat.todo  += cTodo;
+    stat.done  += cOk;
+    // preračun odstotkov po postavkah (vsota = 100)
+    stat.pctOk   = stat.total ? Math.round(stat.ok / stat.total * 100) : 0;
+    stat.pctNi   = stat.total ? Math.round(stat.ni / stat.total * 100) : 0;
+    stat.pctTodo = stat.total ? (100 - stat.pctOk - stat.pctNi) : 0;
+    stat.pct     = stat.total ? Math.round(stat.done / stat.total * 100) : 0;
+    // bar po kosih: čakajoča prispeva svoje kose (qty), done=nabrano, sicer todo
+    cak.forEach(c => {
+      const q = c.qty || 0;
+      stat.qNeed += q;
+      if (c.done) stat.qOk += q; else stat.qTodo += q;
+    });
+    stat.qPctOk   = stat.qNeed ? Math.round(stat.qOk / stat.qNeed * 100) : 0;
+    stat.qPctNi   = stat.qNeed ? Math.round(stat.qMiss / stat.qNeed * 100) : 0;
+    stat.qPctTodo = stat.qNeed ? Math.max(0, 100 - stat.qPctOk - stat.qPctNi) : 0;
+  }
   const bar = document.getElementById('globalBar');
   if (bar) bar.innerHTML = progBarSegments(stat);
   const mprog = document.getElementById('mobileProg');
