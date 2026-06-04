@@ -15653,7 +15653,7 @@ def _badge_prompt_tr(per_locale, kategorija=""):
 
 PRAVILA:
 - Format: 1 emoji + 1 beseda ali kratek izraz
-- Maksimalno 19 znakov skupaj (emoji = 1 znak)
+- Maksimalno 15 znakov skupaj (emoji = 1 znak) — STROGO, raje krajše
 - Vsaka značka v svojem jeziku
 - sr (srbščina): OBVEZNO latinica, nikoli cirilica
 - bg (bolgarščina): cirilica
@@ -15684,9 +15684,20 @@ def _badge_cyr2lat(s):
 def _badge_has_cyr(s):
     return any('\u0400' <= ch <= '\u04FF' for ch in s)
 
-def _badge_clean(s):
+def _badge_clean(s, max_len=19):
     s = (s or "").strip().split("\n")[0].strip()
-    return s.strip('"').strip("'").strip()
+    s = s.strip('"').strip("'").strip()
+    # uveljavi mejo znakov — če predolgo, poreži na meji besede (emoji + izraz ohranjen)
+    MAX = max_len
+    if len(s) > MAX:
+        cut = s[:MAX]
+        # če smo prerezali sredi besede, poreži do zadnjega presledka (a ohrani emoji na začetku)
+        if " " in cut and not s[MAX:MAX+1].isspace():
+            sp = cut.rfind(" ")
+            if sp >= 3:   # ne poreži, če bi ostal samo emoji
+                cut = cut[:sp]
+        s = cut.strip()
+    return s
 
 
 @app.post("/badge-upload")
@@ -15879,7 +15890,7 @@ async def badge_build(data: dict):
                     continue
                 idx = loc_counter[loc]; loc_counter[loc] += 1
                 badges = get_badges(idx)
-                badge = _badge_clean(badges.get(loc, "")) if badges else ""
+                badge = _badge_clean(badges.get(loc, ""), max_len=15) if badges else ""  # tuji jeziki: max 15 znakov
                 if badge:
                     if loc == "sr" and _badge_has_cyr(badge):
                         badge = _badge_cyr2lat(badge); cyr_fixed += 1
