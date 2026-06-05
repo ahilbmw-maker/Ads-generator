@@ -3291,7 +3291,8 @@ input[type="text"].error { border-color: var(--red) !important; }
         <!-- RELACIJA (Google Maps) -->
         <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:var(--radius);padding:10px 12px;margin-bottom:10px">
           <label class="pn-lbl" style="color:#2563eb">📍 Relacija (kraji, ločeni z vejico/pomišljajem)</label>
-          <input id="pnRelacija" class="pn-in" placeholder="npr. Ljubljana, Kranj" style="margin-bottom:6px">
+          <input list="pnRelacijeList" id="pnRelacija" class="pn-in" placeholder="npr. Ljubljana, Kranj" style="margin-bottom:6px" oninput="pnRelacijaPick()">
+          <datalist id="pnRelacijeList"></datalist>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <button onclick="pnMapsDistance()" id="pnMapsBtn" style="padding:6px 12px;background:#2563eb;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🗺 Izračunaj km (Maps)</button>
             <label style="font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:4px">
@@ -3346,7 +3347,10 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <span class="slabel">🕒 ZGODOVINA</span>
-          <button onclick="pnLoadList()" style="font-size:11px;padding:2px 8px;background:transparent;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;color:var(--text-secondary);font-family:inherit">↺</button>
+          <div style="display:flex;gap:6px">
+            <button onclick="pnOpenBook()" style="font-size:11px;padding:2px 8px;background:transparent;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;color:var(--text-secondary);font-family:inherit">📒 Imeniki</button>
+            <button onclick="pnLoadList()" style="font-size:11px;padding:2px 8px;background:transparent;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;color:var(--text-secondary);font-family:inherit">↺</button>
+          </div>
         </div>
         <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
           <label class="pn-lbl">Mesečni izvoz</label>
@@ -3362,6 +3366,49 @@ input[type="text"].error { border-color: var(--red) !important; }
 
     </div>
     </div><!-- /knjPane-potni -->
+
+    <!-- MODAL: IMENIKI -->
+    <div id="pnBookModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)pnCloseBook()">
+      <div style="background:var(--surface);border-radius:var(--radius);padding:18px;width:min(560px,92vw);max-height:86vh;overflow-y:auto" onclick="event.stopPropagation()">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <span class="slabel">📒 IMENIKI</span>
+          <button onclick="pnCloseBook()" style="background:transparent;border:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">✕</button>
+        </div>
+
+        <!-- Zaposleni -->
+        <div style="margin-bottom:16px">
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px">👤 Zaposleni</div>
+          <div id="pnBookZaposleni" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:5px">
+            <input id="pnBookZIme" class="pn-in" placeholder="Ime in priimek" style="font-size:12px">
+            <input id="pnBookZDm" class="pn-in" placeholder="Delovno mesto" style="font-size:12px">
+            <input id="pnBookZPreb" class="pn-in" placeholder="Prebivališče" style="font-size:12px">
+            <button onclick="pnBookAdd('zaposleni')" style="padding:0 12px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;cursor:pointer;font-family:inherit">+</button>
+          </div>
+        </div>
+
+        <!-- Vozila -->
+        <div style="margin-bottom:16px">
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px">🚗 Vozila</div>
+          <div id="pnBookVozila" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px"></div>
+          <div style="display:flex;gap:5px">
+            <input id="pnBookVoz" class="pn-in" placeholder="npr. KP FI 496" style="font-size:12px">
+            <button onclick="pnBookAdd('vozila')" style="padding:0 12px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;cursor:pointer;font-family:inherit">+</button>
+          </div>
+        </div>
+
+        <!-- Relacije -->
+        <div>
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px">📍 Relacije (s shranjenimi km)</div>
+          <div id="pnBookRelacije" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
+          <div style="display:grid;grid-template-columns:1fr 90px auto;gap:5px">
+            <input id="pnBookRel" class="pn-in" placeholder="npr. Ljubljana, Kranj" style="font-size:12px">
+            <input id="pnBookRelKm" type="number" class="pn-in" placeholder="km" style="font-size:12px">
+            <button onclick="pnBookAdd('relacije')" style="padding:0 12px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;cursor:pointer;font-family:inherit">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     </div>
   </div><!-- /page-knjigovodstvo -->
@@ -8197,6 +8244,8 @@ async function pnLoadList() {
     // datalisti
     document.getElementById('pnZaposleniList').innerHTML = (d.zaposleni || []).map(z => `<option value="${pnEsc(z.oseba)}">`).join('');
     document.getElementById('pnVozilaList').innerHTML = (d.vozila || []).map(v => `<option value="${pnEsc(v)}">`).join('');
+    const relEl = document.getElementById('pnRelacijeList');
+    if (relEl) relEl.innerHTML = (d.relacije || []).map(r => `<option value="${pnEsc(r.relacija)}">${r.km ? r.km + ' km' : ''}</option>`).join('');
     // naslednja št (samo če nismo v urejanju)
     if (!document.getElementById('pnEditSt').value) {
       document.getElementById('pnStNum').textContent = '#' + d.next_st;
@@ -8296,7 +8345,13 @@ async function pnMapsDistance() {
     const d = await r.json();
     if (d.ok) {
       document.getElementById('pnKm').value = d.km;
-      info.innerHTML = `✓ <b>${d.km} km</b>${d.round_trip ? ' (tja+nazaj)' : ''}`;
+      let msg = `✓ <b>${d.km} km</b>${d.round_trip ? ' (tja+nazaj)' : ''}`;
+      if (d.used_default_origin) {
+        msg += ` <span style="color:#d97706">⚠ od ${pnEsc(d.origin)} (vnesi prebivališče za točen izračun)</span>`;
+      } else {
+        msg += ` <span style="color:var(--text-tertiary)">od ${pnEsc(d.origin)}</span>`;
+      }
+      info.innerHTML = msg;
       pnRecalc();
     } else {
       info.innerHTML = `<span style="color:#ef4444">${pnEsc(d.error || 'napaka')}</span> — vnesi km ročno`;
@@ -8395,6 +8450,83 @@ function pnExportMonth() {
   const m = document.getElementById('pnExportMonth').value;
   if (!m) { alert('Izberi mesec'); return; }
   window.location.href = '/pn-export-xlsx?mesec=' + m;
+}
+
+function pnRelacijaPick() {
+  // če vnesena relacija ustreza shranjeni z znanimi km → predizpolni km
+  const rel = document.getElementById('pnRelacija').value.trim();
+  const r = (PN_DATA.relacije || []).find(x => x.relacija === rel);
+  if (r && r.km) {
+    document.getElementById('pnKm').value = r.km;
+    document.getElementById('pnMapsInfo').innerHTML = `✓ <b>${r.km} km</b> (shranjeno)`;
+    pnRecalc();
+  }
+}
+
+// ── IMENIKI (modal) ──
+function pnOpenBook() {
+  document.getElementById('pnBookModal').style.display = 'flex';
+  pnRenderBook();
+}
+function pnCloseBook() {
+  document.getElementById('pnBookModal').style.display = 'none';
+  pnLoadList();
+}
+function pnRenderBook() {
+  // zaposleni
+  const z = document.getElementById('pnBookZaposleni');
+  z.innerHTML = (PN_DATA.zaposleni || []).map(e => `
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 8px;background:var(--surface2);border-radius:5px">
+      <span><b>${pnEsc(e.oseba)}</b> · ${pnEsc(e.dm || '—')} · ${pnEsc(e.prebivalisce || '—')}</span>
+      <span onclick="pnBookDel('zaposleni','${pnEsc(e.oseba).replace(/'/g,"\\'")}')" style="color:#ef4444;cursor:pointer;margin-left:8px">✕</span>
+    </div>`).join('') || '<div style="font-size:11px;color:var(--text-tertiary)">Prazno</div>';
+  // vozila
+  const v = document.getElementById('pnBookVozila');
+  v.innerHTML = (PN_DATA.vozila || []).map(x => `
+    <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 8px;background:var(--surface2);border-radius:5px">
+      ${pnEsc(x)} <span onclick="pnBookDel('vozila','${pnEsc(x).replace(/'/g,"\\'")}')" style="color:#ef4444;cursor:pointer">✕</span>
+    </span>`).join('') || '<div style="font-size:11px;color:var(--text-tertiary)">Prazno</div>';
+  // relacije
+  const r = document.getElementById('pnBookRelacije');
+  r.innerHTML = (PN_DATA.relacije || []).map(x => `
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 8px;background:var(--surface2);border-radius:5px">
+      <span>${pnEsc(x.relacija)} ${x.km ? '· <b>' + x.km + ' km</b>' : ''}</span>
+      <span onclick="pnBookDel('relacije','${pnEsc(x.relacija).replace(/'/g,"\\'")}')" style="color:#ef4444;cursor:pointer;margin-left:8px">✕</span>
+    </div>`).join('') || '<div style="font-size:11px;color:var(--text-tertiary)">Prazno</div>';
+}
+async function pnBookAdd(type) {
+  let item;
+  if (type === 'zaposleni') {
+    const ime = document.getElementById('pnBookZIme').value.trim();
+    if (!ime) { alert('Vnesi ime'); return; }
+    item = { oseba: ime, dm: document.getElementById('pnBookZDm').value.trim(), prebivalisce: document.getElementById('pnBookZPreb').value.trim() };
+  } else if (type === 'vozila') {
+    const val = document.getElementById('pnBookVoz').value.trim();
+    if (!val) { alert('Vnesi vozilo'); return; }
+    item = { vozilo: val };
+  } else {
+    const rel = document.getElementById('pnBookRel').value.trim();
+    if (!rel) { alert('Vnesi relacijo'); return; }
+    item = { relacija: rel, km: document.getElementById('pnBookRelKm').value || 0 };
+  }
+  await pnBookSave(type, 'upsert', item);
+  ['pnBookZIme', 'pnBookZDm', 'pnBookZPreb', 'pnBookVoz', 'pnBookRel', 'pnBookRelKm'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+}
+async function pnBookDel(type, key) {
+  const item = type === 'vozila' ? { vozilo: key } : (type === 'zaposleni' ? { oseba: key } : { relacija: key });
+  await pnBookSave(type, 'delete', item);
+}
+async function pnBookSave(type, action, item) {
+  try {
+    const r = await fetch('/pn-book-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, action, item }) });
+    const d = await r.json();
+    if (d.ok) {
+      PN_DATA.zaposleni = (d.zaposleni || []).map(z => ({ ...z, saved: true }));
+      PN_DATA.vozila = d.vozila || [];
+      PN_DATA.relacije = (d.relacije || []).map(x => ({ ...x, saved: true }));
+      pnRenderBook();
+    } else { alert(d.error || 'Napaka'); }
+  } catch (e) { alert('Napaka pri shranjevanju'); }
 }
 
 let invItems = [];
