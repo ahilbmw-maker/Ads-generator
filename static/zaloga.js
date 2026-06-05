@@ -69,6 +69,20 @@ async function loadSession() {
     if (data.ok && data.items && data.items.length) {
       SESSION = data;
       ITEMS = data.items;
+      // VAROVALKA: ob novi zaznavi padca seštevka pokaži toast (samo enkrat na spremembo)
+      const ig = data.integrity;
+      if (ig && ig.ok === false) {
+        const sig = ig.dropped_items + ':' + ig.dropped_qty;
+        if (sig !== _lastIntegritySig) {
+          _lastIntegritySig = sig;
+          const p = [];
+          if (ig.dropped_items > 0) p.push(`${ig.dropped_items} postavk`);
+          if (ig.dropped_qty > 0) p.push(`${ig.dropped_qty} kosov`);
+          toast(`⚠️ Seštevek se je zmanjšal — manjka ${p.join(' in ')}! Preveri izbris.`, 6000);
+        }
+      } else if (ig && ig.ok) {
+        _lastIntegritySig = '';
+      }
       render();
       document.getElementById('archiveBtn').style.display = '';
       document.getElementById('globalStat').style.display = '';
@@ -83,6 +97,7 @@ async function loadSession() {
 
 // ── Slike izdelkov (preview za nove delavce) ──
 let SKU_IMAGES = {};   // { SKU: url }
+let _lastIntegritySig = '';  // VAROVALKA: zadnja zaznana signatura padca seštevka (da toast ne spamira)
 async function fetchSkuImages() {
   try {
     const skus = [...new Set(ITEMS.map(it => it.sku).filter(Boolean))];
@@ -813,6 +828,7 @@ function cakajoceSection() {
           </div>
           ` : `<div class="cak-complete">✓ Vse razdeljeno (${need} kosov)</div>`}
           ${myBoxes ? `<div class="cak-mychips">${myBoxes}</div>` : ''}
+          ${(ostane > 0 && assigned > 0) ? `<button class="cak-closemiss" onclick="cakajCloseMissing(${c.idx},${ostane})">✓ Zaključi — ${ostane} v manjko</button>` : ''}
           <button class="cak-return" onclick="cakajReturn(${c.idx})">↩ Vrni v polico</button>
         </div>
       </div>`;
@@ -968,6 +984,25 @@ async function cakajRemoveAssign(idx, box) {
     const d = await r.json();
     if (d.ok) { SESSION.cakajoce = d.cakajoce; SESSION.packing_boxes = d.packing_boxes; render(); }
   } catch(e) {}
+}
+
+async function cakajCloseMissing(idx, ostane) {
+  const c = getCakajoce().find(x => x.idx === idx);
+  if (!c) return;
+  if (!confirm(`Zaključim "${c.sku}"?\n\nRazdeljeni kosi ostanejo v boxih, preostalih ${ostane} kos pa gre v MANJKO.`)) return;
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'close_missing', idx, sku: c.sku })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      SESSION.cakajoce = d.cakajoce;
+      if (d.packing_boxes) SESSION.packing_boxes = d.packing_boxes;
+      toast(`✓ Zaključeno — ${ostane} kos v manjko`);
+      render();
+    } else { alert(d.error || 'Napaka'); }
+  } catch(e) { alert('Napaka pri shranjevanju'); }
 }
 
 async function cakajReturn(idx) {
@@ -1280,28 +1315,51 @@ function renderSidebar() {
   let totalItems = ITEMS.length;
 
   // ── ČAKAJOČE (RS uvoz dobavnice, kol>1): združi postavke IN kose ──
-  // Vsaka čakajoča = 1 postavka. Kosi = qty. assigned = razdeljeni (nabrani) kosi.
-  // done (assigned>=qty) → postavka obdelana/nabrana; razdeljeni kosi štejejo kot nabrani.
+  // Vsaka čakajoča = 1 postavka (šteje v "Vseh postavk" od začetka).
+  // assigned = razdeljeni (nabrani) kosi → vedno štejejo kot nabrani.
+  // PREOSTANEK (need - assigned) gre v "Manjka (kosov)" SAMO ko je čakajoča ZAKLJUČENA (done).
+  // Dokler ni zaključena (še razdeljujemo / nedotaknjena) → preostanek NE šteje v manjko.
   const cak = getCakajoce();
   if (cak && cak.length) {
     cak.forEach(c => {
       const need = c.qty || 0;
       const assigned = Math.min(c.assigned || 0, need);
-      const isDone = c.done || assigned >= need;
+      const ostane = Math.max(0, need - assigned);
+      const isFull = assigned >= need;          // vse razdeljeno
+      const isClosed = !!c.done;                 // zaključena (poln ali z manjkom)
       totalItems += 1;
       totalQtyNeed += need;
       totalQtyPicked += assigned;
-      if (isDone) { totalOk += 1; }
-      // manjkajoči kosi čakajoče = še nerazdeljeni
-      totalQtyMissing += Math.max(0, need - assigned);
+      // obdelana/nabrana postavka: ko je polna ALI zaključena z manjkom
+      if (isFull || isClosed) { totalOk += 1; }
+      // preostanek v manjko le ob zaključku z manjkom
+      if (isClosed && ostane > 0) { totalQtyMissing += ostane; }
     });
   }
 
   const totalDone = totalOk + totalNi;
 
+  // ── VAROVALKA: opozori, če so skupne postavke/kosi padli pod baseline (možna napaka/izbris) ──
+  let integrityBanner = '';
+  const ig = SESSION && SESSION.integrity;
+  if (ig && ig.ok === false) {
+    const parts = [];
+    if (ig.dropped_items > 0) parts.push(`${ig.dropped_items} postavk`);
+    if (ig.dropped_qty > 0) parts.push(`${ig.dropped_qty} kosov`);
+    integrityBanner = `
+      <div class="integrity-warn" title="Skupni seštevek je padel pod doslej zabeleženo vrednost — možen izbris ali napaka.">
+        <span class="iw-ico">⚠️</span>
+        <div class="iw-txt">
+          <b>Pozor: seštevek se je zmanjšal!</b>
+          <span>Manjka ${parts.join(' in ')} glede na prej (${ig.cur_items}/${ig.peak_items} postavk, ${ig.cur_qty}/${ig.peak_qty} kosov). Preveri, ali je prišlo do izbrisa.</span>
+        </div>
+      </div>`;
+  }
+
   const statCard = `
     <div class="side-card">
       <h3>📊 Skupna statistika</h3>
+      ${integrityBanner}
       <div class="stat-rows">
         <div class="stat-row"><span class="lbl">Vseh postavk</span><span class="val">${totalItems}</span></div>
         <div class="stat-row"><span class="lbl">Obdelanih</span><span class="val">${totalDone}</span></div>
@@ -1378,7 +1436,13 @@ function updateGlobalStat() {
   const cak = getCakajoce();
   if (cak && cak.length) {
     let cOk = 0;
-    cak.forEach(c => { if (c.done) cOk++; });
+    cak.forEach(c => {
+      const need = c.qty || 0;
+      const assigned = Math.min(c.assigned || 0, need);
+      const isFull = assigned >= need;
+      const isClosed = !!c.done;
+      if (isFull || isClosed) cOk++;
+    });
     const cTodo = cak.length - cOk;
     stat.total += cak.length;
     stat.ok    += cOk;
@@ -1389,11 +1453,16 @@ function updateGlobalStat() {
     stat.pctNi   = stat.total ? Math.round(stat.ni / stat.total * 100) : 0;
     stat.pctTodo = stat.total ? (100 - stat.pctOk - stat.pctNi) : 0;
     stat.pct     = stat.total ? Math.round(stat.done / stat.total * 100) : 0;
-    // bar po kosih: čakajoča prispeva svoje kose (qty), done=nabrano, sicer todo
+    // bar po kosih: assigned = nabrano (zeleno). Preostanek → rdeče (manjko) le ob zaključku;
+    // dokler ni zaključeno, preostanek ostane sivo (todo).
     cak.forEach(c => {
-      const q = c.qty || 0;
-      stat.qNeed += q;
-      if (c.done) stat.qOk += q; else stat.qTodo += q;
+      const need = c.qty || 0;
+      const assigned = Math.min(c.assigned || 0, need);
+      const ostane = Math.max(0, need - assigned);
+      stat.qNeed += need;
+      stat.qOk   += assigned;
+      if (c.done && ostane > 0) stat.qMiss += ostane;
+      else stat.qTodo += ostane;
     });
     stat.qPctOk   = stat.qNeed ? Math.round(stat.qOk / stat.qNeed * 100) : 0;
     stat.qPctNi   = stat.qNeed ? Math.round(stat.qMiss / stat.qNeed * 100) : 0;
@@ -1759,12 +1828,12 @@ function boxStyle(boxNum) {
 }
 
 let toastTimer;
-function toast(msg) {
+function toast(msg, dur) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => t.classList.remove('show'), dur || 2200);
 }
 
 // ── Auto-refresh (sync med napravami) — vsakih 15s preberi disk ──
@@ -1776,6 +1845,25 @@ async function pollSync() {
     const data = await r.json();
     if (data.ok && data.updated_at && data.updated_at !== lastUpdate) {
       lastUpdate = data.updated_at;
+      // VAROVALKA: osveži integriteto in opozori, če je seštevek padel
+      if (SESSION) {
+        SESSION.integrity = data.integrity;
+        const ig = data.integrity;
+        if (ig && ig.ok === false) {
+          const sig = ig.dropped_items + ':' + ig.dropped_qty;
+          if (sig !== _lastIntegritySig) {
+            _lastIntegritySig = sig;
+            const p = [];
+            if (ig.dropped_items > 0) p.push(`${ig.dropped_items} postavk`);
+            if (ig.dropped_qty > 0) p.push(`${ig.dropped_qty} kosov`);
+            toast(`⚠️ Seštevek se je zmanjšal — manjka ${p.join(' in ')}! Preveri izbris.`, 6000);
+            refreshSidebarAndStats();
+          }
+        } else if (ig && ig.ok) {
+          if (_lastIntegritySig !== '') refreshSidebarAndStats();
+          _lastIntegritySig = '';
+        }
+      }
       // osveži časovnico (drugi nabiralec je morda začel/končal)
       if (SESSION) {
         const ps = SESSION.pick_started_at, pf = SESSION.pick_finished_at;
