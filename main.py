@@ -15670,7 +15670,31 @@ async def shipping_debug():
 PN_DIR = DATA_DIR / "potni_nalogi"
 PN_DIR.mkdir(exist_ok=True, parents=True)
 PN_STATE = PN_DIR / "nalogi.json"          # vsi nalogi (seznam dict)
+PN_BOOK = PN_DIR / "imeniki.json"          # stalni imeniki: zaposleni, vozila, relacije
 PN_TEMPLATE = Path("static") / "potni_nalog_template.xlsx"
+
+
+def _pn_book_load():
+    """Stalni imeniki za hitro štancanje (neodvisni od shranjenih nalogov)."""
+    if PN_BOOK.exists():
+        try:
+            d = json.loads(PN_BOOK.read_text(encoding="utf-8"))
+        except Exception:
+            d = {}
+    else:
+        d = {}
+    d.setdefault("zaposleni", [])   # [{oseba, dm, prebivalisce}]
+    d.setdefault("vozila", [])      # ["KP FI 496", ...]
+    d.setdefault("relacije", [])    # [{relacija, km}]
+    return d
+
+
+def _pn_book_save(book):
+    tmp = PN_BOOK.with_suffix(".tmp")
+    tmp.write_text(json.dumps(book, ensure_ascii=False, indent=2), encoding="utf-8")
+    import os as _os
+    _os.replace(str(tmp), str(PN_BOOK))
+
 
 # Fiksni podatki podjetja
 PN_COMPANY = "SUBAN d.o.o. Kazarje 3, 6230 Postojna ID za ddv: SI26391201"
@@ -15760,31 +15784,104 @@ def _pn_parse_hours(odhod: str, vrnitev: str, dni: int = 1):
 
 @app.get("/pn-list")
 async def pn_list():
-    """Vrne vse potne naloge (najnovejši prvi) + naslednjo številko + sezname za predizpolnitev."""
+    """Vrne vse potne naloge (najnovejši prvi) + naslednjo številko + IMENIKE (stalni + izpeljani)."""
     try:
         nalogi = _pn_load()
         nalogi_sorted = sorted(nalogi, key=lambda n: int(n.get("st", 0)), reverse=True)
-        # izpelji sezname zaposlenih in vozil iz zgodovine za predizpolnitev
+        book = _pn_book_load()
+
+        # ZAPOSLENI: stalni imenik ima prednost; dopolni z izpeljanimi iz zgodovine
         zaposleni = {}
-        vozila = set()
+        for z in book.get("zaposleni", []):
+            ime = (z.get("oseba") or "").strip()
+            if ime:
+                zaposleni[ime] = {"oseba": ime, "dm": z.get("dm", ""), "prebivalisce": z.get("prebivalisce", ""), "saved": True}
         for n in nalogi:
             ime = (n.get("oseba") or "").strip()
             if ime and ime not in zaposleni:
-                zaposleni[ime] = {
-                    "oseba": ime,
-                    "dm": n.get("dm", ""),
-                    "prebivalisce": n.get("prebivalisce", ""),
-                }
+                zaposleni[ime] = {"oseba": ime, "dm": n.get("dm", ""), "prebivalisce": n.get("prebivalisce", ""), "saved": False}
+
+        # VOZILA: stalni imenik + izpeljana
+        vozila = set(v.strip() for v in book.get("vozila", []) if v and v.strip())
+        for n in nalogi:
             if n.get("vozilo"):
                 vozila.add(n["vozilo"].strip())
+
+        # RELACIJE: stalni imenik (z znanimi km) + izpeljane iz zgodovine
+        relacije = {}
+        for r in book.get("relacije", []):
+            rel = (r.get("relacija") or "").strip()
+            if rel:
+                relacije[rel] = {"relacija": rel, "km": r.get("km", 0), "saved": True}
+        for n in nalogi:
+            rel = (n.get("relacija") or "").strip()
+            if rel and rel not in relacije:
+                relacije[rel] = {"relacija": rel, "km": n.get("km", 0), "saved": False}
+
         return {
             "ok": True,
             "nalogi": nalogi_sorted,
             "next_st": _pn_next_number(nalogi),
             "zaposleni": list(zaposleni.values()),
             "vozila": sorted(vozila),
+            "relacije": list(relacije.values()),
             "km_rate": PN_KM_RATE,
         }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/pn-book")
+async def pn_book_get():
+    """Vrne samo stalne imenike (za urejanje)."""
+    try:
+        return {"ok": True, **_pn_book_load()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/pn-book-save")
+async def pn_book_save_ep(data: dict):
+    """Doda/uredi/izbriše vnos v imeniku.
+    body: { type: 'zaposleni'|'vozila'|'relacije', action: 'upsert'|'delete', item: {...} }"""
+    try:
+        typ = data.get("type")
+        action = data.get("action", "upsert")
+        item = data.get("item")
+        if typ not in ("zaposleni", "vozila", "relacije"):
+            return {"ok": False, "error": "Neveljaven tip imenika"}
+        book = _pn_book_load()
+        lst = book.get(typ, [])
+
+        if typ == "vozila":
+            val = (item or "").strip() if isinstance(item, str) else (item.get("vozilo", "").strip() if item else "")
+            if action == "delete":
+                lst = [v for v in lst if v.strip() != val]
+            else:
+                if val and val not in lst:
+                    lst.append(val)
+        elif typ == "zaposleni":
+            ime = (item.get("oseba") or "").strip()
+            if not ime:
+                return {"ok": False, "error": "Manjka ime"}
+            lst = [z for z in lst if (z.get("oseba") or "").strip() != ime]  # odstrani obstoječega
+            if action != "delete":
+                lst.append({"oseba": ime, "dm": (item.get("dm") or "").strip(), "prebivalisce": (item.get("prebivalisce") or "").strip()})
+        elif typ == "relacije":
+            rel = (item.get("relacija") or "").strip()
+            if not rel:
+                return {"ok": False, "error": "Manjka relacija"}
+            lst = [r for r in lst if (r.get("relacija") or "").strip() != rel]
+            if action != "delete":
+                try:
+                    km = float(item.get("km") or 0)
+                except (ValueError, TypeError):
+                    km = 0
+                lst.append({"relacija": rel, "km": km})
+
+        book[typ] = lst
+        _pn_book_save(book)
+        return {"ok": True, **book}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -15831,21 +15928,22 @@ async def pn_distance(data: dict):
         return {"ok": False, "error": "GOOGLE_MAPS_API_KEY ni nastavljen.", "manual": True}
     try:
         relacija = (data.get("relacija") or "").strip()
-        origin = (data.get("origin") or "").strip()   # izhodišče (prebivališče), neobvezno
+        origin = (data.get("origin") or "").strip()   # izhodišče (prebivališče)
         round_trip = data.get("round_trip", True)
         # razčleni kraje
         import re as _re
         kraji = [k.strip() for k in _re.split(r"[-,–]", relacija) if k.strip()]
         if not kraji:
             return {"ok": False, "error": "Ni krajev v relaciji.", "manual": True}
-        # zgradi zaporedje točk: [izhodišče?] + kraji
-        tocke = []
-        if origin:
-            tocke.append(origin)
-        tocke.extend(kraji)
+        # Pot se VEDNO začne pri izhodišču (prebivališču) — tako km ustrezajo izvirniku
+        # (npr. Dobravlje → Ljubljana → Kranj → nazaj = 159 km).
+        # Če prebivališče ni podano, uporabi sedež podjetja (Postojna) kot privzeto izhodišče.
+        if not origin:
+            origin = "Postojna"
+        used_default_origin = (data.get("origin") or "").strip() == ""
+        tocke = [origin] + kraji
         if len(tocke) < 2:
-            # samo en kraj brez izhodišča → ne moremo računati
-            return {"ok": False, "error": "Premalo točk za razdaljo (dodaj izhodišče).", "manual": True}
+            return {"ok": False, "error": "Dodaj vsaj en kraj v relacijo.", "manual": True}
 
         total_m = 0
         segments = []
@@ -15877,6 +15975,8 @@ async def pn_distance(data: dict):
             "km_one_way": round(km_one, 1),
             "km": round(km_total),
             "round_trip": bool(round_trip),
+            "origin": origin,
+            "used_default_origin": used_default_origin,
             "segments": segments,
         }
     except httpx.HTTPError as e:
@@ -15936,6 +16036,26 @@ async def pn_save(data: dict):
         else:
             nalogi.append(nalog)
         _pn_save(nalogi)
+
+        # samodejno dopolni stalni imenik (oseba, vozilo, relacija) — da se gradi sproti
+        try:
+            book = _pn_book_load()
+            ime = nalog["oseba"]
+            if ime:
+                zlist = [z for z in book["zaposleni"] if (z.get("oseba") or "").strip() != ime]
+                zlist.append({"oseba": ime, "dm": nalog["dm"], "prebivalisce": nalog["prebivalisce"]})
+                book["zaposleni"] = zlist
+            if nalog["vozilo"] and nalog["vozilo"] not in book["vozila"]:
+                book["vozila"].append(nalog["vozilo"])
+            rel = nalog["relacija"]
+            if rel:
+                rlist = [r for r in book["relacije"] if (r.get("relacija") or "").strip() != rel]
+                rlist.append({"relacija": rel, "km": nalog["km"]})
+                book["relacije"] = rlist
+            _pn_book_save(book)
+        except Exception:
+            pass
+
         return {"ok": True, "nalog": nalog, "next_st": _pn_next_number(nalogi)}
     except Exception as e:
         import traceback
