@@ -1431,6 +1431,48 @@ def _zaloga_atomic_write(path: Path, data: dict):
     _os.replace(str(tmp), str(path))  # atomično
 
 
+def _zaloga_expected_totals(sess: dict):
+    """Skupne PRIČAKOVANE postavke in kose v seji (police + čakajoče).
+    To je 'obseg dela' — število nabranih raste, ta dva seštevka pa NE smeta padati."""
+    items = sess.get("items") or []
+    cak = sess.get("cakajoce") or []
+    total_items = len(items) + len(cak)
+    total_qty = 0
+    for it in items:
+        try:
+            total_qty += int(it.get("qty", 0) or 0)
+        except (ValueError, TypeError):
+            pass
+    for c in cak:
+        try:
+            total_qty += int(c.get("qty", 0) or 0)
+        except (ValueError, TypeError):
+            pass
+    return total_items, total_qty
+
+
+def _zaloga_update_peak(sess: dict):
+    """Posodobi baseline (peak) skupnih postavk + kosov. Peak je največja doslej videna
+    vrednost; če dejansko stanje pade POD peak, je prišlo do nepričakovanega izbrisa/napake.
+    Vrne dict z zaznavo padca za opozorilo na frontendu."""
+    cur_items, cur_qty = _zaloga_expected_totals(sess)
+    peak_items = int(sess.get("peak_items", 0) or 0)
+    peak_qty = int(sess.get("peak_qty", 0) or 0)
+    # peak lahko le raste (legitimno: uvoz dobavnice doda postavke/kose)
+    if cur_items > peak_items:
+        peak_items = cur_items
+    if cur_qty > peak_qty:
+        peak_qty = cur_qty
+    sess["peak_items"] = peak_items
+    sess["peak_qty"] = peak_qty
+    return {
+        "cur_items": cur_items, "cur_qty": cur_qty,
+        "peak_items": peak_items, "peak_qty": peak_qty,
+        "dropped_items": max(0, peak_items - cur_items),
+        "dropped_qty": max(0, peak_qty - cur_qty),
+    }
+
+
 def _zaloga_archive_dir(market: str) -> Path:
     """Arhiv mapa za trg. SLO uporablja legacy archive/."""
     market = _zaloga_market(market)
@@ -1570,6 +1612,11 @@ async def zaloga_upload(file: UploadFile = File(...), market: str = "slo"):
             "pick_started_at": None,   # časovnica nabiranja — nova seja vedno začne pri 0
             "pick_finished_at": None,
         }
+        # BASELINE (varovalka): pričakovane skupne postavke + kosi.
+        # Ne sme padati; če dejansko stanje pade pod peak → opozorilo (možen izbris/napaka).
+        _pi, _pq = _zaloga_expected_totals(data)
+        data["peak_items"] = _pi
+        data["peak_qty"] = _pq
         _zaloga_atomic_write(_zaloga_current_path(market), data)
         # Statistika skupin
         groups = {}
@@ -1705,6 +1752,8 @@ async def zaloga_import_ikonka(file: UploadFile = File(...), market: str = "rs")
         sess["started_at"] = _dt.now().isoformat()
         sess["pick_started_at"] = None
         sess["pick_finished_at"] = None
+        # BASELINE: uvoz dobavnice doda postavke/kose → peak legitimno naraste
+        _zaloga_update_peak(sess)
         _zaloga_atomic_write(path, sess)
         return {"ok": True, "added_police": added_police, "added_cakajoce": added_cakajoce,
                 "groups": groups_added, "total": added_police + added_cakajoce}
@@ -1738,6 +1787,27 @@ async def zaloga_current_get(market: str = "slo"):
                     _zaloga_atomic_write(path, data)
                 except Exception:
                     pass
+            # ── VAROVALKA: skupne postavke + kosi ne smejo padati pod baseline (peak) ──
+            cur_items, cur_qty = _zaloga_expected_totals(data)
+            has_peak = ("peak_items" in data) or ("peak_qty" in data)
+            if not has_peak:
+                # stara seja brez baseline → inicializiraj na trenutno stanje (brez alarma)
+                data["peak_items"] = cur_items
+                data["peak_qty"] = cur_qty
+                try:
+                    _zaloga_atomic_write(path, data)
+                except Exception:
+                    pass
+            peak_items = int(data.get("peak_items", cur_items) or 0)
+            peak_qty = int(data.get("peak_qty", cur_qty) or 0)
+            dropped_items = max(0, peak_items - cur_items)
+            dropped_qty = max(0, peak_qty - cur_qty)
+            data["integrity"] = {
+                "cur_items": cur_items, "cur_qty": cur_qty,
+                "peak_items": peak_items, "peak_qty": peak_qty,
+                "dropped_items": dropped_items, "dropped_qty": dropped_qty,
+                "ok": (dropped_items == 0 and dropped_qty == 0),
+            }
             return {"ok": True, **data}
         return {"ok": True, "items": [], "started_at": None}
     except Exception as e:
@@ -2274,6 +2344,20 @@ async def zaloga_cakajoce(data: dict):
             sess["packing_boxes"] = pboxes
             if idx is not None:
                 _sync_item_status(idx, sku)
+
+        elif action == "close_missing":
+            # Zaključi čakajočo z manjkom: razdeljeni kosi ostanejo v boxih,
+            # preostanek (qty - assigned) se šteje kot manjko. Postavka postane done.
+            idx = data.get("idx")
+            sku = str(data.get("sku", "")).strip()
+            entry = next((c for c in cakajoce if c.get("idx") == idx), None)
+            if not entry:
+                return {"ok": False, "error": "Ni v čakajočih"}
+            need = int(entry.get("qty", 0) or 0)
+            assigned = _assigned_for(sku)
+            entry["assigned"] = assigned
+            entry["done"] = True
+            entry["closed_missing"] = max(0, need - assigned)
 
         elif action == "delete_pbox":
             box = str(data.get("box", "")).strip()
