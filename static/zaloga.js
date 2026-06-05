@@ -1052,7 +1052,7 @@ function itemRow(it) {
         <span class="poz">${esc(it.poz)}</span>
       </div>
       <div class="item-naziv-wrap">
-        <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}${it.hsplus ? '<span class="tag-hsplus">📦 HS PLUS</span>' : ''}</span>
+        <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}${it.hsplus ? '<span class="tag-hsplus">📦 HS PLUS</span>' : ''}${(!it.id || String(it.id).trim() === '' || String(it.id).trim() === '—') ? '<span class="tag-supplier">🏷 Majhni dobavitelji</span>' : ''}</span>
         ${boxInline}
       </div>
       <div class="item-bottom">
@@ -1267,23 +1267,43 @@ function _isManko(it) {
 function renderSidebar() {
   const manko = ITEMS.filter(_isManko);
   const opombe = ITEMS.filter(it => it.opomba && it.opomba.trim());
-  const totalOk = ITEMS.filter(it => it.status === 'ok').length;
-  const totalNi = ITEMS.filter(it => it.status === 'ni').length;
-  const totalDone = totalOk + totalNi;
-  const totalQtyNeed = ITEMS.reduce((s,it) => s + it.qty, 0);
-  const totalQtyPicked = ITEMS.filter(it=>it.status==='ok').reduce((s,it) => s + it.picked, 0);
+  let totalOk = ITEMS.filter(it => it.status === 'ok').length;
+  let totalNi = ITEMS.filter(it => it.status === 'ni').length;
+  let totalQtyNeed = ITEMS.reduce((s,it) => s + it.qty, 0);
+  let totalQtyPicked = ITEMS.filter(it=>it.status==='ok').reduce((s,it) => s + it.picked, 0);
   // manjkajoči KOSI: "ni" → cela količina; "ok" z delnim primanjkljajem → razlika
-  const totalQtyMissing = ITEMS.reduce((s,it) => {
+  let totalQtyMissing = ITEMS.reduce((s,it) => {
     if (it.status === 'ni') return s + it.qty;
     if (it.status === 'ok' && it.picked < it.qty) return s + (it.qty - it.picked);
     return s;
   }, 0);
+  let totalItems = ITEMS.length;
+
+  // ── ČAKAJOČE (RS uvoz dobavnice, kol>1): združi postavke IN kose ──
+  // Vsaka čakajoča = 1 postavka. Kosi = qty. assigned = razdeljeni (nabrani) kosi.
+  // done (assigned>=qty) → postavka obdelana/nabrana; razdeljeni kosi štejejo kot nabrani.
+  const cak = getCakajoce();
+  if (cak && cak.length) {
+    cak.forEach(c => {
+      const need = c.qty || 0;
+      const assigned = Math.min(c.assigned || 0, need);
+      const isDone = c.done || assigned >= need;
+      totalItems += 1;
+      totalQtyNeed += need;
+      totalQtyPicked += assigned;
+      if (isDone) { totalOk += 1; }
+      // manjkajoči kosi čakajoče = še nerazdeljeni
+      totalQtyMissing += Math.max(0, need - assigned);
+    });
+  }
+
+  const totalDone = totalOk + totalNi;
 
   const statCard = `
     <div class="side-card">
       <h3>📊 Skupna statistika</h3>
       <div class="stat-rows">
-        <div class="stat-row"><span class="lbl">Vseh postavk</span><span class="val">${ITEMS.length}</span></div>
+        <div class="stat-row"><span class="lbl">Vseh postavk</span><span class="val">${totalItems}</span></div>
         <div class="stat-row"><span class="lbl">Obdelanih</span><span class="val">${totalDone}</span></div>
         <div class="stat-row"><span class="lbl">Nabrano (OK)</span><span class="val ok">${totalOk}</span></div>
         <div class="stat-row"><span class="lbl">Manjka (postavk)</span><span class="val ni">${totalNi}</span></div>
