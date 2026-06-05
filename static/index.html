@@ -510,6 +510,11 @@ input[type="text"].error { border-color: var(--red) !important; }
   box-shadow:0 0 0 0 rgba(239,68,68,0.7);
   animation: zalogaOnlinePulse 1.8s infinite;
 }
+.pn-lbl { font-size:11px; color:var(--text-tertiary); display:block; margin-bottom:3px; }
+.pn-in { width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius); font-size:13px; font-family:inherit; background:var(--surface); color:var(--text); box-sizing:border-box; }
+.pn-in:focus { outline:none; border-color:var(--accent); }
+.pn-hist-card { border:1px solid var(--border); border-radius:var(--radius); padding:8px 10px; cursor:default; }
+.pn-hist-card:hover { border-color:var(--accent); }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -3076,6 +3081,15 @@ input[type="text"].error { border-color: var(--red) !important; }
   <!-- ═══ KNJIGOVODSTVO PAGE ═══ -->
   <div class="page" id="page-knjigovodstvo">
     <div style="padding:14px">
+
+    <!-- TAB BAR -->
+    <div style="display:flex;gap:8px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:0">
+      <button class="knj-tab-btn active" id="knjTab-polcar" onclick="knjSwitchTab('polcar')" style="padding:9px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius) var(--radius) 0 0;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">📑 Polcar XML</button>
+      <button class="knj-tab-btn" id="knjTab-potni" onclick="knjSwitchTab('potni')" style="padding:9px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-bottom:none;border-radius:var(--radius) var(--radius) 0 0;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">🚗 Potni nalogi</button>
+    </div>
+
+    <!-- TAB 1: POLCAR XML -->
+    <div id="knjPane-polcar">
     <div style="display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;align-items:start">
 
       <!-- LEVO: Upload + zgodovina -->
@@ -3221,6 +3235,134 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </div>
     </div>
+    </div><!-- /knjPane-polcar -->
+
+    <!-- TAB 2: POTNI NALOGI -->
+    <div id="knjPane-potni" style="display:none">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:14px;align-items:start">
+
+      <!-- LEVO: Obrazec -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <span class="slabel">🚗 NOV POTNI NALOG <span id="pnStNum" style="color:var(--text-tertiary);font-weight:400">#—</span></span>
+          <span style="font-size:11px;color:var(--text-tertiary)">SUBAN d.o.o.</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label class="pn-lbl">Zaposleni</label>
+            <input list="pnZaposleniList" id="pnOseba" class="pn-in" placeholder="Ime in priimek" oninput="pnFillEmployee()">
+            <datalist id="pnZaposleniList"></datalist>
+          </div>
+          <div>
+            <label class="pn-lbl">Datum</label>
+            <input type="date" id="pnDatum" class="pn-in">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label class="pn-lbl">Delovno mesto</label>
+            <input id="pnDm" class="pn-in" placeholder="npr. Direktor">
+          </div>
+          <div>
+            <label class="pn-lbl">Prebivališče (izhodišče)</label>
+            <input id="pnPrebivalisce" class="pn-in" placeholder="naslov" oninput="pnRecalc()">
+          </div>
+        </div>
+
+        <div style="margin-bottom:10px">
+          <label class="pn-lbl">Naloga</label>
+          <input id="pnNaloga" class="pn-in" placeholder="npr. Sestanek s poslovnima partnerjema">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label class="pn-lbl">Vozilo (reg.)</label>
+            <input list="pnVozilaList" id="pnVozilo" class="pn-in" placeholder="npr. KP FI 496">
+            <datalist id="pnVozilaList"></datalist>
+          </div>
+          <div>
+            <label class="pn-lbl">Št. dni</label>
+            <input type="number" id="pnDni" class="pn-in" value="1" min="1" oninput="pnRecalc()">
+          </div>
+        </div>
+
+        <!-- RELACIJA (Google Maps) -->
+        <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:var(--radius);padding:10px 12px;margin-bottom:10px">
+          <label class="pn-lbl" style="color:#2563eb">📍 Relacija (kraji, ločeni z vejico/pomišljajem)</label>
+          <input id="pnRelacija" class="pn-in" placeholder="npr. Ljubljana, Kranj" style="margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button onclick="pnMapsDistance()" id="pnMapsBtn" style="padding:6px 12px;background:#2563eb;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🗺 Izračunaj km (Maps)</button>
+            <label style="font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:4px">
+              <input type="checkbox" id="pnRoundTrip" checked style="width:auto"> tja in nazaj
+            </label>
+            <span id="pnMapsInfo" style="font-size:11px;color:var(--text-tertiary)"></span>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+          <div>
+            <label class="pn-lbl">Odhod (ura)</label>
+            <input id="pnOdhod" class="pn-in" placeholder="07:00" oninput="pnRecalc()">
+          </div>
+          <div>
+            <label class="pn-lbl">Vrnitev (ura)</label>
+            <input id="pnVrnitev" class="pn-in" placeholder="15:30" oninput="pnRecalc()">
+          </div>
+          <div>
+            <label class="pn-lbl">Kilometri</label>
+            <input type="number" id="pnKm" class="pn-in" placeholder="0" oninput="pnRecalc()">
+          </div>
+        </div>
+
+        <!-- IZRAČUN -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+          <div style="background:var(--surface2);border-radius:var(--radius);padding:10px">
+            <div style="font-size:11px;color:var(--text-secondary)" id="pnDnevLbl">Dnevnica</div>
+            <div style="font-size:17px;font-weight:600"><span id="pnDnevVal">0,00</span> €</div>
+            <input id="pnDnevManual" class="pn-in" placeholder="ročno" style="margin-top:4px;font-size:11px;height:26px" oninput="pnRecalcTotal()">
+          </div>
+          <div style="background:var(--surface2);border-radius:var(--radius);padding:10px">
+            <div style="font-size:11px;color:var(--text-secondary)">Kilometrina</div>
+            <div style="font-size:17px;font-weight:600"><span id="pnKmVal">0,00</span> €</div>
+            <div style="font-size:10px;color:var(--text-tertiary);margin-top:6px">× 0,43 €/km</div>
+          </div>
+          <div style="background:var(--surface2);border-radius:var(--radius);padding:10px">
+            <div style="font-size:11px;color:var(--text-secondary)">Skupaj</div>
+            <div style="font-size:17px;font-weight:600;color:#16a34a"><span id="pnSkupajVal">0,00</span> €</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px">
+          <button onclick="pnSave()" style="flex:1;padding:9px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">💾 Shrani nalog</button>
+          <button onclick="pnNewForm()" style="padding:9px 14px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;background:transparent;cursor:pointer;font-family:inherit">+ Nov</button>
+        </div>
+        <div id="pnSaveStatus" style="font-size:11px;margin-top:8px;min-height:14px"></div>
+        <input type="hidden" id="pnEditSt" value="">
+      </div>
+
+      <!-- DESNO: Zgodovina -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="slabel">🕒 ZGODOVINA</span>
+          <button onclick="pnLoadList()" style="font-size:11px;padding:2px 8px;background:transparent;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;color:var(--text-secondary);font-family:inherit">↺</button>
+        </div>
+        <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+          <label class="pn-lbl">Mesečni izvoz</label>
+          <div style="display:flex;gap:6px;margin-top:4px">
+            <input type="month" id="pnExportMonth" class="pn-in" style="flex:1">
+            <button onclick="pnExportMonth()" style="padding:6px 10px;background:transparent;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:inherit">⬇ XLSX</button>
+          </div>
+        </div>
+        <div id="pnHistoryList" style="display:flex;flex-direction:column;gap:6px;max-height:560px;overflow-y:auto">
+          <div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:10px">Ni shranjenih nalogov</div>
+        </div>
+      </div>
+
+    </div>
+    </div><!-- /knjPane-potni -->
+
     </div>
   </div><!-- /page-knjigovodstvo -->
 
@@ -8026,7 +8168,235 @@ function switchOrodjaTab(tab) {
   try { localStorage.setItem('slx_active_subtab', tab); } catch(e) {}
 }
 
-// ── INVENTURA ─────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// POTNI NALOGI (Knjigovodstvo → tab)
+// ══════════════════════════════════════════════════════════════
+let PN_DATA = { nalogi: [], zaposleni: [], vozila: [], next_st: null };
+
+function knjSwitchTab(tab) {
+  ['polcar', 'potni'].forEach(t => {
+    const btn = document.getElementById('knjTab-' + t);
+    const pane = document.getElementById('knjPane-' + t);
+    if (t === tab) {
+      if (btn) { btn.style.background = 'var(--accent)'; btn.style.color = 'white'; btn.style.border = 'none'; btn.classList.add('active'); }
+      if (pane) pane.style.display = 'block';
+    } else {
+      if (btn) { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; btn.style.border = '1px solid var(--border)'; btn.style.borderBottom = 'none'; btn.classList.remove('active'); }
+      if (pane) pane.style.display = 'none';
+    }
+  });
+  if (tab === 'potni') pnLoadList();
+}
+
+async function pnLoadList() {
+  try {
+    const r = await fetch('/pn-list');
+    const d = await r.json();
+    if (!d.ok) return;
+    PN_DATA = d;
+    // datalisti
+    document.getElementById('pnZaposleniList').innerHTML = (d.zaposleni || []).map(z => `<option value="${pnEsc(z.oseba)}">`).join('');
+    document.getElementById('pnVozilaList').innerHTML = (d.vozila || []).map(v => `<option value="${pnEsc(v)}">`).join('');
+    // naslednja št (samo če nismo v urejanju)
+    if (!document.getElementById('pnEditSt').value) {
+      document.getElementById('pnStNum').textContent = '#' + d.next_st;
+    }
+    pnRenderHistory();
+  } catch (e) {}
+}
+
+function pnEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function pnFmtEur(v) { return (Number(v) || 0).toFixed(2).replace('.', ','); }
+function pnFmtDate(s) {
+  if (!s) return '';
+  const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${+m[3]}.${+m[2]}.`;
+  return s;
+}
+
+function pnRenderHistory() {
+  const el = document.getElementById('pnHistoryList');
+  const list = PN_DATA.nalogi || [];
+  if (!list.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:10px">Ni shranjenih nalogov</div>'; return; }
+  el.innerHTML = list.map(n => `
+    <div class="pn-hist-card">
+      <div style="display:flex;justify-content:space-between;font-size:12px"><b>#${n.st}</b><span style="color:var(--text-tertiary)">${pnFmtDate(n.datum)}</span></div>
+      <div style="font-size:11px;color:var(--text-secondary);margin:2px 0">${pnEsc((n.oseba||'').split(' ')[0])} · ${pnEsc(n.relacija || '—')}${n.dni>1?' ('+n.dni+' dni)':''}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
+        <span style="font-size:11px;color:#16a34a">${pnFmtEur(n.skupaj)} €</span>
+        <span style="display:flex;gap:8px">
+          <span onclick="pnCopy(${n.st})" style="font-size:11px;color:var(--accent);text-decoration:underline;cursor:pointer">📋 kopiraj</span>
+          <span onclick="pnEdit(${n.st})" style="font-size:11px;color:var(--text-secondary);text-decoration:underline;cursor:pointer">uredi</span>
+          <a href="/pn-export-pdf?st=${n.st}" target="_blank" style="font-size:11px;color:var(--text-secondary);text-decoration:underline">PDF</a>
+          <a href="/pn-export-xlsx?st=${n.st}" style="font-size:11px;color:var(--text-secondary);text-decoration:underline">XLSX</a>
+          <span onclick="pnDelete(${n.st})" style="font-size:11px;color:#ef4444;text-decoration:underline;cursor:pointer">✕</span>
+        </span>
+      </div>
+    </div>`).join('');
+}
+
+function pnFillEmployee() {
+  const ime = document.getElementById('pnOseba').value.trim();
+  const z = (PN_DATA.zaposleni || []).find(x => x.oseba === ime);
+  if (z) {
+    document.getElementById('pnDm').value = z.dm || '';
+    document.getElementById('pnPrebivalisce').value = z.prebivalisce || '';
+    pnRecalc();
+  }
+}
+
+let _pnCalcTimer = null;
+function pnRecalc() {
+  clearTimeout(_pnCalcTimer);
+  _pnCalcTimer = setTimeout(pnDoCalc, 250);
+}
+
+async function pnDoCalc() {
+  const body = {
+    odhod: document.getElementById('pnOdhod').value,
+    vrnitev: document.getElementById('pnVrnitev').value,
+    dni: document.getElementById('pnDni').value || 1,
+    km: document.getElementById('pnKm').value || 0,
+  };
+  try {
+    const r = await fetch('/pn-calc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!d.ok) return;
+    // dnevnica — če ni ročnega override, prikaži samodejno
+    const man = document.getElementById('pnDnevManual').value.trim();
+    const dnev = man !== '' ? parseFloat(man.replace(',', '.')) : d.znesek_dnevnic;
+    document.getElementById('pnDnevVal').textContent = pnFmtEur(dnev);
+    document.getElementById('pnDnevLbl').textContent = d.hours != null ? `Dnevnica (${d.hours}h)` : 'Dnevnica';
+    document.getElementById('pnKmVal').textContent = pnFmtEur(d.kilometrina);
+    document.getElementById('pnSkupajVal').textContent = pnFmtEur((dnev || 0) + (d.kilometrina || 0));
+    document.getElementById('pnDnevVal').dataset.auto = d.znesek_dnevnic;
+    document.getElementById('pnDnevVal').dataset.stdnev = d.st_dnevnic;
+    document.getElementById('pnKmVal').dataset.km = d.kilometrina;
+  } catch (e) {}
+}
+
+function pnRecalcTotal() {
+  const man = document.getElementById('pnDnevManual').value.trim();
+  const auto = parseFloat(document.getElementById('pnDnevVal').dataset.auto || 0);
+  const dnev = man !== '' ? parseFloat(man.replace(',', '.')) || 0 : auto;
+  const km = parseFloat(document.getElementById('pnKmVal').dataset.km || 0);
+  document.getElementById('pnDnevVal').textContent = pnFmtEur(dnev);
+  document.getElementById('pnSkupajVal').textContent = pnFmtEur(dnev + km);
+}
+
+async function pnMapsDistance() {
+  const relacija = document.getElementById('pnRelacija').value.trim();
+  const origin = document.getElementById('pnPrebivalisce').value.trim();
+  const roundTrip = document.getElementById('pnRoundTrip').checked;
+  const info = document.getElementById('pnMapsInfo');
+  if (!relacija) { info.textContent = 'Vnesi relacijo'; return; }
+  info.textContent = '⏳ računam...';
+  try {
+    const r = await fetch('/pn-distance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ relacija, origin, round_trip: roundTrip }) });
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById('pnKm').value = d.km;
+      info.innerHTML = `✓ <b>${d.km} km</b>${d.round_trip ? ' (tja+nazaj)' : ''}`;
+      pnRecalc();
+    } else {
+      info.innerHTML = `<span style="color:#ef4444">${pnEsc(d.error || 'napaka')}</span> — vnesi km ročno`;
+    }
+  } catch (e) { info.innerHTML = '<span style="color:#ef4444">napaka</span>'; }
+}
+
+function pnGetForm() {
+  const dnevManual = document.getElementById('pnDnevManual').value.trim();
+  return {
+    st: document.getElementById('pnEditSt').value || null,
+    datum: document.getElementById('pnDatum').value,
+    oseba: document.getElementById('pnOseba').value.trim(),
+    dm: document.getElementById('pnDm').value.trim(),
+    prebivalisce: document.getElementById('pnPrebivalisce').value.trim(),
+    naloga: document.getElementById('pnNaloga').value.trim(),
+    vozilo: document.getElementById('pnVozilo').value.trim(),
+    relacija: document.getElementById('pnRelacija').value.trim(),
+    origin: document.getElementById('pnPrebivalisce').value.trim(),
+    odhod: document.getElementById('pnOdhod').value.trim(),
+    vrnitev: document.getElementById('pnVrnitev').value.trim(),
+    dni: document.getElementById('pnDni').value || 1,
+    km: document.getElementById('pnKm').value || 0,
+    st_dnevnic: document.getElementById('pnDnevVal').dataset.stdnev || 1,
+    znesek_dnevnic_manual: dnevManual !== '' ? dnevManual.replace(',', '.') : '',
+  };
+}
+
+async function pnSave() {
+  const status = document.getElementById('pnSaveStatus');
+  const body = pnGetForm();
+  if (!body.oseba || !body.datum) { status.innerHTML = '<span style="color:#ef4444">Vnesi vsaj zaposlenega in datum</span>'; return; }
+  status.textContent = '⏳ shranjujem...';
+  try {
+    const r = await fetch('/pn-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (d.ok) {
+      status.innerHTML = `<span style="color:#16a34a">✓ Nalog #${d.nalog.st} shranjen (${pnFmtEur(d.nalog.skupaj)} €)</span>`;
+      pnNewForm();
+      pnLoadList();
+    } else {
+      status.innerHTML = '<span style="color:#ef4444">✗ ' + pnEsc(d.error || 'napaka') + '</span>';
+    }
+  } catch (e) { status.innerHTML = '<span style="color:#ef4444">✗ napaka pri shranjevanju</span>'; }
+}
+
+function pnNewForm() {
+  document.getElementById('pnEditSt').value = '';
+  ['pnOseba', 'pnDm', 'pnPrebivalisce', 'pnNaloga', 'pnVozilo', 'pnRelacija', 'pnOdhod', 'pnVrnitev', 'pnKm', 'pnDnevManual'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('pnDni').value = 1;
+  document.getElementById('pnDatum').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('pnDnevVal').textContent = '0,00';
+  document.getElementById('pnKmVal').textContent = '0,00';
+  document.getElementById('pnSkupajVal').textContent = '0,00';
+  document.getElementById('pnMapsInfo').textContent = '';
+  document.getElementById('pnStNum').textContent = '#' + (PN_DATA.next_st || '—');
+  document.getElementById('pnSaveStatus').textContent = '';
+}
+
+function pnLoadInto(n, asNew) {
+  document.getElementById('pnEditSt').value = asNew ? '' : n.st;
+  document.getElementById('pnStNum').textContent = asNew ? ('#' + (PN_DATA.next_st || '—')) : ('#' + n.st);
+  document.getElementById('pnOseba').value = n.oseba || '';
+  document.getElementById('pnDm').value = n.dm || '';
+  document.getElementById('pnPrebivalisce').value = n.prebivalisce || '';
+  document.getElementById('pnNaloga').value = n.naloga || '';
+  document.getElementById('pnVozilo').value = n.vozilo || '';
+  document.getElementById('pnRelacija').value = n.relacija || '';
+  document.getElementById('pnOdhod').value = n.odhod || '';
+  document.getElementById('pnVrnitev').value = n.vrnitev || '';
+  document.getElementById('pnDni').value = n.dni || 1;
+  document.getElementById('pnKm').value = n.km || 0;
+  document.getElementById('pnDnevManual').value = '';
+  document.getElementById('pnDatum').value = asNew ? new Date().toISOString().slice(0, 10) : (String(n.datum || '').slice(0, 10));
+  pnDoCalc();
+  document.getElementById('knjPane-potni').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function pnCopy(st) {
+  const n = (PN_DATA.nalogi || []).find(x => x.st === st);
+  if (n) { pnLoadInto(n, true); document.getElementById('pnSaveStatus').innerHTML = '<span style="color:var(--accent)">📋 Kopirano iz #' + st + ' — nova št. ' + (PN_DATA.next_st) + '</span>'; }
+}
+function pnEdit(st) {
+  const n = (PN_DATA.nalogi || []).find(x => x.st === st);
+  if (n) { pnLoadInto(n, false); document.getElementById('pnSaveStatus').innerHTML = '<span style="color:var(--text-secondary)">Urejanje #' + st + '</span>'; }
+}
+async function pnDelete(st) {
+  if (!confirm('Izbrišem potni nalog #' + st + '?')) return;
+  try {
+    const r = await fetch('/pn-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ st }) });
+    const d = await r.json();
+    if (d.ok) pnLoadList();
+  } catch (e) {}
+}
+function pnExportMonth() {
+  const m = document.getElementById('pnExportMonth').value;
+  if (!m) { alert('Izberi mesec'); return; }
+  window.location.href = '/pn-export-xlsx?mesec=' + m;
+}
+
 let invItems = [];
 let invSaveTimer = null;
 
