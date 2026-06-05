@@ -15662,6 +15662,507 @@ async def shipping_debug():
 
 
 # ════════════════════════════════════════════════════════════════════
+#  POTNI NALOGI (Knjigovodstvo → tab "Potni nalogi")
+#  Nalog za službeno potovanje SUBAN d.o.o. — vnos, samodejni izračun
+#  dnevnice (SLO uredba) in kilometrine (Google Maps), zgodovina,
+#  izvoz v XLSX (predloga) in PDF.
+# ════════════════════════════════════════════════════════════════════
+PN_DIR = DATA_DIR / "potni_nalogi"
+PN_DIR.mkdir(exist_ok=True, parents=True)
+PN_STATE = PN_DIR / "nalogi.json"          # vsi nalogi (seznam dict)
+PN_TEMPLATE = Path("static") / "potni_nalog_template.xlsx"
+
+# Fiksni podatki podjetja
+PN_COMPANY = "SUBAN d.o.o. Kazarje 3, 6230 Postojna ID za ddv: SI26391201"
+PN_COMPANY_SHORT = "Suban d.o.o., Kazarje 3, 6230 Postojna"
+PN_ODREDBA = "Irenej Suban, direktor"
+PN_KM_RATE = 0.43                           # €/km (neobdavčeno 2026)
+
+# Dnevnice SLO 2026 (Uredba o davčni obravnavi povračil — domače poti)
+#   pod 6 ur → 0 ; 6–8 ur → 9,69 ; 8–12 ur → 13,88 ; nad 12 ur → 27,81
+def _pn_dnevnica_za_ure(hours: float) -> float:
+    """Vrne znesek dnevnice za podano trajanje v urah (en sam dan / ostanek)."""
+    if hours <= 6:
+        return 0.0
+    if hours <= 8:
+        return 9.69
+    if hours <= 12:
+        return 13.88
+    return 27.81  # nad 12 do 24
+
+
+def _pn_obracun_dnevnic(total_hours: float):
+    """Večdnevni obračun: vsakih polnih 24 ur = polna dnevnica (27,81),
+    za ostanek ur ustrezen razred. Vrne (st_dnevnic, znesek)."""
+    if total_hours <= 0:
+        return 0, 0.0
+    full_days = int(total_hours // 24)
+    rest = total_hours - full_days * 24
+    amount = full_days * 27.81
+    rest_amount = _pn_dnevnica_za_ure(rest)
+    amount += rest_amount
+    # število "dnevnic" za prikaz: polni dnevi + (1 če ostanek prinese kaj)
+    count = full_days + (1 if rest_amount > 0 else 0)
+    if count == 0 and amount > 0:
+        count = 1
+    return count, round(amount, 2)
+
+
+def _pn_load():
+    if PN_STATE.exists():
+        try:
+            return json.loads(PN_STATE.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+
+def _pn_save(nalogi):
+    tmp = PN_STATE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(nalogi, ensure_ascii=False, indent=2), encoding="utf-8")
+    import os as _os
+    _os.replace(str(tmp), str(PN_STATE))
+
+
+def _pn_next_number(nalogi):
+    """Naslednja zaporedna številka naloga."""
+    mx = 0
+    for n in nalogi:
+        try:
+            mx = max(mx, int(n.get("st", 0)))
+        except (ValueError, TypeError):
+            pass
+    return mx + 1 if mx else 28  # nadaljuj od zadnje znane (izvirnik: 28–37)
+
+
+def _pn_parse_hours(odhod: str, vrnitev: str, dni: int = 1):
+    """Izračuna trajanje poti v urah iz ur odhoda/vrnitve.
+    Za večdnevno (dni>1) prišteje (dni-1)*24 ur."""
+    def _to_min(t):
+        t = (t or "").strip()
+        for fmt in ("%H:%M", "%H.%M", "%H:%M:%S"):
+            try:
+                from datetime import datetime as _d
+                dt = _d.strptime(t, fmt)
+                return dt.hour * 60 + dt.minute
+            except Exception:
+                continue
+        return None
+    o = _to_min(odhod); v = _to_min(vrnitev)
+    if o is None or v is None:
+        return None
+    diff = v - o
+    if diff < 0:
+        diff += 24 * 60  # čez polnoč
+    extra_days = max(0, int(dni) - 1)
+    return diff / 60.0 + extra_days * 24.0
+
+
+@app.get("/pn-list")
+async def pn_list():
+    """Vrne vse potne naloge (najnovejši prvi) + naslednjo številko + sezname za predizpolnitev."""
+    try:
+        nalogi = _pn_load()
+        nalogi_sorted = sorted(nalogi, key=lambda n: int(n.get("st", 0)), reverse=True)
+        # izpelji sezname zaposlenih in vozil iz zgodovine za predizpolnitev
+        zaposleni = {}
+        vozila = set()
+        for n in nalogi:
+            ime = (n.get("oseba") or "").strip()
+            if ime and ime not in zaposleni:
+                zaposleni[ime] = {
+                    "oseba": ime,
+                    "dm": n.get("dm", ""),
+                    "prebivalisce": n.get("prebivalisce", ""),
+                }
+            if n.get("vozilo"):
+                vozila.add(n["vozilo"].strip())
+        return {
+            "ok": True,
+            "nalogi": nalogi_sorted,
+            "next_st": _pn_next_number(nalogi),
+            "zaposleni": list(zaposleni.values()),
+            "vozila": sorted(vozila),
+            "km_rate": PN_KM_RATE,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/pn-calc")
+async def pn_calc(data: dict):
+    """Samodejni izračun dnevnice + kilometrine. Frontend kliče ob spremembi vnosa.
+    Vrne predlagane vrednosti (uporabnik jih lahko ročno popravi)."""
+    try:
+        odhod = data.get("odhod", "")
+        vrnitev = data.get("vrnitev", "")
+        dni = int(data.get("dni", 1) or 1)
+        km = data.get("km")
+        hours = _pn_parse_hours(odhod, vrnitev, dni)
+        st_dnevnic, znesek_dnevnic = (0, 0.0)
+        if hours is not None:
+            st_dnevnic, znesek_dnevnic = _pn_obracun_dnevnic(hours)
+        km_val = 0.0
+        try:
+            km_val = float(km) if km not in (None, "") else 0.0
+        except (ValueError, TypeError):
+            km_val = 0.0
+        kilometrina = round(km_val * PN_KM_RATE, 2)
+        skupaj = round(znesek_dnevnic + kilometrina, 2)
+        return {
+            "ok": True,
+            "hours": round(hours, 2) if hours is not None else None,
+            "st_dnevnic": st_dnevnic,
+            "znesek_dnevnic": znesek_dnevnic,
+            "km": km_val,
+            "km_rate": PN_KM_RATE,
+            "kilometrina": kilometrina,
+            "skupaj": skupaj,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/pn-distance")
+async def pn_distance(data: dict):
+    """Google Maps Distance Matrix: km med kraji. Privzeto tja+nazaj (×2).
+    Relacija je lahko niz krajev ločenih z '-' ali ','; sešteje segmente."""
+    if not GOOGLE_MAPS_KEY:
+        return {"ok": False, "error": "GOOGLE_MAPS_API_KEY ni nastavljen.", "manual": True}
+    try:
+        relacija = (data.get("relacija") or "").strip()
+        origin = (data.get("origin") or "").strip()   # izhodišče (prebivališče), neobvezno
+        round_trip = data.get("round_trip", True)
+        # razčleni kraje
+        import re as _re
+        kraji = [k.strip() for k in _re.split(r"[-,–]", relacija) if k.strip()]
+        if not kraji:
+            return {"ok": False, "error": "Ni krajev v relaciji.", "manual": True}
+        # zgradi zaporedje točk: [izhodišče?] + kraji
+        tocke = []
+        if origin:
+            tocke.append(origin)
+        tocke.extend(kraji)
+        if len(tocke) < 2:
+            # samo en kraj brez izhodišča → ne moremo računati
+            return {"ok": False, "error": "Premalo točk za razdaljo (dodaj izhodišče).", "manual": True}
+
+        total_m = 0
+        segments = []
+        async with httpx.AsyncClient(timeout=12.0) as hc:
+            for i in range(len(tocke) - 1):
+                a = tocke[i] + ", Slovenija"
+                b = tocke[i + 1] + ", Slovenija"
+                resp = await hc.get(
+                    "https://maps.googleapis.com/maps/api/distancematrix/json",
+                    params={"origins": a, "destinations": b,
+                            "mode": "driving", "language": "sl", "key": GOOGLE_MAPS_KEY},
+                )
+                resp.raise_for_status()
+                j = resp.json()
+                try:
+                    el = j["rows"][0]["elements"][0]
+                    if el.get("status") != "OK":
+                        return {"ok": False, "error": f"Maps: {el.get('status')} za {tocke[i]}→{tocke[i+1]}", "manual": True}
+                    m = el["distance"]["value"]
+                    total_m += m
+                    segments.append({"from": tocke[i], "to": tocke[i + 1], "km": round(m / 1000, 1)})
+                except (KeyError, IndexError):
+                    return {"ok": False, "error": "Maps: neveljaven odgovor.", "manual": True}
+
+        km_one = total_m / 1000.0
+        km_total = km_one * (2 if round_trip else 1)
+        return {
+            "ok": True,
+            "km_one_way": round(km_one, 1),
+            "km": round(km_total),
+            "round_trip": bool(round_trip),
+            "segments": segments,
+        }
+    except httpx.HTTPError as e:
+        return {"ok": False, "error": f"Maps napaka: {e}", "manual": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "manual": True}
+
+
+@app.post("/pn-save")
+async def pn_save(data: dict):
+    """Shrani (ali posodobi) potni nalog."""
+    try:
+        nalogi = _pn_load()
+        st = data.get("st")
+        if not st:
+            st = _pn_next_number(nalogi)
+        st = int(st)
+        # izračunaj končne zneske (avtoriteta na strežniku, a spoštuj ročni override)
+        hours = _pn_parse_hours(data.get("odhod", ""), data.get("vrnitev", ""), int(data.get("dni", 1) or 1))
+        if data.get("znesek_dnevnic_manual") not in (None, ""):
+            znesek_dnevnic = round(float(data["znesek_dnevnic_manual"]), 2)
+            st_dnevnic = int(data.get("st_dnevnic", 1) or 1)
+        else:
+            st_dnevnic, znesek_dnevnic = _pn_obracun_dnevnic(hours or 0)
+        try:
+            km_val = float(data.get("km") or 0)
+        except (ValueError, TypeError):
+            km_val = 0.0
+        kilometrina = round(km_val * PN_KM_RATE, 2)
+        skupaj = round(znesek_dnevnic + kilometrina, 2)
+
+        nalog = {
+            "st": st,
+            "datum": data.get("datum", ""),
+            "oseba": (data.get("oseba") or "").strip(),
+            "dm": (data.get("dm") or "").strip(),
+            "prebivalisce": (data.get("prebivalisce") or "").strip(),
+            "naloga": (data.get("naloga") or "").strip(),
+            "vozilo": (data.get("vozilo") or "").strip(),
+            "relacija": (data.get("relacija") or "").strip(),
+            "origin": (data.get("origin") or "").strip(),
+            "odhod": (data.get("odhod") or "").strip(),
+            "vrnitev": (data.get("vrnitev") or "").strip(),
+            "dni": int(data.get("dni", 1) or 1),
+            "hours": round(hours, 2) if hours is not None else None,
+            "st_dnevnic": st_dnevnic,
+            "znesek_dnevnic": znesek_dnevnic,
+            "km": km_val,
+            "kilometrina": kilometrina,
+            "skupaj": skupaj,
+            "updated_at": _dt.now().isoformat(),
+        }
+        # posodobi obstoječega ali dodaj
+        idx = next((i for i, n in enumerate(nalogi) if int(n.get("st", -1)) == st), None)
+        if idx is not None:
+            nalogi[idx] = nalog
+        else:
+            nalogi.append(nalog)
+        _pn_save(nalogi)
+        return {"ok": True, "nalog": nalog, "next_st": _pn_next_number(nalogi)}
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
+
+
+@app.post("/pn-delete")
+async def pn_delete(data: dict):
+    try:
+        st = int(data.get("st"))
+        nalogi = _pn_load()
+        nalogi = [n for n in nalogi if int(n.get("st", -1)) != st]
+        _pn_save(nalogi)
+        return {"ok": True, "next_st": _pn_next_number(nalogi)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _pn_find(st):
+    for n in _pn_load():
+        if int(n.get("st", -1)) == int(st):
+            return n
+    return None
+
+
+def _pn_fmt_date(s):
+    """ISO ali dd.mm.yyyy → dd.mm.yyyy"""
+    if not s:
+        return ""
+    s = str(s)
+    try:
+        from datetime import datetime as _d
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return _d.strptime(s[:19] if "T" in s else s, fmt).strftime("%d.%m.%Y")
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return s
+
+
+@app.get("/pn-export-xlsx")
+async def pn_export_xlsx(st: str = "", mesec: str = ""):
+    """Izvozi nalog(e) v XLSX v formatu izvirnika (en list = en nalog).
+    st=N za en nalog, mesec=YYYY-MM za vse naloge meseca."""
+    try:
+        nalogi = _pn_load()
+        if st:
+            sel = [n for n in nalogi if int(n.get("st", -1)) == int(st)]
+            fname = f"Potni_nalog_{st}.xlsx"
+        elif mesec:
+            sel = [n for n in nalogi if (n.get("datum", "")[:7] == mesec)]
+            fname = f"Potni_nalogi_{mesec}.xlsx"
+        else:
+            sel = nalogi
+            fname = "Potni_nalogi.xlsx"
+        if not sel:
+            return JSONResponse({"ok": False, "error": "Ni nalogov za izvoz."}, status_code=404)
+        sel = sorted(sel, key=lambda n: int(n.get("st", 0)))
+
+        import io as _io
+        # uporabi predlogo če obstaja, sicer zgradi list iz nič
+        if PN_TEMPLATE.exists():
+            wb = openpyxl.load_workbook(str(PN_TEMPLATE))
+            tmpl_ws = wb[wb.sheetnames[0]]
+            for i, n in enumerate(sel):
+                ws = tmpl_ws if i == 0 else wb.copy_worksheet(tmpl_ws)
+                ws.title = str(n.get("st", i + 1))
+                _pn_fill_sheet(ws, n)
+            # če predloga doda prazen prvi list, ga ohranimo kot prvi nalog (že napolnjen)
+        else:
+            wb = openpyxl.Workbook()
+            first = True
+            for n in sel:
+                ws = wb.active if first else wb.create_sheet()
+                ws.title = str(n.get("st"))
+                _pn_build_sheet(ws, n)
+                first = False
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+    except Exception as e:
+        import traceback
+        return JSONResponse({"ok": False, "error": str(e), "tb": traceback.format_exc()}, status_code=500)
+
+
+def _pn_fill_sheet(ws, n):
+    """Napolni list po koordinatah izvirne predloge (glej analizo strukture)."""
+    od = _pn_fmt_date(n.get("datum"))
+    ws["D3"] = n.get("st")
+    ws["H3"] = od
+    ws["C5"] = n.get("oseba", "")
+    ws["C7"] = n.get("dm", "")
+    ws["C9"] = n.get("prebivalisce", "")
+    ws["C11"] = od
+    ws["G11"] = n.get("odhod", "")
+    ws["C13"] = PN_ODREDBA
+    ws["C15"] = n.get("naloga", "")
+    ws["C17"] = od
+    ws["G17"] = n.get("dni", 1)
+    ws["C19"] = n.get("vozilo", "")
+    ws["G19"] = n.get("relacija", "")
+    ws["C21"] = PN_COMPANY_SHORT
+    ws["G31"] = "Irenej Suban"
+    ws["F33"] = n.get("prebivalisce", "")
+    ws["B36"] = od
+    ws["C36"] = f"{n.get('odhod','')} uri"
+    ws["B38"] = _pn_fmt_date(n.get("datum"))
+    ws["C38"] = f"{n.get('vrnitev','')} uri"
+    ws["E38"] = n.get("dni", 1)
+    ws["G38"] = n.get("st_dnevnic", 1)
+    ws["H38"] = n.get("znesek_dnevnic", 0)
+    ws["H41"] = n.get("znesek_dnevnic", 0)
+    ws["C43"] = n.get("km", 0)
+    ws["E43"] = PN_KM_RATE
+    ws["H43"] = n.get("kilometrina", 0)
+    ws["H47"] = n.get("skupaj", 0)
+    ws["H49"] = 0
+    ws["H51"] = n.get("skupaj", 0)
+
+
+def _pn_build_sheet(ws, n):
+    """Fallback: zgradi list iz nič (če predloge ni)."""
+    ws["A1"] = PN_COMPANY
+    ws["A3"] = "Nalog za službeno potovanje"
+    _pn_fill_sheet(ws, n)
+
+
+@app.get("/pn-export-pdf")
+async def pn_export_pdf(st: str = ""):
+    """Izvozi en potni nalog v PDF (A4, postavitev po izvirniku)."""
+    try:
+        n = _pn_find(st) if st else None
+        if not n:
+            return JSONResponse({"ok": False, "error": "Nalog ne obstaja."}, status_code=404)
+        import io as _io
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.pdfgen import canvas as _canvas
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        buf = _io.BytesIO()
+        c = _canvas.Canvas(buf, pagesize=A4)
+        W, H = A4
+        # poskusi naložiti font s šumniki (DejaVu); fallback Helvetica
+        font_name = "Helvetica"
+        font_bold = "Helvetica-Bold"
+        for fp in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                   "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
+            try:
+                if "Bold" in fp:
+                    pdfmetrics.registerFont(TTFont("DejaVuB", fp)); font_bold = "DejaVuB"
+                else:
+                    pdfmetrics.registerFont(TTFont("DejaVu", fp)); font_name = "DejaVu"
+            except Exception:
+                pass
+
+        y = H - 20 * mm
+        def line(txt, dy=7*mm, font=None, size=10, x=20*mm):
+            nonlocal y
+            c.setFont(font or font_name, size)
+            c.drawString(x, y, txt)
+            y -= dy
+
+        od = _pn_fmt_date(n.get("datum"))
+        c.setFont(font_bold, 9); c.drawString(20*mm, y, PN_COMPANY); y -= 10*mm
+        c.setFont(font_bold, 13); c.drawCentredString(W/2, y, "Nalog za službeno potovanje"); 
+        c.setFont(font_name, 10); c.drawRightString(W-20*mm, y, f"Št: {n.get('st')}   Datum: {od}"); y -= 12*mm
+
+        rows = [
+            ("Odrejam, da odpotuje:", n.get("oseba", "")),
+            ("Na delovnem mestu:", n.get("dm", "")),
+            ("Prebivališče:", n.get("prebivalisce", "")),
+            ("Dne / ob uri:", f"{od}  ob {n.get('odhod','')}"),
+            ("Po nalogu:", PN_ODREDBA),
+            ("Z nalogo:", n.get("naloga", "")),
+            ("Trajanje (dni):", str(n.get("dni", 1))),
+            ("Prevozno sredstvo:", n.get("vozilo", "")),
+            ("Potuje v kraj (relacija):", n.get("relacija", "")),
+            ("Potne stroške plača:", PN_COMPANY_SHORT),
+        ]
+        for lbl, val in rows:
+            c.setFont(font_bold, 10); c.drawString(20*mm, y, lbl)
+            c.setFont(font_name, 10); c.drawString(75*mm, y, str(val)); y -= 8*mm
+
+        y -= 4*mm
+        c.setFont(font_bold, 11); c.drawString(20*mm, y, "RAČUN potnih stroškov"); y -= 9*mm
+        calc = [
+            ("Odsotnost:", f"{od} {n.get('odhod','')} → {n.get('vrnitev','')}  ({n.get('dni',1)} dni)"),
+            (f"Dnevnice ({n.get('st_dnevnic',0)}×):", f"{n.get('znesek_dnevnic',0):.2f} EUR"),
+            (f"Kilometrina ({n.get('km',0)} km × {PN_KM_RATE} EUR):", f"{n.get('kilometrina',0):.2f} EUR"),
+        ]
+        for lbl, val in calc:
+            c.setFont(font_name, 10); c.drawString(20*mm, y, lbl)
+            c.drawRightString(W-20*mm, y, val); y -= 8*mm
+        y -= 2*mm
+        c.setLineWidth(0.5); c.line(20*mm, y, W-20*mm, y); y -= 8*mm
+        c.setFont(font_bold, 12); c.drawString(20*mm, y, "Skupaj za izplačilo:")
+        c.drawRightString(W-20*mm, y, f"{n.get('skupaj',0):.2f} EUR"); y -= 20*mm
+
+        c.setFont(font_name, 9)
+        c.drawString(25*mm, y, "_______________________")
+        c.drawString(120*mm, y, "_______________________"); y -= 5*mm
+        c.drawString(30*mm, y, "(podpis prejemnika)")
+        c.drawString(125*mm, y, "(podpis odredbodajalca)")
+
+        c.showPage(); c.save()
+        buf.seek(0)
+        return StreamingResponse(
+            buf, media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="Potni_nalog_{n.get("st")}.pdf"'},
+        )
+    except Exception as e:
+        import traceback
+        return JSONResponse({"ok": False, "error": str(e), "tb": traceback.format_exc()}, status_code=500)
+
+
+
+# ════════════════════════════════════════════════════════════════════
 #  BADGE GENERATOR (skrita stran /badge-generator) — enkratna naloga
 #  Zamenja title_suffix v dveh CSV-jih z AI-generiranimi značkami prek
 #  Anthropic Message Batches API. Batch teče do 12h v ozadju; stanje
