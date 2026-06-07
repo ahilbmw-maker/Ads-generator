@@ -16353,6 +16353,288 @@ async def pn_export_pdf(st: str = ""):
 
 
 # ════════════════════════════════════════════════════════════════════
+#  SPREMEMBA POZICIJ (Zaloga → tab "Sprememba pozicij")
+#  Prepozna SKU iz slike etikete (Claude vision) ALI ročni vnos z
+#  autosuggest. SKU se VEDNO ujame proti bazi zaloge (sku/title) —
+#  brez ujemanja = opozorilo. Druga slika = pozicija. Izpis SKU:Pozicija.
+# ════════════════════════════════════════════════════════════════════
+import unicodedata as _ud
+
+
+def _poz_norm(s: str) -> str:
+    """Normaliziraj za primerjavo: velike črke, brez šumnikov/ločil/presledkov."""
+    if not s:
+        return ""
+    s = _ud.normalize("NFKD", str(s))
+    s = "".join(c for c in s if not _ud.combining(c))
+    return "".join(c for c in s.upper() if c.isalnum())
+
+
+def _poz_load_stock():
+    """Naloži seznam zaloge (sku, title, position) iz shranjenega CSV."""
+    if not STOCK_CSV_FILE.exists():
+        return []
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        first_line = text.split("\n", 1)[0]
+        sep = ";" if first_line.count(";") > first_line.count(",") else ","
+        reader = _csv.DictReader(_SIO(text), delimiter=sep)
+        out = []
+        for row in reader:
+            sku = (row.get("product_sku") or row.get("sku") or "").strip()
+            if not sku:
+                continue
+            out.append({
+                "sku": sku,
+                "title": (row.get("title") or "").strip(),
+                "position": (row.get("position") or "").strip(),
+                "product_id": (row.get("product_id") or "").strip(),
+            })
+        return out
+    except Exception:
+        return []
+
+
+def _poz_match_sku(candidates, stock):
+    """Ujemi kandidate (besede iz slike/vnosa) proti bazi.
+    Vrne (match_dict | None, alternatives_list). Ujemanje: točno > prefiks > vsebuje."""
+    cand_norm = [_poz_norm(c) for c in candidates if c and len(_poz_norm(c)) >= 2]
+    if not cand_norm:
+        return None, []
+    exact, prefix, contains = [], [], []
+    for it in stock:
+        sku_n = _poz_norm(it["sku"])
+        if not sku_n:
+            continue
+        for cn in cand_norm:
+            if sku_n == cn:
+                exact.append(it); break
+            elif sku_n.startswith(cn) or cn.startswith(sku_n):
+                prefix.append(it); break
+            elif cn in sku_n or sku_n in cn:
+                contains.append(it); break
+    # dedup ohrani vrstni red
+    seen = set(); ranked = []
+    for it in exact + prefix + contains:
+        if it["sku"] not in seen:
+            seen.add(it["sku"]); ranked.append(it)
+    if not ranked:
+        return None, []
+    return ranked[0], ranked[1:6]
+
+
+@app.get("/pozicije-suggest")
+async def pozicije_suggest(q: str = ""):
+    """Autosuggest SKU iz baze (Elastic-style): prefiks SKU > vsebuje SKU > vsebuje naziv."""
+    q = (q or "").strip()
+    if len(q) < 1:
+        return {"ok": True, "suggestions": []}
+    stock = _poz_load_stock()
+    qn = _poz_norm(q)
+    ql = q.lower()
+    pref, contains_sku, in_title = [], [], []
+    for it in stock:
+        skn = _poz_norm(it["sku"])
+        if skn.startswith(qn):
+            pref.append(it)
+        elif qn in skn:
+            contains_sku.append(it)
+        elif ql in it["title"].lower():
+            in_title.append(it)
+    seen = set(); out = []
+    for it in pref + contains_sku + in_title:
+        if it["sku"] in seen:
+            continue
+        seen.add(it["sku"])
+        out.append({"sku": it["sku"], "title": it["title"], "position": it["position"]})
+        if len(out) >= 12:
+            break
+    return {"ok": True, "suggestions": out}
+
+
+@app.post("/pozicije-recognize")
+async def pozicije_recognize(data: dict):
+    """Prepozna SKU iz slike etikete. Claude PREBERE vse berljive besede/kode,
+    server jih UJAME proti bazi (sku/title). Vrne pravi SKU ali opozorilo."""
+    image_b64 = data.get("image")
+    media_type = data.get("media_type", "image/jpeg")
+    if not image_b64:
+        return {"ok": False, "error": "Ni slike."}
+    stock = _poz_load_stock()
+    if not stock:
+        return {"ok": False, "error": "Baza zaloge ni naložena (naloži CSV v zavihku Zaloga)."}
+
+    loop = asyncio.get_event_loop()
+    _prompt = (
+        "This is a warehouse product/carton label or a shelf-position note. "
+        "Read ALL text you can see: product names, codes, SKUs, brand words. "
+        "Return ONLY a JSON array of the distinct readable text tokens, most-prominent first. "
+        "Include both full strings and meaningful sub-parts (e.g. a product name like 'SPINSTORE' AND any code). "
+        "Do NOT guess or invent — only what is actually visible. "
+        "Example: [\"SPINSTORE\", \"S-R4813-48-25-10000\", \"Home & Marker\"]"
+    )
+
+    def _call(model):
+        return client.messages.create(
+            model=model,
+            max_tokens=400,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
+                {"type": "text", "text": _prompt},
+            ]}],
+        )
+
+    msg = None
+    for attempt in range(3):
+        model = "claude-haiku-4-5-20251001" if attempt == 0 else "claude-sonnet-4-6"
+        try:
+            msg = await loop.run_in_executor(None, lambda m=model: _call(m))
+            break
+        except Exception as e:
+            is_529 = "529" in str(e) or "overloaded" in str(e).lower()
+            if attempt < 2:
+                await asyncio.sleep(2)
+            else:
+                return {"ok": False, "error": f"Anthropic napaka: {e}"}
+    if msg is None:
+        return {"ok": False, "error": "Anthropic preobremenjen, poskusi znova."}
+
+    raw = ""
+    for block in msg.content:
+        if getattr(block, "type", "") == "text":
+            raw += block.text
+    # razčleni JSON array iz odgovora
+    candidates = []
+    try:
+        import re as _re
+        m = _re.search(r"\[.*\]", raw, _re.S)
+        if m:
+            candidates = json.loads(m.group(0))
+    except Exception:
+        candidates = [w.strip() for w in raw.replace("\n", ",").split(",") if w.strip()]
+    candidates = [str(c).strip() for c in candidates if str(c).strip()]
+
+    match, alts = _poz_match_sku(candidates, stock)
+    if match:
+        return {
+            "ok": True, "found": True,
+            "sku": match["sku"], "title": match["title"],
+            "current_position": match["position"],
+            "read_tokens": candidates,
+            "alternatives": alts,
+        }
+    return {
+        "ok": True, "found": False,
+        "read_tokens": candidates,
+        "message": "SKU ni najden v bazi zaloge. Prebrano besedilo: " + ", ".join(candidates[:6]),
+    }
+
+
+PN_POZ_PENDING = DATA_DIR / "pozicije_pending.json"
+
+
+@app.get("/pozicije-pending")
+async def pozicije_pending_get():
+    """Vrne trenutni seznam pripravljenih sprememb (SKU:Pozicija) za to sejo."""
+    try:
+        if PN_POZ_PENDING.exists():
+            return {"ok": True, "items": json.loads(PN_POZ_PENDING.read_text(encoding="utf-8"))}
+        return {"ok": True, "items": []}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/pozicije-pending-save")
+async def pozicije_pending_save(data: dict):
+    """Doda/posodobi/izbriše vrstico v pripravljenem seznamu.
+    action: 'add' | 'remove' | 'clear'. item: {sku, position, title}."""
+    try:
+        items = []
+        if PN_POZ_PENDING.exists():
+            items = json.loads(PN_POZ_PENDING.read_text(encoding="utf-8"))
+        action = data.get("action", "add")
+        if action == "clear":
+            items = []
+        elif action == "remove":
+            sku = (data.get("sku") or "").strip()
+            items = [x for x in items if x.get("sku") != sku]
+        else:
+            it = data.get("item") or {}
+            sku = (it.get("sku") or "").strip()
+            pos = (it.get("position") or "").strip()
+            if not sku:
+                return {"ok": False, "error": "Manjka SKU"}
+            # preveri da SKU obstaja v bazi
+            stock = _poz_load_stock()
+            exists = any(s["sku"] == sku for s in stock)
+            if not exists:
+                return {"ok": False, "error": f"SKU '{sku}' ni v bazi zaloge"}
+            items = [x for x in items if x.get("sku") != sku]  # zamenjaj obstoječega
+            items.append({"sku": sku, "position": pos, "title": (it.get("title") or "").strip()})
+        tmp = PN_POZ_PENDING.with_suffix(".tmp")
+        tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        import os as _os
+        _os.replace(str(tmp), str(PN_POZ_PENDING))
+        return {"ok": True, "items": items}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/pozicije-apply")
+async def pozicije_apply():
+    """Zapiše pripravljene pozicije nazaj v CSV zaloge (stolpec position).
+    Vrne število posodobljenih vrstic."""
+    try:
+        if not PN_POZ_PENDING.exists():
+            return {"ok": False, "error": "Ni pripravljenih sprememb."}
+        pending = json.loads(PN_POZ_PENDING.read_text(encoding="utf-8"))
+        if not pending:
+            return {"ok": False, "error": "Seznam je prazen."}
+        if not STOCK_CSV_FILE.exists():
+            return {"ok": False, "error": "Baza zaloge ni naložena."}
+
+        import csv as _csv
+        from io import StringIO as _SIO
+        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        first_line = text.split("\n", 1)[0]
+        sep = ";" if first_line.count(";") > first_line.count(",") else ","
+        reader = _csv.DictReader(_SIO(text), delimiter=sep)
+        fieldnames = reader.fieldnames or []
+        if "position" not in fieldnames:
+            fieldnames = fieldnames + ["position"]
+        rows = list(reader)
+
+        pos_map = {p["sku"]: p.get("position", "") for p in pending}
+        sku_key = "product_sku" if "product_sku" in (fieldnames or []) else ("sku" if "sku" in (fieldnames or []) else None)
+        updated = 0
+        for row in rows:
+            rsku = (row.get("product_sku") or row.get("sku") or "").strip()
+            if rsku in pos_map:
+                row["position"] = pos_map[rsku]
+                updated += 1
+
+        out = _SIO()
+        writer = _csv.DictWriter(out, fieldnames=fieldnames, delimiter=sep, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+        tmp = STOCK_CSV_FILE.with_suffix(".tmp")
+        tmp.write_text(out.getvalue(), encoding="utf-8-sig")
+        import os as _os
+        _os.replace(str(tmp), str(STOCK_CSV_FILE))
+
+        # počisti pending
+        PN_POZ_PENDING.write_text("[]", encoding="utf-8")
+        return {"ok": True, "updated": updated, "total_pending": len(pending)}
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
+
+
+
+# ════════════════════════════════════════════════════════════════════
 #  BADGE GENERATOR (skrita stran /badge-generator) — enkratna naloga
 #  Zamenja title_suffix v dveh CSV-jih z AI-generiranimi značkami prek
 #  Anthropic Message Batches API. Batch teče do 12h v ozadju; stanje
