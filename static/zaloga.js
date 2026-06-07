@@ -261,6 +261,64 @@ document.getElementById('hsplusInput').addEventListener('change', async (e) => {
   e.target.value = '';
 });
 
+// ── SKLADIŠČE (oba trga, sejni tag): prilepi SKU-je → označi postavke ──
+function openSkladisce() {
+  document.getElementById('skladOverlay').style.display = 'flex';
+  document.getElementById('skladInput').value = '';
+  document.getElementById('skladStatus').textContent = '';
+  renderSkladList();
+  setTimeout(() => document.getElementById('skladInput').focus(), 50);
+}
+function closeSkladisce() {
+  document.getElementById('skladOverlay').style.display = 'none';
+}
+function renderSkladList() {
+  const el = document.getElementById('skladList');
+  const skus = (SESSION && SESSION.skladisce_skus) || [];
+  if (!skus.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:8px">Ni SKU na seznamu</div>'; return; }
+  el.innerHTML = `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Na seznamu (${skus.length}):</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;max-height:160px;overflow-y:auto">` +
+    skus.map(s => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 8px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:6px">
+      ${esc(s)} <span onclick="removeSkladisce('${esc(s).replace(/'/g,"\\'")}')" style="cursor:pointer;font-weight:700">✕</span></span>`).join('') + '</div>';
+}
+async function addSkladisce() {
+  const raw = document.getElementById('skladInput').value.trim();
+  if (!raw) { document.getElementById('skladStatus').innerHTML = '<span style="color:#dc2626">Prilepi vsaj en SKU</span>'; return; }
+  const st = document.getElementById('skladStatus');
+  st.textContent = '⏳ označujem...';
+  try {
+    const r = await fetch(mq('/zaloga-skladisce'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: MARKET, action: 'add', raw }) });
+    const d = await r.json();
+    if (d.ok) {
+      let msg = `✓ Označenih ${d.marked} postavk · ${d.skladisce_skus.length} SKU na seznamu`;
+      if (d.ni_najdenih && d.ni_najdenih.length) msg += ` <span style="color:#d97706">(${d.ni_najdenih.length} SKU ni v tej seji)</span>`;
+      st.innerHTML = '<span style="color:#16a34a">' + msg + '</span>';
+      document.getElementById('skladInput').value = '';
+      await loadSession();
+      renderSkladList();
+    } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + esc(d.error || 'napaka') + '</span>'; }
+  } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
+}
+async function removeSkladisce(sku) {
+  try {
+    const r = await fetch(mq('/zaloga-skladisce'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: MARKET, action: 'remove', sku }) });
+    const d = await r.json();
+    if (d.ok) { await loadSession(); renderSkladList(); }
+  } catch (e) {}
+}
+async function clearSkladisce() {
+  if (!confirm('Počistim cel seznam Skladišče2 za to sejo?')) return;
+  try {
+    const r = await fetch(mq('/zaloga-skladisce'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: MARKET, action: 'clear' }) });
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById('skladStatus').innerHTML = '<span style="color:#16a34a">✓ Počiščeno</span>';
+      await loadSession();
+      renderSkladList();
+    }
+  } catch (e) {}
+}
+
 function groupItems() {
   const groups = {};
   ITEMS.forEach(it => {
@@ -1087,7 +1145,7 @@ function itemRow(it) {
         <span class="poz">${esc(it.poz)}</span>
       </div>
       <div class="item-naziv-wrap">
-        <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}${it.hsplus ? '<span class="tag-hsplus">📦 HS PLUS</span>' : ''}${(!it.id || String(it.id).trim() === '' || String(it.id).trim() === '—') ? '<span class="tag-supplier">🏷 Majhni dobavitelji</span>' : ''}</span>
+        <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}${it.hsplus ? '<span class="tag-hsplus">📦 HS PLUS</span>' : ''}${(!it.id || String(it.id).trim() === '' || String(it.id).trim() === '—') ? '<span class="tag-supplier">🏷 Majhni dobavitelji</span>' : ''}${it.skladisce ? '<span class="tag-sklad">🏬 Skladišče2</span>' : ''}</span>
         ${boxInline}
       </div>
       <div class="item-bottom">
