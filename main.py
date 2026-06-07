@@ -16532,7 +16532,210 @@ async def pozicije_recognize(data: dict):
     }
 
 
+@app.post("/pozicije-recognize-pos")
+async def pozicije_recognize_pos(data: dict):
+    """Prepozna POZICIJO iz slike (npr. ročno napisan 'P2-B'). Claude prebere,
+    server ujame proti seznamu veljavnih pozicij in PREDLAGA (uporabnik potrdi)."""
+    image_b64 = data.get("image")
+    media_type = data.get("media_type", "image/jpeg")
+    if not image_b64:
+        return {"ok": False, "error": "Ni slike."}
+    loop = asyncio.get_event_loop()
+    _prompt = (
+        "This image shows a warehouse shelf/rack position label, often HANDWRITTEN. "
+        "Read the position code exactly as written (e.g. 'P2-B', 'P8-C', '02-3E'). "
+        "Return ONLY a JSON array of the most likely readings, best first. "
+        "If handwriting is ambiguous, include alternative interpretations. "
+        "Do NOT invent. Example: [\"P2-B\", \"P22-B\"]"
+    )
+
+    def _call(model):
+        return client.messages.create(
+            model=model, max_tokens=200,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
+                {"type": "text", "text": _prompt},
+            ]}],
+        )
+
+    msg = None
+    for attempt in range(3):
+        model = "claude-haiku-4-5-20251001" if attempt == 0 else "claude-sonnet-4-6"
+        try:
+            msg = await loop.run_in_executor(None, lambda m=model: _call(m))
+            break
+        except Exception as e:
+            if attempt < 2:
+                await asyncio.sleep(2)
+            else:
+                return {"ok": False, "error": f"Anthropic napaka: {e}"}
+    if msg is None:
+        return {"ok": False, "error": "Anthropic preobremenjen."}
+
+    raw = ""
+    for block in msg.content:
+        if getattr(block, "type", "") == "text":
+            raw += block.text
+    readings = []
+    try:
+        import re as _re
+        m = _re.search(r"\[.*\]", raw, _re.S)
+        if m:
+            readings = json.loads(m.group(0))
+    except Exception:
+        readings = [w.strip() for w in raw.replace("\n", ",").split(",") if w.strip()]
+    readings = [str(r).strip() for r in readings if str(r).strip()]
+    if not readings:
+        return {"ok": True, "found": False, "read_tokens": [], "message": "Pozicije ni bilo mogoče prebrati."}
+
+    # ujemi najboljše branje proti seznamu veljavnih
+    primary = readings[0]
+    result = _poz_match_position(primary)
+    # če primarno ne najde, poskusi še druga branja za točno ujemanje
+    if result["status"] in ("none", "suggest") and len(readings) > 1:
+        for alt in readings[1:]:
+            r2 = _poz_match_position(alt)
+            if r2["status"] == "exact":
+                result = r2
+                primary = alt
+                break
+    return {
+        "ok": True,
+        "read_tokens": readings,
+        "reading": primary,
+        "status": result["status"],          # exact | suggest | none | no_list
+        "value": result["value"],
+        "suggestions": result["suggestions"],
+    }
+
+
 PN_POZ_PENDING = DATA_DIR / "pozicije_pending.json"
+PN_POZ_VALID = DATA_DIR / "pozicije_valid.json"   # seznam veljavnih pozicij
+
+
+def _poz_valid_load():
+    if PN_POZ_VALID.exists():
+        try:
+            return json.loads(PN_POZ_VALID.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+
+def _poz_levenshtein(a: str, b: str) -> int:
+    """Razdalja med nizoma (število urejanj)."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def _poz_family(s: str) -> str:
+    """Družina pozicije za boljše ujemanje: 'P' (P-regali), 'NUM' (številčni regali),
+    'WORD' (Paleta, Omara, ...). Branje 'P22-B' tako ostane v P-družini → P2-B, ne 02-2B."""
+    n = _poz_norm(s)
+    if not n:
+        return "WORD"
+    if n[0] == "P" and len(n) > 1 and n[1].isdigit():
+        return "P"
+    if n[0].isdigit():
+        return "NUM"
+    return "WORD"
+
+
+def _poz_match_position(reading: str):
+    """Ujemi prebrano pozicijo proti seznamu veljavnih.
+    Vrne dict: {status: 'exact'|'suggest'|'none', value, suggestions[]}.
+    Razvrstitev: najprej razdalja, ob enaki razdalji ima prednost ista družina (P/številčna)."""
+    valid = _poz_valid_load()
+    rn = _poz_norm(reading)
+    if not valid:
+        # ni seznama → sprejmi kot je (brez validacije)
+        return {"status": "no_list", "value": reading, "suggestions": []}
+    # točno ujemanje (normalizirano)
+    for v in valid:
+        if _poz_norm(v) == rn:
+            return {"status": "exact", "value": v, "suggestions": []}
+    # fuzzy: razvrsti po (razdalja, družinski penal) — ista družina ima prednost
+    rfam = _poz_family(reading)
+    def _key(v):
+        d = _poz_levenshtein(rn, _poz_norm(v))
+        fam_penalty = 0 if _poz_family(v) == rfam else 1
+        return (d, fam_penalty)
+    scored = sorted(valid, key=_key)
+    best = scored[:5]
+    nearest_dist = _poz_levenshtein(rn, _poz_norm(best[0])) if best else 99
+    if best and nearest_dist <= 3:
+        return {"status": "suggest", "value": reading, "suggestions": best}
+    return {"status": "none", "value": reading, "suggestions": best[:3]}
+
+
+@app.get("/pozicije-valid")
+async def pozicije_valid_get():
+    """Vrne seznam veljavnih pozicij."""
+    return {"ok": True, "positions": _poz_valid_load()}
+
+
+@app.post("/pozicije-valid-save")
+async def pozicije_valid_save(data: dict):
+    """Nastavi/dopolni seznam veljavnih pozicij.
+    body: { raw: '...', mode: 'replace'|'add' }"""
+    try:
+        import re as _re
+        raw = data.get("raw", "")
+        mode = data.get("mode", "replace")
+        parsed = [p.strip() for p in _re.split(r"[\s,;\n\r\t]+", str(raw)) if p.strip()]
+        # dedup ohrani vrstni red
+        cur = [] if mode == "replace" else _poz_valid_load()
+        seen = set(_poz_norm(x) for x in cur)
+        for p in parsed:
+            if _poz_norm(p) not in seen:
+                cur.append(p)
+                seen.add(_poz_norm(p))
+        tmp = PN_POZ_VALID.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
+        import os as _os
+        _os.replace(str(tmp), str(PN_POZ_VALID))
+        return {"ok": True, "positions": cur, "count": len(cur)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/pozicije-pos-suggest")
+async def pozicije_pos_suggest(q: str = ""):
+    """Autosuggest veljavnih pozicij (za ročni vnos)."""
+    q = (q or "").strip()
+    valid = _poz_valid_load()
+    if not valid:
+        return {"ok": True, "suggestions": []}
+    if not q:
+        return {"ok": True, "suggestions": valid[:12]}
+    qn = _poz_norm(q)
+    pref, contains, fuzzy = [], [], []
+    for v in valid:
+        vn = _poz_norm(v)
+        if vn.startswith(qn):
+            pref.append(v)
+        elif qn in vn:
+            contains.append(v)
+        elif _poz_levenshtein(qn, vn) <= 2:
+            fuzzy.append(v)
+    out = []
+    for v in pref + contains + fuzzy:
+        if v not in out:
+            out.append(v)
+        if len(out) >= 12:
+            break
+    return {"ok": True, "suggestions": out}
 
 
 @app.get("/pozicije-pending")
