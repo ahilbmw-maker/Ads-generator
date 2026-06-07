@@ -3715,7 +3715,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           </label>
         </div>
         <div style="position:relative">
-          <input type="text" id="pozSkuInput" placeholder="ali vpiši: SP... (autosuggest)" autocomplete="off" oninput="pozSuggest(this.value)" onfocus="pozSuggest(this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
+          <input type="text" id="pozSkuInput" placeholder="ali vpiši: SP... (autosuggest)" autocomplete="off" oninput="pozSuggest(this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
           <div id="pozSuggestList" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:3px;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)"></div>
         </div>
         <div id="pozSkuStatus" style="font-size:12px;margin-top:8px;min-height:16px"></div>
@@ -3734,7 +3734,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           </label>
         </div>
         <div style="position:relative">
-          <input type="text" id="pozPosInput" placeholder="ali vpiši: P8-C (autosuggest)" autocomplete="off" oninput="pozPosSuggest(this.value)" onfocus="pozPosSuggest(this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
+          <input type="text" id="pozPosInput" placeholder="ali vpiši: P8-C (autosuggest)" autocomplete="off" oninput="pozPosSuggest(this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
           <div id="pozPosSuggestList" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:3px;max-height:240px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)"></div>
         </div>
         <div id="pozPosStatus" style="font-size:12px;margin-top:8px;min-height:16px"></div>
@@ -3790,7 +3790,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <input type="file" accept="image/*" capture="environment" onchange="pozQuickRecognize(this.files[0])" style="display:none">
         </label>
         <div style="position:relative;margin-bottom:8px">
-          <input type="text" id="pozQuickPosInput" placeholder="ali vpiši: P8-C (autosuggest)" autocomplete="off" oninput="pozQuickSuggest(this.value)" onfocus="pozQuickSuggest(this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
+          <input type="text" id="pozQuickPosInput" placeholder="ali vpiši: P8-C (autosuggest)" autocomplete="off" oninput="pozQuickSuggest(this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
           <div id="pozQuickSuggestList" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:3px;max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)"></div>
         </div>
         <div id="pozQuickStatus" style="font-size:12px;margin-bottom:10px;min-height:16px"></div>
@@ -19239,6 +19239,26 @@ async function pozInit() {
   } catch (e) {}
 }
 
+// Zapri vse autosuggest sezname ob kliku/dotiku izven inputa+seznama
+(function pozSetupOutsideClose() {
+  const pairs = [
+    ['pozSkuInput', 'pozSuggestList'],
+    ['pozPosInput', 'pozPosSuggestList'],
+    ['pozQuickPosInput', 'pozQuickSuggestList'],
+  ];
+  const handler = (e) => {
+    pairs.forEach(([inputId, listId]) => {
+      const list = document.getElementById(listId);
+      const input = document.getElementById(inputId);
+      if (!list || list.style.display === 'none') return;
+      if ((input && input.contains(e.target)) || list.contains(e.target)) return;
+      list.style.display = 'none';
+    });
+  };
+  document.addEventListener('mousedown', handler, true);
+  document.addEventListener('touchstart', handler, true);
+})();
+
 function pozEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
 
 function pozSuggest(q) {
@@ -19279,6 +19299,7 @@ function pozPosSuggest(q) {
   clearTimeout(_pozPosSuggestTimer);
   const box = document.getElementById('pozPosSuggestList');
   if (!box) return;
+  if (!(q || '').trim()) { box.style.display = 'none'; return; }
   _pozPosSuggestTimer = setTimeout(async () => {
     try {
       const r = await fetch('/pozicije-pos-suggest?q=' + encodeURIComponent((q||'').trim()));
@@ -19428,13 +19449,13 @@ function pozQuickOpen(sku, title, currentPos) {
   document.getElementById('pozQuickStatus').innerHTML = '';
   document.getElementById('pozQuickSuggestList').style.display = 'none';
   document.getElementById('pozQuickModal').style.display = 'flex';
-  setTimeout(() => document.getElementById('pozQuickPosInput').focus(), 50);
 }
 function pozQuickClose() { document.getElementById('pozQuickModal').style.display = 'none'; _pozQuickSku = null; }
 
 function pozQuickSuggest(q) {
   clearTimeout(_pozQuickTimer);
   const box = document.getElementById('pozQuickSuggestList');
+  if (!(q || '').trim()) { box.style.display = 'none'; return; }
   _pozQuickTimer = setTimeout(async () => {
     try {
       const r = await fetch('/pozicije-pos-suggest?q=' + encodeURIComponent((q||'').trim()));
