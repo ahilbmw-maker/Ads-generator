@@ -98,6 +98,10 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 
   /* ── ZALOGA mobile: tabela → kompaktna vrstica (varianta A) ── */
   #zalogaHeaderWrap { display: none !important; }   /* skrij desktop glavo tabele */
+  /* edge-to-edge: zmanjšaj zunanje robove, da kartice izkoristijo širino */
+  #page-zaloga { margin: 0 -0.6rem !important; }      /* izniči .main horizontalni padding */
+  .zaloga-subpage-inner { padding: 10px 8px !important; gap: 8px !important; }
+  #zalogaSubpage-vracila, #zalogaSubpage-skeniranje, #zalogaSubpage-pozicije { padding: 10px 8px !important; }
   /* sub-tab nav: enakomerno razporejen, brez prelivanja */
   .zaloga-subtab-nav { padding: 10px 12px !important; }
   .zaloga-subtab-nav .zaloga-tab-btn { flex: 1 !important; padding: 9px 6px !important; font-size: 12px !important; }
@@ -3498,7 +3502,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
     <!-- ── ZALOGA SUBPAGE ── -->
     <div id="zalogaSubpage-zaloga">
-    <div style="padding:14px;display:flex;flex-direction:column;gap:10px">
+    <div class="zaloga-subpage-inner" style="padding:14px;display:flex;flex-direction:column;gap:10px">
 
       <!-- XML CACHE STATUS BAR -->
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
@@ -3719,14 +3723,20 @@ input[type="text"].error { border-color: var(--red) !important; }
 
       <!-- KORAK 2: POZICIJA -->
       <div class="card" style="margin-bottom:10px">
-        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px">2️⃣ Pozicija</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:12px;font-weight:700;color:var(--text)">2️⃣ Pozicija</span>
+          <button onclick="pozOpenValidList()" style="font-size:11px;padding:3px 9px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit">📋 Seznam pozicij</button>
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
           <label class="poz-photo-btn" style="flex:1">
             📷 Slikaj pozicijo
             <input type="file" accept="image/*" capture="environment" onchange="pozRecognize(this.files[0],'pos')" style="display:none">
           </label>
         </div>
-        <input type="text" id="pozPosInput" placeholder="ali vpiši: P8-C" autocomplete="off" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
+        <div style="position:relative">
+          <input type="text" id="pozPosInput" placeholder="ali vpiši: P8-C (autosuggest)" autocomplete="off" oninput="pozPosSuggest(this.value)" onfocus="pozPosSuggest(this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
+          <div id="pozPosSuggestList" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:3px;max-height:240px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)"></div>
+        </div>
         <div id="pozPosStatus" style="font-size:12px;margin-top:8px;min-height:16px"></div>
       </div>
 
@@ -3743,6 +3753,24 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
       <div id="pozPendingList" style="display:flex;flex-direction:column;gap:6px"></div>
       <div id="pozApplyStatus" style="font-size:12px;margin-top:10px;min-height:16px"></div>
+
+      <!-- MODAL: seznam veljavnih pozicij -->
+      <div id="pozValidModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)pozCloseValidList()">
+        <div style="background:var(--surface);border-radius:12px;padding:16px;width:min(480px,92vw);max-height:84vh;overflow-y:auto" onclick="event.stopPropagation()">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <span style="font-size:14px;font-weight:700">📋 Veljavne pozicije <span id="pozValidCount" style="color:var(--text-tertiary);font-weight:400"></span></span>
+            <button onclick="pozCloseValidList()" style="background:transparent;border:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">✕</button>
+          </div>
+          <p style="font-size:12px;color:var(--text-tertiary);margin:0 0 8px">Prilepi vse veljavne pozicije (vrstice/vejice/presledki). Uporabljajo se za validacijo in autosuggest.</p>
+          <textarea id="pozValidInput" placeholder="P1-A&#10;P2-B&#10;P8-C&#10;02-3E ..." style="width:100%;min-height:140px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button onclick="pozSaveValidList('replace')" style="flex:1;padding:9px;background:var(--accent);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💾 Shrani (nadomesti)</button>
+            <button onclick="pozSaveValidList('add')" style="padding:9px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">+ Dodaj</button>
+          </div>
+          <div id="pozValidStatus" style="font-size:12px;margin-top:8px;min-height:14px"></div>
+          <div id="pozValidChips" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px"></div>
+        </div>
+      </div>
     </div><!-- /pozicije subpage -->
 
   </div><!-- /page-zaloga -->
@@ -19214,6 +19242,29 @@ function pozPickSku(sku, title, pos) {
   document.getElementById('pozSkuStatus').innerHTML = `<span style="color:#16a34a">✓ ${pozEsc(sku)}</span> <span style="color:var(--text-tertiary)">${pozEsc(title)}${pos ? ' · trenutno 📍'+pozEsc(pos) : ''}</span>`;
 }
 
+function pozPickPos(pos) {
+  document.getElementById('pozPosInput').value = pos;
+  document.getElementById('pozPosSuggestList').style.display = 'none';
+  document.getElementById('pozPosStatus').innerHTML = `<span style="color:#16a34a">✓ pozicija: ${pozEsc(pos)}</span>`;
+}
+
+let _pozPosSuggestTimer = null;
+function pozPosSuggest(q) {
+  clearTimeout(_pozPosSuggestTimer);
+  const box = document.getElementById('pozPosSuggestList');
+  if (!box) return;
+  _pozPosSuggestTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/pozicije-pos-suggest?q=' + encodeURIComponent((q||'').trim()));
+      const d = await r.json();
+      if (!d.ok || !d.suggestions.length) { box.style.display = 'none'; return; }
+      box.innerHTML = d.suggestions.map(s =>
+        `<div class="poz-suggest-item" onclick="pozPickPos('${pozEsc(s).replace(/'/g,"\\'")}')" style="font-weight:600;font-size:13px;color:var(--text)">📍 ${pozEsc(s)}</div>`).join('');
+      box.style.display = 'block';
+    } catch (e) { box.style.display = 'none'; }
+  }, 180);
+}
+
 async function pozRecognize(file, target) {
   if (!file) return;
   const statusEl = document.getElementById(target === 'sku' ? 'pozSkuStatus' : 'pozPosStatus');
@@ -19242,15 +19293,23 @@ async function pozRecognize(file, target) {
         }
       } catch (e) { statusEl.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
     } else {
-      // pozicija: prepoznaj besedilo (isti endpoint prebere, a poziciji ne ujemamo z bazo)
+      // pozicija: prepoznaj + validiraj proti seznamu veljavnih (predlog, ti potrdiš)
       try {
-        const r = await fetch('/pozicije-recognize', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ image: b64, media_type: mt }) });
+        const r = await fetch('/pozicije-recognize-pos', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ image: b64, media_type: mt }) });
         const d = await r.json();
-        const tokens = d.read_tokens || [];
-        // pozicija je običajno kratka koda (npr. P8-C) — vzemi prvi smiseln token
-        const pos = tokens.find(t => /[a-zA-Z]?\d+[-\/]?[a-zA-Z0-9]*/.test(t)) || tokens[0] || '';
-        document.getElementById('pozPosInput').value = pos;
-        statusEl.innerHTML = pos ? `<span style="color:#16a34a">✓ pozicija: ${pozEsc(pos)}</span>` : '<span style="color:#d97706">⚠ pozicije ni bilo mogoče prebrati, vpiši ročno</span>';
+        if (!d.ok) { statusEl.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; return; }
+        if (d.status === 'exact' || d.status === 'no_list') {
+          document.getElementById('pozPosInput').value = d.value;
+          statusEl.innerHTML = `<span style="color:#16a34a">✓ pozicija: ${pozEsc(d.value)}</span>` + (d.status === 'no_list' ? ' <span style="color:var(--text-tertiary)">(seznam pozicij ni naložen)</span>' : '');
+        } else if (d.status === 'suggest') {
+          document.getElementById('pozPosInput').value = d.reading;
+          const sugBtns = (d.suggestions||[]).map(s => `<span onclick="pozPickPos('${pozEsc(s).replace(/'/g,"\\'")}')" style="display:inline-block;background:rgba(58,111,255,0.1);color:var(--accent);padding:3px 10px;border-radius:6px;margin:2px 4px 2px 0;cursor:pointer;font-weight:600">${pozEsc(s)}</span>`).join('');
+          statusEl.innerHTML = `<span style="color:#d97706">⚠ Prebrano "${pozEsc(d.reading)}" ni na seznamu.</span><div style="margin-top:5px;font-size:12px">Najbližje (klikni za potrditev): ${sugBtns}</div>`;
+        } else {
+          document.getElementById('pozPosInput').value = d.reading || '';
+          const sugBtns = (d.suggestions||[]).map(s => `<span onclick="pozPickPos('${pozEsc(s).replace(/'/g,"\\'")}')" style="display:inline-block;background:var(--surface2);color:var(--text);padding:3px 10px;border-radius:6px;margin:2px 4px 2px 0;cursor:pointer">${pozEsc(s)}</span>`).join('');
+          statusEl.innerHTML = `<span style="color:#d97706">⚠ "${pozEsc(d.reading||'')}" ni najden.</span>` + (sugBtns ? `<div style="margin-top:5px;font-size:12px">Morda: ${sugBtns}</div>` : ' Vpiši ročno.');
+        }
       } catch (e) { statusEl.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
     }
   };
@@ -19326,6 +19385,41 @@ async function pozApply() {
       _pozPending = [];
       pozRenderPending();
       if (typeof zalogaLoad === 'function') zalogaLoad();  // osveži zalogo
+    } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
+  } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
+}
+
+async function pozOpenValidList() {
+  document.getElementById('pozValidModal').style.display = 'flex';
+  document.getElementById('pozValidStatus').textContent = '';
+  try {
+    const r = await fetch('/pozicije-valid');
+    const d = await r.json();
+    const positions = d.positions || [];
+    document.getElementById('pozValidInput').value = positions.join('\n');
+    document.getElementById('pozValidCount').textContent = positions.length ? '(' + positions.length + ')' : '';
+    pozRenderValidChips(positions);
+  } catch (e) {}
+}
+function pozCloseValidList() { document.getElementById('pozValidModal').style.display = 'none'; }
+function pozRenderValidChips(positions) {
+  const el = document.getElementById('pozValidChips');
+  if (!el) return;
+  el.innerHTML = positions.slice(0, 60).map(p => `<span style="font-size:11px;padding:2px 8px;background:var(--surface2);border-radius:5px;color:var(--text-secondary)">${pozEsc(p)}</span>`).join('') + (positions.length > 60 ? `<span style="font-size:11px;color:var(--text-tertiary)">+${positions.length-60} več</span>` : '');
+}
+async function pozSaveValidList(mode) {
+  const raw = document.getElementById('pozValidInput').value.trim();
+  const st = document.getElementById('pozValidStatus');
+  if (!raw) { st.innerHTML = '<span style="color:#dc2626">Prilepi vsaj eno pozicijo</span>'; return; }
+  st.textContent = '⏳ shranjujem...';
+  try {
+    const r = await fetch('/pozicije-valid-save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ raw, mode }) });
+    const d = await r.json();
+    if (d.ok) {
+      st.innerHTML = `<span style="color:#16a34a">✓ Shranjenih ${d.count} pozicij</span>`;
+      document.getElementById('pozValidInput').value = (d.positions||[]).join('\n');
+      document.getElementById('pozValidCount').textContent = '(' + d.count + ')';
+      pozRenderValidChips(d.positions||[]);
     } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
 }
