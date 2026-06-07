@@ -95,6 +95,71 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   .pages-inner { display: flex; transition: transform 0.3s ease; will-change: transform; }
   .pages-inner .page { display: block; min-width: 100%; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
   .pages-inner .page.active { opacity: 1; pointer-events: auto; }
+
+  /* ── ZALOGA mobile: tabela → kompaktna vrstica (varianta A) ── */
+  #zalogaHeaderWrap { display: none !important; }   /* skrij desktop glavo tabele */
+  /* sub-tab nav: enakomerno razporejen, brez prelivanja */
+  .zaloga-subtab-nav { padding: 10px 12px !important; }
+  .zaloga-subtab-nav .zaloga-tab-btn { flex: 1 !important; padding: 9px 6px !important; font-size: 12px !important; }
+  /* toolbar: zloži v 2 vrstici (upload+info+filter zgoraj, iskalnik v svojo vrsto) */
+  .zaloga-toolbar { flex-wrap: wrap !important; gap: 8px !important; padding: 10px !important; }
+  .zaloga-toolbar > div[style*="width:1px"] { display: none !important; }   /* separator skrij */
+  .zaloga-toolbar > div:has(#zalogaSearch) { order: 5 !important; flex: 1 1 100% !important; }  /* iskalnik v svojo vrsto */
+  #zalogaStats { order: 6 !important; flex: 1 1 100% !important; }
+  .zal-row {
+    grid-template-columns: 42px 1fr !important;
+    grid-template-areas: "stock main" "stock meta" !important;
+    column-gap: 11px !important; row-gap: 2px !important;
+    padding: 9px 11px !important; align-items: center !important;
+    border-left: 3px solid var(--zal-stockcol, var(--border)) !important;
+  }
+  .zal-row .zal-c-stock {
+    grid-area: stock !important; text-align: center !important;
+    font-size: 19px !important; align-self: center !important;
+  }
+  .zal-row .zal-c-sku { grid-area: main !important; min-width: 0 !important; align-self: end !important; }
+  .zal-row .zal-c-sku > span:first-child { font-size: 13.5px !important; }
+  .zal-row .zal-c-sku button {
+    margin-left: auto !important; padding: 5px 11px !important; font-size: 11px !important;
+  }
+  .zal-row .zal-meta-mobile {
+    grid-area: meta !important; display: block !important; align-self: start !important;
+    font-size: 11px !important; color: var(--text-tertiary) !important;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .zal-row .zal-c-id, .zal-row .zal-c-title, .zal-row .zal-c-stock ~ .zal-c-price,
+  .zal-row .zal-c-price, .zal-row .zal-c-obrat, .zal-row .zal-c-pos, .zal-row .zal-c-note {
+    display: none !important;
+  }
+
+  /* ── VRAČILA mobile: tabela → kartice ── */
+  #vracilaTableBody .vrac-tr {
+    display: grid !important;
+    grid-template-columns: auto 1fr auto !important;
+    grid-template-areas: "num id actions" "num comment comment" !important;
+    column-gap: 8px !important; row-gap: 6px !important;
+    align-items: center !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    padding: 10px 12px !important;
+    margin-bottom: 6px !important;
+  }
+  #vracilaTableBody .vrac-num {
+    grid-area: num !important; padding: 0 !important;
+    min-width: 22px !important; text-align: center !important;
+  }
+  #vracilaTableBody .vrac-id { grid-area: id !important; padding: 0 !important; }
+  #vracilaTableBody .vrac-actions {
+    grid-area: actions !important; padding: 0 !important; text-align: right !important;
+  }
+  #vracilaTableBody .vrac-actions a { padding: 6px 11px !important; font-size: 12px !important; }
+  #vracilaTableBody .vrac-actions span { font-size: 17px !important; padding: 5px 8px !important; }
+  #vracilaTableBody .vrac-comment { grid-area: comment !important; padding: 0 !important; }
+  #vracilaTableBody .vrac-comment input {
+    border: 1px solid var(--border) !important; background: var(--bg-secondary) !important;
+    padding: 7px 10px !important; font-size: 13px !important;
+  }
 }
 
 /* Ozki telefoni: zaloga kartica — % in chevron ne stiskata naslova */
@@ -103,6 +168,8 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #zalogaBigPctWrap { align-self: flex-start; }
   #zalogaBigPct { font-size: 19px !important; }
 }
+/* zaloga mobilna meta vrstica je privzeto skrita (vidna le v mobilnem media query) */
+.zal-meta-mobile { display: none; }
 
 /* ── SIDEBAR ── */
 .sidebar { width: var(--sidebar); flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 1.25rem 0.75rem; gap: 4px; height: 100vh; position: sticky; top: 0; overflow-y: auto; }
@@ -3416,7 +3483,7 @@ input[type="text"].error { border-color: var(--red) !important; }
   <div class="page" id="page-zaloga">
 
     <!-- SUB-TAB NAV -->
-    <div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border)">
+    <div class="zaloga-subtab-nav" style="display:flex;gap:8px;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border)">
       <button class="zaloga-tab-btn active" id="zalogaTab-zaloga" onclick="switchZalogaTab('zaloga')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📦 Zaloga</button>
       <button class="zaloga-tab-btn" id="zalogaTab-vracila" onclick="switchZalogaTab('vracila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">↩️ Vračila</button>
       <button class="zaloga-tab-btn" id="zalogaTab-skeniranje" onclick="switchZalogaTab('skeniranje')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📷 Skeniranje</button>
@@ -3436,7 +3503,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
       <!-- STICKY TOOLBAR: upload + iskalnik + filter -->
       <div style="position:sticky;top:0;z-index:30;background:var(--bg);padding-bottom:6px">
-        <div style="display:flex;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+        <div class="zaloga-toolbar" style="display:flex;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
           <!-- Upload -->
           <div id="zalogaDropZone" onclick="document.getElementById('zalogaInput').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="zalogaHandleDrop(event)" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--bg-secondary);border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;color:var(--text-secondary);flex-shrink:0">
             <span>📂</span><span>Naloži CSV</span>
@@ -13560,18 +13627,20 @@ function zalogaRender() {
     const rowBg = stock === 0 ? 'rgba(0,0,0,0.02)' : 'var(--surface)';
     const rowOpacity = stock === 0 ? '0.5' : '1';
 
-    return '<div style="display:grid;grid-template-columns:' + GRID + ';gap:8px;padding:8px 14px;background:' + rowBg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:12px;align-items:center;opacity:' + rowOpacity + '">'
-      + '<span style="color:var(--text-tertiary);font-size:11px">' + esc(it.product_id||'—') + '</span>'
-      + '<div style="display:flex;align-items:center;gap:6px;overflow:hidden">'
+    const metaMobile = (price > 0 ? price.toFixed(2) + ' € · ' : '') + '📍 ' + esc(it.position||'—') + (stock30 > 0 ? ' · ↻ ' + stock30 : '');
+    return '<div class="zal-row" style="display:grid;grid-template-columns:' + GRID + ';gap:8px;padding:8px 14px;background:' + rowBg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:12px;align-items:center;opacity:' + rowOpacity + ';--zal-stockcol:' + stockColor + '">'
+      + '<span class="zal-c-id" style="color:var(--text-tertiary);font-size:11px">' + esc(it.product_id||'—') + '</span>'
+      + '<div class="zal-c-sku" style="display:flex;align-items:center;gap:6px;overflow:hidden">'
       + '<span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.product_sku) + '">' + esc(it.product_sku||'—') + '</span>'
       + '<button onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(it.product_sku||'') + '\').then(()=>{this.textContent=\'✓ Kopirano\';this.style.background=\'var(--green)\';this.style.color=\'#fff\';this.style.borderColor=\'var(--green)\';setTimeout(()=>{this.textContent=\'📋 Kopiraj\';this.style.background=\'\';this.style.color=\'\';this.style.borderColor=\'\'},1500)})" title="Kopiraj SKU" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="if(this.textContent!==\'✓ Kopirano\'){this.style.borderColor=\'\';this.style.color=\'\'}">📋 Kopiraj</button>'
       + '</div>'
-      + '<span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="' + esc(it.title) + '">' + esc(it.title||'—') + '</span>'
-      + '<span style="text-align:right;font-weight:700;font-size:13px;color:' + stockColor + '">' + stock + '</span>'
-      + '<span style="text-align:right;color:var(--text-secondary)">' + (price > 0 ? price.toFixed(2) + ' €' : '—') + '</span>'
-      + '<span style="text-align:right;font-weight:600;color:' + obratColor + '">' + (stock30 > 0 ? stock30 : '—') + '</span>'
-      + '<span style="color:var(--text-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.position) + '">' + esc(it.position||'—') + '</span>'
-      + '<span style="color:var(--text-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.note) + '">' + esc(it.note||'—') + '</span>'
+      + '<span class="zal-c-title" style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="' + esc(it.title) + '">' + esc(it.title||'—') + '</span>'
+      + '<span class="zal-c-stock" style="text-align:right;font-weight:700;font-size:13px;color:' + stockColor + '">' + stock + '</span>'
+      + '<span class="zal-c-price" style="text-align:right;color:var(--text-secondary)">' + (price > 0 ? price.toFixed(2) + ' €' : '—') + '</span>'
+      + '<span class="zal-c-obrat" style="text-align:right;font-weight:600;color:' + obratColor + '">' + (stock30 > 0 ? stock30 : '—') + '</span>'
+      + '<span class="zal-c-pos" style="color:var(--text-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.position) + '">' + esc(it.position||'—') + '</span>'
+      + '<span class="zal-c-note" style="color:var(--text-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.note) + '">' + esc(it.note||'—') + '</span>'
+      + '<span class="zal-meta-mobile">' + metaMobile + '</span>'
       + '</div>';
   }).join('');
 
@@ -19214,15 +19283,15 @@ function vracilaRender() {
     const idColor = it._isDup ? '#dc2626' : 'var(--text)';
     const latestBadge = isLatest ? '<span style="background:var(--accent);color:white;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:6px;letter-spacing:0.5px">ZADNJI</span>' : '';
     return `
-      <tr style="border-bottom:1px solid var(--surface2);${rowBg}">
-        <td style="padding:6px 12px;color:var(--text-tertiary);font-family:'DM Mono',monospace;font-size:11px">${vracilaItems.length - idx}</td>
-        <td style="padding:6px 12px">
+      <tr class="vrac-tr" style="border-bottom:1px solid var(--surface2);${rowBg}">
+        <td class="vrac-num" style="padding:6px 12px;color:var(--text-tertiary);font-family:'DM Mono',monospace;font-size:11px">${vracilaItems.length - idx}</td>
+        <td class="vrac-id" style="padding:6px 12px">
           <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:16px;color:${idColor};letter-spacing:0.3px">${it.id}</span>${dupTag}${latestBadge}
         </td>
-        <td style="padding:6px 12px">
+        <td class="vrac-comment" style="padding:6px 12px">
           <input type="text" value="${(it.comment || '').replace(/"/g, '&quot;')}" oninput="vracilaUpdateComment(${idx}, this.value)" placeholder="komentar..." style="width:100%;border:1px solid transparent;padding:3px 8px;font-size:13px;background:transparent;outline:none;font-family:inherit;border-radius:4px" onfocus="this.style.borderColor='var(--accent)';this.style.background='white'" onblur="this.style.borderColor='transparent';this.style.background='transparent'">
         </td>
-        <td style="padding:6px 12px;text-align:right;white-space:nowrap">
+        <td class="vrac-actions" style="padding:6px 12px;text-align:right;white-space:nowrap">
           <a href="https://www.siluxar.si/narocilnice/${encodeURIComponent(it.id)}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;background:rgba(58,111,255,0.1);color:var(--accent);border-radius:5px;font-size:11px;font-weight:600;text-decoration:none">🔗 odpri</a>
           <span onclick="vracilaDelete(${idx})" style="display:inline-block;color:#ef4444;cursor:pointer;padding:3px 7px;border-radius:4px;margin-left:3px;font-size:13px" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='transparent'">🗑</span>
         </td>
