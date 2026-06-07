@@ -336,6 +336,13 @@
     padding: 1px 6px; border-radius: 5px; text-transform: uppercase;
     letter-spacing: 0.4px; margin-left: 6px; white-space: nowrap;
   }
+  /* Skladišče2 — SKU iz prilepljenega seznama (jantarna, sejni tag SLO+RS) */
+  .tag-sklad {
+    font-size: 9px; font-weight: 800; color: #fff;
+    background: #d97706; border: 1px solid #b45309;
+    padding: 1px 6px; border-radius: 5px; text-transform: uppercase;
+    letter-spacing: 0.4px; margin-left: 6px; white-space: nowrap;
+  }
 
   /* ─── SIDEBAR (manjko) ─── desktop: fiksen ob skrolanju, pod sticky headerjem (~151px) */
   .sidebar {
@@ -591,6 +598,7 @@
     .tag-low { font-size: 10px; padding: 2px 7px; }
     .tag-hsplus { font-size: 10px; padding: 2px 7px; }
     .tag-supplier { font-size: 10px; padding: 2px 7px; }
+    .tag-sklad { font-size: 10px; padding: 2px 7px; }
 
     /* Sidebar kartice */
     .manko-list { max-height: none; }
@@ -1043,6 +1051,7 @@
     📦 HS PLUS
     <input type="file" id="hsplusInput" accept=".csv,.xls,.xlsx" style="display:none">
   </label>
+  <button class="btn btn-ghost btn-sm topbar-action" id="skladisceBtn" onclick="openSkladisce()" style="cursor:pointer">🏬 Skladišče2</button>
   <button class="btn btn-ghost btn-sm topbar-action" id="archiveBtn" onclick="archiveSession()" style="display:none">📦 Arhiviraj</button>
   <button class="btn btn-ghost btn-sm topbar-action" onclick="openHistory()">🕓 Zgodovina</button>
   <button class="btn btn-ghost btn-sm topbar-action" id="refreshFeedBtn" onclick="refreshFeed()" title="Ponovno potegni slike iz feeda (npr. po dodajanju novega izdelka)">🔄 Osveži slike</button>
@@ -1064,6 +1073,30 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Skladišče2 modal: prilepi SKU-je za tag 'Skladišče2' -->
+<div class="hist-overlay" id="skladOverlay" style="display:none" onclick="if(event.target===this)closeSkladisce()">
+  <div class="hist-modal" style="max-width:520px" onclick="event.stopPropagation()">
+    <div class="hist-head">
+      <span class="hist-title">🏬 Skladišče2 — označi SKU</span>
+      <button class="hist-close" onclick="closeSkladisce()">✕</button>
+    </div>
+    <div style="padding:14px">
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px">
+        Prilepi SKU-je (en na vrstico ali ločeno z vejico). Postavke s temi SKU dobijo oznako
+        <span class="tag-sklad" style="margin:0">🏬 Skladišče2</span>. Velja za trenutno sejo, skupno za SLO in RS.
+      </p>
+      <textarea id="skladInput" placeholder="SKU123&#10;SKU456&#10;ali: SKU123, SKU456, SKU789"
+        style="width:100%;min-height:120px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-primary btn-sm" onclick="addSkladisce()" style="flex:1">➕ Dodaj na seznam</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearSkladisce()" style="color:#dc2626">🗑 Počisti vse</button>
+      </div>
+      <div id="skladStatus" style="font-size:12px;margin-top:10px;min-height:16px"></div>
+      <div id="skladList" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+
 <!-- RS mobile: sticky box-bar pritrjen na dno (prikazan ko je polica odprta) -->
 <div id="mobileBoxBar" style="display:none"></div>
 
@@ -1078,6 +1111,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260602BH"></script>
+<script src="/static/zaloga.js?v=20260602BJ"></script>
 </body>
 </html>
