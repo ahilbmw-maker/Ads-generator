@@ -267,6 +267,12 @@
   .item:hover { background: var(--panel2); }
   .item.ok { background: var(--ok-bg); }
   .item.ni { background: var(--ni-bg); }
+  /* delni manjko (npr. 5/6) — oranžno-rdeča z levim robom */
+  .item.partial { background: #fbd5d2; border-left: 4px solid #d85a30; }
+  .item.partial:hover { background: #f9c4c0; }
+  /* cel manjko (✗) — močna rdeča z levim robom */
+  .item.full-miss { background: #f3a8a3; border-left: 4px solid #991b1b; }
+  .item.full-miss:hover { background: #ef9a94; }
   .item:last-child { border-bottom: none; }
 
   .item .sku { font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; text-align: left; overflow: hidden; text-overflow: ellipsis; }
@@ -539,6 +545,8 @@
     .item:last-child { margin-bottom: 0; }
     .item.ok { background: var(--ok-bg); border-color: var(--ok-border); }
     .item.ni { background: var(--ni-bg); border-color: var(--ni-border); }
+    .item.partial { background: #fbd5d2; border-color: #e89490; border-left: 4px solid #d85a30; }
+    .item.full-miss { background: #f3a8a3; border-color: #dc2626; border-left: 4px solid #991b1b; }
     /* skrij ID na mobile */
     .item .id-col { display: none; }
 
@@ -1111,6 +1119,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260602BJ"></script>
+<script src="/static/zaloga.js?v=20260602BL"></script>
 </body>
 </html>
