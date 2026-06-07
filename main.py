@@ -16836,6 +16836,52 @@ async def pozicije_apply():
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
 
 
+@app.post("/pozicije-update-one")
+async def pozicije_update_one(data: dict):
+    """Hitra sprememba pozicije ENEGA SKU-ja — zapiše takoj v CSV (za pop-up pri zalogi)."""
+    try:
+        sku = (data.get("sku") or "").strip()
+        position = (data.get("position") or "").strip()
+        if not sku:
+            return {"ok": False, "error": "Manjka SKU"}
+        if not STOCK_CSV_FILE.exists():
+            return {"ok": False, "error": "Baza zaloge ni naložena."}
+
+        import csv as _csv
+        from io import StringIO as _SIO
+        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        first_line = text.split("\n", 1)[0]
+        sep = ";" if first_line.count(";") > first_line.count(",") else ","
+        reader = _csv.DictReader(_SIO(text), delimiter=sep)
+        fieldnames = reader.fieldnames or []
+        if "position" not in fieldnames:
+            fieldnames = fieldnames + ["position"]
+        rows = list(reader)
+
+        updated = 0
+        for row in rows:
+            rsku = (row.get("product_sku") or row.get("sku") or "").strip()
+            if rsku == sku:
+                row["position"] = position
+                updated += 1
+        if updated == 0:
+            return {"ok": False, "error": f"SKU '{sku}' ni v bazi zaloge"}
+
+        out = _SIO()
+        writer = _csv.DictWriter(out, fieldnames=fieldnames, delimiter=sep, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+        tmp = STOCK_CSV_FILE.with_suffix(".tmp")
+        tmp.write_text(out.getvalue(), encoding="utf-8-sig")
+        import os as _os
+        _os.replace(str(tmp), str(STOCK_CSV_FILE))
+        return {"ok": True, "updated": updated, "sku": sku, "position": position}
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
+
+
 
 # ════════════════════════════════════════════════════════════════════
 #  BADGE GENERATOR (skrita stran /badge-generator) — enkratna naloga
