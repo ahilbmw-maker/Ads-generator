@@ -3773,6 +3773,31 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
     </div><!-- /pozicije subpage -->
 
+    <!-- POP-UP: hitra sprememba pozicije (iz seznama zaloge) -->
+    <div id="pozQuickModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)pozQuickClose()">
+      <div style="background:var(--surface);border-radius:12px;padding:16px;width:min(440px,92vw)" onclick="event.stopPropagation()">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:14px;font-weight:700">📍 Sprememba pozicije</span>
+          <button onclick="pozQuickClose()" style="background:transparent;border:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">✕</button>
+        </div>
+        <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+          <div style="font-size:15px;font-weight:700;color:var(--text)" id="pozQuickSku">—</div>
+          <div style="font-size:12px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="pozQuickTitle"></div>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:3px" id="pozQuickCurrent"></div>
+        </div>
+        <label class="poz-photo-btn" style="margin-bottom:10px">
+          📷 Slikaj pozicijo
+          <input type="file" accept="image/*" capture="environment" onchange="pozQuickRecognize(this.files[0])" style="display:none">
+        </label>
+        <div style="position:relative;margin-bottom:8px">
+          <input type="text" id="pozQuickPosInput" placeholder="ali vpiši: P8-C (autosuggest)" autocomplete="off" oninput="pozQuickSuggest(this.value)" onfocus="pozQuickSuggest(this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
+          <div id="pozQuickSuggestList" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:3px;max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)"></div>
+        </div>
+        <div id="pozQuickStatus" style="font-size:12px;margin-bottom:10px;min-height:16px"></div>
+        <button onclick="pozQuickSave()" style="width:100%;padding:11px;background:#16a34a;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Shrani pozicijo</button>
+      </div>
+    </div>
+
   </div><!-- /page-zaloga -->
 
   <!-- ═══════════════════════════════════════════════════════════════════════
@@ -13719,6 +13744,7 @@ function zalogaRender() {
       + '<div class="zal-c-sku" style="display:flex;align-items:center;gap:6px;overflow:hidden">'
       + '<span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.product_sku) + '">' + esc(it.product_sku||'—') + '</span>'
       + '<button onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(it.product_sku||'') + '\').then(()=>{this.textContent=\'✓ Kopirano\';this.style.background=\'var(--green)\';this.style.color=\'#fff\';this.style.borderColor=\'var(--green)\';setTimeout(()=>{this.textContent=\'📋 Kopiraj\';this.style.background=\'\';this.style.color=\'\';this.style.borderColor=\'\'},1500)})" title="Kopiraj SKU" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="if(this.textContent!==\'✓ Kopirano\'){this.style.borderColor=\'\';this.style.color=\'\'}">📋 Kopiraj</button>'
+      + '<button onclick="event.stopPropagation();pozQuickOpen(\'' + esc((it.product_sku||'').replace(/'/g,"\\'")) + '\',\'' + esc((it.title||'').replace(/'/g,"\\'")) + '\',\'' + esc((it.position||'').replace(/'/g,"\\'")) + '\')" title="Spremeni pozicijo" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:11px;color:var(--text-secondary);padding:3px 7px;white-space:nowrap;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="this.style.borderColor=\'\';this.style.color=\'\'">📍</button>'
       + '</div>'
       + '<span class="zal-c-title" style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="' + esc(it.title) + '">' + esc(it.title||'—') + '</span>'
       + '<span class="zal-c-stock" style="text-align:right;font-weight:700;font-size:13px;color:' + stockColor + '">' + stock + '</span>'
@@ -19385,6 +19411,93 @@ async function pozApply() {
       _pozPending = [];
       pozRenderPending();
       if (typeof zalogaLoad === 'function') zalogaLoad();  // osveži zalogo
+    } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
+  } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
+}
+
+// ── Hitra sprememba pozicije (pop-up iz seznama zaloge) ──
+let _pozQuickSku = null;
+let _pozQuickTimer = null;
+
+function pozQuickOpen(sku, title, currentPos) {
+  _pozQuickSku = sku;
+  document.getElementById('pozQuickSku').textContent = sku;
+  document.getElementById('pozQuickTitle').textContent = title || '';
+  document.getElementById('pozQuickCurrent').innerHTML = currentPos ? 'trenutno: 📍 <b>' + pozEsc(currentPos) + '</b>' : '<span style="color:var(--text-tertiary)">brez pozicije</span>';
+  document.getElementById('pozQuickPosInput').value = currentPos || '';
+  document.getElementById('pozQuickStatus').innerHTML = '';
+  document.getElementById('pozQuickSuggestList').style.display = 'none';
+  document.getElementById('pozQuickModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('pozQuickPosInput').focus(), 50);
+}
+function pozQuickClose() { document.getElementById('pozQuickModal').style.display = 'none'; _pozQuickSku = null; }
+
+function pozQuickSuggest(q) {
+  clearTimeout(_pozQuickTimer);
+  const box = document.getElementById('pozQuickSuggestList');
+  _pozQuickTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/pozicije-pos-suggest?q=' + encodeURIComponent((q||'').trim()));
+      const d = await r.json();
+      if (!d.ok || !d.suggestions.length) { box.style.display = 'none'; return; }
+      box.innerHTML = d.suggestions.map(s =>
+        `<div class="poz-suggest-item" onclick="pozQuickPickPos('${pozEsc(s).replace(/'/g,"\\'")}')" style="font-weight:600;font-size:13px;color:var(--text)">📍 ${pozEsc(s)}</div>`).join('');
+      box.style.display = 'block';
+    } catch (e) { box.style.display = 'none'; }
+  }, 180);
+}
+function pozQuickPickPos(pos) {
+  document.getElementById('pozQuickPosInput').value = pos;
+  document.getElementById('pozQuickSuggestList').style.display = 'none';
+  document.getElementById('pozQuickStatus').innerHTML = `<span style="color:#16a34a">✓ ${pozEsc(pos)}</span>`;
+}
+
+async function pozQuickRecognize(file) {
+  if (!file) return;
+  const statusEl = document.getElementById('pozQuickStatus');
+  statusEl.innerHTML = '<span style="color:var(--text-secondary)">⏳ berem sliko...</span>';
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const b64 = reader.result.split(',')[1];
+    const mt = file.type || 'image/jpeg';
+    try {
+      const r = await fetch('/pozicije-recognize-pos', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ image: b64, media_type: mt }) });
+      const d = await r.json();
+      if (!d.ok) { statusEl.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; return; }
+      if (d.status === 'exact' || d.status === 'no_list') {
+        document.getElementById('pozQuickPosInput').value = d.value;
+        statusEl.innerHTML = `<span style="color:#16a34a">✓ pozicija: ${pozEsc(d.value)}</span>`;
+      } else if (d.status === 'suggest') {
+        document.getElementById('pozQuickPosInput').value = d.reading;
+        const sugBtns = (d.suggestions||[]).map(s => `<span onclick="pozQuickPickPos('${pozEsc(s).replace(/'/g,"\\'")}')" style="display:inline-block;background:rgba(58,111,255,0.1);color:var(--accent);padding:3px 10px;border-radius:6px;margin:2px 4px 2px 0;cursor:pointer;font-weight:600">${pozEsc(s)}</span>`).join('');
+        statusEl.innerHTML = `<span style="color:#d97706">⚠ "${pozEsc(d.reading)}" ni na seznamu.</span><div style="margin-top:5px;font-size:12px">Najbližje (klikni): ${sugBtns}</div>`;
+      } else {
+        document.getElementById('pozQuickPosInput').value = d.reading || '';
+        const sugBtns = (d.suggestions||[]).map(s => `<span onclick="pozQuickPickPos('${pozEsc(s).replace(/'/g,"\\'")}')" style="display:inline-block;background:var(--surface2);color:var(--text);padding:3px 10px;border-radius:6px;margin:2px 4px 2px 0;cursor:pointer">${pozEsc(s)}</span>`).join('');
+        statusEl.innerHTML = `<span style="color:#d97706">⚠ "${pozEsc(d.reading||'')}" ni najden.</span>` + (sugBtns ? `<div style="margin-top:5px;font-size:12px">Morda: ${sugBtns}</div>` : ' Vpiši ročno.');
+      }
+    } catch (e) { statusEl.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function pozQuickSave() {
+  if (!_pozQuickSku) return;
+  const pos = document.getElementById('pozQuickPosInput').value.trim();
+  const st = document.getElementById('pozQuickStatus');
+  st.innerHTML = '<span style="color:var(--text-secondary)">⏳ shranjujem...</span>';
+  try {
+    const r = await fetch('/pozicije-update-one', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _pozQuickSku, position: pos }) });
+    const d = await r.json();
+    if (d.ok) {
+      st.innerHTML = `<span style="color:#16a34a">✓ Shranjeno: ${pozEsc(d.sku)} → 📍 ${pozEsc(d.position||'—')}</span>`;
+      // posodobi lokalne podatke + osveži seznam
+      if (typeof _zalogaData !== 'undefined') {
+        const item = _zalogaData.find(x => (x.product_sku||x.sku) === _pozQuickSku);
+        if (item) item.position = pos;
+      }
+      if (typeof zalogaRender === 'function') zalogaRender();
+      setTimeout(pozQuickClose, 900);
     } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
 }
