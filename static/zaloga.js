@@ -405,7 +405,7 @@ function render() {
             <span>ID naročila</span><span>Slika</span><span>SKU</span><span>Pozicija</span>
             <span>Naziv</span><span class="h-qty">Količina</span><span class="h-status">Status</span>
           </div>
-          ${items.map(it => itemRow(it)).join('')}
+          ${_sortMankoTop(items).map(it => itemRow(it)).join('')}
         </div>
       </div>`;
   });
@@ -1098,8 +1098,23 @@ function cakajPdf() {
   }).catch(e => alert(e.message || 'Napaka pri PDF'));
 }
 
+// Razvrsti postavke police: manjko (✗ cel ali ✓ delni) na VRH (kot pripeto),
+// znotraj skupin ohrani razvrstitev po poziciji. Ostale (todo, polno OK) sledijo.
+function _sortMankoTop(items) {
+  const manko = [], rest = [];
+  (items || []).forEach(it => { (_isManko(it) ? manko : rest).push(it); });
+  return manko.concat(rest);
+}
+
 function itemRow(it) {
-  const cls = it.status === 'ok' ? 'ok' : it.status === 'ni' ? 'ni' : '';
+  // Barvanje: ok+polno → zelena; ok ampak delno nabrano (npr. 5/6) → oranžno-rdeča (partial);
+  // ni (cel manjko ✗) → močna rdeča (full-miss)
+  let cls = '';
+  if (it.status === 'ok') {
+    cls = (it.picked < it.qty) ? 'partial' : 'ok';
+  } else if (it.status === 'ni') {
+    cls = 'full-miss';
+  }
   const mismatch = it.picked !== it.qty ? 'qty-mismatch' : '';
   const rs = isRS();
   const locked = rs && it.locked;
@@ -1664,10 +1679,18 @@ function jumpToItem(idx) {
   const it = (ITEMS || []).find(x => x.idx === idx);
   if (!it) return;
   const g = it.group;
-  // odpri polico če ni odprta
+  // Zagotovi, da je polica ODPRTA — tudi če je s filtrom "samo odprto" skrita
+  // (dokončana polica). Nastavi expanded in PONOVNO renderiraj, da pride v DOM.
   const expanded = getExpanded();
+  const wasHiddenOrClosed = !expanded[g] || !document.getElementById('shelf-' + cssId(g));
   if (!expanded[g]) {
-    toggleShelf(g);   // odpre in re-renderira
+    if (isMobile()) Object.keys(expanded).forEach(k => { if (k !== g) delete expanded[k]; });
+    expanded[g] = true;
+    setExpanded(expanded);
+  }
+  if (wasHiddenOrClosed) {
+    render();             // skrita polica (filter ON) pride v DOM
+    updateMobileBoxBar();
   }
   // po renderju scrollaj do postavke + osvetli
   setTimeout(() => {
@@ -1679,7 +1702,7 @@ function jumpToItem(idx) {
     window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
     card.classList.add('item-jump-flash');
     setTimeout(() => card.classList.remove('item-jump-flash'), 1600);
-  }, 80);
+  }, 120);
 }
 
 // Ali smo na mobilnem (ozek zaslon) — usklajeno z @media (max-width: 768px)
@@ -1718,6 +1741,7 @@ function changeQty(idx, delta) {
   refreshItem(it);
   refreshSidebarAndStats();
   saveItem(idx, { picked: it.picked });
+  reorderShelf(it.group);   // delni manjko (npr. 5/6) → pripni na vrh
 }
 
 // ── Status OK/NI ──
@@ -1733,8 +1757,25 @@ function setStatus(idx, status) {
   syncFilterToggleLabel();  // osveži števec polic na gumbu filtra
   if (isRS()) refreshBoxCounters();  // posodobi globalni števec obkljukanih brez boxa
   saveItem(idx, { status: it.status });
+  reorderShelf(it.group);   // pripni manjko na vrh police (takoj ob ✓/✗)
   // filter "Samo odprto": če polica ravno postane dokončana, jo samodejno skrij (brez osvežitve)
   maybeAutoHideShelf(it.group);
+}
+
+// Prerazporedi vrstice znotraj police: manjko (✗/delni ✓) na vrh, kot pripeto.
+// Premakne DOM elemente brez polnega re-renderja (ohrani odprte police in box-bare).
+function reorderShelf(group) {
+  const shelf = document.getElementById('shelf-' + cssId(group));
+  if (!shelf) return;
+  const body = shelf.querySelector('.shelf-body');
+  if (!body) return;
+  const groups = groupItems();
+  const items = _sortMankoTop(groups[group] || []);
+  // prestavi item-vrstice v želeni vrstni red (appendChild premakne obstoječ element)
+  items.forEach(it => {
+    const row = document.getElementById('item-' + it.idx);
+    if (row) body.appendChild(row);
+  });
 }
 
 // Če je filter "Samo odprto" aktiven in je polica zdaj dokončana (vse postavke obdelane),
