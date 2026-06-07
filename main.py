@@ -1808,6 +1808,9 @@ async def zaloga_current_get(market: str = "slo"):
                 "dropped_items": dropped_items, "dropped_qty": dropped_qty,
                 "ok": (dropped_items == 0 and dropped_qty == 0),
             }
+            # SKLADIŠČE: ponovno označi postavke po sejnem seznamu SKU (preživi osvežitev/sync)
+            if data.get("skladisce_skus"):
+                _skladisce_mark_items(data)
             return {"ok": True, **data}
         return {"ok": True, "items": [], "started_at": None}
     except Exception as e:
@@ -1945,6 +1948,73 @@ async def zaloga_debug():
     except Exception as e:
         import traceback
         return {"error": str(e), "traceback": traceback.format_exc()}
+
+
+def _skladisce_mark_items(sess: dict):
+    """Označi postavke seje s 'skladisce', če je njihov SKU na sejnem seznamu.
+    Seznam je skupen za vse postavke trenutne seje (SLO in RS berеta svojo sejo)."""
+    skus = set(str(s).strip().upper() for s in sess.get("skladisce_skus", []) if str(s).strip())
+    n = 0
+    for it in sess.get("items", []):
+        if str(it.get("sku", "")).strip().upper() in skus:
+            it["skladisce"] = True
+            n += 1
+        elif it.get("skladisce"):
+            it["skladisce"] = False  # umaknjen s seznama → odstrani oznako
+    return n
+
+
+def _parse_sku_list(raw: str):
+    """Razčleni prilepljen seznam SKU (vrstice, vejice, podpičja, presledki, tabi)."""
+    import re as _re
+    if not raw:
+        return []
+    parts = _re.split(r"[\s,;]+", str(raw).strip())
+    seen = []
+    for p in parts:
+        p = p.strip().upper()
+        if p and p not in seen:
+            seen.append(p)
+    return seen
+
+
+@app.post("/zaloga-skladisce")
+async def zaloga_skladisce(data: dict):
+    """Doda/odstrani SKU-je za tag 'Skladišče' v TRENUTNI seji (skupno SLO+RS prek seje).
+    action: 'add' (dopolni seznam) | 'clear' (počisti vse) | 'remove' (odstrani en SKU).
+    Vrne posodobljen seznam + število označenih postavk."""
+    try:
+        path = _zaloga_current_path(data.get("market", "slo"))
+        if not path.exists():
+            return {"ok": False, "error": "Ni aktivne seje"}
+        sess = json.loads(path.read_text(encoding="utf-8"))
+        cur = list(sess.get("skladisce_skus", []))
+        action = data.get("action", "add")
+
+        if action == "clear":
+            cur = []
+        elif action == "remove":
+            rem = str(data.get("sku", "")).strip().upper()
+            cur = [s for s in cur if str(s).strip().upper() != rem]
+        else:  # add — dopolni seznam (brez dvojnikov)
+            new = _parse_sku_list(data.get("raw", ""))
+            existing = set(str(s).strip().upper() for s in cur)
+            for s in new:
+                if s not in existing:
+                    cur.append(s)
+                    existing.add(s)
+
+        sess["skladisce_skus"] = cur
+        n = _skladisce_mark_items(sess)
+        from datetime import datetime as _dt
+        sess["updated_at"] = _dt.now().isoformat()
+        _zaloga_atomic_write(path, sess)
+        # koliko jih ni najdenih v seji (za info)
+        sess_skus = set(str(it.get("sku", "")).strip().upper() for it in sess.get("items", []))
+        ni_najdenih = [s for s in cur if s not in sess_skus]
+        return {"ok": True, "skladisce_skus": cur, "marked": n, "ni_najdenih": ni_najdenih}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.post("/zaloga-update-item")
