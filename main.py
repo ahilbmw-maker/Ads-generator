@@ -9161,6 +9161,25 @@ async def hsuvoz_upload(file: UploadFile = File(...)):
 
         items = sorted(sku_map.values(), key=lambda x: -x["qty"])
 
+        # DEDUP: odstrani postavke, ki so že v "NAROČILO" (HSUVOZ_ORDER) —
+        # da ni dvojnega dela z ročnim brisanjem že obdelanih SKU-jev.
+        skipped = []
+        try:
+            if HSUVOZ_ORDER.exists():
+                order_data = json.loads(HSUVOZ_ORDER.read_text(encoding="utf-8"))
+                order_items = order_data.get("items", []) if isinstance(order_data, dict) else (order_data or [])
+                order_skus = set((it.get("sku") or "").strip().upper() for it in order_items if it.get("sku"))
+                if order_skus:
+                    kept = []
+                    for it in items:
+                        if (it.get("sku") or "").strip().upper() in order_skus:
+                            skipped.append(it["sku"])
+                        else:
+                            kept.append(it)
+                    items = kept
+        except Exception:
+            pass
+
         # Naloži obstoječe done state iz currenta (ohrani done flag)
         if HSUVOZ_CURRENT.exists():
             try:
@@ -9188,7 +9207,7 @@ async def hsuvoz_upload(file: UploadFile = File(...)):
         hist_file = HSUVOZ_DIR / f"hsuvoz_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
         hist_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        return {"ok": True, "total_skus": len(items), "uploaded_at": ts, "filename": file.filename}
+        return {"ok": True, "total_skus": len(items), "uploaded_at": ts, "filename": file.filename, "skipped_in_order": len(skipped), "skipped_skus": skipped[:50]}
 
     except Exception as e:
         import traceback; traceback.print_exc()
