@@ -4492,6 +4492,10 @@ async def generate_kreative(data: dict):
     if not gemini_key:
         return {"error": "GEMINI_API_KEY ni nastavljen v Render environment variables."}
 
+    # Izbira modela: 'flash' = Nano Banana 2 (hitro, privzeto) | 'pro' = Nano Banana Pro (kakovost)
+    _model_choice = (data.get("model") or "flash").lower()
+    GEMINI_IMG_MODEL = "gemini-3-pro-image" if _model_choice == "pro" else "gemini-3.1-flash-image-preview"
+
     # ── GEMINI FILE URI CACHE ──────────────────────────────────────────────────
     # Gemini Files API vrne URI ki velja 48h — cachiramo na disk da ne uploadamo vsakič
     import hashlib, json as _json, time as _time
@@ -4595,7 +4599,7 @@ async def generate_kreative(data: dict):
         image_parts = []
 
     async def generate_one_image(combo_prompt, combo_label, idx):
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={gemini_key}"
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_IMG_MODEL}:generateContent?key={gemini_key}"
         parts = list(image_parts) + [{"text": combo_prompt}]
         payload = {
             "contents": [{"parts": parts}],
