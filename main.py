@@ -9207,7 +9207,7 @@ async def hsuvoz_upload(file: UploadFile = File(...)):
         hist_file = HSUVOZ_DIR / f"hsuvoz_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
         hist_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        return {"ok": True, "total_skus": len(items), "uploaded_at": ts, "filename": file.filename, "skipped_in_order": len(skipped), "skipped_skus": skipped[:50]}
+        return {"ok": True, "total_skus": len(items), "uploaded_at": ts, "filename": file.filename, "skipped_in_order": len(skipped), "skipped_skus": skipped, "total_in_csv": len(items) + len(skipped)}
 
     except Exception as e:
         import traceback; traceback.print_exc()
