@@ -396,7 +396,7 @@ function render() {
           <div class="shelf-head-spacer"></div>
           <div class="shelf-prog">
             <div class="shelf-prog-bar prog-seg-wrap">${progBarSegments(stat)}</div>
-            <span class="shelf-prog-pct" style="color:var(--text)">${isDone ? '✓ ' : ''}${stat.pctOk}%</span>
+            <span class="shelf-prog-pct" style="color:var(--text)">${isDone ? '✓ ' : ''}${stat.pctOkDisplay}%</span>
           </div>
         </div>
         <div class="shelf-body">
@@ -1234,7 +1234,11 @@ function groupStat(items) {
   const qPctNi = qNeed ? Math.round(qMiss / qNeed * 100) : 0;
   const qPctTodo = qNeed ? Math.max(0, 100 - qPctOk - qPctNi) : 0;
 
-  return { total, done, ok, ni, todo, pct, pctOk, pctNi, pctTodo,
+  // varni odstotek za prikaz: 100% SAMO če je vse obdelano (sicer navzdol, da 99.x% ni 100%)
+  const allDone = total > 0 && done >= total;
+  const pctOkDisplay = allDone ? 100 : Math.min(99, Math.floor(total ? ok / total * 100 : 0));
+
+  return { total, done, ok, ni, todo, pct, pctOk, pctNi, pctTodo, pctOkDisplay, allDone,
            qNeed, qOk, qMiss, qTodo, qPctOk, qPctNi, qPctTodo };
 }
 
@@ -1547,8 +1551,11 @@ function updateGlobalStat() {
   if (mprog) mprog.innerHTML = progBarSegments(stat);  // noga (mobile) — isti segmenti
   const pctEl = document.getElementById('globalPct');
   if (pctEl) {
-    pctEl.textContent = stat.pctOk + '%';
-    pctEl.style.color = stat.pctOk===100 ? 'var(--ok)' : 'var(--text)';
+    // 100% SAMO če je res vse obdelano; sicer zaokroži navzdol (99.6% → 99%, ne 100%)
+    const allDone = stat.total > 0 && stat.done >= stat.total;
+    const displayPct = allDone ? 100 : Math.min(99, Math.floor(stat.total ? stat.ok / stat.total * 100 : 0));
+    pctEl.textContent = displayPct + '%';
+    pctEl.style.color = displayPct === 100 ? 'var(--ok)' : 'var(--text)';
   }
   const doneEl = document.getElementById('globalDone');
   if (doneEl) doneEl.textContent = `${stat.done} / ${stat.total}`;
