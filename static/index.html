@@ -2083,6 +2083,8 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div id="hsuvozInfo" style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:none"></div>
           </div>
 
+          <div id="hsuvozSkipReport" style="display:none;margin-top:10px;padding:10px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius)"></div>
+
           <div class="card" style="margin-top:0">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
               <span class="slabel" style="margin:0">ZGODOVINA (30 DNI)</span>
@@ -13836,12 +13838,28 @@ async function hsuvozUpload(file) {
     const data = await res.json();
     if (data.error) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + data.error; return; }
     status.style.color = 'var(--green)';
-    status.textContent = `✓ ${data.total_skus} SKU-jev naloženih`;
-    if (data.skipped_in_order > 0) {
-      status.textContent += ` · ⏭ ${data.skipped_in_order} preskočenih (že v naročilu)`;
-    }
+    status.textContent = `✓ ${data.total_skus} novih SKU za naročilo`;
     info.style.display = 'block';
     info.textContent = `${new Date(data.uploaded_at).toLocaleString('sl-SI')} · ${file.name}`;
+
+    // VALIDACIJSKI POVZETEK: pokaži kaj je bilo preskočeno (že v naročilu)
+    const skipBox = document.getElementById('hsuvozSkipReport');
+    if (skipBox) {
+      if (data.skipped_in_order > 0) {
+        const chips = (data.skipped_skus || []).map(s =>
+          `<span style="display:inline-block;font-size:11px;padding:2px 8px;background:rgba(217,119,6,0.12);color:#b45309;border:1px solid rgba(217,119,6,0.3);border-radius:5px;margin:2px 3px 2px 0;font-family:'DM Mono',monospace">${(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}</span>`).join('');
+        skipBox.style.display = 'block';
+        skipBox.innerHTML =
+          `<div style="font-size:12px;font-weight:700;color:#b45309;margin-bottom:6px">⏭ ${data.skipped_in_order} SKU preskočenih — že v naročilu</div>` +
+          `<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">V CSV: ${data.total_in_csv} · že v naročilu: ${data.skipped_in_order} · novih za naročilo: ${data.total_skus}</div>` +
+          `<div style="line-height:1.8">${chips}</div>`;
+      } else {
+        skipBox.style.display = 'block';
+        skipBox.innerHTML = `<div style="font-size:12px;color:#0f766e">✓ Vse postavke so nove — nič ni bilo že v naročilu (V CSV: ${data.total_in_csv})</div>`;
+        setTimeout(() => { if (skipBox) skipBox.style.display = 'none'; }, 6000);
+      }
+    }
+
     await hsuvozLoadCurrent();
     await hsuvozLoadHistory();
   } catch(e) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + e.message; }
