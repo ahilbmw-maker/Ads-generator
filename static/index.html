@@ -13837,6 +13837,9 @@ async function hsuvozUpload(file) {
     if (data.error) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + data.error; return; }
     status.style.color = 'var(--green)';
     status.textContent = `✓ ${data.total_skus} SKU-jev naloženih`;
+    if (data.skipped_in_order > 0) {
+      status.textContent += ` · ⏭ ${data.skipped_in_order} preskočenih (že v naročilu)`;
+    }
     info.style.display = 'block';
     info.textContent = `${new Date(data.uploaded_at).toLocaleString('sl-SI')} · ${file.name}`;
     await hsuvozLoadCurrent();
