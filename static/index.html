@@ -248,6 +248,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 .spinner { width: 30px; height: 30px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 1rem; }
 .spinner.tiktok { border-top-color: var(--tiktok); }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes kqpulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
 .loading-text { font-size: 13px; color: var(--text-tertiary); }
 .loading-progress { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
 .prog-item { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--text-tertiary); display: flex; align-items: center; gap: 5px; }
@@ -1291,6 +1292,25 @@ input[type="text"].error { border-color: var(--red) !important; }
         style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
         ✨ Gemini Flash
       </button>
+      <button class="kreative-tab-btn" id="krTab-queue" onclick="krSwitchTab('queue')"
+        style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+        ⏳ Vrsta <span id="krQueueTabBadge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;margin-left:4px"></span>
+      </button>
+    </div>
+
+    <!-- Tab: Vrsta (čakalna vrsta generiranja) -->
+    <div id="kr-panel-queue" style="display:none;padding:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <span class="slabel">⏳ ČAKALNA VRSTA GENERIRANJA</span>
+          <div id="kQueueCount" style="font-size:12px;color:var(--text-tertiary);margin-top:3px"></div>
+        </div>
+        <button onclick="kQueueClearDone()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
+      </div>
+      <div id="kQueueGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px"></div>
+      <div id="kQueueEmpty" style="text-align:center;padding:4rem 2rem;color:var(--text-tertiary);font-size:13px">
+        Vrsta je prazna. V zavihku <b>Gemini Flash</b> izberi izdelek in klikni <b>➕ Dodaj v vrsto</b>.
+      </div>
     </div>
 
     <!-- Tab: Gemini -->
@@ -1379,6 +1399,7 @@ input[type="text"].error { border-color: var(--red) !important; }
                 ➕ Dodaj v vrsto
               </button>
             </div>
+            <div id="kQueueAddHint" style="display:none;margin-top:8px;font-size:12px;color:#16a34a;text-align:center;font-weight:600">✓ Dodano v vrsto — glej zavihek "⏳ Vrsta" zgoraj</div>
             <div class="error-msg" id="kError"></div>
           </div>
         </div>
@@ -1387,14 +1408,6 @@ input[type="text"].error { border-color: var(--red) !important; }
 
       <!-- DESNO: Preview -->
       <div class="kreative-right">
-        <!-- ČAKALNA VRSTA — pripeta na vrh, vedno vidna -->
-        <div class="card" id="kQueuePanel" style="margin-bottom:12px;display:none;position:sticky;top:8px;z-index:20;border:1px solid var(--accent);box-shadow:0 2px 12px rgba(0,0,0,0.08)">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-            <span class="slabel">⏳ ČAKALNA VRSTA <span id="kQueueCount" style="color:var(--accent)"></span></span>
-            <button onclick="kQueueClearDone()" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
-          </div>
-          <div id="kQueueList" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto"></div>
-        </div>
         <div class="card" style="min-height:500px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
             <span class="slabel">GENERIRANE KREATIVE</span>
@@ -6094,6 +6107,9 @@ function kQueueAdd() {
   kQueueRender();
   kQueueProcess();
   kClearForNext();   // počisti tab za nov izdelek
+  // ostani na Gemini za hitro nadaljevanje; badge na tabu "⏳ Vrsta" pokaže število + kratek namig
+  const hint = document.getElementById('kQueueAddHint');
+  if (hint) { hint.style.display = 'block'; clearTimeout(window._kQHintT); window._kQHintT = setTimeout(()=>{ hint.style.display='none'; }, 3500); }
 }
 
 function kClearForNext() {
@@ -6145,9 +6161,10 @@ async function kQueueProcess() {
 function kQueueShowResults(id) {
   const job = kQueue.find(j => j.id === id);
   if (!job || job.status !== 'done') return;
+  if (typeof krSwitchTab === 'function') krSwitchTab('gemini');
   kRenderResults(job.results);
   document.getElementById('kResultCount').textContent = (job.results||[]).length + ' kombinacij · ' + job.name;
-  document.getElementById('kResultsGrid')?.scrollIntoView({behavior:'smooth', block:'start'});
+  setTimeout(() => document.getElementById('kResultsGrid')?.scrollIntoView({behavior:'smooth', block:'start'}), 100);
 }
 
 function kQueueRemove(id) {
@@ -6161,36 +6178,60 @@ function kQueueClearDone() {
 }
 
 function kQueueRender() {
-  const panel = document.getElementById('kQueuePanel');
-  const list = document.getElementById('kQueueList');
+  const grid = document.getElementById('kQueueGrid');
+  const empty = document.getElementById('kQueueEmpty');
   const cnt = document.getElementById('kQueueCount');
-  if (!panel || !list) return;
-  if (!kQueue.length) { panel.style.display = 'none'; return; }
-  panel.style.display = 'block';
+  const badge = document.getElementById('krQueueTabBadge');
+
+  // badge na tab gumbu (število ki teče+čaka)
+  const activeN = kQueue.filter(j => j.status==='waiting' || j.status==='running').length;
+  const doneN = kQueue.filter(j => j.status==='done').length;
+  if (badge) {
+    if (kQueue.length) { badge.style.display='inline-block'; badge.textContent = activeN ? activeN : '✓'; badge.style.background = activeN ? 'var(--accent)' : '#16a34a'; }
+    else badge.style.display='none';
+  }
+
+  if (!grid) return;
+  if (!kQueue.length) {
+    grid.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    if (cnt) cnt.textContent = '';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
   const waiting = kQueue.filter(j=>j.status==='waiting').length;
   const running = kQueue.filter(j=>j.status==='running').length;
-  const done = kQueue.filter(j=>j.status==='done').length;
-  if (cnt) cnt.textContent = `(${done}/${kQueue.length} gotovo${running?', '+running+' teče':''}${waiting?', '+waiting+' čaka':''})`;
+  if (cnt) cnt.textContent = `${doneN}/${kQueue.length} gotovo${running?` · ${running} generira`:''}${waiting?` · ${waiting} čaka`:''}`;
 
   const statusInfo = {
-    waiting: {icon:'⏳', txt:'čaka', color:'var(--text-tertiary)'},
-    running: {icon:'🔄', txt:'generira...', color:'var(--accent)'},
-    done:    {icon:'✅', txt:'gotovo', color:'#16a34a'},
-    error:   {icon:'❌', txt:'napaka', color:'#dc2626'},
+    waiting: {icon:'⏳', txt:'čaka v vrsti', color:'var(--text-tertiary)', bg:'var(--bg-secondary)', bd:'var(--border)'},
+    running: {icon:'🔄', txt:'generira...', color:'var(--accent)', bg:'rgba(58,111,255,0.05)', bd:'var(--accent)'},
+    done:    {icon:'✅', txt:'GOTOVO', color:'#16a34a', bg:'rgba(22,163,74,0.06)', bd:'#16a34a'},
+    error:   {icon:'❌', txt:'napaka', color:'#dc2626', bg:'rgba(220,38,38,0.05)', bd:'#dc2626'},
   };
-  list.innerHTML = kQueue.map(j => {
+
+  grid.innerHTML = kQueue.map(j => {
     const s = statusInfo[j.status] || statusInfo.waiting;
     const combos = (j.aOpts?.length||0) * (j.bOpts?.length||0);
-    const clickable = j.status === 'done';
     const resultCount = (j.results||[]).length || j.resultCount || 0;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;${clickable?'cursor:pointer':''}" ${clickable?`onclick="kQueueShowResults('${j.id}')"`:''}>
-      <span style="font-size:16px">${s.icon}</span>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.name)}</div>
-        <div style="font-size:11px;color:${s.color}">${s.txt}${j.status==='done'?` · ${resultCount} kombinacij`:''}${j.status==='waiting'||j.status==='running'?` · ${combos} komb. ×${j.count}`:''}${j.error?` · ${esc(j.error)}`:''}</div>
+    const thumb = (j.images && j.images[0]) ? j.images[0] : '';
+    const clickable = j.status === 'done';
+    return `<div style="border:2px solid ${s.bd};border-radius:12px;background:${s.bg};overflow:hidden;display:flex;flex-direction:column;${clickable?'cursor:pointer':''}" ${clickable?`onclick="kQueueShowResults('${j.id}')"`:''}>
+      <div style="position:relative;aspect-ratio:1.6;background:var(--surface2);display:flex;align-items:center;justify-content:center;overflow:hidden">
+        ${thumb ? `<img src="${thumb}" style="width:100%;height:100%;object-fit:cover;${j.status!=='done'?'opacity:0.5':''}">` : '<span style="font-size:32px;opacity:0.3">🖼️</span>'}
+        <div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px">${s.icon} ${s.txt}</div>
+        <button onclick="event.stopPropagation();kQueueRemove('${j.id}')" style="position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,0.55);color:#fff;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center" title="Odstrani iz vrste">✕</button>
+        ${j.status==='running' ? '<div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),transparent);animation:kqpulse 1.2s infinite"></div>' : ''}
       </div>
-      ${j.status==='done'?'<span style="font-size:11px;color:var(--accent)">klikni za prikaz ›</span>':''}
-      <button onclick="event.stopPropagation();kQueueRemove('${j.id}')" style="background:transparent;border:none;color:var(--text-tertiary);cursor:pointer;font-size:14px;padding:2px 6px" title="Odstrani">✕</button>
+      <div style="padding:10px 12px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.name)}</div>
+        <div style="font-size:11px;color:${s.color};margin-top:2px">
+          ${j.status==='done' ? `${resultCount} kreativ · klikni za prikaz ›` : ''}
+          ${j.status==='waiting'||j.status==='running' ? `${combos} kombinacij × ${j.count} slik` : ''}
+          ${j.status==='error' ? esc(j.error||'napaka') : ''}
+        </div>
+        <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${j.date||''}</div>
+      </div>
     </div>`;
   }).join('');
 }
@@ -10862,6 +10903,8 @@ async function odpEcontCheck(orderNumber) {
 function krSwitchTab(tab) {
   document.getElementById('kr-panel-gemini').style.display = tab === 'gemini' ? 'block' : 'none';
   document.getElementById('kr-panel-higgsfield').style.display = tab === 'higgsfield' ? 'block' : 'none';
+  const qp = document.getElementById('kr-panel-queue');
+  if (qp) qp.style.display = tab === 'queue' ? 'block' : 'none';
   document.querySelectorAll('.kreative-tab-btn').forEach(btn => {
     btn.style.background = 'transparent';
     btn.style.color = 'var(--text-secondary)';
@@ -10873,6 +10916,7 @@ function krSwitchTab(tab) {
     active.style.color = 'white';
     active.style.border = 'none';
   }
+  if (tab === 'queue' && typeof kQueueRender === 'function') kQueueRender();
   try { localStorage.setItem('slx_active_subtab', tab); } catch(e) {}
 }
 
