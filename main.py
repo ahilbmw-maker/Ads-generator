@@ -9413,6 +9413,128 @@ async def hsuvoz_upload(file: UploadFile = File(...)):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.post("/hsuvoz-filter-ordered")
+async def hsuvoz_filter_ordered(file: UploadFile = File(...)):
+    """Naloži file ŽE NAROČENIH (stolpca: sku, stock). Odstrani postavke iz HS+ seznama,
+    kjer naročeno (stock) >= potreba (kolicina). Če stock < kolicina, postavko pusti
+    in doda 'se_potrebuje' = kolicina - stock. Če SKU ni v file, pusti celo."""
+    try:
+        if not HSUVOZ_CURRENT.exists():
+            return JSONResponse({"error": "Najprej naloži HS+ seznam za naročit."}, status_code=400)
+
+        raw = await file.read()
+        fn = (file.filename or "").lower()
+
+        # zgradi mapo sku.upper() -> stock
+        ordered = {}
+        if fn.endswith(".xlsx") or fn.endswith(".xlsm"):
+            from openpyxl import load_workbook
+            from io import BytesIO
+            wb = load_workbook(BytesIO(raw), read_only=True, data_only=True)
+            ws = wb.active
+            header_seen = False
+            sku_col, stock_col = 0, 1
+            for r in ws.iter_rows(values_only=True):
+                if r is None:
+                    continue
+                if not header_seen:
+                    header_seen = True
+                    # zaznaj stolpca iz glave (sku, stock) če obstajata
+                    hdr = [str(c).strip().lower() if c is not None else "" for c in r]
+                    if "sku" in hdr: sku_col = hdr.index("sku")
+                    for cand in ("stock", "kolicina", "qty", "naroceno", "naroceno"):
+                        if cand in hdr: stock_col = hdr.index(cand); break
+                    # če glava ni besedilna (so že podatki), ne preskoči
+                    if not any(isinstance(c, str) and c.strip() for c in r):
+                        header_seen = True  # vseeno; spodaj obdela kot podatke
+                    else:
+                        continue
+                try:
+                    sku = str(r[sku_col]).strip() if len(r) > sku_col and r[sku_col] is not None else ""
+                    stk = r[stock_col] if len(r) > stock_col else 0
+                    stock = int(float(str(stk).replace(",", "."))) if stk not in (None, "") else 0
+                except (ValueError, TypeError, IndexError):
+                    continue
+                if sku:
+                    ordered[sku.upper()] = ordered.get(sku.upper(), 0) + stock
+        else:
+            # CSV
+            text = raw.decode("utf-8-sig", errors="replace")
+            first = text.split("\n", 1)[0]
+            sep = ";" if first.count(";") > first.count(",") else ("\t" if "\t" in first else ",")
+            import csv as _csv
+            from io import StringIO as _SIO
+            reader = _csv.reader(_SIO(text), delimiter=sep)
+            rows = list(reader)
+            start = 0
+            if rows:
+                h = [c.strip().lower() for c in rows[0]]
+                sku_col, stock_col = 0, 1
+                if "sku" in h: sku_col = h.index("sku")
+                for cand in ("stock","kolicina","qty","naroceno","naroceno"):
+                    if cand in h: stock_col = h.index(cand); break
+                # preskoči glavo če je besedilna
+                if any(not c.replace(".","").replace(",","").isdigit() and c for c in rows[0]):
+                    start = 1
+            for r in rows[start:]:
+                if len(r) <= max(sku_col, stock_col):
+                    continue
+                sku = (r[sku_col] or "").strip()
+                try:
+                    stock = int(float((r[stock_col] or "0").strip().replace(",", "."))) if r[stock_col] else 0
+                except (ValueError, TypeError):
+                    stock = 0
+                if sku:
+                    ordered[sku.upper()] = ordered.get(sku.upper(), 0) + stock
+
+        if not ordered:
+            return JSONResponse({"error": "V datoteki ni najdenih SKU/stock podatkov."}, status_code=400)
+
+        # obdelaj HS+ seznam
+        data = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
+        items = data.get("items", [])
+        kept = []
+        removed = []        # popolnoma pokrito → odstranjeno
+        partial = []        # delno (stock < kolicina)
+        for it in items:
+            sku_u = (it.get("sku") or "").strip().upper()
+            # HS+ postavke uporabljajo 'qty' (potreba); fallback na 'kolicina'
+            kolicina = it.get("qty", it.get("kolicina", 0)) or 0
+            if sku_u in ordered:
+                stock = ordered[sku_u]
+                if stock >= kolicina:
+                    removed.append({"sku": it.get("sku"), "kolicina": kolicina, "stock": stock})
+                    continue  # odstrani
+                else:
+                    # pusti, pokaži še potrebno
+                    it["se_potrebuje"] = kolicina - stock
+                    it["naroceno_stock"] = stock
+                    partial.append({"sku": it.get("sku"), "kolicina": kolicina, "stock": stock, "se_potrebuje": kolicina - stock})
+                    kept.append(it)
+            else:
+                # ni v file → pusti celo, počisti morebitne stare oznake
+                it.pop("se_potrebuje", None)
+                it.pop("naroceno_stock", None)
+                kept.append(it)
+
+        data["items"] = kept
+        data["total_skus"] = len(kept)
+        HSUVOZ_CURRENT.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        return {
+            "ok": True,
+            "removed_count": len(removed),
+            "partial_count": len(partial),
+            "remaining": len(kept),
+            "removed_skus": [r["sku"] for r in removed][:100],
+            "partial": partial[:100],
+            "ordered_total": len(ordered),
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.get("/hsuvoz-data")
 async def hsuvoz_data():
     """Vrne trenutne HS+ uvoz podatke."""
