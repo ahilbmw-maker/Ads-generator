@@ -10062,6 +10062,165 @@ async def zaloga_packing_pdf(data: dict):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+def _packing_collect(market: str):
+    """Zbere packing podatke (isto kot PDF): {box: [{sku,naziv,kos}]}.
+    Vrne (pboxes_final, error_or_None)."""
+    path = _zaloga_current_path(market)
+    if not path.exists():
+        return None, "Ni aktivne seje"
+    sess = json.loads(path.read_text(encoding="utf-8"))
+    combined = {}
+    def _add(box, sku, naziv, kos):
+        box = str(box).strip()
+        if not box or not sku or kos <= 0:
+            return
+        combined.setdefault(box, {})
+        if sku in combined[box]:
+            combined[box][sku]["kos"] += kos
+            if naziv and not combined[box][sku].get("naziv"):
+                combined[box][sku]["naziv"] = naziv
+        else:
+            combined[box][sku] = {"naziv": naziv or "", "kos": kos}
+    for it in sess.get("items", []):
+        box = str(it.get("box", "") or "").strip()
+        if box and it.get("status") == "ok":
+            try:
+                kos = int(it.get("picked", 0) or 0)
+            except (ValueError, TypeError):
+                kos = 0
+            if kos <= 0:
+                try: kos = int(it.get("qty", 0) or 0)
+                except (ValueError, TypeError): kos = 0
+            _add(box, it.get("sku", ""), it.get("naziv", ""), kos)
+    pboxes = sess.get("packing_boxes") or {}
+    for box, items in pboxes.items():
+        for e in items:
+            _add(box, e.get("sku", ""), e.get("naziv", ""), e.get("kos", 0))
+    if not combined:
+        return None, "Ni boxov za izpis (ni zaklenjenih postavk ne razdeljenih)"
+    pboxes_final = {}
+    for box, skus in combined.items():
+        pboxes_final[box] = [{"sku": sku, "naziv": v["naziv"], "kos": v["kos"]} for sku, v in skus.items()]
+    return pboxes_final, None
+
+
+def _packing_boxkey(b):
+    try: return (0, int(b))
+    except (ValueError, TypeError): return (1, b)
+
+
+@app.post("/zaloga-packing-xlsx")
+async def zaloga_packing_xlsx(data: dict):
+    """Packing lista v XLSX — stolpec Box v vsaki vrstici + list Pregled."""
+    try:
+        import io
+        pboxes, err = _packing_collect(data.get("market", "rs"))
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
+
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        NAVY="1E293B"; GREY="64748B"; LIGHT="F1F5F9"; WHITE="FFFFFF"
+        thin = Side(style="thin", color="CBD5E1")
+        border = Border(left=thin,right=thin,top=thin,bottom=thin)
+
+        wb = Workbook()
+        ws = wb.active; ws.title = "Packing lista"; ws.sheet_view.showGridLines = False
+
+        total_boxes = len(pboxes)
+        total_pcs = sum(e["kos"] for items in pboxes.values() for e in items)
+        ws["A1"] = "PACKING LISTA / SPECIFIKACIJA"
+        ws["A1"].font = Font(name="Arial", size=15, bold=True, color=NAVY)
+        ws.merge_cells("A1:D1")
+        ws["A2"] = f"Datum: {datetime.now().strftime('%d. %m. %Y  %H:%M')}   |   Št. boxov: {total_boxes}   |   Skupaj kosov: {total_pcs}"
+        ws["A2"].font = Font(name="Arial", size=9, color=GREY)
+        ws.merge_cells("A2:D2")
+
+        # glava — Box je prvi stolpec, v vsaki vrstici
+        hdrs = ["Box","Naziv","Koda","Kosov"]
+        hr = 4
+        for c,h in enumerate(hdrs,1):
+            cell = ws.cell(row=hr,column=c,value=h)
+            cell.font = Font(name="Arial",size=9,bold=True,color=WHITE)
+            cell.fill = PatternFill("solid",start_color=NAVY)
+            cell.border = border
+            cell.alignment = Alignment(horizontal="center" if c in (1,4) else "left", vertical="center")
+        row = hr + 1
+        for box in sorted(pboxes.keys(), key=_packing_boxkey):
+            for e in pboxes[box]:
+                ws.cell(row=row,column=1,value=box).alignment = Alignment(horizontal="center")
+                ws.cell(row=row,column=1).font = Font(name="Arial",size=9,bold=True)
+                ws.cell(row=row,column=2,value=e.get("naziv","")).font = Font(name="Arial",size=9)
+                ws.cell(row=row,column=3,value=e.get("sku","")).font = Font(name="Arial",size=9,bold=True)
+                qc = ws.cell(row=row,column=4,value=e.get("kos",0)); qc.font = Font(name="Arial",size=9,bold=True); qc.alignment = Alignment(horizontal="center")
+                for c in range(1,5):
+                    ws.cell(row=row,column=c).border = border
+                row += 1
+        ws.column_dimensions["A"].width = 8
+        ws.column_dimensions["B"].width = 56
+        ws.column_dimensions["C"].width = 18
+        ws.column_dimensions["D"].width = 10
+
+        # List Pregled
+        ws2 = wb.create_sheet("Pregled"); ws2.sheet_view.showGridLines = False
+        ws2["A1"] = "PREGLED BOXOV"; ws2["A1"].font = Font(name="Arial",size=13,bold=True,color=NAVY)
+        ws2.merge_cells("A1:C1")
+        for c,h in enumerate(["Box","Št. izdelkov","Kosov"],1):
+            cell = ws2.cell(row=3,column=c,value=h)
+            cell.font = Font(name="Arial",size=10,bold=True,color=WHITE)
+            cell.fill = PatternFill("solid",start_color=NAVY); cell.border=border
+            cell.alignment=Alignment(horizontal="center")
+        r=4
+        for box in sorted(pboxes.keys(), key=_packing_boxkey):
+            items = pboxes[box]
+            ws2.cell(row=r,column=1,value=box).font = Font(name="Arial",size=10,bold=True)
+            ws2.cell(row=r,column=1).alignment = Alignment(horizontal="center")
+            ws2.cell(row=r,column=2,value=len(items)).alignment = Alignment(horizontal="center")
+            ws2.cell(row=r,column=3,value=sum(e["kos"] for e in items)).alignment = Alignment(horizontal="center")
+            for c in range(1,4): ws2.cell(row=r,column=c).border=border
+            r+=1
+        ws2.cell(row=r,column=1,value="SKUPAJ").font=Font(name="Arial",size=10,bold=True)
+        ws2.cell(row=r,column=1).fill=PatternFill("solid",start_color=LIGHT)
+        ws2.cell(row=r,column=2,value=f"=SUM(B4:B{r-1})").alignment=Alignment(horizontal="center")
+        ws2.cell(row=r,column=2).font=Font(bold=True)
+        ws2.cell(row=r,column=3,value=f"=SUM(C4:C{r-1})").alignment=Alignment(horizontal="center")
+        ws2.cell(row=r,column=3).font=Font(bold=True)
+        for c in range(1,4): ws2.cell(row=r,column=c).border=border
+        ws2.column_dimensions["A"].width=10; ws2.column_dimensions["B"].width=14; ws2.column_dimensions["C"].width=12
+
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        fn = f"packing_lista_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.xlsx"
+        return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{fn}"'})
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/zaloga-packing-csv")
+async def zaloga_packing_csv(data: dict):
+    """Packing lista v CSV (ločilo ';', BOM za Excel) — stolpec Box v vsaki vrstici."""
+    try:
+        import io, csv as _csv
+        pboxes, err = _packing_collect(data.get("market", "rs"))
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
+        out = io.StringIO()
+        w = _csv.writer(out, delimiter=";")
+        w.writerow(["Box","Naziv","Koda","Kosov"])
+        for box in sorted(pboxes.keys(), key=_packing_boxkey):
+            for e in pboxes[box]:
+                w.writerow([box, e.get("naziv",""), e.get("sku",""), e.get("kos",0)])
+        # BOM za pravilne šumnike v Excelu
+        body = "\ufeff" + out.getvalue()
+        fn = f"packing_lista_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.csv"
+        return StreamingResponse(io.BytesIO(body.encode("utf-8")), media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{fn}"'})
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 def inventura_cleanup():
     """Zbriše PDF-je in JSON-e starejše od 30 dni (ne _current.json)."""
     try:
