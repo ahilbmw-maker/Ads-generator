@@ -1381,21 +1381,20 @@ input[type="text"].error { border-color: var(--red) !important; }
             </div>
             <div class="error-msg" id="kError"></div>
           </div>
-
-          <!-- ČAKALNA VRSTA -->
-          <div class="card" id="kQueuePanel" style="margin-top:12px;display:none">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-              <span class="slabel">⏳ ČAKALNA VRSTA <span id="kQueueCount" style="color:var(--accent)"></span></span>
-              <button onclick="kQueueClearDone()" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
-            </div>
-            <div id="kQueueList" style="display:flex;flex-direction:column;gap:6px"></div>
-          </div>
         </div>
 
       </div>
 
       <!-- DESNO: Preview -->
       <div class="kreative-right">
+        <!-- ČAKALNA VRSTA — pripeta na vrh, vedno vidna -->
+        <div class="card" id="kQueuePanel" style="margin-bottom:12px;display:none;position:sticky;top:8px;z-index:20;border:1px solid var(--accent);box-shadow:0 2px 12px rgba(0,0,0,0.08)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <span class="slabel">⏳ ČAKALNA VRSTA <span id="kQueueCount" style="color:var(--accent)"></span></span>
+            <button onclick="kQueueClearDone()" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
+          </div>
+          <div id="kQueueList" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto"></div>
+        </div>
         <div class="card" style="min-height:500px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
             <span class="slabel">GENERIRANE KREATIVE</span>
