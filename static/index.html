@@ -5888,9 +5888,7 @@ function kToggleA(idx) {
 function kToggleB(idx) {
   const i = kSelectedB.indexOf(idx);
   if (i >= 0) kSelectedB.splice(i, 1); else kSelectedB.push(idx);
-  document.querySelectorAll('.k-option-btn[data-type="b"]').forEach((btn, j) => {
-    btn.classList.toggle('active', kSelectedB.includes(j));
-  });
+  kRenderAB();            // ponovno renderiraj — prikaže/skrije izbirnik procesorja na aktivni B
   kUpdateComboPreview();
 }
 
