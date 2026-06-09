@@ -1690,6 +1690,28 @@ async def zaloga_import_ikonka(file: UploadFile = File(...), market: str = "rs")
             except ValueError:
                 return 0
 
+        # ZDRUŽI podvojene SKU: dobavnica ima nezdružene postavke (isti SKU v več vrsticah).
+        # Seštejemo količine PRED razporejanjem, sicer bi se napačno razvrstilo polica/čakajoče
+        # (npr. SKU 3× po 1 → mora biti kol=3 v čakajoče, ne 3 ločene postavke na polici).
+        _merged = {}        # sku -> {"naziv": prvi naziv, "kol": vsota}
+        _order = []         # ohrani vrstni red prvega pojava
+        _dup_count = 0
+        for sku, naziv, kol_raw in parsed_rows:
+            sku = (sku or "").strip()
+            if not sku:
+                continue
+            k = _parse_kol(kol_raw)
+            if sku not in _merged:
+                _merged[sku] = {"naziv": (naziv or "").strip(), "kol": 0}
+                _order.append(sku)
+            else:
+                _dup_count += 1
+                # če prvi naziv prazen, vzemi tega
+                if not _merged[sku]["naziv"] and naziv:
+                    _merged[sku]["naziv"] = naziv.strip()
+            _merged[sku]["kol"] += k
+        parsed_rows = [(s, _merged[s]["naziv"], _merged[s]["kol"]) for s in _order]
+
         # naloži obstoječo sejo (ali ustvari novo) — DODAMO k njej
         mk = _zaloga_market(market)
         path = _zaloga_current_path(market)
@@ -1756,7 +1778,8 @@ async def zaloga_import_ikonka(file: UploadFile = File(...), market: str = "rs")
         _zaloga_update_peak(sess)
         _zaloga_atomic_write(path, sess)
         return {"ok": True, "added_police": added_police, "added_cakajoce": added_cakajoce,
-                "groups": groups_added, "total": added_police + added_cakajoce}
+                "groups": groups_added, "total": added_police + added_cakajoce,
+                "merged_dups": _dup_count, "unique_skus": len(_order)}
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e)}
