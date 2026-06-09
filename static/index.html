@@ -6127,23 +6127,34 @@ function kRenderResults(results) {
   results.forEach(r => {
     const imgs = (r.images || (r.url ? [r.url] : [])).filter(Boolean);
     if (!imgs.length) {
-      cards.push({combo: r.combo, url: null, error: r.error, idx: cards.length});
+      cards.push({combo: r.combo, model: r.model, url: null, error: r.error, idx: cards.length});
     } else {
-      imgs.forEach(url => cards.push({combo: r.combo, url, idx: cards.length}));
+      imgs.forEach(url => cards.push({combo: r.combo, model: r.model, url, idx: cards.length}));
     }
   });
   window.kCardsData = cards;
 
+  // barvna značka procesorja
+  const modelBadge = (m) => {
+    const map = {
+      flash: {t:'⚡ NB2', bg:'#3b82f6'},
+      pro:   {t:'✨ Pro', bg:'#8b5cf6'},
+      image2:{t:'🟢 Image2', bg:'#10b981'},
+    };
+    const info = map[m] || map.flash;
+    return '<span style="display:inline-block;font-size:9px;font-weight:700;color:#fff;background:' + info.bg + ';padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle">' + info.t + '</span>';
+  };
+
   grid.innerHTML = cards.map(c => {
     if (!c.url) return (
       '<div class="k-img-card">' +
-      '<div class="k-img-combo">' + esc(c.combo||'?') + '</div>' +
+      '<div class="k-img-combo">' + esc(c.combo||'?') + modelBadge(c.model) + '</div>' +
       '<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:11px;padding:8px;text-align:center">' + esc(c.error||'Ni slike') + '</div>' +
       '</div>'
     );
     return (
       '<div class="k-img-card" id="kcard-' + c.idx + '">' +
-      '<div class="k-img-combo">' + esc(c.combo||'?') + '</div>' +
+      '<div class="k-img-combo">' + esc(c.combo||'?') + modelBadge(c.model) + '</div>' +
       '<div style="position:relative">' +
         '<img src="' + esc(c.url) + '" loading="lazy" onclick="kToggleSelect(' + c.idx + ')" title="Klikni za izbiro">' +
         '<div class="k-select-check" onclick="kToggleSelect(' + c.idx + ')">' +
