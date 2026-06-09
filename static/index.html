@@ -391,8 +391,9 @@ input[type="text"].error { border-color: var(--red) !important; }
 .k-result-btn { flex: 1; font-size: 11px; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; font-family: 'DM Sans', sans-serif; }
 .k-result-btn:hover { border-color: var(--accent-border); color: var(--accent); }
 .k-result-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
-.k-img-card { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--surface2); display: flex; flex-direction: column; transition: border-color 0.12s, box-shadow 0.12s; }
-.k-img-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+.k-img-card { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--surface2); display: flex; flex-direction: column; transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s; position: relative; }
+.k-img-card.selected { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent); transform: scale(0.96); }
+.k-img-card.selected::after { content: ''; position: absolute; inset: 0; background: rgba(58,111,255,0.18); pointer-events: none; z-index: 1; }
 .k-img-card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; cursor: pointer; }
 .k-img-combo { font-size: 9px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; padding: 4px 8px; background: var(--surface2); border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px; }
 .k-img-actions { display: flex; gap: 3px; padding: 5px; background: var(--surface); }
@@ -401,9 +402,9 @@ input[type="text"].error { border-color: var(--red) !important; }
 .k-img-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
 .k-img-btn.primary:hover { opacity: 0.85; }
 .k-img-btn.danger:hover { border-color: #dc2626; color: #dc2626; }
-.k-select-check { position: absolute; top: 6px; left: 6px; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; background: rgba(0,0,0,0.35); cursor: pointer; z-index: 2; display: flex; align-items: center; justify-content: center; transition: all 0.1s; }
-.k-img-card.selected .k-select-check { background: var(--accent); border-color: var(--accent); }
-.k-zoom-btn { position: absolute; bottom: 6px; right: 6px; width: 24px; height: 24px; border-radius: 6px; background: rgba(0,0,0,0.5); cursor: pointer; z-index: 2; display: flex; align-items: center; justify-content: center; transition: background 0.1s; }
+.k-select-check { position: absolute; top: 6px; left: 6px; min-width: 26px; height: 26px; padding: 0 5px; border-radius: 13px; border: 2px solid white; background: rgba(0,0,0,0.4); cursor: pointer; z-index: 3; display: flex; align-items: center; justify-content: center; transition: all 0.1s; font-size: 12px; font-weight: 800; color: white; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+.k-img-card.selected .k-select-check { background: var(--accent); border-color: white; }
+.k-zoom-btn { position: absolute; bottom: 6px; right: 6px; width: 24px; height: 24px; border-radius: 6px; background: rgba(0,0,0,0.5); cursor: pointer; z-index: 3; display: flex; align-items: center; justify-content: center; transition: background 0.1s; }
 .k-zoom-btn:hover { background: rgba(0,0,0,0.8); }
 .k-bulk-bar { display: none; align-items: center; gap: 8px; padding: 8px 12px; background: var(--accent-dim); border: 1px solid var(--accent-border); border-radius: var(--radius); margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; }
 .k-bulk-bar.show { display: flex; }
@@ -6183,7 +6184,22 @@ function kToggleSelect(idx) {
   if (!card) return;
   if (kSelectedImgCards.has(idx)) { kSelectedImgCards.delete(idx); card.classList.remove('selected'); }
   else { kSelectedImgCards.add(idx); card.classList.add('selected'); }
+  kRenumberSelection();
   kUpdateBulkBar();
+}
+
+// Preštevilči izbrane kartice (1, 2, 3...) v vrstnem redu izbire — za jasno vidnost pri množici
+function kRenumberSelection() {
+  let n = 0;
+  kSelectedImgCards.forEach(idx => {
+    n++;
+    const chk = document.querySelector('#kcard-' + idx + ' .k-select-check');
+    if (chk) chk.innerHTML = n;
+  });
+  // počisti kljukice neizbranih
+  document.querySelectorAll('.k-img-card:not(.selected) .k-select-check').forEach(chk => {
+    chk.innerHTML = '<svg viewBox="0 0 12 12" style="width:9px;height:9px;stroke:white;fill:none;stroke-width:2.5"><polyline points="2,6 5,9 10,3"/></svg>';
+  });
 }
 
 function kUpdateBulkBar() {
@@ -6197,6 +6213,7 @@ function kUpdateBulkBar() {
 function kClearSelection() {
   kSelectedImgCards.forEach(idx => { const c = document.getElementById('kcard-' + idx); if(c) c.classList.remove('selected'); });
   kSelectedImgCards.clear();
+  kRenumberSelection();
   kUpdateBulkBar();
 }
 
@@ -6219,7 +6236,12 @@ function kDownloadCard(idx) {
 }
 
 function kBulkDownload() {
-  kSelectedImgCards.forEach(idx => kDownloadCard(idx));
+  // Prenese vsako izbrano sliko posebej (brez ZIP). Majhen zamik med njimi,
+  // da brskalnik ne blokira hitrih zaporednih prenosov pri množici slik.
+  const indices = [...kSelectedImgCards];
+  indices.forEach((idx, i) => {
+    setTimeout(() => kDownloadCard(idx), i * 350);
+  });
 }
 
 // ── ASANA MODAL ──
