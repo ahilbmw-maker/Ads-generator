@@ -4383,6 +4383,93 @@ async def save_kreative_queue(data: dict):
         return {"error": str(e)}
 
 
+# ── Shranjena opravila iz vrste (vsako svoja datoteka s slikami) ──
+KREATIVE_SAVED_DIR = DATA_DIR / "kreative_saved"
+KREATIVE_SAVED_DIR.mkdir(exist_ok=True, parents=True)
+KREATIVE_SAVED_INDEX = KREATIVE_SAVED_DIR / "_index.json"
+
+def _ksaved_load_index():
+    if KREATIVE_SAVED_INDEX.exists():
+        try:
+            return json.loads(KREATIVE_SAVED_INDEX.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+def _ksaved_write_index(idx):
+    KREATIVE_SAVED_INDEX.write_text(json.dumps(idx, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def _ksaved_safe_id(jid):
+    # dovoli le varne znake za ime datoteke
+    return "".join(c for c in str(jid) if c.isalnum() or c in "-_")[:64]
+
+@app.get("/kreative-saved")
+async def kreative_saved_list():
+    """Vrne LAHKI seznam shranjenih opravil (brez vseh slik — samo opis + 1 sličica)."""
+    return _ksaved_load_index()
+
+@app.get("/kreative-saved/{jid}")
+async def kreative_saved_get(jid: str):
+    """Naloži celo shranjeno opravilo s slikami (ob kliku)."""
+    sid = _ksaved_safe_id(jid)
+    f = KREATIVE_SAVED_DIR / f"{sid}.json"
+    if not f.exists():
+        return JSONResponse({"error": "Ni najdeno"}, status_code=404)
+    try:
+        return json.loads(f.read_text(encoding="utf-8"))
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/kreative-saved")
+async def kreative_saved_add(data: dict):
+    """Shrani opravilo (z rezultati/slikami) v svojo datoteko + dopiše v index."""
+    try:
+        job = data.get("job") or {}
+        jid = _ksaved_safe_id(job.get("id") or str(int(datetime.now().timestamp())))
+        if not jid:
+            return JSONResponse({"error": "Neveljaven ID"}, status_code=400)
+        # cela datoteka s slikami
+        (KREATIVE_SAVED_DIR / f"{jid}.json").write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
+        # lahek vnos v index (brez vseh slik — samo 1 sličica)
+        results = job.get("results") or []
+        thumb = ""
+        for r in results:
+            imgs = r.get("images") or []
+            if imgs:
+                thumb = imgs[0]; break
+        result_count = sum(len(r.get("images") or []) for r in results)
+        idx = _ksaved_load_index()
+        idx = [e for e in idx if e.get("id") != jid]  # dedup
+        idx.insert(0, {
+            "id": jid,
+            "name": job.get("name") or "Izdelek",
+            "date": job.get("date") or datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "saved_at": datetime.now().isoformat(),
+            "result_count": result_count,
+            "aCount": len(job.get("aOpts") or []),
+            "bCount": len(job.get("bOpts") or []),
+            "thumb": thumb,
+        })
+        _ksaved_write_index(idx)
+        return {"ok": True, "id": jid, "count": len(idx)}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.delete("/kreative-saved/{jid}")
+async def kreative_saved_delete(jid: str):
+    sid = _ksaved_safe_id(jid)
+    try:
+        f = KREATIVE_SAVED_DIR / f"{sid}.json"
+        if f.exists():
+            f.unlink()
+        idx = [e for e in _ksaved_load_index() if e.get("id") != sid]
+        _ksaved_write_index(idx)
+        return {"ok": True, "count": len(idx)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # ─── KREATIVE ENDPOINTS ───────────────────────────────────────────────────────
 
 @app.post("/analyze-product-kreative")
