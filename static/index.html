@@ -1368,14 +1368,7 @@ input[type="text"].error { border-color: var(--red) !important; }
               <button class="cnt-btn" onclick="kChangeCount(1)">+</button>
             </div>
             <div id="kComboPreview" style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px"></div>
-            <!-- Izbira modela: Nano Banana 2 (hitro, privzeto) / Pro (kakovost) -->
-            <div style="margin-bottom:10px">
-              <span style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:6px">Model:</span>
-              <div style="display:flex;gap:6px">
-                <button type="button" id="kModelFlash" onclick="kSetModel('flash')" style="flex:1;padding:8px;border:1px solid var(--accent);background:var(--accent);color:white;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">⚡ Nano Banana 2<br><span style="font-size:9px;font-weight:400;opacity:0.85">hitro · privzeto</span></button>
-                <button type="button" id="kModelPro" onclick="kSetModel('pro')" style="flex:1;padding:8px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">✨ Nano Banana Pro<br><span style="font-size:9px;font-weight:400;opacity:0.85">kakovost · počasneje</span></button>
-              </div>
-            </div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;padding:8px 10px;background:var(--bg-secondary);border-radius:var(--radius)">💡 Procesor izbereš pri vsakem ozadju (B) zgoraj: ⚡ Nano Banana 2 · ✨ Pro · 🟢 GPT Image 2</div>
             <button class="btn-gen" id="kGenBtn" onclick="kGenerate()" style="width:100%">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
               Generiraj kreative
@@ -5864,6 +5857,7 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 let kProductData = null;
 let kSelectedA = [];
 let kSelectedB = [];
+let kBModels = {};  // {bIndex: 'flash'|'pro'|'image2'} — procesor na vsako B-opcijo (vibe)
 let kSelectedImages = [];
 let kCount = 4;
 
@@ -5909,11 +5903,23 @@ function kRenderAB() {
     '<span class="k-opt-label">' + esc(opt.label) + '</span>' +
     '<span class="k-opt-text">' + esc(opt.text) + '</span></button>'
   ).join('');
-  bEl.innerHTML = kProductData.bOptions.map((opt, i) =>
-    '<button class="k-option-btn' + (kSelectedB.includes(i) ? ' active' : '') + '" data-type="b" onclick="kToggleB(' + i + ')">' +
-    '<span class="k-opt-label">' + esc(opt.label) + '</span>' +
-    '<span class="k-opt-text">' + esc(opt.text) + '</span></button>'
-  ).join('');
+  bEl.innerHTML = kProductData.bOptions.map((opt, i) => {
+    const active = kSelectedB.includes(i);
+    const m = kBModels[i] || 'flash';
+    const mp = (key, label) => '<span onclick="event.stopPropagation();kSetBModel(' + i + ',\'' + key + '\')" style="padding:3px 8px;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid ' + (m===key?'var(--accent)':'var(--border)') + ';background:' + (m===key?'var(--accent)':'transparent') + ';color:' + (m===key?'#fff':'var(--text-secondary)') + '">' + label + '</span>';
+    const picker = active
+      ? '<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap" onclick="event.stopPropagation()">' + mp('flash','⚡ NB2') + mp('pro','✨ Pro') + mp('image2','🟢 Image2') + '</div>'
+      : '';
+    return '<button class="k-option-btn' + (active ? ' active' : '') + '" data-type="b" onclick="kToggleB(' + i + ')">' +
+      '<span class="k-opt-label">' + esc(opt.label) + '</span>' +
+      '<span class="k-opt-text">' + esc(opt.text) + '</span>' + picker + '</button>';
+  }).join('');
+}
+
+function kSetBModel(i, model) {
+  kBModels[i] = model;
+  kRenderAB();
+  kUpdateComboPreview();
 }
 
 async function kAnalyze() {
@@ -5940,7 +5946,7 @@ async function kAnalyze() {
     if (data.error) throw new Error(data.error);
 
     kProductData = data;
-    kSelectedA = []; kSelectedB = [];
+    kSelectedA = []; kSelectedB = []; kBModels = {};
     document.getElementById('kProductName').value = data.name || '';
     kRenderAB();
 
@@ -6018,19 +6024,6 @@ document.addEventListener('DOMContentLoaded', () => {
   dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); kHandleFiles(e.dataTransfer.files); });
 });
 
-window._kGeminiModel = 'flash';
-function kSetModel(m) {
-  window._kGeminiModel = m;
-  const flash = document.getElementById('kModelFlash');
-  const pro = document.getElementById('kModelPro');
-  const sel = (btn, on) => {
-    btn.style.background = on ? 'var(--accent)' : 'transparent';
-    btn.style.color = on ? 'white' : 'var(--text-secondary)';
-    btn.style.border = on ? '1px solid var(--accent)' : '1px solid var(--border)';
-  };
-  if (flash && pro) { sel(flash, m === 'flash'); sel(pro, m === 'pro'); }
-}
-
 async function kGenerate() {
   if (!kSelectedA.length || !kSelectedB.length) {
     const err = document.getElementById('kError');
@@ -6058,7 +6051,7 @@ async function kGenerate() {
 
   const productName = document.getElementById('kProductName').value.trim();
   const aOpts = kSelectedA.map(i => kProductData.aOptions[i]);
-  const bOpts = kSelectedB.map(i => kProductData.bOptions[i]);
+  const bOpts = kSelectedB.map(i => ({ ...kProductData.bOptions[i], model: (kBModels[i] || 'flash') }));
   const images = kSelectedImages.map(x => x.src);
   const total = aOpts.length * bOpts.length;
   document.getElementById('kLoadingText').textContent = 'Generiram ' + total + ' kombinacij (×' + kCount + ' slik)...';
@@ -6066,7 +6059,7 @@ async function kGenerate() {
   try {
     const res = await fetch('/generate-kreative', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({productName, aOptions: aOpts, bOptions: bOpts, count: kCount, images, model: (window._kGeminiModel || 'flash')})
+      body: JSON.stringify({productName, aOptions: aOpts, bOptions: bOpts, count: kCount, images})
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
