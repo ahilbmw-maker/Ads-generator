@@ -9496,12 +9496,17 @@ async def hsuvoz_filter_ordered(file: UploadFile = File(...)):
         kept = []
         removed = []        # popolnoma pokrito → odstranjeno
         partial = []        # delno (stock < kolicina)
+        def _to_int(v):
+            try:
+                return int(float(str(v).replace(",", ".")))
+            except (ValueError, TypeError):
+                return 0
         for it in items:
             sku_u = (it.get("sku") or "").strip().upper()
             # HS+ postavke uporabljajo 'qty' (potreba); fallback na 'kolicina'
-            kolicina = it.get("qty", it.get("kolicina", 0)) or 0
+            kolicina = _to_int(it.get("qty", it.get("kolicina", 0)))
             if sku_u in ordered:
-                stock = ordered[sku_u]
+                stock = _to_int(ordered[sku_u])
                 if stock >= kolicina:
                     removed.append({"sku": it.get("sku"), "kolicina": kolicina, "stock": stock})
                     continue  # odstrani
