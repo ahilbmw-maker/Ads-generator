@@ -4521,9 +4521,10 @@ async def generate_kreative(data: dict):
 
     # Build combinations — vsak combo dobi PROCESOR iz svoje B-opcije (vibe/ozadje)
     # b.model: 'flash' (Nano Banana 2) | 'pro' (Nano Banana Pro) | 'image2' (GPT Image 2)
-    # POMEMBNO: pri image2 ozadju omejimo GPT Image 2 na max 3 slike SKUPAJ za ta vibe
+    # POMEMBNO: pri image2 ozadju omejimo GPT Image 2 na max 1 sliko SKUPAJ za ta vibe
     # (čez vse A-tekste), ostale slike tega vibe-a naredi NB2 (hitreje/ceneje).
-    IMAGE2_CAP = 3
+    # image2 je konsistenten (malo variira), zato 1 slika zadošča.
+    IMAGE2_CAP = 1
     combos = []
     for b in b_options:
         b_model = (b.get("model") or _model_choice or "flash").lower()
