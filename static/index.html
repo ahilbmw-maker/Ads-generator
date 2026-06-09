@@ -2123,6 +2123,18 @@ input[type="text"].error { border-color: var(--red) !important; }
 
           <div id="hsuvozSkipReport" style="display:none;margin-top:10px;padding:10px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius)"></div>
 
+          <!-- ŽE NAROČENI -->
+          <div class="card" style="margin-top:10px">
+            <span class="slabel">📥 ŽE NAROČENI</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži že naročene (stolpca: <b>sku, stock</b>). Odstrani postavke, kjer naročeno pokrije potrebo; če ne pokrije, pusti in pokaže še potrebno količino. <b>Najprej naloži HS+ seznam zgoraj.</b></p>
+            <div id="hsuvozOrderedDropZone" class="k-dropzone" style="padding:14px" onclick="document.getElementById('hsuvozOrderedInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="hsuvozOrderedDrop(event)">
+              <span style="font-size:11px">Klikni ali povleci XLSX / CSV (sku, stock)</span>
+            </div>
+            <input type="file" id="hsuvozOrderedInput" accept=".csv,.xlsx,.xlsm" style="display:none" onchange="hsuvozFilterOrdered(this.files[0])">
+            <div id="hsuvozOrderedStatus" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
+          </div>
+          <div id="hsuvozOrderedReport" style="display:none;margin-top:10px;padding:10px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius)"></div>
+
           <div class="card" style="margin-top:0">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
               <span class="slabel" style="margin:0">ZGODOVINA (30 DNI)</span>
@@ -14223,6 +14235,47 @@ async function hsuvozUpload(file) {
   } catch(e) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + e.message; }
 }
 
+function hsuvozOrderedDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) hsuvozFilterOrdered(f);
+}
+
+async function hsuvozFilterOrdered(file) {
+  if (!file) return;
+  const status = document.getElementById('hsuvozOrderedStatus');
+  const report = document.getElementById('hsuvozOrderedReport');
+  status.style.display = 'block';
+  status.style.color = 'var(--text-secondary)';
+  status.textContent = '⏳ Obdelujem že naročene...';
+  if (report) report.style.display = 'none';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/hsuvoz-filter-ordered', {method:'POST', body: fd});
+    const data = await res.json();
+    if (data.error) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + data.error; return; }
+    status.style.color = 'var(--green)';
+    status.textContent = `✓ Odstranjeno ${data.removed_count} · delno ${data.partial_count} · ostane ${data.remaining}`;
+
+    if (report) {
+      report.style.display = 'block';
+      const esc2 = s => (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+      const removedChips = (data.removed_skus||[]).map(s =>
+        `<span style="display:inline-block;font-size:11px;padding:2px 8px;background:rgba(22,163,74,0.12);color:#0f766e;border:1px solid rgba(22,163,74,0.3);border-radius:5px;margin:2px 3px 2px 0;font-family:'DM Mono',monospace">${esc2(s)}</span>`).join('');
+      const partialRows = (data.partial||[]).map(p =>
+        `<div style="font-size:11px;color:var(--text);padding:3px 0;border-bottom:1px solid var(--border)"><b>${esc2(p.sku)}</b> — potreba ${p.kolicina}, naročeno ${p.stock} → <span style="color:#d97706;font-weight:700">še ${p.se_potrebuje}</span></div>`).join('');
+      report.innerHTML =
+        `<div style="font-size:12px;font-weight:700;color:#0f766e;margin-bottom:6px">✓ ${data.removed_count} popolnoma pokritih (odstranjeno)</div>` +
+        (removedChips ? `<div style="line-height:1.8;margin-bottom:10px">${removedChips}</div>` : '') +
+        (data.partial_count ? `<div style="font-size:12px;font-weight:700;color:#d97706;margin:8px 0 4px">⚠ ${data.partial_count} delno naročenih (pustil, manjka):</div>${partialRows}` : '') +
+        `<div style="font-size:11px;color:var(--text-tertiary);margin-top:8px">Naloženih že-naročenih SKU: ${data.ordered_total} · ostane za naročit: ${data.remaining}</div>`;
+    }
+    await hsuvozLoadCurrent();
+  } catch(e) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + e.message; }
+}
+
 async function hsuvozLoadCurrent() {
   try {
     const res = await fetch('/hsuvoz-data');
@@ -14302,6 +14355,7 @@ function hsuvozRender(items, listId, source) {
       + '<div style="text-align:center">'
       + '<span style="font-weight:700;font-size:15px;color:var(--text)">' + it.qty + '</span>'
       + '<div style="font-size:9px;color:var(--text-tertiary);margin-top:1px">kos</div>'
+      + (it.se_potrebuje !== undefined ? '<div style="font-size:9px;color:#d97706;font-weight:700;margin-top:2px;background:rgba(217,119,6,0.1);border-radius:4px;padding:1px 4px" title="Naroceno ' + (it.naroceno_stock||0) + ', se potrebno">se ' + it.se_potrebuje + '</div>' : '')
       + '</div>'
       + (obrat !== undefined
         ? '<div style="text-align:center;background:' + obratBg + ';border-radius:6px;padding:4px 6px;border:1px solid ' + obratBorder + '">'
@@ -14742,6 +14796,7 @@ function aptelRender(items, listId, source) {
       + '<div style="text-align:center">'
       + '<span style="font-weight:700;font-size:15px;color:var(--text)">' + it.qty + '</span>'
       + '<div style="font-size:9px;color:var(--text-tertiary);margin-top:1px">kos</div>'
+      + (it.se_potrebuje !== undefined ? '<div style="font-size:9px;color:#d97706;font-weight:700;margin-top:2px;background:rgba(217,119,6,0.1);border-radius:4px;padding:1px 4px" title="Naroceno ' + (it.naroceno_stock||0) + ', se potrebno">se ' + it.se_potrebuje + '</div>' : '')
       + '</div>'
       + (obrat !== undefined
         ? '<div style="text-align:center;background:' + obratBg + ';border-radius:6px;padding:4px 6px;border:1px solid ' + obratBorder + '">'
