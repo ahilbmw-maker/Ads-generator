@@ -1305,11 +1305,21 @@ input[type="text"].error { border-color: var(--red) !important; }
           <span class="slabel">⏳ ČAKALNA VRSTA GENERIRANJA</span>
           <div id="kQueueCount" style="font-size:12px;color:var(--text-tertiary);margin-top:3px"></div>
         </div>
-        <button onclick="kQueueClearDone()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
+        <button onclick="kQueueClearDone()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">Počisti gotove (neshranjene)</button>
       </div>
       <div id="kQueueGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px"></div>
-      <div id="kQueueEmpty" style="text-align:center;padding:4rem 2rem;color:var(--text-tertiary);font-size:13px">
+      <div id="kQueueEmpty" style="text-align:center;padding:2.5rem 2rem;color:var(--text-tertiary);font-size:13px">
         Vrsta je prazna. V zavihku <b>Gemini Flash</b> izberi izdelek in klikni <b>➕ Dodaj v vrsto</b>.
+      </div>
+
+      <!-- SHRANJENO -->
+      <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap">
+          <span class="slabel">💾 SHRANJENO <span id="kSavedCount" style="color:var(--accent)"></span></span>
+          <input type="text" id="kSavedSearch" placeholder="🔍 Išči po imenu izdelka..." oninput="kSavedRender()" style="flex:1;min-width:200px;max-width:340px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg-secondary);color:var(--text)">
+        </div>
+        <div id="kSavedGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px"></div>
+        <div id="kSavedEmpty" style="text-align:center;padding:2rem;color:var(--text-tertiary);font-size:13px">Ni shranjenih. Klikni <b>💾 Shrani</b> na gotovi kartici, da ostane trajno.</div>
       </div>
     </div>
 
@@ -6177,6 +6187,92 @@ function kQueueClearDone() {
   kQueueSave(); kQueueRender();
 }
 
+// ── SHRANJENO (trajno, vsako svoja datoteka s slikami) ──
+let kSaved = [];   // lahek seznam: [{id,name,date,result_count,aCount,bCount,thumb}]
+
+async function kSavedLoad() {
+  try {
+    const res = await fetch('/kreative-saved');
+    kSaved = await res.json();
+    if (!Array.isArray(kSaved)) kSaved = [];
+  } catch(e) { kSaved = []; }
+  kSavedRender();
+}
+
+async function kSaveJob(id) {
+  const job = kQueue.find(j => j.id === id);
+  if (!job || job.status !== 'done') return;
+  try {
+    const res = await fetch('/kreative-saved', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ job: {
+        id: job.id, name: job.name, productName: job.productName,
+        aOpts: job.aOpts, bOpts: job.bOpts, count: job.count,
+        results: job.results, date: job.date
+      }})
+    });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    await kSavedLoad();
+    // odstrani iz aktivne vrste (zdaj je trajno shranjeno)
+    kQueue = kQueue.filter(j => j.id !== id);
+    kQueueSave(); kQueueRender();
+  } catch(e) {
+    alert('Napaka pri shranjevanju: ' + (e.message||e));
+  }
+}
+
+function kSavedRender() {
+  const grid = document.getElementById('kSavedGrid');
+  const empty = document.getElementById('kSavedEmpty');
+  const cnt = document.getElementById('kSavedCount');
+  if (!grid) return;
+  const q = (document.getElementById('kSavedSearch')?.value||'').toLowerCase().trim();
+  const list = kSaved.filter(e => !q || (e.name||'').toLowerCase().includes(q));
+  if (cnt) cnt.textContent = kSaved.length ? `(${kSaved.length})` : '';
+  if (!list.length) {
+    grid.innerHTML = '';
+    if (empty) { empty.style.display = 'block'; empty.textContent = q ? 'Ni zadetkov za "'+q+'".' : 'Ni shranjenih. Klikni 💾 Shrani na gotovi kartici, da ostane trajno.'; }
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  grid.innerHTML = list.map(e => `
+    <div onclick="kSavedShow('${e.id}')" style="border:2px solid #16a34a;border-radius:12px;background:rgba(22,163,74,0.05);overflow:hidden;cursor:pointer;display:flex;flex-direction:column">
+      <div style="position:relative;aspect-ratio:1.6;background:var(--surface2);overflow:hidden">
+        ${e.thumb ? `<img src="${e.thumb}" style="width:100%;height:100%;object-fit:cover">` : '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:32px;opacity:0.3">🖼️</div>'}
+        <div style="position:absolute;top:8px;left:8px;background:rgba(22,163,74,0.85);color:#fff;font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px">💾 SHRANJENO</div>
+        <button onclick="event.stopPropagation();kSavedDelete('${e.id}')" style="position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,0.55);color:#fff;cursor:pointer;font-size:13px" title="Izbriši trajno">✕</button>
+      </div>
+      <div style="padding:10px 12px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(e.name||'?')}</div>
+        <div style="font-size:11px;color:#16a34a;margin-top:2px">${e.result_count||0} kreativ · klikni za prikaz ›</div>
+        <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${e.date||''}</div>
+      </div>
+    </div>`).join('');
+}
+
+async function kSavedShow(id) {
+  try {
+    const res = await fetch('/kreative-saved/' + encodeURIComponent(id));
+    const job = await res.json();
+    if (job.error) throw new Error(job.error);
+    if (typeof krSwitchTab === 'function') krSwitchTab('gemini');
+    kRenderResults(job.results || []);
+    document.getElementById('kResultCount').textContent = (job.results||[]).length + ' kombinacij · ' + (job.name||'') + ' (shranjeno)';
+    setTimeout(() => document.getElementById('kResultsGrid')?.scrollIntoView({behavior:'smooth', block:'start'}), 100);
+  } catch(e) {
+    alert('Napaka pri nalaganju: ' + (e.message||e));
+  }
+}
+
+async function kSavedDelete(id) {
+  if (!confirm('Trajno izbrišem to shranjeno opravilo?')) return;
+  try {
+    await fetch('/kreative-saved/' + encodeURIComponent(id), {method:'DELETE'});
+    await kSavedLoad();
+  } catch(e) {}
+}
+
 function kQueueRender() {
   const grid = document.getElementById('kQueueGrid');
   const empty = document.getElementById('kQueueEmpty');
@@ -6231,6 +6327,7 @@ function kQueueRender() {
           ${j.status==='error' ? esc(j.error||'napaka') : ''}
         </div>
         <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${j.date||''}</div>
+        ${j.status==='done' ? `<button onclick="event.stopPropagation();kSaveJob('${j.id}')" style="margin-top:8px;width:100%;padding:7px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💾 Shrani (ostane trajno)</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -8501,7 +8598,7 @@ async function lokHandleFilesFromQueue(files) {
   if (typeof lokUpdateCount === 'function') lokUpdateCount();
 }
 
-updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();kQueueLoad();narcLoadHistory();karanLoadHistory();vadsLoadHistory();narcRenderLangFilter();setMetaWide(true);ttCreativeLoadInfo();
+updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();kQueueLoad();kSavedLoad();narcLoadHistory();karanLoadHistory();vadsLoadHistory();narcRenderLangFilter();setMetaWide(true);ttCreativeLoadInfo();
 
 // Drag & drop + SKU click — direktno, brez DOMContentLoaded
 (function(){
