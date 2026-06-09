@@ -225,7 +225,9 @@ document.getElementById('importInput').addEventListener('change', async (e) => {
     if (data.ok) {
       const g = data.groups || {};
       const gtxt = Object.keys(g).length ? ' (' + Object.entries(g).map(([k,v])=>`${k}: ${v}`).join(', ') + ')' : '';
-      toast(`✓ Uvoženo: ${data.added_police} na police${gtxt}, ${data.added_cakajoce} v čakajoče`);
+      let msg = `✓ Uvoženo: ${data.added_police} na police${gtxt}, ${data.added_cakajoce} v čakajoče`;
+      if (data.merged_dups > 0) msg += ` · 🔗 ${data.merged_dups} podvojenih SKU združenih`;
+      toast(msg);
       await loadSession();
     } else {
       toast('✗ ' + (data.error || 'napaka'));
