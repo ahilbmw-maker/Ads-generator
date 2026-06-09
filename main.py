@@ -4361,6 +4361,28 @@ async def save_kreative_history(data: dict):
         return {"error": str(e)}
 
 
+KREATIVE_QUEUE_FILE = DATA_DIR / "kreative_queue.json"
+
+@app.get("/kreative-queue")
+async def get_kreative_queue():
+    """Obstojnost čakalne vrste — opisi opravil (brez velikih slik) za preživetje F5."""
+    if KREATIVE_QUEUE_FILE.exists():
+        try:
+            return json.loads(KREATIVE_QUEUE_FILE.read_text(encoding="utf-8"))
+        except:
+            return []
+    return []
+
+@app.post("/kreative-queue")
+async def save_kreative_queue(data: dict):
+    try:
+        queue = data.get("queue", [])
+        KREATIVE_QUEUE_FILE.write_text(json.dumps(queue, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"status": "ok", "count": len(queue)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ─── KREATIVE ENDPOINTS ───────────────────────────────────────────────────────
 
 @app.post("/analyze-product-kreative")
