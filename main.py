@@ -4492,9 +4492,8 @@ async def generate_kreative(data: dict):
     if not gemini_key:
         return {"error": "GEMINI_API_KEY ni nastavljen v Render environment variables."}
 
-    # Izbira modela: 'flash' = Nano Banana 2 (hitro, privzeto) | 'pro' = Nano Banana Pro (kakovost)
+    # Globalni izbrani model (fallback, če B-opcija nima svojega): 'flash'|'pro'|'image2'
     _model_choice = (data.get("model") or "flash").lower()
-    GEMINI_IMG_MODEL = "gemini-3-pro-image" if _model_choice == "pro" else "gemini-3.1-flash-image-preview"
 
     # ── GEMINI FILE URI CACHE ──────────────────────────────────────────────────
     # Gemini Files API vrne URI ki velja 48h — cachiramo na disk da ne uploadamo vsakič
@@ -4520,7 +4519,8 @@ async def generate_kreative(data: dict):
     now_ts = _time.time()
     cache_updated = False
 
-    # Build combinations
+    # Build combinations — vsak combo dobi PROCESOR iz svoje B-opcije (vibe/ozadje)
+    # b.model: 'flash' (Nano Banana 2) | 'pro' (Nano Banana Pro) | 'image2' (GPT Image 2)
     combos = []
     for a in a_options:
         for b in b_options:
@@ -4535,6 +4535,7 @@ async def generate_kreative(data: dict):
             combos.append({
                 "combo": f"{a.get('label','A')} × {b.get('label','B')}",
                 "prompt": prompt,
+                "model": (b.get("model") or _model_choice or "flash").lower(),
             })
 
     # Prepare reference image parts for Gemini
@@ -4598,13 +4599,27 @@ async def generate_kreative(data: dict):
     else:
         image_parts = []
 
-    async def generate_one_image(combo_prompt, combo_label, idx):
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_IMG_MODEL}:generateContent?key={gemini_key}"
+    # Za GPT Image 2 (images/edits) potrebujemo SUROVE bajte referenčne slike (multipart)
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    _ref_raw = None  # (bytes, mime, filename)
+    if ref_images:
+        try:
+            _img0 = ref_images[0]
+            if "," in _img0:
+                _hdr, _b64 = _img0.split(",", 1)
+                _mime = _hdr.split(":")[1].split(";")[0]
+            else:
+                _b64 = _img0; _mime = "image/jpeg"
+            _ext = "png" if "png" in _mime else "jpg"
+            _ref_raw = (__import__("base64").b64decode(_b64), _mime, f"ref.{_ext}")
+        except Exception:
+            _ref_raw = None
+
+    async def generate_one_gemini(combo_prompt, model_key):
+        model_id = "gemini-3-pro-image" if model_key == "pro" else "gemini-3.1-flash-image-preview"
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}"
         parts = list(image_parts) + [{"text": combo_prompt}]
-        payload = {
-            "contents": [{"parts": parts}],
-            "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]}
-        }
+        payload = {"contents": [{"parts": parts}], "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]}}
         try:
             async with httpx.AsyncClient(timeout=120.0) as hc:
                 resp = await hc.post(api_url, json=payload, headers={"Content-Type": "application/json"})
@@ -4615,22 +4630,51 @@ async def generate_kreative(data: dict):
                 for part in candidate.get("content", {}).get("parts", []):
                     if "inlineData" in part:
                         inline = part["inlineData"]
-                        mime = inline.get("mimeType", "image/png")
-                        b64_data = inline.get("data", "")
-                        return f"data:{mime};base64,{b64_data}", None
+                        return f"data:{inline.get('mimeType','image/png')};base64,{inline.get('data','')}", None
             return None, "Gemini ni vrnil slike: " + str(result)[:150]
         except Exception as e:
             return None, str(e)
 
+    async def generate_one_image2(combo_prompt):
+        """GPT Image 2 prek OpenAI images/edits (multipart). Referenčna slika obvezna."""
+        if not openai_key:
+            return None, "OPENAI_API_KEY ni nastavljen."
+        if not _ref_raw:
+            return None, "GPT Image 2 potrebuje referenčno sliko."
+        try:
+            files = {"image[]": (_ref_raw[2], _ref_raw[0], _ref_raw[1])}
+            form = {"model": "gpt-image-2", "prompt": combo_prompt, "size": "1024x1024", "n": "1", "output_format": "jpeg"}
+            async with httpx.AsyncClient(timeout=180.0) as hc:
+                resp = await hc.post(
+                    "https://api.openai.com/v1/images/edits",
+                    headers={"Authorization": f"Bearer {openai_key}"},
+                    data=form, files=files,
+                )
+                result = resp.json()
+            if resp.status_code != 200:
+                return None, result.get("error", {}).get("message", str(result))[:200]
+            data_arr = result.get("data", [])
+            if data_arr and data_arr[0].get("b64_json"):
+                return f"data:image/jpeg;base64,{data_arr[0]['b64_json']}", None
+            return None, "GPT Image 2 ni vrnil slike: " + str(result)[:150]
+        except Exception as e:
+            return None, str(e)
+
+    async def generate_one_image(combo_prompt, model_key, idx):
+        if model_key == "image2":
+            return await generate_one_image2(combo_prompt)
+        return await generate_one_gemini(combo_prompt, model_key)
+
     async def generate_combo(combo):
-        """Generate `count` images for one combo in parallel."""
-        tasks = [generate_one_image(combo["prompt"], combo["combo"], i) for i in range(count)]
+        """Generate `count` images for one combo in parallel — z modelom iz B-opcije."""
+        mk = combo.get("model", "flash")
+        tasks = [generate_one_image(combo["prompt"], mk, i) for i in range(count)]
         img_results = await asyncio.gather(*tasks)
         imgs = [img for img, err in img_results if img]
         errors = [err for img, err in img_results if err]
         if not imgs:
-            return {"combo": combo["combo"], "images": [], "error": errors[0] if errors else "Ni slike"}
-        return {"combo": combo["combo"], "images": imgs}
+            return {"combo": combo["combo"], "model": mk, "images": [], "error": errors[0] if errors else "Ni slike"}
+        return {"combo": combo["combo"], "model": mk, "images": imgs}
 
     # Vse kombinacije + vse slike vzporedno
     results = await asyncio.gather(*[generate_combo(combo) for combo in combos])
