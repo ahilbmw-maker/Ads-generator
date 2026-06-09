@@ -437,6 +437,8 @@ function render() {
 function updatePackingBtn() {
   const btn = document.getElementById('packingPdfBtn');
   if (!btn) return;
+  const xlsBtn = document.getElementById('packingXlsxBtn');
+  const csvBtn = document.getElementById('packingCsvBtn');
   const pboxes = getPackingBoxes();
   // boxi iz polic (zaklenjene postavke z box oznako)
   const lockedBoxes = new Set();
@@ -445,9 +447,11 @@ function updatePackingBtn() {
   });
   Object.keys(pboxes).forEach(b => lockedBoxes.add(String(b)));
   const show = isRS() && lockedBoxes.size > 0;
-  // na mobile gumb NIKOLI (prekriva se s 'Samo odprto' ipd.) — CSS ga skrije, a inline display bi to premagal
-  if (isMobile()) { btn.style.display = 'none'; return; }
+  // na mobile gumbi NIKOLI (prekriva se s 'Samo odprto' ipd.)
+  if (isMobile()) { btn.style.display = 'none'; if(xlsBtn)xlsBtn.style.display='none'; if(csvBtn)csvBtn.style.display='none'; return; }
   btn.style.display = show ? 'inline-flex' : 'none';
+  if (xlsBtn) xlsBtn.style.display = show ? 'inline-flex' : 'none';
+  if (csvBtn) csvBtn.style.display = show ? 'inline-flex' : 'none';
   if (show) btn.textContent = `📄 Packing lista (${lockedBoxes.size})`;
 }
 
@@ -1083,9 +1087,12 @@ async function cakajReturn(idx) {
   } catch(e) {}
 }
 
-function cakajPdf() {
-  // prenesi PDF (POST → blob)
-  fetch('/zaloga-packing-pdf', {
+function cakajPdf() { packingExport('/zaloga-packing-pdf', 'packing_lista.pdf', 'PDF'); }
+function cakajXlsx() { packingExport('/zaloga-packing-xlsx', 'packing_lista.xlsx', 'XLS'); }
+function cakajCsv() { packingExport('/zaloga-packing-csv', 'packing_lista.csv', 'CSV'); }
+
+function packingExport(endpoint, filename, label) {
+  fetch(endpoint, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ market: MARKET })
   }).then(r => {
@@ -1094,10 +1101,10 @@ function cakajPdf() {
   }).then(blob => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'packing_lista.pdf';
+    a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }).catch(e => alert(e.message || 'Napaka pri PDF'));
+  }).catch(e => alert(e.message || ('Napaka pri ' + label)));
 }
 
 // Razvrsti postavke police: manjko (✗ cel ali ✓ delni) na VRH (kot pripeto),
