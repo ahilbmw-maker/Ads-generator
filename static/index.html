@@ -1370,11 +1370,25 @@ input[type="text"].error { border-color: var(--red) !important; }
             </div>
             <div id="kComboPreview" style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px"></div>
             <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;padding:8px 10px;background:var(--bg-secondary);border-radius:var(--radius)">💡 Procesor izbereš pri vsakem ozadju (B) zgoraj: ⚡ Nano Banana 2 · ✨ Pro · 🟢 GPT Image 2</div>
-            <button class="btn-gen" id="kGenBtn" onclick="kGenerate()" style="width:100%">
-              <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              Generiraj kreative
-            </button>
+            <div style="display:flex;gap:8px">
+              <button class="btn-gen" id="kGenBtn" onclick="kGenerate()" style="flex:1">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Generiraj zdaj
+              </button>
+              <button class="btn-gen" id="kQueueAddBtn" onclick="kQueueAdd()" style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--accent)" title="Dodaj izdelek v čakalno vrsto in nadaljuj z naslednjim">
+                ➕ Dodaj v vrsto
+              </button>
+            </div>
             <div class="error-msg" id="kError"></div>
+          </div>
+
+          <!-- ČAKALNA VRSTA -->
+          <div class="card" id="kQueuePanel" style="margin-top:12px;display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <span class="slabel">⏳ ČAKALNA VRSTA <span id="kQueueCount" style="color:var(--accent)"></span></span>
+              <button onclick="kQueueClearDone()" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
+            </div>
+            <div id="kQueueList" style="display:flex;flex-direction:column;gap:6px"></div>
           </div>
         </div>
 
@@ -6023,6 +6037,165 @@ document.addEventListener('DOMContentLoaded', () => {
   dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); kHandleFiles(e.dataTransfer.files); });
 });
 
+// ═══════════════ ČAKALNA VRSTA (queue) ═══════════════
+// Vrsta teče v brskalniku, obdeluje 2 hkrati, preživi F5 (stanje na strežniku).
+// Slike NE shranjujemo v vrsto (prevelike) — gotovi rezultati gredo v zgodovino.
+let kQueue = [];               // [{id,name,productName,aOpts,bOpts,count,images,status,results,error,date}]
+const KQUEUE_CONCURRENCY = 2;
+let kQueueRunning = 0;
+
+async function kQueueLoad() {
+  try {
+    const res = await fetch('/kreative-queue');
+    const data = await res.json();
+    kQueue = Array.isArray(data) ? data : [];
+    // opravila, ki so bila "running" ob osvežitvi, vrnemo na "waiting" (slike niso shranjene)
+    kQueue.forEach(j => { if (j.status === 'running') j.status = j.images && j.images.length ? 'waiting' : 'error'; if(j.status==='error'&&!j.error) j.error='Po osvežitvi — ponovno dodaj'; });
+  } catch(e) { kQueue = []; }
+  kQueueRender();
+  kQueueProcess();
+}
+
+async function kQueueSave() {
+  // shranimo opise (z images, da F5 preživi — a brez rezultatov, ki so veliki)
+  try {
+    const lite = kQueue.map(j => ({
+      id: j.id, name: j.name, productName: j.productName,
+      aOpts: j.aOpts, bOpts: j.bOpts, count: j.count, images: j.images,
+      status: j.status === 'done' ? 'done' : (j.status === 'error' ? 'error' : 'waiting'),
+      error: j.error || null, date: j.date, resultCount: (j.results||[]).length
+    }));
+    await fetch('/kreative-queue', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({queue: lite})});
+  } catch(e) {}
+}
+
+function kQueueAdd() {
+  if (!kSelectedA.length || !kSelectedB.length) {
+    const err = document.getElementById('kError');
+    err.textContent = 'Izberi vsaj 1× A (tekst) in 1× B (ozadje)!'; err.classList.add('show'); return;
+  }
+  if (!kSelectedImages.length) {
+    const err = document.getElementById('kError');
+    err.textContent = '⚠️ Dodaj vsaj 1 referenčno sliko izdelka!'; err.classList.add('show'); return;
+  }
+  document.getElementById('kError').classList.remove('show');
+  const job = {
+    id: 'q' + Date.now() + Math.random().toString(36).slice(2,6),
+    name: kProductData?.name || document.getElementById('kProductName').value.trim() || 'Izdelek',
+    productName: document.getElementById('kProductName').value.trim(),
+    aOpts: kSelectedA.map(i => kProductData.aOptions[i]),
+    bOpts: kSelectedB.map(i => ({ ...kProductData.bOptions[i], model: (kBModels[i] || 'flash') })),
+    count: kCount,
+    images: kSelectedImages.map(x => x.src),
+    status: 'waiting', results: [], error: null,
+    date: new Date().toLocaleString('sl-SI', {hour:'2-digit',minute:'2-digit'})
+  };
+  kQueue.push(job);
+  kQueueSave();
+  kQueueRender();
+  kQueueProcess();
+  kClearForNext();   // počisti tab za nov izdelek
+}
+
+function kClearForNext() {
+  kSelectedA = []; kSelectedB = []; kBModels = {};
+  kSelectedImages = [];
+  kProductData = null;
+  const url = document.getElementById('kUrlInput'); if (url) url.value = '';
+  const pn = document.getElementById('kProductName'); if (pn) pn.value = '';
+  const ae = document.getElementById('kAOptions'); if (ae) ae.innerHTML = '';
+  const be = document.getElementById('kBOptions'); if (be) be.innerHTML = '';
+  if (typeof kRenderUploadedImages === 'function') kRenderUploadedImages();
+  if (typeof kUpdateComboPreview === 'function') kUpdateComboPreview();
+  const abc = document.getElementById('kAbcSection'); if (abc) abc.style.display = 'none';
+  if (url) url.focus();
+}
+
+async function kQueueProcess() {
+  if (kQueueRunning >= KQUEUE_CONCURRENCY) return;
+  const next = kQueue.find(j => j.status === 'waiting');
+  if (!next) return;
+  next.status = 'running';
+  kQueueRunning++;
+  kQueueRender();
+  try {
+    const res = await fetch('/generate-kreative', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({productName: next.productName, aOptions: next.aOpts, bOptions: next.bOpts, count: next.count, images: next.images})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    next.results = data.results || [];
+    next.status = 'done';
+    // shrani v zgodovino kreativ (kot običajen generate)
+    const firstImg = next.results.flatMap(r => r.images||[]).find(Boolean);
+    if (firstImg && typeof kSaveToHistory === 'function') {
+      kSaveToHistory(next.url || ('queue:'+next.id), next.name, next.aOpts, next.bOpts);
+    }
+  } catch(e) {
+    next.status = 'error';
+    next.error = e.message || 'Napaka';
+  }
+  kQueueRunning--;
+  kQueueSave();
+  kQueueRender();
+  kQueueProcess();  // poženi naslednje
+  kQueueProcess();  // (poskusi zapolniti do CONCURRENCY)
+}
+
+function kQueueShowResults(id) {
+  const job = kQueue.find(j => j.id === id);
+  if (!job || job.status !== 'done') return;
+  kRenderResults(job.results);
+  document.getElementById('kResultCount').textContent = (job.results||[]).length + ' kombinacij · ' + job.name;
+  document.getElementById('kResultsGrid')?.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function kQueueRemove(id) {
+  kQueue = kQueue.filter(j => j.id !== id);
+  kQueueSave(); kQueueRender();
+}
+
+function kQueueClearDone() {
+  kQueue = kQueue.filter(j => j.status !== 'done');
+  kQueueSave(); kQueueRender();
+}
+
+function kQueueRender() {
+  const panel = document.getElementById('kQueuePanel');
+  const list = document.getElementById('kQueueList');
+  const cnt = document.getElementById('kQueueCount');
+  if (!panel || !list) return;
+  if (!kQueue.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  const waiting = kQueue.filter(j=>j.status==='waiting').length;
+  const running = kQueue.filter(j=>j.status==='running').length;
+  const done = kQueue.filter(j=>j.status==='done').length;
+  if (cnt) cnt.textContent = `(${done}/${kQueue.length} gotovo${running?', '+running+' teče':''}${waiting?', '+waiting+' čaka':''})`;
+
+  const statusInfo = {
+    waiting: {icon:'⏳', txt:'čaka', color:'var(--text-tertiary)'},
+    running: {icon:'🔄', txt:'generira...', color:'var(--accent)'},
+    done:    {icon:'✅', txt:'gotovo', color:'#16a34a'},
+    error:   {icon:'❌', txt:'napaka', color:'#dc2626'},
+  };
+  list.innerHTML = kQueue.map(j => {
+    const s = statusInfo[j.status] || statusInfo.waiting;
+    const combos = (j.aOpts?.length||0) * (j.bOpts?.length||0);
+    const clickable = j.status === 'done';
+    const resultCount = (j.results||[]).length || j.resultCount || 0;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;${clickable?'cursor:pointer':''}" ${clickable?`onclick="kQueueShowResults('${j.id}')"`:''}>
+      <span style="font-size:16px">${s.icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.name)}</div>
+        <div style="font-size:11px;color:${s.color}">${s.txt}${j.status==='done'?` · ${resultCount} kombinacij`:''}${j.status==='waiting'||j.status==='running'?` · ${combos} komb. ×${j.count}`:''}${j.error?` · ${esc(j.error)}`:''}</div>
+      </div>
+      ${j.status==='done'?'<span style="font-size:11px;color:var(--accent)">klikni za prikaz ›</span>':''}
+      <button onclick="event.stopPropagation();kQueueRemove('${j.id}')" style="background:transparent;border:none;color:var(--text-tertiary);cursor:pointer;font-size:14px;padding:2px 6px" title="Odstrani">✕</button>
+    </div>`;
+  }).join('');
+}
+
 async function kGenerate() {
   if (!kSelectedA.length || !kSelectedB.length) {
     const err = document.getElementById('kError');
@@ -8288,7 +8461,7 @@ async function lokHandleFilesFromQueue(files) {
   if (typeof lokUpdateCount === 'function') lokUpdateCount();
 }
 
-updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();narcLoadHistory();karanLoadHistory();vadsLoadHistory();narcRenderLangFilter();setMetaWide(true);ttCreativeLoadInfo();
+updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();kQueueLoad();narcLoadHistory();karanLoadHistory();vadsLoadHistory();narcRenderLangFilter();setMetaWide(true);ttCreativeLoadInfo();
 
 // Drag & drop + SKU click — direktno, brez DOMContentLoaded
 (function(){
