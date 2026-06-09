@@ -9943,55 +9943,10 @@ async def zaloga_packing_pdf(data: dict):
     Vhod: {market}. Bere packing_boxes iz aktivne RS seje."""
     try:
         import io
-        path = _zaloga_current_path(data.get("market", "rs"))
-        if not path.exists():
-            return JSONResponse({"error": "Ni aktivne seje"}, status_code=400)
-        sess = json.loads(path.read_text(encoding="utf-8"))
-
-        # ── Združi VSE vire po številki boxa ──
-        #  1) Police: zaklenjene postavke (locked, status ok) z box oznako → picked kosov
-        #  2) Čakajoče: packing_boxes (razdeljeni veliki izdelki)
-        # Struktura: { box: { sku: {naziv, kos} } } → seštevamo iste sku v istem boxu
-        combined = {}
-        def _add(box, sku, naziv, kos):
-            box = str(box).strip()
-            if not box or not sku or kos <= 0:
-                return
-            combined.setdefault(box, {})
-            if sku in combined[box]:
-                combined[box][sku]["kos"] += kos
-                if naziv and not combined[box][sku].get("naziv"):
-                    combined[box][sku]["naziv"] = naziv
-            else:
-                combined[box][sku] = {"naziv": naziv or "", "kos": kos}
-
-        # 1) police — zaklenjene/box postavke
-        for it in sess.get("items", []):
-            box = str(it.get("box", "") or "").strip()
-            if box and it.get("status") == "ok":
-                try:
-                    kos = int(it.get("picked", 0) or 0)
-                except (ValueError, TypeError):
-                    kos = 0
-                if kos <= 0:
-                    try: kos = int(it.get("qty", 0) or 0)
-                    except (ValueError, TypeError): kos = 0
-                _add(box, it.get("sku", ""), it.get("naziv", ""), kos)
-
-        # 2) čakajoče — packing_boxes
-        pboxes = sess.get("packing_boxes") or {}
-        for box, items in pboxes.items():
-            for e in items:
-                _add(box, e.get("sku", ""), e.get("naziv", ""), e.get("kos", 0))
-
-        if not combined:
-            return JSONResponse({"error": "Ni boxov za izpis (ni zaklenjenih postavk ne razdeljenih)"}, status_code=400)
-
-        # pretvori v {box: [ {sku, naziv, kos}, ... ]}
-        pboxes_final = {}
-        for box, skus in combined.items():
-            pboxes_final[box] = [{"sku": sku, "naziv": v["naziv"], "kos": v["kos"]} for sku, v in skus.items()]
-        pboxes = pboxes_final
+        # Uporabi skupni helper — vsebuje srbske nazive po SKU (RS feed) + fallback
+        pboxes, _err = _packing_collect(data.get("market", "rs"))
+        if _err:
+            return JSONResponse({"error": _err}, status_code=400)
 
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
@@ -10062,18 +10017,39 @@ async def zaloga_packing_pdf(data: dict):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+def _packing_sr_names():
+    """Zgradi mapo SKU(MPN, velike črke) -> srbski naziv iz RS feeda.
+    Če feed ni naložen ali SKU ni najden, vrne prazno mapo (fallback na original)."""
+    out = {}
+    try:
+        rs_feed = feed_by_lang.get("rs", {})
+        for _gid, prod in rs_feed.items():
+            mpn = (prod.get("mpn") or "").strip().upper()
+            title = (prod.get("title") or "").strip()
+            if mpn and title:
+                out.setdefault(mpn, title)
+    except Exception:
+        pass
+    return out
+
+
 def _packing_collect(market: str):
     """Zbere packing podatke (isto kot PDF): {box: [{sku,naziv,kos}]}.
+    Naziv = srbski iz RS feeda (po SKU), fallback na originalni naziv.
     Vrne (pboxes_final, error_or_None)."""
     path = _zaloga_current_path(market)
     if not path.exists():
         return None, "Ni aktivne seje"
     sess = json.loads(path.read_text(encoding="utf-8"))
+    sr_names = _packing_sr_names()
+    def _sr(sku, fallback):
+        return sr_names.get((sku or "").strip().upper(), fallback or "")
     combined = {}
     def _add(box, sku, naziv, kos):
         box = str(box).strip()
         if not box or not sku or kos <= 0:
             return
+        naziv = _sr(sku, naziv)  # srbski naziv (fallback original)
         combined.setdefault(box, {})
         if sku in combined[box]:
             combined[box][sku]["kos"] += kos
