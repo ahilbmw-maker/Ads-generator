@@ -4521,9 +4521,15 @@ async def generate_kreative(data: dict):
 
     # Build combinations — vsak combo dobi PROCESOR iz svoje B-opcije (vibe/ozadje)
     # b.model: 'flash' (Nano Banana 2) | 'pro' (Nano Banana Pro) | 'image2' (GPT Image 2)
+    # POMEMBNO: pri image2 ozadju omejimo GPT Image 2 na max 3 slike SKUPAJ za ta vibe
+    # (čez vse A-tekste), ostale slike tega vibe-a naredi NB2 (hitreje/ceneje).
+    IMAGE2_CAP = 3
     combos = []
-    for a in a_options:
-        for b in b_options:
+    for b in b_options:
+        b_model = (b.get("model") or _model_choice or "flash").lower()
+        # koliko slik skupaj ima ta vibe: št. A-tekstov × count
+        prompts_for_b = []
+        for a in a_options:
             prompt = (
                 f"From these reference images create a new FB ad creative. "
                 f"Try a more intense '{b.get('text', '')}' background. "
@@ -4532,11 +4538,22 @@ async def generate_kreative(data: dict):
                 f"Highlight (can be through icons or text in English) that it is: {a.get('text', '')}. "
                 f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. Square 1:1 format."
             )
-            combos.append({
-                "combo": f"{a.get('label','A')} × {b.get('label','B')}",
-                "prompt": prompt,
-                "model": (b.get("model") or _model_choice or "flash").lower(),
-            })
+            prompts_for_b.append((a, prompt))
+
+        if b_model == "image2":
+            # razdeli IMAGE2_CAP image2 slik čez kombinacije, ostalo NB2
+            image2_left = IMAGE2_CAP
+            for a, prompt in prompts_for_b:
+                n_img2 = min(count, image2_left)
+                n_nb2 = count - n_img2
+                image2_left -= n_img2
+                if n_img2 > 0:
+                    combos.append({"combo": f"{a.get('label','A')} × {b.get('label','B')}", "prompt": prompt, "model": "image2", "n_images": n_img2})
+                if n_nb2 > 0:
+                    combos.append({"combo": f"{a.get('label','A')} × {b.get('label','B')}", "prompt": prompt, "model": "flash", "n_images": n_nb2})
+        else:
+            for a, prompt in prompts_for_b:
+                combos.append({"combo": f"{a.get('label','A')} × {b.get('label','B')}", "prompt": prompt, "model": b_model, "n_images": count})
 
     # Prepare reference image parts for Gemini
     # Upload referenčne slike enkrat na Gemini Files API — z 48h cache
@@ -4666,9 +4683,10 @@ async def generate_kreative(data: dict):
         return await generate_one_gemini(combo_prompt, model_key)
 
     async def generate_combo(combo):
-        """Generate `count` images for one combo in parallel — z modelom iz B-opcije."""
+        """Generate slike za eno kombinacijo vzporedno — model in št. slik iz comboja."""
         mk = combo.get("model", "flash")
-        tasks = [generate_one_image(combo["prompt"], mk, i) for i in range(count)]
+        n = combo.get("n_images", count)
+        tasks = [generate_one_image(combo["prompt"], mk, i) for i in range(n)]
         img_results = await asyncio.gather(*tasks)
         imgs = [img for img, err in img_results if img]
         errors = [err for img, err in img_results if err]
