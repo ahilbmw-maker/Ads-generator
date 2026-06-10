@@ -2262,28 +2262,28 @@ setInterval(pollSync, 15000);
 window.addEventListener('resize', () => { updateMobileBoxBar(); updateStickyOffset(); });
 
 // ── IN-APP OBVESTILA (kaj je novega) ──
-// Vsako obvestilo se pokaže ENKRAT na napravo. Za novo funkcijo dodaj nov vnos z unikatnim id.
-const ZALOGA_NEWS = [
-  {
-    id: 'poz-edit-2026-06',
-    icon: '📍',
-    title: 'Novo: uredi pozicijo med nabiranjem!',
-    body: 'Klikni na značko pozicije (z ✎) pri katerem koli izdelku in popravi pozicijo — popravek gre v zavihek "Sprememba pozicij", kjer ga potrdiš.'
-  },
-];
+// Obvestila se vpisujejo prek /admin in nalagajo s strežnika (/notices).
+// Vsako se pokaže ENKRAT na napravo (localStorage zabeleži videna).
+async function showZalogaNews() {
+  let notices = [];
+  try {
+    const r = await fetch('/notices?scope=zaloga');
+    const d = await r.json();
+    notices = (d && d.notices) || [];
+  } catch(e) { return; }
+  if (!notices.length) return;
 
-function showZalogaNews() {
   let seen = [];
   try { seen = JSON.parse(localStorage.getItem('zaloga_news_seen') || '[]'); } catch(e) { seen = []; }
-  const pending = ZALOGA_NEWS.filter(n => !seen.includes(n.id));
+  const pending = notices.filter(n => !seen.includes(n.id));
   if (!pending.length) return;
-  const n = pending[0];  // pokaži po enega naenkrat (najstarejši neprebrani)
+  const n = pending[pending.length - 1];  // najstarejši neprebrani najprej
   const html = `
     <div class="img-preview-overlay" id="newsOverlay" onclick="dismissNews('${n.id}')">
       <div class="news-box" onclick="event.stopPropagation()">
-        <div class="news-icon">${n.icon}</div>
-        <div class="news-title">${esc(n.title)}</div>
-        <div class="news-body">${esc(n.body)}</div>
+        <div class="news-icon">${esc(n.icon || '📢')}</div>
+        <div class="news-title">${esc(n.title || '')}</div>
+        <div class="news-body">${esc(n.body || '')}</div>
         <button class="news-ok" onclick="dismissNews('${n.id}')">Razumem 👍</button>
       </div>
     </div>`;
@@ -2297,8 +2297,7 @@ function dismissNews(id) {
   try { localStorage.setItem('zaloga_news_seen', JSON.stringify(seen)); } catch(e) {}
   const o = document.getElementById('newsOverlay');
   if (o) o.remove();
-  // če je še kakšno neprebrano, pokaži naslednje
-  setTimeout(showZalogaNews, 250);
+  setTimeout(showZalogaNews, 250);  // pokaži naslednje neprebrano
 }
 
 // pokaži obvestila kmalu po odprtju
