@@ -665,8 +665,9 @@ input[type="text"].error { border-color: var(--red) !important; }
     <button class="nav-expand-btn" id="navexp-kreative" onclick="event.stopPropagation();navToggleSub('kreative')" title="Pododdelki">+</button>
   </div>
   <div class="nav-sub" id="navsub-kreative">
+    <div class="nav-sub-item" onclick="switchPage('kreative');krSwitchTab('gemini')">✨ Generator</div>
+    <div class="nav-sub-item" onclick="switchPage('kreative');krSwitchTab('queue')">⏳ Vrsta</div>
     <div class="nav-sub-item" onclick="switchPage('kreative');krSwitchTab('higgsfield')">🎬 Higgsfield</div>
-    <div class="nav-sub-item" onclick="switchPage('kreative');krSwitchTab('gemini')">✨ Gemini Flash</div>
   </div>
 
   <div class="nav-item nav-videoads" id="nav-videoads" onclick="switchPage('videoads')">
@@ -872,8 +873,8 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div class="ht-name">Kreative</div>
             <div class="ht-desc">AI generiranje kreativ</div>
             <div class="ht-pills">
+              <span class="home-pill" onclick="event.stopPropagation();switchPage('kreative');krSwitchTab('gemini')">↗ Generator</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('kreative');krSwitchTab('higgsfield')">↗ Higgsfield</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('kreative');krSwitchTab('gemini')">↗ Gemini Flash</span>
             </div>
           </div>
           <div class="home-tile" style="border-left-color:#8b5cf6" onclick="switchPage('videoads')">
@@ -1284,17 +1285,17 @@ input[type="text"].error { border-color: var(--red) !important; }
 
     <!-- Tab switcher -->
     <div style="display:flex;gap:8px;padding:14px 14px 12px;border-bottom:1px solid var(--border);margin-bottom:0">
-      <button class="kreative-tab-btn" id="krTab-higgsfield" onclick="krSwitchTab('higgsfield')"
-        style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
-        🎬 Higgsfield
-      </button>
       <button class="kreative-tab-btn" id="krTab-gemini" onclick="krSwitchTab('gemini')"
-        style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
-        ✨ Gemini Flash
+        style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+        ✨ Generator
       </button>
       <button class="kreative-tab-btn" id="krTab-queue" onclick="krSwitchTab('queue')"
         style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
         ⏳ Vrsta <span id="krQueueTabBadge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;margin-left:4px"></span>
+      </button>
+      <button class="kreative-tab-btn" id="krTab-higgsfield" onclick="krSwitchTab('higgsfield')"
+        style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+        🎬 Higgsfield
       </button>
     </div>
 
@@ -1309,7 +1310,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
       <div id="kQueueGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px"></div>
       <div id="kQueueEmpty" style="text-align:center;padding:2.5rem 2rem;color:var(--text-tertiary);font-size:13px">
-        Vrsta je prazna. V zavihku <b>Gemini Flash</b> izberi izdelek in klikni <b>➕ Dodaj v vrsto</b>.
+        Vrsta je prazna. V zavihku <b>Generator</b> izberi izdelek in klikni <b>➕ Dodaj v vrsto</b>.
       </div>
 
       <!-- SHRANJENO -->
@@ -1324,7 +1325,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div>
 
     <!-- Tab: Gemini -->
-    <div id="kr-panel-gemini" style="display:none">
+    <div id="kr-panel-gemini" style="display:block">
     <div class="kreative-layout">
 
       <!-- LEVO: Vnos + A/B/C izbira -->
@@ -1343,11 +1344,16 @@ input[type="text"].error { border-color: var(--red) !important; }
           </button>
         </div>
 
-        <!-- Zgodovina kreativ -->
+        <!-- Zgodovina kreativ (privzeto skrito — redko potrebno v Generatorju) -->
         <div class="card" style="margin-bottom:12px">
-          <div class="history-hdr"><span class="history-title">Zgodovina kreativ</span></div>
-          <input type="text" class="meta-history-search" id="kHistorySearch" placeholder="Išči po imenu..." oninput="kRenderHistory()" style="margin-top:6px">
-          <div class="history-list" id="kHistoryList" style="max-height:200px;overflow-y:auto;margin-top:6px"><div class="history-empty">Nalagam...</div></div>
+          <div class="history-hdr" onclick="kToggleHistory()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+            <span class="history-title">Zgodovina kreativ</span>
+            <span id="kHistoryChevron" style="font-size:12px;color:var(--text-tertiary);transition:transform 0.15s">▶</span>
+          </div>
+          <div id="kHistoryBody" style="display:none">
+            <input type="text" class="meta-history-search" id="kHistorySearch" placeholder="Išči po imenu..." oninput="kRenderHistory()" style="margin-top:6px">
+            <div class="history-list" id="kHistoryList" style="max-height:200px;overflow-y:auto;margin-top:6px"><div class="history-empty">Nalagam...</div></div>
+          </div>
         </div>
 
         <!-- Loading analiza -->
@@ -1446,7 +1452,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div><!-- /kr-panel-gemini -->
 
     <!-- Tab: Higgsfield -->
-    <div id="kr-panel-higgsfield" style="display:block;padding:14px">
+    <div id="kr-panel-higgsfield" style="display:none;padding:14px">
       <div style="display:grid;grid-template-columns:220px 1fr;gap:14px;align-items:start">
 
         <!-- LEVO: nastavitve + generiraj -->
@@ -6789,6 +6795,15 @@ async function kSaveHistory() {
     await fetch('/kreative-history', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({history: kHistory})});
   } catch(e) {}
+}
+
+function kToggleHistory() {
+  const body = document.getElementById('kHistoryBody');
+  const chev = document.getElementById('kHistoryChevron');
+  if (!body) return;
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)';
 }
 
 function kRenderHistory() {
