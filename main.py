@@ -5609,6 +5609,7 @@ async def generate_video_scripts(data: dict):
     input_text = data.get("input", "").strip()
     duration = data.get("duration", 15)
     durations = data.get("durations", [])  # seznam dolžin videov (npr. [18,7,19,8])
+    only_en = bool(data.get("only_en", False))  # generiraj SAMO angleščino (univerzalni video)
     if not input_text:
         return {"error": "Manjka vnos."}
 
@@ -5623,7 +5624,25 @@ async def generate_video_scripts(data: dict):
     # Unikatne dolžine (da ne generiramo isto skripto večkrat)
     unique_durs = sorted(set(int(d) for d in durations if d and d > 0)) if durations else [int(duration)]
 
+    def _build_prompt_en(dur, words):
+        return f"""{'Read this page and' if mode == 'url' else 'Based on this description,'} create a voice-over script for a video ad in ENGLISH only.
+
+{'Page: ' + input_text if mode == 'url' else 'Description: ' + input_text}
+
+Rules:
+- Target ~{words} words — the speech must FILL a {dur}s video, not too short, not too long
+- Natural spoken style, like a friend talking
+- Focus on ONE main product benefit, add detail to fill the time
+- No prices, no "click", no "order"
+- End with a strong statement (not a call to action)
+- The script must take ABOUT {dur}s when read aloud (not more!)
+
+Return ONLY JSON without markdown:
+{{"product": "product name", "en": "..."}}"""
+
     def _build_prompt(dur, words):
+        if only_en:
+            return _build_prompt_en(dur, words)
         return f"""{'Preberi to stran in' if mode == 'url' else 'Na podlagi tega opisa'} ustvari voice over skripte za video oglas v 10 jezikih.
 
 {'Stran: ' + input_text if mode == 'url' else 'Opis: ' + input_text}
@@ -5693,6 +5712,19 @@ ELEVENLABS_VOICES = {
     "gr": "n0vzWypeCK1NlWPVwhOc",
     "ro": "xHIzJ4zBhlGcvJscsdON",
     "bg": "pVnrL6sighQX7hVz89cp",
+    "en": "21m00Tcm4TlvDq8ikWAM",  # Rachel — privzeti angleški ženski glas
+}
+
+# Angleški glasovi na izbiro (uradni ElevenLabs prednastavljeni ID-ji) — ženski + moški
+ELEVENLABS_EN_VOICES = {
+    # ženski
+    "rachel":  {"id": "21m00Tcm4TlvDq8ikWAM", "name": "♀ Rachel — čist, umirjen (naracija/oglas)", "gender": "f"},
+    "bella":   {"id": "EXAVITQu4vr4xnSDxMaL", "name": "♀ Bella — mehek, topel ženski", "gender": "f"},
+    "jessica": {"id": "cgSgspJ2msm6clMCkdW9", "name": "♀ Jessica — mlad, energičen (social/oglas)", "gender": "f"},
+    # moški
+    "adam":    {"id": "pNInz6obpgDQGcFmaJgB", "name": "♂ Adam — globok, avtoritativen (oglas)", "gender": "m"},
+    "antoni":  {"id": "ErXwobaYiN019PkySvjV", "name": "♂ Antoni — topel, prijazen (vsestranski)", "gender": "m"},
+    "josh":    {"id": "TxGEqnHWrfWFTfGW9XjX", "name": "♂ Josh — mlad, energičen (UGC/social)", "gender": "m"},
 }
 
 # Per-language model — SLO gre na novi v3 (z audio tagi), ostali ohranijo v2
@@ -5700,6 +5732,11 @@ ELEVENLABS_MODELS = {
     "sl": "eleven_v3",
     # vsi ostali jeziki: eleven_multilingual_v2 (default)
 }
+
+@app.get("/vads-en-voices")
+async def vads_en_voices():
+    """Seznam angleških glasov za izbiro (ženski + moški)."""
+    return {"voices": [{"key": k, "name": v["name"], "gender": v["gender"]} for k, v in ELEVENLABS_EN_VOICES.items()]}
 
 def _parse_words(alignment: dict):
     """Iz ElevenLabs alignment podatkov izloci seznam (beseda, start, end)."""
@@ -5862,6 +5899,11 @@ async def generate_audio(data: dict):
         return JSONResponse({"error": "ELEVENLABS_API_KEY ni nastavljen."}, status_code=400)
 
     voice_id = ELEVENLABS_VOICES.get(lang, "bu5eKETbFKC8G702EAU4")
+    # za angleščino: če je izbran specifičen glas, ga uporabi
+    if lang == "en":
+        sel = (data.get("en_voice") or "rachel").lower()
+        if sel in ELEVENLABS_EN_VOICES:
+            voice_id = ELEVENLABS_EN_VOICES[sel]["id"]
 
     def _audio_dur(alignment: dict) -> float:
         ends = alignment.get("character_end_times_seconds", [])
