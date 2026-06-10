@@ -12763,6 +12763,91 @@ async def forecast2_today():
     data = _forecast2_load_day(today)
     return {"ok": True, "today": today, **data}
 
+@app.get("/forecast2-stats")
+async def forecast2_stats(year: int = 2026):
+    """Seštevek naročil + prometa za celo leto + PROJEKCIJA leta (za domači števec).
+    Projekcija uporablja isti model kot revenue_forecast.html:
+    pretekli meseci = dejansko, tekoči = dnevno povprečje × dnevi, prihodnji = 2025 vzorec × YoY faktor."""
+    try:
+        # lanski mesečni neto (2025) — isti vir kot revenue_forecast.html
+        REV_2025_NET = {0:567249, 1:443491, 2:443923, 3:393831, 4:390365, 5:526175,
+                        6:528250, 7:404497, 8:407053, 9:508581, 10:724774, 11:701193}
+
+        # zberi dejanske dni leta (final.orders/revenue)
+        day_rows = []  # (date_iso, orders, revenue)
+        prefix = f"{year}-"
+        for f in FORECAST2_DIR.glob(f"{prefix}*.json"):
+            try:
+                day = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            final = day.get("final")
+            if final and isinstance(final, dict):
+                o = int(final.get("orders", 0) or 0)
+                rv = float(final.get("revenue", 0) or 0)
+                if o > 0:
+                    day_rows.append((f.stem, o, rv))
+        day_rows.sort(key=lambda x: x[0])
+
+        total_orders = sum(r[1] for r in day_rows)
+        total_revenue = sum(r[2] for r in day_rows)
+        days_counted = len(day_rows)
+
+        # === PROJEKCIJA (ista logika kot frontend) ===
+        import calendar as _cal
+        from datetime import date as _d
+        now = _lj_now()
+        cur_year = now.year
+        proj_revenue = total_revenue
+        proj_orders = total_orders
+        if day_rows and cur_year == year:
+            # meseci → orders, revenue, days
+            months = {}
+            for date_iso, o, rv in day_rows:
+                m = int(date_iso[5:7]) - 1
+                months.setdefault(m, {"orders":0, "revenue":0.0, "days":0})
+                months[m]["orders"] += o
+                months[m]["revenue"] += rv
+                months[m]["days"] += 1
+            cur_month = now.month - 1
+            def _dim(m): return _cal.monthrange(year, m+1)[1]
+            # zadnjih 30 dni povprečje
+            last30 = day_rows[-30:]
+            avg30_rev = sum(r[2] for r in last30) / max(1, len(last30))
+            # YoY faktor (povprečje razmerij kompletnih 2026 mesecev vs 2025)
+            yoy_ratios = []
+            for m in range(cur_month):
+                if m in months and months[m]["days"] >= _dim(m) - 1 and REV_2025_NET.get(m):
+                    yoy_ratios.append(months[m]["revenue"] / REV_2025_NET[m])
+            yoy = sum(yoy_ratios)/len(yoy_ratios) if yoy_ratios else 1.0
+            # projekcija prometa
+            proj_revenue = total_revenue
+            for m in range(12):
+                if m < cur_month:
+                    pass  # že v total_revenue
+                elif m == cur_month:
+                    md = months.get(m, {"revenue":0.0, "days":0})
+                    days_so_far = md["days"]
+                    daily = (md["revenue"]/days_so_far) if days_so_far > 0 else avg30_rev
+                    proj_revenue += daily * (_dim(m) - days_so_far)
+                else:
+                    proj_revenue += REV_2025_NET.get(m, 0) * yoy
+            # projekcija naročil prek povprečnega AOV
+            aov = total_revenue / max(1, total_orders)
+            proj_orders = int(round(proj_revenue / aov)) if aov else total_orders
+
+        return {
+            "ok": True, "year": year,
+            "total_orders": total_orders,
+            "total_revenue": round(total_revenue, 2),
+            "days_counted": days_counted,
+            "projection_orders": proj_orders,
+            "projection_revenue": round(proj_revenue, 2),
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
 @app.post("/forecast2-add-entry")
 async def forecast2_add_entry(data: dict):
     """Doda nov entry za današnji dan (ali za določen datum)."""
