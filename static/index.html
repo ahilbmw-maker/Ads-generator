@@ -541,6 +541,24 @@ input[type="text"].error { border-color: var(--red) !important; }
 
   /* ── HOME PAGE ── */
   .home-wrap { padding:28px 24px; width:100%; }
+
+  /* Desni panel s števci 2026 — samo desktop ≥1200px */
+  .home-stats-panel { display:none; }
+  @media(min-width:1200px) {
+    #page-home { position:relative; }
+    .home-stats-panel {
+      display:block; position:absolute; top:28px; right:24px; width:270px;
+    }
+    .home-wrap { padding-right:312px; }
+  }
+  .home-stats-panel .hsp-title { font-size:12px; font-weight:700; color:var(--text-tertiary); letter-spacing:0.4px; margin-bottom:12px; padding-left:2px; }
+  .home-stats-panel .hsp-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:12px; }
+  .home-stats-panel .hsp-card-proj { border-color:rgba(83,74,183,0.35); background:rgba(83,74,183,0.04); }
+  .home-stats-panel .hsp-card-head { display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; color:var(--text-secondary); }
+  .home-stats-panel .hsp-ico { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
+  .home-stats-panel .hsp-num { font-size:32px; font-weight:800; color:var(--text); line-height:1; letter-spacing:-0.5px; font-family:'DM Sans',sans-serif; }
+  .home-stats-panel .hsp-sub { font-size:12px; color:var(--text-tertiary); margin-top:6px; }
+  .home-stats-panel .hsp-foot { font-size:11px; color:var(--text-tertiary); text-align:center; padding:4px; }
   .home-greeting { margin-bottom:28px; }
   .home-greeting h1 { font-size:22px; font-weight:600; color:var(--text); margin-bottom:4px; }
   .home-greeting p { font-size:13px; color:var(--text-secondary); }
@@ -1008,6 +1026,26 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
         </div>
       </div>
+    </div>
+    <!-- DESNI PANEL: pregled 2026 (samo desktop ≥1200px) -->
+    <div id="homeStatsPanel" class="home-stats-panel">
+      <div class="hsp-title">PREGLED 2026</div>
+      <div class="hsp-card">
+        <div class="hsp-card-head"><span class="hsp-ico" style="background:rgba(55,138,221,0.14);color:#185FA5">📦</span><span>Naročila v 2026</span></div>
+        <div class="hsp-num" id="hspOrders">—</div>
+        <div class="hsp-sub" id="hspOrdersSub">nalagam...</div>
+      </div>
+      <div class="hsp-card">
+        <div class="hsp-card-head"><span class="hsp-ico" style="background:rgba(29,158,117,0.14);color:#0F6E56">💰</span><span>Promet v 2026</span></div>
+        <div class="hsp-num" id="hspRevenue">—</div>
+        <div class="hsp-sub">doseženo do danes</div>
+      </div>
+      <div class="hsp-card hsp-card-proj">
+        <div class="hsp-card-head"><span class="hsp-ico" style="background:rgba(83,74,183,0.16);color:#534AB7">📈</span><span>Napoved 2026 (projekcija)</span></div>
+        <div class="hsp-num" id="hspProjOrders">—</div>
+        <div class="hsp-sub" id="hspProjRevenue">naročil · projekcija prometa</div>
+      </div>
+      <div class="hsp-foot">↻ samodejno iz napovedi</div>
     </div>
   </div><!-- /page-home -->
 
@@ -4593,6 +4631,25 @@ function homeUpdateDate() {
   const days = ['nedelja','ponedeljek','torek','sreda','četrtek','petek','sobota'];
   const months = ['januarja','februarja','marca','aprila','maja','junija','julija','avgusta','septembra','oktobra','novembra','decembra'];
   el.textContent = days[d.getDay()] + ', ' + d.getDate() + '. ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  homeLoadStats();
+}
+
+async function homeLoadStats() {
+  const panel = document.getElementById('homeStatsPanel');
+  if (!panel) return;
+  try {
+    const r = await fetch('/forecast2-stats?year=2026');
+    const d = await r.json();
+    if (!d.ok) return;
+    const fmtN = n => Math.round(n||0).toLocaleString('sl-SI');
+    const fmtE = n => Math.round(n||0).toLocaleString('sl-SI') + ' €';
+    const fmtM = n => (n >= 1000000 ? (n/1000000).toFixed(2).replace('.',',') + ' M€' : fmtE(n));
+    document.getElementById('hspOrders').textContent = fmtN(d.total_orders);
+    document.getElementById('hspOrdersSub').textContent = 'iz napovedi · ' + (d.days_counted||0) + ' dni';
+    document.getElementById('hspRevenue').textContent = fmtM(d.total_revenue);
+    document.getElementById('hspProjOrders').textContent = fmtN(d.projection_orders);
+    document.getElementById('hspProjRevenue').textContent = 'naročil · ' + fmtM(d.projection_revenue) + ' prometa';
+  } catch(e) {}
 }
 
 // ── META COUNTERS ──
