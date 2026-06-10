@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — ads.slx</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --text: #1e293b; --text-dim: #64748b;
+    --text-faint: #94a3b8; --border: #e2e8f0; --accent: #3a6fff; --green: #16a34a; --red: #dc2626;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text); padding: 24px 16px; line-height: 1.5;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: var(--text-dim); margin: 0 0 24px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+  .card-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin: 0 0 16px; }
+  label { font-size: 12px; font-weight: 600; color: var(--text-dim); display: block; margin: 0 0 5px; }
+  input[type=text], textarea, select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 14px; font-family: inherit; background: var(--bg); color: var(--text); margin-bottom: 14px;
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .icon-input { max-width: 90px; }
+  .scope-btns { display: flex; gap: 8px; margin-bottom: 14px; }
+  .scope-btn {
+    flex: 1; padding: 10px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--panel);
+    color: var(--text-dim); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: center;
+  }
+  .scope-btn.on { border-color: var(--accent); background: #eaf1ff; color: var(--accent); }
+  .save-btn {
+    width: 100%; padding: 12px; background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
+  }
+  .status { font-size: 13px; text-align: center; margin-top: 10px; min-height: 18px; }
+  .preview {
+    background: var(--bg); border: 1px dashed var(--border); border-radius: 10px; padding: 16px;
+    text-align: center; margin-bottom: 14px;
+  }
+  .preview-icon { font-size: 32px; }
+  .preview-title { font-size: 16px; font-weight: 800; margin: 6px 0 4px; }
+  .preview-body { font-size: 13px; color: var(--text-dim); }
+  .notice-item {
+    display: flex; align-items: flex-start; gap: 12px; padding: 12px; border: 1px solid var(--border);
+    border-radius: 10px; margin-bottom: 8px; background: var(--bg);
+  }
+  .notice-item .ni-icon { font-size: 22px; }
+  .notice-item .ni-body { flex: 1; min-width: 0; }
+  .notice-item .ni-title { font-size: 14px; font-weight: 700; }
+  .notice-item .ni-text { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .notice-item .ni-meta { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+  .ni-scope { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 5px; background: #eaf1ff; color: var(--accent); margin-right: 6px; }
+  .ni-del { background: transparent; border: none; color: var(--red); cursor: pointer; font-size: 16px; padding: 2px 6px; }
+  .empty { text-align: center; color: var(--text-faint); font-size: 13px; padding: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚙️ Admin</h1>
+  <p class="sub">Upravljanje in-app obvestil za nabiranje in glavno aplikacijo.</p>
+
+  <div class="card">
+    <p class="card-title">📢 Novo obvestilo</p>
+
+    <div class="preview" id="preview">
+      <div class="preview-icon" id="pvIcon">📢</div>
+      <div class="preview-title" id="pvTitle">Naslov obvestila</div>
+      <div class="preview-body" id="pvBody">Besedilo obvestila se prikaže tukaj...</div>
+    </div>
+
+    <div class="row">
+      <div class="icon-input">
+        <label>Ikona</label>
+        <input type="text" id="fIcon" value="📢" maxlength="4" oninput="updatePreview()">
+      </div>
+      <div>
+        <label>Naslov</label>
+        <input type="text" id="fTitle" placeholder="npr. Novo: ..." oninput="updatePreview()">
+      </div>
+    </div>
+
+    <label>Besedilo</label>
+    <textarea id="fBody" placeholder="Opis nove funkcije / obvestila..." oninput="updatePreview()"></textarea>
+
+    <label>Kje naj se prikaže?</label>
+    <div class="scope-btns">
+      <button class="scope-btn on" id="scope-zaloga" onclick="setScope('zaloga')">📦 Nabiranje</button>
+      <button class="scope-btn" id="scope-index" onclick="setScope('index')">🖥️ Glavna</button>
+      <button class="scope-btn" id="scope-both" onclick="setScope('both')">🌐 Povsod</button>
+    </div>
+
+    <button class="save-btn" onclick="publishNotice()">✓ Objavi obvestilo</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card">
+    <p class="card-title">📋 Objavljena obvestila</p>
+    <div id="noticesList"><div class="empty">Nalagam...</div></div>
+  </div>
+</div>
+
+<script>
+let curScope = 'zaloga';
+const ICONS = { zaloga:'📦', index:'🖥️', both:'🌐' };
+
+function esc(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function setScope(s) {
+  curScope = s;
+  ['zaloga','index','both'].forEach(x => document.getElementById('scope-'+x).classList.toggle('on', x===s));
+}
+
+function updatePreview() {
+  document.getElementById('pvIcon').textContent = document.getElementById('fIcon').value || '📢';
+  document.getElementById('pvTitle').textContent = document.getElementById('fTitle').value || 'Naslov obvestila';
+  document.getElementById('pvBody').textContent = document.getElementById('fBody').value || 'Besedilo obvestila se prikaže tukaj...';
+}
+
+async function publishNotice() {
+  const icon = document.getElementById('fIcon').value.trim() || '📢';
+  const title = document.getElementById('fTitle').value.trim();
+  const body = document.getElementById('fBody').value.trim();
+  const status = document.getElementById('status');
+  if (!title && !body) { status.textContent = '⚠ Vpiši naslov ali besedilo.'; status.style.color = 'var(--red)'; return; }
+  status.textContent = '⏳ Objavljam...'; status.style.color = 'var(--text-dim)';
+  try {
+    const r = await fetch('/notices', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'add', notice:{ icon, title, body, scope: curScope } })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      status.textContent = '✓ Objavljeno!'; status.style.color = 'var(--green)';
+      document.getElementById('fTitle').value = '';
+      document.getElementById('fBody').value = '';
+      updatePreview();
+      renderNotices(d.notices);
+      setTimeout(() => { status.textContent = ''; }, 2000);
+    } else {
+      status.textContent = '⚠ ' + (d.error||'Napaka'); status.style.color = 'var(--red)';
+    }
+  } catch(e) { status.textContent = '⚠ Napaka pri objavi.'; status.style.color = 'var(--red)'; }
+}
+
+async function loadNotices() {
+  try {
+    const r = await fetch('/notices?scope=all');
+    const d = await r.json();
+    renderNotices(d.notices || []);
+  } catch(e) {
+    document.getElementById('noticesList').innerHTML = '<div class="empty">Napaka pri nalaganju.</div>';
+  }
+}
+
+function renderNotices(notices) {
+  const el = document.getElementById('noticesList');
+  if (!notices || !notices.length) { el.innerHTML = '<div class="empty">Ni objavljenih obvestil.</div>'; return; }
+  const scopeLabel = { zaloga:'📦 Nabiranje', index:'🖥️ Glavna', both:'🌐 Povsod' };
+  el.innerHTML = notices.map(n => `
+    <div class="notice-item">
+      <span class="ni-icon">${esc(n.icon||'📢')}</span>
+      <div class="ni-body">
+        <div class="ni-title">${esc(n.title||'')}</div>
+        <div class="ni-text">${esc(n.body||'')}</div>
+        <div class="ni-meta"><span class="ni-scope">${scopeLabel[n.scope]||n.scope}</span>${esc(n.date||'')}</div>
+      </div>
+      <button class="ni-del" onclick="deleteNotice('${n.id}')" title="Izbriši">🗑</button>
+    </div>`).join('');
+}
+
+async function deleteNotice(id) {
+  if (!confirm('Izbrišem to obvestilo? Userji ga ne bodo več videli.')) return;
+  try {
+    const r = await fetch('/notices', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'remove', id })
+    });
+    const d = await r.json();
+    if (d.ok) renderNotices(d.notices);
+  } catch(e) {}
+}
+
+updatePreview();
+loadNotices();
+</script>
+</body>
+</html>
