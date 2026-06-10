@@ -178,6 +178,102 @@ function closeImgPreview() {
   if (o) o.remove();
 }
 
+// ── Popravek pozicije med nabiranjem → čakajoči seznam taba "Sprememba pozicij" ──
+function openPozEdit(sku, currentPoz, naziv) {
+  // odstrani morebitni obstoječi
+  const ex = document.getElementById('pozEditOverlay');
+  if (ex) ex.remove();
+  const html = `
+    <div class="img-preview-overlay" id="pozEditOverlay" onclick="closePozEdit()">
+      <div class="poz-edit-box" onclick="event.stopPropagation()">
+        <div class="poz-edit-head">
+          <span>📍 Sprememba pozicije</span>
+          <button class="poz-edit-x" onclick="closePozEdit()">✕</button>
+        </div>
+        <div class="poz-edit-cur">
+          <div class="poz-edit-sku">${esc(sku)}</div>
+          <div class="poz-edit-naziv">${esc(naziv||'')}</div>
+          <div class="poz-edit-trenutno">trenutno: <b>${esc(currentPoz||'—')}</b></div>
+        </div>
+        <label class="poz-edit-label">Nova pozicija:</label>
+        <input type="text" id="pozEditInput" class="poz-edit-input" value="${esc(currentPoz||'')}" placeholder="npr. 07-4D" autocomplete="off">
+        <label class="poz-edit-photo">
+          📷 Slikaj pozicijo
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="pozEditPhoto(event,'${jsStr(sku)}')">
+        </label>
+        <div class="poz-edit-status" id="pozEditStatus"></div>
+        <button class="poz-edit-save" onclick="savePozEdit('${jsStr(sku)}','${jsStr(naziv||'')}')">✓ Dodaj v "Sprememba pozicij"</button>
+        <div class="poz-edit-hint">Popravek gre v čakajoči seznam — potrdiš ga v zavihku <b>Sprememba pozicij</b>.</div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(() => { const i = document.getElementById('pozEditInput'); if (i) { i.focus(); i.select(); } }, 50);
+}
+
+function closePozEdit() {
+  const o = document.getElementById('pozEditOverlay');
+  if (o) o.remove();
+}
+
+async function pozEditPhoto(ev, sku) {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  const status = document.getElementById('pozEditStatus');
+  status.textContent = '⏳ Prepoznavam pozicijo s slike...';
+  status.style.color = 'var(--text-dim)';
+  try {
+    const b64full = await new Promise((res, rej) => {
+      const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f);
+    });
+    const mt = (b64full.match(/^data:([^;]+);/) || [])[1] || 'image/jpeg';
+    const b64 = b64full.split(',')[1];
+    const r = await fetch('/pozicije-recognize-pos', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ image: b64, media_type: mt })
+    });
+    const d = await r.json();
+    if (d && d.position) {
+      const inp = document.getElementById('pozEditInput');
+      if (inp) inp.value = d.position;
+      status.textContent = '✓ Prepoznano: ' + d.position;
+      status.style.color = 'var(--green, #16a34a)';
+    } else {
+      status.textContent = '⚠ Ni bilo mogoče prepoznati — vpiši ročno.';
+      status.style.color = '#d97706';
+    }
+  } catch(e) {
+    status.textContent = '⚠ Napaka pri prepoznavi — vpiši ročno.';
+    status.style.color = '#dc2626';
+  }
+}
+
+async function savePozEdit(sku, naziv) {
+  const inp = document.getElementById('pozEditInput');
+  const status = document.getElementById('pozEditStatus');
+  const pos = (inp.value || '').trim();
+  if (!pos) { status.textContent = '⚠ Vpiši pozicijo.'; status.style.color = '#dc2626'; return; }
+  status.textContent = '⏳ Dodajam...';
+  status.style.color = 'var(--text-dim)';
+  try {
+    const r = await fetch('/pozicije-pending-save', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'add', item:{ sku, position: pos, title: naziv } })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      status.textContent = '✓ Dodano v "Sprememba pozicij" (' + (d.items?d.items.length:'?') + ' čaka)';
+      status.style.color = 'var(--green, #16a34a)';
+      setTimeout(closePozEdit, 1100);
+    } else {
+      status.textContent = '⚠ ' + (d.error || 'Napaka');
+      status.style.color = '#dc2626';
+    }
+  } catch(e) {
+    status.textContent = '⚠ Napaka pri shranjevanju.';
+    status.style.color = '#dc2626';
+  }
+}
+
 function showEmpty() {
   ITEMS = [];
   document.getElementById('wrap').innerHTML = `
@@ -1166,7 +1262,7 @@ function itemRow(it) {
       <div class="item-mobile-top">
         ${thumb}
         <span class="sku">${esc(it.sku)}</span>
-        <span class="poz">${esc(it.poz)}</span>
+        <span class="poz poz-edit" onclick="event.stopPropagation();openPozEdit('${jsStr(it.sku)}','${jsStr(it.poz||'')}','${jsStr(it.naziv||'')}')" title="Klikni za popravek pozicije">${esc(it.poz)}</span>
       </div>
       <div class="item-naziv-wrap">
         <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}${it.hsplus ? '<span class="tag-hsplus">📦 HS PLUS</span>' : ''}${(!it.id || String(it.id).trim() === '' || String(it.id).trim() === '—') ? '<span class="tag-supplier">🏷 Majhni dobavitelji</span>' : ''}${it.skladisce ? '<span class="tag-sklad">🏬 Skladišče2</span>' : ''}</span>
@@ -2164,3 +2260,46 @@ loadSession();
 setInterval(pollSync, 15000);
 // ob spremembi velikosti / rotaciji osveži mobilni box-bar (pojavi/skrije se po potrebi)
 window.addEventListener('resize', () => { updateMobileBoxBar(); updateStickyOffset(); });
+
+// ── IN-APP OBVESTILA (kaj je novega) ──
+// Vsako obvestilo se pokaže ENKRAT na napravo. Za novo funkcijo dodaj nov vnos z unikatnim id.
+const ZALOGA_NEWS = [
+  {
+    id: 'poz-edit-2026-06',
+    icon: '📍',
+    title: 'Novo: uredi pozicijo med nabiranjem!',
+    body: 'Klikni na značko pozicije (z ✎) pri katerem koli izdelku in popravi pozicijo — popravek gre v zavihek "Sprememba pozicij", kjer ga potrdiš.'
+  },
+];
+
+function showZalogaNews() {
+  let seen = [];
+  try { seen = JSON.parse(localStorage.getItem('zaloga_news_seen') || '[]'); } catch(e) { seen = []; }
+  const pending = ZALOGA_NEWS.filter(n => !seen.includes(n.id));
+  if (!pending.length) return;
+  const n = pending[0];  // pokaži po enega naenkrat (najstarejši neprebrani)
+  const html = `
+    <div class="img-preview-overlay" id="newsOverlay" onclick="dismissNews('${n.id}')">
+      <div class="news-box" onclick="event.stopPropagation()">
+        <div class="news-icon">${n.icon}</div>
+        <div class="news-title">${esc(n.title)}</div>
+        <div class="news-body">${esc(n.body)}</div>
+        <button class="news-ok" onclick="dismissNews('${n.id}')">Razumem 👍</button>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function dismissNews(id) {
+  let seen = [];
+  try { seen = JSON.parse(localStorage.getItem('zaloga_news_seen') || '[]'); } catch(e) { seen = []; }
+  if (!seen.includes(id)) seen.push(id);
+  try { localStorage.setItem('zaloga_news_seen', JSON.stringify(seen)); } catch(e) {}
+  const o = document.getElementById('newsOverlay');
+  if (o) o.remove();
+  // če je še kakšno neprebrano, pokaži naslednje
+  setTimeout(showZalogaNews, 250);
+}
+
+// pokaži obvestila kmalu po odprtju
+setTimeout(showZalogaNews, 800);
