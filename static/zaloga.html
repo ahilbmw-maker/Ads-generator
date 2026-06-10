@@ -281,6 +281,17 @@
     background: var(--poz-bg); padding: 4px 9px; border-radius: 7px;
     text-align: center; letter-spacing: 0.5px; justify-self: start;
   }
+  .item .poz.poz-edit {
+    cursor: pointer; position: relative;
+    border: 1.5px dashed rgba(255,255,255,0.55);
+    transition: filter 0.12s, box-shadow 0.12s;
+  }
+  .item .poz.poz-edit::after {
+    content: '✎'; font-size: 9px; margin-left: 5px; opacity: 0.85;
+  }
+  .item .poz.poz-edit:hover {
+    filter: brightness(1.12); box-shadow: 0 0 0 2px rgba(255,255,255,0.25);
+  }
   .item .naziv { font-size: 13px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* naziv-wrap zasede stolpec naziva: naziv levo, BOX+odkleni (zaklenjen) desno */
   .item-naziv-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -961,6 +972,50 @@
     border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit;
   }
 
+  /* Pop-up za popravek pozicije */
+  .poz-edit-box {
+    background: var(--panel); border-radius: 16px; padding: 18px;
+    width: 340px; max-width: 92vw; display: flex; flex-direction: column; gap: 10px;
+  }
+  .poz-edit-head { display: flex; align-items: center; justify-content: space-between; font-size: 15px; font-weight: 800; color: var(--text); }
+  .poz-edit-x { background: transparent; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; padding: 2px 6px; }
+  .poz-edit-cur { background: var(--bg2, rgba(127,127,127,0.08)); border-radius: 10px; padding: 10px 12px; }
+  .poz-edit-sku { font-size: 15px; font-weight: 800; color: var(--text); }
+  .poz-edit-naziv { font-size: 12px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .poz-edit-trenutno { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+  .poz-edit-label { font-size: 12px; color: var(--text-dim); font-weight: 600; }
+  .poz-edit-input {
+    width: 100%; padding: 11px 12px; border: 1.5px solid var(--accent); border-radius: 10px;
+    background: var(--bg); color: var(--text); font-size: 15px; font-weight: 700; font-family: inherit;
+    text-transform: uppercase; box-sizing: border-box;
+  }
+  .poz-edit-photo {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    background: var(--bg2, rgba(127,127,127,0.08)); border: 1.5px solid var(--border);
+    border-radius: 10px; padding: 11px; font-size: 13px; font-weight: 600; color: var(--text);
+    cursor: pointer;
+  }
+  .poz-edit-status { font-size: 12px; min-height: 16px; text-align: center; }
+  .poz-edit-save {
+    background: #16a34a; color: #fff; border: none; padding: 12px; border-radius: 10px;
+    font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+  .poz-edit-hint { font-size: 11px; color: var(--text-faint); text-align: center; line-height: 1.5; }
+
+  /* In-app obvestilo (kaj je novega) */
+  .news-box {
+    background: var(--panel); border-radius: 16px; padding: 24px 22px;
+    width: 340px; max-width: 92vw; display: flex; flex-direction: column; align-items: center; gap: 12px;
+    text-align: center;
+  }
+  .news-icon { font-size: 40px; line-height: 1; }
+  .news-title { font-size: 17px; font-weight: 800; color: var(--text); }
+  .news-body { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+  .news-ok {
+    margin-top: 4px; background: var(--accent); color: #fff; border: none; padding: 12px 28px;
+    border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+
   /* Sidebar tabi (RS) */
   .side-card-tabs { padding: 0 !important; overflow: hidden; }
   .side-tabs { display: flex; border-bottom: 1px solid var(--border); }
@@ -1121,6 +1176,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260602BO"></script>
+<script src="/static/zaloga.js?v=20260602BP"></script>
 </body>
 </html>
