@@ -1962,6 +1962,21 @@ input[type="text"].error { border-color: var(--red) !important; }
               <button class="mode-btn" id="vadsDur-30" onclick="vadsSetDur(30)" style="flex:1;padding:8px;font-size:12px;font-weight:500;cursor:pointer;border-radius:var(--radius);border:1.5px solid var(--border);background:var(--surface);color:var(--text-secondary);font-family:'DM Sans',sans-serif">30s</button>
             </div>
           </div>
+
+          <!-- SAMO ANGLEŠČINA (univerzalni video) -->
+          <div style="margin-top:12px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text)">
+              <input type="checkbox" id="vadsOnlyEn" onchange="vadsToggleOnlyEn()" style="width:16px;height:16px;cursor:pointer">
+              🇬🇧 Samo angleščina (univerzalni video za vse trge)
+            </label>
+            <div id="vadsEnVoiceWrap" style="display:none;margin-top:10px">
+              <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:4px">Glas:</label>
+              <select id="vadsEnVoice" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:12px;font-family:'DM Sans',sans-serif">
+                <option value="rachel">Nalagam glasove...</option>
+              </select>
+            </div>
+          </div>
+
           <button onclick="vadsGenerate()" id="vadsGenBtn" style="margin-top:12px;width:100%;padding:11px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:7px">
             <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:none;stroke-width:2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             Generiraj skripte
@@ -7935,6 +7950,7 @@ const VADS_LANGS = [
   {code:'gr', name:'Grščina', flag:'🇬🇷'},
   {code:'ro', name:'Romunščina', flag:'🇷🇴'},
   {code:'bg', name:'Bolgarščina', flag:'🇧🇬'},
+  {code:'en', name:'English (univerzalno)', flag:'🇬🇧'},
 ];
 
 let vadsDuration = 15;
@@ -8007,6 +8023,28 @@ function vadsRemoveVideo(idx) {
   }
 }
 
+let vadsOnlyEn = false;
+let _vadsEnVoicesLoaded = false;
+
+async function vadsToggleOnlyEn() {
+  vadsOnlyEn = document.getElementById('vadsOnlyEn').checked;
+  document.getElementById('vadsEnVoiceWrap').style.display = vadsOnlyEn ? 'block' : 'none';
+  if (vadsOnlyEn && !_vadsEnVoicesLoaded) {
+    try {
+      const res = await fetch('/vads-en-voices');
+      const d = await res.json();
+      const sel = document.getElementById('vadsEnVoice');
+      sel.innerHTML = (d.voices||[]).map(v => `<option value="${v.key}">${v.name}</option>`).join('');
+      _vadsEnVoicesLoaded = true;
+    } catch(e) {}
+  }
+}
+
+// katere jezike prikazati glede na način
+function vadsActiveLangs() {
+  return vadsOnlyEn ? VADS_LANGS.filter(l => l.code === 'en') : VADS_LANGS.filter(l => l.code !== 'en');
+}
+
 async function vadsGenerate() {
   const input = document.getElementById('vadsInput').value.trim();
   if (!input) { alert('Vpiši URL ali opis izdelka.'); return; }
@@ -8021,7 +8059,7 @@ async function vadsGenerate() {
   document.getElementById('vadsEmpty').style.display = 'none';
   document.getElementById('vadsResults').style.display = 'flex';
   document.getElementById('vadsResults').style.flexDirection = 'column';
-  document.getElementById('vadsResults').innerHTML = VADS_LANGS.map(l =>
+  document.getElementById('vadsResults').innerHTML = vadsActiveLangs().map(l =>
     `<div class="vads-lang-card" id="vadsCard-${l.code}">
       <div class="vads-lang-header">${l.flag} ${l.name}</div>
       <div class="vads-progress"><div class="vads-spinner"></div> Generiram...</div>
@@ -8040,7 +8078,7 @@ async function vadsGenerate() {
     const res = await fetch('/generate-video-scripts', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({input, duration: minDur, durations: durations})
+      body: JSON.stringify({input, duration: minDur, durations: durations, only_en: vadsOnlyEn})
     });
     const data = await res.json();
     if (data.error) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + data.error; btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:none;stroke-width:2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Generiraj skripte'; return; }
@@ -8057,7 +8095,7 @@ async function vadsGenerate() {
     const durKeys = Object.keys(byDurAll).map(Number).sort((a,b) => a-b);
     const multiDur = durKeys.length > 1;
 
-    VADS_LANGS.forEach(l => {
+    vadsActiveLangs().forEach(l => {
       const card = document.getElementById('vadsCard-' + l.code);
       if (!card) return;
 
@@ -8143,7 +8181,7 @@ async function vadsGenerateAudio(langCode) {
   async function _genOne(text, dur) {
     const res = await fetch('/generate-audio', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text, lang: langCode, target_duration: dur})
+      body: JSON.stringify({text, lang: langCode, target_duration: dur, en_voice: (document.getElementById('vadsEnVoice')?.value || 'rachel')})
     });
     const data = await res.json();
     if (data.error || !data.audio_base64) throw new Error(data.error || 'Ni audia');
@@ -8349,7 +8387,7 @@ async function vadsBuildZipBlob(progressCallback) {
       try {
         const res = await fetch('/generate-audio', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({text: script, lang, target_duration: vidDur})
+          body: JSON.stringify({text: script, lang, target_duration: vidDur, en_voice: (document.getElementById('vadsEnVoice')?.value || 'rachel')})
         });
         const d = await res.json();
         if (d.error || !d.audio_base64) return { blob: audioBlobs[lang], srt: srts[lang] };
