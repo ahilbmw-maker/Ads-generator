@@ -41,6 +41,106 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.mount("/static", StaticFiles(directory="static"), name="static")
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
+# ═══ DOSTOPNI GATE (eno skupno geslo) ═══════════════════════════════════════
+# Geslo se nastavi prek okoljske spr. APP_PASSWORD na Renderju.
+# Piškotek je podpisan s HMAC (skrivnost APP_SECRET ali fallback) — ne da se ponarediti.
+import hmac as _hmac, hashlib as _hashlib, time as _time, base64 as _b64
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import RedirectResponse, PlainTextResponse
+
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "siluxar2026")  # SPREMENI prek env na Renderju!
+APP_SECRET = os.environ.get("APP_SECRET", APP_PASSWORD + "_slx_sign_v1")
+AUTH_COOKIE = "slx_auth"
+AUTH_TTL = 60 * 60 * 24 * 30  # seja velja 30 dni
+
+# Poti, ki so DOSTOPNE BREZ prijave
+_AUTH_EXEMPT_EXACT = {"/login", "/healthz", "/favicon.ico"}
+_AUTH_EXEMPT_PREFIX = ("/static/",)
+
+def _auth_make_token():
+    exp = str(int(_time.time()) + AUTH_TTL)
+    sig = _hmac.new(APP_SECRET.encode(), exp.encode(), _hashlib.sha256).hexdigest()
+    raw = f"{exp}:{sig}"
+    return _b64.urlsafe_b64encode(raw.encode()).decode()
+
+def _auth_check_token(token: str) -> bool:
+    try:
+        raw = _b64.urlsafe_b64decode(token.encode()).decode()
+        exp_str, sig = raw.split(":", 1)
+        expected = _hmac.new(APP_SECRET.encode(), exp_str.encode(), _hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(sig, expected):
+            return False
+        return int(exp_str) > int(_time.time())
+    except Exception:
+        return False
+
+class AuthGateMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+        if path in _AUTH_EXEMPT_EXACT or path.startswith(_AUTH_EXEMPT_PREFIX):
+            return await call_next(request)
+        token = request.cookies.get(AUTH_COOKIE, "")
+        if _auth_check_token(token):
+            return await call_next(request)
+        # ni prijavljen
+        accept = request.headers.get("accept", "")
+        if "text/html" in accept:
+            return RedirectResponse(url="/login", status_code=302)
+        return PlainTextResponse("401 — prijava potrebna", status_code=401)
+
+app.add_middleware(AuthGateMiddleware)
+
+_LOGIN_HTML = """<!DOCTYPE html><html lang="sl"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Prijava — ads.slx</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background:#f4f5f7; color:#1e293b; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px; }
+  .box { background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:36px 30px; width:360px; max-width:92vw;
+    box-shadow:0 10px 40px rgba(0,0,0,0.08); text-align:center; }
+  .logo { font-size:34px; margin-bottom:8px; }
+  h1 { font-size:20px; font-weight:700; margin:0 0 4px; }
+  p.sub { font-size:13px; color:#64748b; margin:0 0 24px; }
+  input { width:100%; padding:12px 14px; border:1px solid #e2e8f0; border-radius:10px; font-size:15px;
+    font-family:inherit; margin-bottom:12px; }
+  input:focus { outline:none; border-color:#3a6fff; }
+  button { width:100%; padding:12px; background:#3a6fff; color:#fff; border:none; border-radius:10px;
+    font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .err { color:#dc2626; font-size:13px; min-height:18px; margin-top:10px; }
+</style></head><body>
+  <div class="box">
+    <div class="logo">🔒</div>
+    <h1>ads.slxanalytics</h1>
+    <p class="sub">Vpiši geslo za dostop</p>
+    <form method="POST" action="/login">
+      <input type="password" name="password" placeholder="Geslo" autofocus autocomplete="current-password">
+      <button type="submit">Vstopi</button>
+    </form>
+    <div class="err">__ERR__</div>
+  </div>
+</body></html>"""
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(err: str = ""):
+    msg = "Napačno geslo." if err else ""
+    return HTMLResponse(_LOGIN_HTML.replace("__ERR__", msg))
+
+@app.post("/login")
+async def login_submit(password: str = Form("")):
+    if _hmac.compare_digest(password, APP_PASSWORD):
+        resp = RedirectResponse(url="/", status_code=302)
+        resp.set_cookie(AUTH_COOKIE, _auth_make_token(), max_age=AUTH_TTL,
+                        httponly=True, samesite="lax")
+        return resp
+    return RedirectResponse(url="/login?err=1", status_code=302)
+
+@app.get("/logout")
+async def logout():
+    resp = RedirectResponse(url="/login", status_code=302)
+    resp.delete_cookie(AUTH_COOKIE)
+    return resp
+# ════════════════════════════════════════════════════════════════════════════
+
 # Maksimum sočasnih FFmpeg procesov — Render Pro 2 CPU/4GB ne zdrži več kot 1 hkrati
 # brez health check timeoutov. (1 CPU za FFmpeg, 1 CPU za /healthz + uvicorn)
 FFMPEG_SEMAPHORE = asyncio.Semaphore(1)
