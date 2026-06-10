@@ -542,25 +542,21 @@ input[type="text"].error { border-color: var(--red) !important; }
   /* ── HOME PAGE ── */
   .home-wrap { padding:28px 24px; width:100%; max-width:2120px; }
 
-  /* Desni panel s števci 2026 — samo desktop ≥1280px */
+  /* Pregled 2026 — vodoravni trak pod nabiranje gumb (samo desktop ≥1280px) */
   .home-stats-panel { display:none; }
   @media(min-width:1280px) {
-    .home-layout { display:flex; gap:24px; align-items:flex-start; }
-    .home-layout-main { flex:1; min-width:0; }
-    .home-stats-panel { display:block; width:280px; flex-shrink:0; }
+    .home-stats-panel { display:flex; gap:12px; margin-bottom:24px; }
   }
-  .home-stats-panel .hsp-title { font-size:12px; font-weight:700; color:var(--text-tertiary); letter-spacing:0.4px; margin-bottom:12px; padding-left:2px; }
-  .home-stats-panel .hsp-proj { background:#534AB7; border-radius:14px; padding:16px; margin-bottom:10px; }
-  .home-stats-panel .hsp-proj-label { font-size:10px; color:#CECBF6; letter-spacing:0.5px; margin-bottom:12px; }
-  .home-stats-panel .hsp-proj-metric { margin-bottom:12px; }
-  .home-stats-panel .hsp-proj-mlabel { font-size:11px; color:#CECBF6; margin-bottom:2px; }
-  .home-stats-panel .hsp-proj-num { font-size:28px; font-weight:800; color:#fff; line-height:1; letter-spacing:-0.5px; font-family:'DM Sans',sans-serif; }
-  .home-stats-panel .hsp-row { display:flex; gap:8px; }
-  .home-stats-panel .hsp-field { flex:1; background:var(--surface2); border-radius:10px; padding:12px; }
-  .home-stats-panel .hsp-field-label { font-size:11px; color:var(--text-tertiary); }
-  .home-stats-panel .hsp-field-num { font-size:19px; font-weight:700; color:var(--text); margin-top:2px; font-family:'DM Sans',sans-serif; }
-  .home-stats-panel .hsp-bar { height:5px; background:var(--surface); border-radius:3px; overflow:hidden; margin-top:8px; }
+  .home-stats-panel .hsp-card { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px; min-width:0; }
+  .home-stats-panel .hsp-card-proj { flex:1.3; background:#534AB7; border-color:#534AB7; }
+  .home-stats-panel .hsp-card-label { font-size:11px; color:var(--text-tertiary); margin-bottom:8px; }
+  .home-stats-panel .hsp-card-num { font-size:26px; font-weight:800; color:var(--text); line-height:1; letter-spacing:-0.5px; font-family:'DM Sans',sans-serif; }
+  .home-stats-panel .hsp-card-foot { font-size:11px; color:var(--text-tertiary); margin-top:8px; }
+  .home-stats-panel .hsp-bar { height:5px; background:var(--surface2); border-radius:3px; overflow:hidden; margin-top:10px; }
   .home-stats-panel .hsp-bar-fill { height:100%; border-radius:3px; }
+  .home-stats-panel .hsp-proj-row { display:flex; gap:18px; }
+  .home-stats-panel .hsp-proj-num { font-size:22px; font-weight:800; color:#fff; line-height:1.1; letter-spacing:-0.5px; font-family:'DM Sans',sans-serif; }
+  .home-stats-panel .hsp-proj-mlabel { font-size:10px; color:#AFA9EC; }
   .home-greeting { margin-bottom:28px; }
   .home-greeting h1 { font-size:22px; font-weight:600; color:var(--text); margin-bottom:4px; }
   .home-greeting p { font-size:13px; color:var(--text-secondary); }
@@ -875,8 +871,32 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </a>
 
-      <div class="home-layout">
-        <div class="home-layout-main">
+      <!-- PREGLED 2026 — vodoravni trak (samo desktop ≥1280px) -->
+      <div id="homeStatsPanel" class="home-stats-panel">
+        <div class="hsp-card">
+          <div class="hsp-card-label">📦 Naročila 2026</div>
+          <div class="hsp-card-num" id="hspOrders">—</div>
+          <div class="hsp-bar"><div class="hsp-bar-fill" id="hspOrdersBar" style="width:0%;background:#378ADD"></div></div>
+        </div>
+        <div class="hsp-card">
+          <div class="hsp-card-label">💰 Promet 2026</div>
+          <div class="hsp-card-num" id="hspRevenue">—</div>
+          <div class="hsp-bar"><div class="hsp-bar-fill" id="hspRevenueBar" style="width:0%;background:#1D9E75"></div></div>
+        </div>
+        <div class="hsp-card">
+          <div class="hsp-card-label">🏆 Najboljši dan</div>
+          <div class="hsp-card-num" id="hspBestDay">—</div>
+          <div class="hsp-card-foot"><span id="hspBestDayOrders">—</span> · <span id="hspBestDate"></span></div>
+        </div>
+        <div class="hsp-card hsp-card-proj">
+          <div class="hsp-card-label" style="color:#CECBF6">📈 Napoved 2026 · projekcija</div>
+          <div class="hsp-proj-row">
+            <div><div class="hsp-proj-num" id="hspProjOrders">—</div><div class="hsp-proj-mlabel">naročil</div></div>
+            <div><div class="hsp-proj-num" id="hspProjRevenue">—</div><div class="hsp-proj-mlabel">prometa</div></div>
+          </div>
+        </div>
+      </div>
+
       <div style="margin-bottom:24px">
         <div class="home-section-label" id="homeFirstSection">Oglaševanje</div>
         <div class="home-grid">
@@ -1030,35 +1050,6 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
         </div>
       </div>
-        </div><!-- /home-layout-main -->
-        <!-- DESNI PANEL: pregled 2026 (samo desktop ≥1280px) -->
-        <div id="homeStatsPanel" class="home-stats-panel">
-          <div class="hsp-title">PREGLED 2026</div>
-          <div class="hsp-proj">
-            <div class="hsp-proj-label">NAPOVED 2026 · projekcija</div>
-            <div class="hsp-proj-metric">
-              <div class="hsp-proj-mlabel">📦 Naročila</div>
-              <div class="hsp-proj-num" id="hspProjOrders">—</div>
-            </div>
-            <div class="hsp-proj-metric" style="margin-bottom:0">
-              <div class="hsp-proj-mlabel">💰 Promet</div>
-              <div class="hsp-proj-num" id="hspProjRevenue">—</div>
-            </div>
-          </div>
-          <div class="hsp-row">
-            <div class="hsp-field">
-              <div class="hsp-field-label">Naročila</div>
-              <div class="hsp-field-num" id="hspOrders">—</div>
-              <div class="hsp-bar"><div class="hsp-bar-fill" id="hspOrdersBar" style="width:0%;background:#378ADD"></div></div>
-            </div>
-            <div class="hsp-field">
-              <div class="hsp-field-label">Promet</div>
-              <div class="hsp-field-num" id="hspRevenue">—</div>
-              <div class="hsp-bar"><div class="hsp-bar-fill" id="hspRevenueBar" style="width:0%;background:#1D9E75"></div></div>
-            </div>
-          </div>
-        </div>
-      </div><!-- /home-layout -->
     </div><!-- /home-wrap -->
   </div><!-- /page-home -->
 
@@ -4668,6 +4659,12 @@ async function homeLoadStats() {
     const pctR = d.projection_revenue > 0 ? Math.min(100, Math.round(d.total_revenue / d.projection_revenue * 100)) : 0;
     document.getElementById('hspOrdersBar').style.width = pctO + '%';
     document.getElementById('hspRevenueBar').style.width = pctR + '%';
+    // najboljši dan — znesek (rekord) + spodaj število naročil + datum
+    if (d.best_day) {
+      document.getElementById('hspBestDay').textContent = fmtM(d.best_day.revenue);
+      document.getElementById('hspBestDayOrders').textContent = fmtN(d.best_day.orders) + ' nar.';
+      document.getElementById('hspBestDate').textContent = d.best_day.date_fmt;
+    }
   } catch(e) {}
 }
 
