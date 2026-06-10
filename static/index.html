@@ -6083,21 +6083,26 @@ async function kQueueLoad() {
     const res = await fetch('/kreative-queue');
     const data = await res.json();
     kQueue = Array.isArray(data) ? data : [];
-    // opravila, ki so bila "running" ob osvežitvi, vrnemo na "waiting" (slike niso shranjene)
-    kQueue.forEach(j => { if (j.status === 'running') j.status = j.images && j.images.length ? 'waiting' : 'error'; if(j.status==='error'&&!j.error) j.error='Po osvežitvi — ponovno dodaj'; });
+    // running ob osvežitvi → nazaj na waiting (ni dokončano); done ostane (slike so na strežniku)
+    kQueue.forEach(j => {
+      if (j.status === 'running') j.status = (j.images && j.images.length) ? 'waiting' : 'error';
+      if (!j.results) j.results = [];  // slike se naložijo iz strežnika ob kliku
+    });
   } catch(e) { kQueue = []; }
   kQueueRender();
   kQueueProcess();
 }
 
 async function kQueueSave() {
-  // shranimo opise (z images, da F5 preživi — a brez rezultatov, ki so veliki)
+  // shranimo opise (z images=referenčne slike, da F5 preživi — rezultati so v ločenih datotekah)
   try {
     const lite = kQueue.map(j => ({
       id: j.id, name: j.name, productName: j.productName,
       aOpts: j.aOpts, bOpts: j.bOpts, count: j.count, images: j.images,
       status: j.status === 'done' ? 'done' : (j.status === 'error' ? 'error' : 'waiting'),
-      error: j.error || null, date: j.date, resultCount: (j.results||[]).length
+      error: j.error || null, date: j.date,
+      resultCount: j.resultCount || (j.results||[]).flatMap(r=>r.images||[]).filter(Boolean).length || 0,
+      thumb: j.thumb || ((j.results||[]).flatMap(r=>r.images||[]).find(Boolean)) || ''
     }));
     await fetch('/kreative-queue', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({queue: lite})});
   } catch(e) {}
@@ -6164,8 +6169,15 @@ async function kQueueProcess() {
     if (data.error) throw new Error(data.error);
     next.results = data.results || [];
     next.status = 'done';
+    next.resultCount = next.results.flatMap(r => r.images||[]).filter(Boolean).length;
+    next.thumb = next.results.flatMap(r => r.images||[]).find(Boolean) || '';
+    // shrani slike na strežnik (preživi F5)
+    try {
+      await fetch('/kreative-queue-images', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id: next.id, results: next.results})});
+    } catch(e) {}
     // shrani v zgodovino kreativ (kot običajen generate)
-    const firstImg = next.results.flatMap(r => r.images||[]).find(Boolean);
+    const firstImg = next.thumb;
     if (firstImg && typeof kSaveToHistory === 'function') {
       kSaveToHistory(next.url || ('queue:'+next.id), next.name, next.aOpts, next.bOpts);
     }
@@ -6180,21 +6192,33 @@ async function kQueueProcess() {
   kQueueProcess();  // (poskusi zapolniti do CONCURRENCY)
 }
 
-function kQueueShowResults(id) {
+async function kQueueShowResults(id) {
   const job = kQueue.find(j => j.id === id);
   if (!job || job.status !== 'done') return;
+  // po F5 so results prazni — naloži iz strežnika
+  if (!job.results || !job.results.length) {
+    try {
+      const res = await fetch('/kreative-queue-images/' + encodeURIComponent(id));
+      const d = await res.json();
+      job.results = d.results || [];
+    } catch(e) {}
+  }
   if (typeof krSwitchTab === 'function') krSwitchTab('gemini');
   kRenderResults(job.results);
-  document.getElementById('kResultCount').textContent = (job.results||[]).length + ' kombinacij · ' + job.name;
+  document.getElementById('kResultCount').textContent = (job.results||[]).flatMap(r=>r.images||[]).filter(Boolean).length + ' slik · ' + job.name;
   setTimeout(() => document.getElementById('kResultsGrid')?.scrollIntoView({behavior:'smooth', block:'start'}), 100);
 }
 
 function kQueueRemove(id) {
+  try { fetch('/kreative-queue-images/' + encodeURIComponent(id), {method:'DELETE'}); } catch(e) {}
   kQueue = kQueue.filter(j => j.id !== id);
   kQueueSave(); kQueueRender();
 }
 
 function kQueueClearDone() {
+  kQueue.filter(j => j.status === 'done').forEach(j => {
+    try { fetch('/kreative-queue-images/' + encodeURIComponent(j.id), {method:'DELETE'}); } catch(e) {}
+  });
   kQueue = kQueue.filter(j => j.status !== 'done');
   kQueueSave(); kQueueRender();
 }
@@ -6214,6 +6238,16 @@ async function kSavedLoad() {
 async function kSaveJob(id) {
   const job = kQueue.find(j => j.id === id);
   if (!job || job.status !== 'done') return;
+  // po F5 so results prazni — naloži iz strežnika pred shranjevanjem
+  if (!job.results || !job.results.length) {
+    try {
+      const res = await fetch('/kreative-queue-images/' + encodeURIComponent(id));
+      const d = await res.json();
+      job.results = d.results || [];
+    } catch(e) {}
+  }
+  const imgCount = (job.results||[]).flatMap(r=>r.images||[]).filter(Boolean).length;
+  if (!imgCount) { alert('Te kreative ni mogoče shraniti — slike niso na voljo.'); return; }
   try {
     const res = await fetch('/kreative-saved', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -6226,7 +6260,8 @@ async function kSaveJob(id) {
     const d = await res.json();
     if (d.error) throw new Error(d.error);
     await kSavedLoad();
-    // odstrani iz aktivne vrste (zdaj je trajno shranjeno)
+    // odstrani iz aktivne vrste + počisti začasne slike vrste
+    try { await fetch('/kreative-queue-images/' + encodeURIComponent(id), {method:'DELETE'}); } catch(e) {}
     kQueue = kQueue.filter(j => j.id !== id);
     kQueueSave(); kQueueRender();
   } catch(e) {
