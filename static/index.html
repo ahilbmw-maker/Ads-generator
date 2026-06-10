@@ -1407,12 +1407,9 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div id="kComboPreview" style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px"></div>
             <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;padding:8px 10px;background:var(--bg-secondary);border-radius:var(--radius)">💡 Procesor izbereš pri vsakem ozadju (B) zgoraj: ⚡ Nano Banana 2 · ✨ Pro · 🟢 GPT Image 2</div>
             <div style="display:flex;gap:8px">
-              <button class="btn-gen" id="kGenBtn" onclick="kGenerate()" style="flex:1">
+              <button class="btn-gen" id="kQueueAddBtn" onclick="kQueueAdd()" style="flex:1" title="Doda izdelek v vrsto in takoj začne generirati">
                 <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                Generiraj zdaj
-              </button>
-              <button class="btn-gen" id="kQueueAddBtn" onclick="kQueueAdd()" style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--accent)" title="Dodaj izdelek v čakalno vrsto in nadaljuj z naslednjim">
-                ➕ Dodaj v vrsto
+                ➕ Dodaj v vrsto in generiraj
               </button>
             </div>
             <div id="kQueueAddHint" style="display:none;margin-top:8px;font-size:12px;color:#16a34a;text-align:center;font-weight:600">✓ Dodano v vrsto — glej zavihek "⏳ Vrsta" zgoraj</div>
@@ -6090,13 +6087,13 @@ function kRenderUploadedImages() {
 }
 
 function kUpdateGenBtnState() {
-  const btn = document.getElementById('kGenBtn');
+  const btn = document.getElementById('kQueueAddBtn');
   if (!btn) return;
   const hasImages = kSelectedImages.length > 0;
   btn.disabled = !hasImages;
   btn.style.opacity = hasImages ? '1' : '0.4';
   btn.style.cursor = hasImages ? 'pointer' : 'not-allowed';
-  btn.title = hasImages ? '' : 'Najprej dodaj vsaj 1 referenčno sliko izdelka';
+  btn.title = hasImages ? 'Doda izdelek v vrsto in takoj začne generirati' : 'Najprej dodaj vsaj 1 referenčno sliko izdelka';
 }
 
 function kRemoveUploaded(idx) {
