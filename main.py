@@ -2582,6 +2582,69 @@ def zaloga_page():
     return FileResponse("static/zaloga.html")
 
 
+# ═══ OBVESTILA (in-app "kaj je novega") + /admin ═══
+NOTICES_FILE = DATA_DIR / "notices.json"
+
+def _notices_load():
+    if NOTICES_FILE.exists():
+        try:
+            return json.loads(NOTICES_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+def _notices_write(items):
+    NOTICES_FILE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+
+@app.get("/notices")
+async def notices_get(scope: str = "all"):
+    """Vrne objavljena obvestila. scope: 'zaloga' | 'index' | 'all'.
+    Vrne obvestila, ki ciljajo na ta scope (ali 'both')."""
+    items = _notices_load()
+    if scope and scope != "all":
+        items = [n for n in items if n.get("scope") in (scope, "both")]
+    # najnovejša najprej
+    items = sorted(items, key=lambda n: n.get("created_at", ""), reverse=True)
+    return {"ok": True, "notices": items}
+
+@app.post("/notices")
+async def notices_save(data: dict):
+    """Admin: dodaj ali izbriši obvestilo. action: 'add' | 'remove'."""
+    try:
+        items = _notices_load()
+        action = data.get("action", "add")
+        if action == "remove":
+            nid = (data.get("id") or "").strip()
+            items = [n for n in items if n.get("id") != nid]
+            _notices_write(items)
+            return {"ok": True, "notices": items}
+        # add
+        n = data.get("notice") or {}
+        title = (n.get("title") or "").strip()
+        body = (n.get("body") or "").strip()
+        if not title and not body:
+            return {"ok": False, "error": "Manjka naslov ali besedilo."}
+        scope = n.get("scope") or "zaloga"
+        if scope not in ("zaloga", "index", "both"):
+            scope = "zaloga"
+        icon = (n.get("icon") or "📢").strip()[:4] or "📢"
+        nid = "n" + str(int(datetime.now().timestamp())) + "".join(c for c in title[:8] if c.isalnum())
+        items.append({
+            "id": nid, "icon": icon, "title": title, "body": body,
+            "scope": scope, "created_at": datetime.now().isoformat(),
+            "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        })
+        _notices_write(items)
+        return {"ok": True, "id": nid, "notices": items}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page():
+    return FileResponse("static/admin.html")
+
+
 # ═══ RVC Maaarket ═══
 def _rvc_num(s):
     """Parsira evropski zapis '4.440,69 €' → 4440.69. Vrne None če ni številka."""
