@@ -5917,6 +5917,42 @@ function cpIco(){return`<svg viewBox="0 0 24 24" style="width:11px;height:11px;s
 function flash(id){const el=document.getElementById(id);if(!el)return;el.style.borderColor='var(--red)';el.focus();setTimeout(()=>el.style.borderColor='',1500);}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
+async function showAppNews() {
+  let notices = [];
+  try {
+    const r = await fetch('/notices?scope=index');
+    const d = await r.json();
+    notices = (d && d.notices) || [];
+  } catch(e) { return; }
+  if (!notices.length) return;
+  let seen = [];
+  try { seen = JSON.parse(localStorage.getItem('slx_news_seen') || '[]'); } catch(e) { seen = []; }
+  const pending = notices.filter(n => !seen.includes(n.id));
+  if (!pending.length) return;
+  const n = pending[pending.length - 1];
+  const ov = document.createElement('div');
+  ov.id = 'appNewsOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.onclick = () => dismissAppNews(n.id);
+  ov.innerHTML = '<div onclick="event.stopPropagation()" style="background:var(--surface,#fff);border-radius:16px;padding:26px 24px;width:360px;max-width:92vw;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.2)">'
+    + '<div style="font-size:42px;line-height:1">' + esc(n.icon||'📢') + '</div>'
+    + '<div style="font-size:18px;font-weight:800;color:var(--text,#1e293b);margin:8px 0 6px">' + esc(n.title||'') + '</div>'
+    + '<div style="font-size:14px;color:var(--text-secondary,#64748b);line-height:1.6">' + esc(n.body||'') + '</div>'
+    + '<button onclick="dismissAppNews(\'' + n.id + '\')" style="margin-top:16px;background:var(--accent,#3a6fff);color:#fff;border:none;padding:12px 30px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">Razumem 👍</button>'
+    + '</div>';
+  document.body.appendChild(ov);
+}
+
+function dismissAppNews(id) {
+  let seen = [];
+  try { seen = JSON.parse(localStorage.getItem('slx_news_seen') || '[]'); } catch(e) { seen = []; }
+  if (!seen.includes(id)) seen.push(id);
+  try { localStorage.setItem('slx_news_seen', JSON.stringify(seen)); } catch(e) {}
+  const o = document.getElementById('appNewsOverlay');
+  if (o) o.remove();
+  setTimeout(showAppNews, 250);
+}
+
 // ── KREATIVE ──
 let kProductData = null;
 let kSelectedA = [];
@@ -8683,7 +8719,7 @@ async function lokHandleFilesFromQueue(files) {
   if (typeof lokUpdateCount === 'function') lokUpdateCount();
 }
 
-updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();kQueueLoad();kSavedLoad();narcLoadHistory();karanLoadHistory();vadsLoadHistory();narcRenderLangFilter();setMetaWide(true);ttCreativeLoadInfo();
+updateMeta();renderH();ttRenderHistory();ttLoadHistory();metaLoadServerHistory();kLoadHistory();kQueueLoad();kSavedLoad();narcLoadHistory();karanLoadHistory();vadsLoadHistory();narcRenderLangFilter();setMetaWide(true);ttCreativeLoadInfo();setTimeout(showAppNews,1000);
 
 // Drag & drop + SKU click — direktno, brez DOMContentLoaded
 (function(){
