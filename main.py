@@ -4362,6 +4362,11 @@ async def save_kreative_history(data: dict):
 
 
 KREATIVE_QUEUE_FILE = DATA_DIR / "kreative_queue.json"
+KREATIVE_QUEUE_IMG_DIR = DATA_DIR / "kreative_queue_imgs"
+KREATIVE_QUEUE_IMG_DIR.mkdir(exist_ok=True, parents=True)
+
+def _qimg_safe_id(jid):
+    return "".join(c for c in str(jid) if c.isalnum() or c in "-_")[:64]
 
 @app.get("/kreative-queue")
 async def get_kreative_queue():
@@ -4379,6 +4384,45 @@ async def save_kreative_queue(data: dict):
         queue = data.get("queue", [])
         KREATIVE_QUEUE_FILE.write_text(json.dumps(queue, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"status": "ok", "count": len(queue)}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/kreative-queue-images")
+async def save_kreative_queue_images(data: dict):
+    """Shrani slike (results) enega opravila vrste v svojo datoteko (preživi F5)."""
+    try:
+        jid = _qimg_safe_id(data.get("id") or "")
+        results = data.get("results") or []
+        if not jid:
+            return JSONResponse({"error": "Manjka ID"}, status_code=400)
+        (KREATIVE_QUEUE_IMG_DIR / f"{jid}.json").write_text(
+            json.dumps({"results": results}, ensure_ascii=False), encoding="utf-8")
+        count = sum(len(r.get("images") or []) for r in results)
+        return {"ok": True, "id": jid, "count": count}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/kreative-queue-images/{jid}")
+async def get_kreative_queue_images(jid: str):
+    """Naloži slike enega opravila vrste (ob kliku / po F5)."""
+    sid = _qimg_safe_id(jid)
+    f = KREATIVE_QUEUE_IMG_DIR / f"{sid}.json"
+    if not f.exists():
+        return {"results": []}
+    try:
+        return json.loads(f.read_text(encoding="utf-8"))
+    except Exception:
+        return {"results": []}
+
+@app.delete("/kreative-queue-images/{jid}")
+async def del_kreative_queue_images(jid: str):
+    sid = _qimg_safe_id(jid)
+    try:
+        f = KREATIVE_QUEUE_IMG_DIR / f"{sid}.json"
+        if f.exists():
+            f.unlink()
+        return {"ok": True}
     except Exception as e:
         return {"error": str(e)}
 
