@@ -540,7 +540,7 @@ input[type="text"].error { border-color: var(--red) !important; }
   .nav-expand-btn.open { background:var(--accent); border-color:var(--accent); color:#fff; }
 
   /* ── HOME PAGE ── */
-  .home-wrap { padding:28px 24px; width:100%; }
+  .home-wrap { padding:28px 24px; width:100%; max-width:1920px; }
 
   /* Desni panel s števci 2026 — samo desktop ≥1280px */
   .home-stats-panel { display:none; }
@@ -551,9 +551,10 @@ input[type="text"].error { border-color: var(--red) !important; }
   }
   .home-stats-panel .hsp-title { font-size:12px; font-weight:700; color:var(--text-tertiary); letter-spacing:0.4px; margin-bottom:12px; padding-left:2px; }
   .home-stats-panel .hsp-proj { background:#534AB7; border-radius:14px; padding:16px; margin-bottom:10px; }
-  .home-stats-panel .hsp-proj-label { font-size:11px; color:#CECBF6; margin-bottom:4px; }
-  .home-stats-panel .hsp-proj-num { font-size:30px; font-weight:800; color:#fff; line-height:1; letter-spacing:-0.5px; font-family:'DM Sans',sans-serif; }
-  .home-stats-panel .hsp-proj-sub { font-size:12px; color:#AFA9EC; margin-top:4px; }
+  .home-stats-panel .hsp-proj-label { font-size:10px; color:#CECBF6; letter-spacing:0.5px; margin-bottom:12px; }
+  .home-stats-panel .hsp-proj-metric { margin-bottom:12px; }
+  .home-stats-panel .hsp-proj-mlabel { font-size:11px; color:#CECBF6; margin-bottom:2px; }
+  .home-stats-panel .hsp-proj-num { font-size:28px; font-weight:800; color:#fff; line-height:1; letter-spacing:-0.5px; font-family:'DM Sans',sans-serif; }
   .home-stats-panel .hsp-row { display:flex; gap:8px; }
   .home-stats-panel .hsp-field { flex:1; background:var(--surface2); border-radius:10px; padding:12px; }
   .home-stats-panel .hsp-field-label { font-size:11px; color:var(--text-tertiary); }
@@ -1035,8 +1036,14 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div class="hsp-title">PREGLED 2026</div>
           <div class="hsp-proj">
             <div class="hsp-proj-label">NAPOVED 2026 · projekcija</div>
-            <div class="hsp-proj-num" id="hspProjOrders">—</div>
-            <div class="hsp-proj-sub" id="hspProjRevenue">naročil · projekcija prometa</div>
+            <div class="hsp-proj-metric">
+              <div class="hsp-proj-mlabel">📦 Naročila</div>
+              <div class="hsp-proj-num" id="hspProjOrders">—</div>
+            </div>
+            <div class="hsp-proj-metric" style="margin-bottom:0">
+              <div class="hsp-proj-mlabel">💰 Promet</div>
+              <div class="hsp-proj-num" id="hspProjRevenue">—</div>
+            </div>
           </div>
           <div class="hsp-row">
             <div class="hsp-field">
@@ -4652,7 +4659,7 @@ async function homeLoadStats() {
     const fmtM = n => (n >= 1000000 ? (n/1000000).toFixed(2).replace('.',',') + ' M€' : fmtE(n));
     // napoved (projekcija)
     document.getElementById('hspProjOrders').textContent = fmtN(d.projection_orders);
-    document.getElementById('hspProjRevenue').textContent = 'naročil · ' + fmtM(d.projection_revenue) + ' prometa';
+    document.getElementById('hspProjRevenue').textContent = fmtM(d.projection_revenue);
     // doseženo
     document.getElementById('hspOrders').textContent = fmtN(d.total_orders);
     document.getElementById('hspRevenue').textContent = fmtM(d.total_revenue);
