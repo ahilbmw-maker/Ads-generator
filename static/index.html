@@ -542,14 +542,13 @@ input[type="text"].error { border-color: var(--red) !important; }
   /* ── HOME PAGE ── */
   .home-wrap { padding:28px 24px; width:100%; }
 
-  /* Desni panel s števci 2026 — samo desktop ≥1200px */
+  /* Desni panel s števci 2026 — samo desktop ≥1280px (na desni je dovolj prostora) */
   .home-stats-panel { display:none; }
-  @media(min-width:1200px) {
+  @media(min-width:1280px) {
     #page-home { position:relative; }
     .home-stats-panel {
-      display:block; position:absolute; top:28px; right:24px; width:270px;
+      display:block; position:absolute; top:104px; right:28px; width:250px;
     }
-    .home-wrap { padding-right:312px; }
   }
   .home-stats-panel .hsp-title { font-size:12px; font-weight:700; color:var(--text-tertiary); letter-spacing:0.4px; margin-bottom:12px; padding-left:2px; }
   .home-stats-panel .hsp-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:12px; }
@@ -874,7 +873,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       </a>
 
       <div style="margin-bottom:24px">
-        <div class="home-section-label">Oglaševanje</div>
+        <div class="home-section-label" id="homeFirstSection">Oglaševanje</div>
         <div class="home-grid">
           <div class="home-tile" style="border-left-color:#1877F2" onclick="switchPage('meta')">
             <div class="ht-icon">📣</div>
@@ -4634,9 +4633,22 @@ function homeUpdateDate() {
   homeLoadStats();
 }
 
+function homeAlignStatsPanel() {
+  const panel = document.getElementById('homeStatsPanel');
+  const sect = document.getElementById('homeFirstSection');
+  const page = document.getElementById('page-home');
+  if (!panel || !sect || !page) return;
+  if (window.innerWidth < 1280) return;  // panel skrit pod to širino
+  // top panela = razdalja sekcije Oglaševanje od vrha page-home
+  const top = sect.offsetTop;
+  panel.style.top = top + 'px';
+}
+window.addEventListener('resize', homeAlignStatsPanel);
+
 async function homeLoadStats() {
   const panel = document.getElementById('homeStatsPanel');
   if (!panel) return;
+  homeAlignStatsPanel();
   try {
     const r = await fetch('/forecast2-stats?year=2026');
     const d = await r.json();
