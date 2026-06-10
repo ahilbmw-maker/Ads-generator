@@ -542,22 +542,24 @@ input[type="text"].error { border-color: var(--red) !important; }
   /* ── HOME PAGE ── */
   .home-wrap { padding:28px 24px; width:100%; }
 
-  /* Desni panel s števci 2026 — samo desktop ≥1280px (na desni je dovolj prostora) */
+  /* Desni panel s števci 2026 — samo desktop ≥1280px */
   .home-stats-panel { display:none; }
   @media(min-width:1280px) {
-    #page-home { position:relative; }
-    .home-stats-panel {
-      display:block; position:absolute; top:104px; right:28px; width:250px;
-    }
+    .home-layout { display:flex; gap:24px; align-items:flex-start; }
+    .home-layout-main { flex:1; min-width:0; }
+    .home-stats-panel { display:block; width:280px; flex-shrink:0; }
   }
   .home-stats-panel .hsp-title { font-size:12px; font-weight:700; color:var(--text-tertiary); letter-spacing:0.4px; margin-bottom:12px; padding-left:2px; }
-  .home-stats-panel .hsp-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:12px; }
-  .home-stats-panel .hsp-card-proj { border-color:rgba(83,74,183,0.35); background:rgba(83,74,183,0.04); }
-  .home-stats-panel .hsp-card-head { display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; color:var(--text-secondary); }
-  .home-stats-panel .hsp-ico { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
-  .home-stats-panel .hsp-num { font-size:32px; font-weight:800; color:var(--text); line-height:1; letter-spacing:-0.5px; font-family:'DM Sans',sans-serif; }
-  .home-stats-panel .hsp-sub { font-size:12px; color:var(--text-tertiary); margin-top:6px; }
-  .home-stats-panel .hsp-foot { font-size:11px; color:var(--text-tertiary); text-align:center; padding:4px; }
+  .home-stats-panel .hsp-proj { background:#534AB7; border-radius:14px; padding:16px; margin-bottom:10px; }
+  .home-stats-panel .hsp-proj-label { font-size:11px; color:#CECBF6; margin-bottom:4px; }
+  .home-stats-panel .hsp-proj-num { font-size:30px; font-weight:800; color:#fff; line-height:1; letter-spacing:-0.5px; font-family:'DM Sans',sans-serif; }
+  .home-stats-panel .hsp-proj-sub { font-size:12px; color:#AFA9EC; margin-top:4px; }
+  .home-stats-panel .hsp-row { display:flex; gap:8px; }
+  .home-stats-panel .hsp-field { flex:1; background:var(--surface2); border-radius:10px; padding:12px; }
+  .home-stats-panel .hsp-field-label { font-size:11px; color:var(--text-tertiary); }
+  .home-stats-panel .hsp-field-num { font-size:19px; font-weight:700; color:var(--text); margin-top:2px; font-family:'DM Sans',sans-serif; }
+  .home-stats-panel .hsp-bar { height:5px; background:var(--surface); border-radius:3px; overflow:hidden; margin-top:8px; }
+  .home-stats-panel .hsp-bar-fill { height:100%; border-radius:3px; }
   .home-greeting { margin-bottom:28px; }
   .home-greeting h1 { font-size:22px; font-weight:600; color:var(--text); margin-bottom:4px; }
   .home-greeting p { font-size:13px; color:var(--text-secondary); }
@@ -872,6 +874,8 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </a>
 
+      <div class="home-layout">
+        <div class="home-layout-main">
       <div style="margin-bottom:24px">
         <div class="home-section-label" id="homeFirstSection">Oglaševanje</div>
         <div class="home-grid">
@@ -1025,27 +1029,30 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
         </div>
       </div>
-    </div>
-    <!-- DESNI PANEL: pregled 2026 (samo desktop ≥1200px) -->
-    <div id="homeStatsPanel" class="home-stats-panel">
-      <div class="hsp-title">PREGLED 2026</div>
-      <div class="hsp-card">
-        <div class="hsp-card-head"><span class="hsp-ico" style="background:rgba(55,138,221,0.14);color:#185FA5">📦</span><span>Naročila v 2026</span></div>
-        <div class="hsp-num" id="hspOrders">—</div>
-        <div class="hsp-sub" id="hspOrdersSub">nalagam...</div>
-      </div>
-      <div class="hsp-card">
-        <div class="hsp-card-head"><span class="hsp-ico" style="background:rgba(29,158,117,0.14);color:#0F6E56">💰</span><span>Promet v 2026</span></div>
-        <div class="hsp-num" id="hspRevenue">—</div>
-        <div class="hsp-sub">doseženo do danes</div>
-      </div>
-      <div class="hsp-card hsp-card-proj">
-        <div class="hsp-card-head"><span class="hsp-ico" style="background:rgba(83,74,183,0.16);color:#534AB7">📈</span><span>Napoved 2026 (projekcija)</span></div>
-        <div class="hsp-num" id="hspProjOrders">—</div>
-        <div class="hsp-sub" id="hspProjRevenue">naročil · projekcija prometa</div>
-      </div>
-      <div class="hsp-foot">↻ samodejno iz napovedi</div>
-    </div>
+        </div><!-- /home-layout-main -->
+        <!-- DESNI PANEL: pregled 2026 (samo desktop ≥1280px) -->
+        <div id="homeStatsPanel" class="home-stats-panel">
+          <div class="hsp-title">PREGLED 2026</div>
+          <div class="hsp-proj">
+            <div class="hsp-proj-label">NAPOVED 2026 · projekcija</div>
+            <div class="hsp-proj-num" id="hspProjOrders">—</div>
+            <div class="hsp-proj-sub" id="hspProjRevenue">naročil · projekcija prometa</div>
+          </div>
+          <div class="hsp-row">
+            <div class="hsp-field">
+              <div class="hsp-field-label">Naročila</div>
+              <div class="hsp-field-num" id="hspOrders">—</div>
+              <div class="hsp-bar"><div class="hsp-bar-fill" id="hspOrdersBar" style="width:0%;background:#378ADD"></div></div>
+            </div>
+            <div class="hsp-field">
+              <div class="hsp-field-label">Promet</div>
+              <div class="hsp-field-num" id="hspRevenue">—</div>
+              <div class="hsp-bar"><div class="hsp-bar-fill" id="hspRevenueBar" style="width:0%;background:#1D9E75"></div></div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /home-layout -->
+    </div><!-- /home-wrap -->
   </div><!-- /page-home -->
 
   <!-- ═══ META PAGE ═══ -->
@@ -4633,22 +4640,9 @@ function homeUpdateDate() {
   homeLoadStats();
 }
 
-function homeAlignStatsPanel() {
-  const panel = document.getElementById('homeStatsPanel');
-  const sect = document.getElementById('homeFirstSection');
-  const page = document.getElementById('page-home');
-  if (!panel || !sect || !page) return;
-  if (window.innerWidth < 1280) return;  // panel skrit pod to širino
-  // top panela = razdalja sekcije Oglaševanje od vrha page-home
-  const top = sect.offsetTop;
-  panel.style.top = top + 'px';
-}
-window.addEventListener('resize', homeAlignStatsPanel);
-
 async function homeLoadStats() {
   const panel = document.getElementById('homeStatsPanel');
   if (!panel) return;
-  homeAlignStatsPanel();
   try {
     const r = await fetch('/forecast2-stats?year=2026');
     const d = await r.json();
@@ -4656,11 +4650,17 @@ async function homeLoadStats() {
     const fmtN = n => Math.round(n||0).toLocaleString('sl-SI');
     const fmtE = n => Math.round(n||0).toLocaleString('sl-SI') + ' €';
     const fmtM = n => (n >= 1000000 ? (n/1000000).toFixed(2).replace('.',',') + ' M€' : fmtE(n));
-    document.getElementById('hspOrders').textContent = fmtN(d.total_orders);
-    document.getElementById('hspOrdersSub').textContent = 'iz napovedi · ' + (d.days_counted||0) + ' dni';
-    document.getElementById('hspRevenue').textContent = fmtM(d.total_revenue);
+    // napoved (projekcija)
     document.getElementById('hspProjOrders').textContent = fmtN(d.projection_orders);
     document.getElementById('hspProjRevenue').textContent = 'naročil · ' + fmtM(d.projection_revenue) + ' prometa';
+    // doseženo
+    document.getElementById('hspOrders').textContent = fmtN(d.total_orders);
+    document.getElementById('hspRevenue').textContent = fmtM(d.total_revenue);
+    // bari (doseženo / napoved), brez odstotka — samo vizualno
+    const pctO = d.projection_orders > 0 ? Math.min(100, Math.round(d.total_orders / d.projection_orders * 100)) : 0;
+    const pctR = d.projection_revenue > 0 ? Math.min(100, Math.round(d.total_revenue / d.projection_revenue * 100)) : 0;
+    document.getElementById('hspOrdersBar').style.width = pctO + '%';
+    document.getElementById('hspRevenueBar').style.width = pctR + '%';
   } catch(e) {}
 }
 
