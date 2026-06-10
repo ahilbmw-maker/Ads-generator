@@ -12836,6 +12836,20 @@ async def forecast2_stats(year: int = 2026):
             aov = total_revenue / max(1, total_orders)
             proj_orders = int(round(proj_revenue / aov)) if aov else total_orders
 
+        # AOV (povprečna vrednost naročila) — vedno
+        aov_value = (total_revenue / total_orders) if total_orders > 0 else 0
+        # najboljši dan (največ naročil)
+        best_day = None
+        if day_rows:
+            bd = max(day_rows, key=lambda r: r[1])
+            # lep zapis datuma DD.MM.YYYY
+            try:
+                y, mo, dy = bd[0].split("-")
+                best_date_fmt = f"{int(dy)}.{int(mo)}.{y}"
+            except Exception:
+                best_date_fmt = bd[0]
+            best_day = {"date": bd[0], "date_fmt": best_date_fmt, "orders": bd[1], "revenue": round(bd[2], 2)}
+
         return {
             "ok": True, "year": year,
             "total_orders": total_orders,
@@ -12843,6 +12857,8 @@ async def forecast2_stats(year: int = 2026):
             "days_counted": days_counted,
             "projection_orders": proj_orders,
             "projection_revenue": round(proj_revenue, 2),
+            "aov": round(aov_value, 2),
+            "best_day": best_day,
         }
     except Exception as e:
         import traceback; traceback.print_exc()
