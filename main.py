@@ -7230,11 +7230,17 @@ async def zaloga_sync_siluxar():
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
     url = "https://www.siluxar.si/apistockexport"
-    # 1) potegni s siluxar — Basic Auth (web strežnik) + ključ v X-API-Key (aplikacija)
-    _auth = httpx.BasicAuth(basic_user, basic_pass) if (basic_user or basic_pass) else None
+    # Avtentikacija: Markov ključ gre v Authorization glavo (kot v programerjevem curl).
+    # Če sta nastavljena Basic user/pass IN ni ključa, uporabi Basic Auth (fallback).
+    headers = {}
+    _auth = None
+    if key:
+        headers["Authorization"] = key
+    elif basic_user or basic_pass:
+        _auth = httpx.BasicAuth(basic_user, basic_pass)
     try:
         async with httpx.AsyncClient(timeout=90, auth=_auth) as cli:
-            r = await cli.get(url, headers={"X-API-Key": key})
+            r = await cli.get(url, headers=headers)
     except Exception as e:
         return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}"}
     if r.status_code != 200:
@@ -7314,6 +7320,7 @@ async def zaloga_sync_siluxar():
         pos   = (row.get(pos_col) or '').strip() if pos_col else ''
         note  = (row.get(note_col) or '').strip() if note_col else ''
         pid   = (row.get(id_col) or '').strip() if id_col else ''
+        sid   = (row.get(sid_col) or '').strip() if sid_col else ''   # ps.id (skrit ključ)
         if sku in existing:
             e = existing[sku]
             # posodobi stock vedno; ostalo le če pride nova vrednost
@@ -7324,18 +7331,20 @@ async def zaloga_sync_siluxar():
             if pos: e['position'] = pos
             if note: e['note'] = note
             if pid: e['product_id'] = pid
+            if sid: e['siluxar_id'] = sid
             updated += 1
         else:
             existing[sku] = {
                 'product_id': pid, 'product_sku': sku, 'title': title,
                 'stock': str(new_stock), 'stock30': str(new_s30),
                 'price': price, 'position': pos, 'note': note,
+                'siluxar_id': sid,
             }
             added += 1
 
-    # 5) shrani nazaj
+    # 5) shrani nazaj — siluxar_id je skrit ključ (v CSV, NE prikazan na frontu)
     out = _SIO()
-    fieldnames = ['product_id','product_sku','title','stock','stock30','price','position','note']
+    fieldnames = ['product_id','product_sku','title','stock','stock30','price','position','note','siluxar_id']
     writer = _csv.DictWriter(out, fieldnames=fieldnames, extrasaction='ignore')
     writer.writeheader()
     for v in existing.values():
@@ -7389,10 +7398,16 @@ async def price_stock_fetch():
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
     url = "https://www.siluxar.si/apistockalertsexport"
-    _auth = httpx.BasicAuth(basic_user, basic_pass) if (basic_user or basic_pass) else None
+    # Ključ v Authorization glavo (kot programerjev curl); Basic Auth samo kot fallback brez ključa.
+    headers = {}
+    _auth = None
+    if key:
+        headers["Authorization"] = key
+    elif basic_user or basic_pass:
+        _auth = httpx.BasicAuth(basic_user, basic_pass)
     try:
         async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
-            r = await cli.get(url, headers={"X-API-Key": key})
+            r = await cli.get(url, headers=headers)
         if r.status_code != 200:
             return {"ok": False, "error": f"siluxar.si vrnil status {r.status_code}", "status": r.status_code}
         text = r.text or ""
