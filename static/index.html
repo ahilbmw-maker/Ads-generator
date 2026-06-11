@@ -100,57 +100,62 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #zalogaHeaderWrap { display: none !important; }   /* skrij desktop glavo tabele */
   /* edge-to-edge: zmanjšaj zunanje robove, da kartice izkoristijo širino */
   #page-zaloga { margin: 0 -0.6rem !important; }      /* izniči .main horizontalni padding */
-  .zaloga-subpage-inner { padding: 10px 8px !important; gap: 8px !important; }  /* padding-top nastavi JS (_zalogaFixTopbar) */
-  #zalogaSubpage-vracila, #zalogaSubpage-skeniranje, #zalogaSubpage-pozicije { padding: 10px 8px !important; }
-  /* sub-tab nav: enakomerno razporejen, brez prelivanja */
-  .zaloga-subtab-nav { padding: 10px 12px !important; }
-  .zaloga-subtab-nav .zaloga-tab-btn { flex: 1 !important; padding: 9px 6px !important; font-size: 12px !important; }
-  /* toolbar: zloži v 2 vrstici (upload+info+filter zgoraj, iskalnik v svojo vrsto) */
-  .zaloga-toolbar { flex-wrap: wrap !important; gap: 8px !important; padding: 10px !important; }
-  .zaloga-toolbar > div[style*="width:1px"] { display: none !important; }   /* separator skrij */
-  .zaloga-toolbar > div:has(#zalogaSearch) { order: 5 !important; flex: 1 1 100% !important; }  /* iskalnik v svojo vrsto */
-  #zalogaStats { order: 6 !important; flex: 1 1 100% !important; }
+  /* ═══════════════════════════════════════════════════════════════
+     MOBILNI ZGORNJI DEL — NOVA ČISTA ARHITEKTURA (predlog 2)
+     En sam fiksni blok #zalogaMobileTopbar (iskalnik + čipke).
+     Desktop: ta blok skrit, stari tab-nav + toolbar ostaneta.
+     ═══════════════════════════════════════════════════════════════ */
 
-  /* MOBILNO: skrij skupke (kartice) + XML cache vrstico — na telefonu nepotrebno */
-  #zalogaSummaryCards { display: none !important; }
+  /* Skrij STARI tab-nav + cel toolbar (Naloži/Sinhroniziraj/checkboxi/desktop iskalnik) na mobilu */
+  .zaloga-subtab-nav { display: none !important; }
+  .zaloga-toolbar { display: none !important; }
   #zalogaXmlCacheBar { display: none !important; }
+  #zalogaSummaryCards { display: none !important; }
 
-  /* MOBILNO: skrij Naloži CSV, Obrat+Trajanje, Sinhroniziraj, Info, separator, checkboxa — ostane SAMO iskalnik */
-  #zalogaDropZone, #zalogaObratZone, #zalogaSyncBtn,
-  .zaloga-toolbar > div:has(#zalogaInfo),
-  .zaloga-mobile-hide, #zalogaStats { display: none !important; }
-
-  /* ═══ MOBILNO: TABI + ISKALNIK FIKSNA NA VRH ═══
-     position:fixed (neodvisno od starša). Točne višine/odmiki nastavi JS (_zalogaFixTopbar)
-     glede na realno izmerjeno višino — brez ugibanja magičnih števil. */
-
-  .zaloga-subtab-nav {
+  /* NOV mobilni topbar — fiksen na vrh, EN blok (iskalnik + čipke skupaj) */
+  #zalogaMobileTopbar {
+    display: block !important;
     position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important;
-    z-index: 46 !important; margin: 0 !important;
-    background: var(--surface2) !important;
-  }
-  .zaloga-subtab-nav .zaloga-tab-btn { flex: 1 !important; padding: 9px 6px !important; font-size: 12px !important; }
-
-  #zalogaStickyWrap { position: static !important; padding-bottom: 0 !important; }
-  .zaloga-toolbar {
-    padding: 0 !important; background: transparent !important;
-    border: none !important; gap: 0 !important;
-  }
-  #zalogaSearchWrap {
-    position: fixed !important; left: 0 !important; right: 0 !important;
-    z-index: 45 !important; margin: 0 !important;
-    background: var(--bg) !important; padding: 8px 10px !important;
+    z-index: 50 !important;
+    background: var(--bg) !important;
     border-bottom: 1px solid var(--border) !important;
-    /* top + vsebinski padding nastavi JS glede na realno višino tabov */
+    padding: 8px 10px 6px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04) !important;
+  }
+  .zmt-search {
+    display: flex !important; align-items: center !important; gap: 8px !important;
+    height: 46px !important; padding: 0 12px !important;
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border) !important; border-radius: 11px !important;
+  }
+  .zmt-search-ico { font-size: 17px !important; flex-shrink: 0 !important; cursor: pointer !important; color: var(--text-tertiary) !important; }
+  .zmt-search input {
+    border: none !important; background: transparent !important; flex: 1 !important;
+    font-size: 16px !important; outline: none !important; color: var(--text) !important;
+    min-width: 0 !important; font-family: 'DM Sans', sans-serif !important;
+  }
+  .zmt-chips {
+    display: flex !important; gap: 6px !important; margin-top: 8px !important;
+    overflow-x: auto !important; -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+  .zmt-chips::-webkit-scrollbar { display: none !important; }
+  .zmt-chip {
+    font-size: 12px !important; font-weight: 600 !important;
+    padding: 7px 14px !important; border-radius: 20px !important;
+    white-space: nowrap !important; flex-shrink: 0 !important; cursor: pointer !important;
+    border: 1px solid var(--border) !important; color: var(--text-secondary) !important;
+    background: var(--surface) !important; font-family: 'DM Sans', sans-serif !important;
+  }
+  .zmt-chip.active {
+    background: var(--accent) !important; color: #fff !important; border-color: transparent !important;
   }
 
-  /* MOBILNO: velik iskalnik (junak) — 50px, font 16px (prepreči iOS zoom) */
-  #zalogaSearch {
-    height: 50px !important; font-size: 16px !important;
-    padding: 0 14px 0 42px !important; border-radius: 12px !important;
-  }
-  #zalogaSearchWrap > span { font-size: 18px !important; left: 13px !important; }
-  #zalogaSuggest { max-height: 60vh !important; }
+  /* Vsebina seznama dobi razmik = ena fiksna VIŠINA bloka (iskalnik 46 + chips ~34 + padding ~22 = ~118px).
+     Ker je EN blok s fiksno vsebino, je višina STABILNA — ni računanja, ni prekrivanja. */
+  #zalogaSubpage-zaloga { padding-top: 118px !important; }
+  .zaloga-subpage-inner { padding: 0 8px 10px !important; gap: 8px !important; }
+  #zalogaSubpage-vracila, #zalogaSubpage-skeniranje, #zalogaSubpage-pozicije { padding: 118px 8px 10px !important; }
 
   .zal-row {
     grid-template-columns: 42px 1fr !important;
@@ -224,6 +229,8 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 }
 /* zaloga mobilna meta vrstica je privzeto skrita (vidna le v mobilnem media query) */
 .zal-meta-mobile { display: none; }
+/* Nov mobilni topbar (iskalnik + čipke) je SAMO za mobil — na desktopu skrit */
+#zalogaMobileTopbar { display: none; }
 /* Gumb pozicije: na desktopu samo 📍 (tekst pozicije + svinčnik skrita — pozicija je v svojem stolpcu) */
 .zal-c-poz .zal-poz-txt, .zal-c-poz .zal-poz-pen { display: none; }
 /* Oznaka Skladišče2 (silux2) — isti oranžni stil kot pri nabiranju */
@@ -3671,6 +3678,24 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="zaloga-tab-btn" id="zalogaTab-pozicije" onclick="switchZalogaTab('pozicije')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📍 Sprememba pozicij</button>
     </div>
 
+    <!-- ═══ NOV MOBILNI TOPBAR (samo mobil): iskalnik + tabe-čipke v ENEM fiksnem bloku ═══ -->
+    <div id="zalogaMobileTopbar">
+      <!-- 1) Iskalnik -->
+      <div class="zmt-search">
+        <span class="zmt-search-ico" onclick="document.getElementById('zalogaSearch').value='';_zalogaPage=1;zalogaRender();document.getElementById('zalogaSearch').focus()" title="Počisti / išči">🔍</span>
+        <input type="text" id="zalogaMobileSearch" placeholder="Išči SKU, naziv, pozicijo…" autocomplete="off"
+          oninput="document.getElementById('zalogaSearch').value=this.value;_zalogaPage=1;zalogaRender();"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
+      </div>
+      <!-- 2) Tabe kot drsne čipke -->
+      <div class="zmt-chips">
+        <button class="zmt-chip active" id="zmtChip-zaloga" onclick="switchZalogaTab('zaloga')">📦 Zaloga</button>
+        <button class="zmt-chip" id="zmtChip-vracila" onclick="switchZalogaTab('vracila')">↩️ Vračila</button>
+        <button class="zmt-chip" id="zmtChip-skeniranje" onclick="switchZalogaTab('skeniranje')">📷 Skeniranje</button>
+        <button class="zmt-chip" id="zmtChip-pozicije" onclick="switchZalogaTab('pozicije')">📍 Pozicije</button>
+      </div>
+    </div>
+
     <!-- ── ZALOGA SUBPAGE ── -->
     <div id="zalogaSubpage-zaloga">
     <div class="zaloga-subpage-inner" style="padding:14px;display:flex;flex-direction:column;gap:10px">
@@ -3735,9 +3760,9 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div style="width:1px;height:28px;background:var(--border);flex-shrink:0"></div>
           <!-- Iskalnik -->
           <div style="position:relative;flex:1" id="zalogaSearchWrap">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-tertiary);pointer-events:none;font-size:13px">🔍</span>
-            <input type="text" id="zalogaSearch" placeholder="Išči SKU, naziv, ID, pozicijo, opombo..." autocomplete="off" oninput="zalogaSearchInput(this.value)" onfocus="zalogaSearchInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();var s=document.getElementById('zalogaSuggest');if(s)s.style.display='none';_zalogaPage=1;zalogaRender();this.blur();}" onblur="setTimeout(()=>{var s=document.getElementById('zalogaSuggest');if(s)s.style.display='none'},180)" style="width:100%;padding:8px 12px 8px 32px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
-            <div id="zalogaSuggest" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 6px 24px rgba(0,0,0,0.12);z-index:50;max-height:280px;overflow-y:auto"></div>
+            <span onclick="var s=document.getElementById('zalogaSuggest');if(s)s.style.display='none';_zalogaPage=1;zalogaRender();" title="Prikaži vse zadetke" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);color:var(--text-tertiary);cursor:pointer;font-size:14px;padding:6px;border-radius:6px;z-index:2" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-tertiary)'">🔍</span>
+            <input type="text" id="zalogaSearch" placeholder="Išči SKU, naziv, ID, pozicijo, opombo..." autocomplete="off" oninput="_zalogaPage=1;zalogaRender();" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" style="width:100%;padding:8px 12px 8px 32px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
+            <div id="zalogaSuggest" style="display:none"></div>
           </div>
           <!-- Samo na zalogi -->
           <label class="zaloga-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">
@@ -14425,30 +14450,8 @@ function _zalIsExternal(it) {
   return ((it.warehouse || '').trim().toLowerCase() === 'external');
 }
 
-// Mobilni fiksni topbar: izmeri REALNO višino tabov + iskalnika in nastavi pravilne odmike.
-// Brez magičnih števil — vse iz dejanske izmere, zato ni prekrivanja.
-function _zalogaFixTopbar() {
-  if (window.innerWidth > 600) return;  // velja samo na mobilu
-  // počakaj na izris (dvojni rAF), da getBoundingClientRect vrne prave višine
-  requestAnimationFrame(function(){ requestAnimationFrame(function(){
-    try {
-      var nav = document.querySelector('.zaloga-subtab-nav');
-      var wrap = document.getElementById('zalogaSearchWrap');
-      var inner = document.querySelector('.zaloga-subpage-inner');
-      if (!nav || !wrap) return;
-      var navH = nav.getBoundingClientRect().height || 56;   // realna višina tabov
-      wrap.style.top = navH + 'px';                           // iskalnik tik pod tabi
-      var wrapH = wrap.getBoundingClientRect().height || 66;  // realna višina iskalnika
-      if (inner) inner.style.paddingTop = (navH + wrapH + 14) + 'px';  // pod oba + 14px zrak
-    } catch(e) {}
-  }); });
-}
-window.addEventListener('resize', _zalogaFixTopbar);
-window.addEventListener('orientationchange', function(){ setTimeout(_zalogaFixTopbar, 200); });
-
 function zalogaRender() {
   if (!_zalogaData.length) return;
-  _zalogaFixTopbar();  // poskrbi za pravilne odmike fiksnega topbara
 
   const search = (document.getElementById('zalogaSearch')?.value || '').toLowerCase().trim();
   const onlyStock = document.getElementById('zalogaOnlyStock')?.checked;
@@ -20453,11 +20456,14 @@ function switchZalogaTab(tab) {
       if (btn) { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; btn.style.border = '1px solid var(--border)'; btn.classList.remove('active'); }
       if (sub) sub.style.display = 'none';
     }
+    // sinhroniziraj mobilne čipke (aktivna)
+    const chip = document.getElementById('zmtChip-' + t);
+    if (chip) chip.classList.toggle('active', t === tab);
   });
+  // mobilni iskalnik je smiseln samo na Zalogi → skrij ga na drugih tabih (čipke ostanejo)
+  var mSearch = document.querySelector('#zalogaMobileTopbar .zmt-search');
+  if (mSearch) mSearch.style.display = (tab === 'zaloga') ? 'flex' : 'none';
   try { localStorage.setItem('slx_zaloga_tab', tab); } catch(e) {}
-  if (tab === 'zaloga') {
-    setTimeout(_zalogaFixTopbar, 50);  // po prikazu izmeri in nastavi odmike
-  }
   if (tab === 'vracila') {
     vracilaInit();
   } else if (tab === 'skeniranje') {
