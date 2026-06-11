@@ -7102,11 +7102,14 @@ async def zaloga_sync_siluxar():
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
     if not key:
         return {"ok": False, "error": "Manjka SILUXAR_STOCK_KEY (Render okoljska spremenljivka)."}
+    basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
+    basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
     url = "https://www.siluxar.si/apistockexport"
-    # 1) potegni s siluxar
+    # 1) potegni s siluxar — Basic Auth (web strežnik) + ključ v X-API-Key (aplikacija)
+    _auth = httpx.BasicAuth(basic_user, basic_pass) if (basic_user or basic_pass) else None
     try:
-        async with httpx.AsyncClient(timeout=90) as cli:
-            r = await cli.get(url, headers={"Authorization": key})
+        async with httpx.AsyncClient(timeout=90, auth=_auth) as cli:
+            r = await cli.get(url, headers={"X-API-Key": key})
     except Exception as e:
         return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}"}
     if r.status_code != 200:
@@ -7258,10 +7261,13 @@ async def price_stock_fetch():
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
     if not key:
         return {"ok": False, "error": "Manjka SILUXAR_STOCK_KEY (nastavi v Render okoljskih spremenljivkah)."}
+    basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
+    basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
     url = "https://www.siluxar.si/apistockalertsexport"
+    _auth = httpx.BasicAuth(basic_user, basic_pass) if (basic_user or basic_pass) else None
     try:
-        async with httpx.AsyncClient(timeout=60) as cli:
-            r = await cli.get(url, headers={"Authorization": key})
+        async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
+            r = await cli.get(url, headers={"X-API-Key": key})
         if r.status_code != 200:
             return {"ok": False, "error": f"siluxar.si vrnil status {r.status_code}", "status": r.status_code}
         text = r.text or ""
