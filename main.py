@@ -2730,8 +2730,8 @@ async def notices_save(data: dict):
         nid = "n" + str(int(datetime.now().timestamp())) + "".join(c for c in title[:8] if c.isalnum())
         items.append({
             "id": nid, "icon": icon, "title": title, "body": body,
-            "scope": scope, "created_at": datetime.now().isoformat(),
-            "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "scope": scope, "created_at": _lj_now().isoformat(),
+            "date": _lj_now().strftime("%d.%m.%Y %H:%M"),
         })
         _notices_write(items)
         return {"ok": True, "id": nid, "notices": items}
@@ -3160,7 +3160,7 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
             # Dedup report kot ločen TXT (čitljivo za uporabnika)
             report_lines = [
                 "═══ DEDUPLICATION REPORT ═══",
-                f"Datum: {_dt.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                f"Datum: {_lj_now().strftime('%Y-%m-%d %H:%M:%S')}",
                 f"Batch ZIP: {zip_name}",
                 "",
                 f"📥 Obdelanih emailov: {len(processed_email_nums)}",
@@ -3630,7 +3630,7 @@ def build_tiktok_xlsx(sku: str, brand: str, video_names: str,
     single_id = base_bc_raw.split(',')[0].strip()
     videos = [v.strip() for v in re.findall(r'\[([^\]]+)\]', video_names)]
     new_bc_id = ','.join([single_id] * len(videos)) if videos else single_id
-    today = datetime.now().strftime('%-d_%-m_%Y')
+    today = _lj_now().strftime('%-d_%-m_%Y')
     new_campaign = f'[{brand}] Smart+ {sku} - {today}'
 
     # Zberemo vrstice za brisanje (ne brišemo med iteracijo!)
@@ -3704,7 +3704,7 @@ def build_master_xlsx(skus: list) -> str:
         for cell in row:
             cell.value = None
 
-    today = datetime.now().strftime('%-d_%-m_%Y')
+    today = _lj_now().strftime('%-d_%-m_%Y')
     out_row = 2
 
     for sku_entry in skus:
@@ -4649,8 +4649,8 @@ async def kreative_saved_add(data: dict):
         idx.insert(0, {
             "id": jid,
             "name": job.get("name") or "Izdelek",
-            "date": job.get("date") or datetime.now().strftime("%d.%m.%Y %H:%M"),
-            "saved_at": datetime.now().isoformat(),
+            "date": job.get("date") or _lj_now().strftime("%d.%m.%Y %H:%M"),
+            "saved_at": _lj_now().isoformat(),
             "result_count": result_count,
             "aCount": len(job.get("aOpts") or []),
             "bCount": len(job.get("bOpts") or []),
@@ -7218,6 +7218,19 @@ async def siluxar_diag():
     return out
 
 
+@app.post("/zaloga-reset")
+async def zaloga_reset():
+    """Počisti celotno shranjeno zalogo (CSV). Po tem prva sinhronizacija zgradi bazo od začetka."""
+    try:
+        if STOCK_CSV_FILE.exists():
+            STOCK_CSV_FILE.unlink()
+        if STOCK_CSV_META.exists():
+            STOCK_CSV_META.unlink()
+        return {"ok": True, "message": "Zaloga počiščena. Klikni Sinhroniziraj za uvoz s siluxar."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.post("/zaloga-sync-siluxar")
 async def zaloga_sync_siluxar():
     """Sinhronizira zalogo s siluxar (apistockexport). MERGE po SKU v obstoječi STOCK_CSV.
@@ -7312,16 +7325,17 @@ async def zaloga_sync_siluxar():
         try: return int(float(str(v).replace(',', '.')))
         except: return 0
 
-    added = 0; updated = 0; skipped_external = 0
+    added = 0; updated = 0; external_count = 0
     for row in incoming:
         sku = (row.get(sku_col) or '').strip()
         if not sku:
             continue
         sid   = (row.get(sid_col) or '').strip() if sid_col else ''   # ps.id (skrit ključ)
-        # EXTERNAL FILTER: naši izdelki imajo ps.id; external nimajo (prazen ali 0) → preskoči
-        if not sid or sid in ('0', '0.0'):
-            skipped_external += 1
-            continue
+        # EXTERNAL: naši izdelki imajo ps.id; external nimajo (prazen ali 0).
+        # External UVOZIMO z oznako is_external="1" (privzeto skriti na frontu, checkbox jih pokaže).
+        is_ext = '1' if (not sid or sid in ('0', '0.0')) else ''
+        if is_ext:
+            external_count += 1
         new_stock = _to_int(row.get(stock_col)) if stock_col else 0
         new_s30   = _to_int(row.get(s30_col)) if s30_col else 0
         title = (row.get(title_col) or '').strip() if title_col else ''
@@ -7344,6 +7358,7 @@ async def zaloga_sync_siluxar():
             if sid: e['siluxar_id'] = sid
             if dur: e['stock_duration'] = dur
             if wh: e['warehouse'] = wh
+            e['is_external'] = is_ext
             updated += 1
         else:
             existing[sku] = {
@@ -7351,12 +7366,14 @@ async def zaloga_sync_siluxar():
                 'stock': str(new_stock), 'stock30': str(new_s30),
                 'price': price, 'position': pos, 'note': note,
                 'siluxar_id': sid, 'stock_duration': dur, 'warehouse': wh,
+                'is_external': is_ext,
             }
             added += 1
 
-    # 5) shrani nazaj — siluxar_id je skrit ključ (v CSV, NE prikazan na frontu)
+    # 5) shrani nazaj — siluxar_id je skrit ključ. External (is_external="1")
+    #    OBDRŽIMO v CSV, a so privzeto skriti na frontu (checkbox jih pokaže).
     out = _SIO()
-    fieldnames = ['product_id','product_sku','title','stock','stock30','price','position','note','siluxar_id','stock_duration','warehouse']
+    fieldnames = ['product_id','product_sku','title','stock','stock30','price','position','note','siluxar_id','stock_duration','warehouse','is_external']
     writer = _csv.DictWriter(out, fieldnames=fieldnames, extrasaction='ignore')
     writer.writeheader()
     for v in existing.values():
@@ -7372,8 +7389,10 @@ async def zaloga_sync_siluxar():
     meta['rows'] = len(existing)
     STOCK_CSV_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
 
+    nasi_count = len(existing) - external_count
     return {"ok": True, "total": len(existing), "added": added, "updated": updated,
-            "skipped_external": skipped_external, "synced_at": meta['last_siluxar_sync']}
+            "external": external_count, "nasi": nasi_count,
+            "synced_at": meta['last_siluxar_sync']}
 
 
 @app.get("/orodja-stock-status")
@@ -8407,6 +8426,7 @@ async def orodja_stock_data():
                 "note": (row.get('note') or '').strip(),
                 "stock_duration": (row.get('stock_duration') or '').strip(),
                 "warehouse": (row.get('warehouse') or '').strip(),
+                "is_external": (row.get('is_external') or '').strip() == '1',
             })
 
         meta = {}
@@ -10766,7 +10786,7 @@ async def zaloga_packing_pdf(data: dict):
         pdfmetrics.registerFont(TTFont("DejaVu", DEJAVU_REGULAR))
         pdfmetrics.registerFont(TTFont("DejaVu-Bold", DEJAVU_BOLD))
 
-        datum = datetime.now().strftime("%d. %m. %Y  %H:%M")
+        datum = _lj_now().strftime("%d. %m. %Y  %H:%M")
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4,
             leftMargin=1.5*cm, rightMargin=1.5*cm, topMargin=2*cm, bottomMargin=2*cm)
@@ -10915,7 +10935,7 @@ async def zaloga_packing_xlsx(data: dict):
         ws["A1"] = "PACKING LISTA / SPECIFIKACIJA"
         ws["A1"].font = Font(name="Arial", size=15, bold=True, color=NAVY)
         ws.merge_cells("A1:D1")
-        ws["A2"] = f"Datum: {datetime.now().strftime('%d. %m. %Y  %H:%M')}   |   Št. boxov: {total_boxes}   |   Skupaj kosov: {total_pcs}"
+        ws["A2"] = f"Datum: {_lj_now().strftime('%d. %m. %Y  %H:%M')}   |   Št. boxov: {total_boxes}   |   Skupaj kosov: {total_pcs}"
         ws["A2"].font = Font(name="Arial", size=9, color=GREY)
         ws.merge_cells("A2:D2")
 
@@ -11100,7 +11120,7 @@ async def inventura_pdf(data: dict):
     try:
         items = data.get("items", [])
         title_text = data.get("title", "Inventurni list")
-        datum = data.get("datum", datetime.now().strftime("%d. %m. %Y"))
+        datum = data.get("datum", _lj_now().strftime("%d. %m. %Y"))
         filename_hint = data.get("filename", f"inventura_{datetime.now().strftime('%Y-%m-%d_%H-%M')}")
         if not items:
             return JSONResponse({"error": "Ni postavk."}, status_code=400)
@@ -12939,13 +12959,32 @@ FORECAST2_DIR.mkdir(exist_ok=True, parents=True)
 # Vsak dan = svoj fajl. Ne mešamo več datumov.
 
 def _lj_now():
-    """Aktualni čas v Ljubljani."""
-    from datetime import datetime
+    """Aktualni čas v Ljubljani (Europe/Ljubljana, samodejno poletni/zimski čas)."""
+    from datetime import datetime, timezone, timedelta
+    # 1) zoneinfo (vgrajen v Python 3.9+, ne potrebuje pytz)
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Europe/Ljubljana"))
+    except Exception:
+        pass
+    # 2) pytz (če slučajno na voljo)
     try:
         import pytz
         return datetime.now(pytz.timezone("Europe/Ljubljana"))
-    except:
-        return datetime.utcnow()
+    except Exception:
+        pass
+    # 3) Fallback: ročni odmik (Slovenija = UTC+1 zimi, UTC+2 poleti).
+    #    Groba ocena DST: zadnja nedelja marca → zadnja nedelja oktobra = +2h, sicer +1h.
+    now_utc = datetime.now(timezone.utc)
+    year = now_utc.year
+    # zadnja nedelja v marcu
+    mar = datetime(year, 3, 31, tzinfo=timezone.utc)
+    dst_start = mar - timedelta(days=(mar.weekday() + 1) % 7)
+    # zadnja nedelja v oktobru
+    oct_ = datetime(year, 10, 31, tzinfo=timezone.utc)
+    dst_end = oct_ - timedelta(days=(oct_.weekday() + 1) % 7)
+    offset = 2 if (dst_start <= now_utc < dst_end) else 1
+    return now_utc + timedelta(hours=offset)
 
 def _lj_today():
     return _lj_now().strftime("%Y-%m-%d")
