@@ -3751,6 +3751,10 @@ input[type="text"].error { border-color: var(--red) !important; }
           <button id="zalogaSyncBtn" onclick="zalogaSyncSiluxar(false)" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
             <span>🔄</span><span>Sinhroniziraj zalogo</span>
           </button>
+          <!-- Počisti zalogo (nevarno — dvojna potrditev, skrito na mobilu) -->
+          <button id="zalogaResetBtn" class="zaloga-mobile-hide" onclick="zalogaReset(this)" title="Zbriše celo shranjeno zalogo (CSV). Po tem Sinhroniziraj zgradi na novo." style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.4);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
+            <span>🗑</span><span>Počisti zalogo</span>
+          </button>
           <!-- Info status -->
           <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0">
             <div id="zalogaInfo" style="font-size:10px;color:var(--text-tertiary);white-space:nowrap">Ni naloženih podatkov.</div>
@@ -14216,6 +14220,30 @@ async function zalogaSyncSiluxar(silent) {
     if (status && !silent) { status.style.display='block'; status.style.color='var(--red)'; status.textContent='⚠ ' + e.message; }
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig || '<span>🔄</span><span>Sinhroniziraj zalogo</span>'; }
+  }
+}
+
+// Počisti celo zalogo (CSV) — NEVARNO, dvojna potrditev
+async function zalogaReset(btn) {
+  if (!confirm('⚠ POZOR: To zbriše CELO shranjeno zalogo.\n\nVse vrstice (silux, silux2, external) bodo izbrisane. Po tem moraš klikniti "Sinhroniziraj zalogo", da se zgradi na novo.\n\nNadaljujem?')) return;
+  if (!confirm('Si res prepričan? Tega ni mogoče razveljaviti.')) return;
+  const status = document.getElementById('zalogaStatus');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span>⏳</span><span>Brišem...</span>'; }
+  if (status) { status.style.display='block'; status.style.color='var(--text-secondary)'; status.textContent='⏳ Brišem zalogo...'; }
+  try {
+    const res = await fetch('/zaloga-reset', { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) {
+      if (status) { status.style.color='var(--red)'; status.textContent='⚠ ' + (data.error || 'Napaka pri brisanju.'); }
+      return;
+    }
+    if (status) { status.style.color='var(--green)'; status.textContent='✓ Zaloga počiščena. Klikni "Sinhroniziraj zalogo" za uvoz.'; }
+    await zalogaLoad();
+  } catch(e) {
+    if (status) { status.style.color='var(--red)'; status.textContent='⚠ ' + e.message; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig || '<span>🗑</span><span>Počisti zalogo</span>'; }
   }
 }
 
