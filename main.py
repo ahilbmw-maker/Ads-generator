@@ -7093,6 +7093,140 @@ async def orodja_stock_upload(file: UploadFile = File(...)):
 
 
 
+@app.post("/zaloga-sync-siluxar")
+async def zaloga_sync_siluxar():
+    """Sinhronizira zalogo s siluxar (apistockexport). MERGE po SKU v obstoječi STOCK_CSV.
+    Ključ v SILUXAR_STOCK_KEY. Bere CSV ali JSON, dopolni/posodobi obstoječe vrstice."""
+    import csv as _csv
+    from io import StringIO as _SIO
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    if not key:
+        return {"ok": False, "error": "Manjka SILUXAR_STOCK_KEY (Render okoljska spremenljivka)."}
+    url = "https://www.siluxar.si/apistockexport"
+    # 1) potegni s siluxar
+    try:
+        async with httpx.AsyncClient(timeout=90) as cli:
+            r = await cli.get(url, headers={"Authorization": key})
+    except Exception as e:
+        return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}"}
+    if r.status_code != 200:
+        return {"ok": False, "error": f"siluxar.si vrnil status {r.status_code}", "status": r.status_code}
+    text = r.text or ""
+    if not text.strip():
+        return {"ok": False, "error": "siluxar.si ni vrnil podatkov."}
+
+    # 2) razberi vrstice (JSON seznam ALI CSV)
+    incoming = []  # list of dict
+    ctype = r.headers.get("content-type", "")
+    parsed_json = False
+    if "json" in ctype or text.lstrip()[:1] in ("[", "{"):
+        try:
+            jd = json.loads(text)
+            if isinstance(jd, dict):
+                # morda {"data":[...]} ali {"items":[...]}
+                for kk in ("data", "items", "rows", "products", "stock"):
+                    if isinstance(jd.get(kk), list):
+                        jd = jd[kk]; break
+            if isinstance(jd, list):
+                incoming = [x for x in jd if isinstance(x, dict)]
+                parsed_json = True
+        except Exception:
+            parsed_json = False
+    if not parsed_json:
+        # CSV
+        sep = ';' if (text.split('\n',1)[0].count(';') > text.split('\n',1)[0].count(',')) else ','
+        incoming = list(_csv.DictReader(_SIO(text), delimiter=sep))
+    if not incoming:
+        return {"ok": False, "error": "Ni veljavnih vrstic v odgovoru siluxar."}
+
+    # 3) normalizacija stolpcev (prožno)
+    keys = list(incoming[0].keys())
+    def find_col(*cands):
+        for c in cands:
+            for k in keys:
+                if k.strip().lower() == c.lower():
+                    return k
+        return None
+    sku_col   = find_col('product_sku','sku')
+    stock_col = find_col('stock','qty','quantity','kolicina','količina','zaloga')
+    s30_col   = find_col('stock30','stock_30','obrat30','obrat_30')
+    title_col = find_col('title','naziv','name')
+    price_col = find_col('price_netto','price','cena')
+    pos_col   = find_col('position','pozicija','lokacija')
+    note_col  = find_col('note','opomba','komentar')
+    id_col    = find_col('product_id','id')
+    if not sku_col:
+        return {"ok": False, "error": f"Ne najdem SKU stolpca. Najdeni: {keys}"}
+
+    # 4) naloži OBSTOJEČO zalogo (merge cilj)
+    existing = {}
+    if STOCK_CSV_FILE.exists():
+        try:
+            old_text = STOCK_CSV_FILE.read_text(encoding='utf-8')
+            for row in _csv.DictReader(_SIO(old_text)):
+                s = (row.get('product_sku') or '').strip()
+                if s:
+                    existing[s] = dict(row)
+        except Exception:
+            existing = {}
+
+    def _to_int(v):
+        try: return int(float(str(v).replace(',', '.')))
+        except: return 0
+
+    added = 0; updated = 0
+    for row in incoming:
+        sku = (row.get(sku_col) or '').strip()
+        if not sku:
+            continue
+        new_stock = _to_int(row.get(stock_col)) if stock_col else 0
+        new_s30   = _to_int(row.get(s30_col)) if s30_col else 0
+        title = (row.get(title_col) or '').strip() if title_col else ''
+        price = (row.get(price_col) or '').strip() if price_col else ''
+        pos   = (row.get(pos_col) or '').strip() if pos_col else ''
+        note  = (row.get(note_col) or '').strip() if note_col else ''
+        pid   = (row.get(id_col) or '').strip() if id_col else ''
+        if sku in existing:
+            e = existing[sku]
+            # posodobi stock vedno; ostalo le če pride nova vrednost
+            e['stock'] = str(new_stock)
+            if s30_col: e['stock30'] = str(new_s30)
+            if title: e['title'] = title
+            if price: e['price'] = price
+            if pos: e['position'] = pos
+            if note: e['note'] = note
+            if pid: e['product_id'] = pid
+            updated += 1
+        else:
+            existing[sku] = {
+                'product_id': pid, 'product_sku': sku, 'title': title,
+                'stock': str(new_stock), 'stock30': str(new_s30),
+                'price': price, 'position': pos, 'note': note,
+            }
+            added += 1
+
+    # 5) shrani nazaj
+    out = _SIO()
+    fieldnames = ['product_id','product_sku','title','stock','stock30','price','position','note']
+    writer = _csv.DictWriter(out, fieldnames=fieldnames, extrasaction='ignore')
+    writer.writeheader()
+    for v in existing.values():
+        writer.writerow({k: v.get(k, '') for k in fieldnames})
+    STOCK_CSV_FILE.write_text(out.getvalue(), encoding='utf-8')
+
+    # meta
+    meta = {}
+    if STOCK_CSV_META.exists():
+        try: meta = json.loads(STOCK_CSV_META.read_text(encoding='utf-8'))
+        except: meta = {}
+    meta['last_siluxar_sync'] = datetime.now(timezone.utc).isoformat()
+    meta['rows'] = len(existing)
+    STOCK_CSV_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    return {"ok": True, "total": len(existing), "added": added, "updated": updated,
+            "synced_at": meta['last_siluxar_sync']}
+
+
 @app.get("/orodja-stock-status")
 async def orodja_stock_status():
     """Vrne info o trenutno shranjeni zalogi."""
