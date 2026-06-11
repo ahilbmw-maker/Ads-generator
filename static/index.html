@@ -3736,7 +3736,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <!-- Iskalnik -->
           <div style="position:relative;flex:1" id="zalogaSearchWrap">
             <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-tertiary);pointer-events:none;font-size:13px">🔍</span>
-            <input type="text" id="zalogaSearch" placeholder="Išči SKU, naziv, ID, pozicijo, opombo..." autocomplete="off" oninput="zalogaSearchInput(this.value)" onfocus="zalogaSearchInput(this.value)" onblur="setTimeout(()=>{var s=document.getElementById('zalogaSuggest');if(s)s.style.display='none'},180)" style="width:100%;padding:8px 12px 8px 32px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
+            <input type="text" id="zalogaSearch" placeholder="Išči SKU, naziv, ID, pozicijo, opombo..." autocomplete="off" oninput="zalogaSearchInput(this.value)" onfocus="zalogaSearchInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();var s=document.getElementById('zalogaSuggest');if(s)s.style.display='none';_zalogaPage=1;zalogaRender();this.blur();}" onblur="setTimeout(()=>{var s=document.getElementById('zalogaSuggest');if(s)s.style.display='none'},180)" style="width:100%;padding:8px 12px 8px 32px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
             <div id="zalogaSuggest" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 6px 24px rgba(0,0,0,0.12);z-index:50;max-height:280px;overflow-y:auto"></div>
           </div>
           <!-- Samo na zalogi -->
@@ -14428,20 +14428,23 @@ function _zalIsExternal(it) {
 // Mobilni fiksni topbar: izmeri REALNO višino tabov + iskalnika in nastavi pravilne odmike.
 // Brez magičnih števil — vse iz dejanske izmere, zato ni prekrivanja.
 function _zalogaFixTopbar() {
-  try {
-    if (window.innerWidth > 600) return;  // velja samo na mobilu
-    var nav = document.querySelector('.zaloga-subtab-nav');
-    var wrap = document.getElementById('zalogaSearchWrap');
-    var inner = document.querySelector('.zaloga-subpage-inner');
-    if (!nav || !wrap) return;
-    var navH = nav.getBoundingClientRect().height;       // realna višina tabov
-    wrap.style.top = navH + 'px';                          // iskalnik tik pod tabi
-    var wrapH = wrap.getBoundingClientRect().height;       // realna višina iskalnika
-    if (inner) inner.style.paddingTop = (navH + wrapH + 6) + 'px';  // vsebina pod oba + 6px zrak
-  } catch(e) {}
+  if (window.innerWidth > 600) return;  // velja samo na mobilu
+  // počakaj na izris (dvojni rAF), da getBoundingClientRect vrne prave višine
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){
+    try {
+      var nav = document.querySelector('.zaloga-subtab-nav');
+      var wrap = document.getElementById('zalogaSearchWrap');
+      var inner = document.querySelector('.zaloga-subpage-inner');
+      if (!nav || !wrap) return;
+      var navH = nav.getBoundingClientRect().height || 56;   // realna višina tabov
+      wrap.style.top = navH + 'px';                           // iskalnik tik pod tabi
+      var wrapH = wrap.getBoundingClientRect().height || 66;  // realna višina iskalnika
+      if (inner) inner.style.paddingTop = (navH + wrapH + 14) + 'px';  // pod oba + 14px zrak
+    } catch(e) {}
+  }); });
 }
 window.addEventListener('resize', _zalogaFixTopbar);
-window.addEventListener('orientationchange', function(){ setTimeout(_zalogaFixTopbar, 150); });
+window.addEventListener('orientationchange', function(){ setTimeout(_zalogaFixTopbar, 200); });
 
 function zalogaRender() {
   if (!_zalogaData.length) return;
