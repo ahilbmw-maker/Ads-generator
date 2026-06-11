@@ -7290,6 +7290,9 @@ async def zaloga_sync_siluxar():
     note_col  = find_col('note','opomba','komentar')
     id_col    = find_col('product_id')   # interni product_id (točno ujemanje)
     sid_col   = find_col('id')           # ps.id = siluxar skrit ključ (sinhronizacija brisanja)
+    # Trajanje zaloge + Skladišče (prožno — Markovo ime morda drugačno)
+    dur_col   = find_col('trajanje_zaloge','trajanje','stock_duration','duration','dni_zaloge','days_of_stock','zaloga_dni')
+    wh_col    = find_col('skladisce','skladišče','warehouse','store','trgovina','lokacija_skladisce')
     if not sku_col:
         return {"ok": False, "error": f"Ne najdem SKU stolpca. Najdeni: {keys}"}
 
@@ -7309,10 +7312,15 @@ async def zaloga_sync_siluxar():
         try: return int(float(str(v).replace(',', '.')))
         except: return 0
 
-    added = 0; updated = 0
+    added = 0; updated = 0; skipped_external = 0
     for row in incoming:
         sku = (row.get(sku_col) or '').strip()
         if not sku:
+            continue
+        sid   = (row.get(sid_col) or '').strip() if sid_col else ''   # ps.id (skrit ključ)
+        # EXTERNAL FILTER: naši izdelki imajo ps.id; external nimajo (prazen ali 0) → preskoči
+        if not sid or sid in ('0', '0.0'):
+            skipped_external += 1
             continue
         new_stock = _to_int(row.get(stock_col)) if stock_col else 0
         new_s30   = _to_int(row.get(s30_col)) if s30_col else 0
@@ -7321,7 +7329,8 @@ async def zaloga_sync_siluxar():
         pos   = (row.get(pos_col) or '').strip() if pos_col else ''
         note  = (row.get(note_col) or '').strip() if note_col else ''
         pid   = (row.get(id_col) or '').strip() if id_col else ''
-        sid   = (row.get(sid_col) or '').strip() if sid_col else ''   # ps.id (skrit ključ)
+        dur   = (row.get(dur_col) or '').strip() if dur_col else ''   # trajanje zaloge
+        wh    = (row.get(wh_col) or '').strip() if wh_col else ''     # skladišče
         if sku in existing:
             e = existing[sku]
             # posodobi stock vedno; ostalo le če pride nova vrednost
@@ -7333,19 +7342,21 @@ async def zaloga_sync_siluxar():
             if note: e['note'] = note
             if pid: e['product_id'] = pid
             if sid: e['siluxar_id'] = sid
+            if dur: e['stock_duration'] = dur
+            if wh: e['warehouse'] = wh
             updated += 1
         else:
             existing[sku] = {
                 'product_id': pid, 'product_sku': sku, 'title': title,
                 'stock': str(new_stock), 'stock30': str(new_s30),
                 'price': price, 'position': pos, 'note': note,
-                'siluxar_id': sid,
+                'siluxar_id': sid, 'stock_duration': dur, 'warehouse': wh,
             }
             added += 1
 
     # 5) shrani nazaj — siluxar_id je skrit ključ (v CSV, NE prikazan na frontu)
     out = _SIO()
-    fieldnames = ['product_id','product_sku','title','stock','stock30','price','position','note','siluxar_id']
+    fieldnames = ['product_id','product_sku','title','stock','stock30','price','position','note','siluxar_id','stock_duration','warehouse']
     writer = _csv.DictWriter(out, fieldnames=fieldnames, extrasaction='ignore')
     writer.writeheader()
     for v in existing.values():
@@ -7362,7 +7373,7 @@ async def zaloga_sync_siluxar():
     STOCK_CSV_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
 
     return {"ok": True, "total": len(existing), "added": added, "updated": updated,
-            "synced_at": meta['last_siluxar_sync']}
+            "skipped_external": skipped_external, "synced_at": meta['last_siluxar_sync']}
 
 
 @app.get("/orodja-stock-status")
@@ -8394,6 +8405,8 @@ async def orodja_stock_data():
                 "price": (row.get('price_netto') or row.get('price') or '0').strip(),
                 "position": (row.get('position') or '').strip(),
                 "note": (row.get('note') or '').strip(),
+                "stock_duration": (row.get('stock_duration') or '').strip(),
+                "warehouse": (row.get('warehouse') or '').strip(),
             })
 
         meta = {}
