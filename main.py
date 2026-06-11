@@ -7138,16 +7138,65 @@ async def siluxar_diag():
         out["verdict"] = "TCP povezava pade → požarni zid/geo-filter blokira na omrežni ravni (NE avtentikacija)."
         return out
 
-    # 3) HTTPS klic (brez ključa — samo da vidimo, ali strežnik odgovori)
+    # 3) HTTPS testi z RAZLIČNIMI avtentikacijami — da vidimo, kaj strežnik sprejme
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    bu = os.environ.get("SILUXAR_BASIC_USER", "")
+    bp = os.environ.get("SILUXAR_BASIC_PASS", "")
+    _ba = httpx.BasicAuth(bu, bp) if (bu or bp) else None
+
+    def _snippet(resp):
+        """Skrajšano telo + ključne glave (kdo zavrača)."""
+        body = (resp.text or "")[:200]
+        wa = resp.headers.get("www-authenticate", "")
+        srv = resp.headers.get("server", "")
+        return {"status": resp.status_code, "body_preview": body,
+                "www_authenticate": wa, "server": srv}
+
+    tests = {}
+    # (a) brez avtentikacije
     try:
         async with httpx.AsyncClient(timeout=30) as cli:
             r = await cli.get(f"https://{host}/apistockexport")
-        out["steps"].append({"step": "HTTPS", "ok": True, "status": r.status_code,
-                              "note": "401/403 = strežnik dosežen, manjka avtentikacija (DOBRO za omrežje)."})
-        out["verdict"] = f"Omrežje deluje. Strežnik odgovoril s statusom {r.status_code}."
+        tests["a_brez_auth"] = _snippet(r)
     except Exception as e:
-        out["steps"].append({"step": "HTTPS", "ok": False, "error": str(e)})
-        out["verdict"] = "TCP uspe a HTTPS pade — možna TLS/proxy težava."
+        tests["a_brez_auth"] = {"error": str(e)}
+    # (b) samo Basic Auth
+    if _ba:
+        try:
+            async with httpx.AsyncClient(timeout=30, auth=_ba) as cli:
+                r = await cli.get(f"https://{host}/apistockexport")
+            tests["b_basic_auth"] = _snippet(r)
+        except Exception as e:
+            tests["b_basic_auth"] = {"error": str(e)}
+    # (c) Basic Auth + X-API-Key
+    try:
+        async with httpx.AsyncClient(timeout=30, auth=_ba) as cli:
+            r = await cli.get(f"https://{host}/apistockexport", headers={"X-API-Key": key})
+        tests["c_basic_in_xapikey"] = _snippet(r)
+    except Exception as e:
+        tests["c_basic_in_xapikey"] = {"error": str(e)}
+    # (d) samo X-API-Key (brez Basic) — če bi admin umaknil Basic Auth
+    try:
+        async with httpx.AsyncClient(timeout=30) as cli:
+            r = await cli.get(f"https://{host}/apistockexport", headers={"X-API-Key": key})
+        tests["d_samo_xapikey"] = _snippet(r)
+    except Exception as e:
+        tests["d_samo_xapikey"] = {"error": str(e)}
+    # (e) ključ v Authorization (če Marko pričakuje tam, brez Basic)
+    try:
+        async with httpx.AsyncClient(timeout=30) as cli:
+            r = await cli.get(f"https://{host}/apistockexport", headers={"Authorization": key})
+        tests["e_kljuc_v_authorization"] = _snippet(r)
+    except Exception as e:
+        tests["e_kljuc_v_authorization"] = {"error": str(e)}
+
+    out["steps"].append({"step": "TCP:443", "ok": True})
+    out["auth_tests"] = tests
+    out["razlaga"] = ("Poišči test s statusom 200 = ta kombinacija deluje. "
+                      "www_authenticate glava razkrije, kdo zavrača: če piše 'Basic' → web strežnik (Basic Auth); "
+                      "če je drugačno/prazno ob 401 → Markova aplikacija (ključ). "
+                      "Server glava pove, ali odgovarja web strežnik (nginx/apache) ali aplikacija.")
+    out["verdict"] = "Omrežje deluje (TCP+HTTPS ok). Glej auth_tests za pravo kombinacijo avtentikacije."
     return out
 
 
