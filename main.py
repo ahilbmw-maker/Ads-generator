@@ -13653,7 +13653,7 @@ async def _forecast2_scheduler_loop():
         try:
             now = _lj_now()
             hour = now.hour
-            if 6 <= hour < 22:
+            if 6 <= hour < 23:
                 res = await _forecast2_fetch_core()
                 if res.get("ok"):
                     print(f"[forecast2-cron] OK {res.get('date')} {res.get('time')} — "
