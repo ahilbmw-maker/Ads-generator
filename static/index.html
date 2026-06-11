@@ -3757,7 +3757,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
         <!-- Sticky header tabele -->
         <div id="zalogaHeaderWrap" style="background:var(--bg);padding-top:4px;display:none">
-          <div style="display:grid;grid-template-columns:60px 240px 1fr 75px 65px 75px 90px 75px 90px 0.5fr;gap:8px;padding:9px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--border);cursor:pointer;user-select:none">
+          <div style="display:grid;grid-template-columns:65px minmax(320px,1.3fr) minmax(180px,1fr) 70px 62px 62px 78px 80px 90px 85px;gap:8px;padding:9px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--border);cursor:pointer;user-select:none">
             <span onclick="zalogaSortBy('product_id')">ID <span id="zSort-product_id">↕</span></span>
             <span onclick="zalogaSortBy('product_sku')">SKU <span id="zSort-product_sku">↕</span></span>
             <span onclick="zalogaSortBy('title')">Naziv <span id="zSort-title">↕</span></span>
@@ -14513,7 +14513,7 @@ function zalogaRender() {
   if (headerWrap) headerWrap.style.display = 'block';
   empty.style.display = 'none';
 
-  const GRID = '60px 240px 1fr 75px 65px 75px 90px 75px 90px 0.5fr';
+  const GRID = '65px minmax(320px,1.3fr) minmax(180px,1fr) 70px 62px 62px 78px 80px 90px 85px';
 
   tableEl.innerHTML = pageItems.map(it => {
     const stock = parseInt(it.stock) || 0;
@@ -14528,7 +14528,7 @@ function zalogaRender() {
     return '<div class="zal-row" style="display:grid;grid-template-columns:' + GRID + ';gap:8px;padding:8px 14px;background:' + rowBg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:12px;align-items:center;opacity:' + rowOpacity + ';--zal-stockcol:' + stockColor + '">'
       + '<span class="zal-c-id" style="color:var(--text-tertiary);font-size:11px">' + esc(it.product_id||'—') + '</span>'
       + '<div class="zal-c-sku" style="display:flex;align-items:center;gap:6px;overflow:hidden">'
-      + '<span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.product_sku) + '">' + esc(it.product_sku||'—') + '</span>'
+      + '<span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:90px" title="' + esc(it.product_sku) + '">' + esc(it.product_sku||'—') + '</span>'
       + ((it.warehouse||'').trim().toLowerCase() === 'silux2' ? '<span class="zal-tag-sklad2">🏬 Skladišče2</span>' : '')
       + '<button class="zal-c-copy" onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(it.product_sku||'') + '\').then(()=>{this.textContent=\'✓ Kopirano\';this.style.background=\'var(--green)\';this.style.color=\'#fff\';this.style.borderColor=\'var(--green)\';setTimeout(()=>{this.textContent=\'📋 Kopiraj\';this.style.background=\'\';this.style.color=\'\';this.style.borderColor=\'\'},1500)})" title="Kopiraj SKU" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="if(this.textContent!==\'✓ Kopirano\'){this.style.borderColor=\'\';this.style.color=\'\'}">📋 Kopiraj</button>'
       + (function(){
