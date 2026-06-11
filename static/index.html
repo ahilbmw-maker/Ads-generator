@@ -3632,6 +3632,10 @@ input[type="text"].error { border-color: var(--red) !important; }
             <span>📂</span><span>Naloži CSV</span>
           </div>
           <input type="file" id="zalogaInput" accept=".csv" style="display:none" onchange="zalogaUpload(this.files[0])">
+          <!-- Sinhronizacija s siluxar -->
+          <button id="zalogaSyncBtn" onclick="zalogaSyncSiluxar(false)" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
+            <span>🔄</span><span>Sinhroniziraj zalogo</span>
+          </button>
           <!-- Info status -->
           <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0">
             <div id="zalogaInfo" style="font-size:10px;color:var(--text-tertiary);white-space:nowrap">Ni naloženih podatkov.</div>
@@ -4600,7 +4604,7 @@ function switchPage(page) {
     if (mainEl2) { mainEl2.style.padding = ''; mainEl2.style.height = ''; mainEl2.style.overflow = ''; }
   }
   if (page === 'tiktok') { ttLoadSkus(); }
-  if (page === 'zaloga') { zalogaLoad(); }
+  if (page === 'zaloga') { zalogaLoad(); zalogaSyncDailyAuto(); }
   if (page === 'xsell') { if(typeof xsellInit==='function') xsellInit(); }
   if (page === 'sporocanje') { if(typeof spLoadCommon==='function') spLoadCommon(); if(typeof spLoadMacros==='function') spLoadMacros(); }
   if (page === 'knjigovodstvo') { if(typeof knjLoadHistory==='function') knjLoadHistory(); }
@@ -14049,9 +14053,40 @@ async function zalogaUpload(file) {
   } catch(e) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + e.message; }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// XSELL — Cross-sell AI assistant
-// ═══════════════════════════════════════════════════════════════════════════
+async function zalogaSyncSiluxar(silent) {
+  const btn = document.getElementById('zalogaSyncBtn');
+  const status = document.getElementById('zalogaStatus');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span>⏳</span><span>Sinhroniziram...</span>'; }
+  if (status && !silent) { status.style.display='block'; status.style.color='var(--text-secondary)'; status.textContent='⏳ Berem zalogo s siluxar...'; }
+  try {
+    const res = await fetch('/zaloga-sync-siluxar', { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) {
+      if (status && !silent) { status.style.display='block'; status.style.color='var(--red)'; status.textContent='⚠ ' + (data.error || 'Napaka pri sinhronizaciji.'); }
+      return;
+    }
+    if (status) { status.style.display='block'; status.style.color='var(--green)'; status.textContent=`✓ Sinhronizirano: ${data.total} SKU (${data.added} novih, ${data.updated} posodobljenih)`; }
+    // zapomni dnevni sync (da ne kličemo večkrat na dan)
+    try { localStorage.setItem('zaloga_siluxar_lastsync', new Date().toISOString().slice(0,10)); } catch(e) {}
+    await zalogaLoad();
+  } catch(e) {
+    if (status && !silent) { status.style.display='block'; status.style.color='var(--red)'; status.textContent='⚠ ' + e.message; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig || '<span>🔄</span><span>Sinhroniziraj zalogo</span>'; }
+  }
+}
+
+// samodejna sinhronizacija 1x na dan (ob prvem odprtju zaloge ta dan)
+function zalogaSyncDailyAuto() {
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    const last = localStorage.getItem('zaloga_siluxar_lastsync') || '';
+    if (last !== today) {
+      zalogaSyncSiluxar(true);  // tiho
+    }
+  } catch(e) {}
+}
 async function xsellInit() {
   try {
     const r = await fetch('/xsell-feed-status');
