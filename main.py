@@ -6972,6 +6972,103 @@ STOCK_CSV_FILE = DATA_DIR / "stock_inventory.csv"
 STOCK_CSV_META = DATA_DIR / "stock_inventory_meta.json"
 
 
+@app.post("/zaloga-upload-obrat")
+async def zaloga_upload_obrat(file: UploadFile = File(...)):
+    """Iz naloženega CSV potegne SAMO obrat/30d (stock30) + trajanje (stock_duration) po SKU
+    in ju OSVEŽI v obstoječi zalogi. NE dotika zaloge, pozicije, cene, naziva — samo ti dve polji.
+    SKU-jev, ki niso v obstoječi zalogi, NE dodaja."""
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+
+        if not STOCK_CSV_FILE.exists():
+            return JSONResponse({"error": "Najprej naloži/sinhroniziraj zalogo, šele nato obrat+trajanje."}, status_code=400)
+
+        content_bytes = await file.read()
+        text = content_bytes.decode('utf-8-sig', errors='replace')
+        sep = ';' if (text.split('\n', 1)[0].count(';') > text.split('\n', 1)[0].count(',')) else ','
+        reader = _csv.DictReader(_SIO(text), delimiter=sep)
+        new_rows = [r for r in reader]
+        if not new_rows:
+            return JSONResponse({"error": "Prazen CSV."}, status_code=400)
+
+        keys = list(new_rows[0].keys())
+        def find_col(*cands):
+            for c in cands:
+                for k in keys:
+                    if k.strip().lower() == c.lower():
+                        return k
+            return None
+        sku_col = find_col('product_sku', 'sku')
+        s30_col = find_col('stock30', 'stock_30', 'obrat30', 'obrat_30', 'obrat', 'obr30', 'obrat_30d')
+        dur_col = find_col('stock_duration', 'trajanje_zaloge', 'trajanje', 'duration', 'dni_zaloge', 'days_of_stock', 'zaloga_dni')
+        if not sku_col:
+            return JSONResponse({"error": f"Ne najdem SKU stolpca. Najdeni: {keys}"}, status_code=400)
+        if not s30_col and not dur_col:
+            return JSONResponse({"error": f"Ne najdem stolpca za obrat (stock30) ne trajanje. Najdeni: {keys}"}, status_code=400)
+
+        # zgradi mapo SKU -> {stock30, stock_duration} iz naloženega CSV
+        incoming = {}
+        for row in new_rows:
+            sku = (row.get(sku_col) or '').strip()
+            if not sku:
+                continue
+            rec = {}
+            if s30_col:
+                v = (row.get(s30_col) or '').strip()
+                if v != '':
+                    try: rec['stock30'] = str(int(float(v.replace(',', '.'))))
+                    except: pass
+            if dur_col:
+                d = (row.get(dur_col) or '').strip()
+                if d != '':
+                    rec['stock_duration'] = d
+            if rec:
+                incoming[sku] = rec
+
+        if not incoming:
+            return JSONResponse({"error": "V CSV ni veljavnih vrednosti obrat/trajanje."}, status_code=400)
+
+        # naloži OBSTOJEČO zalogo, posodobi SAMO ti dve polji
+        old_text = STOCK_CSV_FILE.read_text(encoding='utf-8-sig', errors='replace')
+        rd = _csv.DictReader(_SIO(old_text))
+        existing_fields = list(rd.fieldnames or [])
+        rows = list(rd)
+        # zagotovi, da sta stolpca v CSV
+        for col in ('stock30', 'stock_duration'):
+            if col not in existing_fields:
+                existing_fields.append(col)
+
+        updated = 0
+        matched_skus = set()
+        for row in rows:
+            sku = (row.get('product_sku') or row.get('sku') or '').strip()
+            if sku and sku in incoming:
+                rec = incoming[sku]
+                if 'stock30' in rec:
+                    row['stock30'] = rec['stock30']
+                if 'stock_duration' in rec:
+                    row['stock_duration'] = rec['stock_duration']
+                matched_skus.add(sku)
+                updated += 1
+
+        # shrani nazaj — iste vrstice, samo posodobljeni polji
+        out = _SIO()
+        writer = _csv.DictWriter(out, fieldnames=existing_fields, extrasaction='ignore')
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+        STOCK_CSV_FILE.write_text(out.getvalue(), encoding='utf-8')
+
+        not_found = len(incoming) - len(matched_skus)
+        return {"ok": True, "updated": updated, "csv_skus": len(incoming),
+                "not_found": not_found,
+                "fields": [c for c in ('obrat/30d' if s30_col else None, 'trajanje' if dur_col else None) if c]}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/orodja-stock-upload")
 async def orodja_stock_upload(file: UploadFile = File(...)):
     """Naloži CSV zaloge — merge po SKU (sešteje stock iz več skladišč/uploadov)."""
@@ -8410,22 +8507,39 @@ async def orodja_stock_data():
 
         reader = _csv.DictReader(_SIO(text), delimiter=sep)
         items = []
+        def _calc_trajanje(stock_s, s30_s):
+            """Trajanje zaloge v dnevih = zaloga / (obrat30 / 30).
+            Primer: obrat 150 → 5/dan; zaloga 25 → 25/5 = 5 dni."""
+            try:
+                st = float(str(stock_s).replace(',', '.'))
+                s30 = float(str(s30_s).replace(',', '.'))
+            except Exception:
+                return ''
+            if s30 <= 0:
+                return ''            # ni obrata (ni prodaje) → trajanje ni smiselno
+            per_day = s30 / 30.0
+            if per_day <= 0:
+                return ''
+            days = st / per_day
+            return str(int(round(days)))  # cele dni
         for row in reader:
             sku = (row.get('product_sku') or row.get('sku') or '').strip()
             if not sku:
                 continue
+            _stock = (row.get('stock') or '0').strip()
+            _s30 = (row.get('stock30') or '0').strip()
             items.append({
                 "sku": sku,
                 "product_sku": sku,
                 "product_id": (row.get('product_id') or row.get('siluxar_id') or '').strip(),
                 "siluxar_id": (row.get('siluxar_id') or '').strip(),
                 "title": (row.get('title') or '').strip(),
-                "stock": (row.get('stock') or '0').strip(),
-                "stock30": (row.get('stock30') or '0').strip(),
+                "stock": _stock,
+                "stock30": _s30,
                 "price": (row.get('price_netto') or row.get('price') or '0').strip(),
                 "position": (row.get('position') or '').strip(),
                 "note": (row.get('note') or '').strip(),
-                "stock_duration": (row.get('stock_duration') or '').strip(),
+                "stock_duration": _calc_trajanje(_stock, _s30),
                 "warehouse": (row.get('warehouse') or '').strip(),
                 "is_external": (row.get('is_external') or '').strip() == '1',
             })
