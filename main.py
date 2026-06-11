@@ -13243,6 +13243,132 @@ async def forecast2_delete_entry(data: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.get("/zaloga-sync-raw")
+async def zaloga_sync_raw():
+    """Diagnostika: pokaže SUROV odgovor apistockexport (da vidimo imena polj zaloge)."""
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
+    basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
+    url = "https://www.siluxar.si/apistockexport"
+    headers = {}
+    _auth = None
+    if key:
+        headers["Authorization"] = key
+    elif basic_user or basic_pass:
+        _auth = httpx.BasicAuth(basic_user, basic_pass)
+    try:
+        async with httpx.AsyncClient(timeout=90, auth=_auth) as cli:
+            r = await cli.get(url, headers=headers)
+        text = r.text or ""
+        # poskusi razbrati JSON in pokazati KLJUČE prve vrstice (imena polj)
+        field_names = None
+        try:
+            jd = json.loads(text)
+            if isinstance(jd, dict):
+                for kk in ("data", "items", "rows", "products", "stock"):
+                    if isinstance(jd.get(kk), list):
+                        jd = jd[kk]; break
+            if isinstance(jd, list) and jd and isinstance(jd[0], dict):
+                field_names = list(jd[0].keys())
+        except Exception:
+            pass
+        return {"status": r.status_code, "content_type": r.headers.get("content-type", ""),
+                "field_names": field_names, "raw": text[:2000]}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/forecast2-sum-raw")
+async def forecast2_sum_raw():
+    """Diagnostika: pokaže SUROV odgovor apisumexport (da vidimo imena polj)."""
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
+    basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
+    url = "https://www.siluxar.si/apisumexport"
+    headers = {}
+    _auth = None
+    if key:
+        headers["Authorization"] = key
+    elif basic_user or basic_pass:
+        _auth = httpx.BasicAuth(basic_user, basic_pass)
+    try:
+        async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
+            r = await cli.get(url, headers=headers)
+        return {"status": r.status_code, "content_type": r.headers.get("content-type", ""),
+                "raw": (r.text or "")[:2000]}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/forecast2-fetch-siluxar")
+async def forecast2_fetch_siluxar():
+    """Potegne dnevno vsoto (št. naročil + promet €) s siluxar apisumexport in
+    zapiše v final današnjega dne. Ista avtentikacija kot ostali siluxar klici
+    (ključ v Authorization; Basic Auth fallback)."""
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
+    basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
+    if not key and not (basic_user or basic_pass):
+        return {"ok": False, "error": "Manjka SILUXAR_STOCK_KEY (Render okoljska spremenljivka)."}
+    url = "https://www.siluxar.si/apisumexport"
+    headers = {}
+    _auth = None
+    if key:
+        headers["Authorization"] = key
+    elif basic_user or basic_pass:
+        _auth = httpx.BasicAuth(basic_user, basic_pass)
+    # 1) potegni
+    try:
+        async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
+            r = await cli.get(url, headers=headers)
+    except Exception as e:
+        return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}"}
+    if r.status_code != 200:
+        return {"ok": False, "error": f"siluxar.si vrnil status {r.status_code}", "status": r.status_code}
+    text = (r.text or "").strip()
+    if not text:
+        return {"ok": False, "error": "siluxar.si ni vrnil podatkov."}
+
+    # 2) razberi orders + revenue (JSON: objekt ali seznam z enim objektom)
+    orders = None
+    revenue = None
+    try:
+        jd = json.loads(text)
+        if isinstance(jd, list) and jd:
+            jd = jd[0]
+        if isinstance(jd, dict):
+            # prožno: poišči polja za naročila in promet
+            def _find(d, *names):
+                for n in names:
+                    for k in d.keys():
+                        if k.strip().lower() == n.lower():
+                            return d[k]
+                return None
+            ov = _find(jd, 'orders', 'order_count', 'count', 'st_narocil', 'narocila', 'num_orders')
+            rv = _find(jd, 'revenue', 'sum', 'total', 'promet', 'amount', 'sum_eur', 'revenue_eur')
+            if ov is not None:
+                orders = int(float(str(ov).replace(',', '.')))
+            if rv is not None:
+                revenue = float(str(rv).replace(',', '.'))
+    except Exception as e:
+        return {"ok": False, "error": f"Ne morem razbrati odgovora (ni veljaven JSON): {e}", "raw_preview": text[:200]}
+
+    if orders is None and revenue is None:
+        return {"ok": False, "error": "V odgovoru ne najdem polj za naročila/promet.", "raw_preview": text[:200]}
+
+    # 3) zapiši v final današnjega dne
+    today = _lj_today()
+    day = _forecast2_load_day(today)
+    day["final"] = {
+        "orders": orders or 0,
+        "revenue": revenue or 0.0,
+        "_set_at": _lj_now().isoformat(),
+        "_source": "siluxar_apisumexport",
+    }
+    _forecast2_save_day(today, day)
+    return {"ok": True, "date": today, "orders": orders or 0, "revenue": revenue or 0.0}
+
+
 @app.post("/forecast2-set-final")
 async def forecast2_set_final(data: dict):
     """Nastavi končna naročila/promet za določen dan."""
