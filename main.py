@@ -7098,6 +7098,25 @@ async def siluxar_diag():
     Pomaga ločiti omrežno težavo (požarni zid/geo) od avtentikacije."""
     import socket, ssl as _ssl
     out = {"steps": []}
+
+    # 0) DEJANSKI odhodni IP tega strežnika (s katerega Render kliče ven)
+    #    To je IP, ki ga mora siluxar dovoliti — preverimo, ali je v dovoljenih range.
+    try:
+        async with httpx.AsyncClient(timeout=15) as cli:
+            ipr = await cli.get("https://api.ipify.org?format=json")
+        my_ip = ipr.json().get("ip", "?")
+        out["outbound_ip"] = my_ip
+        # preveri ali je v dovoljenih range 74.220.51.0/24 ali 74.220.59.0/24
+        import ipaddress
+        allowed = ipaddress.ip_address(my_ip) in ipaddress.ip_network("74.220.51.0/24") or \
+                  ipaddress.ip_address(my_ip) in ipaddress.ip_network("74.220.59.0/24")
+        out["outbound_ip_in_allowed_ranges"] = allowed
+        out["outbound_ip_note"] = ("✓ IP JE v dovoljenih range." if allowed else
+                                    "✗ IP NI v dovoljenih range 74.220.51.0/24 ali 74.220.59.0/24 — TO je vzrok! Pošlji ta IP administratorju.")
+    except Exception as e:
+        out["outbound_ip"] = f"napaka: {e}"
+
+    out["steps"] = []
     host = "www.siluxar.si"
 
     # 1) DNS razrešitev
