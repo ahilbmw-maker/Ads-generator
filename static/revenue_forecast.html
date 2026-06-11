@@ -1652,7 +1652,7 @@ async function fetchSiluxarSum() {
     const data = await r.json();
     if (!data.ok) { toast('Napaka: ' + (data.error||'unknown'), true); return; }
     const revFmt = (data.revenue||0).toLocaleString('sl-SI', {minimumFractionDigits:2, maximumFractionDigits:2});
-    toast(`✓ Siluxar (${data.date}): ${data.orders} naročil · ${revFmt} €`);
+    toast(`✓ Vnos ${data.time||''} (${data.date}): ${data.orders} naročil · ${revFmt} €`);
     loadToday();
     loadHistory();
     loadStats();
