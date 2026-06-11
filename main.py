@@ -901,6 +901,7 @@ async def startup_event():
     asyncio.create_task(periodic_refresh())
     asyncio.create_task(_daily_cashflow_sync())
     asyncio.create_task(_email_polling_loop())
+    asyncio.create_task(_forecast2_scheduler_loop())
 
 
 async def _ffmpeg_warmup():
@@ -13560,11 +13561,9 @@ async def forecast2_sum_raw():
         return {"error": str(e)}
 
 
-@app.post("/forecast2-fetch-siluxar")
-async def forecast2_fetch_siluxar():
-    """Potegne dnevno vsoto (št. naročil + promet €) s siluxar apisumexport in
-    zapiše v final današnjega dne. Ista avtentikacija kot ostali siluxar klici
-    (ključ v Authorization; Basic Auth fallback)."""
+async def _forecast2_fetch_core():
+    """Jedro: potegne apisumexport in zapiše vmesni vnos za danes.
+    Kliče ga endpoint /forecast2-fetch-siluxar IN notranji scheduler (vsake 2h)."""
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
@@ -13597,7 +13596,6 @@ async def forecast2_fetch_siluxar():
         if isinstance(jd, list) and jd:
             jd = jd[0]
         if isinstance(jd, dict):
-            # prožno: poišči polja za naročila in promet
             def _find(d, *names):
                 for n in names:
                     for k in d.keys():
@@ -13623,7 +13621,6 @@ async def forecast2_fetch_siluxar():
     day = _forecast2_load_day(today)
     if "entries" not in day or not isinstance(day.get("entries"), list):
         day["entries"] = []
-    # če entry s tem časom (HH:MM) že obstaja, ga zamenjaj (ne podvoji)
     day["entries"] = [e for e in day["entries"] if e.get("time") != time_norm]
     day["entries"].append({
         "time": time_norm,
@@ -13636,6 +13633,38 @@ async def forecast2_fetch_siluxar():
     _forecast2_save_day(today, day)
     return {"ok": True, "date": today, "time": time_norm,
             "orders": orders or 0, "revenue": revenue or 0.0}
+
+
+@app.post("/forecast2-fetch-siluxar")
+async def forecast2_fetch_siluxar():
+    """Potegne dnevno vsoto (št. naročil + promet €) s siluxar apisumexport in
+    zapiše vmesni vnos za danes. Ročni klic prek gumba (scheduler kliče isto jedro)."""
+    return await _forecast2_fetch_core()
+
+
+async def _forecast2_scheduler_loop():
+    """Notranji scheduler (always-on Render Pro): vsake 2 uri potegne apisumexport
+    in zapiše vmesni vnos. Aktiven med 6:00–22:00 po Ljubljani (ponoči ni prometa).
+    Teče znotraj web procesa → dostop do /data brez konflikta."""
+    await asyncio.sleep(60)  # počakaj, da se startup dokonča
+    INTERVAL = 60 * 60       # 1 ura
+    while True:
+        try:
+            now = _lj_now()
+            hour = now.hour
+            if 6 <= hour < 22:
+                res = await _forecast2_fetch_core()
+                if res.get("ok"):
+                    print(f"[forecast2-cron] OK {res.get('date')} {res.get('time')} — "
+                          f"{res.get('orders')} naročil, {res.get('revenue')} €")
+                else:
+                    print(f"[forecast2-cron] FAIL — {res.get('error')}")
+            else:
+                print(f"[forecast2-cron] Izven delovnega časa ({hour}h) — preskočim")
+            await asyncio.sleep(INTERVAL)
+        except Exception as e:
+            print(f"[forecast2-cron] Error: {e}")
+            await asyncio.sleep(1800)  # 30 min pred ponovnim poskusom
 
 
 @app.post("/forecast2-set-final")
