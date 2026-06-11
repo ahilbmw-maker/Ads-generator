@@ -3659,13 +3659,15 @@ input[type="text"].error { border-color: var(--red) !important; }
 
         <!-- Sticky header tabele -->
         <div id="zalogaHeaderWrap" style="background:var(--bg);padding-top:4px;display:none">
-          <div style="display:grid;grid-template-columns:60px 280px 1fr 75px 65px 75px 95px 0.5fr;gap:8px;padding:9px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--border);cursor:pointer;user-select:none">
+          <div style="display:grid;grid-template-columns:60px 240px 1fr 75px 65px 75px 90px 75px 90px 0.5fr;gap:8px;padding:9px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--border);cursor:pointer;user-select:none">
             <span onclick="zalogaSortBy('product_id')">ID <span id="zSort-product_id">↕</span></span>
             <span onclick="zalogaSortBy('product_sku')">SKU <span id="zSort-product_sku">↕</span></span>
             <span onclick="zalogaSortBy('title')">Naziv <span id="zSort-title">↕</span></span>
             <span style="text-align:right" onclick="zalogaSortBy('stock')">Zaloga <span id="zSort-stock">↓</span></span>
             <span style="text-align:right" onclick="zalogaSortBy('price')">Cena <span id="zSort-price">↕</span></span>
             <span style="text-align:right" onclick="zalogaSortBy('stock30')">Obr/30d <span id="zSort-stock30">↕</span></span>
+            <span style="text-align:right" onclick="zalogaSortBy('stock_duration')">Trajanje <span id="zSort-stock_duration">↕</span></span>
+            <span onclick="zalogaSortBy('warehouse')">Skladišče <span id="zSort-warehouse">↕</span></span>
             <span onclick="zalogaSortBy('position')">Pozicija <span id="zSort-position">↕</span></span>
             <span onclick="zalogaSortBy('note')">Opomba <span id="zSort-note">↕</span></span>
           </div>
@@ -14279,7 +14281,7 @@ function zalogaRender() {
   items = [...items].sort((a, b) => {
     const col = _zalogaSortCol;
     let av = a[col], bv = b[col];
-    if (col === 'stock' || col === 'stock30' || col === 'price' || col === 'product_id') {
+    if (col === 'stock' || col === 'stock30' || col === 'price' || col === 'product_id' || col === 'stock_duration') {
       av = parseFloat(av) || 0; bv = parseFloat(bv) || 0;
       return (av - bv) * _zalogaSortDir;
     }
@@ -14287,7 +14289,7 @@ function zalogaRender() {
   });
 
   // Sort indicators
-  ['product_id','product_sku','title','stock','price','stock30','position','note'].forEach(col => {
+  ['product_id','product_sku','title','stock','price','stock30','stock_duration','warehouse','position','note'].forEach(col => {
     const el = document.getElementById('zSort-' + col);
     if (!el) return;
     el.textContent = _zalogaSortCol === col ? (_zalogaSortDir === 1 ? '↑' : '↓') : '↕';
@@ -14328,7 +14330,7 @@ function zalogaRender() {
   if (headerWrap) headerWrap.style.display = 'block';
   empty.style.display = 'none';
 
-  const GRID = '60px 280px 1fr 75px 65px 75px 95px 0.5fr';
+  const GRID = '60px 240px 1fr 75px 65px 75px 90px 75px 90px 0.5fr';
 
   tableEl.innerHTML = pageItems.map(it => {
     const stock = parseInt(it.stock) || 0;
@@ -14351,6 +14353,8 @@ function zalogaRender() {
       + '<span class="zal-c-stock" style="text-align:right;font-weight:700;font-size:13px;color:' + stockColor + '">' + stock + '</span>'
       + '<span class="zal-c-price" style="text-align:right;color:var(--text-secondary)">' + (price > 0 ? price.toFixed(2) + ' €' : '—') + '</span>'
       + '<span class="zal-c-obrat" style="text-align:right;font-weight:600;color:' + obratColor + '">' + (stock30 > 0 ? stock30 : '—') + '</span>'
+      + '<span class="zal-c-dur" style="text-align:right;color:var(--text-secondary);font-size:11px">' + esc(it.stock_duration||'—') + '</span>'
+      + '<span class="zal-c-wh" style="color:var(--text-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.warehouse) + '">' + esc(it.warehouse||'—') + '</span>'
       + '<span class="zal-c-pos" style="color:var(--text-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.position) + '">' + esc(it.position||'—') + '</span>'
       + '<span class="zal-c-note" style="color:var(--text-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.note) + '">' + esc(it.note||'—') + '</span>'
       + '<span class="zal-meta-mobile">' + metaMobile + '</span>'
