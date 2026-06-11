@@ -13459,8 +13459,14 @@ async def zaloga_debug_vsota():
     api_total = 0
     api_rows = 0
     api_map = {}
+    api_raw = {}
     api_skus = set()
     api_error = None
+    prazni_sku_kosi = 0       # zapisi BREZ sku, a s stockom (suban.ai jih preskoči!)
+    prazni_sku_vrstic = 0
+    prazni_naziv_kosi = 0     # zapisi s sku, a BREZ naziva, a s stockom
+    prazni_naziv_vrstic = 0
+    prazni_primeri = []
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
@@ -13481,15 +13487,51 @@ async def zaloga_debug_vsota():
                 if not isinstance(it, dict): continue
                 sku = str(it.get('sku') or it.get('product_sku') or '').strip()
                 wh = str(it.get('source') or '').strip()
+                title = str(it.get('title') or '').strip()
                 st = _to_int(it.get('stock'))
                 if not sku:
+                    # zapis BREZ SKU — suban.ai sync ga PRESKOČI, siluxar ga šteje
+                    if st != 0:
+                        prazni_sku_kosi += st
+                        prazni_sku_vrstic += 1
+                        if len(prazni_primeri) < 20:
+                            prazni_primeri.append({"id": str(it.get('id') or ''), "sku": "(prazen)",
+                                                   "title": title or "(prazen)", "stock": st, "source": wh})
                     continue
+                if not title and st != 0:
+                    # ima SKU, a prazen naziv (a s stockom) — informativno
+                    prazni_naziv_kosi += st
+                    prazni_naziv_vrstic += 1
+                    if len(prazni_primeri) < 20:
+                        prazni_primeri.append({"id": str(it.get('id') or ''), "sku": sku,
+                                               "title": "(prazen)", "stock": st, "source": wh})
                 api_total += st
                 api_rows += 1
                 api_skus.add(sku)
-                api_map[sku + '|' + wh] = api_map.get(sku + '|' + wh, 0) + st
+                _k = sku + '|' + wh
+                api_map[_k] = api_map.get(_k, 0) + st
+                api_raw.setdefault(_k, []).append(st)   # vsi posamezni zapisi za ta ključ
     except Exception as e:
         api_error = str(e)
+
+    # SIMULACIJA SEŠTEVANJA: kateri ključi imajo VEČ zapisov + kakšen bi bil učinek
+    podvojeni = []           # ključi z >1 zapisom
+    sestevek_skupaj = 0      # koliko kosov bi PRIDOBILI s seštevanjem (vs trenutni suban.ai)
+    sumljivi = []            # podvojeni, kjer sta DVA ne-ničelna zapisa (npr. 424+50) — pozor!
+    for k, vals in api_raw.items():
+        if len(vals) > 1:
+            sku, _, wh = k.partition('|')
+            vsota = sum(vals)
+            trenutni = csv_map.get(k, 0)   # kar suban.ai zdaj ima
+            pridobitev = vsota - trenutni
+            nenicelni = [v for v in vals if v != 0]
+            rec = {"sku": sku, "skladisce": wh, "zapisi": sorted(vals, reverse=True),
+                   "sestevek": vsota, "suban_ai_zdaj": trenutni, "pridobitev": pridobitev}
+            podvojeni.append(rec)
+            sestevek_skupaj += pridobitev
+            if len(nenicelni) > 1:   # dva ali več ne-ničelnih → seštevanje morda napačno
+                sumljivi.append(rec)
+    podvojeni.sort(key=lambda x: abs(x["pridobitev"]), reverse=True)
 
     # 3) razlike po ključu (SKU+skladišče)
     razlike = []
@@ -13509,13 +13551,29 @@ async def zaloga_debug_vsota():
     return {
         "suban_ai": {"vsota_kosov": csv_total, "vrstic": csv_rows, "unikatnih_sku": len(csv_skus)},
         "siluxar_api": {"vsota_kosov": api_total, "vrstic": api_rows, "unikatnih_sku": len(api_skus)},
+        "siluxar_skupaj_z_praznimi": api_total + prazni_sku_kosi,
+        "PRAZNI_SKU": {
+            "kosov": prazni_sku_kosi, "vrstic": prazni_sku_vrstic,
+            "opomba": "Zapisi BREZ sku — suban.ai jih PRESKOČI, siluxar pa morda šteje. VERJETEN izvor razlike."
+        },
+        "prazni_naziv": {"kosov": prazni_naziv_kosi, "vrstic": prazni_naziv_vrstic,
+                         "opomba": "Imajo SKU a prazen naziv — suban.ai jih SHRANI (samo informativno)."},
+        "prazni_primeri": prazni_primeri,
         "razlika_vsote": api_total - csv_total,
         "stevilo_razlik": len(razlike),
         "razlike_po_sku": razlike[:60],
+        "SIMULACIJA_SESTEVANJA": {
+            "kljucev_z_vec_zapisi": len(podvojeni),
+            "kosov_pridobljenih_ce_sestejemo": sestevek_skupaj,
+            "opomba": "Toliko kosov bi suban.ai PRIDOBIL, če bi seštevali podvojene SKU+skladišče. Naj bi ujemalo razliko.",
+            "SUMLJIVI_dva_nenicelna": sumljivi,
+            "sumljivih_opomba": "Tu sta DVA ne-ničelna zapisa (npr. 424+50) — seštevanje bi morda napačno podvojilo. Če prazno → seštevanje varno.",
+            "podvojeni_primeri": podvojeni[:40],
+        },
         "samo_v_suban_ai": samo_v_csv,
         "samo_v_siluxar": samo_v_api,
         "api_error": api_error,
-        "namig": "razlika_vsote = siluxar − suban.ai. razlike_po_sku pokaže, KJE se kosi razlikujejo.",
+        "namig": "Če PRAZNI_SKU.kosov == tvoja razlika → to je vzrok (zapisi brez SKU, ki jih suban.ai ne more shraniti).",
     }
 
 
