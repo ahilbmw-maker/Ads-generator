@@ -91,7 +91,8 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
 app.add_middleware(AuthGateMiddleware)
 
 _LOGIN_HTML = """<!DOCTYPE html><html lang="sl"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Prijava — ads.slx</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Prijava — Suban AI</title>
+<link rel="icon" type="image/png" href="/static/suban-s-icon.png">
 <style>
   * { box-sizing: border-box; }
   body { margin:0; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
