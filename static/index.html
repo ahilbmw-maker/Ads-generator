@@ -3719,10 +3719,10 @@ input[type="text"].error { border-color: var(--red) !important; }
             <input type="checkbox" id="zalogaOnlyStock" onchange="_zalogaPage=1;zalogaRender()" style="cursor:pointer;accent-color:var(--green);width:14px;height:14px">
             <span>Samo na zalogi</span>
           </label>
-          <!-- Prikaži external (brez ID) -->
+          <!-- Prikaži external (skladišče = external) -->
           <label class="zaloga-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">
             <input type="checkbox" id="zalogaShowExternal" onchange="_zalogaPage=1;zalogaRender()" style="cursor:pointer;accent-color:#f59e0b;width:14px;height:14px">
-            <span>Prikaži external (brez ID)</span>
+            <span>Prikaži external</span>
           </label>
           <!-- Stats -->
           <div id="zalogaStats" style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;flex-shrink:0"></div>
@@ -14361,7 +14361,7 @@ function zalogaSearchInput(val) {
   if (q.length < 1 || !_zalogaData.length) { box.style.display = 'none'; return; }
   // predlogi: ujemanje po SKU (začetek najprej, nato vsebuje)
   const showExternal = document.getElementById('zalogaShowExternal')?.checked;
-  const pool = _zalogaData.filter(it => !(!showExternal && it.is_external));
+  const pool = _zalogaData.filter(it => !(!showExternal && _zalIsExternal(it)));
   const starts = [], contains = [];
   for (const it of pool) {
     const sku = (it.product_sku || '').toLowerCase();
@@ -14395,6 +14395,11 @@ function zalogaSuggestPick(sku) {
   zalogaRender();  // filtrira na ta SKU → pokaže samo ta izdelek
 }
 
+// Izdelek je "external" če je njegovo SKLADIŠČE (source) = "external"
+function _zalIsExternal(it) {
+  return ((it.warehouse || '').trim().toLowerCase() === 'external');
+}
+
 function zalogaRender() {
   if (!_zalogaData.length) return;
 
@@ -14404,7 +14409,7 @@ function zalogaRender() {
 
   // Filter
   let items = _zalogaData.filter(it => {
-    if (!showExternal && it.is_external) return false;  // privzeto skrij external (brez ID)
+    if (!showExternal && _zalIsExternal(it)) return false;  // privzeto skrij skladišče=external
     if (onlyStock && (parseInt(it.stock) || 0) <= 0) return false;
     if (search) {
       const hay = [(it.product_sku||''), (it.title||''), (it.position||''), (it.note||''), (it.product_id||'')].join(' ').toLowerCase();
