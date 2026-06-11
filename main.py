@@ -2152,7 +2152,7 @@ async def zaloga_update_item(data: dict):
         if idx is None:
             return {"ok": False, "error": "Manjka idx"}
         sess = json.loads(path.read_text(encoding="utf-8"))
-        now_iso = _dt.now().isoformat()
+        now_iso = _dt.now(timezone.utc).isoformat()
         found = False
         for it in sess.get("items", []):
             if it.get("idx") == idx:
