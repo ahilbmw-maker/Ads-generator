@@ -333,7 +333,10 @@
   <div style="background:#fff;border:1.5px solid var(--border2);border-radius:12px;padding:16px 20px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <span style="font-size:12px;font-weight:600;color:var(--text)">📋 Prilepi vrstice iz sistema</span>
-      <button onclick="pasteAreaProcess()" style="background:var(--accent);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Analiziraj ↗</button>
+      <div style="display:flex;gap:8px">
+        <button id="siluxarFetchBtn" onclick="siluxarFetch(false)" style="background:#fff;color:var(--accent);border:1.5px solid var(--accent);padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">↻ Potegni s siluxar.si</button>
+        <button onclick="pasteAreaProcess()" style="background:var(--accent);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Analiziraj ↗</button>
+      </div>
     </div>
     <textarea id="pasteArea"
       placeholder="Prilepi (Ctrl+V) vrstice naročil sem — enaka struktura kot .txt izvoz iz sistema&#10;&#10;Primer:&#10;2694793	GREASRA	Adapter za mast LubeSharp	116	1.399,00 RSD - 2x	1,39	8,49	611,03	Maaarket.RS"
@@ -392,6 +395,39 @@ let currentSearch = '';
 let sortCol = null;
 let sortDir = 1;
 let selectedKeys = new Set();
+
+async function siluxarFetch(silent) {
+  const btn = document.getElementById('siluxarFetchBtn');
+  const st = document.getElementById('pasteStatus');
+  const origLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Berem...'; }
+  if (st && !silent) { st.style.display='block'; st.style.color='var(--muted)'; st.textContent='⏳ Potegujem podatke s siluxar.si...'; }
+  try {
+    const r = await fetch('/price-stock-fetch');
+    const d = await r.json();
+    if (!d.ok) {
+      // pri samodejnem (silent) ne moti, če ni ključa / napaka
+      if (st && !silent) { st.style.display='block'; st.style.color='var(--red)'; st.textContent='⚠ ' + (d.error || 'Napaka pri branju.'); }
+      return;
+    }
+    const raw = (d.raw || '').trim();
+    if (!raw) {
+      if (st && !silent) { st.style.display='block'; st.style.color='var(--red)'; st.textContent='⚠ siluxar.si ni vrnil podatkov.'; }
+      return;
+    }
+    // vstavi v paste area in spusti skozi obstoječi parser
+    const ta = document.getElementById('pasteArea');
+    if (ta) ta.value = raw;
+    pasteAreaProcess();
+  } catch(e) {
+    if (st && !silent) { st.style.display='block'; st.style.color='var(--red)'; st.textContent='⚠ Napaka pri povezavi.'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origLabel || '↻ Potegni s siluxar.si'; }
+  }
+}
+
+// samodejno ob odprtju (tiho — če ni podatkov, ne moti)
+setTimeout(() => siluxarFetch(true), 600);
 
 function pasteAreaProcess() {
   const ta = document.getElementById('pasteArea');
