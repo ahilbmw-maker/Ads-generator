@@ -7116,6 +7116,34 @@ async def orodja_stock_clear():
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/price-stock-fetch")
+async def price_stock_fetch():
+    """Potegne podatke o zalogi/cenah s siluxar.si API-ja (za urejevalnik cen).
+    Ključ je v okoljski spr. SILUXAR_STOCK_KEY (NE v kodi). Vrne surovo besedilo,
+    ki ga frontend (price_checker) spusti skozi obstoječi parseFile."""
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    if not key:
+        return {"ok": False, "error": "Manjka SILUXAR_STOCK_KEY (nastavi v Render okoljskih spremenljivkah)."}
+    url = "https://www.siluxar.si/apistockalertsexport"
+    try:
+        async with httpx.AsyncClient(timeout=60) as cli:
+            r = await cli.get(url, headers={"Authorization": key})
+        if r.status_code != 200:
+            return {"ok": False, "error": f"siluxar.si vrnil status {r.status_code}", "status": r.status_code}
+        text = r.text or ""
+        # poskusi razbrati ali je JSON (za morebitno kasnejšo pretvorbo)
+        ctype = r.headers.get("content-type", "")
+        return {
+            "ok": True,
+            "content_type": ctype,
+            "raw": text,
+            "length": len(text),
+            "lines": text.count("\n") + 1 if text else 0,
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}"}
+
+
 @app.post("/orodja-price-check")
 async def orodja_price_check(file: UploadFile = File(...)):
     """Sprejme HS+ PDF + match s shranjeno zalogo, vrne primerjavo cen."""
