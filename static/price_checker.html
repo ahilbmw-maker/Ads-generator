@@ -433,7 +433,19 @@ function pasteAreaProcess() {
   const ta = document.getElementById('pasteArea');
   const text = ta?.value?.trim();
   if (!text) return;
-  const rows = parseFile(text);
+  // Zaznaj format: JSON (siluxar) ali TSV (ročno prilepljeno)
+  let rows;
+  if (text[0] === '[' || text[0] === '{') {
+    try {
+      let jd = JSON.parse(text);
+      if (!Array.isArray(jd) && Array.isArray(jd.data)) jd = jd.data;
+      rows = parseFileJSON(Array.isArray(jd) ? jd : []);
+    } catch(e) {
+      rows = [];  // ni veljaven JSON
+    }
+  } else {
+    rows = parseFile(text);  // TSV (stari način)
+  }
   if (!rows.length) {
     const st = document.getElementById('pasteStatus');
     if (st) { st.style.display='block'; st.style.color='var(--red)'; st.textContent='⚠ Ni veljavnih vrstic — preveri format.'; }
@@ -677,6 +689,84 @@ function formatSuggested(amount, currency) {
   if (currency === 'RON') return Math.round(amount) + ' RON';
   if (currency === 'RSD') return Math.round(amount).toLocaleString('rs') + ' RSD';
   return amount + ' ' + currency;
+}
+
+// ============ PARSE JSON (siluxar apistockalertsexport) ============
+// Marko vrne JSON polja: id (ps.id, skrit ključ za sinhronizacijo brisanja),
+// order_id, product_sku, product_title, product_stock, product_price,
+// product_price_netto, product_price_netto_diff, product_margin, store,
+// price (prodajna), currency, amount (qty).
+// Vrne ISTO strukturo vrstic kot parseFile, da render ostane nedotaknjen.
+function parseFileJSON(arr) {
+  const rows = [];
+  const toNum = (s) => {
+    if (s === null || s === undefined || s === '') return null;
+    const cleaned = s.toString().replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+  };
+  for (const o of arr) {
+    if (!o || typeof o !== 'object') continue;
+    const id = (o.id != null ? String(o.id) : '').trim();       // ps.id — skrit ključ
+    const orderId = (o.order_id != null ? String(o.order_id) : '').trim();
+    const sku = (o.product_sku || '').trim();
+    if (!id || !sku) continue;
+
+    // prodajna cena + valuta. currency je prazen za EUR-trge.
+    const cur = (o.currency || '').trim().toUpperCase() || 'EUR';
+    const priceRawNum = (o.price != null ? String(o.price) : '').trim();
+    const qty = parseInt(o.amount) || 1;
+
+    // null/0 zaznava (manjkajoča cena)
+    const lower = priceRawNum.toLowerCase();
+    const isNull = lower === '' || lower === 'null' || lower === '0' || lower === '0.00' || lower === '0,00';
+
+    // sestavi niz z valuto, da parsePrice pravilno razbere (npr. "1999.00 RSD")
+    let parsed = null;
+    if (!isNull) {
+      const priceWithCur = cur === 'EUR' ? priceRawNum : (priceRawNum + ' ' + cur);
+      parsed = parsePrice(priceWithCur);
+    }
+    if (!parsed && !isNull) continue;
+
+    const check = isNull
+      ? { issues: ['Vrednost 0 / null — manjkajoča cena'], suggested: null, isOk: false }
+      : checkPrice(parsed.amount, parsed.currency);
+
+    // prikazani priceRaw — kot prej (čista vrednost)
+    const priceDisplay = isNull ? (priceRawNum || 'null') : priceRawNum;
+
+    const nc = (o.product_price_netto != null ? String(o.product_price_netto) : '');
+    const razlika = (o.product_price_netto_diff != null ? String(o.product_price_netto_diff) : '');
+    const marza = (o.product_margin != null ? String(o.product_margin) : '');
+
+    rows.push({
+      id,
+      order_id: orderId,        // shranjen (za referenco)
+      sku: sku,
+      product: (o.product_title || '').trim(),
+      stock: parseInt(o.product_stock) || 0,
+      priceRaw: priceDisplay,
+      qty: qty,
+      isNull: isNull,
+      amount: isNull ? 0 : parsed.amount,
+      currency: isNull ? '—' : parsed.currency,
+      nc: nc,
+      razlika: razlika,
+      marza: marza,
+      ncNum: toNum(nc),
+      razlikaNum: toNum(razlika),
+      marzaNum: toNum(marza),
+      store: (o.store || '').trim(),
+      issues: check.issues,
+      suggested: check.suggested,
+      isOk: check.isOk,
+      resolved: false,
+      status: isNull ? 'null' : check.issues.length === 0 ? 'ok' :
+              check.issues.some(i => i.includes('Mejna') || i.includes('predlog navzgor') || i.includes('Blizu')) ? 'warn' : 'error'
+    });
+  }
+  return rows;
 }
 
 // ============ PARSE FILE ============
