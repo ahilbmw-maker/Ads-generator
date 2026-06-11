@@ -7305,7 +7305,7 @@ async def zaloga_sync_siluxar():
     sid_col   = find_col('id')           # ps.id = siluxar skrit ključ (sinhronizacija brisanja)
     # Trajanje zaloge + Skladišče (prožno — Markovo ime morda drugačno)
     dur_col   = find_col('trajanje_zaloge','trajanje','stock_duration','duration','dni_zaloge','days_of_stock','zaloga_dni')
-    wh_col    = find_col('skladisce','skladišče','warehouse','store','trgovina','lokacija_skladisce')
+    wh_col    = find_col('skladisce','skladišče','warehouse','store','trgovina','lokacija_skladisce','source')  # source=silux/silux2=skladišče
     if not sku_col:
         return {"ok": False, "error": f"Ne najdem SKU stolpca. Najdeni: {keys}"}
 
@@ -8417,7 +8417,8 @@ async def orodja_stock_data():
             items.append({
                 "sku": sku,
                 "product_sku": sku,
-                "product_id": (row.get('product_id') or '').strip(),
+                "product_id": (row.get('product_id') or row.get('siluxar_id') or '').strip(),
+                "siluxar_id": (row.get('siluxar_id') or '').strip(),
                 "title": (row.get('title') or '').strip(),
                 "stock": (row.get('stock') or '0').strip(),
                 "stock30": (row.get('stock30') or '0').strip(),
@@ -13317,6 +13318,8 @@ async def zaloga_sync_raw():
         text = r.text or ""
         # poskusi razbrati JSON in pokazati KLJUČE prve vrstice (imena polj)
         field_names = None
+        source_counts = {}
+        total_items = 0
         try:
             jd = json.loads(text)
             if isinstance(jd, dict):
@@ -13325,10 +13328,16 @@ async def zaloga_sync_raw():
                         jd = jd[kk]; break
             if isinstance(jd, list) and jd and isinstance(jd[0], dict):
                 field_names = list(jd[0].keys())
+                total_items = len(jd)
+                # preštej vse 'source' vrednosti (silux / silux2 / ...) — celoten odgovor
+                for it in jd:
+                    sv = str(it.get("source", "") or "(prazen)").strip() or "(prazen)"
+                    source_counts[sv] = source_counts.get(sv, 0) + 1
         except Exception:
             pass
         return {"status": r.status_code, "content_type": r.headers.get("content-type", ""),
-                "field_names": field_names, "raw": text[:2000]}
+                "field_names": field_names, "total_items": total_items,
+                "source_values": source_counts, "raw": text[:2000]}
     except Exception as e:
         return {"error": str(e)}
 
