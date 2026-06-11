@@ -109,8 +109,7 @@ _LOGIN_HTML = """<!DOCTYPE html><html lang="sl"><head><meta charset="UTF-8">
   .err { color:#dc2626; font-size:13px; min-height:18px; margin-top:10px; }
 </style></head><body>
   <div class="box">
-    <div class="logo">🔒</div>
-    <h1>ads.slxanalytics</h1>
+    <img src="/static/suban-logo.png" alt="Suban AI" style="width:160px;height:auto;margin:0 auto 8px;display:block">
     <p class="sub">Vpiši geslo za dostop</p>
     <form method="POST" action="/login">
       <input type="password" name="password" placeholder="Geslo" autofocus autocomplete="current-password">
