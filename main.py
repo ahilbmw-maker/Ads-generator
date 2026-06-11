@@ -7146,10 +7146,13 @@ async def siluxar_diag():
 
     def _snippet(resp):
         """Skrajšano telo + ključne glave (kdo zavrača)."""
-        body = (resp.text or "")[:200]
+        body = (resp.text or "")[:400]
         wa = resp.headers.get("www-authenticate", "")
         srv = resp.headers.get("server", "")
-        return {"status": resp.status_code, "body_preview": body,
+        ct = resp.headers.get("content-type", "")
+        clen = resp.headers.get("content-length", "")
+        return {"status": resp.status_code, "body_len": len(resp.text or ""),
+                "body_preview": body, "content_type": ct, "content_length": clen,
                 "www_authenticate": wa, "server": srv}
 
     tests = {}
@@ -7190,13 +7193,28 @@ async def siluxar_diag():
     except Exception as e:
         tests["e_kljuc_v_authorization"] = {"error": str(e)}
 
+    # (f) Basic Auth + razni parametri za izvoz (telo je bilo prazno pri golem GET)
+    param_variants = [
+        "?format=csv", "?format=json", "?type=csv", "?type=json",
+        "?export=1", "?download=1", "?output=csv", "?all=1",
+    ]
+    param_tests = {}
+    for pv in param_variants:
+        try:
+            async with httpx.AsyncClient(timeout=30, auth=_ba) as cli:
+                r = await cli.get(f"https://{host}/apistockexport{pv}")
+            param_tests[pv] = {"status": r.status_code, "body_len": len(r.text or ""),
+                               "preview": (r.text or "")[:120]}
+        except Exception as e:
+            param_tests[pv] = {"error": str(e)}
+
     out["steps"].append({"step": "TCP:443", "ok": True})
     out["auth_tests"] = tests
-    out["razlaga"] = ("Poišči test s statusom 200 = ta kombinacija deluje. "
-                      "www_authenticate glava razkrije, kdo zavrača: če piše 'Basic' → web strežnik (Basic Auth); "
-                      "če je drugačno/prazno ob 401 → Markova aplikacija (ključ). "
-                      "Server glava pove, ali odgovarja web strežnik (nginx/apache) ali aplikacija.")
-    out["verdict"] = "Omrežje deluje (TCP+HTTPS ok). Glej auth_tests za pravo kombinacijo avtentikacije."
+    out["param_tests"] = param_tests
+    out["razlaga"] = ("Poišči test s statusom 200 IN body_len > 0 = ta kombinacija vrne podatke. "
+                      "Če so vsi body_len=0, API rabi drugačen klic — vprašaj Marka. "
+                      "param_tests preizkusi pogoste parametre za izvoz.")
+    out["verdict"] = "Omrežje+auth deluje (200). Preveri body_len: če 0, manjka parameter za izvoz."
     return out
 
 
