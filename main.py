@@ -7103,11 +7103,14 @@ async def orodja_stock_upload(file: UploadFile = File(...)):
         price_col = find_col('price_netto', 'price', 'cena')
         pos_col   = find_col('position', 'pozicija', 'lokacija')
         note_col  = find_col('note', 'opomba', 'komentar')
+        wh_col    = find_col('skladisce', 'skladišče', 'warehouse', 'store', 'source')
 
         if not sku_col:
             return JSONResponse({"error": f"Ne najdem SKU stolpca. Najdeni: {keys}"}, status_code=400)
 
-        # Merge znotraj CSV-ja — seštej stock za isti SKU (več lokacij)
+        # KLJUČ = SKU + skladišče (LOČENO po skladiščih, NE sešteva)
+        def _mk_key(sku, wh):
+            return (sku or '').strip() + '|' + (wh or '').strip()
         merged = {}
         added = 0
         updated = 0
@@ -7122,22 +7125,22 @@ async def orodja_stock_upload(file: UploadFile = File(...)):
                 new_s30 = int(float((row.get(s30_col) or '0').replace(',', '.'))) if s30_col else 0
             except: new_s30 = 0
             title = (row.get(title_col) or '').strip() if title_col else ''
+            wh    = (row.get(wh_col) or '').strip() if wh_col else ''
+            rk = _mk_key(sku, wh)
 
-            if sku in merged:
-                # Isti SKU, druga lokacija — seštej stock
-                merged[sku]['stock'] += new_stock
-                if new_s30 > merged[sku]['stock30']:
-                    merged[sku]['stock30'] = new_s30
-                if title and not merged[sku]['title']:
-                    merged[sku]['title'] = title
-                # Ohrani price/position/note iz prve lokacije (ali posodobi če prazno)
+            if rk in merged:
+                # ista SKU+skladišče kombinacija v istem CSV — prepiši (NE sešteva med skladišči)
+                merged[rk]['stock'] = new_stock
+                if new_s30: merged[rk]['stock30'] = new_s30
+                if title and not merged[rk]['title']:
+                    merged[rk]['title'] = title
                 for fld, src_col in [('price', price_col), ('position', pos_col), ('note', note_col), ('product_id', 'product_id')]:
                     new_val = (row.get(src_col) or '').strip() if src_col else ''
-                    if new_val and not merged[sku].get(fld):
-                        merged[sku][fld] = new_val
+                    if new_val and not merged[rk].get(fld):
+                        merged[rk][fld] = new_val
                 updated += 1
             else:
-                merged[sku] = {
+                merged[rk] = {
                     'product_id': (row.get('product_id') or '').strip(),
                     'product_sku': sku,
                     'title': title,
@@ -7146,12 +7149,13 @@ async def orodja_stock_upload(file: UploadFile = File(...)):
                     'price': (row.get(price_col) or '').strip() if price_col else '',
                     'position': (row.get(pos_col) or '').strip() if pos_col else '',
                     'note': (row.get(note_col) or '').strip() if note_col else '',
+                    'warehouse': wh,
                 }
                 added += 1
 
         # Shrani nazaj kot CSV z vsemi kolonami
         out = _SIO()
-        fieldnames = ['product_id', 'product_sku', 'title', 'stock', 'stock30', 'price', 'position', 'note']
+        fieldnames = ['product_id', 'product_sku', 'title', 'stock', 'stock30', 'price', 'position', 'note', 'warehouse']
         writer = _csv.DictWriter(out, fieldnames=fieldnames, extrasaction='ignore')
         writer.writeheader()
         writer.writerows(merged.values())
@@ -7406,15 +7410,18 @@ async def zaloga_sync_siluxar():
     if not sku_col:
         return {"ok": False, "error": f"Ne najdem SKU stolpca. Najdeni: {keys}"}
 
-    # 4) naloži OBSTOJEČO zalogo (merge cilj)
+    # 4) naloži OBSTOJEČO zalogo (merge cilj). KLJUČ = SKU + skladišče (ločeno po skladiščih).
+    def _mk_key(sku, wh):
+        return (sku or '').strip() + '|' + (wh or '').strip()
     existing = {}
     if STOCK_CSV_FILE.exists():
         try:
             old_text = STOCK_CSV_FILE.read_text(encoding='utf-8')
             for row in _csv.DictReader(_SIO(old_text)):
                 s = (row.get('product_sku') or '').strip()
+                w = (row.get('warehouse') or '').strip()
                 if s:
-                    existing[s] = dict(row)
+                    existing[_mk_key(s, w)] = dict(row)
         except Exception:
             existing = {}
 
@@ -7442,8 +7449,9 @@ async def zaloga_sync_siluxar():
         pid   = (row.get(id_col) or '').strip() if id_col else ''
         dur   = (row.get(dur_col) or '').strip() if dur_col else ''   # trajanje zaloge
         wh    = (row.get(wh_col) or '').strip() if wh_col else ''     # skladišče
-        if sku in existing:
-            e = existing[sku]
+        rk = _mk_key(sku, wh)   # ključ: SKU + skladišče (ločeno po skladiščih)
+        if rk in existing:
+            e = existing[rk]
             # posodobi stock vedno; ostalo le če pride nova vrednost
             e['stock'] = str(new_stock)
             if s30_col: e['stock30'] = str(new_s30)
@@ -7454,11 +7462,11 @@ async def zaloga_sync_siluxar():
             if pid: e['product_id'] = pid
             if sid: e['siluxar_id'] = sid
             if dur: e['stock_duration'] = dur
-            if wh: e['warehouse'] = wh
+            e['warehouse'] = wh
             e['is_external'] = is_ext
             updated += 1
         else:
-            existing[sku] = {
+            existing[rk] = {
                 'product_id': pid, 'product_sku': sku, 'title': title,
                 'stock': str(new_stock), 'stock30': str(new_s30),
                 'price': price, 'position': pos, 'note': note,
@@ -13412,6 +13420,80 @@ async def forecast2_delete_entry(data: dict):
         return {"ok": True, "deleted": before - after}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+@app.get("/zaloga-debug-sku")
+async def zaloga_debug_sku(q: str = ""):
+    """Diagnostika neskladja: za dani SKU ali ID pokaže (1) kaj je v shranjenem CSV
+    in (2) kaj siluxar API vrne. Razkrije, zakaj se zaloga ne ujema.
+    Uporaba: /zaloga-debug-sku?q=8488407  (ID ali SKU)"""
+    import csv as _csv
+    from io import StringIO as _SIO
+    q = (q or "").strip()
+    if not q:
+        return {"error": "Podaj ?q=SKU ali ID"}
+    ql = q.lower()
+
+    # 1) iz shranjenega CSV (suban.ai)
+    csv_matches = []
+    if STOCK_CSV_FILE.exists():
+        try:
+            text = STOCK_CSV_FILE.read_text(encoding='utf-8-sig', errors='replace')
+            for row in _csv.DictReader(_SIO(text)):
+                sku = (row.get('product_sku') or '').strip()
+                pid = (row.get('product_id') or '').strip()
+                sid = (row.get('siluxar_id') or '').strip()
+                if ql in (sku.lower(), pid.lower(), sid.lower()):
+                    csv_matches.append({
+                        "product_sku": sku, "product_id": pid, "siluxar_id": sid,
+                        "stock": row.get('stock'), "stock30": row.get('stock30'),
+                        "position": row.get('position'), "warehouse": row.get('warehouse'),
+                        "is_external": row.get('is_external'),
+                    })
+        except Exception as e:
+            csv_matches = [{"error": str(e)}]
+
+    # 2) iz siluxar API (apistockexport) — poišči iste SKU/ID
+    api_matches = []
+    api_error = None
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
+    basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
+    headers = {}
+    _auth = None
+    if key: headers["Authorization"] = key
+    elif basic_user or basic_pass: _auth = httpx.BasicAuth(basic_user, basic_pass)
+    try:
+        async with httpx.AsyncClient(timeout=90, auth=_auth) as cli:
+            r = await cli.get("https://www.siluxar.si/apistockexport", headers=headers)
+        jd = json.loads(r.text or "[]")
+        if isinstance(jd, dict):
+            for kk in ("data", "items", "rows", "products", "stock"):
+                if isinstance(jd.get(kk), list):
+                    jd = jd[kk]; break
+        if isinstance(jd, list):
+            for it in jd:
+                if not isinstance(it, dict): continue
+                sku = str(it.get('sku') or it.get('product_sku') or '').strip()
+                iid = str(it.get('id') or '').strip()
+                if ql in (sku.lower(), iid.lower()):
+                    api_matches.append({
+                        "id": iid, "sku": sku, "stock": it.get('stock'),
+                        "position": it.get('position'), "source": it.get('source'),
+                        "price_netto": it.get('price_netto'),
+                    })
+    except Exception as e:
+        api_error = str(e)
+
+    return {
+        "query": q,
+        "v_suban_csv": csv_matches or "NI v shranjeni zalogi",
+        "csv_count": len(csv_matches),
+        "v_siluxar_api": api_matches or "NI v siluxar API odgovoru",
+        "api_count": len(api_matches),
+        "api_error": api_error,
+        "namig": "Primerjaj SKU natančno (presledki, velike/male črke) + poglej, ali API vrne stock=0 ali več vrstic.",
+    }
+
 
 @app.get("/zaloga-sync-raw")
 async def zaloga_sync_raw():
