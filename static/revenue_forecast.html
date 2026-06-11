@@ -102,7 +102,8 @@
       <h1>📊 Napoved prometa</h1>
       <div class="subtitle">Vsak dan ima svoj fajl, brez prepisovanja</div>
     </div>
-    <div id="cleanup-wrap">
+    <div id="cleanup-wrap" style="display:flex;gap:8px">
+      <button class="btn btn-soft" onclick="fetchSiluxarSum()" id="siluxarSumBtn" style="background:#3a6fff;border-color:#3a6fff;color:#fff">🔄 Potegni s siluxar</button>
       <button class="btn btn-soft" onclick="cleanupPhantoms()" style="background:#fee2e2;border-color:#fca5a5">🧹 Počisti prazne</button>
     </div>
   </div>
@@ -1641,6 +1642,26 @@ const IRENEJ_FINALS = [
   { date: "2026-05-20", orders: 1109, revenue: 31150.23 },
   { date: "2026-05-21", orders: 1042, revenue: 29222.94 },
 ];
+
+async function fetchSiluxarSum() {
+  const btn = document.getElementById('siluxarSumBtn');
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Berem...'; }
+  try {
+    const r = await fetch('/forecast2-fetch-siluxar', { method:'POST' });
+    const data = await r.json();
+    if (!data.ok) { toast('Napaka: ' + (data.error||'unknown'), true); return; }
+    const revFmt = (data.revenue||0).toLocaleString('sl-SI', {minimumFractionDigits:2, maximumFractionDigits:2});
+    toast(`✓ Siluxar (${data.date}): ${data.orders} naročil · ${revFmt} €`);
+    loadToday();
+    loadHistory();
+    loadStats();
+  } catch(e) {
+    toast('Napaka: ' + e.message, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig || '🔄 Potegni s siluxar'; }
+  }
+}
 
 async function cleanupPhantoms() {
   if (!confirm('Počistim prazne/poškodovane vnose iz vseh dnevnih fajlov?')) return;
