@@ -100,7 +100,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #zalogaHeaderWrap { display: none !important; }   /* skrij desktop glavo tabele */
   /* edge-to-edge: zmanjšaj zunanje robove, da kartice izkoristijo širino */
   #page-zaloga { margin: 0 -0.6rem !important; }      /* izniči .main horizontalni padding */
-  .zaloga-subpage-inner { padding: 128px 8px 10px !important; gap: 8px !important; }
+  .zaloga-subpage-inner { padding: 10px 8px !important; gap: 8px !important; }  /* padding-top nastavi JS (_zalogaFixTopbar) */
   #zalogaSubpage-vracila, #zalogaSubpage-skeniranje, #zalogaSubpage-pozicije { padding: 10px 8px !important; }
   /* sub-tab nav: enakomerno razporejen, brez prelivanja */
   .zaloga-subtab-nav { padding: 10px 12px !important; }
@@ -120,31 +120,29 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   .zaloga-toolbar > div:has(#zalogaInfo),
   .zaloga-mobile-hide, #zalogaStats { display: none !important; }
 
-  /* ═══ MOBILNO: TABI + ISKALNIK FIKSNA NA VRH (position:fixed — vedno deluje, neodvisno od starša) ═══ */
+  /* ═══ MOBILNO: TABI + ISKALNIK FIKSNA NA VRH ═══
+     position:fixed (neodvisno od starša). Točne višine/odmiki nastavi JS (_zalogaFixTopbar)
+     glede na realno izmerjeno višino — brez ugibanja magičnih števil. */
 
-  /* 1) Tabi (Zaloga/Vračila/Skeniranje/Pozicija) — fiksni na sam vrh */
   .zaloga-subtab-nav {
     position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important;
     z-index: 46 !important; margin: 0 !important;
     background: var(--surface2) !important;
   }
+  .zaloga-subtab-nav .zaloga-tab-btn { flex: 1 !important; padding: 9px 6px !important; font-size: 12px !important; }
 
-  /* 2) Ovoj iskalnika — ni več sticky (fiksiramo sam iskalnik) */
   #zalogaStickyWrap { position: static !important; padding-bottom: 0 !important; }
   .zaloga-toolbar {
     padding: 0 !important; background: transparent !important;
     border: none !important; gap: 0 !important;
   }
-
-  /* 3) Iskalnik — fiksen TIK POD tabi (top = višina tab vrstice ~58px) */
   #zalogaSearchWrap {
-    position: fixed !important; top: 58px !important; left: 0 !important; right: 0 !important;
+    position: fixed !important; left: 0 !important; right: 0 !important;
     z-index: 45 !important; margin: 0 !important;
     background: var(--bg) !important; padding: 8px 10px !important;
     border-bottom: 1px solid var(--border) !important;
+    /* top + vsebinski padding nastavi JS glede na realno višino tabov */
   }
-
-  /* 4) Vsebina dobi razmik od zgoraj (128px) — nastavljeno v .zaloga-subpage-inner zgoraj */
 
   /* MOBILNO: velik iskalnik (junak) — 50px, font 16px (prepreči iOS zoom) */
   #zalogaSearch {
@@ -14427,8 +14425,27 @@ function _zalIsExternal(it) {
   return ((it.warehouse || '').trim().toLowerCase() === 'external');
 }
 
+// Mobilni fiksni topbar: izmeri REALNO višino tabov + iskalnika in nastavi pravilne odmike.
+// Brez magičnih števil — vse iz dejanske izmere, zato ni prekrivanja.
+function _zalogaFixTopbar() {
+  try {
+    if (window.innerWidth > 600) return;  // velja samo na mobilu
+    var nav = document.querySelector('.zaloga-subtab-nav');
+    var wrap = document.getElementById('zalogaSearchWrap');
+    var inner = document.querySelector('.zaloga-subpage-inner');
+    if (!nav || !wrap) return;
+    var navH = nav.getBoundingClientRect().height;       // realna višina tabov
+    wrap.style.top = navH + 'px';                          // iskalnik tik pod tabi
+    var wrapH = wrap.getBoundingClientRect().height;       // realna višina iskalnika
+    if (inner) inner.style.paddingTop = (navH + wrapH + 6) + 'px';  // vsebina pod oba + 6px zrak
+  } catch(e) {}
+}
+window.addEventListener('resize', _zalogaFixTopbar);
+window.addEventListener('orientationchange', function(){ setTimeout(_zalogaFixTopbar, 150); });
+
 function zalogaRender() {
   if (!_zalogaData.length) return;
+  _zalogaFixTopbar();  // poskrbi za pravilne odmike fiksnega topbara
 
   const search = (document.getElementById('zalogaSearch')?.value || '').toLowerCase().trim();
   const onlyStock = document.getElementById('zalogaOnlyStock')?.checked;
@@ -20435,6 +20452,9 @@ function switchZalogaTab(tab) {
     }
   });
   try { localStorage.setItem('slx_zaloga_tab', tab); } catch(e) {}
+  if (tab === 'zaloga') {
+    setTimeout(_zalogaFixTopbar, 50);  // po prikazu izmeri in nastavi odmike
+  }
   if (tab === 'vracila') {
     vracilaInit();
   } else if (tab === 'skeniranje') {
