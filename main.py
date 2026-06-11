@@ -7093,6 +7093,46 @@ async def orodja_stock_upload(file: UploadFile = File(...)):
 
 
 
+@app.get("/siluxar-diag")
+async def siluxar_diag():
+    """Diagnostika povezave do siluxar.si — pove TOČNO, kje pade (DNS / TCP / HTTP).
+    Pomaga ločiti omrežno težavo (požarni zid/geo) od avtentikacije."""
+    import socket, ssl as _ssl
+    out = {"steps": []}
+    host = "www.siluxar.si"
+
+    # 1) DNS razrešitev
+    try:
+        ips = socket.gethostbyname_ex(host)
+        out["steps"].append({"step": "DNS", "ok": True, "resolved": ips[2]})
+    except Exception as e:
+        out["steps"].append({"step": "DNS", "ok": False, "error": str(e)})
+        out["verdict"] = "DNS ne razreši — težava z imenom domene."
+        return out
+
+    # 2) TCP povezava na 443
+    try:
+        sock = socket.create_connection((host, 443), timeout=15)
+        sock.close()
+        out["steps"].append({"step": "TCP:443", "ok": True})
+    except Exception as e:
+        out["steps"].append({"step": "TCP:443", "ok": False, "error": str(e)})
+        out["verdict"] = "TCP povezava pade → požarni zid/geo-filter blokira na omrežni ravni (NE avtentikacija)."
+        return out
+
+    # 3) HTTPS klic (brez ključa — samo da vidimo, ali strežnik odgovori)
+    try:
+        async with httpx.AsyncClient(timeout=30) as cli:
+            r = await cli.get(f"https://{host}/apistockexport")
+        out["steps"].append({"step": "HTTPS", "ok": True, "status": r.status_code,
+                              "note": "401/403 = strežnik dosežen, manjka avtentikacija (DOBRO za omrežje)."})
+        out["verdict"] = f"Omrežje deluje. Strežnik odgovoril s statusom {r.status_code}."
+    except Exception as e:
+        out["steps"].append({"step": "HTTPS", "ok": False, "error": str(e)})
+        out["verdict"] = "TCP uspe a HTTPS pade — možna TLS/proxy težava."
+    return out
+
+
 @app.post("/zaloga-sync-siluxar")
 async def zaloga_sync_siluxar():
     """Sinhronizira zalogo s siluxar (apistockexport). MERGE po SKU v obstoječi STOCK_CSV.
