@@ -119,12 +119,12 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     z-index: 50 !important;
     background: var(--bg) !important;
     border-bottom: 1px solid var(--border) !important;
-    padding: 8px 10px 6px !important;
+    padding: 6px 10px 5px !important;
     box-shadow: 0 2px 8px rgba(0,0,0,0.04) !important;
   }
   .zmt-search {
     display: flex !important; align-items: center !important; gap: 8px !important;
-    height: 46px !important; padding: 0 12px !important;
+    height: 42px !important; padding: 0 12px !important;
     background: var(--bg-secondary) !important;
     border: 1px solid var(--border) !important; border-radius: 11px !important;
   }
@@ -135,14 +135,14 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     min-width: 0 !important; font-family: 'DM Sans', sans-serif !important;
   }
   .zmt-chips {
-    display: flex !important; gap: 6px !important; margin-top: 8px !important;
+    display: flex !important; gap: 6px !important; margin-top: 6px !important;
     overflow-x: auto !important; -webkit-overflow-scrolling: touch !important;
     scrollbar-width: none !important;
   }
   .zmt-chips::-webkit-scrollbar { display: none !important; }
   .zmt-chip {
     font-size: 12px !important; font-weight: 600 !important;
-    padding: 7px 14px !important; border-radius: 20px !important;
+    padding: 6px 13px !important; border-radius: 20px !important;
     white-space: nowrap !important; flex-shrink: 0 !important; cursor: pointer !important;
     border: 1px solid var(--border) !important; color: var(--text-secondary) !important;
     background: var(--surface) !important; font-family: 'DM Sans', sans-serif !important;
@@ -151,11 +151,11 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     background: var(--accent) !important; color: #fff !important; border-color: transparent !important;
   }
 
-  /* Vsebina seznama dobi razmik = ena fiksna VIŠINA bloka (iskalnik 46 + chips ~34 + padding ~22 = ~118px).
+  /* Vsebina seznama dobi razmik = fiksna VIŠINA bloka (iskalnik 42 + chips ~32 + padding ~16 = ~98px).
      Ker je EN blok s fiksno vsebino, je višina STABILNA — ni računanja, ni prekrivanja. */
-  #zalogaSubpage-zaloga { padding-top: 118px !important; }
+  #zalogaSubpage-zaloga { padding-top: 98px !important; }
   .zaloga-subpage-inner { padding: 0 8px 10px !important; gap: 8px !important; }
-  #zalogaSubpage-vracila, #zalogaSubpage-skeniranje, #zalogaSubpage-pozicije { padding: 118px 8px 10px !important; }
+  #zalogaSubpage-vracila, #zalogaSubpage-skeniranje, #zalogaSubpage-pozicije { padding: 98px 8px 10px !important; }
 
   .zal-row {
     grid-template-columns: 42px 1fr !important;
