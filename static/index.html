@@ -120,10 +120,21 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   .zaloga-toolbar > div:has(#zalogaInfo),
   .zaloga-mobile-hide, #zalogaStats { display: none !important; }
 
-  /* MOBILNO: iskalnik je edini element (sticky drži toolbar-ovoj zgoraj) */
-  .zaloga-toolbar { padding: 8px !important; }
-  .zaloga-toolbar > div:has(#zalogaSearch) {
+  /* MOBILNO: ovoj naj NE bo sticky — sticky prevzame samo iskalnik-wrapper (brez konflikta) */
+  #zalogaStickyWrap {
+    position: static !important; padding-bottom: 0 !important;
+  }
+
+  /* MOBILNO: iskalnik edini element + STICKY (sam wrapper, ne ovoj — robustno) */
+  .zaloga-toolbar {
+    padding: 0 !important; background: transparent !important;
+    border: none !important; gap: 0 !important;
+  }
+  #zalogaSearchWrap {
     order: 0 !important; flex: 1 1 100% !important;
+    position: sticky !important; top: 0 !important; z-index: 45 !important;
+    background: var(--bg) !important; padding: 8px !important;
+    margin: 0 -8px !important;
   }
 
   /* MOBILNO: velik iskalnik (junak) — 50px, font 16px (prepreči iOS zoom) */
@@ -208,6 +219,13 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .zal-meta-mobile { display: none; }
 /* Gumb pozicije: na desktopu samo 📍 (tekst pozicije + svinčnik skrita — pozicija je v svojem stolpcu) */
 .zal-c-poz .zal-poz-txt, .zal-c-poz .zal-poz-pen { display: none; }
+/* Oznaka Skladišče2 (silux2) — isti oranžni stil kot pri nabiranju */
+.zal-tag-sklad2 {
+  font-size: 9px; font-weight: 800; color: #fff;
+  background: #d97706; border: 1px solid #b45309;
+  padding: 1px 6px; border-radius: 5px; text-transform: uppercase;
+  letter-spacing: 0.4px; white-space: nowrap; flex-shrink: 0;
+}
 /* Sprememba pozicij — foto gumb */
 .poz-photo-btn { display:flex; align-items:center; justify-content:center; gap:6px; padding:12px; background:var(--bg-secondary); border:1px dashed var(--border); border-radius:8px; font-size:14px; font-weight:600; color:var(--text-secondary); cursor:pointer; font-family:'DM Sans',sans-serif; }
 .poz-photo-btn:active { background:var(--surface2); border-color:var(--accent); }
@@ -3659,7 +3677,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
 
       <!-- STICKY TOOLBAR: upload + iskalnik + filter -->
-      <div style="position:sticky;top:0;z-index:30;background:var(--bg);padding-bottom:6px">
+      <div id="zalogaStickyWrap" style="position:sticky;top:0;z-index:30;background:var(--bg);padding-bottom:6px">
 
         <!-- SKUPKI: lepe kartice -->
         <div id="zalogaSummaryCards" style="display:none;gap:10px;margin-bottom:8px">
@@ -14502,6 +14520,7 @@ function zalogaRender() {
       + '<span class="zal-c-id" style="color:var(--text-tertiary);font-size:11px">' + esc(it.product_id||'—') + '</span>'
       + '<div class="zal-c-sku" style="display:flex;align-items:center;gap:6px;overflow:hidden">'
       + '<span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.product_sku) + '">' + esc(it.product_sku||'—') + '</span>'
+      + ((it.warehouse||'').trim().toLowerCase() === 'silux2' ? '<span class="zal-tag-sklad2">🏬 Skladišče2</span>' : '')
       + '<button class="zal-c-copy" onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(it.product_sku||'') + '\').then(()=>{this.textContent=\'✓ Kopirano\';this.style.background=\'var(--green)\';this.style.color=\'#fff\';this.style.borderColor=\'var(--green)\';setTimeout(()=>{this.textContent=\'📋 Kopiraj\';this.style.background=\'\';this.style.color=\'\';this.style.borderColor=\'\'},1500)})" title="Kopiraj SKU" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="if(this.textContent!==\'✓ Kopirano\'){this.style.borderColor=\'\';this.style.color=\'\'}">📋 Kopiraj</button>'
       + (function(){
           var posVal = esc(it.position||'—');
