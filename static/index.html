@@ -14503,7 +14503,20 @@ function zalogaRender() {
       + '<div class="zal-c-sku" style="display:flex;align-items:center;gap:6px;overflow:hidden">'
       + '<span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.product_sku) + '">' + esc(it.product_sku||'—') + '</span>'
       + '<button class="zal-c-copy" onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(it.product_sku||'') + '\').then(()=>{this.textContent=\'✓ Kopirano\';this.style.background=\'var(--green)\';this.style.color=\'#fff\';this.style.borderColor=\'var(--green)\';setTimeout(()=>{this.textContent=\'📋 Kopiraj\';this.style.background=\'\';this.style.color=\'\';this.style.borderColor=\'\'},1500)})" title="Kopiraj SKU" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="if(this.textContent!==\'✓ Kopirano\'){this.style.borderColor=\'\';this.style.color=\'\'}">📋 Kopiraj</button>'
-      + '<button class="zal-c-poz" onclick="event.stopPropagation();pozQuickOpen(\'' + esc((it.product_sku||'').replace(/'/g,"\\'")) + '\',\'' + esc((it.title||'').replace(/'/g,"\\'")) + '\',\'' + esc((it.position||'').replace(/'/g,"\\'")) + '\')" title="Spremeni pozicijo" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:11px;color:var(--text-secondary);padding:3px 7px;white-space:nowrap;transition:all 0.1s;display:flex;align-items:center;gap:4px" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="this.style.borderColor=\'\';this.style.color=\'\'"><span>📍</span><span class="zal-poz-txt">' + esc(it.position||'—') + '</span><span class="zal-poz-pen">✏️</span></button>'
+      + (function(){
+          var posVal = esc(it.position||'—');
+          // urejanje pozicije velja SAMO za skladišče silux (NE silux2, NE external)
+          var wh = (it.warehouse||'').trim().toLowerCase();
+          if (wh !== 'silux') {
+            // silux2 / external / drugo: pozicija samo prikaz, BREZ urejanja
+            return '<span class="zal-c-poz zal-poz-readonly" style="flex-shrink:0;font-size:11px;color:var(--text-tertiary);padding:3px 7px;white-space:nowrap;display:flex;align-items:center;gap:4px"><span>📍</span><span class="zal-poz-txt">' + posVal + '</span></span>';
+          }
+          // silux: gumb za urejanje pozicije
+          var skuE = esc((it.product_sku||'').replace(/'/g,"\\'"));
+          var titE = esc((it.title||'').replace(/'/g,"\\'"));
+          var posE = esc((it.position||'').replace(/'/g,"\\'"));
+          return '<button class="zal-c-poz" onclick="event.stopPropagation();pozQuickOpen(\'' + skuE + '\',\'' + titE + '\',\'' + posE + '\')" title="Spremeni pozicijo" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:11px;color:var(--text-secondary);padding:3px 7px;white-space:nowrap;transition:all 0.1s;display:flex;align-items:center;gap:4px" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="this.style.borderColor=\'\';this.style.color=\'\'"><span>📍</span><span class="zal-poz-txt">' + posVal + '</span><span class="zal-poz-pen">✏️</span></button>';
+        })()
       + '</div>'
       + '<span class="zal-c-title" style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="' + esc(it.title) + '">' + esc(it.title||'—') + '</span>'
       + '<span class="zal-c-stock" style="text-align:right;font-weight:700;font-size:13px;color:' + stockColor + '">' + stock + '</span>'
