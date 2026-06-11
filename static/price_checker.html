@@ -334,7 +334,7 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <span style="font-size:12px;font-weight:600;color:var(--text)">📋 Prilepi vrstice iz sistema</span>
       <div style="display:flex;gap:8px">
-        <button id="siluxarFetchBtn" onclick="siluxarFetch(false)" style="background:#fff;color:var(--accent);border:1.5px solid var(--accent);padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">↻ Potegni s siluxar.si</button>
+        <button id="siluxarFetchBtn" onclick="siluxarFetch(false)" style="background:var(--accent);color:#fff;border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🔄 Uvozi s siluxar.si</button>
         <button onclick="pasteAreaProcess()" style="background:var(--accent);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Analiziraj ↗</button>
       </div>
     </div>
@@ -422,12 +422,12 @@ async function siluxarFetch(silent) {
   } catch(e) {
     if (st && !silent) { st.style.display='block'; st.style.color='var(--red)'; st.textContent='⚠ Napaka pri povezavi.'; }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = origLabel || '↻ Potegni s siluxar.si'; }
+    if (btn) { btn.disabled = false; btn.textContent = origLabel || '🔄 Uvozi s siluxar.si'; }
   }
 }
 
-// samodejno ob odprtju (tiho — če ni podatkov, ne moti)
-setTimeout(() => siluxarFetch(true), 600);
+// samodejni poteg ob odprtju je ONEMOGOČEN — uvoz samo na ročni klik gumba "↻ Potegni s siluxar.si"
+// setTimeout(() => siluxarFetch(true), 600);
 
 function pasteAreaProcess() {
   const ta = document.getElementById('pasteArea');
@@ -1525,10 +1525,13 @@ function loadTableFromStorage() {
     if (stored) {
       allRows = JSON.parse(stored);
       if (allRows.length > 0) {
-        // Backward compat: dodaj manjkajoče numerične vrednosti če jih ni
+        // toNum: vrednosti so že lahko v angleškem (2.96) ali EU formatu — varno parsiranje
         const toNum = (s) => {
           if (s == null || s === '') return null;
-          const cleaned = s.toString().replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.');
+          const str = s.toString().trim();
+          // če je čista angleška decimalka (npr. "2.96"), parsiraj direktno
+          if (/^-?\d+\.\d+$/.test(str)) return parseFloat(str);
+          const cleaned = str.replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.');
           const n = parseFloat(cleaned);
           return isNaN(n) ? null : n;
         };
@@ -1553,6 +1556,24 @@ function loadTableFromStorage() {
 
 // Ob nalaganju strani — preveri če je shranjena tabela in jo naloži
 window.addEventListener('DOMContentLoaded', () => {
+  // MIGRACIJA: enkratno počisti staro shrambo, kjer je bil 'id' napačno ps.id
+  // (stare JSON vrstice nimajo siluxar_id polja). Po čiščenju uporabnik znova potegne.
+  try {
+    const SCHEMA_VER = 'v2_orderid';
+    if (localStorage.getItem('price_checker_schema') !== SCHEMA_VER) {
+      const stored = localStorage.getItem('price_checker_table');
+      if (stored) {
+        const rows = JSON.parse(stored);
+        // če katera vrstica izvira iz siluxar JSON (ima siluxar_id) ali pa je id 6-mesten (ps.id videz) → počisti
+        const looksWrong = Array.isArray(rows) && rows.some(r =>
+          (r.siluxar_id === undefined && /^\d{6}$/.test(String(r.id || ''))) );
+        if (looksWrong) {
+          localStorage.removeItem('price_checker_table');
+        }
+      }
+      localStorage.setItem('price_checker_schema', SCHEMA_VER);
+    }
+  } catch(e) {}
   loadTableFromStorage();
 });
 
