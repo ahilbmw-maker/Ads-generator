@@ -13423,6 +13423,102 @@ async def forecast2_delete_entry(data: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.get("/zaloga-debug-vsota")
+async def zaloga_debug_vsota():
+    """Diagnostika skupne vsote: sešteje vse kose v suban.ai CSV in v siluxar API,
+    pokaže razliko + SKU-je, kjer se zaloga razlikuje. Razkrije, kje je manjko kosov."""
+    import csv as _csv
+    from io import StringIO as _SIO
+
+    def _to_int(v):
+        try: return int(float(str(v).replace(',', '.')))
+        except: return 0
+
+    # 1) suban.ai CSV — vsota + mapa (SKU+skladišče) -> stock
+    csv_total = 0
+    csv_rows = 0
+    csv_map = {}  # key = sku|warehouse -> stock
+    csv_skus = set()
+    if STOCK_CSV_FILE.exists():
+        try:
+            text = STOCK_CSV_FILE.read_text(encoding='utf-8-sig', errors='replace')
+            for row in _csv.DictReader(_SIO(text)):
+                sku = (row.get('product_sku') or '').strip()
+                wh = (row.get('warehouse') or '').strip()
+                st = _to_int(row.get('stock'))
+                if not sku:
+                    continue
+                csv_total += st
+                csv_rows += 1
+                csv_skus.add(sku)
+                csv_map[sku + '|' + wh] = csv_map.get(sku + '|' + wh, 0) + st
+        except Exception as e:
+            return {"error": f"CSV branje: {e}"}
+
+    # 2) siluxar API — vsota + mapa
+    api_total = 0
+    api_rows = 0
+    api_map = {}
+    api_skus = set()
+    api_error = None
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
+    basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
+    headers = {}
+    _auth = None
+    if key: headers["Authorization"] = key
+    elif basic_user or basic_pass: _auth = httpx.BasicAuth(basic_user, basic_pass)
+    try:
+        async with httpx.AsyncClient(timeout=90, auth=_auth) as cli:
+            r = await cli.get("https://www.siluxar.si/apistockexport", headers=headers)
+        jd = json.loads(r.text or "[]")
+        if isinstance(jd, dict):
+            for kk in ("data", "items", "rows", "products", "stock"):
+                if isinstance(jd.get(kk), list):
+                    jd = jd[kk]; break
+        if isinstance(jd, list):
+            for it in jd:
+                if not isinstance(it, dict): continue
+                sku = str(it.get('sku') or it.get('product_sku') or '').strip()
+                wh = str(it.get('source') or '').strip()
+                st = _to_int(it.get('stock'))
+                if not sku:
+                    continue
+                api_total += st
+                api_rows += 1
+                api_skus.add(sku)
+                api_map[sku + '|' + wh] = api_map.get(sku + '|' + wh, 0) + st
+    except Exception as e:
+        api_error = str(e)
+
+    # 3) razlike po ključu (SKU+skladišče)
+    razlike = []
+    vsi_kljuci = set(csv_map.keys()) | set(api_map.keys())
+    for k in vsi_kljuci:
+        cv = csv_map.get(k, 0)
+        av = api_map.get(k, 0)
+        if cv != av:
+            sku, _, wh = k.partition('|')
+            razlike.append({"sku": sku, "skladisce": wh, "suban_ai": cv, "siluxar": av, "razlika": av - cv})
+    razlike.sort(key=lambda x: abs(x["razlika"]), reverse=True)
+
+    # SKU-ji, ki so samo v enem viru
+    samo_v_csv = sorted(csv_skus - api_skus)[:50]
+    samo_v_api = sorted(api_skus - csv_skus)[:50]
+
+    return {
+        "suban_ai": {"vsota_kosov": csv_total, "vrstic": csv_rows, "unikatnih_sku": len(csv_skus)},
+        "siluxar_api": {"vsota_kosov": api_total, "vrstic": api_rows, "unikatnih_sku": len(api_skus)},
+        "razlika_vsote": api_total - csv_total,
+        "stevilo_razlik": len(razlike),
+        "razlike_po_sku": razlike[:60],
+        "samo_v_suban_ai": samo_v_csv,
+        "samo_v_siluxar": samo_v_api,
+        "api_error": api_error,
+        "namig": "razlika_vsote = siluxar − suban.ai. razlike_po_sku pokaže, KJE se kosi razlikujejo.",
+    }
+
+
 @app.get("/zaloga-debug-sku")
 async def zaloga_debug_sku(q: str = ""):
     """Diagnostika neskladja: za dani SKU ali ID pokaže (1) kaj je v shranjenem CSV
@@ -13457,6 +13553,7 @@ async def zaloga_debug_sku(q: str = ""):
     # 2) iz siluxar API (apistockexport) — poišči iste SKU/ID
     api_matches = []
     api_error = None
+    api_total = 0
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
@@ -13472,14 +13569,17 @@ async def zaloga_debug_sku(q: str = ""):
             for kk in ("data", "items", "rows", "products", "stock"):
                 if isinstance(jd.get(kk), list):
                     jd = jd[kk]; break
+        api_total = 0
         if isinstance(jd, list):
+            api_total = len(jd)
             for it in jd:
                 if not isinstance(it, dict): continue
                 sku = str(it.get('sku') or it.get('product_sku') or '').strip()
                 iid = str(it.get('id') or '').strip()
-                if ql in (sku.lower(), iid.lower()):
+                pid = str(it.get('product_id') or '').strip()   # NOVO polje v API
+                if ql in (sku.lower(), iid.lower(), pid.lower()):
                     api_matches.append({
-                        "id": iid, "sku": sku, "stock": it.get('stock'),
+                        "id": iid, "product_id": pid, "sku": sku, "stock": it.get('stock'),
                         "position": it.get('position'), "source": it.get('source'),
                         "price_netto": it.get('price_netto'),
                     })
@@ -13492,6 +13592,7 @@ async def zaloga_debug_sku(q: str = ""):
         "csv_count": len(csv_matches),
         "v_siluxar_api": api_matches or "NI v siluxar API odgovoru",
         "api_count": len(api_matches),
+        "api_total_pregledanih": api_total,
         "api_error": api_error,
         "namig": "Primerjaj SKU natančno (presledki, velike/male črke) + poglej, ali API vrne stock=0 ali več vrstic.",
     }
