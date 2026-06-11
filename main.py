@@ -13115,6 +13115,17 @@ async def forecast2_stats(year: int = 2026):
         total_revenue = sum(r[2] for r in day_rows)
         days_counted = len(day_rows)
 
+        # === POVPREČJA zadnjih 7 in 22 dni (z dejanskimi končnimi podatki) ===
+        def _avg_last(n):
+            last = day_rows[-n:] if len(day_rows) >= 1 else []
+            if not last:
+                return 0, 0.0
+            ao = sum(r[1] for r in last) / len(last)
+            ar = sum(r[2] for r in last) / len(last)
+            return round(ao), round(ar, 2)
+        avg_7d_orders, avg_7d_revenue = _avg_last(7)
+        avg_22d_orders, avg_22d_revenue = _avg_last(22)
+
         # === PROJEKCIJA (ista logika kot frontend) ===
         import calendar as _cal
         from datetime import date as _d
@@ -13177,6 +13188,11 @@ async def forecast2_stats(year: int = 2026):
             "total_orders": total_orders,
             "total_revenue": round(total_revenue, 2),
             "days_counted": days_counted,
+            "days_with_final": days_counted,
+            "avg_7d_orders": avg_7d_orders,
+            "avg_7d_revenue": avg_7d_revenue,
+            "avg_22d_orders": avg_22d_orders,
+            "avg_22d_revenue": avg_22d_revenue,
             "projection_orders": proj_orders,
             "projection_revenue": round(proj_revenue, 2),
             "aov": round(aov_value, 2),
@@ -13344,8 +13360,8 @@ async def forecast2_fetch_siluxar():
                         if k.strip().lower() == n.lower():
                             return d[k]
                 return None
-            ov = _find(jd, 'orders', 'order_count', 'count', 'st_narocil', 'narocila', 'num_orders')
-            rv = _find(jd, 'revenue', 'sum', 'total', 'promet', 'amount', 'sum_eur', 'revenue_eur')
+            ov = _find(jd, 'cnt', 'orders', 'order_count', 'count', 'st_narocil', 'narocila', 'num_orders')
+            rv = _find(jd, 'sum', 'revenue', 'total', 'promet', 'amount', 'sum_eur', 'revenue_eur')
             if ov is not None:
                 orders = int(float(str(ov).replace(',', '.')))
             if rv is not None:
@@ -13356,17 +13372,26 @@ async def forecast2_fetch_siluxar():
     if orders is None and revenue is None:
         return {"ok": False, "error": "V odgovoru ne najdem polj za naročila/promet.", "raw_preview": text[:200]}
 
-    # 3) zapiši v final današnjega dne
+    # 3) zapiši kot VMESNI VNOS (entry) za današnji dan — kot ročni vnos, ne final
     today = _lj_today()
+    now = _lj_now()
+    time_norm = now.strftime("%H:%M")
     day = _forecast2_load_day(today)
-    day["final"] = {
+    if "entries" not in day or not isinstance(day.get("entries"), list):
+        day["entries"] = []
+    # če entry s tem časom (HH:MM) že obstaja, ga zamenjaj (ne podvoji)
+    day["entries"] = [e for e in day["entries"] if e.get("time") != time_norm]
+    day["entries"].append({
+        "time": time_norm,
         "orders": orders or 0,
         "revenue": revenue or 0.0,
-        "_set_at": _lj_now().isoformat(),
+        "_ts": now.isoformat(),
         "_source": "siluxar_apisumexport",
-    }
+    })
+    day["entries"].sort(key=lambda e: e.get("time", ""))
     _forecast2_save_day(today, day)
-    return {"ok": True, "date": today, "orders": orders or 0, "revenue": revenue or 0.0}
+    return {"ok": True, "date": today, "time": time_norm,
+            "orders": orders or 0, "revenue": revenue or 0.0}
 
 
 @app.post("/forecast2-set-final")
