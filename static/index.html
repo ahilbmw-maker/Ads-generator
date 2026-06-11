@@ -100,7 +100,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #zalogaHeaderWrap { display: none !important; }   /* skrij desktop glavo tabele */
   /* edge-to-edge: zmanjšaj zunanje robove, da kartice izkoristijo širino */
   #page-zaloga { margin: 0 -0.6rem !important; }      /* izniči .main horizontalni padding */
-  .zaloga-subpage-inner { padding: 10px 8px !important; gap: 8px !important; }
+  .zaloga-subpage-inner { padding: 128px 8px 10px !important; gap: 8px !important; }
   #zalogaSubpage-vracila, #zalogaSubpage-skeniranje, #zalogaSubpage-pozicije { padding: 10px 8px !important; }
   /* sub-tab nav: enakomerno razporejen, brez prelivanja */
   .zaloga-subtab-nav { padding: 10px 12px !important; }
@@ -120,22 +120,31 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   .zaloga-toolbar > div:has(#zalogaInfo),
   .zaloga-mobile-hide, #zalogaStats { display: none !important; }
 
-  /* MOBILNO: ovoj naj NE bo sticky — sticky prevzame samo iskalnik-wrapper (brez konflikta) */
-  #zalogaStickyWrap {
-    position: static !important; padding-bottom: 0 !important;
+  /* ═══ MOBILNO: TABI + ISKALNIK FIKSNA NA VRH (position:fixed — vedno deluje, neodvisno od starša) ═══ */
+
+  /* 1) Tabi (Zaloga/Vračila/Skeniranje/Pozicija) — fiksni na sam vrh */
+  .zaloga-subtab-nav {
+    position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important;
+    z-index: 46 !important; margin: 0 !important;
+    background: var(--surface2) !important;
   }
 
-  /* MOBILNO: iskalnik edini element + STICKY (sam wrapper, ne ovoj — robustno) */
+  /* 2) Ovoj iskalnika — ni več sticky (fiksiramo sam iskalnik) */
+  #zalogaStickyWrap { position: static !important; padding-bottom: 0 !important; }
   .zaloga-toolbar {
     padding: 0 !important; background: transparent !important;
     border: none !important; gap: 0 !important;
   }
+
+  /* 3) Iskalnik — fiksen TIK POD tabi (top = višina tab vrstice ~58px) */
   #zalogaSearchWrap {
-    order: 0 !important; flex: 1 1 100% !important;
-    position: sticky !important; top: 0 !important; z-index: 45 !important;
-    background: var(--bg) !important; padding: 8px !important;
-    margin: 0 -8px !important;
+    position: fixed !important; top: 58px !important; left: 0 !important; right: 0 !important;
+    z-index: 45 !important; margin: 0 !important;
+    background: var(--bg) !important; padding: 8px 10px !important;
+    border-bottom: 1px solid var(--border) !important;
   }
+
+  /* 4) Vsebina dobi razmik od zgoraj (128px) — nastavljeno v .zaloga-subpage-inner zgoraj */
 
   /* MOBILNO: velik iskalnik (junak) — 50px, font 16px (prepreči iOS zoom) */
   #zalogaSearch {
