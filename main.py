@@ -7432,6 +7432,7 @@ async def zaloga_sync_siluxar():
         except: return 0
 
     added = 0; updated = 0; external_count = 0
+    seen_this_sync = set()   # ključi, ki smo jih ŽE postavili v TEJ sinhronizaciji (za seštevanje podvojenih)
     for row in incoming:
         sku = (row.get(sku_col) or '').strip()
         if not sku:
@@ -7452,10 +7453,16 @@ async def zaloga_sync_siluxar():
         dur   = (row.get(dur_col) or '').strip() if dur_col else ''   # trajanje zaloge
         wh    = (row.get(wh_col) or '').strip() if wh_col else ''     # skladišče
         rk = _mk_key(sku, wh)   # ključ: SKU + skladišče (ločeno po skladiščih)
+        first_in_sync = rk not in seen_this_sync   # prvi zapis tega ključa v TEJ sinhronizaciji?
+        seen_this_sync.add(rk)
         if rk in existing:
             e = existing[rk]
-            # posodobi stock vedno; ostalo le če pride nova vrednost
-            e['stock'] = str(new_stock)
+            # stock: prvič v tej sinhronizaciji POSTAVI, vse naslednje zapise istega SKU+skladišča PRIŠTEJ
+            # (isti SKU ima v siluxar lahko več zapisov v istem skladišču — seštejemo jih)
+            if first_in_sync:
+                e['stock'] = str(new_stock)
+            else:
+                e['stock'] = str(_to_int(e.get('stock')) + new_stock)
             if s30_col: e['stock30'] = str(new_s30)
             if title: e['title'] = title
             if price: e['price'] = price
