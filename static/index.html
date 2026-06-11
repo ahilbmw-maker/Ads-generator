@@ -3674,6 +3674,11 @@ input[type="text"].error { border-color: var(--red) !important; }
             <span>📂</span><span>Naloži CSV</span>
           </div>
           <input type="file" id="zalogaInput" accept=".csv" style="display:none" onchange="zalogaUpload(this.files[0])">
+          <!-- Naloži SAMO obrat+trajanje (po SKU, ne dotika zaloge/pozicije) -->
+          <div id="zalogaObratZone" onclick="document.getElementById('zalogaObratInput').click()" title="Naloži CSV — osveži samo OBR/30d in Trajanje po SKU" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--bg-secondary);border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;color:var(--text-secondary);flex-shrink:0">
+            <span>📊</span><span>Obrat+Trajanje</span>
+          </div>
+          <input type="file" id="zalogaObratInput" accept=".csv" style="display:none" onchange="zalogaUploadObrat(this.files[0])">
           <!-- Sinhronizacija s siluxar -->
           <button id="zalogaSyncBtn" onclick="zalogaSyncSiluxar(false)" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
             <span>🔄</span><span>Sinhroniziraj zalogo</span>
@@ -14085,6 +14090,25 @@ function zalogaHandleDrop(e) {
   if (f) zalogaUpload(f);
 }
 
+async function zalogaUploadObrat(file) {
+  if (!file) return;
+  const status = document.getElementById('zalogaStatus');
+  status.style.display = 'block';
+  status.style.color = 'var(--text-secondary)';
+  status.textContent = '⏳ Osvežujem obrat+trajanje...';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/zaloga-upload-obrat', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + data.error; document.getElementById('zalogaObratInput').value=''; return; }
+    status.style.color = 'var(--green)';
+    status.textContent = `✓ Osveženo ${data.updated} SKU (obrat+trajanje)` + (data.not_found ? ` · ${data.not_found} ni v zalogi` : '');
+    document.getElementById('zalogaObratInput').value = '';
+    await zalogaLoad();
+  } catch(e) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + e.message; }
+}
+
 async function zalogaUpload(file) {
   const status = document.getElementById('zalogaStatus');
   status.style.display = 'block';
@@ -14462,7 +14486,7 @@ function zalogaRender() {
       + '<span class="zal-c-stock" style="text-align:right;font-weight:700;font-size:13px;color:' + stockColor + '">' + stock + '</span>'
       + '<span class="zal-c-price" style="text-align:right;color:var(--text-secondary)">' + (price > 0 ? price.toFixed(2) + ' €' : '—') + '</span>'
       + '<span class="zal-c-obrat" style="text-align:right;font-weight:600;color:' + obratColor + '">' + (stock30 > 0 ? stock30 : '—') + '</span>'
-      + '<span class="zal-c-dur" style="text-align:right;color:var(--text-secondary);font-size:11px">' + esc(it.stock_duration||'—') + '</span>'
+      + (function(){var d=parseInt(it.stock_duration);var txt=(it.stock_duration===''||isNaN(d))?'—':d+' d';var c=isNaN(d)?'var(--text-tertiary)':(d<=7?'var(--red)':d<=21?'#d97706':'var(--text-secondary)');return '<span class="zal-c-dur" style="text-align:right;font-size:11px;font-weight:'+(isNaN(d)?'400':'600')+';color:'+c+'" title="Trajanje zaloge ob obratu zadnjih 30 dni">'+txt+'</span>';})()
       + '<span class="zal-c-wh" style="color:var(--text-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.warehouse) + '">' + esc(it.warehouse||'—') + '</span>'
       + '<span class="zal-c-pos" style="color:var(--text-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.position) + '">' + esc(it.position||'—') + '</span>'
       + '<span class="zal-c-note" style="color:var(--text-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.note) + '">' + esc(it.note||'—') + '</span>'
