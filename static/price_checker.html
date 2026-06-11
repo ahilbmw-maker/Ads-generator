@@ -699,18 +699,19 @@ function formatSuggested(amount, currency) {
 // Vrne ISTO strukturo vrstic kot parseFile, da render ostane nedotaknjen.
 function parseFileJSON(arr) {
   const rows = [];
+  // Markov JSON uporablja ANGLEŠKI format: pika = decimalna (npr. "2.96").
+  // NE odstranjuj pike (to bi 2.96 spremenilo v 296).
   const toNum = (s) => {
     if (s === null || s === undefined || s === '') return null;
-    const cleaned = s.toString().replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.');
-    const n = parseFloat(cleaned);
+    const n = parseFloat(s.toString().trim());
     return isNaN(n) ? null : n;
   };
   for (const o of arr) {
     if (!o || typeof o !== 'object') continue;
-    const id = (o.id != null ? String(o.id) : '').trim();       // ps.id — skrit ključ
-    const orderId = (o.order_id != null ? String(o.order_id) : '').trim();
+    const psId = (o.id != null ? String(o.id) : '').trim();      // ps.id — SKRIT ključ (sinhronizacija brisanja)
+    const orderId = (o.order_id != null ? String(o.order_id) : '').trim();  // ID naročila (VIDNI)
     const sku = (o.product_sku || '').trim();
-    if (!id || !sku) continue;
+    if (!orderId || !sku) continue;
 
     // prodajna cena + valuta. currency je prazen za EUR-trge.
     const cur = (o.currency || '').trim().toUpperCase() || 'EUR';
@@ -741,8 +742,8 @@ function parseFileJSON(arr) {
     const marza = (o.product_margin != null ? String(o.product_margin) : '');
 
     rows.push({
-      id,
-      order_id: orderId,        // shranjen (za referenco)
+      id: orderId,              // VIDNI ID naročila (kot stari TSV) — render, povezava, grupiranje
+      siluxar_id: psId,         // ps.id — SKRIT ključ za sinhronizacijo brisanja (ni prikazan)
       sku: sku,
       product: (o.product_title || '').trim(),
       stock: parseInt(o.product_stock) || 0,
