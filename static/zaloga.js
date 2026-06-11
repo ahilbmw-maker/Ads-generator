@@ -1674,6 +1674,14 @@ function updateGlobalStat() {
 // Bere SESSION.pick_started_at / pick_finished_at (server-side). Teče živo do 100%.
 let _pickTimerInt = null;
 
+function _parseServerTs(s) {
+  // Strežnik pošlje ISO žig. Če nima oznake cone (Z ali +HH:MM), ga razumi kot UTC
+  // (Render teče v UTC). Brez tega bi brskalnik žig brez cone bral kot lokalni čas → +2h.
+  if (!s) return NaN;
+  const hasTz = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(s);
+  return new Date(hasTz ? s : s + 'Z').getTime();
+}
+
 function _fmtDur(secs) {
   secs = Math.max(0, Math.floor(secs));
   const h = Math.floor(secs / 3600);
@@ -1702,11 +1710,11 @@ function updatePickTimer() {
     lblEl.textContent = 'čaka prvo postavko';
     return;
   }
-  const startMs = new Date(startStr).getTime();
+  const startMs = _parseServerTs(startStr);
 
   if (finishStr) {
     // končano — fiksen čas
-    const finMs = new Date(finishStr).getTime();
+    const finMs = _parseServerTs(finishStr);
     wrap.classList.remove('running');
     wrap.classList.add('done');
     timeEl.textContent = '🏁 ' + _fmtDur((finMs - startMs) / 1000);
