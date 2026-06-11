@@ -115,6 +115,17 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #zalogaSummaryCards { display: none !important; }
   #zalogaXmlCacheBar { display: none !important; }
 
+  /* MOBILNO: skrij Naloži CSV, Obrat+Trajanje, Sinhroniziraj, Info, separator, checkboxa — ostane SAMO iskalnik */
+  #zalogaDropZone, #zalogaObratZone, #zalogaSyncBtn,
+  .zaloga-toolbar > div:has(#zalogaInfo),
+  .zaloga-mobile-hide, #zalogaStats { display: none !important; }
+
+  /* MOBILNO: iskalnik je edini element (sticky drži toolbar-ovoj zgoraj) */
+  .zaloga-toolbar { padding: 8px !important; }
+  .zaloga-toolbar > div:has(#zalogaSearch) {
+    order: 0 !important; flex: 1 1 100% !important;
+  }
+
   /* MOBILNO: velik iskalnik (junak) — 50px, font 16px (prepreči iOS zoom) */
   #zalogaSearch {
     height: 50px !important; font-size: 16px !important;
@@ -136,11 +147,16 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   }
   .zal-row .zal-c-sku { grid-area: main !important; min-width: 0 !important; align-self: end !important; }
   .zal-row .zal-c-sku > span:first-child { font-size: 13.5px !important; }
-  /* MOBILNO: Kopiraj gumb skrij (odveč), 📍 pozicija obdrži + povečaj (boljši tap-cilj) */
+  /* MOBILNO: Kopiraj gumb skrij (odveč). Pozicija = POLN MODER gumb z belim tekstom (📍 pozicija ✏️) */
   .zal-row .zal-c-copy { display: none !important; }
   .zal-row .zal-c-poz {
-    margin-left: auto !important; padding: 7px 13px !important; font-size: 15px !important;
+    margin-left: auto !important; padding: 8px 12px !important;
+    background: var(--accent) !important; border: none !important;
+    border-radius: 8px !important; gap: 5px !important;
   }
+  .zal-row .zal-c-poz, .zal-row .zal-c-poz span { color: #fff !important; }
+  .zal-row .zal-c-poz .zal-poz-txt { display: inline !important; font-size: 13px !important; font-weight: 700 !important; }
+  .zal-row .zal-c-poz .zal-poz-pen { display: inline !important; font-size: 12px !important; }
   .zal-row .zal-meta-mobile {
     grid-area: meta !important; display: block !important; align-self: start !important;
     font-size: 11px !important; color: var(--text-tertiary) !important;
@@ -190,6 +206,8 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 }
 /* zaloga mobilna meta vrstica je privzeto skrita (vidna le v mobilnem media query) */
 .zal-meta-mobile { display: none; }
+/* Gumb pozicije: na desktopu samo 📍 (tekst pozicije + svinčnik skrita — pozicija je v svojem stolpcu) */
+.zal-c-poz .zal-poz-txt, .zal-c-poz .zal-poz-pen { display: none; }
 /* Sprememba pozicij — foto gumb */
 .poz-photo-btn { display:flex; align-items:center; justify-content:center; gap:6px; padding:12px; background:var(--bg-secondary); border:1px dashed var(--border); border-radius:8px; font-size:14px; font-weight:600; color:var(--text-secondary); cursor:pointer; font-family:'DM Sans',sans-serif; }
 .poz-photo-btn:active { background:var(--surface2); border-color:var(--accent); }
@@ -3697,12 +3715,12 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div id="zalogaSuggest" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 6px 24px rgba(0,0,0,0.12);z-index:50;max-height:280px;overflow-y:auto"></div>
           </div>
           <!-- Samo na zalogi -->
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">
+          <label class="zaloga-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">
             <input type="checkbox" id="zalogaOnlyStock" onchange="_zalogaPage=1;zalogaRender()" style="cursor:pointer;accent-color:var(--green);width:14px;height:14px">
             <span>Samo na zalogi</span>
           </label>
           <!-- Prikaži external (brez ID) -->
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">
+          <label class="zaloga-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">
             <input type="checkbox" id="zalogaShowExternal" onchange="_zalogaPage=1;zalogaRender()" style="cursor:pointer;accent-color:#f59e0b;width:14px;height:14px">
             <span>Prikaži external (brez ID)</span>
           </label>
@@ -14480,7 +14498,7 @@ function zalogaRender() {
       + '<div class="zal-c-sku" style="display:flex;align-items:center;gap:6px;overflow:hidden">'
       + '<span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.product_sku) + '">' + esc(it.product_sku||'—') + '</span>'
       + '<button class="zal-c-copy" onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(it.product_sku||'') + '\').then(()=>{this.textContent=\'✓ Kopirano\';this.style.background=\'var(--green)\';this.style.color=\'#fff\';this.style.borderColor=\'var(--green)\';setTimeout(()=>{this.textContent=\'📋 Kopiraj\';this.style.background=\'\';this.style.color=\'\';this.style.borderColor=\'\'},1500)})" title="Kopiraj SKU" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="if(this.textContent!==\'✓ Kopirano\'){this.style.borderColor=\'\';this.style.color=\'\'}">📋 Kopiraj</button>'
-      + '<button class="zal-c-poz" onclick="event.stopPropagation();pozQuickOpen(\'' + esc((it.product_sku||'').replace(/'/g,"\\'")) + '\',\'' + esc((it.title||'').replace(/'/g,"\\'")) + '\',\'' + esc((it.position||'').replace(/'/g,"\\'")) + '\')" title="Spremeni pozicijo" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:11px;color:var(--text-secondary);padding:3px 7px;white-space:nowrap;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="this.style.borderColor=\'\';this.style.color=\'\'">📍</button>'
+      + '<button class="zal-c-poz" onclick="event.stopPropagation();pozQuickOpen(\'' + esc((it.product_sku||'').replace(/'/g,"\\'")) + '\',\'' + esc((it.title||'').replace(/'/g,"\\'")) + '\',\'' + esc((it.position||'').replace(/'/g,"\\'")) + '\')" title="Spremeni pozicijo" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:11px;color:var(--text-secondary);padding:3px 7px;white-space:nowrap;transition:all 0.1s;display:flex;align-items:center;gap:4px" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="this.style.borderColor=\'\';this.style.color=\'\'"><span>📍</span><span class="zal-poz-txt">' + esc(it.position||'—') + '</span><span class="zal-poz-pen">✏️</span></button>'
       + '</div>'
       + '<span class="zal-c-title" style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="' + esc(it.title) + '">' + esc(it.title||'—') + '</span>'
       + '<span class="zal-c-stock" style="text-align:right;font-weight:700;font-size:13px;color:' + stockColor + '">' + stock + '</span>'
