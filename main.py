@@ -7282,13 +7282,14 @@ async def zaloga_sync_siluxar():
                     return k
         return None
     sku_col   = find_col('product_sku','sku')
-    stock_col = find_col('stock','qty','quantity','kolicina','količina','zaloga')
+    stock_col = find_col('product_stock','stock','qty','quantity','kolicina','količina','zaloga')
     s30_col   = find_col('stock30','stock_30','obrat30','obrat_30')
-    title_col = find_col('title','naziv','name')
-    price_col = find_col('price_netto','price','cena')
+    title_col = find_col('product_title','title','naziv','name')
+    price_col = find_col('product_price_netto','price_netto','product_price','price','cena')
     pos_col   = find_col('position','pozicija','lokacija')
     note_col  = find_col('note','opomba','komentar')
-    id_col    = find_col('product_id','id')
+    id_col    = find_col('product_id')   # interni product_id (točno ujemanje)
+    sid_col   = find_col('id')           # ps.id = siluxar skrit ključ (sinhronizacija brisanja)
     if not sku_col:
         return {"ok": False, "error": f"Ne najdem SKU stolpca. Najdeni: {keys}"}
 
