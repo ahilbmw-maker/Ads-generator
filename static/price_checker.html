@@ -332,7 +332,7 @@
   <!-- PASTE AREA — primarna -->
   <div style="background:#fff;border:1.5px solid var(--border2);border-radius:12px;padding:16px 20px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <span style="font-size:12px;font-weight:600;color:var(--text)">📋 Prilepi vrstice iz sistema</span>
+      <span style="font-size:12px;font-weight:600;color:var(--text)">📋 Prilepi vrstice iz sistema <span id="siluxarAutoInfo" style="font-size:10px;font-weight:400;color:var(--muted)"></span></span>
       <div style="display:flex;gap:8px">
         <button id="siluxarFetchBtn" onclick="siluxarFetch(false)" style="background:var(--accent);color:#fff;border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🔄 Uvozi s siluxar.si</button>
         <button onclick="pasteAreaProcess()" style="background:var(--accent);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Analiziraj ↗</button>
@@ -426,8 +426,43 @@ async function siluxarFetch(silent) {
   }
 }
 
-// samodejni poteg ob odprtju je ONEMOGOČEN — uvoz samo na ročni klik gumba "↻ Potegni s siluxar.si"
-// setTimeout(() => siluxarFetch(true), 600);
+// ─── Samodejni poteg s siluxar: ob odprtju + vsake 30 min (tiho) ───
+// Varovalo: NE sproži, če imaš izbrane vrstice (sredi dela) — da ne tepta tvojih oznak.
+let _siluxarAutoTimer = null;
+let _siluxarLastAuto = 0;
+
+async function siluxarAutoFetch() {
+  // ne moti, če imaš izbrane vrstice (ravno nekaj delaš/brišeš)
+  if (typeof selectedKeys !== 'undefined' && selectedKeys.size > 0) {
+    return;
+  }
+  await siluxarFetch(true);  // tihi način
+  _siluxarLastAuto = Date.now();
+  _updateSiluxarAutoInfo();
+}
+
+function _updateSiluxarAutoInfo() {
+  const el = document.getElementById('siluxarAutoInfo');
+  if (!el) return;
+  if (!_siluxarLastAuto) { el.textContent = ''; return; }
+  const t = new Date(_siluxarLastAuto).toLocaleTimeString('sl-SI', {hour:'2-digit', minute:'2-digit'});
+  el.textContent = '· samodejno osveženo ' + t;
+}
+
+function startSiluxarAutoFetch() {
+  // poteg ob odprtju (z manjšo zakasnitvijo, da se stran naloži)
+  setTimeout(siluxarAutoFetch, 800);
+  // nato vsake 30 min
+  if (_siluxarAutoTimer) clearInterval(_siluxarAutoTimer);
+  _siluxarAutoTimer = setInterval(siluxarAutoFetch, 30 * 60 * 1000);
+}
+
+// zaženi samodejni poteg ob nalaganju strani
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startSiluxarAutoFetch);
+} else {
+  startSiluxarAutoFetch();
+}
 
 function pasteAreaProcess() {
   const ta = document.getElementById('pasteArea');
