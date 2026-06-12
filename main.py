@@ -7430,9 +7430,13 @@ async def zaloga_sync_siluxar():
     def _to_int(v):
         try: return int(float(str(v).replace(',', '.')))
         except: return 0
+    def _to_float(v):
+        try: return float(str(v).replace(',', '.'))
+        except: return 0.0
 
     added = 0; updated = 0; external_count = 0
     seen_this_sync = set()   # ključi, ki smo jih ŽE postavili v TEJ sinhronizaciji (za seštevanje podvojenih)
+    price_acc = {}           # ključ -> [vsota_vrednosti, vsota_kosov] za TEHTANO ceno podvojenih
     for row in incoming:
         sku = (row.get(sku_col) or '').strip()
         if not sku:
@@ -7455,6 +7459,19 @@ async def zaloga_sync_siluxar():
         rk = _mk_key(sku, wh)   # ključ: SKU + skladišče (ločeno po skladiščih)
         first_in_sync = rk not in seen_this_sync   # prvi zapis tega ključa v TEJ sinhronizaciji?
         seen_this_sync.add(rk)
+        # TEHTANA cena: akumuliraj vrednost (kosi×cena) + kose za ta ključ v tej sinhronizaciji
+        _pn = _to_float(price)
+        if first_in_sync:
+            price_acc[rk] = [new_stock * _pn, new_stock]
+        else:
+            price_acc[rk][0] += new_stock * _pn
+            price_acc[rk][1] += new_stock
+        # izračunaj tehtano ceno (vrednost / kosi); če kosov 0, obdrži zadnjo ne-prazno ceno
+        _acc_val, _acc_qty = price_acc[rk]
+        if _acc_qty > 0:
+            tehtana_cena = "{:.2f}".format(_acc_val / _acc_qty)
+        else:
+            tehtana_cena = price   # vsi kosi 0 → pusti ceno zadnjega zapisa
         if rk in existing:
             e = existing[rk]
             # stock: prvič v tej sinhronizaciji POSTAVI, vse naslednje zapise istega SKU+skladišča PRIŠTEJ
@@ -7465,7 +7482,11 @@ async def zaloga_sync_siluxar():
                 e['stock'] = str(_to_int(e.get('stock')) + new_stock)
             if s30_col: e['stock30'] = str(new_s30)
             if title: e['title'] = title
-            if price: e['price'] = price
+            # cena = TEHTANA (po kosih) — pravilno tudi pri podvojenih z različnimi cenami
+            if tehtana_cena and _to_float(tehtana_cena) > 0:
+                e['price'] = tehtana_cena
+            elif price and first_in_sync:
+                e['price'] = price
             if pos: e['position'] = pos
             if note: e['note'] = note
             if pid: e['product_id'] = pid
@@ -7478,7 +7499,8 @@ async def zaloga_sync_siluxar():
             existing[rk] = {
                 'product_id': pid, 'product_sku': sku, 'title': title,
                 'stock': str(new_stock), 'stock30': str(new_s30),
-                'price': price, 'position': pos, 'note': note,
+                'price': (tehtana_cena if (tehtana_cena and _to_float(tehtana_cena) > 0) else price),
+                'position': pos, 'note': note,
                 'siluxar_id': sid, 'stock_duration': dur, 'warehouse': wh,
                 'is_external': is_ext,
             }
@@ -13446,6 +13468,10 @@ async def zaloga_debug_vsota():
     csv_rows = 0
     csv_map = {}  # key = sku|warehouse -> stock
     csv_skus = set()
+    csv_vrednost = 0.0   # vsota stock × cena
+    def _to_float(v):
+        try: return float(str(v).replace(',', '.'))
+        except: return 0.0
     if STOCK_CSV_FILE.exists():
         try:
             text = STOCK_CSV_FILE.read_text(encoding='utf-8-sig', errors='replace')
@@ -13453,9 +13479,11 @@ async def zaloga_debug_vsota():
                 sku = (row.get('product_sku') or '').strip()
                 wh = (row.get('warehouse') or '').strip()
                 st = _to_int(row.get('stock'))
+                pr = _to_float(row.get('price') or row.get('price_netto'))
                 if not sku:
                     continue
                 csv_total += st
+                csv_vrednost += st * pr
                 csv_rows += 1
                 csv_skus.add(sku)
                 csv_map[sku + '|' + wh] = csv_map.get(sku + '|' + wh, 0) + st
@@ -13465,6 +13493,7 @@ async def zaloga_debug_vsota():
     # 2) siluxar API — vsota + mapa
     api_total = 0
     api_rows = 0
+    api_vrednost = 0.0
     api_map = {}
     api_raw = {}
     api_skus = set()
@@ -13513,6 +13542,7 @@ async def zaloga_debug_vsota():
                         prazni_primeri.append({"id": str(it.get('id') or ''), "sku": sku,
                                                "title": "(prazen)", "stock": st, "source": wh})
                 api_total += st
+                api_vrednost += st * _to_float(it.get('price_netto'))
                 api_rows += 1
                 api_skus.add(sku)
                 _k = sku + '|' + wh
@@ -13556,8 +13586,11 @@ async def zaloga_debug_vsota():
     samo_v_api = sorted(api_skus - csv_skus)[:50]
 
     return {
-        "suban_ai": {"vsota_kosov": csv_total, "vrstic": csv_rows, "unikatnih_sku": len(csv_skus)},
-        "siluxar_api": {"vsota_kosov": api_total, "vrstic": api_rows, "unikatnih_sku": len(api_skus)},
+        "suban_ai": {"vsota_kosov": csv_total, "vrstic": csv_rows, "unikatnih_sku": len(csv_skus),
+                     "vrednost_eur": round(csv_vrednost, 2)},
+        "siluxar_api": {"vsota_kosov": api_total, "vrstic": api_rows, "unikatnih_sku": len(api_skus),
+                        "vrednost_eur": round(api_vrednost, 2)},
+        "RAZLIKA_VREDNOSTI_eur": round(api_vrednost - csv_vrednost, 2),
         "siluxar_skupaj_z_praznimi": api_total + prazni_sku_kosi,
         "PRAZNI_SKU": {
             "kosov": prazni_sku_kosi, "vrstic": prazni_sku_vrstic,
