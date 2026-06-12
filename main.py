@@ -6972,6 +6972,7 @@ async def orodja_hs_history_delete(filename: str):
 # ─── ORODJA: Kontrola cen — Stock CSV upload + match s PDF predračun ────────
 
 STOCK_CSV_FILE = DATA_DIR / "stock_inventory.csv"
+SILUXAR_PUSH_LOG = DATA_DIR / "siluxar_push_log.json"   # zadnja pošiljanja pozicij (debug)
 STOCK_CSV_META = DATA_DIR / "stock_inventory_meta.json"
 
 
@@ -18669,24 +18670,69 @@ async def siluxar_push_positions(data: dict):
 
         # BETA zapisovalni endpoint
         url = "http://beta.siluxar.si/apistockexport"
+
+        def _zabelezi(status, ok, resp_text, err=None, exc=None):
+            """Zabeleži pošiljanje v log (zadnjih 50) za debug."""
+            try:
+                log = []
+                if SILUXAR_PUSH_LOG.exists():
+                    log = json.loads(SILUXAR_PUSH_LOG.read_text(encoding="utf-8"))
+                    if not isinstance(log, list):
+                        log = []
+                log.insert(0, {
+                    "cas": _lj_now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "ts_utc": datetime.now(timezone.utc).isoformat(),
+                    "poslano_stevilo": len(payload),
+                    "primeri_poslanih": payload[:10],
+                    "status": status,
+                    "ok": ok,
+                    "odgovor": (resp_text or "")[:500],
+                    "napaka": err,
+                    "exception": exc,
+                    "url": url,
+                })
+                log = log[:50]
+                SILUXAR_PUSH_LOG.write_text(json.dumps(log, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                pass
+
         try:
             async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
                 r = await cli.post(url, headers=headers, json=payload)
         except Exception as e:
+            _zabelezi(None, False, None, err=f"Napaka pri klicu beta.siluxar.si: {e}", exc=str(e))
             return {"ok": False, "error": f"Napaka pri klicu beta.siluxar.si: {e}", "poslano": len(payload)}
 
         ok = 200 <= r.status_code < 300
         resp_text = (r.text or "")[:500]
+        _zabelezi(r.status_code, ok, resp_text, err=(None if ok else f"siluxar vrnil status {r.status_code}"))
         return {
             "ok": ok,
             "status": r.status_code,
             "poslano": len(payload),
+            "primeri_poslanih": payload[:5],
             "odgovor": resp_text,
             "error": None if ok else f"siluxar vrnil status {r.status_code}",
         }
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
+
+
+@app.get("/siluxar-push-debug")
+async def siluxar_push_debug():
+    """Debug: pokaže zadnjih 50 pošiljanj pozicij v siluxar (kaj poslano, status, odgovor)."""
+    if not SILUXAR_PUSH_LOG.exists():
+        return {"sporocilo": "Še ni nobenega pošiljanja.", "zapisi": []}
+    try:
+        log = json.loads(SILUXAR_PUSH_LOG.read_text(encoding="utf-8"))
+        return {
+            "skupaj_zapisov": len(log) if isinstance(log, list) else 0,
+            "zadnje_posiljanje": log[0] if log else None,
+            "zapisi": log,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.post("/pozicije-update-one")
