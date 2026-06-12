@@ -158,8 +158,8 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #zalogaSubpage-vracila, #zalogaSubpage-skeniranje, #zalogaSubpage-pozicije { padding: 98px 8px 10px !important; }
 
   .zal-row {
-    grid-template-columns: 42px 1fr !important;
-    grid-template-areas: "stock main" "stock meta" !important;
+    grid-template-columns: 42px 1fr auto !important;
+    grid-template-areas: "stock main pos" "stock meta pos" !important;
     column-gap: 11px !important; row-gap: 2px !important;
     padding: 9px 11px !important; align-items: center !important;
     border-left: 3px solid var(--zal-stockcol, var(--border)) !important;
@@ -170,23 +170,25 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   }
   .zal-row .zal-c-sku { grid-area: main !important; min-width: 0 !important; align-self: end !important; }
   .zal-row .zal-c-sku > span:first-child { font-size: 13.5px !important; }
-  /* MOBILNO: Kopiraj gumb skrij (odveč). Pozicija = POLN MODER gumb z belim tekstom (📍 pozicija ✏️) */
+  /* MOBILNO: Kopiraj gumb skrij (odveč). */
   .zal-row .zal-c-copy { display: none !important; }
-  .zal-row .zal-c-poz {
-    margin-left: auto !important; padding: 8px 12px !important;
-    background: var(--accent) !important; border: none !important;
-    border-radius: 8px !important; gap: 5px !important;
+  /* MOBILNO: Pozicija (badge + svinčnik) prikazana desno v glavni vrstici */
+  .zal-row .zal-c-pos {
+    grid-area: pos !important; display: flex !important;
+    align-items: center !important; justify-content: flex-end !important;
+    gap: 6px !important; align-self: center !important;
   }
-  .zal-row .zal-c-poz, .zal-row .zal-c-poz span { color: #fff !important; }
-  .zal-row .zal-c-poz .zal-poz-txt { display: inline !important; font-size: 13px !important; font-weight: 700 !important; }
-  .zal-row .zal-c-poz .zal-poz-pen { display: inline !important; font-size: 12px !important; }
+  .zal-row .zal-c-pos span[style*="185FA5"], .zal-row .zal-c-pos > span:first-child {
+    font-size: 14px !important; padding: 5px 11px !important;
+  }
+  .zal-row .zal-c-pos span[onclick] { font-size: 16px !important; opacity: 0.85 !important; }
   .zal-row .zal-meta-mobile {
     grid-area: meta !important; display: block !important; align-self: start !important;
     font-size: 11px !important; color: var(--text-tertiary) !important;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .zal-row .zal-c-id, .zal-row .zal-c-title, .zal-row .zal-c-stock ~ .zal-c-price,
-  .zal-row .zal-c-price, .zal-row .zal-c-obrat, .zal-row .zal-c-pos, .zal-row .zal-c-note,
+  .zal-row .zal-c-id, .zal-row .zal-c-title,
+  .zal-row .zal-c-price, .zal-row .zal-c-obrat, .zal-row .zal-c-note,
   .zal-row .zal-c-dur, .zal-row .zal-c-wh {
     display: none !important;
   }
@@ -14603,9 +14605,9 @@ function zalogaRender() {
       + '<span class="zal-c-title" style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px" title="' + esc(it.title) + '">' + esc(it.title||'—') + '</span>'
       + (function(){
           var wh = (it.warehouse||'').trim().toLowerCase();
-          if (wh === 'silux') {
+          if (wh === 'silux' || wh === 'silux2') {
             var skuE = esc((it.product_sku||'').replace(/'/g,"\\'"));
-            return '<span class="zal-c-stock" onclick="event.stopPropagation();stockQuickOpen(\'' + skuE + '\',\'' + esc((it.title||'').replace(/'/g,"\\'")) + '\',\'' + stock + '\')" title="Klikni za urejanje količine" style="text-align:right;font-weight:700;font-size:15px;color:' + stockColor + ';cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px">' + stock + '</span>';
+            return '<span class="zal-c-stock" onclick="event.stopPropagation();stockQuickOpen(\'' + skuE + '\',\'' + esc((it.title||'').replace(/'/g,"\\'")) + '\',\'' + stock + '\',\'' + wh + '\')" title="Klikni za urejanje količine" style="text-align:right;font-weight:700;font-size:15px;color:' + stockColor + ';cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px">' + stock + '</span>';
           }
           return '<span class="zal-c-stock" style="text-align:right;font-weight:700;font-size:15px;color:' + stockColor + '">' + stock + '</span>';
         })()
@@ -20463,9 +20465,11 @@ async function pozQuickSave() {
 
 // ─── Urejanje KOLIČINE (stock) ───
 let _stockQuickSku = null;
-function stockQuickOpen(sku, title, currentStock) {
+let _stockQuickWh = 'silux';
+function stockQuickOpen(sku, title, currentStock, warehouse) {
   _stockQuickSku = sku;
-  document.getElementById('stockQuickSku').textContent = sku;
+  _stockQuickWh = (warehouse || 'silux').toLowerCase();
+  document.getElementById('stockQuickSku').textContent = sku + (_stockQuickWh === 'silux2' ? '  ·  🏬 Skladišče2' : '');
   document.getElementById('stockQuickTitle').textContent = title || '';
   document.getElementById('stockQuickCurrent').innerHTML = 'trenutno: 📦 <b>' + pozEsc(String(currentStock)) + '</b> kosov';
   document.getElementById('stockQuickInput').value = currentStock || '0';
@@ -20481,12 +20485,12 @@ async function stockQuickSave() {
   if (val === '' || isNaN(parseInt(val))) { st.innerHTML = '<span style="color:#dc2626">Vpiši število.</span>'; return; }
   st.innerHTML = '<span style="color:var(--text-secondary)">⏳ shranjujem...</span>';
   try {
-    const r = await fetch('/pozicije-update-one', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _stockQuickSku, stock: val, warehouse: 'silux' }) });
+    const r = await fetch('/pozicije-update-one', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _stockQuickSku, stock: val, warehouse: _stockQuickWh }) });
     const d = await r.json();
     if (d.ok) {
       st.innerHTML = `<span style="color:#16a34a">✓ Shranjeno: ${pozEsc(d.sku)} → 📦 ${pozEsc(String(d.stock))} kosov</span>`;
       if (typeof _zalogaData !== 'undefined') {
-        const item = _zalogaData.find(x => (x.product_sku||x.sku) === _stockQuickSku && (x.warehouse||'').toLowerCase()==='silux');
+        const item = _zalogaData.find(x => (x.product_sku||x.sku) === _stockQuickSku && (x.warehouse||'').toLowerCase()===_stockQuickWh);
         if (item) item.stock = d.stock;
       }
       if (typeof zalogaRender === 'function') zalogaRender();
