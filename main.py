@@ -903,6 +903,7 @@ async def startup_event():
     asyncio.create_task(_daily_cashflow_sync())
     asyncio.create_task(_email_polling_loop())
     asyncio.create_task(_forecast2_scheduler_loop())
+    asyncio.create_task(_zaloga_scheduler_loop())
 
 
 async def _ffmpeg_warmup():
@@ -7334,10 +7335,9 @@ async def zaloga_reset():
         return {"ok": False, "error": str(e)}
 
 
-@app.post("/zaloga-sync-siluxar")
-async def zaloga_sync_siluxar():
-    """Sinhronizira zalogo s siluxar (apistockexport). MERGE po SKU v obstoječi STOCK_CSV.
-    Ključ v SILUXAR_STOCK_KEY. Bere CSV ali JSON, dopolni/posodobi obstoječe vrstice."""
+async def _zaloga_sync_core():
+    """JEDRO sinhronizacije zaloge s siluxar (apistockexport). MERGE po SKU+skladišče.
+    Kliče ga endpoint /zaloga-sync-siluxar (gumb) IN scheduler (vsake 4h)."""
     import csv as _csv
     from io import StringIO as _SIO
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
@@ -7529,6 +7529,31 @@ async def zaloga_sync_siluxar():
     return {"ok": True, "total": len(existing), "added": added, "updated": updated,
             "external": external_count, "nasi": nasi_count,
             "synced_at": meta['last_siluxar_sync']}
+
+
+@app.post("/zaloga-sync-siluxar")
+async def zaloga_sync_siluxar():
+    """Ročna sinhronizacija zaloge s siluxar (gumb). Scheduler kliče isto jedro vsake 4h."""
+    return await _zaloga_sync_core()
+
+
+async def _zaloga_scheduler_loop():
+    """Notranji scheduler (always-on Render Pro): vsake 4 ure v ozadju potegne zalogo s siluxar.
+    Teče znotraj web procesa → dostop do /data brez konflikta. Gumb ostane za ročni poteg."""
+    await asyncio.sleep(120)   # počakaj, da se startup dokonča (in feed/zaloga naložita)
+    INTERVAL = 4 * 60 * 60     # 4 ure
+    while True:
+        try:
+            res = await _zaloga_sync_core()
+            if res.get("ok"):
+                print(f"[zaloga-cron] OK — total {res.get('total')}, "
+                      f"added {res.get('added')}, updated {res.get('updated')}")
+            else:
+                print(f"[zaloga-cron] FAIL — {res.get('error')}")
+            await asyncio.sleep(INTERVAL)
+        except Exception as e:
+            print(f"[zaloga-cron] Error: {e}")
+            await asyncio.sleep(1800)   # 30 min pred ponovnim poskusom
 
 
 @app.get("/orodja-stock-status")
@@ -18614,14 +18639,30 @@ async def pozicije_apply():
 
 @app.post("/pozicije-update-one")
 async def pozicije_update_one(data: dict):
-    """Hitra sprememba pozicije ENEGA SKU-ja — zapiše takoj v CSV (za pop-up pri zalogi)."""
+    """Hitra sprememba pozicije IN/ALI količine ENEGA SKU-ja — zapiše takoj v CSV (pop-up pri zalogi).
+    position: nova pozicija (opcijsko). stock: nova količina (opcijsko, samo če podana)."""
     try:
         sku = (data.get("sku") or "").strip()
-        position = (data.get("position") or "").strip()
+        position = data.get("position")
+        stock = data.get("stock")
+        set_pos = position is not None
+        set_stock = stock is not None and str(stock).strip() != ""
+        if set_pos:
+            position = str(position).strip()
         if not sku:
             return {"ok": False, "error": "Manjka SKU"}
+        if not set_pos and not set_stock:
+            return {"ok": False, "error": "Ni česa posodobiti (ne pozicije ne količine)."}
         if not STOCK_CSV_FILE.exists():
             return {"ok": False, "error": "Baza zaloge ni naložena."}
+
+        # validiraj stock (cela števila)
+        new_stock_val = None
+        if set_stock:
+            try:
+                new_stock_val = str(int(float(str(stock).replace(",", "."))))
+            except Exception:
+                return {"ok": False, "error": "Količina mora biti število."}
 
         import csv as _csv
         from io import StringIO as _SIO
@@ -18630,16 +18671,27 @@ async def pozicije_update_one(data: dict):
         sep = ";" if first_line.count(";") > first_line.count(",") else ","
         reader = _csv.DictReader(_SIO(text), delimiter=sep)
         fieldnames = reader.fieldnames or []
-        if "position" not in fieldnames:
+        if set_pos and "position" not in fieldnames:
             fieldnames = fieldnames + ["position"]
+        if set_stock and "stock" not in fieldnames:
+            fieldnames = fieldnames + ["stock"]
         rows = list(reader)
+
+        # opcijsko: omeji na določeno skladišče (če podano), sicer vse vrstice tega SKU
+        wh_filter = (data.get("warehouse") or "").strip().lower()
 
         updated = 0
         for row in rows:
             rsku = (row.get("product_sku") or row.get("sku") or "").strip()
-            if rsku == sku:
+            if rsku != sku:
+                continue
+            if wh_filter and (row.get("warehouse") or "").strip().lower() != wh_filter:
+                continue
+            if set_pos:
                 row["position"] = position
-                updated += 1
+            if set_stock:
+                row["stock"] = new_stock_val
+            updated += 1
         if updated == 0:
             return {"ok": False, "error": f"SKU '{sku}' ni v bazi zaloge"}
 
@@ -18652,7 +18704,12 @@ async def pozicije_update_one(data: dict):
         tmp.write_text(out.getvalue(), encoding="utf-8-sig")
         import os as _os
         _os.replace(str(tmp), str(STOCK_CSV_FILE))
-        return {"ok": True, "updated": updated, "sku": sku, "position": position}
+        result = {"ok": True, "updated": updated, "sku": sku}
+        if set_pos:
+            result["position"] = position
+        if set_stock:
+            result["stock"] = new_stock_val
+        return result
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
