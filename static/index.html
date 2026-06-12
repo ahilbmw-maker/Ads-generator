@@ -14202,6 +14202,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ═══════════════════════════════════════════════════════
 
 let _zalogaData = [];
+let _pozChanged = new Set();   // SKU-ji s SPREMENJENO pozicijo (za pošiljanje samo sprememb v siluxar)
 let _zalogaSortCol = 'stock';
 let _zalogaSortDir = -1; // -1 = desc (največ zaloge najprej)
 
@@ -14299,22 +14300,28 @@ async function zalogaReset(btn) {
 
 // Pošlji VSE pozicije (silux, ki imajo pozicijo) v siluxar beta
 async function zalogaPushPositions(btn) {
-  // zberi samo silux izdelke z neprazno pozicijo
+  // pošlji SAMO spremenjene pozicije (iz _pozChanged), ne vseh
+  if (!_pozChanged.size) { alert('Ni spremenjenih pozicij za pošiljanje.\n\nSpremeni kakšno pozicijo (svinčnik), pa se zbere tukaj.'); return; }
   const items = (_zalogaData || [])
-    .filter(it => (it.warehouse||'').trim().toLowerCase() === 'silux' && (it.position||'').trim() !== '')
+    .filter(it => {
+      const sku = (it.product_sku||it.sku||'').trim();
+      return (it.warehouse||'').trim().toLowerCase() === 'silux' && _pozChanged.has(sku);
+    })
     .map(it => ({ sku: (it.product_sku||it.sku||'').trim(), position: (it.position||'').trim() }))
     .filter(x => x.sku);
-  if (!items.length) { alert('Ni pozicij za pošiljanje (silux z neprazno pozicijo).'); return; }
-  if (!confirm(`Pošljem ${items.length} pozicij (silux) v siluxar beta?`)) return;
+  if (!items.length) { alert('Ni spremenjenih pozicij za pošiljanje.'); _pozChanged.clear(); _updatePushBtnCount(); return; }
+  if (!confirm(`Pošljem ${items.length} SPREMENJENIH pozicij v siluxar?`)) return;
   const status = document.getElementById('zalogaStatus');
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span>⏳</span><span>Pošiljam...</span>'; }
-  if (status) { status.style.display='block'; status.style.color='var(--text-secondary)'; status.textContent=`⏳ Pošiljam ${items.length} pozicij v siluxar...`; }
+  if (status) { status.style.display='block'; status.style.color='var(--text-secondary)'; status.textContent=`⏳ Pošiljam ${items.length} sprememb v siluxar...`; }
   try {
     const res = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ items }) });
     const d = await res.json();
     if (d.ok) {
-      if (status) { status.style.color='var(--green)'; status.textContent=`✓ Poslano ${d.poslano} pozicij v siluxar (status ${d.status}).`; }
+      if (status) { status.style.color='var(--green)'; status.textContent=`✓ Poslano ${d.poslano} sprememb v siluxar (status ${d.status}).`; }
+      _pozChanged.clear();   // uspešno → počisti čakalno vrsto
+      _updatePushBtnCount();
     } else {
       if (status) { status.style.color='var(--red)'; status.textContent='⚠ siluxar: ' + (d.error || 'napaka') + (d.poslano ? ` (poskus ${d.poslano})` : ''); }
     }
@@ -14323,6 +14330,17 @@ async function zalogaPushPositions(btn) {
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig || '<span>↗</span><span>Pošlji pozicije v siluxar</span>'; }
   }
+}
+
+// Posodobi števec na gumbu (koliko sprememb čaka)
+function _updatePushBtnCount() {
+  const btn = document.getElementById('zalogaPushPosBtn');
+  if (!btn) return;
+  const n = _pozChanged.size;
+  btn.innerHTML = n > 0
+    ? '<span>↗</span><span>Pošlji pozicije (' + n + ')</span>'
+    : '<span>↗</span><span>Pošlji pozicije v siluxar</span>';
+  btn.style.opacity = n > 0 ? '1' : '0.55';
 }
 
 // samodejna sinhronizacija 1x na dan (ob prvem odprtju zaloge ta dan)
@@ -20518,18 +20536,21 @@ async function pozQuickSave() {
         if (item) item.position = pos;
       }
       if (typeof zalogaRender === 'function') zalogaRender();
+      _pozChanged.add(_pozQuickSku);   // označi kot spremenjeno (za masovni push)
       // BETA: pošlji pozicijo tudi v siluxar (dodatno — če pade, ne blokira lokalnega shranjevanja)
       try {
         const sr = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _pozQuickSku, position: pos }) });
         const sd = await sr.json();
         if (sd.ok) {
           st.innerHTML += '<br><span style="color:#16a34a;font-size:11px">↗ poslano v siluxar</span>';
+          _pozChanged.delete(_pozQuickSku);   // uspešno poslano → ni več "čaka na pošiljanje"
         } else {
-          st.innerHTML += '<br><span style="color:#d97706;font-size:11px">⚠ siluxar: ' + pozEsc(sd.error||'ni odgovora') + '</span>';
+          st.innerHTML += '<br><span style="color:#d97706;font-size:11px">⚠ siluxar: ' + pozEsc(sd.error||'ni odgovora') + ' (ostane v čakalni vrsti)</span>';
         }
       } catch(e) {
-        st.innerHTML += '<br><span style="color:#d97706;font-size:11px">⚠ siluxar nedosegljiv (lokalno shranjeno)</span>';
+        st.innerHTML += '<br><span style="color:#d97706;font-size:11px">⚠ siluxar nedosegljiv (ostane v čakalni vrsti)</span>';
       }
+      _updatePushBtnCount();
       setTimeout(pozQuickClose, 1400);
     } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
