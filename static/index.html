@@ -20442,14 +20442,25 @@ async function pozApply() {
   if (!confirm('Shranim ' + _pozPending.length + ' pozicij v bazo zaloge? Pozicije v CSV bodo posodobljene.')) return;
   const st = document.getElementById('pozApplyStatus');
   st.innerHTML = '<span style="color:var(--text-secondary)">⏳ shranjujem...</span>';
+  // zapomni si SKU-je PRED brisanjem seznama (za pošiljanje v siluxar)
+  const shranjeniSku = _pozPending.map(it => (it.sku||'').trim()).filter(Boolean);
   try {
     const r = await fetch('/pozicije-apply', { method:'POST' });
     const d = await r.json();
     if (d.ok) {
       st.innerHTML = `<span style="color:#16a34a">✓ Posodobljenih ${d.updated} izdelkov v zalogi</span>`;
+      // označi vse shranjene SKU-je kot spremenjene (za masovni push v siluxar)
+      if (typeof _pozChanged !== 'undefined') {
+        shranjeniSku.forEach(s => _pozChanged.add(s));
+        if (typeof _updatePushBtnCount === 'function') _updatePushBtnCount();
+      }
       _pozPending = [];
       pozRenderPending();
-      if (typeof zalogaLoad === 'function') zalogaLoad();  // osveži zalogo
+      if (typeof zalogaLoad === 'function') await zalogaLoad();  // osveži zalogo (da _zalogaData dobi nove pozicije)
+      // ponudi takojšnje pošiljanje v siluxar
+      if (shranjeniSku.length && typeof zalogaPushPositions === 'function') {
+        st.innerHTML += `<br><button onclick="zalogaPushPositions(this)" style="margin-top:8px;padding:8px 14px;background:#185FA5;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">↗ Pošlji ${shranjeniSku.length} pozicij v siluxar</button>`;
+      }
     } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
 }
