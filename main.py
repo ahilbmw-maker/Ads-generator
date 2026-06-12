@@ -13895,9 +13895,31 @@ async def forecast2_sum_raw():
         return {"error": str(e)}
 
 
-async def _forecast2_fetch_core():
+async def _forecast2_fetch_core(force=False, min_gap_min=55):
     """Jedro: potegne apisumexport in zapiše vmesni vnos za danes.
-    Kliče ga endpoint /forecast2-fetch-siluxar IN notranji scheduler (vsake 2h)."""
+    Kliče ga endpoint /forecast2-fetch-siluxar (force=True, gumb) IN scheduler (force=False).
+    ZAŠČITA: če ni force in je od zadnjega siluxar-vnosa minilo manj kot min_gap_min minut,
+    NE zapiše (prepreči podvajanje, če teče več scheduler instanc ali se kliče prepogosto)."""
+    today = _lj_today()
+    now = _lj_now()
+    # — zaščita pred prepogostim zapisom (samo za scheduler, ne za ročni force) —
+    if not force:
+        try:
+            day_check = _forecast2_load_day(today)
+            siluxar_entries = [e for e in (day_check.get("entries") or [])
+                               if e.get("_source") == "siluxar_apisumexport" and e.get("_ts")]
+            if siluxar_entries:
+                last_ts = max(e["_ts"] for e in siluxar_entries)
+                from datetime import datetime as _dt
+                last_dt = _dt.fromisoformat(last_ts)
+                gap_min = (now - last_dt).total_seconds() / 60.0
+                if gap_min < min_gap_min:
+                    return {"ok": True, "skipped": True,
+                            "reason": f"Zadnji siluxar-vnos pred {gap_min:.0f} min (< {min_gap_min} min) — preskočim.",
+                            "date": today}
+        except Exception:
+            pass  # ob napaki vseeno nadaljuj (raje zapiši kot izgubi podatek)
+
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
@@ -13972,14 +13994,15 @@ async def _forecast2_fetch_core():
 @app.post("/forecast2-fetch-siluxar")
 async def forecast2_fetch_siluxar():
     """Potegne dnevno vsoto (št. naročil + promet €) s siluxar apisumexport in
-    zapiše vmesni vnos za danes. Ročni klic prek gumba (scheduler kliče isto jedro)."""
-    return await _forecast2_fetch_core()
+    zapiše vmesni vnos za danes. ROČNI klic prek gumba → force=True (vedno zapiše)."""
+    return await _forecast2_fetch_core(force=True)
 
 
 async def _forecast2_scheduler_loop():
-    """Notranji scheduler (always-on Render Pro): vsake 2 uri potegne apisumexport
-    in zapiše vmesni vnos. Aktiven med 6:00–22:00 po Ljubljani (ponoči ni prometa).
-    Teče znotraj web procesa → dostop do /data brez konflikta."""
+    """Notranji scheduler (always-on Render Pro): vsako uro potegne apisumexport
+    in zapiše vmesni vnos. Aktiven med 6:00–23:00 po Ljubljani (ponoči ni prometa).
+    Jedro ima dodatno časovno zaščito (zapis max 1x/55min), ki prepreči podvajanje,
+    če bi teklo več instanc scheduler-ja (npr. ob Render restartih)."""
     await asyncio.sleep(60)  # počakaj, da se startup dokonča
     INTERVAL = 60 * 60       # 1 ura
     while True:
@@ -13987,8 +14010,10 @@ async def _forecast2_scheduler_loop():
             now = _lj_now()
             hour = now.hour
             if 6 <= hour < 23:
-                res = await _forecast2_fetch_core()
-                if res.get("ok"):
+                res = await _forecast2_fetch_core(force=False)
+                if res.get("skipped"):
+                    print(f"[forecast2-cron] preskočeno — {res.get('reason')}")
+                elif res.get("ok"):
                     print(f"[forecast2-cron] OK {res.get('date')} {res.get('time')} — "
                           f"{res.get('orders')} naročil, {res.get('revenue')} €")
                 else:
