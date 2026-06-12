@@ -14594,7 +14594,8 @@ function zalogaRender() {
     const rowBg = stock === 0 ? 'rgba(0,0,0,0.02)' : 'var(--surface)';
     const rowOpacity = stock === 0 ? '0.5' : '1';
 
-    const metaMobile = (price > 0 ? price.toFixed(2) + ' € · ' : '') + '📍 ' + esc(it.position||'—') + (stock30 > 0 ? ' · ↻ ' + stock30 : '');
+    var _nazivKratko = (it.title || '').length > 24 ? (it.title || '').slice(0, 24).trim() + '…' : (it.title || '');
+    const metaMobile = (price > 0 ? price.toFixed(2) + ' € · ' : '') + esc(_nazivKratko || '—');
     return '<div class="zal-row" style="display:grid;grid-template-columns:' + GRID + ';gap:8px;padding:10px 14px;background:' + rowBg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px;align-items:center;opacity:' + rowOpacity + ';--zal-stockcol:' + stockColor + '">'
       + '<span class="zal-c-id" style="color:var(--text-tertiary);font-size:11px">' + esc(it.product_id||'—') + '</span>'
       + '<div class="zal-c-sku" style="display:flex;align-items:center;gap:6px;overflow:hidden">'
@@ -14627,7 +14628,7 @@ function zalogaRender() {
           var skuE = esc((it.product_sku||'').replace(/'/g,"\\'"));
           var titE = esc((it.title||'').replace(/'/g,"\\'"));
           var posE = esc((it.position||'').replace(/'/g,"\\'"));
-          return '<span class="zal-c-pos" style="text-align:center;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:5px" title="' + esc(it.position) + '">' + badge + '<span onclick="event.stopPropagation();pozQuickOpen(\'' + skuE + '\',\'' + titE + '\',\'' + posE + '\')" title="Spremeni pozicijo" style="cursor:pointer;font-size:12px;opacity:0.6;flex-shrink:0" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">✏️</span></span>';
+          return '<span class="zal-c-pos" style="text-align:center;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:5px" title="' + esc(it.position) + '"><span onclick="event.stopPropagation();pozQuickOpen(\'' + skuE + '\',\'' + titE + '\',\'' + posE + '\')" title="Spremeni pozicijo" style="cursor:pointer;font-size:12px;opacity:0.6;flex-shrink:0" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">✏️</span>' + badge + '</span>';
         })()
       + '<span class="zal-c-note" style="color:var(--text-secondary);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.note) + '">' + esc(it.note||'—') + '</span>'
       + '<span class="zal-meta-mobile">' + metaMobile + '</span>'
