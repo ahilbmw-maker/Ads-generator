@@ -18637,6 +18637,58 @@ async def pozicije_apply():
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
 
 
+@app.post("/siluxar-push-positions")
+async def siluxar_push_positions(data: dict):
+    """Pošlje pozicije NAZAJ v siluxar (beta zapisovalni endpoint).
+    Body: {"items": [{"sku": "1234", "position": "00-4B"}, ...]}
+    Pošlje POST na beta.siluxar.si/apistockexport z istim Authorization ključem."""
+    try:
+        items = data.get("items") or []
+        # podpri tudi enojni {sku, position}
+        if not items and data.get("sku"):
+            items = [{"sku": data.get("sku"), "position": data.get("position", "")}]
+        # očisti: samo sku + position, brez praznih
+        payload = []
+        for it in items:
+            sku = (str(it.get("sku") or "")).strip()
+            pos = (str(it.get("position") or "")).strip()
+            if sku:
+                payload.append({"sku": sku, "position": pos})
+        if not payload:
+            return {"ok": False, "error": "Ni veljavnih pozicij za pošiljanje."}
+
+        key = os.environ.get("SILUXAR_STOCK_KEY", "")
+        basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
+        basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
+        headers = {"Content-Type": "application/json"}
+        _auth = None
+        if key:
+            headers["Authorization"] = key
+        elif basic_user or basic_pass:
+            _auth = httpx.BasicAuth(basic_user, basic_pass)
+
+        # BETA zapisovalni endpoint
+        url = "http://beta.siluxar.si/apistockexport"
+        try:
+            async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
+                r = await cli.post(url, headers=headers, json=payload)
+        except Exception as e:
+            return {"ok": False, "error": f"Napaka pri klicu beta.siluxar.si: {e}", "poslano": len(payload)}
+
+        ok = 200 <= r.status_code < 300
+        resp_text = (r.text or "")[:500]
+        return {
+            "ok": ok,
+            "status": r.status_code,
+            "poslano": len(payload),
+            "odgovor": resp_text,
+            "error": None if ok else f"siluxar vrnil status {r.status_code}",
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
+
+
 @app.post("/pozicije-update-one")
 async def pozicije_update_one(data: dict):
     """Hitra sprememba pozicije IN/ALI količine ENEGA SKU-ja — zapiše takoj v CSV (pop-up pri zalogi).
