@@ -1347,8 +1347,16 @@ function bulkMarkResolved() {
   renderTable(allRows);
 }
 
-function bulkDelete() {
+async function bulkDelete() {
   const toDelete = new Set(selectedKeys);
+  // zberi ps.id-je (siluxar_id) izbranih vrstic — za sinhronizacijo brisanja v siluxar
+  const psIds = allRows
+    .filter(r => toDelete.has(r.id + '|' + r.sku))
+    .map(r => r.siluxar_id)
+    .filter(x => x != null && String(x).trim() !== '');
+  const uniqIds = [...new Set(psIds)];
+
+  // lokalno brisanje (vedno)
   allRows = allRows.filter(r => !toDelete.has(r.id + '|' + r.sku));
   try {
     const stored = JSON.parse(localStorage.getItem('price_checker_resolved') || '{}');
@@ -1359,6 +1367,37 @@ function bulkDelete() {
   saveTableToStorage();
   updateStats(allRows);
   renderTable(allRows);
+
+  // BETA: pošlji ps.id-je v siluxar za brisanje (vzporedno; če pade, ne blokira lokalnega brisanja)
+  if (uniqIds.length) {
+    try {
+      const r = await fetch('/siluxar-delete-alerts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ids: uniqIds }) });
+      const d = await r.json();
+      if (d.ok) {
+        _pccToast(`✓ ${d.poslano} izbrisano tudi v siluxar`, '#16a34a');
+      } else {
+        _pccToast(`⚠ siluxar brisanje: ${d.error || 'napaka'}`, '#d97706');
+      }
+    } catch(e) {
+      _pccToast('⚠ siluxar nedosegljiv (lokalno izbrisano)', '#d97706');
+    }
+  }
+}
+
+// majhen toast za povratno informacijo brisanja
+function _pccToast(msg, color) {
+  let t = document.getElementById('_pccToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = '_pccToast';
+    t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:10px 18px;border-radius:8px;color:#fff;font-size:13px;font-weight:600;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.3);transition:opacity 0.3s';
+    document.body.appendChild(t);
+  }
+  t.style.background = color || '#333';
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(window._pccToastTimer);
+  window._pccToastTimer = setTimeout(() => { t.style.opacity = '0'; }, 3500);
 }
 
 function bulkClear() {
