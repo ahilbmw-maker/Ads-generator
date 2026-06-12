@@ -18775,7 +18775,7 @@ async def pozicije_apply():
 async def siluxar_push_positions(data: dict):
     """Pošlje pozicije NAZAJ v siluxar (beta zapisovalni endpoint).
     Body: {"items": [{"sku": "1234", "position": "00-4B"}, ...]}
-    Pošlje POST na beta.siluxar.si/apistockexport z istim Authorization ključem."""
+    Pošlje POST na www.siluxar.si/apistockexport z istim Authorization ključem."""
     try:
         items = data.get("items") or []
         # podpri tudi enojni {sku, position}
@@ -18801,8 +18801,8 @@ async def siluxar_push_positions(data: dict):
         elif basic_user or basic_pass:
             _auth = httpx.BasicAuth(basic_user, basic_pass)
 
-        # BETA zapisovalni endpoint
-        url = "http://beta.siluxar.si/apistockexport"
+        # PRODUKCIJSKI zapisovalni endpoint
+        url = "https://www.siluxar.si/apistockexport"
 
         def _zabelezi(status, ok, resp_text, err=None, exc=None):
             """Zabeleži pošiljanje v log (zadnjih 50) za debug."""
@@ -18833,8 +18833,8 @@ async def siluxar_push_positions(data: dict):
             async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
                 r = await cli.post(url, headers=headers, json=payload)
         except Exception as e:
-            _zabelezi(None, False, None, err=f"Napaka pri klicu beta.siluxar.si: {e}", exc=str(e))
-            return {"ok": False, "error": f"Napaka pri klicu beta.siluxar.si: {e}", "poslano": len(payload)}
+            _zabelezi(None, False, None, err=f"Napaka pri klicu siluxar.si: {e}", exc=str(e))
+            return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}", "poslano": len(payload)}
 
         ok = 200 <= r.status_code < 300
         resp_text = (r.text or "")[:500]
@@ -18911,8 +18911,8 @@ async def siluxar_delete_alerts(data: dict):
             async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
                 r = await cli.post(url, headers=headers, json=ids)
         except Exception as e:
-            _zabelezi(None, False, None, err=f"Napaka pri klicu beta.siluxar.si: {e}", exc=str(e))
-            return {"ok": False, "error": f"Napaka pri klicu beta.siluxar.si: {e}", "poslano": len(ids)}
+            _zabelezi(None, False, None, err=f"Napaka pri klicu siluxar.si: {e}", exc=str(e))
+            return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}", "poslano": len(ids)}
 
         ok = 200 <= r.status_code < 300
         resp_text = (r.text or "")[:500]
@@ -18950,7 +18950,7 @@ async def siluxar_push_authtest():
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
-    url = "http://beta.siluxar.si/apistockexport"
+    url = "https://www.siluxar.si/apistockexport"
     test_payload = [{"sku": "_TEST_", "position": "_TEST_"}]
 
     # katere poverilnice sploh imamo (brez razkrivanja gesel)
