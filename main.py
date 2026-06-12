@@ -18854,7 +18854,7 @@ async def siluxar_push_positions(data: dict):
 
 @app.post("/siluxar-delete-alerts")
 async def siluxar_delete_alerts(data: dict):
-    """Pošlje array ps.id-jev za BRISANJE alarmov v siluxar (beta).
+    """Pošlje array ps.id-jev za BRISANJE alarmov v siluxar (PRODUKCIJA).
     Body: {"ids": [12, 13, 14]} → pošlje [12,13,14] na apistockalertsexport (POST)."""
     try:
         ids_raw = data.get("ids") or []
@@ -18881,7 +18881,7 @@ async def siluxar_delete_alerts(data: dict):
         elif basic_user or basic_pass:
             _auth = httpx.BasicAuth(basic_user, basic_pass)
 
-        url = "http://beta.siluxar.si/apistockalertsexport"
+        url = "https://www.siluxar.si/apistockalertsexport"
 
         def _zabelezi(status, ok, resp_text, err=None, exc=None):
             try:
