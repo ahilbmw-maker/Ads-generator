@@ -4041,6 +4041,23 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
     </div>
 
+    <div id="stockQuickModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)stockQuickClose()">
+      <div style="background:var(--surface);border-radius:12px;padding:16px;width:min(400px,92vw)" onclick="event.stopPropagation()">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:14px;font-weight:700">📦 Sprememba količine</span>
+          <button onclick="stockQuickClose()" style="background:transparent;border:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">✕</button>
+        </div>
+        <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+          <div style="font-size:15px;font-weight:700;color:var(--text)" id="stockQuickSku">—</div>
+          <div style="font-size:12px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="stockQuickTitle"></div>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:3px" id="stockQuickCurrent"></div>
+        </div>
+        <input type="number" id="stockQuickInput" placeholder="nova količina" inputmode="numeric" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:18px;font-weight:700;text-align:center;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary);margin-bottom:8px" onkeydown="if(event.key==='Enter')stockQuickSave()">
+        <div id="stockQuickStatus" style="font-size:12px;margin-bottom:10px;min-height:16px"></div>
+        <button onclick="stockQuickSave()" style="width:100%;padding:11px;background:#16a34a;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Shrani količino</button>
+      </div>
+    </div>
+
   </div><!-- /page-zaloga -->
 
   <!-- ═══════════════════════════════════════════════════════════════════════
@@ -14582,31 +14599,33 @@ function zalogaRender() {
       + '<span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:90px;font-size:14px" title="' + esc(it.product_sku) + '">' + esc(it.product_sku||'—') + '</span>'
       + ((it.warehouse||'').trim().toLowerCase() === 'silux2' ? '<span class="zal-tag-sklad2">🏬 Skladišče2</span>' : '')
       + '<button class="zal-c-copy" onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(it.product_sku||'') + '\').then(()=>{this.textContent=\'✓ Kopirano\';this.style.background=\'var(--green)\';this.style.color=\'#fff\';this.style.borderColor=\'var(--green)\';setTimeout(()=>{this.textContent=\'📋 Kopiraj\';this.style.background=\'\';this.style.color=\'\';this.style.borderColor=\'\'},1500)})" title="Kopiraj SKU" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="if(this.textContent!==\'✓ Kopirano\'){this.style.borderColor=\'\';this.style.color=\'\'}">📋 Kopiraj</button>'
-      + (function(){
-          var posVal = esc(it.position||'—');
-          // urejanje pozicije velja SAMO za skladišče silux (NE silux2, NE external)
-          var wh = (it.warehouse||'').trim().toLowerCase();
-          if (wh !== 'silux') {
-            // silux2 / external / drugo: pozicija samo prikaz, BREZ urejanja
-            return '<span class="zal-c-poz zal-poz-readonly" style="flex-shrink:0;font-size:11px;color:var(--text-tertiary);padding:3px 7px;white-space:nowrap;display:flex;align-items:center;gap:4px"><span>📍</span><span class="zal-poz-txt">' + posVal + '</span></span>';
-          }
-          // silux: gumb za urejanje pozicije
-          var skuE = esc((it.product_sku||'').replace(/'/g,"\\'"));
-          var titE = esc((it.title||'').replace(/'/g,"\\'"));
-          var posE = esc((it.position||'').replace(/'/g,"\\'"));
-          return '<button class="zal-c-poz" onclick="event.stopPropagation();pozQuickOpen(\'' + skuE + '\',\'' + titE + '\',\'' + posE + '\')" title="Spremeni pozicijo" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:11px;color:var(--text-secondary);padding:3px 7px;white-space:nowrap;transition:all 0.1s;display:flex;align-items:center;gap:4px" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="this.style.borderColor=\'\';this.style.color=\'\'"><span>📍</span><span class="zal-poz-txt">' + posVal + '</span><span class="zal-poz-pen">✏️</span></button>';
-        })()
       + '</div>'
       + '<span class="zal-c-title" style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px" title="' + esc(it.title) + '">' + esc(it.title||'—') + '</span>'
-      + '<span class="zal-c-stock" style="text-align:right;font-weight:700;font-size:15px;color:' + stockColor + '">' + stock + '</span>'
+      + (function(){
+          var wh = (it.warehouse||'').trim().toLowerCase();
+          if (wh === 'silux') {
+            var skuE = esc((it.product_sku||'').replace(/'/g,"\\'"));
+            return '<span class="zal-c-stock" onclick="event.stopPropagation();stockQuickOpen(\'' + skuE + '\',\'' + esc((it.title||'').replace(/'/g,"\\'")) + '\',\'' + stock + '\')" title="Klikni za urejanje količine" style="text-align:right;font-weight:700;font-size:15px;color:' + stockColor + ';cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px">' + stock + '</span>';
+          }
+          return '<span class="zal-c-stock" style="text-align:right;font-weight:700;font-size:15px;color:' + stockColor + '">' + stock + '</span>';
+        })()
       + '<span class="zal-c-price" style="text-align:right;color:var(--text);font-size:13px">' + (price > 0 ? price.toFixed(2) + ' €' : '—') + '</span>'
       + '<span class="zal-c-obrat" style="text-align:right;font-weight:600;font-size:13px;color:' + obratColor + '">' + (stock30 > 0 ? stock30 : '—') + '</span>'
       + (function(){var d=parseInt(it.stock_duration);var txt=(it.stock_duration===''||isNaN(d))?'—':d+' d';var c=isNaN(d)?'var(--text-tertiary)':(d<=7?'var(--red)':d<=21?'#d97706':'var(--text-secondary)');return '<span class="zal-c-dur" style="text-align:right;font-size:13px;font-weight:'+(isNaN(d)?'400':'600')+';color:'+c+'" title="Trajanje zaloge ob obratu zadnjih 30 dni">'+txt+'</span>';})()
       + '<span class="zal-c-wh" style="color:var(--text-secondary);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.warehouse) + '">' + esc(it.warehouse||'—') + '</span>'
       + (function(){
           var posTxt = esc(it.position||'—');
-          // Pozicija: bel tekst + temno moder okvir/ozadje (enako kot povsod drugje)
-          return '<span class="zal-c-pos" style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.position) + '"><span style="display:inline-block;background:#185FA5;color:#fff;font-size:12px;font-weight:600;padding:3px 9px;border-radius:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis">' + posTxt + '</span></span>';
+          var wh = (it.warehouse||'').trim().toLowerCase();
+          var badge = '<span style="display:inline-block;background:#185FA5;color:#fff;font-size:12px;font-weight:600;padding:3px 9px;border-radius:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle">' + posTxt + '</span>';
+          if (wh !== 'silux') {
+            // silux2 / external: pozicija samo prikaz (badge brez svinčnika)
+            return '<span class="zal-c-pos" style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.position) + '">' + badge + '</span>';
+          }
+          // silux: badge + svinčnik za urejanje (kot povsod drugje)
+          var skuE = esc((it.product_sku||'').replace(/'/g,"\\'"));
+          var titE = esc((it.title||'').replace(/'/g,"\\'"));
+          var posE = esc((it.position||'').replace(/'/g,"\\'"));
+          return '<span class="zal-c-pos" style="text-align:center;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:5px" title="' + esc(it.position) + '">' + badge + '<span onclick="event.stopPropagation();pozQuickOpen(\'' + skuE + '\',\'' + titE + '\',\'' + posE + '\')" title="Spremeni pozicijo" style="cursor:pointer;font-size:12px;opacity:0.6;flex-shrink:0" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">✏️</span></span>';
         })()
       + '<span class="zal-c-note" style="color:var(--text-secondary);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.note) + '">' + esc(it.note||'—') + '</span>'
       + '<span class="zal-meta-mobile">' + metaMobile + '</span>'
@@ -20438,6 +20457,40 @@ async function pozQuickSave() {
       }
       if (typeof zalogaRender === 'function') zalogaRender();
       setTimeout(pozQuickClose, 900);
+    } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
+  } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
+}
+
+// ─── Urejanje KOLIČINE (stock) ───
+let _stockQuickSku = null;
+function stockQuickOpen(sku, title, currentStock) {
+  _stockQuickSku = sku;
+  document.getElementById('stockQuickSku').textContent = sku;
+  document.getElementById('stockQuickTitle').textContent = title || '';
+  document.getElementById('stockQuickCurrent').innerHTML = 'trenutno: 📦 <b>' + pozEsc(String(currentStock)) + '</b> kosov';
+  document.getElementById('stockQuickInput').value = currentStock || '0';
+  document.getElementById('stockQuickStatus').innerHTML = '';
+  document.getElementById('stockQuickModal').style.display = 'flex';
+  setTimeout(() => { var i = document.getElementById('stockQuickInput'); if (i) { i.focus(); i.select(); } }, 50);
+}
+function stockQuickClose() { document.getElementById('stockQuickModal').style.display = 'none'; _stockQuickSku = null; }
+async function stockQuickSave() {
+  if (!_stockQuickSku) return;
+  const val = document.getElementById('stockQuickInput').value.trim();
+  const st = document.getElementById('stockQuickStatus');
+  if (val === '' || isNaN(parseInt(val))) { st.innerHTML = '<span style="color:#dc2626">Vpiši število.</span>'; return; }
+  st.innerHTML = '<span style="color:var(--text-secondary)">⏳ shranjujem...</span>';
+  try {
+    const r = await fetch('/pozicije-update-one', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _stockQuickSku, stock: val, warehouse: 'silux' }) });
+    const d = await r.json();
+    if (d.ok) {
+      st.innerHTML = `<span style="color:#16a34a">✓ Shranjeno: ${pozEsc(d.sku)} → 📦 ${pozEsc(String(d.stock))} kosov</span>`;
+      if (typeof _zalogaData !== 'undefined') {
+        const item = _zalogaData.find(x => (x.product_sku||x.sku) === _stockQuickSku && (x.warehouse||'').toLowerCase()==='silux');
+        if (item) item.stock = d.stock;
+      }
+      if (typeof zalogaRender === 'function') zalogaRender();
+      setTimeout(stockQuickClose, 900);
     } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
 }
