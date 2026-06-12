@@ -6974,6 +6974,7 @@ async def orodja_hs_history_delete(filename: str):
 STOCK_CSV_FILE = DATA_DIR / "stock_inventory.csv"
 SILUXAR_PUSH_LOG = DATA_DIR / "siluxar_push_log.json"   # zadnja pošiljanja pozicij (debug)
 SILUXAR_DELETE_LOG = DATA_DIR / "siluxar_delete_log.json"   # zadnja brisanja alarmov (debug)
+STOCK_BACKUP_DIR = DATA_DIR / "stock_backups"   # avtomatski backupi zaloge pred sync
 STOCK_CSV_META = DATA_DIR / "stock_inventory_meta.json"
 
 
@@ -7337,14 +7338,40 @@ async def zaloga_reset():
         return {"ok": False, "error": str(e)}
 
 
+def _make_stock_backup(razlog="sync"):
+    """Naredi backup trenutne zaloge (CSV) pred prepisom. Obdrži zadnjih 30 backupov.
+    Vrne ime backup datoteke ali None, če ni kaj backupirati."""
+    try:
+        if not STOCK_CSV_FILE.exists():
+            return None
+        STOCK_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        ts = _lj_now().strftime("%Y%m%d_%H%M%S")
+        fname = f"stock_{ts}_{razlog}.csv"
+        dest = STOCK_BACKUP_DIR / fname
+        # kopiraj vsebino
+        dest.write_text(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"), encoding="utf-8")
+        # počisti stare — obdrži zadnjih 30
+        backups = sorted(STOCK_BACKUP_DIR.glob("stock_*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for old in backups[30:]:
+            try: old.unlink()
+            except Exception: pass
+        return fname
+    except Exception as e:
+        print(f"[backup] napaka: {e}")
+        return None
+
+
 async def _zaloga_sync_core():
     """JEDRO sinhronizacije zaloge s siluxar (apistockexport). MERGE po SKU+skladišče.
-    Kliče ga endpoint /zaloga-sync-siluxar (gumb) IN scheduler (vsake 4h)."""
+    Kliče ga endpoint /zaloga-sync-siluxar (gumb) IN scheduler (vsake 4h).
+    PRED prepisom naredi avtomatski backup trenutne zaloge."""
     import csv as _csv
     from io import StringIO as _SIO
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
     if not key:
         return {"ok": False, "error": "Manjka SILUXAR_STOCK_KEY (Render okoljska spremenljivka)."}
+    # BACKUP pred sync (da lahko hitro restoramo, če gre kaj narobe)
+    _backup_ime = _make_stock_backup("pred-sync")
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
     url = "https://www.siluxar.si/apistockexport"
@@ -7556,6 +7583,86 @@ async def _zaloga_scheduler_loop():
         except Exception as e:
             print(f"[zaloga-cron] Error: {e}")
             await asyncio.sleep(1800)   # 30 min pred ponovnim poskusom
+
+
+@app.get("/zaloga-backups")
+async def zaloga_backups():
+    """Seznam backupov zaloge (najnovejši prvi) — za pregled arhiva in restore."""
+    try:
+        if not STOCK_BACKUP_DIR.exists():
+            return {"ok": True, "backups": []}
+        out = []
+        for p in sorted(STOCK_BACKUP_DIR.glob("stock_*.csv"), key=lambda x: x.stat().st_mtime, reverse=True):
+            try:
+                txt = p.read_text(encoding="utf-8-sig", errors="replace")
+                vrstic = max(0, txt.count("\n") - 1)  # brez glave
+            except Exception:
+                vrstic = None
+            stat = p.stat()
+            # razberi čas + razlog iz imena: stock_YYYYMMDD_HHMMSS_razlog.csv
+            ime = p.name
+            cas_str = ""
+            razlog = ""
+            try:
+                deli = ime.replace("stock_", "").replace(".csv", "").split("_")
+                if len(deli) >= 2:
+                    d, t = deli[0], deli[1]
+                    cas_str = f"{d[:4]}-{d[4:6]}-{d[6:8]} {t[:2]}:{t[2:4]}:{t[4:6]}"
+                if len(deli) >= 3:
+                    razlog = "_".join(deli[2:])
+            except Exception:
+                pass
+            out.append({
+                "ime": ime,
+                "cas": cas_str,
+                "razlog": razlog,
+                "vrstic": vrstic,
+                "velikost_kb": round(stat.st_size / 1024, 1),
+            })
+        return {"ok": True, "stevilo": len(out), "backups": out}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/zaloga-backup-now")
+async def zaloga_backup_now():
+    """Ročno naredi backup trenutne zaloge (gumb)."""
+    ime = _make_stock_backup("rocno")
+    if ime:
+        return {"ok": True, "ime": ime}
+    return {"ok": False, "error": "Ni zaloge za backup (ali napaka)."}
+
+
+@app.post("/zaloga-restore")
+async def zaloga_restore(data: dict):
+    """Obnovi zalogo iz izbranega backupa. PRED obnovo naredi backup trenutnega stanja (varnost)."""
+    try:
+        ime = (data.get("ime") or "").strip()
+        if not ime or "/" in ime or "\\" in ime or not ime.startswith("stock_"):
+            return {"ok": False, "error": "Neveljavno ime backupa."}
+        src = STOCK_BACKUP_DIR / ime
+        if not src.exists():
+            return {"ok": False, "error": f"Backup '{ime}' ne obstaja."}
+        # backup trenutnega stanja PRED obnovo (da lahko razveljaviš restore)
+        _make_stock_backup("pred-restore")
+        # obnovi
+        STOCK_CSV_FILE.write_text(src.read_text(encoding="utf-8-sig", errors="replace"), encoding="utf-8")
+        # posodobi meta
+        try:
+            meta = {}
+            if STOCK_CSV_META.exists():
+                meta = json.loads(STOCK_CSV_META.read_text(encoding="utf-8"))
+            txt = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+            meta["rows"] = max(0, txt.count("\n") - 1)
+            meta["restored_from"] = ime
+            meta["restored_at"] = _lj_now().strftime("%Y-%m-%d %H:%M:%S")
+            STOCK_CSV_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        return {"ok": True, "obnovljeno_iz": ime}
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
 
 
 @app.get("/orodja-stock-status")
