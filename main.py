@@ -18719,6 +18719,83 @@ async def siluxar_push_positions(data: dict):
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
 
 
+@app.get("/siluxar-push-authtest")
+async def siluxar_push_authtest():
+    """Diagnostika: preizkusi VEČ kombinacij avtentikacije na beta zapisovalnem endpointu.
+    Pokaže, katera kombinacija NE vrne 401 — da vemo, kako beta pričakuje poverilnice."""
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
+    basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
+    url = "http://beta.siluxar.si/apistockexport"
+    test_payload = [{"sku": "_TEST_", "position": "_TEST_"}]
+
+    # katere poverilnice sploh imamo (brez razkrivanja gesel)
+    env_status = {
+        "SILUXAR_STOCK_KEY": "✓ nastavljen" if key else "✗ MANJKA",
+        "SILUXAR_BASIC_USER": ("✓ " + basic_user) if basic_user else "✗ MANJKA",
+        "SILUXAR_BASIC_PASS": "✓ nastavljen" if basic_pass else "✗ MANJKA",
+    }
+
+    rezultati = []
+
+    async def _poskus(opis, headers=None, auth=None):
+        try:
+            async with httpx.AsyncClient(timeout=40, auth=auth) as cli:
+                r = await cli.post(url, headers=(headers or {"Content-Type": "application/json"}), json=test_payload)
+            body = (r.text or "")[:200]
+            je_401 = r.status_code == 401
+            rezultati.append({
+                "nacin": opis,
+                "status": r.status_code,
+                "uspeh_ne_401": not je_401,
+                "odgovor_zacetek": body,
+            })
+        except Exception as e:
+            rezultati.append({"nacin": opis, "status": "EXCEPTION", "napaka": str(e)})
+
+    # 1) samo aplikacijski ključ v Authorization (kot zdaj — pričakovano 401)
+    if key:
+        await _poskus("A) samo ključ v Authorization", headers={"Content-Type": "application/json", "Authorization": key})
+
+    # 2) samo Basic Auth (user:pass) v Authorization header
+    if basic_user or basic_pass:
+        await _poskus("B) samo Basic Auth (Authorization: Basic)", auth=httpx.BasicAuth(basic_user, basic_pass))
+
+    # 3) Basic Auth v Authorization + ključ v X-Api-Key header
+    if (basic_user or basic_pass) and key:
+        await _poskus("C) Basic Auth + ključ v X-Api-Key",
+                      headers={"Content-Type": "application/json", "X-Api-Key": key},
+                      auth=httpx.BasicAuth(basic_user, basic_pass))
+
+    # 4) Basic Auth v Authorization + ključ v X-Authorization header
+    if (basic_user or basic_pass) and key:
+        await _poskus("D) Basic Auth + ključ v X-Authorization",
+                      headers={"Content-Type": "application/json", "X-Authorization": key},
+                      auth=httpx.BasicAuth(basic_user, basic_pass))
+
+    # 5) Basic Auth v Authorization + ključ kot query param ?key=
+    if (basic_user or basic_pass) and key:
+        try:
+            async with httpx.AsyncClient(timeout=40, auth=httpx.BasicAuth(basic_user, basic_pass)) as cli:
+                r = await cli.post(url + "?key=" + key, headers={"Content-Type": "application/json"}, json=test_payload)
+            rezultati.append({"nacin": "E) Basic Auth + ključ v ?key= query",
+                              "status": r.status_code, "uspeh_ne_401": r.status_code != 401,
+                              "odgovor_zacetek": (r.text or "")[:200]})
+        except Exception as e:
+            rezultati.append({"nacin": "E) Basic Auth + ključ v ?key= query", "status": "EXCEPTION", "napaka": str(e)})
+
+    # najboljši rezultat
+    uspesni = [r for r in rezultati if r.get("uspeh_ne_401")]
+    return {
+        "url": url,
+        "okoljske_spremenljivke": env_status,
+        "POVZETEK": (f"✓ Deluje: {uspesni[0]['nacin']} (status {uspesni[0]['status']})"
+                     if uspesni else "✗ Nobena kombinacija ni uspela — vse vrnejo 401. Beta verjetno rabi druge poverilnice ali Render IP na whitelist."),
+        "rezultati": rezultati,
+        "namig": "Če B) (samo Basic Auth) ne vrne 401, je problem bil, da je ključ povozil Basic Auth. Pošlji ta izpis Marku.",
+    }
+
+
 @app.get("/siluxar-push-debug")
 async def siluxar_push_debug():
     """Debug: pokaže zadnjih 50 pošiljanj pozicij v siluxar (kaj poslano, status, odgovor)."""
