@@ -2632,6 +2632,12 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div class="card" style="margin-top:12px">
           <span class="slabel">ZALOGA</span>
           <div id="anStockInfo" style="margin-top:8px;font-size:11px;color:var(--text-secondary)"></div>
+          <!-- CSV z obratom (stock30) — siluxar polni osnovno zalogo, obrat naložiš tu za filter Potencial -->
+          <div id="anObratZone" onclick="document.getElementById('anObratInput').click()" title="Naloži CSV z obratom (stock30) za filter Potencial in obrat-stolpce" style="margin-top:8px;display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--surface2);border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer;font-size:11px;color:var(--text-secondary)">
+            <span>📊</span><span>Naloži CSV z obratom</span>
+          </div>
+          <input type="file" id="anObratInput" accept=".csv" style="display:none" onchange="anUploadObrat(this.files[0])">
+          <div id="anObratStatus" style="margin-top:5px;font-size:10px"></div>
         </div>
 
         <div class="card" style="margin-top:12px">
@@ -13286,14 +13292,35 @@ async function anLoadStock() {
     if (data.uploaded_at) {
       const dt = new Date(data.uploaded_at);
       info.innerHTML = '<strong style="color:var(--green)">✓ ' + anStockData.length + ' SKU-jev</strong><br>posodobljeno: ' + dt.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Ljubljana'});
+    } else if (anStockData.length) {
+      info.innerHTML = '<strong style="color:var(--green)">✓ ' + anStockData.length + ' SKU-jev</strong> (siluxar)';
     } else {
-      info.innerHTML = '<span style="color:var(--text-tertiary)">⚠ Ni naložene zaloge<br>Naloži v Orodja → Kontrola cen</span>';
+      info.innerHTML = '<span style="color:var(--text-tertiary)">⚠ Zaloga ni naložena — sinhroniziraj v zavihku Zaloga</span>';
     }
 
     anRenderTable();
   } catch(e) {
     document.getElementById('anStockInfo').innerHTML = '<span style="color:var(--red)">⚠ ' + e.message + '</span>';
   }
+}
+
+// Naloži CSV z obratom (stock30) — osveži obrat v zalogi, da filter Potencial dela
+async function anUploadObrat(file) {
+  if (!file) return;
+  const st = document.getElementById('anObratStatus');
+  st.style.color = 'var(--text-secondary)';
+  st.textContent = '⏳ Nalagam obrat...';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/zaloga-upload-obrat', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { st.style.color = 'var(--red)'; st.textContent = '⚠ ' + data.error; document.getElementById('anObratInput').value=''; return; }
+    st.style.color = 'var(--green)';
+    st.textContent = `✓ Obrat osvežen za ${data.updated} SKU` + (data.not_found ? ` · ${data.not_found} ni v zalogi` : '');
+    document.getElementById('anObratInput').value = '';
+    await anLoadStock();  // ponovno naloži, da filtri dobijo obrat
+  } catch(e) { st.style.color = 'var(--red)'; st.textContent = '⚠ ' + e.message; }
 }
 
 function anSortBy(col) {
