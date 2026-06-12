@@ -3763,6 +3763,10 @@ input[type="text"].error { border-color: var(--red) !important; }
           <button id="zalogaResetBtn" class="zaloga-mobile-hide" onclick="zalogaReset(this)" title="Zbriše celo shranjeno zalogo (CSV). Po tem Sinhroniziraj zgradi na novo." style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.4);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
             <span>🗑</span><span>Počisti zalogo</span>
           </button>
+          <!-- Pošlji vse pozicije v siluxar (beta) -->
+          <button id="zalogaPushPosBtn" class="zaloga-mobile-hide" onclick="zalogaPushPositions(this)" title="Pošlje vse pozicije (silux) v siluxar beta zapisovalni endpoint" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;color:#185FA5;border:1px solid rgba(24,95,165,0.4);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
+            <span>↗</span><span>Pošlji pozicije v siluxar</span>
+          </button>
           <!-- Info status -->
           <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0">
             <div id="zalogaInfo" style="font-size:10px;color:var(--text-tertiary);white-space:nowrap">Ni naloženih podatkov.</div>
@@ -14293,6 +14297,34 @@ async function zalogaReset(btn) {
   }
 }
 
+// Pošlji VSE pozicije (silux, ki imajo pozicijo) v siluxar beta
+async function zalogaPushPositions(btn) {
+  // zberi samo silux izdelke z neprazno pozicijo
+  const items = (_zalogaData || [])
+    .filter(it => (it.warehouse||'').trim().toLowerCase() === 'silux' && (it.position||'').trim() !== '')
+    .map(it => ({ sku: (it.product_sku||it.sku||'').trim(), position: (it.position||'').trim() }))
+    .filter(x => x.sku);
+  if (!items.length) { alert('Ni pozicij za pošiljanje (silux z neprazno pozicijo).'); return; }
+  if (!confirm(`Pošljem ${items.length} pozicij (silux) v siluxar beta?`)) return;
+  const status = document.getElementById('zalogaStatus');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span>⏳</span><span>Pošiljam...</span>'; }
+  if (status) { status.style.display='block'; status.style.color='var(--text-secondary)'; status.textContent=`⏳ Pošiljam ${items.length} pozicij v siluxar...`; }
+  try {
+    const res = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ items }) });
+    const d = await res.json();
+    if (d.ok) {
+      if (status) { status.style.color='var(--green)'; status.textContent=`✓ Poslano ${d.poslano} pozicij v siluxar (status ${d.status}).`; }
+    } else {
+      if (status) { status.style.color='var(--red)'; status.textContent='⚠ siluxar: ' + (d.error || 'napaka') + (d.poslano ? ` (poskus ${d.poslano})` : ''); }
+    }
+  } catch(e) {
+    if (status) { status.style.color='var(--red)'; status.textContent='⚠ ' + e.message; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig || '<span>↗</span><span>Pošlji pozicije v siluxar</span>'; }
+  }
+}
+
 // samodejna sinhronizacija 1x na dan (ob prvem odprtju zaloge ta dan)
 function zalogaSyncDailyAuto() {
   try {
@@ -20486,7 +20518,19 @@ async function pozQuickSave() {
         if (item) item.position = pos;
       }
       if (typeof zalogaRender === 'function') zalogaRender();
-      setTimeout(pozQuickClose, 900);
+      // BETA: pošlji pozicijo tudi v siluxar (dodatno — če pade, ne blokira lokalnega shranjevanja)
+      try {
+        const sr = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _pozQuickSku, position: pos }) });
+        const sd = await sr.json();
+        if (sd.ok) {
+          st.innerHTML += '<br><span style="color:#16a34a;font-size:11px">↗ poslano v siluxar</span>';
+        } else {
+          st.innerHTML += '<br><span style="color:#d97706;font-size:11px">⚠ siluxar: ' + pozEsc(sd.error||'ni odgovora') + '</span>';
+        }
+      } catch(e) {
+        st.innerHTML += '<br><span style="color:#d97706;font-size:11px">⚠ siluxar nedosegljiv (lokalno shranjeno)</span>';
+      }
+      setTimeout(pozQuickClose, 1400);
     } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
 }
