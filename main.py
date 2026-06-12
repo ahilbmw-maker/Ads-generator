@@ -6973,6 +6973,7 @@ async def orodja_hs_history_delete(filename: str):
 
 STOCK_CSV_FILE = DATA_DIR / "stock_inventory.csv"
 SILUXAR_PUSH_LOG = DATA_DIR / "siluxar_push_log.json"   # zadnja pošiljanja pozicij (debug)
+SILUXAR_DELETE_LOG = DATA_DIR / "siluxar_delete_log.json"   # zadnja brisanja alarmov (debug)
 STOCK_CSV_META = DATA_DIR / "stock_inventory_meta.json"
 
 
@@ -18717,6 +18718,97 @@ async def siluxar_push_positions(data: dict):
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
+
+
+@app.post("/siluxar-delete-alerts")
+async def siluxar_delete_alerts(data: dict):
+    """Pošlje array ps.id-jev za BRISANJE alarmov v siluxar (beta).
+    Body: {"ids": [12, 13, 14]} → pošlje [12,13,14] na apistockalertsexport (POST)."""
+    try:
+        ids_raw = data.get("ids") or []
+        # očisti: samo ne-prazni, pretvori v int kjer gre
+        ids = []
+        for x in ids_raw:
+            s = str(x).strip()
+            if not s:
+                continue
+            try:
+                ids.append(int(s))
+            except Exception:
+                ids.append(s)   # če ni številka, pusti kot string
+        if not ids:
+            return {"ok": False, "error": "Ni veljavnih ID-jev za brisanje."}
+
+        key = os.environ.get("SILUXAR_STOCK_KEY", "")
+        basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
+        basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
+        headers = {"Content-Type": "application/json"}
+        _auth = None
+        if key:
+            headers["Authorization"] = key
+        elif basic_user or basic_pass:
+            _auth = httpx.BasicAuth(basic_user, basic_pass)
+
+        url = "http://beta.siluxar.si/apistockalertsexport"
+
+        def _zabelezi(status, ok, resp_text, err=None, exc=None):
+            try:
+                log = []
+                if SILUXAR_DELETE_LOG.exists():
+                    log = json.loads(SILUXAR_DELETE_LOG.read_text(encoding="utf-8"))
+                    if not isinstance(log, list):
+                        log = []
+                log.insert(0, {
+                    "cas": _lj_now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "ts_utc": datetime.now(timezone.utc).isoformat(),
+                    "brisanih_stevilo": len(ids),
+                    "id_ji": ids[:50],
+                    "status": status,
+                    "ok": ok,
+                    "odgovor": (resp_text or "")[:500],
+                    "napaka": err,
+                    "exception": exc,
+                    "url": url,
+                })
+                log = log[:50]
+                SILUXAR_DELETE_LOG.write_text(json.dumps(log, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                pass
+
+        try:
+            async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
+                r = await cli.post(url, headers=headers, json=ids)
+        except Exception as e:
+            _zabelezi(None, False, None, err=f"Napaka pri klicu beta.siluxar.si: {e}", exc=str(e))
+            return {"ok": False, "error": f"Napaka pri klicu beta.siluxar.si: {e}", "poslano": len(ids)}
+
+        ok = 200 <= r.status_code < 300
+        resp_text = (r.text or "")[:500]
+        _zabelezi(r.status_code, ok, resp_text, err=(None if ok else f"siluxar vrnil status {r.status_code}"))
+        return {
+            "ok": ok,
+            "status": r.status_code,
+            "poslano": len(ids),
+            "id_ji": ids[:10],
+            "odgovor": resp_text,
+            "error": None if ok else f"siluxar vrnil status {r.status_code}",
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
+
+
+@app.get("/siluxar-delete-debug")
+async def siluxar_delete_debug():
+    """Debug: zadnjih 50 brisanj alarmov (kaj poslano, status, odgovor)."""
+    if not SILUXAR_DELETE_LOG.exists():
+        return {"sporocilo": "Še ni nobenega brisanja.", "zapisi": []}
+    try:
+        log = json.loads(SILUXAR_DELETE_LOG.read_text(encoding="utf-8"))
+        return {"skupaj_zapisov": len(log) if isinstance(log, list) else 0,
+                "zadnje_brisanje": log[0] if log else None, "zapisi": log}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.get("/siluxar-push-authtest")
