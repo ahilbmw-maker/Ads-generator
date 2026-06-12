@@ -3760,10 +3760,10 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div id="zalogaInfo" style="font-size:10px;color:var(--text-tertiary);white-space:nowrap">Ni naloženih podatkov.</div>
             <div id="zalogaStatus" style="font-size:10px;color:var(--text-secondary);display:none"></div>
           </div>
-          <!-- Separator -->
-          <div style="width:1px;height:28px;background:var(--border);flex-shrink:0"></div>
-          <!-- Iskalnik -->
-          <div style="position:relative;flex:1" id="zalogaSearchWrap">
+          <!-- Separator (skrit — iskalnik je zdaj prvi) -->
+          <div style="width:1px;height:28px;background:var(--border);flex-shrink:0;display:none"></div>
+          <!-- Iskalnik (PRVI na desktopu — order:-1) -->
+          <div style="position:relative;flex:1;order:-1" id="zalogaSearchWrap">
             <span onclick="var s=document.getElementById('zalogaSuggest');if(s)s.style.display='none';_zalogaPage=1;zalogaRender();" title="Prikaži vse zadetke" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);color:var(--text-tertiary);cursor:pointer;font-size:14px;padding:6px;border-radius:6px;z-index:2" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-tertiary)'">🔍</span>
             <input type="text" id="zalogaSearch" placeholder="Išči SKU, naziv, ID, pozicijo, opombo..." autocomplete="off" oninput="_zalogaPage=1;zalogaRender();" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" style="width:100%;padding:8px 12px 8px 32px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box">
             <div id="zalogaSuggest" style="display:none"></div>
@@ -3784,7 +3784,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
         <!-- Sticky header tabele -->
         <div id="zalogaHeaderWrap" style="background:var(--bg);padding-top:4px;display:none">
-          <div style="display:grid;grid-template-columns:65px minmax(320px,1.3fr) minmax(180px,1fr) 70px 62px 62px 78px 80px 90px 85px;gap:8px;padding:9px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--border);cursor:pointer;user-select:none">
+          <div style="display:grid;grid-template-columns:65px minmax(210px,0.75fr) minmax(220px,1.5fr) 70px 62px 62px 78px 85px 95px 85px;gap:8px;padding:9px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--border);cursor:pointer;user-select:none">
             <span onclick="zalogaSortBy('product_id')">ID <span id="zSort-product_id">↕</span></span>
             <span onclick="zalogaSortBy('product_sku')">SKU <span id="zSort-product_sku">↕</span></span>
             <span onclick="zalogaSortBy('title')">Naziv <span id="zSort-title">↕</span></span>
@@ -14564,7 +14564,7 @@ function zalogaRender() {
   if (headerWrap) headerWrap.style.display = 'block';
   empty.style.display = 'none';
 
-  const GRID = '65px minmax(320px,1.3fr) minmax(180px,1fr) 70px 62px 62px 78px 80px 90px 85px';
+  const GRID = '65px minmax(210px,0.75fr) minmax(220px,1.5fr) 70px 62px 62px 78px 85px 95px 85px';
 
   tableEl.innerHTML = pageItems.map(it => {
     const stock = parseInt(it.stock) || 0;
