@@ -225,8 +225,13 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   /* INVENTURA mobilno: skrij desktop tabelo + PDF/akcije, prikaži kartice */
   #inv-table-desktop { display: none !important; }
   #inv-cards-mobile { display: flex !important; }
-  #inv-actions-card, #inv-pdf-btn { display: none !important; }
+  #inv-pdf-btn { display: none !important; }
   #zalogaSubpage-inventura > div { grid-template-columns: 1fr !important; }
+  /* admin del (uvoz + zgodovina) skrit v predal — delavec takoj vidi seznam */
+  #inv-admin-toggle { display: flex !important; }
+  #inv-admin-col { display: none !important; }
+  #inv-admin-col.inv-admin-open { display: flex !important; }
+  /* seznam izdelkov naj bo prvi (nad admin stolpcem v grid redu ni važno, ker je admin skrit) */
 }
 
 /* Ozki telefoni: zaloga kartica — % in chevron ne stiskata naslova */
@@ -3958,10 +3963,13 @@ input[type="text"].error { border-color: var(--red) !important; }
 
     <!-- ── INVENTURA SUBPAGE (preseljeno iz Orodij) ── -->
   <div id="zalogaSubpage-inventura" style="display:none;padding:14px">
+    <button id="inv-admin-toggle" onclick="invToggleAdmin()" style="display:none;width:100%;padding:11px;margin-bottom:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-weight:600;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif;align-items:center;justify-content:center;gap:6px">
+      <span>⚙ Uvoz &amp; zgodovina</span><span id="inv-admin-chevron" style="font-size:11px">▼</span>
+    </button>
     <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
 
       <!-- LEVO: upload + akcije + zgodovina -->
-      <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;flex-direction:column;gap:12px" id="inv-admin-col">
         <div class="card">
           <span class="slabel">CSV UVOZ</span>
           <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 8px;line-height:1.4">Naloži izvoz naročil. Dvojniki po SKU se samodejno seštejejo.</p>
@@ -9655,6 +9663,15 @@ function invQtyStep(idx, delta) {
   inventuraRender();
 }
 
+// mobilni predal: odpri/zapri admin del (uvoz + zgodovina)
+function invToggleAdmin() {
+  const col = document.getElementById('inv-admin-col');
+  const chev = document.getElementById('inv-admin-chevron');
+  if (!col) return;
+  const open = col.classList.toggle('inv-admin-open');
+  if (chev) chev.textContent = open ? '▲' : '▼';
+}
+
 // posodobi števec popisanih (mobilni naslov)
 function invUpdateCount() {
   const el = document.getElementById('inv-mobile-count');
@@ -9785,6 +9802,11 @@ async function invHistoryLoad(filename) {
     document.getElementById('inv-error').style.display = 'none';
     const si = document.getElementById('inv-search'); if (si) si.value = '';
     inventuraRender();
+    // mobil: zapri admin predal, da delavec vidi seznam
+    const _col = document.getElementById('inv-admin-col');
+    const _chev = document.getElementById('inv-admin-chevron');
+    if (_col) _col.classList.remove('inv-admin-open');
+    if (_chev) _chev.textContent = '▼';
   } catch(e) {
     document.getElementById('inv-loading').style.display = 'none';
     document.getElementById('inv-error').textContent = '⚠ Napaka: ' + e.message;
