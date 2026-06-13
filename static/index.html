@@ -1040,6 +1040,7 @@ input[type="text"].error { border-color: var(--red) !important; }
               <span class="home-pill" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('ttkreative')">↗ TikTok Kreative</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('cashflow')">↗ 💰 Cash Flow</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('shipping')">↗ 🚚 Pošta</span>
+              <span class="home-pill" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('beta')">↗ 🧪 Analiza Beta</span>
             </div>
           </div>
           <div class="home-tile" style="border-left-color:#a855f7" onclick="switchPage('knjigovodstvo')">
@@ -1090,6 +1091,8 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div class="ht-pills">
               <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('zaloga')">↗ Zaloga</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('vracila')">↗ Vračila</span>
+              <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('skeniranje')">↗ Skeniranje</span>
+              <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('pozicije')">↗ Sprememba pozicij</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('inventura')">↗ Inventura</span>
             </div>
           </div>
@@ -1100,6 +1103,8 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div class="ht-pills">
               <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('razlike')">↗ Negativne razlike</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('vecja')">↗ Večja naročila</span>
+              <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('dvojniki')">↗ Dvojniki</span>
+              <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('karantena')">↗ Karantena</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('dvojniki')">↗ Dvojniki</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('karantena')">↗ Karantena</span>
             </div>
@@ -4039,12 +4044,10 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
           <div id="inv-cards-mobile" style="display:none;flex-direction:column;gap:8px"></div>
           <div id="inv-no-results" style="display:none;text-align:center;padding:24px;color:var(--text-secondary);font-size:12px">Ni zadetkov</div>
-          <div style="margin-top:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <span style="font-size:11px;color:var(--text-secondary);font-weight:600;white-space:nowrap">+ Dodaj:</span>
-            <input type="text" id="inv-add-sku" placeholder="SKU" style="border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface2);outline:none;width:120px">
-            <input type="text" id="inv-add-naziv" placeholder="Naziv" style="border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface2);outline:none;flex:1;min-width:100px">
-            <input type="text" id="inv-add-pos" placeholder="Pozicija" style="border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface2);outline:none;width:90px">
-            <button onclick="inventuraAddRow()" style="background:var(--accent);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">Dodaj</button>
+          <div style="margin-top:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;display:flex;gap:8px;align-items:center">
+            <span style="font-size:12px;color:var(--text-secondary);font-weight:600;white-space:nowrap">+ Dodaj SKU:</span>
+            <input type="text" id="inv-add-sku" placeholder="vpiši SKU" inputmode="text" onkeydown="if(event.key==='Enter')inventuraAddRow()" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface2);outline:none;min-width:0">
+            <button onclick="inventuraAddRow()" style="background:var(--accent);color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">Dodaj</button>
           </div>
         </div>
       </div>
@@ -9695,15 +9698,24 @@ function inventuraDelete(idx) {
   inventuraRender();
 }
 
-function inventuraAddRow() {
-  const sku   = (document.getElementById('inv-add-sku')?.value || '').trim();
-  const naziv = (document.getElementById('inv-add-naziv')?.value || '').trim();
-  const pos   = (document.getElementById('inv-add-pos')?.value || '').trim();
-  if (!sku) { alert('SKU je obvezen.'); return; }
-  invItems.push({ sku, naziv, pozicija: pos, komentar: '', kolicina_dejansko: undefined });
-  document.getElementById('inv-add-sku').value = '';
-  document.getElementById('inv-add-naziv').value = '';
-  document.getElementById('inv-add-pos').value = '';
+async function inventuraAddRow() {
+  const skuInput = document.getElementById('inv-add-sku');
+  const sku = (skuInput?.value || '').trim();
+  if (!sku) { alert('Vpiši SKU.'); return; }
+  // preveri, če SKU že obstaja v seznamu
+  if (invItems.some(it => (it.sku||'').toLowerCase() === sku.toLowerCase())) {
+    alert('SKU "' + sku + '" je že v seznamu.');
+    return;
+  }
+  // potegni naziv + pozicijo iz zaloge
+  let naziv = '', pozicija = '';
+  try {
+    const r = await fetch('/inventura-lookup-sku?sku=' + encodeURIComponent(sku));
+    const d = await r.json();
+    if (d.ok) { naziv = d.naziv || ''; pozicija = d.pozicija || ''; }
+  } catch(e) {}
+  invItems.push({ sku, naziv, pozicija, komentar: '', kolicina_dejansko: undefined });
+  if (skuInput) { skuInput.value = ''; skuInput.focus(); }
   invAutoSave();
   inventuraRender();
 }
