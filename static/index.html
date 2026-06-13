@@ -2436,6 +2436,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <!-- Povzetek + filtri -->
       <div id="hsplusSummary" style="display:none;margin-bottom:12px">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px" id="hsplusStatCards"></div>
+        <div id="hsplusDiffBanner" style="display:none;margin-bottom:10px"></div>
         <!-- KATEGORIJSKE ČIPKE (emoji) -->
         <div id="hsplusCatChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
         <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap">
@@ -2444,6 +2445,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <label id="hsplusInStockLabel" onclick="setTimeout(hsplusFilterChanged,0)" style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#16a34a;cursor:pointer;white-space:nowrap;background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.35);border-radius:6px;padding:6px 12px">
             <input type="checkbox" id="hsplusInStock" onchange="hsplusFilterChanged()" style="cursor:pointer;width:15px;height:15px;accent-color:#16a34a"> ✅ Samo na zalogi
           </label>
+          <button id="hsplusGroupBtn" onclick="hsplusToggleGrouping()" title="Združi barvne/velikostne variante pod en izdelek" style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;background:var(--accent);color:#fff;border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-family:'DM Sans',sans-serif">⊞ Združi variante</button>
         </div>
         <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap;margin-top:8px">
           <span style="font-size:11px;color:var(--text-tertiary);font-weight:600">📊 Zaloga:</span>
@@ -2476,6 +2478,28 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div id="hsplusCount" style="display:none;font-size:11px;color:var(--text-tertiary);margin-bottom:8px"></div>
       <div id="hsplusGrid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px"></div>
       <div id="hsplusPager" style="display:none;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:16px"></div>
+
+      <!-- MODAL: variante izdelka -->
+      <div id="hsplusVariantsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto" onclick="if(event.target===this)hsplusCloseVariants()">
+        <div style="background:var(--bg);border-radius:14px;max-width:520px;width:100%;margin:auto;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,0.3)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span id="hsplusVariantsTitle" style="font-size:16px;font-weight:700;color:var(--text)"></span>
+            <button onclick="hsplusCloseVariants()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px;color:var(--text)">✕</button>
+          </div>
+          <div id="hsplusVariantsBody"></div>
+        </div>
+      </div>
+
+      <!-- MODAL: gibanje zaloge -->
+      <div id="hsplusMovementModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto" onclick="if(event.target===this)hsplusCloseMovement()">
+        <div style="background:var(--bg);border-radius:14px;max-width:820px;width:100%;margin:auto;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,0.3)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <span style="font-size:16px;font-weight:700;color:var(--text)">📈 Gibanje zaloge od prejšnjič</span>
+            <button onclick="hsplusCloseMovement()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px;color:var(--text)">✕</button>
+          </div>
+          <div id="hsplusMovementBody"></div>
+        </div>
+      </div>
     </div>
 
     <div id="orodjaSubpage-apteluvoz" style="display:none;padding:14px">
@@ -9294,6 +9318,13 @@ function switchOrodjaTab(tab) {
 let _hsplusData = [];
 let _hsplusPage = 1;
 let _hsplusCat = '';
+let _hsplusDiffMap = {};   // sku → delta (legacy)
+let _hsplusChangeMap = {}; // sku → cel change objekt (delta, price_delta, is_new)
+let _hsplusDiff = null;    // celoten diff objekt
+let _hsplusWinnersOnly = false;  // filter: prikaži samo top winnerje (hiter obrat)
+const HSPLUS_WINNER_TOP = 5;     // koliko top winnerjev
+let _hsplusGroupVariants = true; // združi variante (barve/velikosti) pod en izdelek
+let _hsplusRenderedSlice = [];   // trenutno prikazane kartice (za popup)
 
 async function hsplusLoad(refresh, cacheOnly) {
   const loading = document.getElementById('hsplusLoading');
@@ -9335,6 +9366,17 @@ async function hsplusLoad(refresh, cacheOnly) {
       statEl.innerHTML = card('📦', _hsplusData.length, 'izdelkov') + card('🏷️', catCount, 'kategorij') + card('📊', totalStock.toLocaleString('sl-SI'), 'skupna zaloga') + card('⚠️', zeroStock, 'brez zaloge');
     }
     document.getElementById('hsplusSummary').style.display = 'block';
+    // naloži diff zaloge (winner signal)
+    try {
+      const dd = await fetch('/hsplus-stock-diff').then(r => r.json());
+      _hsplusDiff = dd && dd.ok ? dd : null;
+      _hsplusDiffMap = {};
+      _hsplusChangeMap = {};
+      if (_hsplusDiff && _hsplusDiff.changes) {
+        _hsplusDiff.changes.forEach(c => { _hsplusDiffMap[c.sku] = c.delta; _hsplusChangeMap[c.sku] = c; });
+      }
+      hsplusRenderDiffBanner();
+    } catch(e) { _hsplusDiff = null; _hsplusDiffMap = {}; }
     hsplusRender();
   } catch(e) {
     if (loading) loading.style.display = 'none';
@@ -9363,13 +9405,29 @@ function hsplusRenderCatChips() {
   const sel = _hsplusCat;
   const chip = (val, label, emoji, n, active) =>
     `<button onclick="hsplusSelectCat('${val.replace(/'/g,"\\'")}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:20px;border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};background:${active ? 'var(--accent)' : 'var(--surface)'};color:${active ? '#fff' : 'var(--text)'};font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">${emoji} ${label}<span style="opacity:0.65;font-weight:500;font-size:11px">${n}</span></button>`;
-  let html = chip('', 'Vse', '🗂️', _hsplusData.length, !sel);
+  let html = chip('', 'Vse', '🗂️', _hsplusData.length, !sel && !_hsplusWinnersOnly);
+  // winner čipka (samo če imamo diff s padci)
+  const winnerCount = (_hsplusDiff && _hsplusDiff.changes)
+    ? _hsplusDiff.changes.filter(c => !c.is_new && !c.is_gone && c.delta < 0).length : 0;
+  if (winnerCount > 0) {
+    const wActive = _hsplusWinnersOnly;
+    html = `<button onclick="hsplusToggleWinners()" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:1px solid ${wActive ? '#A32D2D' : 'rgba(163,45,45,0.4)'};background:${wActive ? '#A32D2D' : 'rgba(163,45,45,0.08)'};color:${wActive ? '#fff' : '#A32D2D'};font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🔥 Winnerji <span style="opacity:0.8;font-weight:500;font-size:11px">top ${HSPLUS_WINNER_TOP}</span></button>` + html;
+  }
   html += cats.map(c => chip(c, c, hsplusCatEmoji(c), counts[c], sel === c)).join('');
   wrap.innerHTML = html;
 }
 
+function hsplusToggleWinners() {
+  _hsplusWinnersOnly = !_hsplusWinnersOnly;
+  if (_hsplusWinnersOnly) _hsplusCat = '';  // winner pogled prevlada nad kategorijo
+  _hsplusPage = 1;
+  hsplusRenderCatChips();
+  hsplusRender();
+}
+
 function hsplusSelectCat(c) {
   _hsplusCat = c;
+  _hsplusWinnersOnly = false;  // izbira kategorije izklopi winner pogled
   _hsplusPage = 1;
   hsplusRenderCatChips();
   hsplusRender();
@@ -9435,6 +9493,18 @@ function hsplusRender() {
   const pMax = parseFloat(document.getElementById('hsplusPriceMax')?.value);
   const sort = document.getElementById('hsplusSort')?.value || '';
   let items = _hsplusData;
+  // WINNER filter: samo top N izdelkov z največjim padcem zaloge (hiter obrat)
+  if (_hsplusWinnersOnly && _hsplusDiff && _hsplusDiff.changes) {
+    const topSkus = _hsplusDiff.changes
+      .filter(c => !c.is_new && !c.is_gone && c.delta < 0)
+      .sort((a,b) => a.delta - b.delta)   // najbolj negativna delta prva
+      .slice(0, HSPLUS_WINNER_TOP)
+      .map(c => c.sku);
+    const skuOrder = {};
+    topSkus.forEach((s,i) => { skuOrder[s] = i; });
+    items = items.filter(p => skuOrder.hasOwnProperty(p.sku))
+                 .sort((a,b) => skuOrder[a.sku] - skuOrder[b.sku]);
+  }
   if (cat) items = items.filter(p => (p.category || '(brez)') === cat);
   if (inStock) items = items.filter(p => (p.stock||0) > 0);
   // razpon zaloge
@@ -9450,14 +9520,42 @@ function hsplusRender() {
     (p.name||'').toLowerCase().includes(q) ||
     (p.category||'').toLowerCase().includes(q)
   );
-  // sortiranje
-  if (sort) {
+  // sortiranje (winner pogled ohrani vrstni red po padcu)
+  if (sort && !_hsplusWinnersOnly) {
     items = items.slice();
     if (sort === 'stock_desc') items.sort((a,b) => (b.stock||0) - (a.stock||0));
     else if (sort === 'stock_asc') items.sort((a,b) => (a.stock||0) - (b.stock||0));
     else if (sort === 'price_asc') items.sort((a,b) => (a.price||0) - (b.price||0));
     else if (sort === 'price_desc') items.sort((a,b) => (b.price||0) - (a.price||0));
     else if (sort === 'name_asc') items.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  }
+  // GRUPIRANJE VARIANT: združi izdelke z istim korenom v eno kartico
+  if (_hsplusGroupVariants && !_hsplusWinnersOnly) {
+    const groups = {};
+    const order = [];
+    items.forEach(p => {
+      const key = p.root || p.name || p.sku;
+      if (!groups[key]) { groups[key] = []; order.push(key); }
+      groups[key].push(p);
+    });
+    items = order.map(key => {
+      const variants = groups[key];
+      if (variants.length === 1) return variants[0];
+      // skupinski izdelek: predstavnik = varianta z največ zaloge
+      const rep = variants.reduce((a,b) => (b.stock||0) > (a.stock||0) ? b : a, variants[0]);
+      const totalStock = variants.reduce((s,v) => s + (v.stock||0), 0);
+      const prices = variants.map(v => v.price||0);
+      return {
+        ...rep,
+        name: key,
+        _isGroup: true,
+        _variants: variants,
+        _variantCount: variants.length,
+        stock: totalStock,
+        _priceMin: Math.min(...prices),
+        _priceMax: Math.max(...prices),
+      };
+    });
   }
   // PAGINACIJA: ponastavi na stran 1, če je trenutna stran izven obsega
   const perPage = 120;
@@ -9468,7 +9566,11 @@ function hsplusRender() {
   const slice = items.slice(start, start + perPage);
   if (countEl) {
     countEl.style.display = 'block';
-    countEl.textContent = 'Prikazano ' + (items.length ? (start + 1) : 0) + '–' + (start + slice.length) + ' od ' + items.length + ' (skupaj ' + _hsplusData.length + ')';
+    if (_hsplusWinnersOnly) {
+      countEl.innerHTML = '🔥 <b style="color:#A32D2D">Top ' + items.length + ' winnerjev</b> z največjim padcem zaloge od prejšnjega uploada (hiter obrat).';
+    } else {
+      countEl.textContent = 'Prikazano ' + (items.length ? (start + 1) : 0) + '–' + (start + slice.length) + ' od ' + items.length + ' (skupaj ' + _hsplusData.length + ')';
+    }
   }
   if (!items.length) {
     grid.style.display = 'none';
@@ -9476,10 +9578,61 @@ function hsplusRender() {
     return;
   }
   grid.style.display = 'grid';
-  grid.innerHTML = slice.map(p => {
+  grid.innerHTML = slice.map((p, idx) => {
     const stockColor = (p.stock||0) === 0 ? '#dc2626' : ((p.stock||0) < 50 ? '#d97706' : '#16a34a');
     const img = p.image ? `<img src="${hsplusEsc(p.image)}" loading="lazy" style="width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--surface2)" onerror="this.style.display='none'">` : `<div style="width:100%;aspect-ratio:1/1;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:28px">📦</div>`;
-    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+
+    // ── SKUPINSKI izdelek (več variant) ──
+    if (p._isGroup) {
+      const priceLabel = p._priceMin === p._priceMax
+        ? `${p._priceMin.toFixed(2)} €`
+        : `${p._priceMin.toFixed(2)}–${p._priceMax.toFixed(2)} €`;
+      // ali ima katera varianta winner/nov signal?
+      let groupCorner = '';
+      const anyWin = p._variants.some(v => { const c = _hsplusChangeMap[v.sku]; return c && c.delta < 0; });
+      const anyNew = p._variants.some(v => { const c = _hsplusChangeMap[v.sku]; return c && c.is_new; });
+      if (anyWin) groupCorner = `<div style="position:absolute;top:8px;left:8px;z-index:2;font-size:10px;font-weight:700;color:#fff;background:#A32D2D;padding:3px 7px;border-radius:6px">🔥 winner</div>`;
+      else if (anyNew) groupCorner = `<div style="position:absolute;top:8px;left:8px;z-index:2;font-size:10px;font-weight:700;color:#fff;background:var(--accent);padding:3px 7px;border-radius:6px">🆕 nov</div>`;
+      return `<div onclick="hsplusOpenVariants(${start + idx})" style="cursor:pointer;position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+        ${groupCorner}
+        <div style="position:absolute;top:8px;right:8px;z-index:2;font-size:10px;font-weight:700;color:#fff;background:rgba(0,0,0,0.6);padding:3px 8px;border-radius:6px">⊞ ${p._variantCount} variant</div>
+        ${img}
+        <div style="padding:10px 11px;display:flex;flex-direction:column;gap:4px;flex:1">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px">
+            <span style="font-size:13px;font-weight:700;color:var(--text);line-height:1.2">${hsplusEsc(p.name)}</span>
+            <span style="flex-shrink:0;font-size:9px;background:var(--surface2);color:var(--text-tertiary);padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:0.3px">${hsplusEsc(p.category)}</span>
+          </div>
+          <div style="font-size:10px;color:var(--text-tertiary)">${p._variantCount} variant · klikni za pregled</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:6px">
+            <span style="font-size:15px;font-weight:700;color:var(--accent)">${priceLabel}</span>
+            <span style="font-size:12px;font-weight:600;color:${stockColor}">📊 ${(p.stock||0).toLocaleString('sl-SI')}</span>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // ── ENOJNI izdelek ──
+    const ch = _hsplusChangeMap[p.sku];   // sprememba od prejšnjič
+    let corner = '';
+    if (ch) {
+      if (ch.is_new) corner = `<div style="position:absolute;top:8px;left:8px;z-index:2;font-size:10px;font-weight:700;color:#fff;background:var(--accent);padding:3px 7px;border-radius:6px">🆕 nov</div>`;
+      else if (ch.delta < 0) corner = `<div style="position:absolute;top:8px;left:8px;z-index:2;font-size:10px;font-weight:700;color:#fff;background:#A32D2D;padding:3px 7px;border-radius:6px">🔥 winner ${ch.delta.toLocaleString('sl-SI')}</div>`;
+      else if (ch.delta > 0) corner = `<div style="position:absolute;top:8px;left:8px;z-index:2;font-size:10px;font-weight:700;color:#fff;background:#3B6D11;padding:3px 7px;border-radius:6px">📦 dotok +${ch.delta.toLocaleString('sl-SI')}</div>`;
+    }
+    let priceDelta = '';
+    if (ch && ch.price_delta) {
+      const pc = ch.price_delta > 0 ? '#A32D2D' : '#3B6D11';
+      const parr = ch.price_delta > 0 ? '↑' : '↓';
+      priceDelta = ` <span style="font-size:10px;color:${pc}">${parr}${Math.abs(ch.price_delta).toFixed(2)}</span>`;
+    }
+    let stockDelta = '';
+    if (ch && ch.delta && !ch.is_new) {
+      const sc = ch.delta < 0 ? '#A32D2D' : '#3B6D11';
+      const sarr = ch.delta < 0 ? '↓' : '↑';
+      stockDelta = ` <span style="color:${sc}">${sarr}${Math.abs(ch.delta).toLocaleString('sl-SI')}</span>`;
+    }
+    return `<div style="position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+      ${corner}
       ${img}
       <div style="padding:10px 11px;display:flex;flex-direction:column;gap:4px;flex:1">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px">
@@ -9488,13 +9641,155 @@ function hsplusRender() {
         </div>
         <div style="font-size:10px;color:var(--text-tertiary);font-family:monospace">${hsplusEsc(p.sku)}</div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:6px">
-          <span style="font-size:15px;font-weight:700;color:var(--accent)">${(p.price||0).toFixed(2)} €</span>
-          <span style="font-size:12px;font-weight:600;color:${stockColor}">📊 ${(p.stock||0).toLocaleString('sl-SI')}</span>
+          <span style="font-size:15px;font-weight:700;color:var(--accent)">${(p.price||0).toFixed(2)} €${priceDelta}</span>
+          <span style="font-size:12px;font-weight:600;color:${stockColor}">📊 ${(p.stock||0).toLocaleString('sl-SI')}${stockDelta}</span>
         </div>
       </div>
     </div>`;
   }).join('');
+  _hsplusRenderedSlice = slice;   // shrani za popup
   hsplusRenderPager(_hsplusPage, totalPages);
+}
+
+function hsplusDeltaBadge(sku) {
+  const d = _hsplusDiffMap[sku];
+  if (d === undefined || d === 0) return '';
+  if (d < 0) {
+    // padec zaloge = prodaja se (winner)
+    return `<span title="zaloga padla za ${Math.abs(d)} od prejšnjič" style="font-size:11px;font-weight:700;color:#dc2626;background:rgba(220,38,38,0.1);padding:1px 5px;border-radius:4px">▼ ${Math.abs(d).toLocaleString('sl-SI')}</span>`;
+  }
+  return `<span title="zaloga zrasla za ${d} od prejšnjič" style="font-size:11px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.1);padding:1px 5px;border-radius:4px">▲ ${d.toLocaleString('sl-SI')}</span>`;
+}
+
+function hsplusRenderDiffBanner() {
+  const el = document.getElementById('hsplusDiffBanner');
+  if (!el) return;
+  if (!_hsplusDiff || !_hsplusDiff.has_prev) {
+    el.style.display = 'block';
+    el.innerHTML = `<div style="padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text-secondary)">📊 Gibanje zaloge bo na voljo po naslednjem uploadu (primerjam z zadnjim posnetkom).</div>`;
+    return;
+  }
+  const changes = _hsplusDiff.changes || [];
+  const drops = changes.filter(c => !c.is_new && !c.is_gone && c.delta < 0).length;
+  const rises = changes.filter(c => !c.is_new && c.delta > 0).length;
+  const news = changes.filter(c => c.is_new).length;
+  el.style.display = 'block';
+  el.innerHTML = `<button onclick="hsplusShowMovement()" style="width:100%;text-align:left;padding:10px 12px;background:linear-gradient(135deg,rgba(220,38,38,0.06),rgba(22,163,74,0.06));border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-family:'DM Sans',sans-serif">
+    <span style="font-size:12px;font-weight:700;color:var(--text)">📈 Gibanje zaloge od prejšnjič</span>
+    <span style="font-size:11px;color:var(--text-secondary);margin-left:8px">📉 ${drops} pada · 📈 ${rises} raste · 🆕 ${news} novih — klikni za top gibanja</span>
+  </button>`;
+}
+
+function hsplusShowMovement() {
+  if (!_hsplusDiff || !_hsplusDiff.changes) return;
+  const changes = _hsplusDiff.changes.slice();
+  // winnerji = največji padec (najbolj negativna delta)
+  const winners = changes.filter(c => !c.is_new && !c.is_gone && c.delta < 0).sort((a,b) => a.delta - b.delta).slice(0, 30);
+  const risers = changes.filter(c => !c.is_new && c.delta > 0).sort((a,b) => b.delta - a.delta).slice(0, 30);
+  const news = changes.filter(c => c.is_new).slice(0, 30);
+  const row = (c, mode) => {
+    const col = mode === 'win' ? '#dc2626' : (mode === 'new' ? 'var(--accent)' : '#16a34a');
+    const arrow = mode === 'win' ? '▼' : (mode === 'new' ? '🆕' : '▲');
+    const deltaTxt = mode === 'new' ? ('+' + c.new) : (c.delta > 0 ? '+' : '') + c.delta.toLocaleString('sl-SI');
+    const range = c.is_new ? ('nov · ' + c.new + ' kos') : (c.old + ' → ' + c.new);
+    let priceInfo = '';
+    if (c.price_delta) {
+      const pcol = c.price_delta > 0 ? '#A32D2D' : '#3B6D11';
+      const parr = c.price_delta > 0 ? '↑' : '↓';
+      priceInfo = ` · <span style="color:${pcol}">cena ${parr}${Math.abs(c.price_delta).toFixed(2)}€</span>`;
+    }
+    const img = c.image ? `<img src="${hsplusEsc(c.image)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">` : '';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--border)">
+      ${img}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${hsplusEsc(c.name||c.sku)}</div>
+        <div style="font-size:10px;color:var(--text-tertiary)">${hsplusEsc(c.category||'')} · ${range}${priceInfo}</div>
+      </div>
+      <span style="font-size:13px;font-weight:700;color:${col};flex-shrink:0">${arrow} ${deltaTxt}</span>
+    </div>`;
+  };
+  const col = (title, sub, items, mode) => `<div style="flex:1;min-width:240px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px">
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px">${title}</div>
+    <div style="font-size:10px;color:var(--text-tertiary);margin-bottom:8px">${sub}</div>
+    ${items.length ? items.map(c => row(c, mode)).join('') : '<div style="font-size:11px;color:var(--text-tertiary);padding:8px 0">Ni sprememb.</div>'}
+  </div>`;
+  const body = document.getElementById('hsplusMovementBody');
+  if (body) {
+    body.innerHTML = `<div style="display:flex;gap:12px;flex-wrap:wrap">
+      ${col('📉 Winnerji (zaloga pada)', 'Največji padec = najhitreje se prodaja', winners, 'win')}
+      ${col('📈 Dotok (zaloga raste)', 'Dobavitelj je dopolnil zalogo', risers, 'rise')}
+      ${col('🆕 Novi izdelki', 'Prej jih ni bilo v katalogu', news, 'new')}
+    </div>
+    <p style="font-size:10px;color:var(--text-tertiary);margin-top:10px;line-height:1.4">ℹ️ Meri se skupna HS+ zaloga (ne samo tvoja prodaja) — padec pomeni, da izdelek odhaja s HS+ skladišča (visoko povpraševanje).</p>`;
+  }
+  const modal = document.getElementById('hsplusMovementModal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function hsplusCloseMovement() {
+  const modal = document.getElementById('hsplusMovementModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function hsplusOpenVariants(sliceIdx) {
+  const g = _hsplusRenderedSlice[sliceIdx];
+  if (!g || !g._variants) return;
+  const variants = g._variants.slice().sort((a,b) => (b.stock||0) - (a.stock||0));
+  const rows = variants.map(v => {
+    const sc = (v.stock||0) === 0 ? '#dc2626' : ((v.stock||0) < 50 ? '#d97706' : '#16a34a');
+    const ch = _hsplusChangeMap[v.sku];
+    let badge = '';
+    if (ch && !ch.is_new && ch.delta) {
+      const bc = ch.delta < 0 ? '#A32D2D' : '#3B6D11';
+      const ba = ch.delta < 0 ? '▼' : '▲';
+      badge = `<span style="font-size:11px;font-weight:700;color:${bc};margin-left:6px">${ba}${Math.abs(ch.delta).toLocaleString('sl-SI')}</span>`;
+    } else if (ch && ch.is_new) {
+      badge = `<span style="font-size:10px;font-weight:700;color:#fff;background:var(--accent);padding:1px 5px;border-radius:4px;margin-left:6px">nov</span>`;
+    }
+    const img = v.image ? `<img src="${hsplusEsc(v.image)}" style="width:46px;height:46px;border-radius:6px;object-fit:cover;flex-shrink:0;background:var(--surface2)" onerror="this.style.display='none'">` : `<div style="width:46px;height:46px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0">📦</div>`;
+    // izlušči variantno oznako (kar je za korenom)
+    const vlabel = (v.name || '').replace(g.name, '').trim() || v.name;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)">
+      ${img}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">${hsplusEsc(vlabel)}</div>
+        <div style="font-size:10px;color:var(--text-tertiary);font-family:monospace">${hsplusEsc(v.sku)}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:13px;font-weight:700;color:var(--accent)">${(v.price||0).toFixed(2)} €</div>
+        <div style="font-size:12px;font-weight:600;color:${sc}">📊 ${(v.stock||0).toLocaleString('sl-SI')}${badge}</div>
+      </div>
+    </div>`;
+  }).join('');
+  const totalStock = variants.reduce((s,v) => s + (v.stock||0), 0);
+  const body = document.getElementById('hsplusVariantsBody');
+  if (body) {
+    body.innerHTML = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text-secondary)">${g._variantCount} variant</span>
+      <span style="font-size:12px;color:var(--text-tertiary)">·</span>
+      <span style="font-size:12px;color:var(--text-secondary)">skupna zaloga 📊 ${totalStock.toLocaleString('sl-SI')}</span>
+    </div>${rows}`;
+  }
+  const title = document.getElementById('hsplusVariantsTitle');
+  if (title) title.textContent = g.name;
+  const modal = document.getElementById('hsplusVariantsModal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function hsplusCloseVariants() {
+  const modal = document.getElementById('hsplusVariantsModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function hsplusToggleGrouping() {
+  _hsplusGroupVariants = !_hsplusGroupVariants;
+  _hsplusPage = 1;
+  const btn = document.getElementById('hsplusGroupBtn');
+  if (btn) {
+    btn.style.background = _hsplusGroupVariants ? 'var(--accent)' : 'var(--surface)';
+    btn.style.color = _hsplusGroupVariants ? '#fff' : 'var(--text)';
+  }
+  hsplusRender();
 }
 
 function hsplusRenderPager(page, totalPages) {
