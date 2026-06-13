@@ -94,7 +94,10 @@
   .rvc-down { color:#dc2626; }
   .rvc-flat { color:var(--text-tertiary); }
   @media (max-width: 600px) {
+    html, body { overflow-x: hidden !important; max-width: 100% !important; }
     body { padding: 8px !important; }
+    canvas { max-width: 100% !important; }
+    .card { max-width: 100% !important; box-sizing: border-box !important; }
     .final-form { grid-template-columns: 1fr 1fr !important; }
     .fc-statgrid { grid-template-columns: repeat(2, 1fr) !important; }
     .grid-charts { grid-template-columns: 1fr !important; }
