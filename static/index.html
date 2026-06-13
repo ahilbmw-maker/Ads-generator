@@ -9330,8 +9330,9 @@ async function hsplusLoad(refresh, cacheOnly) {
     const zeroStock = _hsplusData.filter(p => (p.stock||0) === 0).length;
     const statEl = document.getElementById('hsplusStatCards');
     if (statEl) {
+      const catCount = new Set(_hsplusData.map(p => p.category || '(brez)')).size;
       const card = (ico, val, lbl) => `<div style="flex:1;min-width:90px;display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)"><span style="font-size:16px">${ico}</span><div style="min-width:0"><div style="font-size:16px;font-weight:700;color:var(--text);line-height:1.1">${val}</div><div style="font-size:10px;color:var(--text-tertiary)">${lbl}</div></div></div>`;
-      statEl.innerHTML = card('📦', _hsplusData.length, 'izdelkov') + card('🏷️', cats.length, 'kategorij') + card('📊', totalStock.toLocaleString('sl-SI'), 'skupna zaloga') + card('⚠️', zeroStock, 'brez zaloge');
+      statEl.innerHTML = card('📦', _hsplusData.length, 'izdelkov') + card('🏷️', catCount, 'kategorij') + card('📊', totalStock.toLocaleString('sl-SI'), 'skupna zaloga') + card('⚠️', zeroStock, 'brez zaloge');
     }
     document.getElementById('hsplusSummary').style.display = 'block';
     hsplusRender();
