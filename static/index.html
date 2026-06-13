@@ -9481,6 +9481,21 @@ async function hsplusUpload(file) {
   }
 }
 
+const HSPLUS_COLORS = new Set(['blue','pink','black','white','red','green','yellow','grey','gray','beige','brown','purple','orange','navy','gold','silver','cream','khaki','light','dark','bg','bl','wh','bk','gr','rd','modra','roza','crna','bela','rdeca','zelena','rumena','siva','bez','rjava','short','long','kratke','dolge']);
+const HSPLUS_SIZE_RE = /^(XS|S|M|L|XL|XXL|XXXL|S\/M|L\/XL|M\/L|XL\/XXL|\d+\/\d+|\d+(CM|ML|L|KG|G)?)$/i;
+function hsplusRootKey(name) {
+  if (!name) return '';
+  let base = name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  let toks = base.split(/\s+/);
+  while (toks.length) {
+    const last = toks[toks.length - 1].replace(/,$/, '');
+    if (HSPLUS_SIZE_RE.test(last) || HSPLUS_COLORS.has(last.toLowerCase()) || /^[A-Z]{2,3}$/.test(last) || last.indexOf('/') >= 0) {
+      toks.pop();
+    } else break;
+  }
+  return toks.length ? toks.join(' ') : base;
+}
+
 function hsplusRender() {
   const grid = document.getElementById('hsplusGrid');
   const countEl = document.getElementById('hsplusCount');
@@ -9534,7 +9549,7 @@ function hsplusRender() {
     const groups = {};
     const order = [];
     items.forEach(p => {
-      const key = p.root || p.name || p.sku;
+      const key = (p.root && p.root.length) ? p.root : hsplusRootKey(p.name || '') || p.sku;
       if (!groups[key]) { groups[key] = []; order.push(key); }
       groups[key].push(p);
     });
