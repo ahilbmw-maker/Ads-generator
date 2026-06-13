@@ -41,11 +41,13 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   .main { padding: 0.75rem 0.6rem 5rem; max-width: 100%; }
   .home-wrap { padding: 16px 12px !important; }
   body { display: block; overflow-x: hidden; }
-  /* GLOBALNO varovalo: nobena stran/kartica ne sili čez rob telefona */
-  .page { max-width: 100% !important; overflow-x: hidden !important; }
-  .card { max-width: 100% !important; box-sizing: border-box !important; }
-  .page input, .page textarea, .page select { max-width: 100% !important; box-sizing: border-box !important; }
   #page-meta { max-width: 100%; overflow-x: hidden; }
+  /* varovalo proti prelivanju SAMO na straneh ki jih urejamo (zaloga NEDOTAKNJENA) */
+  #page-meta, #page-tiktok, #page-analiza, #page-calc, #page-kreative { max-width: 100% !important; overflow-x: hidden !important; }
+  #page-meta .card, #page-analiza .card, #page-kreative .card { max-width: 100% !important; box-sizing: border-box !important; }
+  #page-meta input, #page-analiza input, #page-kreative input,
+  #page-meta textarea, #page-analiza textarea, #page-kreative textarea,
+  #page-meta select, #page-analiza select, #page-kreative select { max-width: 100% !important; box-sizing: border-box !important; }
   .meta-layout { grid-template-columns: 1fr !important; }
   .meta-history-panel .history-list { max-height: 300px !important; }
   #page-tiktok { max-width: 100% !important; overflow-x: hidden !important; }
@@ -242,6 +244,10 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   /* seznam izdelkov naj bo prvi (nad admin stolpcem v grid redu ni važno, ker je admin skrit) */
 
   /* ── ANALIZA mobile ── */
+  /* vsi 2-stolpčni gridi v analizi → en stolpec (pokrije 220px/240px/320px/420px) */
+  #page-analiza [style*="display:grid"], #page-analiza [style*="display: grid"] {
+    grid-template-columns: 1fr !important;
+  }
   /* Meta subpage: 220px+1fr grid → en stolpec */
   #analizaSubpage-meta { grid-template-columns: 1fr !important; padding: 10px 8px 0 !important; }
   /* tab nav: drsne čipke namesto preloma */
