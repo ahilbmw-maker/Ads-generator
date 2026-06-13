@@ -39,7 +39,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   }
   .sidebar.open { transform: translateX(0); }
   .main { padding: 0.75rem 0.6rem 5rem; max-width: 100%; }
-  .home-wrap { padding: 16px 12px !important; }
+  .home-wrap { padding: 16px 10px !important; }
+  /* home kartice širše: izniči stranski .main padding samo na home strani */
+  #page-home.page { margin-left: -0.6rem !important; margin-right: -0.6rem !important; overflow-x: hidden !important; }
   body { display: block; overflow-x: hidden; }
   #page-meta { max-width: 100%; overflow-x: hidden; }
   /* varovalo proti prelivanju SAMO na straneh ki jih urejamo (zaloga NEDOTAKNJENA) */
@@ -163,7 +165,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   /* Vsebina seznama dobi razmik = fiksna VIŠINA bloka (iskalnik 42 + chips ~32 + padding ~16 = ~98px).
      Ker je EN blok s fiksno vsebino, je višina STABILNA — ni računanja, ni prekrivanja. */
   #zalogaSubpage-zaloga { padding-top: 98px !important; }
-  .zaloga-subpage-inner { padding: 0 8px 10px !important; gap: 8px !important; }
+  .zaloga-subpage-inner { padding: 0 3px 10px !important; gap: 8px !important; }
+  /* zaloga seznam od roba do roba: izniči stranski .main padding samo na tej strani */
+  #page-zaloga.page { margin-left: -0.6rem !important; margin-right: -0.6rem !important; overflow-x: hidden !important; }
   #zalogaSubpage-vracila, #zalogaSubpage-skeniranje, #zalogaSubpage-pozicije, #zalogaSubpage-inventura { padding: 98px 8px 10px !important; }
 
   .zal-row {
@@ -606,7 +610,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 .k-opt-text { font-size:12px; font-weight:500; color:var(--text); }
 .k-result-header { padding:6px 8px; background:var(--surface2); border-bottom:1px solid var(--border); }
 @media(max-width:600px){ .kreative-layout { grid-template-columns: 1fr; } }
-@media(max-width:600px){ .home-grid { gap:8px; } }
+@media(max-width:600px){ .home-grid { gap:8px; grid-template-columns: 1fr !important; } }
 .kreative-history-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
 .kreative-history-panel .history-list { max-height: 600px; overflow-y: auto; margin-top: 8px; }
 .tt-h-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
@@ -1155,8 +1159,6 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div class="ht-pills">
               <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('razlike')">↗ Negativne razlike</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('vecja')">↗ Večja naročila</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('dvojniki')">↗ Dvojniki</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('karantena')">↗ Karantena</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('dvojniki')">↗ Dvojniki</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('karantena')">↗ Karantena</span>
             </div>
