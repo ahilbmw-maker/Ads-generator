@@ -2432,6 +2432,29 @@ input[type="text"].error { border-color: var(--red) !important; }
             <input type="checkbox" id="hsplusInStock" onchange="hsplusRender()" style="cursor:pointer"> samo z zalogo
           </label>
         </div>
+        <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap;margin-top:8px">
+          <span style="font-size:11px;color:var(--text-tertiary);font-weight:600">📊 Zaloga:</span>
+          <select id="hsplusStockFilter" onchange="hsplusRender()" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
+            <option value="">Vsa</option>
+            <option value="zero">Brez zaloge (0)</option>
+            <option value="low">Nizka (1–49)</option>
+            <option value="mid">Srednja (50–500)</option>
+            <option value="high">Visoka (&gt;500)</option>
+          </select>
+          <span style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-left:6px">💶 Cena:</span>
+          <input type="number" id="hsplusPriceMin" placeholder="min" oninput="hsplusRender()" style="width:64px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
+          <span style="font-size:12px;color:var(--text-tertiary)">–</span>
+          <input type="number" id="hsplusPriceMax" placeholder="max" oninput="hsplusRender()" style="width:64px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
+          <span style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-left:6px">↕ Razvrsti:</span>
+          <select id="hsplusSort" onchange="hsplusRender()" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
+            <option value="">Privzeto</option>
+            <option value="stock_desc">Zaloga: največ →</option>
+            <option value="stock_asc">Zaloga: najmanj →</option>
+            <option value="price_asc">Cena: naj nižja →</option>
+            <option value="price_desc">Cena: naj višja →</option>
+            <option value="name_asc">Naziv A–Ž</option>
+          </select>
+        </div>
       </div>
 
       <div id="hsplusLoading" style="display:none;text-align:center;padding:40px;color:var(--text-secondary);font-size:13px">⏳ Potegujem katalog s HS+...</div>
@@ -9308,14 +9331,35 @@ function hsplusRender() {
   const q = (document.getElementById('hsplusSearch')?.value || '').toLowerCase().trim();
   const cat = document.getElementById('hsplusCatFilter')?.value || '';
   const inStock = document.getElementById('hsplusInStock')?.checked;
+  const stockF = document.getElementById('hsplusStockFilter')?.value || '';
+  const pMin = parseFloat(document.getElementById('hsplusPriceMin')?.value);
+  const pMax = parseFloat(document.getElementById('hsplusPriceMax')?.value);
+  const sort = document.getElementById('hsplusSort')?.value || '';
   let items = _hsplusData;
   if (cat) items = items.filter(p => p.category === cat);
   if (inStock) items = items.filter(p => (p.stock||0) > 0);
+  // razpon zaloge
+  if (stockF === 'zero') items = items.filter(p => (p.stock||0) === 0);
+  else if (stockF === 'low') items = items.filter(p => (p.stock||0) >= 1 && (p.stock||0) <= 49);
+  else if (stockF === 'mid') items = items.filter(p => (p.stock||0) >= 50 && (p.stock||0) <= 500);
+  else if (stockF === 'high') items = items.filter(p => (p.stock||0) > 500);
+  // razpon cene
+  if (!isNaN(pMin)) items = items.filter(p => (p.price||0) >= pMin);
+  if (!isNaN(pMax)) items = items.filter(p => (p.price||0) <= pMax);
   if (q) items = items.filter(p =>
     (p.sku||'').toLowerCase().includes(q) ||
     (p.name||'').toLowerCase().includes(q) ||
     (p.category||'').toLowerCase().includes(q)
   );
+  // sortiranje
+  if (sort) {
+    items = items.slice();
+    if (sort === 'stock_desc') items.sort((a,b) => (b.stock||0) - (a.stock||0));
+    else if (sort === 'stock_asc') items.sort((a,b) => (a.stock||0) - (b.stock||0));
+    else if (sort === 'price_asc') items.sort((a,b) => (a.price||0) - (b.price||0));
+    else if (sort === 'price_desc') items.sort((a,b) => (b.price||0) - (a.price||0));
+    else if (sort === 'name_asc') items.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  }
   if (countEl) { countEl.style.display = 'block'; countEl.textContent = 'Prikazano: ' + items.length + ' / ' + _hsplusData.length; }
   if (!items.length) {
     grid.style.display = 'none';
