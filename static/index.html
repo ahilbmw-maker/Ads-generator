@@ -2436,12 +2436,11 @@ input[type="text"].error { border-color: var(--red) !important; }
       <!-- Povzetek + filtri -->
       <div id="hsplusSummary" style="display:none;margin-bottom:12px">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px" id="hsplusStatCards"></div>
+        <!-- KATEGORIJSKE ČIPKE (emoji) -->
+        <div id="hsplusCatChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
         <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap">
           <span style="color:var(--text-secondary);font-size:13px">🔍</span>
           <input type="text" id="hsplusSearch" placeholder="Išči SKU, naziv, kategorijo..." oninput="hsplusFilterChanged()" style="border:none;outline:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);flex:1;min-width:140px">
-          <select id="hsplusCatFilter" onchange="hsplusFilterChanged()" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
-            <option value="">Vse kategorije</option>
-          </select>
           <label id="hsplusInStockLabel" onclick="setTimeout(hsplusFilterChanged,0)" style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#16a34a;cursor:pointer;white-space:nowrap;background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.35);border-radius:6px;padding:6px 12px">
             <input type="checkbox" id="hsplusInStock" onchange="hsplusFilterChanged()" style="cursor:pointer;width:15px;height:15px;accent-color:#16a34a"> ✅ Samo na zalogi
           </label>
@@ -9294,6 +9293,7 @@ function switchOrodjaTab(tab) {
 // ══════════════════════════════════════════════════════════════
 let _hsplusData = [];
 let _hsplusPage = 1;
+let _hsplusCat = '';
 
 async function hsplusLoad(refresh, cacheOnly) {
   const loading = document.getElementById('hsplusLoading');
@@ -9322,12 +9322,9 @@ async function hsplusLoad(refresh, cacheOnly) {
     _hsplusData = d.products || [];
     const info = document.getElementById('hsplusFetchInfo');
     if (info) info.textContent = (d.cached ? '📋 cache · ' : '🟢 sveže · ') + (d.fetched_at || '') + ' · ' + d.count + ' izdelkov';
-    // napolni kategorije v filter
-    const cats = [...new Set(_hsplusData.map(p => p.category).filter(Boolean))].sort();
-    const sel = document.getElementById('hsplusCatFilter');
-    if (sel) {
-      sel.innerHTML = '<option value="">Vse kategorije</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
-    }
+    // kategorijske čipke (z emoji)
+    _hsplusCat = '';
+    hsplusRenderCatChips();
     // statistične kartice
     const totalStock = _hsplusData.reduce((s,p) => s + (p.stock||0), 0);
     const zeroStock = _hsplusData.filter(p => (p.stock||0) === 0).length;
@@ -9343,6 +9340,38 @@ async function hsplusLoad(refresh, cacheOnly) {
     if (btn) { btn.disabled = false; btn.textContent = '🔄 Osveži'; }
     if (err) { err.textContent = '⚠ Napaka: ' + e.message; err.style.display = 'block'; }
   }
+}
+
+const HSPLUS_CAT_EMOJI = {
+  'APPAREL': '👕', 'HOUSEHOLD': '🏠', 'KIDS': '🧸', 'KITCHEN': '🍳',
+  'FOOTWEAR': '👟', 'GARDEN': '🌱', 'LIFESTYLE': '✨', 'XMAS': '🎄',
+  'PERSONAL CARE': '🧴', 'LOVILION': '💝', 'DIY': '🔧', 'ELECTRONICS': '🔌',
+  'NEW': '🆕', 'CAR': '🚗', 'STICKERS': '🏷️', 'SPORT': '⚽',
+  'SUMMER': '☀️', 'BEDDING': '🛏️', 'GARDEN LIGHTS': '💡', 'HAIRTOOLS': '💇',
+  'WINTER': '❄️', 'PETS': '🐾'
+};
+function hsplusCatEmoji(c) { return HSPLUS_CAT_EMOJI[(c||'').toUpperCase()] || '📦'; }
+
+function hsplusRenderCatChips() {
+  const wrap = document.getElementById('hsplusCatChips');
+  if (!wrap) return;
+  // kategorije + štetje
+  const counts = {};
+  _hsplusData.forEach(p => { const c = p.category || '(brez)'; counts[c] = (counts[c]||0) + 1; });
+  const cats = Object.keys(counts).sort((a,b) => counts[b] - counts[a]);
+  const sel = _hsplusCat;
+  const chip = (val, label, emoji, n, active) =>
+    `<button onclick="hsplusSelectCat('${val.replace(/'/g,"\\'")}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:20px;border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};background:${active ? 'var(--accent)' : 'var(--surface)'};color:${active ? '#fff' : 'var(--text)'};font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">${emoji} ${label}<span style="opacity:0.65;font-weight:500;font-size:11px">${n}</span></button>`;
+  let html = chip('', 'Vse', '🗂️', _hsplusData.length, !sel);
+  html += cats.map(c => chip(c, c, hsplusCatEmoji(c), counts[c], sel === c)).join('');
+  wrap.innerHTML = html;
+}
+
+function hsplusSelectCat(c) {
+  _hsplusCat = c;
+  _hsplusPage = 1;
+  hsplusRenderCatChips();
+  hsplusRender();
 }
 
 function hsplusFilterChanged() {
@@ -9398,14 +9427,14 @@ function hsplusRender() {
   const countEl = document.getElementById('hsplusCount');
   if (!grid) return;
   const q = (document.getElementById('hsplusSearch')?.value || '').toLowerCase().trim();
-  const cat = document.getElementById('hsplusCatFilter')?.value || '';
+  const cat = _hsplusCat || '';
   const inStock = document.getElementById('hsplusInStock')?.checked;
   const stockF = document.getElementById('hsplusStockFilter')?.value || '';
   const pMin = parseFloat(document.getElementById('hsplusPriceMin')?.value);
   const pMax = parseFloat(document.getElementById('hsplusPriceMax')?.value);
   const sort = document.getElementById('hsplusSort')?.value || '';
   let items = _hsplusData;
-  if (cat) items = items.filter(p => p.category === cat);
+  if (cat) items = items.filter(p => (p.category || '(brez)') === cat);
   if (inStock) items = items.filter(p => (p.stock||0) > 0);
   // razpon zaloge
   if (stockF === 'zero') items = items.filter(p => (p.stock||0) === 0);
