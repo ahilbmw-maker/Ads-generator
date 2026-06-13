@@ -10175,6 +10175,8 @@ HSUVOZ_CURRENT = DATA_DIR / "hsuvoz_current.json"
 # ═══════════════════════════════════════════════════════════════
 HSPLUS_CATALOG_CACHE = DATA_DIR / "hsplus_catalog_cache.json"
 HSPLUS_CACHE_TTL = 3600  # 1 ura
+HSPLUS_SNAPSHOT = DATA_DIR / "hsplus_stock_snapshot.json"   # zadnji posnetek zaloge (sku→stock) za diff
+HSPLUS_DIFF = DATA_DIR / "hsplus_stock_diff.json"           # zadnja sprememba zaloge med uploadi
 
 def _hsplus_clean_xml(xml_bytes):
     """Očisti pogoste napake v XML (surovi & in neveljavni kontrolni znaki),
@@ -10189,6 +10191,28 @@ def _hsplus_clean_xml(xml_bytes):
     # odstrani neveljavne XML kontrolne znake (razen \t \n \r)
     text = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
     return text
+
+_HSPLUS_COLORS = {'blue','pink','black','white','red','green','yellow','grey','gray','beige','brown',
+    'purple','orange','navy','gold','silver','cream','khaki','light','dark','bg','bl','wh','bk','gr','rd',
+    'modra','roza','crna','bela','rdeca','zelena','rumena','siva','bez','rjava','short','long','kratke','dolge'}
+import re as _re_hsplus
+_HSPLUS_SIZE_RE = _re_hsplus.compile(r'^(XS|S|M|L|XL|XXL|XXXL|S/M|L/XL|M/L|XL/XXL|\d+/\d+|\d+(CM|ML|L|KG|G)?)$', _re_hsplus.I)
+
+def _hsplus_root_key(name):
+    """Izlušči koren naziva (brez variantnih žetonov: barve, velikosti, oklepaji).
+    Npr. 'BODY-FIT BL S/M' → 'BODY-FIT', 'HAPPYS blue 26/27' → 'HAPPYS'."""
+    if not name:
+        return ""
+    base = _re_hsplus.sub(r'\s*\([^)]*\)\s*$', '', name).strip()  # odstrani končni (oklepaj)
+    toks = base.split()
+    while toks:
+        last = toks[-1].strip(',')
+        if (_HSPLUS_SIZE_RE.match(last) or last.lower() in _HSPLUS_COLORS
+                or _re_hsplus.match(r'^[A-Z]{2,3}$', last) or '/' in last):
+            toks.pop()
+        else:
+            break
+    return ' '.join(toks) if toks else base
 
 def _hsplus_parse_xml(xml_bytes):
     """Parsira HS+ catalog XML → seznam izdelkov. Odporen na manjše napake v XML."""
@@ -10208,15 +10232,17 @@ def _hsplus_parse_xml(xml_bytes):
                 return cast(v) if v else default
             except (ValueError, TypeError):
                 return default
+        nm = (p.findtext("name") or "").strip()
         out.append({
             "sku": (p.findtext("sku") or "").strip(),
-            "name": (p.findtext("name") or "").strip(),
+            "name": nm,
             "description": (p.findtext("description") or "").strip(),
             "category": (p.findtext("category") or "").strip(),
             "stock": _num("stock", int, 0),
             "price": _num("price", float, 0.0),
             "image": imgs[0] if imgs else "",
             "images": imgs,
+            "root": _hsplus_root_key(nm),
         })
     return out
 
@@ -10318,24 +10344,118 @@ async def hsplus_catalog_stats():
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def _hsplus_compute_diff(products):
+    """Primerja novo zalogo z zadnjim snapshotom (sku→stock) in shrani diff.
+    Vrne povzetek sprememb. Nato posodobi snapshot na trenutno stanje."""
+    import json as _json, time as _time
+    # naloži prejšnji snapshot
+    prev = {}
+    prev_at = None
+    if HSPLUS_SNAPSHOT.exists():
+        try:
+            snap = _json.loads(HSPLUS_SNAPSHOT.read_text(encoding="utf-8"))
+            prev = snap.get("stock", {})
+            prev_at = snap.get("fetched_at")
+        except Exception:
+            prev = {}
+    # trenutno stanje (sku → {stock, name, price, category, image})
+    cur = {}
+    for p in products:
+        sku = p.get("sku")
+        if sku:
+            cur[sku] = p
+    # izračunaj spremembe (samo če imamo prejšnji snapshot)
+    changes = []
+    if prev:
+        for sku, p in cur.items():
+            old = prev.get(sku)
+            new_stock = p.get("stock", 0)
+            new_price = p.get("price", 0)
+            if old is None:
+                # nov izdelek (prej ga ni bilo)
+                changes.append({"sku": sku, "name": p.get("name",""), "category": p.get("category",""),
+                                "image": p.get("image",""), "price": new_price,
+                                "old": None, "new": new_stock, "delta": new_stock, "is_new": True,
+                                "old_price": None, "new_price": new_price, "price_delta": 0})
+            else:
+                old_stock = old if isinstance(old, (int, float)) else (old.get("stock", 0) if isinstance(old, dict) else 0)
+                old_price = (old.get("price", 0) if isinstance(old, dict) else 0)
+                delta = new_stock - old_stock
+                price_delta = round(new_price - old_price, 2)
+                # zabeleži če se je spremenila zaloga ALI cena
+                if delta != 0 or price_delta != 0:
+                    changes.append({"sku": sku, "name": p.get("name",""), "category": p.get("category",""),
+                                    "image": p.get("image",""), "price": new_price,
+                                    "old": old_stock, "new": new_stock, "delta": delta, "is_new": False,
+                                    "old_price": old_price, "new_price": new_price, "price_delta": price_delta})
+        # izdelki ki so izginili (bili prej, zdaj jih ni)
+        for sku, old in prev.items():
+            if sku not in cur:
+                old_stock = old if isinstance(old, (int, float)) else (old.get("stock", 0) if isinstance(old, dict) else 0)
+                changes.append({"sku": sku, "name": (old.get("name","") if isinstance(old, dict) else ""),
+                                "category": (old.get("category","") if isinstance(old, dict) else ""),
+                                "image": "", "price": 0,
+                                "old": old_stock, "new": None, "delta": -old_stock, "is_gone": True,
+                                "old_price": (old.get("price",0) if isinstance(old, dict) else 0), "new_price": None, "price_delta": 0})
+    diff_payload = {
+        "computed_at": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "prev_at": prev_at,
+        "has_prev": bool(prev),
+        "changes": changes,
+    }
+    try:
+        HSPLUS_DIFF.write_text(_json.dumps(diff_payload, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    # posodobi snapshot (shrani lahke podatke: sku → {stock,name,price,category})
+    new_snap = {sku: {"stock": p.get("stock",0), "name": p.get("name",""),
+                      "price": p.get("price",0), "category": p.get("category","")}
+                for sku, p in cur.items()}
+    try:
+        HSPLUS_SNAPSHOT.write_text(_json.dumps({
+            "fetched_at": datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "fetched_ts": _time.time(), "stock": new_snap
+        }, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    return diff_payload
+
 @app.post("/hsplus-catalog-upload")
 async def hsplus_catalog_upload(file: UploadFile = File(...)):
     """Ročni upload HS+ XML (potegnjen iz b2b logina). Parsira in shrani v isti
-    cache, ki ga katalog bere — vsi filtri/kartice delujejo takoj."""
+    cache, ki ga katalog bere — vsi filtri/kartice delujejo takoj.
+    Hkrati izračuna spremembo zaloge glede na prejšnji upload (winner signal)."""
     import json as _json, time as _time
     try:
         raw = await file.read()
         products = _hsplus_parse_xml(raw)
         if not products:
             return {"ok": False, "error": "V XML ni najdenih izdelkov (preveri, da je pravi catalog/export XML)."}
+        # izračunaj diff PRED prepisom snapshota
+        diff = _hsplus_compute_diff(products)
         fetched_at = datetime.now().strftime("%d.%m.%Y %H:%M")
         HSPLUS_CATALOG_CACHE.write_text(_json.dumps({
             "fetched_ts": _time.time(), "fetched_at": fetched_at,
             "source": "manual_upload", "products": products
         }, ensure_ascii=False), encoding="utf-8")
-        return {"ok": True, "count": len(products), "fetched_at": fetched_at}
+        # povzetek diffa za odgovor
+        n_changes = len(diff.get("changes", []))
+        return {"ok": True, "count": len(products), "fetched_at": fetched_at,
+                "diff_has_prev": diff.get("has_prev"), "diff_changes": n_changes}
     except Exception as e:
         return {"ok": False, "error": f"Napaka pri branju XML: {e}"}
+
+@app.get("/hsplus-stock-diff")
+async def hsplus_stock_diff():
+    """Vrne zadnjo spremembo zaloge (winnerji = padec, polnila = porast)."""
+    import json as _json
+    if not HSPLUS_DIFF.exists():
+        return {"ok": True, "has_prev": False, "changes": []}
+    try:
+        d = _json.loads(HSPLUS_DIFF.read_text(encoding="utf-8"))
+        return {"ok": True, **d}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def hsuvoz_cleanup():
