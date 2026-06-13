@@ -226,7 +226,8 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #inv-table-desktop { display: none !important; }
   #inv-cards-mobile { display: flex !important; }
   #inv-pdf-btn { display: none !important; }
-  #zalogaSubpage-inventura > div { grid-template-columns: 1fr !important; }
+  #inv-grid { display: block !important; grid-template-columns: 1fr !important; }
+  #zalogaSubpage-inventura { overflow-x: hidden !important; }
   /* admin del (uvoz + zgodovina) skrit v predal — delavec takoj vidi seznam */
   #inv-admin-toggle { display: flex !important; }
   #inv-admin-col { display: none !important; }
@@ -3966,7 +3967,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <button id="inv-admin-toggle" onclick="invToggleAdmin()" style="display:none;width:100%;padding:11px;margin-bottom:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-weight:600;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif;align-items:center;justify-content:center;gap:6px">
       <span>⚙ Uvoz &amp; zgodovina</span><span id="inv-admin-chevron" style="font-size:11px">▼</span>
     </button>
-    <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start">
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start" id="inv-grid">
 
       <!-- LEVO: upload + akcije + zgodovina -->
       <div style="display:flex;flex-direction:column;gap:12px" id="inv-admin-col">
