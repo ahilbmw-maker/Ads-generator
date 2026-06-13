@@ -98,6 +98,8 @@
     body { padding: 8px !important; }
     canvas { max-width: 100% !important; }
     .card { max-width: 100% !important; box-sizing: border-box !important; }
+    /* široke fiksne tabele dobijo vodoravni scroll (ne silijo stran čez rob) */
+    #yearly-table { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
     .final-form { grid-template-columns: 1fr 1fr !important; }
     .fc-statgrid { grid-template-columns: repeat(2, 1fr) !important; }
     .grid-charts { grid-template-columns: 1fr !important; }
@@ -1466,7 +1468,7 @@ function renderYearly() {
     <span>CELO LETO</span><span></span><span></span>
     <span style="text-align:right">${fmtCurrency(projRev)}</span>
   </div>`;
-  document.getElementById('yearly-table').innerHTML = html;
+  document.getElementById('yearly-table').innerHTML = '<div class="yearly-table-inner" style="min-width:430px">' + html + '</div>';
 
   // Graf
   renderYearlyChart(monthsProj, year, curMonth);
