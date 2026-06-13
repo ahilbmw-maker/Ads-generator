@@ -233,6 +233,32 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #inv-admin-col { display: none !important; }
   #inv-admin-col.inv-admin-open { display: flex !important; }
   /* seznam izdelkov naj bo prvi (nad admin stolpcem v grid redu ni važno, ker je admin skrit) */
+
+  /* ── ANALIZA mobile ── */
+  /* Meta subpage: 220px+1fr grid → en stolpec */
+  #analizaSubpage-meta { grid-template-columns: 1fr !important; padding: 10px 8px 0 !important; }
+  /* tab nav: drsne čipke namesto preloma */
+  #page-analiza > div:first-child {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 10px 8px !important;
+  }
+  #page-analiza > div:first-child::-webkit-scrollbar { display: none !important; }
+  #page-analiza .analiza-tab-btn { flex-shrink: 0 !important; white-space: nowrap !important; }
+  /* subpages: manjši padding + brez vodoravnega prelivanja */
+  #analizaSubpage-obrat14, #analizaSubpage-obrat14tt, #analizaSubpage-ttkreative,
+  #analizaSubpage-beta, #analizaSubpage-cashflow, #analizaSubpage-shipping {
+    padding-left: 8px !important; padding-right: 8px !important; overflow-x: hidden !important;
+  }
+
+  /* ── UREJEVALNIK CEN mobile: tab nav + iframe višina ── */
+  #page-calc > div:first-child {
+    flex-wrap: nowrap !important; overflow-x: auto !important; padding: 8px !important;
+  }
+  #page-calc > div:first-child::-webkit-scrollbar { display: none !important; }
+  #page-calc .calc-tab-btn { flex-shrink: 0 !important; white-space: nowrap !important; }
+  #calcFrame-pricecheck, #calcFrame-calc { height: calc(100vh - 5rem) !important; }
 }
 
 /* Ozki telefoni: zaloga kartica — % in chevron ne stiskata naslova */
