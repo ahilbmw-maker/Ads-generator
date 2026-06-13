@@ -41,7 +41,14 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   .main { padding: 0.75rem 0.6rem 5rem; max-width: 100%; }
   .home-wrap { padding: 16px 12px !important; }
   body { display: block; overflow-x: hidden; }
+  /* GLOBALNO varovalo: nobena stran/kartica ne sili čez rob telefona */
+  .page { max-width: 100% !important; overflow-x: hidden !important; }
+  .card { max-width: 100% !important; box-sizing: border-box !important; }
+  .page input, .page textarea, .page select { max-width: 100% !important; box-sizing: border-box !important; }
   #page-meta { max-width: 100%; overflow-x: hidden; }
+  .meta-layout { grid-template-columns: 1fr !important; }
+  .meta-history-panel .history-list { max-height: 300px !important; }
+  #page-tiktok { max-width: 100% !important; overflow-x: hidden !important; }
   input[type="text"] { max-width: 100%; min-width: 0; }
   .url-wrap { min-width: 0; overflow: hidden; }
   .url-row { min-width: 0; }
@@ -259,6 +266,19 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #page-calc > div:first-child::-webkit-scrollbar { display: none !important; }
   #page-calc .calc-tab-btn { flex-shrink: 0 !important; white-space: nowrap !important; }
   #calcFrame-pricecheck, #calcFrame-calc { height: calc(100vh - 5rem) !important; }
+
+  /* ── KREATIVE mobile ── */
+  .kr-tabnav {
+    flex-wrap: nowrap !important; overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important; padding: 12px 8px !important;
+  }
+  .kr-tabnav::-webkit-scrollbar { display: none !important; }
+  .kr-tabnav .kreative-tab-btn { flex-shrink: 0 !important; white-space: nowrap !important; }
+  /* Higgsfield panel: 220px+1fr → en stolpec */
+  .kr-hf-grid { grid-template-columns: 1fr !important; }
+  #kr-panel-higgsfield, #kr-panel-queue { padding: 12px 8px !important; overflow-x: hidden !important; }
+  /* gridi kartic naj se polnijo čez celo širino */
+  #kQueueGrid, #kSavedGrid { grid-template-columns: 1fr !important; }
 }
 
 /* Ozki telefoni: zaloga kartica — % in chevron ne stiskata naslova */
@@ -1437,7 +1457,7 @@ input[type="text"].error { border-color: var(--red) !important; }
   <div class="page" id="page-kreative">
 
     <!-- Tab switcher -->
-    <div style="display:flex;gap:8px;padding:14px 14px 12px;border-bottom:1px solid var(--border);margin-bottom:0">
+    <div class="kr-tabnav" style="display:flex;gap:8px;padding:14px 14px 12px;border-bottom:1px solid var(--border);margin-bottom:0">
       <button class="kreative-tab-btn" id="krTab-gemini" onclick="krSwitchTab('gemini')"
         style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
         ✨ Generator
@@ -1603,7 +1623,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
     <!-- Tab: Higgsfield -->
     <div id="kr-panel-higgsfield" style="display:none;padding:14px">
-      <div style="display:grid;grid-template-columns:220px 1fr;gap:14px;align-items:start">
+      <div class="kr-hf-grid" style="display:grid;grid-template-columns:220px 1fr;gap:14px;align-items:start">
 
         <!-- LEVO: nastavitve + generiraj -->
         <div style="display:flex;flex-direction:column;gap:10px">
