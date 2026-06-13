@@ -2438,17 +2438,17 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px" id="hsplusStatCards"></div>
         <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap">
           <span style="color:var(--text-secondary);font-size:13px">🔍</span>
-          <input type="text" id="hsplusSearch" placeholder="Išči SKU, naziv, kategorijo..." oninput="hsplusRender()" style="border:none;outline:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);flex:1;min-width:140px">
-          <select id="hsplusCatFilter" onchange="hsplusRender()" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
+          <input type="text" id="hsplusSearch" placeholder="Išči SKU, naziv, kategorijo..." oninput="hsplusFilterChanged()" style="border:none;outline:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);flex:1;min-width:140px">
+          <select id="hsplusCatFilter" onchange="hsplusFilterChanged()" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
             <option value="">Vse kategorije</option>
           </select>
-          <label id="hsplusInStockLabel" onclick="setTimeout(hsplusRender,0)" style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#16a34a;cursor:pointer;white-space:nowrap;background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.35);border-radius:6px;padding:6px 12px">
-            <input type="checkbox" id="hsplusInStock" onchange="hsplusRender()" style="cursor:pointer;width:15px;height:15px;accent-color:#16a34a"> ✅ Samo na zalogi
+          <label id="hsplusInStockLabel" onclick="setTimeout(hsplusFilterChanged,0)" style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#16a34a;cursor:pointer;white-space:nowrap;background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.35);border-radius:6px;padding:6px 12px">
+            <input type="checkbox" id="hsplusInStock" onchange="hsplusFilterChanged()" style="cursor:pointer;width:15px;height:15px;accent-color:#16a34a"> ✅ Samo na zalogi
           </label>
         </div>
         <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap;margin-top:8px">
           <span style="font-size:11px;color:var(--text-tertiary);font-weight:600">📊 Zaloga:</span>
-          <select id="hsplusStockFilter" onchange="hsplusRender()" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
+          <select id="hsplusStockFilter" onchange="hsplusFilterChanged()" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
             <option value="">Vsa</option>
             <option value="zero">Brez zaloge (0)</option>
             <option value="low">Nizka (1–49)</option>
@@ -2456,11 +2456,11 @@ input[type="text"].error { border-color: var(--red) !important; }
             <option value="high">Visoka (&gt;500)</option>
           </select>
           <span style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-left:6px">💶 Cena:</span>
-          <input type="number" id="hsplusPriceMin" placeholder="min" oninput="hsplusRender()" style="width:64px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
+          <input type="number" id="hsplusPriceMin" placeholder="min" oninput="hsplusFilterChanged()" style="width:64px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
           <span style="font-size:12px;color:var(--text-tertiary)">–</span>
-          <input type="number" id="hsplusPriceMax" placeholder="max" oninput="hsplusRender()" style="width:64px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
+          <input type="number" id="hsplusPriceMax" placeholder="max" oninput="hsplusFilterChanged()" style="width:64px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
           <span style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-left:6px">↕ Razvrsti:</span>
-          <select id="hsplusSort" onchange="hsplusRender()" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
+          <select id="hsplusSort" onchange="hsplusFilterChanged()" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none">
             <option value="">Privzeto</option>
             <option value="stock_desc">Zaloga: največ →</option>
             <option value="stock_asc">Zaloga: najmanj →</option>
@@ -2476,6 +2476,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div id="hsplusEmpty" style="text-align:center;color:var(--text-tertiary);font-size:13px;padding:40px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">Naloži HS+ XML zgoraj (📥 Naloži XML ročno) za prikaz kataloga.</div>
       <div id="hsplusCount" style="display:none;font-size:11px;color:var(--text-tertiary);margin-bottom:8px"></div>
       <div id="hsplusGrid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px"></div>
+      <div id="hsplusPager" style="display:none;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:16px"></div>
     </div>
 
     <div id="orodjaSubpage-apteluvoz" style="display:none;padding:14px">
@@ -9292,6 +9293,7 @@ function switchOrodjaTab(tab) {
 // HS+ KATALOG (živa povezava na HS-plus XML)
 // ══════════════════════════════════════════════════════════════
 let _hsplusData = [];
+let _hsplusPage = 1;
 
 async function hsplusLoad(refresh, cacheOnly) {
   const loading = document.getElementById('hsplusLoading');
@@ -9314,6 +9316,7 @@ async function hsplusLoad(refresh, cacheOnly) {
       document.getElementById('hsplusSummary').style.display = 'none';
       document.getElementById('hsplusGrid').style.display = 'none';
       document.getElementById('hsplusCount').style.display = 'none';
+      const pgr = document.getElementById('hsplusPager'); if (pgr) pgr.style.display = 'none';
       return;
     }
     _hsplusData = d.products || [];
@@ -9340,6 +9343,11 @@ async function hsplusLoad(refresh, cacheOnly) {
     if (btn) { btn.disabled = false; btn.textContent = '🔄 Osveži'; }
     if (err) { err.textContent = '⚠ Napaka: ' + e.message; err.style.display = 'block'; }
   }
+}
+
+function hsplusFilterChanged() {
+  _hsplusPage = 1;
+  hsplusRender();
 }
 
 function hsplusEsc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -9421,14 +9429,23 @@ function hsplusRender() {
     else if (sort === 'price_desc') items.sort((a,b) => (b.price||0) - (a.price||0));
     else if (sort === 'name_asc') items.sort((a,b) => (a.name||'').localeCompare(b.name||''));
   }
-  if (countEl) { countEl.style.display = 'block'; countEl.textContent = 'Prikazano: ' + items.length + ' / ' + _hsplusData.length; }
+  // PAGINACIJA: ponastavi na stran 1, če je trenutna stran izven obsega
+  const perPage = 120;
+  const totalPages = Math.max(1, Math.ceil(items.length / perPage));
+  if (_hsplusPage > totalPages) _hsplusPage = 1;
+  if (_hsplusPage < 1) _hsplusPage = 1;
+  const start = (_hsplusPage - 1) * perPage;
+  const slice = items.slice(start, start + perPage);
+  if (countEl) {
+    countEl.style.display = 'block';
+    countEl.textContent = 'Prikazano ' + (items.length ? (start + 1) : 0) + '–' + (start + slice.length) + ' od ' + items.length + ' (skupaj ' + _hsplusData.length + ')';
+  }
   if (!items.length) {
     grid.style.display = 'none';
+    hsplusRenderPager(0, 0);
     return;
   }
   grid.style.display = 'grid';
-  // omeji prikaz na 300 (učinkovitost); iskanje zoži
-  const slice = items.slice(0, 300);
   grid.innerHTML = slice.map(p => {
     const stockColor = (p.stock||0) === 0 ? '#dc2626' : ((p.stock||0) < 50 ? '#d97706' : '#16a34a');
     const img = p.image ? `<img src="${hsplusEsc(p.image)}" loading="lazy" style="width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--surface2)" onerror="this.style.display='none'">` : `<div style="width:100%;aspect-ratio:1/1;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:28px">📦</div>`;
@@ -9447,9 +9464,37 @@ function hsplusRender() {
       </div>
     </div>`;
   }).join('');
-  if (items.length > 300 && countEl) {
-    countEl.textContent += ' (prikazanih prvih 300 — zoži z iskanjem)';
+  hsplusRenderPager(_hsplusPage, totalPages);
+}
+
+function hsplusRenderPager(page, totalPages) {
+  const pager = document.getElementById('hsplusPager');
+  if (!pager) return;
+  if (totalPages <= 1) { pager.style.display = 'none'; pager.innerHTML = ''; return; }
+  pager.style.display = 'flex';
+  const btn = (label, target, disabled, active) =>
+    `<button onclick="hsplusGoPage(${target})" ${disabled ? 'disabled' : ''} style="min-width:34px;padding:7px 11px;border-radius:8px;border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};background:${active ? 'var(--accent)' : 'var(--surface)'};color:${active ? '#fff' : 'var(--text)'};font-size:12px;font-weight:600;cursor:${disabled ? 'default' : 'pointer'};opacity:${disabled ? '0.4' : '1'};font-family:'DM Sans',sans-serif">${label}</button>`;
+  // sestavi seznam strani: vedno 1, zadnja, in okno okrog trenutne
+  let pages = [];
+  const win = 1;
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= page - win && i <= page + win)) pages.push(i);
+    else if (pages[pages.length - 1] !== '…') pages.push('…');
   }
+  let html = btn('←', page - 1, page <= 1, false);
+  html += pages.map(p => p === '…'
+    ? `<span style="padding:0 4px;color:var(--text-tertiary);font-size:12px">…</span>`
+    : btn(p, p, false, p === page)).join('');
+  html += btn('→', page + 1, page >= totalPages, false);
+  pager.innerHTML = html;
+}
+
+function hsplusGoPage(p) {
+  _hsplusPage = p;
+  hsplusRender();
+  // scroll na vrh mreže
+  const grid = document.getElementById('hsplusGrid');
+  if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ══════════════════════════════════════════════════════════════
