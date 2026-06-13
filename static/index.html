@@ -9485,15 +9485,9 @@ const HSPLUS_COLORS = new Set(['blue','pink','black','white','red','green','yell
 const HSPLUS_SIZE_RE = /^(XS|S|M|L|XL|XXL|XXXL|S\/M|L\/XL|M\/L|XL\/XXL|\d+\/\d+|\d+(CM|ML|L|KG|G)?)$/i;
 function hsplusRootKey(name) {
   if (!name) return '';
-  let base = name.replace(/\s*\([^)]*\)\s*$/, '').trim();
-  let toks = base.split(/\s+/);
-  while (toks.length) {
-    const last = toks[toks.length - 1].replace(/,$/, '');
-    if (HSPLUS_SIZE_RE.test(last) || HSPLUS_COLORS.has(last.toLowerCase()) || /^[A-Z]{2,3}$/.test(last) || last.indexOf('/') >= 0) {
-      toks.pop();
-    } else break;
-  }
-  return toks.length ? toks.join(' ') : base;
+  const s = name.replace(/^\([^)]*\)\s*/, '').trim();   // odstrani vodilni (XX) prefiks
+  const m = s.split(/[\s(]/);                            // razdeli na presledku/oklepaju
+  return (m[0] && m[0].trim()) ? m[0].trim() : s;        // prva beseda = koren
 }
 
 function hsplusRender() {
@@ -9608,7 +9602,7 @@ function hsplusRender() {
       const anyNew = p._variants.some(v => { const c = _hsplusChangeMap[v.sku]; return c && c.is_new; });
       if (anyWin) groupCorner = `<div style="position:absolute;top:8px;left:8px;z-index:2;font-size:10px;font-weight:700;color:#fff;background:#A32D2D;padding:3px 7px;border-radius:6px">🔥 winner</div>`;
       else if (anyNew) groupCorner = `<div style="position:absolute;top:8px;left:8px;z-index:2;font-size:10px;font-weight:700;color:#fff;background:var(--accent);padding:3px 7px;border-radius:6px">🆕 nov</div>`;
-      return `<div onclick="hsplusOpenVariants(${start + idx})" style="cursor:pointer;position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+      return `<div onclick="hsplusOpenVariants(${idx})" style="cursor:pointer;position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
         ${groupCorner}
         <div style="position:absolute;top:8px;right:8px;z-index:2;font-size:10px;font-weight:700;color:#fff;background:rgba(0,0,0,0.6);padding:3px 8px;border-radius:6px">⊞ ${p._variantCount} variant</div>
         ${img}
