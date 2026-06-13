@@ -10199,20 +10199,16 @@ import re as _re_hsplus
 _HSPLUS_SIZE_RE = _re_hsplus.compile(r'^(XS|S|M|L|XL|XXL|XXXL|S/M|L/XL|M/L|XL/XXL|\d+/\d+|\d+(CM|ML|L|KG|G)?)$', _re_hsplus.I)
 
 def _hsplus_root_key(name):
-    """Izlušči koren naziva (brez variantnih žetonov: barve, velikosti, oklepaji).
-    Npr. 'BODY-FIT BL S/M' → 'BODY-FIT', 'HAPPYS blue 26/27' → 'HAPPYS'."""
+    """Koren naziva = prva beseda (tvoja logika: prvi naziv je koren, ostalo variacije).
+    Preskoči vodilni promocijski prefiks tipa '(SP) ' / '(UP) '.
+    Npr. 'TOPKNER 90x200' → 'TOPKNER', 'STRAPIES Beige 2XL' → 'STRAPIES',
+    'BODY-FIT BL S/M' → 'BODY-FIT', '(SP) CORALCLOTH' → 'CORALCLOTH'."""
     if not name:
         return ""
-    base = _re_hsplus.sub(r'\s*\([^)]*\)\s*$', '', name).strip()  # odstrani končni (oklepaj)
-    toks = base.split()
-    while toks:
-        last = toks[-1].strip(',')
-        if (_HSPLUS_SIZE_RE.match(last) or last.lower() in _HSPLUS_COLORS
-                or _re_hsplus.match(r'^[A-Z]{2,3}$', last) or '/' in last):
-            toks.pop()
-        else:
-            break
-    return ' '.join(toks) if toks else base
+    s = _re_hsplus.sub(r'^\([^)]*\)\s*', '', name).strip()  # odstrani vodilni (XX) prefiks
+    m = _re_hsplus.split(r'[\s(]', s, 1)  # razdeli na prvem presledku ali oklepaju
+    root = m[0].strip() if m and m[0].strip() else s
+    return root
 
 def _hsplus_parse_xml(xml_bytes):
     """Parsira HS+ catalog XML → seznam izdelkov. Odporen na manjše napake v XML."""
