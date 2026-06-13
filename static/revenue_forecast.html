@@ -93,6 +93,16 @@
   .rvc-up { color:#16a34a; }
   .rvc-down { color:#dc2626; }
   .rvc-flat { color:var(--text-tertiary); }
+  @media (max-width: 600px) {
+    body { padding: 8px !important; }
+    .final-form { grid-template-columns: 1fr 1fr !important; }
+    .fc-statgrid { grid-template-columns: repeat(2, 1fr) !important; }
+    .grid-charts { grid-template-columns: 1fr !important; }
+    .row { grid-template-columns: 1fr 1fr !important; }
+    .card { padding: 12px !important; }
+    /* tabele/seznami naj ne silijo čez rob */
+    .scroll-x { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+  }
 </style>
 </head>
 <body>
@@ -213,7 +223,7 @@
         </div>
 
         <!-- Stats vrstica -->
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
+        <div class="fc-statgrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
           <div class="stat-box">
             <div class="stat-label">Skupaj naročil</div>
             <div class="stat-value" id="ana-total-orders">—</div>
@@ -250,7 +260,7 @@
         <!-- KORELACIJE -->
         <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
           <div class="card-title" style="margin-bottom:10px">🔍 Korelacije & napoved meseca</div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <div class="fc-statgrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
             <!-- AOV vs Promet -->
             <div class="stat-box" style="padding:12px">
               <div class="stat-label">AOV vs Promet rast</div>
@@ -277,7 +287,7 @@
           </div>
 
           <!-- Letni povzetek -->
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
+          <div class="fc-statgrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
             <div class="stat-box" style="background:rgba(83,74,183,0.06);border:1px solid var(--accent)">
               <div class="stat-label" style="color:var(--accent)">Projekcija leta (promet)</div>
               <div class="stat-value" id="yr-proj-revenue" style="color:var(--accent);font-size:18px">—</div>
@@ -372,7 +382,7 @@
         </div>
         <div id="rvc-content" style="display:none">
           <div class="card" style="margin-bottom:12px">
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+            <div class="fc-statgrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
               <div style="background:var(--surface2);border-radius:var(--radius);padding:12px">
                 <div class="label" style="margin-bottom:2px">RVC / naročilo</div>
                 <div style="font-size:22px;font-weight:700" id="rvc-kpi-rvc">—</div>
