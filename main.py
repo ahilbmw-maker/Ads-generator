@@ -904,6 +904,8 @@ async def startup_event():
     asyncio.create_task(_email_polling_loop())
     asyncio.create_task(_forecast2_scheduler_loop())
     asyncio.create_task(_zaloga_scheduler_loop())
+    asyncio.create_task(_hsplus_daily_scheduler())
+    asyncio.create_task(_hsplus_daily_scheduler())
 
 
 async def _ffmpeg_warmup():
@@ -10174,32 +10176,56 @@ HSUVOZ_CURRENT = DATA_DIR / "hsuvoz_current.json"
 HSPLUS_CATALOG_CACHE = DATA_DIR / "hsplus_catalog_cache.json"
 HSPLUS_CACHE_TTL = 3600  # 1 ura
 
+def _hsplus_clean_xml(xml_bytes):
+    """Očisti pogoste napake v XML (surovi & in neveljavni kontrolni znaki),
+    da ga parser prebere tudi če HS+ vrne ne-povsem-veljaven XML."""
+    import re as _re
+    if isinstance(xml_bytes, bytes):
+        text = xml_bytes.decode("utf-8", errors="replace")
+    else:
+        text = xml_bytes
+    # surovi & ki ni del entitete (&amp; &lt; &gt; &quot; &apos; &#123;) → &amp;
+    text = _re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', '&amp;', text)
+    # odstrani neveljavne XML kontrolne znake (razen \t \n \r)
+    text = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
+    return text
+
 def _hsplus_parse_xml(xml_bytes):
-    """Parsira HS+ catalog XML → seznam izdelkov."""
+    """Parsira HS+ catalog XML → seznam izdelkov. Odporen na manjše napake v XML."""
     import xml.etree.ElementTree as _ET
-    root = _ET.fromstring(xml_bytes)
+    try:
+        root = _ET.fromstring(xml_bytes if isinstance(xml_bytes, (bytes, str)) else xml_bytes)
+    except _ET.ParseError:
+        # poskusi s čiščenjem
+        cleaned = _hsplus_clean_xml(xml_bytes)
+        root = _ET.fromstring(cleaned)
     out = []
     for p in root.findall(".//product"):
         imgs = [im.text for im in p.findall(".//image") if im.text]
+        def _num(tag, cast, default=0):
+            v = (p.findtext(tag) or "").strip()
+            try:
+                return cast(v) if v else default
+            except (ValueError, TypeError):
+                return default
         out.append({
             "sku": (p.findtext("sku") or "").strip(),
             "name": (p.findtext("name") or "").strip(),
             "description": (p.findtext("description") or "").strip(),
             "category": (p.findtext("category") or "").strip(),
-            "stock": int((p.findtext("stock") or "0").strip() or 0),
-            "price": float((p.findtext("price") or "0").strip() or 0),
+            "stock": _num("stock", int, 0),
+            "price": _num("price", float, 0.0),
             "image": imgs[0] if imgs else "",
             "images": imgs,
         })
     return out
 
-@app.get("/hsplus-catalog")
-async def hsplus_catalog(refresh: str = "0"):
-    """Vrne HS+ katalog (kaj ponujajo: SKU, naziv, kategorija, zaloga, cena, slike).
-    Cache 1h; ?refresh=1 prisili svež poteg. Kredenciali iz Render env."""
+async def _hsplus_fetch_core(force=False):
+    """Potegne HS+ katalog (kliče ga endpoint + dnevni scheduler).
+    Vrne dict z ok/products/fetched_at. force=True preskoči cache TTL."""
     import json as _json, time as _time
     # cache
-    if refresh != "1" and HSPLUS_CATALOG_CACHE.exists():
+    if not force and HSPLUS_CATALOG_CACHE.exists():
         try:
             cached = _json.loads(HSPLUS_CATALOG_CACHE.read_text(encoding="utf-8"))
             if _time.time() - cached.get("fetched_ts", 0) < HSPLUS_CACHE_TTL:
@@ -10221,7 +10247,6 @@ async def hsplus_catalog(refresh: str = "0"):
             return {"ok": False, "error": f"HS+ vrnil status {r.status_code}", "status": r.status_code}
         products = _hsplus_parse_xml(r.content)
         fetched_at = datetime.now().strftime("%d.%m.%Y %H:%M")
-        # shrani cache
         try:
             HSPLUS_CATALOG_CACHE.write_text(_json.dumps({
                 "fetched_ts": _time.time(), "fetched_at": fetched_at, "products": products
@@ -10232,6 +10257,46 @@ async def hsplus_catalog(refresh: str = "0"):
                 "count": len(products), "products": products}
     except Exception as e:
         return {"ok": False, "error": f"Napaka pri povezavi na HS+: {e}"}
+
+
+@app.get("/hsplus-catalog")
+async def hsplus_catalog(refresh: str = "0"):
+    """Vrne HS+ katalog (kaj ponujajo: SKU, naziv, kategorija, zaloga, cena, slike).
+    Cache 1h; ?refresh=1 prisili svež poteg. Kredenciali iz Render env."""
+    return await _hsplus_fetch_core(force=(refresh == "1"))
+
+@app.get("/hsplus-debug")
+async def hsplus_debug():
+    """Diagnostika: pokaže kaj HS+ dejansko vrne (status, content-type, začetek vsebine).
+    Pomaga ugotoviti, ali prijava deluje in ali je odgovor res XML."""
+    url = os.environ.get("HSPLUS_XML_URL", "https://hsb2b.hs-plus.com/catalog/export?format=xml")
+    user = os.environ.get("HSPLUS_USER", "")
+    pw = os.environ.get("HSPLUS_PASS", "")
+    if not user or not pw:
+        return {"ok": False, "error": "Manjkata HSPLUS_USER / HSPLUS_PASS."}
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            r = await client.get(url, auth=(user, pw))
+        body = r.text
+        # poskusi najti vrstico 19 (kjer je bila napaka)
+        lines = body.split("\n")
+        around_19 = "\n".join(lines[15:25]) if len(lines) >= 20 else body[:800]
+        # ali je videti kot XML?
+        looks_xml = body.lstrip()[:50].startswith("<?xml") or "<product>" in body[:2000]
+        looks_html = "<html" in body[:500].lower() or "<!doctype html" in body[:500].lower()
+        return {
+            "ok": True,
+            "status": r.status_code,
+            "content_type": r.headers.get("content-type", ""),
+            "dolzina": len(body),
+            "izgleda_kot_xml": looks_xml,
+            "izgleda_kot_html_login": looks_html,
+            "prvih_500_znakov": body[:500],
+            "okolica_vrstice_19": around_19,
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"{e}"}
 
 @app.get("/hsplus-catalog-stats")
 async def hsplus_catalog_stats():
@@ -16177,6 +16242,29 @@ async def cashflow_sheets_status():
 
 
 # Auto-refresh ob 6:00 zjutraj
+async def _hsplus_daily_scheduler():
+    """Poteg HS+ kataloga 1× na dan ob 5:00 (Render UTC; prilagodi po potrebi).
+    Tiho v ozadju — zjutraj imaš svež katalog. Ob napaki počaka 1h in poskusi znova."""
+    while True:
+        try:
+            from datetime import datetime as _dt, timedelta as _td
+            now = _dt.now()
+            next_run = now.replace(hour=5, minute=0, second=0, microsecond=0)
+            if next_run <= now:
+                next_run += _td(days=1)
+            sleep_seconds = (next_run - now).total_seconds()
+            print(f"[hsplus-daily] Next fetch at {next_run.isoformat()} (in {sleep_seconds:.0f}s)")
+            await asyncio.sleep(sleep_seconds)
+            result = await _hsplus_fetch_core(force=True)
+            if result.get("ok"):
+                print(f"[hsplus-daily] OK — {result.get('count')} izdelkov ({result.get('fetched_at')})")
+            else:
+                print(f"[hsplus-daily] FAIL — {result.get('error')}")
+        except Exception as e:
+            print(f"[hsplus-daily] Error: {e}")
+            await asyncio.sleep(3600)
+
+
 async def _daily_cashflow_sync():
     while True:
         try:
