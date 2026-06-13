@@ -11325,6 +11325,41 @@ def inventura_cleanup():
         print(f"[inventura] cleanup err: {e}")
 
 
+@app.get("/inventura-lookup-sku")
+async def inventura_lookup_sku(sku: str = ""):
+    """Vrne naziv + pozicijo za dani SKU iz baze zaloge (za dodajanje v inventuro).
+    Inventura vleče te podatke samodejno — delavec vpiše samo SKU."""
+    sku = (sku or "").strip()
+    if not sku:
+        return {"ok": False, "error": "Manjka SKU"}
+    if not STOCK_CSV_FILE.exists():
+        return {"ok": False, "error": "Zaloga ni naložena", "naziv": "", "pozicija": ""}
+    import csv as _csv
+    from io import StringIO as _SIO
+    try:
+        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        naziv, pozicija = "", ""
+        sku_l = sku.lower()
+        for row in _csv.DictReader(_SIO(text)):
+            rsku = (row.get("product_sku") or row.get("sku") or "").strip()
+            if rsku.lower() == sku_l:
+                # vzemi prvi zapis tega SKU (silux ima pozicijo); če pozneje najdemo silux s pozicijo, raje to
+                wh = (row.get("warehouse") or "").strip().lower()
+                rpos = (row.get("position") or "").strip()
+                rtitle = (row.get("title") or "").strip()
+                if not naziv and rtitle:
+                    naziv = rtitle
+                # pozicijo vzemi iz silux (tam je prava), sicer prvo neprazno
+                if rpos and (wh == "silux" or not pozicija):
+                    pozicija = rpos
+        if not naziv and not pozicija:
+            return {"ok": True, "najden": False, "naziv": "", "pozicija": "",
+                    "opozorilo": f"SKU '{sku}' ni v zalogi — dodan bo brez naziva/pozicije."}
+        return {"ok": True, "najden": True, "naziv": naziv, "pozicija": pozicija}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "naziv": "", "pozicija": ""}
+
+
 @app.get("/inventura-current")
 async def inventura_get_current():
     """Vrne trenutno aktivno inventuro z diska."""
