@@ -10167,6 +10167,90 @@ HSUVOZ_DIR.mkdir(exist_ok=True, parents=True)
 HSUVOZ_CURRENT = DATA_DIR / "hsuvoz_current.json"
 
 
+# ═══════════════════════════════════════════════════════════════
+# HS+ KATALOG — živa povezava na HS-plus XML izvoz
+# Kredenciali so v Render env: HSPLUS_XML_URL, HSPLUS_USER, HSPLUS_PASS
+# ═══════════════════════════════════════════════════════════════
+HSPLUS_CATALOG_CACHE = DATA_DIR / "hsplus_catalog_cache.json"
+HSPLUS_CACHE_TTL = 3600  # 1 ura
+
+def _hsplus_parse_xml(xml_bytes):
+    """Parsira HS+ catalog XML → seznam izdelkov."""
+    import xml.etree.ElementTree as _ET
+    root = _ET.fromstring(xml_bytes)
+    out = []
+    for p in root.findall(".//product"):
+        imgs = [im.text for im in p.findall(".//image") if im.text]
+        out.append({
+            "sku": (p.findtext("sku") or "").strip(),
+            "name": (p.findtext("name") or "").strip(),
+            "description": (p.findtext("description") or "").strip(),
+            "category": (p.findtext("category") or "").strip(),
+            "stock": int((p.findtext("stock") or "0").strip() or 0),
+            "price": float((p.findtext("price") or "0").strip() or 0),
+            "image": imgs[0] if imgs else "",
+            "images": imgs,
+        })
+    return out
+
+@app.get("/hsplus-catalog")
+async def hsplus_catalog(refresh: str = "0"):
+    """Vrne HS+ katalog (kaj ponujajo: SKU, naziv, kategorija, zaloga, cena, slike).
+    Cache 1h; ?refresh=1 prisili svež poteg. Kredenciali iz Render env."""
+    import json as _json, time as _time
+    # cache
+    if refresh != "1" and HSPLUS_CATALOG_CACHE.exists():
+        try:
+            cached = _json.loads(HSPLUS_CATALOG_CACHE.read_text(encoding="utf-8"))
+            if _time.time() - cached.get("fetched_ts", 0) < HSPLUS_CACHE_TTL:
+                return {"ok": True, "cached": True, "fetched_at": cached.get("fetched_at"),
+                        "count": len(cached.get("products", [])), "products": cached.get("products", [])}
+        except Exception:
+            pass
+    # živi poteg
+    url = os.environ.get("HSPLUS_XML_URL", "https://hsb2b.hs-plus.com/catalog/export?format=xml")
+    user = os.environ.get("HSPLUS_USER", "")
+    pw = os.environ.get("HSPLUS_PASS", "")
+    if not user or not pw:
+        return {"ok": False, "error": "Manjkata HSPLUS_USER / HSPLUS_PASS (Render okoljski spremenljivki)."}
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            r = await client.get(url, auth=(user, pw))
+        if r.status_code != 200:
+            return {"ok": False, "error": f"HS+ vrnil status {r.status_code}", "status": r.status_code}
+        products = _hsplus_parse_xml(r.content)
+        fetched_at = datetime.now().strftime("%d.%m.%Y %H:%M")
+        # shrani cache
+        try:
+            HSPLUS_CATALOG_CACHE.write_text(_json.dumps({
+                "fetched_ts": _time.time(), "fetched_at": fetched_at, "products": products
+            }, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        return {"ok": True, "cached": False, "fetched_at": fetched_at,
+                "count": len(products), "products": products}
+    except Exception as e:
+        return {"ok": False, "error": f"Napaka pri povezavi na HS+: {e}"}
+
+@app.get("/hsplus-catalog-stats")
+async def hsplus_catalog_stats():
+    """Hitri povzetek kataloga (kategorije, skupno) iz cache, brez velikega prenosa."""
+    import json as _json
+    if not HSPLUS_CATALOG_CACHE.exists():
+        return {"ok": False, "error": "Katalog še ni potegnjen."}
+    try:
+        cached = _json.loads(HSPLUS_CATALOG_CACHE.read_text(encoding="utf-8"))
+        products = cached.get("products", [])
+        from collections import Counter as _Counter
+        cats = _Counter(p.get("category") or "(brez)" for p in products)
+        return {"ok": True, "fetched_at": cached.get("fetched_at"), "count": len(products),
+                "categories": dict(sorted(cats.items())),
+                "zero_stock": sum(1 for p in products if p.get("stock", 0) == 0)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def hsuvoz_cleanup():
     """Briše JSON datoteke starejše od 30 dni."""
     try:
