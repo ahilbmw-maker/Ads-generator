@@ -221,6 +221,12 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     border: 1px solid var(--border) !important; background: var(--bg-secondary) !important;
     padding: 7px 10px !important; font-size: 13px !important;
   }
+
+  /* INVENTURA mobilno: skrij desktop tabelo + PDF/akcije, prikaži kartice */
+  #inv-table-desktop { display: none !important; }
+  #inv-cards-mobile { display: flex !important; }
+  #inv-actions-card, #inv-pdf-btn { display: none !important; }
+  #orodjaSubpage-inventura > div { grid-template-columns: 1fr !important; }
 }
 
 /* Ozki telefoni: zaloga kartica — % in chevron ne stiskata naslova */
@@ -2555,7 +2561,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <input type="text" id="inv-search" placeholder="Išči SKU, naziv, pozicijo..." oninput="inventuraRender()"
               style="border:none;outline:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text);width:100%">
           </div>
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden" id="inv-table-desktop">
             <table style="width:100%;border-collapse:collapse">
               <thead>
                 <tr style="background:#1e293b">
@@ -2570,6 +2576,7 @@ input[type="text"].error { border-color: var(--red) !important; }
               <tbody id="inv-tbody"></tbody>
             </table>
           </div>
+          <div id="inv-cards-mobile" style="display:none;flex-direction:column;gap:8px"></div>
           <div id="inv-no-results" style="display:none;text-align:center;padding:24px;color:var(--text-secondary);font-size:12px">Ni zadetkov</div>
           <div style="margin-top:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span style="font-size:11px;color:var(--text-secondary);font-weight:600;white-space:nowrap">+ Dodaj:</span>
@@ -9515,6 +9522,30 @@ function inventuraHandleFile(file) {
     });
 }
 
+// Naravno sortiranje pozicij: 01- pred 02- ... pred 10- (ne abecedno).
+// Razbije pozicijo na dele (številke + črke), da "01-3E" < "02-1A" < "10-2B".
+// Prazne pozicije / "Ni podatka" gredo na konec.
+function _invPosKey(poz) {
+  const p = (poz || '').trim();
+  if (!p || p === 'Ni podatka') return [Infinity];  // brez pozicije → konec
+  // razbije na zaporedje [število, niz, število, niz, ...] za naravno primerjavo
+  const deli = p.match(/\d+|\D+/g) || [];
+  return deli.map(d => /^\d+$/.test(d) ? parseInt(d, 10) : d.toLowerCase());
+}
+function _invComparePos(a, b) {
+  const ka = _invPosKey(a.pozicija), kb = _invPosKey(b.pozicija);
+  const n = Math.max(ka.length, kb.length);
+  for (let i = 0; i < n; i++) {
+    const x = ka[i], y = kb[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    if (typeof x === 'number' && typeof y === 'number') { if (x !== y) return x - y; }
+    else { const sx = String(x), sy = String(y); if (sx !== sy) return sx < sy ? -1 : 1; }
+  }
+  // ista pozicija → po SKU
+  return (a.sku || '').localeCompare(b.sku || '');
+}
+
 function inventuraRender() {
   const search = (document.getElementById('inv-search')?.value || '').toLowerCase();
   const tbody = document.getElementById('inv-tbody');
@@ -9529,6 +9560,8 @@ function inventuraRender() {
       (it.pozicija || '').toLowerCase().includes(search)
     );
   }
+  // SORTIRAJ po poziciji (01- → konec), da delavec hodi skozi skladišče zaporedno
+  filtered = filtered.slice().sort(_invComparePos);
   if (filtered.length === 0) { tbody.innerHTML = ''; noRes.style.display = 'block'; return; }
   noRes.style.display = 'none';
   tbody.innerHTML = filtered.map((it, i) => {
@@ -9565,6 +9598,65 @@ function inventuraRender() {
       </td>
     </tr>`;
   }).join('');
+
+  // MOBILNO: kartice (verzija A) — grupirane po poziciji, velik +/− števec
+  const cardsEl = document.getElementById('inv-cards-mobile');
+  if (cardsEl) {
+    let lastPos = null;
+    cardsEl.innerHTML = filtered.map((it) => {
+      const realIdx = invItems.indexOf(it);
+      const poz = (it.pozicija && it.pozicija !== 'Ni podatka') ? it.pozicija : '';
+      const popisano = it.kolicina_dejansko !== undefined && it.kolicina_dejansko !== null && it.kolicina_dejansko !== '';
+      const qty = popisano ? it.kolicina_dejansko : '';
+      const skuEsc = (it.sku||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      // naslov pozicije (samo ko se spremeni) — vodi delavca po skladišču
+      let header = '';
+      if (poz !== lastPos) {
+        lastPos = poz;
+        header = `<div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px;padding:8px 4px 2px">${poz ? '📍 Pozicija ' + poz : 'Brez pozicije'}</div>`;
+      }
+      const robCol = popisano ? '#16a34a' : 'var(--border)';
+      return header + `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;border-left:3px solid ${robCol};${popisano?'opacity:0.85':''}">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="min-width:0;flex:1">
+            <div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:6px">${it.sku}${popisano?' <span style=\"color:#16a34a;font-size:14px\">✓</span>':''}</div>
+            <div style="font-size:12px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.naziv || '—'}</div>
+          </div>
+          ${poz?`<span style="flex-shrink:0;background:#185FA5;color:#fff;font-size:13px;font-weight:600;padding:4px 10px;border-radius:6px">${poz}</span>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:11px">
+          <div style="display:flex;align-items:center;border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0">
+            <button onclick="invQtyStep(${realIdx},-1)" style="width:42px;height:42px;border:none;background:var(--surface2);font-size:22px;cursor:pointer;color:var(--text);line-height:1">−</button>
+            <input type="number" min="0" inputmode="numeric" value="${qty}" placeholder="0"
+              oninput="invItems[${realIdx}].kolicina_dejansko=this.value===''?undefined:Number(this.value);invAutoSave();invUpdateCount()"
+              style="width:56px;height:42px;border:none;border-left:1px solid var(--border);border-right:1px solid var(--border);text-align:center;font-size:18px;font-weight:700;background:transparent;color:var(--text);outline:none">
+            <button onclick="invQtyStep(${realIdx},1)" style="width:42px;height:42px;border:none;background:var(--surface2);font-size:22px;cursor:pointer;color:var(--text);line-height:1">+</button>
+          </div>
+          <input type="text" value="${(it.komentar||'').replace(/"/g,'&quot;')}" placeholder="komentar…"
+            oninput="invItems[${realIdx}].komentar=this.value;invAutoSave()"
+            style="flex:1;height:42px;border:1px solid var(--border);border-radius:8px;padding:0 11px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface2);outline:none;min-width:0">
+          <button onclick="inventuraDelete(${realIdx})" title="Zbriši" style="flex-shrink:0;width:42px;height:42px;background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:8px;cursor:pointer;font-size:16px;line-height:1;padding:0">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
+// +/− korak za količino (mobilna kartica)
+function invQtyStep(idx, delta) {
+  const cur = Number(invItems[idx].kolicina_dejansko) || 0;
+  const novo = Math.max(0, cur + delta);
+  invItems[idx].kolicina_dejansko = novo;
+  invAutoSave();
+  inventuraRender();
+}
+
+// posodobi števec popisanih (mobilni naslov)
+function invUpdateCount() {
+  const el = document.getElementById('inv-mobile-count');
+  if (!el) return;
+  const done = invItems.filter(it => it.kolicina_dejansko !== undefined && it.kolicina_dejansko !== null && it.kolicina_dejansko !== '').length;
+  el.textContent = done + ' / ' + invItems.length + ' popisanih';
 }
 
 function invCopySku(btn, sku) {
