@@ -10220,19 +10220,23 @@ def _hsplus_parse_xml(xml_bytes):
         })
     return out
 
-async def _hsplus_fetch_core(force=False):
+async def _hsplus_fetch_core(force=False, cache_only=False):
     """Potegne HS+ katalog (kliče ga endpoint + dnevni scheduler).
-    Vrne dict z ok/products/fetched_at. force=True preskoči cache TTL."""
+    Vrne dict z ok/products/fetched_at. force=True preskoči cache TTL.
+    cache_only=True vrne samo iz cache (brez živega potega — za odpiranje taba)."""
     import json as _json, time as _time
     # cache
     if not force and HSPLUS_CATALOG_CACHE.exists():
         try:
             cached = _json.loads(HSPLUS_CATALOG_CACHE.read_text(encoding="utf-8"))
-            if _time.time() - cached.get("fetched_ts", 0) < HSPLUS_CACHE_TTL:
+            if cache_only or (_time.time() - cached.get("fetched_ts", 0) < HSPLUS_CACHE_TTL):
                 return {"ok": True, "cached": True, "fetched_at": cached.get("fetched_at"),
                         "count": len(cached.get("products", [])), "products": cached.get("products", [])}
         except Exception:
             pass
+    if cache_only:
+        # ni cache — ne sproži živega potega, vrni prazno (uporabnik naj naloži ročno)
+        return {"ok": True, "cached": True, "fetched_at": None, "count": 0, "products": []}
     # živi poteg
     url = os.environ.get("HSPLUS_XML_URL", "https://hsb2b.hs-plus.com/catalog/export?format=xml")
     user = os.environ.get("HSPLUS_USER", "")
@@ -10260,10 +10264,9 @@ async def _hsplus_fetch_core(force=False):
 
 
 @app.get("/hsplus-catalog")
-async def hsplus_catalog(refresh: str = "0"):
-    """Vrne HS+ katalog (kaj ponujajo: SKU, naziv, kategorija, zaloga, cena, slike).
-    Cache 1h; ?refresh=1 prisili svež poteg. Kredenciali iz Render env."""
-    return await _hsplus_fetch_core(force=(refresh == "1"))
+async def hsplus_catalog(refresh: str = "0", cache: str = "0"):
+    """Vrne HS+ katalog. refresh=1 živi poteg; cache=1 samo iz cache (brez živega potega)."""
+    return await _hsplus_fetch_core(force=(refresh == "1"), cache_only=(cache == "1"))
 
 @app.get("/hsplus-debug")
 async def hsplus_debug():
@@ -10314,6 +10317,25 @@ async def hsplus_catalog_stats():
                 "zero_stock": sum(1 for p in products if p.get("stock", 0) == 0)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+@app.post("/hsplus-catalog-upload")
+async def hsplus_catalog_upload(file: UploadFile = File(...)):
+    """Ročni upload HS+ XML (potegnjen iz b2b logina). Parsira in shrani v isti
+    cache, ki ga katalog bere — vsi filtri/kartice delujejo takoj."""
+    import json as _json, time as _time
+    try:
+        raw = await file.read()
+        products = _hsplus_parse_xml(raw)
+        if not products:
+            return {"ok": False, "error": "V XML ni najdenih izdelkov (preveri, da je pravi catalog/export XML)."}
+        fetched_at = datetime.now().strftime("%d.%m.%Y %H:%M")
+        HSPLUS_CATALOG_CACHE.write_text(_json.dumps({
+            "fetched_ts": _time.time(), "fetched_at": fetched_at,
+            "source": "manual_upload", "products": products
+        }, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True, "count": len(products), "fetched_at": fetched_at}
+    except Exception as e:
+        return {"ok": False, "error": f"Napaka pri branju XML: {e}"}
 
 
 def hsuvoz_cleanup():
