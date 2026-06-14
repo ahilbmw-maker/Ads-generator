@@ -1511,6 +1511,29 @@ ZALOGA_CURRENT = ZALOGA_DIR / "current.json"  # legacy SLO (nazaj-združljivost)
 ZALOGA_ARCHIVE_DIR = ZALOGA_DIR / "archive"
 ZALOGA_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
+# Dodatne (backup) lokacije za SKU — neodvisno od siluxarja (preživi sync).
+# Oblika: { "SKU": ["P2-B", "R4-A"], ... }  (primarna pozicija ostane v CSV/siluxar)
+ZALOGA_EXTRA_POS = ZALOGA_DIR / "extra_positions.json"
+
+def _zaloga_load_extra_pos() -> dict:
+    """Naloži dodatne pozicije (sku → seznam). Vrne {} če ne obstaja."""
+    try:
+        if ZALOGA_EXTRA_POS.exists():
+            d = json.loads(ZALOGA_EXTRA_POS.read_text(encoding="utf-8"))
+            return d if isinstance(d, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+def _zaloga_save_extra_pos(d: dict):
+    """Atomično zapiši dodatne pozicije."""
+    try:
+        tmp = ZALOGA_EXTRA_POS.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, ZALOGA_EXTRA_POS)
+    except Exception as e:
+        print(f"[extra_pos] save err: {e}")
+
 
 def _zaloga_market(m: str) -> str:
     """Normalizira market kodo. Privzeto 'slo'."""
@@ -19506,6 +19529,56 @@ async def pozicije_update_one(data: dict):
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
+
+
+@app.get("/zaloga-extra-positions")
+async def zaloga_extra_positions_get():
+    """Vrne vse dodatne (backup) lokacije: { sku: [pozicije...] }.
+    Frontend to zlije s primarno pozicijo iz CSV za prikaz."""
+    return {"ok": True, "extra": _zaloga_load_extra_pos()}
+
+@app.post("/zaloga-extra-position-add")
+async def zaloga_extra_position_add(data: dict):
+    """Doda dodatno lokacijo SKU-ju (backup zaloga). Ne dotika se primarne pozicije."""
+    try:
+        sku = (data.get("sku") or "").strip()
+        pos = (data.get("position") or "").strip()
+        if not sku or not pos:
+            return {"ok": False, "error": "Manjka SKU ali pozicija."}
+        store = _zaloga_load_extra_pos()
+        lst = store.get(sku, [])
+        if not isinstance(lst, list):
+            lst = []
+        # ne podvajaj (case-insensitive)
+        if any(p.strip().lower() == pos.lower() for p in lst):
+            return {"ok": False, "error": f"Lokacija '{pos}' je že dodana."}
+        lst.append(pos)
+        store[sku] = lst
+        _zaloga_save_extra_pos(store)
+        return {"ok": True, "sku": sku, "positions": lst}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.post("/zaloga-extra-position-remove")
+async def zaloga_extra_position_remove(data: dict):
+    """Odstrani eno dodatno lokacijo SKU-ja."""
+    try:
+        sku = (data.get("sku") or "").strip()
+        pos = (data.get("position") or "").strip()
+        if not sku or not pos:
+            return {"ok": False, "error": "Manjka SKU ali pozicija."}
+        store = _zaloga_load_extra_pos()
+        lst = store.get(sku, [])
+        if isinstance(lst, list):
+            lst = [p for p in lst if p.strip().lower() != pos.lower()]
+        if lst:
+            store[sku] = lst
+        else:
+            store.pop(sku, None)
+        _zaloga_save_extra_pos(store)
+        return {"ok": True, "sku": sku, "positions": store.get(sku, [])}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 
