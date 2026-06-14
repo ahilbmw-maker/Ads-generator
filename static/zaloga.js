@@ -2044,10 +2044,10 @@ function esc(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g
 function _skuFontStyle(sku) {
   const n = String(sku == null ? '' : sku).length;
   let fs;
-  if (n <= 10) fs = '';
-  else if (n <= 14) fs = '12px';
-  else if (n <= 18) fs = '10.5px';
-  else if (n <= 24) fs = '9px';
+  if (n <= 12) fs = '';            // privzeto (14px)
+  else if (n <= 16) fs = '13px';
+  else if (n <= 20) fs = '11px';
+  else if (n <= 26) fs = '9.5px';
   else fs = '8px';
   return (fs ? 'font-size:' + fs + ';' : '') + 'overflow:visible;text-overflow:clip;white-space:normal;word-break:break-all;line-height:1.15;';
 }
