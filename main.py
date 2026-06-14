@@ -10368,8 +10368,20 @@ def _hsplus_parse_xml(xml_bytes):
             except (ValueError, TypeError):
                 return default
         nm = (p.findtext("name") or "").strip()
+        raw_sku = (p.findtext("sku") or "").strip()
+        # HS+ ima polji obrnjeni: <sku> dejansko vsebuje EAN (samo številke),
+        # prava koda izdelka (npr. BRONZIE) pa je v <name>.
+        # Zato: SKU = name (koda), EAN = sku polje. Če name prazen, fallback na raw_sku.
+        is_ean = bool(_re_hsplus.fullmatch(r'\d{8,14}', raw_sku))
+        if is_ean and nm:
+            sku_val = nm
+            ean_val = raw_sku
+        else:
+            sku_val = raw_sku
+            ean_val = ""
         out.append({
-            "sku": (p.findtext("sku") or "").strip(),
+            "sku": sku_val,
+            "ean": ean_val,
             "name": nm,
             "description": (p.findtext("description") or "").strip(),
             "category": (p.findtext("category") or "").strip(),
@@ -10499,6 +10511,13 @@ def _hsplus_compute_diff(products):
         sku = p.get("sku")
         if sku:
             cur[sku] = p
+    # VAROVALO: stari snapshot je morda še v EAN formatu (pred popravkom sku=koda).
+    # Če se ključi sploh ne ujemajo z novimi (presek prazen), tretiraj kot prvi zagon
+    # — sicer bi bil cel katalog lažno označen kot "novo".
+    if prev and cur:
+        overlap = set(prev.keys()) & set(cur.keys())
+        if not overlap:
+            prev = {}  # nezdružljiv star snapshot → brez lažnega diffa
     # izračunaj spremembe (samo če imamo prejšnji snapshot)
     changes = []
     if prev:
