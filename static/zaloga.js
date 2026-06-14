@@ -447,8 +447,8 @@ function syncFilterToggleLabel() {
   const on = getDoneFilter();
   if (input) input.checked = on;   // stikalo odraža stanje
   if (!lbl) return;
-  // oznaka je VEDNO "Samo odprto" (+ število nedokončanih); nikoli prazna
-  let label = 'Samo odprto';
+  // oznaka je VEDNO "Nedokončano" (+ število nedokončanih); nikoli prazna
+  let label = 'Nedokončano';
   try {
     const groups = groupItems();
     let open = 0;
@@ -456,8 +456,8 @@ function syncFilterToggleLabel() {
       const s = groupStat(items);
       if (!(s.total > 0 && s.todo === 0)) open++;  // ni dokončana
     });
-    label = `Samo odprto (${open})`;
-  } catch (e) { /* če štetje spodleti, ostane "Samo odprto" brez številke */ }
+    label = `Nedokončano (${open})`;
+  } catch (e) { /* če štetje spodleti, ostane "Nedokončano" brez številke */ }
   lbl.textContent = label;
 }
 // stikalo: checked = prikaži samo odprte (filter ON), unchecked = vse
