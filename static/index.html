@@ -168,7 +168,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   .zaloga-subpage-inner { padding: 0 3px 10px !important; gap: 8px !important; }
   /* zaloga seznam od roba do roba: izniči stranski .main padding samo na tej strani */
   #page-zaloga.page { margin-left: -0.6rem !important; margin-right: -0.6rem !important; overflow-x: hidden !important; }
-  #zalogaSubpage-vracila, #zalogaSubpage-skeniranje, #zalogaSubpage-pozicije, #zalogaSubpage-inventura { padding: 98px 8px 10px !important; }
+  #zalogaSubpage-vracila, #zalogaSubpage-skeniranje, #zalogaSubpage-pozicije, #zalogaSubpage-sekundarne, #zalogaSubpage-inventura { padding: 98px 8px 10px !important; }
 
   .zal-row {
     grid-template-columns: 42px 1fr auto !important;
@@ -3763,6 +3763,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="zaloga-tab-btn" id="zalogaTab-vracila" onclick="switchZalogaTab('vracila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">↩️ Vračila</button>
       <button class="zaloga-tab-btn" id="zalogaTab-skeniranje" onclick="switchZalogaTab('skeniranje')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📷 Skeniranje</button>
       <button class="zaloga-tab-btn" id="zalogaTab-pozicije" onclick="switchZalogaTab('pozicije')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📍 Sprememba pozicij</button>
+      <button class="zaloga-tab-btn" id="zalogaTab-sekundarne" onclick="switchZalogaTab('sekundarne')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🗂️ Sekundarne pozicije</button>
       <button class="zaloga-tab-btn" id="zalogaTab-inventura" onclick="switchZalogaTab('inventura')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Inventura</button>
     </div>
 
@@ -3781,6 +3782,7 @@ input[type="text"].error { border-color: var(--red) !important; }
         <button class="zmt-chip" id="zmtChip-vracila" onclick="switchZalogaTab('vracila')">↩️ Vračila</button>
         <button class="zmt-chip" id="zmtChip-skeniranje" onclick="switchZalogaTab('skeniranje')">📷 Skeniranje</button>
         <button class="zmt-chip" id="zmtChip-pozicije" onclick="switchZalogaTab('pozicije')">📍 Pozicije</button>
+        <button class="zmt-chip" id="zmtChip-sekundarne" onclick="switchZalogaTab('sekundarne')">🗂️ Sekundarne</button>
         <button class="zmt-chip" id="zmtChip-inventura" onclick="switchZalogaTab('inventura')">📋 Inventura</button>
       </div>
     </div>
@@ -4124,6 +4126,42 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </div>
     </div><!-- /pozicije subpage -->
+
+    <!-- ── SEKUNDARNE POZICIJE SUBPAGE ── -->
+    <div id="zalogaSubpage-sekundarne" style="display:none;padding:14px;max-width:1000px;width:100%;margin:0">
+      <div class="card" style="margin-bottom:10px;padding:12px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div>
+            <span class="slabel" style="margin:0">🗂️ SEKUNDARNE POZICIJE</span>
+            <p style="font-size:11px;color:var(--text-secondary);margin:5px 0 0;line-height:1.4">Izdelki z dodatno (backup) lokacijo — npr. večina zaloge na paleti, malo na primarni polici.</p>
+          </div>
+          <span id="sekPozCount" style="font-size:12px;font-weight:700;color:var(--accent);background:rgba(58,111,255,0.08);padding:5px 11px;border-radius:6px;white-space:nowrap">0 izdelkov</span>
+        </div>
+        <!-- iskalnik + filtri -->
+        <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-top:10px;flex-wrap:wrap">
+          <span style="color:var(--text-secondary);font-size:13px">🔍</span>
+          <input type="text" id="sekPozSearch" placeholder="Išči SKU, naziv, primarno ali sekundarno pozicijo..." oninput="sekPozRender()" style="border:none;outline:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);flex:1;min-width:160px">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <select id="sekPozWh" onchange="sekPozRender()" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif">
+            <option value="">Vsa skladišča</option>
+            <option value="silux">Silux</option>
+            <option value="silux2">Silux2</option>
+            <option value="external">Zunanje</option>
+          </select>
+          <select id="sekPozSort" onchange="sekPozRender()" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif">
+            <option value="sku">Sortiraj: SKU</option>
+            <option value="stock_desc">Zaloga (največ)</option>
+            <option value="stock_asc">Zaloga (najmanj)</option>
+            <option value="sek">Sekundarna pozicija</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer">
+            <input type="checkbox" id="sekPozGroup" onchange="sekPozRender()" style="cursor:pointer"> Grupiraj po sekundarni
+          </label>
+        </div>
+      </div>
+      <div id="sekPozList"></div>
+    </div>
 
     <!-- ── INVENTURA SUBPAGE (preseljeno iz Orodij) ── -->
   <div id="zalogaSubpage-inventura" style="display:none;padding:14px">
@@ -21467,6 +21505,119 @@ async function pozApply() {
 }
 
 // ── Dodatne (backup) lokacije za SKU ──
+// ── Sekundarne pozicije tab ──
+function sekPozInit() {
+  // poskrbi da imamo zalogo + dodatne pozicije naložene
+  if (!_zalogaData || !_zalogaData.length) {
+    if (typeof zalogaLoad === 'function') zalogaLoad().then(() => sekPozRender());
+    return;
+  }
+  // osveži dodatne pozicije (morda dodane drugje)
+  fetch('/zaloga-extra-positions').then(r => r.json()).then(d => {
+    if (d && d.ok && d.extra) _zalExtraPos = d.extra;
+    sekPozRender();
+  }).catch(() => sekPozRender());
+}
+
+function sekPozRender() {
+  const wrap = document.getElementById('sekPozList');
+  const countEl = document.getElementById('sekPozCount');
+  if (!wrap) return;
+  const q = (document.getElementById('sekPozSearch')?.value || '').trim().toLowerCase();
+  const whFilter = document.getElementById('sekPozWh')?.value || '';
+  const sort = document.getElementById('sekPozSort')?.value || 'sku';
+  const grouped = document.getElementById('sekPozGroup')?.checked;
+
+  // zberi vse izdelke s sekundarno pozicijo
+  let rows = [];
+  Object.keys(_zalExtraPos || {}).forEach(sku => {
+    const extras = _zalExtraPos[sku] || [];
+    if (!extras.length) return;
+    const it = (_zalogaData || []).find(x => (x.product_sku || '').trim() === sku.trim());
+    rows.push({
+      sku: sku,
+      title: it ? (it.title || '') : '',
+      position: it ? (it.position || '—') : '—',
+      stock: it ? (it.stock || 0) : null,
+      warehouse: it ? (it.warehouse || '') : '',
+      extras: extras
+    });
+  });
+
+  // filter: skladišče
+  if (whFilter) rows = rows.filter(r => (r.warehouse || '').trim().toLowerCase() === whFilter);
+  // filter: iskanje (sku/naziv/primarna/sekundarna)
+  if (q) rows = rows.filter(r =>
+    r.sku.toLowerCase().includes(q) ||
+    (r.title || '').toLowerCase().includes(q) ||
+    (r.position || '').toLowerCase().includes(q) ||
+    r.extras.some(p => p.toLowerCase().includes(q))
+  );
+  // sortiranje
+  if (sort === 'stock_desc') rows.sort((a, b) => (b.stock || 0) - (a.stock || 0));
+  else if (sort === 'stock_asc') rows.sort((a, b) => (a.stock || 0) - (b.stock || 0));
+  else if (sort === 'sek') rows.sort((a, b) => (a.extras[0] || '').localeCompare(b.extras[0] || ''));
+  else rows.sort((a, b) => a.sku.localeCompare(b.sku));
+
+  if (countEl) countEl.textContent = rows.length + (rows.length === 1 ? ' izdelek' : (rows.length < 5 ? ' izdelki' : ' izdelkov'));
+
+  if (!rows.length) {
+    wrap.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-tertiary);font-size:13px">Ni izdelkov z vpisano sekundarno pozicijo' + (q || whFilter ? ' (za te filtre)' : '') + '.</div>';
+    return;
+  }
+
+  const whLabel = wh => wh === 'silux' ? '🏠 Silux' : wh === 'silux2' ? '🏬 Silux2' : wh ? '🌐 ' + esc(wh) : '';
+  const stockHtml = s => {
+    if (s === null) return '<span style="color:var(--text-tertiary);font-size:12px">—</span>';
+    const c = s > 50 ? 'var(--green)' : s > 10 ? '#d97706' : s > 0 ? 'var(--red)' : 'var(--text-tertiary)';
+    return '<span style="font-weight:700;color:' + c + '">' + s.toLocaleString('sl-SI') + '</span>';
+  };
+
+  if (grouped) {
+    // grupiraj po sekundarni poziciji (vsi izdelki na isti paleti skupaj)
+    const groups = {};
+    rows.forEach(r => r.extras.forEach(p => { (groups[p] = groups[p] || []).push(r); }));
+    const keys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+    wrap.innerHTML = keys.map(pos => {
+      const items = groups[pos];
+      return '<div class="card" style="margin-bottom:8px;padding:0;overflow:hidden">' +
+        '<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--warn-bg);border-bottom:1px solid var(--border)">' +
+          '<span style="font-size:13px;font-weight:700;color:var(--box-bg)">📦 ' + esc(pos) + '</span>' +
+          '<span style="font-size:11px;color:var(--text-secondary)">' + items.length + ' izdelkov</span>' +
+        '</div>' +
+        items.map(r => sekPozRowHtml(r, stockHtml, whLabel, true)).join('') +
+      '</div>';
+    }).join('');
+  } else {
+    wrap.innerHTML = '<div class="card" style="padding:0;overflow:hidden">' +
+      rows.map(r => sekPozRowHtml(r, stockHtml, whLabel, false)).join('') + '</div>';
+  }
+}
+
+function sekPozRowHtml(r, stockHtml, whLabel, inGroup) {
+  const skuE = esc((r.sku || '').replace(/'/g, "\\'"));
+  const titE = esc((r.title || '').replace(/'/g, "\\'"));
+  const extraChips = r.extras.map(p =>
+    '<span style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;color:#854F0B;background:#FAEEDA;border:0.5px solid #EF9F27;padding:2px 8px;border-radius:5px">↳ ' + esc(p) + '</span>').join(' ');
+  return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border)">' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<span onclick="hsplusCopySku(\'' + skuE + '\',event)" title="Klikni za kopiranje SKU" style="font-size:13px;font-weight:700;color:var(--text);cursor:pointer;font-family:monospace" onmouseover="this.style.color=\'var(--accent)\'" onmouseout="this.style.color=\'var(--text)\'">' + esc(r.sku) + ' <span style="opacity:0.4;font-size:10px">⧉</span></span>' +
+        (r.warehouse ? '<span style="font-size:10px;color:var(--text-tertiary)">' + whLabel(r.warehouse) + '</span>' : '') +
+      '</div>' +
+      (r.title ? '<div style="font-size:11px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">' + esc(r.title) + '</div>' : '') +
+      '<div style="display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap">' +
+        '<span style="font-size:11px;font-weight:600;color:#fff;background:#185FA5;padding:2px 8px;border-radius:5px">' + esc(r.position) + '</span>' +
+        (inGroup ? '' : extraChips) +
+      '</div>' +
+    '</div>' +
+    '<div style="text-align:right;flex-shrink:0">' +
+      '<div style="font-size:9px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.3px">zaloga</div>' +
+      stockHtml(r.stock) +
+    '</div>' +
+  '</div>';
+}
+
 let _zalExtraSku = null;
 function zalExtraPosOpen(sku, title) {
   _zalExtraSku = sku;
@@ -21722,7 +21873,7 @@ async function pozSaveValidList(mode) {
 }
 
 function switchZalogaTab(tab) {
-  ['zaloga', 'vracila', 'skeniranje', 'pozicije', 'inventura'].forEach(t => {
+  ['zaloga', 'vracila', 'skeniranje', 'pozicije', 'sekundarne', 'inventura'].forEach(t => {
     const btn = document.getElementById('zalogaTab-' + t);
     const sub = document.getElementById('zalogaSubpage-' + t);
     if (t === tab) {
@@ -21746,6 +21897,8 @@ function switchZalogaTab(tab) {
     skeniranjeInit();
   } else if (tab === 'pozicije') {
     pozInit();
+  } else if (tab === 'sekundarne') {
+    sekPozInit();
   } else if (tab === 'inventura') {
     if (typeof invLoadHistory === 'function') invLoadHistory();
     if (typeof invLoadCurrent === 'function') invLoadCurrent();
