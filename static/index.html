@@ -4088,6 +4088,18 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div id="pozPosStatus" style="font-size:12px;margin-top:8px;min-height:16px"></div>
       </div>
 
+      <!-- KORAK 2b: SEKUNDARNA POZICIJA (opcijsko) -->
+      <div class="card" style="margin-bottom:10px;border-color:#EF9F27">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:12px;font-weight:700;color:#854F0B">➕ Sekundarna lokacija <span style="font-weight:400;color:var(--text-tertiary)">(opcijsko, backup)</span></span>
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;line-height:1.4">Kadar je isti izdelek še na drugi polici. Doda se k primarni, ne nadomesti je.</div>
+        <div style="position:relative">
+          <input type="text" id="pozPos2Input" placeholder="vpiši dodatno polico: P2-B (autosuggest)" autocomplete="off" oninput="pozPos2Suggest(this.value)" style="width:100%;padding:10px 12px;border:1px solid #EF9F27;border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:#FFFBF3">
+          <div id="pozPos2SuggestList" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:3px;max-height:240px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)"></div>
+        </div>
+      </div>
+
       <!-- DODAJ -->
       <button onclick="pozAddRow()" style="width:100%;padding:12px;background:var(--accent);color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:16px">➕ Dodaj v seznam</button>
 
@@ -4246,9 +4258,12 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
         <div style="font-size:11px;color:var(--text-tertiary);margin:6px 0 12px;line-height:1.4">📦 Dodatne lokacije (backup zaloga) — kadar je isti izdelek na več mestih v skladišču. Primarno pozicijo urejaš prek ✏️.</div>
         <div id="zalExtraList" style="margin-bottom:12px"></div>
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <input type="text" id="zalExtraInput" placeholder="npr. P2-B" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();zalExtraAdd();}" style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
-          <button onclick="zalExtraAdd()" style="padding:10px 16px;background:#EF9F27;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">＋ Dodaj</button>
+        <div style="display:flex;gap:6px;margin-bottom:8px;position:relative">
+          <div style="flex:1;position:relative">
+            <input type="text" id="zalExtraInput" placeholder="vpiši polico: P2-B (autosuggest)" autocomplete="off" oninput="zalExtraSuggest(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();zalExtraAdd();}" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
+            <div id="zalExtraSuggestList" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:3px;max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)"></div>
+          </div>
+          <button onclick="zalExtraAdd()" style="padding:10px 16px;background:#EF9F27;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;align-self:flex-start">＋ Dodaj</button>
         </div>
         <div id="zalExtraStatus" style="font-size:12px;min-height:16px"></div>
       </div>
@@ -15613,26 +15628,30 @@ function zalogaRender() {
           var posTxt = esc(it.position||'—');
           var wh = (it.warehouse||'').trim().toLowerCase();
           var badge = '<span style="display:inline-block;background:#185FA5;color:#fff;font-size:12px;font-weight:600;padding:3px 9px;border-radius:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle">' + posTxt + '</span>';
-          // dodatne (backup) lokacije za ta SKU
-          var extras = _zalExtraPos[(it.product_sku||'').trim()] || [];
-          var extraHtml = '';
-          if (extras.length) {
-            extraHtml = '<span style="display:flex;flex-direction:column;gap:2px;margin-top:3px;align-items:center">' +
-              extras.map(function(p){ return '<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:#854F0B;background:#FAEEDA;border:0.5px solid #EF9F27;padding:2px 7px;border-radius:5px">↳ ' + esc(p) + '</span>'; }).join('') +
-              '</span>';
-          }
-          if (wh !== 'silux') {
-            // silux2 / external: pozicija samo prikaz (badge brez svinčnika)
-            return '<span class="zal-c-pos" style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.position) + '">' + badge + extraHtml + '</span>';
-          }
-          // silux: badge + svinčnik za urejanje (kot povsod drugje)
           var skuE = esc((it.product_sku||'').replace(/'/g,"\\'"));
           var titE = esc((it.title||'').replace(/'/g,"\\'"));
           var posE = esc((it.position||'').replace(/'/g,"\\'"));
-          return '<span class="zal-c-pos" style="text-align:center;white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:3px" title="' + esc(it.position) + '">' +
-            '<span style="display:flex;align-items:center;justify-content:center;gap:5px"><span onclick="event.stopPropagation();pozQuickOpen(\'' + skuE + '\',\'' + titE + '\',\'' + posE + '\')" title="Spremeni primarno pozicijo" style="cursor:pointer;font-size:12px;opacity:0.6;flex-shrink:0" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">✏️</span>' + badge + '</span>' +
-            extraHtml +
-            '<span onclick="event.stopPropagation();zalExtraPosOpen(\'' + skuE + '\',\'' + titE + '\')" title="Dodatne lokacije (backup zaloga)" style="cursor:pointer;font-size:10px;color:var(--text-tertiary);margin-top:1px" onmouseover="this.style.color=\'#EF9F27\'" onmouseout="this.style.color=\'var(--text-tertiary)\'">＋ lokacija</span>' +
+          // svinčnik za primarno: samo silux. silux2/external: brez.
+          var editPrimary = (wh === 'silux')
+            ? '<span onclick="event.stopPropagation();pozQuickOpen(\'' + skuE + '\',\'' + titE + '\',\'' + posE + '\')" title="Spremeni primarno pozicijo" style="cursor:pointer;font-size:12px;opacity:0.6;flex-shrink:0" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">✏️</span>'
+            : '';
+          // dodatne (backup) lokacije za ta SKU
+          var extras = _zalExtraPos[(it.product_sku||'').trim()] || [];
+          var secondRow;
+          if (extras.length) {
+            // ima dodatne → svinčnik SPREDAJ + dodatni žetoni (brez +lokacija gumba)
+            var chips = extras.map(function(p){ return '<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:#854F0B;background:#FAEEDA;border:0.5px solid #EF9F27;padding:2px 7px;border-radius:5px">↳ ' + esc(p) + '</span>'; }).join('');
+            secondRow = '<span style="display:flex;align-items:center;justify-content:center;gap:4px;margin-top:3px">' +
+              '<span onclick="event.stopPropagation();zalExtraPosOpen(\'' + skuE + '\',\'' + titE + '\')" title="Uredi dodatne lokacije" style="cursor:pointer;font-size:11px;opacity:0.6;flex-shrink:0" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">✏️</span>' +
+              '<span style="display:flex;flex-direction:column;gap:2px;align-items:center">' + chips + '</span>' +
+              '</span>';
+          } else {
+            // nima dodatnih → "＋ lokacija" gumb (enaka višina kot dodatna vrstica)
+            secondRow = '<span onclick="event.stopPropagation();zalExtraPosOpen(\'' + skuE + '\',\'' + titE + '\')" title="Dodatne lokacije (backup zaloga)" style="cursor:pointer;font-size:10px;color:var(--text-tertiary);margin-top:3px" onmouseover="this.style.color=\'#EF9F27\'" onmouseout="this.style.color=\'var(--text-tertiary)\'">＋ lokacija</span>';
+          }
+          return '<span class="zal-c-pos" style="text-align:center;white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:0" title="' + esc(it.position) + '">' +
+            '<span style="display:flex;align-items:center;justify-content:center;gap:5px">' + editPrimary + badge + '</span>' +
+            secondRow +
             '</span>';
         })()
       + '<span class="zal-c-note" style="color:var(--text-secondary);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.note) + '">' + esc(it.note||'—') + '</span>'
@@ -21312,6 +21331,7 @@ async function pozRecognize(file, target) {
 async function pozAddRow() {
   const skuVal = document.getElementById('pozSkuInput').value.trim();
   const posVal = document.getElementById('pozPosInput').value.trim();
+  const pos2Val = document.getElementById('pozPos2Input').value.trim();
   const st = document.getElementById('pozApplyStatus');
   if (!skuVal) { st.innerHTML = '<span style="color:#dc2626">Najprej izberi/vpiši SKU</span>'; return; }
   if (!posVal) { st.innerHTML = '<span style="color:#dc2626">Vpiši ali slikaj pozicijo</span>'; return; }
@@ -21322,16 +21342,52 @@ async function pozAddRow() {
     if (d.ok) {
       _pozPending = d.items;
       pozRenderPending();
+      // sekundarna pozicija (opcijsko) → shrani takoj kot dodatno lokacijo
+      let extraMsg = '';
+      if (pos2Val) {
+        try {
+          const er = await fetch('/zaloga-extra-position-add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: skuVal, position: pos2Val }) });
+          const ed = await er.json();
+          if (ed.ok) {
+            if (typeof _zalExtraPos !== 'undefined') _zalExtraPos[skuVal] = ed.positions;
+            extraMsg = ' + sekundarna ➕ ' + pozEsc(pos2Val);
+          } else {
+            extraMsg = ' <span style="color:#d97706">(sekundarna: ' + pozEsc(ed.error||'napaka') + ')</span>';
+          }
+        } catch(e) { extraMsg = ' <span style="color:#d97706">(sekundarna ni shranjena)</span>'; }
+      }
       // reset za naslednji vnos
       document.getElementById('pozSkuInput').value = '';
       document.getElementById('pozPosInput').value = '';
+      document.getElementById('pozPos2Input').value = '';
       document.getElementById('pozSkuStatus').innerHTML = '';
       document.getElementById('pozPosStatus').innerHTML = '';
       _pozStagedSku = null;
-      st.innerHTML = '<span style="color:#16a34a">✓ Dodano</span>';
+      st.innerHTML = '<span style="color:#16a34a">✓ Dodano' + extraMsg + '</span>';
       document.getElementById('pozSkuInput').focus();
     } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
+}
+
+let _pozPos2SuggestTimer = null;
+function pozPos2Suggest(q) {
+  clearTimeout(_pozPos2SuggestTimer);
+  const box = document.getElementById('pozPos2SuggestList');
+  if (!(q || '').trim()) { box.style.display = 'none'; return; }
+  _pozPos2SuggestTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/pozicije-pos-suggest?q=' + encodeURIComponent((q||'').trim()));
+      const d = await r.json();
+      if (!d.ok || !d.suggestions.length) { box.style.display = 'none'; return; }
+      box.innerHTML = d.suggestions.map(s =>
+        `<div class="poz-suggest-item" onclick="pozPos2PickPos('${pozEsc(s).replace(/'/g,"\\'")}')" style="font-weight:600;font-size:13px;color:var(--text)">📍 ${pozEsc(s)}</div>`).join('');
+      box.style.display = 'block';
+    } catch (e) { box.style.display = 'none'; }
+  }, 180);
+}
+function pozPos2PickPos(pos) {
+  document.getElementById('pozPos2Input').value = pos;
+  document.getElementById('pozPos2SuggestList').style.display = 'none';
 }
 
 function pozRenderPending() {
@@ -21453,6 +21509,26 @@ async function zalExtraRemove(pos) {
       zalogaRender();
     } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
   } catch(e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
+}
+let _zalExtraSuggestTimer = null;
+function zalExtraSuggest(q) {
+  clearTimeout(_zalExtraSuggestTimer);
+  const box = document.getElementById('zalExtraSuggestList');
+  if (!(q || '').trim()) { box.style.display = 'none'; return; }
+  _zalExtraSuggestTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/pozicije-pos-suggest?q=' + encodeURIComponent((q||'').trim()));
+      const d = await r.json();
+      if (!d.ok || !d.suggestions.length) { box.style.display = 'none'; return; }
+      box.innerHTML = d.suggestions.map(s =>
+        `<div class="poz-suggest-item" onclick="zalExtraPickPos('${pozEsc(s).replace(/'/g,"\\'")}')" style="font-weight:600;font-size:13px;color:var(--text)">📍 ${pozEsc(s)}</div>`).join('');
+      box.style.display = 'block';
+    } catch (e) { box.style.display = 'none'; }
+  }, 180);
+}
+function zalExtraPickPos(pos) {
+  document.getElementById('zalExtraInput').value = pos;
+  document.getElementById('zalExtraSuggestList').style.display = 'none';
 }
 
 // ── Hitra sprememba pozicije (pop-up iz seznama zaloge) ──
