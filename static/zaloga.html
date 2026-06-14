@@ -493,6 +493,7 @@
     #searchBtn { display: none; }                    /* na mobile iskanje prek logo ikone */
     /* Home gumb PRED logo (prvi v topbar) */
     .topbar > a[href="/"] { order: -1; flex: 0 0 auto; padding: 5px 9px; font-size: 13px; }
+    #homeBtn .home-label { display: none; }   /* na mobile samo ikona */
     .topbar-spacer { display: none; }
     .market-tab { padding: 11px 12px; font-size: 12px; white-space: nowrap; }
     /* Skrij akcijske gumbe (Naloži CSV, Arhiviraj, Zgodovina, Osveži slike) na mobilnem */
@@ -1143,7 +1144,10 @@
 <div class="sticky-header">
 <div class="mobile-prog prog-seg-wrap" id="mobileProg"></div>
 <div class="topbar">
-  <a href="/" class="btn btn-ghost btn-sm" style="text-decoration:none" title="Nazaj na nadzorno ploščo">🏠 Domov</a>
+  <a href="/" class="btn btn-ghost btn-sm" id="homeBtn" style="text-decoration:none" title="Nazaj na nadzorno ploščo">
+    <svg class="home-icon" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"></path><path d="M9.5 21v-6h5v6"></path></svg>
+    <span class="home-label"> Domov</span>
+  </a>
   <div class="brand">
     <div class="logo" id="brandLogo" onclick="if(window.matchMedia('(max-width:768px)').matches)toggleSkuSearch()" title="Išči">
       <span class="logo-cart">🛒</span>
@@ -1154,7 +1158,7 @@
       <div class="sub">maaarket · skladišče · v3</div>
     </div>
     <label class="filter-switch" title="Prikaži samo nedokončane police">
-      <span class="filter-switch-label" id="filterSwitchLabel">Samo odprto</span>
+      <span class="filter-switch-label" id="filterSwitchLabel">Nedokončano</span>
       <input type="checkbox" id="filterSwitchInput" onchange="setDoneFilterMode(this.checked)">
       <span class="filter-switch-track" aria-hidden="true"><span class="filter-switch-knob"></span></span>
     </label>
