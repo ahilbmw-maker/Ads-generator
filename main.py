@@ -2167,6 +2167,24 @@ async def zaloga_skladisce(data: dict):
         return {"ok": False, "error": str(e)}
 
 
+def _parse_iso_utc(s):
+    """Pretvori ISO žig v UTC timestamp (sekunde). Brez cone → razumi kot UTC (Render)."""
+    from datetime import datetime as _dt2
+    if not s:
+        return 0.0
+    try:
+        import re as _re2
+        has_tz = bool(_re2.search(r'[zZ]$|[+-]\d{2}:?\d{2}$', s))
+        dt = _dt2.fromisoformat(s.replace('Z', '+00:00')) if has_tz else _dt2.fromisoformat(s).replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except Exception:
+        return 0.0
+
+def _dt_now_utc_ts():
+    from datetime import datetime as _dt2
+    return _dt2.now(timezone.utc).timestamp()
+
+
 @app.post("/zaloga-update-item")
 async def zaloga_update_item(data: dict):
     """Posodobi eno postavko (status/picked) — kliče se LIVE ob vsaki spremembi.
@@ -2218,6 +2236,18 @@ async def zaloga_update_item(data: dict):
         obdelanih = sum(1 for it in items_all if it.get("status") in ("ok", "ni"))
         # vir resnice: najzgodnejša dejanska znamka nabiranja (ali None, če še nič)
         sess["pick_started_at"] = min(picked_ats) if picked_ats else None
+
+        # ── PAVZA: če je bila štoparica pavzirana in nabiralec doda/spremeni postavko,
+        # pavzo prekinemo — pretečeni pavzni čas pretvorimo v trajni offset, čas teče naprej. ──
+        if sess.get("pick_paused_at") and data.get("status") in ("ok", "ni"):
+            try:
+                paused_ms = _parse_iso_utc(sess["pick_paused_at"])
+                now_ms = _dt.now(timezone.utc).timestamp()
+                gap = max(0, now_ms - paused_ms)
+                sess["pick_pause_offset_s"] = round(sess.get("pick_pause_offset_s", 0) + gap, 3)
+            except Exception:
+                pass
+            sess["pick_paused_at"] = None
         # konec: vse obdelano → zabeleži končni čas (samo prvič)
         if total > 0 and obdelanih >= total and sess.get("pick_started_at"):
             if not sess.get("pick_finished_at"):
@@ -2230,7 +2260,9 @@ async def zaloga_update_item(data: dict):
         _zaloga_atomic_write(path, sess)
         return {"ok": True,
                 "pick_started_at": sess.get("pick_started_at"),
-                "pick_finished_at": sess.get("pick_finished_at")}
+                "pick_finished_at": sess.get("pick_finished_at"),
+                "pick_paused_at": sess.get("pick_paused_at"),
+                "pick_pause_offset_s": sess.get("pick_pause_offset_s", 0)}
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e)}
@@ -2770,6 +2802,90 @@ async def notices_save(data: dict):
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page():
     return FileResponse("static/admin.html")
+
+
+@app.get("/admin-pick-timer-status")
+async def admin_pick_timer_status(market: str = "slo"):
+    """Vrne stanje štoparice nabiranja (za admin nadzor)."""
+    try:
+        path = _zaloga_current_path(market)
+        if not path.exists():
+            return {"ok": False, "error": "Ni aktivne seje"}
+        sess = json.loads(path.read_text(encoding="utf-8"))
+        start = sess.get("pick_started_at")
+        paused = sess.get("pick_paused_at")
+        offset = sess.get("pick_pause_offset_s", 0)
+        # izračunaj trenutni prikazani čas
+        elapsed = 0
+        if start:
+            start_ms = _parse_iso_utc(start)
+            ref_ms = _parse_iso_utc(paused) if paused else _dt_now_utc_ts()
+            elapsed = max(0, ref_ms - start_ms - offset)
+        return {"ok": True, "market": market, "pick_started_at": start,
+                "pick_finished_at": sess.get("pick_finished_at"),
+                "pick_paused_at": paused, "pick_pause_offset_s": offset,
+                "elapsed_s": round(elapsed), "is_paused": bool(paused)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/admin-pick-timer-control")
+async def admin_pick_timer_control(data: dict):
+    """Admin nadzor štoparice nabiranja:
+      action=pause   → zamrzni štoparico na trenutnem času
+      action=resume  → nadaljuj (pavzni čas → offset)
+      action=set     → nastavi prikazani čas na seconds=N (in pavziraj)
+    Ko nabiralec doda postavko, se pavza samodejno prekine (v zaloga-update-item)."""
+    try:
+        from datetime import datetime as _dt
+        market = data.get("market", "slo")
+        action = data.get("action", "")
+        path = _zaloga_current_path(market)
+        if not path.exists():
+            return {"ok": False, "error": "Ni aktivne seje"}
+        sess = json.loads(path.read_text(encoding="utf-8"))
+        now_iso = _dt.now(timezone.utc).isoformat()
+        now_ts = _dt_now_utc_ts()
+
+        if action == "pause":
+            if not sess.get("pick_paused_at"):
+                sess["pick_paused_at"] = now_iso
+        elif action == "resume":
+            if sess.get("pick_paused_at"):
+                gap = max(0, now_ts - _parse_iso_utc(sess["pick_paused_at"]))
+                sess["pick_pause_offset_s"] = round(sess.get("pick_pause_offset_s", 0) + gap, 3)
+                sess["pick_paused_at"] = None
+        elif action == "set":
+            try:
+                target = max(0, float(data.get("seconds", 0)))
+            except (ValueError, TypeError):
+                return {"ok": False, "error": "Neveljaven 'seconds'"}
+            start = sess.get("pick_started_at")
+            if not start:
+                # ni začetka — postavi start tako, da bo prikaz = target in pavziraj
+                sess["pick_started_at"] = _dt.fromtimestamp(now_ts - target, tz=timezone.utc).isoformat()
+                sess["pick_pause_offset_s"] = 0
+            else:
+                # nastavi offset tako, da prikaz ob TEM trenutku = target, nato pavziraj
+                start_ms = _parse_iso_utc(start)
+                sess["pick_pause_offset_s"] = round(max(0, (now_ts - start_ms) - target), 3)
+            sess["pick_paused_at"] = now_iso  # pavziraj na nastavljenem času
+            sess["pick_finished_at"] = None
+        else:
+            return {"ok": False, "error": "Neznana akcija (pause/resume/set)"}
+
+        _zaloga_atomic_write(path, sess)
+        # izračunaj prikaz za odgovor
+        start = sess.get("pick_started_at")
+        elapsed = 0
+        if start:
+            ref = _parse_iso_utc(sess["pick_paused_at"]) if sess.get("pick_paused_at") else now_ts
+            elapsed = max(0, ref - _parse_iso_utc(start) - sess.get("pick_pause_offset_s", 0))
+        return {"ok": True, "action": action, "is_paused": bool(sess.get("pick_paused_at")),
+                "elapsed_s": round(elapsed), "pick_pause_offset_s": sess.get("pick_pause_offset_s", 0)}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(e)}
 
 
 # ═══ RVC Maaarket ═══
