@@ -1511,7 +1511,7 @@ function multiClearResolved() {
   renderMultiView(allRows);
 }
 
-function cleanQtyMerged() {
+async function cleanQtyMerged() {
   if (!allRows.length) return;
 
   // Preštej koliko postavk ima vsak ID (za "Združeno" detekcijo) — čez VSE
@@ -1535,7 +1535,13 @@ function cleanQtyMerged() {
   const qtyCount = toRemove.filter(r => (r.qty || 1) > 1).length;
   const mergedCount = toRemove.filter(r => idCounts[r.id] > 1).length;
 
-  if (!confirm(`Počistim ${toRemove.length} naročil iz filtra "Razlika <7€"?\n\n• ${qtyCount} s količino 2x+\n• ${mergedCount} združenih (skupaj ${removeIds.length} unikatnih ID)\n\nOstanejo samo prava majhna odstopanja. To jih odstrani iz seznama (ne vpliva na sistem).`)) return;
+  // zberi ps.id-je (siluxar_id) za sinhronizacijo brisanja v siluxar (kot bulkDelete)
+  const psIds = toRemove
+    .map(r => r.siluxar_id)
+    .filter(x => x != null && String(x).trim() !== '');
+  const uniqSiluxarIds = [...new Set(psIds)];
+
+  if (!confirm(`Počistim ${toRemove.length} naročil iz filtra "Razlika <7€"?\n\n• ${qtyCount} s količino 2x+\n• ${mergedCount} združenih (skupaj ${removeIds.length} unikatnih ID)\n\nTo jih odstrani iz seznama IN izbriše ${uniqSiluxarIds.length} postavk v siluxarju.`)) return;
 
   // Odstrani SAMO te konkretne vrstice (po id+sku+valuta ključu)
   const removeKeys = new Set(toRemove.map(r => r.id + '|' + r.sku + '|' + r.currency));
@@ -1550,7 +1556,22 @@ function cleanQtyMerged() {
   updateStats(allRows);
   renderTable(allRows);
 
-  alert(`✓ Počiščeno ${toRemove.length} naročil iz "Razlika <7€" (${removeIds.length} ID-jev).`);
+  // pošlji ps.id-je v siluxar za brisanje (vzporedno; če pade, ne blokira lokalnega brisanja)
+  if (uniqSiluxarIds.length) {
+    try {
+      const r = await fetch('/siluxar-delete-alerts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ids: uniqSiluxarIds }) });
+      const d = await r.json();
+      if (d.ok) {
+        _pccToast(`✓ Počiščeno ${toRemove.length} · ${d.poslano} izbrisano tudi v siluxar`, '#16a34a');
+      } else {
+        _pccToast(`⚠ siluxar brisanje: ${d.error || 'napaka'}`, '#d97706');
+      }
+    } catch(e) {
+      _pccToast('⚠ siluxar nedosegljiv (lokalno izbrisano)', '#d97706');
+    }
+  } else {
+    _pccToast(`✓ Počiščeno ${toRemove.length} naročil (brez siluxar ID)`, '#16a34a');
+  }
 }
 
 function clearTable() {
