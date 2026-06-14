@@ -185,16 +185,17 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   .zal-row .zal-c-sku > span:first-child { font-size: 13.5px !important; }
   /* MOBILNO: Kopiraj gumb skrij (odveč). */
   .zal-row .zal-c-copy { display: none !important; }
-  /* MOBILNO: Pozicija (badge + svinčnik) prikazana desno v glavni vrstici */
+  /* MOBILNO: Pozicija (badge + svinčnik + dodatne) prikazana desno v glavni vrstici */
   .zal-row .zal-c-pos {
     grid-area: pos !important; display: flex !important;
-    align-items: center !important; justify-content: flex-end !important;
-    gap: 6px !important; align-self: center !important;
+    flex-direction: column !important;
+    align-items: flex-end !important; justify-content: center !important;
+    gap: 2px !important; align-self: center !important;
   }
-  .zal-row .zal-c-pos span[style*="185FA5"], .zal-row .zal-c-pos > span:first-child {
+  .zal-row .zal-c-pos span[style*="185FA5"] {
     font-size: 14px !important; padding: 5px 11px !important;
   }
-  .zal-row .zal-c-pos span[onclick] { font-size: 16px !important; opacity: 0.85 !important; }
+  .zal-row .zal-c-pos span[onclick] { opacity: 0.85 !important; }
   .zal-row .zal-meta-mobile {
     grid-area: meta !important; display: block !important; align-self: start !important;
     font-size: 11px !important; color: var(--text-tertiary) !important;
@@ -4231,6 +4232,25 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
         <div id="pozQuickStatus" style="font-size:12px;margin-bottom:10px;min-height:16px"></div>
         <button onclick="pozQuickSave()" style="width:100%;padding:11px;background:#16a34a;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Shrani pozicijo</button>
+      </div>
+    </div>
+
+    <div id="zalExtraModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)zalExtraPosClose()">
+      <div style="background:var(--surface);border-radius:12px;padding:18px;width:min(440px,94vw);max-height:84vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+          <div style="min-width:0">
+            <div style="font-size:15px;font-weight:700;color:var(--text)" id="zalExtraSku">—</div>
+            <div style="font-size:12px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="zalExtraTitle"></div>
+          </div>
+          <button onclick="zalExtraPosClose()" style="background:transparent;border:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">✕</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin:6px 0 12px;line-height:1.4">📦 Dodatne lokacije (backup zaloga) — kadar je isti izdelek na več mestih v skladišču. Primarno pozicijo urejaš prek ✏️.</div>
+        <div id="zalExtraList" style="margin-bottom:12px"></div>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <input type="text" id="zalExtraInput" placeholder="npr. P2-B" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();zalExtraAdd();}" style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary)">
+          <button onclick="zalExtraAdd()" style="padding:10px 16px;background:#EF9F27;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">＋ Dodaj</button>
+        </div>
+        <div id="zalExtraStatus" style="font-size:12px;min-height:16px"></div>
       </div>
     </div>
 
@@ -15025,6 +15045,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ═══════════════════════════════════════════════════════
 
 let _zalogaData = [];
+let _zalExtraPos = {};   // sku → [dodatne lokacije] (backup zaloga)
 let _pozChanged = new Set();   // SKU-ji s SPREMENJENO pozicijo (za pošiljanje samo sprememb v siluxar)
 let _zalogaSortCol = 'stock';
 let _zalogaSortDir = -1; // -1 = desc (največ zaloge najprej)
@@ -15387,6 +15408,12 @@ async function zalogaLoad() {
     const data = await res.json();
     if (!data.items?.length) return;
     _zalogaData = data.items;
+    // naloži dodatne (backup) lokacije
+    try {
+      const er = await fetch('/zaloga-extra-positions');
+      const ed = await er.json();
+      _zalExtraPos = (ed && ed.ok && ed.extra) ? ed.extra : {};
+    } catch(e) { _zalExtraPos = {}; }
     // Posodobi info
     const info = document.getElementById('zalogaInfo');
     const dt = data.uploaded_at ? new Date(data.uploaded_at).toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
@@ -15586,15 +15613,27 @@ function zalogaRender() {
           var posTxt = esc(it.position||'—');
           var wh = (it.warehouse||'').trim().toLowerCase();
           var badge = '<span style="display:inline-block;background:#185FA5;color:#fff;font-size:12px;font-weight:600;padding:3px 9px;border-radius:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle">' + posTxt + '</span>';
+          // dodatne (backup) lokacije za ta SKU
+          var extras = _zalExtraPos[(it.product_sku||'').trim()] || [];
+          var extraHtml = '';
+          if (extras.length) {
+            extraHtml = '<span style="display:flex;flex-direction:column;gap:2px;margin-top:3px;align-items:center">' +
+              extras.map(function(p){ return '<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:#854F0B;background:#FAEEDA;border:0.5px solid #EF9F27;padding:2px 7px;border-radius:5px">↳ ' + esc(p) + '</span>'; }).join('') +
+              '</span>';
+          }
           if (wh !== 'silux') {
             // silux2 / external: pozicija samo prikaz (badge brez svinčnika)
-            return '<span class="zal-c-pos" style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.position) + '">' + badge + '</span>';
+            return '<span class="zal-c-pos" style="text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.position) + '">' + badge + extraHtml + '</span>';
           }
           // silux: badge + svinčnik za urejanje (kot povsod drugje)
           var skuE = esc((it.product_sku||'').replace(/'/g,"\\'"));
           var titE = esc((it.title||'').replace(/'/g,"\\'"));
           var posE = esc((it.position||'').replace(/'/g,"\\'"));
-          return '<span class="zal-c-pos" style="text-align:center;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:5px" title="' + esc(it.position) + '"><span onclick="event.stopPropagation();pozQuickOpen(\'' + skuE + '\',\'' + titE + '\',\'' + posE + '\')" title="Spremeni pozicijo" style="cursor:pointer;font-size:12px;opacity:0.6;flex-shrink:0" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">✏️</span>' + badge + '</span>';
+          return '<span class="zal-c-pos" style="text-align:center;white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:3px" title="' + esc(it.position) + '">' +
+            '<span style="display:flex;align-items:center;justify-content:center;gap:5px"><span onclick="event.stopPropagation();pozQuickOpen(\'' + skuE + '\',\'' + titE + '\',\'' + posE + '\')" title="Spremeni primarno pozicijo" style="cursor:pointer;font-size:12px;opacity:0.6;flex-shrink:0" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">✏️</span>' + badge + '</span>' +
+            extraHtml +
+            '<span onclick="event.stopPropagation();zalExtraPosOpen(\'' + skuE + '\',\'' + titE + '\')" title="Dodatne lokacije (backup zaloga)" style="cursor:pointer;font-size:10px;color:var(--text-tertiary);margin-top:1px" onmouseover="this.style.color=\'#EF9F27\'" onmouseout="this.style.color=\'var(--text-tertiary)\'">＋ lokacija</span>' +
+            '</span>';
         })()
       + '<span class="zal-c-note" style="color:var(--text-secondary);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.note) + '">' + esc(it.note||'—') + '</span>'
       + '<span class="zal-meta-mobile">' + metaMobile + '</span>'
@@ -21352,6 +21391,68 @@ async function pozApply() {
       }
     } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
+}
+
+// ── Dodatne (backup) lokacije za SKU ──
+let _zalExtraSku = null;
+function zalExtraPosOpen(sku, title) {
+  _zalExtraSku = sku;
+  document.getElementById('zalExtraSku').textContent = sku;
+  document.getElementById('zalExtraTitle').textContent = title || '';
+  document.getElementById('zalExtraInput').value = '';
+  document.getElementById('zalExtraStatus').innerHTML = '';
+  zalExtraRenderList();
+  document.getElementById('zalExtraModal').style.display = 'flex';
+  setTimeout(() => { var i = document.getElementById('zalExtraInput'); if (i) i.focus(); }, 50);
+}
+function zalExtraPosClose() { document.getElementById('zalExtraModal').style.display = 'none'; _zalExtraSku = null; }
+function zalExtraRenderList() {
+  const wrap = document.getElementById('zalExtraList');
+  if (!wrap) return;
+  const extras = _zalExtraPos[_zalExtraSku] || [];
+  // primarna pozicija (info)
+  const item = _zalogaData.find(x => (x.product_sku||x.sku) === _zalExtraSku);
+  const primary = item ? (item.position || '—') : '—';
+  let html = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px"><span style="font-size:8px;font-weight:600;color:#fff;background:#185FA5;padding:2px 5px;border-radius:3px;letter-spacing:0.5px">PRIM</span><span style="font-size:14px;font-weight:600;color:var(--text)">' + pozEsc(primary) + '</span><span style="font-size:10px;color:var(--text-tertiary)">primarna (uredi prek ✏️)</span></div>';
+  if (extras.length) {
+    html += extras.map(p => '<div style="display:flex;align-items:center;gap:7px;padding:7px 9px;background:#FAEEDA;border-radius:7px;margin-bottom:5px"><span style="font-size:8px;font-weight:600;color:#fff;background:#EF9F27;padding:2px 5px;border-radius:3px;letter-spacing:0.5px">DOD</span><span style="font-size:14px;font-weight:600;color:#854F0B;flex:1">' + pozEsc(p) + '</span><span onclick="zalExtraRemove(\'' + pozEsc(p).replace(/'/g,"\\'") + '\')" title="Odstrani" style="cursor:pointer;font-size:14px;color:#BA7517">🗑️</span></div>').join('');
+  } else {
+    html += '<div style="font-size:12px;color:var(--text-tertiary);padding:6px 0">Ni dodatnih lokacij.</div>';
+  }
+  wrap.innerHTML = html;
+}
+async function zalExtraAdd() {
+  if (!_zalExtraSku) return;
+  const pos = document.getElementById('zalExtraInput').value.trim();
+  const st = document.getElementById('zalExtraStatus');
+  if (!pos) { st.innerHTML = '<span style="color:#dc2626">Vpiši pozicijo.</span>'; return; }
+  st.innerHTML = '<span style="color:var(--text-secondary)">⏳ dodajam...</span>';
+  try {
+    const r = await fetch('/zaloga-extra-position-add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _zalExtraSku, position: pos }) });
+    const d = await r.json();
+    if (d.ok) {
+      _zalExtraPos[_zalExtraSku] = d.positions;
+      document.getElementById('zalExtraInput').value = '';
+      st.innerHTML = '<span style="color:#16a34a">✓ Dodano</span>';
+      zalExtraRenderList();
+      zalogaRender();
+    } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
+  } catch(e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
+}
+async function zalExtraRemove(pos) {
+  if (!_zalExtraSku) return;
+  const st = document.getElementById('zalExtraStatus');
+  try {
+    const r = await fetch('/zaloga-extra-position-remove', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _zalExtraSku, position: pos }) });
+    const d = await r.json();
+    if (d.ok) {
+      if (d.positions && d.positions.length) _zalExtraPos[_zalExtraSku] = d.positions;
+      else delete _zalExtraPos[_zalExtraSku];
+      st.innerHTML = '<span style="color:#16a34a">✓ Odstranjeno</span>';
+      zalExtraRenderList();
+      zalogaRender();
+    } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
+  } catch(e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
 }
 
 // ── Hitra sprememba pozicije (pop-up iz seznama zaloge) ──
