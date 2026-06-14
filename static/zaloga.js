@@ -1,6 +1,7 @@
 // ═══ NABIRANJE ZALOGE — logika ═══
 let ITEMS = [];           // vse postavke iz seje
 let SESSION = null;       // celotna seja
+let EXTRA_POS = {};        // sku → [sekundarne lokacije] (backup zaloga)
 const MARKET_KEY = 'zaloga_market';  // localStorage: aktivni trg (ostane ob osvežitvi)
 let MARKET = (function(){ try { return localStorage.getItem(MARKET_KEY) || 'slo'; } catch(e){ return 'slo'; } })();
 const EXPANDED_KEY = 'zaloga_expanded';  // localStorage: kateri zavihki odprti (per naprava)
@@ -69,6 +70,12 @@ async function loadSession() {
     if (data.ok && data.items && data.items.length) {
       SESSION = data;
       ITEMS = data.items;
+      // naloži sekundarne (backup) lokacije — ista baza kot "Zaloga in vračila"
+      try {
+        const er = await fetch('/zaloga-extra-positions');
+        const ed = await er.json();
+        EXTRA_POS = (ed && ed.ok && ed.extra) ? ed.extra : {};
+      } catch(e) { EXTRA_POS = {}; }
       // VAROVALKA: ob novi zaznavi padca seštevka pokaži toast (samo enkrat na spremembo)
       const ig = data.integrity;
       if (ig && ig.ok === false) {
@@ -1262,7 +1269,7 @@ function itemRow(it) {
       <div class="item-mobile-top">
         ${thumb}
         <span class="sku" style="${_skuFontStyle(it.sku)}">${esc(it.sku)}</span>
-        <span class="poz poz-edit" onclick="event.stopPropagation();openPozEdit('${jsStr(it.sku)}','${jsStr(it.poz||'')}','${jsStr(it.naziv||'')}')" title="Klikni za popravek pozicije">${esc(it.poz)}</span>
+        ${_pozCellHtml(it)}
       </div>
       <div class="item-naziv-wrap">
         <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}${it.hsplus ? '<span class="tag-hsplus">📦 HS PLUS</span>' : ''}${(!it.id || String(it.id).trim() === '' || String(it.id).trim() === '—') ? '<span class="tag-supplier">🏷 Majhni dobavitelji</span>' : ''}${it.skladisce ? '<span class="tag-sklad">🏬 Skladišče2</span>' : ''}</span>
@@ -2041,6 +2048,110 @@ async function archiveSession(force) {
 
 // ── Pomožne ──
 function esc(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// Pozicijski stolpec: primarna značka + druga vrstica (sekundarna lokacija ALI ＋ gumb).
+// Vedno 2 etaži → enaka višina ne glede na to ali ima dodatno ali ne (in ali je nabrana).
+// ── Sekundarne (backup) lokacije — modal ──
+let _extraSku = null;
+function openExtraPos(sku, naziv) {
+  _extraSku = sku;
+  document.getElementById('extraPosSku').textContent = sku;
+  document.getElementById('extraPosNaziv').textContent = naziv || '';
+  document.getElementById('extraPosInput').value = '';
+  document.getElementById('extraPosStatus').innerHTML = '';
+  extraPosRenderList();
+  document.getElementById('extraPosModal').style.display = 'flex';
+  setTimeout(() => { const i = document.getElementById('extraPosInput'); if (i) i.focus(); }, 60);
+}
+function closeExtraPos() { document.getElementById('extraPosModal').style.display = 'none'; _extraSku = null; }
+function extraPosRenderList() {
+  const wrap = document.getElementById('extraPosList');
+  if (!wrap) return;
+  const extras = EXTRA_POS[_extraSku] || [];
+  const it = ITEMS.find(x => x.sku === _extraSku);
+  const primary = it ? (it.poz || '—') : '—';
+  let html = '<div class="ep-row ep-prim"><span class="ep-tag ep-tag-prim">PRIM</span><span class="ep-pos">' + esc(primary) + '</span><span class="ep-note">primarna</span></div>';
+  if (extras.length) {
+    html += extras.map(p =>
+      '<div class="ep-row ep-sec"><span class="ep-tag ep-tag-sec">DOD</span><span class="ep-pos">' + esc(p) + '</span><span class="ep-del" onclick="removeExtraPos(\'' + jsStr(p) + '\')" title="Odstrani">🗑️</span></div>').join('');
+  } else {
+    html += '<div class="ep-empty">Ni dodatnih lokacij.</div>';
+  }
+  wrap.innerHTML = html;
+}
+async function addExtraPos() {
+  if (!_extraSku) return;
+  const pos = document.getElementById('extraPosInput').value.trim();
+  const st = document.getElementById('extraPosStatus');
+  if (!pos) { st.innerHTML = '<span style="color:var(--ni)">Vpiši pozicijo.</span>'; return; }
+  st.innerHTML = '<span style="color:var(--text-dim)">⏳ dodajam...</span>';
+  try {
+    const r = await fetch('/zaloga-extra-position-add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _extraSku, position: pos }) });
+    const d = await r.json();
+    if (d.ok) {
+      EXTRA_POS[_extraSku] = d.positions;
+      document.getElementById('extraPosInput').value = '';
+      st.innerHTML = '<span style="color:var(--ok)">✓ Dodano</span>';
+      extraPosRenderList();
+      refreshItemsForSku(_extraSku);
+    } else { st.innerHTML = '<span style="color:var(--ni)">✗ ' + esc(d.error||'napaka') + '</span>'; }
+  } catch(e) { st.innerHTML = '<span style="color:var(--ni)">✗ napaka</span>'; }
+}
+async function removeExtraPos(pos) {
+  if (!_extraSku) return;
+  const st = document.getElementById('extraPosStatus');
+  try {
+    const r = await fetch('/zaloga-extra-position-remove', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _extraSku, position: pos }) });
+    const d = await r.json();
+    if (d.ok) {
+      if (d.positions && d.positions.length) EXTRA_POS[_extraSku] = d.positions;
+      else delete EXTRA_POS[_extraSku];
+      st.innerHTML = '<span style="color:var(--ok)">✓ Odstranjeno</span>';
+      extraPosRenderList();
+      refreshItemsForSku(_extraSku);
+    } else { st.innerHTML = '<span style="color:var(--ni)">✗ ' + esc(d.error||'napaka') + '</span>'; }
+  } catch(e) { st.innerHTML = '<span style="color:var(--ni)">✗ napaka</span>'; }
+}
+// po spremembi sekundarne lokacije osveži vse postavke s tem SKU (lahko jih je več)
+function refreshItemsForSku(sku) {
+  ITEMS.filter(x => x.sku === sku).forEach(x => { if (typeof refreshItem === 'function') refreshItem(x); });
+}
+let _extraSuggestTimer = null;
+function extraPosSuggest(q) {
+  clearTimeout(_extraSuggestTimer);
+  const box = document.getElementById('extraPosSuggestList');
+  if (!box) return;
+  if (!(q || '').trim()) { box.style.display = 'none'; return; }
+  _extraSuggestTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/pozicije-pos-suggest?q=' + encodeURIComponent((q||'').trim()));
+      const d = await r.json();
+      if (!d.ok || !d.suggestions.length) { box.style.display = 'none'; return; }
+      box.innerHTML = d.suggestions.map(s =>
+        '<div class="ep-suggest-item" onclick="pickExtraPos(\'' + jsStr(s) + '\')">📍 ' + esc(s) + '</div>').join('');
+      box.style.display = 'block';
+    } catch (e) { box.style.display = 'none'; }
+  }, 180);
+}
+function pickExtraPos(pos) {
+  document.getElementById('extraPosInput').value = pos;
+  document.getElementById('extraPosSuggestList').style.display = 'none';
+}
+
+function _pozCellHtml(it) {
+  const sku = it.sku || '';
+  const extras = EXTRA_POS[String(sku).trim()] || [];
+  const primary = '<span class="poz poz-edit" onclick="event.stopPropagation();openPozEdit(\'' + jsStr(sku) + '\',\'' + jsStr(it.poz||'') + '\',\'' + jsStr(it.naziv||'') + '\')" title="Klikni za popravek pozicije">' + esc(it.poz) + '</span>';
+  let second;
+  if (extras.length) {
+    const chips = extras.map(p =>
+      '<span class="poz-extra-chip">↳ ' + esc(p) + '</span>').join('');
+    second = '<span class="poz-extra-row" onclick="event.stopPropagation();openExtraPos(\'' + jsStr(sku) + '\',\'' + jsStr(it.naziv||'') + '\')" title="Uredi dodatne lokacije"><span class="poz-extra-edit">✎</span>' + chips + '</span>';
+  } else {
+    second = '<span class="poz-add-btn" onclick="event.stopPropagation();openExtraPos(\'' + jsStr(sku) + '\',\'' + jsStr(it.naziv||'') + '\')" title="Dodaj dodatno lokacijo">＋ lokacija</span>';
+  }
+  return '<span class="poz-cell">' + primary + second + '</span>';
+}
+
 function _skuFontStyle(sku) {
   const n = String(sku == null ? '' : sku).length;
   let fs;
