@@ -294,6 +294,34 @@
   .item .poz.poz-edit:hover {
     filter: brightness(1.12); box-shadow: 0 0 0 2px rgba(255,255,255,0.25);
   }
+  /* Pozicijski stolpec: primarna + druga vrstica (sekundarna / ＋), vedno 2 etaži */
+  .item .poz-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; justify-self: start; }
+  .item .poz-cell .poz { justify-self: auto; }
+  .poz-extra-row { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+  .poz-extra-edit { font-size: 10px; color: var(--warn); opacity: 0.7; flex-shrink: 0; }
+  .poz-extra-row:hover .poz-extra-edit { opacity: 1; }
+  .poz-extra-chip {
+    font-size: 11px; font-weight: 700; color: var(--box-bg);
+    background: var(--warn-bg); border: 1px solid var(--warn);
+    padding: 2px 8px; border-radius: 6px; letter-spacing: 0.3px;
+  }
+  .poz-add-btn { font-size: 10px; color: var(--text-faint); cursor: pointer; }
+  .poz-add-btn:hover { color: var(--warn); }
+  /* Modal sekundarnih lokacij */
+  .ep-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; margin-bottom: 5px; }
+  .ep-prim { background: var(--accent-dim); }
+  .ep-sec { background: var(--warn-bg); }
+  .ep-tag { font-size: 9px; font-weight: 800; color: #fff; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.5px; flex-shrink: 0; }
+  .ep-tag-prim { background: var(--accent); }
+  .ep-tag-sec { background: var(--warn); }
+  .ep-pos { font-size: 15px; font-weight: 700; flex: 1; color: var(--text); }
+  .ep-prim .ep-pos { color: var(--accent); }
+  .ep-sec .ep-pos { color: var(--box-bg); }
+  .ep-note { font-size: 10px; color: var(--text-faint); }
+  .ep-del { cursor: pointer; font-size: 14px; flex-shrink: 0; }
+  .ep-empty { font-size: 12px; color: var(--text-faint); padding: 6px 2px; }
+  .ep-suggest-item { padding: 9px 11px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text); border-bottom: 1px solid var(--border); }
+  .ep-suggest-item:hover { background: var(--panel2); }
   .item .naziv { font-size: 13px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* naziv-wrap zasede stolpec naziva: naziv levo, BOX+odkleni (zaklenjen) desno */
   .item-naziv-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -575,6 +603,11 @@
       font-size: 16px; font-weight: 700; order: 2; align-self: center;
       padding: 6px 14px; border-radius: 9px; letter-spacing: 0.3px;
     }
+    .item .poz-cell { order: 2; align-self: center; flex-shrink: 0; }
+    .item .poz-cell .poz { order: 0; font-size: 16px; padding: 6px 14px; }
+    .poz-extra-chip { font-size: 13px; padding: 3px 10px; }
+    .poz-extra-edit { font-size: 12px; }
+    .poz-add-btn { font-size: 11px; }
     /* Naziv polna širina */
     .item .naziv {
       font-size: 14px; white-space: normal;
@@ -1081,6 +1114,29 @@
       <button onclick="closeSkuSearch()" style="background:var(--panel3);border:none;border-radius:9px;width:38px;height:38px;cursor:pointer;font-size:17px;color:var(--text-dim)">✕</button>
     </div>
     <div id="skuSearchResults" style="margin-top:10px;max-height:50vh;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- SEKUNDARNE LOKACIJE modal (izven #wrap) -->
+<div id="extraPosModal" style="display:none;position:fixed;inset:0;z-index:3100;background:rgba(15,23,42,0.45);align-items:center;justify-content:center" onclick="if(event.target===this)closeExtraPos()">
+  <div style="background:var(--panel);border-radius:14px;padding:18px;width:min(440px,94vw);max-height:84vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+      <div style="min-width:0">
+        <div style="font-size:15px;font-weight:800;color:var(--text)" id="extraPosSku">—</div>
+        <div style="font-size:12px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="extraPosNaziv"></div>
+      </div>
+      <button onclick="closeExtraPos()" style="background:var(--panel3);border:none;border-radius:9px;width:34px;height:34px;cursor:pointer;font-size:16px;color:var(--text-dim)">✕</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-faint);margin:6px 0 12px;line-height:1.4">📦 Dodatne lokacije (backup zaloga) — kadar je isti izdelek na več mestih. Primarno urejaš prek značke v seznamu.</div>
+    <div id="extraPosList" style="margin-bottom:12px"></div>
+    <div style="display:flex;gap:6px;position:relative">
+      <div style="flex:1;position:relative">
+        <input type="text" id="extraPosInput" placeholder="vpiši polico: P2-B (autosuggest)" autocomplete="off" oninput="extraPosSuggest(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();addExtraPos();}if(event.key==='Escape')closeExtraPos()" style="width:100%;padding:11px 13px;border:1.5px solid var(--warn);border-radius:10px;font-size:14px;font-family:inherit;outline:none;color:var(--text);background:var(--panel2);box-sizing:border-box">
+        <div id="extraPosSuggestList" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--panel);border:1px solid var(--border);border-radius:10px;margin-top:3px;max-height:200px;overflow-y:auto;box-shadow:var(--shadow)"></div>
+      </div>
+      <button onclick="addExtraPos()" style="padding:11px 16px;background:var(--warn);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;align-self:flex-start">＋ Dodaj</button>
+    </div>
+    <div id="extraPosStatus" style="font-size:12px;min-height:16px;margin-top:8px"></div>
   </div>
 </div>
 
