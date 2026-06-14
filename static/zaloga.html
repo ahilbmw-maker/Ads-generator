@@ -1,1193 +1,2414 @@
-<!DOCTYPE html>
-<html lang="sl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Nabiranje zaloge — Maaarket</title>
-<style>
-  :root {
-    --bg: #eef1f8;
-    --shelf-bg: #faf7ef;
-    --panel: #ffffff;
-    --panel2: #f8fafd;
-    --panel3: #eef1f7;
-    --border: #e4e8f0;
-    --border2: #d4dae6;
-    --text: #0f172a;
-    --text-dim: #5a6478;
-    --text-faint: #94a0b3;
-    --accent: #4f6ef7;
-    --accent-dim: #e8edfe;
-    --poz-bg: #334155;
-    --poz-bg-hover: #1e293b;
-    --box-bg: #854f0b;
-    --ok: #16a34a;
-    --ok-bg: #c3ecd0;
-    --ok-border: #8fd9a4;
-    --ni: #e2453f;
-    --ni-bg: #fdeceb;
-    --ni-border: #f6c7c4;
-    --warn: #d97706;
-    --warn-bg: #fdf0dc;
-    --shadow: 0 4px 16px rgba(15,23,42,0.08);
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 14px;
-    line-height: 1.45;
-    -webkit-font-smoothing: antialiased;
-    max-width: 100%;
-  }
-  body {
-    min-height: 100vh;
-  }
+// ═══ NABIRANJE ZALOGE — logika ═══
+let ITEMS = [];           // vse postavke iz seje
+let SESSION = null;       // celotna seja
+const MARKET_KEY = 'zaloga_market';  // localStorage: aktivni trg (ostane ob osvežitvi)
+let MARKET = (function(){ try { return localStorage.getItem(MARKET_KEY) || 'slo'; } catch(e){ return 'slo'; } })();
+const EXPANDED_KEY = 'zaloga_expanded';  // localStorage: kateri zavihki odprti (per naprava)
 
-  /* ─── HEADER ─── */
-  .sticky-header {
-    position: sticky; top: 0; z-index: 50;
-    background: rgba(255,255,255,0.97);
-    backdrop-filter: blur(14px);
-    border-bottom: 1px solid var(--border);
-  }
-  .mobile-prog.prog-seg-wrap { display: none; }  /* samo mobile (v nogi) */
-  .topbar {
-    padding: 14px 22px;
-    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-  }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .brand .logo {
-    width: 34px; height: 34px; border-radius: 9px;
-    background: linear-gradient(135deg, var(--accent), #2dd4a7);
-    display: grid; place-items: center; font-size: 18px;
-    box-shadow: 0 4px 12px rgba(79,142,247,0.35);
-  }
-  .brand h1 { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
-  .brand .sub { font-size: 11px; color: var(--text-faint); font-weight: 500; }
-  /* iOS-stikalo za filter "Samo odprto" */
-  .filter-switch { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; flex-shrink: 0; }
-  .filter-switch-label { font-size: 12px; font-weight: 700; color: var(--text-dim); white-space: nowrap; }
-  .filter-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
-  .filter-switch-track {
-    position: relative; width: 42px; height: 24px; border-radius: 12px;
-    background: var(--border2); transition: background 0.2s; flex-shrink: 0;
-  }
-  .filter-switch-knob {
-    position: absolute; top: 2px; left: 2px; width: 20px; height: 20px;
-    border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    transition: left 0.2s;
-  }
-  .filter-switch input:checked ~ .filter-switch-track { background: var(--ok); }
-  .filter-switch input:checked ~ .filter-switch-track .filter-switch-knob { left: 20px; }
-  .filter-switch input:checked ~ .filter-switch-label,
-  .filter-switch:has(input:checked) .filter-switch-label { color: var(--text); }
+// market query suffix za fetch klice
+function mq(extra) {
+  const sep = extra && extra.includes('?') ? '&' : '?';
+  return (extra || '') + sep + 'market=' + MARKET;
+}
+function isRS() { return MARKET === 'rs'; }
 
-  .topbar-spacer { flex: 1; }
-  .market-tabs {
-    display: flex; gap: 4px; padding: 0 22px;
-    border-top: 1px solid var(--border);
-  }
-  .market-tab {
-    padding: 12px 20px; font-weight: 700; font-size: 14px; cursor: pointer;
-    border: none; background: transparent; color: var(--text-dim);
-    border-bottom: 3px solid transparent; margin-bottom: -1px;
-    transition: all 0.15s; font-family: inherit;
-  }
-  .market-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .market-tab:hover:not(.active) { color: var(--text); }
+// ── Preklop trga ──
+function switchMarket(m) {
+  if (m === MARKET) return;
+  MARKET = m;
+  try { localStorage.setItem(MARKET_KEY, m); } catch(e) {}
+  document.getElementById('mtab-slo').classList.toggle('active', m === 'slo');
+  document.getElementById('mtab-rs').classList.toggle('active', m === 'rs');
+  _toggleImportBtn();
+  setExpanded({});  // počisti odprte zavihke ob preklopu
+  lastUpdate = null;
+  loadSession();
+}
 
-  .global-stat {
-    display: flex; flex-direction: row; align-items: center; gap: 14px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 9px 16px; min-width: 230px;
-  }
-  .global-stat .gs-main { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 200px; }
-  .global-stat-head { display: flex; align-items: baseline; gap: 10px; }
-  .global-stat .gs-pct { font-size: 17px; font-weight: 800; color: var(--text); }
-  .global-stat .gs-done { font-size: 13px; font-weight: 700; color: var(--text-dim); margin-left: auto; }
-  .global-stat .gs-bar { display: flex; height: 8px; border-radius: 6px; overflow: hidden; background: var(--panel3); }
-  .global-stat .gs-break { font-size: 10px; color: var(--text-faint); }
-  /* časovnica nabiranja (desno od bara, samo desktop) */
-  .gs-timer {
-    display: flex; flex-direction: column; align-items: center; gap: 1px;
-    padding-left: 14px; border-left: 1px solid var(--border); flex-shrink: 0;
-  }
-  .gs-timer-val { display: flex; align-items: center; gap: 5px; }
-  .gs-timer-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--border2);
-    display: inline-block; flex-shrink: 0;
-  }
-  .gs-timer.running .gs-timer-dot { background: var(--ok); animation: gsTimerPulse 1.5s infinite; }
-  @keyframes gsTimerPulse { 0%,100% { opacity:1 } 50% { opacity:0.35 } }
-  #gsTimerTime { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; color: var(--text-dim); display: inline-block; min-width: 92px; text-align: right; }
-  .gs-timer.running #gsTimerTime { color: var(--text); }
-  .gs-timer.done #gsTimerTime { color: var(--ok); }
-  .gs-timer-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-faint); white-space: nowrap; }
-  /* gumb Packing lista — levo od bara/časovnice, samo RS ko obstajajo boxi */
-  .gs-packing-btn {
-    flex-shrink: 0; background: var(--accent); color: #fff; border: none;
-    font-weight: 700; white-space: nowrap; gap: 6px;
-  }
-  .gs-packing-btn:hover { filter: brightness(1.08); }
-  @media (max-width: 768px) { .gs-packing-btn { display: none !important; } }
+// Gumb "Uvoz dobavnice" je samo na RS trgu
+function _toggleImportBtn() {
+  const b = document.getElementById('importIkonkaBtn');
+  if (b) b.style.display = (MARKET === 'rs') ? 'inline-flex' : 'none';
+}
 
-  .btn {
-    border: 1px solid var(--border2); background: var(--panel2);
-    color: var(--text); border-radius: 10px; padding: 9px 15px;
-    font-size: 13px; font-weight: 600; cursor: pointer;
-    font-family: inherit; transition: all 0.15s; white-space: nowrap;
-  }
-  .btn:hover { background: var(--panel3); border-color: var(--accent); }
-  .btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .btn-accent:hover { background: #3d7de8; }
-  .btn-ghost { background: transparent; border-color: var(--border); }
-  .btn-sm { padding: 6px 11px; font-size: 12px; }
+// ── Ob nalaganju: označi shranjeni trg ──
+function initMarketTab() {
+  const slo = document.getElementById('mtab-slo');
+  const rs = document.getElementById('mtab-rs');
+  if (slo) slo.classList.toggle('active', MARKET === 'slo');
+  if (rs) rs.classList.toggle('active', MARKET === 'rs');
+  _toggleImportBtn();
+}
 
-  /* ─── LAYOUT ─── */
-  .wrap { max-width: 100%; margin: 0; padding: 22px; display: grid; grid-template-columns: minmax(0, 1fr) 480px; gap: 22px; align-items: start; }
-  @media (max-width: 1100px) { .wrap { grid-template-columns: 1fr; } }
-  /* #mobileBoxBar je samo za mobile — na desktopu vedno skrit (JS ga prikaže le na ≤768px) */
-  @media (min-width: 769px) { #mobileBoxBar { display: none !important; } }
+// ── Skupine ──
+const GROUP_ORDER = (g) => {
+  if (g.startsWith('Polica ')) return [0, g];
+  if (/^P\d+$/.test(g)) return [1, parseInt(g.slice(1))];
+  if (g === 'Paleta') return [2, 0];
+  if (g === 'Pod Mizo') return [2, 1];
+  if (g === 'Ikonka') return [2, 2];
+  if (g === 'Amio') return [2, 3];
+  if (g === 'neznano') return [2, 4];
+  if (g === 'Ni podatka') return [3, 0];
+  return [2, g];
+};
 
-  /* ─── UPLOAD ZONE ─── */
-  .upload-card {
-    background: var(--panel); border: 1.5px dashed var(--border2);
-    border-radius: 16px; padding: 40px; text-align: center;
-    grid-column: 1 / -1;
-  }
-  .upload-card h2 { font-size: 18px; margin-bottom: 6px; }
-  .upload-card p { color: var(--text-dim); font-size: 13px; margin-bottom: 18px; }
+function getExpanded() {
+  try { return JSON.parse(localStorage.getItem(EXPANDED_KEY) || '{}'); }
+  catch(e) { return {}; }
+}
+function setExpanded(map) {
+  try { localStorage.setItem(EXPANDED_KEY, JSON.stringify(map)); } catch(e) {}
+}
 
-  /* ─── SHELF (zavihek) ─── */
-  .shelves { display: flex; flex-direction: column; gap: 12px; }
-  .shelf {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 14px;
-    transition: border-color 0.2s;
-  }
-  .shelf-head { border-radius: 13px 13px 0 0; }
-  .shelf:not(.open) .shelf-head { border-radius: 13px; }
-  .shelf.open { border-color: var(--border2); box-shadow: var(--shadow); }
-  /* desktop: izrazitejša obroba okoli polic (boljša vidljivost) */
-  @media (min-width: 769px) {
-    .shelf { border-color: var(--border2); }
-    .shelf:hover { border-color: var(--text-faint); }
-  }
-  /* animacija samodejnega skrivanja dokončane police (filter Samo odprto) */
-  .shelf-hiding {
-    opacity: 0; transform: translateX(12px);
-    max-height: 0 !important; margin: 0 !important; padding: 0 !important;
-    overflow: hidden;
-    transition: opacity 0.35s ease, transform 0.35s ease, max-height 0.4s ease, margin 0.4s ease;
-    pointer-events: none;
-  }
-  /* Dokončana polica (vsaka postavka ✓ ali ✗) — svetlo zelena čez celo vrstico */
-  .shelf-done { background: var(--ok-bg); }
-  .shelf-done .shelf-head:hover { background: rgba(22,163,74,0.10); }
-  /* pri 100%: ime, %, chevron in obroba ostanejo nevtralni (le ozadje je zeleno) */
-  .shelf-head {
-    display: flex; align-items: center; gap: 14px;
-    padding: 16px 18px; cursor: pointer; user-select: none;
-    transition: background 0.15s; position: relative;
-  }
-  .shelf-head:hover { background: var(--panel2); }
-  /* obarvano ozadje glave (samo mobile, predlog 3) — na desktopu skrito */
-  .shelf-head-fill { display: none; }
-  .shelf-chevron {
-    font-size: 14px; color: var(--text-faint); transition: transform 0.25s;
-    width: 16px; text-align: center;
-  }
-  .shelf.open .shelf-chevron { transform: rotate(90deg); color: var(--accent); }
-  .shelf-name { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
-  .shelf-count {
-    font-size: 11px; color: var(--text-dim); background: var(--panel3);
-    padding: 2px 9px; border-radius: 20px; font-weight: 600;
-  }
-  .shelf-head-spacer { flex: 1; }
-
-  /* shelf progress */
-  .shelf-prog { display: flex; align-items: center; gap: 10px; }
-  .shelf-prog-bar {
-    width: 120px; height: 7px; background: var(--panel3);
-    border-radius: 10px; overflow: hidden;
-  }
-  .shelf-prog-fill {
-    height: 100%; border-radius: 10px;
-    background: linear-gradient(90deg, var(--ok), #36e0b4);
-    transition: width 0.4s ease;
-  }
-  .shelf-prog-pct { font-size: 13px; font-weight: 800; min-width: 42px; text-align: right; }
-  /* Segmentiran bar: nabrano (zeleno) / ni najdeno (rdeče) / še nabirajo (sivo) */
-  .prog-seg-wrap { display: flex; }
-  .prog-seg { height: 100%; transition: width 0.4s ease; }
-  .prog-seg-ok { background: linear-gradient(90deg, var(--ok), #36e0b4); }
-  .prog-seg-ni { background: var(--ni); }
-  .prog-seg-todo { background: var(--panel3); }
-
-  .shelf-body { display: none; padding: 0; }
-  .shelf.open .shelf-body { display: block; animation: slideDown 0.25s ease; }
-  @keyframes slideDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
-
-  /* ─── ITEM TABLE HEADER (Koncept A) ─── */
-  .item-head {
-    display: grid;
-    grid-template-columns: 90px 52px 170px 78px 1fr 130px 90px;
-    gap: 14px; padding: 9px 14px;
-    font-size: 10px; font-weight: 600; color: var(--text-faint);
-    text-transform: uppercase; letter-spacing: 0.5px;
-    border-bottom: 1px solid var(--border);
-    text-align: left;
-  }
-  .item-head .h-qty, .item-head .h-status { text-align: center; }
-
-  /* ─── ITEM ROW (Koncept A) ─── */
-  .item {
-    display: grid;
-    grid-template-columns: 90px 52px 170px 78px 1fr 130px 90px;
-    gap: 14px; align-items: center;
-    padding: 12px 14px;
-    border: none; border-bottom: 1px solid var(--border);
-    transition: background 0.12s;
-    margin: 0;
-  }
-  /* desktop: wrapperji so "transparentni" → otroci ostanejo direktni grid-otroci */
-  .item-mobile-top { display: contents; }
-  .item-thumb {
-    display: flex; align-items: center; justify-content: center;
-    width: 44px; height: 44px; border-radius: 9px;
-    background: var(--panel3); border: 1px solid var(--border); overflow: hidden;
-  }
-  .item-thumb img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
-  .item-thumb:not(.has-img) { background: transparent; border: 1px dashed var(--border2); }
-  .item-bottom { display: contents; }
-  .item:hover { background: var(--panel2); }
-  .item.ok { background: var(--ok-bg); }
-  .item.ni { background: var(--ni-bg); }
-  /* delni manjko (npr. 5/6) — oranžno-rdeča z levim robom */
-  .item.partial { background: #fbd5d2; border-left: 4px solid #d85a30; }
-  .item.partial:hover { background: #f9c4c0; }
-  /* cel manjko (✗) — močna rdeča z levim robom */
-  .item.full-miss { background: #f3a8a3; border-left: 4px solid #991b1b; }
-  .item.full-miss:hover { background: #ef9a94; }
-  .item:last-child { border-bottom: none; }
-
-  .item .sku { font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; text-align: left; overflow: hidden; text-overflow: ellipsis; }
-  .item .poz {
-    font-size: 12px; font-weight: 700; color: #fff;
-    background: var(--poz-bg); padding: 4px 9px; border-radius: 7px;
-    text-align: center; letter-spacing: 0.5px; justify-self: start;
-  }
-  .item .poz.poz-edit {
-    cursor: pointer; position: relative;
-    border: 1.5px dashed rgba(255,255,255,0.55);
-    transition: filter 0.12s, box-shadow 0.12s;
-  }
-  .item .poz.poz-edit::after {
-    content: '✎'; font-size: 9px; margin-left: 5px; opacity: 0.85;
-  }
-  .item .poz.poz-edit:hover {
-    filter: brightness(1.12); box-shadow: 0 0 0 2px rgba(255,255,255,0.25);
-  }
-  .item .naziv { font-size: 13px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* naziv-wrap zasede stolpec naziva: naziv levo, BOX+odkleni (zaklenjen) desno */
-  .item-naziv-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  .item-naziv-wrap .naziv { flex: 1; min-width: 0; }
-  .item-box-inline { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-  .item .id-col { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
-
-  /* qty stepper */
-  .qty-step { display: flex; align-items: center; gap: 6px; }
-  .qty-btn {
-    width: 30px; height: 30px; border-radius: 8px;
-    border: 1px solid var(--border2); background: var(--panel3);
-    color: var(--text); font-size: 17px; font-weight: 700; cursor: pointer;
-    display: grid; place-items: center; transition: all 0.12s; line-height: 1;
-  }
-  .qty-btn:hover { background: var(--accent); border-color: var(--accent); }
-  .qty-btn:active { transform: scale(0.9); }
-  .qty-val {
-    min-width: 30px; text-align: center; font-size: 15px; font-weight: 800;
-    font-variant-numeric: tabular-nums;
-  }
-  .qty-step > div[onclick] { cursor: pointer; border-radius: 6px; transition: background 0.12s; }
-  .qty-step > div[onclick]:hover { background: var(--panel3); }
-  .qty-need { font-size: 10px; color: var(--text-faint); }
-  .qty-mismatch .qty-val { color: var(--warn); }
-
-  /* action buttons */
-  .item-actions { display: flex; gap: 6px; }
-  .act-btn {
-    flex: 1; border: 1px solid var(--border2); background: var(--panel3);
-    border-radius: 8px; padding: 7px 0; font-size: 13px; font-weight: 700;
-    cursor: pointer; transition: all 0.12s; display: grid; place-items: center;
-    color: var(--text-dim);
-  }
-  /* privzeto že barvana — takoj jasno kaj je kaj */
-  .act-ok { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok); }
-  .act-ni { background: var(--ni-bg); border-color: var(--ni-border); color: var(--ni); }
-  .act-ok:hover, .act-ok.active { background: var(--ok); border-color: var(--ok); color: #fff; }
-  .act-ni:hover, .act-ni.active { background: var(--ni); border-color: var(--ni); color: #fff; }
-
-  /* low stock tag */
-  .tag-low {
-    font-size: 9px; font-weight: 800; color: var(--warn);
-    background: var(--warn-bg); border: 1px solid rgba(245,165,36,0.3);
-    padding: 1px 6px; border-radius: 5px; text-transform: uppercase;
-    letter-spacing: 0.4px; margin-left: 6px; white-space: nowrap;
-  }
-  /* HS PLUS — izdelek pride danes (v sistemu je, fizično še ne); nabiralec naj ne označi "ni zaloge" */
-  .tag-hsplus {
-    font-size: 9px; font-weight: 800; color: #fff;
-    background: #7c3aed; border: 1px solid #6d28d9;
-    padding: 1px 6px; border-radius: 5px; text-transform: uppercase;
-    letter-spacing: 0.4px; margin-left: 6px; white-space: nowrap;
-  }
-  /* Majhni dobavitelji — postavka brez ID naročila (cyan, ločeno od HS PLUS) */
-  .tag-supplier {
-    font-size: 9px; font-weight: 800; color: #fff;
-    background: #0891b2; border: 1px solid #0e7490;
-    padding: 1px 6px; border-radius: 5px; text-transform: uppercase;
-    letter-spacing: 0.4px; margin-left: 6px; white-space: nowrap;
-  }
-  /* Skladišče2 — SKU iz prilepljenega seznama (jantarna, sejni tag SLO+RS) */
-  .tag-sklad {
-    font-size: 9px; font-weight: 800; color: #fff;
-    background: #d97706; border: 1px solid #b45309;
-    padding: 1px 6px; border-radius: 5px; text-transform: uppercase;
-    letter-spacing: 0.4px; margin-left: 6px; white-space: nowrap;
-  }
-
-  /* ─── SIDEBAR (manjko) ─── desktop: fiksen ob skrolanju, pod sticky headerjem (~151px) */
-  .sidebar {
-    position: sticky; top: 167px; align-self: start;
-    display: flex; flex-direction: column; gap: 16px;
-    max-height: calc(100vh - 183px); overflow-y: auto;
-  }
-  /* tanjši scrollbar za sidebar (da ni moteč) */
-  .sidebar::-webkit-scrollbar { width: 7px; }
-  .sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
-  .side-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
-  .side-card h3 { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-dim); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
-  .side-card h3 .badge { background: var(--ni); color: #fff; font-size: 11px; padding: 1px 8px; border-radius: 20px; }
-  /* gumb "Kopiraj vse" v sekciji Manjko */
-  .manko-copy-all {
-    margin-left: auto; font-size: 11px; font-weight: 700; text-transform: none; letter-spacing: 0;
-    background: var(--panel3); color: var(--text-dim); border: 1px solid var(--border2);
-    border-radius: 8px; padding: 5px 10px; cursor: pointer; font-family: inherit; white-space: nowrap;
-  }
-  .manko-copy-all:hover { background: var(--panel2); color: var(--text); }
-  .manko-copy-all.copied { background: var(--ok); color: #fff; border-color: var(--ok); }
-  .manko-copy-all-rs { display: block; width: 100%; margin: 0 0 10px; text-align: center; }
-
-  .manko-list { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
-  .manko-item {
-    background: var(--ni-bg); border: 1px solid var(--ni-border);
-    border-radius: 9px; padding: 9px 11px;
-  }
-  .manko-item .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .manko-item .msku { font-weight: 800; font-size: 13px; cursor: pointer; user-select: none; }
-  .manko-item .msku:hover { color: var(--accent); }
-  .manko-item .msku .mpoz-copy-icon { font-size: 11px; opacity: 0.5; margin-left: 3px; }
-  .manko-item .mqty { font-size: 11px; color: var(--ni); font-weight: 700; }
-  .manko-item .mnaziv { font-size: 11px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .manko-item .mpoz-badge {
-    display: inline-block; margin-top: 7px;
-    font-size: 15px; font-weight: 800; letter-spacing: 0.3px;
-    color: var(--ni); background: var(--ni-bg);
-    border: 1px solid var(--ni-border); border-radius: 8px;
-    padding: 4px 11px; transition: all 0.15s;
-  }
-  .manko-item .mpoz-badge:hover { filter: brightness(0.95); }
-  /* pozicija = skok na postavko (modra, da se loči od kopiranja) */
-  .manko-item .mpoz-jump { color: #1d4ed8; background: #dbeafe; border-color: #93c5fd; }
-  .manko-item .mpoz-jump:hover { background: #bfdbfe; }
-  .manko-item .mpoz-jump-icon { font-size: 13px; margin-left: 4px; font-weight: 900; }
-  .manko-item .mpoz-copy-icon { font-size: 12px; opacity: 0.6; margin-left: 4px; }
-  /* osvetlitev postavke ob skoku */
-  @keyframes itemJumpFlash {
-    0% { box-shadow: 0 0 0 3px rgba(29,78,216,0.5); background: #dbeafe; }
-    100% { box-shadow: 0 0 0 0 rgba(29,78,216,0); }
-  }
-  .item-jump-flash { animation: itemJumpFlash 1.6s ease-out; }
-  .manko-item .mpoz-detail { font-size: 10px; color: var(--text-faint); margin-top: 5px; }
-  .manko-empty { text-align: center; color: var(--text-faint); font-size: 12px; padding: 20px; }
-
-  .stat-rows { display: flex; flex-direction: column; gap: 10px; }
-  .stat-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
-  .stat-row .lbl { color: var(--text-dim); }
-  .stat-row .val { font-weight: 800; font-variant-numeric: tabular-nums; }
-  .stat-row .val.ok { color: var(--ok); }
-  .stat-row .val.ni { color: var(--ni); }
-
-  .toast {
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
-    background: var(--panel3); border: 1px solid var(--border2); color: var(--text);
-    padding: 12px 22px; border-radius: 12px; font-size: 13px; font-weight: 600;
-    box-shadow: var(--shadow); z-index: 100; opacity: 0; transition: all 0.3s;
-  }
-  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
-
-  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-faint); grid-column: 1 / -1; }
-  .empty-state .icon { font-size: 48px; margin-bottom: 14px; opacity: 0.5; }
-
-  /* ══════════════ MOBILE ══════════════ */
-  @media (max-width: 768px) {
-    body { overflow-x: clip; }
-
-    /* ══ MOBILE: cel meni gre v FIKSNO NOGO na dnu; vrh prazen za izdelke ══ */
-    .sticky-header {
-      position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 60;
-      display: flex; flex-direction: column;
-      background: var(--panel);
-      border-bottom: none; border-top: 1px solid var(--border);
-      box-shadow: 0 -3px 5px rgba(0,0,0,0.06);
-      backdrop-filter: none;
+// ── Nalaganje seje ──
+async function loadSession() {
+  try {
+    const r = await fetch(mq('/zaloga-current'));
+    const data = await r.json();
+    if (data.ok && data.items && data.items.length) {
+      SESSION = data;
+      ITEMS = data.items;
+      // VAROVALKA: ob novi zaznavi padca seštevka pokaži toast (samo enkrat na spremembo)
+      const ig = data.integrity;
+      if (ig && ig.ok === false) {
+        const sig = ig.dropped_items + ':' + ig.dropped_qty;
+        if (sig !== _lastIntegritySig) {
+          _lastIntegritySig = sig;
+          const p = [];
+          if (ig.dropped_items > 0) p.push(`${ig.dropped_items} postavk`);
+          if (ig.dropped_qty > 0) p.push(`${ig.dropped_qty} kosov`);
+          toast(`⚠️ Seštevek se je zmanjšal — manjka ${p.join(' in ')}! Preveri izbris.`, 6000);
+        }
+      } else if (ig && ig.ok) {
+        _lastIntegritySig = '';
+      }
+      render();
+      document.getElementById('archiveBtn').style.display = '';
+      document.getElementById('globalStat').style.display = '';
+      fetchSkuImages();  // v ozadju naloži slike izdelkov
+    } else {
+      showEmpty();
     }
-    /* vrstni red v nogi: tabi (2) → topbar (3) → progress bar (10, na dnu noge) */
-    .mobile-prog.prog-seg-wrap { order: 10; display: flex; width: 100%; height: 5px; background: var(--panel3); overflow: hidden; border-top: 1px solid var(--border); }
-    .mobile-prog .prog-seg { height: 100%; flex-shrink: 0; }   /* %-širine se ne smejo krčiti */
-    .market-tabs { order: 2; padding: 0 8px; overflow-x: auto; border-top: 1px solid var(--border); }
-    .topbar { order: 3; padding: 8px 12px; gap: 8px; flex-wrap: nowrap; align-items: center; border-top: 1px solid var(--border); }
+  } catch(e) {
+    showEmpty();
+  }
+}
 
-    /* Topbar kompaktnejši */
-    .brand { gap: 7px; flex: 1; min-width: 0; }
-    .brand-title { display: none; }  /* na mobile naslov skrit — gumb ga nadomesti */
-    .brand .sub { display: none; }  /* podnaslov skrit na mobile */
-    .brand .logo { width: 26px; height: 26px; font-size: 14px; flex-shrink: 0; }
-    /* Home gumb PRED logo (prvi v topbar) */
-    .topbar > a[href="/"] { order: -1; flex: 0 0 auto; padding: 5px 9px; font-size: 13px; }
-    .topbar-spacer { display: none; }
-    .market-tab { padding: 11px 12px; font-size: 12px; white-space: nowrap; }
-    /* Skrij akcijske gumbe (Naloži CSV, Arhiviraj, Zgodovina, Osveži slike) na mobilnem */
-    .topbar-action { display: none !important; }
-
-    /* global-stat: na mobile samo kompakten % + done v topbar vrstici (bar je zgoraj v nogi) */
-    .global-stat {
-      order: 5; flex: 0 0 auto; width: auto; padding: 0; background: none; min-width: 0;
-      border: none; border-radius: 0;   /* odstrani okvir iz desktop stila (v nogi ni potreben) */
-      display: flex; align-items: baseline; gap: 5px; box-sizing: border-box;
+// ── Slike izdelkov (preview za nove delavce) ──
+let SKU_IMAGES = {};   // { SKU: url }
+let _lastIntegritySig = '';  // VAROVALKA: zadnja zaznana signatura padca seštevka (da toast ne spamira)
+async function fetchSkuImages() {
+  try {
+    const skus = [...new Set(ITEMS.map(it => it.sku).filter(Boolean))];
+    if (!skus.length) return;
+    const naziv_map = {};
+    ITEMS.forEach(it => { if (it.sku && it.naziv) naziv_map[it.sku] = it.naziv; });
+    const r = await fetch('/zaloga-sku-images', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ skus, naziv_map })
+    });
+    const data = await r.json();
+    if (data.ok && data.images) {
+      SKU_IMAGES = data.images;
+      applySkuImages();
     }
-    .global-stat .gs-main { display: flex; flex-direction: row; align-items: baseline; gap: 5px; min-width: 0; flex: 0 0 auto; }
-    .global-stat .global-stat-head { display: flex; align-items: baseline; gap: 5px; }
-    .global-stat .gs-pct { font-size: 15px; font-weight: 800; }
-    .global-stat .gs-done { font-size: 10px; color: var(--text-dim); }
-    .global-stat .gs-bar { display: none; }   /* bar je v .mobile-prog na vrhu noge */
-    .global-stat .gs-break { display: none; } /* podroben razrez skrit v nogi (premalo prostora) */
-    .gs-timer { display: none; }   /* časovnica samo na desktopu */
+  } catch(e) { /* tiho — slike niso kritične */ }
+}
 
-    /* prostor na dnu seznamov nastavljen spodaj (var --footer-h) */
-    .wrap { padding: 12px; gap: 14px; grid-template-columns: minmax(0, 1fr); max-width: 100%; }
-
-    /* Sidebar gre POD sezname (ne sticky ob strani) */
-    .sidebar { position: static; top: auto; order: 99; }
-
-    /* Shelf head — kompakten, progress v novo vrsto */
-    /* ══ PREDLOG 3: kompaktna polica, napredek = obarvano ozadje ══ */
-    .shelf { border-radius: 10px; }
-    .shelf-head {
-      padding: 11px 13px; gap: 9px; flex-wrap: nowrap;
-      border-radius: 10px;
+// Ročna prisilna osvežitev feed cache-a (po dodajanju novega izdelka).
+// Obide tedenski TTL, nato znova naloži slike v trenutni seji.
+async function refreshFeed() {
+  const btn = document.getElementById('refreshFeedBtn');
+  if (!btn) return;
+  if (btn.dataset.busy === '1') return;
+  const orig = btn.innerHTML;
+  btn.dataset.busy = '1';
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Osvežujem…';
+  try {
+    const r = await fetch('/zaloga-refresh-feed', { method: 'POST' });
+    const data = await r.json();
+    if (data.ok) {
+      btn.innerHTML = '✓ Osveženo';
+      // znova poberi slike za trenutno sejo
+      await fetchSkuImages();
+    } else {
+      btn.innerHTML = (data.note && data.note.indexOf('poteka') >= 0) ? '⏳ Že teče…' : '✗ Napaka';
     }
-    .shelf.open .shelf-head { border-radius: 10px 10px 0 0; }
-    .shelf:not(.open) .shelf-head { border-radius: 10px; }
-    /* obarvano ozadje: zeleno do --fill-ok, rdeče do --fill-ni (= ok+ni)
-       — polni barvi z ~40% prosojnostjo: bolj vidno kot pastelni -bg, besedilo ostane berljivo */
-    .shelf-head-fill {
-      display: block; position: absolute; inset: 0; z-index: 0; pointer-events: none;
-      border-radius: inherit; overflow: hidden;   /* ozadje sledi zaokroženju glave (nadomesti overflow na .shelf-head) */
-      --fill-ok-col: color-mix(in srgb, var(--ok) 40%, transparent);
-      --fill-ni-col: color-mix(in srgb, var(--ni) 40%, transparent);
-      background:
-        linear-gradient(90deg,
-          var(--fill-ok-col) 0, var(--fill-ok-col) var(--fill-ok, 0%),
-          var(--fill-ni-col) var(--fill-ok, 0%), var(--fill-ni-col) var(--fill-ni, 0%),
-          transparent var(--fill-ni, 0%));
+  } catch(e) {
+    btn.innerHTML = '✗ Napaka';
+  } finally {
+    setTimeout(() => {
+      btn.innerHTML = orig;
+      btn.disabled = false;
+      btn.dataset.busy = '0';
+    }, 2500);
+  }
+}
+
+// Vstavi sličice v že izrisane postavke (brez polnega re-renderja)
+function applySkuImages() {
+  ITEMS.forEach(it => {
+    const url = SKU_IMAGES[it.sku];
+    if (!url) return;
+    const holder = document.querySelector(`#imgthumb-${it.idx}`);
+    if (holder && !holder.dataset.loaded) {
+      holder.dataset.loaded = '1';
+      holder.innerHTML = `<img src="${esc(url)}" alt="" loading="lazy" onclick="event.stopPropagation();openImgPreview('${jsStr(url)}','${jsStr(it.sku)}')">`;
+      holder.classList.add('has-img');
     }
-    /* vsebina nad ozadjem */
-    .shelf-chevron, .shelf-name, .shelf-count, .shelf-prog { position: relative; z-index: 1; }
-    .shelf-chevron { font-size: 11px; width: 12px; }
-    .shelf-name { font-size: 15px; white-space: nowrap; }
-    .shelf-count { font-size: 9px; padding: 2px 7px; white-space: nowrap; }
-    .shelf-head-spacer { display: block; flex: 1; }
-    /* skrij ločeni bar; ostane samo % (ozadje nadomesti bar) */
-    .shelf-prog { width: auto; order: 0; margin: 0; gap: 0; }
-    .shelf-prog-bar { display: none; }
-    .shelf-prog-pct {
-      font-size: 13px; min-width: 0; background: var(--panel);
-      padding: 1px 7px; border-radius: 6px;
-    }
-    /* glava ODPRTE police se lepi na vrh; pri RS pod box-barom (če je viden) */
-    body.market-slo .shelf.open .shelf-head,
-    body.market-rs .shelf.open .shelf-head {
-      position: sticky; top: 0; z-index: 30;
-      background: var(--panel);   /* trdno ozadje, da vsebina ne presijava skozi sticky glavo */
-      box-shadow: 0 3px 5px rgba(0,0,0,0.06);
-      border-radius: 0;
-    }
-    /* RS: ko je box-bar zgoraj viden, se glava police lepi POD njim (ne za njim) */
-    body.market-rs.has-boxbar .shelf.open .shelf-head { top: var(--boxbar-h, 58px); }
-    /* RS: ko je box-bar viden, vsebina dobi prostor na vrhu (da prva polica ni za box-barom) */
-    body.market-rs.has-boxbar .wrap { padding-top: var(--boxbar-h, 58px); }
-    /* glava prilepljene police sega čez stranski padding do robov zaslona (brez špranje) */
-    body.market-slo .shelf.open,
-    body.market-rs .shelf.open {
-      margin-left: -12px; margin-right: -12px; border-radius: 0; border-left: none; border-right: none;
-    }
-    body.market-slo .shelf.open .shelf-body,
-    body.market-rs .shelf.open .shelf-body { padding-left: 24px; padding-right: 24px; }
+  });
+}
 
-    /* Skrij tabelo-glavo na mobile (kartice ne rabijo) */
-    .item-head { display: none; }
-
-    /* Toplo kremno ozadje za polico — kartice "plavajo" */
-    .shelf-body { padding: 12px; background: var(--shelf-bg); }
-
-    /* ITEM = bela KARTICA, ločena z razmikom */
-    .item {
-      display: flex; flex-direction: column; align-items: stretch;
-      gap: 12px; padding: 14px; margin: 0 0 10px;
-      border-radius: 14px;
-      background: var(--panel); border: 1px solid var(--border);
-    }
-    .item:last-child { margin-bottom: 0; }
-    .item.ok { background: var(--ok-bg); border-color: var(--ok-border); }
-    .item.ni { background: var(--ni-bg); border-color: var(--ni-border); }
-    .item.partial { background: #fbd5d2; border-color: #e89490; border-left: 4px solid #d85a30; }
-    .item.full-miss { background: #f3a8a3; border-color: #dc2626; border-left: 4px solid #991b1b; }
-    /* skrij ID na mobile */
-    .item .id-col { display: none; }
-
-    /* Vrh kartice: SKU (bold, velik) + pozicija (večja, vidna) */
-    .item .sku {
-      font-size: 19px; font-weight: 800; letter-spacing: 0.2px;
-      color: var(--text); order: 1;
-    }
-    .item .poz {
-      font-size: 16px; font-weight: 700; order: 2; align-self: center;
-      padding: 6px 14px; border-radius: 9px; letter-spacing: 0.3px;
-    }
-    /* Naziv polna širina */
-    .item .naziv {
-      font-size: 14px; white-space: normal;
-      line-height: 1.4; color: var(--text-dim);
-    }
-    .item-naziv-wrap { order: 3; display: block; }
-    .item-box-inline { display: none; }  /* desktop-only; na mobile uporabimo item-locked-row */
-
-    /* Spodnja vrsta: stepper + ✓ + ✕ v ENI vrstici */
-    .item-bottom {
-      display: flex; align-items: center; gap: 8px; order: 4;
-    }
-    .item .qty-step {
-      justify-content: center; gap: 8px; flex-shrink: 0;
-      background: var(--panel3); border-radius: 10px; padding: 4px;
-    }
-    .qty-btn { width: 38px; height: 38px; font-size: 22px; border-radius: 9px; }
-    .qty-val { font-size: 18px; min-width: 30px; }
-    .qty-need { font-size: 11px; }
-    /* cifra je klikabilna za direkten vnos */
-    .qty-step > div[onclick] {
-      cursor: pointer; border-radius: 8px; padding: 2px 6px;
-      transition: background 0.12s;
-    }
-    .qty-step > div[onclick]:active { background: var(--panel); }
-
-    .item-actions { display: flex; gap: 8px; flex: 1; }
-    .act-btn { flex: 1; height: 46px; padding: 0; font-size: 19px; border-radius: 10px; font-weight: 800; }
-
-    /* SKU + poz v isto vrsto z flex wrapper */
-    .item-mobile-top {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 10px; order: 1;
-    }
-    .item-thumb {
-      display: flex; align-items: center; justify-content: center;
-      width: 48px; height: 48px; flex-shrink: 0;
-      border-radius: 10px; background: var(--panel3); overflow: hidden;
-      border: 1px solid var(--border);
-    }
-    .item-thumb img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
-    .item-thumb:not(.has-img) { display: none; }  /* brez slike: ne kaži praznega kvadrata */
-    .item-mobile-top .sku { flex: 1; min-width: 0; }
-
-    .tag-low { font-size: 10px; padding: 2px 7px; }
-    .tag-hsplus { font-size: 10px; padding: 2px 7px; }
-    .tag-supplier { font-size: 10px; padding: 2px 7px; }
-    .tag-sklad { font-size: 10px; padding: 2px 7px; }
-
-    /* Sidebar kartice */
-    .manko-list { max-height: none; }
-    .side-card { padding: 16px; }
-
-    /* RS box-bar mobile: inline bar v polici SKRIJEMO — uporabimo spodnji sticky bar */
-    .shelf-body > .shelf-box-bar { display: none; }
-    /* Spodnji sticky bar: ikona + dropdown levo, gumb desno (po vsebini), vse v 1 vrstici */
-    /* box-bar na VRHU (sticky zgoraj) — viden ko je polica odprta; police se lepijo pod njim */
-    #mobileBoxBar { position: fixed; left: 0; right: 0; top: 0; z-index: 58;
-      background: var(--panel); border-bottom: 2px solid var(--accent);
-      box-shadow: 0 3px 14px rgba(0,0,0,0.12); padding: 8px 10px; }
-    #mobileBoxBar .shelf-box-bar { background: none; border: none; border-radius: 0;
-      margin: 0; padding: 0; gap: 8px; flex-wrap: nowrap; }
-    #mobileBoxBar .sbb-icon { flex-shrink: 0; }
-    #mobileBoxBar .sbb-label { display: none; }
-    #mobileBoxBar .sbb-select { flex: 0 0 auto; min-width: 96px; width: auto; height: 42px; font-size: 15px; padding: 0 32px 0 10px; background-position: right 10px center; }
-    #mobileBoxBar .sbb-count { flex-shrink: 0; font-size: 14px; padding: 6px 9px; }
-    #mobileBoxBar .sbb-save { margin-left: auto; flex-shrink: 0; height: 42px; padding: 0 12px; font-size: 13px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
-    #mobileBoxBar .sbb-locked { display: none; }
-    /* prostor na dnu: noga (~110px) + zrak (box-bar je zdaj zgoraj, ne spodaj) */
-    .wrap { padding-bottom: calc(var(--footer-h, 110px) + 32px); }
-
-    /* RS opomba mobile: POD gumbi (order 5), vgrajen label ostane v vrsti */
-    .item-opomba {
-      order: 5; margin-top: 4px;
-    }
-    .item-opomba .iop-prefix { font-size: 11px; padding: 0 9px; }
-    .item-opomba .iop-input { height: 46px; font-size: 15px; }
-    .item-opomba .iop-tobox { padding: 0 12px; font-size: 12px; }
-    .item-opomba .iop-cakaj { height: 46px; font-size: 14px; }
-    .iop-saved-tag { right: 80px; }
-    /* zaklenjena vrsta (BOX + Odkleni) na istem mestu kot opomba */
-    .item-locked-row { display: flex; align-items: center; gap: 8px; order: 5; margin-top: 4px; }
-    .item-locked-row .item-unlock { margin-left: auto; height: 44px; font-size: 14px; padding: 0 16px; }
-    .item-locked-row .item-box-badge { font-size: 15px; padding: 9px 15px; }
-  }
-
-  /* Zelo ozki telefoni */
-  @media (max-width: 380px) {
-    .qty-btn { width: 34px; height: 36px; font-size: 20px; }
-    .item .sku { font-size: 18px; }
-    .item-bottom { gap: 6px; }
-    .item .qty-step { gap: 4px; padding: 3px; }
-  }
-  /* ─── Zgodovina modal ─── */
-  .hist-overlay {
-    display: none; position: fixed; inset: 0; z-index: 100;
-    background: rgba(0,0,0,0.55); backdrop-filter: blur(3px);
-    align-items: flex-start; justify-content: center; padding: 40px 16px;
-    overflow-y: auto;
-  }
-  .hist-overlay.show { display: flex; }
-  .hist-modal {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
-    width: 100%; max-width: 880px; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
-    overflow: hidden; animation: histPop 0.2s ease;
-  }
-  @keyframes histPop { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  .hist-head {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 22px; border-bottom: 1px solid var(--border);
-  }
-  .hist-head h2 { font-size: 18px; font-weight: 800; }
-  .hist-close {
-    background: var(--panel3); border: 1px solid var(--border2); color: var(--text);
-    width: 34px; height: 34px; border-radius: 9px; cursor: pointer; font-size: 15px;
-  }
-  .hist-close:hover { background: var(--ni); border-color: var(--ni); color: #fff; }
-  .hist-body { padding: 18px 22px; max-height: 70vh; overflow-y: auto; }
-  .hist-sess {
-    border: 1px solid var(--border); border-radius: 13px; padding: 14px 16px;
-    margin-bottom: 12px; transition: border-color 0.12s;
-  }
-  .hist-sess:hover { border-color: var(--accent); }
-  .hist-sess-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .hist-sess-date { font-weight: 800; font-size: 15px; }
-  .hist-sess-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-dim); margin-top: 6px; }
-  .hist-sess-meta b { color: var(--text); }
-  .hist-sess-meta .ok { color: var(--ok); }
-  .hist-sess-meta .ni { color: var(--ni); }
-  .hist-sess-prog { flex: 1; min-width: 120px; height: 7px; background: var(--panel3); border-radius: 5px; overflow: hidden; }
-  .hist-sess-prog > div { height: 100%; background: var(--ok); border-radius: 5px; }
-  .hist-sess-pct { font-weight: 800; font-size: 13px; min-width: 42px; text-align: right; }
-  .hist-sess-actions { display: flex; gap: 8px; margin-top: 10px; }
-  .hist-sess-actions button {
-    background: var(--panel3); border: 1px solid var(--border2); color: var(--text);
-    padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;
-  }
-  .hist-sess-actions .del:hover { background: var(--ni); border-color: var(--ni); color: #fff; }
-  .hist-sess-actions .open:hover { background: var(--accent); border-color: var(--accent); }
-  .hist-detail { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
-  .hist-detail-row { display: grid; grid-template-columns: 110px 1fr 70px 80px; gap: 10px; padding: 6px 0; font-size: 12px; border-bottom: 1px solid var(--border); align-items: center; }
-  .hist-detail-row .hsku { font-weight: 700; }
-  .hist-detail-row .hst-ok { color: var(--ok); font-weight: 700; }
-  .hist-detail-row .hst-ni { color: var(--ni); font-weight: 700; }
-  .hist-empty { text-align: center; color: var(--text-dim); padding: 40px 0; }
-  @media (max-width: 768px) {
-    .hist-overlay { padding: 16px 10px; }
-    .hist-detail-row { grid-template-columns: 1fr auto; }
-    .hist-detail-row .hpoz, .hist-detail-row .hqty { display: none; }
-  }
-  /* ═══ RS: BOX / OPOMBA / SIDEBAR TABI ═══ */
-  .shelf-box-bar {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 12px; padding: 12px 14px; margin-bottom: 14px;
-  }
-  .sbb-icon { font-size: 19px; }
-  .sbb-label { font-size: 13px; font-weight: 700; color: var(--accent); }
-  .sbb-input {
-    width: 90px; height: 36px; text-align: center; font-size: 15px; font-weight: 700;
-    border: 1.5px solid var(--border2); border-radius: 8px; background: var(--panel);
-    color: var(--text); font-family: inherit;
-  }
-  .sbb-select {
-    min-width: 150px; height: 42px; text-align: left; font-size: 16px; font-weight: 800;
-    border: 2px solid var(--border2); border-radius: 10px; background: var(--panel);
-    color: var(--text); font-family: inherit; cursor: pointer;
-    /* lasten chevron, odmaknjen od roba (privzeti sistemski je bil preblizu) */
-    -webkit-appearance: none; -moz-appearance: none; appearance: none;
-    padding: 0 36px 0 14px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 13px center;
-  }
-  .sbb-select:focus { outline: none; border-color: var(--accent); }
-  .sbb-select-used { border-color: var(--ok); color: var(--ok); background-color: var(--ok-bg); }
-  .sbb-save {
-    background: var(--accent); color: #fff; border: none; padding: 9px 18px;
-    border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer;
-    font-family: inherit; margin-left: auto;
-  }
-  .sbb-save:hover { filter: brightness(1.05); }
-  .sbb-locked { font-size: 12px; color: var(--ok); font-weight: 700; background: var(--ok-bg); padding: 3px 9px; border-radius: 6px; }
-  .sbb-count {
-    display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
-    font-size: 14px; font-weight: 800; color: var(--ok); background: var(--ok-bg);
-    border: 1px solid var(--ok); padding: 6px 11px; border-radius: 8px; white-space: nowrap;
-  }
-
-  .item-locked { opacity: 0.88; }
-  .item-box-badge {
-    font-size: 14px; font-weight: 700; color: #fff;
-    background: var(--box-bg); border: none;
-    border-radius: 8px; padding: 7px 13px; white-space: nowrap;
-  }
-  /* spodnja vrsta zaklenjenega izdelka — samo MOBILE; na desktopu skrita (inline namesto tega) */
-  @media (min-width: 769px) { .item-locked-row { display: none; } }
-  .item-unlock {
-    background: var(--panel); border: 0.5px solid var(--border2); color: var(--text-dim);
-    border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
-    font-family: inherit; white-space: nowrap;
-  }
-  .item-unlock:hover { background: var(--panel3); }
-
-  .item-opomba {
-    display: flex; align-items: stretch;
-    grid-column: 1 / -1; position: relative;
-    border: 1px solid var(--accent); border-radius: 9px; overflow: hidden;
-    background: var(--panel); margin-top: 6px;
-  }
-  .iop-prefix {
-    display: flex; align-items: center; gap: 5px;
-    background: var(--info-bg, #eef1fe); padding: 0 12px;
-    border-right: 1px solid var(--accent);
-    font-size: 12px; font-weight: 600; color: var(--accent); white-space: nowrap; flex-shrink: 0;
-  }
-  .iop-input {
-    flex: 1; height: 42px; font-size: 14px; border: none;
-    background: var(--panel); color: var(--text);
-    font-family: inherit; padding: 0 12px; min-width: 40px; transition: background 0.2s;
-  }
-  .iop-input:focus { outline: none; background: var(--panel2); }
-  .iop-tobox {
-    background: var(--accent); color: #fff; border: none;
-    padding: 0 15px; font-size: 13px; font-weight: 700; cursor: pointer;
-    font-family: inherit; white-space: nowrap; flex-shrink: 0;
-  }
-  .iop-tobox:hover { filter: brightness(1.08); }
-  /* gumb "Prenesi v čakajoče" (nadomestil "Dodatni box") */
-  .iop-cakaj {
-    flex: 1; height: 42px; border: none; cursor: pointer; font-family: inherit;
-    background: #fff7ed; color: #b45309; font-size: 13px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center; gap: 7px;
-  }
-  .iop-cakaj:hover { background: #ffedd5; }
-  body.market-rs .item-opomba:has(.iop-cakaj) { border-color: #f59e0b; }
-  .iop-saved-tag {
-    position: absolute; right: 90px; top: 50%; transform: translateY(-50%);
-    font-size: 11px; font-weight: 700; color: var(--ok);
-    background: var(--panel); padding: 2px 8px; border-radius: 6px;
-    pointer-events: none; animation: iopFade 0.2s ease;
-  }
-  @keyframes iopFade { from { opacity: 0; } to { opacity: 1; } }
-
-  /* Dialog "V box" */
-  .bxd-overlay {
-    position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.5);
-    display: flex; align-items: center; justify-content: center; padding: 20px;
-    animation: iopFade 0.15s ease;
-  }
-  .bxd-modal {
-    background: var(--panel); border-radius: 16px; padding: 20px;
-    width: 100%; max-width: 380px; box-shadow: 0 12px 40px rgba(0,0,0,0.3);
-  }
-  .bxd-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 16px; }
-  .bxd-create { display: flex; gap: 8px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
-  .bxd-new-input {
-    flex: 1; min-width: 0; height: 46px; font-size: 15px; border: 1.5px solid var(--accent);
-    border-radius: 10px; padding: 0 12px; background: var(--panel); color: var(--text); font-family: inherit;
-  }
-  .bxd-create-btn {
-    flex-shrink: 0;
-    background: var(--ok); color: #fff; border: none; padding: 0 16px;
-    border-radius: 10px; font-weight: 700; font-size: 13px; cursor: pointer; white-space: nowrap; font-family: inherit;
-  }
-  .bxd-or { font-size: 11px; color: var(--text-faint); margin-bottom: 10px; }
-  .bxd-list { display: flex; flex-direction: column; gap: 8px; max-height: 40vh; overflow-y: auto; }
-  .bxd-pick {
-    display: flex; align-items: center; gap: 10px; padding: 13px;
-    border: 1px solid var(--border2); border-radius: 10px; background: var(--panel);
-    cursor: pointer; font-family: inherit; text-align: left; width: 100%;
-  }
-  .bxd-pick:hover { border-color: var(--accent); background: var(--info-bg, #eef1fe); }
-  .bxd-pick-ico { font-size: 18px; }
-  .bxd-pick-name { font-weight: 700; font-size: 14px; color: var(--text); }
-  .bxd-pick-kos { margin-left: auto; font-size: 11px; color: var(--text-dim); }
-  .bxd-empty { font-size: 12px; color: var(--text-faint); text-align: center; padding: 16px 0; }
-  .bxd-cancel {
-    width: 100%; margin-top: 14px; padding: 12px; border: 1px solid var(--border2);
-    background: transparent; color: var(--text-dim); border-radius: 10px; cursor: pointer;
-    font-family: inherit; font-weight: 600; font-size: 13px;
-  }
-  .bxd-cancel:hover { background: var(--panel3); }
-
-  /* Sekcija dodatnih boxov (viški) */
-  .extra-boxes-section {
-    margin-top: 18px; background: var(--panel); border: 1px solid var(--border);
-    border-radius: 16px; padding: 16px;
-  }
-  .ebx-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-  .ebx-section-ico { font-size: 19px; }
-  .ebx-section-title { font-weight: 800; font-size: 15px; color: var(--text); }
-  .ebx-section-count { margin-left: auto; font-size: 11px; color: var(--accent); background: var(--info-bg, #eef1fe); padding: 3px 10px; border-radius: 20px; font-weight: 700; }
-  .ebx-card { background: var(--shelf-bg, #faf7ef); border: 1px solid var(--border); border-radius: 11px; padding: 12px; margin-bottom: 9px; }
-  .ebx-card:last-child { margin-bottom: 0; }
-  .ebx-head {
-    display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
-  }
-  .ebx-name { font-weight: 800; font-size: 14px; color: var(--accent); }
-  .ebx-rename { background: none; border: none; cursor: pointer; font-size: 13px; padding: 2px 5px; border-radius: 5px; opacity: 0.7; vertical-align: middle; }
-  .ebx-rename:hover { opacity: 1; background: var(--panel3); }
-  .ebx-meta { margin-left: auto; font-size: 11px; color: var(--text-dim); }
-  .ebx-line { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); font-size: 13px; }
-  .ebx-line-sku { font-weight: 700; color: var(--text); }
-  .ebx-copy-btn {
-    font-family: inherit; font-size: 11px; font-weight: 700; white-space: nowrap;
-    background: var(--panel3); color: var(--text-dim); border: 1px solid var(--border2);
-    border-radius: 7px; padding: 3px 9px; cursor: pointer;
-  }
-  .ebx-copy-btn:hover { background: var(--panel2); color: var(--text); }
-  .ebx-copy-btn.copied { background: var(--ok); color: #fff; border-color: var(--ok); }
-  .ebx-line-kos { margin-left: auto; color: var(--text-dim); font-size: 12px; }
-  .ebx-line-del { background: none; border: none; color: var(--ni); font-size: 14px; cursor: pointer; padding: 2px 6px; border-radius: 5px; }
-  .ebx-line-del:hover { background: var(--ni-bg); }
-
-  /* ─── ČAKAJOČE (razdelitev v bokse) ─── */
-  .cak-section { margin-top: 18px; background: var(--panel); border: 1px solid var(--border2); border-radius: 14px; padding: 16px; }
-  .cak-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-weight: 800; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .cak-section-count { background: #d97706; color: #fff; font-size: 11px; font-weight: 700; padding: 1px 9px; border-radius: 20px; margin-left: auto; }
-  .cak-row { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; cursor: pointer; }
-  .cak-row:hover { border-color: var(--border2); }
-  /* zaključena (razdeljena) čakajoča — svetlo zelena */
-  .cak-row-done { background: var(--ok-bg, #e7f7ec); border-color: var(--ok-border, #86d29a); }
-  .cak-row-done:hover { border-color: var(--ok, #2fae5e); }
-  .cak-chev { font-size: 12px; color: var(--text-dim); flex-shrink: 0; }
-  .cak-sku { font-family: monospace; font-weight: 700; font-size: 13px; flex-shrink: 0; }
-  .cak-naziv { font-size: 12px; color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cak-rem { font-size: 12px; color: var(--text-dim); flex-shrink: 0; }
-  .cak-rem b { color: var(--text); }
-  .cak-done { font-size: 12px; color: var(--ok); font-weight: 700; flex-shrink: 0; }
-  .cak-boxcount { font-size: 11px; background: var(--panel3); padding: 2px 8px; border-radius: 20px; flex-shrink: 0; }
-  .cak-row-open { border: 2px solid var(--ok); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
-  .cak-head { display: flex; align-items: center; gap: 10px; padding: 11px 12px; background: var(--ok-bg); cursor: pointer; }
-  .cak-head .cak-chev { color: var(--ok); }
-  .cak-body { padding: 14px 16px; }
-  /* debel slider */
-  .cak-slider { position: relative; height: 56px; border-radius: 12px; background: var(--panel3); overflow: hidden; cursor: pointer; user-select: none; touch-action: none; margin-bottom: 6px; }
-  .cak-slider-fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #22c55e, #16a34a); pointer-events: none; }
-  .cak-slider-val { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; pointer-events: none; color: #fff; font-size: 14px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.35); }
-  .cak-slider-val b { font-size: 28px; font-weight: 900; font-variant-numeric: tabular-nums; }
-  .cak-slider-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-faint); margin: 0 2px 12px; }
-  .cak-slider-meta b { color: var(--accent); font-weight: 800; }
-  .cak-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-  .cak-pm { width: 46px; height: 44px; border-radius: 10px; border: 2px solid var(--border2); background: var(--panel); font-size: 24px; font-weight: 700; cursor: pointer; color: var(--text); }
-  .cak-pm:hover { background: var(--panel2); }
-  .cak-all { flex: 1; height: 44px; border-radius: 10px; border: 1px solid var(--border2); background: var(--panel); font-size: 13px; font-weight: 700; cursor: pointer; color: var(--text-dim); }
-  .cak-boxlbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-faint); margin-bottom: 7px; }
-  .cak-boxbtns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
-  .cak-boxbtn { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 11px; border-radius: 9px; border: 1px solid var(--border2); background: var(--panel); cursor: pointer; font-family: inherit; }
-  .cak-boxbtn b { font-size: 13px; color: var(--text); }
-  .cak-boxbtn small { font-size: 10px; color: var(--text-faint); }
-  .cak-boxbtn.active { border: 2px solid var(--ok); background: var(--ok-bg); }
-  .cak-boxbtn.active b { color: var(--ok); }
-  .cak-newbox { border-style: dashed; justify-content: center; font-weight: 700; font-size: 13px; color: var(--text-dim); }
-  .cak-boxmanual { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-  .cak-boxmanual-lbl { font-size: 12px; color: var(--text-faint); }
-  .cak-boxinput { width: 110px; height: 38px; border: 2px solid var(--border2); border-radius: 9px; background: var(--panel); color: var(--text); font-family: inherit; font-size: 14px; font-weight: 700; text-align: center; padding: 0 10px; }
-  .cak-boxinput:focus { outline: none; border-color: var(--accent); }
-  .cak-boxselect { flex: 1; min-width: 180px; height: 44px; border: 2px solid var(--border2); border-radius: 10px; background: var(--panel); color: var(--text); font-family: inherit; font-size: 14px; font-weight: 700; padding: 0 12px; cursor: pointer; }
-  .cak-boxselect:focus { outline: none; border-color: var(--accent); }
-  /* hitra razdelitev v več boxov */
-  .cak-bulk { margin-top: 12px; padding: 12px; background: var(--shelf-bg, #f0fdf4); border: 1px dashed var(--border2); border-radius: 10px; }
-  .cak-bulk-lbl { font-size: 13px; font-weight: 800; color: var(--text-dim); margin-bottom: 8px; }
-  .cak-bulk-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .cak-bulk-kos, .cak-bulk-start { width: 80px; height: 40px; border: 2px solid var(--border2); border-radius: 9px; background: var(--panel); color: var(--text); font-family: inherit; font-size: 15px; font-weight: 700; text-align: center; }
-  .cak-bulk-kos:focus, .cak-bulk-start:focus { outline: none; border-color: var(--accent); }
-  .cak-bulk-x { font-size: 16px; font-weight: 700; color: var(--text-faint); }
-  .cak-bulk-info { font-size: 13px; color: var(--text-dim); }
-  .cak-bulk-btn { height: 40px; padding: 0 18px; border: none; border-radius: 9px; background: #7c3aed; color: #fff; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
-  .cak-bulk-btn:hover { filter: brightness(1.08); }
-  .cak-bulk-hint { font-size: 11px; color: var(--text-faint); margin-top: 6px; }
-  .cak-save { width: 100%; height: 46px; border-radius: 10px; border: none; background: var(--ok); color: #fff; font-weight: 800; font-size: 14px; cursor: pointer; }
-  .cak-save:hover { filter: brightness(1.05); }
-  .cak-complete { text-align: center; padding: 12px; color: var(--ok); font-weight: 700; }
-  .cak-mychips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-  .cak-chip { display: inline-flex; align-items: center; gap: 5px; background: var(--panel3); border-radius: 7px; padding: 4px 9px; font-size: 12px; font-weight: 700; }
-  .cak-chip-x { color: var(--text-faint); cursor: pointer; }
-  .cak-chip-x:hover { color: var(--ni); }
-  .cak-return { margin-top: 10px; background: none; border: none; color: var(--text-faint); font-size: 12px; cursor: pointer; text-decoration: underline; }
-  .cak-closemiss { display:block; width:100%; margin-top:10px; padding:9px 12px; background:#fff7ed; color:#c2410c; border:1px solid #fdba74; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; }
-  .cak-closemiss:hover { background:#ffedd5; }
-  .integrity-warn { display:flex; gap:10px; align-items:flex-start; margin:0 0 12px; padding:10px 12px; background:#fef2f2; border:1px solid #fca5a5; border-left:4px solid #dc2626; border-radius:8px; }
-  .integrity-warn .iw-ico { font-size:18px; line-height:1; flex-shrink:0; }
-  .integrity-warn .iw-txt { display:flex; flex-direction:column; gap:3px; font-size:12px; color:#991b1b; line-height:1.4; }
-  .integrity-warn .iw-txt b { font-size:13px; color:#7f1d1d; }
-
-  /* Povečava slike izdelka */
-  .img-preview-overlay {
-    position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,0.75);
-    display: flex; align-items: center; justify-content: center; padding: 20px;
-    animation: iopFade 0.15s ease;
-  }
-  .img-preview-box {
-    background: var(--panel); border-radius: 16px; padding: 16px;
-    max-width: 90vw; max-height: 85vh; display: flex; flex-direction: column; align-items: center; gap: 12px;
-  }
-  .img-preview-box img { max-width: 100%; max-height: 65vh; object-fit: contain; border-radius: 10px; }
-  .img-preview-sku { font-weight: 800; font-size: 16px; color: var(--text); }
-  .img-preview-close {
-    background: var(--accent); color: #fff; border: none; padding: 12px 24px;
-    border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit;
-  }
-
-  /* Pop-up za popravek pozicije */
-  .poz-edit-box {
-    background: var(--panel); border-radius: 16px; padding: 18px;
-    width: 340px; max-width: 92vw; display: flex; flex-direction: column; gap: 10px;
-  }
-  .poz-edit-head { display: flex; align-items: center; justify-content: space-between; font-size: 15px; font-weight: 800; color: var(--text); }
-  .poz-edit-x { background: transparent; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; padding: 2px 6px; }
-  .poz-edit-cur { background: var(--bg2, rgba(127,127,127,0.08)); border-radius: 10px; padding: 10px 12px; }
-  .poz-edit-sku { font-size: 15px; font-weight: 800; color: var(--text); }
-  .poz-edit-naziv { font-size: 12px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .poz-edit-trenutno { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
-  .poz-edit-label { font-size: 12px; color: var(--text-dim); font-weight: 600; }
-  .poz-edit-input {
-    width: 100%; padding: 11px 12px; border: 1.5px solid var(--accent); border-radius: 10px;
-    background: var(--bg); color: var(--text); font-size: 15px; font-weight: 700; font-family: inherit;
-    text-transform: uppercase; box-sizing: border-box;
-  }
-  .poz-edit-photo {
-    display: flex; align-items: center; justify-content: center; gap: 6px;
-    background: var(--bg2, rgba(127,127,127,0.08)); border: 1.5px solid var(--border);
-    border-radius: 10px; padding: 11px; font-size: 13px; font-weight: 600; color: var(--text);
-    cursor: pointer;
-  }
-  .poz-edit-status { font-size: 12px; min-height: 16px; text-align: center; }
-  .poz-edit-save {
-    background: #16a34a; color: #fff; border: none; padding: 12px; border-radius: 10px;
-    font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit;
-  }
-  .poz-edit-hint { font-size: 11px; color: var(--text-faint); text-align: center; line-height: 1.5; }
-
-  /* In-app obvestilo (kaj je novega) */
-  .news-box {
-    background: var(--panel); border-radius: 16px; padding: 24px 22px;
-    width: 340px; max-width: 92vw; display: flex; flex-direction: column; align-items: center; gap: 12px;
-    text-align: center;
-  }
-  .news-icon { font-size: 40px; line-height: 1; }
-  .news-title { font-size: 17px; font-weight: 800; color: var(--text); }
-  .news-body { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
-  .news-ok {
-    margin-top: 4px; background: var(--accent); color: #fff; border: none; padding: 12px 28px;
-    border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit;
-  }
-
-  /* Sidebar tabi (RS) */
-  .side-card-tabs { padding: 0 !important; overflow: hidden; }
-  .side-tabs { display: flex; border-bottom: 1px solid var(--border); }
-  .side-tab {
-    flex: 1; padding: 12px 8px; border: none; background: transparent;
-    color: var(--text-dim); font-weight: 700; font-size: 12px; cursor: pointer;
-    border-bottom: 3px solid transparent; margin-bottom: -1px; font-family: inherit;
-    display: flex; align-items: center; justify-content: center; gap: 4px;
-  }
-  .side-tab-opombe.active { color: #185FA5; border-bottom-color: #378ADD; background: #E6F1FB; }
-  .side-tab-manjko.active { color: var(--ni); border-bottom-color: var(--ni); background: var(--ni-bg); }
-  .side-tab-boxi.active { color: var(--ok); border-bottom-color: var(--ok); background: var(--ok-bg); }
-  .st-badge { font-size: 10px; padding: 1px 7px; border-radius: 20px; color: #fff; }
-  .st-blue { background: #378ADD; }
-  .st-red { background: var(--ni); }
-  .st-purple { background: #7c3aed; }
-  .side-tab-body { padding: 13px; max-height: 60vh; overflow-y: auto; }
-
-  /* Opomba item (modra) */
-  .opomba-item { border: 1px solid #85B7EB; background: #E6F1FB; border-radius: 11px; padding: 11px 12px; margin-bottom: 9px; }
-  .opomba-item .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .opomba-item .osku { font-weight: 800; font-size: 13px; color: #042C53; }
-  .opomba-item .oboxnote { font-size: 11px; color: #185FA5; font-weight: 700; }
-  .opomba-item .onaziv { font-size: 11px; color: #185FA5; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .opomba-item .opoz-badge {
-    display: inline-block; margin-top: 7px; font-size: 14px; font-weight: 800;
-    color: #042C53; background: #B5D4F4; border: 1px solid #378ADD; border-radius: 8px; padding: 4px 11px;
-  }
-
-  /* Boxi tab */
-  .box-group { border: 1px solid var(--ok-border); border-radius: 11px; padding: 10px 12px; margin-bottom: 9px; }
-  .box-group-head { font-weight: 800; font-size: 14px; color: var(--ok); margin-bottom: 6px; border: 1px solid transparent; border-radius: 7px; padding: 3px 8px; display: inline-block; }
-  .box-group-count { font-size: 10px; background: rgba(0,0,0,0.18); color: inherit; padding: 1px 7px; border-radius: 20px; margin-left: 4px; }
-  .box-line { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px; border-top: 1px solid var(--border); }
-  .box-line-sku { font-weight: 700; }
-  .box-line-poz { color: var(--text-dim); font-size: 11px; }
-  /* HS PLUS tab */
-  .side-tab-hsplus.active { color: #7c3aed; border-bottom-color: #7c3aed; }
-  .hsplus-hint { font-size: 11px; color: #6d28d9; background: #f3e8ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
-  .hsplus-line { border-top-color: #ede9fe; }
-  .hsplus-right { display: flex; align-items: center; gap: 8px; }
-  .hsplus-qty { font-size: 11px; font-weight: 800; color: #6d28d9; background: #f3e8ff; border-radius: 6px; padding: 1px 7px; }
-  .hsplus-print-btn { width: 100%; margin-bottom: 10px; padding: 9px; border: none; border-radius: 9px; background: #7c3aed; color: #fff; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
-  .hsplus-print-btn:hover { filter: brightness(1.08); }
-  /* barvni box badge (barva pride inline iz boxStyle) */
-  .item-box-badge { border: 1px solid; border-radius: 7px; padding: 3px 9px; font-weight: 800; font-size: 12px; }
-  .cak-chip { border: 1px solid; }
-</style>
-</head>
-<body>
-
-<div class="sticky-header">
-<div class="mobile-prog prog-seg-wrap" id="mobileProg"></div>
-<div class="topbar">
-  <a href="/" class="btn btn-ghost btn-sm" style="text-decoration:none" title="Nazaj na nadzorno ploščo">🏠 Domov</a>
-  <div class="brand">
-    <div class="logo">🛒</div>
-    <div class="brand-title">
-      <h1>Nabiranje zaloge</h1>
-      <div class="sub">maaarket · skladišče · v3</div>
-    </div>
-    <label class="filter-switch" title="Prikaži samo nedokončane police">
-      <span class="filter-switch-label" id="filterSwitchLabel">Samo odprto</span>
-      <input type="checkbox" id="filterSwitchInput" onchange="setDoneFilterMode(this.checked)">
-      <span class="filter-switch-track" aria-hidden="true"><span class="filter-switch-knob"></span></span>
-    </label>
-  </div>
-  <div class="topbar-spacer"></div>
-
-  <button class="btn btn-sm gs-packing-btn" id="packingPdfBtn" onclick="cakajPdf()" style="display:none" title="Carinska packing lista (PDF)">📄 Packing lista</button>
-  <button class="btn btn-sm gs-packing-btn" id="packingXlsxBtn" onclick="cakajXlsx()" style="display:none" title="Packing lista (Excel XLSX)">📊 XLS</button>
-  <button class="btn btn-sm gs-packing-btn" id="packingCsvBtn" onclick="cakajCsv()" style="display:none" title="Packing lista (CSV)">📑 CSV</button>
-
-  <div class="global-stat" id="globalStat" style="display:none">
-    <div class="gs-main">
-      <div class="global-stat-head">
-        <span class="gs-pct" id="globalPct">0%</span>
-        <span class="gs-done" id="globalDone">0 / 0</span>
+// Povečava slike
+function openImgPreview(url, sku) {
+  const html = `
+    <div class="img-preview-overlay" id="imgPreviewOverlay" onclick="closeImgPreview()">
+      <div class="img-preview-box" onclick="event.stopPropagation()">
+        <img src="${esc(url)}" alt="${esc(sku)}">
+        <div class="img-preview-sku">${esc(sku)}</div>
+        <button class="img-preview-close" onclick="closeImgPreview()">✕ Zapri</button>
       </div>
-      <div class="gs-bar prog-seg-wrap" id="globalBar"></div>
-      <div class="gs-break" id="globalBreak">skupna uspešnost</div>
-    </div>
-    <div class="gs-timer" id="globalTimer" title="Čas nabiranja">
-      <div class="gs-timer-val"><span class="gs-timer-dot" id="gsTimerDot"></span><span id="gsTimerTime">00:00</span></div>
-      <div class="gs-timer-lbl" id="gsTimerLbl">čaka prvo postavko</div>
-    </div>
-  </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+function closeImgPreview() {
+  const o = document.getElementById('imgPreviewOverlay');
+  if (o) o.remove();
+}
 
-  <button class="btn btn-ghost btn-sm topbar-action" id="searchBtn" onclick="toggleSkuSearch()" title="Išči SKU / pozicijo">🔍 Išči</button>
-  <label class="btn btn-ghost btn-sm topbar-action" style="cursor:pointer">
-    📁 Naloži CSV
-    <input type="file" id="csvInput" accept=".csv" style="display:none">
-  </label>
-  <label class="btn btn-ghost btn-sm topbar-action rs-only-action" id="importIkonkaBtn" style="cursor:pointer;display:none">
-    📥 Uvoz dobavnice
-    <input type="file" id="importInput" accept=".csv,.xls,.xlsx" style="display:none">
-  </label>
-  <label class="btn btn-ghost btn-sm topbar-action" id="hsplusBtn" style="cursor:pointer">
-    📦 HS PLUS
-    <input type="file" id="hsplusInput" accept=".csv,.xls,.xlsx" style="display:none">
-  </label>
-  <button class="btn btn-ghost btn-sm topbar-action" id="skladisceBtn" onclick="openSkladisce()" style="cursor:pointer">🏬 Skladišče2</button>
-  <button class="btn btn-ghost btn-sm topbar-action" id="archiveBtn" onclick="archiveSession()" style="display:none">📦 Arhiviraj</button>
-  <button class="btn btn-ghost btn-sm topbar-action" onclick="openHistory()">🕓 Zgodovina</button>
-  <button class="btn btn-ghost btn-sm topbar-action" id="refreshFeedBtn" onclick="refreshFeed()" title="Ponovno potegni slike iz feeda (npr. po dodajanju novega izdelka)">🔄 Osveži slike</button>
-</div>
-
-<div class="market-tabs">
-  <button class="market-tab active" id="mtab-slo" onclick="switchMarket('slo')">🇸🇮 Nabiranje zaloge SLO</button>
-  <button class="market-tab" id="mtab-rs" onclick="switchMarket('rs')">🇷🇸 Nabiranje zaloge RS</button>
-</div>
-</div>
-
-<div class="wrap" id="wrap">
-  <div id="skuSearchOverlay" style="display:none;position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,0.35)" onclick="if(event.target===this)closeSkuSearch()">
-    <div style="background:var(--panel);max-width:520px;margin:0 auto;border-radius:0 0 16px 16px;padding:14px 16px;box-shadow:var(--shadow)">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:18px">🔍</span>
-        <input type="text" id="skuSearchInput" placeholder="Vpiši SKU, naziv ali pozicijo..." autocomplete="off" oninput="skuSearchRun(this.value)" onkeydown="if(event.key==='Enter')skuSearchJumpFirst();if(event.key==='Escape')closeSkuSearch()" style="flex:1;padding:11px 13px;border:1.5px solid var(--accent);border-radius:10px;font-size:15px;font-family:inherit;outline:none;color:var(--text);background:var(--panel2)">
-        <button onclick="closeSkuSearch()" style="background:var(--panel3);border:none;border-radius:9px;width:38px;height:38px;cursor:pointer;font-size:17px;color:var(--text-dim)">✕</button>
+// ── Popravek pozicije med nabiranjem → čakajoči seznam taba "Sprememba pozicij" ──
+function openPozEdit(sku, currentPoz, naziv) {
+  // odstrani morebitni obstoječi
+  const ex = document.getElementById('pozEditOverlay');
+  if (ex) ex.remove();
+  const html = `
+    <div class="img-preview-overlay" id="pozEditOverlay" onclick="closePozEdit()">
+      <div class="poz-edit-box" onclick="event.stopPropagation()">
+        <div class="poz-edit-head">
+          <span>📍 Sprememba pozicije</span>
+          <button class="poz-edit-x" onclick="closePozEdit()">✕</button>
+        </div>
+        <div class="poz-edit-cur">
+          <div class="poz-edit-sku">${esc(sku)}</div>
+          <div class="poz-edit-naziv">${esc(naziv||'')}</div>
+          <div class="poz-edit-trenutno">trenutno: <b>${esc(currentPoz||'—')}</b></div>
+        </div>
+        <label class="poz-edit-label">Nova pozicija:</label>
+        <input type="text" id="pozEditInput" class="poz-edit-input" value="${esc(currentPoz||'')}" placeholder="npr. 07-4D" autocomplete="off">
+        <label class="poz-edit-photo">
+          📷 Slikaj pozicijo
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="pozEditPhoto(event,'${jsStr(sku)}')">
+        </label>
+        <div class="poz-edit-status" id="pozEditStatus"></div>
+        <button class="poz-edit-save" onclick="savePozEdit('${jsStr(sku)}','${jsStr(naziv||'')}')">✓ Dodaj v "Sprememba pozicij"</button>
+        <div class="poz-edit-hint">Popravek gre v čakajoči seznam — potrdiš ga v zavihku <b>Sprememba pozicij</b>.</div>
       </div>
-      <div id="skuSearchResults" style="margin-top:10px;max-height:50vh;overflow-y:auto"></div>
-    </div>
-  </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(() => { const i = document.getElementById('pozEditInput'); if (i) { i.focus(); i.select(); } }, 50);
+}
 
-  <div class="empty-state" id="emptyState">
-    <div class="icon">📋</div>
-    <h2 style="color:var(--text-dim);font-weight:700">Ni aktivnega seznama</h2>
-    <p style="margin-top:8px;font-size:13px">Naloži CSV izvoz za začetek nabiranja.</p>
-  </div>
-</div>
+function closePozEdit() {
+  const o = document.getElementById('pozEditOverlay');
+  if (o) o.remove();
+}
 
-<div class="toast" id="toast"></div>
+async function pozEditPhoto(ev, sku) {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  const status = document.getElementById('pozEditStatus');
+  status.textContent = '⏳ Prepoznavam pozicijo s slike...';
+  status.style.color = 'var(--text-dim)';
+  try {
+    const b64full = await new Promise((res, rej) => {
+      const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f);
+    });
+    const mt = (b64full.match(/^data:([^;]+);/) || [])[1] || 'image/jpeg';
+    const b64 = b64full.split(',')[1];
+    const r = await fetch('/pozicije-recognize-pos', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ image: b64, media_type: mt })
+    });
+    const d = await r.json();
+    if (d && d.position) {
+      const inp = document.getElementById('pozEditInput');
+      if (inp) inp.value = d.position;
+      status.textContent = '✓ Prepoznano: ' + d.position;
+      status.style.color = 'var(--green, #16a34a)';
+    } else {
+      status.textContent = '⚠ Ni bilo mogoče prepoznati — vpiši ročno.';
+      status.style.color = '#d97706';
+    }
+  } catch(e) {
+    status.textContent = '⚠ Napaka pri prepoznavi — vpiši ročno.';
+    status.style.color = '#dc2626';
+  }
+}
 
-<!-- Skladišče2 modal: prilepi SKU-je za tag 'Skladišče2' -->
-<div class="hist-overlay" id="skladOverlay" style="display:none" onclick="if(event.target===this)closeSkladisce()">
-  <div class="hist-modal" style="max-width:520px" onclick="event.stopPropagation()">
-    <div class="hist-head">
-      <span class="hist-title">🏬 Skladišče2 — označi SKU</span>
-      <button class="hist-close" onclick="closeSkladisce()">✕</button>
-    </div>
-    <div style="padding:14px">
-      <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px">
-        Prilepi SKU-je (en na vrstico ali ločeno z vejico). Postavke s temi SKU dobijo oznako
-        <span class="tag-sklad" style="margin:0">🏬 Skladišče2</span>. Velja za trenutno sejo, skupno za SLO in RS.
-      </p>
-      <textarea id="skladInput" placeholder="SKU123&#10;SKU456&#10;ali: SKU123, SKU456, SKU789"
-        style="width:100%;min-height:120px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <button class="btn btn-primary btn-sm" onclick="addSkladisce()" style="flex:1">➕ Dodaj na seznam</button>
-        <button class="btn btn-ghost btn-sm" onclick="clearSkladisce()" style="color:#dc2626">🗑 Počisti vse</button>
+async function savePozEdit(sku, naziv) {
+  const inp = document.getElementById('pozEditInput');
+  const status = document.getElementById('pozEditStatus');
+  const pos = (inp.value || '').trim();
+  if (!pos) { status.textContent = '⚠ Vpiši pozicijo.'; status.style.color = '#dc2626'; return; }
+  status.textContent = '⏳ Dodajam...';
+  status.style.color = 'var(--text-dim)';
+  try {
+    const r = await fetch('/pozicije-pending-save', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'add', item:{ sku, position: pos, title: naziv } })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      status.textContent = '✓ Dodano v "Sprememba pozicij" (' + (d.items?d.items.length:'?') + ' čaka)';
+      status.style.color = 'var(--green, #16a34a)';
+      setTimeout(closePozEdit, 1100);
+    } else {
+      status.textContent = '⚠ ' + (d.error || 'Napaka');
+      status.style.color = '#dc2626';
+    }
+  } catch(e) {
+    status.textContent = '⚠ Napaka pri shranjevanju.';
+    status.style.color = '#dc2626';
+  }
+}
+
+function showEmpty() {
+  ITEMS = [];
+  document.getElementById('wrap').innerHTML = `
+    <div class="empty-state" id="emptyState">
+      <div class="icon">📋</div>
+      <h2 style="color:var(--text-dim);font-weight:700">Ni aktivnega seznama</h2>
+      <p style="margin-top:8px;font-size:13px">Naloži CSV izvoz za začetek nabiranja.</p>
+    </div>`;
+  document.getElementById('archiveBtn').style.display = 'none';
+  document.getElementById('globalStat').style.display = 'none';
+}
+
+// ── Upload CSV ──
+document.getElementById('csvInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  toast('⏳ Nalagam in obdelujem...');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch(mq('/zaloga-upload'), { method: 'POST', body: fd });
+    const data = await r.json();
+    if (data.ok) {
+      toast(`✓ Naloženih ${data.count} postavk`);
+      await loadSession();
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(err) {
+    toast('✗ ' + err.message);
+  }
+  e.target.value = '';
+});
+
+// ── Uvoz dobavnice (RS): doda police Ikonka/Amio/neznano + kol>1 v čakajoče ──
+document.getElementById('importInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  toast('⏳ Uvažam dobavnico...');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch(mq('/zaloga-import-ikonka'), { method: 'POST', body: fd });
+    const data = await r.json();
+    if (data.ok) {
+      const g = data.groups || {};
+      const gtxt = Object.keys(g).length ? ' (' + Object.entries(g).map(([k,v])=>`${k}: ${v}`).join(', ') + ')' : '';
+      let msg = `✓ Uvoženo: ${data.added_police} na police${gtxt}, ${data.added_cakajoce} v čakajoče`;
+      if (data.merged_dups > 0) msg += ` · 🔗 ${data.merged_dups} podvojenih SKU združenih`;
+      toast(msg);
+      await loadSession();
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(err) {
+    toast('✗ ' + err.message);
+  }
+  e.target.value = '';
+});
+
+// ── HS PLUS (oba trga): označi obstoječe postavke po SKU z vizualno značko ──
+// Pomen: izdelek pride danes (v sistemu je, fizično še ne) → nabiralec naj ne označi "ni zaloge".
+document.getElementById('hsplusInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  toast('⏳ Označujem HS PLUS...');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch(mq('/zaloga-hsplus-upload'), { method: 'POST', body: fd });
+    const data = await r.json();
+    if (data.ok) {
+      let t = `✓ HS PLUS: označenih ${data.matched} postavk`;
+      if (data.unmatched > 0) t += ` (${data.unmatched} SKU ni v seznamu)`;
+      toast(t);
+      await loadSession();
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(err) {
+    toast('✗ ' + err.message);
+  }
+  e.target.value = '';
+});
+
+// ── SKLADIŠČE (oba trga, sejni tag): prilepi SKU-je → označi postavke ──
+function openSkladisce() {
+  document.getElementById('skladOverlay').style.display = 'flex';
+  document.getElementById('skladInput').value = '';
+  document.getElementById('skladStatus').textContent = '';
+  renderSkladList();
+  setTimeout(() => document.getElementById('skladInput').focus(), 50);
+}
+function closeSkladisce() {
+  document.getElementById('skladOverlay').style.display = 'none';
+}
+function renderSkladList() {
+  const el = document.getElementById('skladList');
+  const skus = (SESSION && SESSION.skladisce_skus) || [];
+  if (!skus.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:8px">Ni SKU na seznamu</div>'; return; }
+  el.innerHTML = `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Na seznamu (${skus.length}):</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;max-height:160px;overflow-y:auto">` +
+    skus.map(s => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 8px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:6px">
+      ${esc(s)} <span onclick="removeSkladisce('${esc(s).replace(/'/g,"\\'")}')" style="cursor:pointer;font-weight:700">✕</span></span>`).join('') + '</div>';
+}
+async function addSkladisce() {
+  const raw = document.getElementById('skladInput').value.trim();
+  if (!raw) { document.getElementById('skladStatus').innerHTML = '<span style="color:#dc2626">Prilepi vsaj en SKU</span>'; return; }
+  const st = document.getElementById('skladStatus');
+  st.textContent = '⏳ označujem...';
+  try {
+    const r = await fetch(mq('/zaloga-skladisce'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: MARKET, action: 'add', raw }) });
+    const d = await r.json();
+    if (d.ok) {
+      let msg = `✓ Označenih ${d.marked} postavk · ${d.skladisce_skus.length} SKU na seznamu`;
+      if (d.ni_najdenih && d.ni_najdenih.length) msg += ` <span style="color:#d97706">(${d.ni_najdenih.length} SKU ni v tej seji)</span>`;
+      st.innerHTML = '<span style="color:#16a34a">' + msg + '</span>';
+      document.getElementById('skladInput').value = '';
+      await loadSession();
+      renderSkladList();
+    } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + esc(d.error || 'napaka') + '</span>'; }
+  } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
+}
+async function removeSkladisce(sku) {
+  try {
+    const r = await fetch(mq('/zaloga-skladisce'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: MARKET, action: 'remove', sku }) });
+    const d = await r.json();
+    if (d.ok) { await loadSession(); renderSkladList(); }
+  } catch (e) {}
+}
+async function clearSkladisce() {
+  if (!confirm('Počistim cel seznam Skladišče2 za to sejo?')) return;
+  try {
+    const r = await fetch(mq('/zaloga-skladisce'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: MARKET, action: 'clear' }) });
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById('skladStatus').innerHTML = '<span style="color:#16a34a">✓ Počiščeno</span>';
+      await loadSession();
+      renderSkladList();
+    }
+  } catch (e) {}
+}
+
+function groupItems() {
+  const groups = {};
+  ITEMS.forEach(it => {
+    (groups[it.group] = groups[it.group] || []).push(it);
+  });
+  // sortiraj postavke znotraj skupine po poziciji
+  Object.values(groups).forEach(arr => arr.sort((a,b) => (a.poz||'').localeCompare(b.poz||'', 'sl', {numeric:true})));
+  return groups;
+}
+
+// ── Filter "Samo odprto": skrij dokončane (100%) police ──
+function getDoneFilter() {
+  return localStorage.getItem('zaloga_only_open') === '1';
+}
+function setDoneFilter(on) {
+  localStorage.setItem('zaloga_only_open', on ? '1' : '0');
+}
+function syncFilterToggleLabel() {
+  const lbl = document.getElementById('filterSwitchLabel');
+  const input = document.getElementById('filterSwitchInput');
+  const on = getDoneFilter();
+  if (input) input.checked = on;   // stikalo odraža stanje
+  if (!lbl) return;
+  // oznaka je VEDNO "Samo odprto" (+ število nedokončanih); nikoli prazna
+  let label = 'Samo odprto';
+  try {
+    const groups = groupItems();
+    let open = 0;
+    Object.values(groups).forEach(items => {
+      const s = groupStat(items);
+      if (!(s.total > 0 && s.todo === 0)) open++;  // ni dokončana
+    });
+    label = `Samo odprto (${open})`;
+  } catch (e) { /* če štetje spodleti, ostane "Samo odprto" brez številke */ }
+  lbl.textContent = label;
+}
+// stikalo: checked = prikaži samo odprte (filter ON), unchecked = vse
+function setDoneFilterMode(on) {
+  setDoneFilter(!!on);
+  render();                 // render sam pokliče syncFilterToggleLabel()
+  syncFilterToggleLabel();  // + takoj, da sta stikalo in oznaka zagotovo osvežena
+}
+// ohrani staro ime za morebitne klice (preklopi stanje)
+function toggleDoneFilter() { setDoneFilterMode(!getDoneFilter()); }
+
+// ── Render ──
+function render() {
+  const groups = groupItems();
+  const expanded = getExpanded();
+  const onlyOpen = getDoneFilter();
+  const groupNames = Object.keys(groups).sort((a,b) => {
+    const ga = GROUP_ORDER(a), gb = GROUP_ORDER(b);
+    if (ga[0] !== gb[0]) return ga[0] - gb[0];
+    if (typeof ga[1] === 'number' && typeof gb[1] === 'number') return ga[1] - gb[1];
+    return String(ga[1]).localeCompare(String(gb[1]), 'sl', {numeric:true});
+  });
+
+  let html = '<div class="shelves">';
+  let hiddenDone = 0;
+  groupNames.forEach(g => {
+    const items = groups[g];
+    const isOpen = !!expanded[g];
+    const stat = groupStat(items);
+    // polica je "dokončana" ko ima vsaka postavka odločitev (✓ ali ✗) — nobena ni več todo
+    const isDone = stat.total > 0 && stat.todo === 0;
+    // filter "Samo odprto": skrij dokončane police (a pusti odprto, če jo ravno gledaš)
+    if (onlyOpen && isDone && !expanded[g]) { hiddenDone++; return; }
+    html += `
+      <div class="shelf ${isOpen ? 'open' : ''}${isDone ? ' shelf-done' : ''}" id="shelf-${cssId(g)}">
+        <div class="shelf-head" onclick="toggleShelf('${jsStr(g)}')">
+          <span class="shelf-head-fill" aria-hidden="true" style="--fill-ok:${stat.qPctOk}%;--fill-ni:${stat.qPctOk + stat.qPctNi}%"></span>
+          <span class="shelf-chevron">▶</span>
+          <span class="shelf-name">${esc(g)}</span>
+          <span class="shelf-count">${items.length} postavk</span>
+          <div class="shelf-head-spacer"></div>
+          <div class="shelf-prog">
+            <div class="shelf-prog-bar prog-seg-wrap">${progBarSegments(stat)}</div>
+            <span class="shelf-prog-pct" style="color:var(--text)">${isDone ? '✓ ' : ''}${stat.pctOkDisplay}%</span>
+          </div>
+        </div>
+        <div class="shelf-body">
+          ${isRS() ? shelfBoxBar(g, items) : ''}
+          <div class="item-head">
+            <span>ID naročila</span><span>Slika</span><span>SKU</span><span>Pozicija</span>
+            <span>Naziv</span><span class="h-qty">Količina</span><span class="h-status">Status</span>
+          </div>
+          ${_sortMankoTop(items).map(it => itemRow(it)).join('')}
+        </div>
+      </div>`;
+  });
+  // RS: sekcija dodatnih boxov (viški) — pod zadnjo polico
+  if (isRS()) html += extraBoxesSection();
+  // RS: sekcija "Čakajoče" (velike postavke za razdelitev) — čisto na koncu
+  if (isRS()) html += cakajoceSection();
+  // filter aktiven in vse police dokončane → sporočilo
+  if (onlyOpen && hiddenDone > 0 && !html.includes('class="shelf ')) {
+    html += `<div class="empty-state"><div class="icon">✓</div>Vse police so dokončane!<br><span style="font-size:13px;color:var(--text-dim)">${hiddenDone} dokončanih skritih — klikni "Prikaži vse"</span></div>`;
+  }
+  html += '</div>';
+
+  // Sidebar (manjko + skupna statistika)
+  html += renderSidebar();
+
+  document.getElementById('wrap').innerHTML = html;
+  document.body.classList.toggle('market-slo', !isRS());
+  document.body.classList.toggle('market-rs', isRS());
+  updateGlobalStat();
+  updateMobileBoxBar();  // poskrbi za prikaz (RS+mobile) ali skritje (SLO/desktop)
+  syncFilterToggleLabel();
+  updatePackingBtn();    // zgornji gumb "Packing lista" (samo RS + ko obstajajo boxi)
+}
+
+// prikaži/skrij zgornji gumb za carinski PDF (RS + ko obstaja kakšen box: zaklenjene postavke ALI razdeljeni)
+function updatePackingBtn() {
+  const btn = document.getElementById('packingPdfBtn');
+  if (!btn) return;
+  const xlsBtn = document.getElementById('packingXlsxBtn');
+  const csvBtn = document.getElementById('packingCsvBtn');
+  const pboxes = getPackingBoxes();
+  // boxi iz polic (zaklenjene postavke z box oznako)
+  const lockedBoxes = new Set();
+  (ITEMS || []).forEach(it => {
+    if (it.box && it.status === 'ok') lockedBoxes.add(String(it.box));
+  });
+  Object.keys(pboxes).forEach(b => lockedBoxes.add(String(b)));
+  const show = isRS() && lockedBoxes.size > 0;
+  // na mobile gumbi NIKOLI (prekriva se s 'Samo odprto' ipd.)
+  if (isMobile()) { btn.style.display = 'none'; if(xlsBtn)xlsBtn.style.display='none'; if(csvBtn)csvBtn.style.display='none'; return; }
+  btn.style.display = show ? 'inline-flex' : 'none';
+  if (xlsBtn) xlsBtn.style.display = show ? 'inline-flex' : 'none';
+  if (csvBtn) csvBtn.style.display = show ? 'inline-flex' : 'none';
+  if (show) btn.textContent = `📄 Packing lista (${lockedBoxes.size})`;
+}
+
+// ── RS: zbir zasedenih box številk (1..100) ──
+// Box je "zaseden", če ima vsaj eno zaklenjeno postavko, je dodatni box,
+// ALI je uporabljen v čakajočih (packing_boxes) — vse sinhrono, da predlog ne trči.
+function usedBoxNumbers() {
+  const used = new Set();
+  (ITEMS || []).forEach(it => {
+    if (it.locked && it.box != null && String(it.box).trim() !== '') {
+      const n = parseInt(String(it.box).trim(), 10);
+      if (!isNaN(n)) used.add(n);
+    }
+  });
+  const xb = getExtraBoxes();
+  Object.keys(xb).forEach(b => {
+    const n = parseInt(String(b).trim(), 10);
+    if (!isNaN(n)) used.add(n);
+  });
+  // čakajoče (packing_boxes) — da police in čakajoče delijo isti prostor številk
+  const pb = (typeof getPackingBoxes === 'function') ? getPackingBoxes() : {};
+  Object.keys(pb || {}).forEach(b => {
+    const n = parseInt(String(b).trim(), 10);
+    if (!isNaN(n)) used.add(n);
+  });
+  return used;
+}
+
+// Najmanjša neuporabljena številka boxa (1..100), oz. '' če so vse zasedene
+function nextFreeBox() {
+  const used = usedBoxNumbers();
+  for (let i = 1; i <= 100; i++) if (!used.has(i)) return String(i);
+  return '';
+}
+
+// Globalno število obkljukanih (status ok) izdelkov BREZ dodeljenega boxa — čez vse police
+function globalPendingCount() {
+  return (ITEMS || []).filter(it => it.status === 'ok' && !it.locked).length;
+}
+
+// ── RS: box vrstica pri polici ──
+function shelfBoxBar(group, items, mobileMode) {
+  const lockedCount = items.filter(it => it.locked).length;
+  const globalPending = globalPendingCount();  // obkljukani brez boxa — čez VSE police
+  const used = usedBoxNumbers();
+  const suggested = nextFreeBox();
+  // opcije BOX1..BOX100; zasedeni dobijo ✓ (dovolimo izbiro — lahko dodajaš v obstoječi box)
+  let opts = '';
+  for (let i = 1; i <= 100; i++) {
+    const isUsed = used.has(i);
+    const sel = (String(i) === suggested) ? ' selected' : '';
+    opts += `<option value="${i}"${sel}${isUsed ? ' data-used="1"' : ''}>${isUsed ? '✓ ' : ''}BOX${i}</option>`;
+  }
+  // unikatni id: mobilni sticky bar uporablja predpono "m-", da se ne podvaja z inline barom
+  const inputId = (mobileMode ? 'mboxinput-' : 'boxinput-') + cssId(group);
+  const cls = 'shelf-box-bar' + (mobileMode ? ' shelf-box-bar-mobile' : '');
+  // značka: koliko obkljukanih čaka na box (globalno). Mobile = samo število, desktop = "N čaka"
+  const countBadge = globalPending
+    ? `<span class="sbb-count" title="Obkljukanih brez boxa (čez vse police)">✓ ${globalPending}${mobileMode ? '' : ' čaka'}</span>`
+    : '';
+  return `
+    <div class="${cls}" onclick="event.stopPropagation()">
+      <span class="sbb-icon">📦</span>
+      <span class="sbb-label">Box:</span>
+      <select class="sbb-select" id="${inputId}" onclick="event.stopPropagation()" onchange="markBoxSelect(this)">
+        ${opts}
+      </select>
+      ${countBadge}
+      <button class="sbb-save" onclick="lockBox('${jsStr(group)}', ${mobileMode ? 'true' : 'false'})">
+        🔒 ${mobileMode ? 'Zakleni' : 'Shrani in zakleni'}
+      </button>
+      ${lockedCount ? `<span class="sbb-locked">${lockedCount} zaklenjenih</span>` : ''}
+    </div>`;
+}
+
+// vizualno označi, ali je izbrani box že zaseden (zelena obroba)
+function markBoxSelect(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  if (opt && opt.getAttribute('data-used') === '1') sel.classList.add('sbb-select-used');
+  else sel.classList.remove('sbb-select-used');
+}
+
+// ── RS: zakleni VSE obkljukane (čez vse police) v izbrani box ──
+async function lockBox(group, mobileMode) {
+  const id = (mobileMode ? 'mboxinput-' : 'boxinput-') + cssId(group);
+  const inp = document.getElementById(id);
+  const box = inp ? inp.value.trim() : '';
+  if (!box) { toast('Izberi box'); if (inp) inp.focus(); return; }
+  const pending = globalPendingCount();
+  if (!pending) { toast('Ni obkljukanih izdelkov brez boxa'); return; }
+  try {
+    const r = await fetch('/zaloga-lock-box', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ market: MARKET, global: true, box })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      // posodobi lokalno — VSE police
+      ITEMS.forEach(it => {
+        if (it.status === 'ok' && !it.locked) { it.box = box; it.locked = true; }
+      });
+      toast(`✓ ${data.locked} postavk → Box ${box}`);
+      render();
+      if (isRS()) updateMobileBoxBar();  // osveži spodnji bar (nov predlog boxa)
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+// ── RS: odkleni eno postavko ──
+async function unlockItem(idx) {
+  if (!confirm('Odklenem to postavko?\n\nBox dodelitev se odstrani, lahko jo ponovno zakleneš.')) return;
+  try {
+    const r = await fetch('/zaloga-lock-box', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ market: MARKET, unlock_idx: idx })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      const it = ITEMS.find(x => x.idx === idx);
+      if (it) { it.locked = false; it.box = ''; }
+      toast('✓ Odklenjeno');
+      render();
+    } else { toast('✗ ' + (data.error || 'napaka')); }
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+// ── RS: shrani opombo (dodatni box) ──
+function commitOpomba(idx, val, el) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  const newVal = (val || '').trim();
+  const changed = it.opomba !== newVal;
+  it.opomba = newVal;
+  saveItem(idx, { opomba: it.opomba });
+  refreshSidebarAndStats();
+  // vizualni feedback "shranjeno"
+  if (el && changed) {
+    el.classList.add('iop-saved');
+    el.style.borderColor = 'var(--ok)';
+    el.style.background = 'var(--ok-bg)';
+    const tag = document.createElement('span');
+    tag.className = 'iop-saved-tag';
+    tag.textContent = '✓ shranjeno';
+    el.parentElement.appendChild(tag);
+    setTimeout(() => {
+      el.style.borderColor = '';
+      el.style.background = '';
+      el.classList.remove('iop-saved');
+      tag.remove();
+    }, 1500);
+  }
+}
+
+// ── RS: dostop do dodatnih boxov ──
+function getExtraBoxes() {
+  return (SESSION && SESSION.extra_boxes) ? SESSION.extra_boxes : {};
+}
+
+// ── RS: odpri dialog "V box" za postavko ──
+function openBoxDialog(idx) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  // kos iz opombe (prvo število) ali privzeto qty
+  let kos = it.qty || 1;
+  const m = (it.opomba || '').match(/\d+/);
+  if (m) kos = parseInt(m[0]);
+  if (!kos || kos < 1) kos = 1;
+
+  const boxes = getExtraBoxes();
+  const keys = Object.keys(boxes).sort((a,b)=>String(a).localeCompare(String(b),'sl',{numeric:true}));
+
+  const existing = keys.length ? keys.map(b => {
+    const totalKos = boxes[b].reduce((s,e)=>s+(e.kos||0),0);
+    return `<button class="bxd-pick" onclick="addToExtraBox(${idx}, '${jsStr(b)}', ${kos})">
+      <span class="bxd-pick-ico">📦</span>
+      <span class="bxd-pick-name">Box ${esc(b)}</span>
+      <span class="bxd-pick-kos">${totalKos} kos</span>
+    </button>`;
+  }).join('') : '<div class="bxd-empty">Še ni dodatnih boxov — ustvari prvega zgoraj.</div>';
+
+  const html = `
+    <div class="bxd-overlay" id="bxdOverlay" onclick="if(event.target===this)closeBoxDialog()">
+      <div class="bxd-modal">
+        <div class="bxd-title">${esc(it.sku)} × ${kos} → v kateri dodatni box?</div>
+        <div class="bxd-create">
+          <input type="text" id="bxdNewNum" class="bxd-new-input" placeholder="Nova št. boxa (npr. 99)"
+            inputmode="numeric" onkeydown="if(event.key==='Enter')createAndAdd(${idx}, ${kos})">
+          <button class="bxd-create-btn" onclick="createAndAdd(${idx}, ${kos})">➕ Ustvari</button>
+        </div>
+        ${keys.length ? '<div class="bxd-or">ali izberi obstoječega:</div>' : ''}
+        <div class="bxd-list">${existing}</div>
+        <button class="bxd-cancel" onclick="closeBoxDialog()">Prekliči</button>
       </div>
-      <div id="skladStatus" style="font-size:12px;margin-top:10px;min-height:16px"></div>
-      <div id="skladList" style="margin-top:8px"></div>
-    </div>
-  </div>
-</div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(()=>{ const el=document.getElementById('bxdNewNum'); if(el) el.focus(); }, 50);
+}
 
-<!-- RS mobile: sticky box-bar pritrjen na dno (prikazan ko je polica odprta) -->
-<div id="mobileBoxBar" style="display:none"></div>
+function closeBoxDialog() {
+  const o = document.getElementById('bxdOverlay');
+  if (o) o.remove();
+}
 
-<!-- Zgodovina modal -->
-<div class="hist-overlay" id="histOverlay" onclick="if(event.target===this)closeHistory()">
-  <div class="hist-modal">
-    <div class="hist-head">
-      <h2 id="histTitle">🕓 Zgodovina nabiranj</h2>
-      <button class="hist-close" onclick="closeHistory()">✕</button>
-    </div>
-    <div class="hist-body" id="histBody"></div>
-  </div>
-</div>
+function createAndAdd(idx, kos) {
+  const inp = document.getElementById('bxdNewNum');
+  const box = inp ? inp.value.trim() : '';
+  if (!box) { toast('Vpiši št. novega boxa'); if(inp) inp.focus(); return; }
+  addToExtraBox(idx, box, kos);
+}
 
-<script src="/static/zaloga.js?v=20260611BR"></script>
-</body>
-</html>
+let _extraBoxBusy = false;  // zaščita pred dvojnim klikom (mobile)
+async function addToExtraBox(idx, box, kos) {
+  if (_extraBoxBusy) return;  // klic že poteka — prepreči dvojno dodajanje
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  _extraBoxBusy = true;
+  try {
+    const r = await fetch('/zaloga-extra-box', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'add', box, sku: it.sku, naziv: it.naziv, idx, kos })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      if (SESSION) SESSION.extra_boxes = data.extra_boxes;
+      // backend morda označi nabrano če cel kos
+      await loadSession();
+      closeBoxDialog();
+      toast(`✓ ${it.sku} × ${kos} → Box ${box}`);
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(e) { toast('✗ ' + e.message); }
+  finally { _extraBoxBusy = false; }
+}
+
+async function removeFromExtraBox(box, sku) {
+  if (!confirm(`Odstranim ${sku} iz Box ${box}?`)) return;
+  try {
+    const r = await fetch('/zaloga-extra-box', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'remove_item', box, sku })
+    });
+    const data = await r.json();
+    if (data.ok) { if(SESSION) SESSION.extra_boxes = data.extra_boxes; render(); toast('✓ Odstranjeno'); }
+    else toast('✗ ' + (data.error||'napaka'));
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+// Preimenuj (uredi številko) dodatnega boxa
+async function renameExtraBox(oldBox) {
+  const nw = prompt(`Nova številka za Box ${oldBox}:`, oldBox);
+  if (nw === null) return;                 // preklic
+  const newBox = String(nw).trim();
+  if (!newBox || newBox === String(oldBox)) return;
+  try {
+    const r = await fetch('/zaloga-extra-box', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'rename_box', box: oldBox, new_box: newBox })
+    });
+    const data = await r.json();
+    if (data.ok) { if(SESSION) SESSION.extra_boxes = data.extra_boxes; render(); toast(`✓ Box ${oldBox} → ${newBox}`); }
+    else toast('✗ ' + (data.error||'napaka'));
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+// ── RS: sekcija "Dodatni boxi (viški)" ──
+function extraBoxesSection() {
+  const boxes = getExtraBoxes();
+  const keys = Object.keys(boxes).sort((a,b)=>String(a).localeCompare(String(b),'sl',{numeric:true}));
+  if (!keys.length) return '';  // skrito dokler ni vsaj 1
+  const cards = keys.map(b => {
+    const items = boxes[b];
+    const totalKos = items.reduce((s,e)=>s+(e.kos||0),0);
+    const lines = items.map(e => `
+      <div class="ebx-line">
+        <span class="ebx-line-sku">${esc(e.sku)}</span>
+        <button class="ebx-copy-btn" onclick="copySkuFromManko(this,'${esc(e.sku)}')" title="Kopiraj kodo">📋 Kopiraj</button>
+        <span class="ebx-line-kos">× ${e.kos}</span>
+        <button class="ebx-line-del" onclick="removeFromExtraBox('${jsStr(b)}','${jsStr(e.sku)}')" title="Odstrani">✕</button>
+      </div>`).join('');
+    return `
+      <div class="ebx-card">
+        <div class="ebx-head">
+          <span class="ebx-name">📦 Box ${esc(b)} <button class="ebx-rename" onclick="renameExtraBox('${jsStr(b)}')" title="Uredi številko boxa">✏️</button></span>
+          <span class="ebx-meta">${totalKos} kos · ${items.length} ${items.length===1?'izdelek':(items.length===2?'izdelka':'izdelkov')}</span>
+        </div>
+        ${lines}
+      </div>`;
+  }).join('');
+  return `
+    <div class="extra-boxes-section">
+      <div class="ebx-section-head">
+        <span class="ebx-section-ico">🗄️</span>
+        <span class="ebx-section-title">Dodatni boxi (viški)</span>
+        <span class="ebx-section-count">${keys.length} box${keys.length===1?'':(keys.length===2?'a':'ov')}</span>
+      </div>
+      ${cards}
+    </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ČAKAJOČE — velike postavke za razdelitev v več packing boxov (carina)
+// ════════════════════════════════════════════════════════════════
+let CAKAJ_OPEN = null;   // idx odprte (razširjene) postavke
+let CAKAJ_KOS = {};      // idx → trenutna vrednost sliderja
+let CAKAJ_BOX = {};      // idx → izbrana št. boxa
+
+function getCakajoce() { return (SESSION && SESSION.cakajoce) ? SESSION.cakajoce : []; }
+function getPackingBoxes() { return (SESSION && SESSION.packing_boxes) ? SESSION.packing_boxes : {}; }
+
+function _usedBoxNums() {
+  // VSE zasedene številke (police zaklenjene + viški + čakajoče) — isti vir kot usedBoxNumbers().
+  // Dodatno zajamemo še ok-postavke z box (tudi nezaklenjene), za predlog v čakajočih.
+  const used = new Set();
+  // baza: usedBoxNumbers() vrne števila (police locked + viški + packing_boxes)
+  if (typeof usedBoxNumbers === 'function') {
+    usedBoxNumbers().forEach(n => used.add(String(n)));
+  }
+  // ok-postavke z dodeljenim boxom (tudi če še niso zaklenjene)
+  (ITEMS || []).forEach(it => { if (it.box && it.status === 'ok') used.add(String(it.box)); });
+  return used;
+}
+
+function _nextBoxNum() {
+  // predlagaj naslednjo prosto številko — VIŠJO od vseh zasedenih (police + čakajoče),
+  // da se NIKOLI ne prekriva z boxom iz police
+  const used = _usedBoxNums();
+  let max = 0;
+  used.forEach(b => { const n = parseInt(b); if (!isNaN(n) && n > max) max = n; });
+  return String(max + 1 || 1);
+}
+
+function cakajoceSection() {
+  const list = getCakajoce();
+  const pboxes = getPackingBoxes();
+  if (!list.length) return '';   // skrito dokler ni vsaj 1
+  const onlyOpen = getDoneFilter();
+
+  const rows = list.map(c => {
+    const need = c.qty || 0;
+    const assigned = c.assigned || 0;
+    const ostane = Math.max(0, need - assigned);
+    const isOpen = CAKAJ_OPEN === c.idx;
+    const isDone = c.done || ostane === 0;
+    const boxCount = Object.keys(pboxes).filter(b => pboxes[b].some(e => e.sku === c.sku)).length;
+
+    // filter "Samo odprto": skrij zaključene (razdeljene) čakajoče — razen če so odprte
+    if (onlyOpen && isDone && !isOpen) return '';
+
+    if (!isOpen) {
+      // DROBNA vrstica (zaprta) — done obarvana svetlo zeleno
+      return `
+        <div class="cak-row${isDone ? ' cak-row-done' : ''}" onclick="cakajToggle(${c.idx})">
+          <span class="cak-chev">▶</span>
+          <span class="cak-sku">${esc(c.sku)}</span>
+          <span class="cak-naziv">${esc(c.naziv)}</span>
+          ${isDone
+            ? `<span class="cak-done">✓ razdeljeno</span>`
+            : `<span class="cak-rem">še <b>${ostane}</b>/${need}</span>`}
+          <span class="cak-boxcount">${boxCount} box</span>
+        </div>`;
+    }
+
+    // RAZŠIRJENA vrstica (slider razdelilnik)
+    const cur = (CAKAJ_KOS[c.idx] != null) ? CAKAJ_KOS[c.idx] : Math.min(ostane, ostane);
+    const curVal = Math.max(0, Math.min(cur, ostane));
+    const selBox = CAKAJ_BOX[c.idx] || _nextBoxNum();
+    const pctFill = ostane ? Math.round(curVal / ostane * 100) : 0;
+    const poShran = Math.max(0, ostane - curVal);
+
+    // obstoječi boxi za izbiro: VEDNO dropdown (tudi pri 1-3, da ne zavzame vrstic na mobile)
+    const boxKeys = Object.keys(pboxes).sort((a,b)=>String(a).localeCompare(String(b),'sl',{numeric:true}));
+    const boxDropdown = boxKeys.length ? `
+      <select class="cak-boxselect" onclick="event.stopPropagation()" onchange="cakajPickBox(${c.idx}, this.value)">
+        <option value="" ${!boxKeys.includes(String(selBox))?'selected':''} disabled>Izberi obstoječi box…</option>
+        ${boxKeys.map(b => {
+          const bKos = pboxes[b].reduce((s,e)=>s+(e.kos||0),0);
+          return `<option value="${esc(b)}" ${String(selBox)===String(b)?'selected':''}>📦 BOX ${esc(b)} · ${bKos} kos · ${pboxes[b].length} izd.</option>`;
+        }).join('')}
+      </select>` : '';
+
+    // že dodeljeni boxi te postavke
+    const myBoxes = Object.keys(pboxes).filter(b => pboxes[b].some(e => e.sku === c.sku))
+      .sort((a,b)=>String(a).localeCompare(String(b),'sl',{numeric:true}))
+      .map(b => {
+        const e = pboxes[b].find(x => x.sku === c.sku);
+        return `<span class="cak-chip" style="${boxStyle(b)}">📦 BOX${esc(b)} · ${e.kos} <span class="cak-chip-x" onclick="cakajRemoveAssign(${c.idx},'${jsStr(b)}')" title="Odstrani">✕</span></span>`;
+      }).join('');
+
+    return `
+      <div class="cak-row-open">
+        <div class="cak-head" onclick="cakajToggle(${c.idx})">
+          <span class="cak-chev">▼</span>
+          <span class="cak-sku">${esc(c.sku)}</span>
+          <span class="cak-naziv">${esc(c.naziv)}</span>
+          <span class="cak-rem">še <b>${ostane}</b>/${need}</span>
+        </div>
+        <div class="cak-body">
+          ${ostane > 0 ? `
+          <div class="cak-slider" onpointerdown="cakajSliderDown(event,${c.idx},${ostane})">
+            <div class="cak-slider-fill" style="width:${pctFill}%"></div>
+            <div class="cak-slider-val"><b id="cakVal-${c.idx}">${curVal}</b> kosov v box</div>
+          </div>
+          <div class="cak-slider-meta"><span>0</span><span>ostane: <b>${poShran}</b></span><span>${ostane}</span></div>
+          <div class="cak-controls">
+            <button class="cak-pm" onclick="cakajStep(${c.idx},-1,${ostane})">−</button>
+            <button class="cak-pm" onclick="cakajStep(${c.idx},1,${ostane})">+</button>
+            <button class="cak-all" onclick="cakajStep(${c.idx},9999,${ostane})">Vse (${ostane})</button>
+          </div>
+          <div class="cak-boxrow">
+            <div class="cak-boxlbl">V kateri box?</div>
+            <div class="cak-boxbtns">
+              ${boxDropdown}
+              <button class="cak-boxbtn cak-newbox${!_usedBoxNums().has(String(selBox))?' active':''}" onclick="cakajPickBox(${c.idx},'${jsStr(_nextBoxNum())}')">＋ Nov (${_nextBoxNum()})</button>
+            </div>
+            <div class="cak-boxmanual">
+              <span class="cak-boxmanual-lbl">ali ročno:</span>
+              <input type="text" inputmode="numeric" class="cak-boxinput" value="${esc(String(selBox))}"
+                onclick="event.stopPropagation()"
+                onchange="cakajPickBox(${c.idx}, this.value.trim())"
+                onkeydown="if(event.key==='Enter'){this.blur();}"
+                placeholder="št. boxa">
+            </div>
+          </div>
+          <button class="cak-save" onclick="cakajAssign(${c.idx})">✓ Dodaj ${curVal} kos v BOX ${esc(selBox)}</button>
+          <div class="cak-bulk">
+            <div class="cak-bulk-lbl">⚡ Hitra razdelitev v več boxov</div>
+            <div class="cak-bulk-row">
+              <input type="number" min="1" class="cak-bulk-kos" id="cakBulkKos${c.idx}" placeholder="kos/box" onclick="event.stopPropagation()">
+              <span class="cak-bulk-x">×</span>
+              <span class="cak-bulk-info">od BOX</span>
+              <input type="number" min="1" class="cak-bulk-start" id="cakBulkStart${c.idx}" value="${_nextBoxNum()}" onclick="event.stopPropagation()">
+              <button class="cak-bulk-btn" onclick="cakajAssignBulk(${c.idx})">Razdeli</button>
+            </div>
+            <div class="cak-bulk-hint">Razdeli ${ostane} kos po N v zaporedne bokse. Ostanek (če ni deljivo) ostane.</div>
+          </div>
+          ` : `<div class="cak-complete">✓ Vse razdeljeno (${need} kosov)</div>`}
+          ${myBoxes ? `<div class="cak-mychips">${myBoxes}</div>` : ''}
+          ${(ostane > 0 && assigned > 0) ? `<button class="cak-closemiss" onclick="cakajCloseMissing(${c.idx},${ostane})">✓ Zaključi — ${ostane} v manjko</button>` : ''}
+          <button class="cak-return" onclick="cakajReturn(${c.idx})">↩ Vrni v polico</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  const totalBoxes = Object.keys(pboxes).length;
+
+  return `
+    <div class="cak-section">
+      <div class="cak-section-head">
+        <span>⏳</span>
+        <span class="cak-section-title">Čakajoče · razdelitev v bokse</span>
+        <span class="cak-section-count">${list.length}</span>
+      </div>
+      ${rows}
+    </div>`;
+}
+
+async function prenesiVCakajoce(idx) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  if (!confirm(`Prenesti "${it.sku}" (${it.qty} kos) v čakajoče za razdelitev v bokse?\nPostavka bo odstranjena iz police.`)) return;
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'transfer', idx })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      SESSION.cakajoce = d.cakajoce;
+      SESSION.packing_boxes = d.packing_boxes;
+      // odstrani iz lokalnega ITEMS
+      ITEMS = ITEMS.filter(x => x.idx !== idx);
+      CAKAJ_OPEN = idx;  // odpri jo takoj
+      render();
+    } else { alert(d.error || 'Napaka'); }
+  } catch(e) { alert('Napaka pri prenosu'); }
+}
+
+function cakajToggle(idx) {
+  CAKAJ_OPEN = (CAKAJ_OPEN === idx) ? null : idx;
+  render();
+}
+
+function cakajStep(idx, delta, ostane) {
+  let v = (CAKAJ_KOS[idx] != null) ? CAKAJ_KOS[idx] : ostane;
+  if (delta === 9999) v = ostane;
+  else v = Math.max(0, Math.min(ostane, v + delta));
+  CAKAJ_KOS[idx] = v;
+  render();
+}
+
+function cakajPickBox(idx, box) {
+  box = String(box || '').trim();
+  if (!box) return;   // prazen vnos → ignoriraj
+  CAKAJ_BOX[idx] = box;
+  render();
+}
+
+// slider drag (pointer)
+function cakajSliderDown(ev, idx, ostane) {
+  ev.preventDefault();
+  const track = ev.currentTarget;
+  const setFromX = (clientX) => {
+    const r = track.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    CAKAJ_KOS[idx] = Math.round(ratio * ostane);
+    // posodobi samo prikaz med vlečenjem (brez polnega renderja za gladkost)
+    const fill = track.querySelector('.cak-slider-fill');
+    const val = document.getElementById('cakVal-' + idx);
+    if (fill) fill.style.width = Math.round(ratio*100) + '%';
+    if (val) val.textContent = CAKAJ_KOS[idx];
+  };
+  setFromX(ev.clientX);
+  const move = (e) => setFromX(e.clientX);
+  const up = () => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    render();  // poln render ob koncu (osveži "ostane", gumb)
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+}
+
+async function cakajAssign(idx) {
+  const c = getCakajoce().find(x => x.idx === idx);
+  if (!c) return;
+  const ostane = Math.max(0, (c.qty||0) - (c.assigned||0));
+  const kos = (CAKAJ_KOS[idx] != null) ? CAKAJ_KOS[idx] : ostane;
+  if (kos <= 0) { alert('Izberi količino'); return; }
+  const box = CAKAJ_BOX[idx] || _nextBoxNum();
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'assign', idx, box, sku: c.sku, naziv: c.naziv, kos })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      SESSION.cakajoce = d.cakajoce;
+      SESSION.packing_boxes = d.packing_boxes;
+      delete CAKAJ_KOS[idx];   // reset slider
+      delete CAKAJ_BOX[idx];
+      render();
+    } else { alert(d.error || 'Napaka'); }
+  } catch(e) { alert('Napaka pri shranjevanju'); }
+}
+
+// Hitra razdelitev: X kosov po N v zaporedne bokse od start_box naprej
+async function cakajAssignBulk(idx) {
+  const c = getCakajoce().find(x => x.idx === idx);
+  if (!c) return;
+  const kosEl = document.getElementById('cakBulkKos' + idx);
+  const startEl = document.getElementById('cakBulkStart' + idx);
+  const kosPerBox = parseInt(kosEl && kosEl.value);
+  const startBox = parseInt(startEl && startEl.value);
+  if (!kosPerBox || kosPerBox < 1) { alert('Vnesi količino na box'); return; }
+  if (!startBox || startBox < 1) { alert('Vnesi začetno št. boxa'); return; }
+  const ostane = Math.max(0, (c.qty||0) - (c.assigned||0));
+  const nBoxes = Math.floor(ostane / kosPerBox);
+  if (nBoxes < 1) { alert(`Premalo kosov (${ostane}) za en box po ${kosPerBox}`); return; }
+  const ostanek = ostane - nBoxes * kosPerBox;
+  const zadnji = startBox + nBoxes - 1;
+  let msg = `Razdelim ${nBoxes * kosPerBox} kos v ${nBoxes} boxov (BOX ${startBox}–${zadnji}, po ${kosPerBox}).`;
+  if (ostanek > 0) msg += `\nOstane ${ostanek} kos nerazdeljenih.`;
+  if (!confirm(msg)) return;
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'assign_bulk', idx, sku: c.sku, naziv: c.naziv,
+                             kos_per_box: kosPerBox, start_box: startBox })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      SESSION.cakajoce = d.cakajoce;
+      SESSION.packing_boxes = d.packing_boxes;
+      delete CAKAJ_KOS[idx]; delete CAKAJ_BOX[idx];
+      let t = `✓ Razdeljeno v ${d.created_boxes.length} boxov`;
+      if (d.ostanek > 0) t += ` (${d.ostanek} ostane)`;
+      toast(t);
+      render();
+    } else { alert(d.error || 'Napaka'); }
+  } catch(e) { alert('Napaka pri shranjevanju'); }
+}
+
+async function cakajRemoveAssign(idx, box) {
+  const c = getCakajoce().find(x => x.idx === idx);
+  if (!c) return;
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'remove_assign', idx, box, sku: c.sku })
+    });
+    const d = await r.json();
+    if (d.ok) { SESSION.cakajoce = d.cakajoce; SESSION.packing_boxes = d.packing_boxes; render(); }
+  } catch(e) {}
+}
+
+async function cakajCloseMissing(idx, ostane) {
+  const c = getCakajoce().find(x => x.idx === idx);
+  if (!c) return;
+  if (!confirm(`Zaključim "${c.sku}"?\n\nRazdeljeni kosi ostanejo v boxih, preostalih ${ostane} kos pa gre v MANJKO.`)) return;
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'close_missing', idx, sku: c.sku })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      SESSION.cakajoce = d.cakajoce;
+      if (d.packing_boxes) SESSION.packing_boxes = d.packing_boxes;
+      toast(`✓ Zaključeno — ${ostane} kos v manjko`);
+      render();
+    } else { alert(d.error || 'Napaka'); }
+  } catch(e) { alert('Napaka pri shranjevanju'); }
+}
+
+async function cakajReturn(idx) {
+  if (!confirm('Vrniti postavko nazaj v polico? Vse dodelitve v bokse za to postavko bodo odstranjene.')) return;
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'return', idx })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      SESSION.cakajoce = d.cakajoce;
+      SESSION.packing_boxes = d.packing_boxes;
+      if (CAKAJ_OPEN === idx) CAKAJ_OPEN = null;
+      await loadSession();  // ponovno naloži, da se postavka vrne v ITEMS
+      render();
+    }
+  } catch(e) {}
+}
+
+function cakajPdf() { packingExport('/zaloga-packing-pdf', 'packing_lista.pdf', 'PDF'); }
+function cakajXlsx() { packingExport('/zaloga-packing-xlsx', 'packing_lista.xlsx', 'XLS'); }
+function cakajCsv() { packingExport('/zaloga-packing-csv', 'packing_lista.csv', 'CSV'); }
+
+function packingExport(endpoint, filename, label) {
+  fetch(endpoint, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ market: MARKET })
+  }).then(r => {
+    if (!r.ok) return r.json().then(e => { throw new Error(e.error||'Napaka'); });
+    return r.blob();
+  }).then(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }).catch(e => alert(e.message || ('Napaka pri ' + label)));
+}
+
+// Razvrsti postavke police: manjko (✗ cel ali ✓ delni) na VRH (kot pripeto),
+// znotraj skupin ohrani razvrstitev po poziciji. Ostale (todo, polno OK) sledijo.
+function _sortMankoTop(items) {
+  const manko = [], rest = [];
+  (items || []).forEach(it => { (_isManko(it) ? manko : rest).push(it); });
+  return manko.concat(rest);
+}
+
+function itemRow(it) {
+  // Barvanje: ok+polno → zelena; ok ampak delno nabrano (npr. 5/6) → oranžno-rdeča (partial);
+  // ni (cel manjko ✗) → močna rdeča (full-miss)
+  let cls = '';
+  if (it.status === 'ok') {
+    cls = (it.picked < it.qty) ? 'partial' : 'ok';
+  } else if (it.status === 'ni') {
+    cls = 'full-miss';
+  }
+  const mismatch = it.picked !== it.qty ? 'qty-mismatch' : '';
+  const rs = isRS();
+  const locked = rs && it.locked;
+
+  // RS spodnja vrsta:
+  //  - ZAKLENJEN: na MOBILE → spodnja vrsta (BOX + Odkleni); na DESKTOP → inline v vrstici izdelka
+  //  - ODKLENJEN: polje "Dodatni box" za vnos razlike + gumb V box
+  let opombaRow = '';
+  let boxInline = '';  // desktop: BOX značka + odkleni v isti vrstici (prazen prostor desno od naziva)
+  if (rs && locked) {
+    // mobilna spodnja vrsta (skrita na desktopu prek CSS)
+    opombaRow = `
+      <div class="item-locked-row">
+        <span class="item-box-badge" style="${boxStyle(it.box)}">📦 BOX ${esc(it.box)} 🔒</span>
+        <button class="item-unlock" onclick="event.stopPropagation();unlockItem(${it.idx})" title="Odkleni in uredi">🔓 Odkleni</button>
+      </div>`;
+    // desktop inline (skrit na mobile prek CSS)
+    boxInline = `
+      <div class="item-box-inline">
+        <span class="item-box-badge" style="${boxStyle(it.box)}">📦 BOX ${esc(it.box)} 🔒</span>
+        <button class="item-unlock" onclick="event.stopPropagation();unlockItem(${it.idx})" title="Odkleni in uredi">🔓 Odkleni</button>
+      </div>`;
+  } else if (rs) {
+    opombaRow = `
+      <div class="item-opomba">
+        <button class="iop-cakaj" onclick="event.stopPropagation();prenesiVCakajoce(${it.idx})" title="Prenesi v čakajoče (razdelitev v več boxov)">⏳ Prenesi v čakajoče</button>
+      </div>`;
+  }
+
+  // sličica izdelka (če že naložena)
+  const imgUrl = SKU_IMAGES[it.sku];
+  const thumbInner = imgUrl
+    ? `<img src="${esc(imgUrl)}" alt="" loading="lazy" onclick="event.stopPropagation();openImgPreview('${jsStr(imgUrl)}','${jsStr(it.sku)}')">`
+    : '';
+  const thumb = `<span class="item-thumb ${imgUrl?'has-img':''}" id="imgthumb-${it.idx}" ${imgUrl?'data-loaded="1"':''}>${thumbInner}</span>`;
+
+  return `
+    <div class="item ${cls} ${locked?'item-locked':''} ${rs?'item-rs':''}" id="item-${it.idx}">
+      <span class="id-col">${esc(it.id || '—')}</span>
+      <div class="item-mobile-top">
+        ${thumb}
+        <span class="sku" style="${_skuFontStyle(it.sku)}">${esc(it.sku)}</span>
+        <span class="poz poz-edit" onclick="event.stopPropagation();openPozEdit('${jsStr(it.sku)}','${jsStr(it.poz||'')}','${jsStr(it.naziv||'')}')" title="Klikni za popravek pozicije">${esc(it.poz)}</span>
+      </div>
+      <div class="item-naziv-wrap">
+        <span class="naziv" title="${esc(it.naziv)}">${esc(it.naziv)}${it.low ? '<span class="tag-low">Nizka zaloga</span>' : ''}${it.hsplus ? '<span class="tag-hsplus">📦 HS PLUS</span>' : ''}${(!it.id || String(it.id).trim() === '' || String(it.id).trim() === '—') ? '<span class="tag-supplier">🏷 Majhni dobavitelji</span>' : ''}${it.skladisce ? '<span class="tag-sklad">🏬 Skladišče2</span>' : ''}</span>
+        ${boxInline}
+      </div>
+      <div class="item-bottom">
+        <div class="qty-step ${mismatch}">
+          <button class="qty-btn" onclick="changeQty(${it.idx}, -1)">−</button>
+          <div style="display:flex;flex-direction:column;align-items:center" onclick="editQty(${it.idx})" title="Klikni za vnos števila">
+            <span class="qty-val" id="qtyval-${it.idx}">${it.picked}</span>
+            <span class="qty-need">/ ${it.qty}</span>
+          </div>
+          <button class="qty-btn" onclick="changeQty(${it.idx}, 1)">+</button>
+        </div>
+        <div class="item-actions">
+          <button class="act-btn act-ok ${it.status==='ok'?'active':''}" onclick="setStatus(${it.idx}, 'ok')" title="Nabrano">✓</button>
+          <button class="act-btn act-ni ${it.status==='ni'?'active':''}" onclick="setStatus(${it.idx}, 'ni')" title="Ni na zalogi">✕</button>
+        </div>
+      </div>
+      ${opombaRow}
+    </div>`;
+}
+
+// ── Direkten vnos količine (klik na cifro) ──
+function editQty(idx) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  const span = document.getElementById('qtyval-' + idx);
+  if (!span || span.querySelector('input')) return;  // že v urejanju
+  const cur = it.picked;
+  // Zamenjaj span vsebino z inputom
+  span.innerHTML = `<input type="number" inputmode="numeric" value="${cur}" min="0"
+    style="width:64px;text-align:center;font-size:20px;font-weight:800;padding:4px;border:2px solid var(--accent);border-radius:8px;background:var(--panel);color:var(--text);font-family:inherit"
+    onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter')this.blur()" onblur="commitQty(${idx}, this.value)">`;
+  const inp = span.querySelector('input');
+  inp.focus();
+  inp.select();
+}
+
+function commitQty(idx, val) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  let n = parseInt(val);
+  if (isNaN(n) || n < 0) n = 0;
+  it.picked = n;
+  refreshItem(it);
+  refreshSidebarAndStats();
+  saveItem(idx, { picked: it.picked });
+}
+
+// ── Statistika skupine ──
+function groupStat(items) {
+  const total = items.length;
+  const ok = items.filter(it => it.status === 'ok').length;
+  const ni = items.filter(it => it.status === 'ni').length;
+  const todo = total - ok - ni;
+  const done = ok + ni;
+  // odstotki po POSTAVKAH (zaokroženi tako da vsota = 100)
+  const pctOk = total ? Math.round(ok / total * 100) : 0;
+  const pctNi = total ? Math.round(ni / total * 100) : 0;
+  const pctTodo = total ? (100 - pctOk - pctNi) : 0;
+  const pct = total ? Math.round(done / total * 100) : 0;  // skupno obdelano (compat)
+
+  // odstotki po KOSIH (za natančnejši graf — delni manjko se vidi kot rdeč košček)
+  let qNeed = 0, qOk = 0, qMiss = 0, qTodo = 0;
+  items.forEach(it => {
+    const q = it.qty || 0;
+    qNeed += q;
+    if (it.status === 'ok') { qOk += it.picked; qMiss += Math.max(0, q - it.picked); }
+    else if (it.status === 'ni') { qMiss += q; }
+    else { qTodo += q; }
+  });
+  const qPctOk = qNeed ? Math.round(qOk / qNeed * 100) : 0;
+  const qPctNi = qNeed ? Math.round(qMiss / qNeed * 100) : 0;
+  const qPctTodo = qNeed ? Math.max(0, 100 - qPctOk - qPctNi) : 0;
+
+  // varni odstotek za prikaz: 100% SAMO če je vse obdelano (sicer navzdol, da 99.x% ni 100%)
+  const allDone = total > 0 && done >= total;
+  const pctOkDisplay = allDone ? 100 : Math.min(99, Math.floor(total ? ok / total * 100 : 0));
+
+  return { total, done, ok, ni, todo, pct, pctOk, pctNi, pctTodo, pctOkDisplay, allDone,
+           qNeed, qOk, qMiss, qTodo, qPctOk, qPctNi, qPctTodo };
+}
+
+// ── Tekstovni razrez (npr. "90% nabrano · 5% ni najdeno · 5% še nabirajo") ──
+function statBreakdownText(s) {
+  if (!s.total) return '';
+  const parts = [];
+  if (s.pctOk > 0) parts.push(`${s.pctOk}% nabrano`);
+  if (s.pctNi > 0) parts.push(`${s.pctNi}% ni najdeno`);
+  if (s.pctTodo > 0) parts.push(`${s.pctTodo}% še nabirajo`);
+  return parts.join(' · ');
+}
+
+// ── Segmentiran bar (zeleno / rdeče / sivo) — po KOSIH (delni manjko = rdeč košček) ──
+function progBarSegments(s) {
+  return `
+    <div class="prog-seg prog-seg-ok" style="width:${s.qPctOk}%"></div>
+    <div class="prog-seg prog-seg-ni" style="width:${s.qPctNi}%"></div>
+    <div class="prog-seg prog-seg-todo" style="width:${s.qPctTodo}%"></div>`;
+}
+
+// ── Sidebar ──
+let SIDEBAR_TAB = 'manjko';  // RS aktivni tab (Opombe odstranjen)
+
+function mankoItemHtml(it) {
+  const missingQty = it.status === 'ni' ? it.qty : (it.qty - it.picked);
+  return `
+    <div class="manko-item">
+      <div class="top">
+        <span class="msku" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Klikni za kopiranje SKU" style="cursor:pointer;user-select:none">${esc(it.sku)} <span class="mpoz-copy-icon">⎘</span></span>
+        <span class="mqty">manjka ${missingQty}${it.status==='ni'?' (cela)':''}</span>
+      </div>
+      <div class="mnaziv" title="${esc(it.naziv)}">${esc(it.naziv)}</div>
+      <div class="mpoz-badge mpoz-jump" onclick="jumpToItem(${it.idx})" title="Klikni za skok na postavko" style="cursor:pointer;user-select:none">📍 ${esc(it.poz)} <span class="mpoz-jump-icon">↗</span></div>
+      <div class="mpoz-detail">potrebno ${it.qty} · nabrano ${it.status==='ni'?0:it.picked}</div>
+    </div>`;
+}
+
+function opombaItemHtml(it) {
+  return `
+    <div class="opomba-item">
+      <div class="top">
+        <span class="osku">${esc(it.sku)}</span>
+        <span class="oboxnote">${esc(it.opomba)}</span>
+      </div>
+      <div class="onaziv" title="${esc(it.naziv)}">${esc(it.naziv)}</div>
+      <div class="opoz-badge" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Klikni za kopiranje SKU" style="cursor:pointer;user-select:none">📍 ${esc(it.poz)} <span class="mpoz-copy-icon">⎘</span></div>
+    </div>`;
+}
+
+function boxiHtml() {
+  // zberi zaklenjene postavke po boxu
+  const boxes = {};
+  ITEMS.forEach(it => {
+    if (it.locked && it.box) (boxes[it.box] = boxes[it.box] || []).push(it);
+  });
+  const keys = Object.keys(boxes).sort((a,b) => String(a).localeCompare(String(b),'sl',{numeric:true}));
+  if (!keys.length) return '<div class="manko-empty">Še ni zaklenjenih boxov.</div>';
+  return keys.map(b => `
+    <div class="box-group">
+      <div class="box-group-head" style="${boxStyle(b)}">📦 BOX ${esc(b)} <span class="box-group-count">${boxes[b].length}</span></div>
+      ${boxes[b].map(it => `
+        <div class="box-line">
+          <span class="box-line-sku" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Kopiraj SKU" style="cursor:pointer">${esc(it.sku)} <span class="mpoz-copy-icon">⎘</span></span>
+          <span class="box-line-poz">${esc(it.poz)}</span>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+function _hsplusManjko() {
+  // SKU-ji ki so HKRATI na HS PLUS seznamu (hsplus) IN v manjku.
+  // Manjko = ni-postavke (cela qty) + ok-postavke z delnim manjkom (qty - picked).
+  const out = [];
+  (ITEMS || []).forEach(it => {
+    if (!it.hsplus) return;
+    let manjka = 0;
+    if (it.status === 'ni') manjka = it.qty || 0;                       // cela postavka manjka
+    else if (it.status === 'ok' && it.picked < it.qty) manjka = it.qty - it.picked;  // delni manjko
+    else if (it.status === '' ) manjka = it.qty || 0;                   // še ne obdelano → rabimo vse
+    if (manjka > 0) out.push({ sku: it.sku, naziv: it.naziv, poz: it.poz, manjka });
+  });
+  out.sort((a,b) => (a.poz||'').localeCompare(b.poz||'', 'sl', {numeric:true}));
+  return out;
+}
+
+function hsplusHtml() {
+  const list = _hsplusManjko();
+  if (!list.length) return '<div class="manko-empty">Ni HS PLUS izdelkov v manjku.</div>';
+  return `
+    <div class="hsplus-hint">📦 Ti izdelki pridejo danes — pobrati je treba prikazano količino iz HS PLUS prihoda.</div>
+    <button class="hsplus-print-btn" onclick="printHsplus()">🖨️ Natisni seznam</button>
+    ${list.map(it => `
+      <div class="box-line hsplus-line">
+        <span class="box-line-sku" onclick="copySkuFromManko(this,'${esc(it.sku)}')" title="Kopiraj SKU" style="cursor:pointer">${esc(it.sku)} <span class="mpoz-copy-icon">⎘</span></span>
+        <span class="hsplus-right"><span class="hsplus-qty">${it.manjka} kos</span><span class="box-line-poz">${esc(it.poz)}</span></span>
+      </div>`).join('')}`;
+}
+
+// Natisni HS PLUS seznam (SKU + količina + pozicija)
+function printHsplus() {
+  const list = _hsplusManjko();
+  if (!list.length) { alert('Ni HS PLUS izdelkov v manjku.'); return; }
+  const danes = new Date().toLocaleDateString('sl-SI');
+  const rows = list.map(it => `<tr><td>${esc(it.sku)}</td><td style="text-align:center;font-weight:700">${it.manjka}</td><td>${esc(it.poz)}</td></tr>`).join('');
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>HS PLUS seznam</title>
+    <style>
+      body{font-family:Arial,sans-serif;padding:24px;color:#111}
+      h1{font-size:20px;margin:0 0 4px}
+      .sub{color:#666;font-size:13px;margin-bottom:18px}
+      table{width:100%;border-collapse:collapse}
+      th,td{border:1px solid #ccc;padding:8px 10px;font-size:14px;text-align:left}
+      th{background:#f0f0f0;text-transform:uppercase;font-size:12px;letter-spacing:0.5px}
+      tr:nth-child(even) td{background:#fafafa}
+    </style></head><body>
+    <h1>📦 HS PLUS — seznam za pobrati</h1>
+    <div class="sub">${danes} · ${list.length} izdelkov · pobrati iz današnjega HS PLUS prihoda</div>
+    <table><thead><tr><th>SKU</th><th style="text-align:center">Količina</th><th>Pozicija</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <script>window.onload=function(){window.print();}<\/script>
+    </body></html>`);
+  w.document.close();
+}
+
+// Je postavka v manjku? Manjko = ni-postavka ali ok z delnim manjkom.
+// IZJEMA: če je HS PLUS in dobava (hsplus_qty) pokrije CELOTEN manjko → ni več manjko (danes pride).
+function _isManko(it) {
+  let manjka = 0;
+  if (it.status === 'ni') manjka = it.qty || 0;
+  else if (it.status === 'ok' && it.picked < it.qty) manjka = it.qty - it.picked;
+  else return false;
+  if (manjka <= 0) return false;
+  // HS PLUS pokritje: če dobava pokrije ves manjko, odstrani iz Manjko
+  if (it.hsplus && (it.hsplus_qty != null) && it.hsplus_qty >= manjka) return false;
+  return true;
+}
+
+function renderSidebar() {
+  const manko = ITEMS.filter(_isManko);
+  const opombe = ITEMS.filter(it => it.opomba && it.opomba.trim());
+  let totalOk = ITEMS.filter(it => it.status === 'ok').length;
+  let totalNi = ITEMS.filter(it => it.status === 'ni').length;
+  let totalQtyNeed = ITEMS.reduce((s,it) => s + it.qty, 0);
+  let totalQtyPicked = ITEMS.filter(it=>it.status==='ok').reduce((s,it) => s + it.picked, 0);
+  // manjkajoči KOSI: "ni" → cela količina; "ok" z delnim primanjkljajem → razlika
+  let totalQtyMissing = ITEMS.reduce((s,it) => {
+    if (it.status === 'ni') return s + it.qty;
+    if (it.status === 'ok' && it.picked < it.qty) return s + (it.qty - it.picked);
+    return s;
+  }, 0);
+  let totalItems = ITEMS.length;
+
+  // ── ČAKAJOČE (RS uvoz dobavnice, kol>1): združi postavke IN kose ──
+  // Vsaka čakajoča = 1 postavka (šteje v "Vseh postavk" od začetka).
+  // assigned = razdeljeni (nabrani) kosi → vedno štejejo kot nabrani.
+  // PREOSTANEK (need - assigned) gre v "Manjka (kosov)" SAMO ko je čakajoča ZAKLJUČENA (done).
+  // Dokler ni zaključena (še razdeljujemo / nedotaknjena) → preostanek NE šteje v manjko.
+  const cak = getCakajoce();
+  if (cak && cak.length) {
+    cak.forEach(c => {
+      const need = c.qty || 0;
+      const assigned = Math.min(c.assigned || 0, need);
+      const ostane = Math.max(0, need - assigned);
+      const isFull = assigned >= need;          // vse razdeljeno
+      const isClosed = !!c.done;                 // zaključena (poln ali z manjkom)
+      totalItems += 1;
+      totalQtyNeed += need;
+      totalQtyPicked += assigned;
+      // obdelana/nabrana postavka: ko je polna ALI zaključena z manjkom
+      if (isFull || isClosed) { totalOk += 1; }
+      // preostanek v manjko le ob zaključku z manjkom
+      if (isClosed && ostane > 0) { totalQtyMissing += ostane; }
+    });
+  }
+
+  const totalDone = totalOk + totalNi;
+
+  // ── VAROVALKA: opozori, če so skupne postavke/kosi padli pod baseline (možna napaka/izbris) ──
+  let integrityBanner = '';
+  const ig = SESSION && SESSION.integrity;
+  if (ig && ig.ok === false) {
+    const parts = [];
+    if (ig.dropped_items > 0) parts.push(`${ig.dropped_items} postavk`);
+    if (ig.dropped_qty > 0) parts.push(`${ig.dropped_qty} kosov`);
+    integrityBanner = `
+      <div class="integrity-warn" title="Skupni seštevek je padel pod doslej zabeleženo vrednost — možen izbris ali napaka.">
+        <span class="iw-ico">⚠️</span>
+        <div class="iw-txt">
+          <b>Pozor: seštevek se je zmanjšal!</b>
+          <span>Manjka ${parts.join(' in ')} glede na prej (${ig.cur_items}/${ig.peak_items} postavk, ${ig.cur_qty}/${ig.peak_qty} kosov). Preveri, ali je prišlo do izbrisa.</span>
+        </div>
+      </div>`;
+  }
+
+  const statCard = `
+    <div class="side-card">
+      <h3>📊 Skupna statistika</h3>
+      ${integrityBanner}
+      <div class="stat-rows">
+        <div class="stat-row"><span class="lbl">Vseh postavk</span><span class="val">${totalItems}</span></div>
+        <div class="stat-row"><span class="lbl">Obdelanih</span><span class="val">${totalDone}</span></div>
+        <div class="stat-row"><span class="lbl">Nabrano (OK)</span><span class="val ok">${totalOk}</span></div>
+        <div class="stat-row"><span class="lbl">Manjka (postavk)</span><span class="val ni">${totalNi}</span></div>
+        <div class="stat-row"><span class="lbl">Manjka (kosov)</span><span class="val ni">${totalQtyMissing}</span></div>
+        <div class="stat-row" style="border-top:1px solid var(--border);padding-top:10px;margin-top:2px">
+          <span class="lbl">Kosov nabrano</span><span class="val">${totalQtyPicked} / ${totalQtyNeed}</span></div>
+      </div>
+    </div>`;
+
+  const hsCount = _hsplusManjko().length;   // samo HS PLUS ki so v manjku
+
+  if (!isRS()) {
+    // SLO — tabi Manjko + HS PLUS (HS PLUS samo če obstaja kak označen)
+    let tabContent;
+    if (SIDEBAR_TAB === 'hsplus') {
+      tabContent = hsplusHtml();
+    } else {
+      tabContent = manko.length
+        ? `<button class="manko-copy-all manko-copy-all-rs" onclick="copyAllManko(this)" title="Kopiraj vse manjkajoče (SKU + količina)">⎘ Kopiraj vse</button>` + manko.map(mankoItemHtml).join('')
+        : '<div class="manko-empty">Zaenkrat ni manjkajočih postavk 🎉</div>';
+    }
+    return `
+      <div class="sidebar">
+        ${statCard}
+        <div class="side-card side-card-tabs">
+          <div class="side-tabs">
+            <button class="side-tab side-tab-manjko ${SIDEBAR_TAB!=='hsplus'?'active':''}" onclick="setSidebarTab('manjko')">⚠️ Manjko ${manko.length?`<span class="st-badge st-red">${manko.length}</span>`:''}</button>
+            ${hsCount ? `<button class="side-tab side-tab-hsplus ${SIDEBAR_TAB==='hsplus'?'active':''}" onclick="setSidebarTab('hsplus')">📦 HS PLUS <span class="st-badge st-purple">${hsCount}</span></button>` : ''}
+          </div>
+          <div class="side-tab-body">${tabContent}</div>
+        </div>
+      </div>`;
+  }
+
+  // RS — tabi Manjko / Boxi / HS PLUS
+  let tabContent;
+  if (SIDEBAR_TAB === 'boxi') {
+    tabContent = boxiHtml();
+  } else if (SIDEBAR_TAB === 'hsplus') {
+    tabContent = hsplusHtml();
+  } else {
+    // privzeto Manjko
+    tabContent = manko.length
+      ? `<button class="manko-copy-all manko-copy-all-rs" onclick="copyAllManko(this)" title="Kopiraj vse manjkajoče (SKU + količina)">⎘ Kopiraj vse</button>` + manko.map(mankoItemHtml).join('')
+      : '<div class="manko-empty">Ni manjka 🎉</div>';
+  }
+
+  return `
+    <div class="sidebar">
+      ${statCard}
+      <div class="side-card side-card-tabs">
+        <div class="side-tabs">
+          <button class="side-tab side-tab-manjko ${(SIDEBAR_TAB!=='boxi'&&SIDEBAR_TAB!=='hsplus')?'active':''}" onclick="setSidebarTab('manjko')">⚠️ Manjko ${manko.length?`<span class="st-badge st-red">${manko.length}</span>`:''}</button>
+          <button class="side-tab side-tab-boxi ${SIDEBAR_TAB==='boxi'?'active':''}" onclick="setSidebarTab('boxi')">📦 Boxi</button>
+          ${hsCount ? `<button class="side-tab side-tab-hsplus ${SIDEBAR_TAB==='hsplus'?'active':''}" onclick="setSidebarTab('hsplus')">📦 HS PLUS <span class="st-badge st-purple">${hsCount}</span></button>` : ''}
+        </div>
+        <div class="side-tab-body">${tabContent}</div>
+      </div>
+    </div>`;
+}
+
+function setSidebarTab(tab) {
+  SIDEBAR_TAB = tab;
+  refreshSidebarAndStats();
+}
+
+// ── Global stat (top bar) ──
+function updateGlobalStat() {
+  const stat = groupStat(ITEMS);
+  // ČAKAJOČE (RS uvoz, kol>1): vsaka šteje kot 1 postavka v SKUPNI statistiki.
+  // done:true (razdeljena v bokse) = nabrana (ok); sicer = še nabirajo (todo).
+  const cak = getCakajoce();
+  if (cak && cak.length) {
+    let cOk = 0;
+    cak.forEach(c => {
+      const need = c.qty || 0;
+      const assigned = Math.min(c.assigned || 0, need);
+      const isFull = assigned >= need;
+      const isClosed = !!c.done;
+      if (isFull || isClosed) cOk++;
+    });
+    const cTodo = cak.length - cOk;
+    stat.total += cak.length;
+    stat.ok    += cOk;
+    stat.todo  += cTodo;
+    stat.done  += cOk;
+    // preračun odstotkov po postavkah (vsota = 100)
+    stat.pctOk   = stat.total ? Math.round(stat.ok / stat.total * 100) : 0;
+    stat.pctNi   = stat.total ? Math.round(stat.ni / stat.total * 100) : 0;
+    stat.pctTodo = stat.total ? (100 - stat.pctOk - stat.pctNi) : 0;
+    stat.pct     = stat.total ? Math.round(stat.done / stat.total * 100) : 0;
+    // bar po kosih: assigned = nabrano (zeleno). Preostanek → rdeče (manjko) le ob zaključku;
+    // dokler ni zaključeno, preostanek ostane sivo (todo).
+    cak.forEach(c => {
+      const need = c.qty || 0;
+      const assigned = Math.min(c.assigned || 0, need);
+      const ostane = Math.max(0, need - assigned);
+      stat.qNeed += need;
+      stat.qOk   += assigned;
+      if (c.done && ostane > 0) stat.qMiss += ostane;
+      else stat.qTodo += ostane;
+    });
+    stat.qPctOk   = stat.qNeed ? Math.round(stat.qOk / stat.qNeed * 100) : 0;
+    stat.qPctNi   = stat.qNeed ? Math.round(stat.qMiss / stat.qNeed * 100) : 0;
+    stat.qPctTodo = stat.qNeed ? Math.max(0, 100 - stat.qPctOk - stat.qPctNi) : 0;
+  }
+  const bar = document.getElementById('globalBar');
+  if (bar) bar.innerHTML = progBarSegments(stat);
+  const mprog = document.getElementById('mobileProg');
+  if (mprog) mprog.innerHTML = progBarSegments(stat);  // noga (mobile) — isti segmenti
+  const pctEl = document.getElementById('globalPct');
+  if (pctEl) {
+    // 100% SAMO če je res vse obdelano; sicer zaokroži navzdol (99.6% → 99%, ne 100%)
+    const allDone = stat.total > 0 && stat.done >= stat.total;
+    const displayPct = allDone ? 100 : Math.min(99, Math.floor(stat.total ? stat.ok / stat.total * 100 : 0));
+    pctEl.textContent = displayPct + '%';
+    pctEl.style.color = displayPct === 100 ? 'var(--ok)' : 'var(--text)';
+  }
+  const doneEl = document.getElementById('globalDone');
+  if (doneEl) doneEl.textContent = `${stat.done} / ${stat.total}`;
+  const breakEl = document.getElementById('globalBreak');
+  if (breakEl) breakEl.textContent = statBreakdownText(stat) || 'skupna uspešnost';
+  updatePickTimer();
+  updateStickyOffset();  // višina headerja se lahko spremeni (global-stat se prikaže)
+}
+
+// ═══ ČASOVNICA NABIRANJA (desktop) ═══
+// Bere SESSION.pick_started_at / pick_finished_at (server-side). Teče živo do 100%.
+let _pickTimerInt = null;
+
+function _parseServerTs(s) {
+  // Strežnik pošlje ISO žig. Če nima oznake cone (Z ali +HH:MM), ga razumi kot UTC
+  // (Render teče v UTC). Brez tega bi brskalnik žig brez cone bral kot lokalni čas → +2h.
+  if (!s) return NaN;
+  const hasTz = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(s);
+  return new Date(hasTz ? s : s + 'Z').getTime();
+}
+
+function _fmtDur(secs) {
+  secs = Math.max(0, Math.floor(secs));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  const pad = n => String(n).padStart(2, '0');
+  return `${h}:${pad(m)}:${pad(s)}`;   // vedno H:MM:SS (npr. 0:00:00)
+}
+
+function updatePickTimer() {
+  const wrap = document.getElementById('globalTimer');
+  const timeEl = document.getElementById('gsTimerTime');
+  const lblEl = document.getElementById('gsTimerLbl');
+  if (!wrap || !timeEl || !lblEl) return;
+  const sess = SESSION || {};
+  const startStr = sess.pick_started_at;
+  const finishStr = sess.pick_finished_at;
+  const pausedStr = sess.pick_paused_at;
+  const offset = (sess.pick_pause_offset_s || 0);
+
+  // ustavi obstoječi tick (ponovno nastavimo po potrebi)
+  if (_pickTimerInt) { clearInterval(_pickTimerInt); _pickTimerInt = null; }
+
+  if (!startStr) {
+    // še ni začetka
+    wrap.classList.remove('running', 'done');
+    timeEl.textContent = '00:00';
+    lblEl.textContent = 'čaka prvo postavko';
+    return;
+  }
+  const startMs = _parseServerTs(startStr);
+
+  if (finishStr) {
+    // končano — fiksen čas (z offsetom)
+    const finMs = _parseServerTs(finishStr);
+    wrap.classList.remove('running');
+    wrap.classList.add('done');
+    timeEl.textContent = '🏁 ' + _fmtDur((finMs - startMs) / 1000 - offset);
+    lblEl.textContent = 'končni čas';
+    return;
+  }
+
+  if (pausedStr) {
+    // PAVZA — zamrznjen čas (offset že upoštevan)
+    const pausedMs = _parseServerTs(pausedStr);
+    wrap.classList.remove('running');
+    wrap.classList.add('done');
+    timeEl.textContent = '⏸ ' + _fmtDur((pausedMs - startMs) / 1000 - offset);
+    lblEl.textContent = 'pavza';
+    return;
+  }
+
+  // teče — živ tick (odštej offset prej pavziranih sekund)
+  wrap.classList.remove('done');
+  wrap.classList.add('running');
+  lblEl.textContent = 'čas nabiranja';
+  const tick = () => { timeEl.textContent = _fmtDur((Date.now() - startMs) / 1000 - offset); };
+  tick();
+  _pickTimerInt = setInterval(tick, 1000);
+}
+
+// Izmeri višino lepljivega vrha (header) → CSS var --sticky-h, da glava police lahko
+// nalepi točno pod njim (višina ni fiksna: global-stat se prikaže/skrije, gumbi se ovijejo).
+function updateStickyOffset() {
+  const hdr = document.querySelector('.sticky-header');
+  if (!hdr) return;
+  // Na mobile je header FIKSNA NOGA (dno) — vrh je prazen, zato se glava police lepi na top:0.
+  if (isMobile()) {
+    document.documentElement.style.setProperty('--sticky-h', '0px');
+    // izmeri višino noge → RS box-bar in spodnji odmik seznamov se prilagodita
+    const fh = Math.round(hdr.getBoundingClientRect().height);
+    document.documentElement.style.setProperty('--footer-h', fh + 'px');
+    return;
+  }
+  const h = Math.round(hdr.getBoundingClientRect().height);
+  document.documentElement.style.setProperty('--sticky-h', h + 'px');
+}
+
+// ── Toggle zavihek (persist per naprava) ──
+function toggleShelf(g) {
+  const expanded = getExpanded();
+  const willOpen = !expanded[g];
+  // Na mobile: samo 1 polica naenkrat (accordion) — zapri ostale ob odpiranju nove
+  if (willOpen && isMobile()) {
+    Object.keys(expanded).forEach(k => { if (k !== g) delete expanded[k]; });
+    document.querySelectorAll('.shelf.open').forEach(el => {
+      if (el.id !== 'shelf-' + cssId(g)) el.classList.remove('open');
+    });
+  }
+  expanded[g] = willOpen;
+  if (!expanded[g]) delete expanded[g];
+  setExpanded(expanded);
+  const el = document.getElementById('shelf-' + cssId(g));
+  if (el) el.classList.toggle('open');
+  // osveži spodnji sticky box-bar (sam poskrbi za skritje na SLO/desktop)
+  updateMobileBoxBar();
+
+  // UX mobile: ob ODPIRANJU police skoči na njen vrh (ker se stara zapre, layout se
+  // skrči in scroll bi sicer pristal na napačnem mestu — pogosto vrglo na dno).
+  if (willOpen && isMobile() && el) {
+    // počakaj na skrčenje stare police (layout se posodobi), nato izmeri in scrollaj
+    requestAnimationFrame(() => { requestAnimationFrame(() => {
+      const boxbarH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--boxbar-h')) || 0;
+      const r = el.getBoundingClientRect();
+      const y = window.scrollY + r.top - boxbarH - 8;   // glava police tik pod box-barom
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    }); });
+    return;
+  }
+
+  // UX: ob ZAPIRANJU police — če je njena glava ušla nad vrh zaslona (ker se je
+  // vsebina nad scrollom skrčila), jo prikaži nazaj, da ni treba ročno skrolati gor.
+  if (!willOpen && el) {
+    const head = el.querySelector('.shelf-head');
+    const r = (head || el).getBoundingClientRect();
+    // koliko prostora je zgoraj zasedeno (na desktopu lepljiv header; na mobile noga je spodaj → 0)
+    const topOffset = isMobile() ? 0 : (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sticky-h')) || 0);
+    if (r.top < topOffset) {
+      const y = window.scrollY + r.top - topOffset - 8;  // 8px zraka nad glavo
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    }
+  }
+}
+
+// Skoči na postavko: odpri njeno polico (če zaprta) in scrollaj+osvetli kartico.
+function jumpToItem(idx) {
+  const it = (ITEMS || []).find(x => x.idx === idx);
+  if (!it) return;
+  const g = it.group;
+  // Zagotovi, da je polica ODPRTA — tudi če je s filtrom "samo odprto" skrita
+  // (dokončana polica). Nastavi expanded in PONOVNO renderiraj, da pride v DOM.
+  const expanded = getExpanded();
+  const wasHiddenOrClosed = !expanded[g] || !document.getElementById('shelf-' + cssId(g));
+  if (!expanded[g]) {
+    if (isMobile()) Object.keys(expanded).forEach(k => { if (k !== g) delete expanded[k]; });
+    expanded[g] = true;
+    setExpanded(expanded);
+  }
+  if (wasHiddenOrClosed) {
+    render();             // skrita polica (filter ON) pride v DOM
+    updateMobileBoxBar();
+  }
+  // po renderju scrollaj do postavke + osvetli
+  setTimeout(() => {
+    const card = document.getElementById('item-' + idx);
+    if (!card) return;
+    const topOffset = isMobile() ? (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--boxbar-h')) || 70) : (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sticky-h')) || 0);
+    const r = card.getBoundingClientRect();
+    const y = window.scrollY + r.top - topOffset - 16;
+    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    card.classList.add('item-jump-flash');
+    setTimeout(() => card.classList.remove('item-jump-flash'), 1600);
+  }, 120);
+}
+
+// Ali smo na mobilnem (ozek zaslon) — usklajeno z @media (max-width: 768px)
+function isMobile() {
+  return window.matchMedia('(max-width: 768px)').matches;
+}
+
+// RS mobile: posodobi spodnji sticky box-bar glede na trenutno odprto polico
+function updateMobileBoxBar() {
+  const host = document.getElementById('mobileBoxBar');
+  if (!host) return;
+  const hide = () => { host.innerHTML = ''; host.style.display = 'none'; document.body.classList.remove('has-boxbar'); };
+  if (!isRS() || !isMobile()) { hide(); return; }
+  const expanded = getExpanded();
+  const openGroups = Object.keys(expanded).filter(k => expanded[k]);
+  if (!openGroups.length) { hide(); return; }
+  const group = openGroups[0];  // na mobile je odprta le ena
+  const items = (ITEMS || []).filter(it => it.group === group);
+  if (!items.length) { hide(); return; }
+  host.innerHTML = shelfBoxBar(group, items, true);  // true = mobilna varianta (brez label)
+  host.style.display = 'block';
+  document.body.classList.add('has-boxbar');
+  // izmeri višino box-bara → police se lepijo točno pod njim
+  requestAnimationFrame(() => {
+    const h = Math.round(host.getBoundingClientRect().height);
+    if (h > 0) document.documentElement.style.setProperty('--boxbar-h', h + 'px');
+  });
+}
+
+// ── Spremeni količino ──
+function changeQty(idx, delta) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  it.picked = Math.max(0, it.picked + delta);
+  // posodobi samo to vrstico (brez polnega re-renderja, da ne zapre zavihka)
+  refreshItem(it);
+  refreshSidebarAndStats();
+  saveItem(idx, { picked: it.picked });
+  reorderShelf(it.group);   // delni manjko (npr. 5/6) → pripni na vrh
+}
+
+// ── Status OK/NI ──
+function setStatus(idx, status) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  // toggle: če že isti status, prekliči
+  it.status = (it.status === status) ? '' : status;
+  refreshItem(it);
+  refreshShelfProgress(it.group);
+  refreshSidebarAndStats();
+  updateGlobalStat();
+  syncFilterToggleLabel();  // osveži števec polic na gumbu filtra
+  if (isRS()) refreshBoxCounters();  // posodobi globalni števec obkljukanih brez boxa
+  saveItem(idx, { status: it.status });
+  reorderShelf(it.group);   // pripni manjko na vrh police (takoj ob ✓/✗)
+  // filter "Samo odprto": če polica ravno postane dokončana, jo samodejno skrij (brez osvežitve)
+  maybeAutoHideShelf(it.group);
+}
+
+// Prerazporedi vrstice znotraj police: manjko (✗/delni ✓) na vrh, kot pripeto.
+// Premakne DOM elemente brez polnega re-renderja (ohrani odprte police in box-bare).
+function reorderShelf(group) {
+  const shelf = document.getElementById('shelf-' + cssId(group));
+  if (!shelf) return;
+  const body = shelf.querySelector('.shelf-body');
+  if (!body) return;
+  const groups = groupItems();
+  const items = _sortMankoTop(groups[group] || []);
+  // prestavi item-vrstice v želeni vrstni red (appendChild premakne obstoječ element)
+  items.forEach(it => {
+    const row = document.getElementById('item-' + it.idx);
+    if (row) body.appendChild(row);
+  });
+}
+
+// Če je filter "Samo odprto" aktiven in je polica zdaj dokončana (vse postavke obdelane),
+// jo z rahlo animacijo skrij — brez ročne osvežitve.
+function maybeAutoHideShelf(group) {
+  if (!getDoneFilter()) return;
+  const groups = groupItems();
+  const items = groups[group] || [];
+  const stat = groupStat(items);
+  const isDone = stat.total > 0 && stat.todo === 0;
+  if (!isDone) return;
+  const el = document.getElementById('shelf-' + cssId(group));
+  if (!el || el.classList.contains('shelf-hiding')) return;
+  el.classList.add('shelf-hiding');           // sproži fade/collapse animacijo (CSS)
+  setTimeout(() => {
+    // odstrani iz pogleda (zapri + render, da se odšteje iz seznama)
+    const expanded = getExpanded();
+    delete expanded[group];
+    setExpanded(expanded);
+    render();
+  }, 420);  // ujema se s trajanjem CSS animacije
+}
+
+// RS: osveži globalni števec (✓ N) v vseh box-barih + spodnji mobilni bar
+function refreshBoxCounters() {
+  const n = globalPendingCount();
+  document.querySelectorAll('.shelf-box-bar').forEach(bar => {
+    if (bar.closest('#mobileBoxBar')) return;  // mobilni posodobimo posebej spodaj
+    let badge = bar.querySelector('.sbb-count');
+    if (n > 0) {
+      const txt = `✓ ${n} čaka`;
+      if (badge) badge.textContent = txt;
+      else {
+        badge = document.createElement('span');
+        badge.className = 'sbb-count';
+        badge.title = 'Obkljukanih brez boxa (čez vse police)';
+        badge.textContent = txt;
+        const sel = bar.querySelector('.sbb-select');
+        if (sel) sel.insertAdjacentElement('afterend', badge);
+      }
+    } else if (badge) {
+      badge.remove();
+    }
+  });
+  updateMobileBoxBar();
+}
+
+// ── Osveži eno vrstico (in-place) ──
+function refreshItem(it) {
+  const el = document.getElementById('item-' + it.idx);
+  if (!el) return;
+  el.outerHTML = itemRow(it);
+}
+
+// ── Osveži progress bar zavihka ──
+function refreshShelfProgress(group) {
+  const groups = groupItems();
+  const items = groups[group] || [];
+  const stat = groupStat(items);
+  const shelf = document.getElementById('shelf-' + cssId(group));
+  if (!shelf) return;
+  const isDone = stat.total > 0 && stat.todo === 0;
+  shelf.classList.toggle('shelf-done', isDone);
+  const bar = shelf.querySelector('.shelf-prog-bar');
+  const pct = shelf.querySelector('.shelf-prog-pct');
+  if (bar) bar.innerHTML = progBarSegments(stat);
+  if (pct) { pct.textContent = (isDone ? '✓ ' : '') + stat.pctOk + '%'; pct.style.color = 'var(--text)'; }
+  // mobilno obarvano ozadje glave (predlog 3) — posodobi sproti ob kliku ✓/✗ (po KOSIH)
+  const fill = shelf.querySelector('.shelf-head-fill');
+  if (fill) {
+    fill.style.setProperty('--fill-ok', stat.qPctOk + '%');
+    fill.style.setProperty('--fill-ni', (stat.qPctOk + stat.qPctNi) + '%');
+  }
+}
+
+// ── Osveži sidebar ──
+function refreshSidebarAndStats() {
+  const sb = document.querySelector('.sidebar');
+  if (sb) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = renderSidebar();
+    sb.replaceWith(tmp.firstElementChild);
+  }
+}
+
+// ── Live save na disk ──
+async function saveItem(idx, patch) {
+  try {
+    const r = await fetch('/zaloga-update-item', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ idx, market: MARKET, ...patch })
+    });
+    const data = await r.json();
+    if (data && data.ok && SESSION) {
+      // osveži časovnico (server pove, kdaj se je začelo/končalo nabiranje)
+      const prevStart = SESSION.pick_started_at, prevFin = SESSION.pick_finished_at, prevPause = SESSION.pick_paused_at;
+      SESSION.pick_started_at = data.pick_started_at || null;
+      SESSION.pick_finished_at = data.pick_finished_at || null;
+      SESSION.pick_paused_at = data.pick_paused_at || null;
+      SESSION.pick_pause_offset_s = data.pick_pause_offset_s || 0;
+      if (prevStart !== SESSION.pick_started_at || prevFin !== SESSION.pick_finished_at || prevPause !== SESSION.pick_paused_at) {
+        updatePickTimer();
+      }
+    }
+  } catch(e) { /* tiho — nabiralec ne sme biti moten */ }
+}
+
+// ── Arhiviraj ──
+async function archiveSession(force) {
+  if (!force && !confirm('Arhiviram trenutno nabiranje?\n\nSeznam se zaključi in shrani v zgodovino. Nov CSV lahko naložiš za novo nabiranje.')) return;
+  try {
+    const r = await fetch('/zaloga-archive', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ market: MARKET, force: !!force })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      toast('✓ Arhivirano');
+      setExpanded({});  // počisti odprte zavihke
+      showEmpty();
+    } else if (data.warn_no_box) {
+      // RS opozorilo: nabrane postavke brez boxa
+      if (confirm(`⚠️ ${data.warn_no_box} nabranih postavk NIMA dodeljenega boxa!\n\nZa carinski pregled mora biti vsaka postavka v boxu.\n\nVseeno arhiviram?`)) {
+        archiveSession(true);
+      }
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+// ── Pomožne ──
+function esc(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function _skuFontStyle(sku) {
+  const n = String(sku == null ? '' : sku).length;
+  let fs;
+  if (n <= 12) fs = '';            // privzeto (14px)
+  else if (n <= 16) fs = '13px';
+  else if (n <= 20) fs = '11px';
+  else if (n <= 26) fs = '9.5px';
+  else fs = '8px';
+  return (fs ? 'font-size:' + fs + ';' : '') + 'overflow:visible;text-overflow:clip;white-space:normal;word-break:break-all;line-height:1.15;';
+}
+
+// ── ISKALNIK SKU / naziv / pozicija ──
+function toggleSkuSearch() {
+  const ov = document.getElementById('skuSearchOverlay');
+  if (!ov) return;
+  if (ov.style.display === 'none' || !ov.style.display) { openSkuSearch(); } else { closeSkuSearch(); }
+}
+function openSkuSearch() {
+  const ov = document.getElementById('skuSearchOverlay');
+  if (!ov) return;
+  ov.style.display = 'block';
+  const inp = document.getElementById('skuSearchInput');
+  if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 60); }
+  const res = document.getElementById('skuSearchResults');
+  if (res) res.innerHTML = '';
+}
+function closeSkuSearch() {
+  const ov = document.getElementById('skuSearchOverlay');
+  if (ov) ov.style.display = 'none';
+}
+function skuSearchRun(q) {
+  const res = document.getElementById('skuSearchResults');
+  if (!res) return;
+  q = (q || '').trim().toLowerCase();
+  if (!q) { res.innerHTML = ''; return; }
+  const hits = (ITEMS || []).filter(it =>
+    (it.sku || '').toLowerCase().includes(q) ||
+    (it.naziv || '').toLowerCase().includes(q) ||
+    (it.poz || '').toLowerCase().includes(q)
+  ).slice(0, 30);
+  if (!hits.length) {
+    res.innerHTML = '<div style="padding:14px;text-align:center;color:var(--text-faint);font-size:13px">Ni zadetkov.</div>';
+    return;
+  }
+  res.innerHTML = hits.map(it => {
+    const st = it.status === 'ok' ? '✅' : (it.status === 'ni' ? '❌' : '⬜');
+    return '<div onclick="skuSearchJump(' + it.idx + ')" style="display:flex;align-items:center;gap:10px;padding:10px 11px;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background=\'var(--panel2)\'" onmouseout="this.style.background=\'\'">' +
+      '<span style="font-size:15px">' + st + '</span>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:14px;font-weight:600;color:var(--text);word-break:break-all">' + esc(it.sku || '—') + '</div>' +
+        '<div style="font-size:11px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(it.naziv || '') + '</div>' +
+      '</div>' +
+      '<span style="flex-shrink:0;font-size:12px;font-weight:700;color:#fff;background:var(--poz-bg);padding:4px 9px;border-radius:7px">' + esc(it.poz || '—') + '</span>' +
+    '</div>';
+  }).join('');
+}
+function skuSearchJumpFirst() {
+  const q = (document.getElementById('skuSearchInput').value || '').trim().toLowerCase();
+  if (!q) return;
+  const hit = (ITEMS || []).find(it =>
+    (it.sku || '').toLowerCase().includes(q) ||
+    (it.naziv || '').toLowerCase().includes(q) ||
+    (it.poz || '').toLowerCase().includes(q)
+  );
+  if (hit) skuSearchJump(hit.idx);
+}
+function skuSearchJump(idx) {
+  closeSkuSearch();
+  const el = document.getElementById('item-' + idx);
+  if (!el) return;
+  // razširi polico, če je zložena (police uporabljajo razred 'open')
+  const shelf = el.closest('.shelf');
+  if (shelf && !shelf.classList.contains('open')) {
+    const head = shelf.querySelector('.shelf-head');
+    if (head) head.click();
+  }
+  setTimeout(() => {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // utripni poudarek
+    el.style.transition = 'box-shadow 0.3s, background 0.3s';
+    const prevBg = el.style.background;
+    el.style.boxShadow = '0 0 0 3px var(--accent)';
+    el.style.background = 'var(--accent-dim)';
+    setTimeout(() => { el.style.boxShadow = ''; el.style.background = prevBg; }, 1800);
+  }, 120);
+}
+function jsStr(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function cssId(s) { return String(s).replace(/[^a-zA-Z0-9]/g, '_'); }
+
+// Barva boxa iz številke — konsistentno (BOX1 vedno ista barva, BOX2 druga...).
+// Uporablja zlati kot (137.5°) za dobro razpršene, razločljive odtenke.
+function boxColor(boxNum) {
+  const n = parseInt(String(boxNum).replace(/\D/g, '')) || 0;
+  const hue = (n * 137.508) % 360;       // zlati kot → enakomerno razpršene barve
+  return {
+    bg: `hsl(${hue}, 70%, 92%)`,
+    border: `hsl(${hue}, 65%, 62%)`,
+    text: `hsl(${hue}, 70%, 30%)`,
+  };
+}
+function boxStyle(boxNum) {
+  const c = boxColor(boxNum);
+  return `background:${c.bg};border-color:${c.border};color:${c.text}`;
+}
+
+let toastTimer;
+function toast(msg, dur) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), dur || 2200);
+}
+
+// ── Auto-refresh (sync med napravami) — vsakih 15s preberi disk ──
+let lastUpdate = null;
+async function pollSync() {
+  if (!ITEMS.length) return;
+  try {
+    const r = await fetch(mq('/zaloga-current'));
+    const data = await r.json();
+    if (data.ok && data.updated_at && data.updated_at !== lastUpdate) {
+      lastUpdate = data.updated_at;
+      // VAROVALKA: osveži integriteto in opozori, če je seštevek padel
+      if (SESSION) {
+        SESSION.integrity = data.integrity;
+        const ig = data.integrity;
+        if (ig && ig.ok === false) {
+          const sig = ig.dropped_items + ':' + ig.dropped_qty;
+          if (sig !== _lastIntegritySig) {
+            _lastIntegritySig = sig;
+            const p = [];
+            if (ig.dropped_items > 0) p.push(`${ig.dropped_items} postavk`);
+            if (ig.dropped_qty > 0) p.push(`${ig.dropped_qty} kosov`);
+            toast(`⚠️ Seštevek se je zmanjšal — manjka ${p.join(' in ')}! Preveri izbris.`, 6000);
+            refreshSidebarAndStats();
+          }
+        } else if (ig && ig.ok) {
+          if (_lastIntegritySig !== '') refreshSidebarAndStats();
+          _lastIntegritySig = '';
+        }
+      }
+      // osveži časovnico (drugi nabiralec je morda začel/končal/pavziral)
+      if (SESSION) {
+        const ps = SESSION.pick_started_at, pf = SESSION.pick_finished_at, pp = SESSION.pick_paused_at;
+        SESSION.pick_started_at = data.pick_started_at || null;
+        SESSION.pick_finished_at = data.pick_finished_at || null;
+        if ('pick_paused_at' in data) SESSION.pick_paused_at = data.pick_paused_at || null;
+        if ('pick_pause_offset_s' in data) SESSION.pick_pause_offset_s = data.pick_pause_offset_s || 0;
+        if (ps !== SESSION.pick_started_at || pf !== SESSION.pick_finished_at || pp !== SESSION.pick_paused_at) updatePickTimer();
+      }
+      // posodobi samo statuse/picked (ne uniči odprtih zavihkov)
+      let changed = false;
+      data.items.forEach(srv => {
+        const local = ITEMS.find(x => x.idx === srv.idx);
+        if (local && (local.status !== srv.status || local.picked !== srv.picked)) {
+          local.status = srv.status; local.picked = srv.picked;
+          refreshItem(local); changed = true;
+        }
+      });
+      if (changed) {
+        // osveži vse progress bare + sidebar
+        [...new Set(ITEMS.map(i=>i.group))].forEach(refreshShelfProgress);
+        refreshSidebarAndStats();
+        updateGlobalStat();
+      }
+    }
+  } catch(e) {}
+}
+
+// ═══ ZGODOVINA ═══
+async function openHistory() {
+  const ov = document.getElementById('histOverlay');
+  ov.classList.add('show');
+  const body = document.getElementById('histBody');
+  body.innerHTML = '<div class="hist-empty">⏳ Nalagam...</div>';
+  try {
+    const r = await fetch(mq('/zaloga-history'));
+    const data = await r.json();
+    if (!data.ok || !data.sessions || !data.sessions.length) {
+      body.innerHTML = '<div class="hist-empty">Ni arhiviranih nabiranj.</div>';
+      return;
+    }
+    body.innerHTML = data.sessions.map(histSessRow).join('');
+  } catch(e) {
+    body.innerHTML = '<div class="hist-empty">✗ Napaka pri nalaganju.</div>';
+  }
+}
+
+function closeHistory() {
+  document.getElementById('histOverlay').classList.remove('show');
+}
+
+function histDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric'}) +
+      ' · ' + d.toLocaleTimeString('sl-SI', {hour:'2-digit',minute:'2-digit'});
+  } catch(e) { return iso; }
+}
+
+function histSessRow(s) {
+  return `
+    <div class="hist-sess" id="hsess-${cssId(s.filename)}">
+      <div class="hist-sess-top">
+        <span class="hist-sess-date">${histDate(s.archived_at)}</span>
+        <div class="hist-sess-prog"><div style="width:${s.pct}%"></div></div>
+        <span class="hist-sess-pct" style="color:${s.pct===100?'var(--ok)':'var(--text)'}">${s.pct}%</span>
+      </div>
+      <div class="hist-sess-meta">
+        <span>Postavk: <b>${s.total}</b></span>
+        <span class="ok">Nabrano: <b>${s.ok}</b></span>
+        <span class="ni">Manjka: <b>${s.ni}</b></span>
+        <span>Kosov: <b>${s.qty_picked} / ${s.qty_need}</b></span>
+        ${s.pick_secs != null ? `<span title="Čas nabiranja (od prve do zadnje postavke)">⏱ <b>${_fmtDur(s.pick_secs)}</b></span>` : ''}
+      </div>
+      <div class="hist-sess-actions">
+        <button class="open" onclick="histToggleDetail('${jsStr(s.filename)}')">📋 Podrobnosti</button>
+        <button class="del" onclick="histDelete('${jsStr(s.filename)}')">🗑 Izbriši</button>
+      </div>
+      <div class="hist-detail" id="hdet-${cssId(s.filename)}" style="display:none"></div>
+    </div>`;
+}
+
+async function histToggleDetail(filename) {
+  const det = document.getElementById('hdet-' + cssId(filename));
+  if (!det) return;
+  if (det.style.display !== 'none') { det.style.display = 'none'; det.innerHTML = ''; return; }
+  det.style.display = 'block';
+  det.innerHTML = '<div style="padding:10px 0;color:var(--text-dim);font-size:12px">⏳ Nalagam...</div>';
+  try {
+    const r = await fetch(mq('/zaloga-history/' + encodeURIComponent(filename)));
+    const data = await r.json();
+    if (!data.ok || !data.items) { det.innerHTML = '<div style="padding:8px 0;color:var(--text-dim)">Ni podatkov.</div>'; return; }
+    det.innerHTML = data.items.map(it => {
+      const st = it.status === 'ok' ? '<span class="hst-ok">✓ OK</span>'
+        : it.status === 'ni' ? '<span class="hst-ni">✕ NI</span>' : '—';
+      return `<div class="hist-detail-row">
+        <span class="hsku">${esc(it.sku)}</span>
+        <span class="hnaziv" title="${esc(it.naziv)}">${esc(it.naziv)}</span>
+        <span class="hpoz">${esc(it.poz)}</span>
+        <span class="hqty">${it.status==='ok'?it.picked:0} / ${it.qty}</span>
+        <span>${st}</span>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    det.innerHTML = '<div style="padding:8px 0;color:var(--ni)">✗ Napaka.</div>';
+  }
+}
+
+async function histDelete(filename) {
+  if (!confirm('Izbrišem to arhivirano nabiranje?\n\nDejanje je nepovratno.')) return;
+  try {
+    const r = await fetch(mq('/zaloga-history/' + encodeURIComponent(filename)), { method: 'DELETE' });
+    const data = await r.json();
+    if (data.ok) {
+      const el = document.getElementById('hsess-' + cssId(filename));
+      if (el) el.remove();
+      toast('✓ Izbrisano');
+      const body = document.getElementById('histBody');
+      if (body && !body.querySelector('.hist-sess')) {
+        body.innerHTML = '<div class="hist-empty">Ni arhiviranih nabiranj.</div>';
+      }
+    } else {
+      toast('✗ ' + (data.error || 'napaka'));
+    }
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+// ── Kopiraj SKU iz manjka ──
+async function copySkuFromManko(el, sku) {
+  try {
+    await navigator.clipboard.writeText(sku);
+    const orig = el.innerHTML;
+    el.innerHTML = `✓ ${esc(sku)} — kopirano!`;
+    el.style.background = 'var(--ok)';
+    el.style.color = '#fff';
+    el.style.borderColor = 'var(--ok)';
+    setTimeout(() => {
+      el.innerHTML = orig;
+      el.style.background = '';
+      el.style.color = '';
+      el.style.borderColor = '';
+    }, 1600);
+  } catch(e) {
+    // fallback za starejše brskalnike
+    const ta = document.createElement('textarea');
+    ta.value = sku; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('✓ ' + sku + ' kopirano');
+  }
+}
+
+// Kopiraj VSE manjkajoče postavke: vsaka v svojo vrstico "SKU količinx"
+async function copyAllManko(btn) {
+  const manko = ITEMS.filter(_isManko);
+  if (!manko.length) { toast('Ni manjkajočih postavk'); return; }
+  const text = manko.map(it => {
+    const missingQty = it.status === 'ni' ? it.qty : (it.qty - it.picked);
+    return `${it.sku} ${missingQty}x`;
+  }).join('\n');
+  const flash = (ok) => {
+    if (!btn) { toast(ok ? '✓ Kopirano' : '✗ Napaka'); return; }
+    const orig = btn.innerHTML;
+    btn.innerHTML = ok ? '✓ Kopirano!' : '✗ Napaka';
+    btn.classList.toggle('copied', ok);
+    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 1600);
+  };
+  try {
+    await navigator.clipboard.writeText(text);
+    flash(true);
+  } catch(e) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); flash(true); } catch(_) { flash(false); }
+    document.body.removeChild(ta);
+  }
+}
+
+// ── Init ──
+initMarketTab();
+loadSession();
+setInterval(pollSync, 15000);
+// ob spremembi velikosti / rotaciji osveži mobilni box-bar (pojavi/skrije se po potrebi)
+window.addEventListener('resize', () => { updateMobileBoxBar(); updateStickyOffset(); });
+
+// ── IN-APP OBVESTILA (kaj je novega) ──
+// Obvestila se vpisujejo prek /admin in nalagajo s strežnika (/notices).
+// Vsako se pokaže ENKRAT na napravo (localStorage zabeleži videna).
+async function showZalogaNews() {
+  let notices = [];
+  try {
+    const r = await fetch('/notices?scope=zaloga');
+    const d = await r.json();
+    notices = (d && d.notices) || [];
+  } catch(e) { return; }
+  if (!notices.length) return;
+
+  let seen = [];
+  try { seen = JSON.parse(localStorage.getItem('zaloga_news_seen') || '[]'); } catch(e) { seen = []; }
+  const pending = notices.filter(n => !seen.includes(n.id));
+  if (!pending.length) return;
+  const n = pending[pending.length - 1];  // najstarejši neprebrani najprej
+  const html = `
+    <div class="img-preview-overlay" id="newsOverlay" onclick="dismissNews('${n.id}')">
+      <div class="news-box" onclick="event.stopPropagation()">
+        <div class="news-icon">${esc(n.icon || '📢')}</div>
+        <div class="news-title">${esc(n.title || '')}</div>
+        <div class="news-body">${esc(n.body || '')}</div>
+        <button class="news-ok" onclick="dismissNews('${n.id}')">Razumem 👍</button>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function dismissNews(id) {
+  let seen = [];
+  try { seen = JSON.parse(localStorage.getItem('zaloga_news_seen') || '[]'); } catch(e) { seen = []; }
+  if (!seen.includes(id)) seen.push(id);
+  try { localStorage.setItem('zaloga_news_seen', JSON.stringify(seen)); } catch(e) {}
+  const o = document.getElementById('newsOverlay');
+  if (o) o.remove();
+  setTimeout(showZalogaNews, 250);  // pokaži naslednje neprebrano
+}
+
+// pokaži obvestila kmalu po odprtju
+setTimeout(showZalogaNews, 800);
