@@ -2406,31 +2406,23 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div>
 
     <!-- TAB: HS+ KATALOG (živa povezava na HS-plus XML) -->
-    <div id="orodjaSubpage-hsplus" style="display:none;padding:14px">
-      <div class="card" style="margin-bottom:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-          <div>
-            <span class="slabel">📡 HS+ KATALOG</span>
-            <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 0;line-height:1.4">Kaj vse ponuja HS-plus: zaloga, cene, slike.</p>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px">
+    <div id="orodjaSubpage-hsplus" style="display:none;padding:10px">
+      <div class="card" style="margin-bottom:8px;padding:10px 12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0">
+            <span class="slabel" style="margin:0">📡 HS+ KATALOG</span>
             <span id="hsplusFetchInfo" style="font-size:11px;color:var(--text-tertiary)"></span>
           </div>
+          <button onclick="hsplusToggleUpload()" id="hsplusUploadToggleBtn" style="font-size:11px;font-weight:600;color:var(--accent);background:rgba(58,111,255,0.08);border:1px solid rgba(58,111,255,0.25);border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;white-space:nowrap">📥 Naloži XML</button>
         </div>
-        <!-- ROČNI UPLOAD XML — zložljiv predal -->
-        <div style="margin-top:12px;border:1px dashed var(--border);border-radius:var(--radius);overflow:hidden">
-          <div onclick="hsplusToggleUpload()" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;background:var(--surface2);cursor:pointer;user-select:none">
-            <span style="font-size:12px;font-weight:600;color:var(--text)">📥 Naloži XML ročno</span>
-            <span id="hsplusUploadChevron" style="font-size:12px;color:var(--text-tertiary);transition:transform 0.15s">▼</span>
+        <!-- ROČNI UPLOAD XML — zložljiv (privzeto skrit, ne zavzame prostora) -->
+        <div id="hsplusUploadBody" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <p style="font-size:11px;color:var(--text-secondary);margin:0 0 8px;line-height:1.4">Odpri <a href="https://hsb2b.hs-plus.com/catalog/export?format=xml" target="_blank" style="color:var(--accent)">catalog/export</a> (prijavljen v b2b), shrani XML, naloži sem.</p>
+          <div id="hsplusUploadZone" class="k-dropzone" style="padding:12px" onclick="document.getElementById('hsplusUploadInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="hsplusUploadDrop(event)">
+            <span style="font-size:11px">Klikni ali povleci XML sem</span>
           </div>
-          <div id="hsplusUploadBody" style="display:none;padding:12px">
-            <p style="font-size:11px;color:var(--text-secondary);margin:0 0 10px;line-height:1.4">Odpri <a href="https://hsb2b.hs-plus.com/catalog/export?format=xml" target="_blank" style="color:var(--accent)">catalog/export</a> v brskalniku (prijavljen v b2b), shrani XML, in ga naloži sem.</p>
-            <div id="hsplusUploadZone" class="k-dropzone" style="padding:14px" onclick="document.getElementById('hsplusUploadInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="hsplusUploadDrop(event)">
-              <span style="font-size:11px">Klikni ali povleci XML sem</span>
-            </div>
-            <input type="file" id="hsplusUploadInput" accept=".xml,text/xml,application/xml" style="display:none" onchange="hsplusUpload(this.files[0])">
-            <div id="hsplusUploadStatus" style="margin-top:8px;font-size:11px;display:none"></div>
-          </div>
+          <input type="file" id="hsplusUploadInput" accept=".xml,text/xml,application/xml" style="display:none" onchange="hsplusUpload(this.files[0])">
+          <div id="hsplusUploadStatus" style="margin-top:8px;font-size:11px;display:none"></div>
         </div>
       </div>
 
@@ -9477,11 +9469,36 @@ function hsplusEsc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,
 
 function hsplusToggleUpload() {
   const body = document.getElementById('hsplusUploadBody');
-  const chev = document.getElementById('hsplusUploadChevron');
+  const btn = document.getElementById('hsplusUploadToggleBtn');
   if (!body) return;
   const open = body.style.display === 'none';
   body.style.display = open ? 'block' : 'none';
-  if (chev) chev.style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+  if (btn) btn.style.background = open ? 'rgba(58,111,255,0.18)' : 'rgba(58,111,255,0.08)';
+}
+
+function hsplusCopySku(sku, ev) {
+  if (ev) ev.stopPropagation();
+  const txt = String(sku || '');
+  const done = (el) => {
+    if (!el) return;
+    const orig = el.textContent;
+    el.textContent = '✓ kopirano';
+    el.style.color = '#16a34a';
+    setTimeout(() => { el.textContent = orig; el.style.color = ''; }, 1000);
+  };
+  const el = ev && ev.currentTarget ? ev.currentTarget : null;
+  try {
+    navigator.clipboard.writeText(txt).then(() => done(el)).catch(() => {
+      // fallback
+      const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch(e) {}
+      document.body.removeChild(ta); done(el);
+    });
+  } catch(e) {
+    const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch(e2) {}
+    document.body.removeChild(ta); done(el);
+  }
 }
 
 function hsplusUploadDrop(e) {
@@ -9507,9 +9524,9 @@ async function hsplusUpload(file) {
     // zapri predal po 1.5s (da uporabnik vidi potrditev)
     setTimeout(() => {
       const body = document.getElementById('hsplusUploadBody');
-      const chev = document.getElementById('hsplusUploadChevron');
+      const btn = document.getElementById('hsplusUploadToggleBtn');
       if (body) body.style.display = 'none';
-      if (chev) chev.style.transform = 'rotate(0deg)';
+      if (btn) btn.style.background = 'rgba(58,111,255,0.08)';
     }, 1500);
   } catch(e) {
     show('⚠ Napaka: ' + e.message, '#c53030');
@@ -9683,7 +9700,7 @@ function hsplusRender() {
           <span style="font-size:13px;font-weight:700;color:var(--text);line-height:1.2">${hsplusEsc(p.name)}</span>
           <span style="flex-shrink:0;font-size:9px;background:var(--surface2);color:var(--text-tertiary);padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:0.3px">${hsplusEsc(p.category)}</span>
         </div>
-        <div style="font-size:10px;color:var(--text-tertiary);font-family:monospace">${hsplusEsc(p.sku)}</div>
+        <div onclick="hsplusCopySku('${hsplusEsc(p.sku)}',event)" title="Klikni za kopiranje SKU" style="font-size:10px;color:var(--text-tertiary);font-family:monospace;cursor:pointer;display:inline-flex;align-items:center;gap:4px" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-tertiary)'">${hsplusEsc(p.sku)} <span style="opacity:0.5;font-size:9px">⧉</span></div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:6px">
           <span style="font-size:15px;font-weight:700;color:var(--accent)">${(p.price||0).toFixed(2)} €${priceDelta}</span>
           <span style="font-size:12px;font-weight:600;color:${stockColor}">📊 ${(p.stock||0).toLocaleString('sl-SI')}${stockDelta}</span>
@@ -9797,7 +9814,7 @@ function hsplusOpenVariants(sliceIdx) {
       ${img}
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;color:var(--text)">${hsplusEsc(vlabel)}</div>
-        <div style="font-size:10px;color:var(--text-tertiary);font-family:monospace">${hsplusEsc(v.sku)}</div>
+        <div onclick="hsplusCopySku('${hsplusEsc(v.sku)}',event)" title="Klikni za kopiranje SKU" style="font-size:10px;color:var(--text-tertiary);font-family:monospace;cursor:pointer;display:inline-flex;align-items:center;gap:4px" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-tertiary)'">${hsplusEsc(v.sku)} <span style="opacity:0.5;font-size:9px">⧉</span></div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div style="font-size:13px;font-weight:700;color:var(--accent)">${(v.price||0).toFixed(2)} €</div>
