@@ -22481,17 +22481,34 @@ async function vracilaHistoryDelete(filename) {
     if (desc) desc.textContent = 'Seznami za skladišče · optimizirano za mobilnik';
   }
 
-  function setActive(s) {
+  function setActive(s, data) {
     const online = document.getElementById('zalogaOnline');
     const pctWrap = document.getElementById('zalogaBigPctWrap');
     const prog = document.getElementById('zalogaBigProg');
     const chevron = document.getElementById('zalogaBigChevron');
     const desc = document.getElementById('zalogaBigDesc');
-    if (online) online.style.display = 'inline-flex';
+    const paused = !!(data && data.pick_paused_at);
+    if (online) {
+      online.style.display = 'inline-flex';
+      // pavza → značka postane "⏸ Pavza" (siva, brez utripa); sicer "ONLINE"
+      const dot = online.querySelector('.zaloga-online-dot');
+      const lbl = online.querySelector('span:last-child');
+      if (paused) {
+        online.style.background = 'rgba(255,255,255,0.18)';
+        if (dot) dot.style.display = 'none';
+        if (lbl) lbl.textContent = '⏸ PAVZA';
+      } else {
+        online.style.background = 'rgba(255,255,255,0.25)';
+        if (dot) dot.style.display = '';
+        if (lbl) lbl.textContent = 'ONLINE';
+      }
+    }
     if (pctWrap) pctWrap.style.display = 'block';
     if (prog) prog.style.display = 'block';
     if (chevron) chevron.style.display = 'none';
-    if (desc) desc.textContent = `Aktivno nabiranje · ${s.done} / ${s.total} postavk`;
+    if (desc) desc.textContent = paused
+      ? `⏸ Pavza · ${s.done} / ${s.total} postavk`
+      : `Aktivno nabiranje · ${s.done} / ${s.total} postavk`;
     const pctEl = document.getElementById('zalogaBigPct');
     if (pctEl) pctEl.textContent = s.pctOk + '%';   // % po postavkah
     const o = document.getElementById('zbProgOk');
@@ -22517,10 +22534,10 @@ async function vracilaHistoryDelete(filename) {
     const rsActive = rsData && rsData.ok && rsData.items && rsData.items.length;
     if (sloActive) {
       const s = pctParts(sloData.items);
-      if (s) setActive(s); else setInactive();
+      if (s) setActive(s, sloData); else setInactive();
     } else if (rsActive) {
       const s = pctParts(rsData.items);
-      if (s) setActive(s); else setInactive();
+      if (s) setActive(s, rsData); else setInactive();
     } else {
       setInactive();
     }
@@ -22580,16 +22597,20 @@ async function vracilaHistoryDelete(filename) {
     if (pct) pct.textContent = (s.pctOk === 100 ? '✓100%' : s.pctOk + '%');  // % po postavkah
   }
 
-  // posodobi čas iz seje (brez pike — ONLINE je že v naslovu kartice)
+  // posodobi čas iz seje (upošteva pavzo + offset prej pavziranih sekund)
   function _applyTimer(data, timeEl) {
     if (!data || !timeEl) return;
     const startStr = data.pick_started_at, finStr = data.pick_finished_at;
+    const pausedStr = data.pick_paused_at;
+    const offset = (data.pick_pause_offset_s || 0);
     if (!startStr) { timeEl.textContent = '0:00:00'; return; }
     const startMs = new Date(startStr).getTime();
     if (finStr) {
-      timeEl.textContent = '🏁 ' + _fmtDur((new Date(finStr).getTime() - startMs)/1000);
+      timeEl.textContent = '🏁 ' + _fmtDur((new Date(finStr).getTime() - startMs)/1000 - offset);
+    } else if (pausedStr) {
+      timeEl.textContent = '⏸ ' + _fmtDur((new Date(pausedStr).getTime() - startMs)/1000 - offset);
     } else {
-      timeEl.textContent = _fmtDur((Date.now() - startMs)/1000);
+      timeEl.textContent = _fmtDur((Date.now() - startMs)/1000 - offset);
     }
   }
 
