@@ -906,7 +906,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
   <div class="nav-item nav-zaloga" id="nav-zaloga" onclick="switchPage('zaloga')">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-    Zaloga in Vračila
+    Skladišče
     <span style="margin-left:auto;font-size:13px">📦</span>
   </div>
 
@@ -1143,13 +1143,14 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
           <div class="home-tile" style="border-left-color:#64748b" onclick="switchPage('zaloga')">
             <div class="ht-icon">📦</div>
-            <div class="ht-name">Zaloga in Vračila</div>
-            <div class="ht-desc">Pregled SKU · Skener vračil</div>
+            <div class="ht-name">Skladišče</div>
+            <div class="ht-desc">Pregled SKU · Skener vračil · Pozicije</div>
             <div class="ht-pills">
               <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('zaloga')">↗ Zaloga</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('vracila')">↗ Vračila</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('skeniranje')">↗ Skeniranje</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('pozicije')">↗ Sprememba pozicij</span>
+              <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('sekundarne')">↗ Sekundarne</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('inventura')">↗ Inventura</span>
             </div>
           </div>
