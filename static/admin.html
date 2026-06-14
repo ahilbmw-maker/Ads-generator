@@ -104,9 +104,97 @@
     <p class="card-title">📋 Objavljena obvestila</p>
     <div id="noticesList"><div class="empty">Nalagam...</div></div>
   </div>
+
+  <div class="card">
+    <p class="card-title">⏱️ Štoparica nabiranja</p>
+    <div class="scope-btns">
+      <button class="scope-btn on" id="tmkt-slo" onclick="setTimerMarket('slo')">🇸🇮 SLO</button>
+      <button class="scope-btn" id="tmkt-rs" onclick="setTimerMarket('rs')">🇷🇸 RS</button>
+    </div>
+    <div class="preview" style="margin-bottom:14px">
+      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">Trenutni čas</div>
+      <div class="preview-title" id="tmTime" style="font-variant-numeric:tabular-nums;font-size:28px">—:—</div>
+      <div class="preview-body" id="tmState">nalagam...</div>
+    </div>
+    <div class="row">
+      <button class="save-btn" id="tmPauseBtn" onclick="timerControl('pause')" style="background:var(--red)">⏸ Pavza</button>
+      <button class="save-btn" id="tmResumeBtn" onclick="timerControl('resume')" style="background:var(--green)">▶ Nadaljuj</button>
+    </div>
+    <div style="margin-top:14px">
+      <label>Nastavi čas (min:sek ali sekunde) — nastavi in pavzira</label>
+      <div class="row">
+        <div><input type="text" id="tmSetVal" placeholder="npr. 1:53 ali 113" style="margin-bottom:0"></div>
+        <button class="save-btn" onclick="timerSet()" style="flex:0 0 auto;width:auto;padding:10px 18px">Nastavi</button>
+      </div>
+    </div>
+    <div class="status" id="tmStatus"></div>
+  </div>
 </div>
 
 <script>
+let timerMarket = 'slo';
+function setTimerMarket(m) {
+  timerMarket = m;
+  document.getElementById('tmkt-slo').classList.toggle('on', m==='slo');
+  document.getElementById('tmkt-rs').classList.toggle('on', m==='rs');
+  loadTimerStatus();
+}
+function _fmtT(s) {
+  s = Math.max(0, Math.round(s));
+  const m = Math.floor(s/60), ss = s%60;
+  return m + ':' + String(ss).padStart(2,'0');
+}
+async function loadTimerStatus() {
+  const t = document.getElementById('tmTime'), st = document.getElementById('tmState');
+  try {
+    const r = await fetch('/admin-pick-timer-status?market=' + timerMarket);
+    const d = await r.json();
+    if (!d.ok) { t.textContent = '—:—'; st.textContent = d.error || 'ni seje'; return; }
+    t.textContent = (d.is_paused ? '⏸ ' : '') + _fmtT(d.elapsed_s);
+    st.textContent = d.is_paused ? 'PAVZA — zamrznjeno' : (d.pick_started_at ? 'teče' : 'še ni začetka');
+  } catch(e) { t.textContent = '—:—'; st.textContent = 'napaka'; }
+}
+async function timerControl(action) {
+  const s = document.getElementById('tmStatus');
+  s.textContent = '⏳...'; s.style.color = 'var(--text-dim)';
+  try {
+    const r = await fetch('/admin-pick-timer-control', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action, market: timerMarket })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      s.textContent = action==='pause' ? '✓ Pavzirano' : (action==='resume' ? '✓ Nadaljuje' : '✓');
+      s.style.color = 'var(--green)';
+      loadTimerStatus();
+      setTimeout(() => { s.textContent=''; }, 2000);
+    } else { s.textContent = '⚠ ' + (d.error||'napaka'); s.style.color = 'var(--red)'; }
+  } catch(e) { s.textContent = '⚠ napaka'; s.style.color = 'var(--red)'; }
+}
+function timerSet() {
+  const raw = (document.getElementById('tmSetVal').value || '').trim();
+  const s = document.getElementById('tmStatus');
+  let seconds;
+  if (raw.includes(':')) {
+    const [m, sec] = raw.split(':');
+    seconds = (parseInt(m,10)||0) * 60 + (parseInt(sec,10)||0);
+  } else {
+    seconds = parseInt(raw, 10);
+  }
+  if (isNaN(seconds) || seconds < 0) { s.textContent = '⚠ Vpiši veljaven čas (npr. 1:53 ali 113)'; s.style.color = 'var(--red)'; return; }
+  s.textContent = '⏳ nastavljam...'; s.style.color = 'var(--text-dim)';
+  fetch('/admin-pick-timer-control', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ action:'set', seconds, market: timerMarket })
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      s.textContent = '✓ Nastavljeno na ' + _fmtT(d.elapsed_s) + ' (pavzirano)';
+      s.style.color = 'var(--green)';
+      loadTimerStatus();
+    } else { s.textContent = '⚠ ' + (d.error||'napaka'); s.style.color = 'var(--red)'; }
+  }).catch(() => { s.textContent = '⚠ napaka'; s.style.color = 'var(--red)'; });
+}
+
 let curScope = 'zaloga';
 const ICONS = { zaloga:'📦', index:'🖥️', both:'🌐' };
 
@@ -189,6 +277,8 @@ async function deleteNotice(id) {
 
 updatePreview();
 loadNotices();
+loadTimerStatus();
+setInterval(loadTimerStatus, 5000);
 </script>
 </body>
 </html>
