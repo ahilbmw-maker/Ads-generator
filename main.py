@@ -13599,6 +13599,12 @@ def _lj_now():
 def _lj_today():
     return _lj_now().strftime("%Y-%m-%d")
 
+# Sledenje stanja forecast cron-a (za diagnostiko manjkajočih urnih vnosov)
+_FORECAST2_CRON_STATUS = {
+    "started_at": None, "last_tick": None, "last_run": None,
+    "last_result": None, "last_error": None, "tick_count": 0,
+}
+
 def _forecast2_path(date_iso: str) -> Path:
     """Pot do datoteke za določen datum."""
     # Sanity check format YYYY-MM-DD
@@ -14325,14 +14331,20 @@ async def _forecast2_scheduler_loop():
     in zapiše vmesni vnos. Aktiven med 6:00–23:00 po Ljubljani (ponoči ni prometa).
     Jedro ima dodatno časovno zaščito (zapis max 1x/55min), ki prepreči podvajanje,
     če bi teklo več instanc scheduler-ja (npr. ob Render restartih)."""
+    global _FORECAST2_CRON_STATUS
     await asyncio.sleep(60)  # počakaj, da se startup dokonča
     INTERVAL = 60 * 60       # 1 ura
+    _FORECAST2_CRON_STATUS["started_at"] = _lj_now().isoformat()
     while True:
         try:
             now = _lj_now()
             hour = now.hour
+            _FORECAST2_CRON_STATUS["last_tick"] = now.isoformat()
+            _FORECAST2_CRON_STATUS["tick_count"] = _FORECAST2_CRON_STATUS.get("tick_count", 0) + 1
             if 6 <= hour < 23:
                 res = await _forecast2_fetch_core(force=False)
+                _FORECAST2_CRON_STATUS["last_run"] = now.isoformat()
+                _FORECAST2_CRON_STATUS["last_result"] = res
                 if res.get("skipped"):
                     print(f"[forecast2-cron] preskočeno — {res.get('reason')}")
                 elif res.get("ok"):
@@ -14341,11 +14353,31 @@ async def _forecast2_scheduler_loop():
                 else:
                     print(f"[forecast2-cron] FAIL — {res.get('error')}")
             else:
+                _FORECAST2_CRON_STATUS["last_result"] = {"skipped": True, "reason": f"izven ur ({hour}h)"}
                 print(f"[forecast2-cron] Izven delovnega časa ({hour}h) — preskočim")
             await asyncio.sleep(INTERVAL)
         except Exception as e:
+            _FORECAST2_CRON_STATUS["last_error"] = {"at": _lj_now().isoformat(), "error": str(e)}
             print(f"[forecast2-cron] Error: {e}")
             await asyncio.sleep(1800)  # 30 min pred ponovnim poskusom
+
+
+@app.get("/forecast2-cron-status")
+async def forecast2_cron_status():
+    """Diagnostika cron-a: kdaj se je nazadnje pognal, kaj je vrnil, kdaj naslednjič.
+    Pomaga ugotoviti zakaj manjka kak urni vnos (restart / napaka / preskok)."""
+    today = _lj_today()
+    day = _forecast2_load_day(today)
+    siluxar_entries = [{"time": e.get("time"), "orders": e.get("orders"), "_ts": e.get("_ts")}
+                       for e in (day.get("entries") or [])
+                       if e.get("_source") == "siluxar_apisumexport"]
+    return {
+        "ok": True,
+        "zdaj_lj": _lj_now().isoformat(),
+        "status": _FORECAST2_CRON_STATUS,
+        "danes_siluxar_vnosi": siluxar_entries,
+        "stevilo_danes": len(siluxar_entries),
+    }
 
 
 @app.post("/forecast2-set-final")
