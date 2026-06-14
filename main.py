@@ -14327,13 +14327,14 @@ async def forecast2_fetch_siluxar():
 
 
 async def _forecast2_scheduler_loop():
-    """Notranji scheduler (always-on Render Pro): vsako uro potegne apisumexport
-    in zapiše vmesni vnos. Aktiven med 6:00–23:00 po Ljubljani (ponoči ni prometa).
-    Jedro ima dodatno časovno zaščito (zapis max 1x/55min), ki prepreči podvajanje,
-    če bi teklo več instanc scheduler-ja (npr. ob Render restartih)."""
+    """Notranji scheduler (always-on Render Pro): preveri vsakih 5 min in zapiše
+    vmesni vnos NAJVEČ 1× na uro (ko v tekoči uri še ni siluxar-vnosa).
+    Aktiven 6:00–23:00 po Ljubljani. Ta pristop je odporen na restarte: ritem ni
+    vezan na minuto zagona, ampak na koledarsko uro — če en poskus preskoči
+    (npr. svež ročni vnos), naslednji čez 5 min lahko zapiše."""
     global _FORECAST2_CRON_STATUS
     await asyncio.sleep(60)  # počakaj, da se startup dokonča
-    INTERVAL = 60 * 60       # 1 ura
+    CHECK_INTERVAL = 5 * 60  # preveri vsakih 5 min
     _FORECAST2_CRON_STATUS["started_at"] = _lj_now().isoformat()
     while True:
         try:
@@ -14342,24 +14343,40 @@ async def _forecast2_scheduler_loop():
             _FORECAST2_CRON_STATUS["last_tick"] = now.isoformat()
             _FORECAST2_CRON_STATUS["tick_count"] = _FORECAST2_CRON_STATUS.get("tick_count", 0) + 1
             if 6 <= hour < 23:
-                res = await _forecast2_fetch_core(force=False)
-                _FORECAST2_CRON_STATUS["last_run"] = now.isoformat()
-                _FORECAST2_CRON_STATUS["last_result"] = res
-                if res.get("skipped"):
-                    print(f"[forecast2-cron] preskočeno — {res.get('reason')}")
-                elif res.get("ok"):
-                    print(f"[forecast2-cron] OK {res.get('date')} {res.get('time')} — "
-                          f"{res.get('orders')} naročil, {res.get('revenue')} €")
+                # ali v TEKOČI koledarski uri že obstaja siluxar-vnos?
+                already_this_hour = False
+                try:
+                    day_chk = _forecast2_load_day(_lj_today())
+                    for e in (day_chk.get("entries") or []):
+                        if e.get("_source") == "siluxar_apisumexport" and e.get("_ts"):
+                            from datetime import datetime as _dt
+                            ets = _dt.fromisoformat(e["_ts"])
+                            if ets.hour == hour and ets.date() == now.date():
+                                already_this_hour = True
+                                break
+                except Exception:
+                    pass
+                if already_this_hour:
+                    _FORECAST2_CRON_STATUS["last_result"] = {"skipped": True, "reason": f"v uri {hour}h že obstaja vnos"}
                 else:
-                    print(f"[forecast2-cron] FAIL — {res.get('error')}")
+                    # uporabi krajšo zaščito (10 min) — prepreči podvajanje, a ne požre urnega vnosa
+                    res = await _forecast2_fetch_core(force=False, min_gap_min=10)
+                    _FORECAST2_CRON_STATUS["last_run"] = now.isoformat()
+                    _FORECAST2_CRON_STATUS["last_result"] = res
+                    if res.get("skipped"):
+                        print(f"[forecast2-cron] preskočeno — {res.get('reason')}")
+                    elif res.get("ok"):
+                        print(f"[forecast2-cron] OK {res.get('date')} {res.get('time')} — "
+                              f"{res.get('orders')} naročil, {res.get('revenue')} €")
+                    else:
+                        print(f"[forecast2-cron] FAIL — {res.get('error')}")
             else:
                 _FORECAST2_CRON_STATUS["last_result"] = {"skipped": True, "reason": f"izven ur ({hour}h)"}
-                print(f"[forecast2-cron] Izven delovnega časa ({hour}h) — preskočim")
-            await asyncio.sleep(INTERVAL)
+            await asyncio.sleep(CHECK_INTERVAL)
         except Exception as e:
             _FORECAST2_CRON_STATUS["last_error"] = {"at": _lj_now().isoformat(), "error": str(e)}
             print(f"[forecast2-cron] Error: {e}")
-            await asyncio.sleep(1800)  # 30 min pred ponovnim poskusom
+            await asyncio.sleep(600)  # 10 min pred ponovnim poskusom
 
 
 @app.get("/forecast2-cron-status")
