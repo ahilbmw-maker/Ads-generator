@@ -1261,7 +1261,7 @@ function itemRow(it) {
       <span class="id-col">${esc(it.id || '—')}</span>
       <div class="item-mobile-top">
         ${thumb}
-        <span class="sku">${esc(it.sku)}</span>
+        <span class="sku" style="${_skuFontStyle(it.sku)}">${esc(it.sku)}</span>
         <span class="poz poz-edit" onclick="event.stopPropagation();openPozEdit('${jsStr(it.sku)}','${jsStr(it.poz||'')}','${jsStr(it.naziv||'')}')" title="Klikni za popravek pozicije">${esc(it.poz)}</span>
       </div>
       <div class="item-naziv-wrap">
@@ -1699,6 +1699,8 @@ function updatePickTimer() {
   const sess = SESSION || {};
   const startStr = sess.pick_started_at;
   const finishStr = sess.pick_finished_at;
+  const pausedStr = sess.pick_paused_at;
+  const offset = (sess.pick_pause_offset_s || 0);
 
   // ustavi obstoječi tick (ponovno nastavimo po potrebi)
   if (_pickTimerInt) { clearInterval(_pickTimerInt); _pickTimerInt = null; }
@@ -1713,20 +1715,30 @@ function updatePickTimer() {
   const startMs = _parseServerTs(startStr);
 
   if (finishStr) {
-    // končano — fiksen čas
+    // končano — fiksen čas (z offsetom)
     const finMs = _parseServerTs(finishStr);
     wrap.classList.remove('running');
     wrap.classList.add('done');
-    timeEl.textContent = '🏁 ' + _fmtDur((finMs - startMs) / 1000);
+    timeEl.textContent = '🏁 ' + _fmtDur((finMs - startMs) / 1000 - offset);
     lblEl.textContent = 'končni čas';
     return;
   }
 
-  // teče — živ tick
+  if (pausedStr) {
+    // PAVZA — zamrznjen čas (offset že upoštevan)
+    const pausedMs = _parseServerTs(pausedStr);
+    wrap.classList.remove('running');
+    wrap.classList.add('done');
+    timeEl.textContent = '⏸ ' + _fmtDur((pausedMs - startMs) / 1000 - offset);
+    lblEl.textContent = 'pavza';
+    return;
+  }
+
+  // teče — živ tick (odštej offset prej pavziranih sekund)
   wrap.classList.remove('done');
   wrap.classList.add('running');
   lblEl.textContent = 'čas nabiranja';
-  const tick = () => { timeEl.textContent = _fmtDur((Date.now() - startMs) / 1000); };
+  const tick = () => { timeEl.textContent = _fmtDur((Date.now() - startMs) / 1000 - offset); };
   tick();
   _pickTimerInt = setInterval(tick, 1000);
 }
@@ -1991,10 +2003,12 @@ async function saveItem(idx, patch) {
     const data = await r.json();
     if (data && data.ok && SESSION) {
       // osveži časovnico (server pove, kdaj se je začelo/končalo nabiranje)
-      const prevStart = SESSION.pick_started_at, prevFin = SESSION.pick_finished_at;
+      const prevStart = SESSION.pick_started_at, prevFin = SESSION.pick_finished_at, prevPause = SESSION.pick_paused_at;
       SESSION.pick_started_at = data.pick_started_at || null;
       SESSION.pick_finished_at = data.pick_finished_at || null;
-      if (prevStart !== SESSION.pick_started_at || prevFin !== SESSION.pick_finished_at) {
+      SESSION.pick_paused_at = data.pick_paused_at || null;
+      SESSION.pick_pause_offset_s = data.pick_pause_offset_s || 0;
+      if (prevStart !== SESSION.pick_started_at || prevFin !== SESSION.pick_finished_at || prevPause !== SESSION.pick_paused_at) {
         updatePickTimer();
       }
     }
@@ -2027,6 +2041,92 @@ async function archiveSession(force) {
 
 // ── Pomožne ──
 function esc(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function _skuFontStyle(sku) {
+  const n = String(sku == null ? '' : sku).length;
+  let fs;
+  if (n <= 10) fs = '';
+  else if (n <= 14) fs = '12px';
+  else if (n <= 18) fs = '10.5px';
+  else if (n <= 24) fs = '9px';
+  else fs = '8px';
+  return (fs ? 'font-size:' + fs + ';' : '') + 'overflow:visible;text-overflow:clip;white-space:normal;word-break:break-all;line-height:1.15;';
+}
+
+// ── ISKALNIK SKU / naziv / pozicija ──
+function toggleSkuSearch() {
+  const ov = document.getElementById('skuSearchOverlay');
+  if (!ov) return;
+  if (ov.style.display === 'none' || !ov.style.display) { openSkuSearch(); } else { closeSkuSearch(); }
+}
+function openSkuSearch() {
+  const ov = document.getElementById('skuSearchOverlay');
+  if (!ov) return;
+  ov.style.display = 'block';
+  const inp = document.getElementById('skuSearchInput');
+  if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 60); }
+  const res = document.getElementById('skuSearchResults');
+  if (res) res.innerHTML = '';
+}
+function closeSkuSearch() {
+  const ov = document.getElementById('skuSearchOverlay');
+  if (ov) ov.style.display = 'none';
+}
+function skuSearchRun(q) {
+  const res = document.getElementById('skuSearchResults');
+  if (!res) return;
+  q = (q || '').trim().toLowerCase();
+  if (!q) { res.innerHTML = ''; return; }
+  const hits = (ITEMS || []).filter(it =>
+    (it.sku || '').toLowerCase().includes(q) ||
+    (it.naziv || '').toLowerCase().includes(q) ||
+    (it.poz || '').toLowerCase().includes(q)
+  ).slice(0, 30);
+  if (!hits.length) {
+    res.innerHTML = '<div style="padding:14px;text-align:center;color:var(--text-faint);font-size:13px">Ni zadetkov.</div>';
+    return;
+  }
+  res.innerHTML = hits.map(it => {
+    const st = it.status === 'ok' ? '✅' : (it.status === 'ni' ? '❌' : '⬜');
+    return '<div onclick="skuSearchJump(' + it.idx + ')" style="display:flex;align-items:center;gap:10px;padding:10px 11px;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background=\'var(--panel2)\'" onmouseout="this.style.background=\'\'">' +
+      '<span style="font-size:15px">' + st + '</span>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:14px;font-weight:600;color:var(--text);word-break:break-all">' + esc(it.sku || '—') + '</div>' +
+        '<div style="font-size:11px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(it.naziv || '') + '</div>' +
+      '</div>' +
+      '<span style="flex-shrink:0;font-size:12px;font-weight:700;color:#fff;background:var(--poz-bg);padding:4px 9px;border-radius:7px">' + esc(it.poz || '—') + '</span>' +
+    '</div>';
+  }).join('');
+}
+function skuSearchJumpFirst() {
+  const q = (document.getElementById('skuSearchInput').value || '').trim().toLowerCase();
+  if (!q) return;
+  const hit = (ITEMS || []).find(it =>
+    (it.sku || '').toLowerCase().includes(q) ||
+    (it.naziv || '').toLowerCase().includes(q) ||
+    (it.poz || '').toLowerCase().includes(q)
+  );
+  if (hit) skuSearchJump(hit.idx);
+}
+function skuSearchJump(idx) {
+  closeSkuSearch();
+  const el = document.getElementById('item-' + idx);
+  if (!el) return;
+  // razširi polico, če je zložena (police uporabljajo razred 'open')
+  const shelf = el.closest('.shelf');
+  if (shelf && !shelf.classList.contains('open')) {
+    const head = shelf.querySelector('.shelf-head');
+    if (head) head.click();
+  }
+  setTimeout(() => {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // utripni poudarek
+    el.style.transition = 'box-shadow 0.3s, background 0.3s';
+    const prevBg = el.style.background;
+    el.style.boxShadow = '0 0 0 3px var(--accent)';
+    el.style.background = 'var(--accent-dim)';
+    setTimeout(() => { el.style.boxShadow = ''; el.style.background = prevBg; }, 1800);
+  }, 120);
+}
 function jsStr(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function cssId(s) { return String(s).replace(/[^a-zA-Z0-9]/g, '_'); }
 
@@ -2083,12 +2183,14 @@ async function pollSync() {
           _lastIntegritySig = '';
         }
       }
-      // osveži časovnico (drugi nabiralec je morda začel/končal)
+      // osveži časovnico (drugi nabiralec je morda začel/končal/pavziral)
       if (SESSION) {
-        const ps = SESSION.pick_started_at, pf = SESSION.pick_finished_at;
+        const ps = SESSION.pick_started_at, pf = SESSION.pick_finished_at, pp = SESSION.pick_paused_at;
         SESSION.pick_started_at = data.pick_started_at || null;
         SESSION.pick_finished_at = data.pick_finished_at || null;
-        if (ps !== SESSION.pick_started_at || pf !== SESSION.pick_finished_at) updatePickTimer();
+        if ('pick_paused_at' in data) SESSION.pick_paused_at = data.pick_paused_at || null;
+        if ('pick_pause_offset_s' in data) SESSION.pick_pause_offset_s = data.pick_pause_offset_s || 0;
+        if (ps !== SESSION.pick_started_at || pf !== SESSION.pick_finished_at || pp !== SESSION.pick_paused_at) updatePickTimer();
       }
       // posodobi samo statuse/picked (ne uniči odprtih zavihkov)
       let changed = false;
