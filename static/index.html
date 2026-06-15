@@ -13624,9 +13624,9 @@ function tt14RenderTable() {
   const sortArrow = (col) => tt14SortCol === col ? (tt14SortDir === 1 ? ' ↑' : ' ↓') : ' ↕';
   const hStyle = 'cursor:pointer;user-select:none';
 
-  const GRID = '160px 1fr 100px 80px 70px 80px 90px 70px';
+  const GRID = '24px 160px 1fr 100px 80px 70px 80px 90px 70px';
   const header = `<div style="display:grid;grid-template-columns:${GRID};gap:10px;padding:11px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--border);margin-bottom:4px">
-    <span style="${hStyle}" onclick="tt14SortBy('sku')">SKU${sortArrow('sku')}</span><span style="${hStyle}" onclick="tt14SortBy('title')">Naziv${sortArrow('title')}</span><span style="text-align:center;${hStyle}" onclick="tt14SortBy('campaigns')">Status TT${sortArrow('campaigns')}</span><span style="text-align:center;${hStyle}" onclick="tt14SortBy('create_time')">Kreirano${sortArrow('create_time')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('obrat14')">Obrat 14d${sortArrow('obrat14')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('spend')">Spend${sortArrow('spend')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('conversions')">Konv.${sortArrow('conversions')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('stock')">Zaloga${sortArrow('stock')}</span>
+    <span title="Zaznamek tukaj sem ostal">🚩</span><span style="${hStyle}" onclick="tt14SortBy('sku')">SKU${sortArrow('sku')}</span><span style="${hStyle}" onclick="tt14SortBy('title')">Naziv${sortArrow('title')}</span><span style="text-align:center;${hStyle}" onclick="tt14SortBy('campaigns')">Status TT${sortArrow('campaigns')}</span><span style="text-align:center;${hStyle}" onclick="tt14SortBy('create_time')">Kreirano${sortArrow('create_time')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('obrat14')">Obrat 14d${sortArrow('obrat14')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('spend')">Spend${sortArrow('spend')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('conversions')">Konv.${sortArrow('conversions')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('stock')">Zaloga${sortArrow('stock')}</span>
   </div>`;
   const limitNote = `<div style="text-align:center;padding:8px;font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);border-radius:var(--radius);margin-bottom:4px">Prikaz ${startIdx+1}–${endIdx} od ${totalItems} izdelkov</div>`;
 
@@ -13650,10 +13650,14 @@ function tt14RenderTable() {
       : `<div style="text-align:center;color:var(--text-tertiary);font-size:14px;background:${TT_EMPTY_BG};border-radius:3px;padding:3px 0">—</div>`;
     const obratColor = it.obrat14 > 10 ? 'var(--green)' : it.obrat14 > 3 ? '#d97706' : it.obrat14 > 0 ? 'var(--red)' : 'var(--text-tertiary)';
     const stockColor = it.stock > 50 ? 'var(--green)' : it.stock > 10 ? '#d97706' : it.stock > 0 ? 'var(--red)' : 'var(--text-tertiary)';
-    const bg = it.campaigns === 0 && it.obrat14 > 0 ? 'rgba(124,58,237,0.08)' : 'var(--surface2)';
+    const bmarked = bookmarkGet('obrat14tt') === it.sku;
+    const bg = bmarked ? 'rgba(239,159,39,0.14)' : (it.campaigns === 0 && it.obrat14 > 0 ? 'rgba(124,58,237,0.08)' : 'var(--surface2)');
+    const bmBorder = bmarked ? '2px solid #EF9F27' : '1px solid var(--border)';
+    const bmAttr = bmarked ? ' data-bookmark-row="obrat14tt"' : '';
 
-    return `<div style="display:grid;grid-template-columns:${GRID};gap:10px;padding:11px 14px;background:${bg};border:1px solid var(--border);border-radius:var(--radius);font-size:13px;align-items:center">
-      <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.sku)}</div>
+    return `<div${bmAttr} style="display:grid;grid-template-columns:${GRID};gap:10px;padding:11px 14px;background:${bg};border:${bmBorder};border-radius:var(--radius);font-size:13px;align-items:center">
+      ${bookmarkBtnHtml('obrat14tt', it.sku, 'tt14RenderTable')}
+      <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.sku)}${bmarked ? ' <span style="font-size:9px;color:#EF9F27;font-weight:700">← TU</span>' : ''}</div>
       <div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(it.title)}">${esc(it.title||'—')}</div>
       ${statusBadge}
       <div style="text-align:center;font-size:12px;color:var(--text-secondary)">${createDateStr || '—'}</div>
@@ -13692,6 +13696,7 @@ function tt14RenderTable() {
       pag.innerHTML = html;
     }
   }
+  bookmarkScrollTo('obrat14tt');
 }
 
 
@@ -13960,6 +13965,38 @@ function o14SetFilter(filter, btn) {
   o14RenderTable();
 }
 
+// ── ZAZNAMEK "tukaj sem ostal" (per analiza tab) ──
+// Shranjeno v localStorage: slx_bookmark_<tabKey> = SKU. En zaznamek na tab.
+function bookmarkGet(tabKey) {
+  try { return localStorage.getItem('slx_bookmark_' + tabKey) || null; } catch(e) { return null; }
+}
+function bookmarkToggle(tabKey, sku, rerenderFn) {
+  const cur = bookmarkGet(tabKey);
+  try {
+    if (cur === sku) localStorage.removeItem('slx_bookmark_' + tabKey);   // ponovni klik = odstrani
+    else localStorage.setItem('slx_bookmark_' + tabKey, sku);
+  } catch(e) {}
+  if (typeof rerenderFn === 'function') rerenderFn();
+}
+// HTML za zaznamek gumb (zastavica) v vrstici
+function bookmarkBtnHtml(tabKey, sku, rerenderName) {
+  const active = bookmarkGet(tabKey) === sku;
+  const skuE = String(sku).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return '<span onclick="event.stopPropagation();bookmarkToggle(\'' + tabKey + '\',\'' + skuE + '\',' + rerenderName + ')" ' +
+    'title="' + (active ? 'Tu sem ostal — klikni za odstranitev' : 'Označi: tukaj sem ostal') + '" ' +
+    'style="cursor:pointer;flex-shrink:0;font-size:14px;line-height:1;opacity:' + (active ? '1' : '0.25') + ';transition:opacity 0.15s" ' +
+    'onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=\'' + (active ? '1' : '0.25') + '\'">🚩</span>';
+}
+// po renderju skrol do zaznamka (če obstaja in je viden)
+function bookmarkScrollTo(tabKey) {
+  const sku = bookmarkGet(tabKey);
+  if (!sku) return;
+  setTimeout(() => {
+    const el = document.querySelector('[data-bookmark-row="' + tabKey + '"]');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 150);
+}
+
 function o14RenderTable() {
   const search = (document.getElementById('o14Search')?.value || '').toLowerCase().trim();
   let filtered = [...o14Items];
@@ -14101,15 +14138,16 @@ function o14RenderTable() {
 
   // Variant D: Dark label nad account stolpci (samo če imamo vidne accounte)
   if (visibleAccounts.length > 0) {
-    html += '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:0 14px;margin-bottom:0">';
-    // Empty cells for SKU, Naziv, Obrat (3 cells)
-    html += '<span></span><span></span><span></span>';
+    html += '<div style="display:grid;grid-template-columns:24px ' + cols + ';gap:10px;padding:0 14px;margin-bottom:0">';
+    // Empty cells for zaznamek, SKU, Naziv, Obrat (4 cells)
+    html += '<span></span><span></span><span></span><span></span>';
     // Dark label spans across all visible account columns
     html += '<span style="grid-column:span ' + visibleAccounts.length + ';display:flex;align-items:center;justify-content:center;background:#1f2937;color:#fff;font-size:9px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;border-radius:5px 5px 0 0;padding:3px 8px;height:18px">Ad accounti — status oglasov</span>';
     html += '</div>';
   }
 
-  html += '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.4px;user-select:none">' +
+  html += '<div style="display:grid;grid-template-columns:24px ' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.4px;user-select:none">' +
+    '<span title="Zaznamek tukaj sem ostal">🚩</span>' +
     '<span style="cursor:pointer" onclick="o14SortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
     '<span style="cursor:pointer" onclick="o14SortBy(\'naziv\')">Naziv' + sortInd('naziv') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="o14SortBy(\'kolicina\')">Obrat' + sortInd('kolicina') + '</span>' +
@@ -14139,10 +14177,14 @@ function o14RenderTable() {
         return '<div style="text-align:center;color:var(--text-tertiary);font-size:14px;background:' + O14_ACC_CELL_BG + ';border-radius:3px;padding:3px 0" title="' + esc(acc) + ': ni oglaševan">—</div>';
       }).join('');
 
-      const bg = !r.has_ads ? 'rgba(124,58,237,0.08)' : 'var(--surface2)';
+      const bmarked = bookmarkGet('obrat14') === r.sku;
+      const bg = bmarked ? 'rgba(239,159,39,0.14)' : (!r.has_ads ? 'rgba(124,58,237,0.08)' : 'var(--surface2)');
+      const bmAttr = bmarked ? ' data-bookmark-row="obrat14"' : '';
+      const bmBorder = bmarked ? '2px solid #EF9F27' : '1px solid var(--border)';
 
-      return '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;align-items:center;padding:11px 14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px">' +
-        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.sku) + '</div>' +
+      return '<div' + bmAttr + ' style="display:grid;grid-template-columns:24px ' + cols + ';gap:10px;align-items:center;padding:11px 14px;background:' + bg + ';border:' + bmBorder + ';border-radius:var(--radius);font-size:13px">' +
+        bookmarkBtnHtml('obrat14', r.sku, 'o14RenderTable') +
+        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.sku) + (bmarked ? ' <span style="font-size:9px;color:#EF9F27;font-weight:700">← TU SEM OSTAL</span>' : '') + '</div>' +
         '<div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.naziv) + '">' + esc(r.naziv) + '</div>' +
         '<div style="text-align:center;font-weight:600;color:var(--text)">' + r.kolicina + '</div>' +
         accCells +
@@ -14153,6 +14195,7 @@ function o14RenderTable() {
   }
 
   table.innerHTML = html;
+  bookmarkScrollTo('obrat14');
 }
 
 function o14SortBy(col) {
@@ -14523,16 +14566,17 @@ function anRenderTable() {
 
   // Variant D: Dark label nad account stolpci
   if (hasMetaData && visibleAccounts.length > 0) {
-    const labelGridCols = cols;
-    headerHtml += '<div style="display:grid;grid-template-columns:' + labelGridCols + ';gap:10px;padding:0 14px;min-width:' + minWidth + 'px;width:100%;margin-bottom:0">';
-    headerHtml += '<span></span><span></span><span></span><span></span><span></span>';
+    const labelGridCols = '24px ' + cols;
+    headerHtml += '<div style="display:grid;grid-template-columns:' + labelGridCols + ';gap:10px;padding:0 14px;min-width:' + (minWidth + 34) + 'px;width:100%;margin-bottom:0">';
+    headerHtml += '<span></span><span></span><span></span><span></span><span></span><span></span>';
     headerHtml += '<span style="grid-column:span ' + visibleAccounts.length + ';display:flex;align-items:center;justify-content:center;background:#1f2937;color:#fff;font-size:9px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;border-radius:5px 5px 0 0;padding:3px 8px;height:18px">Ad accounti — status oglasov</span>';
     headerHtml += '<span></span><span></span><span></span>';
     headerHtml += '</div>';
   }
 
   headerHtml +=
-    '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none;min-width:' + minWidth + 'px;width:100%;border-bottom:2px solid var(--border)">' +
+    '<div style="display:grid;grid-template-columns:24px ' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none;min-width:' + (minWidth + 34) + 'px;width:100%;border-bottom:2px solid var(--border)">' +
+    '<span title="Zaznamek tukaj sem ostal">🚩</span>' +
     '<span style="cursor:pointer" onclick="anSortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
     '<span style="cursor:pointer" onclick="anSortBy(\'title\')">Naziv izdelka' + sortInd('title') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock\')">Zaloga' + sortInd('stock') + '</span>' +
@@ -14653,8 +14697,13 @@ function anRenderTable() {
         }
       }
 
-      return '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px;align-items:center;padding:12px 14px;background:' + bg + ';border:1px solid var(--border);border-radius:var(--radius);font-size:13px;min-width:' + minWidth + 'px;width:100%">' +
-        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.sku) + '">' + esc(r.sku) + '</div>' +
+      const bmarked = bookmarkGet('meta') === r.sku;
+      const rowBg = bmarked ? 'rgba(239,159,39,0.14)' : bg;
+      const bmBorder = bmarked ? '2px solid #EF9F27' : '1px solid var(--border)';
+      const bmAttr = bmarked ? ' data-bookmark-row="meta"' : '';
+      return '<div' + bmAttr + ' style="display:grid;grid-template-columns:24px ' + cols + ';gap:10px;align-items:center;padding:12px 14px;background:' + rowBg + ';border:' + bmBorder + ';border-radius:var(--radius);font-size:13px;min-width:' + (minWidth + 34) + 'px;width:100%">' +
+        bookmarkBtnHtml('meta', r.sku, 'anRenderTable') +
+        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.sku) + '">' + esc(r.sku) + (bmarked ? ' <span style="font-size:9px;color:#EF9F27;font-weight:700">← TU</span>' : '') + '</div>' +
         '<div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.title) + '">' + esc(r.title) + '</div>' +
         '<div style="text-align:center;font-weight:600;color:' + stockColor + '">' + r.stock + '</div>' +
         '<div style="text-align:center;font-weight:500;color:' + obratColor + '">' + r.stock30 + '</div>' +
@@ -14718,6 +14767,7 @@ function anRenderTable() {
   }
 
   table.innerHTML = html;
+  bookmarkScrollTo('meta');
 }
 
 function anSetPage(p) {
