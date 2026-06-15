@@ -21968,17 +21968,25 @@ async function stockQuickSave() {
   const st = document.getElementById('stockQuickStatus');
   st.innerHTML = '<span style="color:var(--text-secondary)">⏳ pošiljam v siluxar...</span>';
   try {
+    // 1) zapiši v lokalni CSV (stolpec stock)
     const r = await fetch('/pozicije-update-one', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _stockQuickSku, stock: val, warehouse: _stockQuickWh }) });
     const d = await r.json();
-    if (d.ok) {
-      st.innerHTML = `<span style="color:#16a34a">✓ Poslano: ${pozEsc(d.sku)} → 📦 ${pozEsc(String(d.stock))} kosov</span>`;
-      if (typeof _zalogaData !== 'undefined') {
-        const item = _zalogaData.find(x => (x.product_sku||x.sku) === _stockQuickSku && (x.warehouse||'').toLowerCase()===_stockQuickWh);
-        if (item) item.stock = d.stock;
-      }
-      if (typeof zalogaRender === 'function') zalogaRender();
-      setTimeout(stockQuickClose, 900);
-    } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
+    if (!d.ok) { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; return; }
+    // 2) pošlji stock v siluxar (isto polje kot izvoz/branje)
+    let siluxMsg = '';
+    try {
+      const sr = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _stockQuickSku, stock: val }) });
+      const sd = await sr.json();
+      if (sd.ok) siluxMsg = ' · ✓ siluxar';
+      else siluxMsg = ' · <span style="color:#d97706">⚠ siluxar: ' + pozEsc(String(sd.error||sd.status||'napaka')) + '</span>';
+    } catch(e) { siluxMsg = ' · <span style="color:#d97706">⚠ siluxar nedosegljiv</span>'; }
+    st.innerHTML = `<span style="color:#16a34a">✓ ${pozEsc(d.sku)} → 📦 ${pozEsc(String(d.stock))}</span>${siluxMsg}`;
+    if (typeof _zalogaData !== 'undefined') {
+      const item = _zalogaData.find(x => (x.product_sku||x.sku) === _stockQuickSku && (x.warehouse||'').toLowerCase()===_stockQuickWh);
+      if (item) item.stock = d.stock;
+    }
+    if (typeof zalogaRender === 'function') zalogaRender();
+    setTimeout(stockQuickClose, 1400);
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
 }
 
