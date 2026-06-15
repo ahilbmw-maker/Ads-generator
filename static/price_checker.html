@@ -389,30 +389,30 @@
 
 <script>
 let allRows = [];
-let _skuToPid = {};   // SKU → product_id (za maaarket admin link)
+let _skuToPid = {};   // SKU → Google Shopping g:id (za maaarket admin link)
 const MAAARKET_BASE = 'https://api.maaarket.si/nova/resources/products/';
 
-// naloži mapiranje SKU → product_id iz glavne zaloge (za hitri link do admina)
+// naloži mapiranje SKU → g:id iz maaarket Google Shopping feeda (za hitri link do admina)
 async function loadSkuPidMap() {
   try {
-    const r = await fetch('/orodja-stock-data');
+    const r = await fetch('/maaarket-sku-gid?lang=sl');
     const d = await r.json();
-    (d.items || []).forEach(it => {
-      const sku = (it.product_sku || it.sku || '').trim();
-      const pid = (it.product_id || '').toString().trim();
-      if (sku && pid && pid !== '0') _skuToPid[sku] = pid;
-    });
+    if (d && d.ok && d.map) _skuToPid = d.map;
   } catch(e) { /* tiho — link je opcijski */ }
 }
 loadSkuPidMap();
 
-// vrne HTML za maaarket admin link (🔗) ob SKU, če imamo product_id
-function maaarketLinkHtml(sku) {
-  const pid = _skuToPid[(sku || '').trim()];
-  if (!pid) return '';
+// vrne SKU kot klikabilen link do maaarket admina (če imamo g:id), sicer navaden tekst.
+// Cel SKU je klikabilen — brez dodatne ikone.
+function skuHtml(sku) {
+  const s = (sku || '').trim();
+  const pid = _skuToPid[s];
+  if (!pid) return escHtml(s);
   const url = MAAARKET_BASE + encodeURIComponent(pid) + '?tab=izdelek';
-  return ` <a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Odpri v maaarket adminu (ID ${pid})" style="text-decoration:none;font-size:12px;vertical-align:middle;opacity:0.7" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">🔗</a>`;
+  return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>`;
 }
+// majhen helper za varen izpis SKU (SKU-ji so interni, a vseeno)
+function escHtml(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 let currentFilter = 'all';
 let currentCurrency = 'all';
@@ -1015,7 +1015,7 @@ function renderTable(rows) {
       <td>
         <a href="https://www.siluxar.si/narocilnice/${row.id}" target="_blank" class="id-badge" style="text-decoration:none;color:var(--green);border-color:rgba(64,193,80,0.4)">${row.id} ↗</a>
       </td>
-      <td style="font-weight:600;color:var(--text)">${row.sku}${maaarketLinkHtml(row.sku)}${idCounts[row.id] > 1 ? ` <span style="display:inline-flex;align-items:center;gap:3px;background:var(--purple-dim);color:var(--purple);border:1px solid var(--purple-border);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;vertical-align:middle">🔗 Združeno</span>` : ''}</td>
+      <td style="font-weight:600;color:var(--text)">${skuHtml(row.sku)}${idCounts[row.id] > 1 ? ` <span style="display:inline-flex;align-items:center;gap:3px;background:var(--purple-dim);color:var(--purple);border:1px solid var(--purple-border);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;vertical-align:middle">🔗 Združeno</span>` : ''}</td>
       <td>${priceDisplay}</td>
       <td>${suggestedDisplay}</td>
       <td style="font-size:12px;font-weight:600;text-align:center;${row.stock <= 5 ? 'color:#ef4444' : row.stock <= 20 ? 'color:#f59e0b' : 'color:#16a34a'}">${row.stock ?? '—'}</td>
@@ -1224,7 +1224,7 @@ function renderMultiView(rows) {
         : '<span style="color:var(--green);font-size:12px">✓</span>';
       return `<tr style="${r.resolved ? 'opacity:0.5' : ''}">
         <td style="text-align:center;width:30px">${checkHtml}</td>
-        <td style="font-weight:600;color:var(--text)">${r.sku}${maaarketLinkHtml(r.sku)} <span style="display:inline-flex;align-items:center;gap:3px;background:var(--purple-dim);color:var(--purple);border:1px solid var(--purple-border);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;vertical-align:middle">🔗 Združeno</span></td>
+        <td style="font-weight:600;color:var(--text)">${skuHtml(r.sku)} <span style="display:inline-flex;align-items:center;gap:3px;background:var(--purple-dim);color:var(--purple);border:1px solid var(--purple-border);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;vertical-align:middle">🔗 Združeno</span></td>
         <td>${priceDisplay}</td>
         <td style="font-size:15px;color:var(--muted)">${r.nc}</td>
         <td style="font-size:15px;color:var(--muted)">${r.razlika || '—'}</td>
