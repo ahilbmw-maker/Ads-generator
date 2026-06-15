@@ -7831,19 +7831,31 @@ async def orodja_stock_clear():
 
 @app.get("/maaarket-sku-gid")
 async def maaarket_sku_gid(lang: str = "sl"):
-    """Vrne mapiranje SKU (mpn) → Google Shopping g:id iz maaarket feeda.
-    Uporablja price_checker za hitri link do maaarket admina (resources/products/{g_id})."""
+    """Vrne mapiranje SKU → Google Shopping g:id iz maaarket feeda.
+    Feed pogosto NIMA <g:mpn> — SKU je vgrajen v image_link URL. Zato gradimo
+    mapo iz obeh virov: mpn (če obstaja) IN SKU-ji izluščeni iz slik.
+    Uporablja price_checker za hitri link do maaarket admina."""
     try:
         feed = feed_by_lang.get(lang, {})
         if not feed:
-            return {"ok": False, "error": f"Feed '{lang}' še ni naložen.", "map": {}}
+            # feed še ni naložen — sproži osvežitev v ozadju, vrni prazno
+            if is_cache_stale():
+                asyncio.create_task(ensure_cache_fresh())
+            return {"ok": True, "lang": lang, "count": 0, "map": {}, "note": "feed se nalaga, poskusi ponovno"}
         m = {}
         for g_id, data in feed.items():
+            # 1) mpn (če feed ga ima)
             mpn = (data.get("mpn") or "").strip()
-            if mpn and mpn not in m:   # prva zmaga (feed je lahko ima variante)
-                m[mpn] = g_id
+            if mpn:
+                m.setdefault(mpn.upper(), g_id)
+            # 2) SKU-ji iz slik (glavna + dodatne)
+            for img in (data.get("all_images") or []):
+                for sk in _extract_skus_from_image_url(img):
+                    if sk:
+                        m.setdefault(sk.upper(), g_id)
         return {"ok": True, "lang": lang, "count": len(m), "map": m}
     except Exception as e:
+        import traceback; traceback.print_exc()
         return {"ok": False, "error": str(e), "map": {}}
 
 
