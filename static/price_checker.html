@@ -398,6 +398,21 @@ async function loadSkuPidMap() {
     const r = await fetch('/maaarket-sku-gid?lang=sl');
     const d = await r.json();
     if (d && d.ok && d.map) _skuToPid = d.map;
+    console.log('[maaarket link] naloženih SKU→ID:', Object.keys(_skuToPid).length, d.note ? '· ' + d.note : '');
+    // če je feed še prazen, poskusi še enkrat čez 4s (feed se nalaga v ozadju)
+    if (Object.keys(_skuToPid).length === 0) {
+      setTimeout(async () => {
+        try {
+          const r2 = await fetch('/maaarket-sku-gid?lang=sl');
+          const d2 = await r2.json();
+          if (d2 && d2.ok && d2.map && Object.keys(d2.map).length) {
+            _skuToPid = d2.map;
+            console.log('[maaarket link] (2. poskus) naloženih:', Object.keys(_skuToPid).length);
+            if (typeof renderTable === 'function' && allRows.length) renderTable(allRows);
+          }
+        } catch(e) {}
+      }, 4000);
+    }
   } catch(e) { /* tiho — link je opcijski */ }
 }
 loadSkuPidMap();
@@ -406,7 +421,7 @@ loadSkuPidMap();
 // Cel SKU je klikabilen — brez dodatne ikone.
 function skuHtml(sku) {
   const s = (sku || '').trim();
-  const pid = _skuToPid[s];
+  const pid = _skuToPid[s] || _skuToPid[s.toUpperCase()];
   if (!pid) return escHtml(s);
   const url = MAAARKET_BASE + encodeURIComponent(pid) + '?tab=izdelek';
   return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>`;
