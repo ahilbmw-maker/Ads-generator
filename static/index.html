@@ -4326,9 +4326,37 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div style="font-size:12px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="stockQuickTitle"></div>
           <div style="font-size:11px;color:var(--text-tertiary);margin-top:3px" id="stockQuickCurrent"></div>
         </div>
-        <input type="number" id="stockQuickInput" placeholder="nova količina" inputmode="numeric" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:18px;font-weight:700;text-align:center;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary);margin-bottom:8px" onkeydown="if(event.key==='Enter')stockQuickSave()">
-        <div id="stockQuickStatus" style="font-size:12px;margin-bottom:10px;min-height:16px"></div>
-        <button onclick="stockQuickSave()" style="width:100%;padding:11px;background:#16a34a;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Shrani količino</button>
+
+        <!-- KORAK 1: vpis nove količine -->
+        <div id="stockQuickStep1">
+          <input type="number" id="stockQuickInput" placeholder="nova količina" inputmode="numeric" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:18px;font-weight:700;text-align:center;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary);margin-bottom:8px" onkeydown="if(event.key==='Enter')stockQuickNext()">
+          <button onclick="stockQuickNext()" style="width:100%;padding:11px;background:var(--accent);color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Naprej →</button>
+        </div>
+
+        <!-- KORAK 2: potrditev (staro → novo + ponovni vpis) -->
+        <div id="stockQuickStep2" style="display:none">
+          <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:center;gap:12px">
+              <div style="text-align:center">
+                <div style="font-size:9px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px">staro</div>
+                <div style="font-size:22px;font-weight:700;color:var(--text-secondary)" id="stockQuickOld">—</div>
+              </div>
+              <span style="font-size:18px;color:var(--text-tertiary)">→</span>
+              <div style="text-align:center">
+                <div style="font-size:9px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px">novo</div>
+                <div style="font-size:22px;font-weight:700;color:var(--accent)" id="stockQuickNew">—</div>
+              </div>
+              <span id="stockQuickDelta" style="font-size:12px;font-weight:700;padding:3px 9px;border-radius:6px"></span>
+            </div>
+          </div>
+          <label style="display:block;font-size:12px;color:var(--text-secondary);margin-bottom:5px" id="stockQuickConfirmLbl">Za potrditev vpiši novo količino še enkrat:</label>
+          <input type="number" id="stockQuickConfirm" placeholder="ponovi novo količino" inputmode="numeric" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:18px;font-weight:700;text-align:center;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:var(--bg-secondary);margin-bottom:8px" oninput="stockQuickCheckMatch()" onkeydown="if(event.key==='Enter')stockQuickSave()">
+          <div id="stockQuickStatus" style="font-size:12px;margin-bottom:10px;min-height:16px"></div>
+          <div style="display:flex;gap:8px">
+            <button onclick="stockQuickBack()" style="flex:0 0 auto;padding:11px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">← Nazaj</button>
+            <button id="stockQuickSaveBtn" onclick="stockQuickSave()" disabled style="flex:1;padding:11px;background:var(--border);color:var(--text-tertiary);border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:not-allowed;font-family:inherit">📤 Pošlji v siluxar</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -21848,29 +21876,102 @@ async function pozQuickSave() {
 // ─── Urejanje KOLIČINE (stock) ───
 let _stockQuickSku = null;
 let _stockQuickWh = 'silux';
+let _stockQuickCur = 0;      // trenutna (stara) količina
+let _stockQuickNewVal = null; // potrjena nova količina (korak 1 → 2)
 function stockQuickOpen(sku, title, currentStock, warehouse) {
   _stockQuickSku = sku;
   _stockQuickWh = (warehouse || 'silux').toLowerCase();
+  _stockQuickCur = parseInt(currentStock) || 0;
+  _stockQuickNewVal = null;
   document.getElementById('stockQuickSku').textContent = sku + (_stockQuickWh === 'silux2' ? '  ·  🏬 Skladišče2' : '');
   document.getElementById('stockQuickTitle').textContent = title || '';
   document.getElementById('stockQuickCurrent').innerHTML = 'trenutno: 📦 <b>' + pozEsc(String(currentStock)) + '</b> kosov';
   document.getElementById('stockQuickInput').value = currentStock || '0';
   document.getElementById('stockQuickStatus').innerHTML = '';
+  // reset na korak 1
+  document.getElementById('stockQuickStep1').style.display = '';
+  document.getElementById('stockQuickStep2').style.display = 'none';
+  document.getElementById('stockQuickConfirm').value = '';
   document.getElementById('stockQuickModal').style.display = 'flex';
   setTimeout(() => { var i = document.getElementById('stockQuickInput'); if (i) { i.focus(); i.select(); } }, 50);
 }
-function stockQuickClose() { document.getElementById('stockQuickModal').style.display = 'none'; _stockQuickSku = null; }
-async function stockQuickSave() {
-  if (!_stockQuickSku) return;
-  const val = document.getElementById('stockQuickInput').value.trim();
+function stockQuickClose() { document.getElementById('stockQuickModal').style.display = 'none'; _stockQuickSku = null; _stockQuickNewVal = null; }
+
+// korak 1 → 2: validira vnos in pokaže potrditev
+function stockQuickNext() {
+  const raw = document.getElementById('stockQuickInput').value.trim();
   const st = document.getElementById('stockQuickStatus');
-  if (val === '' || isNaN(parseInt(val))) { st.innerHTML = '<span style="color:#dc2626">Vpiši število.</span>'; return; }
-  st.innerHTML = '<span style="color:var(--text-secondary)">⏳ shranjujem...</span>';
+  if (raw === '' || isNaN(parseInt(raw))) { st.innerHTML = '<span style="color:#dc2626">Vpiši število.</span>'; return; }
+  const nv = parseInt(raw);
+  if (nv < 0) { st.innerHTML = '<span style="color:#dc2626">Količina ne more biti negativna.</span>'; return; }
+  // če ni spremembe — ni kaj pošiljati
+  if (nv === _stockQuickCur) { st.innerHTML = '<span style="color:#d97706">Količina je nespremenjena (' + nv + ').</span>'; return; }
+  _stockQuickNewVal = nv;
+  // napolni potrditveni del
+  document.getElementById('stockQuickOld').textContent = _stockQuickCur;
+  document.getElementById('stockQuickNew').textContent = nv;
+  const delta = nv - _stockQuickCur;
+  const dEl = document.getElementById('stockQuickDelta');
+  const pct = _stockQuickCur > 0 ? Math.round(delta / _stockQuickCur * 100) : null;
+  if (delta > 0) {
+    dEl.style.background = 'rgba(22,163,74,0.12)'; dEl.style.color = '#16a34a';
+    dEl.textContent = '+' + delta + (pct !== null ? ' (+' + pct + '%)' : '');
+  } else {
+    dEl.style.background = 'rgba(220,38,38,0.1)'; dEl.style.color = '#dc2626';
+    dEl.textContent = delta + (pct !== null ? ' (' + pct + '%)' : '');
+  }
+  document.getElementById('stockQuickConfirmLbl').innerHTML = 'Za potrditev vpiši novo količino (<b>' + nv + '</b>) še enkrat:';
+  document.getElementById('stockQuickStatus').innerHTML = '';
+  document.getElementById('stockQuickStep1').style.display = 'none';
+  document.getElementById('stockQuickStep2').style.display = '';
+  const ci = document.getElementById('stockQuickConfirm');
+  ci.value = ''; stockQuickCheckMatch();
+  setTimeout(() => ci.focus(), 50);
+}
+function stockQuickBack() {
+  document.getElementById('stockQuickStep2').style.display = 'none';
+  document.getElementById('stockQuickStep1').style.display = '';
+  document.getElementById('stockQuickStatus').innerHTML = '';
+  setTimeout(() => { var i = document.getElementById('stockQuickInput'); if (i) { i.focus(); i.select(); } }, 50);
+}
+// preveri ujemanje ponovnega vpisa → omogoči/onemogoči gumb
+function stockQuickCheckMatch() {
+  const ci = document.getElementById('stockQuickConfirm');
+  const btn = document.getElementById('stockQuickSaveBtn');
+  const st = document.getElementById('stockQuickStatus');
+  const raw = ci.value.trim();
+  const match = raw !== '' && parseInt(raw) === _stockQuickNewVal;
+  if (raw === '') {
+    ci.style.borderColor = 'var(--border)';
+    st.innerHTML = '';
+  } else if (match) {
+    ci.style.borderColor = '#16a34a';
+    st.innerHTML = '<span style="color:#16a34a">✓ ujema se</span>';
+  } else {
+    ci.style.borderColor = '#dc2626';
+    st.innerHTML = '<span style="color:#dc2626">✗ vpisana vrednost (' + pozEsc(raw) + ') se ne ujema z novo količino (' + _stockQuickNewVal + ')</span>';
+  }
+  if (match) {
+    btn.disabled = false;
+    btn.style.background = '#16a34a'; btn.style.color = '#fff'; btn.style.cursor = 'pointer';
+  } else {
+    btn.disabled = true;
+    btn.style.background = 'var(--border)'; btn.style.color = 'var(--text-tertiary)'; btn.style.cursor = 'not-allowed';
+  }
+}
+async function stockQuickSave() {
+  if (!_stockQuickSku || _stockQuickNewVal === null) return;
+  // varovalo: ponovni vpis se MORA ujemati
+  const conf = document.getElementById('stockQuickConfirm').value.trim();
+  if (conf === '' || parseInt(conf) !== _stockQuickNewVal) { stockQuickCheckMatch(); return; }
+  const val = String(_stockQuickNewVal);
+  const st = document.getElementById('stockQuickStatus');
+  st.innerHTML = '<span style="color:var(--text-secondary)">⏳ pošiljam v siluxar...</span>';
   try {
     const r = await fetch('/pozicije-update-one', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _stockQuickSku, stock: val, warehouse: _stockQuickWh }) });
     const d = await r.json();
     if (d.ok) {
-      st.innerHTML = `<span style="color:#16a34a">✓ Shranjeno: ${pozEsc(d.sku)} → 📦 ${pozEsc(String(d.stock))} kosov</span>`;
+      st.innerHTML = `<span style="color:#16a34a">✓ Poslano: ${pozEsc(d.sku)} → 📦 ${pozEsc(String(d.stock))} kosov</span>`;
       if (typeof _zalogaData !== 'undefined') {
         const item = _zalogaData.find(x => (x.product_sku||x.sku) === _stockQuickSku && (x.warehouse||'').toLowerCase()===_stockQuickWh);
         if (item) item.stock = d.stock;
