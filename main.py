@@ -7829,6 +7829,24 @@ async def orodja_stock_clear():
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/maaarket-sku-gid")
+async def maaarket_sku_gid(lang: str = "sl"):
+    """Vrne mapiranje SKU (mpn) → Google Shopping g:id iz maaarket feeda.
+    Uporablja price_checker za hitri link do maaarket admina (resources/products/{g_id})."""
+    try:
+        feed = feed_by_lang.get(lang, {})
+        if not feed:
+            return {"ok": False, "error": f"Feed '{lang}' še ni naložen.", "map": {}}
+        m = {}
+        for g_id, data in feed.items():
+            mpn = (data.get("mpn") or "").strip()
+            if mpn and mpn not in m:   # prva zmaga (feed je lahko ima variante)
+                m[mpn] = g_id
+        return {"ok": True, "lang": lang, "count": len(m), "map": m}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "map": {}}
+
+
 @app.get("/price-stock-fetch")
 async def price_stock_fetch():
     """Potegne podatke o zalogi/cenah s siluxar.si API-ja (za urejevalnik cen).
