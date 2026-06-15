@@ -423,7 +423,7 @@ function skuHtml(sku) {
   const s = (sku || '').trim();
   const pid = _skuToPid[s] || _skuToPid[s.toUpperCase()];
   if (!pid) return escHtml(s);
-  const url = MAAARKET_BASE + encodeURIComponent(pid) + '?tab=izdelek';
+  const url = MAAARKET_BASE + encodeURIComponent(pid) + '?tab=vsebina';
   return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>`;
 }
 // majhen helper za varen izpis SKU (SKU-ji so interni, a vseeno)
