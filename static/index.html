@@ -13987,15 +13987,8 @@ function bookmarkBtnHtml(tabKey, sku, rerenderName) {
     'style="cursor:pointer;flex-shrink:0;font-size:14px;line-height:1;opacity:' + (active ? '1' : '0.25') + ';transition:opacity 0.15s" ' +
     'onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=\'' + (active ? '1' : '0.25') + '\'">🚩</span>';
 }
-// po renderju skrol do zaznamka (če obstaja in je viden)
-function bookmarkScrollTo(tabKey) {
-  const sku = bookmarkGet(tabKey);
-  if (!sku) return;
-  setTimeout(() => {
-    const el = document.querySelector('[data-bookmark-row="' + tabKey + '"]');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, 150);
-}
+// (samodejni skrol do zaznamka odstranjen na željo — zaznamek je le vizualni poudarek)
+function bookmarkScrollTo(tabKey) { /* no-op */ }
 
 function o14RenderTable() {
   const search = (document.getElementById('o14Search')?.value || '').toLowerCase().trim();
