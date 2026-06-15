@@ -19330,18 +19330,29 @@ async def siluxar_push_positions(data: dict):
     Pošlje POST na www.siluxar.si/apistockexport z istim Authorization ključem."""
     try:
         items = data.get("items") or []
-        # podpri tudi enojni {sku, position}
+        # podpri tudi enojni {sku, position, stock}
         if not items and data.get("sku"):
-            items = [{"sku": data.get("sku"), "position": data.get("position", "")}]
-        # očisti: samo sku + position, brez praznih
+            items = [{"sku": data.get("sku"), "position": data.get("position", ""), "stock": data.get("stock")}]
+        # očisti: sku + position (+ stock če podan), brez praznih
         payload = []
         for it in items:
             sku = (str(it.get("sku") or "")).strip()
-            pos = (str(it.get("position") or "")).strip()
-            if sku:
-                payload.append({"sku": sku, "position": pos})
+            if not sku:
+                continue
+            entry = {"sku": sku}
+            # position: vključi vedno (lahko prazna) za nazaj-združljivost s pozicijskim pushem
+            if "position" in it:
+                entry["position"] = (str(it.get("position") or "")).strip()
+            # stock: vključi SAMO če je podan (ne pošiljaj praznega/None) — isto ime kot izvoz/branje
+            stock_raw = it.get("stock")
+            if stock_raw is not None and str(stock_raw).strip() != "":
+                try:
+                    entry["stock"] = int(float(str(stock_raw).replace(",", ".")))
+                except Exception:
+                    entry["stock"] = str(stock_raw).strip()
+            payload.append(entry)
         if not payload:
-            return {"ok": False, "error": "Ni veljavnih pozicij za pošiljanje."}
+            return {"ok": False, "error": "Ni veljavnih postavk za pošiljanje."}
 
         key = os.environ.get("SILUXAR_STOCK_KEY", "")
         basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
