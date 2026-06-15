@@ -9416,6 +9416,7 @@ let _hsplusDiffMap = {};   // sku → delta (legacy)
 let _hsplusChangeMap = {}; // sku → cel change objekt (delta, price_delta, is_new)
 let _hsplusDiff = null;    // celoten diff objekt
 let _hsplusWinnersOnly = false;  // filter: prikaži samo top winnerje (hiter obrat)
+let _hsplusPriceChangeOnly = false;  // filter: prikaži samo izdelke s spremembo cene
 const HSPLUS_WINNER_TOP = 10;    // koliko top winnerjev
 let _hsplusGroupVariants = true; // združi variante (barve/velikosti) pod en izdelek
 let _hsplusRenderedSlice = [];   // trenutno prikazane kartice (za popup)
@@ -9499,7 +9500,7 @@ function hsplusRenderCatChips() {
   const sel = _hsplusCat;
   const chip = (val, label, emoji, n, active) =>
     `<button onclick="hsplusSelectCat('${val.replace(/'/g,"\\'")}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:20px;border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};background:${active ? 'var(--accent)' : 'var(--surface)'};color:${active ? '#fff' : 'var(--text)'};font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">${emoji} ${label}<span style="opacity:0.65;font-weight:500;font-size:11px">${n}</span></button>`;
-  let html = chip('', 'Vse', '🗂️', _hsplusData.length, !sel && !_hsplusWinnersOnly);
+  let html = chip('', 'Vse', '🗂️', _hsplusData.length, !sel && !_hsplusWinnersOnly && !_hsplusPriceChangeOnly);
   // winner čipka (samo če imamo diff s padci)
   const winnerCount = (_hsplusDiff && _hsplusDiff.changes)
     ? _hsplusDiff.changes.filter(c => !c.is_new && !c.is_gone && c.delta < 0).length : 0;
@@ -9507,13 +9508,28 @@ function hsplusRenderCatChips() {
     const wActive = _hsplusWinnersOnly;
     html = `<button onclick="hsplusToggleWinners()" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:1px solid ${wActive ? '#A32D2D' : 'rgba(163,45,45,0.4)'};background:${wActive ? '#A32D2D' : 'rgba(163,45,45,0.08)'};color:${wActive ? '#fff' : '#A32D2D'};font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🔥 Winnerji <span style="opacity:0.8;font-weight:500;font-size:11px">top ${HSPLUS_WINNER_TOP}</span></button>` + html;
   }
+  // cena-sprememba čipka (samo če imamo diff s cenovnimi spremembami)
+  const priceChangeCount = (_hsplusDiff && _hsplusDiff.changes)
+    ? _hsplusDiff.changes.filter(c => c.price_delta && c.price_delta !== 0).length : 0;
+  if (priceChangeCount > 0) {
+    const pActive = _hsplusPriceChangeOnly;
+    html = `<button onclick="hsplusTogglePriceChange()" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:1px solid ${pActive ? '#0C447C' : 'rgba(12,68,124,0.4)'};background:${pActive ? '#0C447C' : 'rgba(12,68,124,0.08)'};color:${pActive ? '#fff' : '#0C447C'};font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">💶 Sprememba cene <span style="opacity:0.8;font-weight:500;font-size:11px">${priceChangeCount}</span></button>` + html;
+  }
   html += cats.map(c => chip(c, c, hsplusCatEmoji(c), counts[c], sel === c)).join('');
   wrap.innerHTML = html;
 }
 
 function hsplusToggleWinners() {
   _hsplusWinnersOnly = !_hsplusWinnersOnly;
-  if (_hsplusWinnersOnly) _hsplusCat = '';  // winner pogled prevlada nad kategorijo
+  if (_hsplusWinnersOnly) { _hsplusCat = ''; _hsplusPriceChangeOnly = false; }  // winner pogled prevlada
+  _hsplusPage = 1;
+  hsplusRenderCatChips();
+  hsplusRender();
+}
+
+function hsplusTogglePriceChange() {
+  _hsplusPriceChangeOnly = !_hsplusPriceChangeOnly;
+  if (_hsplusPriceChangeOnly) { _hsplusCat = ''; _hsplusWinnersOnly = false; }  // cena pogled prevlada
   _hsplusPage = 1;
   hsplusRenderCatChips();
   hsplusRender();
@@ -9522,6 +9538,7 @@ function hsplusToggleWinners() {
 function hsplusSelectCat(c) {
   _hsplusCat = c;
   _hsplusWinnersOnly = false;  // izbira kategorije izklopi winner pogled
+  _hsplusPriceChangeOnly = false;  // in cena pogled
   _hsplusPage = 1;
   hsplusRenderCatChips();
   hsplusRender();
@@ -9632,6 +9649,16 @@ function hsplusRender() {
     topSkus.forEach((s,i) => { skuOrder[s] = i; });
     items = items.filter(p => skuOrder.hasOwnProperty(p.sku))
                  .sort((a,b) => skuOrder[a.sku] - skuOrder[b.sku]);
+  }
+  // CENA-SPREMEMBA filter: samo izdelki s spremenjeno ceno, sortirani po velikosti spremembe
+  if (_hsplusPriceChangeOnly && _hsplusDiff && _hsplusDiff.changes) {
+    const order = {};
+    _hsplusDiff.changes
+      .filter(c => c.price_delta && c.price_delta !== 0)
+      .sort((a,b) => Math.abs(b.price_delta) - Math.abs(a.price_delta))  // največja sprememba prva
+      .forEach((c,i) => { order[c.sku] = i; });
+    items = items.filter(p => order.hasOwnProperty(p.sku))
+                 .sort((a,b) => order[a.sku] - order[b.sku]);
   }
   if (cat) items = items.filter(p => (p.category || '(brez)') === cat);
   if (inStock) items = items.filter(p => (p.stock||0) > 0);
