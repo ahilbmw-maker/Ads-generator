@@ -19412,20 +19412,26 @@ async def siluxar_push_positions(data: dict):
                 _single["position"] = data.get("position")
             if "stock" in data:
                 _single["stock"] = data.get("stock")
+            if "warehouse" in data:
+                _single["warehouse"] = data.get("warehouse")
             items = [_single]
-        # mapping SKU -> siluxar id iz lokalnega stock CSV.
+        # mapping (SKU, warehouse) -> siluxar id iz lokalnega stock CSV.
         # Marko: apistockexport matcha po polju `id` (=naš siluxar_id), NE po product_id.
-        _sku_to_id = {}
+        # POMEMBNO: isti SKU ima lahko VEČ zapisov (silux + silux2), vsak svoj id.
+        # Zato keyiramo po (sku, warehouse), da pošljemo id PRAVEGA skladišča.
+        _id_by_sku_wh = {}
+        _id_by_sku_first = {}
         try:
             if STOCK_CSV_FILE.exists():
                 for _row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8"))):
                     _s = (_row.get("product_sku") or "").strip()
                     _sid = (_row.get("siluxar_id") or "").strip()
+                    _wh = (_row.get("warehouse") or "").strip().lower()
                     if _s and _sid and _sid not in ("0", "0.0"):
-                        # prvi neprazen id obdrži (če isti SKU v več skladiščih)
-                        _sku_to_id.setdefault(_s, _sid)
+                        _id_by_sku_wh.setdefault((_s, _wh), _sid)
+                        _id_by_sku_first.setdefault(_s, _sid)
         except Exception:
-            _sku_to_id = {}
+            _id_by_sku_wh = {}; _id_by_sku_first = {}
 
         # očisti: sku + position (+ stock če podan), brez praznih
         payload = []
@@ -19451,7 +19457,13 @@ async def siluxar_push_positions(data: dict):
                     entry["stock"] = str(stock_raw).strip()
                 # id = siluxar id (naš siluxar_id): match ključ za apistockexport (Marko).
                 # SAMO pri stock pošiljanju. Pozicijski push ostane {sku, position} kot doslej.
-                _eid = (str(it.get("id") or "")).strip() or _sku_to_id.get(sku, "")
+                # Isti SKU ima lahko več skladišč (silux/silux2) z RAZLIČNIM id — zato po warehouse.
+                _wh_it = (str(it.get("warehouse") or "")).strip().lower()
+                _eid = (str(it.get("id") or "")).strip()
+                if not _eid and _wh_it:
+                    _eid = _id_by_sku_wh.get((sku, _wh_it), "")
+                if not _eid:
+                    _eid = _id_by_sku_first.get(sku, "")
                 if _eid:
                     entry["id"] = _eid
             payload.append(entry)
