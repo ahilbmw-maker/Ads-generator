@@ -15770,7 +15770,7 @@ function zalogaRender() {
           var wh = (it.warehouse||'').trim().toLowerCase();
           if (wh === 'silux' || wh === 'silux2') {
             var skuE = esc((it.product_sku||'').replace(/'/g,"\\'"));
-            return '<span class="zal-c-stock" onclick="event.stopPropagation();stockQuickOpen(\'' + skuE + '\',\'' + esc((it.title||'').replace(/'/g,"\\'")) + '\',\'' + stock + '\',\'' + wh + '\')" title="Klikni za urejanje količine" style="text-align:right;font-weight:700;font-size:15px;color:' + stockColor + ';cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px">' + stock + '</span>';
+            return '<span class="zal-c-stock" onclick="event.stopPropagation();stockQuickOpen(\'' + skuE + '\',\'' + esc((it.title||'').replace(/'/g,"\\'")) + '\',\'' + stock + '\',\'' + wh + '\',\'' + esc(String(it.product_id||'').replace(/'/g,"\\'")) + '\')" title="Klikni za urejanje količine" style="text-align:right;font-weight:700;font-size:15px;color:' + stockColor + ';cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px">' + stock + '</span>';
           }
           return '<span class="zal-c-stock" style="text-align:right;font-weight:700;font-size:15px;color:' + stockColor + '">' + stock + '</span>';
         })()
@@ -21902,11 +21902,13 @@ async function pozQuickSave() {
 
 // ─── Urejanje KOLIČINE (stock) ───
 let _stockQuickSku = null;
+let _stockQuickPid = '';     // ID izdelka (product_id) iz sinhronizirane zaloge
 let _stockQuickWh = 'silux';
 let _stockQuickCur = 0;      // trenutna (stara) količina
 let _stockQuickNewVal = null; // potrjena nova količina (korak 1 → 2)
-function stockQuickOpen(sku, title, currentStock, warehouse) {
+function stockQuickOpen(sku, title, currentStock, warehouse, productId) {
   _stockQuickSku = sku;
+  _stockQuickPid = (productId == null ? '' : String(productId)).trim();
   _stockQuickWh = (warehouse || 'silux').toLowerCase();
   _stockQuickCur = parseInt(currentStock) || 0;
   _stockQuickNewVal = null;
@@ -21922,7 +21924,7 @@ function stockQuickOpen(sku, title, currentStock, warehouse) {
   document.getElementById('stockQuickModal').style.display = 'flex';
   setTimeout(() => { var i = document.getElementById('stockQuickInput'); if (i) { i.focus(); i.select(); } }, 50);
 }
-function stockQuickClose() { document.getElementById('stockQuickModal').style.display = 'none'; _stockQuickSku = null; _stockQuickNewVal = null; }
+function stockQuickClose() { document.getElementById('stockQuickModal').style.display = 'none'; _stockQuickSku = null; _stockQuickPid = ''; _stockQuickNewVal = null; }
 
 // korak 1 → 2: validira vnos in pokaže potrditev
 function stockQuickNext() {
@@ -22002,7 +22004,9 @@ async function stockQuickSave() {
     // 2) pošlji stock v siluxar (isto polje kot izvoz/branje)
     let siluxMsg = '';
     try {
-      const sr = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _stockQuickSku, stock: val }) });
+      const _body = { sku: _stockQuickSku, stock: val };
+      if (_stockQuickPid) _body.id = _stockQuickPid;
+      const sr = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(_body) });
       const sd = await sr.json();
       if (sd.ok) siluxMsg = ' · ✓ siluxar';
       else siluxMsg = ' · <span style="color:#d97706">⚠ siluxar: ' + pozEsc(String(sd.error||sd.status||'napaka')) + '</span>';
