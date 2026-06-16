@@ -19401,9 +19401,16 @@ async def siluxar_push_positions(data: dict):
     Pošlje POST na www.siluxar.si/apistockexport z istim Authorization ključem."""
     try:
         items = data.get("items") or []
-        # podpri tudi enojni {sku, position, stock}
+        # podpri tudi enojni {sku, position?, stock?}
+        # POMEMBNO: position vključi LE, če ga je frontend dejansko poslal.
+        # Sicer siluxar prazni position interpretira kot reset in povozi position+stock z null.
         if not items and data.get("sku"):
-            items = [{"sku": data.get("sku"), "position": data.get("position", ""), "stock": data.get("stock")}]
+            _single = {"sku": data.get("sku")}
+            if "position" in data:
+                _single["position"] = data.get("position")
+            if "stock" in data:
+                _single["stock"] = data.get("stock")
+            items = [_single]
         # očisti: sku + position (+ stock če podan), brez praznih
         payload = []
         for it in items:
@@ -19411,9 +19418,12 @@ async def siluxar_push_positions(data: dict):
             if not sku:
                 continue
             entry = {"sku": sku}
-            # position: vključi vedno (lahko prazna) za nazaj-združljivost s pozicijskim pushem
+            # position: vključi LE če je podan IN neprazen.
+            # Prazen position siluxar tretira kot reset → povozi position+stock z null.
             if "position" in it:
-                entry["position"] = (str(it.get("position") or "")).strip()
+                _pos = (str(it.get("position") or "")).strip()
+                if _pos:
+                    entry["position"] = _pos
             # stock: vključi SAMO če je podan (ne pošiljaj praznega/None) — isto ime kot izvoz/branje
             stock_raw = it.get("stock")
             if stock_raw is not None and str(stock_raw).strip() != "":
