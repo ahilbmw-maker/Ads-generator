@@ -7859,6 +7859,47 @@ async def maaarket_sku_gid(lang: str = "sl"):
         return {"ok": False, "error": str(e), "map": {}}
 
 
+PRICE_CHECKER_CACHE = DATA_DIR / "price_checker_cache.json"
+
+@app.get("/price-checker-cache")
+async def price_checker_cache_get():
+    """Vrne skupni cache urejevalnika cen (tabela + resolved) — ena resnica za vse uporabnike.
+    Tako vsi brskalniki/naprave vidijo isto, ne kopičijo lokalnih starih podatkov."""
+    try:
+        if PRICE_CHECKER_CACHE.exists():
+            data = json.loads(PRICE_CHECKER_CACHE.read_text(encoding="utf-8"))
+            return {"ok": True, "rows": data.get("rows", []), "resolved": data.get("resolved", {}),
+                    "updated_at": data.get("updated_at")}
+        return {"ok": True, "rows": [], "resolved": {}, "updated_at": None}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "rows": [], "resolved": {}}
+
+@app.post("/price-checker-cache")
+async def price_checker_cache_set(data: dict):
+    """Shrani skupni cache urejevalnika cen. Pošlje frontend ob vsaki spremembi
+    (poteg podatkov, brisanje, označevanje rešeno)."""
+    try:
+        from datetime import datetime as _dt
+        rows = data.get("rows")
+        resolved = data.get("resolved")
+        # naloži obstoječe, da delna posodobitev ne pobriše drugega polja
+        cur = {}
+        if PRICE_CHECKER_CACHE.exists():
+            try: cur = json.loads(PRICE_CHECKER_CACHE.read_text(encoding="utf-8"))
+            except Exception: cur = {}
+        out = {
+            "rows": rows if rows is not None else cur.get("rows", []),
+            "resolved": resolved if resolved is not None else cur.get("resolved", {}),
+            "updated_at": _dt.now(timezone.utc).isoformat(),
+        }
+        tmp = PRICE_CHECKER_CACHE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, PRICE_CHECKER_CACHE)
+        return {"ok": True, "count": len(out["rows"]), "updated_at": out["updated_at"]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/price-stock-fetch")
 async def price_stock_fetch():
     """Potegne podatke o zalogi/cenah s siluxar.si API-ja (za urejevalnik cen).
