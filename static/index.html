@@ -22004,7 +22004,7 @@ async function stockQuickSave() {
     // 2) pošlji stock v siluxar (isto polje kot izvoz/branje)
     let siluxMsg = '';
     try {
-      const _body = { sku: _stockQuickSku, stock: val };
+      const _body = { sku: _stockQuickSku, stock: val, warehouse: _stockQuickWh };
       if (_stockQuickPid) _body.id = _stockQuickPid;
       const sr = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(_body) });
       const sd = await sr.json();
