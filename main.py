@@ -19413,17 +19413,17 @@ async def siluxar_push_positions(data: dict):
             if "stock" in data:
                 _single["stock"] = data.get("stock")
             items = [_single]
-        # mapping SKU -> product_id (ID izdelka) iz lokalnega stock CSV.
-        # Marko: pošiljaj ID izdelka (product_id), NE ps.id (siluxar_id) — to je drugo polje.
+        # mapping SKU -> siluxar id iz lokalnega stock CSV.
+        # Marko: apistockexport matcha po polju `id` (=naš siluxar_id), NE po product_id.
         _sku_to_id = {}
         try:
             if STOCK_CSV_FILE.exists():
                 for _row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8"))):
                     _s = (_row.get("product_sku") or "").strip()
-                    _pid = (_row.get("product_id") or "").strip()
-                    if _s and _pid and _pid not in ("0", "0.0"):
-                        # prvi neprazen product_id obdrži (če isti SKU v več skladiščih)
-                        _sku_to_id.setdefault(_s, _pid)
+                    _sid = (_row.get("siluxar_id") or "").strip()
+                    if _s and _sid and _sid not in ("0", "0.0"):
+                        # prvi neprazen id obdrži (če isti SKU v več skladiščih)
+                        _sku_to_id.setdefault(_s, _sid)
         except Exception:
             _sku_to_id = {}
 
@@ -19449,14 +19449,11 @@ async def siluxar_push_positions(data: dict):
                     entry["stock"] = str(int(float(str(stock_raw).replace(",", "."))))
                 except Exception:
                     entry["stock"] = str(stock_raw).strip()
-                # ID izdelka (product_id): SAMO pri stock pošiljanju — za zanesljiv match.
-                # Marko: product_id, ne ps.id. Ne vemo točnega imena ključa pri zapisovalniku,
-                # zato pošljemo pod obema (id + product_id); odvečnega siluxar ignorira.
-                # Pozicijski push ostane {sku, position} kot doslej.
+                # id = siluxar id (naš siluxar_id): match ključ za apistockexport (Marko).
+                # SAMO pri stock pošiljanju. Pozicijski push ostane {sku, position} kot doslej.
                 _eid = (str(it.get("id") or "")).strip() or _sku_to_id.get(sku, "")
                 if _eid:
                     entry["id"] = _eid
-                    entry["product_id"] = _eid
             payload.append(entry)
         if not payload:
             return {"ok": False, "error": "Ni veljavnih postavk za pošiljanje."}
