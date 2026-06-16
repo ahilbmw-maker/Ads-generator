@@ -1687,8 +1687,10 @@ async function loadTableFromStorage() {
   try {
     const r = await fetch('/price-checker-cache');
     const d = await r.json();
-    if (d && d.ok && Array.isArray(d.rows) && d.rows.length > 0) {
-      allRows = d.rows;
+    // Strežnik je AVTORITATIVEN, če cache OBSTAJA (updated_at != null) — tudi če je prazen.
+    // Tako namerno brisanje (prazen seznam) ne oživi starih lokalnih podatkov v drugem brskalniku.
+    if (d && d.ok && d.updated_at != null) {
+      allRows = Array.isArray(d.rows) ? d.rows : [];
       const resolved = d.resolved || {};
       const toNum = (s) => {
         if (s == null || s === '') return null;
@@ -1704,7 +1706,11 @@ async function loadTableFromStorage() {
         if (r.marzaNum === undefined) r.marzaNum = toNum(r.marza);
         r.resolved = !!resolved[r.id + '|' + r.sku];
       });
-      try { localStorage.setItem('price_checker_table', JSON.stringify(allRows)); } catch(e) {}
+      // sinhroniziraj lokalno kopijo s strežnikom (vključno s praznim — pobriši staro)
+      try {
+        if (allRows.length > 0) localStorage.setItem('price_checker_table', JSON.stringify(allRows));
+        else localStorage.removeItem('price_checker_table');
+      } catch(e) {}
       renderTable(allRows);
       updateStats(allRows);
       return true;
