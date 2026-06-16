@@ -526,19 +526,27 @@ function pasteAreaProcess() {
     if (st) { st.style.display='block'; st.style.color='var(--red)'; st.textContent='⚠ Ni veljavnih vrstic — preveri format.'; }
     return;
   }
-  // Merge z obstoječimi
-  const existing = new Map(allRows.map(r => [r.id+'|'+r.sku, r]));
-  let added = 0;
-  rows.forEach(r => {
-    const key = r.id+'|'+r.sku;
-    if (!existing.has(key)) { existing.set(key, r); added++; }
-  });
-  allRows = Array.from(existing.values());
-  // Ohrani resolved stanje
-  try {
-    const stored = JSON.parse(localStorage.getItem('price_checker_resolved')||'{}');
-    allRows.forEach(r => { if (stored[r.id+'|'+r.sku]) r.resolved = true; });
-  } catch(e) {}
+  // Siluxar JSON poteg = SVEŽI VIR RESNICE → ZAMENJA tabelo (ne kopiči starih).
+  // Ročni TSV paste = merge (dodaj k obstoječim), ker je dopolnilo.
+  const isSiluxarJson = (text[0] === '[' || text[0] === '{');
+  // ohrani resolved oznake po ključu (da se ob osvežitvi ne izgubijo)
+  const prevResolved = {};
+  allRows.forEach(r => { if (r.resolved) prevResolved[r.id + '|' + r.sku] = true; });
+
+  if (isSiluxarJson) {
+    // zamenjaj: nova tabela = točno to, kar je vrnil siluxar (brez starih duhov)
+    allRows = rows;
+  } else {
+    // TSV merge (dopolnilo)
+    const existing = new Map(allRows.map(r => [r.id + '|' + r.sku, r]));
+    rows.forEach(r => {
+      const key = r.id + '|' + r.sku;
+      if (!existing.has(key)) existing.set(key, r);
+    });
+    allRows = Array.from(existing.values());
+  }
+  // ohrani resolved stanje (tudi iz strežnika)
+  allRows.forEach(r => { if (prevResolved[r.id + '|' + r.sku]) r.resolved = true; });
   saveTableToStorage();
   updateStats(allRows);
   renderTable(allRows);
@@ -1615,12 +1623,16 @@ async function cleanQtyMerged() {
 }
 
 function clearTable() {
-  if (!confirm('Zbriši cel seznam? Vseh urejenih oznak bo izgubljeno.')) return;
+  if (!confirm('Zbriši cel seznam? To zbriše za VSE uporabnike (skupni seznam).')) return;
   allRows = [];
   selectedKeys.clear();
   try {
     localStorage.removeItem('price_checker_resolved');
     localStorage.removeItem('price_checker_table');
+  } catch(e) {}
+  // počisti tudi skupni strežniški cache
+  try {
+    fetch('/price-checker-cache', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ rows: [], resolved: {} }) });
   } catch(e) {}
   document.getElementById('tableBody').innerHTML = '';
   document.getElementById('taskBar').style.display = 'none';
@@ -1648,23 +1660,65 @@ function loadResolvedFromStorage() {
   } catch(e) {}
 }
 
+// shrani tabelo na STREŽNIK (skupni cache za vse) + lokalno kot rezervo
+let _pccSaveTimer = null;
 function saveTableToStorage() {
+  // lokalna rezerva (offline / hiter ponovni prikaz)
+  try { localStorage.setItem('price_checker_table', JSON.stringify(allRows)); } catch(e) {}
+  // strežniški cache — debounce 600ms (da hitra zaporedna urejanja ne sprožijo več klicev)
+  clearTimeout(_pccSaveTimer);
+  _pccSaveTimer = setTimeout(_pccPushToServer, 600);
+}
+async function _pccPushToServer() {
   try {
-    localStorage.setItem('price_checker_table', JSON.stringify(allRows));
-  } catch(e) { console.warn('saveTable fail', e); }
+    // resolved kot mapa
+    const resolved = {};
+    allRows.forEach(r => { if (r.resolved) resolved[r.id + '|' + r.sku] = true; });
+    await fetch('/price-checker-cache', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ rows: allRows, resolved })
+    });
+  } catch(e) { console.warn('pcc push fail', e); }
 }
 
-function loadTableFromStorage() {
+// naloži tabelo — najprej s STREŽNIKA (skupni cache), fallback na localStorage
+async function loadTableFromStorage() {
+  // 1) poskusi strežniški cache
+  try {
+    const r = await fetch('/price-checker-cache');
+    const d = await r.json();
+    if (d && d.ok && Array.isArray(d.rows) && d.rows.length > 0) {
+      allRows = d.rows;
+      const resolved = d.resolved || {};
+      const toNum = (s) => {
+        if (s == null || s === '') return null;
+        const str = s.toString().trim();
+        if (/^-?\d+\.\d+$/.test(str)) return parseFloat(str);
+        const cleaned = str.replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.');
+        const n = parseFloat(cleaned);
+        return isNaN(n) ? null : n;
+      };
+      allRows.forEach(r => {
+        if (r.ncNum === undefined) r.ncNum = toNum(r.nc);
+        if (r.razlikaNum === undefined) r.razlikaNum = toNum(r.razlika);
+        if (r.marzaNum === undefined) r.marzaNum = toNum(r.marza);
+        r.resolved = !!resolved[r.id + '|' + r.sku];
+      });
+      try { localStorage.setItem('price_checker_table', JSON.stringify(allRows)); } catch(e) {}
+      renderTable(allRows);
+      updateStats(allRows);
+      return true;
+    }
+  } catch(e) { console.warn('pcc server load fail, fallback local', e); }
+  // 2) fallback: localStorage (offline / strežnik prazen)
   try {
     const stored = localStorage.getItem('price_checker_table');
     if (stored) {
       allRows = JSON.parse(stored);
       if (allRows.length > 0) {
-        // toNum: vrednosti so že lahko v angleškem (2.96) ali EU formatu — varno parsiranje
         const toNum = (s) => {
           if (s == null || s === '') return null;
           const str = s.toString().trim();
-          // če je čista angleška decimalka (npr. "2.96"), parsiraj direktno
           if (/^-?\d+\.\d+$/.test(str)) return parseFloat(str);
           const cleaned = str.replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.');
           const n = parseFloat(cleaned);
@@ -1677,7 +1731,6 @@ function loadTableFromStorage() {
           if (r.resolved === undefined) r.resolved = false;
         });
         loadResolvedFromStorage();
-        saveTableToStorage(); // shrani posodobljene podatke
         renderTable(allRows);
         updateStats(allRows);
         return true;
@@ -1689,26 +1742,8 @@ function loadTableFromStorage() {
 
 // ============ FILE UPLOAD ============
 
-// Ob nalaganju strani — preveri če je shranjena tabela in jo naloži
+// Ob nalaganju strani — naloži skupni cache s strežnika (fallback localStorage)
 window.addEventListener('DOMContentLoaded', () => {
-  // MIGRACIJA: enkratno počisti staro shrambo, kjer je bil 'id' napačno ps.id
-  // (stare JSON vrstice nimajo siluxar_id polja). Po čiščenju uporabnik znova potegne.
-  try {
-    const SCHEMA_VER = 'v2_orderid';
-    if (localStorage.getItem('price_checker_schema') !== SCHEMA_VER) {
-      const stored = localStorage.getItem('price_checker_table');
-      if (stored) {
-        const rows = JSON.parse(stored);
-        // če katera vrstica izvira iz siluxar JSON (ima siluxar_id) ali pa je id 6-mesten (ps.id videz) → počisti
-        const looksWrong = Array.isArray(rows) && rows.some(r =>
-          (r.siluxar_id === undefined && /^\d{6}$/.test(String(r.id || ''))) );
-        if (looksWrong) {
-          localStorage.removeItem('price_checker_table');
-        }
-      }
-      localStorage.setItem('price_checker_schema', SCHEMA_VER);
-    }
-  } catch(e) {}
   loadTableFromStorage();
 });
 
