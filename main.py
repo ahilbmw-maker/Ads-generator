@@ -19400,6 +19400,8 @@ async def siluxar_push_positions(data: dict):
     Body: {"items": [{"sku": "1234", "position": "00-4B"}, ...]}
     Pošlje POST na www.siluxar.si/apistockexport z istim Authorization ključem."""
     try:
+        import csv as _csv
+        from io import StringIO as _SIO
         items = data.get("items") or []
         # podpri tudi enojni {sku, position?, stock?}
         # POMEMBNO: position vključi LE, če ga je frontend dejansko poslal.
@@ -19411,6 +19413,20 @@ async def siluxar_push_positions(data: dict):
             if "stock" in data:
                 _single["stock"] = data.get("stock")
             items = [_single]
+        # mapping SKU -> siluxar_id (ps.id) iz lokalnega stock CSV.
+        # apistockexport pri pisanju matcha zapis po id; brez id stock posodobitev ne prime.
+        _sku_to_id = {}
+        try:
+            if STOCK_CSV_FILE.exists():
+                for _row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8"))):
+                    _s = (_row.get("product_sku") or "").strip()
+                    _sid = (_row.get("siluxar_id") or "").strip()
+                    if _s and _sid and _sid not in ("0", "0.0"):
+                        # prvi neprazen id obdrži (če isti SKU v več skladiščih)
+                        _sku_to_id.setdefault(_s, _sid)
+        except Exception:
+            _sku_to_id = {}
+
         # očisti: sku + position (+ stock če podan), brez praznih
         payload = []
         for it in items:
@@ -19424,13 +19440,20 @@ async def siluxar_push_positions(data: dict):
                 _pos = (str(it.get("position") or "")).strip()
                 if _pos:
                     entry["position"] = _pos
-            # stock: vključi SAMO če je podan (ne pošiljaj praznega/None) — isto ime kot izvoz/branje
+            # stock: vključi SAMO če je podan (ne pošiljaj praznega/None).
+            # Pošlji kot STRING — isto kot apistockexport izvaža/bere (Marko: konsistentno).
             stock_raw = it.get("stock")
-            if stock_raw is not None and str(stock_raw).strip() != "":
+            _has_stock = stock_raw is not None and str(stock_raw).strip() != ""
+            if _has_stock:
                 try:
-                    entry["stock"] = int(float(str(stock_raw).replace(",", ".")))
+                    entry["stock"] = str(int(float(str(stock_raw).replace(",", "."))))
                 except Exception:
                     entry["stock"] = str(stock_raw).strip()
+                # id (siluxar ps.id): SAMO pri stock pošiljanju — za zanesljiv match.
+                # Pozicijski push ostane {sku, position} kot doslej (deluje, ne diramo).
+                _eid = (str(it.get("id") or "")).strip() or _sku_to_id.get(sku, "")
+                if _eid:
+                    entry["id"] = _eid
             payload.append(entry)
         if not payload:
             return {"ok": False, "error": "Ni veljavnih postavk za pošiljanje."}
