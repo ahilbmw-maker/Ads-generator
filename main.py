@@ -20540,18 +20540,33 @@ async def _regen_generate_one(src_url: str, prompt: str):
     except Exception as e:
         return None, {}, f"Prenos vira: {e}"
     openai_size = _pick_openai_size(src_w, src_h)
-    # 2) OpenAI gpt-image-2 edits
+    # 2) OpenAI gpt-image-2 edits (z retry ob 429 rate limit)
     try:
         files = {"image[]": (f"src.{src_ext}", src_bytes, src_mime)}
         form = {"model": REGEN_MODEL, "prompt": prompt, "size": openai_size, "n": "1", "output_format": "jpeg"}
-        async with httpx.AsyncClient(timeout=240) as hc:
-            resp = await hc.post(
-                "https://api.openai.com/v1/images/edits",
-                headers={"Authorization": f"Bearer {openai_key}"},
-                data=form, files=files,
-            )
+        result = None
+        last_status = None
+        for _attempt in range(4):  # do 4 poskusov ob 429
+            async with httpx.AsyncClient(timeout=240) as hc:
+                resp = await hc.post(
+                    "https://api.openai.com/v1/images/edits",
+                    headers={"Authorization": f"Bearer {openai_key}"},
+                    data=form, files=files,
+                )
+            last_status = resp.status_code
+            if resp.status_code == 429:
+                # spoštuj Retry-After, sicer eksponentni backoff
+                try:
+                    wait = float(resp.headers.get("retry-after", "")) or (2 ** _attempt) * 3
+                except Exception:
+                    wait = (2 ** _attempt) * 3
+                await asyncio.sleep(min(wait, 30))
+                continue
             result = resp.json()
-        if resp.status_code != 200:
+            break
+        if result is None:
+            return None, {}, f"OpenAI rate limit (429) — preveč poskusov."
+        if last_status != 200:
             return None, {}, result.get("error", {}).get("message", str(result))[:300]
         data_arr = result.get("data", [])
         if not (data_arr and data_arr[0].get("b64_json")):
@@ -20795,9 +20810,9 @@ async def _regen_worker_loop():
             if not target:
                 await asyncio.sleep(5)
                 continue
-            # generiraj slike PARALELNO (omejeno na 3 hkrati — OpenAI rate limit)
+            # generiraj slike PARALELNO (Tier 2 = 20 IPM, 6 hkrati varno pod limitom)
             job_id = target["id"]
-            _sema = asyncio.Semaphore(3)
+            _sema = asyncio.Semaphore(6)
 
             async def _process_image(idx, im):
                 if im.get("status") == "done":
