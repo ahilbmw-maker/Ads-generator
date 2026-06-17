@@ -55,7 +55,7 @@ AUTH_TTL = 60 * 60 * 24 * 30  # seja velja 30 dni
 
 # Poti, ki so DOSTOPNE BREZ prijave
 _AUTH_EXEMPT_EXACT = {"/login", "/healthz", "/favicon.ico"}
-_AUTH_EXEMPT_PREFIX = ("/static/",)
+_AUTH_EXEMPT_PREFIX = ("/static/", "/regen-img/")
 
 def _auth_make_token():
     exp = str(int(_time.time()) + AUTH_TTL)
