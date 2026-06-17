@@ -3053,6 +3053,11 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:10px">
             <span class="slabel">🚀 SCALE PO DRŽAVAH (BIDCAP)</span>
             <div style="display:flex;gap:6px;align-items:center">
+              <div style="display:flex;gap:2px;background:var(--surface2);border-radius:7px;padding:2px;margin-right:4px">
+                <button id="bcViewA" onclick="bcSetView('cards')" style="padding:4px 9px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:var(--accent);color:#fff">▦ Kartice</button>
+                <button id="bcViewB" onclick="bcSetView('list')" style="padding:4px 9px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">☰ Seznam</button>
+                <button id="bcViewC" onclick="bcSetView('kanban')" style="padding:4px 9px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">▥ Kanban</button>
+              </div>
               <input type="text" id="bcSearch" placeholder="🔍 država / ad-set" oninput="bcRenderTable()" style="padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:11px;font-family:inherit;width:150px">
               <select id="bcSort" onchange="bcRenderTable()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:11px;font-family:inherit">
                 <option value="score">Najboljši kandidati ↓</option>
@@ -19117,7 +19122,7 @@ function bcParseFromRows(rows){
     const name = r['Ad set name'];
     const day = r['Day'];
     if (!name || !day) continue;
-    if (!sets[name]) sets[name] = { name, days:{}, bidByDay:{}, budget:'', btype:'' };
+    if (!sets[name]) sets[name] = { name, campaign:'', days:{}, bidByDay:{}, budget:'', btype:'' };
     const sp = bcNum(r['Amount spent (EUR)']);
     const pu = Math.round(bcNum(r['Purchases']));
     const freq = bcNum(r['Frequency']);
@@ -19132,6 +19137,7 @@ function bcParseFromRows(rows){
     if (bid != null && bid > 0) sets[name].bidByDay[day] = bid;
     if (r['Campaign Budget']) sets[name].budget = r['Campaign Budget'];
     if (r['Bid type']) sets[name].btype = r['Bid type'];
+    if (r['Campaign name']) sets[name].campaign = r['Campaign name'];
   }
   // agregacija + metrike
   const out = [];
@@ -19160,7 +19166,7 @@ function bcParseFromRows(rows){
     const bidDays = Object.keys(s.bidByDay).sort();
     const curBid = bidDays.length ? s.bidByDay[bidDays[bidDays.length-1]] : null;
     out.push({
-      name, spend, purch, cpa7, cpa3, avgFreq, avgCtr, curBid,
+      name, campaign:s.campaign, spend, purch, cpa7, cpa3, avgFreq, avgCtr, curBid,
       budget:s.budget, btype:s.btype, series, nDays:dayKeys.length
     });
   }
@@ -19222,14 +19228,39 @@ function bcScore(a){
   else if (score >= 25){ status='🟡'; label='DRŽI'; }
   else { status='🟡'; label='DRŽI'; }
 
-  // predlog novega bidcapa: dvig sorazmeren s headroom + trenutni bid
-  if (a.curBid){
-    let pct = 0.10; // osnovni dvig 10%
-    if (headroom > 0.3) pct = 0.20;
-    else if (headroom > 0.15) pct = 0.15;
-    if (a.avgFreq >= 3) pct = Math.min(pct, 0.10); // pri nasičenosti manj
-    suggBid = Math.round(a.curBid * (1+pct) * 100)/100;
-    reasons.push(`Predlog bidcap: ${a.curBid}€ → ${suggBid}€ (+${(pct*100).toFixed(0)}%).`);
+  // predlog novega bidcapa — temelji na CPA-to-bid VRZELI (ne na čistem %)
+  // logika: bidcap je STROP. Pomaga ga dvigniti le, ko se realizirani CPA približuje stropu.
+  if (a.curBid && a.cpa7 != null){
+    const gap = (a.curBid - a.cpa7) / a.curBid;  // kako daleč je CPA pod stropom (0..1)
+    // varovalo: zgornja smiselna meja bidcapa = cilj CPA × 1.4
+    const bidCeiling = Math.round(BC_CPA_TARGET * 1.4 * 100)/100; // 7.5 → 10.5€
+
+    if (gap >= 0.30){
+      // bidcap MOČNO nad CPA → ni ozko grlo. Ne dvigaj.
+      suggBid = null;
+      reasons.push(`⛔ Bidcap ${a.curBid}€ je ${(gap*100).toFixed(0)}% nad CPA (${a.cpa7.toFixed(2)}€) — strop NI ozko grlo. Dvig bidcapa ne bo prinesel volumna. Vzvod je BUDGET (dnevni) ali nova kreativa, ne bidcap.`);
+    } else if (gap >= 0.15){
+      // zmeren razmik → majhen dvig ali raje budget
+      let pct = 0.10;
+      let nb = Math.round(a.curBid * (1+pct) * 100)/100;
+      if (nb > bidCeiling) nb = bidCeiling;
+      suggBid = (nb > a.curBid) ? nb : null;
+      if (suggBid)
+        reasons.push(`Bidcap ${a.curBid}€ je ${(gap*100).toFixed(0)}% nad CPA — zmeren razmik. Manjši dvig → ${suggBid}€ (+${(pct*100).toFixed(0)}%), ali raje dvigni budget. Strop smiselnosti ${bidCeiling}€.`);
+      else
+        reasons.push(`Bidcap ${a.curBid}€ že pri stropu smiselnosti (${bidCeiling}€). Za več volumna dvigni budget, ne bidcap.`);
+    } else {
+      // CPA BLIZU stropa → bidcap JE omejitev → dvig dejansko pomaga
+      let pct = 0.20;
+      if (a.avgFreq >= 3) pct = 0.12;  // nasičenost → manj agresivno
+      let nb = Math.round(a.curBid * (1+pct) * 100)/100;
+      const hardCap = Math.round(a.curBid * 1.30 * 100)/100; // nikoli >+30% naenkrat
+      if (nb > hardCap) nb = hardCap;
+      suggBid = nb;
+      reasons.push(`✅ CPA ${a.cpa7.toFixed(2)}€ je BLIZU stropa ${a.curBid}€ (razmik le ${(gap*100).toFixed(0)}%) — bidcap JE omejitev. Dvig sprosti avkcije → ${suggBid}€ (+${(pct*100).toFixed(0)}%).`);
+    }
+  } else if (a.curBid){
+    reasons.push(`Bidcap ${a.curBid}€, a CPA ni izračunljiv (premalo nakupov) — ne predlagam dviga.`);
   } else {
     reasons.push('Trenutni bidcap ni razviden iz CSV (morda CBO/ad-set budget).');
   }
@@ -19250,76 +19281,164 @@ function bcCooldownFor(name){
   return bcScaleLog.find(e => e.ad_set === name && e.cooldown_active);
 }
 
-function bcRenderTable(){
-  const wrap = document.getElementById('bcTableWrap');
-  if (!wrap) return;
+let bcView = 'cards';
+function bcSetView(v){
+  bcView = v;
+  for (const [id,val] of [['bcViewA','cards'],['bcViewB','list'],['bcViewC','kanban']]){
+    const b = document.getElementById(id);
+    if (b){ b.style.background = (val===v)?'var(--accent)':'transparent'; b.style.color = (val===v)?'#fff':'var(--text-secondary)'; }
+  }
+  bcRenderTable();
+}
+
+function bcPrepareItems(){
   const q = (document.getElementById('bcSearch')?.value||'').toLowerCase();
   const sort = document.getElementById('bcSort')?.value || 'score';
-
-  // izračunaj scoring za vsak ad-set
   let items = bcAdsets.map(a => ({ a, sc: bcScore(a), cd: bcCooldownFor(a.name) }));
-  // filter iskanje
-  if (q) items = items.filter(x => x.a.name.toLowerCase().includes(q));
-  // sort
+  if (q) items = items.filter(x => x.a.name.toLowerCase().includes(q) || (x.a.campaign||'').toLowerCase().includes(q));
   items.sort((x,y)=>{
     if (sort==='cpa_asc') return (x.a.cpa7??999)-(y.a.cpa7??999);
     if (sort==='spend_desc') return y.a.spend-x.a.spend;
     if (sort==='purch_desc') return y.a.purch-x.a.purch;
-    return y.sc.score - x.sc.score; // score
+    return y.sc.score - x.sc.score;
   });
+  return items;
+}
 
-  if (!items.length){ wrap.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);padding:14px;text-align:center">Ni ad-setov za prikaz.</div>'; return; }
+// mini sparkline CPA trend (zadnjih N dni)
+function bcSparkline(series, w=70, h=22){
+  const pts = series.filter(d=>d.cpa!=null).map(d=>d.cpa);
+  if (pts.length < 2) return '';
+  const min = Math.min(...pts), max = Math.max(...pts), rng = (max-min)||1;
+  const step = w/(pts.length-1);
+  const coords = pts.map((v,i)=>`${(i*step).toFixed(1)},${(h - ((v-min)/rng)*h).toFixed(1)}`).join(' ');
+  // barva: padajoč CPA (boljše) = zelena
+  const trendUp = pts[pts.length-1] <= pts[0];
+  const col = trendUp ? '#3fb950' : '#ef4444';
+  return `<svg width="${w}" height="${h}" style="vertical-align:middle"><polyline points="${coords}" fill="none" stroke="${col}" stroke-width="1.5"/></svg>`;
+}
 
-  let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
-    + '<thead><tr style="text-align:left;color:var(--text-tertiary);font-size:11px">'
-    + '<th style="padding:7px 8px">Status</th><th style="padding:7px 8px">Ad-set / država</th>'
-    + '<th style="padding:7px 8px;text-align:right">CPA 7d</th><th style="padding:7px 8px;text-align:right">CPA 3d</th>'
-    + '<th style="padding:7px 8px;text-align:right">Nakupi</th><th style="padding:7px 8px;text-align:right">Spend</th>'
-    + '<th style="padding:7px 8px;text-align:right">Freq</th><th style="padding:7px 8px;text-align:right">CTR</th>'
-    + '<th style="padding:7px 8px;text-align:right">Bid</th><th style="padding:7px 8px;text-align:right">→ Predlog</th>'
-    + '<th style="padding:7px 8px"></th></tr></thead><tbody>';
-
-  for (const {a, sc, cd} of items){
-    const inCooldown = !!cd;
-    const rowStyle = inCooldown
-      ? 'border-top:1px solid var(--border);opacity:0.55;text-decoration:line-through'
-      : 'border-top:1px solid var(--border)';
-    const statusBadge = inCooldown ? '🔵' : sc.status;
-    const statusLabel = inCooldown ? `OPAZUJEM (${cd.days_left}d)` : sc.label;
-    const cpa7 = a.cpa7!=null? a.cpa7.toFixed(2)+'€' : '—';
-    const cpa3 = a.cpa3!=null? a.cpa3.toFixed(2)+'€' : '—';
-    const cpa7color = (a.cpa7!=null && a.cpa7<BC_CPA_TARGET)?'#3fb950':(a.cpa7!=null?'#ef4444':'var(--text-tertiary)');
-    const sugg = sc.suggBid ? sc.suggBid+'€' : '—';
-    const safeName = a.name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    html += `<tr style="${rowStyle}">`
-      + `<td style="padding:7px 8px;white-space:nowrap">${statusBadge} <span style="font-size:10px;color:var(--text-secondary)">${statusLabel}</span></td>`
-      + `<td style="padding:7px 8px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${safeName}">${a.name}</td>`
-      + `<td style="padding:7px 8px;text-align:right;color:${cpa7color};font-weight:600">${cpa7}</td>`
-      + `<td style="padding:7px 8px;text-align:right">${cpa3}</td>`
-      + `<td style="padding:7px 8px;text-align:right">${a.purch}</td>`
-      + `<td style="padding:7px 8px;text-align:right">${a.spend.toFixed(0)}€</td>`
-      + `<td style="padding:7px 8px;text-align:right">${a.avgFreq?a.avgFreq.toFixed(2):'—'}</td>`
-      + `<td style="padding:7px 8px;text-align:right">${a.avgCtr?a.avgCtr.toFixed(2)+'%':'—'}</td>`
-      + `<td style="padding:7px 8px;text-align:right">${a.curBid?a.curBid+'€':'—'}</td>`
-      + `<td style="padding:7px 8px;text-align:right;font-weight:600;color:${sc.suggBid?'#7c3aed':'var(--text-tertiary)'}">${sugg}</td>`
-      + `<td style="padding:7px 8px;white-space:nowrap">`;
-    if (inCooldown){
-      const cpaBeforeTxt = cd.cpa_before!=null ? `CPA pred: ${Number(cd.cpa_before).toFixed(2)}€ → zdaj ${cpa7}` : '';
-      html += `<button onclick="bcUnscale('${cd.id}')" style="font-size:10px;padding:3px 8px;background:transparent;border:1px solid var(--border);border-radius:5px;cursor:pointer;color:var(--text-secondary)" title="${cpaBeforeTxt}">↩ prekliči</button>`;
-    } else {
-      html += `<button onclick="bcScaleAn('${safeName}', ${a.curBid||'null'}, ${sc.suggBid||'null'}, ${a.cpa7!=null?a.cpa7.toFixed(2):'null'})" style="font-size:10px;padding:3px 8px;background:var(--accent);color:#fff;border:none;border-radius:5px;cursor:pointer">✓ Scale-an</button>`;
-    }
-    html += `</td></tr>`;
-    // razlogi (AI analiza) — razširljiva vrstica
-    html += `<tr style="${inCooldown?'opacity:0.55':''}"><td colspan="11" style="padding:0 8px 9px 8px;border:none">`
-      + `<div style="font-size:11px;color:var(--text-secondary);line-height:1.5">${sc.reasons.map(r=>'• '+r).join('<br>')}`;
-    if (inCooldown && cd.cpa_before!=null){
-      html += `<br><span style="color:#7c3aed">📊 Dvignjen ${cd.scaled_date} · CPA pred: ${Number(cd.cpa_before).toFixed(2)}€ → trenutni ${cpa7} · bid ${cd.bid_before||'?'}→${cd.bid_after||'?'}</span>`;
-    }
-    html += `</div></td></tr>`;
+function bcActionBtn(a, sc, cd){
+  const safeName = a.name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+  if (cd){
+    const cpaBeforeTxt = cd.cpa_before!=null ? `CPA pred: ${Number(cd.cpa_before).toFixed(2)}€` : '';
+    return `<button onclick="bcUnscale('${cd.id}')" style="font-size:10px;padding:4px 9px;background:transparent;border:1px solid var(--border);border-radius:5px;cursor:pointer;color:var(--text-secondary)" title="${cpaBeforeTxt}">↩ prekliči</button>`;
   }
-  html += '</tbody></table></div>';
-  wrap.innerHTML = html;
+  return `<button onclick="bcScaleAn('${safeName}', ${a.curBid||'null'}, ${sc.suggBid||'null'}, ${a.cpa7!=null?a.cpa7.toFixed(2):'null'})" style="font-size:10px;padding:4px 9px;background:var(--accent);color:#fff;border:none;border-radius:5px;cursor:pointer">✓ Scale-an</button>`;
+}
+
+function bcCpaColor(cpa){
+  return (cpa!=null && cpa<BC_CPA_TARGET)?'#3fb950':(cpa!=null?'#ef4444':'var(--text-tertiary)');
+}
+
+function bcRenderTable(){
+  const wrap = document.getElementById('bcTableWrap');
+  if (!wrap) return;
+  const items = bcPrepareItems();
+  if (!items.length){ wrap.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);padding:14px;text-align:center">Ni ad-setov za prikaz.</div>'; return; }
+  if (bcView === 'cards') wrap.innerHTML = bcRenderCards(items);
+  else if (bcView === 'list') wrap.innerHTML = bcRenderList(items);
+  else wrap.innerHTML = bcRenderKanban(items);
+}
+
+// ── A) KARTICE ──
+function bcRenderCards(items){
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
+  for (const {a, sc, cd} of items){
+    const inCd = !!cd;
+    const badge = inCd ? '🔵' : sc.status;
+    const lbl = inCd ? `OPAZUJEM ${cd.days_left}d` : sc.label;
+    const cpa7 = a.cpa7!=null? a.cpa7.toFixed(2) : '—';
+    const opacity = inCd ? '0.6' : '1';
+    const border = sc.label==='SCALE' && !inCd ? '#3fb950' : 'var(--border)';
+    html += `<div style="border:1px solid ${border};border-radius:10px;padding:13px;background:var(--bg);opacity:${opacity}">`
+      + `<div style="display:flex;justify-content:space-between;align-items:start;gap:8px;margin-bottom:8px">`
+      +   `<div style="min-width:0">`
+      +     `<div style="font-size:14px;font-weight:700;${inCd?'text-decoration:line-through':''}">${a.name}</div>`
+      +     `<div style="font-size:10px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px" title="${(a.campaign||'').replace(/"/g,'&quot;')}">📁 ${a.campaign||'—'}</div>`
+      +   `</div>`
+      +   `<span style="font-size:11px;white-space:nowrap;font-weight:600">${badge} ${lbl}</span>`
+      + `</div>`
+      + `<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">`
+      +   `<span style="font-size:24px;font-weight:800;color:${bcCpaColor(a.cpa7)}">${cpa7}€</span>`
+      +   `<span style="font-size:10px;color:var(--text-tertiary)">CPA 7d · cilj ${BC_CPA_TARGET}€</span>`
+      +   `<span style="margin-left:auto">${bcSparkline(a.series)}</span>`
+      + `</div>`
+      + `<div style="display:flex;gap:10px;font-size:11px;color:var(--text-secondary);margin-bottom:8px;flex-wrap:wrap">`
+      +   `<span>🛒 ${a.purch}</span><span>💶 ${a.spend.toFixed(0)}€</span>`
+      +   `<span>📶 ${a.avgFreq?a.avgFreq.toFixed(2):'—'}</span><span>👆 ${a.avgCtr?a.avgCtr.toFixed(2)+'%':'—'}</span>`
+      + `</div>`
+      + `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:8px;border-top:1px solid var(--border)">`
+      +   `<span style="font-size:12px">bid <b>${a.curBid?a.curBid+'€':'—'}</b>${sc.suggBid?` <span style="color:#7c3aed">→ ${sc.suggBid}€</span>`:''}</span>`
+      +   bcActionBtn(a,sc,cd)
+      + `</div>`
+      + `<details style="margin-top:8px"><summary style="font-size:11px;color:var(--text-tertiary);cursor:pointer">💡 analiza</summary>`
+      +   `<div style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin-top:5px">${sc.reasons.map(r=>'• '+r).join('<br>')}</div></details>`
+      + `</div>`;
+  }
+  return html + '</div>';
+}
+
+// ── B) KOMPAKTNI SEZNAM ──
+function bcRenderList(items){
+  let html = '<div style="display:flex;flex-direction:column;gap:6px">';
+  for (const {a, sc, cd} of items){
+    const inCd = !!cd;
+    const badge = inCd ? '🔵' : sc.status;
+    const lbl = inCd ? `OPAZUJEM ${cd.days_left}d` : sc.label;
+    const barCol = inCd ? '#3b82f6' : (sc.label==='SCALE'?'#3fb950':(sc.label==='NE'?'#ef4444':'#d29922'));
+    html += `<div style="border:1px solid var(--border);border-left:4px solid ${barCol};border-radius:8px;padding:10px 12px;background:var(--bg);${inCd?'opacity:0.6':''}">`
+      + `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">`
+      +   `<div style="min-width:150px;flex:1">`
+      +     `<div style="font-size:13px;font-weight:700;${inCd?'text-decoration:line-through':''}">${badge} ${a.name} <span style="font-size:10px;font-weight:500;color:var(--text-tertiary)">${lbl}</span></div>`
+      +     `<div style="font-size:10px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px" title="${(a.campaign||'').replace(/"/g,'&quot;')}">📁 ${a.campaign||'—'}</div>`
+      +   `</div>`
+      +   `<div style="text-align:right"><div style="font-size:16px;font-weight:700;color:${bcCpaColor(a.cpa7)}">${a.cpa7!=null?a.cpa7.toFixed(2)+'€':'—'}</div><div style="font-size:9px;color:var(--text-tertiary)">CPA 7d</div></div>`
+      +   `<div style="text-align:right;font-size:11px;color:var(--text-secondary)">3d ${a.cpa3!=null?a.cpa3.toFixed(2)+'€':'—'}<br>🛒 ${a.purch}</div>`
+      +   `<div style="text-align:right;font-size:11px;color:var(--text-secondary)">📶 ${a.avgFreq?a.avgFreq.toFixed(2):'—'}<br>💶 ${a.spend.toFixed(0)}€</div>`
+      +   `${bcSparkline(a.series)}`
+      +   `<div style="text-align:right;font-size:12px;white-space:nowrap">bid <b>${a.curBid?a.curBid+'€':'—'}</b>${sc.suggBid?`<br><span style="color:#7c3aed">→ ${sc.suggBid}€</span>`:''}</div>`
+      +   bcActionBtn(a,sc,cd)
+      + `</div>`
+      + `<details style="margin-top:6px"><summary style="font-size:10px;color:var(--text-tertiary);cursor:pointer">💡 analiza</summary>`
+      +   `<div style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin-top:4px">${sc.reasons.map(r=>'• '+r).join('<br>')}</div></details>`
+      + `</div>`;
+  }
+  return html + '</div>';
+}
+
+// ── C) KANBAN ──
+function bcRenderKanban(items){
+  const cols = [
+    { key:'SCALE', title:'🟢 SCALE', col:'#3fb950', filt:x=>!x.cd && x.sc.label==='SCALE' },
+    { key:'HOLD',  title:'🟡 DRŽI',  col:'#d29922', filt:x=>!x.cd && x.sc.label==='DRŽI' },
+    { key:'NO',    title:'🔴 NE',    col:'#ef4444', filt:x=>!x.cd && x.sc.label==='NE' },
+    { key:'WATCH', title:'🔵 OPAZUJEM', col:'#3b82f6', filt:x=>!!x.cd },
+  ];
+  let html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:start">';
+  for (const c of cols){
+    const list = items.filter(c.filt);
+    html += `<div style="background:var(--surface2);border-radius:10px;padding:8px;min-height:60px">`
+      + `<div style="font-size:12px;font-weight:700;padding:4px 6px 8px;border-bottom:2px solid ${c.col};margin-bottom:8px">${c.title} <span style="color:var(--text-tertiary);font-weight:500">${list.length}</span></div>`
+      + `<div style="display:flex;flex-direction:column;gap:8px">`;
+    for (const {a, sc, cd} of list){
+      const inCd = !!cd;
+      html += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px;${inCd?'opacity:0.7':''}">`
+        + `<div style="font-size:13px;font-weight:700;${inCd?'text-decoration:line-through':''}">${a.name}</div>`
+        + `<div style="font-size:9px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(a.campaign||'').replace(/"/g,'&quot;')}">📁 ${a.campaign||'—'}</div>`
+        + `<div style="display:flex;align-items:baseline;gap:6px;margin:6px 0">`
+        +   `<span style="font-size:18px;font-weight:800;color:${bcCpaColor(a.cpa7)}">${a.cpa7!=null?a.cpa7.toFixed(2)+'€':'—'}</span>`
+        +   `${bcSparkline(a.series,50,18)}`
+        + `</div>`
+        + `<div style="font-size:10px;color:var(--text-secondary);margin-bottom:7px">🛒 ${a.purch} · 📶 ${a.avgFreq?a.avgFreq.toFixed(2):'—'} · bid ${a.curBid?a.curBid+'€':'—'}${sc.suggBid?` <span style="color:#7c3aed">→${sc.suggBid}€</span>`:''}${inCd?` · ${cd.days_left}d`:''}</div>`
+        + bcActionBtn(a,sc,cd)
+        + `<details style="margin-top:6px"><summary style="font-size:10px;color:var(--text-tertiary);cursor:pointer">💡</summary><div style="font-size:10px;color:var(--text-secondary);line-height:1.45;margin-top:4px">${sc.reasons.map(r=>'• '+r).join('<br>')}</div></details>`
+        + `</div>`;
+    }
+    if (!list.length) html += `<div style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:8px">—</div>`;
+    html += `</div></div>`;
+  }
+  return html + '</div>';
 }
 
 async function bcScaleAn(name, bidBefore, bidAfter, cpaBefore){
