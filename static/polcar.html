@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polcar — naročanje</title>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --bd:#262b36; --tx:#e6e9ef; --tx2:#9aa3b2; --acc:#4f8cff; --ok:#3fb950; --err:#f85149; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--tx); font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; padding:24px; }
+  .wrap { max-width:1100px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--tx2); margin:0 0 20px; font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:10px; padding:18px; margin-bottom:16px; }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:10px 18px; font-size:14px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  .meta { display:flex; gap:18px; flex-wrap:wrap; margin-top:14px; font-size:13px; color:var(--tx2); }
+  .meta b { color:var(--tx); }
+  .ok { color:var(--ok); } .err { color:var(--err); }
+  pre { background:#0b0d11; border:1px solid var(--bd); border-radius:8px; padding:12px; overflow:auto; max-height:480px; font-size:12px; color:#cdd3df; white-space:pre-wrap; word-break:break-word; }
+  .tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .tag { background:#0b0d11; border:1px solid var(--bd); border-radius:6px; padding:3px 8px; font-size:12px; color:var(--tx2); }
+  .tag b { color:var(--acc); }
+  label { font-size:13px; color:var(--tx2); margin-right:8px; }
+  input[type=number] { background:#0b0d11; border:1px solid var(--bd); color:var(--tx); border-radius:6px; padding:6px 8px; width:90px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Polcar — povezava & branje cen</h1>
+  <p class="sub">Faza 1: test SOAP povezave (GetCustomerPrices) in pregled strukture podatkov.</p>
+
+  <div class="card">
+    <label>Limit prikaza vzorca</label>
+    <input type="number" id="limit" value="50" min="1" max="500">
+    <button id="btn" onclick="poveziInPreberi()">Poveži & preberi</button>
+    <div class="meta" id="meta"></div>
+    <div class="tags" id="tags"></div>
+  </div>
+
+  <div class="card" id="resultCard" style="display:none">
+    <div style="font-weight:600;margin-bottom:8px">Surov odgovor (začetek)</div>
+    <pre id="rawHead">—</pre>
+  </div>
+
+  <div class="card" id="parsedCard" style="display:none">
+    <div style="font-weight:600;margin-bottom:8px">GetCustomerPricesResult — vsebina (začetek)</div>
+    <pre id="resultXml">—</pre>
+  </div>
+</div>
+
+<script>
+async function poveziInPreberi() {
+  const btn = document.getElementById('btn');
+  const meta = document.getElementById('meta');
+  const tags = document.getElementById('tags');
+  const limit = document.getElementById('limit').value || 50;
+  btn.disabled = true;
+  meta.innerHTML = 'Povezujem s Polcar...';
+  tags.innerHTML = '';
+  document.getElementById('resultCard').style.display = 'none';
+  document.getElementById('parsedCard').style.display = 'none';
+  try {
+    const r = await fetch('/polcar-prices?limit=' + encodeURIComponent(limit));
+    const d = await r.json();
+    if (!d.ok) {
+      meta.innerHTML = '<span class="err">✗ Napaka: ' + (d.error || ('status ' + d.status)) + '</span>';
+      if (d.raw_head) { document.getElementById('resultCard').style.display='block'; document.getElementById('rawHead').textContent = d.raw_head; }
+      btn.disabled = false;
+      return;
+    }
+    let m = '<span class="ok">✓ Povezava OK</span>';
+    m += '<span>HTTP <b>' + d.status + '</b></span>';
+    m += '<span>dolžina odgovora <b>' + d.raw_len + '</b></span>';
+    if (d.result_child_count != null) m += '<span>elementov v Result <b>' + d.result_child_count + '</b></span>';
+    if (d.result_text_len != null) m += '<span>Result besedilo dolžina <b>' + d.result_text_len + '</b></span>';
+    meta.innerHTML = m;
+
+    if (d.result_tags) {
+      let t = '';
+      for (const [k,v] of Object.entries(d.result_tags)) t += '<span class="tag">' + k + ' <b>' + v + '</b></span>';
+      tags.innerHTML = t;
+    }
+    if (d.raw_head) { document.getElementById('resultCard').style.display='block'; document.getElementById('rawHead').textContent = d.raw_head; }
+    const inner = d.result_xml_head || d.result_text_head;
+    if (inner) { document.getElementById('parsedCard').style.display='block'; document.getElementById('resultXml').textContent = inner; }
+    else if (d.note) { document.getElementById('parsedCard').style.display='block'; document.getElementById('resultXml').textContent = d.note; }
+  } catch(e) {
+    meta.innerHTML = '<span class="err">✗ Napaka klica: ' + e + '</span>';
+  }
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>
