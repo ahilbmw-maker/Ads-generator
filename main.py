@@ -13223,6 +13223,7 @@ async def beta_save_export(data: dict):
             "date": date_str,
             "timestamp": ts_str,
             "campaigns": campaigns,
+            "bc_adsets": data.get("bc_adsets", []),
             "total_spend": data.get("total_spend", 0),
             "total_purchases": data.get("total_purchases", 0),
         }

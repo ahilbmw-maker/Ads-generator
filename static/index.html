@@ -18899,7 +18899,7 @@ async function betaSaveExport(filename) {
   const totalPurchases = betaCampaigns.reduce((s,c)=>s+c.purchases,0);
   const fi = document.getElementById('beta-file-info');
   try {
-    const body = JSON.stringify({filename, campaigns: betaCampaigns, total_spend: totalSpend, total_purchases: totalPurchases});
+    const body = JSON.stringify({filename, campaigns: betaCampaigns, bc_adsets: bcAdsets, total_spend: totalSpend, total_purchases: totalPurchases});
     console.log(`[beta-save] Sending ${(body.length/1024).toFixed(1)} KB to /beta-save-export`);
     if (fi) fi.innerHTML = `💾 Shranjujem ${filename}...`;
     const res = await fetch('/beta-save-export', {
@@ -19024,6 +19024,17 @@ async function betaLoadFromHistory(filename, isAutoLoad = false) {
         </div>
       </div>`;
     betaAnalyze();
+    // obnovi BIDCAP "Scale po državah" sekcijo iz shranjenih ad-setov
+    try {
+      bcAdsets = data.bc_adsets || [];
+      const card = document.getElementById('bcScaleCard');
+      if (bcAdsets.length){
+        if (card) card.style.display = 'block';
+        bcLoadScaleLog().then(bcRenderTable);
+      } else {
+        if (card) card.style.display = 'none';
+      }
+    } catch(e){ console.warn('bc history restore', e); }
   } catch(e) { console.warn('load history error', e); }
 }
 // Render AI odgovora kot kompaktne kartice
