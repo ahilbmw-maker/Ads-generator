@@ -19116,6 +19116,23 @@ const BC_MIN_PURCH = 15;
 
 function bcNum(x){ const n = parseFloat(String(x==null?'':x).replace(',','.')); return isNaN(n)?0:n; }
 
+// normalizacija imena za STABILNO ujemanje (emoji/robne oznake variirajo med exporti)
+function bcNorm(s){
+  let t = String(s||'');
+  // odstrani emoji in piktograme (široki unicode rangi)
+  t = t.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}\u{20E3}\u{2122}\u{2139}]/gu, ' ');
+  // odstrani pogoste robne oznake (variirajo)
+  t = t.replace(/@stop\b/gi,' ').replace(/#stop\b/gi,' ')
+       .replace(/⛔/g,' ').replace(/\boff\b/gi,' ')
+       .replace(/#outlet\b/gi,' ').replace(/\blocal\b/gi,' ');
+  // skrči presledke, lowercase, trim
+  t = t.replace(/\s+/g,' ').trim().toLowerCase();
+  return t;
+}
+function bcMatchKey(campaign, adset){
+  return bcNorm(campaign) + ' ||| ' + bcNorm(adset);
+}
+
 // glavni vstop: pokliče se iz betaParseCSV z že-parsanimi rows
 // ENOTA = kampanija + ad-set (država). Isti ad-set (npr. "PL") obstaja v mnogih kampanijah,
 // vsak s svojim bidom — zato NE smemo seštevati samo po imenu ad-seta.
@@ -19146,6 +19163,25 @@ function bcParseFromRows(rows){
   }
   // agregacija + metrike
   const out = [];
+  // najprej: util PER KAMPANIJA (budget je skupen za vse države kampanije)
+  const campAgg = {};  // campaign -> { daySpend:{day:sum}, budget }
+  for (const key in sets){
+    const s = sets[key];
+    const c = s.campaign || '(brez)';
+    if (!campAgg[c]) campAgg[c] = { daySpend:{}, budget:s.budget };
+    for (const dk in s.days){
+      campAgg[c].daySpend[dk] = (campAgg[c].daySpend[dk]||0) + s.days[dk].spend;
+    }
+    if (s.budget) campAgg[c].budget = s.budget;
+  }
+  const campUtil = {};  // campaign -> { util, dailyBudget, avgDailySpend }
+  for (const c in campAgg){
+    const ca = campAgg[c];
+    const db = bcNum(ca.budget);
+    const act = Object.values(ca.daySpend).filter(v=>v>0);
+    const avg = act.length ? act.reduce((a,b)=>a+b,0)/act.length : 0;
+    campUtil[c] = { util:(db>0&&avg>0)?(avg/db):null, dailyBudget:db, avgDailySpend:avg };
+  }
   for (const name in sets){
     const s = sets[name];
     const dayKeys = Object.keys(s.days).sort();
@@ -19170,9 +19206,14 @@ function bcParseFromRows(rows){
     // trenutni bid = zadnji dan, ki ima bid
     const bidDays = Object.keys(s.bidByDay).sort();
     const curBid = bidDays.length ? s.bidByDay[bidDays[bidDays.length-1]] : null;
+    // budget utilizacija PER KAMPANIJA (budget je skupen za vse države kampanije)
+    const cu = campUtil[s.campaign || '(brez)'] || { util:null, dailyBudget:0, avgDailySpend:0 };
+    const budgetUtil = cu.util;
+    const campDailyBudget = cu.dailyBudget;
+    const campAvgDailySpend = cu.avgDailySpend;
     out.push({
-      key:s.key, name, campaign:s.campaign, spend, purch, cpa7, cpa3, avgFreq, avgCtr, curBid,
-      budget:s.budget, btype:s.btype, series, nDays:dayKeys.length
+      key:s.key, matchKey:bcMatchKey(s.campaign, s.name), name, campaign:s.campaign, spend, purch, cpa7, cpa3, avgFreq, avgCtr, curBid,
+      budget:s.budget, dailyBudget:campDailyBudget, avgDailySpend:campAvgDailySpend, budgetUtil, btype:s.btype, series, nDays:dayKeys.length
     });
   }
   return out;
@@ -19233,58 +19274,59 @@ function bcScore(a){
   else if (score >= 25){ status='🟡'; label='DRŽI'; }
   else { status='🟡'; label='DRŽI'; }
 
-  // predlog novega bidcapa — temelji na CPA-to-bid VRZELI (ne na čistem %)
-  // logika: bidcap je STROP. Pomaga ga dvigniti le, ko se realizirani CPA približuje stropu.
-  if (a.curBid && a.cpa7 != null){
-    const gap = (a.curBid - a.cpa7) / a.curBid;  // kako daleč je CPA pod stropom (0..1)
-    // varovalo: zgornja smiselna meja bidcapa = cilj CPA × 1.4
-    const bidCeiling = Math.round(BC_CPA_TARGET * 1.4 * 100)/100; // 7.5 → 10.5€
+  // ── PREDLOG UKREPA — model: budget utilizacija + CPA-vs-bidcap ──
+  // Ključ: ali ad-set ZALETI v budget strop (7d povprečje)?
+  //  - visoka util + dober CPA → omejen z budgetom → dvigni BUDGET (prostor za rast)
+  //  - CPA blizu bidcapa → izčrpan → NE dvigaj bidcapa
+  //  - CPA močno pod bidcapom + nizka util → bidcap ni grlo, budget ni grlo → previdno
+  const util = a.budgetUtil;                       // null če budget ni znan (CBO/ad-set budget)
+  const utilPct = util != null ? Math.round(util*100) : null;
+  const HIGH_UTIL = 0.80;                          // ≥80% = zaleti v budget strop
+  let bidGap = (a.curBid && a.cpa7!=null) ? (a.curBid - a.cpa7)/a.curBid : null; // razmik CPA do stropa
+  const NEAR_BID = 0.15;                            // CPA znotraj 15% bidcapa = izčrpan
 
-    if (gap >= 0.30){
-      suggBid = null;
-      reasons.push(`⛔ Bidcap ${a.curBid}€ je ${(gap*100).toFixed(0)}% nad CPA (${a.cpa7.toFixed(2)}€) — strop NI ozko grlo. Dvig bidcapa ne bo prinesel volumna. Vzvod je BUDGET (dnevni) ali nova kreativa, ne bidcap.`);
-      // predlagaj dvig BUDGETA namesto bidcapa
-      const curBudget = bcNum(a.budget);
-      if (curBudget > 0){
-        const nb = Math.round(curBudget * 1.20);
-        action = { type:'budget', text:`📈 Dvigni BUDGET +20%`, detail:`${curBudget.toFixed(0)}€ → ${nb}€/dan (bidcap pusti ${a.curBid}€)` };
-      } else {
-        action = { type:'budget', text:`📈 Dvigni BUDGET (+15-20%)`, detail:`bidcap ${a.curBid}€ ni grlo` };
-      }
-    } else if (gap >= 0.15){
-      let pct = 0.10;
-      let nb = Math.round(a.curBid * (1+pct) * 100)/100;
-      if (nb > bidCeiling) nb = bidCeiling;
-      suggBid = (nb > a.curBid) ? nb : null;
-      if (suggBid){
-        reasons.push(`Bidcap ${a.curBid}€ je ${(gap*100).toFixed(0)}% nad CPA — zmeren razmik. Manjši dvig → ${suggBid}€ (+${(pct*100).toFixed(0)}%), ali raje dvigni budget. Strop smiselnosti ${bidCeiling}€.`);
-        action = { type:'bid', text:`↗ Bidcap +10%`, detail:`${a.curBid}€ → ${suggBid}€ (ali budget)` };
-      } else {
-        reasons.push(`Bidcap ${a.curBid}€ že pri stropu smiselnosti (${bidCeiling}€). Za več volumna dvigni budget, ne bidcap.`);
-        const curBudget = bcNum(a.budget);
-        action = curBudget>0
-          ? { type:'budget', text:`📈 Dvigni BUDGET +20%`, detail:`${curBudget.toFixed(0)}€ → ${Math.round(curBudget*1.2)}€/dan` }
-          : { type:'budget', text:`📈 Dvigni BUDGET`, detail:`bidcap pri stropu` };
-      }
+  // 1) CPA BLIZU bidcapa → izčrpan, ne dvigaj (tvoja logika)
+  if (bidGap != null && bidGap < NEAR_BID){
+    suggBid = null;
+    reasons.push(`⛔ CPA ${a.cpa7.toFixed(2)}€ je tik pod bidcapom ${a.curBid}€ (razmik le ${(bidGap*100).toFixed(0)}%) — IZČRPAN. Dvig bidcapa bi le podražil avkcije. Ne dvigaj.`);
+    action = { type:'no', text:'⛔ Ne dvigaj — izčrpan', detail:`CPA tik pod bidcapom (${a.curBid}€)` };
+  }
+  // 2) ZALETI v budget strop (visoka util KAMPANIJE) + dober CPA → prostor za rast
+  else if (util != null && util >= HIGH_UTIL){
+    const nb = Math.round(a.dailyBudget * 1.20);
+    reasons.push(`✅ Budget kampanije utilizacija ${utilPct}% — kampanija ZALETI v dnevni budget (${a.dailyBudget.toFixed(0)}€), CPA ${a.cpa7.toFixed(2)}€ pa odličen. Omejena z budgetom → prostor za rast.`);
+    if (bidGap != null && bidGap < 0.30){
+      let pct = a.avgFreq>=3 ? 0.12 : 0.20;
+      suggBid = Math.round(a.curBid*(1+pct)*100)/100;
+      reasons.push(`CPA se približuje bidcapu (razmik ${(bidGap*100).toFixed(0)}%) — smiselno dvigniti tudi bidcap te države → ${suggBid}€.`);
+      action = { type:'budget', text:`🚀 Dvigni BUDGET kampanije +20% (+bidcap)`, detail:`budget ${a.dailyBudget.toFixed(0)}€→${nb}€/dan · bid ${a.curBid}€→${suggBid}€` };
     } else {
-      let pct = 0.20;
-      if (a.avgFreq >= 3) pct = 0.12;
-      let nb = Math.round(a.curBid * (1+pct) * 100)/100;
-      const hardCap = Math.round(a.curBid * 1.30 * 100)/100;
-      if (nb > hardCap) nb = hardCap;
-      suggBid = nb;
-      reasons.push(`✅ CPA ${a.cpa7.toFixed(2)}€ je BLIZU stropa ${a.curBid}€ (razmik le ${(gap*100).toFixed(0)}%) — bidcap JE omejitev. Dvig sprosti avkcije → ${suggBid}€ (+${(pct*100).toFixed(0)}%).`);
+      suggBid = null;
+      action = { type:'budget', text:`🚀 Dvigni BUDGET kampanije +20%`, detail:`${a.dailyBudget.toFixed(0)}€ → ${nb}€/dan (bidcap ${a.curBid||'?'}€ pusti)` };
+    }
+  }
+  // 3) NE zaleti v budget (nizka util KAMPANIJE) + dober CPA → niti budget niti bidcap nista grlo
+  else if (util != null && util < HIGH_UTIL){
+    suggBid = null;
+    reasons.push(`Budget kampanije utilizacija le ${utilPct}% — NE porabi budgeta (${a.dailyBudget.toFixed(0)}€/dan), čeprav je CPA ${a.cpa7.toFixed(2)}€ dober. Budget NI grlo, bidcap NI grlo. Omejitev je doseg/avkcije/kreativa — dvig ne bo pomagal.`);
+    action = { type:'hold', text:'✋ Ne dvigaj — ni omejen', detail:`kampanija troši le ${utilPct}% budgeta` };
+  }
+  // 4) budget ni znan (CBO / ad-set budget) → zanesi se na CPA-vs-bidcap razmik
+  else if (bidGap != null){
+    if (bidGap >= 0.30){
+      suggBid = null;
+      reasons.push(`Bidcap ${a.curBid}€ je ${(bidGap*100).toFixed(0)}% nad CPA. Budget ni razviden (CBO/ad-set budget) — preveri porabo. Če troši ves budget → dvigni budget; sicer bidcap ni grlo.`);
+      action = { type:'budget', text:`📈 Preveri/dvigni BUDGET`, detail:`bidcap ${a.curBid}€ ni grlo` };
+    } else {
+      let pct = a.avgFreq>=3 ? 0.12 : 0.20;
+      suggBid = Math.round(a.curBid*(1+pct)*100)/100;
+      reasons.push(`CPA ${a.cpa7.toFixed(2)}€ se približuje bidcapu ${a.curBid}€ (razmik ${(bidGap*100).toFixed(0)}%) — bidcap omejuje. Dvig → ${suggBid}€.`);
       action = { type:'bid', text:`🚀 Dvigni BIDCAP +${(pct*100).toFixed(0)}%`, detail:`${a.curBid}€ → ${suggBid}€` };
     }
-  } else if (a.curBid){
-    reasons.push(`Bidcap ${a.curBid}€, a CPA ni izračunljiv (premalo nakupov) — ne predlagam dviga.`);
-  } else {
-    reasons.push('Trenutni bidcap ni razviden iz CSV (morda CBO/ad-set budget).');
-    // brez bida: če dober CPA + headroom, predlagaj budget
-    const curBudget = bcNum(a.budget);
-    if (curBudget > 0){
-      action = { type:'budget', text:`📈 Dvigni BUDGET +20%`, detail:`${curBudget.toFixed(0)}€ → ${Math.round(curBudget*1.2)}€/dan (ni bidcap)` };
-    }
+  }
+  // 5) ni bida ne budgeta
+  else {
+    reasons.push('Bidcap in budget nista razvidna iz CSV — ročna presoja.');
   }
 
   return { status, label, score, reasons, suggBid, action };
@@ -19299,9 +19341,15 @@ async function bcLoadScaleLog(){
 }
 
 function bcCooldownFor(item){
-  // item je agregiran ad-set objekt; match po sestavljenem ključu (kampanija+država)
-  const k = item.key || item.name;
-  return bcScaleLog.find(e => e.ad_set === k && e.cooldown_active);
+  // match po NORMALIZIRANEM ključu (emoji/robne oznake variirajo med exporti)
+  const want = item.matchKey || bcMatchKey(item.campaign, item.name);
+  return bcScaleLog.find(e => {
+    if (!e.cooldown_active) return false;
+    // shranjen ad_set je oblika "campaign ||| adset" (surov ali norm) — normaliziraj obe polovici
+    const parts = String(e.ad_set||'').split(' ||| ');
+    const storedKey = parts.length===2 ? bcMatchKey(parts[0], parts[1]) : bcNorm(e.ad_set);
+    return storedKey === want;
+  });
 }
 
 let bcView = 'cards';
