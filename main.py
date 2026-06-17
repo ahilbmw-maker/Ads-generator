@@ -20353,3 +20353,97 @@ async function build(kind) {
 </script>
 </body>
 </html>"""
+
+
+# ═══════════════════════════════════════════════════════════════
+#  POLCAR — SOAP integracija (dedal.polcar.com / Nemesis WebServices)
+#  Faza 1: povezava + branje cen (GetCustomerPrices). Diagnostika.
+# ═══════════════════════════════════════════════════════════════
+POLCAR_WSDL_URL   = "https://dedal.polcar.com/Dystrybutorzy/Customers.asmx"
+POLCAR_NS         = "http://dedal.polcar.com.pl/Nemesis/WebServices"
+POLCAR_LOGIN      = os.environ.get("POLCAR_LOGIN", "silux")
+POLCAR_PASSWORD   = os.environ.get("POLCAR_PASSWORD", "sk32H@sks!12lsMM")
+POLCAR_CUSTOMER   = os.environ.get("POLCAR_CUSTOMER", "EX426")
+POLCAR_DISTRIB    = os.environ.get("POLCAR_DISTRIBUTOR", "")
+
+
+def _polcar_xml_escape(s: str) -> str:
+    return (str(s or "")
+            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;").replace("'", "&apos;"))
+
+
+@app.get("/polcar", response_class=HTMLResponse)
+async def polcar_page():
+    return FileResponse("static/polcar.html")
+
+
+@app.get("/polcar-prices")
+async def polcar_prices(limit: int = 50):
+    """SOAP GetCustomerPrices — vrne surov odgovor + parsano strukturo (diagnostika faze 1)."""
+    soap_action = f"{POLCAR_NS}/GetCustomerPrices"
+    body = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" '
+        'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+        'xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
+        '<soap:Body>'
+        f'<GetCustomerPrices xmlns="{POLCAR_NS}">'
+        f'<DistributorCode>{_polcar_xml_escape(POLCAR_DISTRIB)}</DistributorCode>'
+        f'<CustomerNumber>{_polcar_xml_escape(POLCAR_CUSTOMER)}</CustomerNumber>'
+        f'<Login>{_polcar_xml_escape(POLCAR_LOGIN)}</Login>'
+        f'<Password>{_polcar_xml_escape(POLCAR_PASSWORD)}</Password>'
+        '</GetCustomerPrices>'
+        '</soap:Body></soap:Envelope>'
+    )
+    headers = {
+        "Content-Type": "text/xml; charset=utf-8",
+        "SOAPAction": f'"{soap_action}"',
+    }
+    try:
+        async with httpx.AsyncClient(timeout=60) as cli:
+            r = await cli.post(POLCAR_WSDL_URL, content=body.encode("utf-8"), headers=headers)
+        raw = r.text
+        out = {
+            "ok": r.status_code == 200,
+            "status": r.status_code,
+            "raw_len": len(raw),
+            "raw_head": raw[:3000],
+        }
+        # poskusi izluščiti vsebino GetCustomerPricesResult
+        try:
+            root = ET.fromstring(raw)
+            # poišči Result element ne glede na namespace prefix
+            result_el = None
+            for el in root.iter():
+                if el.tag.endswith("GetCustomerPricesResult"):
+                    result_el = el
+                    break
+            if result_el is not None:
+                # vsebina je lahko nested XML elementi ALI besedilo
+                children = list(result_el)
+                if children:
+                    # serializiraj prvih nekaj otrok za pregled strukture
+                    sample = []
+                    # poišči ponavljajoče se zapise (npr. tabela cen)
+                    rows = []
+                    for child in result_el.iter():
+                        rows.append(child.tag.split("}")[-1])
+                    from collections import Counter
+                    tag_counts = Counter(rows)
+                    out["result_tags"] = dict(tag_counts.most_common(20))
+                    # vzorec: prvih `limit` "row" elementov (najpogostejši ponavljajoč tag globlje)
+                    inner_xml = ET.tostring(result_el, encoding="unicode")
+                    out["result_xml_head"] = inner_xml[:5000]
+                    out["result_child_count"] = len(children)
+                else:
+                    txt = (result_el.text or "")
+                    out["result_text_len"] = len(txt)
+                    out["result_text_head"] = txt[:5000]
+            else:
+                out["note"] = "GetCustomerPricesResult element ni najden v odgovoru"
+        except ET.ParseError as pe:
+            out["parse_error"] = str(pe)
+        return JSONResponse(out)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "type": type(e).__name__}, status_code=200)
