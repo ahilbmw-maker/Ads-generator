@@ -20447,3 +20447,142 @@ async def polcar_prices(limit: int = 50):
         return JSONResponse(out)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "type": type(e).__name__}, status_code=200)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  OPTIMIZACIJA SLIK — regeneracija prek OpenAI gpt-image-2
+#  Branje: maaarket API po SKU. Shramba: /data/regen (stabilni linki).
+#  Write nazaj na maaarket: /regen-push (stub — programer doda POST).
+# ═══════════════════════════════════════════════════════════════
+MAAARKET_IMAGES_URL = os.environ.get("MAAARKET_IMAGES_URL", "https://api.maaarket.si/api/v1/images")
+REGEN_DIR = DATA_DIR / "regen"
+REGEN_MODEL = os.environ.get("REGEN_OPENAI_MODEL", "gpt-image-2-2026-04-21")
+
+
+def _regen_ensure_dir():
+    try:
+        REGEN_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
+
+@app.get("/regen-read")
+async def regen_read(sku: str):
+    """Preberi slike izdelka po SKU iz maaarket (glavna + galerija)."""
+    sku = (sku or "").strip()
+    if not sku:
+        return JSONResponse({"ok": False, "error": "Manjka SKU"}, status_code=200)
+    try:
+        async with httpx.AsyncClient(timeout=30) as cli:
+            r = await cli.get(MAAARKET_IMAGES_URL, params={"sku": sku})
+        if r.status_code != 200:
+            return JSONResponse({"ok": False, "error": f"maaarket status {r.status_code}", "body": r.text[:300]}, status_code=200)
+        data = r.json()
+        return JSONResponse({"ok": True, "sku": sku, "data": data})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "type": type(e).__name__}, status_code=200)
+
+
+@app.get("/regen-img/{fname}")
+async def regen_img(fname: str):
+    """Servira regenerirano sliko (stabilen link za maaarket prenos)."""
+    # varnost: samo ime datoteke, brez poti
+    safe = os.path.basename(fname)
+    fpath = REGEN_DIR / safe
+    if not fpath.exists():
+        raise HTTPException(status_code=404, detail="ni najdena")
+    media = "image/png" if safe.lower().endswith(".png") else "image/jpeg"
+    return FileResponse(str(fpath), media_type=media)
+
+
+class RegenImageReq(BaseModel):
+    image_url: str
+    prompt: str
+    sku: Optional[str] = None
+    image_id: Optional[str] = None
+    kind: Optional[str] = None  # "main" ali "gallery"
+
+
+@app.post("/regen-image")
+async def regen_image(req: RegenImageReq):
+    """Prenese izvorno sliko, jo pošlje OpenAI gpt-image-2 edits z promptom, shrani rezultat, vrne stabilen URL."""
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if not openai_key:
+        return JSONResponse({"ok": False, "error": "OPENAI_API_KEY ni nastavljen."}, status_code=200)
+    src_url = (req.image_url or "").strip()
+    prompt = (req.prompt or "").strip()
+    if not src_url:
+        return JSONResponse({"ok": False, "error": "Manjka image_url"}, status_code=200)
+    if not prompt:
+        return JSONResponse({"ok": False, "error": "Manjka prompt"}, status_code=200)
+    _regen_ensure_dir()
+    # 1) prenesi izvorno sliko
+    try:
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as cli:
+            ir = await cli.get(src_url)
+        if ir.status_code != 200:
+            return JSONResponse({"ok": False, "error": f"Vir slike status {ir.status_code}"}, status_code=200)
+        src_bytes = ir.content
+        src_mime = ir.headers.get("content-type", "image/jpeg").split(";")[0]
+        src_ext = "png" if "png" in src_mime else "jpg"
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"Prenos vira: {e}"}, status_code=200)
+    # 2) OpenAI gpt-image-2 edits (multipart)
+    try:
+        files = {"image[]": (f"src.{src_ext}", src_bytes, src_mime)}
+        form = {"model": REGEN_MODEL, "prompt": prompt, "size": "1024x1024", "n": "1", "output_format": "png"}
+        async with httpx.AsyncClient(timeout=240) as hc:
+            resp = await hc.post(
+                "https://api.openai.com/v1/images/edits",
+                headers={"Authorization": f"Bearer {openai_key}"},
+                data=form, files=files,
+            )
+            result = resp.json()
+        if resp.status_code != 200:
+            return JSONResponse({"ok": False, "error": result.get("error", {}).get("message", str(result))[:300]}, status_code=200)
+        data_arr = result.get("data", [])
+        if not (data_arr and data_arr[0].get("b64_json")):
+            return JSONResponse({"ok": False, "error": "OpenAI ni vrnil slike: " + str(result)[:200]}, status_code=200)
+        out_b64 = data_arr[0]["b64_json"]
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"OpenAI: {e}"}, status_code=200)
+    # 3) shrani rezultat → stabilen URL
+    try:
+        import base64 as _b64m
+        out_bytes = _b64m.b64decode(out_b64)
+        fname = f"{uuid.uuid4().hex}.png"
+        (REGEN_DIR / fname).write_bytes(out_bytes)
+        public_url = f"/regen-img/{fname}"
+        return JSONResponse({
+            "ok": True,
+            "url": public_url,
+            "filename": fname,
+            "sku": req.sku,
+            "image_id": req.image_id,
+            "kind": req.kind,
+        })
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"Shranjevanje: {e}"}, status_code=200)
+
+
+class RegenPushReq(BaseModel):
+    sku: str
+    main: Optional[dict] = None       # {id, picture(link), picture_path}
+    gallery: Optional[List[dict]] = None  # [{id, picture(link), picture_path}, ...] samo spremenjene
+
+
+@app.post("/regen-push")
+async def regen_push(req: RegenPushReq):
+    """STUB — zapisovanje nazaj na maaarket še ni implementirano (čaka programerja).
+    Programer doda POST na maaarket write endpoint. Tu samo vrnemo, kaj BI poslali."""
+    payload = {"sku": req.sku}
+    if req.main:
+        payload["main"] = req.main
+    if req.gallery:
+        payload["gallery"] = req.gallery
+    return JSONResponse({
+        "ok": False,
+        "stub": True,
+        "note": "Zapisovanje nazaj na maaarket še ni implementirano. Spodaj je payload, ki bo poslan, ko programer doda write POST.",
+        "would_send": payload,
+    })
