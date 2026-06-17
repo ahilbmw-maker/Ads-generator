@@ -3059,6 +3059,13 @@ input[type="text"].error { border-color: var(--red) !important; }
                 <button id="bcViewC" onclick="bcSetView('kanban')" style="padding:4px 9px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">▥ Kanban</button>
               </div>
               <button id="bcOnlyCountries" onclick="bcToggleCountries()" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text-secondary);font-size:11px;font-family:inherit;cursor:pointer">🌍 Samo države</button>
+              <div style="display:flex;gap:2px;background:var(--surface2);border-radius:7px;padding:2px">
+                <button id="bcFilt-all" onclick="bcSetStatusFilter('all')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:var(--accent);color:#fff">Vse</button>
+                <button id="bcFilt-SCALE" onclick="bcSetStatusFilter('SCALE')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🟢 Scale</button>
+                <button id="bcFilt-DRŽI" onclick="bcSetStatusFilter('DRŽI')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🟡 Drži</button>
+                <button id="bcFilt-NE" onclick="bcSetStatusFilter('NE')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🔴 Ne</button>
+                <button id="bcFilt-WATCH" onclick="bcSetStatusFilter('WATCH')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🔵 Opazujem</button>
+              </div>
               <input type="text" id="bcSearch" placeholder="🔍 država / ad-set" oninput="bcRenderTable()" style="padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:11px;font-family:inherit;width:150px">
               <select id="bcSort" onchange="bcRenderTable()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:11px;font-family:inherit">
                 <option value="score">Najboljši kandidati ↓</option>
@@ -19377,11 +19384,27 @@ function bcToggleCountries(){
   bcRenderTable();
 }
 
+let bcStatusFilter = 'all';
+function bcSetStatusFilter(st){
+  bcStatusFilter = st;
+  for (const k of ['all','SCALE','DRŽI','NE','WATCH']){
+    const b = document.getElementById('bcFilt-'+k);
+    if (b){ b.style.background = (k===st)?'var(--accent)':'transparent'; b.style.color = (k===st)?'#fff':'var(--text-secondary)'; }
+  }
+  bcRenderTable();
+}
+
 function bcPrepareItems(){
   const q = (document.getElementById('bcSearch')?.value||'').toLowerCase();
   const sort = document.getElementById('bcSort')?.value || 'score';
   let items = bcAdsets.map(a => ({ a, sc: bcScore(a), cd: bcCooldownFor(a) }));
   if (bcOnlyCountries) items = items.filter(x => bcIsCountry(x.a.name));
+  if (bcStatusFilter !== 'all'){
+    items = items.filter(x => {
+      const st = x.cd ? 'WATCH' : x.sc.label;
+      return st === bcStatusFilter;
+    });
+  }
   if (q) items = items.filter(x => x.a.name.toLowerCase().includes(q) || (x.a.campaign||'').toLowerCase().includes(q));
   items.sort((x,y)=>{
     if (sort==='cpa_asc') return (x.a.cpa7??999)-(y.a.cpa7??999);
