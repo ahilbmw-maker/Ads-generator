@@ -20525,12 +20525,32 @@ async def regen_image(req: RegenImageReq):
         src_bytes = ir.content
         src_mime = ir.headers.get("content-type", "image/jpeg").split(";")[0]
         src_ext = "png" if "png" in src_mime else "jpg"
+        # izmeri original (za točno ujemanje resolucije na koncu)
+        src_w = src_h = None
+        try:
+            from PIL import Image as _PILImage
+            import io as _io2
+            with _PILImage.open(_io2.BytesIO(src_bytes)) as _im:
+                src_w, src_h = _im.size
+        except Exception:
+            src_w = src_h = None
     except Exception as e:
         return JSONResponse({"ok": False, "error": f"Prenos vira: {e}"}, status_code=200)
+    # izberi OpenAI size glede na razmerje originala (gpt-image-2 podpira 1024x1024, 1536x1024, 1024x1536)
+    def _pick_openai_size(w, h):
+        if not w or not h:
+            return "auto"
+        ar = w / h
+        if ar >= 1.25:
+            return "1536x1024"   # landscape
+        if ar <= 0.8:
+            return "1024x1536"   # portrait
+        return "1024x1024"       # ~kvadrat
+    openai_size = _pick_openai_size(src_w, src_h)
     # 2) OpenAI gpt-image-2 edits (multipart)
     try:
         files = {"image[]": (f"src.{src_ext}", src_bytes, src_mime)}
-        form = {"model": REGEN_MODEL, "prompt": prompt, "size": "1024x1024", "n": "1", "output_format": "png"}
+        form = {"model": REGEN_MODEL, "prompt": prompt, "size": openai_size, "n": "1", "output_format": "png"}
         async with httpx.AsyncClient(timeout=240) as hc:
             resp = await hc.post(
                 "https://api.openai.com/v1/images/edits",
@@ -20546,10 +20566,39 @@ async def regen_image(req: RegenImageReq):
         out_b64 = data_arr[0]["b64_json"]
     except Exception as e:
         return JSONResponse({"ok": False, "error": f"OpenAI: {e}"}, status_code=200)
-    # 3) shrani rezultat → stabilen URL
+    # 3) shrani rezultat → stabilen URL (resize na TOČNO original resolucijo)
     try:
         import base64 as _b64m
         out_bytes = _b64m.b64decode(out_b64)
+        resized = False
+        if src_w and src_h:
+            try:
+                from PIL import Image as _PILImage
+                import io as _io3
+                with _PILImage.open(_io3.BytesIO(out_bytes)) as _gen:
+                    _gen = _gen.convert("RGB")
+                    gw, gh = _gen.size
+                    target_ar = src_w / src_h
+                    gen_ar = gw / gh
+                    # COVER: prilagodi tako, da pokrije cel cilj, nato centriran crop (brez popačenja)
+                    if gen_ar > target_ar:
+                        # generirana širša → uskladi po višini, odreži stranice
+                        new_h = src_h
+                        new_w = int(round(gh and gw * (src_h / gh)))
+                    else:
+                        new_w = src_w
+                        new_h = int(round(gw and gh * (src_w / gw)))
+                    _gen2 = _gen.resize((max(new_w, src_w), max(new_h, src_h)), _PILImage.LANCZOS)
+                    gw2, gh2 = _gen2.size
+                    left = (gw2 - src_w) // 2
+                    top = (gh2 - src_h) // 2
+                    _gen3 = _gen2.crop((left, top, left + src_w, top + src_h))
+                    _buf = _io3.BytesIO()
+                    _gen3.save(_buf, format="PNG")
+                    out_bytes = _buf.getvalue()
+                    resized = True
+            except Exception:
+                resized = False
         fname = f"{uuid.uuid4().hex}.png"
         (REGEN_DIR / fname).write_bytes(out_bytes)
         public_url = f"/regen-img/{fname}"
@@ -20560,6 +20609,9 @@ async def regen_image(req: RegenImageReq):
             "sku": req.sku,
             "image_id": req.image_id,
             "kind": req.kind,
+            "src_size": (f"{src_w}x{src_h}" if src_w else None),
+            "openai_size": openai_size,
+            "resized": resized,
         })
     except Exception as e:
         return JSONResponse({"ok": False, "error": f"Shranjevanje: {e}"}, status_code=200)
