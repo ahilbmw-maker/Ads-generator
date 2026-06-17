@@ -20854,3 +20854,125 @@ async def _regen_worker_loop():
         except Exception as e:
             print(f"[regen-worker] napaka: {e}")
             await asyncio.sleep(5)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  SCALE LOG — dnevnik dvigov bidcapa (Analiza beta, scale po državah)
+#  Cooldown 7 POLNIH dni od datuma dviga. Match po imenu ad-seta.
+#  Persistenca /data, deljeno med brskalniki.
+# ═══════════════════════════════════════════════════════════════
+SCALE_LOG_FILE = DATA_DIR / "scale_log.json"
+SCALE_COOLDOWN_DAYS = 7
+_scale_log_lock = asyncio.Lock()
+
+
+def _scale_log_load():
+    try:
+        if SCALE_LOG_FILE.exists():
+            return json.loads(SCALE_LOG_FILE.read_text(encoding="utf-8")) or []
+    except Exception:
+        pass
+    return []
+
+
+def _scale_log_save(entries):
+    try:
+        SCALE_LOG_FILE.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _scale_cooldown_active(scaled_date_str: str):
+    """Vrne (active: bool, days_left: int, end_date: str).
+    Cooldown = 7 POLNIH dni od datuma dviga. Dvig 17.6. → aktiven do vključno 24.6., spet prost 25.6."""
+    try:
+        d = datetime.strptime(scaled_date_str[:10], "%Y-%m-%d").date()
+    except Exception:
+        return False, 0, ""
+    from datetime import timedelta as _td
+    end = d + _td(days=SCALE_COOLDOWN_DAYS)   # 17.6 + 7 = 24.6 (zadnji dan opazovanja); prost 25.6
+    today = datetime.now(timezone.utc).date()
+    days_left = (end - today).days
+    active = today <= end
+    return active, max(days_left, 0), end.isoformat()
+
+
+@app.get("/scale-log")
+async def scale_log_get():
+    """Vrne vse zapise z izračunanim cooldown statusom (aktivni + potekli)."""
+    entries = _scale_log_load()
+    out = []
+    for e in entries:
+        active, days_left, end_date = _scale_cooldown_active(e.get("scaled_date", ""))
+        out.append({**e, "cooldown_active": active, "days_left": days_left, "cooldown_end": end_date})
+    return JSONResponse({"ok": True, "entries": out, "cooldown_days": SCALE_COOLDOWN_DAYS})
+
+
+class ScaleLogReq(BaseModel):
+    ad_set: str
+    scaled_date: Optional[str] = None   # YYYY-MM-DD; če prazno → danes
+    bid_before: Optional[str] = None
+    bid_after: Optional[str] = None
+    cpa_before: Optional[float] = None
+    note: Optional[str] = None
+
+
+@app.post("/scale-log")
+async def scale_log_add(req: ScaleLogReq):
+    ad_set = (req.ad_set or "").strip()
+    if not ad_set:
+        return JSONResponse({"ok": False, "error": "Manjka ad_set"}, status_code=200)
+    sdate = (req.scaled_date or "").strip() or datetime.now(timezone.utc).date().isoformat()
+    entry = {
+        "id": uuid.uuid4().hex[:12],
+        "ad_set": ad_set,
+        "scaled_date": sdate,
+        "bid_before": req.bid_before,
+        "bid_after": req.bid_after,
+        "cpa_before": req.cpa_before,
+        "note": req.note,
+        "created": datetime.now(timezone.utc).isoformat(),
+    }
+    async with _scale_log_lock:
+        entries = _scale_log_load()
+        # če isti ad-set že ima AKTIVEN cooldown, ga posodobi namesto podvajanja
+        replaced = False
+        for i, e in enumerate(entries):
+            if e.get("ad_set") == ad_set:
+                active, _, _ = _scale_cooldown_active(e.get("scaled_date", ""))
+                if active:
+                    entries[i] = entry
+                    replaced = True
+                    break
+        if not replaced:
+            entries.append(entry)
+        _scale_log_save(entries)
+    return JSONResponse({"ok": True, "id": entry["id"]})
+
+
+@app.delete("/scale-log/{entry_id}")
+async def scale_log_delete(entry_id: str):
+    async with _scale_log_lock:
+        entries = _scale_log_load()
+        entries = [e for e in entries if e.get("id") != entry_id]
+        _scale_log_save(entries)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/scale-log-prune")
+async def scale_log_prune():
+    """Odstrani zapise, ki so potekli pred >30 dnevi (čiščenje starega dnevnika)."""
+    from datetime import timedelta as _td
+    cutoff = datetime.now(timezone.utc).date() - _td(days=30)
+    async with _scale_log_lock:
+        entries = _scale_log_load()
+        kept = []
+        for e in entries:
+            try:
+                d = datetime.strptime(e.get("scaled_date", "")[:10], "%Y-%m-%d").date()
+                if d >= cutoff:
+                    kept.append(e)
+            except Exception:
+                kept.append(e)
+        _scale_log_save(kept)
+    return JSONResponse({"ok": True, "kept": len(kept)})
