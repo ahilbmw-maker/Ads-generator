@@ -3048,6 +3048,26 @@ input[type="text"].error { border-color: var(--red) !important; }
       <!-- DESNO: Rezultati + AI analiza -->
       <div>
 
+        <!-- ═══ SCALE PO DRŽAVAH (BIDCAP) — NOVA SEKCIJA ═══ -->
+        <div class="card" id="bcScaleCard" style="display:none;margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:10px">
+            <span class="slabel">🚀 SCALE PO DRŽAVAH (BIDCAP)</span>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="text" id="bcSearch" placeholder="🔍 država / ad-set" oninput="bcRenderTable()" style="padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:11px;font-family:inherit;width:150px">
+              <select id="bcSort" onchange="bcRenderTable()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:11px;font-family:inherit">
+                <option value="score">Najboljši kandidati ↓</option>
+                <option value="cpa_asc">CPA ↑ najboljši</option>
+                <option value="spend_desc">Spend ↓</option>
+                <option value="purch_desc">Nakupi ↓</option>
+              </select>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:12px">
+            Cilj: CPA &lt; 7.5€ · min 15 nakupov (7 dni) · trend, frekvenca, CTR, bid headroom. 🟢 SCALE · 🟡 DRŽI · 🔴 NE · 🔵 OPAZUJEM (7 dni po dvigu)
+          </div>
+          <div id="bcTableWrap"></div>
+        </div>
+
         <!-- ─── SCALING RECOMMENDER HERO ─── -->
         <div id="beta-recommender-hero" style="background:linear-gradient(135deg,#7c3aed 0%,#a855f7 100%);color:white;border-radius:12px;padding:18px 22px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
           <div style="flex:1;min-width:240px">
@@ -18032,6 +18052,15 @@ function betaParseCSV(text) {
     return obj;
   });
 
+  // ── SCALE PO DRŽAVAH (bidcap) — nova sekcija ──
+  try {
+    bcAdsets = bcParseFromRows(rows);
+    if (bcAdsets.length){
+      document.getElementById('bcScaleCard').style.display = 'block';
+      bcLoadScaleLog().then(bcRenderTable);
+    }
+  } catch(e){ console.error('bcParse', e); }
+
   // Grupiraj po kampaniji — OHRANI DNEVNE PODATKE
   const camps = {};
   for (const r of rows) {
@@ -19070,6 +19099,250 @@ function betaRenderBody(body, color) {
   if (inTable) flushTable();
   return html;
 }
+// ═══════════════════════════════════════════════════════════════
+//  SCALE PO DRŽAVAH (BIDCAP) — faza 2+3
+//  Parsing 7d po ad-setih → scoring → tabela → scale-an + cooldown
+// ═══════════════════════════════════════════════════════════════
+let bcAdsets = [];        // agregirani ad-seti
+let bcScaleLog = [];      // iz /scale-log (z cooldown statusom)
+const BC_CPA_TARGET = 7.5;
+const BC_MIN_PURCH = 15;
+
+function bcNum(x){ const n = parseFloat(String(x==null?'':x).replace(',','.')); return isNaN(n)?0:n; }
+
+// glavni vstop: pokliče se iz betaParseCSV z že-parsanimi rows
+function bcParseFromRows(rows){
+  const sets = {};
+  for (const r of rows){
+    const name = r['Ad set name'];
+    const day = r['Day'];
+    if (!name || !day) continue;
+    if (!sets[name]) sets[name] = { name, days:{}, bidByDay:{}, budget:'', btype:'' };
+    const sp = bcNum(r['Amount spent (EUR)']);
+    const pu = Math.round(bcNum(r['Purchases']));
+    const freq = bcNum(r['Frequency']);
+    const ctr = bcNum(r['CTR (link click-through rate)']);
+    const cpc = bcNum(r['CPC (cost per link click)']);
+    const atc = Math.round(bcNum(r['Adds to cart']));
+    const bid = r['Bid'] ? bcNum(r['Bid']) : null;
+    const d = sets[name].days[day] || { spend:0, purch:0, freqSum:0, ctrSum:0, n:0, atc:0, cpc:0 };
+    d.spend += sp; d.purch += pu; d.atc += atc;
+    d.freqSum += freq; d.ctrSum += ctr; d.cpc += cpc; d.n += 1;
+    sets[name].days[day] = d;
+    if (bid != null && bid > 0) sets[name].bidByDay[day] = bid;
+    if (r['Campaign Budget']) sets[name].budget = r['Campaign Budget'];
+    if (r['Bid type']) sets[name].btype = r['Bid type'];
+  }
+  // agregacija + metrike
+  const out = [];
+  for (const name in sets){
+    const s = sets[name];
+    const dayKeys = Object.keys(s.days).sort();
+    if (!dayKeys.length) continue;
+    let spend=0, purch=0;
+    const series = dayKeys.map(dk => {
+      const d = s.days[dk];
+      spend += d.spend; purch += d.purch;
+      return { day:dk, spend:d.spend, purch:d.purch, cpa:(d.purch? d.spend/d.purch : null),
+               freq:(d.n? d.freqSum/d.n:0), ctr:(d.n? d.ctrSum/d.n:0) };
+    });
+    const cpa7 = purch ? spend/purch : null;
+    // zadnji 3 dnevi
+    const last3 = series.slice(-3);
+    const sp3 = last3.reduce((a,b)=>a+b.spend,0);
+    const pu3 = last3.reduce((a,b)=>a+b.purch,0);
+    const cpa3 = pu3 ? sp3/pu3 : null;
+    // frekvenca/ctr povprečje 7d (utežno po dnevih z aktivnostjo)
+    const activeDays = series.filter(d=>d.spend>0);
+    const avgFreq = activeDays.length ? activeDays.reduce((a,b)=>a+b.freq,0)/activeDays.length : 0;
+    const avgCtr = activeDays.length ? activeDays.reduce((a,b)=>a+b.ctr,0)/activeDays.length : 0;
+    // trenutni bid = zadnji dan, ki ima bid
+    const bidDays = Object.keys(s.bidByDay).sort();
+    const curBid = bidDays.length ? s.bidByDay[bidDays[bidDays.length-1]] : null;
+    out.push({
+      name, spend, purch, cpa7, cpa3, avgFreq, avgCtr, curBid,
+      budget:s.budget, btype:s.btype, series, nDays:dayKeys.length
+    });
+  }
+  return out;
+}
+
+// SCORING — profesionalna deterministična pravila
+function bcScore(a){
+  const reasons = [];
+  let status = '🔴', label='NE', suggBid=null;
+
+  // trdi pogoji za kandidata
+  const hasData = a.purch >= BC_MIN_PURCH;
+  const cpaOk = a.cpa7 != null && a.cpa7 < BC_CPA_TARGET;
+
+  if (!hasData){
+    reasons.push(`Premalo podatkov (${a.purch} nakupov < ${BC_MIN_PURCH}) — CPA ni zanesljiv.`);
+    return { status:'🔴', label:'NE', score:-1, reasons, suggBid:null };
+  }
+  if (!cpaOk){
+    reasons.push(`CPA 7d ${a.cpa7!=null?a.cpa7.toFixed(2):'—'}€ ≥ cilj ${BC_CPA_TARGET}€ — ni za scale.`);
+    // a če je blizu in trend dober → DRŽI
+    if (a.cpa7 != null && a.cpa7 < BC_CPA_TARGET*1.15){
+      return { status:'🟡', label:'DRŽI', score:0, reasons:['CPA rahlo nad ciljem — počakaj/optimiziraj, ne dvigaj.'], suggBid:null };
+    }
+    return { status:'🔴', label:'NE', score:-1, reasons, suggBid:null };
+  }
+
+  // === kandidat: CPA pod ciljem + dovolj podatkov ===
+  let score = 0;
+  // 1) CPA headroom
+  const headroom = (BC_CPA_TARGET - a.cpa7) / BC_CPA_TARGET; // 0..1
+  score += headroom * 40;
+  reasons.push(`CPA 7d ${a.cpa7.toFixed(2)}€ — ${(headroom*100).toFixed(0)}% pod ciljem (prostor za dvig).`);
+
+  // 2) CPA trend 3d vs 7d
+  if (a.cpa3 != null){
+    const delta = (a.cpa3 - a.cpa7) / a.cpa7;
+    if (delta <= -0.05){ score += 20; reasons.push(`Trend ↑: CPA zadnje 3d (${a.cpa3.toFixed(2)}€) BOLJŠI od 7d — pospešuje.`); }
+    else if (delta <= 0.10){ score += 10; reasons.push(`Trend stabilen: 3d ${a.cpa3.toFixed(2)}€ ≈ 7d.`); }
+    else { score -= 10; reasons.push(`⚠ Trend ↓: CPA 3d (${a.cpa3.toFixed(2)}€) slabši od 7d — previdno.`); }
+  }
+
+  // 3) frekvenca
+  if (a.avgFreq && a.avgFreq < 2.0){ score += 15; reasons.push(`Frekvenca nizka (${a.avgFreq.toFixed(2)}) — še veliko nezasičenega dosega.`); }
+  else if (a.avgFreq < 3.0){ score += 8; reasons.push(`Frekvenca zmerna (${a.avgFreq.toFixed(2)}) — prostor za rast.`); }
+  else { score -= 8; reasons.push(`⚠ Frekvenca visoka (${a.avgFreq.toFixed(2)}) — nasičenost, dvig manj učinkovit.`); }
+
+  // 4) CTR (zdravje kreative)
+  if (a.avgCtr >= 1.5){ score += 8; reasons.push(`CTR zdrav (${a.avgCtr.toFixed(2)}%).`); }
+  else if (a.avgCtr > 0 && a.avgCtr < 0.8){ score -= 5; reasons.push(`⚠ CTR nizek (${a.avgCtr.toFixed(2)}%) — kreativa slabi.`); }
+
+  // 5) volumen
+  if (a.purch >= 50){ score += 10; reasons.push(`Visok volumen (${a.purch} nakupov) — zelo zanesljivo.`); }
+  else if (a.purch >= 25){ score += 5; }
+
+  // odločitev
+  if (score >= 50){ status='🟢'; label='SCALE'; }
+  else if (score >= 25){ status='🟡'; label='DRŽI'; }
+  else { status='🟡'; label='DRŽI'; }
+
+  // predlog novega bidcapa: dvig sorazmeren s headroom + trenutni bid
+  if (a.curBid){
+    let pct = 0.10; // osnovni dvig 10%
+    if (headroom > 0.3) pct = 0.20;
+    else if (headroom > 0.15) pct = 0.15;
+    if (a.avgFreq >= 3) pct = Math.min(pct, 0.10); // pri nasičenosti manj
+    suggBid = Math.round(a.curBid * (1+pct) * 100)/100;
+    reasons.push(`Predlog bidcap: ${a.curBid}€ → ${suggBid}€ (+${(pct*100).toFixed(0)}%).`);
+  } else {
+    reasons.push('Trenutni bidcap ni razviden iz CSV (morda CBO/ad-set budget).');
+  }
+
+  return { status, label, score, reasons, suggBid };
+}
+
+async function bcLoadScaleLog(){
+  try{
+    const r = await fetch('/scale-log');
+    const d = await r.json();
+    bcScaleLog = (d && d.ok && d.entries) ? d.entries : [];
+  }catch(e){ bcScaleLog = []; }
+}
+
+function bcCooldownFor(name){
+  // vrne aktiven cooldown zapis za ad-set (ime), če obstaja
+  return bcScaleLog.find(e => e.ad_set === name && e.cooldown_active);
+}
+
+function bcRenderTable(){
+  const wrap = document.getElementById('bcTableWrap');
+  if (!wrap) return;
+  const q = (document.getElementById('bcSearch')?.value||'').toLowerCase();
+  const sort = document.getElementById('bcSort')?.value || 'score';
+
+  // izračunaj scoring za vsak ad-set
+  let items = bcAdsets.map(a => ({ a, sc: bcScore(a), cd: bcCooldownFor(a.name) }));
+  // filter iskanje
+  if (q) items = items.filter(x => x.a.name.toLowerCase().includes(q));
+  // sort
+  items.sort((x,y)=>{
+    if (sort==='cpa_asc') return (x.a.cpa7??999)-(y.a.cpa7??999);
+    if (sort==='spend_desc') return y.a.spend-x.a.spend;
+    if (sort==='purch_desc') return y.a.purch-x.a.purch;
+    return y.sc.score - x.sc.score; // score
+  });
+
+  if (!items.length){ wrap.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);padding:14px;text-align:center">Ni ad-setov za prikaz.</div>'; return; }
+
+  let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
+    + '<thead><tr style="text-align:left;color:var(--text-tertiary);font-size:11px">'
+    + '<th style="padding:7px 8px">Status</th><th style="padding:7px 8px">Ad-set / država</th>'
+    + '<th style="padding:7px 8px;text-align:right">CPA 7d</th><th style="padding:7px 8px;text-align:right">CPA 3d</th>'
+    + '<th style="padding:7px 8px;text-align:right">Nakupi</th><th style="padding:7px 8px;text-align:right">Spend</th>'
+    + '<th style="padding:7px 8px;text-align:right">Freq</th><th style="padding:7px 8px;text-align:right">CTR</th>'
+    + '<th style="padding:7px 8px;text-align:right">Bid</th><th style="padding:7px 8px;text-align:right">→ Predlog</th>'
+    + '<th style="padding:7px 8px"></th></tr></thead><tbody>';
+
+  for (const {a, sc, cd} of items){
+    const inCooldown = !!cd;
+    const rowStyle = inCooldown
+      ? 'border-top:1px solid var(--border);opacity:0.55;text-decoration:line-through'
+      : 'border-top:1px solid var(--border)';
+    const statusBadge = inCooldown ? '🔵' : sc.status;
+    const statusLabel = inCooldown ? `OPAZUJEM (${cd.days_left}d)` : sc.label;
+    const cpa7 = a.cpa7!=null? a.cpa7.toFixed(2)+'€' : '—';
+    const cpa3 = a.cpa3!=null? a.cpa3.toFixed(2)+'€' : '—';
+    const cpa7color = (a.cpa7!=null && a.cpa7<BC_CPA_TARGET)?'#3fb950':(a.cpa7!=null?'#ef4444':'var(--text-tertiary)');
+    const sugg = sc.suggBid ? sc.suggBid+'€' : '—';
+    const safeName = a.name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    html += `<tr style="${rowStyle}">`
+      + `<td style="padding:7px 8px;white-space:nowrap">${statusBadge} <span style="font-size:10px;color:var(--text-secondary)">${statusLabel}</span></td>`
+      + `<td style="padding:7px 8px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${safeName}">${a.name}</td>`
+      + `<td style="padding:7px 8px;text-align:right;color:${cpa7color};font-weight:600">${cpa7}</td>`
+      + `<td style="padding:7px 8px;text-align:right">${cpa3}</td>`
+      + `<td style="padding:7px 8px;text-align:right">${a.purch}</td>`
+      + `<td style="padding:7px 8px;text-align:right">${a.spend.toFixed(0)}€</td>`
+      + `<td style="padding:7px 8px;text-align:right">${a.avgFreq?a.avgFreq.toFixed(2):'—'}</td>`
+      + `<td style="padding:7px 8px;text-align:right">${a.avgCtr?a.avgCtr.toFixed(2)+'%':'—'}</td>`
+      + `<td style="padding:7px 8px;text-align:right">${a.curBid?a.curBid+'€':'—'}</td>`
+      + `<td style="padding:7px 8px;text-align:right;font-weight:600;color:${sc.suggBid?'#7c3aed':'var(--text-tertiary)'}">${sugg}</td>`
+      + `<td style="padding:7px 8px;white-space:nowrap">`;
+    if (inCooldown){
+      const cpaBeforeTxt = cd.cpa_before!=null ? `CPA pred: ${Number(cd.cpa_before).toFixed(2)}€ → zdaj ${cpa7}` : '';
+      html += `<button onclick="bcUnscale('${cd.id}')" style="font-size:10px;padding:3px 8px;background:transparent;border:1px solid var(--border);border-radius:5px;cursor:pointer;color:var(--text-secondary)" title="${cpaBeforeTxt}">↩ prekliči</button>`;
+    } else {
+      html += `<button onclick="bcScaleAn('${safeName}', ${a.curBid||'null'}, ${sc.suggBid||'null'}, ${a.cpa7!=null?a.cpa7.toFixed(2):'null'})" style="font-size:10px;padding:3px 8px;background:var(--accent);color:#fff;border:none;border-radius:5px;cursor:pointer">✓ Scale-an</button>`;
+    }
+    html += `</td></tr>`;
+    // razlogi (AI analiza) — razširljiva vrstica
+    html += `<tr style="${inCooldown?'opacity:0.55':''}"><td colspan="11" style="padding:0 8px 9px 8px;border:none">`
+      + `<div style="font-size:11px;color:var(--text-secondary);line-height:1.5">${sc.reasons.map(r=>'• '+r).join('<br>')}`;
+    if (inCooldown && cd.cpa_before!=null){
+      html += `<br><span style="color:#7c3aed">📊 Dvignjen ${cd.scaled_date} · CPA pred: ${Number(cd.cpa_before).toFixed(2)}€ → trenutni ${cpa7} · bid ${cd.bid_before||'?'}→${cd.bid_after||'?'}</span>`;
+    }
+    html += `</div></td></tr>`;
+  }
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
+}
+
+async function bcScaleAn(name, bidBefore, bidAfter, cpaBefore){
+  const after = prompt(`Scale-an "${name}".\nNov bidcap (predlog ${bidAfter||'?'}€). Vpiši dejanski nov bid:`, bidAfter||'');
+  if (after === null) return; // preklic
+  try{
+    const r = await fetch('/scale-log', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ad_set:name, bid_before: bidBefore!=null?String(bidBefore):null,
+        bid_after: after||null, cpa_before: cpaBefore!=null?Number(cpaBefore):null }) });
+    const d = await r.json();
+    if (d.ok){ await bcLoadScaleLog(); bcRenderTable(); }
+    else alert('Napaka: '+(d.error||'?'));
+  }catch(e){ alert('Napaka: '+e); }
+}
+
+async function bcUnscale(id){
+  if (!confirm('Prekliči ta scale (odstrani iz opazovanja)?')) return;
+  try{
+    await fetch('/scale-log/'+id, { method:'DELETE' });
+    await bcLoadScaleLog(); bcRenderTable();
+  }catch(e){ alert('Napaka: '+e); }
+}
+
 // ── /BETA ANALIZA ──────────────────────────────────────────────
 
 // ── KNJIGOVODSTVO (Polcar XML → CSV) ─────────────────────────────
