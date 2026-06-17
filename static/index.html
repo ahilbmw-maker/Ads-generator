@@ -12509,7 +12509,8 @@ function regenCard(o) {
   const path = (o.picture_path || '').replace(/"/g, '&quot;');
   const imgStyle = 'width:100%;height:340px;object-fit:contain;background:#fff;border-radius:8px;border:1px solid var(--border)';
   return '<div class="regen-card" data-id="' + safeId + '" data-kind="' + o.kind + '" data-path="' + path + '" data-picture="' + pic + '" style="border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--bg)">'
-    + '<div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:12px">' + o.label + ' · ID ' + safeId + '</div>'
+    + '<div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:10px">' + o.label + ' · ID ' + safeId + '</div>'
+    + '<input type="text" class="regen-prompt-one" placeholder="Prompt za to sliko (prazno = uporabi splošni prompt zgoraj)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text-primary);box-sizing:border-box;margin-bottom:12px">'
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">'
     // LEVO: original
     + '<div>'
@@ -12532,9 +12533,12 @@ async function regenOne(btn) {
   const card = btn.closest('.regen-card');
   const after = card.querySelector('.regen-after');
   const actions = card.querySelector('.regen-actions');
-  const prompt = (document.getElementById('regenPrompt').value || '').trim();
+  const onePromptEl = card.querySelector('.regen-prompt-one');
+  const onePrompt = (onePromptEl && onePromptEl.value || '').trim();
+  const globalPrompt = (document.getElementById('regenPrompt').value || '').trim();
+  const prompt = onePrompt || globalPrompt;
   const sku = (document.getElementById('regenSku').value || '').trim();
-  if (!prompt) { after.innerHTML = '<span style="color:#ef4444;font-size:12px">Vpiši prompt zgoraj.</span>'; return; }
+  if (!prompt) { after.innerHTML = '<span style="color:#ef4444;font-size:12px">Vpiši prompt (splošnega zgoraj ali per sliko).</span>'; return; }
   btn.disabled = true;
   after.innerHTML = '<span style="color:var(--text-tertiary);font-size:12px">Generiram (lahko traja ~30s)...</span>';
   try {
