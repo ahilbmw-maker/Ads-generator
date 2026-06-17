@@ -1480,10 +1480,34 @@ input[type="text"].error { border-color: var(--red) !important; }
         style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
         🎬 Higgsfield
       </button>
+      <button class="kreative-tab-btn" id="krTab-regen" onclick="krSwitchTab('regen')"
+        style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+        🖼️ Optimizacija slik
+      </button>
     </div>
 
-    <!-- Tab: Vrsta (čakalna vrsta generiranja) -->
-    <div id="kr-panel-queue" style="display:none;padding:16px">
+    <!-- Tab: Optimizacija slik (regeneracija prek OpenAI gpt-image-2) -->
+    <div id="kr-panel-regen" style="display:none;padding:16px">
+      <div style="margin-bottom:14px">
+        <span class="slabel">🖼️ OPTIMIZACIJA SLIK</span>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:3px">Preberi slike izdelka po SKU, regeneriraj z OpenAI gpt-image-2, prenesi rezultat. Zapis nazaj na maaarket še ni aktiven (ročni download).</div>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+        <input id="regenSku" type="text" placeholder="SKU (npr. MINIMOJSTER)" style="flex:1;min-width:200px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text-primary)">
+        <button onclick="regenLoad()" style="padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Preberi slike</button>
+      </div>
+      <div id="regenStatus" style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px"></div>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Prompt za regeneracijo</label>
+        <textarea id="regenPrompt" rows="3" placeholder="Npr. Odstrani ozadje in postavi izdelek na čisto belo ozadje, profesionalna studijska osvetlitev." style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text-primary);box-sizing:border-box;resize:vertical;font-family:inherit"></textarea>
+      </div>
+
+      <div id="regenGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px"></div>
+    </div>
+
+
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div>
           <span class="slabel">⏳ ČAKALNA VRSTA GENERIRANJA</span>
@@ -12335,6 +12359,8 @@ async function odpEcontCheck(orderNumber) {
 function krSwitchTab(tab) {
   document.getElementById('kr-panel-gemini').style.display = tab === 'gemini' ? 'block' : 'none';
   document.getElementById('kr-panel-higgsfield').style.display = tab === 'higgsfield' ? 'block' : 'none';
+  const rp = document.getElementById('kr-panel-regen');
+  if (rp) rp.style.display = tab === 'regen' ? 'block' : 'none';
   const qp = document.getElementById('kr-panel-queue');
   if (qp) qp.style.display = tab === 'queue' ? 'block' : 'none';
   document.querySelectorAll('.kreative-tab-btn').forEach(btn => {
@@ -12351,6 +12377,96 @@ function krSwitchTab(tab) {
   if (tab === 'queue' && typeof kQueueRender === 'function') kQueueRender();
   try { localStorage.setItem('slx_active_subtab', tab); } catch(e) {}
 }
+
+// ── OPTIMIZACIJA SLIK (regen) ─────────────────────────────────
+let _regenData = null;
+async function regenLoad() {
+  const sku = (document.getElementById('regenSku').value || '').trim();
+  const st = document.getElementById('regenStatus');
+  const grid = document.getElementById('regenGrid');
+  if (!sku) { st.textContent = 'Vpiši SKU.'; return; }
+  st.textContent = 'Berem slike...';
+  grid.innerHTML = '';
+  try {
+    const r = await fetch('/regen-read?sku=' + encodeURIComponent(sku));
+    const d = await r.json();
+    if (!d.ok) { st.innerHTML = '<span style="color:#ef4444">✗ ' + (d.error || 'napaka') + '</span>'; return; }
+    _regenData = d.data;
+    const main = d.data || {};
+    const gallery = Array.isArray(d.data.gallery) ? d.data.gallery : [];
+    st.innerHTML = '<span style="color:#3fb950">✓ Najdeno</span> · izdelek ID ' + (main.id || '—') + ' · galerija ' + gallery.length;
+    let html = '';
+    html += regenCard({ id: main.id, picture: main.picture, picture_path: main.picture_path, kind: 'main', label: 'Glavna slika' });
+    gallery.forEach((g, i) => {
+      html += regenCard({ id: g.id, picture: g.picture, picture_path: g.picture_path, kind: 'gallery', label: 'Galerija #' + (i+1) });
+    });
+    grid.innerHTML = html;
+  } catch(e) {
+    st.innerHTML = '<span style="color:#ef4444">✗ ' + e + '</span>';
+  }
+}
+
+function regenCard(o) {
+  const safeId = String(o.id || '');
+  const pic = (o.picture || '').replace(/"/g, '&quot;');
+  const path = (o.picture_path || '').replace(/"/g, '&quot;');
+  return '<div class="regen-card" data-id="' + safeId + '" data-kind="' + o.kind + '" data-path="' + path + '" data-picture="' + pic + '" style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--bg)">'
+    + '<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px">' + o.label + ' · ID ' + safeId + '</div>'
+    + '<img src="' + pic + '" style="width:100%;height:180px;object-fit:contain;background:#fff;border-radius:6px" loading="lazy">'
+    + '<button onclick="regenOne(this)" style="margin-top:8px;width:100%;padding:8px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">Regeneriraj</button>'
+    + '<div class="regen-out" style="margin-top:8px"></div>'
+    + '</div>';
+}
+
+async function regenOne(btn) {
+  const card = btn.closest('.regen-card');
+  const out = card.querySelector('.regen-out');
+  const prompt = (document.getElementById('regenPrompt').value || '').trim();
+  const sku = (document.getElementById('regenSku').value || '').trim();
+  if (!prompt) { out.innerHTML = '<span style="color:#ef4444;font-size:11px">Vpiši prompt zgoraj.</span>'; return; }
+  btn.disabled = true; out.innerHTML = '<span style="color:var(--text-tertiary);font-size:11px">Generiram (lahko traja ~30s)...</span>';
+  try {
+    const r = await fetch('/regen-image', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_url: card.dataset.picture,
+        prompt: prompt,
+        sku: sku,
+        image_id: card.dataset.id,
+        kind: card.dataset.kind
+      })
+    });
+    const d = await r.json();
+    if (!d.ok) { out.innerHTML = '<span style="color:#ef4444;font-size:11px">✗ ' + (d.error || 'napaka') + '</span>'; btn.disabled = false; return; }
+    card.dataset.newUrl = d.url;
+    out.innerHTML = '<img src="' + d.url + '" style="width:100%;height:180px;object-fit:contain;background:#fff;border-radius:6px">'
+      + '<div style="display:flex;gap:6px;margin-top:6px">'
+      + '<a href="' + d.url + '" download style="flex:1;text-align:center;padding:7px;background:#3fb950;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none">⬇ Prenesi</a>'
+      + '<button onclick="regenPush(this)" style="flex:1;padding:7px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer">Pošlji nazaj (stub)</button>'
+      + '</div>';
+  } catch(e) {
+    out.innerHTML = '<span style="color:#ef4444;font-size:11px">✗ ' + e + '</span>';
+  }
+  btn.disabled = false;
+}
+
+async function regenPush(btn) {
+  const card = btn.closest('.regen-card');
+  const sku = (document.getElementById('regenSku').value || '').trim();
+  const newUrl = card.dataset.newUrl;
+  if (!newUrl) return;
+  const fullUrl = location.origin + newUrl;
+  const item = { id: card.dataset.id, picture: fullUrl, picture_path: card.dataset.path };
+  const body = { sku: sku };
+  if (card.dataset.kind === 'main') body.main = item; else body.gallery = [item];
+  btn.disabled = true; btn.textContent = 'Pošiljam...';
+  try {
+    const r = await fetch('/regen-push', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const d = await r.json();
+    btn.textContent = d.stub ? 'Stub (še ni zapisa)' : (d.ok ? '✓ Poslano' : '✗ napaka');
+  } catch(e) { btn.textContent = '✗ napaka'; }
+}
+// ── /OPTIMIZACIJA SLIK ────────────────────────────────────────
 
 const HF_BASE = 'https://api.maaarket.si';
 const hfSlots = [null, null, null];
