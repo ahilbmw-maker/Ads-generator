@@ -20550,7 +20550,7 @@ async def regen_image(req: RegenImageReq):
     # 2) OpenAI gpt-image-2 edits (multipart)
     try:
         files = {"image[]": (f"src.{src_ext}", src_bytes, src_mime)}
-        form = {"model": REGEN_MODEL, "prompt": prompt, "size": openai_size, "n": "1", "output_format": "png"}
+        form = {"model": REGEN_MODEL, "prompt": prompt, "size": openai_size, "n": "1", "output_format": "jpeg"}
         async with httpx.AsyncClient(timeout=240) as hc:
             resp = await hc.post(
                 "https://api.openai.com/v1/images/edits",
@@ -20594,12 +20594,12 @@ async def regen_image(req: RegenImageReq):
                     top = (gh2 - src_h) // 2
                     _gen3 = _gen2.crop((left, top, left + src_w, top + src_h))
                     _buf = _io3.BytesIO()
-                    _gen3.save(_buf, format="PNG")
+                    _gen3.save(_buf, format="JPEG", quality=90)
                     out_bytes = _buf.getvalue()
                     resized = True
             except Exception:
                 resized = False
-        fname = f"{uuid.uuid4().hex}.png"
+        fname = f"{uuid.uuid4().hex}.jpg"
         (REGEN_DIR / fname).write_bytes(out_bytes)
         public_url = f"/regen-img/{fname}"
         return JSONResponse({
