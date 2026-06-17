@@ -12735,11 +12735,11 @@ function regenQueueRender(jobs) {
     const statusLabel = job.status === 'pending' ? 'čaka' : (job.status === 'processing' ? 'generira...' : (job.status === 'error' ? 'napaka' : 'gotovo'));
     let thumbs = job.images.map(im => {
       if (im.status === 'done' && im.result_url) {
-        return '<div style="text-align:center"><img src="' + im.result_url + '" style="width:120px;height:80px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:6px"><div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">' + (im.kind === 'main' ? 'glavna' : 'ID ' + im.image_id) + '</div></div>';
+        return '<div style="text-align:center"><a href="' + im.result_url + '" target="_blank" rel="noopener"><img src="' + im.result_url + '" style="width:100%;height:170px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:8px;cursor:zoom-in"></a><div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">' + (im.kind === 'main' ? 'glavna' : 'ID ' + im.image_id) + '</div></div>';
       }
       const c = im.status === 'error' ? '#ef4444' : 'var(--text-tertiary)';
       const t = im.status === 'error' ? '✗' : '⏳';
-      return '<div style="width:120px;height:80px;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:6px;color:' + c + ';font-size:11px" title="' + (im.error || '') + '">' + t + ' ' + (im.kind === 'main' ? 'glavna' : im.image_id) + '</div>';
+      return '<div style="width:100%;height:170px;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:8px;color:' + c + ';font-size:12px" title="' + (im.error || '') + '">' + t + ' ' + (im.kind === 'main' ? 'glavna' : im.image_id) + '</div>';
     }).join('');
     return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--bg)">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px;flex-wrap:wrap">'
@@ -12749,7 +12749,7 @@ function regenQueueRender(jobs) {
       +     '<button onclick="regenQueueDelete(\'' + job.id + '\')" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">Odstrani</button>'
       +   '</div>'
       + '</div>'
-      + '<div style="display:flex;flex-wrap:wrap;gap:8px">' + thumbs + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px">' + thumbs + '</div>'
       + '</div>';
   }).join('');
   if (anyActive) startRegenPoll(); else stopRegenPoll();
