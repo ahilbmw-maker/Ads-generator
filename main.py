@@ -20795,28 +20795,33 @@ async def _regen_worker_loop():
             if not target:
                 await asyncio.sleep(5)
                 continue
-            # generiraj vsako sliko zaporedno (zunaj lock-a — dolgo traja)
+            # generiraj slike PARALELNO (omejeno na 3 hkrati — OpenAI rate limit)
             job_id = target["id"]
-            for idx, im in enumerate(target["images"]):
+            _sema = asyncio.Semaphore(3)
+
+            async def _process_image(idx, im):
                 if im.get("status") == "done":
-                    continue
-                url, meta, err = await _regen_generate_one(im.get("src_url", ""), im.get("prompt", ""))
-                # zapiši rezultat nazaj v vrsto (ponovno naloži, ker se je morda spremenila)
+                    return
+                async with _sema:
+                    url, meta, err = await _regen_generate_one(im.get("src_url", ""), im.get("prompt", ""))
+                # zapiši rezultat takoj (sproti viden napredek)
                 async with _regen_queue_lock:
-                    jobs = _regen_queue_load()
-                    jj = next((x for x in jobs if x.get("id") == job_id), None)
-                    if jj is None:
-                        break  # job izbrisan med obdelavo
-                    if idx < len(jj["images"]):
+                    jobs2 = _regen_queue_load()
+                    jj2 = next((x for x in jobs2 if x.get("id") == job_id), None)
+                    if jj2 is None:
+                        return
+                    if idx < len(jj2["images"]):
                         if err:
-                            jj["images"][idx]["status"] = "error"
-                            jj["images"][idx]["error"] = err
+                            jj2["images"][idx]["status"] = "error"
+                            jj2["images"][idx]["error"] = err
                         else:
-                            jj["images"][idx]["status"] = "done"
-                            jj["images"][idx]["result_url"] = url
-                            jj["images"][idx]["error"] = None
-                        jj["updated"] = datetime.now(timezone.utc).isoformat()
-                        _regen_queue_save(jobs)
+                            jj2["images"][idx]["status"] = "done"
+                            jj2["images"][idx]["result_url"] = url
+                            jj2["images"][idx]["error"] = None
+                        jj2["updated"] = datetime.now(timezone.utc).isoformat()
+                        _regen_queue_save(jobs2)
+
+            await asyncio.gather(*[_process_image(i, im) for i, im in enumerate(target["images"])])
             # zaključi job: status glede na rezultate
             async with _regen_queue_lock:
                 jobs = _regen_queue_load()
