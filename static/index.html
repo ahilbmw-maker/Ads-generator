@@ -1484,6 +1484,10 @@ input[type="text"].error { border-color: var(--red) !important; }
         style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
         🖼️ Optimizacija slik
       </button>
+      <button class="kreative-tab-btn" id="krTab-regenqueue" onclick="krSwitchTab('regenqueue')"
+        style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+        ⏳ Čakalnica slik <span id="regenQTabBadge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;margin-left:4px"></span>
+      </button>
     </div>
 
     <!-- Tab: Optimizacija slik (regeneracija prek OpenAI gpt-image-2) -->
@@ -1516,23 +1520,24 @@ input[type="text"].error { border-color: var(--red) !important; }
         <button onclick="regenEnqueueSelectAll(false)" style="padding:8px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">☐ Počisti</button>
         <button onclick="regenEnqueueSelected()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">⏳ Dodaj izbrane v čakalnico</button>
         <button onclick="regenPushSelected()" style="padding:8px 16px;background:#3fb950;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Pošlji generirane nazaj</button>
+        <button onclick="regenDownloadSelected()" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">⬇ Prenesi izbrane</button>
         <span id="regenBulkStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
       </div>
 
       <div id="regenGrid" style="display:flex;flex-direction:column;gap:16px"></div>
+    </div>
 
-      <!-- ČAKALNICA -->
-      <div style="margin-top:28px;border-top:1px solid var(--border);padding-top:18px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap">
-          <span class="slabel">⏳ ČAKALNICA GENERIRANJA <span id="regenQCount" style="color:var(--accent)"></span></span>
-          <div style="display:flex;gap:8px">
-            <button onclick="regenQueueRefresh()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">↻ Osveži</button>
-            <button onclick="regenQueueClearDone()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
-          </div>
+    <!-- Tab: Čakalnica slik (regen queue) -->
+    <div id="kr-panel-regenqueue" style="display:none;padding:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap">
+        <span class="slabel">⏳ ČAKALNICA SLIK <span id="regenQCount" style="color:var(--accent)"></span></span>
+        <div style="display:flex;gap:8px">
+          <button onclick="regenQueueRefresh()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">↻ Osveži</button>
+          <button onclick="regenQueueClearDone()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
         </div>
-        <div id="regenQueueList" style="display:flex;flex-direction:column;gap:14px"></div>
-        <div id="regenQueueEmpty" style="font-size:13px;color:var(--text-tertiary);padding:12px 0">Čakalnica je prazna. Izberi slike zgoraj in klikni <b>Dodaj izbrane v čakalnico</b>. Generiranje teče na strežniku — lahko greš na drug SKU.</div>
       </div>
+      <div id="regenQueueList" style="display:flex;flex-direction:column;gap:14px"></div>
+      <div id="regenQueueEmpty" style="font-size:13px;color:var(--text-tertiary);padding:12px 0">Čakalnica je prazna. V zavihku <b>Optimizacija slik</b> izberi slike in klikni <b>Dodaj izbrane v čakalnico</b>. Generiranje teče na strežniku — lahko greš na drug SKU ali zapreš tab.</div>
     </div>
 
     <!-- Tab: Vrsta (čakalna vrsta generiranja) -->
@@ -12390,6 +12395,9 @@ function krSwitchTab(tab) {
   document.getElementById('kr-panel-higgsfield').style.display = tab === 'higgsfield' ? 'block' : 'none';
   const rp = document.getElementById('kr-panel-regen');
   if (rp) rp.style.display = tab === 'regen' ? 'block' : 'none';
+  const rqp = document.getElementById('kr-panel-regenqueue');
+  if (rqp) rqp.style.display = tab === 'regenqueue' ? 'block' : 'none';
+  if (tab === 'regenqueue') regenQueueRefresh();
   const qp = document.getElementById('kr-panel-queue');
   if (qp) qp.style.display = tab === 'queue' ? 'block' : 'none';
   document.querySelectorAll('.kreative-tab-btn').forEach(btn => {
@@ -12706,6 +12714,13 @@ function regenQueueRender(jobs) {
   const list = document.getElementById('regenQueueList');
   const empty = document.getElementById('regenQueueEmpty');
   const count = document.getElementById('regenQCount');
+  // badge na tabu = št. aktivnih (pending+processing)
+  const activeCount = jobs.filter(j => j.status === 'pending' || j.status === 'processing').length;
+  const badge = document.getElementById('regenQTabBadge');
+  if (badge) {
+    if (activeCount > 0) { badge.style.display = 'inline-block'; badge.textContent = activeCount; }
+    else { badge.style.display = 'none'; }
+  }
   if (!list) return;
   count.textContent = jobs.length ? '(' + jobs.length + ')' : '';
   if (!jobs.length) { list.innerHTML = ''; empty.style.display = 'block'; stopRegenPoll(); return; }
@@ -12729,7 +12744,10 @@ function regenQueueRender(jobs) {
     return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--bg)">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px;flex-wrap:wrap">'
       +   '<div style="font-size:13px;font-weight:600">' + job.sku + ' <span style="color:' + statusColor + ';font-weight:500">· ' + statusLabel + '</span> <span style="color:var(--text-tertiary);font-weight:400;font-size:12px">' + done + '/' + total + (err ? ' (✗' + err + ')' : '') + '</span></div>'
-      +   '<button onclick="regenQueueDelete(\'' + job.id + '\')" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">Odstrani</button>'
+      +   '<div style="display:flex;gap:6px">'
+      +     (done > 0 ? '<button onclick="regenQueueDownloadJob(\'' + job.id + '\')" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">⬇ Prenesi vse</button>' : '')
+      +     '<button onclick="regenQueueDelete(\'' + job.id + '\')" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">Odstrani</button>'
+      +   '</div>'
       + '</div>'
       + '<div style="display:flex;flex-wrap:wrap;gap:8px">' + thumbs + '</div>'
       + '</div>';
@@ -12753,6 +12771,56 @@ async function regenQueueClearDone() {
 }
 // ob preklopu na regen tab osveži čakalnico
 document.addEventListener('DOMContentLoaded', function(){ setTimeout(regenQueueRefresh, 1200); });
+// ── DOWNLOAD generiranih slik na lokalni disk ──
+function _regenTriggerDownload(url, filename) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || '';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function regenDownloadSelected() {
+  const sku = (document.getElementById('regenSku').value || '').trim() || 'izdelek';
+  const status = document.getElementById('regenBulkStatus');
+  const picks = Array.from(document.querySelectorAll('.regen-pick')).filter(cb => cb.checked && !cb.disabled);
+  // zberi URL-je iz kartic z že generirano sliko
+  const items = [];
+  picks.forEach(cb => {
+    const card = cb.closest('.regen-card');
+    if (card && card.dataset.newUrl) {
+      const kind = card.dataset.kind === 'main' ? 'glavna' : ('galerija_' + card.dataset.id);
+      items.push({ url: card.dataset.newUrl, name: sku + '_' + kind + '.jpg' });
+    }
+  });
+  if (!items.length) { status.textContent = 'Ni izbranih generiranih slik za prenos.'; return; }
+  status.textContent = 'Prenašam ' + items.length + '...';
+  // sproži z razmikom (brskalnik blokira hkratne)
+  for (let i = 0; i < items.length; i++) {
+    _regenTriggerDownload(items[i].url, items[i].name);
+    await new Promise(r => setTimeout(r, 400));
+  }
+  status.innerHTML = '<span style="color:#3fb950">✓ Sproženih ' + items.length + ' prenosov</span>';
+}
+
+async function regenQueueDownloadJob(jobId) {
+  try {
+    const r = await fetch('/regen-queue');
+    const d = await r.json();
+    if (!d.ok) return;
+    const job = (d.jobs || []).find(j => j.id === jobId);
+    if (!job) return;
+    const done = job.images.filter(im => im.status === 'done' && im.result_url);
+    if (!done.length) return;
+    for (let i = 0; i < done.length; i++) {
+      const im = done[i];
+      const kind = im.kind === 'main' ? 'glavna' : ('galerija_' + im.image_id);
+      _regenTriggerDownload(im.result_url, job.sku + '_' + kind + '.jpg');
+      await new Promise(r => setTimeout(r, 400));
+    }
+  } catch(e) {}
+}
 // ── /OPTIMIZACIJA SLIK ────────────────────────────────────────
 
 const HF_BASE = 'https://api.maaarket.si';
