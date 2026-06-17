@@ -3058,6 +3058,7 @@ input[type="text"].error { border-color: var(--red) !important; }
                 <button id="bcViewB" onclick="bcSetView('list')" style="padding:4px 9px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">☰ Seznam</button>
                 <button id="bcViewC" onclick="bcSetView('kanban')" style="padding:4px 9px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">▥ Kanban</button>
               </div>
+              <button id="bcOnlyCountries" onclick="bcToggleCountries()" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text-secondary);font-size:11px;font-family:inherit;cursor:pointer">🌍 Samo države</button>
               <input type="text" id="bcSearch" placeholder="🔍 država / ad-set" oninput="bcRenderTable()" style="padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:11px;font-family:inherit;width:150px">
               <select id="bcSort" onchange="bcRenderTable()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:11px;font-family:inherit">
                 <option value="score">Najboljši kandidati ↓</option>
@@ -19116,13 +19117,17 @@ const BC_MIN_PURCH = 15;
 function bcNum(x){ const n = parseFloat(String(x==null?'':x).replace(',','.')); return isNaN(n)?0:n; }
 
 // glavni vstop: pokliče se iz betaParseCSV z že-parsanimi rows
+// ENOTA = kampanija + ad-set (država). Isti ad-set (npr. "PL") obstaja v mnogih kampanijah,
+// vsak s svojim bidom — zato NE smemo seštevati samo po imenu ad-seta.
 function bcParseFromRows(rows){
   const sets = {};
   for (const r of rows){
-    const name = r['Ad set name'];
+    const adset = r['Ad set name'];
+    const campaign = r['Campaign name'] || '';
     const day = r['Day'];
-    if (!name || !day) continue;
-    if (!sets[name]) sets[name] = { name, campaign:'', days:{}, bidByDay:{}, budget:'', btype:'' };
+    if (!adset || !day) continue;
+    const key = campaign + ' ||| ' + adset;   // sestavljen ključ
+    if (!sets[key]) sets[key] = { key, name:adset, campaign, days:{}, bidByDay:{}, budget:'', btype:'' };
     const sp = bcNum(r['Amount spent (EUR)']);
     const pu = Math.round(bcNum(r['Purchases']));
     const freq = bcNum(r['Frequency']);
@@ -19130,14 +19135,14 @@ function bcParseFromRows(rows){
     const cpc = bcNum(r['CPC (cost per link click)']);
     const atc = Math.round(bcNum(r['Adds to cart']));
     const bid = r['Bid'] ? bcNum(r['Bid']) : null;
-    const d = sets[name].days[day] || { spend:0, purch:0, freqSum:0, ctrSum:0, n:0, atc:0, cpc:0 };
+    const d = sets[key].days[day] || { spend:0, purch:0, freqSum:0, ctrSum:0, n:0, atc:0, cpc:0 };
     d.spend += sp; d.purch += pu; d.atc += atc;
     d.freqSum += freq; d.ctrSum += ctr; d.cpc += cpc; d.n += 1;
-    sets[name].days[day] = d;
-    if (bid != null && bid > 0) sets[name].bidByDay[day] = bid;
-    if (r['Campaign Budget']) sets[name].budget = r['Campaign Budget'];
-    if (r['Bid type']) sets[name].btype = r['Bid type'];
-    if (r['Campaign name']) sets[name].campaign = r['Campaign name'];
+    sets[key].days[day] = d;
+    if (bid != null && bid > 0) sets[key].bidByDay[day] = bid;
+    if (r['Campaign Budget']) sets[key].budget = r['Campaign Budget'];
+    if (r['Bid type']) sets[key].btype = r['Bid type'];
+    if (campaign) sets[key].campaign = campaign;
   }
   // agregacija + metrike
   const out = [];
@@ -19166,7 +19171,7 @@ function bcParseFromRows(rows){
     const bidDays = Object.keys(s.bidByDay).sort();
     const curBid = bidDays.length ? s.bidByDay[bidDays[bidDays.length-1]] : null;
     out.push({
-      name, campaign:s.campaign, spend, purch, cpa7, cpa3, avgFreq, avgCtr, curBid,
+      key:s.key, name, campaign:s.campaign, spend, purch, cpa7, cpa3, avgFreq, avgCtr, curBid,
       budget:s.budget, btype:s.btype, series, nDays:dayKeys.length
     });
   }
@@ -19177,6 +19182,7 @@ function bcParseFromRows(rows){
 function bcScore(a){
   const reasons = [];
   let status = '🔴', label='NE', suggBid=null;
+  let action = { type:'none', text:'—', detail:'' };  // predlog ukrepa za glavni prikaz
 
   // trdi pogoji za kandidata
   const hasData = a.purch >= BC_MIN_PURCH;
@@ -19184,15 +19190,14 @@ function bcScore(a){
 
   if (!hasData){
     reasons.push(`Premalo podatkov (${a.purch} nakupov < ${BC_MIN_PURCH}) — CPA ni zanesljiv.`);
-    return { status:'🔴', label:'NE', score:-1, reasons, suggBid:null };
+    return { status:'🔴', label:'NE', score:-1, reasons, suggBid:null, action:{type:'wait',text:'⏳ Počakaj',detail:`zberi ≥${BC_MIN_PURCH} nakupov`} };
   }
   if (!cpaOk){
     reasons.push(`CPA 7d ${a.cpa7!=null?a.cpa7.toFixed(2):'—'}€ ≥ cilj ${BC_CPA_TARGET}€ — ni za scale.`);
-    // a če je blizu in trend dober → DRŽI
     if (a.cpa7 != null && a.cpa7 < BC_CPA_TARGET*1.15){
-      return { status:'🟡', label:'DRŽI', score:0, reasons:['CPA rahlo nad ciljem — počakaj/optimiziraj, ne dvigaj.'], suggBid:null };
+      return { status:'🟡', label:'DRŽI', score:0, reasons:['CPA rahlo nad ciljem — počakaj/optimiziraj, ne dvigaj.'], suggBid:null, action:{type:'hold',text:'✋ Drži',detail:'CPA rahlo nad ciljem'} };
     }
-    return { status:'🔴', label:'NE', score:-1, reasons, suggBid:null };
+    return { status:'🔴', label:'NE', score:-1, reasons, suggBid:null, action:{type:'no',text:'🔴 Ne scale-aj',detail:'CPA nad ciljem'} };
   }
 
   // === kandidat: CPA pod ciljem + dovolj podatkov ===
@@ -19236,36 +19241,53 @@ function bcScore(a){
     const bidCeiling = Math.round(BC_CPA_TARGET * 1.4 * 100)/100; // 7.5 → 10.5€
 
     if (gap >= 0.30){
-      // bidcap MOČNO nad CPA → ni ozko grlo. Ne dvigaj.
       suggBid = null;
       reasons.push(`⛔ Bidcap ${a.curBid}€ je ${(gap*100).toFixed(0)}% nad CPA (${a.cpa7.toFixed(2)}€) — strop NI ozko grlo. Dvig bidcapa ne bo prinesel volumna. Vzvod je BUDGET (dnevni) ali nova kreativa, ne bidcap.`);
+      // predlagaj dvig BUDGETA namesto bidcapa
+      const curBudget = bcNum(a.budget);
+      if (curBudget > 0){
+        const nb = Math.round(curBudget * 1.20);
+        action = { type:'budget', text:`📈 Dvigni BUDGET +20%`, detail:`${curBudget.toFixed(0)}€ → ${nb}€/dan (bidcap pusti ${a.curBid}€)` };
+      } else {
+        action = { type:'budget', text:`📈 Dvigni BUDGET (+15-20%)`, detail:`bidcap ${a.curBid}€ ni grlo` };
+      }
     } else if (gap >= 0.15){
-      // zmeren razmik → majhen dvig ali raje budget
       let pct = 0.10;
       let nb = Math.round(a.curBid * (1+pct) * 100)/100;
       if (nb > bidCeiling) nb = bidCeiling;
       suggBid = (nb > a.curBid) ? nb : null;
-      if (suggBid)
+      if (suggBid){
         reasons.push(`Bidcap ${a.curBid}€ je ${(gap*100).toFixed(0)}% nad CPA — zmeren razmik. Manjši dvig → ${suggBid}€ (+${(pct*100).toFixed(0)}%), ali raje dvigni budget. Strop smiselnosti ${bidCeiling}€.`);
-      else
+        action = { type:'bid', text:`↗ Bidcap +10%`, detail:`${a.curBid}€ → ${suggBid}€ (ali budget)` };
+      } else {
         reasons.push(`Bidcap ${a.curBid}€ že pri stropu smiselnosti (${bidCeiling}€). Za več volumna dvigni budget, ne bidcap.`);
+        const curBudget = bcNum(a.budget);
+        action = curBudget>0
+          ? { type:'budget', text:`📈 Dvigni BUDGET +20%`, detail:`${curBudget.toFixed(0)}€ → ${Math.round(curBudget*1.2)}€/dan` }
+          : { type:'budget', text:`📈 Dvigni BUDGET`, detail:`bidcap pri stropu` };
+      }
     } else {
-      // CPA BLIZU stropa → bidcap JE omejitev → dvig dejansko pomaga
       let pct = 0.20;
-      if (a.avgFreq >= 3) pct = 0.12;  // nasičenost → manj agresivno
+      if (a.avgFreq >= 3) pct = 0.12;
       let nb = Math.round(a.curBid * (1+pct) * 100)/100;
-      const hardCap = Math.round(a.curBid * 1.30 * 100)/100; // nikoli >+30% naenkrat
+      const hardCap = Math.round(a.curBid * 1.30 * 100)/100;
       if (nb > hardCap) nb = hardCap;
       suggBid = nb;
       reasons.push(`✅ CPA ${a.cpa7.toFixed(2)}€ je BLIZU stropa ${a.curBid}€ (razmik le ${(gap*100).toFixed(0)}%) — bidcap JE omejitev. Dvig sprosti avkcije → ${suggBid}€ (+${(pct*100).toFixed(0)}%).`);
+      action = { type:'bid', text:`🚀 Dvigni BIDCAP +${(pct*100).toFixed(0)}%`, detail:`${a.curBid}€ → ${suggBid}€` };
     }
   } else if (a.curBid){
     reasons.push(`Bidcap ${a.curBid}€, a CPA ni izračunljiv (premalo nakupov) — ne predlagam dviga.`);
   } else {
     reasons.push('Trenutni bidcap ni razviden iz CSV (morda CBO/ad-set budget).');
+    // brez bida: če dober CPA + headroom, predlagaj budget
+    const curBudget = bcNum(a.budget);
+    if (curBudget > 0){
+      action = { type:'budget', text:`📈 Dvigni BUDGET +20%`, detail:`${curBudget.toFixed(0)}€ → ${Math.round(curBudget*1.2)}€/dan (ni bidcap)` };
+    }
   }
 
-  return { status, label, score, reasons, suggBid };
+  return { status, label, score, reasons, suggBid, action };
 }
 
 async function bcLoadScaleLog(){
@@ -19276,9 +19298,10 @@ async function bcLoadScaleLog(){
   }catch(e){ bcScaleLog = []; }
 }
 
-function bcCooldownFor(name){
-  // vrne aktiven cooldown zapis za ad-set (ime), če obstaja
-  return bcScaleLog.find(e => e.ad_set === name && e.cooldown_active);
+function bcCooldownFor(item){
+  // item je agregiran ad-set objekt; match po sestavljenem ključu (kampanija+država)
+  const k = item.key || item.name;
+  return bcScaleLog.find(e => e.ad_set === k && e.cooldown_active);
 }
 
 let bcView = 'cards';
@@ -19291,10 +19314,26 @@ function bcSetView(v){
   bcRenderTable();
 }
 
+const BC_COUNTRIES = ['RS','HR','CZ','SLO','SI','GR','RO','SK','HU','BG','PL'];
+let bcOnlyCountries = false;
+function bcIsCountry(name){
+  return BC_COUNTRIES.includes((name||'').trim().toUpperCase());
+}
+function bcToggleCountries(){
+  bcOnlyCountries = !bcOnlyCountries;
+  const b = document.getElementById('bcOnlyCountries');
+  if (b){
+    b.style.background = bcOnlyCountries ? 'var(--accent)' : 'var(--surface2)';
+    b.style.color = bcOnlyCountries ? '#fff' : 'var(--text-secondary)';
+  }
+  bcRenderTable();
+}
+
 function bcPrepareItems(){
   const q = (document.getElementById('bcSearch')?.value||'').toLowerCase();
   const sort = document.getElementById('bcSort')?.value || 'score';
-  let items = bcAdsets.map(a => ({ a, sc: bcScore(a), cd: bcCooldownFor(a.name) }));
+  let items = bcAdsets.map(a => ({ a, sc: bcScore(a), cd: bcCooldownFor(a) }));
+  if (bcOnlyCountries) items = items.filter(x => bcIsCountry(x.a.name));
   if (q) items = items.filter(x => x.a.name.toLowerCase().includes(q) || (x.a.campaign||'').toLowerCase().includes(q));
   items.sort((x,y)=>{
     if (sort==='cpa_asc') return (x.a.cpa7??999)-(y.a.cpa7??999);
@@ -19319,16 +19358,28 @@ function bcSparkline(series, w=70, h=22){
 }
 
 function bcActionBtn(a, sc, cd){
-  const safeName = a.name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+  const safeKey = (a.key||a.name).replace(/'/g,"\\'").replace(/"/g,'&quot;');
+  const safeLabel = (a.name + ' · ' + (a.campaign||'')).replace(/'/g,"\\'").replace(/"/g,'&quot;');
   if (cd){
     const cpaBeforeTxt = cd.cpa_before!=null ? `CPA pred: ${Number(cd.cpa_before).toFixed(2)}€` : '';
     return `<button onclick="bcUnscale('${cd.id}')" style="font-size:10px;padding:4px 9px;background:transparent;border:1px solid var(--border);border-radius:5px;cursor:pointer;color:var(--text-secondary)" title="${cpaBeforeTxt}">↩ prekliči</button>`;
   }
-  return `<button onclick="bcScaleAn('${safeName}', ${a.curBid||'null'}, ${sc.suggBid||'null'}, ${a.cpa7!=null?a.cpa7.toFixed(2):'null'})" style="font-size:10px;padding:4px 9px;background:var(--accent);color:#fff;border:none;border-radius:5px;cursor:pointer">✓ Scale-an</button>`;
+  return `<button onclick="bcScaleAn('${safeKey}', '${safeLabel}', ${a.curBid||'null'}, ${sc.suggBid||'null'}, ${a.cpa7!=null?a.cpa7.toFixed(2):'null'})" style="font-size:10px;padding:4px 9px;background:var(--accent);color:#fff;border:none;border-radius:5px;cursor:pointer">✓ Scale-an</button>`;
 }
 
 function bcCpaColor(cpa){
   return (cpa!=null && cpa<BC_CPA_TARGET)?'#3fb950':(cpa!=null?'#ef4444':'var(--text-tertiary)');
+}
+
+// predlog ukrepa kot prominenten badge (bidcap vs budget vs počakaj)
+function bcActionBadge(action){
+  if (!action || action.type==='none') return '';
+  const colors = { bid:'#7c3aed', budget:'#0ea5e9', wait:'#d29922', hold:'#d29922', no:'#9ca3af' };
+  const bg = colors[action.type] || 'var(--text-tertiary)';
+  return `<div style="display:inline-flex;flex-direction:column;gap:1px;background:${bg}15;border:1px solid ${bg}55;border-radius:7px;padding:4px 9px">`
+    + `<span style="font-size:11px;font-weight:700;color:${bg}">${action.text}</span>`
+    + (action.detail?`<span style="font-size:10px;color:var(--text-secondary)">${action.detail}</span>`:'')
+    + `</div>`;
 }
 
 function bcRenderTable(){
@@ -19369,7 +19420,7 @@ function bcRenderCards(items){
       +   `<span>📶 ${a.avgFreq?a.avgFreq.toFixed(2):'—'}</span><span>👆 ${a.avgCtr?a.avgCtr.toFixed(2)+'%':'—'}</span>`
       + `</div>`
       + `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:8px;border-top:1px solid var(--border)">`
-      +   `<span style="font-size:12px">bid <b>${a.curBid?a.curBid+'€':'—'}</b>${sc.suggBid?` <span style="color:#7c3aed">→ ${sc.suggBid}€</span>`:''}</span>`
+      +   bcActionBadge(sc.action)
       +   bcActionBtn(a,sc,cd)
       + `</div>`
       + `<details style="margin-top:8px"><summary style="font-size:11px;color:var(--text-tertiary);cursor:pointer">💡 analiza</summary>`
@@ -19397,7 +19448,8 @@ function bcRenderList(items){
       +   `<div style="text-align:right;font-size:11px;color:var(--text-secondary)">3d ${a.cpa3!=null?a.cpa3.toFixed(2)+'€':'—'}<br>🛒 ${a.purch}</div>`
       +   `<div style="text-align:right;font-size:11px;color:var(--text-secondary)">📶 ${a.avgFreq?a.avgFreq.toFixed(2):'—'}<br>💶 ${a.spend.toFixed(0)}€</div>`
       +   `${bcSparkline(a.series)}`
-      +   `<div style="text-align:right;font-size:12px;white-space:nowrap">bid <b>${a.curBid?a.curBid+'€':'—'}</b>${sc.suggBid?`<br><span style="color:#7c3aed">→ ${sc.suggBid}€</span>`:''}</div>`
+      +   `<div style="text-align:right;font-size:12px;white-space:nowrap">bid <b>${a.curBid?a.curBid+'€':'—'}</b></div>`
+      +   bcActionBadge(sc.action)
       +   bcActionBtn(a,sc,cd)
       + `</div>`
       + `<details style="margin-top:6px"><summary style="font-size:10px;color:var(--text-tertiary);cursor:pointer">💡 analiza</summary>`
@@ -19430,7 +19482,8 @@ function bcRenderKanban(items){
         +   `<span style="font-size:18px;font-weight:800;color:${bcCpaColor(a.cpa7)}">${a.cpa7!=null?a.cpa7.toFixed(2)+'€':'—'}</span>`
         +   `${bcSparkline(a.series,50,18)}`
         + `</div>`
-        + `<div style="font-size:10px;color:var(--text-secondary);margin-bottom:7px">🛒 ${a.purch} · 📶 ${a.avgFreq?a.avgFreq.toFixed(2):'—'} · bid ${a.curBid?a.curBid+'€':'—'}${sc.suggBid?` <span style="color:#7c3aed">→${sc.suggBid}€</span>`:''}${inCd?` · ${cd.days_left}d`:''}</div>`
+        + `<div style="font-size:10px;color:var(--text-secondary);margin-bottom:7px">🛒 ${a.purch} · 📶 ${a.avgFreq?a.avgFreq.toFixed(2):'—'} · bid ${a.curBid?a.curBid+'€':'—'}${inCd?` · ${cd.days_left}d`:''}</div>`
+        + `<div style="margin-bottom:7px">${bcActionBadge(sc.action)}</div>`
         + bcActionBtn(a,sc,cd)
         + `<details style="margin-top:6px"><summary style="font-size:10px;color:var(--text-tertiary);cursor:pointer">💡</summary><div style="font-size:10px;color:var(--text-secondary);line-height:1.45;margin-top:4px">${sc.reasons.map(r=>'• '+r).join('<br>')}</div></details>`
         + `</div>`;
@@ -19441,12 +19494,12 @@ function bcRenderKanban(items){
   return html + '</div>';
 }
 
-async function bcScaleAn(name, bidBefore, bidAfter, cpaBefore){
-  const after = prompt(`Scale-an "${name}".\nNov bidcap (predlog ${bidAfter||'?'}€). Vpiši dejanski nov bid:`, bidAfter||'');
+async function bcScaleAn(key, label, bidBefore, bidAfter, cpaBefore){
+  const after = prompt(`Scale-an "${label}".\nNov bidcap (predlog ${bidAfter||'?'}€). Vpiši dejanski nov bid:`, bidAfter||'');
   if (after === null) return; // preklic
   try{
     const r = await fetch('/scale-log', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ ad_set:name, bid_before: bidBefore!=null?String(bidBefore):null,
+      body: JSON.stringify({ ad_set:key, bid_before: bidBefore!=null?String(bidBefore):null,
         bid_after: after||null, cpa_before: cpaBefore!=null?Number(cpaBefore):null }) });
     const d = await r.json();
     if (d.ok){ await bcLoadScaleLog(); bcRenderTable(); }
