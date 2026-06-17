@@ -906,6 +906,7 @@ async def startup_event():
     asyncio.create_task(_zaloga_scheduler_loop())
     asyncio.create_task(_hsplus_daily_scheduler())
     asyncio.create_task(_hsplus_daily_scheduler())
+    asyncio.create_task(_regen_worker_loop())
 
 
 async def _ffmpeg_warmup():
@@ -20495,37 +20496,39 @@ async def regen_img(fname: str):
     return FileResponse(str(fpath), media_type=media)
 
 
-class RegenImageReq(BaseModel):
-    image_url: str
-    prompt: str
-    sku: Optional[str] = None
-    image_id: Optional[str] = None
-    kind: Optional[str] = None  # "main" ali "gallery"
+def _pick_openai_size(w, h):
+    if not w or not h:
+        return "auto"
+    ar = w / h
+    if ar >= 1.25:
+        return "1536x1024"   # landscape
+    if ar <= 0.8:
+        return "1024x1536"   # portrait
+    return "1024x1024"       # ~kvadrat
 
 
-@app.post("/regen-image")
-async def regen_image(req: RegenImageReq):
-    """Prenese izvorno sliko, jo pošlje OpenAI gpt-image-2 edits z promptom, shrani rezultat, vrne stabilen URL."""
+async def _regen_generate_one(src_url: str, prompt: str):
+    """Generira eno sliko prek OpenAI gpt-image-2 in shrani na /data/regen.
+    Vrne (public_url, meta_dict, error_str). Ob napaki je public_url None."""
     openai_key = os.environ.get("OPENAI_API_KEY", "")
     if not openai_key:
-        return JSONResponse({"ok": False, "error": "OPENAI_API_KEY ni nastavljen."}, status_code=200)
-    src_url = (req.image_url or "").strip()
-    prompt = (req.prompt or "").strip()
+        return None, {}, "OPENAI_API_KEY ni nastavljen."
+    src_url = (src_url or "").strip()
+    prompt = (prompt or "").strip()
     if not src_url:
-        return JSONResponse({"ok": False, "error": "Manjka image_url"}, status_code=200)
+        return None, {}, "Manjka image_url"
     if not prompt:
-        return JSONResponse({"ok": False, "error": "Manjka prompt"}, status_code=200)
+        return None, {}, "Manjka prompt"
     _regen_ensure_dir()
-    # 1) prenesi izvorno sliko
+    # 1) prenesi izvorno sliko + izmeri dimenzije
     try:
         async with httpx.AsyncClient(timeout=60, follow_redirects=True) as cli:
             ir = await cli.get(src_url)
         if ir.status_code != 200:
-            return JSONResponse({"ok": False, "error": f"Vir slike status {ir.status_code}"}, status_code=200)
+            return None, {}, f"Vir slike status {ir.status_code}"
         src_bytes = ir.content
         src_mime = ir.headers.get("content-type", "image/jpeg").split(";")[0]
         src_ext = "png" if "png" in src_mime else "jpg"
-        # izmeri original (za točno ujemanje resolucije na koncu)
         src_w = src_h = None
         try:
             from PIL import Image as _PILImage
@@ -20535,19 +20538,9 @@ async def regen_image(req: RegenImageReq):
         except Exception:
             src_w = src_h = None
     except Exception as e:
-        return JSONResponse({"ok": False, "error": f"Prenos vira: {e}"}, status_code=200)
-    # izberi OpenAI size glede na razmerje originala (gpt-image-2 podpira 1024x1024, 1536x1024, 1024x1536)
-    def _pick_openai_size(w, h):
-        if not w or not h:
-            return "auto"
-        ar = w / h
-        if ar >= 1.25:
-            return "1536x1024"   # landscape
-        if ar <= 0.8:
-            return "1024x1536"   # portrait
-        return "1024x1024"       # ~kvadrat
+        return None, {}, f"Prenos vira: {e}"
     openai_size = _pick_openai_size(src_w, src_h)
-    # 2) OpenAI gpt-image-2 edits (multipart)
+    # 2) OpenAI gpt-image-2 edits
     try:
         files = {"image[]": (f"src.{src_ext}", src_bytes, src_mime)}
         form = {"model": REGEN_MODEL, "prompt": prompt, "size": openai_size, "n": "1", "output_format": "jpeg"}
@@ -20559,14 +20552,14 @@ async def regen_image(req: RegenImageReq):
             )
             result = resp.json()
         if resp.status_code != 200:
-            return JSONResponse({"ok": False, "error": result.get("error", {}).get("message", str(result))[:300]}, status_code=200)
+            return None, {}, result.get("error", {}).get("message", str(result))[:300]
         data_arr = result.get("data", [])
         if not (data_arr and data_arr[0].get("b64_json")):
-            return JSONResponse({"ok": False, "error": "OpenAI ni vrnil slike: " + str(result)[:200]}, status_code=200)
+            return None, {}, "OpenAI ni vrnil slike: " + str(result)[:200]
         out_b64 = data_arr[0]["b64_json"]
     except Exception as e:
-        return JSONResponse({"ok": False, "error": f"OpenAI: {e}"}, status_code=200)
-    # 3) shrani rezultat → stabilen URL (resize na TOČNO original resolucijo)
+        return None, {}, f"OpenAI: {e}"
+    # 3) resize na TOČNO original + shrani JPG
     try:
         import base64 as _b64m
         out_bytes = _b64m.b64decode(out_b64)
@@ -20580,14 +20573,12 @@ async def regen_image(req: RegenImageReq):
                     gw, gh = _gen.size
                     target_ar = src_w / src_h
                     gen_ar = gw / gh
-                    # COVER: prilagodi tako, da pokrije cel cilj, nato centriran crop (brez popačenja)
                     if gen_ar > target_ar:
-                        # generirana širša → uskladi po višini, odreži stranice
                         new_h = src_h
-                        new_w = int(round(gh and gw * (src_h / gh)))
+                        new_w = int(round(gw * (src_h / gh)))
                     else:
                         new_w = src_w
-                        new_h = int(round(gw and gh * (src_w / gw)))
+                        new_h = int(round(gh * (src_w / gw)))
                     _gen2 = _gen.resize((max(new_w, src_w), max(new_h, src_h)), _PILImage.LANCZOS)
                     gw2, gh2 = _gen2.size
                     left = (gw2 - src_w) // 2
@@ -20602,19 +20593,42 @@ async def regen_image(req: RegenImageReq):
         fname = f"{uuid.uuid4().hex}.jpg"
         (REGEN_DIR / fname).write_bytes(out_bytes)
         public_url = f"/regen-img/{fname}"
-        return JSONResponse({
-            "ok": True,
-            "url": public_url,
+        meta = {
             "filename": fname,
-            "sku": req.sku,
-            "image_id": req.image_id,
-            "kind": req.kind,
             "src_size": (f"{src_w}x{src_h}" if src_w else None),
             "openai_size": openai_size,
             "resized": resized,
-        })
+        }
+        return public_url, meta, None
     except Exception as e:
-        return JSONResponse({"ok": False, "error": f"Shranjevanje: {e}"}, status_code=200)
+        return None, {}, f"Shranjevanje: {e}"
+
+
+class RegenImageReq(BaseModel):
+    image_url: str
+    prompt: str
+    sku: Optional[str] = None
+    image_id: Optional[str] = None
+    kind: Optional[str] = None  # "main" ali "gallery"
+
+
+@app.post("/regen-image")
+async def regen_image(req: RegenImageReq):
+    """Sinhrono generiranje ene slike (takojšen rezultat)."""
+    url, meta, err = await _regen_generate_one(req.image_url, req.prompt)
+    if err:
+        return JSONResponse({"ok": False, "error": err}, status_code=200)
+    return JSONResponse({
+        "ok": True,
+        "url": url,
+        "filename": meta.get("filename"),
+        "sku": req.sku,
+        "image_id": req.image_id,
+        "kind": req.kind,
+        "src_size": meta.get("src_size"),
+        "openai_size": meta.get("openai_size"),
+        "resized": meta.get("resized"),
+    })
 
 
 class RegenPushReq(BaseModel):
@@ -20664,3 +20678,159 @@ async def regen_push(req: RegenPushReq):
         "note": "Write endpoint še ni vključen. Spodaj je TOČEN payload, ki bo poslan (glavna na vrhu, picture_path brez domene).",
         "would_send": payload,
     })
+
+
+
+# ═══════════════════════════════════════════════════════════════
+#  REGEN ČAKALNICA — backend job queue (generiranje teče na strežniku)
+#  Push nazaj ostane ROČEN (po pregledu). Persistenca na /data.
+# ═══════════════════════════════════════════════════════════════
+REGEN_QUEUE_FILE = DATA_DIR / "regen_queue.json"
+_regen_queue_lock = asyncio.Lock()
+
+
+def _regen_queue_load():
+    try:
+        if REGEN_QUEUE_FILE.exists():
+            return json.loads(REGEN_QUEUE_FILE.read_text(encoding="utf-8")) or []
+    except Exception:
+        pass
+    return []
+
+
+def _regen_queue_save(jobs):
+    try:
+        REGEN_QUEUE_FILE.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+class RegenEnqueueImage(BaseModel):
+    image_id: Optional[str] = None
+    kind: str = "gallery"          # "main" ali "gallery"
+    src_url: str
+    picture_path: Optional[str] = ""
+    prompt: str
+
+
+class RegenEnqueueReq(BaseModel):
+    sku: str
+    images: List[RegenEnqueueImage]
+
+
+@app.post("/regen-enqueue")
+async def regen_enqueue(req: RegenEnqueueReq):
+    """Doda nov job v čakalnico. Worker ga obdela v ozadju."""
+    if not req.images:
+        return JSONResponse({"ok": False, "error": "Ni izbranih slik."}, status_code=200)
+    job = {
+        "id": uuid.uuid4().hex[:12],
+        "sku": req.sku,
+        "status": "pending",          # pending → processing → done/error
+        "created": datetime.now(timezone.utc).isoformat(),
+        "updated": datetime.now(timezone.utc).isoformat(),
+        "images": [
+            {
+                "image_id": im.image_id,
+                "kind": im.kind,
+                "src_url": im.src_url,
+                "picture_path": im.picture_path or "",
+                "prompt": im.prompt,
+                "status": "pending",      # pending → done/error
+                "result_url": None,
+                "error": None,
+            }
+            for im in req.images
+        ],
+    }
+    async with _regen_queue_lock:
+        jobs = _regen_queue_load()
+        jobs.append(job)
+        _regen_queue_save(jobs)
+    return JSONResponse({"ok": True, "id": job["id"], "count": len(job["images"])})
+
+
+@app.get("/regen-queue")
+async def regen_queue_get():
+    """Vrne celotno čakalnico (za polling v UI)."""
+    return JSONResponse({"ok": True, "jobs": _regen_queue_load()})
+
+
+@app.delete("/regen-queue/{job_id}")
+async def regen_queue_delete(job_id: str):
+    async with _regen_queue_lock:
+        jobs = _regen_queue_load()
+        jobs = [j for j in jobs if j.get("id") != job_id]
+        _regen_queue_save(jobs)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/regen-queue-clear-done")
+async def regen_queue_clear_done():
+    """Počisti dokončane/napake jobe iz vrste."""
+    async with _regen_queue_lock:
+        jobs = _regen_queue_load()
+        jobs = [j for j in jobs if j.get("status") not in ("done", "error")]
+        _regen_queue_save(jobs)
+    return JSONResponse({"ok": True})
+
+
+async def _regen_worker_loop():
+    """Background worker: obdeluje pending jobe enega za drugim."""
+    await asyncio.sleep(8)  # počakaj startup
+    while True:
+        try:
+            # poišči prvi pending job
+            async with _regen_queue_lock:
+                jobs = _regen_queue_load()
+                target = None
+                for j in jobs:
+                    if j.get("status") == "pending":
+                        target = j
+                        break
+                if target:
+                    target["status"] = "processing"
+                    target["updated"] = datetime.now(timezone.utc).isoformat()
+                    _regen_queue_save(jobs)
+            if not target:
+                await asyncio.sleep(5)
+                continue
+            # generiraj vsako sliko zaporedno (zunaj lock-a — dolgo traja)
+            job_id = target["id"]
+            for idx, im in enumerate(target["images"]):
+                if im.get("status") == "done":
+                    continue
+                url, meta, err = await _regen_generate_one(im.get("src_url", ""), im.get("prompt", ""))
+                # zapiši rezultat nazaj v vrsto (ponovno naloži, ker se je morda spremenila)
+                async with _regen_queue_lock:
+                    jobs = _regen_queue_load()
+                    jj = next((x for x in jobs if x.get("id") == job_id), None)
+                    if jj is None:
+                        break  # job izbrisan med obdelavo
+                    if idx < len(jj["images"]):
+                        if err:
+                            jj["images"][idx]["status"] = "error"
+                            jj["images"][idx]["error"] = err
+                        else:
+                            jj["images"][idx]["status"] = "done"
+                            jj["images"][idx]["result_url"] = url
+                            jj["images"][idx]["error"] = None
+                        jj["updated"] = datetime.now(timezone.utc).isoformat()
+                        _regen_queue_save(jobs)
+            # zaključi job: status glede na rezultate
+            async with _regen_queue_lock:
+                jobs = _regen_queue_load()
+                jj = next((x for x in jobs if x.get("id") == job_id), None)
+                if jj is not None:
+                    states = [i.get("status") for i in jj["images"]]
+                    if all(s == "done" for s in states):
+                        jj["status"] = "done"
+                    elif all(s == "error" for s in states):
+                        jj["status"] = "error"
+                    else:
+                        jj["status"] = "done"  # delno — vsaj nekaj uspelo
+                    jj["updated"] = datetime.now(timezone.utc).isoformat()
+                    _regen_queue_save(jobs)
+        except Exception as e:
+            print(f"[regen-worker] napaka: {e}")
+            await asyncio.sleep(5)
