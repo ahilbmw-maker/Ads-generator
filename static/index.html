@@ -1501,10 +1501,24 @@ input[type="text"].error { border-color: var(--red) !important; }
 
       <div style="margin-bottom:14px">
         <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Prompt za regeneracijo</label>
-        <textarea id="regenPrompt" rows="3" placeholder="Npr. Odstrani ozadje in postavi izdelek na čisto belo ozadje, profesionalna studijska osvetlitev." style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text-primary);box-sizing:border-box;resize:vertical;font-family:inherit"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+          <select id="regenPromptSelect" onchange="regenPromptPick()" style="flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:var(--bg);color:var(--text-primary)">
+            <option value="">— shranjeni prompti —</option>
+          </select>
+          <button onclick="regenPromptSave()" style="padding:8px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">💾 Shrani prompt</button>
+          <button onclick="regenPromptDelete()" style="padding:8px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">🗑 Izbriši izbran</button>
+        </div>
+        <textarea id="regenPrompt" rows="3" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text-primary);box-sizing:border-box;resize:vertical;font-family:inherit">konkretno izboljšaj sliko, super prodajno, brez text</textarea>
       </div>
 
-      <div id="regenGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px"></div>
+      <div id="regenBulkBar" style="display:none;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <button onclick="regenSelectAll(true)" style="padding:8px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">☑ Izberi vse</button>
+        <button onclick="regenSelectAll(false)" style="padding:8px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">☐ Počisti</button>
+        <button onclick="regenPushSelected()" style="padding:8px 16px;background:#3fb950;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Pošlji izbrane nazaj</button>
+        <span id="regenBulkStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
+      </div>
+
+      <div id="regenGrid" style="display:flex;flex-direction:column;gap:16px"></div>
     </div>
 
     <!-- Tab: Vrsta (čakalna vrsta generiranja) -->
@@ -12402,30 +12416,127 @@ async function regenLoad() {
       html += regenCard({ id: g.id, picture: g.picture, picture_path: g.picture_path, kind: 'gallery', label: 'Galerija #' + (i+1) });
     });
     grid.innerHTML = html;
+    document.getElementById('regenBulkBar').style.display = 'flex';
   } catch(e) {
     st.innerHTML = '<span style="color:#ef4444">✗ ' + e + '</span>';
   }
+}
+
+// ── shranjeni prompti (localStorage) ──
+const REGEN_PROMPTS_KEY = 'slx_regen_prompts';
+function regenPromptsLoad() {
+  try { return JSON.parse(localStorage.getItem(REGEN_PROMPTS_KEY) || '[]') || []; } catch(e) { return []; }
+}
+function regenPromptsSaveAll(arr) {
+  try { localStorage.setItem(REGEN_PROMPTS_KEY, JSON.stringify(arr)); } catch(e) {}
+}
+function regenPromptsRender() {
+  const sel = document.getElementById('regenPromptSelect');
+  if (!sel) return;
+  const arr = regenPromptsLoad();
+  let html = '<option value="">— shranjeni prompti —</option>';
+  arr.forEach((p, i) => {
+    const label = p.length > 60 ? p.slice(0, 60) + '…' : p;
+    html += '<option value="' + i + '">' + label.replace(/</g,'&lt;') + '</option>';
+  });
+  sel.innerHTML = html;
+}
+function regenPromptPick() {
+  const sel = document.getElementById('regenPromptSelect');
+  const idx = sel.value;
+  if (idx === '') return;
+  const arr = regenPromptsLoad();
+  const p = arr[parseInt(idx, 10)];
+  if (p != null) document.getElementById('regenPrompt').value = p;
+}
+function regenPromptSave() {
+  const val = (document.getElementById('regenPrompt').value || '').trim();
+  if (!val) return;
+  const arr = regenPromptsLoad();
+  if (arr.includes(val)) { return; }
+  arr.unshift(val);
+  regenPromptsSaveAll(arr);
+  regenPromptsRender();
+}
+function regenPromptDelete() {
+  const sel = document.getElementById('regenPromptSelect');
+  const idx = sel.value;
+  if (idx === '') return;
+  const arr = regenPromptsLoad();
+  arr.splice(parseInt(idx, 10), 1);
+  regenPromptsSaveAll(arr);
+  regenPromptsRender();
+}
+// init dropdown ob nalaganju strani
+document.addEventListener('DOMContentLoaded', regenPromptsRender);
+
+// ── izbira in skupinski push ──
+function regenSelectAll(state) {
+  document.querySelectorAll('.regen-pick').forEach(cb => {
+    if (!cb.disabled) cb.checked = state;
+  });
+}
+async function regenPushSelected() {
+  const sku = (document.getElementById('regenSku').value || '').trim();
+  const status = document.getElementById('regenBulkStatus');
+  const picks = Array.from(document.querySelectorAll('.regen-pick')).filter(cb => cb.checked && !cb.disabled);
+  if (!picks.length) { status.textContent = 'Nič izbranega.'; return; }
+  const body = { sku: sku };
+  const galleryArr = [];
+  picks.forEach(cb => {
+    const card = cb.closest('.regen-card');
+    const newUrl = card.dataset.newUrl;
+    if (!newUrl) return;
+    const fullUrl = location.origin + newUrl;
+    const item = { id: card.dataset.id, picture: fullUrl, picture_path: card.dataset.path };
+    if (card.dataset.kind === 'main') body.main = item;
+    else galleryArr.push(item);
+  });
+  if (galleryArr.length) body.gallery = galleryArr;
+  status.textContent = 'Pošiljam ' + picks.length + '...';
+  try {
+    const r = await fetch('/regen-push', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const d = await r.json();
+    status.innerHTML = d.stub
+      ? '<span style="color:#d29922">Stub — zapis še ni aktiven (payload pripravljen za ' + picks.length + ' slik)</span>'
+      : (d.ok ? '<span style="color:#3fb950">✓ Poslano ' + picks.length + '</span>' : '<span style="color:#ef4444">✗ napaka</span>');
+  } catch(e) { status.innerHTML = '<span style="color:#ef4444">✗ ' + e + '</span>'; }
 }
 
 function regenCard(o) {
   const safeId = String(o.id || '');
   const pic = (o.picture || '').replace(/"/g, '&quot;');
   const path = (o.picture_path || '').replace(/"/g, '&quot;');
-  return '<div class="regen-card" data-id="' + safeId + '" data-kind="' + o.kind + '" data-path="' + path + '" data-picture="' + pic + '" style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--bg)">'
-    + '<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px">' + o.label + ' · ID ' + safeId + '</div>'
-    + '<img src="' + pic + '" style="width:100%;height:180px;object-fit:contain;background:#fff;border-radius:6px" loading="lazy">'
-    + '<button onclick="regenOne(this)" style="margin-top:8px;width:100%;padding:8px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">Regeneriraj</button>'
-    + '<div class="regen-out" style="margin-top:8px"></div>'
+  const imgStyle = 'width:100%;height:340px;object-fit:contain;background:#fff;border-radius:8px;border:1px solid var(--border)';
+  return '<div class="regen-card" data-id="' + safeId + '" data-kind="' + o.kind + '" data-path="' + path + '" data-picture="' + pic + '" style="border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--bg)">'
+    + '<div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:12px">' + o.label + ' · ID ' + safeId + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">'
+    // LEVO: original
+    + '<div>'
+    +   '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:6px">⬅ Original (maaarket)</div>'
+    +   '<img src="' + pic + '" style="' + imgStyle + '" loading="lazy">'
+    + '</div>'
+    // DESNO: generirana
+    + '<div>'
+    +   '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:6px">Generirana (gpt-image-2) ➡</div>'
+    +   '<div class="regen-after" style="' + imgStyle + ';display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:12px">Še ni generirano</div>'
+    +   '<div class="regen-actions" style="margin-top:10px;display:flex;gap:8px">'
+    +     '<button onclick="regenOne(this)" style="flex:1;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Regeneriraj</button>'
+    +   '</div>'
+    + '</div>'
+    + '</div>'
     + '</div>';
 }
 
 async function regenOne(btn) {
   const card = btn.closest('.regen-card');
-  const out = card.querySelector('.regen-out');
+  const after = card.querySelector('.regen-after');
+  const actions = card.querySelector('.regen-actions');
   const prompt = (document.getElementById('regenPrompt').value || '').trim();
   const sku = (document.getElementById('regenSku').value || '').trim();
-  if (!prompt) { out.innerHTML = '<span style="color:#ef4444;font-size:11px">Vpiši prompt zgoraj.</span>'; return; }
-  btn.disabled = true; out.innerHTML = '<span style="color:var(--text-tertiary);font-size:11px">Generiram (lahko traja ~30s)...</span>';
+  if (!prompt) { after.innerHTML = '<span style="color:#ef4444;font-size:12px">Vpiši prompt zgoraj.</span>'; return; }
+  btn.disabled = true;
+  after.innerHTML = '<span style="color:var(--text-tertiary);font-size:12px">Generiram (lahko traja ~30s)...</span>';
   try {
     const r = await fetch('/regen-image', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -12438,15 +12549,19 @@ async function regenOne(btn) {
       })
     });
     const d = await r.json();
-    if (!d.ok) { out.innerHTML = '<span style="color:#ef4444;font-size:11px">✗ ' + (d.error || 'napaka') + '</span>'; btn.disabled = false; return; }
+    if (!d.ok) {
+      after.innerHTML = '<span style="color:#ef4444;font-size:12px">✗ ' + (d.error || 'napaka') + '</span>';
+      btn.disabled = false; return;
+    }
     card.dataset.newUrl = d.url;
-    out.innerHTML = '<img src="' + d.url + '" style="width:100%;height:180px;object-fit:contain;background:#fff;border-radius:6px">'
-      + '<div style="display:flex;gap:6px;margin-top:6px">'
-      + '<a href="' + d.url + '" download style="flex:1;text-align:center;padding:7px;background:#3fb950;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none">⬇ Prenesi</a>'
-      + '<button onclick="regenPush(this)" style="flex:1;padding:7px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer">Pošlji nazaj (stub)</button>'
-      + '</div>';
+    const imgStyle = 'width:100%;height:340px;object-fit:contain;background:#fff;border-radius:8px;border:1px solid var(--border)';
+    after.outerHTML = '<img class="regen-after" src="' + d.url + '" style="' + imgStyle + '">';
+    actions.innerHTML =
+        '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer;padding:0 6px"><input type="checkbox" class="regen-pick" checked> izberi</label>'
+      + '<a href="' + d.url + '" download style="flex:1;text-align:center;padding:10px;background:#3fb950;color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">⬇ Prenesi</a>'
+      + '<button onclick="regenOne(this)" style="flex:1;padding:10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer">↻ Ponovi</button>';
   } catch(e) {
-    out.innerHTML = '<span style="color:#ef4444;font-size:11px">✗ ' + e + '</span>';
+    after.innerHTML = '<span style="color:#ef4444;font-size:12px">✗ ' + e + '</span>';
   }
   btn.disabled = false;
 }
