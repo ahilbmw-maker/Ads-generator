@@ -1512,13 +1512,27 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
 
       <div id="regenBulkBar" style="display:none;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-        <button onclick="regenSelectAll(true)" style="padding:8px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">☑ Izberi vse</button>
-        <button onclick="regenSelectAll(false)" style="padding:8px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">☐ Počisti</button>
-        <button onclick="regenPushSelected()" style="padding:8px 16px;background:#3fb950;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Pošlji izbrane nazaj</button>
+        <button onclick="regenEnqueueSelectAll(true)" style="padding:8px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">☑ Izberi vse</button>
+        <button onclick="regenEnqueueSelectAll(false)" style="padding:8px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">☐ Počisti</button>
+        <button onclick="regenEnqueueSelected()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">⏳ Dodaj izbrane v čakalnico</button>
+        <button onclick="regenPushSelected()" style="padding:8px 16px;background:#3fb950;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Pošlji generirane nazaj</button>
         <span id="regenBulkStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
       </div>
 
       <div id="regenGrid" style="display:flex;flex-direction:column;gap:16px"></div>
+
+      <!-- ČAKALNICA -->
+      <div style="margin-top:28px;border-top:1px solid var(--border);padding-top:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap">
+          <span class="slabel">⏳ ČAKALNICA GENERIRANJA <span id="regenQCount" style="color:var(--accent)"></span></span>
+          <div style="display:flex;gap:8px">
+            <button onclick="regenQueueRefresh()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">↻ Osveži</button>
+            <button onclick="regenQueueClearDone()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
+          </div>
+        </div>
+        <div id="regenQueueList" style="display:flex;flex-direction:column;gap:14px"></div>
+        <div id="regenQueueEmpty" style="font-size:13px;color:var(--text-tertiary);padding:12px 0">Čakalnica je prazna. Izberi slike zgoraj in klikni <b>Dodaj izbrane v čakalnico</b>. Generiranje teče na strežniku — lahko greš na drug SKU.</div>
+      </div>
     </div>
 
     <!-- Tab: Vrsta (čakalna vrsta generiranja) -->
@@ -12417,6 +12431,7 @@ async function regenLoad() {
     });
     grid.innerHTML = html;
     document.getElementById('regenBulkBar').style.display = 'flex';
+    regenOneSuggestsRenderAll();
   } catch(e) {
     st.innerHTML = '<span style="color:#ef4444">✗ ' + e + '</span>';
   }
@@ -12470,6 +12485,39 @@ function regenPromptDelete() {
 // init dropdown ob nalaganju strani
 document.addEventListener('DOMContentLoaded', regenPromptsRender);
 
+// ── per-slika: shrani prompt + prikaži predloge (chips) ──
+function regenOneSave(btn) {
+  const card = btn.closest('.regen-card');
+  const inp = card.querySelector('.regen-prompt-one');
+  const val = (inp && inp.value || '').trim();
+  if (!val) return;
+  const arr = regenPromptsLoad();
+  if (!arr.includes(val)) { arr.unshift(val); regenPromptsSaveAll(arr); }
+  regenPromptsRender();          // osveži tudi splošni dropdown
+  regenOneSuggestsRenderAll();   // osveži chips na vseh karticah
+}
+
+function regenOneSuggestsRenderAll() {
+  const arr = regenPromptsLoad();
+  document.querySelectorAll('.regen-one-suggests').forEach(box => {
+    if (!arr.length) { box.innerHTML = ''; return; }
+    box.innerHTML = arr.map((p, i) => {
+      const label = p.length > 40 ? p.slice(0, 40) + '…' : p;
+      return '<button onclick="regenOnePick(this,' + i + ')" title="' + p.replace(/"/g,'&quot;') + '" '
+        + 'style="padding:4px 9px;background:var(--bg-secondary,transparent);color:var(--text-secondary);border:1px solid var(--border);border-radius:14px;font-size:11px;cursor:pointer">'
+        + label.replace(/</g,'&lt;') + '</button>';
+    }).join('');
+  });
+}
+
+function regenOnePick(btn, idx) {
+  const card = btn.closest('.regen-card');
+  const inp = card.querySelector('.regen-prompt-one');
+  const arr = regenPromptsLoad();
+  const p = arr[idx];
+  if (inp && p != null) inp.value = p;
+}
+
 // ── izbira in skupinski push ──
 function regenSelectAll(state) {
   document.querySelectorAll('.regen-pick').forEach(cb => {
@@ -12509,8 +12557,16 @@ function regenCard(o) {
   const path = (o.picture_path || '').replace(/"/g, '&quot;');
   const imgStyle = 'width:100%;height:340px;object-fit:contain;background:#fff;border-radius:8px;border:1px solid var(--border)';
   return '<div class="regen-card" data-id="' + safeId + '" data-kind="' + o.kind + '" data-path="' + path + '" data-picture="' + pic + '" style="border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--bg)">'
-    + '<div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:10px">' + o.label + ' · ID ' + safeId + '</div>'
-    + '<input type="text" class="regen-prompt-one" placeholder="Prompt za to sliko (prazno = uporabi splošni prompt zgoraj)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text-primary);box-sizing:border-box;margin-bottom:12px">'
+    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+    +   '<label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--text-secondary);cursor:pointer"><input type="checkbox" class="regen-enqueue-pick" checked> ' + o.label + ' · ID ' + safeId + '</label>'
+    + '</div>'
+    + '<div style="margin-bottom:12px">'
+    +   '<div style="display:flex;gap:6px;align-items:center">'
+    +     '<input type="text" class="regen-prompt-one" placeholder="Prompt za to sliko (prazno = uporabi splošni prompt zgoraj)" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text-primary);box-sizing:border-box">'
+    +     '<button onclick="regenOneSave(this)" title="Shrani ta prompt med predloge" style="padding:8px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer;white-space:nowrap">💾 shrani</button>'
+    +   '</div>'
+    +   '<div class="regen-one-suggests" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>'
+    + '</div>'
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">'
     // LEVO: original
     + '<div>'
@@ -12539,7 +12595,12 @@ async function regenOne(btn) {
   const prompt = onePrompt || globalPrompt;
   const sku = (document.getElementById('regenSku').value || '').trim();
   if (!prompt) { after.innerHTML = '<span style="color:#ef4444;font-size:12px">Vpiši prompt (splošnega zgoraj ali per sliko).</span>'; return; }
+  if (btn.dataset.busy === '1') return;   // prepreči večkratni klik
+  btn.dataset.busy = '1';
   btn.disabled = true;
+  btn.style.background = '#3fb950';
+  btn.style.cursor = 'default';
+  btn.textContent = '⏳ Generiram...';
   after.innerHTML = '<span style="color:var(--text-tertiary);font-size:12px">Generiram (lahko traja ~30s)...</span>';
   try {
     const r = await fetch('/regen-image', {
@@ -12555,7 +12616,7 @@ async function regenOne(btn) {
     const d = await r.json();
     if (!d.ok) {
       after.innerHTML = '<span style="color:#ef4444;font-size:12px">✗ ' + (d.error || 'napaka') + '</span>';
-      btn.disabled = false; return;
+      regenResetBtn(btn); return;
     }
     card.dataset.newUrl = d.url;
     const imgStyle = 'width:100%;height:340px;object-fit:contain;background:#fff;border-radius:8px;border:1px solid var(--border)';
@@ -12566,8 +12627,16 @@ async function regenOne(btn) {
       + '<button onclick="regenOne(this)" style="flex:1;padding:10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer">↻ Ponovi</button>';
   } catch(e) {
     after.innerHTML = '<span style="color:#ef4444;font-size:12px">✗ ' + e + '</span>';
+    regenResetBtn(btn);
   }
+}
+
+function regenResetBtn(btn) {
+  btn.dataset.busy = '';
   btn.disabled = false;
+  btn.style.background = 'var(--accent)';
+  btn.style.cursor = 'pointer';
+  btn.textContent = btn.textContent.indexOf('↻') >= 0 ? '↻ Ponovi' : 'Regeneriraj';
 }
 
 async function regenPush(btn) {
@@ -12586,6 +12655,104 @@ async function regenPush(btn) {
     btn.textContent = d.stub ? 'Stub (še ni zapisa)' : (d.ok ? '✓ Poslano' : '✗ napaka');
   } catch(e) { btn.textContent = '✗ napaka'; }
 }
+// ── ČAKALNICA: enqueue + polling ──
+function regenEnqueueSelectAll(state) {
+  document.querySelectorAll('.regen-enqueue-pick').forEach(cb => { cb.checked = state; });
+}
+
+async function regenEnqueueSelected() {
+  const sku = (document.getElementById('regenSku').value || '').trim();
+  const status = document.getElementById('regenBulkStatus');
+  const globalPrompt = (document.getElementById('regenPrompt').value || '').trim();
+  const picks = Array.from(document.querySelectorAll('.regen-enqueue-pick')).filter(cb => cb.checked);
+  if (!picks.length) { status.textContent = 'Nič izbranega za čakalnico.'; return; }
+  const images = [];
+  picks.forEach(cb => {
+    const card = cb.closest('.regen-card');
+    const oneEl = card.querySelector('.regen-prompt-one');
+    const onePrompt = (oneEl && oneEl.value || '').trim();
+    images.push({
+      image_id: card.dataset.id,
+      kind: card.dataset.kind,
+      src_url: card.dataset.picture,
+      picture_path: card.dataset.path,
+      prompt: onePrompt || globalPrompt
+    });
+  });
+  status.textContent = 'Dodajam ' + images.length + ' v čakalnico...';
+  try {
+    const r = await fetch('/regen-enqueue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku, images }) });
+    const d = await r.json();
+    if (d.ok) {
+      status.innerHTML = '<span style="color:#3fb950">✓ Dodano v čakalnico (' + d.count + '). Lahko greš na drug SKU.</span>';
+      regenQueueRefresh();
+    } else {
+      status.innerHTML = '<span style="color:#ef4444">✗ ' + (d.error || 'napaka') + '</span>';
+    }
+  } catch(e) { status.innerHTML = '<span style="color:#ef4444">✗ ' + e + '</span>'; }
+}
+
+let _regenQueuePollTimer = null;
+async function regenQueueRefresh() {
+  try {
+    const r = await fetch('/regen-queue');
+    const d = await r.json();
+    if (!d.ok) return;
+    regenQueueRender(d.jobs || []);
+  } catch(e) {}
+}
+
+function regenQueueRender(jobs) {
+  const list = document.getElementById('regenQueueList');
+  const empty = document.getElementById('regenQueueEmpty');
+  const count = document.getElementById('regenQCount');
+  if (!list) return;
+  count.textContent = jobs.length ? '(' + jobs.length + ')' : '';
+  if (!jobs.length) { list.innerHTML = ''; empty.style.display = 'block'; stopRegenPoll(); return; }
+  empty.style.display = 'none';
+  let anyActive = false;
+  list.innerHTML = jobs.slice().reverse().map(job => {
+    const done = job.images.filter(i => i.status === 'done').length;
+    const err = job.images.filter(i => i.status === 'error').length;
+    const total = job.images.length;
+    if (job.status === 'pending' || job.status === 'processing') anyActive = true;
+    const statusColor = job.status === 'done' ? '#3fb950' : (job.status === 'error' ? '#ef4444' : '#d29922');
+    const statusLabel = job.status === 'pending' ? 'čaka' : (job.status === 'processing' ? 'generira...' : (job.status === 'error' ? 'napaka' : 'gotovo'));
+    let thumbs = job.images.map(im => {
+      if (im.status === 'done' && im.result_url) {
+        return '<div style="text-align:center"><img src="' + im.result_url + '" style="width:120px;height:80px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:6px"><div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">' + (im.kind === 'main' ? 'glavna' : 'ID ' + im.image_id) + '</div></div>';
+      }
+      const c = im.status === 'error' ? '#ef4444' : 'var(--text-tertiary)';
+      const t = im.status === 'error' ? '✗' : '⏳';
+      return '<div style="width:120px;height:80px;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:6px;color:' + c + ';font-size:11px" title="' + (im.error || '') + '">' + t + ' ' + (im.kind === 'main' ? 'glavna' : im.image_id) + '</div>';
+    }).join('');
+    return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--bg)">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px;flex-wrap:wrap">'
+      +   '<div style="font-size:13px;font-weight:600">' + job.sku + ' <span style="color:' + statusColor + ';font-weight:500">· ' + statusLabel + '</span> <span style="color:var(--text-tertiary);font-weight:400;font-size:12px">' + done + '/' + total + (err ? ' (✗' + err + ')' : '') + '</span></div>'
+      +   '<button onclick="regenQueueDelete(\'' + job.id + '\')" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">Odstrani</button>'
+      + '</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:8px">' + thumbs + '</div>'
+      + '</div>';
+  }).join('');
+  if (anyActive) startRegenPoll(); else stopRegenPoll();
+}
+
+function startRegenPoll() {
+  if (_regenQueuePollTimer) return;
+  _regenQueuePollTimer = setInterval(regenQueueRefresh, 4000);
+}
+function stopRegenPoll() {
+  if (_regenQueuePollTimer) { clearInterval(_regenQueuePollTimer); _regenQueuePollTimer = null; }
+}
+
+async function regenQueueDelete(id) {
+  try { await fetch('/regen-queue/' + id, { method:'DELETE' }); regenQueueRefresh(); } catch(e) {}
+}
+async function regenQueueClearDone() {
+  try { await fetch('/regen-queue-clear-done', { method:'POST' }); regenQueueRefresh(); } catch(e) {}
+}
+// ob preklopu na regen tab osveži čakalnico
+document.addEventListener('DOMContentLoaded', function(){ setTimeout(regenQueueRefresh, 1200); });
 // ── /OPTIMIZACIJA SLIK ────────────────────────────────────────
 
 const HF_BASE = 'https://api.maaarket.si';
