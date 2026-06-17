@@ -20623,18 +20623,44 @@ class RegenPushReq(BaseModel):
     gallery: Optional[List[dict]] = None  # [{id, picture(link), picture_path}, ...] samo spremenjene
 
 
+def _strip_domain(path: str) -> str:
+    """picture_path brez domene (Marko zahteva). https://host/storage/... -> /storage/...
+    Relativne poti (Igrace/...) pusti nedotaknjene."""
+    p = (path or "").strip()
+    if p.startswith("http://") or p.startswith("https://"):
+        try:
+            from urllib.parse import urlparse as _up
+            parsed = _up(p)
+            return parsed.path or p
+        except Exception:
+            return p
+    return p
+
+
 @app.post("/regen-push")
 async def regen_push(req: RegenPushReq):
-    """STUB — zapisovanje nazaj na maaarket še ni implementirano (čaka programerja).
-    Programer doda POST na maaarket write endpoint. Tu samo vrnemo, kaj BI poslali."""
+    """STUB — zapisovanje nazaj na maaarket še ni implementirano (čaka write endpoint od Marka).
+    Payload je že v PRAVI strukturi: glavna slika na vrhu, picture_path BREZ domene."""
+    # zgradi payload v strukturi, kot jo pričakuje maaarket (zrcalo branja)
     payload = {"sku": req.sku}
     if req.main:
-        payload["main"] = req.main
+        payload["picture"] = req.main.get("picture", "")
+        payload["picture_path"] = _strip_domain(req.main.get("picture_path", ""))
+        if req.main.get("id") is not None:
+            payload["id"] = req.main.get("id")
     if req.gallery:
-        payload["gallery"] = req.gallery
+        payload["gallery"] = [
+            {
+                "id": g.get("id"),
+                "picture": g.get("picture", ""),
+                "picture_path": _strip_domain(g.get("picture_path", "")),
+            }
+            for g in req.gallery
+        ]
+    # TODO: ko Marko da write URL → POST payload tja in vrni njegov odgovor.
     return JSONResponse({
         "ok": False,
         "stub": True,
-        "note": "Zapisovanje nazaj na maaarket še ni implementirano. Spodaj je payload, ki bo poslan, ko programer doda write POST.",
+        "note": "Write endpoint še ni vključen. Spodaj je TOČEN payload, ki bo poslan (glavna na vrhu, picture_path brez domene).",
         "would_send": payload,
     })
