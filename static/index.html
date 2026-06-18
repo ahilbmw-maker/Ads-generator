@@ -12606,7 +12606,7 @@ function regenCard(o) {
     + '</div>'
     + '<div style="margin-bottom:12px">'
     +   '<div style="display:flex;gap:6px;align-items:center">'
-    +     '<input type="text" class="regen-prompt-one" placeholder="Prompt za to sliko (prazno = uporabi splošni prompt zgoraj)" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text-primary);box-sizing:border-box">'
+    +     '<input type="text" class="regen-prompt-one" placeholder="' + (o.kind === 'gallery' ? 'Prompt za to sliko (prazno = galerijski privzetek: varni rob, brez odreza)' : 'Prompt za to sliko (prazno = uporabi splošni prompt zgoraj)') + '" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text-primary);box-sizing:border-box">'
     +     '<button onclick="regenOneSave(this)" title="Shrani ta prompt med predloge" style="padding:8px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer;white-space:nowrap">💾 shrani</button>'
     +   '</div>'
     +   '<div class="regen-one-suggests" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>'
@@ -12629,14 +12629,25 @@ function regenCard(o) {
     + '</div>';
 }
 
+// privzeti prompt za GALERIJO (safe rob, da maaarket ne odreže izdelka)
+const REGEN_GALLERY_DEFAULT = 'izboljšaj sliko, super prodajno, brez teksta; izdelek naj bo v celoti viden in centriran, z dovolj prostora/roba okoli njega na vseh straneh (varni rob ~15%), da pri obrezovanju nič ne manjka; ne približuj in ne odrezuj izdelka';
+
+// vrne pravi prompt: per-slika > (galerija: galerijski privzetek | glavna: globalni)
+function regenResolvePrompt(card){
+  const oneEl = card.querySelector('.regen-prompt-one');
+  const onePrompt = (oneEl && oneEl.value || '').trim();
+  if (onePrompt) return onePrompt;
+  const kind = card.dataset.kind;
+  const globalPrompt = (document.getElementById('regenPrompt').value || '').trim();
+  if (kind === 'gallery') return REGEN_GALLERY_DEFAULT;
+  return globalPrompt;
+}
+
 async function regenOne(btn) {
   const card = btn.closest('.regen-card');
   const after = card.querySelector('.regen-after');
   const actions = card.querySelector('.regen-actions');
-  const onePromptEl = card.querySelector('.regen-prompt-one');
-  const onePrompt = (onePromptEl && onePromptEl.value || '').trim();
-  const globalPrompt = (document.getElementById('regenPrompt').value || '').trim();
-  const prompt = onePrompt || globalPrompt;
+  const prompt = regenResolvePrompt(card);
   const sku = (document.getElementById('regenSku').value || '').trim();
   if (!prompt) { after.innerHTML = '<span style="color:#ef4444;font-size:12px">Vpiši prompt (splošnega zgoraj ali per sliko).</span>'; return; }
   if (btn.dataset.busy === '1') return;   // prepreči večkratni klik
@@ -12713,14 +12724,12 @@ async function regenEnqueueSelected() {
   const images = [];
   picks.forEach(cb => {
     const card = cb.closest('.regen-card');
-    const oneEl = card.querySelector('.regen-prompt-one');
-    const onePrompt = (oneEl && oneEl.value || '').trim();
     images.push({
       image_id: card.dataset.id,
       kind: card.dataset.kind,
       src_url: card.dataset.picture,
       picture_path: card.dataset.path,
-      prompt: onePrompt || globalPrompt
+      prompt: regenResolvePrompt(card)
     });
   });
   status.textContent = 'Dodajam ' + images.length + ' v čakalnico...';
