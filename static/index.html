@@ -12974,7 +12974,7 @@ async function regenQueuePushJob(jobId, btn){
     const pd = await pr.json();
     if (pd.ok){
       regenPushState[jobId] = { status:'ok', msg:'✓ Poslano '+done.length+' slik na maaarket',
-        detail: JSON.stringify(pd.response||pd.sent, null, 2) };
+        detail: 'ODGOVOR MAAARKET:\n' + JSON.stringify(pd.response!==undefined?pd.response:(pd.body||pd.error||'(prazen)'), null, 2) + '\n\n— — —\nPOSLANO:\n' + JSON.stringify(pd.sent, null, 2) };
       // označi job kot poslan na strežniku (persistentno)
       try { await fetch('/regen-queue-mark-pushed', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job_ids:[jobId], pushed:true }) }); } catch(e){}
     } else {
