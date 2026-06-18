@@ -12586,9 +12586,9 @@ async function regenPushSelected() {
   try {
     const r = await fetch('/regen-push', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const d = await r.json();
-    status.innerHTML = d.stub
-      ? '<span style="color:#d29922">Stub — zapis še ni aktiven (payload pripravljen za ' + picks.length + ' slik)</span>'
-      : (d.ok ? '<span style="color:#3fb950">✓ Poslano ' + picks.length + '</span>' : '<span style="color:#ef4444">✗ napaka</span>');
+    status.innerHTML = d.ok
+      ? '<span style="color:#3fb950">✓ Poslano ' + picks.length + ' nazaj na maaarket</span>'
+      : '<span style="color:#ef4444">✗ ' + (d.error || 'napaka') + (d.body?(' — '+String(d.body).slice(0,120)):'') + '</span>';
   } catch(e) { status.innerHTML = '<span style="color:#ef4444">✗ ' + e + '</span>'; }
 }
 
@@ -12778,6 +12778,7 @@ function regenQueueRender(jobs) {
       + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px;flex-wrap:wrap">'
       +   '<div style="font-size:13px;font-weight:600">' + job.sku + ' <span style="color:' + statusColor + ';font-weight:500">· ' + statusLabel + '</span> <span style="color:var(--text-tertiary);font-weight:400;font-size:12px">' + done + '/' + total + (err ? ' (✗' + err + ')' : '') + '</span></div>'
       +   '<div style="display:flex;gap:6px">'
+      +     (done > 0 ? '<button onclick="regenQueuePushJob(\'' + job.id + '\', this)" style="font-size:11px;background:#3fb950;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer">⬆ Pošlji nazaj</button>' : '')
       +     (done > 0 ? '<button onclick="regenQueueDownloadJob(\'' + job.id + '\')" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">⬇ Prenesi vse</button>' : '')
       +     '<button onclick="regenQueueDelete(\'' + job.id + '\')" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">Odstrani</button>'
       +   '</div>'
@@ -12853,6 +12854,39 @@ async function regenQueueDownloadJob(jobId) {
       await new Promise(r => setTimeout(r, 400));
     }
   } catch(e) {}
+}
+
+async function regenQueuePushJob(jobId, btn){
+  try {
+    const r = await fetch('/regen-queue');
+    const d = await r.json();
+    if (!d.ok) return;
+    const job = (d.jobs || []).find(j => j.id === jobId);
+    if (!job) return;
+    const done = job.images.filter(im => im.status === 'done' && im.result_url);
+    if (!done.length){ alert('Ni gotovih slik za pošiljanje.'); return; }
+    if (btn){ btn.disabled = true; btn.textContent = '⏳ Pošiljam...'; }
+    const body = { sku: job.sku };
+    const galleryArr = [];
+    done.forEach(im => {
+      const fullUrl = location.origin + im.result_url;
+      const item = { id: im.image_id, picture: fullUrl, picture_path: im.picture_path || '' };
+      if (im.kind === 'main') body.main = item;
+      else galleryArr.push(item);
+    });
+    if (galleryArr.length) body.gallery = galleryArr;
+    const pr = await fetch('/regen-push', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const pd = await pr.json();
+    if (btn){
+      btn.disabled = false;
+      if (pd.ok){ btn.textContent = '✓ Poslano'; btn.style.color = '#3fb950'; }
+      else { btn.textContent = '✗ napaka'; btn.style.color = '#ef4444'; btn.title = (pd.error||'') + ' ' + (pd.body||''); }
+    }
+    if (!pd.ok) console.warn('push job napaka', pd);
+  } catch(e){
+    if (btn){ btn.disabled = false; btn.textContent = '✗ napaka'; btn.style.color = '#ef4444'; }
+    console.warn(e);
+  }
 }
 // ── /OPTIMIZACIJA SLIK ────────────────────────────────────────
 
