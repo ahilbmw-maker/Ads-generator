@@ -1532,6 +1532,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <span class="slabel">⏳ ČAKALNICA SLIK <span id="regenQCount" style="color:var(--accent)"></span></span>
         <div style="display:flex;gap:8px">
+          <button id="regenHidePushedBtn" onclick="regenToggleHidePushed()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">🙈 Skrij poslane</button>
           <button onclick="regenQueueRefresh()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">↻ Osveži</button>
           <button onclick="regenQueueClearDone()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
         </div>
@@ -12743,6 +12744,19 @@ async function regenQueueRefresh() {
   } catch(e) {}
 }
 
+let regenHidePushed = false;
+function regenToggleHidePushed(){
+  regenHidePushed = !regenHidePushed;
+  regenQueueRefresh();
+}
+async function regenMarkPushed(jobId, pushed){
+  try { await fetch('/regen-queue-mark-pushed', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job_ids:[jobId], pushed:pushed }) }); regenQueueRefresh(); } catch(e){}
+}
+async function regenMarkPushedFrom(jobId){
+  if (!confirm('Označiti ta job IN vse starejše kot poslane?')) return;
+  try { await fetch('/regen-queue-mark-pushed', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ all_from_id:jobId, pushed:true }) }); regenQueueRefresh(); } catch(e){}
+}
+
 function regenQueueRender(jobs) {
   const list = document.getElementById('regenQueueList');
   const empty = document.getElementById('regenQueueEmpty');
@@ -12755,11 +12769,23 @@ function regenQueueRender(jobs) {
     else { badge.style.display = 'none'; }
   }
   if (!list) return;
-  count.textContent = jobs.length ? '(' + jobs.length + ')' : '';
-  if (!jobs.length) { list.innerHTML = ''; empty.style.display = 'block'; stopRegenPoll(); return; }
+  // skrij poslane, če je toggle aktiven
+  const allJobs = jobs;
+  let viewJobs = jobs;
+  const pushedCount = allJobs.filter(j => j.pushed).length;
+  if (regenHidePushed) viewJobs = jobs.filter(j => !j.pushed);
+  count.textContent = allJobs.length ? '(' + allJobs.length + (pushedCount?(' · '+pushedCount+' poslanih'):'') + ')' : '';
+  const hb = document.getElementById('regenHidePushedBtn');
+  if (hb) hb.textContent = regenHidePushed ? ('👁 Prikaži poslane'+(pushedCount?' ('+pushedCount+')':'')) : ('🙈 Skrij poslane'+(pushedCount?' ('+pushedCount+')':''));
+  if (!viewJobs.length){ list.innerHTML = ''; empty.style.display = 'block';
+    empty.textContent = (allJobs.length && regenHidePushed) ? 'Vsi joby so poslani in skriti. Klikni "Prikaži poslane".' : 'Čakalnica je prazna. V zavihku Optimizacija slik izberi slike in klikni Dodaj izbrane v čakalnico.';
+    const anyAct = allJobs.some(j=>j.status==='pending'||j.status==='processing');
+    if (anyAct) startRegenPoll(); else stopRegenPoll();
+    return;
+  }
   empty.style.display = 'none';
   let anyActive = false;
-  list.innerHTML = jobs.slice().reverse().map(job => {
+  list.innerHTML = viewJobs.slice().reverse().map(job => {
     const done = job.images.filter(i => i.status === 'done').length;
     const err = job.images.filter(i => i.status === 'error').length;
     const total = job.images.length;
@@ -12774,10 +12800,13 @@ function regenQueueRender(jobs) {
       const t = im.status === 'error' ? '✗' : '⏳';
       return '<div style="width:100%;height:255px;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:8px;color:' + c + ';font-size:12px" title="' + (im.error || '') + '">' + t + ' ' + (im.kind === 'main' ? 'glavna' : im.image_id) + '</div>';
     }).join('');
-    return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--bg)">'
+    return '<div style="border:1px solid ' + (job.pushed ? '#3fb95066' : 'var(--border)') + ';border-radius:10px;padding:12px;background:var(--bg)' + (job.pushed ? ';opacity:0.7' : '') + '">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px;flex-wrap:wrap">'
-      +   '<div style="font-size:13px;font-weight:600">' + job.sku + ' <span style="color:' + statusColor + ';font-weight:500">· ' + statusLabel + '</span> <span style="color:var(--text-tertiary);font-weight:400;font-size:12px">' + done + '/' + total + (err ? ' (✗' + err + ')' : '') + '</span></div>'
+      +   '<div style="font-size:13px;font-weight:600">' + job.sku + ' <span style="color:' + statusColor + ';font-weight:500">· ' + statusLabel + '</span> <span style="color:var(--text-tertiary);font-weight:400;font-size:12px">' + done + '/' + total + (err ? ' (✗' + err + ')' : '') + '</span>' + (job.pushed ? ' <span style="background:#3fb95022;color:#3fb950;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:4px">✓ POSLANO</span>' : '') + '</div>'
       +   '<div style="display:flex;gap:6px">'
+      +     (job.pushed
+              ? '<button onclick="regenMarkPushed(\'' + job.id + '\', false)" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">↩ odznači poslano</button>'
+              : '<button onclick="regenMarkPushedFrom(\'' + job.id + '\')" title="Označi ta job in vse starejše kot poslane" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">✓⬇ ta + starejše = poslano</button>')
       +     (done > 0 ? '<button onclick="regenQueuePushJob(\'' + job.id + '\')"' + (regenPushState[job.id] && regenPushState[job.id].status==='sending' ? ' disabled' : '') + ' style="font-size:11px;background:#3fb950;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer">' + (regenPushState[job.id] && regenPushState[job.id].status==='sending' ? '⏳ Pošiljam...' : (regenPushState[job.id] && regenPushState[job.id].status==='ok' ? '✓ Poslano (znova?)' : '⬆ Pošlji nazaj')) + '</button>' : '')
       +     (done > 0 ? '<button onclick="regenQueueDownloadJob(\'' + job.id + '\')" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">⬇ Prenesi vse</button>' : '')
       +     '<button onclick="regenQueueDelete(\'' + job.id + '\')" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">Odstrani</button>'
@@ -12897,6 +12926,8 @@ async function regenQueuePushJob(jobId, btn){
     if (pd.ok){
       regenPushState[jobId] = { status:'ok', msg:'✓ Poslano '+done.length+' slik na maaarket',
         detail: JSON.stringify(pd.response||pd.sent, null, 2) };
+      // označi job kot poslan na strežniku (persistentno)
+      try { await fetch('/regen-queue-mark-pushed', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job_ids:[jobId], pushed:true }) }); } catch(e){}
     } else {
       regenPushState[jobId] = { status:'err', msg:'✗ '+(pd.error||'napaka'),
         detail: JSON.stringify(pd, null, 2) };

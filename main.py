@@ -20814,6 +20814,36 @@ async def regen_queue_clear_done():
     return JSONResponse({"ok": True})
 
 
+class RegenPushedReq(BaseModel):
+    job_ids: Optional[List[str]] = None    # označi te jobe kot pushed
+    pushed: bool = True                    # true=označi, false=odznači
+    all_from_id: Optional[str] = None      # označi ta job IN vse STAREJŠE (po vrstnem redu v queue)
+
+
+@app.post("/regen-queue-mark-pushed")
+async def regen_queue_mark_pushed(req: RegenPushedReq):
+    """Označi/odznači jobe kot 'poslane nazaj'. Persistentno na jobu."""
+    async with _regen_queue_lock:
+        jobs = _regen_queue_load()
+        target_ids = set(req.job_ids or [])
+        # "all_from_id": ta job + vsi starejši (joby so v vrsti dodani od najstarejšega → najnovejši,
+        # torej index <= index(all_from_id))
+        if req.all_from_id:
+            idx = next((i for i, j in enumerate(jobs) if j.get("id") == req.all_from_id), None)
+            if idx is not None:
+                for j in jobs[:idx+1]:
+                    target_ids.add(j.get("id"))
+        n = 0
+        for j in jobs:
+            if j.get("id") in target_ids:
+                j["pushed"] = bool(req.pushed)
+                if req.pushed:
+                    j["pushed_at"] = datetime.now(timezone.utc).isoformat()
+                n += 1
+        _regen_queue_save(jobs)
+    return JSONResponse({"ok": True, "marked": n})
+
+
 async def _regen_worker_loop():
     """Background worker: obdeluje pending jobe enega za drugim."""
     await asyncio.sleep(8)  # počakaj startup
