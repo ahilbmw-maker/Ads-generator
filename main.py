@@ -20669,8 +20669,8 @@ def _strip_domain(path: str) -> str:
 
 @app.post("/regen-push")
 async def regen_push(req: RegenPushReq):
-    """STUB — zapisovanje nazaj na maaarket še ni implementirano (čaka write endpoint od Marka).
-    Payload je že v PRAVI strukturi: glavna slika na vrhu, picture_path BREZ domene."""
+    """Pošlje regenerirane slike nazaj na maaarket (POST /api/v1/images).
+    Payload: glavna na vrhu, picture_path BREZ domene, picture = public link."""
     # zgradi payload v strukturi, kot jo pričakuje maaarket (zrcalo branja)
     payload = {"sku": req.sku}
     if req.main:
@@ -20687,13 +20687,36 @@ async def regen_push(req: RegenPushReq):
             }
             for g in req.gallery
         ]
-    # TODO: ko Marko da write URL → POST payload tja in vrni njegov odgovor.
-    return JSONResponse({
-        "ok": False,
-        "stub": True,
-        "note": "Write endpoint še ni vključen. Spodaj je TOČEN payload, ki bo poslan (glavna na vrhu, picture_path brez domene).",
-        "would_send": payload,
-    })
+    # POST na maaarket (isti URL kot branje, brez parametrov)
+    try:
+        async with httpx.AsyncClient(timeout=120) as cli:
+            r = await cli.post(MAAARKET_IMAGES_URL, json=payload)
+        body = r.text[:600]
+        if r.status_code not in (200, 201):
+            return JSONResponse({
+                "ok": False,
+                "error": f"maaarket status {r.status_code}",
+                "body": body,
+                "sent": payload,
+            }, status_code=200)
+        # poskusi prebrati JSON odgovor (če ga vrne)
+        try:
+            resp_json = r.json()
+        except Exception:
+            resp_json = None
+        return JSONResponse({
+            "ok": True,
+            "status": r.status_code,
+            "response": resp_json if resp_json is not None else body,
+            "sent": payload,
+        })
+    except Exception as e:
+        return JSONResponse({
+            "ok": False,
+            "error": str(e),
+            "type": type(e).__name__,
+            "sent": payload,
+        }, status_code=200)
 
 
 
