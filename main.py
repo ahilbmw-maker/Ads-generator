@@ -20688,35 +20688,59 @@ async def regen_push(req: RegenPushReq):
             for g in req.gallery
         ]
     # POST na maaarket (isti URL kot branje, brez parametrov)
+    def _log_push(entry):
+        try:
+            logf = DATA_DIR / "regen_push_log.json"
+            arr = []
+            if logf.exists():
+                try: arr = json.loads(logf.read_text(encoding="utf-8")) or []
+                except Exception: arr = []
+            arr.append(entry)
+            arr = arr[-200:]  # obdrži zadnjih 200
+            logf.write_text(json.dumps(arr, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    n_imgs = (1 if req.main else 0) + (len(req.gallery) if req.gallery else 0)
     try:
         async with httpx.AsyncClient(timeout=120) as cli:
             r = await cli.post(MAAARKET_IMAGES_URL, json=payload)
-        body = r.text[:600]
-        if r.status_code not in (200, 201):
-            return JSONResponse({
-                "ok": False,
-                "error": f"maaarket status {r.status_code}",
-                "body": body,
-                "sent": payload,
-            }, status_code=200)
-        # poskusi prebrati JSON odgovor (če ga vrne)
+        body = r.text[:4000]
         try:
             resp_json = r.json()
         except Exception:
             resp_json = None
-        return JSONResponse({
-            "ok": True,
+        ok = r.status_code in (200, 201)
+        _log_push({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "sku": req.sku,
+            "n_images": n_imgs,
             "status": r.status_code,
+            "ok": ok,
             "response": resp_json if resp_json is not None else body,
             "sent": payload,
         })
+        if not ok:
+            return JSONResponse({"ok": False, "error": f"maaarket status {r.status_code}", "body": body, "sent": payload}, status_code=200)
+        return JSONResponse({"ok": True, "status": r.status_code, "response": resp_json if resp_json is not None else body, "sent": payload})
     except Exception as e:
-        return JSONResponse({
-            "ok": False,
-            "error": str(e),
-            "type": type(e).__name__,
-            "sent": payload,
-        }, status_code=200)
+        _log_push({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "sku": req.sku, "n_images": n_imgs, "status": None, "ok": False,
+            "error": str(e), "type": type(e).__name__, "sent": payload,
+        })
+        return JSONResponse({"ok": False, "error": str(e), "type": type(e).__name__, "sent": payload}, status_code=200)
+
+
+@app.get("/regen-push-log")
+async def regen_push_log(limit: int = 50):
+    """Vrne zadnjih N push poskusov (za debug katere slike so spodletele)."""
+    try:
+        logf = DATA_DIR / "regen_push_log.json"
+        arr = json.loads(logf.read_text(encoding="utf-8")) if logf.exists() else []
+    except Exception:
+        arr = []
+    return JSONResponse({"ok": True, "entries": arr[-limit:][::-1]})
 
 
 

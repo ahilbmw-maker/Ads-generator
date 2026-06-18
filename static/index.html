@@ -1533,10 +1533,12 @@ input[type="text"].error { border-color: var(--red) !important; }
         <span class="slabel">⏳ ČAKALNICA SLIK <span id="regenQCount" style="color:var(--accent)"></span></span>
         <div style="display:flex;gap:8px">
           <button id="regenHidePushedBtn" onclick="regenToggleHidePushed()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">🙈 Skrij poslane</button>
+          <button onclick="regenShowPushLog()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">🔎 Push log</button>
           <button onclick="regenQueueRefresh()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">↻ Osveži</button>
           <button onclick="regenQueueClearDone()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
         </div>
       </div>
+      <div id="regenPushLogBox" style="display:none;margin-bottom:14px;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--surface2)"></div>
       <div id="regenQueueList" style="display:flex;flex-direction:column;gap:14px"></div>
       <div id="regenQueueEmpty" style="font-size:13px;color:var(--text-tertiary);padding:12px 0">Čakalnica je prazna. V zavihku <b>Optimizacija slik</b> izberi slike in klikni <b>Dodaj izbrane v čakalnico</b>. Generiranje teče na strežniku — lahko greš na drug SKU ali zapreš tab.</div>
     </div>
@@ -12749,6 +12751,39 @@ function regenToggleHidePushed(){
   regenHidePushed = !regenHidePushed;
   regenQueueRefresh();
 }
+async function regenShowPushLog(){
+  const box = document.getElementById('regenPushLogBox');
+  if (!box) return;
+  if (box.style.display === 'block'){ box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary)">Nalagam push log...</div>';
+  try {
+    const r = await fetch('/regen-push-log?limit=50');
+    const d = await r.json();
+    const entries = (d && d.ok && d.entries) ? d.entries : [];
+    if (!entries.length){ box.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary)">Push log je prazen.</div>'; return; }
+    let okCount = entries.filter(e=>e.ok).length, errCount = entries.length-okCount;
+    let html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span class="slabel">🔎 PUSH LOG (zadnjih '+entries.length+')</span>'
+      + '<span style="font-size:12px"><span style="color:#3fb950">✓ '+okCount+'</span> · <span style="color:#ef4444">✗ '+errCount+'</span></span></div>';
+    html += '<div style="display:flex;flex-direction:column;gap:6px;max-height:420px;overflow:auto">';
+    for (const e of entries){
+      const col = e.ok ? '#3fb950' : '#ef4444';
+      const ts = (e.ts||'').replace('T',' ').slice(0,19);
+      const respStr = typeof e.response === 'string' ? e.response : JSON.stringify(e.response||e.error||'', null, 2);
+      html += '<div style="border:1px solid '+col+'44;border-radius:7px;padding:8px 10px;background:var(--bg)">'
+        + '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px">'
+        +   '<span style="font-weight:700;color:'+col+'">'+(e.ok?'✓':'✗')+' '+(e.sku||'?')+'</span>'
+        +   '<span style="color:var(--text-tertiary)">'+e.n_images+' slik · status '+(e.status||e.type||'?')+' · '+ts+'</span>'
+        + '</div>'
+        + '<details style="margin-top:4px"><summary style="font-size:11px;color:var(--text-tertiary);cursor:pointer">odgovor maaarket</summary>'
+        +   '<pre style="margin-top:4px;padding:8px;background:var(--surface2);border-radius:6px;font-size:10px;color:var(--text-secondary);white-space:pre-wrap;word-break:break-all;max-height:200px;overflow:auto">'+String(respStr).replace(/</g,'&lt;')+'</pre></details>'
+        + '</div>';
+    }
+    html += '</div>';
+    box.innerHTML = html;
+  } catch(e){ box.innerHTML = '<div style="font-size:12px;color:#ef4444">Napaka: '+e+'</div>'; }
+}
+
 async function regenMarkPushed(jobId, pushed){
   try { await fetch('/regen-queue-mark-pushed', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job_ids:[jobId], pushed:pushed }) }); regenQueueRefresh(); } catch(e){}
 }
