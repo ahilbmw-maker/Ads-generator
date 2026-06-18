@@ -12808,8 +12808,9 @@ function regenQueueRender(jobs) {
   const allJobs = jobs;
   let viewJobs = jobs;
   const pushedCount = allJobs.filter(j => j.pushed).length;
+  const failedCount = allJobs.filter(j => j.push_error && !j.pushed).length;
   if (regenHidePushed) viewJobs = jobs.filter(j => !j.pushed);
-  count.textContent = allJobs.length ? '(' + allJobs.length + (pushedCount?(' · '+pushedCount+' poslanih'):'') + ')' : '';
+  count.textContent = allJobs.length ? '(' + allJobs.length + (pushedCount?(' · ✓'+pushedCount):'') + (failedCount?(' · ✗'+failedCount+' failed'):'') + ')' : '';
   const hb = document.getElementById('regenHidePushedBtn');
   if (hb) hb.textContent = regenHidePushed ? ('👁 Prikaži poslane'+(pushedCount?' ('+pushedCount+')':'')) : ('🙈 Skrij poslane'+(pushedCount?' ('+pushedCount+')':''));
   if (!viewJobs.length){ list.innerHTML = ''; empty.style.display = 'block';
@@ -12835,9 +12836,9 @@ function regenQueueRender(jobs) {
       const t = im.status === 'error' ? '✗' : '⏳';
       return '<div style="width:100%;height:255px;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:8px;color:' + c + ';font-size:12px" title="' + (im.error || '') + '">' + t + ' ' + (im.kind === 'main' ? 'glavna' : im.image_id) + '</div>';
     }).join('');
-    return '<div style="border:1px solid ' + (job.pushed ? '#3fb95066' : 'var(--border)') + ';border-radius:10px;padding:12px;background:var(--bg)' + (job.pushed ? ';opacity:0.7' : '') + '">'
+    return '<div style="border:1px solid ' + (job.pushed ? '#3fb95066' : (job.push_error ? '#ef444466' : 'var(--border)')) + ';border-radius:10px;padding:12px;background:var(--bg)' + (job.pushed ? ';opacity:0.7' : '') + '">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px;flex-wrap:wrap">'
-      +   '<div style="font-size:13px;font-weight:600">' + job.sku + ' <span style="color:' + statusColor + ';font-weight:500">· ' + statusLabel + '</span> <span style="color:var(--text-tertiary);font-weight:400;font-size:12px">' + done + '/' + total + (err ? ' (✗' + err + ')' : '') + '</span>' + (job.pushed ? ' <span style="background:#3fb95022;color:#3fb950;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:4px">✓ POSLANO</span>' : '') + '</div>'
+      +   '<div style="font-size:13px;font-weight:600">' + job.sku + ' <span style="color:' + statusColor + ';font-weight:500">· ' + statusLabel + '</span> <span style="color:var(--text-tertiary);font-weight:400;font-size:12px">' + done + '/' + total + (err ? ' (✗' + err + ')' : '') + '</span>' + (job.pushed ? ' <span style="background:#3fb95022;color:#3fb950;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:4px">✓ POSLANO</span>' : (job.push_error ? ' <span title="' + String(job.push_error).replace(/"/g,'&quot;') + '" style="background:#ef444422;color:#ef4444;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:4px">✗ PUSH FAILED</span>' : '')) + '</div>'
       +   '<div style="display:flex;gap:6px">'
       +     (job.pushed
               ? '<button onclick="regenMarkPushed(\'' + job.id + '\', false)" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">↩ odznači poslano</button>'
@@ -12848,6 +12849,9 @@ function regenQueueRender(jobs) {
       +   '</div>'
       + '</div>'
       + '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px">' + thumbs + '</div>'
+      + (job.push_error && !job.pushed
+          ? '<div style="margin-top:10px;padding:8px 10px;border:1px solid #ef444455;background:#ef444412;border-radius:7px;font-size:12px;color:#ef4444"><b>✗ Pošiljanje ni uspelo:</b> ' + String(job.push_error).replace(/</g,'&lt;') + '</div>'
+          : '')
       + (function(){
           const ps = regenPushState[job.id];
           if (!ps) return '';
@@ -12956,6 +12960,7 @@ async function regenQueuePushJob(jobId, btn){
       else galleryArr.push(item);
     });
     if (galleryArr.length) body.gallery = galleryArr;
+    body.job_id = jobId;
     const pr = await fetch('/regen-push', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const pd = await pr.json();
     if (pd.ok){

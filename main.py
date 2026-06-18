@@ -20651,6 +20651,7 @@ class RegenPushReq(BaseModel):
     sku: str
     main: Optional[dict] = None       # {id, picture(link), picture_path}
     gallery: Optional[List[dict]] = None  # [{id, picture(link), picture_path}, ...] samo spremenjene
+    job_id: Optional[str] = None      # za zapis statusa nazaj na job v čakalnici
 
 
 def _strip_domain(path: str) -> str:
@@ -20702,6 +20703,25 @@ async def regen_push(req: RegenPushReq):
             pass
 
     n_imgs = (1 if req.main else 0) + (len(req.gallery) if req.gallery else 0)
+
+    async def _set_job_push_status(ok, err_msg):
+        if not req.job_id:
+            return
+        async with _regen_queue_lock:
+            jobs = _regen_queue_load()
+            jj = next((x for x in jobs if x.get("id") == req.job_id), None)
+            if jj is None:
+                return
+            if ok:
+                jj["pushed"] = True
+                jj["pushed_at"] = datetime.now(timezone.utc).isoformat()
+                jj.pop("push_error", None)
+            else:
+                jj["pushed"] = False
+                jj["push_error"] = (err_msg or "napaka")[:300]
+                jj["push_error_at"] = datetime.now(timezone.utc).isoformat()
+            _regen_queue_save(jobs)
+
     try:
         async with httpx.AsyncClient(timeout=120) as cli:
             r = await cli.post(MAAARKET_IMAGES_URL, json=payload)
@@ -20720,6 +20740,7 @@ async def regen_push(req: RegenPushReq):
             "response": resp_json if resp_json is not None else body,
             "sent": payload,
         })
+        await _set_job_push_status(ok, None if ok else f"maaarket status {r.status_code}: {body[:200]}")
         if not ok:
             return JSONResponse({"ok": False, "error": f"maaarket status {r.status_code}", "body": body, "sent": payload}, status_code=200)
         return JSONResponse({"ok": True, "status": r.status_code, "response": resp_json if resp_json is not None else body, "sent": payload})
@@ -20729,6 +20750,7 @@ async def regen_push(req: RegenPushReq):
             "sku": req.sku, "n_images": n_imgs, "status": None, "ok": False,
             "error": str(e), "type": type(e).__name__, "sent": payload,
         })
+        await _set_job_push_status(False, f"{type(e).__name__}: {e}")
         return JSONResponse({"ok": False, "error": str(e), "type": type(e).__name__, "sent": payload}, status_code=200)
 
 
