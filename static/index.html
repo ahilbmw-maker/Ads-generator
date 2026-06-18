@@ -12585,6 +12585,7 @@ async function regenPushSelected() {
     else galleryArr.push(item);
   });
   if (galleryArr.length) body.gallery = galleryArr;
+  if (_regenData && _regenData.id != null) body.product_id = String(_regenData.id);
   status.textContent = 'Pošiljam ' + picks.length + '...';
   try {
     const r = await fetch('/regen-push', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
@@ -12606,7 +12607,7 @@ function regenCard(o) {
     + '</div>'
     + '<div style="margin-bottom:12px">'
     +   '<div style="display:flex;gap:6px;align-items:center">'
-    +     '<input type="text" class="regen-prompt-one" placeholder="' + (o.kind === 'gallery' ? 'Prompt za to sliko (prazno = galerijski privzetek: varni rob, brez odreza)' : 'Prompt za to sliko (prazno = uporabi splošni prompt zgoraj)') + '" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text-primary);box-sizing:border-box">'
+    +     '<input type="text" class="regen-prompt-one" placeholder="Prompt za to sliko (prazno = uporabi splošni prompt zgoraj)" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text-primary);box-sizing:border-box">'
     +     '<button onclick="regenOneSave(this)" title="Shrani ta prompt med predloge" style="padding:8px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer;white-space:nowrap">💾 shrani</button>'
     +   '</div>'
     +   '<div class="regen-one-suggests" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>'
@@ -12629,18 +12630,12 @@ function regenCard(o) {
     + '</div>';
 }
 
-// privzeti prompt za GALERIJO (safe rob, da maaarket ne odreže izdelka)
-const REGEN_GALLERY_DEFAULT = 'izboljšaj sliko, super prodajno, brez teksta; izdelek naj bo v celoti viden in centriran, z dovolj prostora/roba okoli njega na vseh straneh (varni rob ~15%), da pri obrezovanju nič ne manjka; ne približuj in ne odrezuj izdelka';
-
-// vrne pravi prompt: per-slika > (galerija: galerijski privzetek | glavna: globalni)
+// vrne pravi prompt: per-slika > globalni (glavni prompt zgoraj, velja za glavno IN galerijo)
 function regenResolvePrompt(card){
   const oneEl = card.querySelector('.regen-prompt-one');
   const onePrompt = (oneEl && oneEl.value || '').trim();
   if (onePrompt) return onePrompt;
-  const kind = card.dataset.kind;
-  const globalPrompt = (document.getElementById('regenPrompt').value || '').trim();
-  if (kind === 'gallery') return REGEN_GALLERY_DEFAULT;
-  return globalPrompt;
+  return (document.getElementById('regenPrompt').value || '').trim();
 }
 
 async function regenOne(btn) {
@@ -12733,8 +12728,9 @@ async function regenEnqueueSelected() {
     });
   });
   status.textContent = 'Dodajam ' + images.length + ' v čakalnico...';
+  const productId = (_regenData && _regenData.id != null) ? String(_regenData.id) : null;
   try {
-    const r = await fetch('/regen-enqueue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku, images }) });
+    const r = await fetch('/regen-enqueue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku, product_id: productId, images }) });
     const d = await r.json();
     if (d.ok) {
       status.innerHTML = '<span style="color:#3fb950">✓ Dodano v čakalnico (' + d.count + '). Lahko greš na drug SKU.</span>';
@@ -12970,6 +12966,7 @@ async function regenQueuePushJob(jobId, btn){
     });
     if (galleryArr.length) body.gallery = galleryArr;
     body.job_id = jobId;
+    if (job.product_id != null) body.product_id = String(job.product_id);
     const pr = await fetch('/regen-push', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const pd = await pr.json();
     if (pd.ok){

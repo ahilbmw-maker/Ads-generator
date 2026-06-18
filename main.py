@@ -20649,6 +20649,7 @@ async def regen_image(req: RegenImageReq):
 
 class RegenPushReq(BaseModel):
     sku: str
+    product_id: Optional[str] = None  # id izdelka — vedno na vrh requesta (maaarket zahteva)
     main: Optional[dict] = None       # {id, picture(link), picture_path}
     gallery: Optional[List[dict]] = None  # [{id, picture(link), picture_path}, ...] samo spremenjene
     job_id: Optional[str] = None      # za zapis statusa nazaj na job v čakalnici
@@ -20674,11 +20675,14 @@ async def regen_push(req: RegenPushReq):
     Payload: glavna na vrhu, picture_path BREZ domene, picture = public link."""
     # zgradi payload v strukturi, kot jo pričakuje maaarket (zrcalo branja)
     payload = {"sku": req.sku}
+    # id izdelka VEDNO na vrh requesta (maaarket ga zahteva, tudi pri samo-galerija)
+    if req.main and req.main.get("id") is not None:
+        payload["id"] = req.main.get("id")
+    elif req.product_id is not None:
+        payload["id"] = req.product_id
     if req.main:
         payload["picture"] = req.main.get("picture", "")
         payload["picture_path"] = _strip_domain(req.main.get("picture_path", ""))
-        if req.main.get("id") is not None:
-            payload["id"] = req.main.get("id")
     if req.gallery:
         payload["gallery"] = [
             {
@@ -20800,6 +20804,7 @@ class RegenEnqueueImage(BaseModel):
 
 class RegenEnqueueReq(BaseModel):
     sku: str
+    product_id: Optional[str] = None
     images: List[RegenEnqueueImage]
 
 
@@ -20811,6 +20816,7 @@ async def regen_enqueue(req: RegenEnqueueReq):
     job = {
         "id": uuid.uuid4().hex[:12],
         "sku": req.sku,
+        "product_id": req.product_id,
         "status": "pending",          # pending → processing → done/error
         "created": datetime.now(timezone.utc).isoformat(),
         "updated": datetime.now(timezone.utc).isoformat(),
