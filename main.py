@@ -20937,9 +20937,9 @@ async def _regen_worker_loop():
             if not target:
                 await asyncio.sleep(5)
                 continue
-            # generiraj slike PARALELNO (Tier 2 = 20 IPM, 6 hkrati varno pod limitom)
+            # generiraj slike PARALELNO (Tier 3 = 50 IPM, 12 hkrati varno pod limitom)
             job_id = target["id"]
-            _sema = asyncio.Semaphore(6)
+            _sema = asyncio.Semaphore(12)
 
             async def _process_image(idx, im):
                 if im.get("status") == "done":
