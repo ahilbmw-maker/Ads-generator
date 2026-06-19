@@ -12468,6 +12468,26 @@ async function regenLoad() {
     const main = d.data || {};
     const gallery = Array.isArray(d.data.gallery) ? d.data.gallery : [];
     st.innerHTML = '<span style="color:#3fb950">✓ Najdeno</span> · izdelek ID ' + (main.id || '—') + ' · galerija ' + gallery.length;
+    // preveri zgodovino čakalnice za ta SKU (že optimiziran?)
+    try {
+      const qr = await fetch('/regen-queue');
+      const qd = await qr.json();
+      const skuL = sku.toLowerCase();
+      const prior = (qd.jobs || []).filter(j => (j.sku||'').toLowerCase() === skuL);
+      if (prior.length){
+        const pushed = prior.filter(j => j.pushed);
+        let note, color;
+        if (pushed.length){
+          const when = (pushed[pushed.length-1].pushed_at || '').slice(0,10);
+          note = '⚠️ Ta izdelek smo ŽE OPTIMIZIRALI in poslali nazaj' + (when?(' ('+when+')'):'') + '. Za ponovno optimizacijo nadaljuj spodaj.';
+          color = '#d29922';
+        } else {
+          note = 'ℹ️ Ta izdelek je že v čakalnici (še ni poslan nazaj).';
+          color = '#3b82f6';
+        }
+        st.innerHTML += '<div style="margin-top:6px;padding:7px 10px;background:' + color + '15;border:1px solid ' + color + '55;border-radius:7px;font-size:12px;color:' + color + ';font-weight:600">' + note + '</div>';
+      }
+    } catch(e){}
     let html = '';
     html += regenCard({ id: main.id, picture: main.picture, picture_path: main.picture_path, kind: 'main', label: 'Glavna slika' });
     gallery.forEach((g, i) => {
