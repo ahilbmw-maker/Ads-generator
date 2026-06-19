@@ -1532,7 +1532,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <span class="slabel">⏳ ČAKALNICA SLIK <span id="regenQCount" style="color:var(--accent)"></span></span>
         <div style="display:flex;gap:8px">
-          <button id="regenHidePushedBtn" onclick="regenToggleHidePushed()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">🙈 Skrij poslane</button>
+          <button id="regenHidePushedBtn" onclick="regenToggleHidePushed()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">🙈 Skrij pregledane</button>
           <button onclick="regenShowPushLog()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">🔎 Push log</button>
           <button onclick="regenQueueRefresh()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">↻ Osveži</button>
           <button onclick="regenQueueClearDone()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
@@ -12833,17 +12833,18 @@ function regenQueueRender(jobs) {
     else { badge.style.display = 'none'; }
   }
   if (!list) return;
-  // skrij poslane, če je toggle aktiven
+  // skrij pregledane, če je toggle aktiven
   const allJobs = jobs;
   let viewJobs = jobs;
   const pushedCount = allJobs.filter(j => j.pushed).length;
   const failedCount = allJobs.filter(j => j.push_error && !j.pushed).length;
-  if (regenHidePushed) viewJobs = jobs.filter(j => !j.pushed);
-  count.textContent = allJobs.length ? '(' + allJobs.length + (pushedCount?(' · ✓'+pushedCount):'') + (failedCount?(' · ✗'+failedCount+' failed'):'') + ')' : '';
+  const reviewedCount = allJobs.filter(j => j.reviewed).length;
+  if (regenHidePushed) viewJobs = jobs.filter(j => !j.reviewed);
+  count.textContent = allJobs.length ? '(' + allJobs.length + (reviewedCount?(' · 👁'+reviewedCount):'') + (pushedCount?(' · ✓'+pushedCount):'') + (failedCount?(' · ✗'+failedCount+' failed'):'') + ')' : '';
   const hb = document.getElementById('regenHidePushedBtn');
-  if (hb) hb.textContent = regenHidePushed ? ('👁 Prikaži poslane'+(pushedCount?' ('+pushedCount+')':'')) : ('🙈 Skrij poslane'+(pushedCount?' ('+pushedCount+')':''));
+  if (hb) hb.textContent = regenHidePushed ? ('👁 Prikaži pregledane'+(reviewedCount?' ('+reviewedCount+')':'')) : ('🙈 Skrij pregledane'+(reviewedCount?' ('+reviewedCount+')':''));
   if (!viewJobs.length){ list.innerHTML = ''; empty.style.display = 'block';
-    empty.textContent = (allJobs.length && regenHidePushed) ? 'Vsi joby so poslani in skriti. Klikni "Prikaži poslane".' : 'Čakalnica je prazna. V zavihku Optimizacija slik izberi slike in klikni Dodaj izbrane v čakalnico.';
+    empty.textContent = (allJobs.length && regenHidePushed) ? 'Vsi joby so pregledani in skriti. Klikni "Prikaži pregledane".' : 'Čakalnica je prazna. V zavihku Optimizacija slik izberi slike in klikni Dodaj izbrane v čakalnico.';
     const anyAct = allJobs.some(j=>j.status==='pending'||j.status==='processing');
     if (anyAct) startRegenPoll(); else stopRegenPoll();
     return;
