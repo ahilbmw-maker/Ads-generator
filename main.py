@@ -20901,6 +20901,27 @@ class RegenReviewedReq(BaseModel):
     reviewed: bool = True
 
 
+@app.post("/regen-queue-retry-failed/{job_id}")
+async def regen_queue_retry_failed(job_id: str):
+    """Vrne neuspele/obtičale slike joba v pending in znova zažene job."""
+    async with _regen_queue_lock:
+        jobs = _regen_queue_load()
+        jj = next((x for x in jobs if x.get("id") == job_id), None)
+        if jj is None:
+            return JSONResponse({"ok": False, "error": "Job ne obstaja"}, status_code=200)
+        n = 0
+        for im in jj.get("images", []):
+            if im.get("status") in ("error", "processing"):
+                im["status"] = "pending"
+                im["error"] = None
+                n += 1
+        if n:
+            jj["status"] = "pending"
+            jj["updated"] = datetime.now(timezone.utc).isoformat()
+            _regen_queue_save(jobs)
+    return JSONResponse({"ok": True, "retried": n})
+
+
 @app.post("/regen-queue-mark-reviewed")
 async def regen_queue_mark_reviewed(req: RegenReviewedReq):
     """Označi/odznači job kot 'pregledan na frontu'. Persistentno na jobu."""
@@ -20920,6 +20941,22 @@ async def regen_queue_mark_reviewed(req: RegenReviewedReq):
 async def _regen_worker_loop():
     """Background worker: obdeluje pending jobe enega za drugim."""
     await asyncio.sleep(8)  # počakaj startup
+    # stale recovery: če je kak job obtičal v 'processing' (npr. po restartu/zataknu), ga vrni v pending
+    try:
+        async with _regen_queue_lock:
+            jobs = _regen_queue_load()
+            changed = False
+            for j in jobs:
+                if j.get("status") == "processing":
+                    j["status"] = "pending"
+                    for im in j.get("images", []):
+                        if im.get("status") == "processing":
+                            im["status"] = "pending"
+                    changed = True
+            if changed:
+                _regen_queue_save(jobs)
+    except Exception as e:
+        print(f"[regen-worker] stale recovery: {e}")
     while True:
         try:
             # poišči prvi pending job
@@ -20944,31 +20981,41 @@ async def _regen_worker_loop():
             async def _process_image(idx, im):
                 if im.get("status") == "done":
                     return
-                async with _sema:
-                    url, meta, err = await _regen_generate_one(im.get("src_url", ""), im.get("prompt", ""))
+                try:
+                    async with _sema:
+                        url, meta, err = await _regen_generate_one(im.get("src_url", ""), im.get("prompt", ""))
+                except Exception as ex:
+                    url, meta, err = None, {}, f"worker izjema: {type(ex).__name__}: {ex}"
                 # zapiši rezultat takoj (sproti viden napredek)
-                async with _regen_queue_lock:
-                    jobs2 = _regen_queue_load()
-                    jj2 = next((x for x in jobs2 if x.get("id") == job_id), None)
-                    if jj2 is None:
-                        return
-                    if idx < len(jj2["images"]):
-                        if err:
-                            jj2["images"][idx]["status"] = "error"
-                            jj2["images"][idx]["error"] = err
-                        else:
-                            jj2["images"][idx]["status"] = "done"
-                            jj2["images"][idx]["result_url"] = url
-                            jj2["images"][idx]["error"] = None
-                        jj2["updated"] = datetime.now(timezone.utc).isoformat()
-                        _regen_queue_save(jobs2)
+                try:
+                    async with _regen_queue_lock:
+                        jobs2 = _regen_queue_load()
+                        jj2 = next((x for x in jobs2 if x.get("id") == job_id), None)
+                        if jj2 is None:
+                            return
+                        if idx < len(jj2["images"]):
+                            if err:
+                                jj2["images"][idx]["status"] = "error"
+                                jj2["images"][idx]["error"] = err
+                            else:
+                                jj2["images"][idx]["status"] = "done"
+                                jj2["images"][idx]["result_url"] = url
+                                jj2["images"][idx]["error"] = None
+                            jj2["updated"] = datetime.now(timezone.utc).isoformat()
+                            _regen_queue_save(jobs2)
+                except Exception as ex:
+                    print(f"[regen-worker] zapis statusa: {ex}")
 
-            await asyncio.gather(*[_process_image(i, im) for i, im in enumerate(target["images"])])
-            # zaključi job: status glede na rezultate
+            await asyncio.gather(*[_process_image(i, im) for i, im in enumerate(target["images"])], return_exceptions=True)
+            # zaključi job: status glede na rezultate; preostale 'processing/pending' označi kot error
             async with _regen_queue_lock:
                 jobs = _regen_queue_load()
                 jj = next((x for x in jobs if x.get("id") == job_id), None)
                 if jj is not None:
+                    for im in jj["images"]:
+                        if im.get("status") in ("processing", "pending"):
+                            im["status"] = "error"
+                            im["error"] = im.get("error") or "ni dokončano (worker)"
                     states = [i.get("status") for i in jj["images"]]
                     if all(s == "done" for s in states):
                         jj["status"] = "done"
