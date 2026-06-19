@@ -20896,6 +20896,27 @@ async def regen_queue_mark_pushed(req: RegenPushedReq):
     return JSONResponse({"ok": True, "marked": n})
 
 
+class RegenReviewedReq(BaseModel):
+    job_id: str
+    reviewed: bool = True
+
+
+@app.post("/regen-queue-mark-reviewed")
+async def regen_queue_mark_reviewed(req: RegenReviewedReq):
+    """Označi/odznači job kot 'pregledan na frontu'. Persistentno na jobu."""
+    async with _regen_queue_lock:
+        jobs = _regen_queue_load()
+        jj = next((x for x in jobs if x.get("id") == req.job_id), None)
+        if jj is not None:
+            jj["reviewed"] = bool(req.reviewed)
+            if req.reviewed:
+                jj["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+            else:
+                jj.pop("reviewed_at", None)
+            _regen_queue_save(jobs)
+    return JSONResponse({"ok": True})
+
+
 async def _regen_worker_loop():
     """Background worker: obdeluje pending jobe enega za drugim."""
     await asyncio.sleep(8)  # počakaj startup
