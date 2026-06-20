@@ -10388,6 +10388,38 @@ HSPLUS_CATALOG_CACHE = DATA_DIR / "hsplus_catalog_cache.json"
 HSPLUS_CACHE_TTL = 3600  # 1 ura
 HSPLUS_SNAPSHOT = DATA_DIR / "hsplus_stock_snapshot.json"   # zadnji posnetek zaloge (sku→stock) za diff
 HSPLUS_DIFF = DATA_DIR / "hsplus_stock_diff.json"           # zadnja sprememba zaloge med uploadi
+HSPLUS_REMOVED = DATA_DIR / "hsplus_removed.json"           # persistenten register odstranjenih (drži dokler se ne vrnejo)
+
+# enkratni seed: 15 zgodovinsko odstranjenih izdelkov (iz XML primerjave), če register še ne obstaja
+def _hsplus_seed_removed():
+    if HSPLUS_REMOVED.exists():
+        return
+    import json as _json
+    _seed = [
+        ("3831121189667","ALUMAX","KITCHEN",750),
+        ("3831127520600","ANTIMOSI black","HOUSEHOLD",6200),
+        ("3831127512049","AQUASHEIN","GARDEN LIGHTS",450),
+        ("3831127514500","BUZZOFF","SUMMER",4380),
+        ("3831127612464","FLAMLUX","HOUSEHOLD",2016),
+        ("3831127529757","HYDROPORT","GARDEN",14320),
+        ("3831127630887","LUMEZIN","CAR",800),
+        ("3831127514210","LUMISIGN","ELECTRONICS",3000),
+        ("3831127562112","LUNATRIM","PERSONAL CARE",1440),
+        ("3831127527241","REEFLY","SUMMER",3196),
+        ("3831127529597","SIGNALSURE","ELECTRONICS",250),
+        ("3831127616944","SWEEPI","HOUSEHOLD",558),
+        ("3831127634009","TACTKEY","LIFESTYLE",300),
+        ("3831127529320","TREKKO","LIFESTYLE",940),
+        ("3831127633785","TRIGPRO","NEW",1700),
+    ]
+    reg = {s: {"sku":s,"name":n,"category":c,"last_stock":st,"last_price":0,
+               "removed_at":"zgodovinsko (pred sledenjem)"} for s,n,c,st in _seed}
+    try:
+        HSPLUS_REMOVED.write_text(_json.dumps(reg, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+_hsplus_seed_removed()
 
 def _hsplus_clean_xml(xml_bytes):
     """Očisti pogoste napake v XML (surovi & in neveljavni kontrolni znaki),
@@ -10644,6 +10676,33 @@ def _hsplus_compute_diff(products):
         }, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
+    # ── PERSISTENTEN REGISTER ODSTRANJENIH (drži dokler se izdelek ne vrne) ──
+    try:
+        removed_reg = {}
+        if HSPLUS_REMOVED.exists():
+            removed_reg = _json.loads(HSPLUS_REMOVED.read_text(encoding="utf-8")) or {}
+        if not isinstance(removed_reg, dict):
+            removed_reg = {}
+        now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+        # izdelki, ki so v TEM uploadu izginili → dodaj v register (če še niso)
+        if prev:
+            for c in changes:
+                if c.get("is_gone"):
+                    sku = c["sku"]
+                    if sku not in removed_reg:
+                        removed_reg[sku] = {
+                            "sku": sku, "name": c.get("name",""), "category": c.get("category",""),
+                            "last_stock": c.get("old", 0), "last_price": c.get("old_price", 0),
+                            "removed_at": now_str,
+                        }
+        # izdelki, ki so SPET v katalogu → odstrani iz registra (vrnili so se)
+        for sku in list(removed_reg.keys()):
+            if sku in cur:
+                removed_reg.pop(sku, None)
+        HSPLUS_REMOVED.write_text(_json.dumps(removed_reg, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
     return diff_payload
 
 @app.post("/hsplus-catalog-upload")
@@ -10680,6 +10739,33 @@ async def hsplus_stock_diff():
     try:
         d = _json.loads(HSPLUS_DIFF.read_text(encoding="utf-8"))
         return {"ok": True, **d}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/hsplus-removed")
+async def hsplus_removed():
+    """Persistenten seznam odstranjenih izdelkov (drži dokler se ne vrnejo v katalog)."""
+    import json as _json
+    if not HSPLUS_REMOVED.exists():
+        return {"ok": True, "items": []}
+    try:
+        reg = _json.loads(HSPLUS_REMOVED.read_text(encoding="utf-8")) or {}
+        items = sorted(reg.values(), key=lambda x: (x.get("name") or "").lower())
+        return {"ok": True, "items": items}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "items": []}
+
+
+@app.delete("/hsplus-removed/{sku}")
+async def hsplus_removed_delete(sku: str):
+    """Ročno odstrani izdelek iz registra odstranjenih (npr. ko ga ne spremljaš več)."""
+    import json as _json
+    try:
+        reg = _json.loads(HSPLUS_REMOVED.read_text(encoding="utf-8")) if HSPLUS_REMOVED.exists() else {}
+        reg.pop(sku, None)
+        HSPLUS_REMOVED.write_text(_json.dumps(reg, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

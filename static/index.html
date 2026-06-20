@@ -2475,7 +2475,10 @@ input[type="text"].error { border-color: var(--red) !important; }
             <span class="slabel" style="margin:0">📡 HS+ KATALOG</span>
             <span id="hsplusFetchInfo" style="font-size:11px;color:var(--text-tertiary)"></span>
           </div>
-          <button onclick="hsplusToggleUpload()" id="hsplusUploadToggleBtn" style="font-size:11px;font-weight:600;color:var(--accent);background:rgba(58,111,255,0.08);border:1px solid rgba(58,111,255,0.25);border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;white-space:nowrap">📥 Naloži XML</button>
+          <div style="display:flex;gap:6px">
+            <button onclick="hsplusShowRemoved()" id="hsplusRemovedBtn" style="font-size:11px;font-weight:600;color:#dc2626;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.25);border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;white-space:nowrap">❌ Odstranjeni</button>
+            <button onclick="hsplusToggleUpload()" id="hsplusUploadToggleBtn" style="font-size:11px;font-weight:600;color:var(--accent);background:rgba(58,111,255,0.08);border:1px solid rgba(58,111,255,0.25);border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;white-space:nowrap">📥 Naloži XML</button>
+          </div>
         </div>
         <!-- ROČNI UPLOAD XML — zložljiv (privzeto skrit, ne zavzame prostora) -->
         <div id="hsplusUploadBody" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
@@ -2553,6 +2556,18 @@ input[type="text"].error { border-color: var(--red) !important; }
             <button onclick="hsplusCloseMovement()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px;color:var(--text)">✕</button>
           </div>
           <div id="hsplusMovementBody"></div>
+        </div>
+      </div>
+
+      <!-- MODAL: ODSTRANJENI IZDELKI (persistenten register) -->
+      <div id="hsplusRemovedModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto" onclick="if(event.target===this)hsplusCloseRemoved()">
+        <div style="background:var(--bg);border-radius:14px;max-width:720px;width:100%;margin:auto;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,0.3)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:16px;font-weight:700;color:var(--text)">❌ Odstranjeni izdelki</span>
+            <button onclick="hsplusCloseRemoved()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px;color:var(--text)">✕</button>
+          </div>
+          <p style="font-size:11px;color:var(--text-tertiary);margin:0 0 12px;line-height:1.4">Izdelki, ki so izpadli iz HS+ kataloga. Ostanejo tu, dokler se ne vrnejo (takrat samodejno izginejo s seznama).</p>
+          <div id="hsplusRemovedBody"></div>
         </div>
       </div>
     </div>
@@ -9981,6 +9996,42 @@ function hsplusShowMovement() {
 function hsplusCloseMovement() {
   const modal = document.getElementById('hsplusMovementModal');
   if (modal) modal.style.display = 'none';
+}
+
+async function hsplusShowRemoved() {
+  const modal = document.getElementById('hsplusRemovedModal');
+  const body = document.getElementById('hsplusRemovedBody');
+  if (!modal || !body) return;
+  modal.style.display = 'flex';
+  body.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);padding:10px">Nalagam...</div>';
+  try {
+    const r = await fetch('/hsplus-removed');
+    const d = await r.json();
+    const items = (d && d.ok && d.items) ? d.items : [];
+    if (!items.length){ body.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);padding:10px">Trenutno ni odstranjenih izdelkov. Seznam se napolni, ko kak izdelek izpade iz kataloga ob naslednjem uploadu.</div>'; return; }
+    let html = '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">Skupaj <b>' + items.length + '</b> odstranjenih</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:0;max-height:60vh;overflow:auto">';
+    for (const it of items){
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)">'
+        + '<div style="flex:1;min-width:0">'
+        +   '<div style="font-size:13px;font-weight:600;color:var(--text)">' + hsplusEsc(it.name || it.sku) + '</div>'
+        +   '<div style="font-size:10px;color:var(--text-tertiary)">' + hsplusEsc(it.category||'') + ' · SKU ' + hsplusEsc(it.sku) + ' · zadnja zaloga ' + (it.last_stock||0) + ' kos · odstranjen ' + hsplusEsc(it.removed_at||'') + '</div>'
+        + '</div>'
+        + '<button onclick="hsplusRemoveFromList(\'' + hsplusEsc(it.sku) + '\')" title="Odstrani iz seznama" style="font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 9px;cursor:pointer;color:var(--text-tertiary)">✕</button>'
+        + '</div>';
+    }
+    html += '</div>';
+    body.innerHTML = html;
+  } catch(e){ body.innerHTML = '<div style="font-size:12px;color:#dc2626;padding:10px">Napaka: ' + e + '</div>'; }
+}
+
+function hsplusCloseRemoved() {
+  const modal = document.getElementById('hsplusRemovedModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function hsplusRemoveFromList(sku) {
+  try { await fetch('/hsplus-removed/' + encodeURIComponent(sku), { method:'DELETE' }); hsplusShowRemoved(); } catch(e){}
 }
 
 function hsplusOpenVariants(sliceIdx) {
