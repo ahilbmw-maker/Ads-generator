@@ -326,6 +326,12 @@
   <button class="filter-btn" onclick="taskFilter('resolved',null);this.classList.add('active')" style="color:var(--green)">✓ Urejeni</button>
   <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti 2x+ in združena</button>
 </div>
+
+<div class="filters" id="storeFilterBar" style="margin-top:8px">
+  <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans)">Trgovina:</span>
+  <button class="filter-btn active" id="sf-all" onclick="setStoreFilter('all', this)">VSE</button>
+  <!-- gumbi trgovin se dodajo dinamično iz podatkov -->
+</div>
 </div><!-- /sticky -->
 
 <div id="dropZone" style="margin:24px 24px;display:flex;flex-direction:column;gap:12px">
@@ -431,6 +437,7 @@ function escHtml(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(
 
 let currentFilter = 'all';
 let currentCurrency = 'all';
+let currentStore = 'all';
 let currentSearch = '';
 let sortCol = null;
 let sortDir = 1;
@@ -548,6 +555,7 @@ function pasteAreaProcess() {
   // ohrani resolved stanje (tudi iz strežnika)
   allRows.forEach(r => { if (prevResolved[r.id + '|' + r.sku]) r.resolved = true; });
   saveTableToStorage();
+  buildStoreFilters();
   updateStats(allRows);
   renderTable(allRows);
   document.getElementById('dropZone').style.display = 'none';
@@ -963,6 +971,11 @@ function renderTable(rows) {
     filtered = filtered.filter(r => r.currency === currentCurrency);
   }
 
+  // Store filter (po trgovini/državi)
+  if (currentStore && currentStore !== 'all') {
+    filtered = filtered.filter(r => (r.store || '') === currentStore);
+  }
+
   if (currentSearch) {
     const s = currentSearch.toLowerCase();
     filtered = filtered.filter(r => 
@@ -1110,9 +1123,42 @@ function taskFilter(f, card) {
 
 function setFilter(f, btn) {
   currentCurrency = f;
-  document.querySelectorAll('.filters .filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#filtersBar .filter-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   renderTable(allRows);
+}
+
+function setStoreFilter(s, btn) {
+  currentStore = s;
+  document.querySelectorAll('#storeFilterBar .filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderTable(allRows);
+}
+
+// zgradi gumbe trgovin iz dejanskih podatkov (unikatne store vrednosti)
+function buildStoreFilters() {
+  const bar = document.getElementById('storeFilterBar');
+  if (!bar) return;
+  const stores = Array.from(new Set(allRows.map(r => (r.store || '').trim()).filter(Boolean))).sort();
+  // odstrani stare gumbe trgovin (obdrži label + VSE)
+  bar.querySelectorAll('.store-btn').forEach(b => b.remove());
+  // če ni nobene trgovine ali samo ena, skrij vrstico
+  if (stores.length <= 1) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  for (const st of stores) {
+    const b = document.createElement('button');
+    b.className = 'filter-btn store-btn' + (currentStore === st ? ' active' : '');
+    b.textContent = st;
+    b.onclick = function(){ setStoreFilter(st, b); };
+    bar.appendChild(b);
+  }
+  // če trenutno izbrana trgovina ne obstaja več → reset na VSE
+  if (currentStore !== 'all' && !stores.includes(currentStore)) {
+    currentStore = 'all';
+    const allBtn = document.getElementById('sf-all');
+    bar.querySelectorAll('.filter-btn').forEach(x => x.classList.remove('active'));
+    if (allBtn) allBtn.classList.add('active');
+  }
 }
 
 function renderMultiView(rows) {
@@ -1737,6 +1783,7 @@ async function loadTableFromStorage() {
           if (r.resolved === undefined) r.resolved = false;
         });
         loadResolvedFromStorage();
+        buildStoreFilters();
         renderTable(allRows);
         updateStats(allRows);
         return true;
