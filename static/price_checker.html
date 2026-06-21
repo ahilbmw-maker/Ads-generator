@@ -311,8 +311,8 @@
   </div>
 </div>
 
-<div class="filters" id="filtersBar">
-  <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans)">Valuta:</span>
+<!-- skrita valutna vrstica (ne rabimo, a logika ostane) -->
+<div class="filters" id="filtersBar" style="display:none">
   <button class="filter-btn active" onclick="setFilter('all', this)">VSE</button>
   <button class="filter-btn" onclick="setFilter('EUR', this)">EUR</button>
   <button class="filter-btn" onclick="setFilter('CZK', this)">CZK</button>
@@ -320,17 +320,17 @@
   <button class="filter-btn" onclick="setFilter('PLN', this)">PLN</button>
   <button class="filter-btn" onclick="setFilter('RON', this)">RON</button>
   <button class="filter-btn" onclick="setFilter('RSD', this)">RSD</button>
-  <span style="color:var(--border);margin:0 4px">|</span>
-  <input type="text" class="search-input" placeholder="🔍 Išči SKU ali ID..." oninput="setSearch(this.value)" id="searchInput">
-  <span style="color:var(--border);margin:0 4px">|</span>
-  <button class="filter-btn" onclick="taskFilter('resolved',null);this.classList.add('active')" style="color:var(--green)">✓ Urejeni</button>
-  <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti 2x+ in združena</button>
 </div>
 
-<div class="filters" id="storeFilterBar" style="margin-top:8px">
+<div class="filters" id="storeFilterBar">
+  <input type="text" class="search-input" placeholder="🔍 Išči SKU ali ID..." oninput="setSearch(this.value)" id="searchInput">
+  <span style="color:var(--border);margin:0 4px">|</span>
   <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans)">Trgovina:</span>
   <button class="filter-btn active" id="sf-all" onclick="setStoreFilter('all', this)">VSE</button>
   <!-- gumbi trgovin se dodajo dinamično iz podatkov -->
+  <span style="color:var(--border);margin:0 4px">|</span>
+  <button class="filter-btn" onclick="taskFilter('resolved',null);this.classList.add('active')" style="color:var(--green)">✓ Urejeni</button>
+  <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti 2x+ in združena</button>
 </div>
 </div><!-- /sticky -->
 
@@ -1130,7 +1130,8 @@ function setFilter(f, btn) {
 
 function setStoreFilter(s, btn) {
   currentStore = s;
-  document.querySelectorAll('#storeFilterBar .filter-btn').forEach(b => b.classList.remove('active'));
+  const bar = document.getElementById('storeFilterBar');
+  if (bar){ const allB = document.getElementById('sf-all'); if (allB) allB.classList.remove('active'); bar.querySelectorAll('.store-btn').forEach(b => b.classList.remove('active')); }
   if (btn) btn.classList.add('active');
   renderTable(allRows);
 }
@@ -1140,22 +1141,22 @@ function buildStoreFilters() {
   const bar = document.getElementById('storeFilterBar');
   if (!bar) return;
   const stores = Array.from(new Set(allRows.map(r => (r.store || '').trim()).filter(Boolean))).sort();
-  // odstrani stare gumbe trgovin (obdrži label + VSE)
+  // odstrani stare gumbe trgovin
   bar.querySelectorAll('.store-btn').forEach(b => b.remove());
-  // če ni nobene trgovine ali samo ena, skrij vrstico
-  if (stores.length <= 1) { bar.style.display = 'none'; return; }
-  bar.style.display = 'flex';
+  const allBtn = document.getElementById('sf-all');
+  // vstavi nove gumbe takoj za "VSE"
+  let anchor = allBtn;
   for (const st of stores) {
     const b = document.createElement('button');
     b.className = 'filter-btn store-btn' + (currentStore === st ? ' active' : '');
     b.textContent = st;
     b.onclick = function(){ setStoreFilter(st, b); };
-    bar.appendChild(b);
+    anchor.insertAdjacentElement('afterend', b);
+    anchor = b;
   }
   // če trenutno izbrana trgovina ne obstaja več → reset na VSE
   if (currentStore !== 'all' && !stores.includes(currentStore)) {
     currentStore = 'all';
-    const allBtn = document.getElementById('sf-all');
     bar.querySelectorAll('.filter-btn').forEach(x => x.classList.remove('active'));
     if (allBtn) allBtn.classList.add('active');
   }
