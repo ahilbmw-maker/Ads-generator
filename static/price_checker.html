@@ -1090,7 +1090,7 @@ function updateStats(rows) {
   if (lvEl) lvEl.textContent = lowval;
 
   document.getElementById('taskBar').style.display = 'flex';
-  document.getElementById('filtersBar').style.display = 'flex';
+  var _sfb1 = document.getElementById('storeFilterBar'); if (_sfb1) _sfb1.style.display = 'flex';
   document.getElementById('tableWrap').style.display = 'block';
   document.getElementById('dropZone').style.display = 'none';}
 
@@ -1103,17 +1103,17 @@ function taskFilter(f, card) {
 
   const tableWrap = document.getElementById('tableWrap');
   const multiView = document.getElementById('multiView');
-  const filtersBar = document.getElementById('filtersBar');
+  const filtersBar = document.getElementById('storeFilterBar');
 
   if (f === 'multi') {
     tableWrap.style.display = 'none';
     multiView.style.display = 'block';
-    filtersBar.style.display = 'none';
+    if (filtersBar) filtersBar.style.display = 'none';
     renderMultiView(allRows);
   } else {
     tableWrap.style.display = 'block';
     multiView.style.display = 'none';
-    filtersBar.style.display = 'flex';
+    if (filtersBar) filtersBar.style.display = 'flex';
     renderTable(allRows);
   }
   // Gumb "Počisti 2x+/združena" vidiš SAMO v filtru "Razlika <7€"
