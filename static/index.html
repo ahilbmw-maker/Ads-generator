@@ -14765,6 +14765,18 @@ function o14SetFilter(filter, btn) {
 
 // ── ZAZNAMEK "tukaj sem ostal" (per analiza tab) ──
 // Shranjeno v localStorage: slx_bookmark_<tabKey> = SKU. En zaznamek na tab.
+// Za obrat14: če je izbran NATANKO EN account, zaznamek je vezan nanj (per-account),
+// sicer pade na splošni ključ. Tako vsak ad account dobi svoj "tu sem ostal".
+function o14BookmarkTabKey() {
+  try {
+    const checked = window._o14CheckedAccounts;
+    if (checked && checked.size === 1) {
+      const acc = Array.from(checked)[0];
+      return 'obrat14::' + acc;
+    }
+  } catch(e) {}
+  return 'obrat14';
+}
 function bookmarkGet(tabKey) {
   try { return localStorage.getItem('slx_bookmark_' + tabKey) || null; } catch(e) { return null; }
 }
@@ -14968,14 +14980,15 @@ function o14RenderTable() {
         return '<div style="text-align:center;color:var(--text-tertiary);font-size:14px;background:' + O14_ACC_CELL_BG + ';border-radius:3px;padding:3px 0" title="' + esc(acc) + ': ni oglaševan">—</div>';
       }).join('');
 
-      const bmarked = bookmarkGet('obrat14') === r.sku;
+      const bmKey = o14BookmarkTabKey();
+      const bmarked = bookmarkGet(bmKey) === r.sku;
       const bg = bmarked ? 'rgba(239,159,39,0.14)' : (!r.has_ads ? 'rgba(124,58,237,0.08)' : 'var(--surface2)');
       const bmAttr = bmarked ? ' data-bookmark-row="obrat14"' : '';
       const bmBorder = bmarked ? '2px solid #EF9F27' : '1px solid var(--border)';
 
       return '<div' + bmAttr + ' style="display:grid;grid-template-columns:24px ' + cols + ';gap:10px;align-items:center;padding:11px 14px;background:' + bg + ';border:' + bmBorder + ';border-radius:var(--radius);font-size:13px">' +
-        bookmarkBtnHtml('obrat14', r.sku, 'o14RenderTable') +
-        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.sku) + (bmarked ? ' <span style="font-size:9px;color:#EF9F27;font-weight:700">← TU SEM OSTAL</span>' : '') + '</div>' +
+        bookmarkBtnHtml(bmKey, r.sku, 'o14RenderTable') +
+        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.sku) + (bmarked ? ' <span style="font-size:9px;color:#EF9F27;font-weight:700">← TU SEM OSTAL' + (bmKey !== 'obrat14' ? ' (' + esc(bmKey.replace('obrat14::','')) + ')' : '') + '</span>' : '') + '</div>' +
         '<div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.naziv) + '">' + esc(r.naziv) + '</div>' +
         '<div style="text-align:center;font-weight:600;color:var(--text)">' + r.kolicina + '</div>' +
         accCells +
