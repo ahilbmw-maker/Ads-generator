@@ -12488,6 +12488,7 @@ function krSwitchTab(tab) {
   const rqp = document.getElementById('kr-panel-regenqueue');
   if (rqp) rqp.style.display = tab === 'regenqueue' ? 'block' : 'none';
   if (tab === 'regenqueue') regenQueueRefresh();
+  if (tab === 'regen' && !_regenPromptsLoaded) regenPromptsInit();
   const qp = document.getElementById('kr-panel-queue');
   if (qp) qp.style.display = tab === 'queue' ? 'block' : 'none';
   document.querySelectorAll('.kreative-tab-btn').forEach(btn => {
@@ -12557,11 +12558,36 @@ async function regenLoad() {
 
 // ── shranjeni prompti (localStorage) ──
 const REGEN_PROMPTS_KEY = 'slx_regen_prompts';
+let _regenPromptsCache = [];   // napolnjeno s strežnika ob vstopu v tab
+let _regenPromptsLoaded = false;
+
+// sinhrono za render — bere iz cache
 function regenPromptsLoad() {
-  try { return JSON.parse(localStorage.getItem(REGEN_PROMPTS_KEY) || '[]') || []; } catch(e) { return []; }
+  return _regenPromptsCache.slice();
 }
-function regenPromptsSaveAll(arr) {
-  try { localStorage.setItem(REGEN_PROMPTS_KEY, JSON.stringify(arr)); } catch(e) {}
+// shrani celoten seznam na STREŽNIK (persistentno) + osveži cache
+async function regenPromptsSaveAll(arr) {
+  _regenPromptsCache = (arr || []).slice();
+  try {
+    await fetch('/regen-prompts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prompts: _regenPromptsCache }) });
+  } catch(e) {}
+}
+// naloži s strežnika (ob vstopu v Optimizacija slik). Enkratna migracija starih localStorage promptov.
+async function regenPromptsInit() {
+  try {
+    const r = await fetch('/regen-prompts');
+    const d = await r.json();
+    _regenPromptsCache = (d && d.ok && d.prompts) ? d.prompts : [];
+    // migracija: če strežnik prazen, a v localStorage še kaj je → prenesi na strežnik
+    if (!_regenPromptsCache.length) {
+      try {
+        const old = JSON.parse(localStorage.getItem(REGEN_PROMPTS_KEY) || '[]') || [];
+        if (old.length) { _regenPromptsCache = old; await regenPromptsSaveAll(old); }
+      } catch(e) {}
+    }
+  } catch(e) { _regenPromptsCache = []; }
+  _regenPromptsLoaded = true;
+  regenPromptsRender();
 }
 function regenPromptsRender() {
   const sel = document.getElementById('regenPromptSelect');
@@ -12600,8 +12626,8 @@ function regenPromptDelete() {
   regenPromptsSaveAll(arr);
   regenPromptsRender();
 }
-// init dropdown ob nalaganju strani
-document.addEventListener('DOMContentLoaded', regenPromptsRender);
+// init dropdown ob nalaganju strani — naloži prompte s strežnika
+document.addEventListener('DOMContentLoaded', regenPromptsInit);
 
 // ── per-slika: shrani prompt + prikaži predloge (chips) ──
 function regenOneSave(btn) {

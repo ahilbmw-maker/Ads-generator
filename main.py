@@ -20543,6 +20543,44 @@ async def polcar_prices(limit: int = 50):
 #  Write nazaj na maaarket: /regen-push (stub — programer doda POST).
 # ═══════════════════════════════════════════════════════════════
 MAAARKET_IMAGES_URL = os.environ.get("MAAARKET_IMAGES_URL", "https://api.maaarket.si/api/v1/images")
+
+REGEN_PROMPTS_FILE = DATA_DIR / "regen_prompts.json"   # shranjeni prompti (persistentno, ne v brskalniku)
+
+
+class RegenPromptsReq(BaseModel):
+    prompts: List[str] = []
+
+
+@app.get("/regen-prompts")
+async def regen_prompts_get():
+    """Vrne shranjene prompte (persistentno na strežniku)."""
+    import json as _json
+    if not REGEN_PROMPTS_FILE.exists():
+        return {"ok": True, "prompts": []}
+    try:
+        arr = _json.loads(REGEN_PROMPTS_FILE.read_text(encoding="utf-8")) or []
+        if not isinstance(arr, list):
+            arr = []
+        return {"ok": True, "prompts": arr}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "prompts": []}
+
+
+@app.post("/regen-prompts")
+async def regen_prompts_save(req: RegenPromptsReq):
+    """Shrani celoten seznam promptov."""
+    import json as _json
+    try:
+        clean = [str(p).strip() for p in (req.prompts or []) if str(p).strip()]
+        # odstrani duplikate, ohrani vrstni red
+        seen = set(); out = []
+        for p in clean:
+            if p not in seen:
+                seen.add(p); out.append(p)
+        REGEN_PROMPTS_FILE.write_text(_json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True, "count": len(out)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 REGEN_DIR = DATA_DIR / "regen"
 REGEN_MODEL = os.environ.get("REGEN_OPENAI_MODEL", "gpt-image-2-2026-04-21")
 
