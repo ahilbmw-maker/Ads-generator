@@ -1232,77 +1232,108 @@ function toggleGroupSku() {
   }
 }
 
-function renderGroupSku() {
-  const gv = document.getElementById('groupSkuView');
-  if (!gv) return;
+let _groupViewMode = 'cards';  // 'cards' | 'table' | 'heat'
+let _dismissedSkus = new Set(); // SKU-ji, ki jih je uporabnik počistil iz primerjave (per seja + localStorage)
+try { _dismissedSkus = new Set(JSON.parse(localStorage.getItem('pcc_dismissed_skus') || '[]')); } catch(e) {}
+function _saveDismissed() {
+  try { localStorage.setItem('pcc_dismissed_skus', JSON.stringify([..._dismissedSkus])); } catch(e) {}
+}
+function dismissGroupSku(sku) {
+  _dismissedSkus.add(sku);
+  _saveDismissed();
+  renderGroupSku();
+}
+function resetDismissedSkus() {
+  if (!confirm('Ponastavim seznam — pokaži vse skrite izdelke nazaj?')) return;
+  _dismissedSkus.clear();
+  _saveDismissed();
+  renderGroupSku();
+}
+function setGroupViewMode(m) {
+  _groupViewMode = m;
+  renderGroupSku();
+}
 
-  // grupiraj po SKU; znotraj vsake skupine zberi po državah (store)
+function _buildGroupSkuData() {
   const groups = {};
   for (const r of allRows) {
     if (r.isNull || !r.sku) continue;
+    if (_dismissedSkus.has(r.sku)) continue;
     if (!groups[r.sku]) groups[r.sku] = [];
     groups[r.sku].push(r);
   }
-
-  // za vsak SKU: agregiraj po državi (povprečje, če več naročil iste države/SKU)
   const skuList = [];
   for (const sku of Object.keys(groups)) {
     const rows = groups[sku];
     const byStore = {};
     for (const r of rows) {
       const st = r.store || '—';
-      if (!byStore[st]) byStore[st] = { store: st, prices: [], eur: [], marze: [], currency: r.currency, count: 0, ids: [] };
+      if (!byStore[st]) byStore[st] = { store: st, prices: [], eur: [], marze: [], nc: [], razlika: [], currency: r.currency, count: 0 };
       byStore[st].prices.push(r.amount);
       const e = toEur(r.amount, r.currency);
       if (e != null) byStore[st].eur.push(e);
       if (r.marzaNum != null && !isNaN(r.marzaNum)) byStore[st].marze.push(r.marzaNum);
+      if (r.ncNum != null && !isNaN(r.ncNum)) byStore[st].nc.push(r.ncNum);
+      if (r.razlikaNum != null && !isNaN(r.razlikaNum)) byStore[st].razlika.push(r.razlikaNum);
       byStore[st].count++;
-      byStore[st].ids.push(r.id);
     }
+    const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
     const stores = Object.values(byStore).map(s => ({
-      store: s.store,
-      currency: s.currency,
-      avgPrice: s.prices.reduce((a,b)=>a+b,0)/s.prices.length,
-      avgEur: s.eur.length ? s.eur.reduce((a,b)=>a+b,0)/s.eur.length : null,
-      avgMarza: s.marze.length ? s.marze.reduce((a,b)=>a+b,0)/s.marze.length : null,
-      count: s.count,
-      ids: s.ids,
+      store: s.store, currency: s.currency, count: s.count,
+      avgPrice: avg(s.prices), avgEur: avg(s.eur), avgMarza: avg(s.marze),
+      avgNc: avg(s.nc), avgRazlika: avg(s.razlika),
     }));
-    // samo SKU-ji, ki so v 2+ državah (smiselno za primerjavo)
     if (stores.length < 2) continue;
     const product = (rows[0].product || '');
-    // izračun razpona marž (za sortiranje — največja razlika = največja priložnost)
     const marze = stores.map(s => s.avgMarza).filter(m => m != null);
     const marzaSpread = marze.length >= 2 ? (Math.max(...marze) - Math.min(...marze)) : 0;
     const eurs = stores.map(s => s.avgEur).filter(e => e != null);
     const eurSpread = eurs.length >= 2 ? (Math.max(...eurs) - Math.min(...eurs)) : 0;
     skuList.push({ sku, product, stores, marzaSpread, eurSpread, storeCount: stores.length });
   }
-
-  // sortiraj: največji razpon marže najprej (največja priložnost)
   skuList.sort((a,b) => b.marzaSpread - a.marzaSpread);
+  return skuList;
+}
+
+function renderGroupSku() {
+  const gv = document.getElementById('groupSkuView');
+  if (!gv) return;
+  const skuList = _buildGroupSkuData();
+
+  // header z preklopnikom pogledov
+  const modeBtn = (m, label) => `<button onclick="setGroupViewMode('${m}')" style="padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid ${_groupViewMode===m?'#7c3aed':'var(--border)'};background:${_groupViewMode===m?'#7c3aed':'#fff'};color:${_groupViewMode===m?'#fff':'var(--text)'};font-family:inherit">${label}</button>`;
+  let header = `<div style="margin:14px 0 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <div style="font-size:13px;color:var(--text);font-weight:600">🌍 Primerjava po državah — <span style="color:#7c3aed">${skuList.length}</span> izdelkov</div>
+    <div style="display:flex;gap:6px">${modeBtn('cards','▦ Kartice')}${modeBtn('table','▤ Tabela')}${modeBtn('heat','🌡 Lestvica')}</div>
+    <div style="font-size:11px;color:var(--muted)">Tečaji: ${_fxInfo || 'ECB'}</div>
+    ${_dismissedSkus.size ? `<button onclick="resetDismissedSkus()" style="margin-left:auto;font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer">↺ Pokaži skrite (${_dismissedSkus.size})</button>` : ''}
+  </div>`;
 
   if (!skuList.length) {
-    gv.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted)">Ni SKU-jev, ki bi se prodajali v 2+ državah. Primerjava ni možna.</div>';
+    gv.innerHTML = header + '<div style="text-align:center;padding:50px;color:var(--muted)">Ni izdelkov za primerjavo (vsi obdelani ali samo v 1 državi).</div>';
     return;
   }
 
-  let html = `<div style="margin:14px 0 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-    <div style="font-size:13px;color:var(--text);font-weight:600">🌍 Primerjava istega izdelka po državah — <span style="color:#7c3aed">${skuList.length}</span> izdelkov v 2+ državah</div>
-    <div style="font-size:11px;color:var(--muted)">Tečaji: ${_fxInfo || 'ECB'} · razvrščeno po največji razliki v marži</div>
-  </div>`;
+  if (_groupViewMode === 'table') gv.innerHTML = header + _renderGroupTable(skuList);
+  else if (_groupViewMode === 'heat') gv.innerHTML = header + _renderGroupHeat(skuList);
+  else gv.innerHTML = header + _renderGroupCards(skuList);
+}
 
+// ── POGLED 1: KARTICE (izboljšane z NC + razliko) ──
+function _renderGroupCards(skuList) {
+  let html = '';
   for (const item of skuList) {
-    // določi min/max maržo za barvanje
     const marze = item.stores.map(s => s.avgMarza).filter(m => m != null);
     const minM = Math.min(...marze), maxM = Math.max(...marze);
     html += `<div style="background:#fff;border:1px solid var(--border2);border-radius:10px;padding:14px 16px;margin-bottom:10px">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;gap:10px">
         <div style="font-weight:700;color:var(--text);font-size:14px">${skuHtml(item.sku)} ${item.product ? '<span style="font-weight:400;color:var(--muted);font-size:12px">· '+item.product+'</span>' : ''}</div>
-        <div style="font-size:11px;color:#7c3aed;font-weight:600;white-space:nowrap">Δ marža ${item.marzaSpread.toFixed(0)}%${item.eurSpread ? ' · Δ '+item.eurSpread.toFixed(2)+'€' : ''}</div>
+        <div style="display:flex;align-items:center;gap:10px;white-space:nowrap">
+          <span style="font-size:11px;color:#7c3aed;font-weight:600">Δ marža ${item.marzaSpread.toFixed(0)}%${item.eurSpread ? ' · Δ '+item.eurSpread.toFixed(2)+'€' : ''}</span>
+          <button onclick="dismissGroupSku('${item.sku}')" title="Skrij ta izdelek iz primerjave" style="font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 9px;cursor:pointer">✓ Obdelano</button>
+        </div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">`;
-    // razvrsti države po marži (najnižja=prepoceni najprej)
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:8px">`;
     const sortedStores = [...item.stores].sort((a,b) => (a.avgMarza ?? 999) - (b.avgMarza ?? 999));
     for (const s of sortedStores) {
       const m = s.avgMarza;
@@ -1315,15 +1346,91 @@ function renderGroupSku() {
       const priceTxt = s.currency && s.currency !== 'EUR' && s.currency !== '—'
         ? `${s.avgPrice.toFixed(2)} ${s.currency}${eurTxt ? ' <span style="color:var(--muted)">('+eurTxt+')</span>' : ''}`
         : `${s.avgPrice.toFixed(2)}€`;
+      const ncTxt = s.avgNc != null ? `NC ${s.avgNc.toFixed(2)}€` : '';
+      const razTxt = s.avgRazlika != null ? `razlika ${s.avgRazlika.toFixed(2)}€` : '';
       html += `<div style="background:${mBg};border:1px solid var(--border);border-radius:8px;padding:9px 11px">
         <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:3px">${s.store}${s.count>1?' <span style="color:var(--muted);font-weight:400">×'+s.count+'</span>':''}</div>
         <div style="font-size:13px;font-weight:600;color:var(--text)">${priceTxt}</div>
         <div style="font-size:12px;font-weight:700;color:${mColor};margin-top:2px">${m != null ? 'marža '+m.toFixed(0)+'%' : '—'} ${tag?'<span style="font-size:9px">'+tag+'</span>':''}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">${ncTxt}${ncTxt&&razTxt?' · ':''}${razTxt}</div>
       </div>`;
     }
     html += `</div></div>`;
   }
-  gv.innerHTML = html;
+  return html;
+}
+
+// ── POGLED 2: TABELA (kompakten pregled, ena vrstica = en izdelek) ──
+function _renderGroupTable(skuList) {
+  let html = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:10px;overflow:hidden">
+    <thead><tr style="background:#f8fafc;text-align:left">
+      <th style="padding:9px 12px;font-size:10px;text-transform:uppercase;color:var(--muted)">Izdelek</th>
+      <th style="padding:9px 12px;font-size:10px;text-transform:uppercase;color:var(--muted)">Države (marža · cena · NC)</th>
+      <th style="padding:9px 12px;font-size:10px;text-transform:uppercase;color:var(--muted);text-align:right">Δ marža</th>
+      <th style="padding:9px 12px"></th>
+    </tr></thead><tbody>`;
+  for (const item of skuList) {
+    const marze = item.stores.map(s => s.avgMarza).filter(m => m != null);
+    const minM = Math.min(...marze), maxM = Math.max(...marze);
+    const sortedStores = [...item.stores].sort((a,b) => (a.avgMarza ?? 999) - (b.avgMarza ?? 999));
+    const chips = sortedStores.map(s => {
+      const m = s.avgMarza;
+      let c = '#64748b', bg = '#f1f5f9';
+      if (m != null && marze.length >= 2) {
+        if (m === minM) { c = '#dc2626'; bg = '#fef2f2'; }
+        else if (m === maxM) { c = '#16a34a'; bg = '#f0fdf4'; }
+      }
+      const eurTxt = s.avgEur != null ? (s.currency!=='EUR'&&s.currency!=='—' ? ' ('+s.avgEur.toFixed(2)+'€)' : '') : '';
+      const ncTxt = s.avgNc != null ? ' · NC '+s.avgNc.toFixed(2) : '';
+      return `<span style="display:inline-block;background:${bg};color:${c};border:1px solid ${c}33;border-radius:6px;padding:3px 8px;margin:2px;font-weight:600;font-size:11px">${s.store}: ${m!=null?m.toFixed(0)+'%':'—'} · ${s.avgPrice.toFixed(0)} ${s.currency!=='EUR'&&s.currency!=='—'?s.currency:'€'}${eurTxt}${ncTxt}</span>`;
+    }).join('');
+    html += `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:9px 12px;font-weight:700;vertical-align:top;white-space:nowrap">${skuHtml(item.sku)}${item.product?'<div style="font-weight:400;color:var(--muted);font-size:10px;max-width:160px;overflow:hidden;text-overflow:ellipsis">'+item.product+'</div>':''}</td>
+      <td style="padding:7px 12px">${chips}</td>
+      <td style="padding:9px 12px;text-align:right;font-weight:700;color:#7c3aed;white-space:nowrap">${item.marzaSpread.toFixed(0)}%</td>
+      <td style="padding:9px 12px;text-align:right"><button onclick="dismissGroupSku('${item.sku}')" title="Skrij" style="font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 9px;cursor:pointer">✓</button></td>
+    </tr>`;
+  }
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+// ── POGLED 3: TOPLOTNA LESTVICA (vizualni bar marže po državah) ──
+function _renderGroupHeat(skuList) {
+  let html = '<div style="display:flex;flex-direction:column;gap:8px">';
+  // globalni razpon marž za skupno lestvico
+  for (const item of skuList) {
+    const marze = item.stores.map(s => s.avgMarza).filter(m => m != null);
+    if (!marze.length) continue;
+    const minM = Math.min(...marze), maxM = Math.max(...marze);
+    const span = maxM - minM || 1;
+    const sortedStores = [...item.stores].sort((a,b) => (a.avgMarza ?? 999) - (b.avgMarza ?? 999));
+    html += `<div style="background:#fff;border:1px solid var(--border2);border-radius:10px;padding:12px 14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-weight:700;font-size:13px">${skuHtml(item.sku)} <span style="font-weight:400;color:var(--muted);font-size:11px">${item.product?'· '+item.product:''}</span></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#7c3aed;font-weight:600">Δ ${item.marzaSpread.toFixed(0)}%</span><button onclick="dismissGroupSku('${item.sku}')" style="font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer">✓</button></div>
+      </div>`;
+    for (const s of sortedStores) {
+      const m = s.avgMarza;
+      if (m == null) continue;
+      const pct = ((m - minM) / span) * 100;
+      // barva: nizka marža=rdeča, visoka=zelena
+      const hue = (m - minM) / span * 120; // 0=rdeča do 120=zelena
+      const eurTxt = s.avgEur != null && s.currency!=='EUR' && s.currency!=='—' ? ' ('+s.avgEur.toFixed(2)+'€)' : '';
+      const ncTxt = s.avgNc != null ? 'NC '+s.avgNc.toFixed(2)+'€' : '';
+      html += `<div style="display:flex;align-items:center;gap:10px;margin:4px 0">
+        <div style="width:90px;font-size:11px;font-weight:600;color:var(--text);white-space:nowrap">${s.store}</div>
+        <div style="flex:1;background:#f1f5f9;border-radius:5px;height:22px;position:relative;overflow:hidden">
+          <div style="position:absolute;left:0;top:0;height:100%;width:${Math.max(pct,3)}%;background:hsl(${hue},70%,55%);border-radius:5px;transition:width .3s"></div>
+          <div style="position:absolute;left:8px;top:0;height:100%;display:flex;align-items:center;font-size:11px;font-weight:700;color:#1e293b">${m.toFixed(0)}%</div>
+        </div>
+        <div style="width:150px;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap">${s.avgPrice.toFixed(0)} ${s.currency!=='EUR'&&s.currency!=='—'?s.currency:'€'}${eurTxt} · ${ncTxt}</div>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  html += '</div>';
+  return html;
 }
 
 function renderMultiView(rows) {
