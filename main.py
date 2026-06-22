@@ -3130,6 +3130,8 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
     xml_files = []  # (filename, content_str)
     processed_email_nums = []
     email_meta = []  # za log
+    _diag = {"xml_seen": 0, "xml_parsed_ok": 0, "xml_empty": 0, "du_rows": 0, "nu_rows": 0,
+             "no_invoice_num": 0, "samples": []}  # diagnostika parsanja
 
     # Dedup tracking
     seen_invoices_this_batch = set()       # invoice_key v tem batchu
@@ -3222,6 +3224,21 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                             invoice_num = parsed_d[0].get('Številka', '').strip()
                         elif parsed_c:
                             invoice_num = parsed_c[0].get('Številka', '').strip()
+
+                        # diagnostika
+                        _diag["xml_seen"] += 1
+                        _ndu, _nnu = len(parsed_d), len(parsed_c)
+                        _diag["du_rows"] += _ndu
+                        _diag["nu_rows"] += _nnu
+                        if _ndu or _nnu:
+                            _diag["xml_parsed_ok"] += 1
+                        else:
+                            _diag["xml_empty"] += 1
+                        if not invoice_num:
+                            _diag["no_invoice_num"] += 1
+                        if len(_diag["samples"]) < 5:
+                            _diag["samples"].append({"fn": fn, "type": invoice_type or "?",
+                                "num": invoice_num or "(prazno)", "du": _ndu, "nu": _nnu})
 
                         if invoice_num and invoice_type:
                             invoice_key = f"{invoice_type}:{invoice_num}"
@@ -3358,7 +3375,14 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━",
                 f"📊 Skupaj duplikatov preskočenih: {total_dups}",
                 "",
-            ]
+                "─── DIAGNOSTIKA PARSANJA ───",
+                f"XML attachmentov videnih: {_diag['xml_seen']}",
+                f"XML uspešno parsanih (≥1 vrstica): {_diag['xml_parsed_ok']}",
+                f"XML praznih (0 vrstic): {_diag['xml_empty']}",
+                f"XML brez številke fakture: {_diag['no_invoice_num']}",
+                f"DU vrstic skupaj: {_diag['du_rows']} · NU vrstic skupaj: {_diag['nu_rows']}",
+                "Vzorci (prvih 5):",
+            ] + [f"   • {s['fn'][:40]} → tip={s['type']} št={s['num']} DU={s['du']} NU={s['nu']}" for s in _diag['samples']] + [""]
             if skipped_dup_in_batch:
                 report_lines.append("⚠️  DVOJNIKI V TEM BATCHU (isti račun prejel 2× v istem prevzemu):")
                 for d in skipped_dup_in_batch:
