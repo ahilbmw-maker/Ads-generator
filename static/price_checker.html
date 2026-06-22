@@ -364,6 +364,12 @@
 </div>
 
 <div class="table-wrap" id="tableWrap" style="display:none">
+<div id="quickDeleteBar" style="display:none;align-items:center;gap:10px;padding:8px 14px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;margin:12px 0 6px;font-size:12px">
+  <span id="quickDeleteLabel" style="color:#dc2626;font-weight:600">V tem pogledu je N naročil</span>
+  <button onclick="deleteAllInView()" style="background:#dc2626;border:none;color:#fff;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🗑 Izbriši VSE iz tega pogleda</button>
+  <span style="color:var(--muted);font-size:11px">En klik — počisti cel filter naenkrat</span>
+</div>
+
 <div id="bulkBar" style="display:none;align-items:center;gap:10px;padding:8px 14px;background:var(--accent);border-radius:8px;margin:12px 0 6px;color:#fff;font-size:12px;font-weight:500">
   <span id="bulkCount">0 označenih</span>
   <button onclick="bulkMarkResolved()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">✓ Označi kot urejeno</button>
@@ -1119,6 +1125,27 @@ function taskFilter(f, card) {
   // Gumb "Počisti 2x+/združena" vidiš SAMO v filtru "Razlika <7€"
   const cleanBtn = document.getElementById('cleanQtyMergedBtn');
   if (cleanBtn) cleanBtn.style.display = (f === 'lowval') ? 'inline-flex' : 'none';
+
+  // Hitro brisanje cele skupine — samo za Vrednost 0 / Količina 2x / Združena
+  const qdBar = document.getElementById('quickDeleteBar');
+  if (qdBar) {
+    const showQuick = (f === 'null' || f === 'qty' || f === 'multi');
+    qdBar.style.display = showQuick ? 'flex' : 'none';
+    if (showQuick) updateQuickDeleteLabel(f);
+  }
+}
+
+function updateQuickDeleteLabel(f) {
+  const lbl = document.getElementById('quickDeleteLabel');
+  if (!lbl) return;
+  let n = 0, what = '';
+  if (f === 'null') { n = allRows.filter(r => r.isNull).length; what = 'naročil z vrednostjo 0'; }
+  else if (f === 'qty') { n = allRows.filter(r => (r.qty || 1) > 1).length; what = 'naročil s količino 2x+'; }
+  else if (f === 'multi') {
+    const idc = {}; allRows.forEach(r => { idc[r.id] = (idc[r.id]||0)+1; });
+    n = allRows.filter(r => idc[r.id] > 1).length; what = 'združenih naročil';
+  }
+  lbl.textContent = `V tem pogledu je ${n} ${what}`;
 }
 
 function setFilter(f, btn) {
@@ -1477,6 +1504,25 @@ function bulkMarkResolved() {
   renderTable(allRows);
 }
 
+async function deleteAllInView() {
+  // zberi ključe glede na trenutni filter (deluje tudi za 'multi', kjer ni navadne tabele)
+  let targetRows = [];
+  if (currentFilter === 'null') targetRows = allRows.filter(r => r.isNull);
+  else if (currentFilter === 'qty') targetRows = allRows.filter(r => (r.qty || 1) > 1);
+  else if (currentFilter === 'multi') {
+    const idc = {}; allRows.forEach(r => { idc[r.id] = (idc[r.id]||0)+1; });
+    targetRows = allRows.filter(r => idc[r.id] > 1);
+  } else {
+    // fallback: vidne v tabeli
+    const vk = new Set(getVisibleKeys());
+    targetRows = allRows.filter(r => vk.has(r.id + '|' + r.sku));
+  }
+  if (!targetRows.length) return;
+  if (!confirm(`Izbrišem vseh ${targetRows.length} naročil iz tega pogleda?`)) return;
+  targetRows.forEach(r => selectedKeys.add(r.id + '|' + r.sku));
+  await bulkDelete();
+}
+
 async function bulkDelete() {
   const toDelete = new Set(selectedKeys);
   // zberi ps.id-je (siluxar_id) izbranih vrstic — za sinhronizacijo brisanja v siluxar
@@ -1497,6 +1543,16 @@ async function bulkDelete() {
   saveTableToStorage();
   updateStats(allRows);
   renderTable(allRows);
+
+  // osveži quick-delete bar (skrij če pogled prazen)
+  if (['null','qty','multi'].includes(currentFilter)) {
+    const qdBar = document.getElementById('quickDeleteBar');
+    updateQuickDeleteLabel(currentFilter);
+    let remain = currentFilter === 'null' ? allRows.filter(r=>r.isNull).length
+      : currentFilter === 'qty' ? allRows.filter(r=>(r.qty||1)>1).length
+      : (()=>{const idc={};allRows.forEach(r=>{idc[r.id]=(idc[r.id]||0)+1;});return allRows.filter(r=>idc[r.id]>1).length;})();
+    if (qdBar) qdBar.style.display = remain > 0 ? 'flex' : 'none';
+  }
 
   // BETA: pošlji ps.id-je v siluxar za brisanje (vzporedno; če pade, ne blokira lokalnega brisanja)
   if (uniqIds.length) {
