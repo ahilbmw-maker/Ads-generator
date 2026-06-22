@@ -14030,7 +14030,8 @@ def _parse_polcar_xls(content: bytes):
 
     invoice_num = ''; invoice_type = ''
     date_sale = ''; date_issue = ''; deadline = ''
-    seller = ''; total_bruto = ''
+    seller = ''; total_bruto = ''; buyer = ''; eu_vat = ''
+    _seen_seller = False
     for r in range(min(_nrows, 50)):
         line = ' '.join(v for _, v in rowvals(r))
         if 'DEBIT NOTE' in line and not invoice_num:
@@ -14047,6 +14048,15 @@ def _parse_polcar_xls(content: bytes):
             m = _re.search(r'(\d{4}\.\d{2}\.\d{2})', line); deadline = m.group(1) if m else ''
         if line.startswith('Seller') and not seller:
             seller = line.replace('Seller', '').strip()
+        # Kupec — "Payer" ali "Consignee" vrstica → naslednja neprazna vsebina
+        if ('Payer' in line or 'Consignee' in line) and not buyer:
+            m = _re.search(r'(?:Payer|Consignee)\s*(.+)', line)
+            if m and m.group(1).strip():
+                buyer = m.group(1).strip()
+        # EU VAT kupca — zadnji "EU VAT:" v glavi (SI...)
+        m_vat = _re.search(r'EU VAT:\s*([A-Z]{2}\s?\d+)', line)
+        if m_vat:
+            eu_vat = m_vat.group(1).replace(' ', '')
         if line.startswith('Total:') and 'EUR' in line and not total_bruto:
             m = _re.search(r'([\d.,]+)\s*EUR', line); total_bruto = (m.group(1).replace(',', '.') if m else '')
 
@@ -14088,18 +14098,15 @@ def _parse_polcar_xls(content: bytes):
                 'Datum izdaje':   date_issue,
                 'Rok plačila':    deadline,
                 'Prodajalec':     seller,
-                'Kupec':          '',
-                'EU VAT':         '',
+                'Kupec':          buyer,
+                'EU VAT':         eu_vat,
                 'Valuta':         'EUR',
                 'Art. številka':  cell(r, cols.get('art', 3)),
                 'Opis':           desc,
-                'Količina':       cell(r, cols.get('qty', 24)).split('[')[0].strip(),
-                'Cena/kos':       cell(r, cols.get('price', 23)).replace(',', '.'),
                 'Vrednost neto':  cell(r, cols.get('value', 29)).replace(',', '.'),
                 'VAT %':          '',
-                'Vrednost VAT':   '',
+                'Vrednost VAT':   '0.00',
                 'Vrednost bruto': cell(r, cols.get('value', 29)).replace(',', '.'),
-                'Razlog':         desc if ('return' in desc.lower() or 'zwrot' in desc.lower()) else '',
                 'Skupaj bruto':   total_bruto,
             })
     return invoice_type, rows
