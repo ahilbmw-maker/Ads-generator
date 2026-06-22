@@ -3131,7 +3131,7 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
     processed_email_nums = []
     email_meta = []  # za log
     _diag = {"xml_seen": 0, "xml_parsed_ok": 0, "xml_empty": 0, "du_rows": 0, "nu_rows": 0,
-             "no_invoice_num": 0, "samples": []}  # diagnostika parsanja
+             "no_invoice_num": 0, "samples": [], "att_total": 0, "att_names": []}  # diagnostika
 
     # Dedup tracking
     seen_invoices_this_batch = set()       # invoice_key v tem batchu
@@ -3162,21 +3162,56 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                 date_hdr = msg.get("Date", "")
 
                 email_attachments = []
-                for part in msg.walk():
-                    cd = part.get("Content-Disposition", "")
-                    if "attachment" not in cd and "inline" not in cd:
-                        continue
-                    filename = part.get_filename()
-                    if not filename:
-                        continue
-                    fn_parts = _dh(filename)
-                    filename = "".join(p.decode(enc or "utf-8") if isinstance(p, bytes) else p for p, enc in fn_parts)
-                    content = part.get_payload(decode=True)
-                    if content:
-                        email_attachments.append((filename, content))
+
+                def _collect_attachments(m, depth=0):
+                    """Rekurzivno zberi priponke — tudi iz forwardanih (message/rfc822) mailov
+                    in tudi ko Content-Disposition manjka (uporabi Content-Type + filename)."""
+                    if depth > 6:
+                        return
+                    for part in m.walk():
+                        ctype = (part.get_content_type() or "").lower()
+                        # forwardani mail kot priponka → pojdi noter
+                        if ctype == "message/rfc822":
+                            payload = part.get_payload()
+                            if isinstance(payload, list):
+                                for sub in payload:
+                                    _collect_attachments(sub, depth + 1)
+                            continue
+                        if part.is_multipart():
+                            continue
+                        filename = part.get_filename()
+                        cd = (part.get("Content-Disposition", "") or "").lower()
+                        is_att = ("attachment" in cd) or ("inline" in cd)
+                        # tudi brez Content-Disposition: če ima ime ali je XML/PDF tip
+                        looks_like_file = bool(filename) or ctype in (
+                            "application/xml", "text/xml", "application/pdf", "application/octet-stream")
+                        if not (is_att or looks_like_file):
+                            continue
+                        if not filename:
+                            # izpelji ime iz tipa
+                            ext = ".xml" if "xml" in ctype else (".pdf" if "pdf" in ctype else "")
+                            if not ext:
+                                continue
+                            filename = f"attachment_{depth}{ext}"
+                        fn_parts = _dh(filename)
+                        filename = "".join(p.decode(enc or "utf-8") if isinstance(p, bytes) else p for p, enc in fn_parts)
+                        try:
+                            content = part.get_payload(decode=True)
+                        except Exception:
+                            content = None
+                        if content:
+                            email_attachments.append((filename, content))
+
+                _collect_attachments(msg)
+
+                # diagnostika attachmentov
+                _diag["att_total"] += len(email_attachments)
+                for _afn, _ in email_attachments:
+                    if len(_diag["att_names"]) < 8:
+                        _diag["att_names"].append(_afn)
 
                 if not email_attachments:
-                    continue  # Ne procesiraj emailov brez attachmentov, pusti UNSEEN
+                    continue  # Ne procesiraj emailov brez attachmentov
 
                 # Klasifikacija attachmentov
                 ext_count = {"xml": 0, "pdf": 0, "other": 0, "xml_dup_batch": 0, "xml_dup_history": 0}
@@ -3376,6 +3411,8 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                 f"📊 Skupaj duplikatov preskočenih: {total_dups}",
                 "",
                 "─── DIAGNOSTIKA PARSANJA ───",
+                f"Attachmentov najdenih skupaj: {_diag['att_total']}",
+                f"Imena (prvih 8): {', '.join(_diag['att_names']) if _diag['att_names'] else '(brez)'}",
                 f"XML attachmentov videnih: {_diag['xml_seen']}",
                 f"XML uspešno parsanih (≥1 vrstica): {_diag['xml_parsed_ok']}",
                 f"XML praznih (0 vrstic): {_diag['xml_empty']}",
