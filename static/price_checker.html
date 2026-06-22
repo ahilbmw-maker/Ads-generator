@@ -1238,9 +1238,12 @@ try { _dismissedSkus = new Set(JSON.parse(localStorage.getItem('pcc_dismissed_sk
 function _saveDismissed() {
   try { localStorage.setItem('pcc_dismissed_skus', JSON.stringify([..._dismissedSkus])); } catch(e) {}
 }
-function dismissGroupSku(sku) {
-  _dismissedSkus.add(sku);
-  _saveDismissed();
+async function dismissGroupSku(sku) {
+  // zberi VSA naročila tega SKU-ja (čez vse države) in jih izbriši (+ siluxar sync + undo)
+  const rows = allRows.filter(r => r.sku === sku && !r.isNull);
+  if (!rows.length) { _dismissedSkus.add(sku); _saveDismissed(); renderGroupSku(); return; }
+  rows.forEach(r => selectedKeys.add(r.id + '|' + r.sku));
+  await bulkDelete();
   renderGroupSku();
 }
 function resetDismissedSkus() {
@@ -1268,13 +1271,14 @@ function _buildGroupSkuData() {
     const byStore = {};
     for (const r of rows) {
       const st = r.store || '—';
-      if (!byStore[st]) byStore[st] = { store: st, prices: [], eur: [], marze: [], nc: [], razlika: [], currency: r.currency, count: 0, ids: [] };
+      if (!byStore[st]) byStore[st] = { store: st, prices: [], eur: [], marze: [], nc: [], razlika: [], stock: [], currency: r.currency, count: 0, ids: [] };
       byStore[st].prices.push(r.amount);
       const e = toEur(r.amount, r.currency);
       if (e != null) byStore[st].eur.push(e);
       if (r.marzaNum != null && !isNaN(r.marzaNum)) byStore[st].marze.push(r.marzaNum);
       if (r.ncNum != null && !isNaN(r.ncNum)) byStore[st].nc.push(r.ncNum);
       if (r.razlikaNum != null && !isNaN(r.razlikaNum)) byStore[st].razlika.push(r.razlikaNum);
+      if (r.stock != null && !isNaN(r.stock)) byStore[st].stock.push(r.stock);
       if (r.id) byStore[st].ids.push(r.id);
       byStore[st].count++;
     }
@@ -1283,6 +1287,7 @@ function _buildGroupSkuData() {
       store: s.store, currency: s.currency, count: s.count,
       avgPrice: avg(s.prices), avgEur: avg(s.eur), avgMarza: avg(s.marze),
       avgNc: avg(s.nc), avgRazlika: avg(s.razlika),
+      stock: s.stock.length ? Math.max(...s.stock) : null,
       firstId: s.ids[0] || null,
     }));
     if (stores.length < 2) continue;
@@ -1308,7 +1313,6 @@ function renderGroupSku() {
     <div style="font-size:13px;color:var(--text);font-weight:600">🌍 Primerjava po državah — <span style="color:#7c3aed">${skuList.length}</span> izdelkov</div>
     <div style="display:flex;gap:6px">${modeBtn('cards','▦ Kartice')}${modeBtn('table','▤ Tabela')}${modeBtn('heat','🌡 Lestvica')}</div>
     <div style="font-size:11px;color:var(--muted)">Tečaji: ${_fxInfo || 'ECB'}</div>
-    ${_dismissedSkus.size ? `<button onclick="resetDismissedSkus()" style="margin-left:auto;font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer">↺ Pokaži skrite (${_dismissedSkus.size})</button>` : ''}
   </div>`;
 
   if (!skuList.length) {
@@ -1332,35 +1336,46 @@ function _renderGroupCards(skuList) {
         <div style="font-weight:700;color:var(--text);font-size:14px">${skuHtml(item.sku)} ${item.product ? '<span style="font-weight:400;color:var(--muted);font-size:12px">· '+item.product+'</span>' : ''}</div>
         <div style="display:flex;align-items:center;gap:10px;white-space:nowrap">
           <span style="font-size:11px;color:#7c3aed;font-weight:600">${item.eurSpread ? 'Δ '+item.eurSpread.toFixed(2)+'€' : ''}${item.marzaSpread ? ' · marža '+item.marzaSpread.toFixed(0)+'%' : ''}</span>
-          <button onclick="dismissGroupSku('${item.sku}')" title="Skrij ta izdelek iz primerjave" style="font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 9px;cursor:pointer">✓ Obdelano</button>
+          <button onclick="dismissGroupSku('${item.sku}')" title="Uredil sem cene — izbriši ta naročila (tudi v siluxar)" style="font-size:11px;color:#fff;background:#16a34a;border:1px solid #15803d;border-radius:6px;padding:3px 11px;cursor:pointer;font-weight:600">✓ Urejeno — izbriši</button>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:8px">`;
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px">`;
     const sortedStores = [...item.stores].sort((a,b) => (a.avgMarza ?? 999) - (b.avgMarza ?? 999));
     for (const s of sortedStores) {
       const m = s.avgMarza;
-      let mColor = '#64748b', mBg = '#f8fafc', tag = '';
+      let accent = '#94a3b8', mBg = '#fff', tag = '';
       if (m != null && marze.length >= 2) {
-        if (m === minM) { mColor = '#dc2626'; mBg = '#fef2f2'; tag = '⬇ najnižja'; }
-        else if (m === maxM) { mColor = '#16a34a'; mBg = '#f0fdf4'; tag = '⬆ najvišja'; }
+        if (m === minM) { accent = '#dc2626'; mBg = '#fef2f2'; tag = 'najnižja marža'; }
+        else if (m === maxM) { accent = '#16a34a'; mBg = '#f0fdf4'; tag = 'najvišja marža'; }
       }
-      const eurTxt = s.avgEur != null ? `${s.avgEur.toFixed(2)}€` : '';
-      const priceTxt = s.currency && s.currency !== 'EUR' && s.currency !== '—'
-        ? `${s.avgPrice.toFixed(2)} ${s.currency}${eurTxt ? ' <span style="color:var(--muted)">('+eurTxt+')</span>' : ''}`
-        : `${s.avgPrice.toFixed(2)}€`;
-      const ncTxt = s.avgNc != null ? `NC ${s.avgNc.toFixed(2)}€` : '';
-      // RAZLIKA V CENI = na veliko (glavni poudarek)
-      const razColor = s.avgRazlika != null ? (s.avgRazlika < 3 ? '#dc2626' : s.avgRazlika > 8 ? '#16a34a' : '#0f172a') : '#64748b';
-      const razBig = s.avgRazlika != null ? `${s.avgRazlika.toFixed(2)}€` : '—';
+      const isForeign = s.currency && s.currency !== 'EUR' && s.currency !== '—';
+      // CENA izdelka = glavni poudarek (kar dejansko spreminjaš)
+      const priceBig = isForeign
+        ? `${s.avgPrice.toFixed(2)} <span style="font-size:12px;font-weight:600">${s.currency}</span>`
+        : `${s.avgPrice.toFixed(2)}<span style="font-size:13px;font-weight:600">€</span>`;
+      const eurSub = isForeign && s.avgEur != null ? `${s.avgEur.toFixed(2)}€` : '';
+      const razTxt = s.avgRazlika != null ? `${s.avgRazlika.toFixed(2)}€` : '—';
+      const razColor = s.avgRazlika != null ? (s.avgRazlika < 3 ? '#dc2626' : s.avgRazlika > 8 ? '#16a34a' : '#475569') : '#94a3b8';
+      const ncTxt = s.avgNc != null ? `${s.avgNc.toFixed(2)}€` : '—';
+      // zaloga z barvo
+      const stockColor = s.stock == null ? '#94a3b8' : s.stock <= 5 ? '#dc2626' : s.stock <= 20 ? '#f59e0b' : '#16a34a';
+      const stockTxt = s.stock != null ? s.stock : '—';
       const orderLink = s.firstId
-        ? `<a href="https://www.siluxar.si/narocilnice/${s.firstId}" target="_blank" style="font-size:10px;color:var(--green);text-decoration:none;border:1px solid rgba(64,193,80,0.4);border-radius:4px;padding:1px 6px;display:inline-block;margin-top:4px">#${s.firstId} ↗</a>`
+        ? `<a href="https://www.siluxar.si/narocilnice/${s.firstId}" target="_blank" style="font-size:10px;color:var(--green);text-decoration:none;font-weight:600">#${s.firstId} ↗</a>`
         : '';
-      html += `<div style="background:${mBg};border:1px solid var(--border);border-radius:8px;padding:9px 11px">
-        <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:3px">${s.store}${s.count>1?' <span style="color:var(--muted);font-weight:400">×'+s.count+'</span>':''} ${tag?'<span style="font-size:9px;color:'+mColor+'">'+tag+'</span>':''}</div>
-        <div style="font-size:18px;font-weight:800;color:${razColor};line-height:1.1">${razBig}<span style="font-size:10px;font-weight:500;color:var(--muted)"> razlika</span></div>
-        <div style="font-size:12px;font-weight:600;color:var(--text);margin-top:3px">${priceTxt}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px">${ncTxt}${ncTxt?' · ':''}marža <span style="color:${mColor};font-weight:600">${m != null ? m.toFixed(0)+'%' : '—'}</span></div>
-        ${orderLink}
+      html += `<div style="background:${mBg};border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:10px 12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:11px;font-weight:700;color:var(--text)">${s.store}${s.count>1?' <span style="color:var(--muted);font-weight:400">×'+s.count+'</span>':''}</span>
+          <span style="font-size:11px;font-weight:700;color:${stockColor}">📦 ${stockTxt}</span>
+        </div>
+        <div style="font-size:21px;font-weight:800;color:var(--text);line-height:1.1">${priceBig}</div>
+        ${eurSub ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">= ${eurSub}</div>` : ''}
+        <div style="display:flex;align-items:center;gap:8px;margin-top:7px;padding-top:7px;border-top:1px solid var(--border)">
+          <div style="flex:1"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">razlika</div><div style="font-size:14px;font-weight:800;color:${razColor}">${razTxt}</div></div>
+          <div style="flex:1"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">marža</div><div style="font-size:14px;font-weight:700;color:${accent}">${m!=null?m.toFixed(0)+'%':'—'}</div></div>
+          <div style="flex:1"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">NC</div><div style="font-size:13px;font-weight:600;color:var(--muted)">${ncTxt}</div></div>
+        </div>
+        ${orderLink ? `<div style="margin-top:6px">${orderLink}${tag?' <span style="font-size:9px;color:'+accent+';font-weight:600">· '+tag+'</span>':''}</div>` : (tag?`<div style="margin-top:6px;font-size:9px;color:${accent};font-weight:600">${tag}</div>`:'')}
       </div>`;
     }
     html += `</div></div>`;
@@ -1396,7 +1411,7 @@ function _renderGroupTable(skuList) {
       <td style="padding:9px 12px;font-weight:700;vertical-align:top;white-space:nowrap">${skuHtml(item.sku)}${item.product?'<div style="font-weight:400;color:var(--muted);font-size:10px;max-width:160px;overflow:hidden;text-overflow:ellipsis">'+item.product+'</div>':''}</td>
       <td style="padding:7px 12px">${chips}</td>
       <td style="padding:9px 12px;text-align:right;font-weight:700;color:#7c3aed;white-space:nowrap">${item.marzaSpread.toFixed(0)}%</td>
-      <td style="padding:9px 12px;text-align:right"><button onclick="dismissGroupSku('${item.sku}')" title="Skrij" style="font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 9px;cursor:pointer">✓</button></td>
+      <td style="padding:9px 12px;text-align:right"><button onclick="dismissGroupSku('${item.sku}')" title="Urejeno — izbriši ta naročila" style="font-size:12px;color:#fff;background:#16a34a;border:1px solid #15803d;border-radius:6px;padding:3px 10px;cursor:pointer;font-weight:600">✓</button></td>
     </tr>`;
   }
   html += `</tbody></table></div>`;
@@ -1416,7 +1431,7 @@ function _renderGroupHeat(skuList) {
     html += `<div style="background:#fff;border:1px solid var(--border2);border-radius:10px;padding:12px 14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="font-weight:700;font-size:13px">${skuHtml(item.sku)} <span style="font-weight:400;color:var(--muted);font-size:11px">${item.product?'· '+item.product:''}</span></div>
-        <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#7c3aed;font-weight:600">Δ ${item.marzaSpread.toFixed(0)}%</span><button onclick="dismissGroupSku('${item.sku}')" style="font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer">✓</button></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#7c3aed;font-weight:600">Δ ${item.marzaSpread.toFixed(0)}%</span><button onclick="dismissGroupSku('${item.sku}')" title="Urejeno — izbriši ta naročila" style="font-size:12px;color:#fff;background:#16a34a;border:1px solid #15803d;border-radius:6px;padding:2px 9px;cursor:pointer;font-weight:600">✓</button></div>
       </div>`;
     for (const s of sortedStores) {
       const m = s.avgMarza;
@@ -1770,13 +1785,27 @@ async function deleteAllInView() {
     targetRows = allRows.filter(r => vk.has(r.id + '|' + r.sku));
   }
   if (!targetRows.length) return;
-  if (!confirm(`Izbrišem vseh ${targetRows.length} naročil iz tega pogleda?`)) return;
   targetRows.forEach(r => selectedKeys.add(r.id + '|' + r.sku));
   await bulkDelete();
 }
 
+let _lastDeletedRows = [];
+function undoLastDelete() {
+  if (!_lastDeletedRows.length) return;
+  allRows = allRows.concat(_lastDeletedRows);
+  _lastDeletedRows = [];
+  saveTableToStorage();
+  updateStats(allRows);
+  if (_groupSkuActive) renderGroupSku();
+  else if (['null','qty','multi'].includes(currentFilter)) { taskFilter(currentFilter, document.querySelector('.task-card.active')); }
+  else renderTable(allRows);
+  _pccToast('↩ Brisanje razveljavljeno', '#16a34a');
+}
+
 async function bulkDelete() {
   const toDelete = new Set(selectedKeys);
+  // shrani izbrisane vrstice za morebitno razveljavitev
+  _lastDeletedRows = allRows.filter(r => toDelete.has(r.id + '|' + r.sku));
   // zberi ps.id-je (siluxar_id) izbranih vrstic — za sinhronizacijo brisanja v siluxar
   const psIds = allRows
     .filter(r => toDelete.has(r.id + '|' + r.sku))
@@ -1805,6 +1834,9 @@ async function bulkDelete() {
       : (()=>{const idc={};allRows.forEach(r=>{idc[r.id]=(idc[r.id]||0)+1;});return allRows.filter(r=>idc[r.id]>1).length;})();
     if (qdBar) qdBar.style.display = remain > 0 ? 'flex' : 'none';
   }
+
+  // toast z razveljavitvijo (varnostna mreža namesto confirm dialoga)
+  if (_lastDeletedRows.length) _pccToastUndo(_lastDeletedRows.length);
 
   // BETA: pošlji ps.id-je v siluxar za brisanje (vzporedno; če pade, ne blokira lokalnega brisanja)
   if (uniqIds.length) {
@@ -1836,6 +1868,28 @@ function _pccToast(msg, color) {
   t.style.opacity = '1';
   clearTimeout(window._pccToastTimer);
   window._pccToastTimer = setTimeout(() => { t.style.opacity = '0'; }, 3500);
+}
+
+// toast z gumbom za razveljavitev brisanja
+function _pccToastUndo(count) {
+  let t = document.getElementById('_pccToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = '_pccToast';
+    t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:10px 18px;border-radius:8px;color:#fff;font-size:13px;font-weight:600;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.3);transition:opacity 0.3s;display:flex;align-items:center;gap:14px';
+    document.body.appendChild(t);
+  }
+  t.style.background = '#1e293b';
+  t.style.display = 'flex';
+  t.innerHTML = `<span>🗑 Izbrisanih ${count} naročil</span>`;
+  const btn = document.createElement('button');
+  btn.textContent = '↩ Razveljavi';
+  btn.style.cssText = 'background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit';
+  btn.onclick = () => { undoLastDelete(); t.style.opacity = '0'; };
+  t.appendChild(btn);
+  t.style.opacity = '1';
+  clearTimeout(window._pccToastTimer);
+  window._pccToastTimer = setTimeout(() => { t.style.opacity = '0'; }, 6000);
 }
 
 function bulkClear() {
