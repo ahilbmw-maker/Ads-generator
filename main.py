@@ -3024,6 +3024,42 @@ async def vracila_history_delete(filename: str):
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/knjigovodstvo-reset-history")
+async def knjigovodstvo_reset_history(only_type: str = ""):
+    """Resetira zgodovino obdelanih faktur, da se ponovno obdelajo.
+    only_type='DU' → samo debit; only_type='NU' → samo credit; prazno → vse."""
+    try:
+        HISTORY_FILE = STORAGE_KNJ_DIR / "_processed_invoices.json"
+        if not HISTORY_FILE.exists():
+            return {"ok": True, "removed": 0, "remaining": 0, "message": "Zgodovina je prazna"}
+        hist = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        before = len(hist)
+        only_type = (only_type or "").upper().strip()
+        if only_type in ("DU", "NU"):
+            # ključi so oblike "DU:<num>" / "NU:<num>"
+            hist = {k: v for k, v in hist.items() if not k.startswith(only_type + ":")}
+        else:
+            hist = {}
+        HISTORY_FILE.write_text(json.dumps(hist, ensure_ascii=False, indent=2), encoding="utf-8")
+        removed = before - len(hist)
+        return {"ok": True, "removed": removed, "remaining": len(hist),
+                "message": f"Odstranjenih {removed} zapisov iz zgodovine ({only_type or 'VSE'}). Ob naslednjem POTEGNI ZDAJ se bodo ponovno obdelali."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/knjigovodstvo-last-result")
+async def knjigovodstvo_last_result():
+    """Vrne zadnji rezultat batch obdelave (shranjen na disk → viden vsem userjem)."""
+    try:
+        f = STORAGE_KNJ_DIR / "_last_batch_result.json"
+        if not f.exists():
+            return {"ok": True, "result": None}
+        return {"ok": True, "result": json.loads(f.read_text(encoding="utf-8"))}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "result": None}
+
+
 @app.post("/knjigovodstvo-process-emails")
 async def knjigovodstvo_process_emails():
     """Sproži ročno obdelavo neprebranih emailov v parcels@.
@@ -3145,14 +3181,17 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                 for fn, content in email_attachments:
                     fn_up = fn.upper()
                     if fn_up.endswith(".XML"):
-                        # Polcar XML — UTF-16 z BOM
+                        # Polcar XML — parser sam pravilno obravnava encoding (UTF-16/BOM/deklaracija).
+                        # Pošljemo SUROVE bajte, da ET pravilno prebere encoding deklaracijo.
+                        xml_text = content  # bytes; _polcar_xml_root zna z bajti
+                        # za shranjevanje XML backupa potrebujemo še tekst
                         try:
-                            xml_text = content.decode('utf-16')
-                        except UnicodeDecodeError:
+                            xml_backup_text = content.decode('utf-16')
+                        except Exception:
                             try:
-                                xml_text = content.decode('utf-8-sig')
-                            except UnicodeDecodeError:
-                                xml_text = content.decode('utf-8', errors='ignore')
+                                xml_backup_text = content.decode('utf-8-sig')
+                            except Exception:
+                                xml_backup_text = content.decode('utf-8', errors='ignore')
 
                         # Parsiraj glede na ime ali heuristiko
                         parsed_d = []
@@ -3373,7 +3412,7 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
             "duplicates_skipped": total_dups,
         })
 
-        return {
+        result_payload = {
             "ok": True,
             "message": f"Obdelano {len(processed_email_nums)} emailov",
             "emails": len(processed_email_nums),
@@ -3391,6 +3430,15 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                 "history_duplicates_list": skipped_dup_in_history[:20],
             },
         }
+        # shrani ZADNJI rezultat na disk → viden vsem userjem ob nalaganju strani
+        try:
+            last_result = dict(result_payload)
+            last_result["processed_at"] = _lj_now().strftime("%Y-%m-%d %H:%M:%S")
+            (STORAGE_KNJ_DIR / "_last_batch_result.json").write_text(
+                json.dumps(last_result, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            print(f"[knj-batch] cannot write last result: {e}")
+        return result_payload
 
     except Exception as e:
         try: mail.logout()
@@ -13672,36 +13720,86 @@ async def spam_clear_confirmed():
 KNJ_DIR = DATA_DIR / "knjigovodstvo"
 KNJ_DIR.mkdir(exist_ok=True, parents=True)
 
-def _parse_polcar_debit(content: str) -> list[dict]:
-    """Polcar Debit Note (DU) — ROOT atributi + USL elementi."""
+def _polcar_xml_root(content):
+    """Robustno razčleni Polcar XML ne glede na encoding deklaracijo.
+    Sprejme str ALI bytes. Če str vsebuje <?xml encoding=...?>, ET.fromstring(str)
+    vrže napako — zato deklaracijo odstranimo oz. uporabimo bajte."""
+    import re as _re
     try:
-        root = ET.fromstring(content)
-    except ET.ParseError as e:
-        print(f"[knj] debit parse error: {e}")
+        if isinstance(content, bytes):
+            # ET sam prebere encoding iz deklaracije v bajtih
+            return ET.fromstring(content)
+        # str: odstrani XML deklaracijo z encoding (ET je ne mara na dekodiranem stringu)
+        s = content.lstrip('\ufeff')  # odstrani BOM če ostal
+        s = _re.sub(r'^\s*<\?xml[^>]*\?>', '', s, count=1).lstrip()
+        return ET.fromstring(s)
+    except Exception:
+        # zadnji poskus: zakodiraj nazaj v utf-8 bajte brez deklaracije
+        try:
+            s2 = content if isinstance(content, str) else content.decode('utf-8', 'ignore')
+            s2 = _re.sub(r'^\s*<\?xml[^>]*\?>', '', s2.lstrip('\ufeff'), count=1).lstrip()
+            return ET.fromstring(s2.encode('utf-8'))
+        except Exception as e:
+            print(f"[knj] xml parse failed: {e}")
+            return None
+
+
+def _parse_polcar_debit(content) -> list[dict]:
+    """Polcar Debit Note (DU) — ROOT atributi + POZ elementi (sodoben format).
+    Stari format z USL še vedno podprt kot fallback."""
+    root = _polcar_xml_root(content)
+    if root is None:
         return []
     rows = []
-    for usl in root.findall('USL'):
+    # SODOBEN FORMAT: POZ elementi (isti kot pri NU)
+    for poz in root.findall('POZ'):
         rows.append({
             'Tip':                'DEBIT NOTE',
             'Številka':           root.get('NumerRachunku', ''),
             'Datum prodaje':      root.get('DataSprzedazyText_Wartosc', ''),
             'Datum izdaje':       root.get('DataWystawieniaText_Wartosc', ''),
             'Rok plačila':        root.get('TerminPlatnosciText_Wartosc', ''),
-            'Prodajalec':         root.get('WystawcaNazwa', ''),
+            'Prodajalec':         root.get('WystawcaNazwa', '').strip(),
             'Kupec':              root.get('OdbiorcaNazwa', '').strip(),
             'EU VAT':             root.get('OdbiorcaUEVAT', '') or root.get('OdbiorcaNIP',''),
             'Valuta':             root.get('Rachunek_Waluta', '').strip(),
-            'Art. številka':      usl.get('NazwaUslugi', ''),
-            'Opis':               usl.get('OpisUslugi', '') or usl.get('PowodWystawienia',''),
-            'Količina':           '1',
-            'Cena/kos':           usl.get('WartoscNetto', '').replace(',','.'),
-            'Vrednost neto':      usl.get('WartoscNetto', '').replace(',','.'),
-            'VAT %':              str(usl.get('StawkaVat', '0')),
-            'Vrednost VAT':       usl.get('WartoscVat', '').replace(',','.'),
-            'Vrednost bruto':     usl.get('WartoscBrutto', '').replace(',','.'),
-            'Razlog':             usl.get('PowodWystawienia', ''),
+            'Art. številka':      poz.get('Numer', ''),
+            'Art. št. kupca':     poz.get('NumerTowaruKlienta', ''),
+            'Naziv artikla':      poz.get('Nazwa', '') or poz.get('Naziv',''),
+            'Opis':               poz.get('Opis', ''),
+            'Količina':           poz.get('Ilosc', '').split('[')[0].strip(),
+            'Cena/kos':           poz.get('CenaJednostkowa', '').replace(',','.'),
+            'Vrednost neto':      poz.get('WartoscNetto', '').replace(',','.'),
+            'VAT %':              str(poz.get('StawkaVat', '0')),
+            'Vrednost VAT':       poz.get('WartoscVat', '').replace(',','.'),
+            'Vrednost bruto':     poz.get('WartoscBrutto', '').replace(',','.'),
+            'Razlog':             poz.get('Numer', '') if 'return' in poz.get('Numer','').lower() or 'zwrot' in poz.get('Numer','').lower() else '',
             'Skupaj bruto':       root.get('Rachunek_WartoscBrutto', '').replace(',','.'),
         })
+    # STARI FORMAT: USL elementi
+    if not rows:
+        for usl in root.findall('USL'):
+            rows.append({
+                'Tip':                'DEBIT NOTE',
+                'Številka':           root.get('NumerRachunku', ''),
+                'Datum prodaje':      root.get('DataSprzedazyText_Wartosc', ''),
+                'Datum izdaje':       root.get('DataWystawieniaText_Wartosc', ''),
+                'Rok plačila':        root.get('TerminPlatnosciText_Wartosc', ''),
+                'Prodajalec':         root.get('WystawcaNazwa', ''),
+                'Kupec':              root.get('OdbiorcaNazwa', '').strip(),
+                'EU VAT':             root.get('OdbiorcaUEVAT', '') or root.get('OdbiorcaNIP',''),
+                'Valuta':             root.get('Rachunek_Waluta', '').strip(),
+                'Art. številka':      usl.get('NazwaUslugi', ''),
+                'Opis':               usl.get('OpisUslugi', '') or usl.get('PowodWystawienia',''),
+                'Količina':           '1',
+                'Cena/kos':           usl.get('WartoscNetto', '').replace(',','.'),
+                'Vrednost neto':      usl.get('WartoscNetto', '').replace(',','.'),
+                'VAT %':              str(usl.get('StawkaVat', '0')),
+                'Vrednost VAT':       usl.get('WartoscVat', '').replace(',','.'),
+                'Vrednost bruto':     usl.get('WartoscBrutto', '').replace(',','.'),
+                'Razlog':             usl.get('PowodWystawienia', ''),
+                'Skupaj bruto':       root.get('Rachunek_WartoscBrutto', '').replace(',','.'),
+            })
     if not rows:
         # Fallback — header only
         rows.append({
@@ -13727,12 +13825,10 @@ def _parse_polcar_debit(content: str) -> list[dict]:
         })
     return rows
 
-def _parse_polcar_credit(content: str) -> list[dict]:
+def _parse_polcar_credit(content) -> list[dict]:
     """Polcar Credit Note (NU) — ROOT atributi + POZ elementi."""
-    try:
-        root = ET.fromstring(content)
-    except ET.ParseError as e:
-        print(f"[knj] credit parse error: {e}")
+    root = _polcar_xml_root(content)
+    if root is None:
         return []
     rows = []
     for poz in root.findall('POZ'):
