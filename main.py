@@ -3103,7 +3103,11 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
 
     try:
         mail.select("INBOX")
-        _, msg_nums = mail.search(None, "UNSEEN")
+        # beri VSE maile zadnjih 14 dni (ne le UNSEEN) — prebranost ni pomembna,
+        # dedup (processed_history) prepreči ponovno obdelavo že vnesenih faktur
+        from datetime import timedelta as _td
+        since_date = (_dt.now() - _td(days=14)).strftime("%d-%b-%Y")
+        _, msg_nums = mail.search(None, f'(SINCE {since_date})')
         if not msg_nums[0]:
             mail.logout()
             return {"ok": True, "message": "Ni novih emailov", "emails": 0, "zip_filename": None}
