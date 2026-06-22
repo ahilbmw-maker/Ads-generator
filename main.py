@@ -20894,6 +20894,66 @@ async def polcar_prices(limit: int = 50):
 # ═══════════════════════════════════════════════════════════════
 MAAARKET_IMAGES_URL = os.environ.get("MAAARKET_IMAGES_URL", "https://api.maaarket.si/api/v1/images")
 
+FX_CACHE_FILE = DATA_DIR / "ecb_fx_rates.json"   # ECB tečaji, cache
+FX_CACHE_HOURS = 6
+
+
+@app.get("/fx-rates")
+async def fx_rates():
+    """Vrne EUR menjalne tečaje (koliko valute za 1 EUR) iz ECB, cache 6h.
+    RSD ni v ECB → fiksni približek. Vrne {ok, rates:{EUR:1, CZK:.., HUF:.., PLN:.., RON:.., BGN:.., RSD:..}, updated, source}."""
+    import json as _json
+    # 1) preveri cache
+    try:
+        if FX_CACHE_FILE.exists():
+            cached = _json.loads(FX_CACHE_FILE.read_text(encoding="utf-8"))
+            ts = datetime.fromisoformat(cached.get("updated_iso", "2000-01-01"))
+            if (datetime.now() - ts).total_seconds() < FX_CACHE_HOURS * 3600:
+                return {"ok": True, **cached, "cached": True}
+    except Exception:
+        pass
+    # 2) potegni z ECB
+    rates = {"EUR": 1.0}
+    source = "ECB"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get("https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml")
+            r.raise_for_status()
+            import xml.etree.ElementTree as _ET
+            root = _ET.fromstring(r.content)
+            for cube in root.iter():
+                cur = cube.get("currency")
+                rate = cube.get("rate")
+                if cur and rate:
+                    try:
+                        rates[cur] = float(rate)
+                    except Exception:
+                        pass
+    except Exception as e:
+        # fallback: če ECB pade, uporabi zadnji cache (tudi star) ali približke
+        try:
+            if FX_CACHE_FILE.exists():
+                cached = _json.loads(FX_CACHE_FILE.read_text(encoding="utf-8"))
+                return {"ok": True, **cached, "cached": True, "stale": True, "warn": f"ECB nedosegljiv: {e}"}
+        except Exception:
+            pass
+        rates = {"EUR": 1.0, "CZK": 25.3, "HUF": 395.0, "PLN": 4.3, "RON": 4.97, "BGN": 1.9558}
+        source = "fallback (približek)"
+    # RSD ni v ECB — fiksni približek (~117 RSD/EUR), redko niha
+    if "RSD" not in rates:
+        rates["RSD"] = 117.0
+    payload = {
+        "rates": rates,
+        "updated": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "updated_iso": datetime.now().isoformat(),
+        "source": source,
+    }
+    try:
+        FX_CACHE_FILE.write_text(_json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    return {"ok": True, **payload, "cached": False}
+
 REGEN_PROMPTS_FILE = DATA_DIR / "regen_prompts.json"   # shranjeni prompti (persistentno, ne v brskalniku)
 
 
