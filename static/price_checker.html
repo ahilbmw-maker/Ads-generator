@@ -1268,13 +1268,14 @@ function _buildGroupSkuData() {
     const byStore = {};
     for (const r of rows) {
       const st = r.store || '—';
-      if (!byStore[st]) byStore[st] = { store: st, prices: [], eur: [], marze: [], nc: [], razlika: [], currency: r.currency, count: 0 };
+      if (!byStore[st]) byStore[st] = { store: st, prices: [], eur: [], marze: [], nc: [], razlika: [], currency: r.currency, count: 0, ids: [] };
       byStore[st].prices.push(r.amount);
       const e = toEur(r.amount, r.currency);
       if (e != null) byStore[st].eur.push(e);
       if (r.marzaNum != null && !isNaN(r.marzaNum)) byStore[st].marze.push(r.marzaNum);
       if (r.ncNum != null && !isNaN(r.ncNum)) byStore[st].nc.push(r.ncNum);
       if (r.razlikaNum != null && !isNaN(r.razlikaNum)) byStore[st].razlika.push(r.razlikaNum);
+      if (r.id) byStore[st].ids.push(r.id);
       byStore[st].count++;
     }
     const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
@@ -1282,6 +1283,7 @@ function _buildGroupSkuData() {
       store: s.store, currency: s.currency, count: s.count,
       avgPrice: avg(s.prices), avgEur: avg(s.eur), avgMarza: avg(s.marze),
       avgNc: avg(s.nc), avgRazlika: avg(s.razlika),
+      firstId: s.ids[0] || null,
     }));
     if (stores.length < 2) continue;
     const product = (rows[0].product || '');
@@ -1329,7 +1331,7 @@ function _renderGroupCards(skuList) {
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;gap:10px">
         <div style="font-weight:700;color:var(--text);font-size:14px">${skuHtml(item.sku)} ${item.product ? '<span style="font-weight:400;color:var(--muted);font-size:12px">· '+item.product+'</span>' : ''}</div>
         <div style="display:flex;align-items:center;gap:10px;white-space:nowrap">
-          <span style="font-size:11px;color:#7c3aed;font-weight:600">Δ marža ${item.marzaSpread.toFixed(0)}%${item.eurSpread ? ' · Δ '+item.eurSpread.toFixed(2)+'€' : ''}</span>
+          <span style="font-size:11px;color:#7c3aed;font-weight:600">${item.eurSpread ? 'Δ '+item.eurSpread.toFixed(2)+'€' : ''}${item.marzaSpread ? ' · marža '+item.marzaSpread.toFixed(0)+'%' : ''}</span>
           <button onclick="dismissGroupSku('${item.sku}')" title="Skrij ta izdelek iz primerjave" style="font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 9px;cursor:pointer">✓ Obdelano</button>
         </div>
       </div>
@@ -1347,12 +1349,18 @@ function _renderGroupCards(skuList) {
         ? `${s.avgPrice.toFixed(2)} ${s.currency}${eurTxt ? ' <span style="color:var(--muted)">('+eurTxt+')</span>' : ''}`
         : `${s.avgPrice.toFixed(2)}€`;
       const ncTxt = s.avgNc != null ? `NC ${s.avgNc.toFixed(2)}€` : '';
-      const razTxt = s.avgRazlika != null ? `razlika ${s.avgRazlika.toFixed(2)}€` : '';
+      // RAZLIKA V CENI = na veliko (glavni poudarek)
+      const razColor = s.avgRazlika != null ? (s.avgRazlika < 3 ? '#dc2626' : s.avgRazlika > 8 ? '#16a34a' : '#0f172a') : '#64748b';
+      const razBig = s.avgRazlika != null ? `${s.avgRazlika.toFixed(2)}€` : '—';
+      const orderLink = s.firstId
+        ? `<a href="https://www.siluxar.si/narocilnice/${s.firstId}" target="_blank" style="font-size:10px;color:var(--green);text-decoration:none;border:1px solid rgba(64,193,80,0.4);border-radius:4px;padding:1px 6px;display:inline-block;margin-top:4px">#${s.firstId} ↗</a>`
+        : '';
       html += `<div style="background:${mBg};border:1px solid var(--border);border-radius:8px;padding:9px 11px">
-        <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:3px">${s.store}${s.count>1?' <span style="color:var(--muted);font-weight:400">×'+s.count+'</span>':''}</div>
-        <div style="font-size:13px;font-weight:600;color:var(--text)">${priceTxt}</div>
-        <div style="font-size:12px;font-weight:700;color:${mColor};margin-top:2px">${m != null ? 'marža '+m.toFixed(0)+'%' : '—'} ${tag?'<span style="font-size:9px">'+tag+'</span>':''}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:3px">${ncTxt}${ncTxt&&razTxt?' · ':''}${razTxt}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:3px">${s.store}${s.count>1?' <span style="color:var(--muted);font-weight:400">×'+s.count+'</span>':''} ${tag?'<span style="font-size:9px;color:'+mColor+'">'+tag+'</span>':''}</div>
+        <div style="font-size:18px;font-weight:800;color:${razColor};line-height:1.1">${razBig}<span style="font-size:10px;font-weight:500;color:var(--muted)"> razlika</span></div>
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-top:3px">${priceTxt}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${ncTxt}${ncTxt?' · ':''}marža <span style="color:${mColor};font-weight:600">${m != null ? m.toFixed(0)+'%' : '—'}</span></div>
+        ${orderLink}
       </div>`;
     }
     html += `</div></div>`;
