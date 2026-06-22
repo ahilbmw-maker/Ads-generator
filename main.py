@@ -3131,7 +3131,13 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
     processed_email_nums = []
     email_meta = []  # za log
     _diag = {"xml_seen": 0, "xml_parsed_ok": 0, "xml_empty": 0, "du_rows": 0, "nu_rows": 0,
-             "no_invoice_num": 0, "samples": [], "att_total": 0, "att_names": []}  # diagnostika
+             "no_invoice_num": 0, "samples": [], "att_total": 0, "att_names": [],
+             "xls_seen": 0, "xlrd_ok": None}  # diagnostika
+    try:
+        import xlrd as _xlrd_check
+        _diag["xlrd_ok"] = True
+    except Exception:
+        _diag["xlrd_ok"] = False
 
     # Dedup tracking
     seen_invoices_this_batch = set()       # invoice_key v tem batchu
@@ -3218,6 +3224,7 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                 for fn, content in email_attachments:
                     fn_up = fn.upper()
                     if fn_up.endswith(".XLS") or fn_up.endswith(".XLSX"):
+                        _diag["xls_seen"] += 1
                         # Polcar pošilja XML zapakiran v .rar (rabi unrar) — .xls vsebuje iste podatke.
                         xls_type, xls_rows = _parse_polcar_xls(content)
                         parsed_d = xls_rows if xls_type == "DU" else []
@@ -3451,6 +3458,10 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                 "─── DIAGNOSTIKA PARSANJA ───",
                 f"Attachmentov najdenih skupaj: {_diag['att_total']}",
                 f"Imena (prvih 8): {', '.join(_diag['att_names']) if _diag['att_names'] else '(brez)'}",
+                f"xlrd na voljo (za .xls): {'DA' if _diag['xlrd_ok'] else 'NE — manjka v requirements.txt!'}",
+                f".xls datotek videnih: {_diag['xls_seen']}",
+                f".xls napaka (zadnja): {_LAST_XLS_ERR or '(brez)'}",
+                f".xls bralnik: {_LAST_XLS_READER or '(noben)'}",
                 f"XML attachmentov videnih: {_diag['xml_seen']}",
                 f"XML uspešno parsanih (≥1 vrstica): {_diag['xml_parsed_ok']}",
                 f"XML praznih (0 vrstic): {_diag['xml_empty']}",
@@ -13962,33 +13973,65 @@ def _parse_polcar_credit(content) -> list[dict]:
     return rows
 
 
+_LAST_XLS_ERR = ""
+_LAST_XLS_READER = ""
+
+
+def _read_xls_grid(content: bytes):
+    """Preberi .xls/.xlsx v matriko (list[list[str]]). Poskusi xlrd, nato calamine.
+    Vrne (grid, reader_name) ali (None, '')."""
+    global _LAST_XLS_ERR
+    # 1) xlrd (stari .xls / OLE2)
+    try:
+        import xlrd
+        wb = xlrd.open_workbook(file_contents=content)
+        sh = wb.sheet_by_index(0)
+        grid = []
+        for r in range(sh.nrows):
+            grid.append([str(sh.cell_value(r, c)).strip() for c in range(sh.ncols)])
+        return grid, "xlrd"
+    except Exception as e:
+        _LAST_XLS_ERR = f"xlrd: {type(e).__name__}: {e}"
+    try:
+        from python_calamine import CalamineWorkbook
+        import io as _io
+        wb = CalamineWorkbook.from_filelike(_io.BytesIO(content))
+        sh = wb.get_sheet_by_index(0)
+        data = sh.to_python()
+        grid = [[str(c).strip() if c is not None else '' for c in row] for row in data]
+        return grid, "calamine"
+    except Exception as e:
+        _LAST_XLS_ERR += f" | calamine: {type(e).__name__}: {e}"
+    return None, ""
+
+
 def _parse_polcar_xls(content: bytes):
     """Razčleni Polcar .xls (OLE2 Excel) — uporabno, ker Polcar pošilja XML zapakiran v .rar,
     .xls pa vsebuje iste podatke in se da brati brez unrar.
     Vrne (invoice_type, rows) kjer invoice_type je 'DU' ali 'NU'."""
     import re as _re
-    try:
-        import xlrd
-    except Exception as e:
-        print(f"[knj] xlrd ni na voljo: {e}")
+    global _LAST_XLS_ERR, _LAST_XLS_READER
+    _LAST_XLS_ERR = ""
+    grid, reader = _read_xls_grid(content)
+    _LAST_XLS_READER = reader or ""
+    if not grid:
+        print(f"[knj] xls read fail: {_LAST_XLS_ERR}")
         return None, []
-    try:
-        wb = xlrd.open_workbook(file_contents=content)
-        sh = wb.sheet_by_index(0)
-    except Exception as e:
-        print(f"[knj] xls open error: {e}")
-        return None, []
+    _nrows = len(grid)
+    _ncols = max((len(r) for r in grid), default=0)
 
     def cell(r, c):
-        try: return str(sh.cell_value(r, c)).strip()
-        except Exception: return ''
+        try:
+            return grid[r][c].strip()
+        except Exception:
+            return ''
     def rowvals(r):
-        return [(c, cell(r, c)) for c in range(sh.ncols) if cell(r, c)]
+        return [(c, cell(r, c)) for c in range(_ncols) if cell(r, c)]
 
     invoice_num = ''; invoice_type = ''
     date_sale = ''; date_issue = ''; deadline = ''
     seller = ''; total_bruto = ''
-    for r in range(min(sh.nrows, 50)):
+    for r in range(min(_nrows, 50)):
         line = ' '.join(v for _, v in rowvals(r))
         if 'DEBIT NOTE' in line and not invoice_num:
             invoice_type = 'DU'
@@ -14009,7 +14052,7 @@ def _parse_polcar_xls(content: bytes):
 
     # najdi header tabele (Description + Value/Q-ty)
     hdr_row = -1; cols = {}
-    for r in range(sh.nrows):
+    for r in range(_nrows):
         rv = rowvals(r)
         joined = ' '.join(v for _, v in rv)
         if 'Description' in joined and ('Value' in joined or 'Q-ty' in joined):
@@ -14029,7 +14072,7 @@ def _parse_polcar_xls(content: bytes):
     rows = []
     tip_label = 'DEBIT NOTE' if invoice_type == 'DU' else 'CREDIT NOTE'
     if hdr_row >= 0:
-        for r in range(hdr_row + 1, sh.nrows):
+        for r in range(hdr_row + 1, _nrows):
             rv = rowvals(r)
             joined = ' '.join(v for _, v in rv)
             if joined.startswith('Total') or 'Total:' in joined:
