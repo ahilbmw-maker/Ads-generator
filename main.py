@@ -3217,7 +3217,45 @@ def _process_emails_to_batch_zip(cfg: dict, password: str) -> dict:
                 ext_count = {"xml": 0, "pdf": 0, "other": 0, "xml_dup_batch": 0, "xml_dup_history": 0}
                 for fn, content in email_attachments:
                     fn_up = fn.upper()
-                    if fn_up.endswith(".XML"):
+                    if fn_up.endswith(".XLS") or fn_up.endswith(".XLSX"):
+                        # Polcar pošilja XML zapakiran v .rar (rabi unrar) — .xls vsebuje iste podatke.
+                        xls_type, xls_rows = _parse_polcar_xls(content)
+                        parsed_d = xls_rows if xls_type == "DU" else []
+                        parsed_c = xls_rows if xls_type == "NU" else []
+                        invoice_type = xls_type
+                        # skupni dedup + zbiranje
+                        invoice_num = ""
+                        if parsed_d:
+                            invoice_num = parsed_d[0].get('Številka', '').strip()
+                        elif parsed_c:
+                            invoice_num = parsed_c[0].get('Številka', '').strip()
+                        _diag["xml_seen"] += 1
+                        _ndu, _nnu = len(parsed_d), len(parsed_c)
+                        _diag["du_rows"] += _ndu; _diag["nu_rows"] += _nnu
+                        if _ndu or _nnu: _diag["xml_parsed_ok"] += 1
+                        else: _diag["xml_empty"] += 1
+                        if not invoice_num: _diag["no_invoice_num"] += 1
+                        if len(_diag["samples"]) < 5:
+                            _diag["samples"].append({"fn": fn, "type": invoice_type or "?",
+                                "num": invoice_num or "(prazno)", "du": _ndu, "nu": _nnu})
+                        if invoice_num and invoice_type:
+                            invoice_key = f"{invoice_type}:{invoice_num}"
+                            if invoice_key in seen_invoices_this_batch:
+                                skipped_dup_in_batch.append({"invoice_num": invoice_num, "type": invoice_type, "from": sender, "filename": fn})
+                                ext_count["xml_dup_batch"] += 1
+                                continue
+                            if invoice_key in processed_history:
+                                hist = processed_history[invoice_key]
+                                skipped_dup_in_history.append({"invoice_num": invoice_num, "type": invoice_type, "from": sender, "filename": fn, "original_batch": hist.get("batch", "?"), "original_date": hist.get("ts", "?")})
+                                ext_count["xml_dup_history"] += 1
+                                continue
+                            seen_invoices_this_batch.add(invoice_key)
+                            new_invoices_added.append({"invoice_num": invoice_num, "type": invoice_type})
+                        if parsed_d: debit_rows.extend(parsed_d)
+                        if parsed_c: credit_rows.extend(parsed_c)
+                        xml_files.append((fn, content))
+                        ext_count["xml"] += 1
+                    elif fn_up.endswith(".XML"):
                         # Polcar XML — parser sam pravilno obravnava encoding (UTF-16/BOM/deklaracija).
                         # Pošljemo SUROVE bajte, da ET pravilno prebere encoding deklaracijo.
                         xml_text = content  # bytes; _polcar_xml_root zna z bajti
@@ -13922,6 +13960,107 @@ def _parse_polcar_credit(content) -> list[dict]:
             'Skupaj bruto':   root.get('Korekta_WartoscBrutto','').replace(',','.'),
         })
     return rows
+
+
+def _parse_polcar_xls(content: bytes):
+    """Razčleni Polcar .xls (OLE2 Excel) — uporabno, ker Polcar pošilja XML zapakiran v .rar,
+    .xls pa vsebuje iste podatke in se da brati brez unrar.
+    Vrne (invoice_type, rows) kjer invoice_type je 'DU' ali 'NU'."""
+    import re as _re
+    try:
+        import xlrd
+    except Exception as e:
+        print(f"[knj] xlrd ni na voljo: {e}")
+        return None, []
+    try:
+        wb = xlrd.open_workbook(file_contents=content)
+        sh = wb.sheet_by_index(0)
+    except Exception as e:
+        print(f"[knj] xls open error: {e}")
+        return None, []
+
+    def cell(r, c):
+        try: return str(sh.cell_value(r, c)).strip()
+        except Exception: return ''
+    def rowvals(r):
+        return [(c, cell(r, c)) for c in range(sh.ncols) if cell(r, c)]
+
+    invoice_num = ''; invoice_type = ''
+    date_sale = ''; date_issue = ''; deadline = ''
+    seller = ''; total_bruto = ''
+    for r in range(min(sh.nrows, 50)):
+        line = ' '.join(v for _, v in rowvals(r))
+        if 'DEBIT NOTE' in line and not invoice_num:
+            invoice_type = 'DU'
+            m = _re.search(r'(\d+/\w+/\d+/DU)', line); invoice_num = m.group(1) if m else ''
+        if 'CREDIT NOTE' in line and not invoice_num:
+            invoice_type = 'NU'
+            m = _re.search(r'(\d+/\w+/\d+/NU)', line); invoice_num = m.group(1) if m else ''
+        if 'Date of sale' in line and not date_sale:
+            m = _re.search(r'(\d{4}\.\d{2}\.\d{2})', line); date_sale = m.group(1) if m else ''
+        if 'Date of issue' in line and not date_issue:
+            m = _re.search(r'(\d{4}\.\d{2}\.\d{2})', line); date_issue = m.group(1) if m else ''
+        if 'Payment deadline' in line and not deadline:
+            m = _re.search(r'(\d{4}\.\d{2}\.\d{2})', line); deadline = m.group(1) if m else ''
+        if line.startswith('Seller') and not seller:
+            seller = line.replace('Seller', '').strip()
+        if line.startswith('Total:') and 'EUR' in line and not total_bruto:
+            m = _re.search(r'([\d.,]+)\s*EUR', line); total_bruto = (m.group(1).replace(',', '.') if m else '')
+
+    # najdi header tabele (Description + Value/Q-ty)
+    hdr_row = -1; cols = {}
+    for r in range(sh.nrows):
+        rv = rowvals(r)
+        joined = ' '.join(v for _, v in rv)
+        if 'Description' in joined and ('Value' in joined or 'Q-ty' in joined):
+            hdr_row = r
+            for c, v in rv:
+                vl = v.lower()
+                if v == 'No.': cols['no'] = c
+                elif 'polcar no' in vl: cols['art'] = c
+                elif 'cust' in vl: cols['cust'] = c
+                elif 'description' in vl: cols['desc'] = c
+                elif 'price' in vl: cols['price'] = c
+                elif 'q-ty' in vl: cols['qty'] = c
+                elif 'value' in vl: cols['value'] = c
+                elif 'country' in vl: cols['country'] = c
+            break
+
+    rows = []
+    tip_label = 'DEBIT NOTE' if invoice_type == 'DU' else 'CREDIT NOTE'
+    if hdr_row >= 0:
+        for r in range(hdr_row + 1, sh.nrows):
+            rv = rowvals(r)
+            joined = ' '.join(v for _, v in rv)
+            if joined.startswith('Total') or 'Total:' in joined:
+                break
+            no = cell(r, cols.get('no', 0))
+            desc = cell(r, cols.get('desc', 13))
+            if not _re.match(r'^\d+$', no):
+                continue
+            rows.append({
+                'Tip':            tip_label,
+                'Številka':       invoice_num,
+                'Datum prodaje':  date_sale,
+                'Datum izdaje':   date_issue,
+                'Rok plačila':    deadline,
+                'Prodajalec':     seller,
+                'Kupec':          '',
+                'EU VAT':         '',
+                'Valuta':         'EUR',
+                'Art. številka':  cell(r, cols.get('art', 3)),
+                'Opis':           desc,
+                'Količina':       cell(r, cols.get('qty', 24)).split('[')[0].strip(),
+                'Cena/kos':       cell(r, cols.get('price', 23)).replace(',', '.'),
+                'Vrednost neto':  cell(r, cols.get('value', 29)).replace(',', '.'),
+                'VAT %':          '',
+                'Vrednost VAT':   '',
+                'Vrednost bruto': cell(r, cols.get('value', 29)).replace(',', '.'),
+                'Razlog':         desc if ('return' in desc.lower() or 'zwrot' in desc.lower()) else '',
+                'Skupaj bruto':   total_bruto,
+            })
+    return invoice_type, rows
+
 
 @app.post("/knj-parse")
 async def knj_parse(files: list[UploadFile] = File(...)):
