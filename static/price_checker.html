@@ -1354,10 +1354,11 @@ function _renderGroupCards(skuList) {
         ? `${s.avgPrice.toFixed(2)} <span style="font-size:12px;font-weight:600">${s.currency}</span>`
         : `${s.avgPrice.toFixed(2)}<span style="font-size:13px;font-weight:600">€</span>`;
       const eurSub = isForeign && s.avgEur != null ? `${s.avgEur.toFixed(2)}€` : '';
-      const razTxt = s.avgRazlika != null ? `${s.avgRazlika.toFixed(2)}€` : '—';
-      const razColor = s.avgRazlika != null ? (s.avgRazlika < 3 ? '#dc2626' : s.avgRazlika > 8 ? '#16a34a' : '#475569') : '#94a3b8';
+      const razVal = s.avgRazlika;
+      const razTxt = razVal != null ? `${razVal.toFixed(2)}€` : '—';
+      // badge ozadje glede na razliko: rdeč (premalo), temno modra (ok), zelen (odlično)
+      const razBg = razVal == null ? '#94a3b8' : razVal < 3 ? '#b91c1c' : razVal > 8 ? '#15803d' : '#1e3a5f';
       const ncTxt = s.avgNc != null ? `${s.avgNc.toFixed(2)}€` : '—';
-      // zaloga z barvo
       const stockColor = s.stock == null ? '#94a3b8' : s.stock <= 5 ? '#dc2626' : s.stock <= 20 ? '#f59e0b' : '#16a34a';
       const stockTxt = s.stock != null ? s.stock : '—';
       const orderLink = s.firstId
@@ -1370,10 +1371,13 @@ function _renderGroupCards(skuList) {
         </div>
         <div style="font-size:21px;font-weight:800;color:var(--text);line-height:1.1">${priceBig}</div>
         ${eurSub ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">= ${eurSub}</div>` : ''}
-        <div style="display:flex;align-items:center;gap:8px;margin-top:7px;padding-top:7px;border-top:1px solid var(--border)">
-          <div style="flex:1"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">razlika</div><div style="font-size:14px;font-weight:800;color:${razColor}">${razTxt}</div></div>
-          <div style="flex:1"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">marža</div><div style="font-size:14px;font-weight:700;color:${accent}">${m!=null?m.toFixed(0)+'%':'—'}</div></div>
-          <div style="flex:1"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">NC</div><div style="font-size:13px;font-weight:600;color:var(--muted)">${ncTxt}</div></div>
+        <div style="margin-top:8px;background:${razBg};border-radius:7px;padding:7px 11px;display:flex;align-items:baseline;justify-content:space-between">
+          <span style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:.4px">Razlika</span>
+          <span style="font-size:18px;font-weight:800;color:#fff;line-height:1">${razTxt}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:7px">
+          <div style="flex:1"><span style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">marža </span><span style="font-size:13px;font-weight:700;color:${accent}">${m!=null?m.toFixed(0)+'%':'—'}</span></div>
+          <div style="flex:1"><span style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">NC </span><span style="font-size:13px;font-weight:600;color:var(--text)">${ncTxt}</span></div>
         </div>
         ${orderLink ? `<div style="margin-top:6px">${orderLink}${tag?' <span style="font-size:9px;color:'+accent+';font-weight:600">· '+tag+'</span>':''}</div>` : (tag?`<div style="margin-top:6px;font-size:9px;color:${accent};font-weight:600">${tag}</div>`:'')}
       </div>`;
