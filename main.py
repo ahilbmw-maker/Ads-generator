@@ -19966,12 +19966,13 @@ async def siluxar_push_positions(data: dict):
             entry = {"sku": sku}
             # position: vključi LE če je podan IN neprazen.
             # Prazen position siluxar tretira kot reset → povozi position+stock z null.
+            _has_position = False
             if "position" in it:
                 _pos = (str(it.get("position") or "")).strip()
                 if _pos:
                     entry["position"] = _pos
+                    _has_position = True
             # stock: vključi SAMO če je podan (ne pošiljaj praznega/None).
-            # Pošlji kot STRING — isto kot apistockexport izvaža/bere (Marko: konsistentno).
             stock_raw = it.get("stock")
             _has_stock = stock_raw is not None and str(stock_raw).strip() != ""
             if _has_stock:
@@ -19979,9 +19980,9 @@ async def siluxar_push_positions(data: dict):
                     entry["stock"] = str(int(float(str(stock_raw).replace(",", "."))))
                 except Exception:
                     entry["stock"] = str(stock_raw).strip()
-                # id = siluxar id (naš siluxar_id): match ključ za apistockexport (Marko).
-                # SAMO pri stock pošiljanju. Pozicijski push ostane {sku, position} kot doslej.
-                # Isti SKU ima lahko več skladišč (silux/silux2) z RAZLIČNIM id — zato po warehouse.
+            # id = siluxar id (naš siluxar_id): apistockexport matcha PO id, ne po SKU (Marko).
+            # POTREBEN pri stock IN pri poziciji — sicer siluxar vrne 200 a ne shrani (ne najde zapisa).
+            if _has_stock or _has_position:
                 _wh_it = (str(it.get("warehouse") or "")).strip().lower()
                 _eid = (str(it.get("id") or "")).strip()
                 if not _eid and _wh_it:
