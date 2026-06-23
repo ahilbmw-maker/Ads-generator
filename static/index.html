@@ -3964,6 +3964,9 @@ input[type="text"].error { border-color: var(--red) !important; }
           <button id="zalogaPushPosBtn" class="zaloga-mobile-hide" onclick="zalogaPushPositions(this)" title="Pošlje vse pozicije (silux) v siluxar beta zapisovalni endpoint" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;color:#185FA5;border:1px solid rgba(24,95,165,0.4);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
             <span>↗</span><span>Pošlji pozicije v siluxar</span>
           </button>
+          <button id="zalogaPushDebugBtn" class="zaloga-mobile-hide" onclick="zalogaShowPushDebug()" title="Pokaži zadnja pošiljanja v siluxar (kaj poslano, status, odgovor)" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
+            <span>🔍</span><span>Debug</span>
+          </button>
           <!-- Arhiv backupov zaloge -->
           <button id="zalogaArhivBtn" class="zaloga-mobile-hide" onclick="zalogaArhivOpen()" title="Pregled backupov zaloge — hitri restore" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
             <span>🗄</span><span>Arhiv</span>
@@ -12632,6 +12635,7 @@ function regenPromptDelete() {
 }
 // init dropdown ob nalaganju strani — naloži prompte s strežnika
 document.addEventListener('DOMContentLoaded', regenPromptsInit);
+document.addEventListener('DOMContentLoaded', bookmarksInit);
 
 // ── per-slika: shrani prompt + prikaži predloge (chips) ──
 function regenOneSave(btn) {
@@ -14750,6 +14754,7 @@ async function o14LoadMetaInfo() {
 
 async function o14LoadData() {
   try {
+    if (!_bookmarksLoaded) { try { await bookmarksInit(); } catch(e) {} }
     const res = await fetch('/analiza-obrat14-data');
     const data = await res.json();
     if (!data.loaded) {
@@ -14794,9 +14799,34 @@ function o14SetFilter(filter, btn) {
 }
 
 // ── ZAZNAMEK "tukaj sem ostal" (per analiza tab) ──
-// Shranjeno v localStorage: slx_bookmark_<tabKey> = SKU. En zaznamek na tab.
-// Za obrat14: če je izbran NATANKO EN account, zaznamek je vezan nanj (per-account),
-// sicer pade na splošni ključ. Tako vsak ad account dobi svoj "tu sem ostal".
+// Zaznamki "tu sem ostal" — shranjeni NA STREŽNIK (persistentno, vsi userji/naprave).
+// In-memory cache za sinhron render; klik zapiše na strežnik.
+let _bookmarksCache = {};
+let _bookmarksLoaded = false;
+async function bookmarksInit() {
+  try {
+    const r = await fetch('/analiza-bookmarks');
+    const d = await r.json();
+    _bookmarksCache = (d && d.ok && d.bookmarks) ? d.bookmarks : {};
+    // enkratna migracija starih localStorage zaznamkov na strežnik
+    try {
+      let migrated = false;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('slx_bookmark_')) {
+          const tabKey = k.slice('slx_bookmark_'.length);
+          const sku = localStorage.getItem(k);
+          if (sku && !_bookmarksCache[tabKey]) {
+            _bookmarksCache[tabKey] = sku;
+            fetch('/analiza-bookmarks', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ tab_key: tabKey, sku }) });
+            migrated = true;
+          }
+        }
+      }
+    } catch(e) {}
+  } catch(e) { _bookmarksCache = {}; }
+  _bookmarksLoaded = true;
+}
 function o14BookmarkTabKey() {
   try {
     const checked = window._o14CheckedAccounts;
@@ -14808,14 +14838,15 @@ function o14BookmarkTabKey() {
   return 'obrat14';
 }
 function bookmarkGet(tabKey) {
-  try { return localStorage.getItem('slx_bookmark_' + tabKey) || null; } catch(e) { return null; }
+  return _bookmarksCache[tabKey] || null;
 }
 function bookmarkToggle(tabKey, sku, rerenderFn) {
   const cur = bookmarkGet(tabKey);
-  try {
-    if (cur === sku) localStorage.removeItem('slx_bookmark_' + tabKey);   // ponovni klik = odstrani
-    else localStorage.setItem('slx_bookmark_' + tabKey, sku);
-  } catch(e) {}
+  const newSku = (cur === sku) ? '' : sku;   // ponovni klik = odstrani
+  if (newSku) _bookmarksCache[tabKey] = newSku;
+  else delete _bookmarksCache[tabKey];
+  // zapiši na strežnik (fire-and-forget; cache je že posodobljen za takojšen render)
+  fetch('/analiza-bookmarks', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ tab_key: tabKey, sku: newSku }) }).catch(()=>{});
   if (typeof rerenderFn === 'function') rerenderFn();
 }
 // HTML za zaznamek gumb (zastavica) v vrstici

@@ -21043,6 +21043,52 @@ async def fx_rates():
 
 REGEN_PROMPTS_FILE = DATA_DIR / "regen_prompts.json"   # shranjeni prompti (persistentno, ne v brskalniku)
 
+BOOKMARKS_FILE = DATA_DIR / "analiza_bookmarks.json"   # zaznamki "tu sem ostal" (persistentno, vsi userji)
+
+
+class BookmarkReq(BaseModel):
+    tab_key: str
+    sku: Optional[str] = None   # None/prazno = odstrani zaznamek
+
+
+@app.get("/analiza-bookmarks")
+async def analiza_bookmarks_get():
+    """Vrne vse zaznamke 'tu sem ostal' (tab_key -> sku)."""
+    import json as _json
+    if not BOOKMARKS_FILE.exists():
+        return {"ok": True, "bookmarks": {}}
+    try:
+        data = _json.loads(BOOKMARKS_FILE.read_text(encoding="utf-8")) or {}
+        if not isinstance(data, dict):
+            data = {}
+        return {"ok": True, "bookmarks": data}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "bookmarks": {}}
+
+
+@app.post("/analiza-bookmarks")
+async def analiza_bookmarks_set(req: BookmarkReq):
+    """Nastavi ali odstrani zaznamek za dani tab_key. Prazen sku = odstrani."""
+    import json as _json
+    try:
+        data = {}
+        if BOOKMARKS_FILE.exists():
+            data = _json.loads(BOOKMARKS_FILE.read_text(encoding="utf-8")) or {}
+        if not isinstance(data, dict):
+            data = {}
+        tk = (req.tab_key or "").strip()
+        if not tk:
+            return {"ok": False, "error": "manjka tab_key"}
+        sku = (req.sku or "").strip()
+        if sku:
+            data[tk] = sku
+        else:
+            data.pop(tk, None)
+        BOOKMARKS_FILE.write_text(_json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True, "bookmarks": data}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 
 class RegenPromptsReq(BaseModel):
     prompts: List[str] = []
