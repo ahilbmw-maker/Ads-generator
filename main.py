@@ -11938,14 +11938,8 @@ def _packing_sr_names():
     return out
 
 
-def _packing_collect(market: str):
-    """Zbere packing podatke (isto kot PDF): {box: [{sku,naziv,kos}]}.
-    Naziv = srbski iz RS feeda (po SKU), fallback na originalni naziv.
-    Vrne (pboxes_final, error_or_None)."""
-    path = _zaloga_current_path(market)
-    if not path.exists():
-        return None, "Ni aktivne seje"
-    sess = json.loads(path.read_text(encoding="utf-8"))
+def _packing_collect_from_sess(sess: dict):
+    """Zbere packing podatke iz podane seje (dict). Vrne (pboxes_final, error)."""
     sr_names = _packing_sr_names()
     def _sr(sku, fallback):
         return sr_names.get((sku or "").strip().upper(), fallback or "")
@@ -11954,7 +11948,7 @@ def _packing_collect(market: str):
         box = str(box).strip()
         if not box or not sku or kos <= 0:
             return
-        naziv = _sr(sku, naziv)  # srbski naziv (fallback original)
+        naziv = _sr(sku, naziv)
         combined.setdefault(box, {})
         if sku in combined[box]:
             combined[box][sku]["kos"] += kos
@@ -11983,6 +11977,17 @@ def _packing_collect(market: str):
     for box, skus in combined.items():
         pboxes_final[box] = [{"sku": sku, "naziv": v["naziv"], "kos": v["kos"]} for sku, v in skus.items()]
     return pboxes_final, None
+
+
+def _packing_collect(market: str):
+    """Zbere packing podatke (isto kot PDF): {box: [{sku,naziv,kos}]}.
+    Naziv = srbski iz RS feeda (po SKU), fallback na originalni naziv.
+    Vrne (pboxes_final, error_or_None)."""
+    path = _zaloga_current_path(market)
+    if not path.exists():
+        return None, "Ni aktivne seje"
+    sess = json.loads(path.read_text(encoding="utf-8"))
+    return _packing_collect_from_sess(sess)
 
 
 def _packing_boxkey(b):
@@ -12071,6 +12076,62 @@ async def zaloga_packing_xlsx(data: dict):
 
         buf = io.BytesIO(); wb.save(buf); buf.seek(0)
         fn = f"packing_lista_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.xlsx"
+        return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{fn}"'})
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/zaloga-history-packing-csv/{filename}")
+async def zaloga_history_packing_csv(filename: str, market: str = "rs"):
+    """Packing lista CSV iz ARHIVIRANE seje (po filename). Reši primer, ko je seja že arhivirana."""
+    try:
+        import io, csv as _csv
+        adir = _zaloga_archive_dir(_zaloga_market(market))
+        fpath = adir / filename
+        if not fpath.exists() or fpath.suffix != ".json":
+            return JSONResponse({"error": "Arhivirana seja ne obstaja"}, status_code=404)
+        sess = json.loads(fpath.read_text(encoding="utf-8"))
+        pboxes, err = _packing_collect_from_sess(sess)
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
+        out = io.StringIO()
+        w = _csv.writer(out, delimiter=";")
+        w.writerow(["Box","Naziv","Koda","Kosov"])
+        for box in sorted(pboxes.keys(), key=_packing_boxkey):
+            for e in pboxes[box]:
+                w.writerow([box, e.get("naziv",""), e.get("sku",""), e.get("kos",0)])
+        body = "\ufeff" + out.getvalue()
+        fn = f"packing_lista_arhiv_{filename.replace('.json','')}.csv"
+        return StreamingResponse(io.BytesIO(body.encode("utf-8")), media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{fn}"'})
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/zaloga-history-packing-xlsx/{filename}")
+async def zaloga_history_packing_xlsx(filename: str, market: str = "rs"):
+    """Packing lista XLSX iz arhivirane seje."""
+    try:
+        import io
+        from openpyxl import Workbook
+        adir = _zaloga_archive_dir(_zaloga_market(market))
+        fpath = adir / filename
+        if not fpath.exists() or fpath.suffix != ".json":
+            return JSONResponse({"error": "Arhivirana seja ne obstaja"}, status_code=404)
+        sess = json.loads(fpath.read_text(encoding="utf-8"))
+        pboxes, err = _packing_collect_from_sess(sess)
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
+        wb = Workbook(); ws = wb.active; ws.title = "Packing"
+        ws.append(["Box","Naziv","Koda","Kosov"])
+        for box in sorted(pboxes.keys(), key=_packing_boxkey):
+            for e in pboxes[box]:
+                ws.append([box, e.get("naziv",""), e.get("sku",""), e.get("kos",0)])
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        fn = f"packing_lista_arhiv_{filename.replace('.json','')}.xlsx"
         return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="{fn}"'})
     except Exception as e:

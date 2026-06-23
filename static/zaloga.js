@@ -2371,6 +2371,8 @@ function histSessRow(s) {
       </div>
       <div class="hist-sess-actions">
         <button class="open" onclick="histToggleDetail('${jsStr(s.filename)}')">📋 Podrobnosti</button>
+        <button class="open" onclick="histPackingCsv('${jsStr(s.filename)}')" title="Packing lista CSV iz te arhivirane seje">📄 Packing CSV</button>
+        <button class="open" onclick="histPackingXlsx('${jsStr(s.filename)}')" title="Packing lista XLS iz te arhivirane seje">📊 Packing XLS</button>
         <button class="del" onclick="histDelete('${jsStr(s.filename)}')">🗑 Izbriši</button>
       </div>
       <div class="hist-detail" id="hdet-${cssId(s.filename)}" style="display:none"></div>
@@ -2401,6 +2403,15 @@ async function histToggleDetail(filename) {
   } catch(e) {
     det.innerHTML = '<div style="padding:8px 0;color:var(--ni)">✗ Napaka.</div>';
   }
+}
+
+function histPackingCsv(filename) {
+  const url = '/zaloga-history-packing-csv/' + encodeURIComponent(filename) + '?market=' + MARKET;
+  window.open(url, '_blank');
+}
+function histPackingXlsx(filename) {
+  const url = '/zaloga-history-packing-xlsx/' + encodeURIComponent(filename) + '?market=' + MARKET;
+  window.open(url, '_blank');
 }
 
 async function histDelete(filename) {
