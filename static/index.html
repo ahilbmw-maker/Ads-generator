@@ -2415,6 +2415,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
               <span class="slabel" style="margin:0" id="hsuvozTitle">ZA NAROČILO (0)</span>
               <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                <button onclick="hsuvozRemoveOrdered()" id="hsuvozRemoveOrderedBtn" style="display:none;padding:5px 12px;background:#d97706;color:#fff;border:none;border-radius:var(--radius);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">⏭ Odstrani že naročene</button>
                 <button onclick="hsuvozToggleDone()" id="hsuvozToggleDoneBtn" style="padding:5px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">👁 Done</button>
               </div>
             </div>
@@ -16759,8 +16760,24 @@ async function hsuvozLoadCurrent() {
       hsuvozRender(data.items, 'hsuvozList', 'current');
       const undone = data.items.filter(it => !it.done).length;
       document.getElementById('hsuvozTitle').textContent = `ZA NAROČILO (${undone} / ${data.items.length})`;
+      // gumb "Odstrani že naročene" — samo če obstajajo
+      const orderedCount = data.items.filter(it => it.already_ordered).length;
+      const remBtn = document.getElementById('hsuvozRemoveOrderedBtn');
+      if (remBtn) {
+        remBtn.style.display = orderedCount > 0 ? 'inline-block' : 'none';
+        remBtn.textContent = `⏭ Odstrani že naročene (${orderedCount})`;
+      }
     }
   } catch(e) { console.warn('hsuvozLoadCurrent', e); }
+}
+
+async function hsuvozRemoveOrdered() {
+  try {
+    const res = await fetch('/hsuvoz-remove-ordered', { method:'POST' });
+    const d = await res.json();
+    if (d.error) { alert('Napaka: ' + d.error); return; }
+    await hsuvozLoadCurrent();
+  } catch(e) { alert('Napaka: ' + e.message); }
 }
 
 async function hsuvozLoadOrderPanel() {
@@ -16805,10 +16822,13 @@ function hsuvozRender(items, listId, source) {
       return '<a href="https://www.siluxar.si/narocilnice/' + id + '" target="_blank" style="color:var(--accent);text-decoration:none;font-size:10px;background:rgba(24,119,242,0.08);border:1px solid rgba(24,119,242,0.2);border-radius:4px;padding:2px 7px;display:inline-block">' + id + '</a>';
     }).join(' ');
 
-    const rowBg = source === 'order' ? 'rgba(15,118,110,0.05)' : (isDone ? 'rgba(0,0,0,0.02)' : 'var(--surface)');
-    const rowBorder = source === 'order' ? '1px solid rgba(15,118,110,0.2)' : '1px solid var(--border)';
+    const rowBg = source === 'order' ? 'rgba(15,118,110,0.05)' : (it.already_ordered ? 'rgba(217,119,6,0.10)' : (isDone ? 'rgba(0,0,0,0.02)' : 'var(--surface)'));
+    const rowBorder = source === 'order' ? '1px solid rgba(15,118,110,0.2)' : (it.already_ordered ? '1px solid rgba(217,119,6,0.4)' : '1px solid var(--border)');
     const skuColor = isDone ? 'var(--text-tertiary)' : (source === 'order' ? '#0f766e' : 'var(--text)');
     const skuDeco = isDone ? 'line-through' : 'none';
+    const orderedTag = (source === 'current' && it.already_ordered)
+      ? '<span style="font-size:9px;font-weight:700;color:#b45309;background:rgba(217,119,6,0.18);border:1px solid rgba(217,119,6,0.4);border-radius:4px;padding:1px 6px;margin-left:6px;white-space:nowrap;vertical-align:middle">⏭ že naročeno' + (it.ordered_qty ? ' ('+it.ordered_qty+')' : '') + '</span>'
+      : '';
 
     const isChecked = (window._hsuvozSelected || new Set()).has(it.sku + '|' + source);
 
@@ -16821,7 +16841,7 @@ function hsuvozRender(items, listId, source) {
       + '<input type="checkbox" ' + (isChecked ? 'checked' : '') + ' onchange="window._hsvCheck(\'' + source + '\',' + idx + ',this.checked)" style="cursor:pointer;width:14px;height:14px;accent-color:var(--accent)">'
       + '<span style="color:var(--text-tertiary);font-size:11px">' + (idx + 1) + '</span>'
       + '<input value="' + esc(it.sku) + '" data-orig="' + esc(it.sku) + '" data-src="' + source + '" data-idx="' + idx + '" onfocus="this.style.background=\'rgba(24,119,242,0.06)\';this.style.outline=\'1px solid var(--accent)\';this.style.borderRadius=\'3px\';this.select()" onblur="this.style.background=\'transparent\';this.style.outline=\'none\';window._hsvSaveSkuEdit(this)" onkeydown="if(event.key===\'Enter\'){this.blur();}if(event.key===\'Escape\'){this.value=this.dataset.orig;this.blur();}" onmouseenter="this.style.background=\'rgba(0,0,0,0.04)\';this.style.borderRadius=\'3px\'" onmouseleave="if(document.activeElement!==this)this.style.background=\'transparent\'" style="font-weight:700;font-size:12px;color:' + skuColor + ';text-decoration:' + skuDeco + ';border:none;background:transparent;outline:none;width:100%;cursor:text;font-family:DM Sans,sans-serif;padding:2px 4px;border-radius:3px;transition:background 0.1s" title="Klikni za urejanje SKU">'
-      + '<span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">' + esc(it.naziv || '—') + '</span>'
+      + '<span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">' + esc(it.naziv || '—') + orderedTag + '</span>'
       + '<div style="text-align:center">'
       + '<span style="font-weight:700;font-size:15px;color:var(--text)">' + it.qty + '</span>'
       + '<div style="font-size:9px;color:var(--text-tertiary);margin-top:1px">kos</div>'

@@ -1827,7 +1827,8 @@ async function bulkDelete() {
   selectedKeys.clear();
   saveTableToStorage();
   updateStats(allRows);
-  renderTable(allRows);
+  // ne preklapljaj na navadni pogled, če je aktiven grupiran pogled (Primerjava po državah)
+  if (!_groupSkuActive) renderTable(allRows);
 
   // osveži quick-delete bar (skrij če pogled prazen)
   if (['null','qty','multi'].includes(currentFilter)) {

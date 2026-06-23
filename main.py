@@ -11004,22 +11004,29 @@ async def hsuvoz_upload(file: UploadFile = File(...)):
 
         items = sorted(sku_map.values(), key=lambda x: -x["qty"])
 
-        # DEDUP: odstrani postavke, ki so že v "NAROČILO" (HSUVOZ_ORDER) —
-        # da ni dvojnega dela z ročnim brisanjem že obdelanih SKU-jev.
+        # OZNAČI postavke, ki so že v "NAROČILO" (HSUVOZ_ORDER) — NE odstrani,
+        # ampak flag already_ordered=True + premakni na vrh (frontend jih obarva + gumb za odstranitev).
         skipped = []
         try:
             if HSUVOZ_ORDER.exists():
                 order_data = json.loads(HSUVOZ_ORDER.read_text(encoding="utf-8"))
                 order_items = order_data.get("items", []) if isinstance(order_data, dict) else (order_data or [])
-                order_skus = set((it.get("sku") or "").strip().upper() for it in order_items if it.get("sku"))
-                if order_skus:
-                    kept = []
+                order_qty = {}
+                for it in order_items:
+                    sk = (it.get("sku") or "").strip().upper()
+                    if sk:
+                        order_qty[sk] = order_qty.get(sk, 0) + (it.get("qty") or it.get("kolicina") or 0)
+                if order_qty:
                     for it in items:
-                        if (it.get("sku") or "").strip().upper() in order_skus:
+                        sk = (it.get("sku") or "").strip().upper()
+                        if sk in order_qty:
+                            it["already_ordered"] = True
+                            it["ordered_qty"] = order_qty[sk]
                             skipped.append(it["sku"])
                         else:
-                            kept.append(it)
-                    items = kept
+                            it["already_ordered"] = False
+                    # že-naročene na vrh (znotraj tega po količini)
+                    items = sorted(items, key=lambda x: (not x.get("already_ordered", False), -x["qty"]))
         except Exception:
             pass
 
@@ -11050,10 +11057,28 @@ async def hsuvoz_upload(file: UploadFile = File(...)):
         hist_file = HSUVOZ_DIR / f"hsuvoz_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
         hist_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        return {"ok": True, "total_skus": len(items), "uploaded_at": ts, "filename": file.filename, "skipped_in_order": len(skipped), "skipped_skus": skipped, "total_in_csv": len(items) + len(skipped)}
+        return {"ok": True, "total_skus": len(items), "uploaded_at": ts, "filename": file.filename, "skipped_in_order": len(skipped), "skipped_skus": skipped, "total_in_csv": len(items), "already_ordered_count": len(skipped)}
 
     except Exception as e:
         import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/hsuvoz-remove-ordered")
+async def hsuvoz_remove_ordered():
+    """Odstrani iz trenutnega HS+ seznama vse postavke, ki so označene already_ordered=True."""
+    try:
+        if not HSUVOZ_CURRENT.exists():
+            return {"ok": True, "removed": 0, "remaining": 0}
+        data = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
+        items = data.get("items", [])
+        before = len(items)
+        kept = [it for it in items if not it.get("already_ordered", False)]
+        data["items"] = kept
+        data["total_skus"] = len(kept)
+        HSUVOZ_CURRENT.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"ok": True, "removed": before - len(kept), "remaining": len(kept)}
+    except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
