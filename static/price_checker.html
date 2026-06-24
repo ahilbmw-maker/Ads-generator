@@ -1259,12 +1259,16 @@ function setGroupViewMode(m) {
 
 function _buildGroupSkuData() {
   const groups = {};
+  let _nullSkipped = 0, _noSku = 0;
   for (const r of allRows) {
-    if (r.isNull || !r.sku) continue;
+    if (!r.sku) { _noSku++; continue; }
+    if (r.isNull) { _nullSkipped++; continue; }
     if (_dismissedSkus.has(r.sku)) continue;
     if (!groups[r.sku]) groups[r.sku] = [];
     groups[r.sku].push(r);
   }
+  const _totalSkus = Object.keys(groups).length;
+  let _single = 0;
   const skuList = [];
   for (const sku of Object.keys(groups)) {
     const rows = groups[sku];
@@ -1290,7 +1294,7 @@ function _buildGroupSkuData() {
       stock: s.stock.length ? Math.max(...s.stock) : null,
       firstId: s.ids[0] || null,
     }));
-    if (stores.length < 2) continue;
+    if (stores.length < 2) { _single++; continue; }
     const product = (rows[0].product || '');
     const marze = stores.map(s => s.avgMarza).filter(m => m != null);
     const marzaSpread = marze.length >= 2 ? (Math.max(...marze) - Math.min(...marze)) : 0;
@@ -1299,6 +1303,7 @@ function _buildGroupSkuData() {
     skuList.push({ sku, product, stores, marzaSpread, eurSpread, storeCount: stores.length });
   }
   skuList.sort((a,b) => b.marzaSpread - a.marzaSpread);
+  skuList._diag = { totalSkus: _totalSkus, multiStore: skuList.length, single: _single, nullSkipped: _nullSkipped };
   return skuList;
 }
 
@@ -1309,10 +1314,11 @@ function renderGroupSku() {
 
   // header z preklopnikom pogledov
   const modeBtn = (m, label) => `<button onclick="setGroupViewMode('${m}')" style="padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid ${_groupViewMode===m?'#7c3aed':'var(--border)'};background:${_groupViewMode===m?'#7c3aed':'#fff'};color:${_groupViewMode===m?'#fff':'var(--text)'};font-family:inherit">${label}</button>`;
+  const _d = skuList._diag || {};
   let header = `<div style="margin:14px 0 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
     <div style="font-size:13px;color:var(--text);font-weight:600">🌍 Primerjava po državah — <span style="color:#7c3aed">${skuList.length}</span> izdelkov</div>
     <div style="display:flex;gap:6px">${modeBtn('cards','▦ Kartice')}${modeBtn('table','▤ Tabela')}${modeBtn('heat','🌡 Lestvica')}</div>
-    <div style="font-size:11px;color:var(--muted)">Tečaji: ${_fxInfo || 'ECB'}</div>
+    <div style="font-size:11px;color:var(--muted)" title="Skupaj unikatnih SKU: ${_d.totalSkus||0} · v 2+ državah: ${_d.multiStore||0} · samo 1 država: ${_d.single||0} · NULL cena izpuščeno: ${_d.nullSkipped||0}">📊 ${_d.totalSkus||0} SKU skupaj · ${_d.single||0} v 1 državi · Tečaji: ${_fxInfo || 'ECB'}</div>
   </div>`;
 
   if (!skuList.length) {
