@@ -3081,6 +3081,7 @@ input[type="text"].error { border-color: var(--red) !important; }
               <div style="display:flex;gap:2px;background:var(--surface2);border-radius:7px;padding:2px">
                 <button id="bcFilt-all" onclick="bcSetStatusFilter('all')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:var(--accent);color:#fff">Vse</button>
                 <button id="bcFilt-SCALE" onclick="bcSetStatusFilter('SCALE')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🟢 Scale</button>
+                <button id="bcFilt-POTENCIAL" onclick="bcSetStatusFilter('POTENCIAL')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🟣 Potencial</button>
                 <button id="bcFilt-DRŽI" onclick="bcSetStatusFilter('DRŽI')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🟡 Drži</button>
                 <button id="bcFilt-NE" onclick="bcSetStatusFilter('NE')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🔴 Ne</button>
                 <button id="bcFilt-WATCH" onclick="bcSetStatusFilter('WATCH')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🔵 Opazujem</button>
@@ -3095,7 +3096,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             </div>
           </div>
           <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:12px">
-            Cilj: CPA &lt; 7.5€ · min 15 nakupov (7 dni) · trend, frekvenca, CTR, bid headroom. 🟢 SCALE · 🟡 DRŽI · 🔴 NE · 🔵 OPAZUJEM (7 dni po dvigu)
+            Cilj: CPA &lt; 7.5€ · min 15 nakupov (7 dni) · trend, frekvenca, CTR, bid headroom. 🟢 SCALE · 🟣 POTENCIAL (3–14 nakupov, CPA &lt; 6€, bid ≤ 9) · 🟡 DRŽI · 🔴 NE · 🔵 OPAZUJEM (7 dni po dvigu)
           </div>
           <div id="bcTableWrap"></div>
         </div>
@@ -19463,6 +19464,10 @@ let bcAdsets = [];        // agregirani ad-seti
 let bcScaleLog = [];      // iz /scale-log (z cooldown statusom)
 const BC_CPA_TARGET = 7.5;
 const BC_MIN_PURCH = 15;
+// "POTENCIAL" — obetavni ad-seti, ki še niso dosegli scale praga, a kažejo zgodnje znake.
+const BC_POT_MIN_PURCH = 3;     // spodnja meja (manj = preveč naključno)
+const BC_POT_CPA_MAX = 6.0;     // CPA zelo nizek (FB ni več poceni; 5€ bi preveč omejilo)
+const BC_POT_BID_MAX = 9.0;     // bid še nizek = prostor za dvig
 
 function bcNum(x){ const n = parseFloat(String(x==null?'':x).replace(',','.')); return isNaN(n)?0:n; }
 
@@ -19580,6 +19585,34 @@ function bcScore(a){
   const cpaOk = a.cpa7 != null && a.cpa7 < BC_CPA_TARGET;
 
   if (!hasData){
+    // Preveri "POTENCIAL": premalo nakupov za scale, A nizek CPA + nizek bid + dovolj signala.
+    const potPurchOk = a.purch >= BC_POT_MIN_PURCH && a.purch < BC_MIN_PURCH;
+    const potCpaOk = a.cpa7 != null && a.cpa7 < BC_POT_CPA_MAX;
+    const potBidOk = a.curBid == null || a.curBid <= BC_POT_BID_MAX;
+    if (potPurchOk && potCpaOk && potBidOk){
+      const preasons = [];
+      let pscore = 0;
+      preasons.push(`CPA 7d ${a.cpa7.toFixed(2)}€ pri ${a.purch} nakupih — obetavno, a še pod ${BC_MIN_PURCH} (CPA ni dokončno potrjen).`);
+      // moč signala: koliko pod CPA pragom
+      const headroom = (BC_POT_CPA_MAX - a.cpa7) / BC_POT_CPA_MAX;
+      pscore += headroom * 30;
+      // bid headroom
+      if (a.curBid != null){
+        preasons.push(`Bid ${a.curBid.toFixed(2)} ≤ ${BC_POT_BID_MAX} — prostor za dvig.`);
+        pscore += 10;
+      }
+      // trend 3d
+      if (a.cpa3 != null && a.cpa3 < a.cpa7){ pscore += 15; preasons.push(`Trend ↑: CPA 3d (${a.cpa3.toFixed(2)}€) boljši od 7d — pospešuje.`); }
+      // CTR
+      if (a.avgCtr >= 1.5){ pscore += 10; preasons.push(`CTR zdrav (${a.avgCtr.toFixed(2)}%) — kreativa deluje.`); }
+      else if (a.avgCtr > 0 && a.avgCtr < 0.8){ pscore -= 8; preasons.push(`⚠ CTR nizek (${a.avgCtr.toFixed(2)}%).`); }
+      // frekvenca
+      if (a.avgFreq && a.avgFreq < 2.0){ pscore += 10; preasons.push(`Frekvenca nizka (${a.avgFreq.toFixed(2)}) — še veliko nezasičenega dosega.`); }
+      // koliko nakupov (bližje 15 = bolj zanesljivo)
+      if (a.purch >= 10){ pscore += 8; preasons.push(`${a.purch} nakupov — blizu praga, kmalu potrjeno.`); }
+      return { status:'🟣', label:'POTENCIAL', score:pscore, reasons:preasons, suggBid:null,
+               action:{type:'watch',text:'🟣 Potencial',detail:`zberi do ${BC_MIN_PURCH} nakupov, nato scale`} };
+    }
     reasons.push(`Premalo podatkov (${a.purch} nakupov < ${BC_MIN_PURCH}) — CPA ni zanesljiv.`);
     return { status:'🔴', label:'NE', score:-1, reasons, suggBid:null, action:{type:'wait',text:'⏳ Počakaj',detail:`zberi ≥${BC_MIN_PURCH} nakupov`} };
   }
@@ -19730,11 +19763,10 @@ function bcToggleCountries(){
 let bcStatusFilter = 'all';
 function bcSetStatusFilter(st){
   bcStatusFilter = st;
-  for (const k of ['all','SCALE','DRŽI','NE','WATCH']){
+  for (const k of ['all','SCALE','POTENCIAL','DRŽI','NE','WATCH']){
     const b = document.getElementById('bcFilt-'+k);
     if (b){ b.style.background = (k===st)?'var(--accent)':'transparent'; b.style.color = (k===st)?'#fff':'var(--text-secondary)'; }
-  }
-  bcRenderTable();
+  }  bcRenderTable();
 }
 
 function bcPrepareItems(){
@@ -19815,7 +19847,7 @@ function bcRenderCards(items){
     const lbl = inCd ? `OPAZUJEM ${cd.days_left}d` : sc.label;
     const cpa7 = a.cpa7!=null? a.cpa7.toFixed(2) : '—';
     const opacity = inCd ? '0.6' : '1';
-    const border = sc.label==='SCALE' && !inCd ? '#3fb950' : 'var(--border)';
+    const border = !inCd && sc.label==='SCALE' ? '#3fb950' : (!inCd && sc.label==='POTENCIAL' ? '#a855f7' : 'var(--border)');
     html += `<div style="border:1px solid ${border};border-radius:10px;padding:13px;background:var(--bg);opacity:${opacity}">`
       + `<div style="display:flex;justify-content:space-between;align-items:start;gap:8px;margin-bottom:8px">`
       +   `<div style="min-width:0">`
@@ -19851,7 +19883,7 @@ function bcRenderList(items){
     const inCd = !!cd;
     const badge = inCd ? '🔵' : sc.status;
     const lbl = inCd ? `OPAZUJEM ${cd.days_left}d` : sc.label;
-    const barCol = inCd ? '#3b82f6' : (sc.label==='SCALE'?'#3fb950':(sc.label==='NE'?'#ef4444':'#d29922'));
+    const barCol = inCd ? '#3b82f6' : (sc.label==='SCALE'?'#3fb950':(sc.label==='POTENCIAL'?'#a855f7':(sc.label==='NE'?'#ef4444':'#d29922')));
     html += `<div style="border:1px solid var(--border);border-left:4px solid ${barCol};border-radius:8px;padding:10px 12px;background:var(--bg);${inCd?'opacity:0.6':''}">`
       + `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">`
       +   `<div style="min-width:150px;flex:1">`
@@ -19877,11 +19909,12 @@ function bcRenderList(items){
 function bcRenderKanban(items){
   const cols = [
     { key:'SCALE', title:'🟢 SCALE', col:'#3fb950', filt:x=>!x.cd && x.sc.label==='SCALE' },
+    { key:'POT',   title:'🟣 POTENCIAL', col:'#a855f7', filt:x=>!x.cd && x.sc.label==='POTENCIAL' },
     { key:'HOLD',  title:'🟡 DRŽI',  col:'#d29922', filt:x=>!x.cd && x.sc.label==='DRŽI' },
     { key:'NO',    title:'🔴 NE',    col:'#ef4444', filt:x=>!x.cd && x.sc.label==='NE' },
     { key:'WATCH', title:'🔵 OPAZUJEM', col:'#3b82f6', filt:x=>!!x.cd },
   ];
-  let html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:start">';
+  let html = '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:start">';
   for (const c of cols){
     const list = items.filter(c.filt);
     html += `<div style="background:var(--surface2);border-radius:10px;padding:8px;min-height:60px">`
