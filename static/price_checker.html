@@ -1009,8 +1009,46 @@ function parseFile(text) {
 
 // ============ RENDER ============
 
+// Posodobi števce v dropdownu razponov (na osnovi trenutnega tab/store/search, brez razpon filtra)
+function _updateRazponCounts(rows) {
+  const sel = document.getElementById('razponFilter');
+  if (!sel) return;
+  // isti filter kot tabela, a BREZ razpon filtra
+  let base = rows;
+  if (currentFilter === 'error') base = base.filter(r => r.status === 'error' && !r.resolved);
+  else if (currentFilter === 'warn') base = base.filter(r => r.status === 'warn' && !r.resolved);
+  else if (currentFilter === 'ok') base = base.filter(r => r.status === 'ok');
+  else if (currentFilter === 'resolved') base = base.filter(r => r.resolved);
+  else if (currentFilter === 'qty') base = base.filter(r => (r.qty || 1) > 1);
+  else if (currentFilter === 'null') base = base.filter(r => r.isNull);
+  else if (currentFilter === 'lowval') base = base.filter(r => !r.isNull && r.razlikaNum !== null && !isNaN(r.razlikaNum) && Math.abs(r.razlikaNum) < 7);
+  else base = base.filter(r => r.status === 'ok' || !r.resolved);
+  if (currentCurrency && currentCurrency !== 'all' && !['resolved'].includes(currentCurrency)) base = base.filter(r => r.currency === currentCurrency);
+  if (currentStore && currentStore !== 'all') base = base.filter(r => (r.store || '') === currentStore);
+  if (currentSearch) {
+    const s = currentSearch.toLowerCase();
+    base = base.filter(r => r.id.includes(s) || r.sku.toLowerCase().includes(s) || r.store.toLowerCase().includes(s));
+  }
+  // preštej po razponih
+  const saved = currentRazpon;
+  const ranges = ['all','lt7','7-8','8-9','9-10','10-11','11-12','12-15','15-20','gte20'];
+  const labels = { 'all':'Vse','lt7':'< 7€','7-8':'7–8€','8-9':'8–9€','9-10':'9–10€','10-11':'10–11€','11-12':'11–12€','12-15':'12–15€','15-20':'15–20€','gte20':'≥ 20€' };
+  for (const opt of sel.options) {
+    const rk = opt.value;
+    let cnt;
+    if (rk === 'all') cnt = base.length;
+    else {
+      currentRazpon = rk;
+      cnt = base.filter(_razponMatch).length;
+    }
+    opt.textContent = `${labels[rk]} (${cnt})`;
+  }
+  currentRazpon = saved;
+}
+
 function renderTable(rows) {
   let filtered = rows;
+  _updateRazponCounts(rows);
 
   // Preštej koliko postavk ima vsak ID (za "Združeno" badge)
   const idCounts = {};
