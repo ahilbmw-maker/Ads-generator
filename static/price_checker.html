@@ -329,6 +329,20 @@
   <button class="filter-btn active" id="sf-all" onclick="setStoreFilter('all', this)">VSE</button>
   <!-- gumbi trgovin se dodajo dinamično iz podatkov -->
   <span style="color:var(--border);margin:0 4px">|</span>
+  <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans)">Razlika:</span>
+  <select id="razponFilter" onchange="setRazpon(this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);font-size:12px;font-family:var(--sans);cursor:pointer">
+    <option value="all">Vse</option>
+    <option value="lt7">&lt; 7€</option>
+    <option value="7-8">7–8€</option>
+    <option value="8-9">8–9€</option>
+    <option value="9-10">9–10€</option>
+    <option value="10-11">10–11€</option>
+    <option value="11-12">11–12€</option>
+    <option value="12-15">12–15€</option>
+    <option value="15-20">15–20€</option>
+    <option value="gte20">≥ 20€</option>
+  </select>
+  <span style="color:var(--border);margin:0 4px">|</span>
   <button class="filter-btn" onclick="taskFilter('resolved',null);this.classList.add('active')" style="color:var(--green)">✓ Urejeni</button>
   <button class="filter-btn" id="groupSkuBtn" onclick="toggleGroupSku()" style="color:#7c3aed;border-color:#ddd6fe;background:#f5f3ff;font-weight:600">🌍 Primerjava po državah</button>
   <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti 2x+ in združena</button>
@@ -462,6 +476,28 @@ function escHtml(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(
 let currentFilter = 'all';
 let currentCurrency = 'all';
 let currentStore = 'all';
+let currentRazpon = 'all';
+function setRazpon(v) {
+  currentRazpon = v || 'all';
+  renderTable(allRows);
+}
+function _razponMatch(r) {
+  if (currentRazpon === 'all') return true;
+  if (r.isNull || r.razlikaNum == null || isNaN(r.razlikaNum)) return false;
+  const d = Math.abs(r.razlikaNum);
+  switch (currentRazpon) {
+    case 'lt7':   return d < 7;
+    case '7-8':   return d >= 7 && d < 8;
+    case '8-9':   return d >= 8 && d < 9;
+    case '9-10':  return d >= 9 && d < 10;
+    case '10-11': return d >= 10 && d < 11;
+    case '11-12': return d >= 11 && d < 12;
+    case '12-15': return d >= 12 && d < 15;
+    case '15-20': return d >= 15 && d < 20;
+    case 'gte20': return d >= 20;
+  }
+  return true;
+}
 let currentSearch = '';
 let sortCol = null;
 let sortDir = 1;
@@ -998,6 +1034,11 @@ function renderTable(rows) {
   // Store filter (po trgovini/državi)
   if (currentStore && currentStore !== 'all') {
     filtered = filtered.filter(r => (r.store || '') === currentStore);
+  }
+
+  // Razpon razlike v ceni (dropdown)
+  if (currentRazpon && currentRazpon !== 'all') {
+    filtered = filtered.filter(_razponMatch);
   }
 
   if (currentSearch) {
