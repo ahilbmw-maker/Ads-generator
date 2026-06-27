@@ -5209,7 +5209,7 @@ async function homeLoadStats() {
   const panel = document.getElementById('homeStatsPanel');
   if (!panel) return;
   try {
-    const r = await fetch('/forecast2-stats?year=2026');
+    const r = await fetch('/forecast2-stats?year=2026&_t=' + Date.now(), { cache: 'no-store' });
     const d = await r.json();
     if (!d.ok) return;
     const fmtN = n => Math.round(n||0).toLocaleString('sl-SI');

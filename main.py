@@ -14417,6 +14417,7 @@ async def knj_load(filename: str):
 
 FORECAST2_DIR = DATA_DIR / "forecast2"
 FORECAST2_DIR.mkdir(exist_ok=True, parents=True)
+FORECAST2_PEAK_FILE = DATA_DIR / "forecast2_peak.json"  # rekorden dan (peak, gre samo navzgor; storni ga ne znižajo)
 
 # Struktura: /data/forecast2/YYYY-MM-DD.json
 # Vsebina: {"entries":[{"time":"HH:MM","orders":N,"revenue":N,"_ts":timestamp}], "final":{"orders":N,"revenue":N}}
@@ -14681,17 +14682,36 @@ async def forecast2_stats(year: int = 2026):
 
         # AOV (povprečna vrednost naročila) — vedno
         aov_value = (total_revenue / total_orders) if total_orders > 0 else 0
-        # najboljši dan (največ naročil)
+        # najboljši dan = REKORD (peak): fiksiran, gre samo NAVZGOR.
+        # Storni/popravki ga ne znižajo. Nadomesti ga le dan, ki preseže trenutni rekord.
         best_day = None
         if day_rows:
-            bd = max(day_rows, key=lambda r: r[1])
-            # lep zapis datuma DD.MM.YYYY
+            # trenutni najvišji dan po prometu v podatkih
+            cur_best = max(day_rows, key=lambda r: r[2])  # (date, orders, revenue)
+            cur = {"date": cur_best[0], "orders": cur_best[1], "revenue": round(cur_best[2], 2)}
+            # preberi shranjeni rekord
+            saved = None
             try:
-                y, mo, dy = bd[0].split("-")
+                if FORECAST2_PEAK_FILE.exists():
+                    saved = json.loads(FORECAST2_PEAK_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                saved = None
+            # odloči: če ni shranjenega ALI trenutni preseže shranjenega → nov rekord (in shrani)
+            if (not saved) or (cur["revenue"] > float(saved.get("revenue", 0) or 0)):
+                try:
+                    FORECAST2_PEAK_FILE.write_text(json.dumps(cur, ensure_ascii=False), encoding="utf-8")
+                except Exception:
+                    pass
+                chosen = cur
+            else:
+                chosen = saved
+            try:
+                y, mo, dy = chosen["date"].split("-")
                 best_date_fmt = f"{int(dy)}.{int(mo)}.{y}"
             except Exception:
-                best_date_fmt = bd[0]
-            best_day = {"date": bd[0], "date_fmt": best_date_fmt, "orders": bd[1], "revenue": round(bd[2], 2)}
+                best_date_fmt = chosen.get("date", "")
+            best_day = {"date": chosen.get("date"), "date_fmt": best_date_fmt,
+                        "orders": chosen.get("orders", 0), "revenue": round(float(chosen.get("revenue", 0) or 0), 2)}
 
         return {
             "ok": True, "year": year,
