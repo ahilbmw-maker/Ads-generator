@@ -2389,11 +2389,9 @@ input[type="text"].error { border-color: var(--red) !important; }
           <!-- ŽE NAROČENI -->
           <div class="card" style="margin-top:10px">
             <span class="slabel">📥 ŽE NAROČENI</span>
-            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Naloži že naročene (stolpca: <b>sku, stock</b>). Odstrani postavke, kjer naročeno pokrije potrebo; če ne pokrije, pusti in pokaže še potrebno količino. <b>Najprej naloži HS+ seznam zgoraj.</b></p>
-            <div id="hsuvozOrderedDropZone" class="k-dropzone" style="padding:14px" onclick="document.getElementById('hsuvozOrderedInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="hsuvozOrderedDrop(event)">
-              <span style="font-size:11px">Klikni ali povleci XLSX / CSV (sku, stock)</span>
-            </div>
-            <input type="file" id="hsuvozOrderedInput" accept=".csv,.xlsx,.xlsm" style="display:none" onchange="hsuvozFilterOrdered(this.files[0])">
+            <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.4">Prilepi SKU-je, ki so <b>že naročeni</b> (vsak v svojo vrstico). Označim jih oranžno na vrhu seznama; dvojnike ignoriram. Nato jih lahko z gumbom odstraniš. <b>Najprej naloži HS+ seznam zgoraj.</b></p>
+            <textarea id="hsuvozOrderedText" placeholder="PEDALORA&#10;VACUSTICK&#10;POTSTAGE&#10;..." style="width:100%;min-height:120px;padding:10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;resize:vertical;line-height:1.5"></textarea>
+            <button onclick="hsuvozMarkOrderedFromText()" style="margin-top:8px;width:100%;padding:9px;background:#d97706;color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Označi kot že naročene</button>
             <div id="hsuvozOrderedStatus" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
           </div>
           <div id="hsuvozOrderedReport" style="display:none;margin-top:10px;padding:10px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius)"></div>
@@ -16743,6 +16741,30 @@ function hsuvozOrderedDrop(e) {
   e.currentTarget.classList.remove('drag-over');
   const f = e.dataTransfer.files[0];
   if (f) hsuvozFilterOrdered(f);
+}
+
+async function hsuvozMarkOrderedFromText() {
+  const ta = document.getElementById('hsuvozOrderedText');
+  const status = document.getElementById('hsuvozOrderedStatus');
+  const text = (ta?.value || '').trim();
+  if (!text) { if (status){ status.style.display='block'; status.style.color='#dc2626'; status.textContent='Vnesi vsaj en SKU.'; } return; }
+  if (status){ status.style.display='block'; status.style.color='var(--text-secondary)'; status.textContent='⏳ Označujem...'; }
+  try {
+    const res = await fetch('/hsuvoz-mark-ordered-text', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text })
+    });
+    const d = await res.json();
+    if (d.error || !d.ok) { if (status){ status.style.color='#dc2626'; status.textContent='Napaka: ' + (d.error||'neznano'); } return; }
+    if (status){
+      status.style.color = 'var(--green)';
+      let msg = `✓ Označenih ${d.matched} (novih ${d.newly}). Skupaj že naročenih: ${d.total_ordered}.`;
+      if (d.not_found_count > 0) msg += ` ⚠ ${d.not_found_count} ni v seznamu: ${d.not_found.slice(0,8).join(', ')}${d.not_found_count>8?'…':''}`;
+      status.textContent = msg;
+    }
+    await hsuvozLoadCurrent();   // osveži seznam (oranžne na vrhu + gumb za odstranitev)
+  } catch(e) {
+    if (status){ status.style.color='#dc2626'; status.textContent='Napaka: ' + e.message; }
+  }
 }
 
 async function hsuvozFilterOrdered(file) {

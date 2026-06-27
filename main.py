@@ -11166,6 +11166,49 @@ async def hsuvoz_upload(file: UploadFile = File(...)):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.post("/hsuvoz-mark-ordered-text")
+async def hsuvoz_mark_ordered_text(data: dict):
+    """Označi postavke kot already_ordered iz prilepljenega seznama SKU-jev (vsak v svojo vrstico).
+    Dvojnike ignorira, doda samo nove oznake. Označene premakne na vrh (oranžno v UI)."""
+    try:
+        if not HSUVOZ_CURRENT.exists():
+            return {"ok": False, "error": "Najprej naloži HS+ seznam zgoraj."}
+        text = (data or {}).get("text", "") or ""
+        # razčleni: vsak v svojo vrstico (tudi vejice/podpičja), normaliziraj na UPPER
+        import re as _re
+        raw = [t.strip() for t in _re.split(r"[\r\n,;]+", text) if t.strip()]
+        want = set(s.upper() for s in raw)
+        if not want:
+            return {"ok": False, "error": "Ni veljavnih SKU-jev v vnosu."}
+        cur = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
+        items = cur.get("items", [])
+        matched, newly = 0, 0
+        not_found = []
+        found_skus = set()
+        for it in items:
+            sk = (it.get("sku") or "").strip().upper()
+            found_skus.add(sk)
+            if sk in want:
+                matched += 1
+                if not it.get("already_ordered"):
+                    newly += 1
+                it["already_ordered"] = True
+        # SKU-ji iz vnosa, ki jih ni v seznamu (zgolj info)
+        for s in want:
+            if s not in found_skus:
+                not_found.append(s)
+        # premakni že naročene na vrh (znotraj po količini)
+        items = sorted(items, key=lambda x: (not x.get("already_ordered", False), -(x.get("qty", 0) or 0)))
+        cur["items"] = items
+        HSUVOZ_CURRENT.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
+        total_ordered = sum(1 for it in items if it.get("already_ordered"))
+        return {"ok": True, "matched": matched, "newly": newly, "total_ordered": total_ordered,
+                "not_found": not_found, "not_found_count": len(not_found)}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/hsuvoz-remove-ordered")
 async def hsuvoz_remove_ordered():
     """Odstrani iz trenutnega HS+ seznama vse postavke, ki so označene already_ordered=True."""
