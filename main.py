@@ -157,6 +157,7 @@ FORECAST_ENTRIES_FILE = DATA_DIR / "forecast_entries.json"
 FORECAST_DELETED_FILE = DATA_DIR / "forecast_deleted.json"
 FORECAST_HISTORY_FILE = DATA_DIR / "forecast_history.json"
 RVC_FILE = DATA_DIR / "rvc_maaarket.json"  # RVC Maaarket: zadnji vnos (prepiše se ob novem)
+RVC_HISTORY_FILE = DATA_DIR / "rvc_history.json"  # RVC zgodovina: VSI vnosi (append), za povprečje break-even
 SPOROCANJE_FILE = DATA_DIR / "sporocanje_common.json"
 SCALING_STATE_FILE = DATA_DIR / "scaling_state.json"  # Scaling Recommender: shranjeni rezultati + scale zgodovina
 
@@ -2982,6 +2983,38 @@ async def rvc_save(data: dict):
         }
         RVC_FILE.parent.mkdir(parents=True, exist_ok=True)
         RVC_FILE.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # ── ZGODOVINA: dodaj vsak market vnos (za povprečni break-even) ──
+        # Dedup po (datum, trg): če isti dan uploadaš večkrat, zadnji prepiše tisti dan
+        # (sicer bi en dan štel večkrat in popačil povprečje).
+        try:
+            hist = []
+            if RVC_HISTORY_FILE.exists():
+                try:
+                    hist = json.loads(RVC_HISTORY_FILE.read_text(encoding="utf-8")) or []
+                except Exception:
+                    hist = []
+            day = _dt.now().date().isoformat()
+            # odstrani obstoječe vnose za isti dan (bomo jih nadomestili s svežimi)
+            hist = [h for h in hist if h.get("date") != day]
+            for m in parsed["markets"]:
+                rvc = m.get("rvc_nar")
+                if rvc is None:
+                    rvc = m.get("rvc_bruto")
+                if rvc is None:
+                    continue
+                hist.append({
+                    "date": day,
+                    "ts": _dt.now().isoformat(),
+                    "trg": m.get("trg"),
+                    "rvc_nar": m.get("rvc_nar"),
+                    "rvc_bruto": m.get("rvc_bruto"),
+                    "narocila": m.get("narocila", 0),
+                })
+            RVC_HISTORY_FILE.write_text(json.dumps(hist, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
         return {"ok": True, **out}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -3008,6 +3041,75 @@ async def rvc_clear():
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+@app.get("/bc-breakeven")
+async def bc_breakeven():
+    """Break-even CPA (= RVC/naročilo) po DRŽAVNI KODI, iz POVPREČJA vse zgodovine.
+    Več zgodovinskih vnosov = stabilnejši, točnejši break-even (dnevni RVC niha).
+    Utežno povprečje po številu naročil (dan z več naročili šteje več)."""
+    try:
+        def _code(trg):
+            trg = (trg or "").strip()
+            return (trg.split(".")[-1] if "." in trg else trg).strip().upper()
+
+        # 1) primarno: povprečje iz zgodovine
+        hist = []
+        if RVC_HISTORY_FILE.exists():
+            try:
+                hist = json.loads(RVC_HISTORY_FILE.read_text(encoding="utf-8")) or []
+            except Exception:
+                hist = []
+
+        agg = {}  # code -> {wsum, wn, days:set, n_entries}
+        for h in hist:
+            code = _code(h.get("trg"))
+            if not code:
+                continue
+            rvc = h.get("rvc_nar")
+            if rvc is None:
+                rvc = h.get("rvc_bruto")
+            if rvc is None:
+                continue
+            try:
+                rvc = float(rvc)
+            except Exception:
+                continue
+            w = h.get("narocila") or 0
+            try:
+                w = float(w)
+            except Exception:
+                w = 0
+            if w <= 0:
+                w = 1  # brez naročil → utež 1, da vnos vseeno šteje
+            a = agg.setdefault(code, {"wsum": 0.0, "wn": 0.0, "days": set(), "n": 0})
+            a["wsum"] += rvc * w
+            a["wn"] += w
+            a["days"].add(h.get("date"))
+            a["n"] += 1
+
+        out = {}
+        for code, a in agg.items():
+            if a["wn"] > 0:
+                out[code] = {
+                    "breakeven_cpa": round(a["wsum"] / a["wn"], 2),
+                    "days": len(a["days"]),
+                    "entries": a["n"],
+                    "source": "zgodovina-povprečje",
+                }
+
+        # 2) fallback: če zgodovine (še) ni, uporabi zadnji vnos
+        if not out and RVC_FILE.exists():
+            data = json.loads(RVC_FILE.read_text(encoding="utf-8"))
+            for m in (data.get("markets") or []):
+                code = _code(m.get("trg"))
+                rvc = m.get("rvc_nar") if m.get("rvc_nar") is not None else m.get("rvc_bruto")
+                if code and rvc is not None:
+                    out[code] = {"breakeven_cpa": round(float(rvc), 2), "days": 1, "entries": 1, "source": "zadnji-vnos"}
+
+        return {"ok": True, "by_country": out}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "by_country": {}}
 
 
 @app.delete("/vracila-history/{filename}")

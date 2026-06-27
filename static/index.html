@@ -18403,7 +18403,7 @@ function betaParseCSV(text) {
     bcAdsets = bcParseFromRows(rows);
     if (bcAdsets.length){
       document.getElementById('bcScaleCard').style.display = 'block';
-      bcLoadScaleLog().then(bcRenderTable);
+      Promise.all([bcLoadScaleLog(), bcLoadBreakeven()]).then(bcRenderTable);
     }
   } catch(e){ console.error('bcParse', e); }
 
@@ -19363,7 +19363,7 @@ async function betaLoadFromHistory(filename, isAutoLoad = false) {
       const card = document.getElementById('bcScaleCard');
       if (bcAdsets.length){
         if (card) card.style.display = 'block';
-        bcLoadScaleLog().then(bcRenderTable);
+        Promise.all([bcLoadScaleLog(), bcLoadBreakeven()]).then(bcRenderTable);
       } else {
         if (card) card.style.display = 'none';
       }
@@ -19464,6 +19464,42 @@ let bcAdsets = [];        // agregirani ad-seti
 let bcScaleLog = [];      // iz /scale-log (z cooldown statusom)
 const BC_CPA_TARGET = 7.5;
 const BC_MIN_PURCH = 15;
+// Bid cap "prelomna točka" — nad to vrednostjo vsak dvig vidno premakne CPA (empirično ugotovljeno).
+const BC_BID_THRESHOLD = 9.0;
+// CPA udobno območje (impulzivni nakupi, AOV 22–28€): cilj 6–7.5, max 8 še OK, nad tem ne.
+const BC_CPA_OK_MAX = 7.5;
+const BC_CPA_HARD_MAX = 8.0;
+// Break-even CPA po državni kodi (= RVC/naročilo), naložen iz /bc-breakeven.
+let bcBreakeven = {};       // { 'RO': {breakeven_cpa, narocila, trg}, ... }
+let bcBreakevenUpdated = null;
+async function bcLoadBreakeven(){
+  try {
+    const r = await fetch('/bc-breakeven');
+    const d = await r.json();
+    if (d && d.ok){ bcBreakeven = d.by_country || {}; bcBreakevenUpdated = d.updated_at || null; }
+  } catch(e){ bcBreakeven = {}; }
+}
+// izlušči državno kodo iz imena ad seta (npr "RO", "Maaarket.RO", "RO - winner")
+function bcCountryOf(name){
+  const up = (name||'').toUpperCase();
+  for (const c of BC_COUNTRIES){
+    // meja besede, da "RO" ne ujame "GROOMSY"
+    const re = new RegExp('(^|[^A-Z])'+c+'([^A-Z]|$)');
+    if (re.test(up)) return c === 'SLO' ? 'SI' : c;
+  }
+  return null;
+}
+function bcBreakevenFor(name){
+  const c = bcCountryOf(name);
+  if (!c) return null;
+  const e = bcBreakeven[c] || (c==='SI' ? bcBreakeven['SLO'] : (c==='SLO'? bcBreakeven['SI'] : null));
+  return e ? e.breakeven_cpa : null;
+}
+function bcBreakevenMeta(name){
+  const c = bcCountryOf(name);
+  if (!c) return null;
+  return bcBreakeven[c] || (c==='SI' ? bcBreakeven['SLO'] : (c==='SLO'? bcBreakeven['SI'] : null));
+}
 // "POTENCIAL" — obetavni ad-seti, ki še niso dosegli scale praga, a kažejo zgodnje znake.
 const BC_POT_MIN_PURCH = 3;     // spodnja meja (manj = preveč naključno)
 const BC_POT_CPA_MAX = 6.0;     // CPA zelo nizek (FB ni več poceni; 5€ bi preveč omejilo)
@@ -19712,6 +19748,41 @@ function bcScore(a){
     reasons.push('Bidcap in budget nista razvidna iz CSV — ročna presoja.');
   }
 
+  // ── VAROVALKA NAD PRAGOM 9.0 + BREAK-EVEN ──
+  // Empirično: nad bid 9.0 vsak dvig vidno premakne CPA. Zato nad pragom manjši koraki +
+  // strožja meja glede na break-even (RVC/naročilo trga) in CPA udobje (max 8€).
+  if (suggBid != null && a.curBid != null){
+    const beCpa = bcBreakevenFor(a.name);   // break-even CPA za trg (null če RVC ni)
+    const country = bcCountryOf(a.name);
+    // 1) Če smo NAD pragom 9.0 → omeji korak na 0.2–0.3 (ne agresivno)
+    if (a.curBid >= BC_BID_THRESHOLD){
+      const cappedStep = a.cpa7 != null && a.cpa7 > BC_CPA_OK_MAX ? 0.2 : 0.3;
+      const conservative = Math.round((a.curBid + cappedStep)*100)/100;
+      if (suggBid > conservative){
+        reasons.push(`⚠ Bidcap ${a.curBid}€ je NAD pragom ${BC_BID_THRESHOLD}€ — nad tem vsak dvig vidno dvigne CPA. Korak omejen na +${cappedStep}€ (namesto ${suggBid}€).`);
+        suggBid = conservative;
+        if (action && action.type==='bid') action = { type:'bid', text:`⚠ Dvigni BIDCAP previdno +${cappedStep}€`, detail:`${a.curBid}€ → ${suggBid}€ (nad pragom ${BC_BID_THRESHOLD}€)` };
+        else if (action && action.detail) action.detail += ` · bidcap nad pragom → korak +${cappedStep}€`;
+      }
+    }
+    // 2) Break-even strop: nikoli ne predlagaj bida, ki bi CPA potisnil čez break-even trga
+    if (beCpa != null){
+      const beMeta = bcBreakevenMeta(a.name);
+      const beDays = beMeta && beMeta.days ? ` (povprečje ${beMeta.days} dni)` : '';
+      // varni bidcap ≈ break-even minus rezerva (da CPA ostane pod break-even)
+      const safeMax = Math.round((beCpa - 0.5)*100)/100;
+      if (suggBid > safeMax){
+        reasons.push(`⛔ Break-even ${country}: RVC/naročilo ${beCpa.toFixed(2)}€${beDays}. Predlagani bid ${suggBid}€ bi tvegal CPA nad break-even — omejeno na ${safeMax}€. Nad tem prodajaš v izgubo.`);
+        suggBid = Math.max(a.curBid, safeMax);
+        action = { type: suggBid > a.curBid ? 'bid':'no', text: suggBid > a.curBid ? `⚠ Dvigni do break-even meje` : `⛔ Si na break-even meji — ne dvigaj`, detail:`break-even ${country} = ${beCpa.toFixed(2)}€${beDays}` };
+      }
+    }
+    // 3) CPA udobje: opozori, če je CPA že nad udobnim maxom (8€)
+    if (a.cpa7 != null && a.cpa7 > BC_CPA_HARD_MAX){
+      reasons.push(`⚠ CPA ${a.cpa7.toFixed(2)}€ je že NAD tvojim udobnim maxom (${BC_CPA_HARD_MAX}€) — razmisli o znižanju, ne dvigu.`);
+    }
+  }
+
   return { status, label, score, reasons, suggBid, action };
 }
 
@@ -19949,7 +20020,7 @@ async function bcScaleAn(key, label, bidBefore, bidAfter, cpaBefore){
       body: JSON.stringify({ ad_set:key, bid_before: bidBefore!=null?String(bidBefore):null,
         bid_after: after||null, cpa_before: cpaBefore!=null?Number(cpaBefore):null }) });
     const d = await r.json();
-    if (d.ok){ await bcLoadScaleLog(); bcRenderTable(); }
+    if (d.ok){ await bcLoadScaleLog(); await bcLoadBreakeven(); bcRenderTable(); }
     else alert('Napaka: '+(d.error||'?'));
   }catch(e){ alert('Napaka: '+e); }
 }
@@ -19958,7 +20029,7 @@ async function bcUnscale(id){
   if (!confirm('Prekliči ta scale (odstrani iz opazovanja)?')) return;
   try{
     await fetch('/scale-log/'+id, { method:'DELETE' });
-    await bcLoadScaleLog(); bcRenderTable();
+    await bcLoadScaleLog(); await bcLoadBreakeven(); bcRenderTable();
   }catch(e){ alert('Napaka: '+e); }
 }
 
