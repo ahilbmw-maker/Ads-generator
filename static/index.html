@@ -19564,7 +19564,13 @@ function bcParseFromRows(rows){
     const ctr = bcNum(r['CTR (link click-through rate)']);
     const cpc = bcNum(r['CPC (cost per link click)']);
     const atc = Math.round(bcNum(r['Adds to cart']));
-    const bid = r['Bid'] ? bcNum(r['Bid']) : null;
+    // bid cap — Meta export ga poimenuje različno + neobčutljivo na velike/male črke
+    let _bidRaw = r['Bid'] ?? r['bid'] ?? r['Bid amount'] ?? r['Bid cap'] ?? r['Bid Cap'] ?? r['Cost cap'] ?? r['Cost per result goal'] ?? r['Bid Amount'] ?? null;
+    if (_bidRaw == null){
+      // zadnji poskus: poišči katerikoli ključ, ki se (case-insensitive) imenuje "bid"
+      for (const k in r){ if (k && k.trim().toLowerCase() === 'bid'){ _bidRaw = r[k]; break; } }
+    }
+    const bid = (_bidRaw != null && String(_bidRaw).trim() !== '') ? bcNum(_bidRaw) : null;
     const d = sets[key].days[day] || { spend:0, purch:0, freqSum:0, ctrSum:0, n:0, atc:0, cpc:0 };
     d.spend += sp; d.purch += pu; d.atc += atc;
     d.freqSum += freq; d.ctrSum += ctr; d.cpc += cpc; d.n += 1;
@@ -19774,34 +19780,78 @@ function bcScore(a){
   // Empirično: nad bid 9.0 vsak dvig vidno premakne CPA. Zato nad pragom manjši koraki +
   // strožja meja glede na break-even (RVC/naročilo trga) in CPA udobje (max 8€).
   if (suggBid != null && a.curBid != null){
-    const beCpa = bcBreakevenFor(a.name);   // break-even CPA za trg (null če RVC ni)
+    const beCpa = bcBreakevenFor(a.name);   // break-even CPA za trg (RVC/naročilo); null če RVC ni
     const country = bcCountryOf(a.name);
-    // 1) Če smo NAD pragom 9.0 → omeji korak na 0.2–0.3 (ne agresivno)
+    const beMeta = bcBreakevenMeta(a.name);
+    const beDays = beMeta && beMeta.days ? ` (povp. ${beMeta.days} dni)` : '';
+
+    // ── NAD PRAGOM 9.0: korak dviga na podlagi RVC marže (headroom do break-even) ──
     if (a.curBid >= BC_BID_THRESHOLD){
-      const cappedStep = a.cpa7 != null && a.cpa7 > BC_CPA_OK_MAX ? 0.2 : 0.3;
-      const conservative = Math.round((a.curBid + cappedStep)*100)/100;
-      if (suggBid > conservative){
-        reasons.push(`⚠ Bidcap ${a.curBid}€ je NAD pragom ${BC_BID_THRESHOLD}€ — nad tem vsak dvig vidno dvigne CPA. Korak omejen na +${cappedStep}€ (namesto ${suggBid}€).`);
-        suggBid = conservative;
-        if (action && action.type==='bid') action = { type:'bid', text:`⚠ Dvigni BIDCAP previdno +${cappedStep}€`, detail:`${a.curBid}€ → ${suggBid}€ (nad pragom ${BC_BID_THRESHOLD}€)` };
-        else if (action && action.detail) action.detail += ` · bidcap nad pragom → korak +${cappedStep}€`;
+      if (beCpa != null){
+        // koliko prostora med trenutnim bidom in break-even (RVC)
+        const headroom = beCpa - a.curBid;
+        let step, note;
+        if (headroom <= 0.3){
+          // bid je že na/čez break-even → ne dvigaj
+          step = 0;
+          note = `bidcap ${a.curBid}€ je že na break-even meji (RVC ${country} ${beCpa.toFixed(2)}€${beDays}) — dvig pelje v izgubo`;
+        } else if (headroom <= 1.0){
+          step = 0.10;  // malo prostora → najmanjši korak
+          note = `malo prostora do break-even (RVC ${country} ${beCpa.toFixed(2)}€${beDays}, razlika ${headroom.toFixed(2)}€) → previden korak`;
+        } else if (headroom <= 2.0){
+          step = 0.20;  // srednji prostor
+          note = `zmeren prostor do break-even (RVC ${country} ${beCpa.toFixed(2)}€${beDays}, razlika ${headroom.toFixed(2)}€)`;
+        } else {
+          step = 0.30;  // veliko prostora → največji (a še vedno previden nad 9.0) korak
+          note = `dovolj prostora do break-even (RVC ${country} ${beCpa.toFixed(2)}€${beDays}, razlika ${headroom.toFixed(2)}€)`;
+        }
+        // dodatna varovalka: če je CPA že nad udobnim maxom (8€), zmanjši korak
+        if (step > 0.10 && a.cpa7 != null && a.cpa7 > BC_CPA_OK_MAX){
+          step = Math.max(0.10, step - 0.10);
+          note += ` · CPA ${a.cpa7.toFixed(2)}€ nad ciljem → korak znižan`;
+        }
+        if (step === 0){
+          suggBid = null;
+          reasons.push(`⛔ Nad pragom ${BC_BID_THRESHOLD}€: ${note}.`);
+          action = { type:'no', text:`⛔ Ne dvigaj — na break-even meji`, detail:`bidcap ${a.curBid}€ · RVC ${country} ${beCpa.toFixed(2)}€` };
+        } else {
+          const newBid = Math.round((a.curBid + step)*100)/100;
+          // ne prekorači varne meje (break-even − 0.5 rezerva)
+          const safeCap = Math.round((beCpa - 0.5)*100)/100;
+          suggBid = Math.min(newBid, Math.max(a.curBid, safeCap));
+          const realStep = Math.round((suggBid - a.curBid)*100)/100;
+          if (realStep <= 0){
+            suggBid = null;
+            reasons.push(`⛔ Nad pragom ${BC_BID_THRESHOLD}€: bidcap ${a.curBid}€ že na varni meji break-even (RVC ${country} ${beCpa.toFixed(2)}€${beDays}). Ne dvigaj.`);
+            action = { type:'no', text:`⛔ Ne dvigaj — na break-even meji`, detail:`RVC ${country} ${beCpa.toFixed(2)}€` };
+          } else {
+            reasons.push(`⚡ Bidcap ${a.curBid}€ NAD pragom ${BC_BID_THRESHOLD}€ — ${note}. Predlagan dvig: +${realStep.toFixed(2)}€ → ${suggBid}€.`);
+            action = { type:'bid', text:`⚡ Dvigni BIDCAP +${realStep.toFixed(2)}€`, detail:`${a.curBid}€ → ${suggBid}€ · RVC ${country} ${beCpa.toFixed(2)}€${beDays}` };
+          }
+        }
+      } else {
+        // ni RVC za ta trg → konzervativno: omeji korak, opozori da manjka break-even
+        const cappedStep = a.cpa7 != null && a.cpa7 > BC_CPA_OK_MAX ? 0.10 : 0.20;
+        const conservative = Math.round((a.curBid + cappedStep)*100)/100;
+        if (suggBid > conservative){
+          suggBid = conservative;
+          reasons.push(`⚠ Bidcap ${a.curBid}€ nad pragom ${BC_BID_THRESHOLD}€, a RVC za ${country||'trg'} ni naložen — korak omejen na +${cappedStep}€. Naloži RVC za točen predlog.`);
+          action = { type:'bid', text:`⚠ Dvigni BIDCAP previdno +${cappedStep}€`, detail:`${a.curBid}€ → ${suggBid}€ (RVC ni naložen)` };
+        }
       }
     }
-    // 2) Break-even strop: nikoli ne predlagaj bida, ki bi CPA potisnil čez break-even trga
-    if (beCpa != null){
-      const beMeta = bcBreakevenMeta(a.name);
-      const beDays = beMeta && beMeta.days ? ` (povprečje ${beMeta.days} dni)` : '';
-      // varni bidcap ≈ break-even minus rezerva (da CPA ostane pod break-even)
+    // ── POD 9.0: break-even strop (da dvig ne preseže RVC) ──
+    else if (beCpa != null){
       const safeMax = Math.round((beCpa - 0.5)*100)/100;
       if (suggBid > safeMax){
-        reasons.push(`⛔ Break-even ${country}: RVC/naročilo ${beCpa.toFixed(2)}€${beDays}. Predlagani bid ${suggBid}€ bi tvegal CPA nad break-even — omejeno na ${safeMax}€. Nad tem prodajaš v izgubo.`);
+        reasons.push(`⛔ Break-even ${country}: RVC/naročilo ${beCpa.toFixed(2)}€${beDays}. Predlagani bid ${suggBid}€ bi tvegal CPA nad break-even — omejeno na ${safeMax}€.`);
         suggBid = Math.max(a.curBid, safeMax);
-        action = { type: suggBid > a.curBid ? 'bid':'no', text: suggBid > a.curBid ? `⚠ Dvigni do break-even meje` : `⛔ Si na break-even meji — ne dvigaj`, detail:`break-even ${country} = ${beCpa.toFixed(2)}€${beDays}` };
+        action = { type: suggBid > a.curBid ? 'bid':'no', text: suggBid > a.curBid ? `⚠ Dvigni do break-even meje` : `⛔ Na break-even meji — ne dvigaj`, detail:`break-even ${country} = ${beCpa.toFixed(2)}€${beDays}` };
       }
     }
-    // 3) CPA udobje: opozori, če je CPA že nad udobnim maxom (8€)
+    // CPA udobje opozorilo
     if (a.cpa7 != null && a.cpa7 > BC_CPA_HARD_MAX){
-      reasons.push(`⚠ CPA ${a.cpa7.toFixed(2)}€ je že NAD tvojim udobnim maxom (${BC_CPA_HARD_MAX}€) — razmisli o znižanju, ne dvigu.`);
+      reasons.push(`⚠ CPA ${a.cpa7.toFixed(2)}€ je nad udobnim maxom (${BC_CPA_HARD_MAX}€) — razmisli o znižanju, ne dvigu.`);
     }
   }
 
