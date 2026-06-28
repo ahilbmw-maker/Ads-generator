@@ -20028,7 +20028,10 @@ function bcRenderCardsGrouped(items){
     html += `<div style="margin-bottom:18px;border:1px solid var(--border);border-radius:12px;overflow:hidden">
       <div style="background:var(--surface2);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div style="font-weight:700;font-size:13px;color:var(--text)">🗂 ${esc(key)} <span style="font-weight:400;color:var(--text-secondary);font-size:11px">· ${grp.length} ad-setov</span></div>
-        <div style="font-size:11px;color:var(--text-secondary)">${avgCpa!=null?'povpr. CPA '+avgCpa.toFixed(2)+'€ · ':''}spend ${totSpend.toFixed(0)}€ · ${esc(countries)}</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--text-secondary)">${avgCpa!=null?'povpr. CPA '+avgCpa.toFixed(2)+'€ · ':''}spend ${totSpend.toFixed(0)}€ · ${esc(countries)}</span>
+          <button onclick="bcScaleAnGroup('${encodeURIComponent(key)}')" title="Označi VSE ad sete te kampanije kot scale-ane (premakne v Opazujem)" style="font-size:11px;padding:5px 11px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap">✓ Scale-an vse (${grp.length})</button>
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:12px">
         ${grp.map(it => bcCardHtml(it)).join('')}
@@ -20142,6 +20145,31 @@ function bcRenderKanban(items){
     html += `</div></div>`;
   }
   return html + '</div>';
+}
+
+async function bcScaleAnGroup(encKey){
+  const key = decodeURIComponent(encKey);
+  // zberi vse ad sete te kampanije (isti group key), ki niso že v cooldownu
+  const items = bcPrepareItems().filter(it => bcCampaignGroupKey(it.a.campaign) === key && !it.cd);
+  if (!items.length){ alert('Ni ad-setov za scale (morda so že v opazovanju).'); return; }
+  const names = items.map(it => it.a.name).join(', ');
+  if (!confirm(`Označim VSE ${items.length} ad-setov kampanije "${key}" kot scale-ane?\n\nDržave: ${names}\n\nVsi se premaknejo v Opazujem (7 dni).`)) return;
+  let ok = 0, fail = 0;
+  for (const it of items){
+    try{
+      const r = await fetch('/scale-log', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          ad_set: it.a.key || it.a.name,
+          bid_before: it.a.curBid!=null?String(it.a.curBid):null,
+          bid_after: it.sc.suggBid!=null?String(it.sc.suggBid):(it.a.curBid!=null?String(it.a.curBid):null),
+          cpa_before: it.a.cpa7!=null?Number(it.a.cpa7):null
+        }) });
+      const d = await r.json();
+      if (d.ok) ok++; else fail++;
+    }catch(e){ fail++; }
+  }
+  await bcLoadScaleLog(); await bcLoadBreakeven(); bcRenderTable();
+  alert(`Scale-anih: ${ok}${fail?` · napak: ${fail}`:''}. Premaknjeni v Opazujem.`);
 }
 
 async function bcScaleAn(key, label, bidBefore, bidAfter, cpaBefore){
