@@ -3075,6 +3075,7 @@ input[type="text"].error { border-color: var(--red) !important; }
                 <button id="bcViewB" onclick="bcSetView('list')" style="padding:4px 9px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">☰ Seznam</button>
                 <button id="bcViewC" onclick="bcSetView('kanban')" style="padding:4px 9px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">▥ Kanban</button>
               </div>
+              <button id="bcGroupCampBtn" onclick="bcToggleGroupCampaign()" title="Grupiraj ad sete iste kampanije skupaj (vse države ene kampanije na enem mestu)" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text-secondary);font-size:11px;font-family:inherit;cursor:pointer">🗂 Grupiraj po kampaniji</button>
               <button id="bcOnlyCountries" onclick="bcToggleCountries()" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text-secondary);font-size:11px;font-family:inherit;cursor:pointer">🌍 Samo države</button>
               <div style="display:flex;gap:2px;background:var(--surface2);border-radius:7px;padding:2px">
                 <button id="bcFilt-all" onclick="bcSetStatusFilter('all')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:var(--accent);color:#fff">Vse</button>
@@ -19879,6 +19880,29 @@ function bcCooldownFor(item){
 }
 
 let bcView = 'cards';
+let bcGroupCampaign = false;
+function bcToggleGroupCampaign(){
+  bcGroupCampaign = !bcGroupCampaign;
+  const b = document.getElementById('bcGroupCampBtn');
+  if (b){
+    b.style.background = bcGroupCampaign ? 'var(--accent)' : 'var(--surface2)';
+    b.style.color = bcGroupCampaign ? '#fff' : 'var(--text-secondary)';
+  }
+  bcRenderTable();
+}
+// ime kampanije brez "šuma" (emoji, oznake, ||| del) — za grupiranje istega izdelka/kampanije
+function bcCampaignGroupKey(campaign){
+  let c = (campaign || '').trim();
+  // odreži del za "|" (npr "Zipply Auto | PEDALORA #Bidcap" → vzemi celoto, a očisti)
+  c = c.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u2B00-\u2BFF\uFE0F\u20E3]/gu, ''); // emoji
+  c = c.replace(/\[[^\]]*\]/g, ' ');     // [ALL 9.0BID] ipd
+  c = c.replace(/#\S+/g, ' ');           // #Bidcap #ANIKA
+  c = c.replace(/@\S+/g, ' ');           // @STOP
+  c = c.replace(/⛔|OFF|STOP/gi, ' ');
+  c = c.replace(/\|\|\|.*$/,'');         // ||| del
+  c = c.replace(/\s+/g, ' ').trim();
+  return c || campaign || '—';
+}
 function bcSetView(v){
   bcView = v;
   for (const [id,val] of [['bcViewA','cards'],['bcViewB','list'],['bcViewC','kanban']]){
@@ -19976,22 +20000,54 @@ function bcRenderTable(){
   if (!wrap) return;
   const items = bcPrepareItems();
   if (!items.length){ wrap.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);padding:14px;text-align:center">Ni ad-setov za prikaz.</div>'; return; }
+  if (bcGroupCampaign && bcView === 'cards'){ wrap.innerHTML = bcRenderCardsGrouped(items); return; }
   if (bcView === 'cards') wrap.innerHTML = bcRenderCards(items);
   else if (bcView === 'list') wrap.innerHTML = bcRenderList(items);
   else wrap.innerHTML = bcRenderKanban(items);
 }
 
+// Grupiran prikaz: ad seti iste kampanije skupaj (vse države ene kampanije na enem mestu)
+function bcRenderCardsGrouped(items){
+  // grupiraj po očiščenem imenu kampanije
+  const groups = {};
+  for (const it of items){
+    const key = bcCampaignGroupKey(it.a.campaign);
+    (groups[key] = groups[key] || []).push(it);
+  }
+  // razvrsti skupine: tiste z več ad seti najprej, znotraj po score
+  const keys = Object.keys(groups).sort((a,b) => groups[b].length - groups[a].length || a.localeCompare(b));
+  let html = '';
+  for (const key of keys){
+    const grp = groups[key];
+    grp.sort((x,y) => y.sc.score - x.sc.score);
+    // povzetek skupine: skupni spend, povpr. CPA, št. držav
+    const totSpend = grp.reduce((s,x)=>s+(x.a.spend||0),0);
+    const cpas = grp.map(x=>x.a.cpa7).filter(v=>v!=null);
+    const avgCpa = cpas.length ? (cpas.reduce((s,v)=>s+v,0)/cpas.length) : null;
+    const countries = grp.map(x=>x.a.name).join(', ');
+    html += `<div style="margin-bottom:18px;border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <div style="background:var(--surface2);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div style="font-weight:700;font-size:13px;color:var(--text)">🗂 ${esc(key)} <span style="font-weight:400;color:var(--text-secondary);font-size:11px">· ${grp.length} ad-setov</span></div>
+        <div style="font-size:11px;color:var(--text-secondary)">${avgCpa!=null?'povpr. CPA '+avgCpa.toFixed(2)+'€ · ':''}spend ${totSpend.toFixed(0)}€ · ${esc(countries)}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:12px">
+        ${grp.map(it => bcCardHtml(it)).join('')}
+      </div>
+    </div>`;
+  }
+  return html || '<div style="font-size:12px;color:var(--text-tertiary);padding:14px;text-align:center">Ni ad-setov.</div>';
+}
+
 // ── A) KARTICE ──
-function bcRenderCards(items){
-  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
-  for (const {a, sc, cd} of items){
-    const inCd = !!cd;
-    const badge = inCd ? '🔵' : sc.status;
-    const lbl = inCd ? `OPAZUJEM ${cd.days_left}d` : sc.label;
-    const cpa7 = a.cpa7!=null? a.cpa7.toFixed(2) : '—';
-    const opacity = inCd ? '0.6' : '1';
-    const border = !inCd && sc.label==='SCALE' ? '#3fb950' : (!inCd && sc.label==='POTENCIAL' ? '#a855f7' : 'var(--border)');
-    html += `<div style="border:1px solid ${border};border-radius:10px;padding:13px;background:var(--bg);opacity:${opacity}">`
+function bcCardHtml(it){
+  const {a, sc, cd} = it;
+  const inCd = !!cd;
+  const badge = inCd ? '🔵' : sc.status;
+  const lbl = inCd ? `OPAZUJEM ${cd.days_left}d` : sc.label;
+  const cpa7 = a.cpa7!=null? a.cpa7.toFixed(2) : '—';
+  const opacity = inCd ? '0.6' : '1';
+  const border = !inCd && sc.label==='SCALE' ? '#3fb950' : (!inCd && sc.label==='POTENCIAL' ? '#a855f7' : 'var(--border)');
+  return `<div style="border:1px solid ${border};border-radius:10px;padding:13px;background:var(--bg);opacity:${opacity}">`
       + `<div style="display:flex;justify-content:space-between;align-items:start;gap:8px;margin-bottom:8px">`
       +   `<div style="min-width:0">`
       +     `<div style="font-size:14px;font-weight:700;${inCd?'text-decoration:line-through':''}">${a.name}</div>`
@@ -20015,7 +20071,11 @@ function bcRenderCards(items){
       + `<details style="margin-top:8px"><summary style="font-size:11px;color:var(--text-tertiary);cursor:pointer">💡 analiza</summary>`
       +   `<div style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin-top:5px">${sc.reasons.map(r=>'• '+r).join('<br>')}</div></details>`
       + `</div>`;
-  }
+}
+
+function bcRenderCards(items){
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
+  for (const it of items){ html += bcCardHtml(it); }
   return html + '</div>';
 }
 
