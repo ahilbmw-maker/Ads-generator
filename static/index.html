@@ -748,7 +748,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 .pn-hist-card { border:1px solid var(--border); border-radius:var(--radius); padding:8px 10px; cursor:default; }
 .pn-hist-card:hover { border-color:var(--accent); }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
 </head>
 <body>
 
@@ -1446,7 +1446,7 @@ input[type="text"].error { border-color: var(--red) !important; }
   </div>
   <!-- ═══ FORECAST PAGE ═══ -->
   <div class="page" id="page-forecast" style="height:100vh;overflow:hidden">
-    <iframe src="/static/revenue_forecast.html" style="width:100%;height:100%;border:none;display:block" allow="clipboard-write"></iframe>
+    <iframe id="revForecastFrame" data-src="/static/revenue_forecast.html" style="width:100%;height:100%;border:none;display:block" allow="clipboard-write"></iframe>
   </div>
 
   <!-- ═══ CALCULATOR PAGE ═══ -->
@@ -5161,6 +5161,11 @@ function switchPage(page) {
     }
   }
   closeMenu();
+  // forecast page: lazy naloži iframe ob prvem odprtju
+  if (page === 'forecast') {
+    const rf = document.getElementById('revForecastFrame');
+    if (rf && rf.dataset.src && !rf.src) rf.src = rf.dataset.src;
+  }
   // calc page: zagotovi, da se aktivni iframe (lazy) naloži ob odprtju strani
   if (page === 'calc') {
     let sub = 'pricecheck';
