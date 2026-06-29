@@ -2740,7 +2740,23 @@ async def zaloga_history_delete(filename: str, market: str = "slo"):
 
 @app.get("/zaloga", response_class=HTMLResponse)
 def zaloga_page():
-    return FileResponse("static/zaloga.html")
+    # NIKOLI ne cachiraj zaloga.html — nabiralci imajo zavihek odprt dolgo,
+    # tako vsako (re)nalaganje dobi svežo verzijo z aktualnim zaloga.js.
+    return FileResponse("static/zaloga.html", headers={
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    })
+
+
+# Verzija aplikacije — nabiralci jo periodično preverijo; če se spremeni, jih opozori/osveži.
+APP_VERSION = os.environ.get("RENDER_GIT_COMMIT", "") or datetime.now().strftime("%Y%m%d%H")
+
+
+@app.get("/app-version")
+async def app_version():
+    """Vrne trenutno verzijo aplikacije (za auto-refresh starih zavihkov)."""
+    return JSONResponse({"version": APP_VERSION}, headers={"Cache-Control": "no-store"})
 
 
 # ═══ OBVESTILA (in-app "kaj je novega") + /admin ═══

@@ -2534,3 +2534,38 @@ function dismissNews(id) {
 
 // pokaži obvestila kmalu po odprtju
 setTimeout(showZalogaNews, 800);
+
+// ── AUTO-REFRESH ob novi verziji (za zavihke, odprte dlje časa) ──
+// Nabiralci pogosto pustijo zavihek odprt cel teden → dobijo staro kodo.
+// Periodično preverimo verzijo; če se spremeni, jih opozorimo in osvežimo.
+let _zalogaAppVersion = null;
+async function _checkAppVersion(initial) {
+  try {
+    const r = await fetch('/app-version', { cache: 'no-store' });
+    const d = await r.json();
+    if (!d || !d.version) return;
+    if (initial) { _zalogaAppVersion = d.version; return; }
+    if (_zalogaAppVersion && d.version !== _zalogaAppVersion) {
+      // nova verzija na strežniku → osveži (a ne sredi nabiranja brez opozorila)
+      _showUpdateBanner();
+    }
+  } catch(e) {}
+}
+function _showUpdateBanner() {
+  if (document.getElementById('zalogaUpdateBanner')) return;
+  const b = document.createElement('div');
+  b.id = 'zalogaUpdateBanner';
+  b.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#2dd4a7;color:#06281f;padding:12px 16px;text-align:center;font-size:14px;font-weight:700;z-index:999999;box-shadow:0 -2px 12px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;gap:14px;font-family:inherit';
+  b.innerHTML = '🔄 Na voljo je nova različica aplikacije.';
+  const btn = document.createElement('button');
+  btn.textContent = 'Posodobi zdaj';
+  btn.style.cssText = 'background:#06281f;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit';
+  btn.onclick = () => location.reload(true);
+  b.appendChild(btn);
+  document.body.appendChild(b);
+}
+// začetna verzija + preverjanje vsakih 5 min
+_checkAppVersion(true);
+setInterval(() => _checkAppVersion(false), 5 * 60 * 1000);
+// preveri tudi, ko se vrnejo na zavihek (focus)
+window.addEventListener('focus', () => _checkAppVersion(false));
