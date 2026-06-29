@@ -1459,8 +1459,8 @@ input[type="text"].error { border-color: var(--red) !important; }
         💰 Kalkulator
       </button>
     </div>
-    <iframe id="calcFrame-pricecheck" src="/static/price_checker.html?v=20260621b" style="width:100%;height:calc(100vh - 7rem);border:none" allow="clipboard-write"></iframe>
-    <iframe id="calcFrame-calc" src="/static/price_calculator.html" style="width:100%;height:calc(100vh - 7rem);border:none;display:none" allow="clipboard-write"></iframe>
+    <iframe id="calcFrame-pricecheck" data-src="/static/price_checker.html?v=20260621b" style="width:100%;height:calc(100vh - 7rem);border:none" allow="clipboard-write"></iframe>
+    <iframe id="calcFrame-calc" data-src="/static/price_calculator.html" style="width:100%;height:calc(100vh - 7rem);border:none;display:none" allow="clipboard-write"></iframe>
   </div>
 
   <!-- ═══ KREATIVE PAGE ═══ -->
@@ -5125,7 +5125,12 @@ function switchCalcTab(tab) {
     const frame = document.getElementById('calcFrame-' + t);
     if (t === tab) {
       if (btn) { btn.style.background = 'var(--accent)'; btn.style.color = 'white'; btn.style.border = 'none'; btn.classList.add('active'); }
-      if (frame) frame.style.display = 'block';
+      if (frame) {
+        // lazy: naloži iframe šele ob prvem odprtju (prej sta se oba nalagala ob startu
+        // strani → price_checker je procesiral 58k SKU + Econt ZIP → 27s blokada DOM-a)
+        if (frame.dataset.src && !frame.src) frame.src = frame.dataset.src;
+        frame.style.display = 'block';
+      }
     } else {
       if (btn) { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; btn.style.border = '1px solid var(--border)'; btn.classList.remove('active'); }
       if (frame) frame.style.display = 'none';
@@ -5156,6 +5161,12 @@ function switchPage(page) {
     }
   }
   closeMenu();
+  // calc page: zagotovi, da se aktivni iframe (lazy) naloži ob odprtju strani
+  if (page === 'calc') {
+    let sub = 'pricecheck';
+    try { sub = localStorage.getItem('slx_active_subtab') || 'pricecheck'; } catch(e) {}
+    switchCalcTab(sub);
+  }
   // Forecast page: nevtraliziraj body scroll + main padding (da ni 2. drsnika)
   const mainEl2 = document.querySelector('.main');
   if (page === 'forecast') {
