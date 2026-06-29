@@ -1918,9 +1918,12 @@ async def zaloga_import_ikonka(file: UploadFile = File(...), market: str = "rs")
 async def zaloga_current_get(market: str = "slo"):
     """Vrne aktivno sejo nabiranja za trg (vsi nabiralci berejo isto)."""
     try:
+        import time as _time
+        _t0 = _time.time()
         path = _zaloga_current_path(market)
         if path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
+            _dirty = False   # ali se je kaj dejansko spremenilo (da pišemo na disk LE takrat)
             # SAMO-POPRAVILO STARIH SEJ: časovnica mora izhajati iz dejanskih znamk
             # nabiranja (picked_at), ne iz starega pick_started_at (ki je bil čas uploada).
             its = data.get("items", [])
@@ -1928,28 +1931,19 @@ async def zaloga_current_get(market: str = "slo"):
             if stamps:
                 real_start = min(stamps)
             else:
-                # seja še nima nobene prave znamke → časovnica naj kaže 0:00:00,
-                # tudi če stari pick_started_at obstaja (bil je čas uploada)
                 real_start = None
             if data.get("pick_started_at") != real_start:
                 data["pick_started_at"] = real_start
                 if real_start is None:
                     data["pick_finished_at"] = None
-                try:
-                    _zaloga_atomic_write(path, data)
-                except Exception:
-                    pass
+                _dirty = True
             # ── VAROVALKA: skupne postavke + kosi ne smejo padati pod baseline (peak) ──
             cur_items, cur_qty = _zaloga_expected_totals(data)
             has_peak = ("peak_items" in data) or ("peak_qty" in data)
             if not has_peak:
-                # stara seja brez baseline → inicializiraj na trenutno stanje (brez alarma)
                 data["peak_items"] = cur_items
                 data["peak_qty"] = cur_qty
-                try:
-                    _zaloga_atomic_write(path, data)
-                except Exception:
-                    pass
+                _dirty = True
             peak_items = int(data.get("peak_items", cur_items) or 0)
             peak_qty = int(data.get("peak_qty", cur_qty) or 0)
             dropped_items = max(0, peak_items - cur_items)
@@ -1960,9 +1954,16 @@ async def zaloga_current_get(market: str = "slo"):
                 "dropped_items": dropped_items, "dropped_qty": dropped_qty,
                 "ok": (dropped_items == 0 and dropped_qty == 0),
             }
+            # zapiši na disk LE če se je kaj spremenilo (prej se je pisalo ob vsakem branju → počasno)
+            if _dirty:
+                try:
+                    _zaloga_atomic_write(path, data)
+                except Exception:
+                    pass
             # SKLADIŠČE: ponovno označi postavke po sejnem seznamu SKU (preživi osvežitev/sync)
             if data.get("skladisce_skus"):
                 _skladisce_mark_items(data)
+            data["_ms"] = int((_time.time() - _t0) * 1000)   # čas obdelave (za diagnostiko)
             return {"ok": True, **data}
         return {"ok": True, "items": [], "started_at": None}
     except Exception as e:
