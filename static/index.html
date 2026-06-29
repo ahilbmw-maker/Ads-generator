@@ -12868,10 +12868,10 @@ async function regenEnqueueSelected() {
 
 let _regenQueuePollTimer = null;
 async function regenQueueRefresh() {
-  // NE nalagaj/prerisuj slik, če regenqueue subpage ni viden (prej je poll v ozadju
+  // NE nalagaj/prerisuj slik, če regenqueue panel ni viden (prej je poll v ozadju
   // potegnil vse regen slike tudi na domov). Badge se posodobi ločeno.
-  const sub = document.getElementById('orodjaSubpage-regenqueue');
-  const visible = sub && sub.offsetParent !== null;
+  const sub = document.getElementById('kr-panel-regenqueue');
+  const visible = sub && sub.style.display !== 'none' && sub.offsetParent !== null;
   if (!visible) {
     // samo badge, brez izrisa slik
     try {
