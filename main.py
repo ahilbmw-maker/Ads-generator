@@ -21343,7 +21343,10 @@ async def regen_img(fname: str):
     if not fpath.exists():
         raise HTTPException(status_code=404, detail="ni najdena")
     media = "image/png" if safe.lower().endswith(".png") else "image/jpeg"
-    return FileResponse(str(fpath), media_type=media)
+    # slike so nespremenljive (hash ime) → dolg cache, da se NE prenašajo znova ob vsakem renderju/pollu
+    return FileResponse(str(fpath), media_type=media, headers={
+        "Cache-Control": "public, max-age=31536000, immutable",
+    })
 
 
 def _pick_openai_size(w, h):

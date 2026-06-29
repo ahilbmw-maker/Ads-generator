@@ -12852,6 +12852,23 @@ async function regenEnqueueSelected() {
 
 let _regenQueuePollTimer = null;
 async function regenQueueRefresh() {
+  // NE nalagaj/prerisuj slik, če regenqueue subpage ni viden (prej je poll v ozadju
+  // potegnil vse regen slike tudi na domov). Badge se posodobi ločeno.
+  const sub = document.getElementById('orodjaSubpage-regenqueue');
+  const visible = sub && sub.offsetParent !== null;
+  if (!visible) {
+    // samo badge, brez izrisa slik
+    try {
+      const r = await fetch('/regen-queue');
+      const d = await r.json();
+      const jobs = d.jobs || [];
+      const activeCount = jobs.filter(j => j.status === 'pending' || j.status === 'processing').length;
+      const badge = document.getElementById('regenQTabBadge');
+      if (badge) { badge.style.display = activeCount>0?'inline-block':'none'; if(activeCount>0) badge.textContent = activeCount; }
+      if (activeCount === 0) stopRegenPoll();
+    } catch(e) {}
+    return;
+  }
   try {
     const r = await fetch('/regen-queue');
     const d = await r.json();
@@ -12969,7 +12986,7 @@ function regenQueueRender(jobs) {
     const statusLabel = job.status === 'pending' ? 'čaka' : (job.status === 'processing' ? 'generira...' : (job.status === 'error' ? 'napaka' : 'gotovo'));
     let thumbs = job.images.map(im => {
       if (im.status === 'done' && im.result_url) {
-        return '<div style="text-align:center"><a href="' + im.result_url + '" target="_blank" rel="noopener"><img src="' + im.result_url + '" style="width:100%;height:255px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:8px;cursor:zoom-in"></a><div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">' + (im.kind === 'main' ? 'glavna' : 'ID ' + im.image_id) + '</div></div>';
+        return '<div style="text-align:center"><a href="' + im.result_url + '" target="_blank" rel="noopener"><img src="' + im.result_url + '" loading="lazy" decoding="async" style="width:100%;height:255px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:8px;cursor:zoom-in"></a><div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">' + (im.kind === 'main' ? 'glavna' : 'ID ' + im.image_id) + '</div></div>';
       }
       const c = im.status === 'error' ? '#ef4444' : 'var(--text-tertiary)';
       const t = im.status === 'error' ? '✗' : '⏳';
@@ -13029,7 +13046,26 @@ async function regenQueueClearDone() {
   try { await fetch('/regen-queue-clear-done', { method:'POST' }); regenQueueRefresh(); } catch(e) {}
 }
 // ob preklopu na regen tab osveži čakalnico
-document.addEventListener('DOMContentLoaded', function(){ setTimeout(regenQueueRefresh, 1200); });
+// OPOMBA: regen queue se NE nalaga več avtomatsko ob startu (prej je potegnil VSE
+// regen slike v ozadju na vsaki strani, tudi domov → ~900MB, 30s nalaganja).
+// Naloži se šele ob odprtju regenqueue taba (glej switchOrodjaTab → tab==='regenqueue').
+// Da pa še vedno zaznamo aktivne jobe za badge, naredimo LAHKO preverjanje brez slik:
+document.addEventListener('DOMContentLoaded', function(){ setTimeout(regenQueueBadgeOnly, 1500); });
+async function regenQueueBadgeOnly(){
+  try {
+    const r = await fetch('/regen-queue');
+    const d = await r.json();
+    const jobs = d.jobs || [];
+    const activeCount = jobs.filter(j => j.status === 'pending' || j.status === 'processing').length;
+    const badge = document.getElementById('regenQTabBadge');
+    if (badge) {
+      if (activeCount > 0) { badge.style.display = 'inline-block'; badge.textContent = activeCount; }
+      else { badge.style.display = 'none'; }
+    }
+    // če je kaj aktivnega, zaženi poll SAMO takrat (in poll bo prerisal, a uporabnik je verjetno na tabu)
+    if (activeCount > 0 && typeof startRegenPoll === 'function') startRegenPoll();
+  } catch(e) {}
+}
 // ── DOWNLOAD generiranih slik na lokalni disk ──
 function _regenTriggerDownload(url, filename) {
   const a = document.createElement('a');
