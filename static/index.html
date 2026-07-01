@@ -25,6 +25,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .mobile-tabbar { display: none; }
 
 @media(max-width: 600px) {
+  .zaloga-mobile-hide { display: none !important; }
   .hamburger { display: none !important; }
   .overlay {
     display: block !important; position: fixed; inset: 0; z-index: 9998;
@@ -3942,11 +3943,6 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
 
         <div class="zaloga-toolbar" style="display:flex;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
-          <!-- Upload -->
-          <div id="zalogaDropZone" onclick="document.getElementById('zalogaInput').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="zalogaHandleDrop(event)" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--bg-secondary);border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;color:var(--text-secondary);flex-shrink:0">
-            <span>📂</span><span>Naloži CSV</span>
-          </div>
-          <input type="file" id="zalogaInput" accept=".csv" style="display:none" onchange="zalogaUpload(this.files[0])">
           <!-- Naloži SAMO obrat+trajanje (po SKU, ne dotika zaloge/pozicije) -->
           <div id="zalogaObratZone" onclick="document.getElementById('zalogaObratInput').click()" title="Naloži CSV — osveži samo OBR/30d in Trajanje po SKU" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--bg-secondary);border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;color:var(--text-secondary);flex-shrink:0">
             <span>📊</span><span>Obrat+Trajanje</span>
@@ -3989,11 +3985,15 @@ input[type="text"].error { border-color: var(--red) !important; }
             <input type="checkbox" id="zalogaOnlyStock" onchange="_zalogaPage=1;zalogaRender()" style="cursor:pointer;accent-color:var(--green);width:14px;height:14px">
             <span>Samo na zalogi</span>
           </label>
-          <!-- Prikaži external (skladišče = external) -->
-          <label class="zaloga-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">
-            <input type="checkbox" id="zalogaShowExternal" onchange="_zalogaPage=1;zalogaRender()" style="cursor:pointer;accent-color:#f59e0b;width:14px;height:14px">
-            <span>Prikaži external</span>
-          </label>
+          <!-- Cenovni razpon (nabavna cena) — samo desktop -->
+          <div class="zaloga-mobile-hide" style="display:flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap;flex-shrink:0">
+            <span style="color:var(--text-tertiary)">Cena:</span>
+            <input type="number" id="zalogaPriceMin" step="0.01" min="0" placeholder="od" oninput="_zalogaPage=1;zalogaRender()" style="width:64px;padding:5px 7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);font-family:inherit">
+            <span style="color:var(--text-tertiary)">–</span>
+            <input type="number" id="zalogaPriceMax" step="0.01" min="0" placeholder="do" oninput="_zalogaPage=1;zalogaRender()" style="width:64px;padding:5px 7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);font-family:inherit">
+            <span style="color:var(--text-tertiary)">€</span>
+            <button onclick="document.getElementById('zalogaPriceMin').value='';document.getElementById('zalogaPriceMax').value='';_zalogaPage=1;zalogaRender()" title="Počisti cenovni filter" style="padding:4px 7px;background:transparent;border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text-tertiary);cursor:pointer;font-family:inherit">✕</button>
+          </div>
           <!-- Stats -->
           <div id="zalogaStats" style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;flex-shrink:0"></div>
         </div>
@@ -16534,11 +16534,21 @@ function zalogaRender() {
   const search = (document.getElementById('zalogaSearch')?.value || '').toLowerCase().trim();
   const onlyStock = document.getElementById('zalogaOnlyStock')?.checked;
   const showExternal = document.getElementById('zalogaShowExternal')?.checked;
+  // cenovni razpon (nabavna cena)
+  const pMinRaw = document.getElementById('zalogaPriceMin')?.value;
+  const pMaxRaw = document.getElementById('zalogaPriceMax')?.value;
+  const pMin = (pMinRaw !== '' && pMinRaw != null) ? parseFloat(pMinRaw) : NaN;
+  const pMax = (pMaxRaw !== '' && pMaxRaw != null) ? parseFloat(pMaxRaw) : NaN;
 
   // Filter
   let items = _zalogaData.filter(it => {
     if (!showExternal && _zalIsExternal(it)) return false;  // privzeto skrij skladišče=external
     if (onlyStock && (parseInt(it.stock) || 0) <= 0) return false;
+    if (!isNaN(pMin) || !isNaN(pMax)) {
+      const pr = parseFloat(it.price) || 0;
+      if (!isNaN(pMin) && pr < pMin) return false;
+      if (!isNaN(pMax) && pr > pMax) return false;
+    }
     if (search) {
       const hay = [(it.product_sku||''), (it.title||''), (it.position||''), (it.note||''), (it.product_id||'')].join(' ').toLowerCase();
       if (!hay.includes(search)) return false;
