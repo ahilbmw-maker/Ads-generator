@@ -4305,6 +4305,14 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div id="inv-status" style="display:none;margin-top:8px;font-size:11px;color:var(--text-secondary)"></div>
         </div>
 
+        <div class="card">
+          <span class="slabel">VNOS SKU (besedilo)</span>
+          <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 8px;line-height:1.4">Prilepi SKU-je (vsak v svojo vrstico). Sistem poišče naziv in pozicijo ter jih doda na seznam. Dvojnike preskoči.</p>
+          <textarea id="inv-sku-text" placeholder="SONICFIELD&#10;AQUASEAT&#10;SPINOUT&#10;TOPKNER_160x200&#10;..." style="width:100%;min-height:110px;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;resize:vertical;line-height:1.5;box-sizing:border-box"></textarea>
+          <button onclick="inventuraAddFromText()" style="margin-top:8px;width:100%;padding:9px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">➕ Dodaj na seznam</button>
+          <div id="inv-sku-text-status" style="display:none;margin-top:8px;font-size:11px;text-align:center"></div>
+        </div>
+
         <div class="card" id="inv-actions-card" style="display:none">
           <span class="slabel">AKCIJE</span>
           <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
@@ -10490,6 +10498,53 @@ async function invLoadCurrent() {
     document.getElementById('inv-empty').style.display = 'none';
     inventuraRender();
   } catch(e) {}
+}
+
+function inventuraAddFromText() {
+  const ta = document.getElementById('inv-sku-text');
+  const status = document.getElementById('inv-sku-text-status');
+  const raw = (ta?.value || '').trim();
+  const show = (msg, col) => { if (status){ status.style.display='block'; status.style.color=col||'var(--text-secondary)'; status.textContent=msg; } };
+  if (!raw) { show('Vnesi vsaj en SKU.', '#dc2626'); return; }
+  // razčleni po vrsticah/vejicah/podpičjih
+  const wanted = raw.split(/[\r\n,;]+/).map(s => s.trim()).filter(Boolean);
+  if (!wanted.length) { show('Ni veljavnih SKU-jev.', '#dc2626'); return; }
+
+  // obstoječi SKU-ji (da preskočimo dvojnike), case-insensitive
+  const existing = new Set(invItems.map(it => (it.sku || '').trim().toLowerCase()));
+
+  let added = 0, dup = 0, notFound = [];
+  for (const sku of wanted) {
+    const key = sku.toLowerCase();
+    if (existing.has(key)) { dup++; continue; }
+    // poišči v zalogi (naziv + pozicija)
+    const zal = (_zalogaData || []).find(x => (x.product_sku || x.sku || '').trim().toLowerCase() === key);
+    invItems.push({
+      sku: zal ? (zal.product_sku || zal.sku) : sku,
+      naziv: zal ? (zal.title || zal.naziv || '') : '',
+      pozicija: zal ? (zal.position || zal.pozicija || 'Ni podatka') : 'Ni podatka',
+      komentar: '',
+      kolicina_dejansko: undefined
+    });
+    existing.add(key);
+    added++;
+    if (!zal) notFound.push(sku);
+  }
+
+  // pokaži tabelo + akcije (če je bila prej prazna)
+  document.getElementById('inv-empty').style.display = 'none';
+  document.getElementById('inv-table-wrap').style.display = 'block';
+  document.getElementById('inv-actions-card').style.display = 'block';
+  const skuStat = document.getElementById('inv-stat-skus'); if (skuStat) skuStat.textContent = invItems.length;
+
+  invAutoSave();
+  inventuraRender();
+  if (ta) ta.value = '';
+
+  let msg = `✓ Dodanih ${added}`;
+  if (dup) msg += ` · preskočenih dvojnikov ${dup}`;
+  if (notFound.length) msg += ` · ⚠ brez pozicije/naziva (ni v zalogi): ${notFound.slice(0,6).join(', ')}${notFound.length>6?'…':''}`;
+  show(msg, added ? 'var(--green)' : '#d97706');
 }
 
 function inventuraHandleFile(file) {
@@ -23792,6 +23847,8 @@ function switchZalogaTab(tab) {
   } else if (tab === 'inventura') {
     if (typeof invLoadHistory === 'function') invLoadHistory();
     if (typeof invLoadCurrent === 'function') invLoadCurrent();
+    // zagotovi, da je zaloga naložena (za iskanje pozicije pri tekstovnem vnosu SKU)
+    if (typeof zalogaLoad === 'function' && (!_zalogaData || !_zalogaData.length)) zalogaLoad();
   }
 }
 
