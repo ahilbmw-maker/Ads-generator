@@ -14529,20 +14529,53 @@ def _forecast2_path(date_iso: str) -> Path:
     return FORECAST2_DIR / f"{date_iso}.json"
 
 def _forecast2_load_day(date_iso: str) -> dict:
-    """Naloži en dan. Vrne {entries:[], final:{}} če ne obstaja."""
+    """Naloži en dan. Vrne {entries:[], final:{}} če ne obstaja.
+    POMEMBNO: ob NAPAKI branja obstoječega fajla NE vrne praznega (to bi ob naslednjem
+    save prepisalo in izbrisalo vse vnose) — namesto tega vrže napako, da klicatelj ne piše."""
     p = _forecast2_path(date_iso)
     if not p.exists():
         return {"date": date_iso, "entries": [], "final": None}
     try:
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception as e:
+        # fajl OBSTAJA, a ga ne moremo prebrati (delno zapisan / I/O med restartom).
+        # Poskusi backup, sicer vrzi napako — NE vrni praznega (sicer izgubimo vnose).
         print(f"[fc2] load error {date_iso}: {e}")
-        return {"date": date_iso, "entries": [], "final": None}
+        bak = p.with_suffix(".json.bak")
+        if bak.exists():
+            try:
+                data = json.loads(bak.read_text(encoding="utf-8"))
+                print(f"[fc2] obnovljeno iz backupa {date_iso}")
+                return data
+            except Exception:
+                pass
+        raise RuntimeError(f"forecast2 fajl {date_iso} obstaja a ni berljiv — ne pišem, da ne izgubim vnosov")
 
 def _forecast2_save_day(date_iso: str, data: dict):
-    """Shrani en dan."""
+    """Shrani en dan — ATOMSKO + backup, da restart/I/O napaka ne pusti praznega fajla.
+    Zaščita: ne prepiši polnega fajla s praznim seznamom vnosov (razen če je bil prej prazen)."""
     p = _forecast2_path(date_iso)
-    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # varovalka: če bi zapisali PRAZEN entries, obstoječi pa jih ima → NE prepiši
+    try:
+        new_entries = data.get("entries") or []
+        if not new_entries and p.exists():
+            old = json.loads(p.read_text(encoding="utf-8"))
+            if (old.get("entries") or []):
+                print(f"[fc2] ZAŠČITA: preprečen prepis {date_iso} s praznim seznamom (obstoječih {len(old['entries'])} vnosov)")
+                return
+    except Exception:
+        pass
+    # backup obstoječega pred pisanjem
+    try:
+        if p.exists():
+            import shutil as _sh
+            _sh.copy2(str(p), str(p.with_suffix(".json.bak")))
+    except Exception:
+        pass
+    # atomski zapis (temp + rename)
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(str(tmp), str(p))
 
 # ─── BACKUP STAREGA SISTEMA ────────────────────────────────────────
 
@@ -15237,7 +15270,11 @@ async def _forecast2_fetch_core(force=False, min_gap_min=55):
     today = _lj_today()
     now = _lj_now()
     time_norm = now.strftime("%H:%M")
-    day = _forecast2_load_day(today)
+    try:
+        day = _forecast2_load_day(today)
+    except Exception as e:
+        # fajl obstaja a ni berljiv → NE piši (sicer bi ga prepisali in izgubili vnose)
+        return {"ok": False, "error": f"Fajl dneva ni berljiv, preskočim zapis (varovalka): {e}"}
     if "entries" not in day or not isinstance(day.get("entries"), list):
         day["entries"] = []
     day["entries"] = [e for e in day["entries"] if e.get("time") != time_norm]
