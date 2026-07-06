@@ -10565,9 +10565,20 @@ function inventuraHandleFile(file) {
         document.getElementById('inv-empty').style.display = 'block';
         return;
       }
-      invItems = (data.items || []).map(it => ({ ...it, komentar: '', kolicina_dejansko: undefined }));
-      document.getElementById('inv-stat-skus').textContent = data.total_skus;
-      document.getElementById('inv-status').textContent = '✓ ' + data.filename + ' — ' + data.total_skus + ' SKU-jev';
+      // MERGE: ohrani obstoječe postavke, dodaj samo NOVE SKU-je (dvojnike preskoči)
+      const incoming = (data.items || []).map(it => ({ ...it, komentar: '', kolicina_dejansko: undefined }));
+      const existingKeys = new Set(invItems.map(it => (it.sku || '').trim().toLowerCase()));
+      let added = 0, skipped = 0;
+      for (const it of incoming) {
+        const key = (it.sku || '').trim().toLowerCase();
+        if (!key) continue;
+        if (existingKeys.has(key)) { skipped++; continue; }
+        invItems.push(it);
+        existingKeys.add(key);
+        added++;
+      }
+      document.getElementById('inv-stat-skus').textContent = invItems.length;
+      document.getElementById('inv-status').textContent = '✓ ' + data.filename + ' — dodanih ' + added + ' novih' + (skipped ? ' · preskočenih ' + skipped + ' obstoječih' : '') + ' (skupaj ' + invItems.length + ')';
       document.getElementById('inv-status').style.display = 'block';
       document.getElementById('inv-actions-card').style.display = 'block';
       document.getElementById('inv-table-wrap').style.display = 'block';
