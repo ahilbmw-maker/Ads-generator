@@ -3085,6 +3085,8 @@ input[type="text"].error { border-color: var(--red) !important; }
                 <button id="bcFilt-DRŽI" onclick="bcSetStatusFilter('DRŽI')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🟡 Drži</button>
                 <button id="bcFilt-NE" onclick="bcSetStatusFilter('NE')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🔴 Ne</button>
                 <button id="bcFilt-WATCH" onclick="bcSetStatusFilter('WATCH')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🔵 Opazujem</button>
+                <span style="width:1px;height:16px;background:var(--border);margin:0 3px;display:inline-block;vertical-align:middle"></span>
+                <button id="bcFilt-BIDUNDER9" onclick="bcToggleBidUnder9()" title="Pokaži samo ad sete z bidom pod 9.0 (znotraj trenutne selekcije)" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">⚡ Bid &lt; 9.0</button>
               </div>
               <input type="text" id="bcSearch" placeholder="🔍 država / ad-set" oninput="bcRenderTable()" style="padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:11px;font-family:inherit;width:150px">
               <select id="bcSort" onchange="bcRenderTable()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:11px;font-family:inherit">
@@ -20056,6 +20058,13 @@ function bcToggleCountries(){
 }
 
 let bcStatusFilter = 'all';
+let bcBidUnder9 = false;
+function bcToggleBidUnder9(){
+  bcBidUnder9 = !bcBidUnder9;
+  const b = document.getElementById('bcFilt-BIDUNDER9');
+  if (b){ b.style.background = bcBidUnder9 ? 'var(--accent)' : 'transparent'; b.style.color = bcBidUnder9 ? '#fff' : 'var(--text-secondary)'; }
+  bcRenderTable();
+}
 function bcSetStatusFilter(st){
   bcStatusFilter = st;
   for (const k of ['all','SCALE','POTENCIAL','DRŽI','NE','WATCH']){
@@ -20069,6 +20078,7 @@ function bcPrepareItems(){
   const sort = document.getElementById('bcSort')?.value || 'score';
   let items = bcAdsets.map(a => ({ a, sc: bcScore(a), cd: bcCooldownFor(a) }));
   if (bcOnlyCountries) items = items.filter(x => bcIsCountry(x.a.name));
+  if (bcBidUnder9) items = items.filter(x => x.a.curBid != null && x.a.curBid < 9.0);
   if (bcStatusFilter !== 'all'){
     items = items.filter(x => {
       const st = x.cd ? 'WATCH' : x.sc.label;
