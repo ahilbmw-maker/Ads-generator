@@ -294,15 +294,38 @@ function showEmpty() {
 }
 
 // ── Upload CSV ──
+async function _doCsvUpload(file, force) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const url = force ? mq('/zaloga-upload') + (mq('/zaloga-upload').includes('?') ? '&' : '?') + 'force=1' : mq('/zaloga-upload');
+  const r = await fetch(url, { method: 'POST', body: fd });
+  return await r.json();
+}
+
 document.getElementById('csvInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   toast('⏳ Nalagam in obdelujem...');
-  const fd = new FormData();
-  fd.append('file', file);
   try {
-    const r = await fetch(mq('/zaloga-upload'), { method: 'POST', body: fd });
-    const data = await r.json();
+    let data = await _doCsvUpload(file, false);
+    // VAROVALKA: aktivna seja ima napredek → backend jo je avtomatsko arhiviral in zahteva potrditev
+    if (data && data.needs_confirm) {
+      const potrjeno = confirm(
+        `⚠ POZOR — aktivna seja NI prazna!\n\n` +
+        `Trenutna seja ima ${data.picked} že nabranih postavk (od ${data.total_old}).\n\n` +
+        `Samodejno sem jo SHRANIL v arhiv (${data.auto_archived}), da se ne izgubi.\n\n` +
+        `Če res želiš ZAČETI NOVO nabiranje in prepisati trenutno, klikni V redu.\n` +
+        `Če si CSV naložil pomotoma, klikni Prekliči — stara seja ostane v arhivu.`
+      );
+      if (!potrjeno) {
+        toast('↩ Prekinjeno — stara seja je varno v arhivu (' + data.auto_archived + ')');
+        e.target.value = '';
+        return;
+      }
+      // potrjeno → ponovi s force
+      toast('⏳ Prepisujem z novim CSV...');
+      data = await _doCsvUpload(file, true);
+    }
     if (data.ok) {
       toast(`✓ Naloženih ${data.count} postavk`);
       await loadSession();
