@@ -1682,12 +1682,48 @@ def _zaloga_group(poz: str, sku: str = "") -> str:
 
 
 @app.post("/zaloga-upload")
-async def zaloga_upload(file: UploadFile = File(...), market: str = "slo"):
+async def zaloga_upload(file: UploadFile = File(...), market: str = "slo", force: str = "0"):
     """Naloži CSV za nabiranje. Parsira ID, SKU, Naziv, Količina, Pozicija SL → skupine.
-    Ustvari novo aktivno sejo za izbrani trg. Obstoječa se prepiše."""
+    Ustvari novo aktivno sejo za izbrani trg.
+    ZAŠČITA: če obstaja aktivna seja z NABRANIM napredkom, jo NE prepiše tiho —
+    najprej avtomatsko arhivira staro sejo (da se napredek ne izgubi), nato pa
+    zahteva potrditev (force=1), preden ustvari novo. Tako naključni ponovni upload
+    CSV-ja ne izbriše dela nabiralca."""
     try:
         import csv as _csv, io as _io
         from datetime import datetime as _dt
+
+        # ── VAROVALKA proti tihi izgubi napredka ──
+        _force = str(force) in ("1", "true", "True", "yes")
+        _cur_path = _zaloga_current_path(market)
+        if _cur_path.exists():
+            try:
+                _old = json.loads(_cur_path.read_text(encoding="utf-8"))
+            except Exception:
+                _old = {}
+            _old_items = _old.get("items") or []
+            _picked = sum(1 for it in _old_items if it.get("status") in ("ok", "ni"))
+            _has_progress = _picked > 0 or bool(_old.get("packing_boxes")) or bool(_old.get("cakajoce"))
+            if _old_items and _has_progress and not _force:
+                # NE prepiši — najprej avtomatsko arhiviraj obstoječo sejo, nato zahtevaj potrditev
+                try:
+                    _adir = _zaloga_archive_dir(market)
+                    _ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+                    _old["archived_at"] = _dt.now().isoformat()
+                    _old["auto_archived_reason"] = "pred nalaganjem novega CSV (varovalka)"
+                    _aname = f"{_ts}_{len(_old_items)}items_AUTO.json"
+                    (_adir / _aname).write_text(json.dumps(_old, ensure_ascii=False), encoding="utf-8")
+                except Exception as _ae:
+                    return {"ok": False, "error": f"Aktivna seja ima napredek in je ni bilo mogoče arhivirati: {_ae}"}
+                return {
+                    "ok": False,
+                    "needs_confirm": True,
+                    "picked": _picked,
+                    "total_old": len(_old_items),
+                    "auto_archived": _aname,
+                    "error": f"⚠ Aktivna seja ima {_picked} nabranih postavk. Samodejno sem jo shranil v arhiv ({_aname}). Če res želiš prepisati z novim CSV, ponovi z 'force'."
+                }
+
         raw = await file.read()
         text = raw.decode("utf-8-sig", errors="replace")
         reader = _csv.DictReader(_io.StringIO(text))
