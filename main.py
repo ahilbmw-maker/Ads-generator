@@ -632,6 +632,33 @@ FEED_CACHE_FILE = DATA_DIR / "feed_cache.json"
 CACHE_FORMAT_VERSION = 3
 
 
+@app.get("/feed-search-title")
+async def feed_search_title(q: str, market: str = "all"):
+    """Poišče izdelke po nazivu (title) v naloženem feedu. market: 'all' ali koda (sl,hr,rs...).
+    Uporaba: /feed-search-title?q=Furivo  ali  /feed-search-title?q=Furivo&market=sl"""
+    ql = (q or "").strip().lower()
+    if not ql:
+        return {"ok": False, "error": "prazen iskalni niz"}
+    langs = list(feed_by_lang.keys()) if market == "all" else [market]
+    hits = []
+    for lang in langs:
+        lf = feed_by_lang.get(lang, {})
+        for g_id, prod in lf.items():
+            title = (prod.get("title") or "")
+            if ql in title.lower():
+                hits.append({
+                    "market": lang,
+                    "g_id": g_id,
+                    "title": title,
+                    "price": prod.get("price", ""),
+                    "sale_price": prod.get("sale_price", ""),
+                    "url": prod.get("url", ""),
+                })
+    return {"ok": True, "q": q, "market": market, "count": len(hits),
+            "feed_loaded": bool(feed_by_lang), "last_fetch": str(last_fetch) if 'last_fetch' in globals() and last_fetch else None,
+            "hits": hits[:100]}
+
+
 def _save_feed_cache_to_disk():
     """Shrani feed cache + indekse na persistent disk (/data), da preživijo deploy."""
     try:
