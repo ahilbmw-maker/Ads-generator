@@ -3944,57 +3944,65 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
         </div>
 
-        <div class="zaloga-toolbar" style="display:flex;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
-          <!-- Naloži SAMO obrat+trajanje (po SKU, ne dotika zaloge/pozicije) -->
-          <div id="zalogaObratZone" onclick="document.getElementById('zalogaObratInput').click()" title="Naloži CSV — osveži samo OBR/30d in Trajanje po SKU" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--bg-secondary);border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;color:var(--text-secondary);flex-shrink:0">
-            <span>📊</span><span>Obrat+Trajanje</span>
-          </div>
+        <div class="zaloga-toolbar" style="display:flex;gap:8px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
           <input type="file" id="zalogaObratInput" accept=".csv" style="display:none" onchange="zalogaUploadObrat(this.files[0])">
-          <!-- Sinhronizacija s siluxar -->
-          <button id="zalogaSyncBtn" onclick="zalogaSyncSiluxar(false)" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
-            <span>🔄</span><span>Sinhroniziraj zalogo</span>
-          </button>
-          <!-- Počisti zalogo (nevarno — dvojna potrditev, skrito na mobilu) -->
-          <button id="zalogaResetBtn" class="zaloga-mobile-hide" onclick="zalogaReset(this)" title="Zbriše celo shranjeno zalogo (CSV). Po tem Sinhroniziraj zgradi na novo." style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;color:var(--red);border:1px solid rgba(239,68,68,0.4);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
-            <span>🗑</span><span>Počisti zalogo</span>
-          </button>
-          <!-- Pošlji vse pozicije v siluxar (beta) -->
-          <button id="zalogaPushPosBtn" class="zaloga-mobile-hide" onclick="zalogaPushPositions(this)" title="Pošlje vse pozicije (silux) v siluxar beta zapisovalni endpoint" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;color:#185FA5;border:1px solid rgba(24,95,165,0.4);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
-            <span>↗</span><span>Pošlji pozicije v siluxar</span>
-          </button>
-          <button id="zalogaPushDebugBtn" class="zaloga-mobile-hide" onclick="zalogaShowPushDebug()" title="Pokaži zadnja pošiljanja v siluxar (kaj poslano, status, odgovor)" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
-            <span>🔍</span><span>Debug</span>
-          </button>
-          <!-- Arhiv backupov zaloge -->
-          <button id="zalogaArhivBtn" class="zaloga-mobile-hide" onclick="zalogaArhivOpen()" title="Pregled backupov zaloge — hitri restore" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
-            <span>🗄</span><span>Arhiv</span>
-          </button>
-          <!-- Info status -->
-          <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0">
-            <div id="zalogaInfo" style="font-size:10px;color:var(--text-tertiary);white-space:nowrap">Ni naloženih podatkov.</div>
-            <div id="zalogaStatus" style="font-size:10px;color:var(--text-secondary);display:none"></div>
-          </div>
-          <!-- Separator (skrit — iskalnik je zdaj prvi) -->
-          <div style="width:1px;height:28px;background:var(--border);flex-shrink:0;display:none"></div>
           <!-- Iskalnik (PRVI na desktopu — order:-1) -->
           <div style="position:relative;flex:1;order:-1" id="zalogaSearchWrap">
             <span onclick="var s=document.getElementById('zalogaSuggest');if(s)s.style.display='none';_zalogaPage=1;zalogaRender();" title="Prikaži vse zadetke" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--accent);cursor:pointer;display:flex;align-items:center;z-index:2"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
             <input type="text" id="zalogaSearch" placeholder="Išči SKU, naziv, ID, pozicijo, opombo..." autocomplete="off" oninput="_zalogaPage=1;zalogaRender();" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onfocus="this.style.boxShadow='0 0 0 3px rgba(58,111,255,0.18)';this.style.borderColor='var(--accent)'" onblur="this.style.boxShadow='0 0 0 2px rgba(58,111,255,0.10)';this.style.borderColor='rgba(58,111,255,0.45)'" style="width:100%;padding:10px 12px 10px 34px;background:var(--bg);border:2px solid rgba(58,111,255,0.45);border-radius:var(--radius);font-size:13px;font-weight:500;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box;box-shadow:0 0 0 2px rgba(58,111,255,0.10)">
             <div id="zalogaSuggest" style="display:none"></div>
           </div>
+          <!-- Sinhronizacija s siluxar (edini stalno vidni akcijski gumb) -->
+          <button id="zalogaSyncBtn" onclick="zalogaSyncSiluxar(false)" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
+            <span>🔄</span><span>Sinhroniziraj</span>
+          </button>
+          <!-- ⚙ Orodja dropdown (redkeje rabljeni gumbi) -->
+          <div style="position:relative;flex-shrink:0" id="zalogaToolsWrap">
+            <button id="zalogaToolsBtn" onclick="zalogaToolsToggle(event)" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:transparent;color:var(--text);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;font-family:inherit">
+              <span>⚙</span><span>Orodja</span><span style="font-size:9px">▾</span>
+            </button>
+            <div id="zalogaToolsMenu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:260px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(20,24,40,0.14);padding:6px;z-index:500">
+              <div id="zalogaObratZone" onclick="document.getElementById('zalogaObratInput').click()" title="Naloži CSV — osveži samo OBR/30d in Trajanje po SKU" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--text-secondary)" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
+                <span>📊</span><span>Obrat+Trajanje (CSV)</span>
+              </div>
+              <button id="zalogaPushPosBtn" onclick="zalogaPushPositions(this)" title="Pošlje vse pozicije (silux) v siluxar beta zapisovalni endpoint" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:12px;color:#185FA5;background:transparent;border:none;width:100%;text-align:left;font-family:inherit" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
+                <span>↗</span><span>Pošlji pozicije v siluxar</span>
+              </button>
+              <button id="zalogaArhivBtn" onclick="zalogaArhivOpen()" title="Pregled backupov zaloge — hitri restore" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--text-secondary);background:transparent;border:none;width:100%;text-align:left;font-family:inherit" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
+                <span>🗄</span><span>Arhiv backupov</span>
+              </button>
+              <button id="zalogaPushDebugBtn" onclick="zalogaShowPushDebug()" title="Pokaži zadnja pošiljanja v siluxar (kaj poslano, status, odgovor)" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--text-secondary);background:transparent;border:none;width:100%;text-align:left;font-family:inherit" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
+                <span>🔍</span><span>Debug pošiljanj</span>
+              </button>
+              <button id="zalogaResetBtn" onclick="zalogaReset(this)" title="Zbriše celo shranjeno zalogo (CSV). Po tem Sinhroniziraj zgradi na novo." style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--red);background:transparent;border:none;border-top:1px solid var(--border);margin-top:4px;padding-top:10px;width:100%;text-align:left;font-family:inherit;border-radius:0 0 6px 6px" onmouseover="this.style.background='rgba(239,68,68,0.06)'" onmouseout="this.style.background='transparent'">
+                <span>🗑</span><span>Počisti zalogo</span>
+              </button>
+              <div style="border-top:1px solid var(--border);margin-top:4px;padding:7px 10px 3px;display:flex;flex-direction:column;gap:1px">
+                <div id="zalogaInfo" style="font-size:10px;color:var(--text-tertiary)">Ni naloženih podatkov.</div>
+                <div id="zalogaStatus" style="font-size:10px;color:var(--text-secondary);display:none"></div>
+              </div>
+            </div>
+          </div>
           <!-- Samo na zalogi -->
           <label class="zaloga-mobile-hide" style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">
             <input type="checkbox" id="zalogaOnlyStock" onchange="_zalogaPage=1;zalogaRender()" style="cursor:pointer;accent-color:var(--green);width:14px;height:14px">
-            <span>Samo na zalogi</span>
+            <span>Na zalogi</span>
           </label>
           <!-- Cenovni razpon (nabavna cena) — samo desktop -->
           <div class="zaloga-mobile-hide" style="display:flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap;flex-shrink:0">
             <span style="color:var(--text-tertiary)">Cena:</span>
-            <input type="number" id="zalogaPriceMin" step="0.01" min="0" placeholder="od" oninput="_zalogaPage=1;zalogaRender()" style="width:64px;padding:5px 7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);font-family:inherit">
+            <input type="number" id="zalogaPriceMin" step="0.01" min="0" placeholder="od" oninput="_zalogaPage=1;zalogaRender()" style="width:56px;padding:5px 7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);font-family:inherit">
             <span style="color:var(--text-tertiary)">–</span>
-            <input type="number" id="zalogaPriceMax" step="0.01" min="0" placeholder="do" oninput="_zalogaPage=1;zalogaRender()" style="width:64px;padding:5px 7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);font-family:inherit">
+            <input type="number" id="zalogaPriceMax" step="0.01" min="0" placeholder="do" oninput="_zalogaPage=1;zalogaRender()" style="width:56px;padding:5px 7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);font-family:inherit">
             <span style="color:var(--text-tertiary)">€</span>
-            <button onclick="document.getElementById('zalogaPriceMin').value='';document.getElementById('zalogaPriceMax').value='';_zalogaPage=1;zalogaRender()" title="Počisti cenovni filter" style="padding:4px 7px;background:transparent;border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text-tertiary);cursor:pointer;font-family:inherit">✕</button>
+          </div>
+          <!-- Obrat razpon (OBR/30d) — samo desktop -->
+          <div class="zaloga-mobile-hide" style="display:flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap;flex-shrink:0">
+            <span style="color:var(--text-tertiary)">Obrat:</span>
+            <input type="number" id="zalogaObrMin" step="1" min="0" placeholder="od" oninput="_zalogaPage=1;zalogaRender()" style="width:52px;padding:5px 7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);font-family:inherit">
+            <span style="color:var(--text-tertiary)">–</span>
+            <input type="number" id="zalogaObrMax" step="1" min="0" placeholder="do" oninput="_zalogaPage=1;zalogaRender()" style="width:52px;padding:5px 7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);font-family:inherit">
+            <button onclick="['zalogaPriceMin','zalogaPriceMax','zalogaObrMin','zalogaObrMax'].forEach(id=>{var e=document.getElementById(id);if(e)e.value='';});_zalogaPage=1;zalogaRender()" title="Počisti cenovni in obrat filter" style="padding:4px 7px;background:transparent;border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text-tertiary);cursor:pointer;font-family:inherit">✕</button>
           </div>
           <!-- Stats -->
           <div id="zalogaStats" style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;flex-shrink:0"></div>
@@ -16596,6 +16604,19 @@ function _zalIsExternal(it) {
   return ((it.warehouse || '').trim().toLowerCase() === 'external');
 }
 
+// ⚙ Orodja dropdown (toolbar) — toggle + zapri ob kliku zunaj
+function zalogaToolsToggle(ev){
+  if (ev) ev.stopPropagation();
+  const m = document.getElementById('zalogaToolsMenu');
+  if (!m) return;
+  m.style.display = (m.style.display === 'none' || !m.style.display) ? 'block' : 'none';
+}
+document.addEventListener('click', (e) => {
+  const m = document.getElementById('zalogaToolsMenu');
+  const w = document.getElementById('zalogaToolsWrap');
+  if (m && m.style.display === 'block' && w && !w.contains(e.target)) m.style.display = 'none';
+});
+
 function zalogaRender() {
   if (!_zalogaData.length) return;
 
@@ -16607,6 +16628,11 @@ function zalogaRender() {
   const pMaxRaw = document.getElementById('zalogaPriceMax')?.value;
   const pMin = (pMinRaw !== '' && pMinRaw != null) ? parseFloat(pMinRaw) : NaN;
   const pMax = (pMaxRaw !== '' && pMaxRaw != null) ? parseFloat(pMaxRaw) : NaN;
+  // obrat razpon (OBR/30d = stock30)
+  const oMinRaw = document.getElementById('zalogaObrMin')?.value;
+  const oMaxRaw = document.getElementById('zalogaObrMax')?.value;
+  const oMin = (oMinRaw !== '' && oMinRaw != null) ? parseFloat(oMinRaw) : NaN;
+  const oMax = (oMaxRaw !== '' && oMaxRaw != null) ? parseFloat(oMaxRaw) : NaN;
 
   // Filter
   let items = _zalogaData.filter(it => {
@@ -16616,6 +16642,11 @@ function zalogaRender() {
       const pr = parseFloat(it.price) || 0;
       if (!isNaN(pMin) && pr < pMin) return false;
       if (!isNaN(pMax) && pr > pMax) return false;
+    }
+    if (!isNaN(oMin) || !isNaN(oMax)) {
+      const ob = parseFloat(it.stock30) || 0;
+      if (!isNaN(oMin) && ob < oMin) return false;
+      if (!isNaN(oMax) && ob > oMax) return false;
     }
     if (search) {
       const hay = [(it.product_sku||''), (it.title||''), (it.position||''), (it.note||''), (it.product_id||'')].join(' ').toLowerCase();
