@@ -4,95 +4,175 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>🎫 Kayako Tickets · Suban</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg:#f6f7fb; --surface:#ffffff; --surface2:#f2f4fa; --bg-secondary:#eef0f6;
   --border:#e3e6ef; --text:#1a1d27; --text-secondary:#5a6178; --text-tertiary:#8a90a5;
-  --accent:#534AB7; --green:#22a06b; --red:#ef4444; --radius:8px;
+  --accent:#534AB7; --accent-soft:#efecfb; --green:#22a06b; --red:#ef4444; --radius:8px;
 }
 * { box-sizing:border-box; }
-body { margin:0; font-family:'DM Sans',system-ui,sans-serif; background:var(--bg); color:var(--text); }
-.top { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:12px 16px; background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:20; }
-.top h1 { font-size:15px; margin:0 8px 0 0; }
-select, button, textarea { font-family:inherit; }
-select { padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); font-size:12px; }
-.btn { padding:7px 14px; border:none; border-radius:var(--radius); font-size:12px; font-weight:600; cursor:pointer; }
+body { margin:0; font-family:'DM Sans',system-ui,sans-serif; background:var(--bg); color:var(--text); font-size:13px; }
+button, select, input, textarea { font-family:inherit; }
+.top { display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:10px 14px; background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:30; }
+.top h1 { font-size:14px; margin:0 6px 0 0; white-space:nowrap; }
+.pill { padding:5px 11px; border:1px solid var(--border); border-radius:16px; background:var(--surface); color:var(--text-secondary); font-size:11.5px; cursor:pointer; white-space:nowrap; }
+.pill.on { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+.sep { width:1px; height:20px; background:var(--border); margin:0 3px; }
+select { padding:6px 9px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); font-size:12px; }
+#tkSearch { padding:6px 10px; border:1px solid var(--border); border-radius:var(--radius); font-size:12px; width:170px; background:var(--surface); color:var(--text); }
+.btn { padding:7px 13px; border:none; border-radius:var(--radius); font-size:12px; font-weight:600; cursor:pointer; }
+.btn:disabled { opacity:.55; cursor:default; }
 .btn-p { background:var(--accent); color:#fff; }
-.btn-g { background:var(--green); color:#fff; font-weight:700; padding:9px 16px; }
+.btn-g { background:var(--green); color:#fff; font-weight:700; }
 .btn-o { background:transparent; color:var(--text); border:1px solid var(--border); }
-.grid { display:grid; grid-template-columns:360px minmax(0,1fr); gap:12px; padding:12px 16px; align-items:start; }
-.card { background:var(--surface); border:1px solid var(--border); border-radius:10px; }
-#tkList { max-height:calc(100vh - 130px); overflow-y:auto; }
-.trow { padding:10px 12px; border-bottom:1px solid var(--border); cursor:pointer; }
-.trow:hover, .trow.on { background:var(--bg-secondary); }
+.btn-ai { background:linear-gradient(90deg,#7c3aed,#534AB7); color:#fff; }
+.grid { display:grid; grid-template-columns:300px minmax(0,1fr) 300px; gap:0; height:calc(100vh - 53px); }
+.col { overflow-y:auto; }
+.col-list { background:var(--surface); border-right:1px solid var(--border); }
+.col-side { background:var(--surface); border-left:1px solid var(--border); padding:12px; }
+.col-conv { padding:14px 16px; }
+.trow { padding:9px 12px; border-bottom:1px solid var(--bg-secondary); cursor:pointer; border-left:3px solid transparent; }
+.trow:hover { background:var(--bg-secondary); }
+.trow.on { background:var(--accent-soft); border-left-color:var(--accent); }
 .trow .s { font-size:12px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.trow .m { display:flex; justify-content:space-between; gap:6px; margin-top:3px; font-size:11px; color:var(--text-secondary); }
-.trow .m .r { font-size:10px; color:var(--text-tertiary); white-space:nowrap; }
-#detWrap { padding:14px; min-height:300px; }
-.post { margin-bottom:10px; padding:10px 12px; border-radius:10px; max-width:88%; background:var(--bg-secondary); border:1px solid var(--border); }
-.post.staff { margin-left:auto; background:rgba(83,74,183,0.10); border-color:rgba(83,74,183,0.25); }
-.post .who { font-size:10px; font-weight:700; color:var(--text-secondary); margin-bottom:4px; }
+.trow .m { display:flex; justify-content:space-between; gap:6px; margin-top:2px; font-size:10.5px; color:var(--text-tertiary); }
+.post { margin-bottom:9px; padding:9px 12px; border-radius:10px; max-width:88%; background:var(--surface); border:1px solid var(--border); }
+.post.staff { margin-left:auto; background:var(--accent-soft); border-color:#d6d0f0; }
+.post .who { font-size:9.5px; font-weight:700; color:var(--text-secondary); margin-bottom:3px; display:flex; justify-content:space-between; gap:8px; }
 .post.staff .who { color:var(--accent); }
 .post .txt { font-size:12.5px; white-space:pre-wrap; line-height:1.5; word-break:break-word; }
-#thread { max-height:calc(100vh - 420px); overflow-y:auto; padding-right:4px; }
-textarea { width:100%; min-height:130px; padding:10px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text); font-size:13px; resize:vertical; line-height:1.5; }
-.badge { font-size:11px; font-weight:700; padding:4px 10px; border-radius:12px; white-space:nowrap; }
+.post .txt a { color:var(--accent); font-weight:600; }
+.trbox { background:#fff8e6; border:1px dashed #e5c96b; border-radius:8px; padding:7px 10px; font-size:11px; color:#7a6410; margin:-3px 0 9px 0; max-width:88%; white-space:pre-wrap; line-height:1.45; }
+.tbtn { background:none; border:none; color:var(--text-tertiary); font-size:10px; cursor:pointer; padding:0; white-space:nowrap; }
+.tbtn:hover { color:var(--accent); }
+textarea { width:100%; min-height:120px; padding:10px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); font-size:13px; resize:vertical; line-height:1.5; }
+.badge { font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:12px; white-space:nowrap; }
 .badge.s1 { background:rgba(239,68,68,0.12); color:var(--red); }
 .badge.s3 { background:rgba(34,160,107,0.12); color:var(--green); }
 .badge.sx { background:var(--bg-secondary); color:var(--text-secondary); }
+.chip-swap { display:inline-flex; align-items:center; gap:6px; background:#fff4ec; border:1px solid #f0c9a8; color:#9a5b1f; border-radius:8px; padding:6px 10px; font-size:11px; cursor:pointer; margin-bottom:10px; }
+.chip-swap:hover { background:#ffeadb; }
+.sideh { font-size:10px; font-weight:800; color:var(--text-tertiary); letter-spacing:.5px; margin:12px 0 6px; }
+.sideh:first-child { margin-top:0; }
+.mac { padding:6px 9px; border:1px solid var(--bg-secondary); border-radius:7px; margin-bottom:4px; color:var(--text-secondary); background:#fafbfe; font-size:11.5px; cursor:pointer; }
+.mac:hover { border-color:var(--accent); color:var(--text); }
+.cat { font-weight:700; color:var(--accent); padding:5px 2px; font-size:11.5px; cursor:pointer; user-select:none; }
+.aibox { background:#f6f4ff; border:1px solid #d6d0f0; border-radius:8px; padding:9px; font-size:11.5px; color:var(--text); white-space:pre-wrap; line-height:1.5; }
 .muted { font-size:11px; color:var(--text-tertiary); }
-@media (max-width: 800px) {
+@media (max-width: 1100px) {
+  .grid { grid-template-columns:260px minmax(0,1fr); height:auto; }
+  .col-side { grid-column:1 / -1; border-left:none; border-top:1px solid var(--border); }
+  .col { overflow:visible; }
+}
+@media (max-width: 720px) {
   .grid { grid-template-columns:1fr; }
-  #tkList { max-height:38vh; }
-  #thread { max-height:none; }
+  .col-list { max-height:40vh; overflow-y:auto; border-right:none; border-bottom:1px solid var(--border); }
 }
 </style>
 </head>
 <body>
 
 <div class="top">
-  <h1>🎫 Kayako Tickets</h1>
-  <select id="tkBrand" onchange="tkLoadInbox()">
-    <option value="maaarket">Maaarket</option>
-    <option value="silux">Silux</option>
-  </select>
-  <select id="tkStatus" onchange="tkLoadInbox()">
-    <option value="1">🔴 Odprto</option>
-    <option value="2">🟡 V teku</option>
-    <option value="3">🟢 Zaprto</option>
-    <option value="4">📦 Naročila</option>
-  </select>
-  <button class="btn btn-p" id="tkLoadBtn" onclick="tkLoadInbox()">🔄 Naloži</button>
+  <h1>🎫 Tickets</h1>
+  <span class="pill on" id="pb-maaarket" onclick="tkSetBrand('maaarket')">Maaarket</span>
+  <span class="pill" id="pb-silux" onclick="tkSetBrand('silux')">Silux</span>
+  <span class="sep"></span>
+  <span class="pill on" id="ps-open" onclick="tkSetStatus('open')">🔴 Odprti</span>
+  <span class="pill" id="ps-closed" onclick="tkSetStatus('closed')">🟢 Zaprti</span>
+  <button class="btn btn-p" id="tkLoadBtn" onclick="tkLoadInbox()">🔄</button>
   <span style="flex:1"></span>
+  <input id="tkSearch" placeholder="🔍 filtriraj seznam..." oninput="tkFilterList()">
   <span class="muted">Odgovarjam kot:</span>
   <select id="tkStaff" onchange="try{localStorage.setItem('tk_staff',this.value)}catch(e){}"></select>
   <span id="tkInboxInfo" class="muted"></span>
 </div>
 
 <div class="grid">
-  <div class="card">
-    <div id="tkList"><div style="padding:20px;text-align:center;font-size:12px;color:var(--text-tertiary)">⏳ Nalagam...</div></div>
+  <!-- ── INBOX ── -->
+  <div class="col col-list">
+    <div id="tkList"><div style="padding:20px;text-align:center;color:var(--text-tertiary)">⏳ Nalagam...</div></div>
   </div>
-  <div class="card">
-    <div id="detWrap">
-      <div id="tkDetail" style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:40px 0">← Izberi ticket s seznama</div>
-      <div id="tkReplyBox" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-        <textarea id="tkReplyText" placeholder="Napiši odgovor stranki..."></textarea>
-        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
-          <button class="btn btn-g" id="tkSendCloseBtn" onclick="tkReply(true)">📨 Pošlji &amp; zapri</button>
-          <button class="btn btn-o" id="tkSendBtn" onclick="tkReply(false)">📨 Pošlji (pusti odprto)</button>
-          <span id="tkReplyStatus" style="font-size:11px;color:var(--text-secondary)"></span>
-        </div>
+
+  <!-- ── POGOVOR ── -->
+  <div class="col col-conv">
+    <div id="tkDetail" style="color:var(--text-tertiary);text-align:center;padding:60px 0">← Izberi ticket s seznama</div>
+    <div id="tkReplyBox" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+      <div class="muted" style="margin-bottom:5px">Odgovor (piši v slovenščini — »✍🌐 Prevedi« ga lektorira in prevede v jezik stranke; pošlje se točno besedilo iz polja):</div>
+      <textarea id="tkReplyText" placeholder="Napiši odgovor..."></textarea>
+      <div id="tkOrigNote" class="muted" style="display:none;margin-top:4px"></div>
+      <div style="display:flex;gap:7px;margin-top:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-ai" id="tkAiBtn" onclick="tkAIDraft()">🤖 AI osnutek</button>
+        <button class="btn btn-o" id="tkTransBtn" onclick="tkTranslateReply()">✍🌐 Prevedi &amp; lektoriraj</button>
+        <span style="flex:1"></span>
+        <button class="btn btn-g" id="tkSendCloseBtn" onclick="tkReply(true)">📨 Pošlji &amp; zapri</button>
+        <button class="btn btn-o" id="tkSendBtn" onclick="tkReply(false)">📨 Pošlji</button>
       </div>
+      <div id="tkReplyStatus" style="font-size:11px;color:var(--text-secondary);margin-top:6px"></div>
     </div>
+  </div>
+
+  <!-- ── AI ORODJA ── -->
+  <div class="col col-side">
+    <div class="sideh">🤖 AI PREDLOG (iz baze starih ticketov)</div>
+    <div id="tkAiPanel" class="muted">Odpri ticket in klikni »🤖 AI osnutek«.</div>
+    <div class="sideh">📁 MAKRI</div>
+    <input id="tkMacSearch" placeholder="🔍 išči makro..." oninput="tkRenderMacros()" style="width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;margin-bottom:6px;background:var(--surface);color:var(--text)">
+    <div id="tkMacTree" class="muted">Nalagam...</div>
+    <div class="sideh">⭐ POGOSTI ODGOVORI</div>
+    <div id="tkCommon" class="muted">Nalagam...</div>
   </div>
 </div>
 
 <script>
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-let _tkCurrentId = null;
 
+// ── stanje ──
+let tkBrand = 'maaarket';
+let tkStatus = 'open';
+let _tkCurrentId = null;
+let _tkTickets = [];
+let _tkTicket = null;          // odprt ticket (celoten)
+let _tkLastCustomerMsg = '';   // zadnje strankino sporočilo (za AI + prevod)
+let _tkMacros = [];
+let _tkMacOpen = '';
+
+// ── jezikovna zastavica (heuristika po znakih naslova+besedila) ──
+function tkFlag(text) {
+  const t = text || '';
+  if (/[\u0370-\u03FF]/.test(t)) return '🇬🇷';
+  if (/[őűŐŰ]/.test(t) || /\b(szám|rendelés|köszönöm|kérem)\b/i.test(t)) return '🇭🇺';
+  if (/[řěůŘĚŮ]/.test(t)) return '🇨🇿';
+  if (/[ľĺŕĽĹŔ]/.test(t)) return '🇸🇰';
+  if (/[ąęłżźĄĘŁŻŹ]/.test(t)) return '🇵🇱';
+  if (/[ăâțșĂÂȚȘ]/.test(t)) return '🇷🇴';
+  if (/[\u0400-\u04FF]/.test(t)) return '🇧🇬';
+  if (/[ćđĆĐ]/.test(t) || /\b(poštovani|hvala|narudžb)/i.test(t)) return '🇭🇷';
+  return '';
+}
+
+// ── linkifikacija številk naročil: #696051 ali 11282668 → siluxar narocilnice ──
+function tkLinkOrders(escapedText) {
+  return escapedText.replace(/#?\b(\d{6,9})\b/g, (m, num) =>
+    `<a href="https://www.siluxar.si/narocilnice/${num}" target="_blank" title="Odpri naročilo ${num}">${m}</a>`);
+}
+
+function _stripHtml(s) {
+  const d = document.createElement('div');
+  d.innerHTML = (s || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n');
+  return (d.textContent || d.innerText || '').trim();
+}
+
+async function tkCallAI(prompt, maxTokens = 900) {
+  try {
+    const r = await fetch('/ai-proxy', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt, max_tokens: maxTokens, model: 'claude-haiku-4-5-20251001' }) });
+    const d = await r.json();
+    return (d.content?.[0]?.text || '').trim();
+  } catch(e) { return ''; }
+}
+
+// ── init ──
 async function tkInit() {
   try {
     const r = await fetch('/kayako-staff');
@@ -104,105 +184,307 @@ async function tkInit() {
     }
   } catch(e) {}
   tkLoadInbox();
+  tkLoadMacros();
+  tkLoadCommon();
 }
 
+function tkSetBrand(b) {
+  tkBrand = b;
+  document.getElementById('pb-maaarket').classList.toggle('on', b === 'maaarket');
+  document.getElementById('pb-silux').classList.toggle('on', b === 'silux');
+  tkLoadInbox(); tkRenderMacros(); tkLoadCommon();
+}
+function tkSetStatus(s) {
+  tkStatus = s;
+  document.getElementById('ps-open').classList.toggle('on', s === 'open');
+  document.getElementById('ps-closed').classList.toggle('on', s === 'closed');
+  tkLoadInbox();
+}
+
+// ── inbox ──
 async function tkLoadInbox() {
   const btn = document.getElementById('tkLoadBtn');
   const list = document.getElementById('tkList');
-  const info = document.getElementById('tkInboxInfo');
-  btn.disabled = true; btn.textContent = '⏳ ...';
+  btn.disabled = true;
   try {
-    const brand = document.getElementById('tkBrand').value;
-    const status = document.getElementById('tkStatus').value;
-    const r = await fetch(`/kayako-inbox?brand=${brand}&status=${status}&count=100`);
+    const r = await fetch(`/kayako-inbox?brand=${tkBrand}&status=${tkStatus}&count=100`);
     const d = await r.json();
-    if (!d.ok) { list.innerHTML = `<div style="padding:16px;font-size:12px;color:var(--red)">✗ ${esc(d.error||'napaka')}</div>`; return; }
-    info.textContent = `${d.count} ticketov`;
-    if (!d.tickets.length) { list.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:var(--text-tertiary)">Ni ticketov v tem statusu. 🎉</div>'; return; }
-    list.innerHTML = d.tickets.map(t => `
-      <div class="trow" id="tkRow-${t.id}" onclick="tkOpen('${t.id}')">
-        <div class="s">${esc(t.subject||'(brez naslova)')}</div>
-        <div class="m">
-          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.fullname||t.email||'—')}</span>
-          <span class="r">#${t.id} · 💬 ${t.replies}</span>
-        </div>
-      </div>`).join('');
+    if (!d.ok) { list.innerHTML = `<div style="padding:16px;color:var(--red)">✗ ${esc(d.error||'napaka')}</div>`; return; }
+    _tkTickets = d.tickets || [];
+    document.getElementById('tkInboxInfo').textContent = `${d.count}`;
+    tkFilterList();
   } catch(e) {
-    list.innerHTML = `<div style="padding:16px;font-size:12px;color:var(--red)">✗ ${esc(e.message)}</div>`;
-  } finally {
-    btn.disabled = false; btn.textContent = '🔄 Naloži';
+    list.innerHTML = `<div style="padding:16px;color:var(--red)">✗ ${esc(e.message)}</div>`;
+  } finally { btn.disabled = false; }
+}
+
+function tkFilterList() {
+  const q = (document.getElementById('tkSearch').value || '').toLowerCase().trim();
+  const list = document.getElementById('tkList');
+  const rows = _tkTickets.filter(t => !q ||
+    (t.subject||'').toLowerCase().includes(q) || (t.fullname||'').toLowerCase().includes(q) ||
+    (t.email||'').toLowerCase().includes(q) || String(t.id).includes(q));
+  if (!rows.length) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-tertiary)">Ni ticketov. 🎉</div>'; return; }
+  list.innerHTML = rows.map(t => `
+    <div class="trow${_tkCurrentId===t.id?' on':''}" id="tkRow-${t.id}" onclick="tkOpen('${t.id}')">
+      <div class="s">${tkFlag(t.subject)} ${esc(t.subject||'(brez naslova)')}</div>
+      <div class="m">
+        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.fullname||t.email||'—')}</span>
+        <span>#${t.id} · 💬${t.replies}</span>
+      </div>
+    </div>`).join('');
+}
+
+// ── detekcija prave stranke v telesu (spletni obrazec: pošiljatelj shop@..., pravi email v tekstu) ──
+function tkDetectRealCustomer(t) {
+  const ticketEmail = (t.email || '').toLowerCase();
+  const generic = /^(shop|info|noreply|no-reply|prodaja|podpora|support|kontakt)@|@(maaarket|silux|siluxar)\./i;
+  const custTexts = (t.posts||[]).filter(p => p.role==='customer').map(p => _stripHtml(p.text)).join('\n');
+  // 1) eksplicitni vzorec obrazca: **E-mail:** xxx / E-mail: xxx
+  let m = custTexts.match(/E-?mail:?\**\s*:?\s*\**\s*([\w.+-]+@[\w.-]+\.\w{2,})/i);
+  let email = m ? m[1] : '';
+  // 2) fallback: kateri koli email v tekstu, ki ni ticket email in ni generic
+  if (!email) {
+    const all = custTexts.match(/[\w.+-]+@[\w.-]+\.\w{2,}/g) || [];
+    email = all.find(e => e.toLowerCase() !== ticketEmail && !generic.test(e)) || '';
   }
+  if (!email || email.toLowerCase() === ticketEmail) return null;
+  // predlagaj samo, če je trenutni naslovnik generic (obrazec) — sicer ne vsiljuj
+  if (!generic.test(ticketEmail)) return null;
+  // ime: **Ime:** X ali Ime: X
+  let name = '';
+  const nm = custTexts.match(/(?:\*\*)?Ime:?(?:\*\*)?\s*:?\s*([^\n*]{2,60})/i);
+  if (nm) name = nm[1].trim();
+  return { email, name };
 }
 
-function _stripHtml(s) {
-  const d = document.createElement('div');
-  d.innerHTML = (s || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n');
-  return (d.textContent || d.innerText || '').trim();
-}
-
+// ── odpri ticket ──
 async function tkOpen(id) {
   _tkCurrentId = id;
   document.querySelectorAll('.trow').forEach(el => el.classList.remove('on'));
   const row = document.getElementById('tkRow-' + id);
   if (row) row.classList.add('on');
   const det = document.getElementById('tkDetail');
-  det.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-tertiary)">⏳ Nalagam pogovor...</div>';
+  det.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary)">⏳ Nalagam pogovor...</div>';
   document.getElementById('tkReplyBox').style.display = 'none';
+  document.getElementById('tkAiPanel').innerHTML = '<span class="muted">Klikni »🤖 AI osnutek« za predlog.</span>';
   try {
     const r = await fetch('/kayako-ticket/' + id);
     const d = await r.json();
-    if (!d.ok) { det.innerHTML = `<div style="color:var(--red);font-size:12px">✗ ${esc(d.error||'napaka')}</div>`; return; }
+    if (!d.ok) { det.innerHTML = `<div style="color:var(--red)">✗ ${esc(d.error||'napaka')}</div>`; return; }
     const t = d.ticket;
-    const posts = (t.posts || []).map(p => {
+    _tkTicket = t;
+    const custPosts = (t.posts||[]).filter(p => p.role === 'customer');
+    _tkLastCustomerMsg = custPosts.length ? _stripHtml(custPosts[custPosts.length-1].text) : '';
+
+    // posti — kronološko (backend sortira: najstarejši zgoraj, najnovejši spodaj)
+    const postsHtml = (t.posts || []).map((p, i) => {
       const st = p.role === 'staff';
+      const body = tkLinkOrders(esc(_stripHtml(p.text)));
+      const trBtn = !st ? `<button class="tbtn" onclick="tkTranslatePost(${i}, this)">🌐 Prevedi</button>` : '';
       return `<div class="post${st?' staff':''}">
-        <div class="who">${st ? '👤 ' : '✉️ '}${esc(p.name||(st?'Podpora':'Stranka'))}</div>
-        <div class="txt">${esc(_stripHtml(p.text))}</div>
-      </div>`;
+          <div class="who"><span>${st ? '👤 ' : '✉️ '}${esc(p.name||(st?'Podpora':'Stranka'))}</span>${trBtn}</div>
+          <div class="txt">${body}</div>
+        </div>
+        <div id="tkTr-${i}" class="trbox" style="display:none"></div>`;
     }).join('');
+
     const bcls = t.status_id === '1' ? 's1' : (t.status_id === '3' ? 's3' : 'sx');
+    // predlog zamenjave naslovnika
+    const real = tkDetectRealCustomer(t);
+    const swapHtml = real ? `<div class="chip-swap" onclick="tkSwapCustomer('${esc(real.email)}','${esc(real.name).replace(/'/g,'&#39;')}')">↔ <b>Zamenjaj naslovnika</b> na ${esc(real.email)}${real.name ? ' ('+esc(real.name)+')' : ''} — trenutno gre odgovor na ${esc(t.email)}</div>` : '';
+
     det.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:12px;text-align:left">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:8px">
         <div>
-          <div style="font-size:14px;font-weight:800">${esc(t.subject||'(brez naslova)')}</div>
-          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${esc(t.fullname||'')} · ${esc(t.email||'')} · #${t.id}</div>
+          <div style="font-size:14.5px;font-weight:800">${tkFlag(t.subject + ' ' + _tkLastCustomerMsg)} ${tkLinkOrders(esc(t.subject||'(brez naslova)'))}</div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">
+            ${esc(t.fullname||'')} · <span id="tkCustEmail">${esc(t.email||'')}</span> · #${t.id}
+            <button class="tbtn" title="Ročno zamenjaj naslovnika" onclick="tkSwapCustomer('','')">✎</button>
+          </div>
         </div>
         <span class="badge ${bcls}">${esc(t.status_name||'')}</span>
       </div>
-      <div id="thread" style="text-align:left">${posts || '<div style="color:var(--text-tertiary);font-size:12px">Ni vsebine.</div>'}</div>`;
+      ${swapHtml}
+      <div id="tkThread">${postsHtml || '<div class="muted">Ni vsebine.</div>'}</div>`;
     document.getElementById('tkReplyBox').style.display = 'block';
     document.getElementById('tkReplyStatus').textContent = '';
-    const th = document.getElementById('thread');
-    if (th) th.scrollTop = th.scrollHeight;
+    document.getElementById('tkOrigNote').style.display = 'none';
+    // samodejno prevedi ZADNJE strankino sporočilo
+    if (custPosts.length) {
+      const lastIdx = (t.posts||[]).lastIndexOf(custPosts[custPosts.length-1]);
+      tkTranslatePost(lastIdx, null, true);
+    }
+    window.scrollTo(0, 0);
+    const conv = document.querySelector('.col-conv');
+    if (conv) conv.scrollTop = conv.scrollHeight;  // najnovejše spodaj → skoči na dno
   } catch(e) {
-    det.innerHTML = `<div style="color:var(--red);font-size:12px">✗ ${esc(e.message)}</div>`;
+    det.innerHTML = `<div style="color:var(--red)">✗ ${esc(e.message)}</div>`;
   }
 }
 
+// ── prevod strankinega posta v SL ──
+async function tkTranslatePost(idx, btn, silent) {
+  const box = document.getElementById('tkTr-' + idx);
+  if (!box || !_tkTicket) return;
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  const p = (_tkTicket.posts||[])[idx];
+  if (!p) return;
+  const raw = _stripHtml(p.text);
+  if (btn) btn.textContent = '⏳';
+  box.style.display = 'block';
+  box.textContent = '⏳ Prevajam...';
+  const out = await tkCallAI(`Prevedi naslednje sporočilo stranke v slovenščino. Vrni SAMO prevod, brez komentarjev. Če je že v slovenščini, ga vrni nespremenjenega.\n\n---\n${raw}`);
+  box.innerHTML = out ? ('🌐 <b>SL:</b> ' + tkLinkOrders(esc(out))) : '✗ Prevod ni uspel.';
+  if (btn) btn.textContent = '🌐 Prevedi';
+  if (silent && !out) box.style.display = 'none';
+}
+
+// ── zamenjava naslovnika ──
+async function tkSwapCustomer(email, name) {
+  if (!_tkCurrentId) return;
+  const newEmail = prompt('Nov email naslovnika (stranke):', email || '');
+  if (!newEmail || !newEmail.includes('@')) return;
+  const newName = prompt('Ime stranke (pusti prazno = ne spreminjaj):', name || '');
+  try {
+    const r = await fetch('/kayako-set-customer', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ticket_id: _tkCurrentId, email: newEmail.trim(), fullname: (newName||'').trim() }) });
+    const d = await r.json();
+    if (!d.ok) { alert('✗ ' + (d.error || 'napaka')); return; }
+    tkOpen(_tkCurrentId);   // osveži — email v glavi se posodobi, chip izgine
+    tkLoadInbox();
+  } catch(e) { alert('✗ ' + e.message); }
+}
+
+// ── AI osnutek (KB iz starih ticketov + Claude) ──
+async function tkAIDraft() {
+  if (!_tkLastCustomerMsg) { document.getElementById('tkAiPanel').textContent = 'Ni strankinega sporočila.'; return; }
+  const btn = document.getElementById('tkAiBtn');
+  const panel = document.getElementById('tkAiPanel');
+  btn.disabled = true; btn.textContent = '⏳ Pripravljam...';
+  panel.innerHTML = '<span class="muted">⏳ Iščem po bazi + pripravljam predlog...</span>';
+  try {
+    let kbCtx = '';
+    try {
+      const kb = await fetch('/kayako-kb-search', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ brand: tkBrand, query: _tkLastCustomerMsg, top_n: 8 }) });
+      const kd = await kb.json();
+      const pairs = kd.results || kd.pairs || [];
+      if (pairs.length) kbCtx = pairs.slice(0,8).map(p => `V: ${p.question||p.subject||''}\nO: ${p.answer||''}`).join('\n---\n');
+    } catch(e) {}
+    const prompt = `Si izkušen agent podpore za spletno trgovino ${tkBrand === 'silux' ? 'Silux (avto oprema)' : 'Maaarket'}. Stranka je poslala spodnje sporočilo. Napiši kratek, prijazen in konkreten odgovor V SLOVENŠČINI (agent ga bo pregledal in prevedel). Ne izmišljuj si podatkov o naročilu — če manjkajo, vljudno vprašaj.\n\nSPOROČILO STRANKE:\n${_tkLastCustomerMsg}\n\n${kbCtx ? 'PODOBNI STARI ODGOVORI (uporabi kot referenco za ton in vsebino):\n' + kbCtx : ''}\n\nVrni SAMO besedilo odgovora.`;
+    const out = await tkCallAI(prompt, 900);
+    if (!out) { panel.innerHTML = '<span style="color:var(--red)">✗ AI ni vrnil predloga.</span>'; return; }
+    panel.innerHTML = `<div class="aibox">${esc(out)}</div>
+      <button class="btn btn-o" style="margin-top:6px;font-size:11px;padding:5px 10px" onclick="tkInsertText(document.getElementById('tkAiDraftRaw').value)">↩ Vstavi v odgovor</button>
+      <textarea id="tkAiDraftRaw" style="display:none">${esc(out)}</textarea>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '🤖 AI osnutek';
+  }
+}
+
+function tkInsertText(text) {
+  const ta = document.getElementById('tkReplyText');
+  const cur = ta.value.trim();
+  ta.value = cur ? (cur + '\n\n' + text) : text;
+  ta.focus();
+}
+
+// ── prevedi & lektoriraj odgovor v jezik stranke ──
+async function tkTranslateReply() {
+  const ta = document.getElementById('tkReplyText');
+  const txt = ta.value.trim();
+  const status = document.getElementById('tkReplyStatus');
+  if (!txt) { status.textContent = '⚠ Najprej napiši odgovor.'; return; }
+  const btn = document.getElementById('tkTransBtn');
+  btn.disabled = true; btn.textContent = '⏳ Prevajam...';
+  try {
+    const ref = _tkLastCustomerMsg ? `\n\nJEZIK CILJNEGA PREVODA: isti jezik kot to strankino sporočilo:\n"""${_tkLastCustomerMsg.slice(0,600)}"""` : '\n\nCiljni jezik: slovenščina (samo lektoriraj).';
+    const out = await tkCallAI(`Lektoriraj in prevedi spodnji odgovor podpore v jezik stranke. Ohrani pomen, prijazen profesionalen ton, brez dodatkov. Vrni SAMO končno besedilo odgovora.${ref}\n\nODGOVOR (SL):\n${txt}`, 1000);
+    if (!out) { status.textContent = '✗ Prevod ni uspel.'; return; }
+    const note = document.getElementById('tkOrigNote');
+    note.textContent = '📝 Izvirnik (SL): ' + (txt.length > 140 ? txt.slice(0,140) + '…' : txt);
+    note.style.display = 'block';
+    ta.value = out;
+    status.textContent = '✓ Prevedeno — preveri in pošlji.';
+  } finally {
+    btn.disabled = false; btn.textContent = '✍🌐 Prevedi & lektoriraj';
+  }
+}
+
+// ── pošlji ──
 async function tkReply(closeTicket) {
   if (!_tkCurrentId) return;
   const txt = document.getElementById('tkReplyText').value.trim();
   const status = document.getElementById('tkReplyStatus');
-  if (!txt) { status.textContent = '⚠ Napiši odgovor.'; status.style.color = '#d97706'; return; }
+  if (!txt) { status.textContent = '⚠ Napiši odgovor.'; return; }
   const staff = document.getElementById('tkStaff').value;
   const b1 = document.getElementById('tkSendCloseBtn'), b2 = document.getElementById('tkSendBtn');
   b1.disabled = true; b2.disabled = true;
-  status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ Pošiljam...';
+  status.textContent = '⏳ Pošiljam...';
   try {
     const r = await fetch('/kayako-reply', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ ticket_id: _tkCurrentId, contents: txt, staff, close: !!closeTicket }) });
     const d = await r.json();
-    if (!d.ok) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + (d.error || 'napaka'); return; }
-    status.style.color = 'var(--green)';
-    status.textContent = closeTicket ? (d.closed ? '✓ Poslano & zaprto' : '✓ Poslano (zapiranje ni uspelo — zapri ročno)') : '✓ Poslano';
+    if (!d.ok) { status.textContent = '✗ ' + (d.error || 'napaka'); return; }
+    status.textContent = closeTicket ? (d.closed ? '✓ Poslano & zaprto' : '✓ Poslano (zapri ročno)') : '✓ Poslano';
     document.getElementById('tkReplyText').value = '';
+    document.getElementById('tkOrigNote').style.display = 'none';
     tkOpen(_tkCurrentId);
     if (closeTicket) tkLoadInbox();
   } catch(e) {
-    status.style.color = 'var(--red)'; status.textContent = '✗ ' + e.message;
+    status.textContent = '✗ ' + e.message;
   } finally {
     b1.disabled = false; b2.disabled = false;
   }
+}
+
+// ── makri ──
+async function tkLoadMacros() {
+  try {
+    const r = await fetch('/macros');
+    const d = await r.json();
+    _tkMacros = d.macros || [];
+    tkRenderMacros();
+  } catch(e) { document.getElementById('tkMacTree').textContent = '✗ Makri niso na voljo.'; }
+}
+
+function tkRenderMacros() {
+  const el = document.getElementById('tkMacTree');
+  if (!el) return;
+  const q = (document.getElementById('tkMacSearch').value || '').toLowerCase().trim();
+  const brandFiltered = _tkMacros.filter(m => {
+    const cat = (m.category || '').toLowerCase();
+    if (tkBrand === 'maaarket') return cat.includes('maaarket') || (!cat.includes('maaarket') && !cat.includes('silux'));
+    return cat.includes('silux') || (!cat.includes('maaarket') && !cat.includes('silux'));
+  });
+  const cats = {};
+  for (const m of brandFiltered) {
+    if (q && !(m.title||'').toLowerCase().includes(q) && !(m.content||'').toLowerCase().includes(q)) continue;
+    const c = m.category || 'Ostalo';
+    (cats[c] = cats[c] || []).push(m);
+  }
+  const keys = Object.keys(cats).sort();
+  if (!keys.length) { el.innerHTML = '<span class="muted">Ni zadetkov.</span>'; return; }
+  el.innerHTML = keys.map(c => {
+    const open = q || _tkMacOpen === c;
+    return `<div class="cat" onclick="_tkMacOpen=_tkMacOpen==='${esc(c).replace(/'/g,"\\'")}'?'':'${esc(c).replace(/'/g,"\\'")}';tkRenderMacros()">${open?'▾':'▸'} ${esc(c)} (${cats[c].length})</div>` +
+      (open ? cats[c].map(m => `<div class="mac" title="${esc((m.content||'').slice(0,300))}" onclick="tkInsertText(_tkMacros.find(x=>x.id==='${esc(m.id)}')?.content||'')">${esc(m.title)}</div>`).join('') : '');
+  }).join('');
+}
+
+// ── pogosti odgovori ──
+async function tkLoadCommon() {
+  const el = document.getElementById('tkCommon');
+  try {
+    const r = await fetch('/sporocanje-common?brand=' + tkBrand);
+    const d = await r.json();
+    const answers = d.answers || d.common || [];
+    if (!answers.length) { el.innerHTML = '<span class="muted">Ni shranjenih.</span>'; return; }
+    window._tkCommon = answers;
+    el.innerHTML = answers.slice(0, 25).map((a, i) =>
+      `<div class="mac" title="${esc((a.reply_sl||a.reply||'').slice(0,300))}" onclick="tkInsertText((_tkCommon[${i}].reply_sl||_tkCommon[${i}].reply||''))">${esc((a.question||a.reply_sl||'').slice(0,60))}</div>`).join('');
+  } catch(e) { el.innerHTML = '<span class="muted">Niso na voljo.</span>'; }
 }
 
 tkInit();

@@ -13524,6 +13524,7 @@ def _parse_ticket_xml(xml_text: str) -> list[dict]:
             creator   = p.get("creator", _xml_text(p, "creator", "2"))
             staff_id  = _xml_text(p, "staffid", "0")
             p_fullname  = _xml_text(p, "fullname")
+            p_dateline  = _xml_text(p, "dateline", "0")
             contents_node = p.find("contents")
             contents = ""
             if contents_node is not None:
@@ -13531,7 +13532,7 @@ def _parse_ticket_xml(xml_text: str) -> list[dict]:
             # creator=1 = staff, creator=2 = user/stranka
             role = "staff" if (staff_id != "0" or str(creator) == "1") else "customer"
             if contents:
-                posts.append({"role": role, "name": p_fullname, "text": contents})
+                posts.append({"role": role, "name": p_fullname, "text": contents, "ts": p_dateline})
         tickets.append({
             "id": ticket_id,
             "subject": subject,
@@ -13596,12 +13597,20 @@ async def kayako_staff():
 
 
 @app.get("/kayako-inbox")
-async def kayako_inbox(brand: str = "maaarket", status: int = 1, count: int = 100, start: int = 0):
-    """Seznam ticketov za brand + status (privzeto Odprto). Samo header info (hitro)."""
+async def kayako_inbox(brand: str = "maaarket", status: str = "open", count: int = 100, start: int = 0):
+    """Seznam ticketov za brand. status: 'open' (vse razen Zaprto — torej Odprto, V teku,
+    Naročila skupaj), 'closed' (Zaprto), ali številka za točen status. Samo header info."""
     dept = KAYAKO_DEPT.get(brand)
     if not dept:
         return {"ok": False, "error": f"neznan brand: {brand}"}
-    path = f"/Tickets/Ticket/ListAll/{dept}/{int(status)}/-1/-1/{int(count)}/{int(start)}/ticketid/DESC"
+    s = str(status).strip().lower()
+    if s == "open":
+        sid_path = "-1"      # vsi statusi, zaprte izločimo spodaj
+    elif s == "closed":
+        sid_path = "3"
+    else:
+        sid_path = str(int(s))
+    path = f"/Tickets/Ticket/ListAll/{dept}/{sid_path}/-1/-1/{int(count)}/{int(start)}/ticketid/DESC"
     url = _kayako_build_url(path)
     try:
         async with httpx.AsyncClient() as client:
@@ -13609,6 +13618,8 @@ async def kayako_inbox(brand: str = "maaarket", status: int = 1, count: int = 10
         if r.status_code != 200:
             return {"ok": False, "error": f"Kayako HTTP {r.status_code}", "body": r.text[:200]}
         tickets = _parse_ticket_xml(r.text)
+        if s == "open":
+            tickets = [t for t in tickets if str(t.get("status_id")) != "3"]
         out = []
         for t in tickets:
             out.append({
@@ -13616,9 +13627,9 @@ async def kayako_inbox(brand: str = "maaarket", status: int = 1, count: int = 10
                 "fullname": t["fullname"], "email": t["email"],
                 "created": t["created"], "replies": t["replies"],
                 "status_id": t["status_id"],
-                "status_name": KAYAKO_STATUS_NAMES.get(int(t["status_id"] or 0), t["status_id"]),
+                "status_name": "Zaprto" if str(t["status_id"]) == "3" else "Odprto",
             })
-        return {"ok": True, "brand": brand, "status": status, "count": len(out), "tickets": out}
+        return {"ok": True, "brand": brand, "status": s, "count": len(out), "tickets": out}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -13639,8 +13650,38 @@ async def kayako_ticket_detail(ticket_id: str):
         if not tickets:
             return {"ok": False, "error": "ticket ni najden"}
         t = tickets[0]
-        t["status_name"] = KAYAKO_STATUS_NAMES.get(int(t["status_id"] or 0), t["status_id"])
+        # kronološko: najstarejše zgoraj, najnovejše spodaj
+        try:
+            t["posts"] = sorted(t.get("posts", []), key=lambda p: int(p.get("ts") or 0))
+        except Exception:
+            pass
+        t["status_name"] = "Zaprto" if str(t.get("status_id")) == "3" else "Odprto"
         return {"ok": True, "ticket": t}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/kayako-set-customer")
+async def kayako_set_customer(data: dict):
+    """Zamenja naslovnika (stranko) ticketa — email + ime. Za tickete iz spletnega
+    obrazca, kjer je pošiljatelj shop@maaarket.si, prava stranka pa v telesu sporočila.
+    data: { ticket_id, email, fullname }"""
+    tid = "".join(c for c in str(data.get("ticket_id", "")) if c.isdigit())
+    email = (data.get("email") or "").strip()
+    fullname = (data.get("fullname") or "").strip()
+    if not tid or "@" not in email:
+        return {"ok": False, "error": "manjka ticket_id ali neveljaven email"}
+    try:
+        form = _kayako_write_auth()
+        form["email"] = email
+        if fullname:
+            form["fullname"] = fullname
+        async with httpx.AsyncClient() as client:
+            r = await client.put(f"{KAYAKO_API_URL}?e=/Tickets/Ticket/{tid}", data=form, timeout=20)
+            print(f"[tickets] Set customer ticket {tid} -> {email}: HTTP {r.status_code} | {r.text[:120]}")
+        if r.status_code not in (200, 204):
+            return {"ok": False, "error": f"Kayako HTTP {r.status_code}", "body": r.text[:200]}
+        return {"ok": True, "email": email, "fullname": fullname}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
