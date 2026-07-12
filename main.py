@@ -2813,6 +2813,16 @@ def zaloga_page():
     })
 
 
+@app.get("/kayako", response_class=HTMLResponse)
+def kayako_page():
+    """Samostojni Kayako ticket vmesnik (za podporo ekipo)."""
+    return FileResponse("static/kayako.html", headers={
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    })
+
+
 # Verzija aplikacije — nabiralci jo periodično preverijo; če se spremeni, jih opozori/osveži.
 APP_VERSION = os.environ.get("RENDER_GIT_COMMIT", "") or datetime.now().strftime("%Y%m%d%H")
 
@@ -13562,6 +13572,152 @@ async def _fetch_ticket_posts(client_h: httpx.AsyncClient, ticket_id: str) -> li
     except Exception as e:
         print(f"[kayako] Ticket {ticket_id} error: {e}")
         return []
+
+
+# ─── KAYAKO TICKETS VMESNIK (inbox + odgovarjanje prek Suban) ────────────────
+
+KAYAKO_STAFF = {
+    "admin":      1,
+    "Armin1":     11,
+    "BojanD":     15,
+    "DejaH":      16,
+    "AlmaV":      17,
+    "NemanjaN":   18,
+    "ErikaV":     19,
+    "Maaarketrs": 20,
+}
+KAYAKO_STATUS_NAMES = {1: "Odprto", 2: "V teku", 3: "Zaprto", 4: "Naročila"}
+
+
+@app.get("/kayako-staff")
+async def kayako_staff():
+    """Seznam staff uporabnikov (username -> id) za izbiro pošiljatelja."""
+    return {"ok": True, "staff": KAYAKO_STAFF, "statuses": KAYAKO_STATUS_NAMES}
+
+
+@app.get("/kayako-inbox")
+async def kayako_inbox(brand: str = "maaarket", status: int = 1, count: int = 100, start: int = 0):
+    """Seznam ticketov za brand + status (privzeto Odprto). Samo header info (hitro)."""
+    dept = KAYAKO_DEPT.get(brand)
+    if not dept:
+        return {"ok": False, "error": f"neznan brand: {brand}"}
+    path = f"/Tickets/Ticket/ListAll/{dept}/{int(status)}/-1/-1/{int(count)}/{int(start)}/ticketid/DESC"
+    url = _kayako_build_url(path)
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, timeout=30)
+        if r.status_code != 200:
+            return {"ok": False, "error": f"Kayako HTTP {r.status_code}", "body": r.text[:200]}
+        tickets = _parse_ticket_xml(r.text)
+        out = []
+        for t in tickets:
+            out.append({
+                "id": t["id"], "subject": t["subject"],
+                "fullname": t["fullname"], "email": t["email"],
+                "created": t["created"], "replies": t["replies"],
+                "status_id": t["status_id"],
+                "status_name": KAYAKO_STATUS_NAMES.get(int(t["status_id"] or 0), t["status_id"]),
+            })
+        return {"ok": True, "brand": brand, "status": status, "count": len(out), "tickets": out}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/kayako-ticket/{ticket_id}")
+async def kayako_ticket_detail(ticket_id: str):
+    """Cel ticket s pogovorom (vsi posti)."""
+    safe_id = "".join(c for c in ticket_id if c.isdigit())
+    if not safe_id:
+        return {"ok": False, "error": "neveljaven id"}
+    url = _kayako_build_url(f"/Tickets/Ticket/{safe_id}")
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, timeout=25)
+        if r.status_code != 200:
+            return {"ok": False, "error": f"Kayako HTTP {r.status_code}"}
+        tickets = _parse_ticket_xml(r.text)
+        if not tickets:
+            return {"ok": False, "error": "ticket ni najden"}
+        t = tickets[0]
+        t["status_name"] = KAYAKO_STATUS_NAMES.get(int(t["status_id"] or 0), t["status_id"])
+        return {"ok": True, "ticket": t}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _kayako_write_auth() -> dict:
+    """Form auth polja za POST/PUT (isti vzorec kot spam->trash, ki deluje)."""
+    salt = str(random.randint(1000000000, 9999999999))
+    raw_sig = hmac.new(
+        key=KAYAKO_SECRET.encode("utf-8"),
+        msg=salt.encode("utf-8"),
+        digestmod=hashlib.sha256,
+    ).digest()
+    return {
+        "apikey": KAYAKO_API_KEY,
+        "salt": salt,
+        "signature": base64.b64encode(raw_sig).decode("utf-8"),
+    }
+
+
+@app.post("/kayako-reply")
+async def kayako_reply(data: dict):
+    """Pošlje odgovor na ticket (Kayako pošlje email stranki) in po želji zapre ticket.
+    data: { ticket_id, contents, staff (username iz KAYAKO_STAFF) ali staff_id, close: true/false }"""
+    tid = "".join(c for c in str(data.get("ticket_id", "")) if c.isdigit())
+    contents = (data.get("contents") or "").strip()
+    staff_id = data.get("staff_id")
+    if not staff_id:
+        staff_id = KAYAKO_STAFF.get(str(data.get("staff", "")))
+    close = bool(data.get("close", True))
+    if not tid:
+        return {"ok": False, "error": "manjka ticket_id"}
+    if not contents:
+        return {"ok": False, "error": "prazen odgovor"}
+    if not staff_id:
+        return {"ok": False, "error": "neznan staff (izberi pošiljatelja)"}
+    try:
+        # 1) POST odgovora — Kayako ga doda v ticket in pošlje email stranki
+        form = _kayako_write_auth()
+        form.update({
+            "ticketid": tid,
+            "contents": contents,
+            "staffid": str(int(staff_id)),
+        })
+        async with httpx.AsyncClient() as client:
+            r = await client.post(f"{KAYAKO_API_URL}?e=/Tickets/TicketPost", data=form, timeout=30)
+            print(f"[tickets] Reply ticket {tid} staff {staff_id}: HTTP {r.status_code} | {r.text[:150]}")
+            if r.status_code not in (200, 201):
+                return {"ok": False, "error": f"Kayako reply HTTP {r.status_code}", "body": r.text[:300]}
+            # 2) po želji zapri ticket (status 3 = Zaprto)
+            closed = False
+            if close:
+                form2 = _kayako_write_auth()
+                form2["ticketstatusid"] = "3"
+                r2 = await client.put(f"{KAYAKO_API_URL}?e=/Tickets/Ticket/{tid}", data=form2, timeout=20)
+                print(f"[tickets] Close ticket {tid}: HTTP {r2.status_code} | {r2.text[:120]}")
+                closed = r2.status_code in (200, 204)
+        return {"ok": True, "ticket_id": tid, "closed": closed}
+    except Exception as e:
+        print(f"[tickets] Reply error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/kayako-set-status")
+async def kayako_set_status(data: dict):
+    """Ročna sprememba statusa ticketa. data: { ticket_id, status_id }"""
+    tid = "".join(c for c in str(data.get("ticket_id", "")) if c.isdigit())
+    sid = int(data.get("status_id", 0) or 0)
+    if not tid or sid not in KAYAKO_STATUS_NAMES:
+        return {"ok": False, "error": "neveljaven ticket_id/status_id"}
+    try:
+        form = _kayako_write_auth()
+        form["ticketstatusid"] = str(sid)
+        async with httpx.AsyncClient() as client:
+            r = await client.put(f"{KAYAKO_API_URL}?e=/Tickets/Ticket/{tid}", data=form, timeout=20)
+        return {"ok": r.status_code in (200, 204), "status": KAYAKO_STATUS_NAMES[sid]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 def _tickets_to_kb(tickets_with_posts: list[dict]) -> dict:
     """
