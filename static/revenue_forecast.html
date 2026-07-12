@@ -107,10 +107,25 @@
     .card { padding: 12px !important; }
     /* tabele/seznami naj ne silijo čez rob */
     .scroll-x { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+
+    /* ── MOBILNI POD-ZAVIHKI (Varianta B) ── */
+    .rf-mobtabs { display:flex !important; gap:4px; background:var(--surface,#fff); border:1px solid var(--border,#e3e6ef); border-radius:10px; padding:4px; margin-bottom:10px; position:sticky; top:4px; z-index:50; box-shadow:0 2px 10px rgba(20,24,40,0.06); }
+    .rf-mobtab { flex:1; text-align:center; padding:8px 2px; border-radius:7px; font-size:11px; font-weight:600; color:var(--text-secondary,#5a6178); background:transparent; border:none; font-family:inherit; cursor:pointer; }
+    .rf-mobtab.active { background:var(--accent,#3a6fff); color:#fff; }
+    /* skrivanje sekcij glede na aktivni zavihek */
+    body[data-rfmtab="vnos"] .rfm-graf, body[data-rfmtab="vnos"] .rfm-analitika, body[data-rfmtab="vnos"] .rfm-zgod { display:none !important; }
+    body[data-rfmtab="graf"] .rfm-vnos, body[data-rfmtab="graf"] .rfm-analitika, body[data-rfmtab="graf"] .rfm-zgod { display:none !important; }
+    body[data-rfmtab="analitika"] .rfm-vnos, body[data-rfmtab="analitika"] .rfm-graf, body[data-rfmtab="analitika"] .rfm-zgod { display:none !important; }
+    body[data-rfmtab="zgod"] .rfm-vnos, body[data-rfmtab="zgod"] .rfm-graf, body[data-rfmtab="zgod"] .rfm-analitika { display:none !important; }
+    /* trak dnevov v tednu: namesto 7 stisnjenih stolpcev → vodoravno drsni čipi */
+    .wk7 { display:flex !important; overflow-x:auto; -webkit-overflow-scrolling:touch; gap:6px; padding-bottom:4px; }
+    .wk7 > div { min-width:104px; flex-shrink:0; }
   }
+  /* desktop: zavihki skriti, vse sekcije vidne */
+  .rf-mobtabs { display:none; }
 </style>
 </head>
-<body>
+<body data-rfmtab="vnos">
 <div class="container">
   <div class="header">
     <div>
@@ -130,9 +145,16 @@
   </div>
 
   <div id="page-napoved">
+  <!-- MOBILNI POD-ZAVIHKI (samo ≤600px; desktop nespremenjen) -->
+  <div class="rf-mobtabs" id="rfMobTabs">
+    <button class="rf-mobtab active" id="rfmt-vnos" onclick="rfMobTab('vnos')">✏️ Vnos</button>
+    <button class="rf-mobtab" id="rfmt-graf" onclick="rfMobTab('graf')">📈 Graf</button>
+    <button class="rf-mobtab" id="rfmt-analitika" onclick="rfMobTab('analitika')">📊 Analitika</button>
+    <button class="rf-mobtab" id="rfmt-zgod" onclick="rfMobTab('zgod')">🗓 Zgodovina</button>
+  </div>
   <div class="grid-main">
     <!-- LEVO: Vnos -->
-    <div>
+    <div class="rfm-vnos">
       <div class="card" style="margin-bottom:12px">
         <div class="card-title">Nov vnos (DANES)</div>
         <div class="mode-tabs">
@@ -204,7 +226,7 @@
 
     <!-- DESNO: Grafi + zgodovina -->
     <div>
-      <div class="card">
+      <div class="card rfm-graf">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div class="card-title" style="margin-bottom:0">Napoved za danes</div>
           <span class="info-pill" id="forecast-pill">—</span>
@@ -222,7 +244,7 @@
       </div>
 
       <!-- ANALITIKA -->
-      <div class="card" style="margin-top:12px">
+      <div class="card rfm-analitika" style="margin-top:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div class="card-title" style="margin-bottom:0">📈 Analitika zadnjih 30 dni</div>
         </div>
@@ -324,7 +346,7 @@
       </div>
 
       <!-- Zgodovina -->
-      <div class="card" style="margin-top:12px">
+      <div class="card rfm-zgod" style="margin-top:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div class="card-title" style="margin-bottom:0">Zgodovina (zadnjih 30 dni)</div>
           <button class="btn btn-soft" style="font-size:11px;padding:5px 10px" onclick="loadHistory()">↺ Osveži</button>
@@ -1152,7 +1174,7 @@ function renderWeekdayAnalysis(finals) {
   // Zadnji element = najnovejši ta weekday
   const lastByWeekday = byWeekday.map(arr => arr.length ? arr[arr.length - 1] : null);
 
-  let html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px">';
+  let html = '<div class="wk7" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px">';
   for (let i = 0; i < 7; i++) {
     const wd = order[i];  // dejanski weekday index (1=Pon, ..., 0=Ned)
     const isBest = i === bestIdx && dataCounts[i] > 0;
@@ -1763,6 +1785,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ═══ RVC Maaarket ═══
 let rvcChart = null;
+
+// ── Mobilni pod-zavihki (Varianta B, samo ≤600px — desktop jih ne vidi) ──
+function rfMobTab(t) {
+  document.body.setAttribute('data-rfmtab', t);
+  ['vnos','graf','analitika','zgod'].forEach(k => {
+    const b = document.getElementById('rfmt-' + k);
+    if (b) b.classList.toggle('active', k === t);
+  });
+  // grafi v skritih sekcijah se ob prikazu lahko izrišejo napačno → resize ob preklopu
+  try { window.dispatchEvent(new Event('resize')); } catch(e) {}
+}
 
 function switchRvcPage(p) {
   document.getElementById('page-napoved').style.display = (p === 'napoved') ? '' : 'none';
