@@ -436,6 +436,30 @@ function toEur(amount, currency) {
 let _skuToPid = {};   // SKU → Google Shopping g:id (za maaarket admin link)
 const MAAARKET_BASE = 'https://api.maaarket.si/nova/resources/products/';
 
+// ── SALE oznake (razprodaja) — set polnih SKU-jev (UPPER) iz zaloge ──
+let _saleSkus = new Set();
+let _saleRoots = new Set();   // koreni (del pred '_') — za ujemanje variant
+async function loadSaleSkus() {
+  try {
+    const r = await fetch('/zaloga-sale');
+    const d = await r.json();
+    if (d && d.ok && d.skus) {
+      _saleSkus = new Set(d.skus.map(s => String(s).toUpperCase()));
+      _saleRoots = new Set(d.skus.map(s => String(s).toUpperCase().split('_')[0]));
+      if (typeof renderTable === 'function' && allRows.length) renderTable(allRows);
+    }
+  } catch(e) { /* tiho — oznaka je opcijska */ }
+}
+loadSaleSkus();
+
+// ali je SKU na razprodaji? ujema po POLNEM SKU ali po KORENU (del pred '_')
+function isSaleSku(sku) {
+  const s = (sku || '').trim().toUpperCase();
+  if (!s) return false;
+  if (_saleSkus.has(s)) return true;
+  return _saleRoots.has(s.split('_')[0]);
+}
+
 // naloži mapiranje SKU → g:id iz maaarket Google Shopping feeda (za hitri link do admina)
 async function loadSkuPidMap() {
   try {
@@ -465,10 +489,11 @@ loadSkuPidMap();
 // Cel SKU je klikabilen — brez dodatne ikone.
 function skuHtml(sku) {
   const s = (sku || '').trim();
+  const saleBadge = isSaleSku(s) ? ' <span title="Ta izdelek je na razprodaji (SALE)" style="display:inline-flex;align-items:center;background:#ec4899;color:#fff;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;vertical-align:middle;letter-spacing:.3px">🏷 SALE</span>' : '';
   const pid = _skuToPid[s] || _skuToPid[s.toUpperCase()];
-  if (!pid) return escHtml(s);
+  if (!pid) return escHtml(s) + saleBadge;
   const url = MAAARKET_BASE + encodeURIComponent(pid) + '?tab=vsebina';
-  return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>`;
+  return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>` + saleBadge;
 }
 // majhen helper za varen izpis SKU (SKU-ji so interni, a vseeno)
 function escHtml(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
