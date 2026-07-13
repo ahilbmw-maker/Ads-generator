@@ -660,6 +660,9 @@
 
     /* Sidebar kartice */
     .manko-list { max-height: none; }
+    /* FIX dvojni scroll na mobilu: sidebar seznami (Manjko/HS Plus/Boxi) naj se
+       raztegnejo z vsebino — scrollaš samo stran, ne ugnezdenega bloka. */
+    .side-tab-body { max-height: none !important; overflow-y: visible !important; }
     .side-card { padding: 16px; }
 
     /* RS box-bar mobile: inline bar v polici SKRIJEMO — uporabimo spodnji sticky bar */
