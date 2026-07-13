@@ -1564,6 +1564,30 @@ def _zaloga_save_extra_pos(d: dict):
         print(f"[extra_pos] save err: {e}")
 
 
+# ─── SALE oznake (razprodaja / znižana cena) — set SKU-jev ───
+ZALOGA_SALE_FILE = ZALOGA_DIR / "sale_skus.json"
+
+def _zaloga_load_sale() -> set:
+    """Naloži množico SKU-jev z oznako SALE (velike črke)."""
+    try:
+        if ZALOGA_SALE_FILE.exists():
+            d = json.loads(ZALOGA_SALE_FILE.read_text(encoding="utf-8"))
+            if isinstance(d, list):
+                return set(str(x).strip().upper() for x in d if str(x).strip())
+    except Exception:
+        pass
+    return set()
+
+def _zaloga_save_sale(skus: set):
+    """Atomično zapiši SALE SKU-je."""
+    try:
+        tmp = ZALOGA_SALE_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(sorted(skus), ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, ZALOGA_SALE_FILE)
+    except Exception as e:
+        print(f"[sale] save err: {e}")
+
+
 def _zaloga_market(m: str) -> str:
     """Normalizira market kodo. Privzeto 'slo'."""
     m = (m or "slo").strip().lower()
@@ -20802,6 +20826,82 @@ async def zaloga_extra_positions_get():
     """Vrne vse dodatne (backup) lokacije: { sku: [pozicije...] }.
     Frontend to zlije s primarno pozicijo iz CSV za prikaz."""
     return {"ok": True, "extra": _zaloga_load_extra_pos()}
+
+
+@app.get("/zaloga-sale")
+async def zaloga_sale_get():
+    """Vrne vse SKU-je z oznako SALE (razprodaja/znižano)."""
+    return {"ok": True, "skus": sorted(_zaloga_load_sale())}
+
+
+@app.post("/zaloga-sale-toggle")
+async def zaloga_sale_toggle(data: dict):
+    """Preklopi SALE oznako za en SKU. data: { sku, on: true/false }.
+    Če 'on' ni podan, preklopi trenutno stanje."""
+    sku = (data.get("sku") or "").strip().upper()
+    if not sku:
+        return {"ok": False, "error": "manjka SKU"}
+    skus = _zaloga_load_sale()
+    if "on" in data:
+        want = bool(data.get("on"))
+    else:
+        want = sku not in skus
+    if want:
+        skus.add(sku)
+    else:
+        skus.discard(sku)
+    _zaloga_save_sale(skus)
+    return {"ok": True, "sku": sku, "on": want, "total": len(skus)}
+
+
+@app.post("/zaloga-sale-bulk")
+async def zaloga_sale_bulk(data: dict):
+    """Množično doda/odstrani SALE po KORENU SKU-ja. data: { roots: "BATHFLEX\nSUNGUARD", on: true/false }.
+    Za vsak koren najde vse SKU-je iz zaloge, ki se začnejo s korenom (koren, koren_*, koren-*),
+    npr. koren BATHFLEX označi BATHFLEX_white in BATHFLEX_black."""
+    raw = data.get("roots") or ""
+    turn_on = bool(data.get("on", True))
+    roots = [r.strip().upper() for r in re.split(r"[\r\n,;]+", raw) if r.strip()]
+    if not roots:
+        return {"ok": False, "error": "ni vnesenih korenov"}
+    # zberi vse SKU-je iz zaloge
+    all_skus = []
+    try:
+        if STOCK_CSV_FILE.exists():
+            import csv as _csv
+            from io import StringIO as _SIO
+            text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+            first_line = text.split("\n", 1)[0]
+            sep = ";" if first_line.count(";") > first_line.count(",") else ","
+            for row in _csv.DictReader(_SIO(text), delimiter=sep):
+                s = (row.get("product_sku") or row.get("sku") or "").strip()
+                if s:
+                    all_skus.append(s)
+    except Exception as e:
+        return {"ok": False, "error": f"branje zaloge: {e}"}
+
+    def _root_of(s):
+        return s.split("_")[0].strip().upper()
+
+    skus = _zaloga_load_sale()
+    matched = {}   # koren -> [ujeti SKU-ji]
+    not_found = []
+    for root in roots:
+        hits = [s for s in all_skus if _root_of(s) == root]
+        if not hits:
+            not_found.append(root)
+            continue
+        matched[root] = hits
+        for s in hits:
+            if turn_on:
+                skus.add(s.upper())
+            else:
+                skus.discard(s.upper())
+    _zaloga_save_sale(skus)
+    total_hits = sum(len(v) for v in matched.values())
+    return {"ok": True, "on": turn_on, "matched_roots": len(matched),
+            "total_skus": total_hits, "detail": matched, "not_found": not_found,
+            "total_sale": len(skus)}
 
 @app.post("/zaloga-extra-position-add")
 async def zaloga_extra_position_add(data: dict):

@@ -3974,6 +3974,21 @@ input[type="text"].error { border-color: var(--red) !important; }
               <button id="zalogaPushDebugBtn" onclick="zalogaShowPushDebug()" title="Pokaži zadnja pošiljanja v siluxar (kaj poslano, status, odgovor)" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--text-secondary);background:transparent;border:none;width:100%;text-align:left;font-family:inherit" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
                 <span>🔍</span><span>Debug pošiljanj</span>
               </button>
+              <!-- SALE sekcija -->
+              <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:6px">
+                <button id="zalSaleFilterBtn" onclick="zalToggleSaleFilter()" title="Prikaži samo izdelke z oznako SALE" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--text-secondary);background:transparent;border:none;width:100%;text-align:left;font-family:inherit" onmouseover="if(!_zalSaleFilter)this.style.background='var(--bg-secondary)'" onmouseout="if(!_zalSaleFilter)this.style.background='transparent'">
+                  <span>🏷</span><span>Prikaži samo SALE</span>
+                </button>
+                <div style="padding:6px 10px 2px">
+                  <div style="font-size:10px;color:var(--text-tertiary);margin-bottom:4px">Množično SALE po korenu (npr. BATHFLEX označi vse variante):</div>
+                  <textarea id="zalSaleBulkText" placeholder="BATHFLEX&#10;SUNGUARD&#10;..." style="width:100%;min-height:56px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:11px;font-family:'DM Mono',monospace;resize:vertical;box-sizing:border-box"></textarea>
+                  <div style="display:flex;gap:5px;margin-top:5px">
+                    <button onclick="zalSaleBulkAdd(true)" style="flex:1;padding:6px;background:#ec4899;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🏷 Označi</button>
+                    <button onclick="zalSaleBulkAdd(false)" style="flex:1;padding:6px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Odstrani</button>
+                  </div>
+                  <div id="zalSaleBulkStatus" style="font-size:10px;margin-top:4px;color:var(--text-secondary)"></div>
+                </div>
+              </div>
               <button id="zalogaResetBtn" onclick="zalogaReset(this)" title="Zbriše celo shranjeno zalogo (CSV). Po tem Sinhroniziraj zgradi na novo." style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--red);background:transparent;border:none;border-top:1px solid var(--border);margin-top:4px;padding-top:10px;width:100%;text-align:left;font-family:inherit;border-radius:0 0 6px 6px" onmouseover="this.style.background='rgba(239,68,68,0.06)'" onmouseout="this.style.background='transparent'">
                 <span>🗑</span><span>Počisti zalogo</span>
               </button>
@@ -16201,6 +16216,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let _zalogaData = [];
 let _zalExtraPos = {};   // sku → [dodatne lokacije] (backup zaloga)
+let _zalSale = new Set(); // SKU-ji (UPPER) z oznako SALE (razprodaja/znižano)
 let _pozChanged = new Set();   // SKU-ji s SPREMENJENO pozicijo (za pošiljanje samo sprememb v siluxar)
 let _zalogaSortCol = 'stock';
 let _zalogaSortDir = -1; // -1 = desc (največ zaloge najprej)
@@ -16569,6 +16585,12 @@ async function zalogaLoad() {
       const ed = await er.json();
       _zalExtraPos = (ed && ed.ok && ed.extra) ? ed.extra : {};
     } catch(e) { _zalExtraPos = {}; }
+    // naloži SALE oznake
+    try {
+      const sr = await fetch('/zaloga-sale');
+      const sd = await sr.json();
+      _zalSale = new Set((sd && sd.ok && sd.skus) ? sd.skus.map(s => String(s).toUpperCase()) : []);
+    } catch(e) { _zalSale = new Set(); }
     // Posodobi info
     const info = document.getElementById('zalogaInfo');
     const dt = data.uploaded_at ? new Date(data.uploaded_at).toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
@@ -16645,6 +16667,56 @@ function _zalIsExternal(it) {
   return ((it.warehouse || '').trim().toLowerCase() === 'external');
 }
 
+// ── SALE oznake (razprodaja / znižano) ──
+let _zalSaleFilter = false;   // filter: prikaži samo SALE
+
+async function zalToggleSale(sku, btn) {
+  if (!sku) return;
+  const on = !_zalSale.has(sku.toUpperCase());
+  try {
+    const r = await fetch('/zaloga-sale-toggle', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ sku, on }) });
+    const d = await r.json();
+    if (!d.ok) return;
+    if (d.on) _zalSale.add(sku.toUpperCase()); else _zalSale.delete(sku.toUpperCase());
+    zalogaRender();  // prerisi (obarvanje + gumb)
+  } catch(e) {}
+}
+
+function zalToggleSaleFilter() {
+  _zalSaleFilter = !_zalSaleFilter;
+  const b = document.getElementById('zalSaleFilterBtn');
+  if (b) { b.style.background = _zalSaleFilter ? '#ec4899' : 'transparent'; b.style.color = _zalSaleFilter ? '#fff' : 'var(--text-secondary)'; }
+  _zalogaPage = 1;
+  zalogaRender();
+}
+
+async function zalSaleBulkAdd(turnOn) {
+  const ta = document.getElementById('zalSaleBulkText');
+  const status = document.getElementById('zalSaleBulkStatus');
+  const raw = (ta?.value || '').trim();
+  if (!raw) { if(status){status.style.color='#d97706';status.textContent='Vnesi vsaj en koren SKU.';} return; }
+  if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ Obdelujem...'; }
+  try {
+    const r = await fetch('/zaloga-sale-bulk', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ roots: raw, on: !!turnOn }) });
+    const d = await r.json();
+    if (!d.ok) { if(status){status.style.color='var(--red)';status.textContent='✗ '+(d.error||'napaka');} return; }
+    // osveži lokalni set
+    try {
+      const sr = await fetch('/zaloga-sale'); const sd = await sr.json();
+      _zalSale = new Set((sd && sd.ok && sd.skus) ? sd.skus.map(s => String(s).toUpperCase()) : []);
+    } catch(e) {}
+    zalogaRender();
+    let msg = (turnOn ? '✓ Označenih ' : '✓ Odstranjenih ') + d.total_skus + ' SKU-jev (' + d.matched_roots + ' korenov)';
+    if (d.not_found && d.not_found.length) msg += ' · ⚠ brez zadetka: ' + d.not_found.slice(0,6).join(', ') + (d.not_found.length>6?'…':'');
+    if (status) { status.style.color = d.total_skus ? 'var(--green)' : '#d97706'; status.textContent = msg; }
+    if (turnOn && ta) ta.value = '';
+  } catch(e) {
+    if (status) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + e.message; }
+  }
+}
+
 // ⚙ Orodja dropdown (toolbar) — toggle + zapri ob kliku zunaj
 function zalogaToolsToggle(ev){
   if (ev) ev.stopPropagation();
@@ -16678,6 +16750,7 @@ function zalogaRender() {
   // Filter
   let items = _zalogaData.filter(it => {
     if (!showExternal && _zalIsExternal(it)) return false;  // privzeto skrij skladišče=external
+    if (_zalSaleFilter && !_zalSale.has((it.product_sku||'').trim().toUpperCase())) return false;
     if (onlyStock && (parseInt(it.stock) || 0) <= 0) return false;
     if (!isNaN(pMin) || !isNaN(pMax)) {
       const pr = parseFloat(it.price) || 0;
@@ -16772,7 +16845,8 @@ function zalogaRender() {
     const price = parseFloat(it.price) || 0;
     const stockColor = stock > 50 ? 'var(--green)' : stock > 10 ? '#d97706' : stock > 0 ? 'var(--red)' : 'var(--text-tertiary)';
     const obratColor = stock30 > 10 ? '#16a34a' : stock30 > 3 ? '#d97706' : stock30 > 0 ? 'var(--red)' : 'var(--text-tertiary)';
-    const rowBg = stock === 0 ? 'rgba(0,0,0,0.02)' : 'var(--surface)';
+    const _isSale = _zalSale.has((it.product_sku||'').trim().toUpperCase());
+    const rowBg = _isSale ? 'rgba(236,72,153,0.09)' : (stock === 0 ? 'rgba(0,0,0,0.02)' : 'var(--surface)');
     const rowOpacity = stock === 0 ? '0.5' : '1';
 
     var _nazivKratko = (it.title || '').length > 24 ? (it.title || '').slice(0, 24).trim() + '…' : (it.title || '');
@@ -16783,6 +16857,7 @@ function zalogaRender() {
       + '<span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:90px;font-size:14px" title="' + esc(it.product_sku) + '">' + esc(it.product_sku||'—') + '</span>'
       + ((it.warehouse||'').trim().toLowerCase() === 'silux2' ? '<span class="zal-tag-sklad2">🏬 Skladišče2</span>' : '')
       + '<button class="zal-c-copy" onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(it.product_sku||'') + '\').then(()=>{this.textContent=\'✓ Kopirano\';this.style.background=\'var(--green)\';this.style.color=\'#fff\';this.style.borderColor=\'var(--green)\';setTimeout(()=>{this.textContent=\'📋 Kopiraj\';this.style.background=\'\';this.style.color=\'\';this.style.borderColor=\'\'},1500)})" title="Kopiraj SKU" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="if(this.textContent!==\'✓ Kopirano\'){this.style.borderColor=\'\';this.style.color=\'\'}">📋 Kopiraj</button>'
+      + '<button class="zal-c-sale zaloga-mobile-hide" onclick="event.stopPropagation();zalToggleSale(\'' + esc((it.product_sku||'').replace(/'/g,"\\'")) + '\',this)" title="' + (_isSale ? 'Odstrani SALE oznako' : 'Označi kot SALE (razprodaja/znižano)') + '" style="flex-shrink:0;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;' + (_isSale ? 'background:#ec4899;border:1px solid #ec4899;color:#fff' : 'background:var(--surface2);border:1px solid var(--border);color:var(--text-tertiary)') + '">🏷 SALE</button>'
       + '</div>'
       + '<span class="zal-c-title" style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px" title="' + esc(it.title) + '">' + esc(it.title||'—') + '</span>'
       + (function(){
