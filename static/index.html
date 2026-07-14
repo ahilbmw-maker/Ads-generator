@@ -16935,9 +16935,16 @@ async function zalGrafLoad(sku, title, days) {
 }
 
 // trenutna zaloga izdelka iz _zalogaData (za dneve zaloge + priporočilo)
+// Trenutna zaloga izdelka — SEŠTEJ vse zapise z istim SKU (isti izdelek je lahko
+// v več skladiščih: silux1 + silux2). Sicer bi upoštevali le prvega in podcenili zalogo
+// → napačno priporočilo cene. External (zunanje) NE štejemo — ni lastna zaloga.
 function _zalStockOf(sku) {
-  const it = (_zalogaData||[]).find(x => (x.product_sku||'').trim().toUpperCase() === String(sku).trim().toUpperCase());
-  return it ? (parseInt(it.stock)||0) : null;
+  const key = String(sku).trim().toUpperCase();
+  const hits = (_zalogaData||[]).filter(x =>
+    (x.product_sku||'').trim().toUpperCase() === key &&
+    (x.warehouse||'').trim().toLowerCase() !== 'external');
+  if (!hits.length) return null;
+  return hits.reduce((sum, it) => sum + (parseInt(it.stock)||0), 0);
 }
 
 // linearni trend (least squares) → smer + %
