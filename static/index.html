@@ -14242,9 +14242,17 @@ function aiIzdRender(sales, from, to) {
   const skus = Object.keys(sales);
   document.getElementById('aiIzdEmpty').style.display = skus.length ? 'none' : 'block';
   // enotna os datumov (od–do)
-  const allDates = [];
+  const allDatesFull = [];
   const dFrom = new Date(from), dTo = new Date(to);
-  for (let d = new Date(dFrom); d <= dTo; d.setDate(d.getDate()+1)) allDates.push(_localDate(d));
+  for (let d = new Date(dFrom); d <= dTo; d.setDate(d.getDate()+1)) allDatesFull.push(_localDate(d));
+
+  // Odreži PRAZEN REP: zadnji dnevi, za katere NOBEN SKU nima podatka (npr. današnji
+  // dan še ni obračunan). Trend se ne popači zaradi lažnih ničel.
+  const _hasAny = {};
+  skus.forEach(sku => { (sales[sku]||[]).forEach(r => { _hasAny[r.date] = true; }); });
+  let _lastIdx = -1;
+  allDatesFull.forEach((dt, i) => { if (_hasAny[dt]) _lastIdx = i; });
+  const allDates = _lastIdx >= 0 ? allDatesFull.slice(0, _lastIdx + 1) : allDatesFull;
 
   // datasets + kartice
   const datasets = [];
@@ -16956,7 +16964,13 @@ function zalGrafRender(sku, title, sales, fromS, toS, days) {
   for (let d = new Date(fromS); d <= new Date(toS); d.setDate(d.getDate()+1)) dates.push(_localDate(d));
   const rows = sales[sku] || sales[String(sku).toUpperCase()] || [];
   const byDate = {}; rows.forEach(r => byDate[r.date] = r.sales);
-  const series = dates.map(dt => byDate[dt] != null ? byDate[dt] : 0);
+  // Odreži PRAZEN REP: dnevi na koncu obdobja, za katere API nima podatka (npr. današnji
+  // dan še ni obračunan), izpustimo — sicer bi na grafu zavajajoče padli na 0.
+  let lastWithData = -1;
+  dates.forEach((dt, i) => { if (byDate[dt] != null) lastWithData = i; });
+  const effDates = lastWithData >= 0 ? dates.slice(0, lastWithData + 1) : dates;
+  // znotraj obdobja s podatki so morebitne vmesne vrzeli = 0 (dejansko nič prodaje)
+  const series = effDates.map(dt => byDate[dt] != null ? byDate[dt] : 0);
 
   // statistika
   const total = series.reduce((a,b)=>a+b,0);
@@ -17039,7 +17053,7 @@ function zalGrafRender(sku, title, sales, fromS, toS, days) {
   const col = tr.dir==='down' ? '#dc2626' : (tr.dir==='up' ? '#16a34a' : '#534AB7');
   _zalGrafChart[sku] = new Chart(ctx, {
     type: 'line',
-    data: { labels: dates.map(d=>d.slice(5)), datasets: [{ label:'Prodaja', data: series, borderColor: col, backgroundColor: col+'22', tension:0.3, borderWidth:2, pointRadius:2, fill:true }] },
+    data: { labels: effDates.map(d=>d.slice(5)), datasets: [{ label:'Prodaja', data: series, borderColor: col, backgroundColor: col+'22', tension:0.3, borderWidth:2, pointRadius:2, fill:true }] },
     options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true, ticks:{precision:0}}, x:{ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:10}} } }
   });
 }
