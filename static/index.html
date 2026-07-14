@@ -14144,7 +14144,15 @@ function aiIzdInit() {
   }
 }
 
-function _aiIzdFmt(d) { return d.toISOString().slice(0,10); }
+// Lokalni datum YYYY-MM-DD (NE UTC — toISOString bi ob določenih urah zamaknil dan,
+// zato bi današnji dan manjkal). Uporablja lokalni čas brskalnika (slovenski).
+function _localDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+function _aiIzdFmt(d) { return _localDate(d); }
 
 function aiIzdSetRange(days, btn) {
   const to = new Date();
@@ -14236,7 +14244,7 @@ function aiIzdRender(sales, from, to) {
   // enotna os datumov (od–do)
   const allDates = [];
   const dFrom = new Date(from), dTo = new Date(to);
-  for (let d = new Date(dFrom); d <= dTo; d.setDate(d.getDate()+1)) allDates.push(d.toISOString().slice(0,10));
+  for (let d = new Date(dFrom); d <= dTo; d.setDate(d.getDate()+1)) allDates.push(_localDate(d));
 
   // datasets + kartice
   const datasets = [];
@@ -16906,7 +16914,7 @@ async function zalGrafLoad(sku, title, days) {
   if (!box) return;
   const to = new Date();
   const from = new Date(); from.setDate(from.getDate() - (days - 1));
-  const fromS = from.toISOString().slice(0,10), toS = to.toISOString().slice(0,10);
+  const fromS = _localDate(from), toS = _localDate(to);
   try {
     const r = await fetch('/product-sales', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ products: [sku], date_from: fromS, date_to: toS }) });
@@ -16945,7 +16953,7 @@ function zalGrafRender(sku, title, sales, fromS, toS, days) {
   if (!box) return;
   // os datumov
   const dates = [];
-  for (let d = new Date(fromS); d <= new Date(toS); d.setDate(d.getDate()+1)) dates.push(d.toISOString().slice(0,10));
+  for (let d = new Date(fromS); d <= new Date(toS); d.setDate(d.getDate()+1)) dates.push(_localDate(d));
   const rows = sales[sku] || sales[String(sku).toUpperCase()] || [];
   const byDate = {}; rows.forEach(r => byDate[r.date] = r.sales);
   const series = dates.map(dt => byDate[dt] != null ? byDate[dt] : 0);
@@ -16980,7 +16988,7 @@ function zalGrafRender(sku, title, sales, fromS, toS, days) {
     // projekcija razprodaje
     if (daysOfStock != null && avg > 0) {
       const sellOut = new Date(); sellOut.setDate(sellOut.getDate()+daysOfStock);
-      stockHtml += '<div class="zg-stat"><span>Poide predvidoma</span><b>'+sellOut.toISOString().slice(0,10)+'</b></div>';
+      stockHtml += '<div class="zg-stat"><span>Poide predvidoma</span><b>'+_localDate(sellOut)+'</b></div>';
     }
     // ── PRIPOROČILO CENE: kombinacija trenda prodaje × dnevi zaloge ──
     let sig, bg, txt;
