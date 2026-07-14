@@ -361,6 +361,10 @@
   .act-ni { background: var(--ni-bg); border-color: var(--ni-border); color: var(--ni); }
   .act-ok:hover, .act-ok.active { background: var(--ok); border-color: var(--ok); color: #fff; }
   .act-ni:hover, .act-ni.active { background: var(--ni); border-color: var(--ni); color: #fff; }
+  .act-del { background: transparent; border-color: var(--border2, #ddd); color: var(--text-faint, #999); opacity: 0.55; }
+  .act-del:hover { background: #dc2626; border-color: #dc2626; color: #fff; opacity: 1; }
+  .cak-delete { margin-top: 8px; margin-left: 12px; background: none; border: none; color: #dc2626; font-size: 12px; cursor: pointer; text-decoration: underline; opacity: 0.75; }
+  .cak-delete:hover { opacity: 1; }
 
   /* low stock tag */
   .tag-low {
@@ -413,7 +417,15 @@
   .manko-copy-all.copied { background: var(--ok); color: #fff; border-color: var(--ok); }
   .manko-copy-all-rs { display: block; width: 100%; margin: 0 0 10px; text-align: center; }
 
-  .manko-list { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
+  .manko-more {
+    display: block; width: 100%; margin-top: 8px; padding: 9px;
+    background: var(--panel3); color: var(--accent); border: 1px dashed var(--border2);
+    border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit;
+  }
+  .manko-more:hover { background: var(--panel2); border-style: solid; }
+  .manko-more.manko-less { color: var(--text-dim); }
+
+  .manko-list { display: flex; flex-direction: column; gap: 8px; }
   .manko-item {
     background: var(--ni-bg); border: 1px solid var(--ni-border);
     border-radius: 9px; padding: 9px 11px;
@@ -660,6 +672,8 @@
 
     /* Sidebar kartice */
     .manko-list { max-height: none; }
+    /* Brisanje postavk je samo za desktop — na mobile skrij gumbe */
+    .zaloga-desktop-only { display: none !important; }
     /* FIX dvojni scroll na mobilu: sidebar seznami (Manjko/HS Plus/Boxi) naj se
        raztegnejo z vsebino — scrollaš samo stran, ne ugnezdenega bloka. */
     .side-tab-body { max-height: none !important; overflow-y: visible !important; }
@@ -1074,7 +1088,7 @@
   .st-blue { background: #378ADD; }
   .st-red { background: var(--ni); }
   .st-purple { background: #7c3aed; }
-  .side-tab-body { padding: 13px; max-height: 60vh; overflow-y: auto; }
+  .side-tab-body { padding: 13px; }
 
   /* Opomba item (modra) */
   .opomba-item { border: 1px solid #85B7EB; background: #E6F1FB; border-radius: 11px; padding: 11px 12px; margin-bottom: 9px; }
@@ -1260,6 +1274,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260709GUARD"></script>
+<script src="/static/zaloga.js?v=20260714MANKO"></script>
 </body>
 </html>

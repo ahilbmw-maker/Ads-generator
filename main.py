@@ -1952,8 +1952,18 @@ async def zaloga_import_ikonka(file: UploadFile = File(...), market: str = "rs")
             max_idx = max(max_idx, int(c.get("idx", -1)))
         next_idx = max_idx + 1
 
+        # indeks obstoječih čakajočih po SKU (za združevanje dvojnikov)
+        cak_by_sku = {}
+        for c in sess["cakajoce"]:
+            cak_by_sku[(c.get("sku") or "").strip().upper()] = c
+        # indeks obstoječih polic-postavk po SKU (kol==1 združi v qty)
+        item_by_sku = {}
+        for it in sess["items"]:
+            item_by_sku[(it.get("sku") or "").strip().upper()] = it
+
         added_police = 0
         added_cakajoce = 0
+        merged_cakajoce = 0
         groups_added = {}
 
         for sku, naziv, kol_raw in parsed_rows:
@@ -1963,22 +1973,45 @@ async def zaloga_import_ikonka(file: UploadFile = File(...), market: str = "rs")
             if kol <= 0:
                 continue
             grp = _zaloga_import_group(sku)
+            skuU = sku.strip().upper()
+
+            # Če ISTI SKU že obstaja med ČAKAJOČIMI → seštej količino (ne ustvarjaj dvojnika).
+            # To velja ne glede na to, ali nova količina pride kot kol==1 ali >1 —
+            # ista velika postavka se vedno združi v obstoječo čakajočo.
+            if skuU in cak_by_sku:
+                cak_by_sku[skuU]["qty"] = int(cak_by_sku[skuU].get("qty", 0)) + kol
+                cak_by_sku[skuU]["done"] = False   # dodatna količina → spet odprto za razdelitev
+                merged_cakajoce += 1
+                continue
+
             if kol == 1:
-                # na polico
-                sess["items"].append({
+                # na polico — če SKU že na polici, seštej qty (ena vrstica)
+                if skuU in item_by_sku:
+                    ex = item_by_sku[skuU]
+                    ex["qty"] = int(ex.get("qty", 0)) + 1
+                    if ex.get("status") == "ok":
+                        ex["picked"] = int(ex.get("picked", 0)) + 1
+                    added_police += 1
+                    groups_added[grp] = groups_added.get(grp, 0) + 1
+                    continue
+                new_it = {
                     "idx": next_idx, "id": "", "sku": sku, "naziv": naziv,
                     "qty": 1, "poz": "Ni podatka", "group": grp,
                     "status": "", "picked": 1, "low": False,
                     "box": "", "locked": False, "opomba": "",
-                })
+                }
+                sess["items"].append(new_it)
+                item_by_sku[skuU] = new_it
                 added_police += 1
                 groups_added[grp] = groups_added.get(grp, 0) + 1
             else:
                 # količina > 1 → čakajoče (razdelitev v bokse)
-                sess["cakajoce"].append({
+                new_c = {
                     "idx": next_idx, "sku": sku, "naziv": naziv,
                     "qty": kol, "poz": grp, "assigned": 0, "done": False,
-                })
+                }
+                sess["cakajoce"].append(new_c)
+                cak_by_sku[skuU] = new_c
                 added_cakajoce += 1
             next_idx += 1
 
@@ -1994,6 +2027,7 @@ async def zaloga_import_ikonka(file: UploadFile = File(...), market: str = "rs")
         _zaloga_update_peak(sess)
         _zaloga_atomic_write(path, sess)
         return {"ok": True, "added_police": added_police, "added_cakajoce": added_cakajoce,
+                "merged_cakajoce": merged_cakajoce,
                 "groups": groups_added, "total": added_police + added_cakajoce,
                 "merged_dups": _dup_count, "unique_skus": len(_order)}
     except Exception as e:
@@ -2289,6 +2323,21 @@ async def zaloga_update_item(data: dict):
             return {"ok": False, "error": "Manjka idx"}
         sess = json.loads(path.read_text(encoding="utf-8"))
         now_iso = _dt.now(timezone.utc).isoformat()
+
+        # ── BRISANJE postavke (z varovalko: idx + ujemanje sku) ──
+        if data.get("action") == "delete":
+            sku = str(data.get("sku", "")).strip()
+            target = next((it for it in sess.get("items", []) if it.get("idx") == idx), None)
+            if not target:
+                return {"ok": False, "error": "Postavka ni najdena"}
+            if sku and (target.get("sku") or "").strip() != sku:
+                return {"ok": False, "error": "SKU se ne ujema — brisanje prekinjeno"}
+            # sprosti morebitni zaklenjeni box te postavke
+            sess["items"] = [it for it in sess.get("items", []) if it.get("idx") != idx]
+            sess["updated_at"] = now_iso
+            _zaloga_atomic_write(path, sess)
+            return {"ok": True, "deleted": True, "idx": idx}
+
         found = False
         for it in sess.get("items", []):
             if it.get("idx") == idx:
@@ -2709,6 +2758,26 @@ async def zaloga_cakajoce(data: dict):
             # osveži vse statuse
             for c in cakajoce:
                 _sync_item_status(c.get("idx"), c.get("sku"))
+
+        elif action == "delete_cakajoce":
+            # Izbriše celo čakajočo postavko + vse njene dodelitve v boxih.
+            # Varovalka: zahteva ujemanje idx IN sku (frontend pošlje oba za potrditev).
+            idx = data.get("idx")
+            sku = str(data.get("sku", "")).strip()
+            entry = next((c for c in cakajoce if c.get("idx") == idx), None)
+            if not entry:
+                return {"ok": False, "error": "Postavka ni najdena"}
+            if sku and (entry.get("sku") or "").strip() != sku:
+                return {"ok": False, "error": "SKU se ne ujema — brisanje prekinjeno"}
+            # odstrani dodelitve tega SKU iz vseh boxov
+            for b in list(pboxes.keys()):
+                pboxes[b] = [e for e in pboxes[b] if e.get("sku") != entry.get("sku")]
+                if not pboxes[b]:
+                    del pboxes[b]
+            # odstrani iz čakajočih
+            cakajoce = [c for c in cakajoce if c.get("idx") != idx]
+            sess["packing_boxes"] = pboxes
+
         else:
             return {"ok": False, "error": "Neznana akcija"}
 
@@ -7494,6 +7563,46 @@ async def orodja_hs_history_delete(filename: str):
 STOCK_CSV_FILE = DATA_DIR / "stock_inventory.csv"
 SILUXAR_PUSH_LOG = DATA_DIR / "siluxar_push_log.json"   # zadnja pošiljanja pozicij (debug)
 SILUXAR_DELETE_LOG = DATA_DIR / "siluxar_delete_log.json"   # zadnja brisanja alarmov (debug)
+
+
+@app.post("/product-sales")
+async def product_sales(data: dict):
+    """Proxy do siluxar API za prodajo izdelkov po dnevih (Analiza izdelkov).
+    data: { products: [SKU...], date_from: 'YYYY-MM-DD', date_to: 'YYYY-MM-DD' }
+    Vrne { SKU: [{date, sales}, ...] }. Ključ je na strežniku (ne izpostavljen frontendu)."""
+    products = data.get("products") or []
+    date_from = (data.get("date_from") or "").strip()
+    date_to = (data.get("date_to") or "").strip()
+    if not products or not isinstance(products, list):
+        return {"ok": False, "error": "Ni izbranih SKU-jev."}
+    if not date_from or not date_to:
+        return {"ok": False, "error": "Manjka obdobje (date_from/date_to)."}
+    # normaliziraj SKU-je (velike črke, brez praznih, unikatno)
+    skus = []
+    seen = set()
+    for s in products:
+        u = str(s).strip().upper()
+        if u and u not in seen:
+            seen.add(u); skus.append(u)
+    key = os.environ.get("SILUXAR_SALES_KEY", "") or "WoodchuckShouldChuckWood"
+    url = "https://www.siluxar.si/apiproductsales"
+    payload = {"products": skus, "date_from": date_from, "date_to": date_to}
+    try:
+        async with httpx.AsyncClient(timeout=60) as cli:
+            r = await cli.post(url, json=payload, headers={
+                "Authorization": key,
+                "Content-Type": "application/json",
+            })
+    except Exception as e:
+        return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}"}
+    if r.status_code != 200:
+        return {"ok": False, "error": f"siluxar.si vrnil status {r.status_code}", "body": r.text[:300]}
+    try:
+        result = r.json()
+    except Exception:
+        return {"ok": False, "error": "siluxar.si ni vrnil veljavnega JSON.", "body": r.text[:300]}
+    return {"ok": True, "sales": result, "products": skus, "date_from": date_from, "date_to": date_to}
+
 STOCK_BACKUP_DIR = DATA_DIR / "stock_backups"   # avtomatski backupi zaloge pred sync
 STOCK_CSV_META = DATA_DIR / "stock_inventory_meta.json"
 

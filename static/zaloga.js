@@ -1020,6 +1020,7 @@ function cakajoceSection() {
           ${myBoxes ? `<div class="cak-mychips">${myBoxes}</div>` : ''}
           ${(ostane > 0 && assigned > 0) ? `<button class="cak-closemiss" onclick="cakajCloseMissing(${c.idx},${ostane})">✓ Zaključi — ${ostane} v manjko</button>` : ''}
           <button class="cak-return" onclick="cakajReturn(${c.idx})">↩ Vrni v polico</button>
+          <button class="cak-delete zaloga-desktop-only" onclick="cakajDelete(${c.idx},'${jsStr(c.sku)}','${jsStr(c.naziv||'')}')" title="Izbriši celo čakajočo postavko in vse njene boxe">🗑 Izbriši postavko</button>
         </div>
       </div>`;
   }).join('');
@@ -1035,6 +1036,66 @@ function cakajoceSection() {
       </div>
       ${rows}
     </div>`;
+}
+
+// ── BRISANJE postavke s seznama (desktop only, dvojna validacija) ──
+async function deleteItem(idx, sku, naziv) {
+  const it = ITEMS.find(x => x.idx === idx);
+  if (!it) return;
+  // 1. potrditev — jasno sporočilo z imenom
+  const ok1 = confirm(`⚠ IZBRIS POSTAVKE\n\nSKU: ${sku}\n${naziv || ''}\n\nTo bo TRAJNO odstranilo postavko s seznama za nabiranje.\nDejanja ni mogoče razveljaviti.\n\nNadaljujem?`);
+  if (!ok1) return;
+  // 2. potrditev — vtipkaj SKU (prepreči pomotoma)
+  const typed = prompt(`Za potrditev vtipkaj SKU postavke, ki jo brišeš:\n\n${sku}`);
+  if (typed == null) return;
+  if (typed.trim().toUpperCase() !== String(sku).trim().toUpperCase()) {
+    alert('SKU se ne ujema — brisanje prekinjeno.');
+    return;
+  }
+  try {
+    const r = await fetch('/zaloga-update-item', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'delete', idx, sku })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      ITEMS = ITEMS.filter(x => x.idx !== idx);
+      if (typeof SESSION === 'object' && SESSION) SESSION.items = ITEMS;
+      renderAll();
+      toast(`🗑 Postavka ${sku} izbrisana`);
+    } else {
+      alert('Napaka: ' + (d.error || 'brisanje ni uspelo'));
+    }
+  } catch(e) { alert('Napaka: ' + e.message); }
+}
+
+async function cakajDelete(idx, sku, naziv) {
+  const ok1 = confirm(`⚠ IZBRIS ČAKAJOČE POSTAVKE\n\nSKU: ${sku}\n${naziv || ''}\n\nTo bo TRAJNO odstranilo postavko IN vse njene dodelitve v boxih.\nDejanja ni mogoče razveljaviti.\n\nNadaljujem?`);
+  if (!ok1) return;
+  const typed = prompt(`Za potrditev vtipkaj SKU postavke, ki jo brišeš:\n\n${sku}`);
+  if (typed == null) return;
+  if (typed.trim().toUpperCase() !== String(sku).trim().toUpperCase()) {
+    alert('SKU se ne ujema — brisanje prekinjeno.');
+    return;
+  }
+  try {
+    const r = await fetch('/zaloga-cakajoce', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ market: MARKET, action:'delete_cakajoce', idx, sku })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      if (typeof SESSION === 'object' && SESSION) {
+        SESSION.cakajoce = d.cakajoce || [];
+        SESSION.packing_boxes = d.packing_boxes || {};
+      }
+      CAKAJ_OPEN = null;
+      renderAll();
+      toast(`🗑 Čakajoča ${sku} izbrisana`);
+    } else {
+      alert('Napaka: ' + (d.error || 'brisanje ni uspelo'));
+    }
+  } catch(e) { alert('Napaka: ' + e.message); }
 }
 
 async function prenesiVCakajoce(idx) {
@@ -1310,6 +1371,7 @@ function itemRow(it) {
         <div class="item-actions">
           <button class="act-btn act-ok ${it.status==='ok'?'active':''}" onclick="setStatus(${it.idx}, 'ok')" title="Nabrano">✓</button>
           <button class="act-btn act-ni ${it.status==='ni'?'active':''}" onclick="setStatus(${it.idx}, 'ni')" title="Ni na zalogi">✕</button>
+          <button class="act-btn act-del zaloga-desktop-only" onclick="event.stopPropagation();deleteItem(${it.idx},'${jsStr(it.sku)}','${jsStr(it.naziv||'')}')" title="Izbriši postavko s seznama">🗑</button>
         </div>
       </div>
       ${opombaRow}
@@ -1511,6 +1573,36 @@ function _isManko(it) {
   return true;
 }
 
+// ── Manjko seznam: brez scrolla — pokaži N, gumb "Prikaži več" naloži naprej ──
+const MANKO_STEP = 5;          // koliko pokažemo na začetku in doda vsak klik
+let MANKO_SHOWN = MANKO_STEP;  // trenutno prikazano število
+
+function mankoListHtml(manko) {
+  if (!manko.length) return '<div class="manko-empty">Zaenkrat ni manjkajočih postavk 🎉</div>';
+  const total = manko.length;
+  const shown = Math.min(MANKO_SHOWN, total);
+  const visible = manko.slice(0, shown);
+  let html = `<button class="manko-copy-all manko-copy-all-rs" onclick="copyAllManko(this)" title="Kopiraj vse manjkajoče (SKU + količina)">⎘ Kopiraj vse (${total})</button>`;
+  html += visible.map(mankoItemHtml).join('');
+  if (shown < total) {
+    const preostane = total - shown;
+    const dodaj = Math.min(MANKO_STEP, preostane);
+    html += `<button class="manko-more" onclick="mankoShowMore()">▼ Prikaži več (${dodaj} od ${preostane})</button>`;
+  } else if (total > MANKO_STEP) {
+    html += `<button class="manko-more manko-less" onclick="mankoShowLess()">▲ Skrči</button>`;
+  }
+  return html;
+}
+
+function mankoShowMore() {
+  MANKO_SHOWN += MANKO_STEP;
+  refreshSidebarAndStats();
+}
+function mankoShowLess() {
+  MANKO_SHOWN = MANKO_STEP;
+  refreshSidebarAndStats();
+}
+
 function renderSidebar() {
   const manko = ITEMS.filter(_isManko);
   const opombe = ITEMS.filter(it => it.opomba && it.opomba.trim());
@@ -1591,9 +1683,7 @@ function renderSidebar() {
     if (SIDEBAR_TAB === 'hsplus') {
       tabContent = hsplusHtml();
     } else {
-      tabContent = manko.length
-        ? `<button class="manko-copy-all manko-copy-all-rs" onclick="copyAllManko(this)" title="Kopiraj vse manjkajoče (SKU + količina)">⎘ Kopiraj vse</button>` + manko.map(mankoItemHtml).join('')
-        : '<div class="manko-empty">Zaenkrat ni manjkajočih postavk 🎉</div>';
+      tabContent = mankoListHtml(manko);
     }
     return `
       <div class="sidebar">
@@ -1616,9 +1706,7 @@ function renderSidebar() {
     tabContent = hsplusHtml();
   } else {
     // privzeto Manjko
-    tabContent = manko.length
-      ? `<button class="manko-copy-all manko-copy-all-rs" onclick="copyAllManko(this)" title="Kopiraj vse manjkajoče (SKU + količina)">⎘ Kopiraj vse</button>` + manko.map(mankoItemHtml).join('')
-      : '<div class="manko-empty">Ni manjka 🎉</div>';
+    tabContent = mankoListHtml(manko);
   }
 
   return `
@@ -1637,6 +1725,7 @@ function renderSidebar() {
 
 function setSidebarTab(tab) {
   SIDEBAR_TAB = tab;
+  if (tab === 'manjko') MANKO_SHOWN = MANKO_STEP;  // ob vstopu v Manjko začni pri prvih N
   refreshSidebarAndStats();
 }
 

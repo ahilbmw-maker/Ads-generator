@@ -2747,12 +2747,51 @@ input[type="text"].error { border-color: var(--red) !important; }
     <!-- Tab nav -->
     <div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);flex-wrap:wrap">
       <button class="analiza-tab-btn active" id="analizaTab-meta" onclick="switchAnalizaTab('meta')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📘 Meta Ads</button>
+      <button class="analiza-tab-btn" id="analizaTab-izdelki" onclick="switchAnalizaTab('izdelki')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📈 Analiza izdelkov</button>
       <button class="analiza-tab-btn" id="analizaTab-obrat14" onclick="switchAnalizaTab('obrat14')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📊 Obrat 7 dni (FB)</button>
       <button class="analiza-tab-btn" id="analizaTab-obrat14tt" onclick="switchAnalizaTab('obrat14tt')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📊 Obrat 7 dni (TikTok)</button>
       <button class="analiza-tab-btn" id="analizaTab-ttkreative" onclick="switchAnalizaTab('ttkreative')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🎬 TikTok Kreative</button>
       <button class="analiza-tab-btn" id="analizaTab-beta" onclick="switchAnalizaTab('beta')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🧪 Analiza Beta</button>
       <button class="analiza-tab-btn" id="analizaTab-cashflow" onclick="switchAnalizaTab('cashflow')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Cash Flow</button>
       <button class="analiza-tab-btn" id="analizaTab-shipping" onclick="switchAnalizaTab('shipping')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🚚 Stroški pošte</button>
+    </div>
+
+    <!-- TAB: Analiza izdelkov -->
+    <div id="analizaSubpage-izdelki" style="display:none;padding:14px 0 0 0">
+      <div style="display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;align-items:start" id="aiIzdGrid">
+        <!-- Levo: vnos -->
+        <div class="card" style="padding:14px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary);margin-bottom:8px">SKU-ji za analizo</div>
+          <textarea id="aiIzdSkus" placeholder="Vpiši ali prilepi SKU-je (vsak v svojo vrstico)&#10;npr.&#10;BOOKLED&#10;INSECTPROTECT" style="width:100%;min-height:120px;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;resize:vertical;line-height:1.5;box-sizing:border-box"></textarea>
+          <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">ali izberi iz zaloge:</div>
+          <input id="aiIzdSearch" placeholder="🔍 išči SKU v zalogi..." autocomplete="off" oninput="aiIzdSearchStock()" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:12px;margin-top:4px;box-sizing:border-box">
+          <div id="aiIzdSearchRes" style="display:none;max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);margin-top:4px"></div>
+
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary);margin:14px 0 8px">Obdobje</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">
+            <button class="aiIzd-range" onclick="aiIzdSetRange(7,this)" style="flex:1;min-width:70px;padding:6px;background:transparent;border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--text-secondary);font-family:inherit">Zadnjih 7 dni</button>
+            <button class="aiIzd-range" onclick="aiIzdSetRange(14,this)" style="flex:1;min-width:70px;padding:6px;background:transparent;border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--text-secondary);font-family:inherit">Zadnjih 14 dni</button>
+            <button class="aiIzd-range" onclick="aiIzdSetRange(30,this)" style="flex:1;min-width:70px;padding:6px;background:transparent;border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--text-secondary);font-family:inherit">Zadnjih 30 dni</button>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <div style="flex:1"><div style="font-size:10px;color:var(--text-tertiary);margin-bottom:2px">Od</div>
+              <input type="date" id="aiIzdFrom" onchange="aiIzdClearRangeActive()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box"></div>
+            <div style="flex:1"><div style="font-size:10px;color:var(--text-tertiary);margin-bottom:2px">Do</div>
+              <input type="date" id="aiIzdTo" onchange="aiIzdClearRangeActive()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box"></div>
+          </div>
+          <button onclick="aiIzdAnalyze()" id="aiIzdBtn" style="width:100%;margin-top:12px;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📈 Analiziraj</button>
+          <div id="aiIzdStatus" style="font-size:11px;margin-top:6px;color:var(--text-secondary)"></div>
+        </div>
+        <!-- Desno: graf + tendence -->
+        <div style="min-width:0">
+          <div class="card" style="padding:14px;margin-bottom:14px">
+            <div style="font-size:13px;font-weight:700;margin-bottom:10px">Prodaja po dnevih</div>
+            <div style="position:relative;height:340px"><canvas id="aiIzdChart"></canvas></div>
+            <div id="aiIzdEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:40px 0">Vnesi SKU-je in obdobje, nato klikni Analiziraj.</div>
+          </div>
+          <div id="aiIzdCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
+        </div>
+      </div>
     </div>
 
     <!-- TAB: Meta Ads -->
@@ -14079,8 +14118,162 @@ let anFilter = 'all';
 let anSortCol = 'stock';
 let anSortDir = -1;
 
+// ─── ANALIZA IZDELKOV (prodaja po dnevih + tendenca) ──────────────────────────
+let _aiIzdChart = null;
+let _aiIzdInited = false;
+const AI_IZD_COLORS = ['#534AB7','#e11d48','#0891b2','#16a34a','#d97706','#7c3aed','#db2777','#0d9488','#ca8a04','#2563eb'];
+
+function aiIzdInit() {
+  if (_aiIzdInited) return;
+  _aiIzdInited = true;
+  aiIzdSetRange(7);  // privzeto zadnjih 7 dni
+  // za iskanje po zalogi zagotovi, da so podatki naloženi (ne blokira, teče v ozadju)
+  if (typeof zalogaLoad === 'function' && (typeof _zalogaData === 'undefined' || !_zalogaData || !_zalogaData.length)) {
+    try { zalogaLoad(); } catch(e) {}
+  }
+}
+
+function _aiIzdFmt(d) { return d.toISOString().slice(0,10); }
+
+function aiIzdSetRange(days, btn) {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - (days - 1));
+  document.getElementById('aiIzdFrom').value = _aiIzdFmt(from);
+  document.getElementById('aiIzdTo').value = _aiIzdFmt(to);
+  document.querySelectorAll('.aiIzd-range').forEach(b => { b.style.background = 'transparent'; b.style.color = 'var(--text-secondary)'; b.style.borderColor = 'var(--border)'; });
+  if (btn) { btn.style.background = 'var(--accent)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--accent)'; }
+}
+function aiIzdClearRangeActive() {
+  document.querySelectorAll('.aiIzd-range').forEach(b => { b.style.background = 'transparent'; b.style.color = 'var(--text-secondary)'; b.style.borderColor = 'var(--border)'; });
+}
+
+// iskanje po zalogi (če je naložena) — klik doda SKU v polje
+function aiIzdSearchStock() {
+  const q = (document.getElementById('aiIzdSearch').value || '').trim().toLowerCase();
+  const box = document.getElementById('aiIzdSearchRes');
+  if (!q || typeof _zalogaData === 'undefined' || !_zalogaData || !_zalogaData.length) {
+    box.style.display = 'none'; return;
+  }
+  const hits = _zalogaData.filter(it => {
+    const s = (it.product_sku||'').toLowerCase(), t = (it.title||'').toLowerCase();
+    return s.includes(q) || t.includes(q);
+  }).slice(0, 12);
+  if (!hits.length) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = hits.map(it => {
+    const sku = esc((it.product_sku||'').replace(/'/g,"\\'"));
+    return `<div onclick="aiIzdAddSku('${sku}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:12px" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background=''">
+      <span style="font-weight:700">${esc(it.product_sku||'')}</span>
+      <span style="color:var(--text-tertiary);font-size:11px"> · ${esc((it.title||'').slice(0,40))}</span></div>`;
+  }).join('');
+}
+function aiIzdAddSku(sku) {
+  const ta = document.getElementById('aiIzdSkus');
+  const cur = ta.value.split(/[\r\n,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+  if (!cur.includes(sku.toUpperCase())) {
+    ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + sku;
+  }
+  document.getElementById('aiIzdSearch').value = '';
+  document.getElementById('aiIzdSearchRes').style.display = 'none';
+}
+
+// linearni trend (least squares) → smer + % sprememba čez obdobje
+function _aiIzdTrend(points) {
+  const n = points.length;
+  if (n < 2) return { slope: 0, pct: 0, dir: 'flat' };
+  let sx=0, sy=0, sxy=0, sxx=0;
+  points.forEach((y, x) => { sx+=x; sy+=y; sxy+=x*y; sxx+=x*x; });
+  const denom = (n*sxx - sx*sx) || 1;
+  const slope = (n*sxy - sx*sy) / denom;
+  const intercept = (sy - slope*sx) / n;
+  const first = intercept;
+  const last = intercept + slope*(n-1);
+  const pct = first > 0 ? Math.round((last - first) / first * 100) : (last > 0 ? 100 : 0);
+  const dir = slope > 0.05 ? 'up' : (slope < -0.05 ? 'down' : 'flat');
+  return { slope, pct, dir };
+}
+
+async function aiIzdAnalyze() {
+  const raw = (document.getElementById('aiIzdSkus').value || '').trim();
+  const skus = [...new Set(raw.split(/[\r\n,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean))];
+  const from = document.getElementById('aiIzdFrom').value;
+  const to = document.getElementById('aiIzdTo').value;
+  const status = document.getElementById('aiIzdStatus');
+  if (!skus.length) { status.style.color = '#d97706'; status.textContent = '⚠ Vnesi vsaj en SKU.'; return; }
+  if (!from || !to) { status.style.color = '#d97706'; status.textContent = '⚠ Izberi obdobje.'; return; }
+  const btn = document.getElementById('aiIzdBtn');
+  btn.disabled = true; btn.textContent = '⏳ Nalagam...';
+  status.style.color = 'var(--text-secondary)'; status.textContent = 'Kličem siluxar API...';
+  try {
+    const r = await fetch('/product-sales', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ products: skus, date_from: from, date_to: to }) });
+    const d = await r.json();
+    if (!d.ok) { status.style.color = 'var(--red)'; status.textContent = '✗ ' + (d.error || 'napaka'); return; }
+    aiIzdRender(d.sales || {}, from, to);
+    status.style.color = 'var(--green)'; status.textContent = '✓ Naloženo';
+  } catch(e) {
+    status.style.color = 'var(--red)'; status.textContent = '✗ ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '📈 Analiziraj';
+  }
+}
+
+function aiIzdRender(sales, from, to) {
+  const skus = Object.keys(sales);
+  document.getElementById('aiIzdEmpty').style.display = skus.length ? 'none' : 'block';
+  // enotna os datumov (od–do)
+  const allDates = [];
+  const dFrom = new Date(from), dTo = new Date(to);
+  for (let d = new Date(dFrom); d <= dTo; d.setDate(d.getDate()+1)) allDates.push(d.toISOString().slice(0,10));
+
+  // datasets + kartice
+  const datasets = [];
+  const cards = [];
+  skus.forEach((sku, i) => {
+    const rows = sales[sku] || [];
+    const byDate = {};
+    rows.forEach(r => { byDate[r.date] = r.sales; });
+    const series = allDates.map(dt => byDate[dt] != null ? byDate[dt] : 0);
+    const col = AI_IZD_COLORS[i % AI_IZD_COLORS.length];
+    datasets.push({ label: sku, data: series, borderColor: col, backgroundColor: col + '22',
+      tension: 0.3, borderWidth: 2, pointRadius: 2, fill: false });
+    // statistika
+    const total = series.reduce((a,b)=>a+b, 0);
+    const avg = series.length ? (total / series.length) : 0;
+    const peak = Math.max(...series, 0);
+    const tr = _aiIzdTrend(series);
+    const arrow = tr.dir === 'up' ? '↑' : (tr.dir === 'down' ? '↓' : '→');
+    const trColor = tr.dir === 'up' ? 'var(--green)' : (tr.dir === 'down' ? 'var(--red)' : 'var(--text-tertiary)');
+    cards.push(`<div class="card" style="padding:12px;border-left:3px solid ${col}">
+      <div style="font-weight:800;font-size:13px;margin-bottom:6px">${esc(sku)}</div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:var(--text-secondary)">Skupaj prodano</span><b>${total}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:var(--text-secondary)">Povprečje/dan</span><b>${avg.toFixed(1)}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:var(--text-secondary)">Najboljši dan</span><b>${peak}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding-top:6px;margin-top:4px;border-top:1px solid var(--border)"><span style="color:var(--text-secondary)">Tendenca</span><b style="color:${trColor}">${arrow} ${tr.pct > 0 ? '+' : ''}${tr.pct}%</b></div>
+    </div>`);
+  });
+
+  document.getElementById('aiIzdCards').innerHTML = cards.join('');
+
+  // graf
+  const ctx = document.getElementById('aiIzdChart');
+  if (_aiIzdChart) { _aiIzdChart.destroy(); _aiIzdChart = null; }
+  if (!skus.length) return;
+  _aiIzdChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: allDates.map(d => d.slice(5)), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12 } } }
+    }
+  });
+}
+
 function switchAnalizaTab(tab) {
-  ['meta', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'shipping'].forEach(t => {
+  ['meta', 'izdelki', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'shipping'].forEach(t => {
     const btn = document.getElementById('analizaTab-' + t);
     const sub = document.getElementById('analizaSubpage-' + t);
     if (t === tab) {
@@ -14093,6 +14286,7 @@ function switchAnalizaTab(tab) {
   });
   if (tab === 'obrat14') { o14LoadData(); o14LoadMetaInfo(); }
   if (tab === 'meta') { anLoadStock(); anLoadMetaFromServer(); }
+  if (tab === 'izdelki') { aiIzdInit(); }
   if (tab === 'obrat14tt') { tt14LoadData(); }
   if (tab === 'ttkreative') { ttKrLoadData(); }
   if (tab === 'beta') { betaLoadHistory(true); betaRestoreState(); }
