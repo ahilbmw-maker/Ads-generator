@@ -24,6 +24,17 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 /* ── MOBILE BOTTOM TAB BAR ── */
 .mobile-tabbar { display: none; }
 
+/* ── Graf prodaje v zalogi (Varianta C) ── */
+.zal-c-graf:hover { border-color: var(--accent) !important; background: var(--accent) !important; color: #fff !important; }
+.zg-stats { display: flex; flex-direction: column; gap: 4px; }
+.zg-stat { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.zg-stat span { color: var(--text-secondary); }
+.zg-stat b { font-weight: 700; }
+@media(max-width: 700px) {
+  .zg-grid { grid-template-columns: 1fr !important; }
+  .zg-grid > div:first-child { height: 180px !important; }
+}
+
 @media(max-width: 600px) {
   .zaloga-mobile-hide { display: none !important; }
   .hamburger { display: none !important; }
@@ -16864,6 +16875,167 @@ function _zalIsExternal(it) {
 // ── SALE oznake (razprodaja / znižano) ──
 let _zalSaleFilter = false;   // filter: prikaži samo SALE
 
+// ── 📈 Graf prodaje + priporočilo cene (Varianta C — razširitev vrstice) ──
+let _zalGrafChart = {};        // sku → Chart instanca
+let _zalGrafOpen = null;       // trenutno odprt SKU
+let _zalGrafRange = 14;        // privzeto obdobje (dni)
+
+function _zalGrafId(sku){ return 'zalGraf-' + String(sku).replace(/[^a-zA-Z0-9_-]/g,'_'); }
+
+async function zalToggleGraf(sku, title, btn) {
+  const id = _zalGrafId(sku);
+  const box = document.getElementById(id);
+  if (!box) return;
+  // zapri, če že odprt
+  if (box.style.display === 'block' && _zalGrafOpen === sku) {
+    box.style.display = 'none';
+    _zalGrafOpen = null;
+    if (btn) btn.textContent = '📈 Graf';
+    return;
+  }
+  _zalGrafOpen = sku;
+  box.style.display = 'block';
+  box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-tertiary);font-size:12px">⏳ Nalagam prodajo...</div>';
+  if (btn) btn.textContent = '📈 Zapri';
+  await zalGrafLoad(sku, title, _zalGrafRange);
+}
+
+async function zalGrafLoad(sku, title, days) {
+  const id = _zalGrafId(sku);
+  const box = document.getElementById(id);
+  if (!box) return;
+  const to = new Date();
+  const from = new Date(); from.setDate(from.getDate() - (days - 1));
+  const fromS = from.toISOString().slice(0,10), toS = to.toISOString().slice(0,10);
+  try {
+    const r = await fetch('/product-sales', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ products: [sku], date_from: fromS, date_to: toS }) });
+    const d = await r.json();
+    if (!d.ok) { box.innerHTML = '<div style="padding:16px;color:var(--red);font-size:12px">✗ ' + esc(d.error||'napaka') + '</div>'; return; }
+    zalGrafRender(sku, title, d.sales || {}, fromS, toS, days);
+  } catch(e) {
+    box.innerHTML = '<div style="padding:16px;color:var(--red);font-size:12px">✗ ' + esc(e.message) + '</div>';
+  }
+}
+
+// trenutna zaloga izdelka iz _zalogaData (za dneve zaloge + priporočilo)
+function _zalStockOf(sku) {
+  const it = (_zalogaData||[]).find(x => (x.product_sku||'').trim().toUpperCase() === String(sku).trim().toUpperCase());
+  return it ? (parseInt(it.stock)||0) : null;
+}
+
+// linearni trend (least squares) → smer + %
+function _zalTrend(points) {
+  const n = points.length;
+  if (n < 2) return { slope: 0, pct: 0, dir: 'flat' };
+  let sx=0,sy=0,sxy=0,sxx=0;
+  points.forEach((y,x)=>{ sx+=x; sy+=y; sxy+=x*y; sxx+=x*x; });
+  const denom = (n*sxx - sx*sx) || 1;
+  const slope = (n*sxy - sx*sy)/denom;
+  const intercept = (sy - slope*sx)/n;
+  const first = intercept, last = intercept + slope*(n-1);
+  const pct = first > 0 ? Math.round((last-first)/first*100) : (last>0?100:0);
+  const dir = slope > 0.05 ? 'up' : (slope < -0.05 ? 'down' : 'flat');
+  return { slope, pct, dir };
+}
+
+function zalGrafRender(sku, title, sales, fromS, toS, days) {
+  const id = _zalGrafId(sku);
+  const box = document.getElementById(id);
+  if (!box) return;
+  // os datumov
+  const dates = [];
+  for (let d = new Date(fromS); d <= new Date(toS); d.setDate(d.getDate()+1)) dates.push(d.toISOString().slice(0,10));
+  const rows = sales[sku] || sales[String(sku).toUpperCase()] || [];
+  const byDate = {}; rows.forEach(r => byDate[r.date] = r.sales);
+  const series = dates.map(dt => byDate[dt] != null ? byDate[dt] : 0);
+
+  // statistika
+  const total = series.reduce((a,b)=>a+b,0);
+  const avg = series.length ? total/series.length : 0;
+  const peak = Math.max(...series, 0);
+  const tr = _zalTrend(series);
+  const arrow = tr.dir==='up'?'↑':(tr.dir==='down'?'↓':'→');
+  const trColor = tr.dir==='up'?'var(--green)':(tr.dir==='down'?'var(--red)':'var(--text-tertiary)');
+
+  // teden na teden (zadnjih 7 vs prejšnjih 7, če je dovolj podatkov)
+  let wowHtml = '';
+  if (series.length >= 14) {
+    const last7 = series.slice(-7).reduce((a,b)=>a+b,0);
+    const prev7 = series.slice(-14,-7).reduce((a,b)=>a+b,0);
+    const wow = prev7>0 ? Math.round((last7-prev7)/prev7*100) : (last7>0?100:0);
+    const wc = wow>0?'var(--green)':(wow<0?'var(--red)':'var(--text-tertiary)');
+    wowHtml = '<div class="zg-stat"><span>Teden/teden</span><b style="color:'+wc+'">'+(wow>0?'+':'')+wow+'%</b></div>';
+  }
+
+  // dnevi zaloge + projekcija + PRIPOROČILO CENE
+  const stock = _zalStockOf(sku);
+  let stockHtml = '', recoHtml = '';
+  if (stock != null) {
+    const daysOfStock = avg > 0 ? Math.round(stock/avg) : null;
+    const dosTxt = daysOfStock != null ? daysOfStock + ' dni' : '∞ (ni prodaje)';
+    const dosColor = daysOfStock==null ? 'var(--text-tertiary)' : (daysOfStock<=14?'var(--red)':daysOfStock<=45?'#d97706':'var(--green)');
+    stockHtml = '<div class="zg-stat"><span>Zaloga</span><b>'+stock+'</b></div>'
+              + '<div class="zg-stat"><span>Dnevi zaloge</span><b style="color:'+dosColor+'">'+dosTxt+'</b></div>';
+    // projekcija razprodaje
+    if (daysOfStock != null && avg > 0) {
+      const sellOut = new Date(); sellOut.setDate(sellOut.getDate()+daysOfStock);
+      stockHtml += '<div class="zg-stat"><span>Poide predvidoma</span><b>'+sellOut.toISOString().slice(0,10)+'</b></div>';
+    }
+    // ── PRIPOROČILO CENE: kombinacija trenda prodaje × dnevi zaloge ──
+    let sig, bg, txt;
+    const rising = tr.dir==='up', falling = tr.dir==='down';
+    const lowStock = daysOfStock!=null && daysOfStock<=14;
+    const highStock = daysOfStock==null || daysOfStock>=60;
+    if (falling && highStock) { sig='🔴'; bg='rgba(239,68,68,0.10)'; txt='<b>Razmisli o ZNIŽANJU cene.</b> Prodaja upada, zaloge je za dolgo — kapital je zaklenjen, blago lahko obtiči.'; }
+    else if (rising && lowStock) { sig='🟢'; bg='rgba(34,160,107,0.12)'; txt='<b>Lahko ZVIŠAŠ ceno.</b> Prodaja raste, zaloge je malo — povpraševanje je močno, izkoristi maržo.'; }
+    else if (rising && highStock) { sig='🔵'; bg='rgba(37,99,235,0.10)'; txt='<b>Ohrani ceno.</b> Prodaja raste in zaloge je dovolj — zdravo stanje, spremljaj naprej.'; }
+    else if (falling && lowStock) { sig='🟠'; bg='rgba(217,119,6,0.10)'; txt='<b>Pozor.</b> Prodaja upada, a zaloge je malo — kmalu poide. Preveri dobavo; znižanje verjetno ni potrebno.'; }
+    else if (lowStock) { sig='🟠'; bg='rgba(217,119,6,0.10)'; txt='<b>Malo zaloge.</b> Poskrbi za dobavo. Cena je lahko trenutno stabilna.'; }
+    else if (highStock && avg===0) { sig='🔴'; bg='rgba(239,68,68,0.10)'; txt='<b>Ni prodaje.</b> Izdelek stoji na zalogi — razmisli o promociji ali znižanju.'; }
+    else { sig='⚪'; bg='var(--bg-secondary)'; txt='<b>Stabilno.</b> Ni izrazitega signala za spremembo cene.'; }
+    recoHtml = '<div style="background:'+bg+';border-radius:8px;padding:9px 11px;margin-top:10px;font-size:12px;line-height:1.5">'+sig+' '+txt+'</div>';
+  } else {
+    recoHtml = '<div style="font-size:11px;color:var(--text-tertiary);margin-top:8px">💡 Za priporočilo cene naloži zalogo (sinhroniziraj) — potrebna je trenutna zaloga.</div>';
+  }
+
+  // obdobje gumbi
+  const rangeBtns = [7,14,30].map(dd =>
+    '<button onclick="event.stopPropagation();_zalGrafRange='+dd+';zalGrafLoad(\''+esc(sku.replace(/'/g,"\\'"))+'\',\'\','+dd+')" style="padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;'+(days===dd?'background:var(--accent);color:#fff;border:none':'background:transparent;color:var(--text-secondary);border:1px solid var(--border)')+'">'+dd+' dni</button>'
+  ).join(' ');
+
+  box.innerHTML =
+    '<div style="padding:14px;background:var(--surface2);border-radius:0 0 var(--radius) var(--radius)">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">'
+    +   '<b style="font-size:13px">📈 '+esc(sku)+' · prodaja po dnevih</b>'
+    +   '<span style="display:flex;gap:5px">'+rangeBtns+'</span>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:14px;align-items:start" class="zg-grid">'
+    +   '<div style="position:relative;height:200px;min-width:0"><canvas id="'+id+'-canvas"></canvas></div>'
+    +   '<div>'
+    +     '<div class="zg-stats">'
+    +       '<div class="zg-stat"><span>Skupaj prodano</span><b>'+total+'</b></div>'
+    +       '<div class="zg-stat"><span>Povprečje/dan</span><b>'+avg.toFixed(1)+'</b></div>'
+    +       '<div class="zg-stat"><span>Najboljši dan</span><b>'+peak+'</b></div>'
+    +       '<div class="zg-stat"><span>Tendenca</span><b style="color:'+trColor+'">'+arrow+' '+(tr.pct>0?'+':'')+tr.pct+'%</b></div>'
+    +       wowHtml + stockHtml
+    +     '</div>'
+    +     recoHtml
+    +   '</div>'
+    + '</div>'
+    + '</div>';
+
+  // graf
+  const ctx = document.getElementById(id+'-canvas');
+  if (_zalGrafChart[sku]) { try{_zalGrafChart[sku].destroy();}catch(e){} }
+  const col = tr.dir==='down' ? '#dc2626' : (tr.dir==='up' ? '#16a34a' : '#534AB7');
+  _zalGrafChart[sku] = new Chart(ctx, {
+    type: 'line',
+    data: { labels: dates.map(d=>d.slice(5)), datasets: [{ label:'Prodaja', data: series, borderColor: col, backgroundColor: col+'22', tension:0.3, borderWidth:2, pointRadius:2, fill:true }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true, ticks:{precision:0}}, x:{ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:10}} } }
+  });
+}
+
 async function zalToggleSale(sku, btn) {
   if (!sku) return;
   const on = !_zalSale.has(sku.toUpperCase());
@@ -17052,6 +17224,7 @@ function zalogaRender() {
       + ((it.warehouse||'').trim().toLowerCase() === 'silux2' ? '<span class="zal-tag-sklad2">🏬 Skladišče2</span>' : '')
       + '<button class="zal-c-copy" onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(it.product_sku||'') + '\').then(()=>{this.textContent=\'✓ Kopirano\';this.style.background=\'var(--green)\';this.style.color=\'#fff\';this.style.borderColor=\'var(--green)\';setTimeout(()=>{this.textContent=\'📋 Kopiraj\';this.style.background=\'\';this.style.color=\'\';this.style.borderColor=\'\'},1500)})" title="Kopiraj SKU" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="if(this.textContent!==\'✓ Kopirano\'){this.style.borderColor=\'\';this.style.color=\'\'}">📋 Kopiraj</button>'
       + '<button class="zal-c-sale zaloga-mobile-hide" onclick="event.stopPropagation();zalToggleSale(\'' + esc((it.product_sku||'').replace(/'/g,"\\'")) + '\',this)" title="' + (_isSale ? 'Odstrani SALE oznako' : 'Označi kot SALE (razprodaja/znižano)') + '" style="flex-shrink:0;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;' + (_isSale ? 'background:#ec4899;border:1px solid #ec4899;color:#fff' : 'background:var(--surface2);border:1px solid var(--border);color:var(--text-tertiary)') + '">🏷 SALE</button>'
+      + '<button class="zal-c-graf" onclick="event.stopPropagation();zalToggleGraf(\'' + esc((it.product_sku||'').replace(/'/g,"\\'")) + '\',\'' + esc((it.title||'').replace(/'/g,"\\'")) + '\',this)" title="Graf prodaje + priporočilo cene" style="flex-shrink:0;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;background:var(--surface2);border:1px solid var(--border);color:var(--accent)">📈 Graf</button>'
       + '</div>'
       + '<span class="zal-c-title" style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px" title="' + esc(it.title) + '">' + esc(it.title||'—') + '</span>'
       + (function(){
@@ -17098,7 +17271,8 @@ function zalogaRender() {
         })()
       + '<span class="zal-c-note" style="color:var(--text-secondary);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.note) + '">' + esc(it.note||'—') + '</span>'
       + '<span class="zal-meta-mobile">' + metaMobile + '</span>'
-      + '</div>';
+      + '</div>'
+      + '<div class="zal-graf-expand" id="zalGraf-' + esc((it.product_sku||'').replace(/[^a-zA-Z0-9_-]/g,'_')) + '" style="display:none"></div>';
   }).join('');
 
   // Render paginacijo
