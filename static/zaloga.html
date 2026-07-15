@@ -529,7 +529,7 @@
     .wrap { padding: 12px; gap: 14px; grid-template-columns: minmax(0, 1fr); max-width: 100%; }
 
     /* Sidebar gre POD sezname (ne sticky ob strani) */
-    .sidebar { position: static; top: auto; order: 99; }
+    .sidebar { position: static; top: auto; order: 99; max-height: none !important; overflow-y: visible !important; }
 
     /* Shelf head — kompakten, progress v novo vrsto */
     /* ══ PREDLOG 3: kompaktna polica, napredek = obarvano ozadje ══ */
@@ -1073,8 +1073,10 @@
   }
 
   /* Sidebar tabi (RS) */
-  .side-card-tabs { padding: 0 !important; overflow: hidden; }
-  .side-tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .side-card-tabs { padding: 0 !important; }
+  .side-tabs { display: flex; border-bottom: 1px solid var(--border);
+    border-radius: 14px 14px 0 0; overflow: hidden;   /* zaokroži samo glavo, ne celotne kartice */
+    position: sticky; top: 0; z-index: 5; background: var(--panel); }  /* tabi ostanejo vidni ob scrollu sidebara */
   .side-tab {
     flex: 1; padding: 12px 8px; border: none; background: transparent;
     color: var(--text-dim); font-weight: 700; font-size: 12px; cursor: pointer;

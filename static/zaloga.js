@@ -1574,8 +1574,9 @@ function _isManko(it) {
 }
 
 // ── Manjko seznam: brez scrolla — pokaži N, gumb "Prikaži več" naloži naprej ──
-const MANKO_STEP = 5;          // koliko pokažemo na začetku in doda vsak klik
-let MANKO_SHOWN = MANKO_STEP;  // trenutno prikazano število
+const MANKO_INIT = 25;         // koliko pokažemo takoj ob odprtju
+const MANKO_STEP = 25;         // koliko doda vsak klik "Prikaži več"
+let MANKO_SHOWN = MANKO_INIT;  // trenutno prikazano število
 
 function mankoListHtml(manko) {
   if (!manko.length) return '<div class="manko-empty">Zaenkrat ni manjkajočih postavk 🎉</div>';
@@ -1588,7 +1589,7 @@ function mankoListHtml(manko) {
     const preostane = total - shown;
     const dodaj = Math.min(MANKO_STEP, preostane);
     html += `<button class="manko-more" onclick="mankoShowMore()">▼ Prikaži več (${dodaj} od ${preostane})</button>`;
-  } else if (total > MANKO_STEP) {
+  } else if (total > MANKO_INIT) {
     html += `<button class="manko-more manko-less" onclick="mankoShowLess()">▲ Skrči</button>`;
   }
   return html;
@@ -1599,7 +1600,7 @@ function mankoShowMore() {
   refreshSidebarAndStats();
 }
 function mankoShowLess() {
-  MANKO_SHOWN = MANKO_STEP;
+  MANKO_SHOWN = MANKO_INIT;
   refreshSidebarAndStats();
 }
 
@@ -1725,7 +1726,7 @@ function renderSidebar() {
 
 function setSidebarTab(tab) {
   SIDEBAR_TAB = tab;
-  if (tab === 'manjko') MANKO_SHOWN = MANKO_STEP;  // ob vstopu v Manjko začni pri prvih N
+  if (tab === 'manjko') MANKO_SHOWN = Math.max(MANKO_SHOWN, MANKO_INIT);  // ob vstopu v Manjko ne krči že razširjenega seznama
   refreshSidebarAndStats();
 }
 
