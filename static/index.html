@@ -621,6 +621,16 @@ input[type="text"].error { border-color: var(--red) !important; }
 .k-opt-label { font-size:10px; font-weight:700; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.5px; }
 .k-option-btn.active .k-opt-label { color:var(--accent); }
 .k-opt-text { font-size:12px; font-weight:500; color:var(--text); }
+/* Custom vibe (B sekcija) */
+.k-add-vibe { width:100%; margin-top:8px; padding:9px; cursor:pointer; font-family:'DM Sans',sans-serif; background:transparent; color:var(--accent); border:1px dashed var(--border); border-radius:var(--radius); font-size:12px; font-weight:700; transition:all 0.12s; }
+.k-add-vibe:hover { border-color:var(--accent); border-style:solid; background:var(--accent-dim); }
+.k-vibe-wrap { display:none; margin-top:8px; }
+.k-vibe-wrap.open { display:block; }
+.k-vibe-input { width:100%; padding:9px 12px; border:1px solid var(--accent); border-radius:var(--radius); font-size:12px; font-family:'DM Sans',sans-serif; background:var(--surface2); color:var(--text); outline:none; box-sizing:border-box; }
+.k-vibe-actions { display:flex; gap:6px; margin-top:6px; }
+.k-vibe-save, .k-vibe-cancel { flex:1; padding:8px; border-radius:var(--radius); font-size:12px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; border:1px solid var(--border); transition:all 0.12s; }
+.k-vibe-save { background:var(--accent); color:#fff; border-color:var(--accent); }
+.k-vibe-cancel { background:var(--surface2); color:var(--text-secondary); }
 .k-result-header { padding:6px 8px; background:var(--surface2); border-bottom:1px solid var(--border); }
 @media(max-width:600px){ .kreative-layout { grid-template-columns: 1fr; } }
 @media(max-width:600px){ .home-grid { gap:8px; grid-template-columns: 1fr !important; } }
@@ -1639,6 +1649,16 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div class="card" style="margin-bottom:12px">
             <span class="slabel">B — IZBERI OZADJE (lahko več)</span>
             <div id="kBOptions" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
+            <!-- Custom vibe: klik na + odpre vnos, Enter doda kot novo B-opcijo -->
+            <button type="button" id="kAddVibeBtn" class="k-add-vibe" onclick="kOpenVibeInput()">+ Dodaj svoj vibe</button>
+            <div id="kVibeInputWrap" class="k-vibe-wrap">
+              <input type="text" id="kVibeInput" class="k-vibe-input" placeholder="npr. minimalist studio, soft shadows" maxlength="160"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();kAddCustomVibe();} if(event.key==='Escape'){kCloseVibeInput();}">
+              <div class="k-vibe-actions">
+                <button type="button" class="k-vibe-save" onclick="kAddCustomVibe()">Dodaj</button>
+                <button type="button" class="k-vibe-cancel" onclick="kCloseVibeInput()">Prekliči</button>
+              </div>
+            </div>
           </div>
 
           <!-- Slike -->
@@ -6790,10 +6810,62 @@ function kRenderAB() {
     const picker = active
       ? '<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap" onclick="event.stopPropagation()">' + mp('flash','⚡ NB2') + mp('pro','✨ Pro') + mp('image2','🟢 Image2') + '</div>'
       : '';
-    return '<button class="k-option-btn' + (active ? ' active' : '') + '" data-type="b" onclick="kToggleB(' + i + ')">' +
+    const del = opt.custom
+      ? '<span onclick="event.stopPropagation();kRemoveCustomVibe(' + i + ')" title="Odstrani" style="position:absolute;top:6px;right:8px;font-size:15px;line-height:1;color:var(--text-tertiary);cursor:pointer;padding:2px 5px">&times;</span>'
+      : '';
+    return '<button class="k-option-btn' + (active ? ' active' : '') + '" data-type="b" style="position:relative" onclick="kToggleB(' + i + ')">' +
       '<span class="k-opt-label">' + esc(opt.label) + '</span>' +
-      '<span class="k-opt-text">' + esc(opt.text) + '</span>' + picker + '</button>';
+      '<span class="k-opt-text">' + esc(opt.text) + '</span>' + picker + del + '</button>';
   }).join('');
+}
+
+// ── Custom vibe: uporabnik sam vpiše B-opcijo ──
+function kOpenVibeInput() {
+  if (!kProductData) return;
+  const wrap = document.getElementById('kVibeInputWrap');
+  const btn = document.getElementById('kAddVibeBtn');
+  if (!wrap) return;
+  wrap.classList.add('open');
+  if (btn) btn.style.display = 'none';
+  const inp = document.getElementById('kVibeInput');
+  if (inp) { inp.value = ''; inp.focus(); }
+}
+
+function kCloseVibeInput() {
+  const wrap = document.getElementById('kVibeInputWrap');
+  const btn = document.getElementById('kAddVibeBtn');
+  if (wrap) wrap.classList.remove('open');
+  if (btn) btn.style.display = '';
+}
+
+function kAddCustomVibe() {
+  if (!kProductData) return;
+  const inp = document.getElementById('kVibeInput');
+  const text = ((inp && inp.value) || '').trim();
+  if (!text) { if (inp) inp.focus(); return; }
+  if (!Array.isArray(kProductData.bOptions)) kProductData.bOptions = [];
+  kProductData.bOptions.push({ label: 'MOJ VIBE', text: text, custom: true });
+  const idx = kProductData.bOptions.length - 1;
+  if (!kSelectedB.includes(idx)) kSelectedB.push(idx);  // takoj označen
+  kCloseVibeInput();
+  kRenderAB();
+  kUpdateComboPreview();
+}
+
+function kRemoveCustomVibe(i) {
+  if (!kProductData || !kProductData.bOptions || !kProductData.bOptions[i]) return;
+  kProductData.bOptions.splice(i, 1);
+  // preindeksiraj izbore in procesorje nad odstranjenim
+  kSelectedB = kSelectedB.filter(x => x !== i).map(x => x > i ? x - 1 : x);
+  const nm = {};
+  Object.keys(kBModels).forEach(k => {
+    const n = +k;
+    if (n === i) return;
+    nm[n > i ? n - 1 : n] = kBModels[k];
+  });
+  kBModels = nm;
+  kRenderAB();
+  kUpdateComboPreview();
 }
 
 function kSetBModel(i, model) {
@@ -6827,6 +6899,7 @@ async function kAnalyze() {
 
     kProductData = data;
     kSelectedA = []; kSelectedB = []; kBModels = {};
+    kCloseVibeInput();
     document.getElementById('kProductName').value = data.name || '';
     kRenderAB();
 
@@ -6980,6 +7053,7 @@ function kClearForNext() {
   const pn = document.getElementById('kProductName'); if (pn) pn.value = '';
   const ae = document.getElementById('kAOptions'); if (ae) ae.innerHTML = '';
   const be = document.getElementById('kBOptions'); if (be) be.innerHTML = '';
+  if (typeof kCloseVibeInput === 'function') kCloseVibeInput();
   if (typeof kRenderUploadedImages === 'function') kRenderUploadedImages();
   if (typeof kUpdateComboPreview === 'function') kUpdateComboPreview();
   const abc = document.getElementById('kAbcSection'); if (abc) abc.style.display = 'none';
