@@ -8165,7 +8165,7 @@ def _va_build_brief(job: dict) -> str:
     for u in (job.get("ref_images") or []):
         lines.append(f"- {u}")
     lines += ["",
-              "Model: seedance_2_0 · 9:16 · 12 s · 720p · 1 video na prompt",
+              "Model: seedance_2_0 · 1:1 (univerzalen FB placement) · 12 s · 720p · 1 video na prompt",
               ""]
     for p in (job.get("prompts") or []):
         lines.append(f"--- {p.get('title')} ---")
