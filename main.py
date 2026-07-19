@@ -7654,9 +7654,11 @@ def _reco_trend(series):
     return {"slope": slope, "pct": pct, "dir": direction}
 
 
-def _reco_compute(sku, stock, rows, date_from, date_to):
-    """Priporočilo za en SKU. rows=[{date,sales}]. Enaka logika kot graf v frontendu:
-    odreže prazen rep, izračuna trend, dneve zaloge, kategorijo priporočila."""
+def _reco_compute(sku, stock, rows, date_from, date_to, is_sale=False):
+    """Priporočilo za en SKU. rows=[{date,sales}].
+    TREND + PRIPOROČILO se računata na ZADNJIH 7 DNI (kam gre prodaja ZDAJ),
+    30-dnevni kontekst ostane za skupno prodajo in graf. Prazen rep (dnevi brez podatka
+    na koncu, npr. današnji dan) se odreže. Če je SKU že v SALE, se nasvet prilagodi."""
     from datetime import datetime as _dt, timedelta as _td
     d0 = _dt.strptime(date_from, "%Y-%m-%d").date()
     d1 = _dt.strptime(date_to, "%Y-%m-%d").date()
@@ -7675,11 +7677,13 @@ def _reco_compute(sku, stock, rows, date_from, date_to):
         if by_date.get(dt) is not None:
             last_with = i
     eff = dates[:last_with + 1] if last_with >= 0 else dates
-    series = [by_date.get(dt, 0) for dt in eff]
+    series = [by_date.get(dt, 0) for dt in eff]          # cela serija (do 30 dni) — kontekst
+    series7 = series[-7:]                                # zadnjih 7 dni — odločilno okno
 
-    total = sum(series)
-    avg = (total / len(series)) if series else 0.0
-    tr = _reco_trend(series)
+    total = sum(series)                                  # skupna prodaja v obdobju (kontekst)
+    avg30 = (total / len(series)) if series else 0.0
+    avg = (sum(series7) / len(series7)) if series7 else 0.0   # POVPREČJE = zadnjih 7 dni
+    tr = _reco_trend(series7)                            # TREND = zadnjih 7 dni
 
     days_of_stock = round(stock / avg) if avg > 0 else None
     rising = tr["dir"] == "up"
@@ -7700,6 +7704,16 @@ def _reco_compute(sku, stock, rows, date_from, date_to):
     else:
         cat, sig = "stabilno", "⚪"
 
+    # ── SALE nasvet: ali znižanje DELUJE? (ocenjeno na zadnjih 7 dneh) ──
+    sale_note = ""
+    if is_sale:
+        if rising:
+            sale_note = "deluje"       # znižano + raste → razmisli o vrnitvi cene
+        elif avg == 0 or falling:
+            sale_note = "ne_deluje"    # znižano, a nič prodaje / še pada
+        else:
+            sale_note = "stabilno"     # znižano, prodaja plosko
+
     wow = None
     if len(series) >= 14:
         last7 = sum(series[-7:]); prev7 = sum(series[-14:-7])
@@ -7707,8 +7721,10 @@ def _reco_compute(sku, stock, rows, date_from, date_to):
 
     return {
         "sku": sku, "stock": stock, "total": round(total), "avg": round(avg, 2),
+        "avg30": round(avg30, 2),
         "trend_pct": tr["pct"], "trend_dir": tr["dir"], "days_of_stock": days_of_stock,
         "wow": wow, "category": cat, "signal": sig, "days_data": len(series),
+        "sale": bool(is_sale), "sale_note": sale_note,
     }
 
 
@@ -7737,6 +7753,8 @@ async def product_recommendations_refresh(data: dict):
     key = os.environ.get("SILUXAR_SALES_KEY", "") or "WoodchuckShouldChuckWood"
     url = "https://www.siluxar.si/apiproductsales"
 
+    sale_set = _zaloga_load_sale()   # SKU-ji, ki so že v SALE (velike črke)
+
     recos = []
     batch_log = []
     t_start = _time.perf_counter()
@@ -7764,7 +7782,7 @@ async def product_recommendations_refresh(data: dict):
                 for sku in chunk:
                     rows = sales.get(sku) or sales.get(sku.upper()) or []
                     try:
-                        recos.append(_reco_compute(sku, stock_map[sku], rows, date_from, date_to))
+                        recos.append(_reco_compute(sku, stock_map[sku], rows, date_from, date_to, is_sale=(sku.upper() in sale_set)))
                     except Exception as e:
                         print(f"[reco] compute error {sku}: {e}")
 

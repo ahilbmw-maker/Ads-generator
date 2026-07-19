@@ -2784,46 +2784,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="analiza-tab-btn" id="analizaTab-beta" onclick="switchAnalizaTab('beta')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🧪 Analiza Beta</button>
       <button class="analiza-tab-btn" id="analizaTab-cashflow" onclick="switchAnalizaTab('cashflow')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Cash Flow</button>
       <button class="analiza-tab-btn" id="analizaTab-shipping" onclick="switchAnalizaTab('shipping')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🚚 Stroški pošte</button>
-      <button class="analiza-tab-btn" id="analizaTab-izdelki" onclick="switchAnalizaTab('izdelki')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📈 Analiza izdelkov</button>
       <button class="analiza-tab-btn" id="analizaTab-priporocila" onclick="switchAnalizaTab('priporocila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🎯 Priporočila</button>
-    </div>
-
-    <!-- TAB: Analiza izdelkov -->
-    <div id="analizaSubpage-izdelki" style="display:none;padding:14px 0 0 0">
-      <div style="display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;align-items:start" id="aiIzdGrid">
-        <!-- Levo: vnos -->
-        <div class="card" style="padding:14px">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary);margin-bottom:8px">SKU-ji za analizo</div>
-          <textarea id="aiIzdSkus" placeholder="Vpiši ali prilepi SKU-je (vsak v svojo vrstico)&#10;npr.&#10;BOOKLED&#10;INSECTPROTECT" style="width:100%;min-height:120px;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;resize:vertical;line-height:1.5;box-sizing:border-box"></textarea>
-          <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">ali izberi iz zaloge:</div>
-          <input id="aiIzdSearch" placeholder="🔍 išči SKU v zalogi..." autocomplete="off" oninput="aiIzdSearchStock()" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:12px;margin-top:4px;box-sizing:border-box">
-          <div id="aiIzdSearchRes" style="display:none;max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);margin-top:4px"></div>
-
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary);margin:14px 0 8px">Obdobje</div>
-          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">
-            <button class="aiIzd-range" onclick="aiIzdSetRange(7,this)" style="flex:1;min-width:70px;padding:6px;background:transparent;border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--text-secondary);font-family:inherit">Zadnjih 7 dni</button>
-            <button class="aiIzd-range" onclick="aiIzdSetRange(14,this)" style="flex:1;min-width:70px;padding:6px;background:transparent;border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--text-secondary);font-family:inherit">Zadnjih 14 dni</button>
-            <button class="aiIzd-range" onclick="aiIzdSetRange(30,this)" style="flex:1;min-width:70px;padding:6px;background:transparent;border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--text-secondary);font-family:inherit">Zadnjih 30 dni</button>
-          </div>
-          <div style="display:flex;gap:6px;align-items:center">
-            <div style="flex:1"><div style="font-size:10px;color:var(--text-tertiary);margin-bottom:2px">Od</div>
-              <input type="date" id="aiIzdFrom" onchange="aiIzdClearRangeActive()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box"></div>
-            <div style="flex:1"><div style="font-size:10px;color:var(--text-tertiary);margin-bottom:2px">Do</div>
-              <input type="date" id="aiIzdTo" onchange="aiIzdClearRangeActive()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box"></div>
-          </div>
-          <button onclick="aiIzdAnalyze()" id="aiIzdBtn" style="width:100%;margin-top:12px;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📈 Analiziraj</button>
-          <div id="aiIzdStatus" style="font-size:11px;margin-top:6px;color:var(--text-secondary)"></div>
-        </div>
-        <!-- Desno: graf + tendence -->
-        <div style="min-width:0">
-          <div class="card" style="padding:14px;margin-bottom:14px">
-            <div style="font-size:13px;font-weight:700;margin-bottom:10px">Prodaja po dnevih</div>
-            <div style="position:relative;height:340px"><canvas id="aiIzdChart"></canvas></div>
-            <div id="aiIzdEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:40px 0">Vnesi SKU-je in obdobje, nato klikni Analiziraj.</div>
-          </div>
-          <div id="aiIzdCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
-        </div>
-      </div>
     </div>
 
     <!-- TAB: Priporočila cen (🎯) -->
@@ -2835,7 +2796,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <input id="recoMinStock" type="number" min="0" value="100" style="width:120px;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;font-family:'DM Mono',monospace;box-sizing:border-box">
           </div>
           <button id="recoRefreshBtn" onclick="recoRefresh()" style="padding:10px 18px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Osveži priporočila</button>
-          <div style="font-size:11px;color:var(--text-tertiary);max-width:340px;line-height:1.4">Preveri samo izdelke z zalogo nad pragom (seštevek skladišč, brez external). Obdobje 30 dni, serije po 50 SKU zaporedno.</div>
+          <div style="font-size:11px;color:var(--text-tertiary);max-width:340px;line-height:1.4">Preveri samo izdelke z zalogo nad pragom (seštevek skladišč, brez external). <b>Trend in priporočilo na zadnjih 7 dni</b> (30-dnevni kontekst za skupno prodajo in graf). Serije po 50 SKU zaporedno.</div>
         </div>
         <div id="recoLog" style="display:none;margin-top:12px;padding:10px;background:var(--surface2);border-radius:var(--radius);font-family:'DM Mono',monospace;font-size:11px;line-height:1.6;color:var(--text-secondary);max-height:220px;overflow-y:auto;white-space:pre-wrap"></div>
       </div>
@@ -14460,20 +14421,21 @@ function recoRender(d) {
     const dt = d.generated_at ? new Date(d.generated_at) : null;
     meta.style.display = 'block';
     meta.textContent = 'Zadnja osvežitev: ' + (dt ? dt.toLocaleString('sl-SI') : '—')
-      + ' · ' + recos.length + ' izdelkov · prag >' + d.min_stock + ' · obdobje ' + d.days + ' dni'
-      + ' (' + d.date_from + ' → ' + d.date_to + ')';
+      + ' · ' + recos.length + ' izdelkov · prag >' + d.min_stock
+      + ' · trend 7 dni (kontekst ' + d.days + ' dni, ' + d.date_from + ' → ' + d.date_to + ')';
   }
   if (!recos.length) {
     wrap.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--text-tertiary);font-size:13px">Ni priporočil. Klikni „Osveži“ ali znižaj prag zaloge.</div>';
     return;
   }
+  // slog 2 — kompaktne vrstice z levim barvnim robom
   const groups = [
-    { key: 'znizaj',  title: '🔴 ZNIŽAJ',       sub: 'prodaja pada + veliko zaloge',    color: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.35)' },
-    { key: 'mrtva',   title: '⚠️ MRTVA ZALOGA', sub: '0 prodaje + zaloga stoji',        color: 'rgba(239,68,68,0.06)',  border: 'rgba(239,68,68,0.30)' },
-    { key: 'zvisaj',  title: '🟢 ZVIŠAJ',       sub: 'prodaja raste + malo zaloge',     color: 'rgba(34,160,107,0.08)', border: 'rgba(34,160,107,0.35)' },
-    { key: 'pozor',   title: '🟠 POZOR',        sub: 'malo zaloge — preveri dobavo',    color: 'rgba(217,119,6,0.07)',  border: 'rgba(217,119,6,0.30)' },
-    { key: 'ok',      title: '🔵 ZDRAVO',       sub: 'raste, zaloge dovolj',            color: 'rgba(37,99,235,0.06)',  border: 'rgba(37,99,235,0.25)' },
-    { key: 'stabilno',title: '⚪ STABILNO',      sub: 'ni izrazitega signala',           color: 'var(--surface2)',       border: 'var(--border)' },
+    { key: 'znizaj',  title: '🔴 ZNIŽAJ',       sub: 'prodaja pada + veliko zaloge', edge: '#e24b4a' },
+    { key: 'mrtva',   title: '⚠️ MRTVA ZALOGA', sub: '0 prodaje + zaloga stoji',     edge: '#e24b4a' },
+    { key: 'zvisaj',  title: '🟢 ZVIŠAJ',       sub: 'prodaja raste + malo zaloge',  edge: '#1d9e75' },
+    { key: 'pozor',   title: '🟠 POZOR',        sub: 'malo zaloge — preveri dobavo', edge: '#d97706' },
+    { key: 'ok',      title: '🔵 ZDRAVO',       sub: 'raste, zaloge dovolj',         edge: '#2563eb' },
+    { key: 'stabilno',title: '⚪ STABILNO',      sub: 'ni izrazitega signala',        edge: 'var(--border)' },
   ];
   const byCat = {};
   recos.forEach(r => { (byCat[r.category] = byCat[r.category] || []).push(r); });
@@ -14482,42 +14444,123 @@ function recoRender(d) {
   groups.forEach(g => {
     const items = byCat[g.key] || [];
     if (!items.length) return;
-    html += '<div style="margin-bottom:18px">';
+    html += '<div style="margin-bottom:22px">';
     html += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">'
-          + '<span style="font-size:13px;font-weight:800;letter-spacing:.3px">' + g.title + ' (' + items.length + ')</span>'
-          + '<span style="font-size:11px;color:var(--text-tertiary)">' + g.sub + '</span></div>';
+          + '<span style="font-size:13px;font-weight:700">' + g.title + '</span>'
+          + '<span style="font-size:12px;color:var(--text-tertiary)">' + g.sub + ' · ' + items.length + '</span></div>';
+    html += '<div style="display:flex;flex-direction:column;gap:4px">';
     items.forEach(r => {
+      const skuJs = esc(r.sku).replace(/'/g, "\\'");
       const dos = r.days_of_stock == null ? '∞' : (r.days_of_stock + ' dni');
       const trC = r.trend_dir === 'up' ? 'var(--green)' : (r.trend_dir === 'down' ? 'var(--red)' : 'var(--text-tertiary)');
       const trA = r.trend_dir === 'up' ? '↑' : (r.trend_dir === 'down' ? '↓' : '→');
       const wow = r.wow == null ? '' : ' · t/t ' + (r.wow>0?'+':'') + r.wow + '%';
-      html += '<div onclick="recoOpenGraph(\'' + esc(r.sku).replace(/'/g,"\\'") + '\')" '
-            + 'style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 12px;margin-bottom:5px;cursor:pointer;'
-            + 'background:' + g.color + ';border:1px solid ' + g.border + ';border-radius:8px;font-size:12px" '
-            + 'onmouseover="this.style.filter=\'brightness(0.97)\'" onmouseout="this.style.filter=\'none\'">'
-            + '<b style="min-width:130px;font-family:\'DM Mono\',monospace">' + esc(r.sku) + '</b>'
-            + '<span>zaloga <b>' + r.stock + '</b></span>'
-            + '<span>' + dos + ' zaloge</span>'
-            + '<span style="color:' + trC + '">' + trA + ' ' + (r.trend_pct>0?'+':'') + r.trend_pct + '%</span>'
-            + '<span style="color:var(--text-tertiary)">' + r.avg + '/dan' + wow + '</span>'
-            + '<span style="margin-left:auto;color:var(--accent);font-size:11px">graf →</span>'
-            + '</div>';
+      const saleBadge = r.sale
+        ? '<span style="background:#ec4899;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px">🏷️ SALE</span>'
+        : '';
+      let saleTip = '';
+      if (r.sale) {
+        if (r.sale_note === 'deluje')        saleTip = '<span style="color:var(--green);font-size:11px;font-weight:600">✓ deluje</span>';
+        else if (r.sale_note === 'ne_deluje') saleTip = '<span style="color:var(--red);font-size:11px;font-weight:600">✗ ne deluje</span>';
+        else if (r.sale_note === 'stabilno')  saleTip = '<span style="color:var(--text-tertiary);font-size:11px">akcija teče</span>';
+      }
+      html += '<div>'
+        + '<div class="reco-row" data-sku="' + esc(r.sku) + '" onclick="recoToggleGraph(this,\'' + skuJs + '\')" '
+        +   'style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 12px;cursor:pointer;'
+        +   'background:var(--surface2);border:1px solid var(--border);border-left:3px solid ' + g.edge + ';'
+        +   'border-radius:0 8px 8px 0;font-size:12px" '
+        +   'onmouseover="this.style.filter=\'brightness(0.98)\'" onmouseout="this.style.filter=\'none\'">'
+        +   '<b style="min-width:130px;font-family:\'DM Mono\',monospace">' + esc(r.sku) + '</b>'
+        +   saleBadge
+        +   '<span style="color:var(--text-secondary)">zaloga <b style="color:var(--text)">' + r.stock + '</b></span>'
+        +   '<span style="color:var(--text-secondary)">' + dos + '</span>'
+        +   '<span style="color:' + trC + ';font-weight:600">' + trA + ' ' + (r.trend_pct>0?'+':'') + r.trend_pct + '%</span>'
+        +   '<span style="color:var(--text-tertiary)">' + r.avg + '/dan' + wow + '</span>'
+        +   (saleTip ? saleTip : '')
+        +   '<span style="margin-left:auto;color:var(--accent);font-size:11px" class="reco-graf-lbl">graf ▾</span>'
+        + '</div>'
+        + '<div class="reco-graf-box" style="display:none"></div>'
+        + '</div>';
     });
-    html += '</div>';
+    html += '</div></div>';
   });
   wrap.innerHTML = html;
 }
 
-// Klik na vrstico → odpre podrobni graf v „Analiza izdelkov“ (obstoječa logika)
-function recoOpenGraph(sku) {
-  const ta = document.getElementById('aiIzdSkus');
-  if (ta) ta.value = sku;
-  switchAnalizaTab('izdelki');
-  if (typeof aiIzdAnalyze === 'function') { try { aiIzdAnalyze(); } catch(e) {} }
+// Klik na vrstico → razširi/skrči inline graf pod njo (ne skoči v drug tab)
+let _recoGrafChart = {};
+async function recoToggleGraph(rowEl, sku) {
+  const wrapper = rowEl.parentElement;                 // <div> ki drži vrstico + graf-box
+  const box = wrapper.querySelector('.reco-graf-box');
+  const lbl = rowEl.querySelector('.reco-graf-lbl');
+  if (!box) return;
+  const open = box.style.display !== 'none';
+  if (open) {                                          // zapri
+    box.style.display = 'none';
+    box.innerHTML = '';
+    if (lbl) lbl.textContent = 'graf ▾';
+    if (_recoGrafChart[sku]) { try { _recoGrafChart[sku].destroy(); } catch(e){} delete _recoGrafChart[sku]; }
+    return;
+  }
+  // odpri
+  if (lbl) lbl.textContent = 'graf ▴';
+  box.style.display = 'block';
+  box.innerHTML = '<div style="padding:14px;color:var(--text-tertiary);font-size:12px">⏳ Nalagam graf…</div>';
+  // obdobje: 30 dni nazaj (kontekst), trend v kartici je 7-dnevni
+  const today = new Date();
+  const to = _localDate(today);
+  const fromD = new Date(today); fromD.setDate(fromD.getDate() - 30);
+  const from = _localDate(fromD);
+  try {
+    const r = await fetch('/product-sales', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ products: [sku], date_from: from, date_to: to }) });
+    const d = await r.json();
+    if (!d.ok) { box.innerHTML = '<div style="padding:14px;color:var(--red);font-size:12px">✗ ' + (d.error||'napaka') + '</div>'; return; }
+    recoDrawGraph(box, sku, d.sales || {}, from, to);
+  } catch(e) {
+    box.innerHTML = '<div style="padding:14px;color:var(--red);font-size:12px">✗ ' + e.message + '</div>';
+  }
+}
+
+function recoDrawGraph(box, sku, sales, from, to) {
+  const rows = sales[sku] || sales[String(sku).toUpperCase()] || [];
+  const dates = [];
+  for (let dd = new Date(from); dd <= new Date(to); dd.setDate(dd.getDate()+1)) dates.push(_localDate(dd));
+  const byDate = {}; rows.forEach(x => byDate[x.date] = x.sales);
+  // odreži prazen rep
+  let lastIdx = -1; dates.forEach((dt,i)=>{ if (byDate[dt] != null) lastIdx = i; });
+  const eff = lastIdx >= 0 ? dates.slice(0, lastIdx+1) : dates;
+  const series = eff.map(dt => byDate[dt] != null ? byDate[dt] : 0);
+  const total = series.reduce((a,b)=>a+b,0);
+  const last7 = series.slice(-7);
+  const avg7 = last7.length ? (last7.reduce((a,b)=>a+b,0)/last7.length) : 0;
+  const tr = (typeof _aiIzdTrend === 'function') ? _aiIzdTrend(last7) : {dir:'flat',pct:0};
+  const col = tr.dir==='down' ? '#dc2626' : (tr.dir==='up' ? '#16a34a' : '#534AB7');
+  const cid = 'recograf_' + sku.replace(/[^A-Za-z0-9]/g,'_');
+  box.innerHTML =
+      '<div style="padding:14px;background:var(--surface2);border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px">'
+    +   '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">'
+    +     '<span style="color:var(--text-secondary)">Skupaj 30d: <b style="color:var(--text)">'+total+'</b></span>'
+    +     '<span style="color:var(--text-secondary)">Povpr. 7d: <b style="color:var(--text)">'+avg7.toFixed(1)+'/dan</b></span>'
+    +     '<span style="color:var(--text-secondary)">Trend 7d: <b style="color:'+col+'">'+(tr.pct>0?'+':'')+tr.pct+'%</b></span>'
+    +   '</div>'
+    +   '<div style="position:relative;height:180px"><canvas id="'+cid+'"></canvas></div>'
+    + '</div>';
+  const ctx = document.getElementById(cid);
+  if (_recoGrafChart[sku]) { try{_recoGrafChart[sku].destroy();}catch(e){} }
+  _recoGrafChart[sku] = new Chart(ctx, {
+    type: 'line',
+    data: { labels: eff.map(x=>x.slice(5)), datasets: [{ label:'Prodaja', data: series,
+      borderColor: col, backgroundColor: col+'22', tension:0.3, borderWidth:2, pointRadius:2, fill:true }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ y:{beginAtZero:true, ticks:{precision:0}}, x:{ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:10}} } }
+  });
 }
 
 function switchAnalizaTab(tab) {
-  ['meta', 'izdelki', 'priporocila', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'shipping'].forEach(t => {
+  const _valid = ['meta', 'priporocila', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'shipping'];
+  if (!_valid.includes(tab)) tab = 'priporocila';   // odstranjen 'izdelki' → padec na Priporočila
+  _valid.forEach(t => {
     const btn = document.getElementById('analizaTab-' + t);
     const sub = document.getElementById('analizaSubpage-' + t);
     if (t === tab) {
@@ -14530,7 +14573,6 @@ function switchAnalizaTab(tab) {
   });
   if (tab === 'obrat14') { o14LoadData(); o14LoadMetaInfo(); }
   if (tab === 'meta') { anLoadStock(); anLoadMetaFromServer(); }
-  if (tab === 'izdelki') { aiIzdInit(); }
   if (tab === 'priporocila') { recoInit(); }
   if (tab === 'obrat14tt') { tt14LoadData(); }
   if (tab === 'ttkreative') { ttKrLoadData(); }
