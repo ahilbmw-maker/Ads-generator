@@ -2785,6 +2785,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="analiza-tab-btn" id="analizaTab-cashflow" onclick="switchAnalizaTab('cashflow')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Cash Flow</button>
       <button class="analiza-tab-btn" id="analizaTab-shipping" onclick="switchAnalizaTab('shipping')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🚚 Stroški pošte</button>
       <button class="analiza-tab-btn" id="analizaTab-izdelki" onclick="switchAnalizaTab('izdelki')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📈 Analiza izdelkov</button>
+      <button class="analiza-tab-btn" id="analizaTab-priporocila" onclick="switchAnalizaTab('priporocila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🎯 Priporočila</button>
     </div>
 
     <!-- TAB: Analiza izdelkov -->
@@ -2823,6 +2824,24 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div id="aiIzdCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
         </div>
       </div>
+    </div>
+
+    <!-- TAB: Priporočila cen (🎯) -->
+    <div id="analizaSubpage-priporocila" style="display:none;padding:14px 0 0 0">
+      <div class="card" style="padding:14px;margin-bottom:14px">
+        <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary);margin-bottom:6px">Prag zaloge (kosov)</div>
+            <input id="recoMinStock" type="number" min="0" value="100" style="width:120px;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;font-family:'DM Mono',monospace;box-sizing:border-box">
+          </div>
+          <button id="recoRefreshBtn" onclick="recoRefresh()" style="padding:10px 18px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Osveži priporočila</button>
+          <div style="font-size:11px;color:var(--text-tertiary);max-width:340px;line-height:1.4">Preveri samo izdelke z zalogo nad pragom (seštevek skladišč, brez external). Obdobje 30 dni, serije po 50 SKU zaporedno.</div>
+        </div>
+        <div id="recoLog" style="display:none;margin-top:12px;padding:10px;background:var(--surface2);border-radius:var(--radius);font-family:'DM Mono',monospace;font-size:11px;line-height:1.6;color:var(--text-secondary);max-height:220px;overflow-y:auto;white-space:pre-wrap"></div>
+      </div>
+
+      <div id="recoMeta" style="display:none;font-size:12px;color:var(--text-tertiary);margin-bottom:10px"></div>
+      <div id="recoResults"></div>
     </div>
 
     <!-- TAB: Meta Ads -->
@@ -14373,8 +14392,132 @@ function aiIzdRender(sales, from, to) {
   });
 }
 
+// ─── PRIPOROČILA CEN (🎯) ──────────────────────────────────────────────────────
+let _recoInited = false;
+let _recoData = null;
+
+function recoInit() {
+  if (_recoInited) return;
+  _recoInited = true;
+  recoLoadCache();  // ob prvem odprtju pokaži zadnji shranjeni rezultat (če obstaja)
+}
+
+async function recoLoadCache() {
+  try {
+    const r = await fetch('/product-recommendations');
+    const d = await r.json();
+    if (d && d.ok && !d.empty && Array.isArray(d.recommendations) && d.recommendations.length) {
+      _recoData = d;
+      recoRender(d);
+    }
+  } catch(e) {}
+}
+
+async function recoRefresh() {
+  const btn = document.getElementById('recoRefreshBtn');
+  const logEl = document.getElementById('recoLog');
+  const minStock = parseInt(document.getElementById('recoMinStock').value) || 0;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳ Osvežujem...';
+  logEl.style.display = 'block';
+  logEl.textContent = 'Zbiram SKU-je z zalogo nad ' + minStock + '...';
+  const t0 = performance.now();
+  try {
+    const r = await fetch('/product-recommendations-refresh', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ min_stock: minStock, batch_size: 50, days: 30 })
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      logEl.textContent = '✗ ' + (d.error || 'Napaka pri osveževanju.');
+      return;
+    }
+    _recoData = d;
+    // izpiši log s časi po batchih
+    let lines = [];
+    (d.batch_log || []).forEach(b => {
+      const st = b.status === 'ok' ? '✓' : '✗ ' + (b.error||'');
+      lines.push('Batch ' + b.batch + '/' + b.of + ' (' + b.skus + ' SKU): ' + (b.ms/1000).toFixed(1) + 's ' + st);
+    });
+    lines.push('─────────────');
+    lines.push('SKUPAJ: ' + d.n_skus + ' SKU · ' + d.n_batches + ' klicev · ' + (d.total_ms/1000).toFixed(1) + 's');
+    logEl.textContent = lines.join('\n');
+    recoRender(d);
+  } catch(e) {
+    logEl.textContent = '✗ Napaka: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+function recoRender(d) {
+  const meta = document.getElementById('recoMeta');
+  const wrap = document.getElementById('recoResults');
+  const recos = d.recommendations || [];
+  if (meta) {
+    const dt = d.generated_at ? new Date(d.generated_at) : null;
+    meta.style.display = 'block';
+    meta.textContent = 'Zadnja osvežitev: ' + (dt ? dt.toLocaleString('sl-SI') : '—')
+      + ' · ' + recos.length + ' izdelkov · prag >' + d.min_stock + ' · obdobje ' + d.days + ' dni'
+      + ' (' + d.date_from + ' → ' + d.date_to + ')';
+  }
+  if (!recos.length) {
+    wrap.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--text-tertiary);font-size:13px">Ni priporočil. Klikni „Osveži“ ali znižaj prag zaloge.</div>';
+    return;
+  }
+  const groups = [
+    { key: 'znizaj',  title: '🔴 ZNIŽAJ',       sub: 'prodaja pada + veliko zaloge',    color: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.35)' },
+    { key: 'mrtva',   title: '⚠️ MRTVA ZALOGA', sub: '0 prodaje + zaloga stoji',        color: 'rgba(239,68,68,0.06)',  border: 'rgba(239,68,68,0.30)' },
+    { key: 'zvisaj',  title: '🟢 ZVIŠAJ',       sub: 'prodaja raste + malo zaloge',     color: 'rgba(34,160,107,0.08)', border: 'rgba(34,160,107,0.35)' },
+    { key: 'pozor',   title: '🟠 POZOR',        sub: 'malo zaloge — preveri dobavo',    color: 'rgba(217,119,6,0.07)',  border: 'rgba(217,119,6,0.30)' },
+    { key: 'ok',      title: '🔵 ZDRAVO',       sub: 'raste, zaloge dovolj',            color: 'rgba(37,99,235,0.06)',  border: 'rgba(37,99,235,0.25)' },
+    { key: 'stabilno',title: '⚪ STABILNO',      sub: 'ni izrazitega signala',           color: 'var(--surface2)',       border: 'var(--border)' },
+  ];
+  const byCat = {};
+  recos.forEach(r => { (byCat[r.category] = byCat[r.category] || []).push(r); });
+
+  let html = '';
+  groups.forEach(g => {
+    const items = byCat[g.key] || [];
+    if (!items.length) return;
+    html += '<div style="margin-bottom:18px">';
+    html += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">'
+          + '<span style="font-size:13px;font-weight:800;letter-spacing:.3px">' + g.title + ' (' + items.length + ')</span>'
+          + '<span style="font-size:11px;color:var(--text-tertiary)">' + g.sub + '</span></div>';
+    items.forEach(r => {
+      const dos = r.days_of_stock == null ? '∞' : (r.days_of_stock + ' dni');
+      const trC = r.trend_dir === 'up' ? 'var(--green)' : (r.trend_dir === 'down' ? 'var(--red)' : 'var(--text-tertiary)');
+      const trA = r.trend_dir === 'up' ? '↑' : (r.trend_dir === 'down' ? '↓' : '→');
+      const wow = r.wow == null ? '' : ' · t/t ' + (r.wow>0?'+':'') + r.wow + '%';
+      html += '<div onclick="recoOpenGraph(\'' + esc(r.sku).replace(/'/g,"\\'") + '\')" '
+            + 'style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 12px;margin-bottom:5px;cursor:pointer;'
+            + 'background:' + g.color + ';border:1px solid ' + g.border + ';border-radius:8px;font-size:12px" '
+            + 'onmouseover="this.style.filter=\'brightness(0.97)\'" onmouseout="this.style.filter=\'none\'">'
+            + '<b style="min-width:130px;font-family:\'DM Mono\',monospace">' + esc(r.sku) + '</b>'
+            + '<span>zaloga <b>' + r.stock + '</b></span>'
+            + '<span>' + dos + ' zaloge</span>'
+            + '<span style="color:' + trC + '">' + trA + ' ' + (r.trend_pct>0?'+':'') + r.trend_pct + '%</span>'
+            + '<span style="color:var(--text-tertiary)">' + r.avg + '/dan' + wow + '</span>'
+            + '<span style="margin-left:auto;color:var(--accent);font-size:11px">graf →</span>'
+            + '</div>';
+    });
+    html += '</div>';
+  });
+  wrap.innerHTML = html;
+}
+
+// Klik na vrstico → odpre podrobni graf v „Analiza izdelkov“ (obstoječa logika)
+function recoOpenGraph(sku) {
+  const ta = document.getElementById('aiIzdSkus');
+  if (ta) ta.value = sku;
+  switchAnalizaTab('izdelki');
+  if (typeof aiIzdAnalyze === 'function') { try { aiIzdAnalyze(); } catch(e) {} }
+}
+
 function switchAnalizaTab(tab) {
-  ['meta', 'izdelki', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'shipping'].forEach(t => {
+  ['meta', 'izdelki', 'priporocila', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'shipping'].forEach(t => {
     const btn = document.getElementById('analizaTab-' + t);
     const sub = document.getElementById('analizaSubpage-' + t);
     if (t === tab) {
@@ -14388,6 +14531,7 @@ function switchAnalizaTab(tab) {
   if (tab === 'obrat14') { o14LoadData(); o14LoadMetaInfo(); }
   if (tab === 'meta') { anLoadStock(); anLoadMetaFromServer(); }
   if (tab === 'izdelki') { aiIzdInit(); }
+  if (tab === 'priporocila') { recoInit(); }
   if (tab === 'obrat14tt') { tt14LoadData(); }
   if (tab === 'ttkreative') { ttKrLoadData(); }
   if (tab === 'beta') { betaLoadHistory(true); betaRestoreState(); }

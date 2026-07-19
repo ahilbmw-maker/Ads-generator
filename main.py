@@ -7603,6 +7603,201 @@ async def product_sales(data: dict):
         return {"ok": False, "error": "siluxar.si ni vrnil veljavnega JSON.", "body": r.text[:300]}
     return {"ok": True, "sales": result, "products": skus, "date_from": date_from, "date_to": date_to}
 
+# ─── PRIPOROČILA CEN: batch pregled vseh SKU-jev z zalogo nad pragom ────────────
+PRODUCT_SALES_CACHE = DATA_DIR / "product_sales_cache.json"
+
+
+def _reco_stock_by_sku() -> dict:
+    """Vrne {SKU_upper: stock} — seštevek zaloge čez skladišča, external IZPUŠČEN.
+    Replicira frontend _zalStockOf: silux + silux2, brez 'external'."""
+    out = {}
+    if not STOCK_CSV_FILE.exists():
+        return out
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        first = text.split("\n", 1)[0]
+        sep = ";" if first.count(";") > first.count(",") else ","
+        for row in _csv.DictReader(_SIO(text), delimiter=sep):
+            sku = (row.get("product_sku") or row.get("sku") or "").strip()
+            if not sku:
+                continue
+            wh = (row.get("warehouse") or "").strip().lower()
+            if wh == "external":
+                continue
+            try:
+                st = int(float(str(row.get("stock") or 0).replace(",", ".")))
+            except Exception:
+                st = 0
+            out[sku.upper()] = out.get(sku.upper(), 0) + st
+    except Exception as e:
+        print(f"[reco] stock read error: {e}")
+    return out
+
+
+def _reco_trend(series):
+    """Linearni trend (least squares) → {slope, pct, dir}. Enako kot _zalTrend v frontendu."""
+    n = len(series)
+    if n < 2:
+        return {"slope": 0.0, "pct": 0, "dir": "flat"}
+    sx = sy = sxy = sxx = 0.0
+    for x, y in enumerate(series):
+        sx += x; sy += y; sxy += x * y; sxx += x * x
+    denom = (n * sxx - sx * sx) or 1
+    slope = (n * sxy - sx * sy) / denom
+    intercept = (sy - slope * sx) / n
+    first = intercept
+    last = intercept + slope * (n - 1)
+    pct = round((last - first) / first * 100) if first > 0 else (100 if last > 0 else 0)
+    direction = "up" if slope > 0.05 else ("down" if slope < -0.05 else "flat")
+    return {"slope": slope, "pct": pct, "dir": direction}
+
+
+def _reco_compute(sku, stock, rows, date_from, date_to):
+    """Priporočilo za en SKU. rows=[{date,sales}]. Enaka logika kot graf v frontendu:
+    odreže prazen rep, izračuna trend, dneve zaloge, kategorijo priporočila."""
+    from datetime import datetime as _dt, timedelta as _td
+    d0 = _dt.strptime(date_from, "%Y-%m-%d").date()
+    d1 = _dt.strptime(date_to, "%Y-%m-%d").date()
+    dates = []
+    d = d0
+    while d <= d1:
+        dates.append(d.isoformat()); d += _td(days=1)
+    by_date = {}
+    for r in (rows or []):
+        try:
+            by_date[r.get("date")] = float(r.get("sales") or 0)
+        except Exception:
+            pass
+    last_with = -1
+    for i, dt in enumerate(dates):
+        if by_date.get(dt) is not None:
+            last_with = i
+    eff = dates[:last_with + 1] if last_with >= 0 else dates
+    series = [by_date.get(dt, 0) for dt in eff]
+
+    total = sum(series)
+    avg = (total / len(series)) if series else 0.0
+    tr = _reco_trend(series)
+
+    days_of_stock = round(stock / avg) if avg > 0 else None
+    rising = tr["dir"] == "up"
+    falling = tr["dir"] == "down"
+    low_stock = days_of_stock is not None and days_of_stock <= 14
+    high_stock = days_of_stock is None or days_of_stock >= 60
+
+    if falling and high_stock:
+        cat, sig = "znizaj", "🔴"
+    elif rising and low_stock:
+        cat, sig = "zvisaj", "🟢"
+    elif high_stock and avg == 0:
+        cat, sig = "mrtva", "🔴"
+    elif rising and high_stock:
+        cat, sig = "ok", "🔵"
+    elif (falling and low_stock) or low_stock:
+        cat, sig = "pozor", "🟠"
+    else:
+        cat, sig = "stabilno", "⚪"
+
+    wow = None
+    if len(series) >= 14:
+        last7 = sum(series[-7:]); prev7 = sum(series[-14:-7])
+        wow = round((last7 - prev7) / prev7 * 100) if prev7 > 0 else (100 if last7 > 0 else 0)
+
+    return {
+        "sku": sku, "stock": stock, "total": round(total), "avg": round(avg, 2),
+        "trend_pct": tr["pct"], "trend_dir": tr["dir"], "days_of_stock": days_of_stock,
+        "wow": wow, "category": cat, "signal": sig, "days_data": len(series),
+    }
+
+
+@app.post("/product-recommendations-refresh")
+async def product_recommendations_refresh(data: dict):
+    """Množično osveži priporočila cen za SKU-je z zalogo NAD pragom.
+    data: { min_stock:int, batch_size?:int=50, days?:int=30 }. Batch zaporedno, meri čase."""
+    try:
+        min_stock = int(data.get("min_stock") or 0)
+    except Exception:
+        min_stock = 0
+    batch_size = max(1, min(200, int(data.get("batch_size") or 50)))
+    days = max(7, min(30, int(data.get("days") or 30)))
+
+    stock_map = _reco_stock_by_sku()
+    if not stock_map:
+        return {"ok": False, "error": "Ni naložene zaloge (sinhroniziraj zalogo najprej)."}
+
+    skus = sorted([s for s, st in stock_map.items() if st > min_stock])
+    if not skus:
+        return {"ok": False, "error": f"Noben izdelek nima zaloge nad {min_stock}."}
+
+    today = datetime.now(timezone.utc).date()
+    date_to = today.isoformat()
+    date_from = (today - timedelta(days=days)).isoformat()
+    key = os.environ.get("SILUXAR_SALES_KEY", "") or "WoodchuckShouldChuckWood"
+    url = "https://www.siluxar.si/apiproductsales"
+
+    recos = []
+    batch_log = []
+    t_start = _time.perf_counter()
+    n_batches = (len(skus) + batch_size - 1) // batch_size
+
+    async with httpx.AsyncClient(timeout=120) as cli:
+        for bi in range(n_batches):
+            chunk = skus[bi * batch_size:(bi + 1) * batch_size]
+            t0 = _time.perf_counter()
+            status = "ok"; err = ""; sales = {}
+            try:
+                r = await cli.post(url, json={"products": chunk, "date_from": date_from, "date_to": date_to},
+                                   headers={"Authorization": key, "Content-Type": "application/json"})
+                if r.status_code != 200:
+                    status = "err"; err = f"status {r.status_code}"
+                else:
+                    sales = r.json() or {}
+            except Exception as e:
+                status = "err"; err = str(e)[:120]
+            dt_ms = round((_time.perf_counter() - t0) * 1000)
+            batch_log.append({"batch": bi + 1, "of": n_batches, "skus": len(chunk),
+                              "ms": dt_ms, "status": status, "error": err})
+            print(f"[reco] batch {bi+1}/{n_batches} ({len(chunk)} SKU): {dt_ms}ms {status} {err}")
+            if status == "ok":
+                for sku in chunk:
+                    rows = sales.get(sku) or sales.get(sku.upper()) or []
+                    try:
+                        recos.append(_reco_compute(sku, stock_map[sku], rows, date_from, date_to))
+                    except Exception as e:
+                        print(f"[reco] compute error {sku}: {e}")
+
+    total_ms = round((_time.perf_counter() - t_start) * 1000)
+    print(f"[reco] SKUPAJ: {len(skus)} SKU · {n_batches} klicev · {total_ms/1000:.1f}s")
+
+    cat_order = {"znizaj": 0, "mrtva": 1, "zvisaj": 2, "pozor": 3, "ok": 4, "stabilno": 5}
+    recos.sort(key=lambda x: (cat_order.get(x["category"], 9), -(x["stock"] or 0)))
+
+    payload = {
+        "ok": True, "generated_at": datetime.now(timezone.utc).isoformat(),
+        "min_stock": min_stock, "days": days, "date_from": date_from, "date_to": date_to,
+        "batch_size": batch_size, "n_skus": len(skus), "n_batches": n_batches,
+        "total_ms": total_ms, "batch_log": batch_log, "recommendations": recos,
+    }
+    try:
+        PRODUCT_SALES_CACHE.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        print(f"[reco] cache write error: {e}")
+    return payload
+
+
+@app.get("/product-recommendations")
+async def product_recommendations():
+    """Prebere zadnja izračunana priporočila iz cache (instant, brez klicev v živo)."""
+    if not PRODUCT_SALES_CACHE.exists():
+        return {"ok": True, "empty": True, "recommendations": []}
+    try:
+        return json.loads(PRODUCT_SALES_CACHE.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"ok": False, "error": f"Napaka pri branju cache: {e}"}
+
+
 STOCK_BACKUP_DIR = DATA_DIR / "stock_backups"   # avtomatski backupi zaloge pred sync
 STOCK_CSV_META = DATA_DIR / "stock_inventory_meta.json"
 
