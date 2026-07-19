@@ -8045,7 +8045,7 @@ async def kreative_batch_clear(data: dict):
 # brief za copy-paste v Claude chat (izvedba prek Higgsfield MCP na osebnem računu).
 VIDEO_ADS_FILE = DATA_DIR / "video_ads_jobs.json"
 _va_lock = asyncio.Lock()
-VA_REF_IMAGES = 5
+VA_REF_IMAGES = 1   # samo naslovna slika — galerija ima pogosto infografike s tekstom (konflikt z NO TEXT)
 VA_PAUSE_S = 5
 
 VA_PROMPT_TEMPLATE = """You write Seedance 2.0 video-ad prompts for Facebook e-commerce ads.
@@ -8161,7 +8161,7 @@ def _va_build_brief(job: dict) -> str:
              f"URL: {job.get('url')}",
              f"Brand: {job.get('brand') or '?'}",
              "",
-             "Referenčne slike (uvozi kot image_references):"]
+             "Referenčna slika (uvozi kot image_references):"]
     for u in (job.get("ref_images") or []):
         lines.append(f"- {u}")
     lines += ["",
