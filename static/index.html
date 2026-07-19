@@ -14471,6 +14471,9 @@ function recoRender(d) {
         +   'border-radius:0 8px 8px 0;font-size:12px" '
         +   'onmouseover="this.style.filter=\'brightness(0.98)\'" onmouseout="this.style.filter=\'none\'">'
         +   '<b style="min-width:130px;font-family:\'DM Mono\',monospace">' + esc(r.sku) + '</b>'
+        +   '<span onclick="event.stopPropagation();recoCopySku(this,\'' + skuJs + '\')" title="Kopiraj SKU" '
+        +     'style="cursor:pointer;color:var(--text-tertiary);font-size:12px;padding:2px 4px;border-radius:5px" '
+        +     'onmouseover="this.style.background=\'var(--border)\'" onmouseout="this.style.background=\'transparent\'">📋</span>'
         +   saleBadge
         +   '<span style="color:var(--text-secondary)">zaloga <b style="color:var(--text)">' + r.stock + '</b></span>'
         +   '<span style="color:var(--text-secondary)">' + dos + '</span>'
@@ -14485,6 +14488,20 @@ function recoRender(d) {
     html += '</div></div>';
   });
   wrap.innerHTML = html;
+}
+
+// Kopiraj SKU v odložišče (📋 v vrstici priporočila)
+function recoCopySku(el, sku) {
+  const done = () => { el.textContent = '✓'; setTimeout(() => { el.textContent = '📋'; }, 900); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(sku).then(done).catch(() => {
+      const ta = document.createElement('textarea'); ta.value = sku; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand('copy'); done(); } catch(e) {} document.body.removeChild(ta);
+    });
+  } else {
+    const ta = document.createElement('textarea'); ta.value = sku; document.body.appendChild(ta);
+    ta.select(); try { document.execCommand('copy'); done(); } catch(e) {} document.body.removeChild(ta);
+  }
 }
 
 // Klik na vrstico → razširi/skrči inline graf pod njo (ne skoči v drug tab)
@@ -14523,7 +14540,10 @@ async function recoToggleGraph(rowEl, sku) {
 }
 
 function recoDrawGraph(box, sku, sales, from, to) {
-  const rows = sales[sku] || sales[String(sku).toUpperCase()] || [];
+  // ključ odgovora poišči neodvisno od velikosti črk (API lahko vrne izvirni zapis)
+  const _ku = String(sku).trim().toUpperCase();
+  let rows = [];
+  for (const k in sales) { if (String(k).trim().toUpperCase() === _ku) { rows = sales[k] || []; break; } }
   const dates = [];
   for (let dd = new Date(from); dd <= new Date(to); dd.setDate(dd.getDate()+1)) dates.push(_localDate(dd));
   const byDate = {}; rows.forEach(x => byDate[x.date] = x.sales);

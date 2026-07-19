@@ -7630,7 +7630,11 @@ def _reco_stock_by_sku() -> dict:
                 st = int(float(str(row.get("stock") or 0).replace(",", ".")))
             except Exception:
                 st = 0
-            out[sku.upper()] = out.get(sku.upper(), 0) + st
+            k = sku.upper()
+            if k in out:
+                out[k]["stock"] += st
+            else:
+                out[k] = {"stock": st, "sku": sku}   # obdrži IZVIRNI zapis (velikost črk!)
     except Exception as e:
         print(f"[reco] stock read error: {e}")
     return out
@@ -7683,7 +7687,32 @@ def _reco_compute(sku, stock, rows, date_from, date_to, is_sale=False):
     total = sum(series)                                  # skupna prodaja v obdobju (kontekst)
     avg30 = (total / len(series)) if series else 0.0
     avg = (sum(series7) / len(series7)) if series7 else 0.0   # POVPREČJE = zadnjih 7 dni
-    tr = _reco_trend(series7)                            # TREND = zadnjih 7 dni
+
+    # ── TREND: robustno, ne linearni fit na 7 točkah (preveč šuma) ──
+    # 1. primarno TEDEN/TEDEN (zadnjih 7 vs prejšnjih 7) z mrtvo cono ±15 %
+    # 2. če t/t ni na voljo (<14 dni podatkov), linearni fit na zadnjih 7 z isto mrtvo cono
+    # 3. zagon proti mesecu: povpr. 7d >= 25 % nad povpr. 30d šteje kot rast,
+    #    tudi če je t/t plosko (izdelek je očitno v vzponu glede na mesec)
+    wow = None
+    if len(series) >= 14:
+        _l7 = sum(series[-7:]); _p7 = sum(series[-14:-7])
+        wow = round((_l7 - _p7) / _p7 * 100) if _p7 > 0 else (100 if _l7 > 0 else 0)
+    if wow is not None:
+        trend_pct = wow
+    else:
+        trend_pct = _reco_trend(series7)["pct"]
+    DEAD = 15   # mrtva cona v %
+    if trend_pct >= DEAD:
+        trend_dir = "up"
+    elif trend_pct <= -DEAD:
+        trend_dir = "down"
+    else:
+        trend_dir = "flat"
+    momentum_up = avg30 > 0 and avg >= avg30 * 1.25      # 7d očitno nad mesečnim tempom
+    if trend_dir == "flat" and momentum_up:
+        trend_dir = "up"
+        trend_pct = round((avg - avg30) / avg30 * 100)   # pokaži rast PROTI MESECU (ne zavajajoči t/t)
+    tr = {"pct": trend_pct, "dir": trend_dir}
 
     days_of_stock = round(stock / avg) if avg > 0 else None
     rising = tr["dir"] == "up"
@@ -7714,11 +7743,6 @@ def _reco_compute(sku, stock, rows, date_from, date_to, is_sale=False):
         else:
             sale_note = "stabilno"     # znižano, prodaja plosko
 
-    wow = None
-    if len(series) >= 14:
-        last7 = sum(series[-7:]); prev7 = sum(series[-14:-7])
-        wow = round((last7 - prev7) / prev7 * 100) if prev7 > 0 else (100 if last7 > 0 else 0)
-
     return {
         "sku": sku, "stock": stock, "total": round(total), "avg": round(avg, 2),
         "avg30": round(avg30, 2),
@@ -7743,7 +7767,8 @@ async def product_recommendations_refresh(data: dict):
     if not stock_map:
         return {"ok": False, "error": "Ni naložene zaloge (sinhroniziraj zalogo najprej)."}
 
-    skus = sorted([s for s, st in stock_map.items() if st > min_stock])
+    # pošiljamo IZVIRNE zapise SKU (API in ključi odgovora so lahko občutljivi na velikost črk)
+    skus = sorted([v["sku"] for v in stock_map.values() if v["stock"] > min_stock])
     if not skus:
         return {"ok": False, "error": f"Noben izdelek nima zaloge nad {min_stock}."}
 
@@ -7771,7 +7796,9 @@ async def product_recommendations_refresh(data: dict):
                 if r.status_code != 200:
                     status = "err"; err = f"status {r.status_code}"
                 else:
-                    sales = r.json() or {}
+                    raw = r.json() or {}
+                    # ključe odgovora normaliziraj na velike črke → ujemanje neodvisno od zapisa
+                    sales = {str(k).strip().upper(): v for k, v in raw.items()}
             except Exception as e:
                 status = "err"; err = str(e)[:120]
             dt_ms = round((_time.perf_counter() - t0) * 1000)
@@ -7780,9 +7807,10 @@ async def product_recommendations_refresh(data: dict):
             print(f"[reco] batch {bi+1}/{n_batches} ({len(chunk)} SKU): {dt_ms}ms {status} {err}")
             if status == "ok":
                 for sku in chunk:
-                    rows = sales.get(sku) or sales.get(sku.upper()) or []
+                    ku = sku.strip().upper()
+                    rows = sales.get(ku) or []
                     try:
-                        recos.append(_reco_compute(sku, stock_map[sku], rows, date_from, date_to, is_sale=(sku.upper() in sale_set)))
+                        recos.append(_reco_compute(sku, stock_map[ku]["stock"], rows, date_from, date_to, is_sale=(ku in sale_set)))
                     except Exception as e:
                         print(f"[reco] compute error {sku}: {e}")
 
