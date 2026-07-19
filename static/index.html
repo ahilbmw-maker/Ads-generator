@@ -14413,6 +14413,8 @@ async function recoRefresh() {
   }
 }
 
+let _recoShowReviewed = false;   // ali je sekcija "Pregledano" razprta
+
 function recoRender(d) {
   const meta = document.getElementById('recoMeta');
   const wrap = document.getElementById('recoResults');
@@ -14438,65 +14440,135 @@ function recoRender(d) {
     { key: 'stabilno',title: '⚪ STABILNO',      sub: 'ni izrazitega signala',        edge: 'var(--border)' },
   ];
   const reviewed = d.reviewed || {};   // {SKU_UPPER: ts} — strežniško, poteče po 7 dneh
+  const hiddenSale = _recoHiddenSaleLoad(d.generated_at || '');   // skupine s skritimi SALE (do naslednje osvežitve)
   const byCat = {};
   recos.forEach(r => { (byCat[r.category] = byCat[r.category] || []).push(r); });
 
+  // ena vrstica (deljeno med aktivnimi in pregledanimi)
+  function row(r, edge, isRev) {
+    const skuJs = esc(r.sku).replace(/'/g, "\\'");
+    const dos = r.days_of_stock == null ? '∞' : (r.days_of_stock + ' dni');
+    const trC = r.trend_dir === 'up' ? 'var(--green)' : (r.trend_dir === 'down' ? 'var(--red)' : 'var(--text-tertiary)');
+    const trA = r.trend_dir === 'up' ? '↑' : (r.trend_dir === 'down' ? '↓' : '→');
+    const wow = r.wow == null ? '' : ' · t/t ' + (r.wow>0?'+':'') + r.wow + '%';
+    const saleBadge = r.sale
+      ? '<span style="background:#ec4899;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px">🏷️ SALE</span>'
+      : '';
+    let saleTip = '';
+    if (r.sale) {
+      if (r.sale_note === 'deluje')        saleTip = '<span style="color:var(--green);font-size:11px;font-weight:600">✓ deluje</span>';
+      else if (r.sale_note === 'ne_deluje') saleTip = '<span style="color:var(--red);font-size:11px;font-weight:600">✗ ne deluje</span>';
+      else if (r.sale_note === 'stabilno')  saleTip = '<span style="color:var(--text-tertiary);font-size:11px">akcija teče</span>';
+    }
+    const rowBg = isRev ? 'rgba(29,158,117,0.10)' : 'var(--surface2)';
+    const rowEdge = isRev ? '#1d9e75' : edge;
+    return '<div>'
+      + '<div class="reco-row" data-sku="' + esc(r.sku) + '" onclick="recoToggleGraph(this,\'' + skuJs + '\')" '
+      +   'style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 12px;cursor:pointer;'
+      +   'background:' + rowBg + ';border:1px solid var(--border);border-left:3px solid ' + rowEdge + ';'
+      +   'border-radius:0 8px 8px 0;font-size:12px" '
+      +   'onmouseover="this.style.filter=\'brightness(0.98)\'" onmouseout="this.style.filter=\'none\'">'
+      +   '<b style="min-width:130px;font-family:\'DM Mono\',monospace">' + esc(r.sku) + '</b>'
+      +   '<span onclick="event.stopPropagation();recoCopySku(this,\'' + skuJs + '\')" title="Kopiraj SKU" '
+      +     'style="cursor:pointer;color:var(--text-tertiary);font-size:12px;padding:2px 4px;border-radius:5px" '
+      +     'onmouseover="this.style.background=\'var(--border)\'" onmouseout="this.style.background=\'transparent\'">📋</span>'
+      +   saleBadge
+      +   '<span style="color:var(--text-secondary)">zaloga <b style="color:var(--text)">' + r.stock + '</b></span>'
+      +   '<span style="color:var(--text-secondary)">' + dos + '</span>'
+      +   '<span style="color:' + trC + ';font-weight:600">' + trA + ' ' + (r.trend_pct>0?'+':'') + r.trend_pct + '%</span>'
+      +   '<span style="color:var(--text-tertiary)">' + r.avg + '/dan' + wow + '</span>'
+      +   (saleTip ? saleTip : '')
+      +   '<span onclick="event.stopPropagation();recoToggleReviewed(\'' + skuJs + '\',' + (isRev?'false':'true') + ')" '
+      +     'title="' + (isRev?'Prekliči — vrni med aktivne':'Označi kot Pregledano (7 dni)') + '" '
+      +     'style="margin-left:auto;cursor:pointer;font-size:11px;font-weight:600;padding:3px 9px;border-radius:6px;'
+      +     (isRev ? 'background:#1d9e75;color:#fff' : 'background:transparent;color:var(--text-secondary);border:1px solid var(--border)') + '">'
+      +     (isRev ? '↩ Vrni' : '✔ Pregledano') + '</span>'
+      +   '<span style="color:var(--accent);font-size:11px" class="reco-graf-lbl">graf ▾</span>'
+      + '</div>'
+      + '<div class="reco-graf-box" style="display:none"></div>'
+      + '</div>';
+  }
+
+  // razdeli: aktivni (v skupinah) / pregledani (skrita sekcija spodaj)
+  const revRows = [];   // {r, edge}
   let html = '';
   groups.forEach(g => {
-    const items = byCat[g.key] || [];
-    if (!items.length) return;
-    html += '<div style="margin-bottom:22px">';
-    html += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">'
-          + '<span style="font-size:13px;font-weight:700">' + g.title + '</span>'
-          + '<span style="font-size:12px;color:var(--text-tertiary)">' + g.sub + ' · ' + items.length + '</span></div>';
-    html += '<div style="display:flex;flex-direction:column;gap:4px">';
+    const items = (byCat[g.key] || []);
+    const act = [];
     items.forEach(r => {
-      const skuJs = esc(r.sku).replace(/'/g, "\\'");
-      const dos = r.days_of_stock == null ? '∞' : (r.days_of_stock + ' dni');
-      const trC = r.trend_dir === 'up' ? 'var(--green)' : (r.trend_dir === 'down' ? 'var(--red)' : 'var(--text-tertiary)');
-      const trA = r.trend_dir === 'up' ? '↑' : (r.trend_dir === 'down' ? '↓' : '→');
-      const wow = r.wow == null ? '' : ' · t/t ' + (r.wow>0?'+':'') + r.wow + '%';
-      const saleBadge = r.sale
-        ? '<span style="background:#ec4899;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px">🏷️ SALE</span>'
-        : '';
-      let saleTip = '';
-      if (r.sale) {
-        if (r.sale_note === 'deluje')        saleTip = '<span style="color:var(--green);font-size:11px;font-weight:600">✓ deluje</span>';
-        else if (r.sale_note === 'ne_deluje') saleTip = '<span style="color:var(--red);font-size:11px;font-weight:600">✗ ne deluje</span>';
-        else if (r.sale_note === 'stabilno')  saleTip = '<span style="color:var(--text-tertiary);font-size:11px">akcija teče</span>';
-      }
-      const isRev = !!reviewed[String(r.sku).trim().toUpperCase()];
-      const rowBg = isRev ? 'rgba(29,158,117,0.10)' : 'var(--surface2)';
-      const rowEdge = isRev ? '#1d9e75' : g.edge;
-      html += '<div>'
-        + '<div class="reco-row" data-sku="' + esc(r.sku) + '" onclick="recoToggleGraph(this,\'' + skuJs + '\')" '
-        +   'style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 12px;cursor:pointer;'
-        +   'background:' + rowBg + ';border:1px solid var(--border);border-left:3px solid ' + rowEdge + ';'
-        +   'border-radius:0 8px 8px 0;font-size:12px" '
-        +   'onmouseover="this.style.filter=\'brightness(0.98)\'" onmouseout="this.style.filter=\'none\'">'
-        +   '<b style="min-width:130px;font-family:\'DM Mono\',monospace">' + esc(r.sku) + '</b>'
-        +   '<span onclick="event.stopPropagation();recoCopySku(this,\'' + skuJs + '\')" title="Kopiraj SKU" '
-        +     'style="cursor:pointer;color:var(--text-tertiary);font-size:12px;padding:2px 4px;border-radius:5px" '
-        +     'onmouseover="this.style.background=\'var(--border)\'" onmouseout="this.style.background=\'transparent\'">📋</span>'
-        +   saleBadge
-        +   '<span style="color:var(--text-secondary)">zaloga <b style="color:var(--text)">' + r.stock + '</b></span>'
-        +   '<span style="color:var(--text-secondary)">' + dos + '</span>'
-        +   '<span style="color:' + trC + ';font-weight:600">' + trA + ' ' + (r.trend_pct>0?'+':'') + r.trend_pct + '%</span>'
-        +   '<span style="color:var(--text-tertiary)">' + r.avg + '/dan' + wow + '</span>'
-        +   (saleTip ? saleTip : '')
-        +   '<span onclick="event.stopPropagation();recoToggleReviewed(\'' + skuJs + '\',' + (isRev?'false':'true') + ')" '
-        +     'title="' + (isRev?'Prekliči oznako Pregledano':'Označi kot Pregledano (7 dni)') + '" '
-        +     'style="margin-left:auto;cursor:pointer;font-size:11px;font-weight:600;padding:3px 9px;border-radius:6px;'
-        +     (isRev ? 'background:#1d9e75;color:#fff' : 'background:transparent;color:var(--text-secondary);border:1px solid var(--border)') + '">'
-        +     (isRev ? '✓ Pregledano' : '✔ Pregledano') + '</span>'
-        +   '<span style="color:var(--accent);font-size:11px" class="reco-graf-lbl">graf ▾</span>'
-        + '</div>'
-        + '<div class="reco-graf-box" style="display:none"></div>'
-        + '</div>';
+      if (reviewed[String(r.sku).trim().toUpperCase()]) revRows.push({ r: r, edge: g.edge });
+      else act.push(r);
     });
-    html += '</div></div>';
+    if (!act.length) return;
+    const saleCount = act.filter(r => r.sale).length;
+    const saleHidden = hiddenSale.has(g.key);
+    const shown = saleHidden ? act.filter(r => !r.sale) : act;
+    // gumb za skrivanje SALE izdelkov v tej skupini (reset ob naslednji osvežitvi)
+    let saleBtn = '';
+    if (saleCount > 0) {
+      saleBtn = '<span onclick="recoToggleHideSale(\'' + g.key + '\')" '
+        + 'style="cursor:pointer;font-size:11px;font-weight:600;padding:2px 9px;border-radius:6px;margin-left:auto;'
+        + (saleHidden ? 'background:#ec4899;color:#fff' : 'background:transparent;color:#ec4899;border:1px solid #ec4899') + '">'
+        + (saleHidden ? '🏷️ Pokaži SALE (' + saleCount + ')' : '🏷️ Skrij SALE (' + saleCount + ')') + '</span>';
+    }
+    html += '<div style="margin-bottom:22px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+          + '<span style="font-size:13px;font-weight:700">' + g.title + '</span>'
+          + '<span style="font-size:12px;color:var(--text-tertiary)">' + g.sub + ' · ' + shown.length
+          + (saleHidden && saleCount ? ' (SALE skriti)' : '') + '</span>'
+          + saleBtn + '</div>';
+    if (shown.length) {
+      html += '<div style="display:flex;flex-direction:column;gap:4px">';
+      shown.forEach(r => { html += row(r, g.edge, false); });
+      html += '</div>';
+    } else {
+      html += '<div style="font-size:12px;color:var(--text-tertiary);padding:8px 12px">Vsi izdelki v tej skupini so SALE (skriti).</div>';
+    }
+    html += '</div>';
   });
+
+  // sekcija Pregledano (skrita za gumbom)
+  if (revRows.length) {
+    html += '<div style="margin-top:6px;border-top:1px dashed var(--border);padding-top:12px">';
+    html += '<button onclick="recoToggleShowReviewed()" '
+          + 'style="width:100%;padding:9px;background:transparent;color:#1d9e75;border:1px dashed #1d9e75;border-radius:8px;'
+          + 'font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">'
+          + (_recoShowReviewed ? '▴ Skrij pregledane (' + revRows.length + ')' : '▾ Pokaži pregledane (' + revRows.length + ')')
+          + '</button>';
+    if (_recoShowReviewed) {
+      html += '<div style="display:flex;flex-direction:column;gap:4px;margin-top:10px">';
+      revRows.forEach(x => { html += row(x.r, x.edge, true); });
+      html += '</div>';
+    }
+    html += '</div>';
+  }
   wrap.innerHTML = html;
+}
+
+function recoToggleShowReviewed() {
+  _recoShowReviewed = !_recoShowReviewed;
+  if (_recoData) recoRender(_recoData);
+}
+
+// ── Skrivanje SALE izdelkov po skupinah — vezano na generated_at osvežitve:
+// ob NASLEDNJI osvežitvi priporočil se SALE izdelki samodejno spet pokažejo.
+function _recoHiddenSaleLoad(gen) {
+  try {
+    const d = JSON.parse(localStorage.getItem('slx_reco_hidden_sale') || 'null');
+    if (d && d.gen === gen && Array.isArray(d.groups)) return new Set(d.groups);
+  } catch(e) {}
+  return new Set();
+}
+function _recoHiddenSaleSave(gen, set) {
+  try { localStorage.setItem('slx_reco_hidden_sale', JSON.stringify({ gen: gen, groups: [...set] })); } catch(e) {}
+}
+function recoToggleHideSale(key) {
+  if (!_recoData) return;
+  const gen = _recoData.generated_at || '';
+  const s = _recoHiddenSaleLoad(gen);
+  if (s.has(key)) s.delete(key); else s.add(key);
+  _recoHiddenSaleSave(gen, s);
+  recoRender(_recoData);
 }
 
 // Kopiraj SKU v odložišče (📋 v vrstici priporočila)
