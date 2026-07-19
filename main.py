@@ -7752,6 +7752,60 @@ def _reco_compute(sku, stock, rows, date_from, date_to, is_sale=False):
     }
 
 
+RECO_REVIEWED_FILE = DATA_DIR / "reco_reviewed.json"
+
+
+def _reco_load_reviewed() -> dict:
+    """{SKU_UPPER: iso_timestamp} — samo oznake mlajše od 7 dni; starejše se ob branju počistijo."""
+    try:
+        if RECO_REVIEWED_FILE.exists():
+            d = json.loads(RECO_REVIEWED_FILE.read_text(encoding="utf-8")) or {}
+            cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+            out = {}
+            for k, v in d.items():
+                try:
+                    ts = datetime.fromisoformat(str(v))
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    if ts >= cutoff:
+                        out[str(k).strip().upper()] = v
+                except Exception:
+                    pass
+            if len(out) != len(d):   # počisti potekle
+                try:
+                    tmp = RECO_REVIEWED_FILE.with_suffix(".tmp")
+                    tmp.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+                    os.replace(tmp, RECO_REVIEWED_FILE)
+                except Exception:
+                    pass
+            return out
+    except Exception as e:
+        print(f"[reco] reviewed load err: {e}")
+    return {}
+
+
+@app.post("/product-recommendations-reviewed")
+async def product_recommendations_reviewed(data: dict):
+    """Označi/odznači izdelek kot Pregledano. Velja za VSE uporabnike (strežniško),
+    samodejno poteče po 7 dneh od označitve. data: { sku, on: true/false }"""
+    sku = str(data.get("sku") or "").strip().upper()
+    on = bool(data.get("on"))
+    if not sku:
+        return {"ok": False, "error": "Manjka SKU."}
+    rev = _reco_load_reviewed()
+    if on:
+        rev[sku] = datetime.now(timezone.utc).isoformat()
+    else:
+        rev.pop(sku, None)
+    try:
+        tmp = RECO_REVIEWED_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(rev, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, RECO_REVIEWED_FILE)
+    except Exception as e:
+        return {"ok": False, "error": f"Napaka pri zapisu: {e}"}
+    return {"ok": True, "sku": sku, "on": on, "reviewed": rev}
+
+
 @app.post("/product-recommendations-refresh")
 async def product_recommendations_refresh(data: dict):
     """Množično osveži priporočila cen za SKU-je z zalogo NAD pragom.
@@ -7830,6 +7884,7 @@ async def product_recommendations_refresh(data: dict):
         PRODUCT_SALES_CACHE.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     except Exception as e:
         print(f"[reco] cache write error: {e}")
+    payload["reviewed"] = _reco_load_reviewed()   # oznake Pregledano preživijo osvežitev
     return payload
 
 
@@ -7837,9 +7892,11 @@ async def product_recommendations_refresh(data: dict):
 async def product_recommendations():
     """Prebere zadnja izračunana priporočila iz cache (instant, brez klicev v živo)."""
     if not PRODUCT_SALES_CACHE.exists():
-        return {"ok": True, "empty": True, "recommendations": []}
+        return {"ok": True, "empty": True, "recommendations": [], "reviewed": _reco_load_reviewed()}
     try:
-        return json.loads(PRODUCT_SALES_CACHE.read_text(encoding="utf-8"))
+        payload = json.loads(PRODUCT_SALES_CACHE.read_text(encoding="utf-8"))
+        payload["reviewed"] = _reco_load_reviewed()   # vedno sveže oznake (7-dnevni potek)
+        return payload
     except Exception as e:
         return {"ok": False, "error": f"Napaka pri branju cache: {e}"}
 

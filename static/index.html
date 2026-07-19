@@ -14437,6 +14437,7 @@ function recoRender(d) {
     { key: 'ok',      title: '🔵 ZDRAVO',       sub: 'raste, zaloge dovolj',         edge: '#2563eb' },
     { key: 'stabilno',title: '⚪ STABILNO',      sub: 'ni izrazitega signala',        edge: 'var(--border)' },
   ];
+  const reviewed = d.reviewed || {};   // {SKU_UPPER: ts} — strežniško, poteče po 7 dneh
   const byCat = {};
   recos.forEach(r => { (byCat[r.category] = byCat[r.category] || []).push(r); });
 
@@ -14464,10 +14465,13 @@ function recoRender(d) {
         else if (r.sale_note === 'ne_deluje') saleTip = '<span style="color:var(--red);font-size:11px;font-weight:600">✗ ne deluje</span>';
         else if (r.sale_note === 'stabilno')  saleTip = '<span style="color:var(--text-tertiary);font-size:11px">akcija teče</span>';
       }
+      const isRev = !!reviewed[String(r.sku).trim().toUpperCase()];
+      const rowBg = isRev ? 'rgba(29,158,117,0.10)' : 'var(--surface2)';
+      const rowEdge = isRev ? '#1d9e75' : g.edge;
       html += '<div>'
         + '<div class="reco-row" data-sku="' + esc(r.sku) + '" onclick="recoToggleGraph(this,\'' + skuJs + '\')" '
         +   'style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 12px;cursor:pointer;'
-        +   'background:var(--surface2);border:1px solid var(--border);border-left:3px solid ' + g.edge + ';'
+        +   'background:' + rowBg + ';border:1px solid var(--border);border-left:3px solid ' + rowEdge + ';'
         +   'border-radius:0 8px 8px 0;font-size:12px" '
         +   'onmouseover="this.style.filter=\'brightness(0.98)\'" onmouseout="this.style.filter=\'none\'">'
         +   '<b style="min-width:130px;font-family:\'DM Mono\',monospace">' + esc(r.sku) + '</b>'
@@ -14480,7 +14484,12 @@ function recoRender(d) {
         +   '<span style="color:' + trC + ';font-weight:600">' + trA + ' ' + (r.trend_pct>0?'+':'') + r.trend_pct + '%</span>'
         +   '<span style="color:var(--text-tertiary)">' + r.avg + '/dan' + wow + '</span>'
         +   (saleTip ? saleTip : '')
-        +   '<span style="margin-left:auto;color:var(--accent);font-size:11px" class="reco-graf-lbl">graf ▾</span>'
+        +   '<span onclick="event.stopPropagation();recoToggleReviewed(\'' + skuJs + '\',' + (isRev?'false':'true') + ')" '
+        +     'title="' + (isRev?'Prekliči oznako Pregledano':'Označi kot Pregledano (7 dni)') + '" '
+        +     'style="margin-left:auto;cursor:pointer;font-size:11px;font-weight:600;padding:3px 9px;border-radius:6px;'
+        +     (isRev ? 'background:#1d9e75;color:#fff' : 'background:transparent;color:var(--text-secondary);border:1px solid var(--border)') + '">'
+        +     (isRev ? '✓ Pregledano' : '✔ Pregledano') + '</span>'
+        +   '<span style="color:var(--accent);font-size:11px" class="reco-graf-lbl">graf ▾</span>'
         + '</div>'
         + '<div class="reco-graf-box" style="display:none"></div>'
         + '</div>';
@@ -14502,6 +14511,17 @@ function recoCopySku(el, sku) {
     const ta = document.createElement('textarea'); ta.value = sku; document.body.appendChild(ta);
     ta.select(); try { document.execCommand('copy'); done(); } catch(e) {} document.body.removeChild(ta);
   }
+}
+
+// Označi/odznači Pregledano (strežniško, za vse uporabnike, poteče po 7 dneh)
+async function recoToggleReviewed(sku, on) {
+  try {
+    const r = await fetch('/product-recommendations-reviewed', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku, on }) });
+    const d = await r.json();
+    if (!d.ok) { alert('Napaka: ' + (d.error||'')); return; }
+    if (_recoData) { _recoData.reviewed = d.reviewed || {}; recoRender(_recoData); }
+  } catch(e) { alert('Napaka: ' + e.message); }
 }
 
 // Klik na vrstico → razširi/skrči inline graf pod njo (ne skoči v drug tab)
