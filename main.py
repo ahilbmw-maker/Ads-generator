@@ -7664,6 +7664,70 @@ def _kbatch_save(jobs: list):
         print(f"[kbatch] save err: {e}")
 
 
+def _kbatch_sku_naziv(sku: str) -> str:
+    """SKU → naziv iz zaloge CSV (Skladišče → Zaloga). Prazno, če ni najden."""
+    target = str(sku).strip().upper()
+    if not target or not STOCK_CSV_FILE.exists():
+        return ""
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        first = text.split("\n", 1)[0]
+        sep = ";" if first.count(";") > first.count(",") else ","
+        rd = _csv.DictReader(_SIO(text), delimiter=sep)
+        cols = {c.lower().strip(): c for c in (rd.fieldnames or [])}
+        sku_c = cols.get("product_sku") or cols.get("sku")
+        naz_c = cols.get("naziv") or cols.get("name")
+        if not sku_c or not naz_c:
+            return ""
+        for row in rd:
+            if (row.get(sku_c) or "").strip().upper() == target:
+                nz = (row.get(naz_c) or "").strip()
+                if nz:
+                    return nz
+    except Exception as e:
+        print(f"[kbatch] naziv lookup err: {e}")
+    return ""
+
+
+def _kbatch_url_by_naziv(naziv: str):
+    """Naziv (iz zaloge) → (url, title) iz SL feed titlov.
+    1. točno ujemanje normaliziranega naziva
+    2. redek žeton (npr. 'CooliPix' — beseda, ki obstaja v natanko enem title-u)
+    3. podobnost (difflib) s pragom 0.75"""
+    import difflib as _dl
+    import re as _re
+    nz = " ".join(str(naziv or "").lower().split())
+    if not nz:
+        return None, None
+    feed = feed_by_lang.get("sl") or {}
+    titles = []   # [(norm_title, url, title)]
+    for _gid, d in feed.items():
+        t = " ".join(str(d.get("title") or "").lower().split())
+        if t:
+            titles.append((t, d.get("url"), d.get("title")))
+    # 1) točno
+    for t, u, orig in titles:
+        if t == nz:
+            return u, orig
+    # 2) redek žeton: besede ≥5 znakov iz naziva; če je katera v natanko enem title-u → ta izdelek
+    tokens = [w for w in _re.split(r"[^a-z0-9čšžćđ]+", nz) if len(w) >= 5]
+    for tok in sorted(tokens, key=len, reverse=True):
+        hits = [(u, orig) for t, u, orig in titles if tok in t]
+        if len(hits) == 1:
+            return hits[0]
+    # 3) podobnost
+    best = (0.0, None, None)
+    for t, u, orig in titles:
+        r = _dl.SequenceMatcher(None, nz, t).ratio()
+        if r > best[0]:
+            best = (r, u, orig)
+    if best[0] >= 0.75:
+        return best[1], best[2]
+    return None, None
+
+
 def _kbatch_sku_to_url(sku: str):
     """SKU → (url, ime) iz SL feeda. ISTA logika ujemanja kot Optimizacija slik
     (feed nima mpn — SKU se skriva v image URL-jih Ikonka/Amio):
@@ -7694,12 +7758,19 @@ def _kbatch_sku_to_url(sku: str):
                     return url, title
         except Exception:
             pass
-        # 4) fallback: substring v image poteh ali slugu (prvi zadetek si zapomnimo)
+        # 5) fallback: substring v image poteh ali slugu (prvi zadetek si zapomnimo)
         if fallback is None:
             joined = " ".join(all_imgs).lower()
             slug = (extract_slug(url or "") or "").lower()
             if (len(target_l) >= 4) and (target_l in joined or target_l in slug):
                 fallback = (url, title)
+    # 4) NAZIV most: SKU → naziv iz zaloge CSV → title v SL feedu
+    #    (močnejše od substring fallbacka, zato ima prednost)
+    nz = _kbatch_sku_naziv(target)
+    if nz:
+        u, t = _kbatch_url_by_naziv(nz)
+        if u:
+            return u, t
     return fallback if fallback else (None, None)
 
 
@@ -7804,36 +7875,114 @@ async def _kbatch_process_one(job: dict):
         print(f"[kbatch] ✗ {sku}: {e}")
 
 
+KBATCH_LEASE_STALE_S = 180   # running brez heartbeata > 3 min = mrtev proces → prevzemi
+_KBATCH_WORKER_ID = f"w{os.getpid()}_{int(_time.time())}"
+
+
+async def _kbatch_heartbeat(jid: str):
+    """Med obdelavo vsakih 30 s osveži heartbeat joba (lease proti podvojenim workerjem)."""
+    try:
+        while True:
+            await asyncio.sleep(30)
+            await _kbatch_set(jid, hb=datetime.now(timezone.utc).isoformat())
+    except asyncio.CancelledError:
+        pass
+
+
+def _kbatch_hb_stale(j) -> bool:
+    try:
+        hb = datetime.fromisoformat(j.get("hb") or "")
+        if hb.tzinfo is None:
+            hb = hb.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - hb).total_seconds() > KBATCH_LEASE_STALE_S
+    except Exception:
+        return True   # brez/pokvarjen hb = star zapis → prevzemljiv
+
+
 async def _kreative_batch_worker_loop():
-    """Strežniški worker: en SKU naenkrat, premor med SKU-ji. Preživi restart."""
+    """Strežniški worker: STROGO en SKU naenkrat + premor med SKU-ji.
+    Lease/heartbeat: tudi če ob deployu za hip tečeta dva procesa (ali več uvicorn
+    workerjev), en job obdeluje samo en worker; 'running' brez svežega heartbeata
+    (> 3 min, npr. ubit proces) se prevzame nazaj."""
     await asyncio.sleep(10)
-    # ob zagonu: morebitni 'running' (prekinjen ob restartu) nazaj v 'waiting'
-    async with _kbatch_lock:
-        jobs = _kbatch_load()
-        ch = False
-        for j in jobs:
-            if j.get("status") == "running":
-                j["status"] = "waiting"; ch = True
-        if ch:
-            _kbatch_save(jobs)
     while True:
         try:
-            nxt = next((j for j in _kbatch_load() if j.get("status") == "waiting"), None)
+            jobs = _kbatch_load()
+            # če KATERIKOLI job aktivno teče (svež heartbeat) pri drugem workerju → počakaj
+            active_other = any(j.get("status") == "running" and not _kbatch_hb_stale(j)
+                               and j.get("worker") != _KBATCH_WORKER_ID for j in jobs)
+            if active_other:
+                await asyncio.sleep(10)
+                continue
+            nxt = next((j for j in jobs if j.get("status") == "waiting"
+                        or (j.get("status") == "running" and _kbatch_hb_stale(j))), None)
             if not nxt:
                 await asyncio.sleep(5)
                 continue
-            await _kbatch_process_one(nxt)
+            # zasedi lease in preveri, da smo ga res dobili mi (cross-process guard)
+            await _kbatch_set(nxt["id"], status="running", worker=_KBATCH_WORKER_ID,
+                              hb=datetime.now(timezone.utc).isoformat())
+            await asyncio.sleep(1)
+            cur = next((j for j in _kbatch_load() if j.get("id") == nxt["id"]), None)
+            if not cur or cur.get("worker") != _KBATCH_WORKER_ID:
+                continue   # drug proces je bil hitrejši — prepusti njemu
+            hb_task = asyncio.create_task(_kbatch_heartbeat(nxt["id"]))
+            try:
+                await _kbatch_process_one(nxt)
+            finally:
+                hb_task.cancel()
             await asyncio.sleep(KBATCH_PAUSE_S)   # premor — ne zabij gpt-image-2
         except Exception as e:
             print(f"[kbatch] loop err: {e}")
             await asyncio.sleep(10)
 
 
+@app.post("/kreative-batch-resolve")
+async def kreative_batch_resolve(data: dict):
+    """DRY-RUN: razreši SKU/URL vrstice v (sku, url, ime) BREZ dodajanja v vrsto.
+    Za potrditveni pop-up pred generiranjem (da ne kurimo denarja na napačnih URL-jih)."""
+    lines = [str(x).strip() for x in (data.get("skus") or []) if str(x).strip()]
+    if not lines:
+        return {"ok": False, "error": "Ni vnosov."}
+    await ensure_cache_fresh()
+    out = []
+    for ln in lines:
+        if ln.lower().startswith("http://") or ln.lower().startswith("https://"):
+            out.append({"input": ln, "sku": (extract_slug(ln) or ln)[:40], "url": ln,
+                        "name": extract_slug(ln) or ln, "found": True, "via": "url"})
+        else:
+            url, name = _kbatch_sku_to_url(ln)
+            out.append({"input": ln, "sku": ln, "url": url, "name": name or ln,
+                        "found": bool(url), "via": "feed" if url else ""})
+    return {"ok": True, "entries": out}
+
+
 @app.post("/kreative-batch-add")
 async def kreative_batch_add(data: dict):
     """Doda SKU-je v batch vrsto. data: { skus: ["SKU1","SKU2",...], count?: 4 }"""
     skus = [str(x).strip() for x in (data.get("skus") or []) if str(x).strip()]
+    entries = data.get("entries")   # pre-resolved iz potrditvenega pop-upa: [{sku,url,name}]
     count = max(1, min(KBATCH_MAX_COUNT, int(data.get("count") or KBATCH_MAX_COUNT)))
+    if entries:
+        # potrjeni vnosi — dodaj TOČNO te (brez ponovnega razreševanja)
+        async with _kbatch_lock:
+            jobs = _kbatch_load()
+            existing = {(j.get("sku") or "").upper() for j in jobs if j.get("status") in ("waiting", "running")}
+            added, dupl = [], []
+            for e in entries:
+                sku = str(e.get("sku") or "").strip()
+                url = str(e.get("url") or "").strip()
+                if not sku or not url:
+                    continue
+                if sku.upper() in existing:
+                    dupl.append(sku); continue
+                jid = "kb" + str(int(_time.time() * 1000)) + str(len(jobs))
+                jobs.append({"id": jid, "sku": sku, "url": url, "name": e.get("name") or sku,
+                             "count": count, "status": "waiting", "error": None, "step": "",
+                             "created": datetime.now(timezone.utc).isoformat()})
+                added.append(sku); existing.add(sku.upper())
+            _kbatch_save(jobs)
+        return {"ok": True, "added": added, "not_found": [], "duplicates": dupl, "jobs": _kbatch_load()}
     if not skus:
         return {"ok": False, "error": "Ni SKU-jev."}
     await ensure_cache_fresh()   # feed mora biti naložen za SKU→URL

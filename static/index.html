@@ -7012,22 +7012,89 @@ async function kbAdd() {
     return line.split(/[,;]+/).map(x => x.trim()).filter(Boolean);
   });
   if (!skus.length) return;
-  const count = Math.min(2, parseInt(document.getElementById('kbCount').value) || 2);
   const btn = document.getElementById('kbAddBtn');
   btn.disabled = true;
   try {
-    const r = await fetch('/kreative-batch-add', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ skus, count }) });
+    // 1) DRY-RUN: razreši SKU→URL, NIČ še ne gre v vrsto
+    const r = await fetch('/kreative-batch-resolve', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ skus }) });
     const d = await r.json();
     if (!d.ok) { alert('Napaka: ' + (d.error||'')); return; }
-    ta.value = '';
+    kbShowConfirm(d.entries || []);
+  } catch(e) { alert('Napaka: ' + e.message); }
+  finally { btn.disabled = false; }
+}
+
+// ── Potrditveni pop-up: SKU → URL preveriš PRED generiranjem (prihranek $) ──
+function kbShowConfirm(entries) {
+  const old = document.getElementById('kbConfirmOverlay');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'kbConfirmOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  const nFound = entries.filter(e => e.found).length;
+  let rows = '';
+  entries.forEach((e, i) => {
+    const ok = e.found;
+    rows += '<label style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border:1px solid ' + (ok?'var(--border)':'var(--red)') + ';border-radius:8px;margin-bottom:6px;cursor:' + (ok?'pointer':'default') + ';background:' + (ok?'var(--surface2)':'rgba(226,75,74,0.06)') + '">'
+      + '<input type="checkbox" data-kbi="' + i + '" ' + (ok?'checked':'disabled') + ' style="margin-top:2px">'
+      + '<div style="flex:1;min-width:0">'
+      +   '<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">'
+      +     '<b style="font-family:\'DM Mono\',monospace;font-size:12px">' + esc(e.sku) + '</b>'
+      +     '<span style="font-size:11px;color:var(--text-tertiary)">' + esc(e.name||'') + '</span>'
+      +   '</div>'
+      +   (ok
+          ? '<a href="' + esc(e.url) + '" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;color:var(--accent);word-break:break-all">' + esc(e.url) + ' ↗</a>'
+          : '<span style="font-size:11px;color:var(--red)">✗ ni najden — dodaj URL ročno v polje</span>')
+      + '</div></label>';
+  });
+  ov.innerHTML = '<div style="background:var(--surface,#fff);border-radius:14px;max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden">'
+    + '<div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">'
+    +   '<b style="font-size:14px">Preveri SKU → URL pred generiranjem</b>'
+    +   '<span style="font-size:11px;color:var(--text-tertiary)">odkljukaj napačne · klik na URL odpre stran</span>'
+    + '</div>'
+    + '<div style="padding:14px 16px;overflow-y:auto">' + rows + '</div>'
+    + '<div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">'
+    +   '<button onclick="kbConfirmAdd()" id="kbConfirmBtn" style="flex:1;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✓ Potrdi in dodaj (' + nFound + ')</button>'
+    +   '<button onclick="document.getElementById(\'kbConfirmOverlay\').remove()" style="padding:10px 18px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">Prekliči</button>'
+    + '</div></div>';
+  document.body.appendChild(ov);
+  window._kbConfirmEntries = entries;
+  // posodabljaj števec na gumbu ob od/odkljukanju
+  ov.querySelectorAll('input[data-kbi]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const n = ov.querySelectorAll('input[data-kbi]:checked').length;
+      const b = document.getElementById('kbConfirmBtn');
+      if (b) { b.textContent = '✓ Potrdi in dodaj (' + n + ')'; b.disabled = !n; }
+    });
+  });
+}
+
+async function kbConfirmAdd() {
+  const ov = document.getElementById('kbConfirmOverlay');
+  if (!ov) return;
+  const entries = (window._kbConfirmEntries || []);
+  const picked = [];
+  ov.querySelectorAll('input[data-kbi]:checked').forEach(cb => {
+    const e = entries[parseInt(cb.dataset.kbi)];
+    if (e && e.found) picked.push({ sku: e.sku, url: e.url, name: e.name });
+  });
+  if (!picked.length) { ov.remove(); return; }
+  const count = Math.min(2, parseInt(document.getElementById('kbCount').value) || 2);
+  const btn = document.getElementById('kbConfirmBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/kreative-batch-add', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ entries: picked, count }) });
+    const d = await r.json();
+    if (!d.ok) { alert('Napaka: ' + (d.error||'')); return; }
+    ov.remove();
+    document.getElementById('kbSkus').value = '';
     let msg = '✓ dodanih ' + d.added.length;
-    if (d.not_found.length) msg += ' · ni v feedu: ' + d.not_found.join(', ');
     if (d.duplicates.length) msg += ' · že v vrsti: ' + d.duplicates.join(', ');
     kbRenderStatus(d.jobs, msg);
     kbStartPolling();
-  } catch(e) { alert('Napaka: ' + e.message); }
-  finally { btn.disabled = false; }
+  } catch(e) { alert('Napaka: ' + e.message); if (btn) btn.disabled = false; }
 }
 
 function kbRenderStatus(jobs, headMsg) {
@@ -7431,7 +7498,7 @@ function kQueueRender() {
     const s = statusInfo[j.status] || statusInfo.waiting;
     const combos = (j.aOpts?.length||0) * (j.bOpts?.length||0);
     const resultCount = (j.results||[]).length || j.resultCount || 0;
-    const thumb = (j.images && j.images[0]) ? j.images[0] : '';
+    const thumb = (j.images && j.images[0]) ? j.images[0] : (j.thumb || '');   // batch joby: sličica = prva generirana kreativa
     const clickable = j.status === 'done';
     return `<div style="border:2px solid ${s.bd};border-radius:12px;background:${s.bg};overflow:hidden;display:flex;flex-direction:column;${clickable?'cursor:pointer':''}" ${clickable?`onclick="kQueueShowResults('${j.id}')"`:''}>
       <div style="position:relative;aspect-ratio:1.6;background:var(--surface2);display:flex;align-items:center;justify-content:center;overflow:hidden">
