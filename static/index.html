@@ -1610,6 +1610,24 @@ input[type="text"].error { border-color: var(--red) !important; }
           </button>
         </div>
 
+        <!-- 📦 Batch SKU: masovno generiranje (strežniška vrsta, rezultati v čakalnici) -->
+        <div class="card" style="margin-bottom:14px;padding:14px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span class="slabel" style="margin:0">📦 BATCH SKU</span>
+            <span style="font-size:11px;color:var(--text-tertiary)">masovno · 1 po 1 · rezultat v ⏳ Vrsti</span>
+          </div>
+          <textarea id="kbSkus" rows="3" placeholder="En SKU na vrstico, npr.&#10;AIRCOLIO&#10;TRIMSTERO" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;box-sizing:border-box;resize:vertical"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+            <button onclick="kbAdd()" id="kbAddBtn" style="flex:1;padding:9px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">▶ Dodaj v batch</button>
+            <label style="font-size:11px;color:var(--text-tertiary);display:flex;align-items:center;gap:4px">slik/kombo <input id="kbCount" type="number" min="1" max="2" value="2" style="width:44px;padding:5px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;text-align:center"></label>
+          </div>
+          <div id="kbStatus" style="margin-top:10px;display:none;font-size:11px;font-family:'DM Mono',monospace;line-height:1.7;max-height:180px;overflow-y:auto"></div>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <button onclick="kbClear('finished')" style="flex:1;padding:6px;background:transparent;color:var(--text-tertiary);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">Počisti končane</button>
+            <button onclick="kbClear('all')" style="flex:1;padding:6px;background:transparent;color:var(--red);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">Prekliči čakajoče</button>
+          </div>
+        </div>
+
         <!-- Zgodovina kreativ (privzeto skrito — redko potrebno v Generatorju) -->
         <div class="card" style="margin-bottom:12px">
           <div class="history-hdr" onclick="kToggleHistory()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
@@ -6979,6 +6997,101 @@ async function kQueueLoad() {
   kQueueProcess();
 }
 
+// ── 📦 BATCH SKU (strežniška vrsta — glej /kreative-batch-* v main.py) ──
+let _kbLastDone = new Set();   // id-ji done jobov ob zadnjem pollu (za zaznavo novih)
+let _kbPollTimer = null;
+
+async function kbAdd() {
+  const ta = document.getElementById('kbSkus');
+  const skus = (ta.value || '').split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
+  if (!skus.length) return;
+  const count = Math.min(2, parseInt(document.getElementById('kbCount').value) || 2);
+  const btn = document.getElementById('kbAddBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/kreative-batch-add', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ skus, count }) });
+    const d = await r.json();
+    if (!d.ok) { alert('Napaka: ' + (d.error||'')); return; }
+    ta.value = '';
+    let msg = '✓ dodanih ' + d.added.length;
+    if (d.not_found.length) msg += ' · ni v feedu: ' + d.not_found.join(', ');
+    if (d.duplicates.length) msg += ' · že v vrsti: ' + d.duplicates.join(', ');
+    kbRenderStatus(d.jobs, msg);
+    kbStartPolling();
+  } catch(e) { alert('Napaka: ' + e.message); }
+  finally { btn.disabled = false; }
+}
+
+function kbRenderStatus(jobs, headMsg) {
+  const el = document.getElementById('kbStatus');
+  if (!el) return;
+  if (!jobs || !jobs.length) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const ico = { waiting:'⏳', running:'⚙️', done:'✅', error:'✗' };
+  let html = headMsg ? '<div style="color:var(--text-secondary);margin-bottom:4px">' + headMsg + '</div>' : '';
+  jobs.slice().reverse().forEach(j => {
+    const c = j.status === 'done' ? 'var(--green)' : (j.status === 'error' ? 'var(--red)' : 'var(--text-secondary)');
+    let line = (ico[j.status]||'·') + ' <b>' + j.sku + '</b>';
+    if (j.status === 'running' && j.step) line += ' — ' + j.step;
+    if (j.status === 'done') line += ' — ' + (j.n_results||0) + ' kreativ';
+    if (j.status === 'error') line += ' — ' + (j.error||'napaka');
+    html += '<div style="color:' + c + '">' + line + '</div>';
+  });
+  el.innerHTML = html;
+}
+
+async function kbPoll() {
+  if (document.hidden) return;
+  try {
+    const r = await fetch('/kreative-batch-status');
+    const d = await r.json();
+    if (!d.ok) return;
+    kbRenderStatus(d.jobs);
+    // novi done → osveži čakalnico kreativ (kQueue)
+    const doneNow = new Set(d.jobs.filter(j => j.status === 'done').map(j => j.id));
+    let fresh = false;
+    doneNow.forEach(id => { if (!_kbLastDone.has(id)) fresh = true; });
+    _kbLastDone = doneNow;
+    if (fresh && typeof kQueueLoad === 'function') { await kQueueLoad(); if (typeof kQueueRender === 'function') kQueueRender(); }
+    // če ni več aktivnih, upočasni (ustavimo interval; ponovno ga sproži kbAdd)
+    if (!d.jobs.some(j => j.status === 'waiting' || j.status === 'running')) kbStopPolling();
+  } catch(e) {}
+}
+
+function kbStartPolling() {
+  if (_kbPollTimer) return;
+  _kbPollTimer = setInterval(kbPoll, 8000);
+  kbPoll();
+}
+function kbStopPolling() {
+  if (_kbPollTimer) { clearInterval(_kbPollTimer); _kbPollTimer = null; }
+}
+
+async function kbClear(what) {
+  try {
+    const r = await fetch('/kreative-batch-clear', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ what }) });
+    const d = await r.json();
+    if (d.ok) kbRenderStatus(d.jobs);
+  } catch(e) {}
+}
+
+// ob nalaganju strani: če batch teče (npr. po F5), pokaži status in poll-aj
+setTimeout(async () => {
+  try {
+    const r = await fetch('/kreative-batch-status');
+    const d = await r.json();
+    if (d.ok && d.jobs && d.jobs.length) {
+      _kbLastDone = new Set(d.jobs.filter(j => j.status === 'done').map(j => j.id));
+      kbRenderStatus(d.jobs);
+      if (d.jobs.some(j => j.status === 'waiting' || j.status === 'running')) kbStartPolling();
+    }
+  } catch(e) {}
+}, 2500);
+
+let _kQDeletedIds = new Set();   // batch (kb*) joby, ki jih je uporabnik izbrisal iz čakalnice
+
 async function kQueueSave() {
   // shranimo opise (z images=referenčne slike, da F5 preživi — rezultati so v ločenih datotekah)
   try {
@@ -6990,6 +7103,15 @@ async function kQueueSave() {
       resultCount: j.resultCount || (j.results||[]).flatMap(r=>r.images||[]).filter(Boolean).length || 0,
       thumb: j.thumb || ((j.results||[]).flatMap(r=>r.images||[]).find(Boolean)) || ''
     }));
+    // merge-varovalo: batch (kb*) joby, ki so nastali na strežniku po našem zadnjem loadu,
+    // ne smejo izginiti ob našem overwritu (razen če jih je uporabnik izbrisal)
+    try {
+      const srv = await (await fetch('/kreative-queue')).json();
+      const have = new Set(lite.map(j => j.id));
+      (Array.isArray(srv) ? srv : []).forEach(j => {
+        if (j && j.id && String(j.id).startsWith('kb') && !have.has(j.id) && !_kQDeletedIds.has(j.id)) lite.push(j);
+      });
+    } catch(e) {}
     await fetch('/kreative-queue', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({queue: lite})});
   } catch(e) {}
 }
@@ -7097,6 +7219,7 @@ async function kQueueShowResults(id) {
 }
 
 function kQueueRemove(id) {
+  if (String(id).startsWith('kb')) _kQDeletedIds.add(id);
   try { fetch('/kreative-queue-images/' + encodeURIComponent(id), {method:'DELETE'}); } catch(e) {}
   kQueue = kQueue.filter(j => j.id !== id);
   kQueueSave(); kQueueRender();
@@ -7104,6 +7227,7 @@ function kQueueRemove(id) {
 
 function kQueueClearDone() {
   kQueue.filter(j => j.status === 'done').forEach(j => {
+    if (String(j.id).startsWith('kb')) _kQDeletedIds.add(j.id);
     try { fetch('/kreative-queue-images/' + encodeURIComponent(j.id), {method:'DELETE'}); } catch(e) {}
   });
   kQueue = kQueue.filter(j => j.status !== 'done');
@@ -14503,26 +14627,34 @@ function recoRender(d) {
     const saleCount = act.filter(r => r.sale).length;
     const saleHidden = hiddenSale.has(g.key);
     const shown = saleHidden ? act.filter(r => !r.sale) : act;
+    const isOpen = _recoOpenGroups.has(g.key);   // privzeto zaprto
     // gumb za skrivanje SALE izdelkov v tej skupini (reset ob naslednji osvežitvi)
     let saleBtn = '';
     if (saleCount > 0) {
-      saleBtn = '<span onclick="recoToggleHideSale(\'' + g.key + '\')" '
+      saleBtn = '<span onclick="event.stopPropagation();recoToggleHideSale(\'' + g.key + '\')" '
         + 'style="cursor:pointer;font-size:11px;font-weight:600;padding:2px 9px;border-radius:6px;margin-left:auto;'
         + (saleHidden ? 'background:#ec4899;color:#fff' : 'background:transparent;color:#ec4899;border:1px solid #ec4899') + '">'
         + (saleHidden ? '🏷️ Pokaži SALE (' + saleCount + ')' : '🏷️ Skrij SALE (' + saleCount + ')') + '</span>';
     }
-    html += '<div style="margin-bottom:22px">';
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+    html += '<div style="margin-bottom:12px">';
+    // klikljiva glava skupine — odpre/zapre seznam
+    html += '<div onclick="recoToggleGroup(\'' + g.key + '\')" '
+          + 'style="display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;'
+          + 'background:var(--surface2);border:1px solid var(--border);border-radius:8px" '
+          + 'onmouseover="this.style.filter=\'brightness(0.98)\'" onmouseout="this.style.filter=\'none\'">'
+          + '<span style="font-size:11px;color:var(--text-tertiary);width:12px">' + (isOpen ? '▾' : '▸') + '</span>'
           + '<span style="font-size:13px;font-weight:700">' + g.title + '</span>'
-          + '<span style="font-size:12px;color:var(--text-tertiary)">' + g.sub + ' · ' + shown.length
+          + '<span style="font-size:12px;color:var(--text-tertiary)">' + g.sub + ' · <b style="color:var(--text)">' + shown.length + '</b>'
           + (saleHidden && saleCount ? ' (SALE skriti)' : '') + '</span>'
           + saleBtn + '</div>';
-    if (shown.length) {
-      html += '<div style="display:flex;flex-direction:column;gap:4px">';
-      shown.forEach(r => { html += row(r, g.edge, false); });
-      html += '</div>';
-    } else {
-      html += '<div style="font-size:12px;color:var(--text-tertiary);padding:8px 12px">Vsi izdelki v tej skupini so SALE (skriti).</div>';
+    if (isOpen) {
+      if (shown.length) {
+        html += '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">';
+        shown.forEach(r => { html += row(r, g.edge, false); });
+        html += '</div>';
+      } else {
+        html += '<div style="font-size:12px;color:var(--text-tertiary);padding:8px 12px">Vsi izdelki v tej skupini so SALE (skriti).</div>';
+      }
     }
     html += '</div>';
   });
@@ -14547,6 +14679,20 @@ function recoRender(d) {
 
 function recoToggleShowReviewed() {
   _recoShowReviewed = !_recoShowReviewed;
+  if (_recoData) recoRender(_recoData);
+}
+
+// ── Zložljive skupine: privzeto ZAPRTE, klik na glavo odpre/zapre (zapomni si na napravi) ──
+let _recoOpenGroups = (function() {
+  try {
+    const a = JSON.parse(localStorage.getItem('slx_reco_open_groups') || 'null');
+    if (Array.isArray(a)) return new Set(a);
+  } catch(e) {}
+  return new Set();   // privzeto vse zaprto
+})();
+function recoToggleGroup(key) {
+  if (_recoOpenGroups.has(key)) _recoOpenGroups.delete(key); else _recoOpenGroups.add(key);
+  try { localStorage.setItem('slx_reco_open_groups', JSON.stringify([..._recoOpenGroups])); } catch(e) {}
   if (_recoData) recoRender(_recoData);
 }
 

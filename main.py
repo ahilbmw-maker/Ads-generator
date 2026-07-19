@@ -935,6 +935,7 @@ async def startup_event():
     asyncio.create_task(_hsplus_daily_scheduler())
     asyncio.create_task(_hsplus_daily_scheduler())
     asyncio.create_task(_regen_worker_loop())
+    asyncio.create_task(_kreative_batch_worker_loop())
 
 
 async def _ffmpeg_warmup():
@@ -7602,6 +7603,225 @@ async def product_sales(data: dict):
     except Exception:
         return {"ok": False, "error": "siluxar.si ni vrnil veljavnega JSON.", "body": r.text[:300]}
     return {"ok": True, "sales": result, "products": skus, "date_from": date_from, "date_to": date_to}
+
+# ─── KREATIVE BATCH: masovno generiranje po SKU (strežniška vrsta + worker) ─────
+# Vnos: SKU-ji → URL iz SL feeda (mpn) → analiza → prva 2 A-teksta + vseh 5 B-ozadij
+# (model image2) → prvih 5 referenčnih slik (glavna+galerija) → generiranje →
+# rezultat pade v OBSTOJEČO čakalnico kreativ (kQueue). En SKU naenkrat + premor,
+# da ne zabije gpt-image-2. Vrsta preživi restart Renderja.
+KREATIVE_BATCH_FILE = DATA_DIR / "kreative_batch_queue.json"
+_kbatch_lock = asyncio.Lock()
+_kqueue_file_lock = asyncio.Lock()   # za varno dopisovanje v KREATIVE_QUEUE_FILE
+KBATCH_PAUSE_S = 20                  # premor med SKU-ji (sekund)
+KBATCH_A_COUNT = 2                   # prva 2 teksta
+KBATCH_REF_IMAGES = 5                # prvih 5 referenčnih slik
+KBATCH_MAX_COUNT = 2                 # max slik/kombo za batch (2×5×2 = 20 slik/SKU)
+
+
+def _kbatch_load() -> list:
+    try:
+        if KREATIVE_BATCH_FILE.exists():
+            return json.loads(KREATIVE_BATCH_FILE.read_text(encoding="utf-8")) or []
+    except Exception:
+        pass
+    return []
+
+
+def _kbatch_save(jobs: list):
+    try:
+        tmp = KREATIVE_BATCH_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(jobs, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, KREATIVE_BATCH_FILE)
+    except Exception as e:
+        print(f"[kbatch] save err: {e}")
+
+
+def _kbatch_sku_to_url(sku: str):
+    """SKU → (url, ime) iz SL feeda (mpn match, neodvisno od velikosti črk)."""
+    target = str(sku).strip().upper()
+    for g_id, d in (feed_by_lang.get("sl") or {}).items():
+        if str(d.get("mpn") or "").strip().upper() == target:
+            return d.get("url"), d.get("title") or sku
+    return None, None
+
+
+async def _kbatch_download_refs(urls: list) -> list:
+    """Prenese referenčne slike in jih vrne kot base64 data URL-je."""
+    import base64 as _b64mod
+    out = []
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as hc:
+        for u in urls:
+            try:
+                r = await hc.get(u, headers={"User-Agent": "Mozilla/5.0"})
+                if r.status_code != 200 or not r.content:
+                    continue
+                ct = r.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+                if not ct.startswith("image/"):
+                    ct = "image/jpeg"
+                out.append(f"data:{ct};base64,{_b64mod.b64encode(r.content).decode()}")
+            except Exception:
+                continue
+    return out
+
+
+async def _kbatch_set(jid: str, **fields):
+    async with _kbatch_lock:
+        jobs = _kbatch_load()
+        for j in jobs:
+            if j.get("id") == jid:
+                j.update(fields)
+                break
+        _kbatch_save(jobs)
+
+
+async def _kbatch_process_one(job: dict):
+    """Obdela EN SKU: analiza → izbire → reference → generiranje → zapis v kQueue."""
+    jid = job["id"]
+    sku = job["sku"]
+    url = job["url"]
+    try:
+        # 1) analiza izdelka (isti endpoint kot ročni "Analiziraj izdelek")
+        await _kbatch_set(jid, status="running", step="analiza")
+        ana = await analyze_product_kreative({"url": url})
+        if ana.get("error"):
+            raise RuntimeError(f"analiza: {ana['error']}")
+        a_all = ana.get("aOptions") or []
+        b_all = ana.get("bOptions") or []
+        if not a_all or not b_all:
+            raise RuntimeError("analiza ni vrnila A/B opcij")
+        a_opts = a_all[:KBATCH_A_COUNT]                                    # prva 2 teksta
+        b_opts = [{**b, "model": "image2"} for b in b_all]                 # vseh 5 ozadij, Image2
+        name = ana.get("name") or job.get("name") or sku
+
+        # 2) referenčne slike (glavna + galerija, isti vir kot Optimizacija slik)
+        await _kbatch_set(jid, step="slike", name=name)
+        imgs = await fetch_product_images({"url": url})
+        img_urls = (imgs.get("images") or [])[:KBATCH_REF_IMAGES]
+        refs = await _kbatch_download_refs(img_urls)
+        if not refs:
+            raise RuntimeError("ni referenčnih slik")
+
+        # 3) generiranje (isti endpoint kot ročna vrsta)
+        await _kbatch_set(jid, step=f"generiranje ({len(a_opts)}×{len(b_opts)})")
+        gen = await generate_kreative({
+            "productName": name, "aOptions": a_opts, "bOptions": b_opts,
+            "count": min(int(job.get("count") or KBATCH_MAX_COUNT), KBATCH_MAX_COUNT), "images": refs, "model": "image2",
+        })
+        if gen.get("error"):
+            raise RuntimeError(f"generiranje: {gen['error']}")
+        results = gen.get("results") or []
+        n_imgs = sum(len(r.get("images") or []) for r in results)
+        thumb = next((im for r in results for im in (r.get("images") or []) if im), "")
+
+        # 4) shrani v OBSTOJEČO čakalnico kreativ (slike v svojo datoteko + meta v seznam)
+        (KREATIVE_QUEUE_IMG_DIR / f"{jid}.json").write_text(
+            json.dumps({"results": results}, ensure_ascii=False), encoding="utf-8")
+        meta = {
+            "id": jid, "name": f"📦 {sku} — {name}", "productName": name,
+            "aOpts": a_opts, "bOpts": b_opts, "count": int(job.get("count") or 4),
+            "images": [],   # referenc ne podvajamo v meta (velike base64)
+            "status": "done", "error": None,
+            "date": datetime.now().strftime("%H:%M"),
+            "resultCount": n_imgs, "thumb": thumb,
+        }
+        async with _kqueue_file_lock:
+            # datoteka je NAVADEN SEZNAM (glej save_kreative_queue) — ne dict
+            try:
+                lst = json.loads(KREATIVE_QUEUE_FILE.read_text(encoding="utf-8")) if KREATIVE_QUEUE_FILE.exists() else []
+                if not isinstance(lst, list):
+                    lst = []
+            except Exception:
+                lst = []
+            lst = [x for x in lst if x.get("id") != jid] + [meta]
+            tmp = KREATIVE_QUEUE_FILE.with_suffix(".tmp")
+            tmp.write_text(json.dumps(lst, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(tmp, KREATIVE_QUEUE_FILE)
+
+        await _kbatch_set(jid, status="done", step="", n_results=n_imgs,
+                          finished=datetime.now(timezone.utc).isoformat())
+        print(f"[kbatch] ✓ {sku}: {n_imgs} kreativ")
+    except Exception as e:
+        await _kbatch_set(jid, status="error", error=str(e)[:300],
+                          finished=datetime.now(timezone.utc).isoformat())
+        print(f"[kbatch] ✗ {sku}: {e}")
+
+
+async def _kreative_batch_worker_loop():
+    """Strežniški worker: en SKU naenkrat, premor med SKU-ji. Preživi restart."""
+    await asyncio.sleep(10)
+    # ob zagonu: morebitni 'running' (prekinjen ob restartu) nazaj v 'waiting'
+    async with _kbatch_lock:
+        jobs = _kbatch_load()
+        ch = False
+        for j in jobs:
+            if j.get("status") == "running":
+                j["status"] = "waiting"; ch = True
+        if ch:
+            _kbatch_save(jobs)
+    while True:
+        try:
+            nxt = next((j for j in _kbatch_load() if j.get("status") == "waiting"), None)
+            if not nxt:
+                await asyncio.sleep(5)
+                continue
+            await _kbatch_process_one(nxt)
+            await asyncio.sleep(KBATCH_PAUSE_S)   # premor — ne zabij gpt-image-2
+        except Exception as e:
+            print(f"[kbatch] loop err: {e}")
+            await asyncio.sleep(10)
+
+
+@app.post("/kreative-batch-add")
+async def kreative_batch_add(data: dict):
+    """Doda SKU-je v batch vrsto. data: { skus: ["SKU1","SKU2",...], count?: 4 }"""
+    skus = [str(x).strip() for x in (data.get("skus") or []) if str(x).strip()]
+    count = max(1, min(KBATCH_MAX_COUNT, int(data.get("count") or KBATCH_MAX_COUNT)))
+    if not skus:
+        return {"ok": False, "error": "Ni SKU-jev."}
+    await ensure_cache_fresh()   # feed mora biti naložen za SKU→URL
+    async with _kbatch_lock:
+        jobs = _kbatch_load()
+        existing = {(j.get("sku") or "").upper() for j in jobs if j.get("status") in ("waiting", "running")}
+        added, not_found, dupl = [], [], []
+        for sku in skus:
+            if sku.upper() in existing:
+                dupl.append(sku); continue
+            url, name = _kbatch_sku_to_url(sku)
+            jid = "kb" + str(int(_time.time() * 1000)) + str(len(jobs))
+            if not url:
+                jobs.append({"id": jid, "sku": sku, "url": None, "name": sku, "count": count,
+                             "status": "error", "error": "SKU ni najden v SL feedu",
+                             "created": datetime.now(timezone.utc).isoformat()})
+                not_found.append(sku)
+            else:
+                jobs.append({"id": jid, "sku": sku, "url": url, "name": name, "count": count,
+                             "status": "waiting", "error": None, "step": "",
+                             "created": datetime.now(timezone.utc).isoformat()})
+                added.append(sku)
+                existing.add(sku.upper())
+        _kbatch_save(jobs)
+    return {"ok": True, "added": added, "not_found": not_found, "duplicates": dupl, "jobs": _kbatch_load()}
+
+
+@app.get("/kreative-batch-status")
+async def kreative_batch_status():
+    return {"ok": True, "jobs": _kbatch_load(), "pause_s": KBATCH_PAUSE_S}
+
+
+@app.post("/kreative-batch-clear")
+async def kreative_batch_clear(data: dict):
+    """Počisti vrsto. data: { what: 'finished'|'all' } — 'all' ustavi tudi čakajoče."""
+    what = (data.get("what") or "finished").lower()
+    async with _kbatch_lock:
+        jobs = _kbatch_load()
+        if what == "all":
+            jobs = [j for j in jobs if j.get("status") == "running"]
+        else:
+            jobs = [j for j in jobs if j.get("status") in ("waiting", "running")]
+        _kbatch_save(jobs)
+    return {"ok": True, "jobs": _kbatch_load()}
+
+
 
 # ─── PRIPOROČILA CEN: batch pregled vseh SKU-jev z zalogo nad pragom ────────────
 PRODUCT_SALES_CACHE = DATA_DIR / "product_sales_cache.json"
