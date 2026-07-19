@@ -936,6 +936,7 @@ async def startup_event():
     asyncio.create_task(_hsplus_daily_scheduler())
     asyncio.create_task(_regen_worker_loop())
     asyncio.create_task(_kreative_batch_worker_loop())
+    asyncio.create_task(_video_ads_worker_loop())
 
 
 async def _ffmpeg_warmup():
@@ -8033,6 +8034,247 @@ async def kreative_batch_clear(data: dict):
             jobs = [j for j in jobs if j.get("status") in ("waiting", "running")]
         _kbatch_save(jobs)
     return {"ok": True, "jobs": _kbatch_load()}
+
+
+
+# ─── VIDEO ADS: priprava briefov (SKU → 5 Seedance promptov + reference) ────────
+# Tok: SKU-ji → (potrditveni pop-up SKU→URL, isti resolve kot batch slik) →
+# worker za vsak SKU: opis iz SL feeda + referenčne slike + Claude napiše 5
+# promptov po dogovorjeni predlogi (WINNER / drugi kot / SCROLL STOPPER /
+# lifestyle / premium; logo iz brand imena, ICONS ONLY, 5 scen, EN) →
+# brief za copy-paste v Claude chat (izvedba prek Higgsfield MCP na osebnem računu).
+VIDEO_ADS_FILE = DATA_DIR / "video_ads_jobs.json"
+_va_lock = asyncio.Lock()
+VA_REF_IMAGES = 5
+VA_PAUSE_S = 5
+
+VA_PROMPT_TEMPLATE = """You write Seedance 2.0 video-ad prompts for Facebook e-commerce ads.
+Write 5 prompts for the product below, EXACTLY in this structure and style (this is a proven template):
+
+- Each prompt starts: "Generate a 12-second [viral/premium/ultra-viral] Facebook ad for [short product description]."
+- Then: Brand name: [BRAND]
+- Then an IMPORTANT block with these rules (adapt casing/lines to the example):
+  Create a premium modern logo from the brand name "[BRAND]".
+  NO OTHER TEXT. NO WORDS. NO LETTERS besides the [BRAND] logo. ICONS ONLY.
+  Plus category-appropriate safety constraints (e.g. NO MEDICAL CLAIMS for health-adjacent products,
+  "Do NOT exaggerate performance" for optics/tools, NO GUARANTEED PROTECTION CLAIMS for repellents, etc.)
+- Then Scene 1 through Scene 5, short cinematic lines (one action per line), following these 5 angles:
+  PROMPT 1 — problem→freeze→product crashes into frame→relief (title it "(WINNER)")
+  PROMPT 2 — practical everyday/second angle
+  PROMPT 3 — extreme close-up hook, maximum scroll-stopping ("SCROLL STOPPER (BEST CTR)")
+  PROMPT 4 — lifestyle montage angle
+  PROMPT 5 — ultra-premium cinematic angle
+- Scene 5 always ends with "Floating premium [BRAND] hero shot." + "Display only visual icons:" + 4-5 relevant icon names
+- End tags like: Ultra realistic. Premium [category] commercial. Facebook winner style. / Facebook feed optimized. / Maximum premium aesthetic.
+- English only. No prices. No CTA words.
+
+Example of the exact voice and formatting (different product):
+---
+Generate a 12-second viral Facebook ad for a windshield sunshade.
+Brand name: Basic
+IMPORTANT:
+Create a premium modern logo from the brand name "Basic".
+NO OTHER TEXT.
+NO WORDS.
+NO LETTERS besides the Basic logo.
+ICONS ONLY.
+Focus on SUMMER. Focus on reducing heat buildup inside a parked car. NO WINTER. NO ICE. NO SNOW.
+Scene 1:
+Car parked under intense summer sun.
+Heat waves rise from the hood.
+Person opens the driver's door.
+A wave of hot air escapes.
+Sun icon appears.
+Scene 2:
+Everything freezes.
+Basic windshield sunshade flies into frame.
+Premium cinematic product reveal.
+Scene 3:
+Sunshade unfolds instantly across the windshield.
+Perfect fit.
+Scene 4:
+Person returns. Interior looks noticeably cooler.
+Snowflake icon appears.
+Scene 5:
+Floating premium Basic hero product.
+Display only visual icons:
+sun icon
+snowflake icon
+car icon
+sparkle icon
+Ultra realistic.
+Premium automotive summer commercial.
+Facebook winner style.
+---
+
+PRODUCT:
+Name: {name}
+SKU: {sku}
+Description (may be Slovenian — translate meaning, output English): {desc}
+
+Derive BRAND from the distinctive brand-like word in the product name (e.g. "CooliPix" from
+"Prenosni mini ventilator CooliPix"); if none exists, invent a short premium brand name that fits.
+
+Return ONLY JSON, no markdown:
+{{"brand": "...", "prompts": [{{"title": "PROMPT 1 — ... (WINNER)", "text": "..."}}, ... 5 items ...]}}"""
+
+
+def _va_load() -> list:
+    try:
+        if VIDEO_ADS_FILE.exists():
+            return json.loads(VIDEO_ADS_FILE.read_text(encoding="utf-8")) or []
+    except Exception:
+        pass
+    return []
+
+
+def _va_save(jobs: list):
+    try:
+        tmp = VIDEO_ADS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(jobs, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, VIDEO_ADS_FILE)
+    except Exception as e:
+        print(f"[va] save err: {e}")
+
+
+async def _va_set(jid: str, **fields):
+    async with _va_lock:
+        jobs = _va_load()
+        for j in jobs:
+            if j.get("id") == jid:
+                j.update(fields)
+                break
+        _va_save(jobs)
+
+
+def _va_feed_desc(url: str) -> str:
+    """Opis izdelka iz SL feeda po URL-ju (za kontekst promptov)."""
+    for _gid, d in (feed_by_lang.get("sl") or {}).items():
+        if d.get("url") == url:
+            return (d.get("description") or "")[:1200]
+    return ""
+
+
+def _va_build_brief(job: dict) -> str:
+    lines = [f"=== VIDEO BRIEF: {job.get('sku')} ===",
+             f"Izdelek: {job.get('name')}",
+             f"URL: {job.get('url')}",
+             f"Brand: {job.get('brand') or '?'}",
+             "",
+             "Referenčne slike (uvozi kot image_references):"]
+    for u in (job.get("ref_images") or []):
+        lines.append(f"- {u}")
+    lines += ["",
+              "Model: seedance_2_0 · 9:16 · 12 s · 720p · 1 video na prompt",
+              ""]
+    for p in (job.get("prompts") or []):
+        lines.append(f"--- {p.get('title')} ---")
+        lines.append(p.get("text") or "")
+        lines.append("")
+    return "\n".join(lines)
+
+
+async def _va_process_one(job: dict):
+    jid = job["id"]
+    try:
+        await _va_set(jid, status="running", step="slike")
+        imgs = await fetch_product_images({"url": job["url"]})
+        refs = (imgs.get("images") or [])[:VA_REF_IMAGES]
+
+        await _va_set(jid, step="prompti", ref_images=refs)
+        desc = _va_feed_desc(job["url"])
+        raw = await call_claude(
+            VA_PROMPT_TEMPLATE.format(name=job.get("name") or job["sku"], sku=job["sku"], desc=desc),
+            "claude-sonnet-4-6", None, 8000)
+        txt = (raw or "").strip()
+        if txt.startswith("```"):
+            txt = txt.strip("`")
+            if txt.lower().startswith("json"):
+                txt = txt[4:]
+        parsed = json.loads(txt)
+        prompts = parsed.get("prompts") or []
+        if len(prompts) < 5:
+            raise RuntimeError(f"Claude vrnil samo {len(prompts)} promptov")
+        await _va_set(jid, status="done", step="", brand=parsed.get("brand") or "",
+                      prompts=prompts, finished=datetime.now(timezone.utc).isoformat())
+        # brief zgradi in shrani (za gumb Kopiraj)
+        jobs = _va_load()
+        cur = next((j for j in jobs if j.get("id") == jid), None)
+        if cur:
+            await _va_set(jid, brief=_va_build_brief(cur))
+        print(f"[va] ✓ {job['sku']}: 5 promptov")
+    except Exception as e:
+        await _va_set(jid, status="error", error=str(e)[:300],
+                      finished=datetime.now(timezone.utc).isoformat())
+        print(f"[va] ✗ {job['sku']}: {e}")
+
+
+async def _video_ads_worker_loop():
+    """En SKU naenkrat (Claude API + fetch slik — lahka opravila, kratek premor)."""
+    await asyncio.sleep(12)
+    async with _va_lock:
+        jobs = _va_load()
+        ch = False
+        for j in jobs:
+            if j.get("status") == "running":
+                j["status"] = "waiting"; ch = True
+        if ch:
+            _va_save(jobs)
+    while True:
+        try:
+            nxt = next((j for j in _va_load() if j.get("status") == "waiting"), None)
+            if not nxt:
+                await asyncio.sleep(5)
+                continue
+            await _va_process_one(nxt)
+            await asyncio.sleep(VA_PAUSE_S)
+        except Exception as e:
+            print(f"[va] loop err: {e}")
+            await asyncio.sleep(10)
+
+
+@app.post("/video-ads-add")
+async def video_ads_add(data: dict):
+    """Doda potrjene vnose v video-ads vrsto. data: { entries: [{sku,url,name}] }"""
+    entries = data.get("entries") or []
+    if not entries:
+        return {"ok": False, "error": "Ni vnosov."}
+    async with _va_lock:
+        jobs = _va_load()
+        existing = {(j.get("sku") or "").upper() for j in jobs if j.get("status") in ("waiting", "running")}
+        added, dupl = [], []
+        for e in entries:
+            sku = str(e.get("sku") or "").strip()
+            url = str(e.get("url") or "").strip()
+            if not sku or not url:
+                continue
+            if sku.upper() in existing:
+                dupl.append(sku); continue
+            jid = "va" + str(int(_time.time() * 1000)) + str(len(jobs))
+            jobs.append({"id": jid, "sku": sku, "url": url, "name": e.get("name") or sku,
+                         "status": "waiting", "error": None, "step": "",
+                         "created": datetime.now(timezone.utc).isoformat()})
+            added.append(sku); existing.add(sku.upper())
+        _va_save(jobs)
+    return {"ok": True, "added": added, "duplicates": dupl, "jobs": _va_load()}
+
+
+@app.get("/video-ads-status")
+async def video_ads_status():
+    return {"ok": True, "jobs": _va_load()}
+
+
+@app.post("/video-ads-clear")
+async def video_ads_clear(data: dict):
+    what = (data.get("what") or "finished").lower()
+    async with _va_lock:
+        jobs = _va_load()
+        if what == "all":
+            jobs = [j for j in jobs if j.get("status") == "running"]
+        else:
+            jobs = [j for j in jobs if j.get("status") in ("waiting", "running")]
+        _va_save(jobs)
+    return {"ok": True, "jobs": _va_load()}
 
 
 

@@ -1502,6 +1502,10 @@ input[type="text"].error { border-color: var(--red) !important; }
         style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
         🎬 Higgsfield
       </button>
+      <button class="kreative-tab-btn" id="krTab-videoads" onclick="krSwitchTab('videoads')"
+        style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+        🎥 Video Ads
+      </button>
       <button class="kreative-tab-btn" id="krTab-regen" onclick="krSwitchTab('regen')"
         style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
         🖼️ Optimizacija slik
@@ -1745,6 +1749,23 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div><!-- /kr-panel-gemini -->
 
     <!-- Tab: Higgsfield -->
+    <!-- 🎥 VIDEO ADS: priprava briefov (5 Seedance promptov/SKU) za izvedbo prek Claude+Higgsfield MCP -->
+    <div id="kr-panel-videoads" style="display:none;padding:14px">
+      <div class="card" style="padding:14px;margin-bottom:14px;max-width:760px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span class="slabel" style="margin:0">🎥 VIDEO ADS — PRIPRAVA BRIEFOV</span>
+          <span style="font-size:11px;color:var(--text-tertiary)">SKU → 5 Seedance promptov + reference · izvedba v Claude chatu (tvoji Higgsfield kovanci)</span>
+        </div>
+        <textarea id="vaSkus" rows="3" placeholder="SKU ali URL na vrstico, npr.&#10;AIRCOLIO&#10;https://www.maaarket.si/izdelek/..." style="width:100%;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;box-sizing:border-box;resize:vertical"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="vaAdd()" id="vaAddBtn" style="flex:1;padding:9px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">▶ Pripravi briefe</button>
+          <button onclick="vaClear('finished')" style="padding:9px 14px;background:transparent;color:var(--text-tertiary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:inherit">Počisti končane</button>
+        </div>
+        <div id="vaStatus" style="margin-top:10px;display:none;font-size:11px;font-family:'DM Mono',monospace;line-height:1.7;max-height:140px;overflow-y:auto"></div>
+      </div>
+      <div id="vaResults" style="display:flex;flex-direction:column;gap:10px;max-width:760px"></div>
+    </div>
+
     <div id="kr-panel-higgsfield" style="display:none;padding:14px">
       <div class="kr-hf-grid" style="display:grid;grid-template-columns:220px 1fr;gap:14px;align-items:start">
 
@@ -6997,6 +7018,191 @@ async function kQueueLoad() {
   } catch(e) { kQueue = []; }
   kQueueRender();
   kQueueProcess();
+}
+
+// ── 🎥 VIDEO ADS: briefi (SKU → 5 Seedance promptov; izvedba v Claude chatu) ──
+let _vaInited = false;
+let _vaPollTimer = null;
+let _vaJobs = [];
+
+function vaInit() {
+  if (_vaInited) return;
+  _vaInited = true;
+  vaPoll();
+}
+
+async function vaAdd() {
+  const ta = document.getElementById('vaSkus');
+  const skus = (ta.value || '').split(/\n+/).flatMap(line => {
+    line = line.trim();
+    if (!line) return [];
+    if (/^https?:\/\//i.test(line)) return [line];
+    return line.split(/[,;]+/).map(x => x.trim()).filter(Boolean);
+  });
+  if (!skus.length) return;
+  const btn = document.getElementById('vaAddBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/kreative-batch-resolve', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ skus }) });
+    const d = await r.json();
+    if (!d.ok) { alert('Napaka: ' + (d.error||'')); return; }
+    vaShowConfirm(d.entries || []);
+  } catch(e) { alert('Napaka: ' + e.message); }
+  finally { btn.disabled = false; }
+}
+
+function vaShowConfirm(entries) {
+  const old = document.getElementById('vaConfirmOverlay');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'vaConfirmOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  const nFound = entries.filter(e => e.found).length;
+  let rows = '';
+  entries.forEach((e, i) => {
+    const ok = e.found;
+    rows += '<label style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border:1px solid ' + (ok?'var(--border)':'var(--red)') + ';border-radius:8px;margin-bottom:6px;cursor:' + (ok?'pointer':'default') + ';background:' + (ok?'var(--surface2)':'rgba(226,75,74,0.06)') + '">'
+      + '<input type="checkbox" data-vai="' + i + '" ' + (ok?'checked':'disabled') + ' style="margin-top:2px">'
+      + '<div style="flex:1;min-width:0">'
+      +   '<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">'
+      +     '<b style="font-family:\'DM Mono\',monospace;font-size:12px">' + esc(e.sku) + '</b>'
+      +     '<span style="font-size:11px;color:var(--text-tertiary)">' + esc(e.name||'') + '</span>'
+      +   '</div>'
+      +   (ok
+          ? '<a href="' + esc(e.url) + '" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;color:var(--accent);word-break:break-all">' + esc(e.url) + ' ↗</a>'
+          : '<span style="font-size:11px;color:var(--red)">✗ ni najden — dodaj URL ročno</span>')
+      + '</div></label>';
+  });
+  ov.innerHTML = '<div style="background:var(--surface,#fff);border-radius:14px;max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden">'
+    + '<div style="padding:14px 16px;border-bottom:1px solid var(--border)"><b style="font-size:14px">Preveri SKU → URL pred pripravo briefov</b></div>'
+    + '<div style="padding:14px 16px;overflow-y:auto">' + rows + '</div>'
+    + '<div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">'
+    +   '<button onclick="vaConfirmAdd()" id="vaConfirmBtn" style="flex:1;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✓ Potrdi (' + nFound + ')</button>'
+    +   '<button onclick="document.getElementById(\'vaConfirmOverlay\').remove()" style="padding:10px 18px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">Prekliči</button>'
+    + '</div></div>';
+  document.body.appendChild(ov);
+  window._vaConfirmEntries = entries;
+  ov.querySelectorAll('input[data-vai]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const n = ov.querySelectorAll('input[data-vai]:checked').length;
+      const b = document.getElementById('vaConfirmBtn');
+      if (b) { b.textContent = '✓ Potrdi (' + n + ')'; b.disabled = !n; }
+    });
+  });
+}
+
+async function vaConfirmAdd() {
+  const ov = document.getElementById('vaConfirmOverlay');
+  if (!ov) return;
+  const entries = (window._vaConfirmEntries || []);
+  const picked = [];
+  ov.querySelectorAll('input[data-vai]:checked').forEach(cb => {
+    const e = entries[parseInt(cb.dataset.vai)];
+    if (e && e.found) picked.push({ sku: e.sku, url: e.url, name: e.name });
+  });
+  if (!picked.length) { ov.remove(); return; }
+  const btn = document.getElementById('vaConfirmBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/video-ads-add', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ entries: picked }) });
+    const d = await r.json();
+    if (!d.ok) { alert('Napaka: ' + (d.error||'')); return; }
+    ov.remove();
+    document.getElementById('vaSkus').value = '';
+    vaStartPolling();
+    vaRender(d.jobs || []);
+  } catch(e) { alert('Napaka: ' + e.message); if (btn) btn.disabled = false; }
+}
+
+async function vaPoll() {
+  if (document.hidden) return;
+  try {
+    const r = await fetch('/video-ads-status');
+    const d = await r.json();
+    if (!d.ok) return;
+    _vaJobs = d.jobs || [];
+    vaRender(_vaJobs);
+    if (_vaJobs.some(j => j.status === 'waiting' || j.status === 'running')) vaStartPolling();
+    else vaStopPolling();
+  } catch(e) {}
+}
+function vaStartPolling() { if (!_vaPollTimer) { _vaPollTimer = setInterval(vaPoll, 6000); } }
+function vaStopPolling() { if (_vaPollTimer) { clearInterval(_vaPollTimer); _vaPollTimer = null; } }
+
+async function vaClear(what) {
+  try {
+    const r = await fetch('/video-ads-clear', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ what }) });
+    const d = await r.json();
+    if (d.ok) { _vaJobs = d.jobs || []; vaRender(_vaJobs); }
+  } catch(e) {}
+}
+
+function vaRender(jobs) {
+  // status vrstice
+  const st = document.getElementById('vaStatus');
+  if (st) {
+    if (!jobs.length) { st.style.display = 'none'; }
+    else {
+      st.style.display = 'block';
+      const ico = { waiting:'⏳', running:'⚙️', done:'✅', error:'✗' };
+      st.innerHTML = jobs.slice().reverse().map(j => {
+        const c = j.status === 'done' ? 'var(--green)' : (j.status === 'error' ? 'var(--red)' : 'var(--text-secondary)');
+        let line = (ico[j.status]||'·') + ' <b>' + esc(j.sku) + '</b>';
+        if (j.status === 'running' && j.step) line += ' — ' + esc(j.step);
+        if (j.status === 'error') line += ' — ' + esc(j.error||'napaka');
+        return '<div style="color:' + c + '">' + line + '</div>';
+      }).join('');
+    }
+  }
+  // briefi (done)
+  const wrap = document.getElementById('vaResults');
+  if (!wrap) return;
+  const done = jobs.filter(j => j.status === 'done' && j.brief);
+  if (!done.length) { wrap.innerHTML = ''; return; }
+  let html = '';
+  if (done.length > 1) {
+    html += '<button onclick="vaCopyAll()" style="padding:10px;background:transparent;color:var(--accent);border:1px dashed var(--accent);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📋 Kopiraj VSE briefe (' + done.length + ') — prilepi v Claude chat</button>';
+  }
+  done.forEach(j => {
+    const titles = (j.prompts||[]).map(p => esc(p.title)).join(' · ');
+    html += '<div class="card" style="padding:12px 14px">'
+      + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+      +   '<b style="font-family:\'DM Mono\',monospace;font-size:13px">' + esc(j.sku) + '</b>'
+      +   '<span style="font-size:12px;color:var(--text-tertiary)">' + esc(j.name||'') + ' · brand: <b>' + esc(j.brand||'?') + '</b> · ' + (j.ref_images||[]).length + ' ref slik</span>'
+      +   '<button onclick="vaCopyBrief(this,\'' + j.id + '\')" style="margin-left:auto;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">📋 Kopiraj brief</button>'
+      +   '<button onclick="vaTogglePrompts(this)" style="padding:6px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;font-family:inherit">▾ Prompti</button>'
+      + '</div>'
+      + '<div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">' + titles + '</div>'
+      + '<pre style="display:none;margin-top:10px;padding:10px;background:var(--surface2);border-radius:8px;font-size:10px;line-height:1.5;white-space:pre-wrap;max-height:340px;overflow-y:auto">' + esc(j.brief) + '</pre>'
+      + '</div>';
+  });
+  wrap.innerHTML = html;
+}
+
+function vaTogglePrompts(btn) {
+  const pre = btn.closest('.card').querySelector('pre');
+  if (!pre) return;
+  const open = pre.style.display !== 'none';
+  pre.style.display = open ? 'none' : 'block';
+  btn.textContent = open ? '▾ Prompti' : '▴ Skrij';
+}
+
+function vaCopyBrief(btn, jid) {
+  const j = _vaJobs.find(x => x.id === jid);
+  if (!j || !j.brief) return;
+  const done = () => { const o = btn.textContent; btn.textContent = '✓ Kopirano'; setTimeout(()=>{ btn.textContent = o; }, 1200); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(j.brief).then(done).catch(()=>{});
+}
+
+function vaCopyAll() {
+  const done = _vaJobs.filter(j => j.status === 'done' && j.brief);
+  if (!done.length) return;
+  const all = 'Izvedi te video briefe prek Higgsfield (seedance_2_0), zaporedno, 1 video na prompt:\n\n'
+    + done.map(j => j.brief).join('\n\n');
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(all);
 }
 
 // ── 📦 BATCH SKU (strežniška vrsta — glej /kreative-batch-* v main.py) ──
@@ -13004,6 +13210,9 @@ function krSwitchTab(tab) {
   if (tab === 'regen' && !_regenPromptsLoaded) regenPromptsInit();
   const qp = document.getElementById('kr-panel-queue');
   if (qp) qp.style.display = tab === 'queue' ? 'block' : 'none';
+  const vap = document.getElementById('kr-panel-videoads');
+  if (vap) vap.style.display = tab === 'videoads' ? 'block' : 'none';
+  if (tab === 'videoads') vaInit();
   document.querySelectorAll('.kreative-tab-btn').forEach(btn => {
     btn.style.background = 'transparent';
     btn.style.color = 'var(--text-secondary)';
