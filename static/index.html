@@ -7190,17 +7190,30 @@ function vaTogglePrompts(btn) {
   btn.textContent = open ? '▾ Prompti' : '▴ Skrij';
 }
 
+// Samozadostna navodila — brief deluje v KATEREMKOLI Claude chatu (pogoj: vklopljen Higgsfield connector)
+const VA_INSTR = [
+  'NAVODILA ZA CLAUDE (izvedba prek Higgsfield MCP):',
+  '1. Uporabi Higgsfield connector (je že povezan na moj račun).',
+  '2. Za vsak brief spodaj: vsako referenčno sliko uvozi z media_import_url in jih uporabi kot image_references.',
+  '3. Vsak PROMPT (5 na izdelek) generiraj z generate_video: model seedance_2_0, aspect_ratio 9:16, duration 12, resolution 720p, count 1.',
+  '4. PRED prvim generiranjem preveri ceno z get_cost in mi pokaži skupno oceno kreditov — počakaj na mojo potrditev.',
+  '5. Generiraj ZAPOREDNO (1 po 1). Če kateri prompt pade, nadaljuj z naslednjim in na koncu povzemi.',
+  '6. Vsak končan video mi pokaži v chatu.',
+  ''
+].join('\n');
+
 function vaCopyBrief(btn, jid) {
   const j = _vaJobs.find(x => x.id === jid);
   if (!j || !j.brief) return;
   const done = () => { const o = btn.textContent; btn.textContent = '✓ Kopirano'; setTimeout(()=>{ btn.textContent = o; }, 1200); };
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(j.brief).then(done).catch(()=>{});
+  const txt = VA_INSTR + '\n' + j.brief;
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(()=>{});
 }
 
 function vaCopyAll() {
   const done = _vaJobs.filter(j => j.status === 'done' && j.brief);
   if (!done.length) return;
-  const all = 'Izvedi te video briefe prek Higgsfield (seedance_2_0), zaporedno, 1 video na prompt:\n\n'
+  const all = VA_INSTR + '\nBriefov: ' + done.length + ' (vsak = 1 izdelek = 5 promptov = 5 videov)\n\n'
     + done.map(j => j.brief).join('\n\n');
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(all);
 }
