@@ -5204,8 +5204,16 @@ def _ksaved_safe_id(jid):
 
 @app.get("/kreative-saved")
 async def kreative_saved_list():
-    """Vrne LAHKI seznam shranjenih opravil (brez vseh slik — samo opis + 1 sličica)."""
-    return _ksaved_load_index()
+    """Vrne LAHKI seznam shranjenih opravil (brez vseh slik — samo opis + 1 sličica).
+    Vsak vnos dobi še 'size' (bytes na disku) za pregled zasedenosti."""
+    idx = _ksaved_load_index()
+    for e in idx:
+        try:
+            f = KREATIVE_SAVED_DIR / f"{_ksaved_safe_id(e.get('id') or '')}.json"
+            e["size"] = f.stat().st_size if f.exists() else 0
+        except Exception:
+            e["size"] = 0
+    return idx
 
 @app.get("/kreative-saved/{jid}")
 async def kreative_saved_get(jid: str):
@@ -5254,6 +5262,26 @@ async def kreative_saved_add(data: dict):
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/kreative-saved-delete-many")
+async def kreative_saved_delete_many(data: dict):
+    """Izbriše več shranjenih naenkrat (čiščenje dvojnikov). data: { ids: [...] }"""
+    ids = [_ksaved_safe_id(str(x)) for x in (data.get("ids") or []) if str(x).strip()]
+    deleted = 0
+    freed = 0
+    for sid in ids:
+        try:
+            f = KREATIVE_SAVED_DIR / f"{sid}.json"
+            if f.exists():
+                freed += f.stat().st_size
+                f.unlink()
+                deleted += 1
+        except Exception:
+            pass
+    idx = [e for e in _ksaved_load_index() if e.get("id") not in set(ids)]
+    _ksaved_write_index(idx)
+    return {"ok": True, "deleted": deleted, "freed_bytes": freed, "count": len(idx)}
+
 
 @app.delete("/kreative-saved/{jid}")
 async def kreative_saved_delete(jid: str):

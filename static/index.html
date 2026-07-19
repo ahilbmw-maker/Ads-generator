@@ -1582,7 +1582,9 @@ input[type="text"].error { border-color: var(--red) !important; }
       <!-- SHRANJENO -->
       <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:18px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap">
-          <span class="slabel">💾 SHRANJENO <span id="kSavedCount" style="color:var(--accent)"></span></span>
+          <span class="slabel">💾 SHRANJENO <span id="kSavedCount" style="color:var(--accent)"></span> <span id="kSavedSize" style="color:var(--text-tertiary);font-weight:400;font-size:11px"></span></span>
+          <button id="kSavedDupBtn" onclick="kSavedToggleDup()" style="display:none;padding:6px 12px;background:transparent;color:#d97706;border:1px solid #d97706;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">⚠ Dvojniki</button>
+          <button id="kSavedDupCleanBtn" onclick="kSavedCleanDups()" style="display:none;padding:6px 12px;background:transparent;color:var(--red);border:1px solid var(--border);border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit">🧹 Počisti dvojnike</button>
           <input type="text" id="kSavedSearch" placeholder="🔍 Išči po imenu izdelka..." oninput="kSavedRender()" style="flex:1;min-width:200px;max-width:340px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg-secondary);color:var(--text)">
         </div>
         <div id="kSavedGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px"></div>
@@ -7280,14 +7282,69 @@ async function kSaveJob(id) {
   }
 }
 
+let _kSavedDupOnly = false;   // filter: prikaži samo dvojnike
+
+function _kSavedFmtSize(b) {
+  if (!b) return '0 B';
+  if (b < 1024*1024) return (b/1024).toFixed(0) + ' KB';
+  return (b/1024/1024).toFixed(1) + ' MB';
+}
+// skupine dvojnikov po normaliziranem imenu izdelka → {key: [entries po datumu, najnovejši prvi]}
+function _kSavedDupGroups() {
+  const g = {};
+  kSaved.forEach(e => {
+    const k = String(e.name||'').trim().toLowerCase();
+    if (!k) return;
+    (g[k] = g[k] || []).push(e);
+  });
+  Object.keys(g).forEach(k => {
+    if (g[k].length < 2) { delete g[k]; return; }
+    g[k].sort((a,b) => String(b.saved_at||'').localeCompare(String(a.saved_at||'')));  // najnovejši prvi
+  });
+  return g;
+}
+function kSavedToggleDup() {
+  _kSavedDupOnly = !_kSavedDupOnly;
+  const b = document.getElementById('kSavedDupBtn');
+  if (b) { b.style.background = _kSavedDupOnly ? '#d97706' : 'transparent'; b.style.color = _kSavedDupOnly ? '#fff' : '#d97706'; }
+  kSavedRender();
+}
+async function kSavedCleanDups() {
+  const groups = _kSavedDupGroups();
+  const toDel = [];
+  Object.values(groups).forEach(arr => { arr.slice(1).forEach(e => toDel.push(e)); });  // vse razen najnovejšega
+  if (!toDel.length) return;
+  const totalB = toDel.reduce((a,e)=>a+(e.size||0),0);
+  if (!confirm('Izbrišem ' + toDel.length + ' starejših dvojnikov (obdržim najnovejšega od vsakega izdelka)?\nSprosti se ~' + _kSavedFmtSize(totalB) + '.')) return;
+  try {
+    const r = await fetch('/kreative-saved-delete-many', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ids: toDel.map(e=>e.id) }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error||'napaka');
+    await kSavedLoad();
+  } catch(e) { alert('Napaka: ' + e.message); }
+}
+
 function kSavedRender() {
   const grid = document.getElementById('kSavedGrid');
   const empty = document.getElementById('kSavedEmpty');
   const cnt = document.getElementById('kSavedCount');
   if (!grid) return;
   const q = (document.getElementById('kSavedSearch')?.value||'').toLowerCase().trim();
-  const list = kSaved.filter(e => !q || (e.name||'').toLowerCase().includes(q));
+  const groups = _kSavedDupGroups();
+  const dupIds = new Set(); const keepIds = new Set();
+  Object.values(groups).forEach(arr => { keepIds.add(arr[0].id); arr.forEach(e => dupIds.add(e.id)); });
+  let list = kSaved.filter(e => !q || (e.name||'').toLowerCase().includes(q));
+  if (_kSavedDupOnly) list = list.filter(e => dupIds.has(e.id));
   if (cnt) cnt.textContent = kSaved.length ? `(${kSaved.length})` : '';
+  const totalB = kSaved.reduce((a,e)=>a+(e.size||0),0);
+  const sz = document.getElementById('kSavedSize');
+  if (sz) sz.textContent = kSaved.length ? '· ' + _kSavedFmtSize(totalB) + ' na disku' : '';
+  const nDupExtra = Object.values(groups).reduce((a,arr)=>a+arr.length-1,0);
+  const db = document.getElementById('kSavedDupBtn'); const dc = document.getElementById('kSavedDupCleanBtn');
+  if (db) { db.style.display = nDupExtra ? 'inline-block' : 'none'; db.textContent = (_kSavedDupOnly?'✓ ':'⚠ ') + 'Dvojniki (' + nDupExtra + ')'; }
+  if (dc) dc.style.display = nDupExtra ? 'inline-block' : 'none';
+  if (!nDupExtra && _kSavedDupOnly) _kSavedDupOnly = false;
   if (!list.length) {
     grid.innerHTML = '';
     if (empty) { empty.style.display = 'block'; empty.textContent = q ? 'Ni zadetkov za "'+q+'".' : 'Ni shranjenih. Klikni 💾 Shrani na gotovi kartici, da ostane trajno.'; }
@@ -7299,12 +7356,13 @@ function kSavedRender() {
       <div style="position:relative;aspect-ratio:1.6;background:var(--surface2);overflow:hidden">
         ${e.thumb ? `<img src="${e.thumb}" style="width:100%;height:100%;object-fit:cover">` : '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:32px;opacity:0.3">🖼️</div>'}
         <div style="position:absolute;top:8px;left:8px;background:rgba(22,163,74,0.85);color:#fff;font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px">💾 SHRANJENO</div>
+        ${dupIds.has(e.id) ? `<div style="position:absolute;bottom:8px;left:8px;background:${keepIds.has(e.id)?'rgba(22,163,74,0.9)':'rgba(217,119,6,0.9)'};color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px">${keepIds.has(e.id)?'⚠ dvojnik · najnovejši':'⚠ dvojnik · starejši'}</div>` : ''}
         <button onclick="event.stopPropagation();kSavedDelete('${e.id}')" style="position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,0.55);color:#fff;cursor:pointer;font-size:13px" title="Izbriši trajno">✕</button>
       </div>
       <div style="padding:10px 12px">
         <div style="font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(e.name||'?')}</div>
         <div style="font-size:11px;color:#16a34a;margin-top:2px">${e.result_count||0} kreativ · klikni za prikaz ›</div>
-        <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${e.date||''}</div>
+        <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${e.date||''}${e.size ? ' · ' + _kSavedFmtSize(e.size) : ''}</div>
       </div>
     </div>`).join('');
 }
