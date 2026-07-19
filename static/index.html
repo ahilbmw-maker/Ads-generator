@@ -1618,7 +1618,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <span class="slabel" style="margin:0">📦 BATCH SKU</span>
             <span style="font-size:11px;color:var(--text-tertiary)">masovno · 1 po 1 · rezultat v ⏳ Vrsti</span>
           </div>
-          <textarea id="kbSkus" rows="3" placeholder="En SKU na vrstico, npr.&#10;AIRCOLIO&#10;TRIMSTERO" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;box-sizing:border-box;resize:vertical"></textarea>
+          <textarea id="kbSkus" rows="3" placeholder="SKU ali URL na vrstico, npr.&#10;AIRCOLIO&#10;https://www.maaarket.si/izdelek/..." style="width:100%;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;box-sizing:border-box;resize:vertical"></textarea>
           <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
             <button onclick="kbAdd()" id="kbAddBtn" style="flex:1;padding:9px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">▶ Dodaj v batch</button>
             <label style="font-size:11px;color:var(--text-tertiary);display:flex;align-items:center;gap:4px">slik/kombo <input id="kbCount" type="number" min="1" max="2" value="2" style="width:44px;padding:5px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;text-align:center"></label>
@@ -7005,7 +7005,12 @@ let _kbPollTimer = null;
 
 async function kbAdd() {
   const ta = document.getElementById('kbSkus');
-  const skus = (ta.value || '').split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
+  const skus = (ta.value || '').split(/\n+/).flatMap(line => {
+    line = line.trim();
+    if (!line) return [];
+    if (/^https?:\/\//i.test(line)) return [line];        // URL — ne razbijaj po , ;
+    return line.split(/[,;]+/).map(x => x.trim()).filter(Boolean);
+  });
   if (!skus.length) return;
   const count = Math.min(2, parseInt(document.getElementById('kbCount').value) || 2);
   const btn = document.getElementById('kbAddBtn');

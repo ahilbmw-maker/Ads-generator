@@ -7665,12 +7665,42 @@ def _kbatch_save(jobs: list):
 
 
 def _kbatch_sku_to_url(sku: str):
-    """SKU → (url, ime) iz SL feeda (mpn match, neodvisno od velikosti črk)."""
+    """SKU → (url, ime) iz SL feeda. ISTA logika ujemanja kot Optimizacija slik
+    (feed nima mpn — SKU se skriva v image URL-jih Ikonka/Amio):
+    1. mpn (če obstaja)  2. brand-SKU iz glavne slike  3. SKU iz vseh image poti
+    4. fallback: SKU kot substring v image poteh ali slugu."""
     target = str(sku).strip().upper()
+    target_l = target.lower()
+    if not target:
+        return None, None
+    fallback = None
     for g_id, d in (feed_by_lang.get("sl") or {}).items():
+        url = d.get("url"); title = d.get("title") or sku
+        # 1) mpn
         if str(d.get("mpn") or "").strip().upper() == target:
-            return d.get("url"), d.get("title") or sku
-    return None, None
+            return url, title
+        img = d.get("image", "")
+        # 2) zanesljiv brand-SKU (Ikonka/Amio) iz glavne slike
+        try:
+            if _extract_brand_sku(d.get("brand", ""), img) == target:
+                return url, title
+        except Exception:
+            pass
+        # 3) SKU iz vseh image poti (predizračunana logika sku_url)
+        all_imgs = d.get("all_images") or ([img] if img else [])
+        try:
+            for one in all_imgs:
+                if target_l in {sk.lower() for sk in _extract_skus_from_image_url(one)}:
+                    return url, title
+        except Exception:
+            pass
+        # 4) fallback: substring v image poteh ali slugu (prvi zadetek si zapomnimo)
+        if fallback is None:
+            joined = " ".join(all_imgs).lower()
+            slug = (extract_slug(url or "") or "").lower()
+            if (len(target_l) >= 4) and (target_l in joined or target_l in slug):
+                fallback = (url, title)
+    return fallback if fallback else (None, None)
 
 
 async def _kbatch_download_refs(urls: list) -> list:
@@ -7814,7 +7844,13 @@ async def kreative_batch_add(data: dict):
         for sku in skus:
             if sku.upper() in existing:
                 dupl.append(sku); continue
-            url, name = _kbatch_sku_to_url(sku)
+            if sku.lower().startswith("http://") or sku.lower().startswith("https://"):
+                # direkten URL — brez feed lookupa (dokler SKU ni v feedu)
+                url = sku
+                name = extract_slug(sku) or sku
+                sku = (extract_slug(sku) or sku)[:40]   # prikazno ime v vrsti
+            else:
+                url, name = _kbatch_sku_to_url(sku)
             jid = "kb" + str(int(_time.time() * 1000)) + str(len(jobs))
             if not url:
                 jobs.append({"id": jid, "sku": sku, "url": None, "name": sku, "count": count,
