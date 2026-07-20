@@ -452,6 +452,27 @@ async function loadSaleSkus() {
 }
 loadSaleSkus();
 
+// ── PRIPOROČILA CEN (🎯 tab v Analizi): SKU-ji s priporočilom ZVIŠAJ ali POZOR
+// dobijo značko ob SKU-ju — predlog, da tem izdelkom zvišaš ceno.
+// Vir: /product-recommendations (cache zadnje osvežitve; brez klicev v živo).
+let _recoTagBySku = {};
+async function loadRecoTags() {
+  try {
+    const r = await fetch('/product-recommendations');
+    const d = await r.json();
+    if (d && d.ok && Array.isArray(d.recommendations)) {
+      _recoTagBySku = {};
+      d.recommendations.forEach(x => {
+        if (x.category === 'zvisaj' || x.category === 'pozor') {
+          _recoTagBySku[String(x.sku || '').trim().toUpperCase()] = x;
+        }
+      });
+      if (typeof renderTable === 'function' && allRows.length) renderTable(allRows);
+    }
+  } catch(e) { /* tiho — značka je opcijska */ }
+}
+loadRecoTags();
+
 // ali je SKU na razprodaji? ujema po POLNEM SKU ali po KORENU (del pred '_')
 function isSaleSku(sku) {
   const s = (sku || '').trim().toUpperCase();
@@ -490,10 +511,24 @@ loadSkuPidMap();
 function skuHtml(sku) {
   const s = (sku || '').trim();
   const saleBadge = isSaleSku(s) ? ' <span title="Ta izdelek je na razprodaji (SALE)" style="display:inline-flex;align-items:center;background:#ec4899;color:#fff;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;vertical-align:middle;letter-spacing:.3px">🏷 SALE</span>' : '';
+  // priporočilo iz 🎯 Priporočil: ZVIŠAJ (raste + malo zaloge) / POZOR (malo zaloge)
+  const _rt = _recoTagBySku[s.toUpperCase()];
+  let recoBadge = '';
+  if (_rt) {
+    const zv = _rt.category === 'zvisaj';
+    const dos = _rt.days_of_stock == null ? '∞' : _rt.days_of_stock + ' dni';
+    const tip = 'Priporočilo (trend 7 dni): ' + (zv ? 'prodaja raste + malo zaloge — razmisli o ZVIŠANJU cene' : 'malo zaloge — preveri dobavo / razmisli o zvišanju')
+      + ' · trend ' + (_rt.trend_pct > 0 ? '+' : '') + _rt.trend_pct + '% · zaloga ' + _rt.stock + ' (' + dos + ') · ' + _rt.avg + '/dan';
+    recoBadge = ' <span title="' + tip.replace(/"/g, '&quot;') + '" style="display:inline-flex;align-items:center;gap:2px;'
+      + (zv ? 'background:rgba(29,158,117,0.12);color:#0f6e56;border:1px solid rgba(29,158,117,0.45)'
+            : 'background:rgba(217,119,6,0.10);color:#b45309;border:1px solid rgba(217,119,6,0.40)')
+      + ';border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;vertical-align:middle;letter-spacing:.3px;cursor:help">'
+      + (zv ? '🟢 ZVIŠAJ' : '🟠 POZOR') + '</span>';
+  }
   const pid = _skuToPid[s] || _skuToPid[s.toUpperCase()];
-  if (!pid) return escHtml(s) + saleBadge;
+  if (!pid) return escHtml(s) + saleBadge + recoBadge;
   const url = MAAARKET_BASE + encodeURIComponent(pid) + '?tab=vsebina';
-  return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>` + saleBadge;
+  return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>` + saleBadge + recoBadge;
 }
 // majhen helper za varen izpis SKU (SKU-ji so interni, a vseeno)
 function escHtml(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
