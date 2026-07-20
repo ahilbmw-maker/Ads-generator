@@ -2047,6 +2047,9 @@ async def zaloga_current_get(market: str = "slo"):
         if path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
             _dirty = False   # ali se je kaj dejansko spremenilo (da pišemo na disk LE takrat)
+            # SAMO-POPRAVILO: dvojniki v čakajočih (isti SKU 2×) blokirajo dodajanje boxov
+            if _zaloga_dedupe_cakajoce(data):
+                _dirty = True
             # SAMO-POPRAVILO STARIH SEJ: časovnica mora izhajati iz dejanskih znamk
             # nabiranja (picked_at), ne iz starega pick_started_at (ki je bil čas uploada).
             its = data.get("items", [])
@@ -2563,6 +2566,47 @@ async def zaloga_extra_box(data: dict):
         return {"ok": False, "error": str(e)}
 
 
+def _zaloga_dedupe_cakajoce(sess: dict) -> bool:
+    """Združi ČAKAJOČE postavke z ISTIM SKU v eno (vzrok 'ne morem dodati boxov':
+    boksi se štejejo po SKU čez vse postavke, zato dvojnik novi postavki 'poje'
+    razpoložljive kose — ostane=0 → UI blokira). Vrne True, če je kaj spremenil."""
+    cak = sess.get("cakajoce") or []
+    if len(cak) < 2:
+        return False
+    pboxes = sess.get("packing_boxes") or {}
+
+    def _assigned_by_sku(sku):
+        tot = 0
+        for items in pboxes.values():
+            for e in items:
+                if e.get("sku") == sku:
+                    tot += e.get("kos", 0)
+        return tot
+
+    by_sku = {}
+    changed = False
+    out = []
+    for c in cak:
+        k = (c.get("sku") or "").strip().upper()
+        if k and k in by_sku:
+            # dvojnik → seštej qty v prvo postavko, dvojnika ne obdrži
+            first = by_sku[k]
+            first["qty"] = int(first.get("qty", 0) or 0) + int(c.get("qty", 0) or 0)
+            changed = True
+        else:
+            if k:
+                by_sku[k] = c
+            out.append(c)
+    if changed:
+        for c in out:
+            need = int(c.get("qty", 0) or 0)
+            c["assigned"] = _assigned_by_sku(c.get("sku"))
+            c["done"] = bool(need and c["assigned"] >= need)
+        sess["cakajoce"] = out
+        print(f"[zaloga] dedupe cakajoce: {len(cak)} → {len(out)}")
+    return changed
+
+
 @app.post("/zaloga-cakajoce")
 async def zaloga_cakajoce(data: dict):
     """RS 'Čakajoče' — velike postavke za razdelitev v več packing boxov (carinska lista).
@@ -2582,6 +2626,7 @@ async def zaloga_cakajoce(data: dict):
         if not path.exists():
             return {"ok": False, "error": "Ni aktivne seje"}
         sess = json.loads(path.read_text(encoding="utf-8"))
+        _zaloga_dedupe_cakajoce(sess)   # samo-popravilo dvojnikov (isti SKU 2×)
         cakajoce = sess.get("cakajoce") or []
         pboxes = sess.get("packing_boxes") or {}
         action = data.get("action", "")
@@ -2621,8 +2666,14 @@ async def zaloga_cakajoce(data: dict):
                     break
             if not moved:
                 return {"ok": False, "error": "Postavka ni najdena"}
-            # ni dvojnikov
-            if not any(c.get("idx") == idx for c in cakajoce):
+            # DVOJNIK: če ISTI SKU že obstaja med čakajočimi, seštej qty v obstoječo
+            # postavko (nov vnos z istim SKU bi bil blokiran — boksi se štejejo po SKU)
+            _skuU = (moved.get("sku") or "").strip().upper()
+            _ex = next((c for c in cakajoce if (c.get("sku") or "").strip().upper() == _skuU), None)
+            if _ex is not None:
+                _ex["qty"] = int(_ex.get("qty", 0) or 0) + int(moved.get("qty", 0) or 0)
+                _ex["done"] = False   # nova količina → spet odprto za razdelitev
+            elif not any(c.get("idx") == idx for c in cakajoce):
                 cakajoce.append(moved)
             # odstrani iz police (items)
             sess["items"] = [it for it in sess.get("items", []) if it.get("idx") != idx]
