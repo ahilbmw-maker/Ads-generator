@@ -12273,9 +12273,12 @@ async function prevzemiLoadRecord(recordId) {
 }
 
 async function prevzemiDeleteRecord(recordId) {
+  if (!recordId || recordId === 'undefined') { alert('Zapis nima veljavnega ID — osveži stran (backend popravek doda ID iz imena mape).'); return; }
   if (!confirm('Zbriši ta prevzem iz zgodovine?')) return;
   try {
-    await fetch('/prevzemi-record/' + encodeURIComponent(recordId), {method: 'DELETE'});
+    const r = await fetch('/prevzemi-record/' + encodeURIComponent(recordId), {method: 'DELETE'});
+    const d = await r.json();
+    if (!d.ok) { alert('Brisanje ni uspelo: ' + (d.error || 'neznana napaka')); }
     prevzemiLoadHistory();
   } catch(e) {
     alert('Napaka: ' + e.message);

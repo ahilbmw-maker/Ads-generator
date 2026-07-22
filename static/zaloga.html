@@ -282,6 +282,10 @@
     font-size: 12px; font-weight: 700; color: #fff;
     background: var(--poz-bg); padding: 4px 9px; border-radius: 7px;
     text-align: center; letter-spacing: 0.5px; justify-self: start;
+    /* dolga ročna imena pozicij (npr. "Pri Računalniku") ne smejo čez stolpec:
+       omeji na širino stolpca in prelomi besedilo znotraj značke */
+    max-width: 100%; box-sizing: border-box;
+    white-space: normal; overflow-wrap: break-word; word-break: break-word;
   }
   .item .poz.poz-edit {
     cursor: pointer; position: relative;
@@ -295,7 +299,7 @@
     filter: brightness(1.12); box-shadow: 0 0 0 2px rgba(255,255,255,0.25);
   }
   /* Pozicijski stolpec: primarna + druga vrstica (sekundarna / ＋), vedno 2 etaži */
-  .item .poz-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; justify-self: start; }
+  .item .poz-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; justify-self: start; min-width: 0; max-width: 100%; }
   .item .poz-cell .poz { justify-self: auto; }
   .poz-extra-row { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
   .poz-extra-edit { font-size: 10px; color: var(--warn); opacity: 0.7; flex-shrink: 0; }

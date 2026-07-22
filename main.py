@@ -17930,6 +17930,9 @@ async def prevzemi_list():
                 continue
             try:
                 meta = json.loads(meta_file.read_text(encoding='utf-8'))
+                # stari zapisi nimajo record_id v meta → vedno ga izpelji iz imena mape,
+                # sicer frontend pokaže "undefined" in ✕ brisanje ne najde mape
+                meta["record_id"] = meta.get("record_id") or d.name
                 records.append(meta)
             except Exception:
                 continue
