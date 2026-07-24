@@ -17917,6 +17917,55 @@ IMPORTANT:
         return {"ok": False, "error": str(e)}
 
 
+# ─── PRICE CHECKER: "pregledano danes" (dnevni reset + vrnitev ob spremembi cene) ──
+PRICECHECK_SEEN_FILE = DATA_DIR / "pricecheck_seen.json"
+
+
+def _pc_seen_load() -> dict:
+    """{date, seen: {key: hash}} — velja samo za današnji dan; ob novem dnevu se izprazni."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    try:
+        if PRICECHECK_SEEN_FILE.exists():
+            d = json.loads(PRICECHECK_SEEN_FILE.read_text(encoding="utf-8")) or {}
+            if d.get("date") == today:
+                return d
+    except Exception:
+        pass
+    return {"date": today, "seen": {}}
+
+
+def _pc_seen_save(d: dict):
+    try:
+        tmp = PRICECHECK_SEEN_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, PRICECHECK_SEEN_FILE)
+    except Exception as e:
+        print(f"[pcseen] save err: {e}")
+
+
+@app.get("/pricecheck-seen")
+async def pricecheck_seen_get():
+    return {"ok": True, **_pc_seen_load()}
+
+
+@app.post("/pricecheck-seen")
+async def pricecheck_seen_mark(data: dict):
+    """Množično označi vrstice kot pregledane DANES. data: { seen: {key: hash} }"""
+    add = data.get("seen") or {}
+    d = _pc_seen_load()
+    d["seen"].update({str(k): str(v) for k, v in add.items()})
+    _pc_seen_save(d)
+    return {"ok": True, "count": len(d["seen"]), "date": d["date"]}
+
+
+@app.post("/pricecheck-seen-reset")
+async def pricecheck_seen_reset():
+    """Ročni reset današnjega pregleda (sicer se resetira sam ob novem dnevu)."""
+    d = {"date": datetime.now().strftime("%Y-%m-%d"), "seen": {}}
+    _pc_seen_save(d)
+    return {"ok": True}
+
+
 @app.get("/prevzemi-list")
 async def prevzemi_list():
     """List all saved prevzem records (history)."""

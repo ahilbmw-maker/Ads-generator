@@ -346,6 +346,9 @@
   <button class="filter-btn" onclick="taskFilter('resolved',null);this.classList.add('active')" style="color:var(--green)">✓ Urejeni</button>
   <button class="filter-btn" id="groupSkuBtn" onclick="toggleGroupSku()" style="color:#7c3aed;border-color:#ddd6fe;background:#f5f3ff;font-weight:600">🌍 Primerjava po državah</button>
   <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti 2x+ in združena</button>
+  <span style="color:var(--border);margin:0 4px">|</span>
+  <button class="filter-btn" id="pcSeenHideBtn" onclick="pcSeenToggleHide()" title="Skrij vrstice, ki si jih danes že pregledal z isto ceno. Spremenjene cene in novi izdelki se vedno pokažejo." style="color:#0369a1;border-color:#bae6fd;background:#f0f9ff">🕐 Skrij pregledane danes</button>
+  <button class="filter-btn" id="pcSeenMarkBtn" onclick="pcSeenMarkVisible()" title="Označi vse trenutno prikazane vrstice kot pregledane za danes (jutri reset)" style="color:var(--green)">✓ Pregledano — skrij prikazane</button>
 </div>
 </div><!-- /sticky -->
 
@@ -451,6 +454,58 @@ async function loadSaleSkus() {
   } catch(e) { /* tiho — oznaka je opcijska */ }
 }
 loadSaleSkus();
+
+// ── PREGLEDANO DANES: dnevni reset; vrstica se vrne, če se ji cena spremeni ──
+let _pcSeen = {};          // {key: hash} za današnji dan (strežniško)
+let _pcHideSeen = true;    // privzeto skrivaj pregledane (bistvo funkcije)
+
+function pcRowKey(r) { return r.id + '|' + r.sku; }
+function pcRowHash(r) {
+  // prstni odtis cene: če se KARKOLI od tega spremeni, se vrstica spet pokaže
+  return [r.priceRaw, r.currency, r.status, r.suggested == null ? '' : r.suggested, r.qty || 1].join('~');
+}
+function pcRowSeen(r) { return _pcSeen[pcRowKey(r)] === pcRowHash(r); }
+function pcRowChangedToday(r) { const h = _pcSeen[pcRowKey(r)]; return h !== undefined && h !== pcRowHash(r); }
+
+async function pcSeenLoad() {
+  try {
+    const r = await fetch('/pricecheck-seen');
+    const d = await r.json();
+    if (d && d.ok) { _pcSeen = d.seen || {}; pcSeenUpdateBtn(); if (allRows.length) { updateStats(allRows); renderTable(allRows); } }
+  } catch(e) {}
+}
+pcSeenLoad();
+
+function pcSeenUpdateBtn() {
+  const b = document.getElementById('pcSeenHideBtn');
+  if (!b) return;
+  const n = allRows.filter(r => pcRowSeen(r)).length;
+  b.textContent = (_pcHideSeen ? '🕐 Skrij pregledane danes' : '🕐 Pokaži tudi pregledane') + (n ? ' (' + n + ')' : '');
+  b.style.background = _pcHideSeen ? '#f0f9ff' : '#0369a1';
+  b.style.color = _pcHideSeen ? '#0369a1' : '#fff';
+}
+
+function pcSeenToggleHide() {
+  _pcHideSeen = !_pcHideSeen;
+  pcSeenUpdateBtn();
+  updateStats(allRows); renderTable(allRows);
+}
+
+function pcCurrentFiltered() { return window._pcLastFiltered || []; }
+
+async function pcSeenMarkVisible() {
+  // označi vrstice, ki so TRENUTNO prikazane (isti filtri kot tabela)
+  const visible = pcCurrentFiltered();
+  if (!visible.length) return;
+  if (!confirm('Označim ' + visible.length + ' prikazanih vrstic kot pregledane za danes?\nSkrijejo se do jutri — razen če se jim cena spremeni.')) return;
+  const seen = {};
+  visible.forEach(r => { seen[pcRowKey(r)] = pcRowHash(r); });
+  try {
+    const resp = await fetch('/pricecheck-seen', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ seen }) });
+    const d = await resp.json();
+    if (d.ok) { Object.assign(_pcSeen, seen); pcSeenUpdateBtn(); updateStats(allRows); renderTable(allRows); }
+  } catch(e) { alert('Napaka: ' + e.message); }
+}
 
 // ── PRIPOROČILA CEN (🎯 tab v Analizi): SKU-ji s priporočilom ZVIŠAJ ali POZOR
 // dobijo značko ob SKU-ju — predlog, da tem izdelkom zvišaš ceno.
@@ -1083,6 +1138,7 @@ function _updateRazponCounts(rows) {
   else if (currentFilter === 'null') base = base.filter(r => r.isNull);
   else if (currentFilter === 'lowval') base = base.filter(r => !r.isNull && r.razlikaNum !== null && !isNaN(r.razlikaNum) && Math.abs(r.razlikaNum) < 7);
   else base = base.filter(r => r.status === 'ok' || !r.resolved);
+  if (_pcHideSeen && currentFilter !== 'resolved') base = base.filter(r => !pcRowSeen(r));   // pregledano danes
   if (currentCurrency && currentCurrency !== 'all' && !['resolved'].includes(currentCurrency)) base = base.filter(r => r.currency === currentCurrency);
   if (currentStore && currentStore !== 'all') base = base.filter(r => (r.store || '') === currentStore);
   if (currentSearch) {
@@ -1148,6 +1204,12 @@ function renderTable(rows) {
     );
   }
 
+  // Pregledano danes: skrij vrstice z ISTO ceno kot ob pregledu (spremenjene se vrnejo)
+  if (_pcHideSeen && currentFilter !== 'resolved') {
+    filtered = filtered.filter(r => !pcRowSeen(r));
+  }
+  window._pcLastFiltered = filtered;   // točno to, kar je prikazano — za "Označi prikazane"
+
   if (sortCol) {
     filtered = [...filtered].sort((a, b) => {
       const av = a[sortCol];
@@ -1191,11 +1253,14 @@ function renderTable(rows) {
 
     const curSuffix = row.currency ? ' <span style="font-size:12px;color:var(--muted)">' + row.currency + '</span>' : '';
 
-    const priceDisplay = row.isOk
+    const changedBadge = pcRowChangedToday(row)
+      ? ' <span title="Cena se je spremenila, odkar si to vrstico danes pregledal" style="display:inline-block;background:#0369a1;color:#fff;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;vertical-align:middle">⟳ NOVA CENA</span>'
+      : '';
+    const priceDisplay = (row.isOk
       ? `<span class="price-ok">${row.priceRaw}${curSuffix}</span>${qtyBadge}`
       : row.suggested
         ? `<span class="price-old">${row.priceRaw}${curSuffix}</span>${qtyBadge}`
-        : `<span style="color:var(--red)">${row.priceRaw}${curSuffix}</span>${qtyBadge}`;
+        : `<span style="color:var(--red)">${row.priceRaw}${curSuffix}</span>${qtyBadge}`) + changedBadge;
 
     const suggestedDisplay = row.suggested
       ? `<span class="price-new">${formatSuggested(row.suggested, row.currency)}</span>`
