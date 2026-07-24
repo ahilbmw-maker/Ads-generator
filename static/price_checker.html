@@ -1150,7 +1150,11 @@ function _updateRazponCounts(rows) {
   else if (currentFilter === 'null') base = base.filter(r => r.isNull);
   else if (currentFilter === 'lowval') base = base.filter(r => !r.isNull && r.razlikaNum !== null && !isNaN(r.razlikaNum) && Math.abs(r.razlikaNum) < 7);
   else base = base.filter(r => r.status === 'ok' || !r.resolved);
-  if (_pcHideSeen && currentFilter !== 'resolved') base = base.filter(r => !pcRowSeen(r));   // pregledano danes
+  if (_pcHideSeen && currentFilter !== 'resolved') {
+    const _cnt = {}; rows.forEach(r => { _cnt[r.id] = (_cnt[r.id] || 0) + 1; });
+    const _uns = new Set(rows.filter(r => !pcRowSeen(r)).map(r => r.id));
+    base = base.filter(r => !pcRowSeen(r) || (_cnt[r.id] > 1 && _uns.has(r.id)));   // pregledano danes (združena: vse ali nič)
+  }
   if (currentCurrency && currentCurrency !== 'all' && !['resolved'].includes(currentCurrency)) base = base.filter(r => r.currency === currentCurrency);
   if (currentStore && currentStore !== 'all') base = base.filter(r => (r.store || '') === currentStore);
   if (currentSearch) {
@@ -1216,9 +1220,14 @@ function renderTable(rows) {
     );
   }
 
-  // Pregledano danes: skrij vrstice z ISTO ceno kot ob pregledu (spremenjene se vrnejo)
+  // Pregledano danes: skrij vrstice z ISTO ceno kot ob pregledu (spremenjene se vrnejo).
+  // ZDRUŽENA naročila (več postavk na isti ID): skrij SAMO če so pregledane VSE postavke —
+  // če je katerakoli nova/spremenjena, pokaži CELO naročilo (pregledane zatemnjene),
+  // da naročilo nikoli ne izgleda kot eno-postavčno, ko v resnici ni.
   if (_pcHideSeen && currentFilter !== 'resolved') {
-    filtered = filtered.filter(r => !pcRowSeen(r));
+    const cntAll = {}; rows.forEach(r => { cntAll[r.id] = (cntAll[r.id] || 0) + 1; });
+    const unseenIds = new Set(rows.filter(r => !pcRowSeen(r)).map(r => r.id));
+    filtered = filtered.filter(r => !pcRowSeen(r) || (cntAll[r.id] > 1 && unseenIds.has(r.id)));
   }
   window._pcLastFiltered = filtered;   // točno to, kar je prikazano — za "Označi prikazane"
 
@@ -1250,6 +1259,7 @@ function renderTable(rows) {
   for (const row of filtered) {
     const tr = document.createElement('tr');
     tr.className = row.isNull ? 'row-null' : `row-${row.status}`;
+    if (seenCtx) tr.style.opacity = '0.55';   // pregledana, prikazana le za kontekst
 
     const statusBadge = row.isNull
       ? '<span class="badge badge-null">🚫 NULL</span>'
@@ -1265,6 +1275,10 @@ function renderTable(rows) {
 
     const curSuffix = row.currency ? ' <span style="font-size:12px;color:var(--muted)">' + row.currency + '</span>' : '';
 
+    const seenCtx = pcRowSeen(row);   // prikazana KLJUB pregledu (kontekst združenega naročila)
+    const seenBadge = seenCtx
+      ? ' <span title="To postavko si danes že pregledal — prikazana je za kontekst združenega naročila" style="display:inline-block;background:#e5e7eb;color:#6b7280;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;vertical-align:middle">✓ pregledano</span>'
+      : '';
     const changedBadge = pcRowChangedToday(row)
       ? ' <span title="Cena se je spremenila, odkar si to vrstico danes pregledal" style="display:inline-block;background:#0369a1;color:#fff;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;vertical-align:middle">⟳ NOVA CENA</span>'
       : '';
@@ -1272,7 +1286,7 @@ function renderTable(rows) {
       ? `<span class="price-ok">${row.priceRaw}${curSuffix}</span>${qtyBadge}`
       : row.suggested
         ? `<span class="price-old">${row.priceRaw}${curSuffix}</span>${qtyBadge}`
-        : `<span style="color:var(--red)">${row.priceRaw}${curSuffix}</span>${qtyBadge}`) + changedBadge;
+        : `<span style="color:var(--red)">${row.priceRaw}${curSuffix}</span>${qtyBadge}`) + changedBadge + seenBadge;
 
     const suggestedDisplay = row.suggested
       ? `<span class="price-new">${formatSuggested(row.suggested, row.currency)}</span>`
