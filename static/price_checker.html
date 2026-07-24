@@ -1230,6 +1230,15 @@ function renderTable(rows) {
     filtered = filtered.filter(r => !pcRowSeen(r) || (cntAll[r.id] > 1 && unseenIds.has(r.id)));
   }
   window._pcLastFiltered = filtered;   // točno to, kar je prikazano — za "Označi prikazane"
+  // če je seznam prazen ZARADI pregledanih, to jasno povej (namesto tihe prazne tabele)
+  if (!filtered.length && _pcHideSeen) {
+    const nHidden = rows.filter(r => pcRowSeen(r)).length;
+    if (nHidden > 0) {
+      const tb = document.getElementById('tableBody');
+      if (tb) { tb.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:2.5rem;color:#6b7280;font-size:13px">Vse vrstice v tem pogledu so danes že pregledane (' + nHidden + ' skritih).<br><button onclick="pcSeenToggleHide()" style="margin-top:10px;padding:7px 16px;background:#0369a1;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">🕐 Pokaži pregledane</button></td></tr>'; }
+      return;
+    }
+  }
 
   if (sortCol) {
     filtered = [...filtered].sort((a, b) => {
@@ -1257,6 +1266,10 @@ function renderTable(rows) {
   }
 
   for (const row of filtered) {
+    const seenCtx = pcRowSeen(row);   // prikazana KLJUB pregledu (kontekst združenega naročila)
+    const seenBadge = seenCtx
+      ? ' <span title="To postavko si danes že pregledal — prikazana je za kontekst združenega naročila" style="display:inline-block;background:#e5e7eb;color:#6b7280;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;vertical-align:middle">✓ pregledano</span>'
+      : '';
     const tr = document.createElement('tr');
     tr.className = row.isNull ? 'row-null' : `row-${row.status}`;
     if (seenCtx) tr.style.opacity = '0.55';   // pregledana, prikazana le za kontekst
@@ -1275,10 +1288,6 @@ function renderTable(rows) {
 
     const curSuffix = row.currency ? ' <span style="font-size:12px;color:var(--muted)">' + row.currency + '</span>' : '';
 
-    const seenCtx = pcRowSeen(row);   // prikazana KLJUB pregledu (kontekst združenega naročila)
-    const seenBadge = seenCtx
-      ? ' <span title="To postavko si danes že pregledal — prikazana je za kontekst združenega naročila" style="display:inline-block;background:#e5e7eb;color:#6b7280;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;vertical-align:middle">✓ pregledano</span>'
-      : '';
     const changedBadge = pcRowChangedToday(row)
       ? ' <span title="Cena se je spremenila, odkar si to vrstico danes pregledal" style="display:inline-block;background:#0369a1;color:#fff;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;vertical-align:middle">⟳ NOVA CENA</span>'
       : '';
