@@ -17952,8 +17952,11 @@ async def pricecheck_seen_get():
 async def pricecheck_seen_mark(data: dict):
     """Množično označi vrstice kot pregledane DANES. data: { seen: {key: hash} }"""
     add = data.get("seen") or {}
+    remove = data.get("remove") or []
     d = _pc_seen_load()
     d["seen"].update({str(k): str(v) for k, v in add.items()})
+    for k in remove:
+        d["seen"].pop(str(k), None)
     _pc_seen_save(d)
     return {"ok": True, "count": len(d["seen"]), "date": d["date"]}
 

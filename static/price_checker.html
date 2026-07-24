@@ -493,6 +493,18 @@ function pcSeenToggleHide() {
 
 function pcCurrentFiltered() { return window._pcLastFiltered || []; }
 
+// IZBRIS = implicitno "pregledano danes s to ceno": vrstice se ob Siluxar osvežitvi
+// sicer vrnejo v tabelo, a jih filter skrije — dokler se jim cena ne spremeni.
+function pcSeenRecordRows(rows) {
+  if (!rows || !rows.length) return;
+  const seen = {};
+  rows.forEach(r => { seen[pcRowKey(r)] = pcRowHash(r); });
+  Object.assign(_pcSeen, seen);
+  pcSeenUpdateBtn();
+  fetch('/pricecheck-seen', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ seen }) }).catch(()=>{});
+}
+
 async function pcSeenMarkVisible() {
   // označi vrstice, ki so TRENUTNO prikazane (isti filtri kot tabela)
   const visible = pcCurrentFiltered();
@@ -1903,6 +1915,7 @@ function multiToggleAll(checked) {
 function multiDeleteSelected() {
   if (!window._multiSelected || window._multiSelected.size === 0) return;
   const toDelete = new Set(window._multiSelected);
+  pcSeenRecordRows(allRows.filter(r => toDelete.has(r.id)));   // izbris = pregledano danes
   allRows = allRows.filter(r => !toDelete.has(r.id));
   window._multiSelected.clear();
   saveTableToStorage();
@@ -2006,6 +2019,12 @@ async function deleteAllInView() {
 let _lastDeletedRows = [];
 function undoLastDelete() {
   if (!_lastDeletedRows.length) return;
+  // undo mora umakniti tudi "pregledano danes" oznake, sicer bi filter obnovljene takoj skril
+  const keys = _lastDeletedRows.map(r => pcRowKey(r));
+  keys.forEach(k => delete _pcSeen[k]);
+  pcSeenUpdateBtn();
+  fetch('/pricecheck-seen', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ remove: keys }) }).catch(()=>{});
   allRows = allRows.concat(_lastDeletedRows);
   _lastDeletedRows = [];
   saveTableToStorage();
@@ -2028,6 +2047,7 @@ async function bulkDelete() {
   const uniqIds = [...new Set(psIds)];
 
   // lokalno brisanje (vedno)
+  pcSeenRecordRows(allRows.filter(r => toDelete.has(r.id + '|' + r.sku)));   // izbris = pregledano danes
   allRows = allRows.filter(r => !toDelete.has(r.id + '|' + r.sku));
   try {
     const stored = JSON.parse(localStorage.getItem('price_checker_resolved') || '{}');
@@ -2171,6 +2191,7 @@ function multiClearResolved() {
     }
   }
   if (toDelete.size === 0) return;
+  pcSeenRecordRows(allRows.filter(r => toDelete.has(r.id + '|' + r.sku)));   // izbris = pregledano danes
   allRows = allRows.filter(r => !toDelete.has(r.id + '|' + r.sku));
   try {
     const key = 'price_checker_resolved';
@@ -2217,6 +2238,7 @@ async function cleanQtyMerged() {
 
   // Odstrani SAMO te konkretne vrstice (po id+sku+valuta ključu)
   const removeKeys = new Set(toRemove.map(r => r.id + '|' + r.sku + '|' + r.currency));
+  pcSeenRecordRows(toRemove);   // izbris = pregledano danes
   allRows = allRows.filter(r => !removeKeys.has(r.id + '|' + r.sku + '|' + r.currency));
 
   // Posodobi shranjeno tabelo (localStorage)
