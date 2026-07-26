@@ -2839,8 +2839,8 @@ input[type="text"].error { border-color: var(--red) !important; }
           <button onclick="dupAiReport()" id="dupAiBtn" style="padding:8px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🤖 AI poročilo</button>
           <label id="dup3dLbl" title="Isti izvoz kot glavni CSV, samo obdobje ZADNJI 3 DNEVI — omogoči trend (⏳ počakaj vs ugasni zdaj)" style="padding:8px 14px;background:transparent;color:var(--text-secondary);border:1px dashed var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📅 Naloži 3-dnevni CSV (trend)<input type="file" accept=".csv" style="display:none" onchange="dup3dUpload(this)"></label>
         </div>
-        <div id="dupSummary" style="display:none;margin-top:12px;display:flex;gap:18px;flex-wrap:wrap;font-size:12px"></div>
-        <div id="dupAccBar" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);align-items:center;gap:6px;flex-wrap:wrap;font-size:12px"></div>
+        <div id="dupSummary" style="display:none;margin-top:12px;display:flex;gap:18px;flex-wrap:wrap;font-size:13px"></div>
+        <div id="dupAccBar" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);align-items:center;gap:6px;flex-wrap:wrap;font-size:13px"></div>
       </div>
       <div id="dupAiReport" style="display:none" class="card"></div>
       <div id="dupResults"></div>
@@ -14988,6 +14988,23 @@ async function dupMarkReviewed(key, on) {
 }
 function dupToggleShowReviewed() { _dupShowReviewed = !_dupShowReviewed; if (_dupData) dupRender(_dupData); }
 
+async function dupMarkReviewedAllSku(sku) {
+  if (!_dupData) return;
+  const keys = _dupData.groups.filter(g => g.sku === sku).map(g => g.sku + '|' + g.account);
+  if (!keys.length) return;
+  try {
+    for (const key of keys) {
+      await fetch('/analiza-meta-duplicates-reviewed', { method:'POST',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key, on: true }) });
+    }
+    const ks = new Set(_dupData.reviewed_keys || []);
+    keys.forEach(k => ks.add(k));
+    _dupData.reviewed_keys = [...ks];
+    _dupSkuFilter = null;   // SKU obdelan → nazaj na pregled
+    dupRender(_dupData);
+  } catch(e) { alert('Napaka: ' + e.message); }
+}
+
 function dupAccToggle(name) {
   if (_dupAccSel.has(name)) _dupAccSel.delete(name); else _dupAccSel.add(name);
   _dupAccSave();
@@ -15081,28 +15098,28 @@ function dupRender(d) {
       +   '<span style="font-size:11px;color:var(--text-tertiary)">SKU × account · številka = aktivne kampanje · klik na celico skoči na skupino · top 40 po izgubi</span>'
       + '</div>';
     if (_dupShowMatrix) {
-      html0 += '<div style="overflow-x:auto;margin-top:10px"><table style="border-collapse:collapse;font-size:11px;min-width:100%">';
-      html0 += '<tr><th style="text-align:left;padding:5px 8px;position:sticky;left:0;background:var(--surface,#fff);z-index:2;font-weight:700">SKU</th>';
-      mAccs.forEach(a => { html0 += '<th style="padding:5px 6px;font-weight:600;color:var(--text-secondary);white-space:nowrap">' + esc(a) + '</th>'; });
-      html0 += '<th style="padding:5px 8px;font-weight:700;text-align:right">Σ kamp.</th><th style="padding:5px 8px;font-weight:700;text-align:right;color:var(--red)">€ izguba</th></tr>';
+      html0 += '<div style="overflow-x:auto;margin-top:10px"><table style="border-collapse:collapse;font-size:13px;min-width:100%">';
+      html0 += '<tr><th style="text-align:left;padding:8px 10px;position:sticky;left:0;background:var(--surface,#fff);z-index:2;font-weight:700">SKU</th>';
+      mAccs.forEach(a => { html0 += '<th style="padding:8px 8px;font-weight:600;color:var(--text-secondary);white-space:nowrap">' + esc(a) + '</th>'; });
+      html0 += '<th style="padding:8px 10px;font-weight:700;text-align:right">Σ kamp.</th><th style="padding:8px 10px;font-weight:700;text-align:right;color:var(--red)">€ izguba</th></tr>';
       skuRows.forEach(r => {
         html0 += '<tr style="border-top:1px solid var(--border)">'
           + '<td onclick="dupSkuFilterSet(\'' + esc(r.sku).replace(/'/g, "\\'") + '\')" '
           +   'title="Klik: prikaži samo ta SKU čez vse accounte (ponovni klik = počisti)" '
-          +   'style="padding:4px 8px;font-family:\'DM Mono\',monospace;font-weight:700;position:sticky;left:0;z-index:1;white-space:nowrap;cursor:pointer;'
+          +   'style="padding:7px 10px;font-size:13px;font-family:\'DM Mono\',monospace;font-weight:700;position:sticky;left:0;z-index:1;white-space:nowrap;cursor:pointer;'
           +   (_dupSkuFilter === r.sku ? 'background:var(--accent);color:#fff;border-radius:4px' : 'background:var(--surface,#fff);color:var(--accent)') + '">'
           +   esc(r.sku) + '</td>';
         mAccs.forEach(a => {
           const n = r.cells[a];
-          if (!n) { html0 += '<td style="padding:4px 6px;text-align:center;color:var(--border)">·</td>'; }
+          if (!n) { html0 += '<td style="padding:7px 8px;text-align:center;color:var(--border)">·</td>'; }
           else {
             const key = r.keys[a];
             html0 += '<td onclick="dupJumpTo(\'' + esc(key).replace(/'/g, "\\'") + '\')" title="' + esc(r.sku) + ' @ ' + esc(a) + ' — ' + n + ' aktivnih kampanj (klik = skoči)" '
-              + 'style="padding:4px 6px;text-align:center;cursor:pointer;font-weight:800;color:#fff;background:' + cellBg(n) + ';border-radius:4px">' + n + '</td>';
+              + 'style="padding:7px 8px;text-align:center;cursor:pointer;font-weight:800;font-size:13px;color:#fff;background:' + cellBg(n) + ';border-radius:4px">' + n + '</td>';
           }
         });
-        html0 += '<td style="padding:4px 8px;text-align:right;font-weight:700">' + r.total + '</td>'
-          + '<td style="padding:4px 8px;text-align:right;font-weight:700;color:' + (r.waste ? 'var(--red)' : 'var(--text-tertiary)') + '">' + (r.waste ? r.waste.toFixed(0) : '—') + '</td></tr>';
+        html0 += '<td style="padding:7px 10px;text-align:right;font-weight:700">' + r.total + '</td>'
+          + '<td style="padding:7px 10px;text-align:right;font-weight:700;color:' + (r.waste ? 'var(--red)' : 'var(--text-tertiary)') + '">' + (r.waste ? r.waste.toFixed(0) : '—') + '</td></tr>';
       });
       html0 += '</table></div>';
     }
@@ -15124,6 +15141,48 @@ function dupRender(d) {
   const accOrder = Object.keys(byAcc).sort((a, b) => (accWaste[b] || 0) - (accWaste[a] || 0));
   let html = html0;
   let gi = -1;
+  if (_dupSkuFilter) {
+    // ── EN SEZNAM: vse kampanje tega SKU čez vse accounte, od najboljše do najslabše ──
+    const flat = [];
+    shown.forEach(g => g.campaigns.forEach(c => flat.push({ ...c, account: g.account, best_cpa: g.best_cpa })));
+    flat.sort((a, b) => {
+      const cls = c => c.verdict === 'zombie' ? 2 : ((c.cpa > 0 && c.purchases > 0) ? 0 : 1);
+      if (cls(a) !== cls(b)) return cls(a) - cls(b);
+      if (cls(a) === 0) return a.cpa - b.cpa;      // najboljši CPA zgoraj
+      return b.spend - a.spend;
+    });
+    const tSpend = flat.reduce((x, c) => x + c.spend, 0);
+    const tPurch = flat.reduce((x, c) => x + c.purchases, 0);
+    const tWaste = shown.reduce((x, g) => x + (g.waste || 0), 0);
+    html += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:4px 0 10px 2px">'
+      + '<span style="font-size:13px;font-weight:800">' + flat.length + ' kampanj · ' + shown.length + ' accountov</span>'
+      + '<span style="font-size:12px;color:var(--text-tertiary)">spend ' + tSpend.toFixed(0) + ' € · ' + tPurch + ' nakupov'
+      + (tWaste ? ' · <b style="color:var(--red)">' + tWaste.toFixed(0) + ' € na kocki</b>' : '') + '</span>'
+      + '<span onclick="dupMarkReviewedAllSku(\'' + esc(_dupSkuFilter).replace(/'/g, "\\'") + '\')" '
+      +   'style="margin-left:auto;cursor:pointer;font-size:11px;font-weight:700;padding:4px 12px;border-radius:6px;background:transparent;color:var(--green);border:1px solid var(--green)">✔ Pregledano (vsi accounti)</span>'
+      + '</div>';
+    let bestShown = false;
+    flat.forEach(c => {
+      const v = V[c.verdict] || V.premalo;
+      const isBest = !bestShown && c.cpa > 0 && c.purchases > 0;
+      if (isBest) bestShown = true;
+      html += '<div title="' + v.tip + '" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 12px;margin-bottom:4px;background:' + v.bg + ';'
+        + 'border:1px solid ' + (isBest ? 'var(--green)' : 'var(--border)') + ';border-radius:8px;font-size:13px">'
+        + '<span style="min-width:92px;font-weight:700;color:' + v.c + '">' + v.t + '</span>'
+        + (isBest ? '<span style="font-size:10px;font-weight:800;background:var(--green);color:#fff;border-radius:4px;padding:1px 7px">🏆 NAJBOLJŠI</span>' : '')
+        + '<span style="font-size:11px;font-weight:700;color:var(--text-secondary);background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:2px 8px;white-space:nowrap">🏢 ' + esc(c.account) + '</span>'
+        + '<span style="flex:1;min-width:220px;word-break:break-word">' + esc(c.name) + '</span>'
+        + '<span>' + c.spend.toFixed(2) + ' €</span>'
+        + '<span>' + c.purchases + ' nak.</span>'
+        + '<b>' + (c.cpa ? c.cpa.toFixed(2) + ' € CPA' : '—') + '</b>'
+        + (c.cpa3 != null
+            ? '<span title="CPA zadnjih 3 dni" style="color:' + (c.trend === 'imp' ? 'var(--green)' : (c.trend === 'wors' ? 'var(--red)' : 'var(--text-tertiary)')) + '">'
+              + (c.trend === 'imp' ? '↘' : (c.trend === 'wors' ? '↗' : '→')) + ' 3d: ' + c.cpa3.toFixed(2) + ' €</span>'
+            : '')
+        + (c.freq ? '<span style="color:var(--text-tertiary)" title="Frequency">f ' + c.freq.toFixed(1) + '</span>' : '')
+        + '</div>';
+    });
+  } else {
   accOrder.forEach(acc => {
     const gl = byAcc[acc];
     const aw = gl.reduce((s2, g) => s2 + (g.waste || 0), 0);
@@ -15152,7 +15211,7 @@ function dupRender(d) {
       + '<div id="dupG' + gi + '" style="display:none;margin-top:10px">';
     g.campaigns.forEach(c => {
       const v = V[c.verdict] || V.premalo;
-      html += '<div title="' + v.tip + '" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:7px 10px;margin-bottom:4px;background:' + v.bg + ';border:1px solid var(--border);border-radius:7px;font-size:12px">'
+      html += '<div title="' + v.tip + '" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:7px 10px;margin-bottom:4px;background:' + v.bg + ';border:1px solid var(--border);border-radius:7px;font-size:13px">'
         + '<span style="min-width:92px;font-weight:700;color:' + v.c + '">' + v.t + '</span>'
         + '<span style="flex:1;min-width:220px;word-break:break-word">' + esc(c.name) + '</span>'
         + '<span>' + c.spend.toFixed(2) + ' €</span>'
@@ -15169,6 +15228,7 @@ function dupRender(d) {
       html += '</div></div>';
     });
   });
+  }
 
   // ── PREGLEDANO (skrito za gumbom; reset ob novem uploadu Meta CSV) ──
   if (revGroups.length) {
@@ -15190,7 +15250,7 @@ function dupRender(d) {
           + '</div>'
           + '<div id="dupG' + gi + '" style="display:none;margin-top:10px">';
         g.campaigns.forEach(c => {
-          html += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:6px 10px;margin-bottom:4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:12px;opacity:0.75">'
+          html += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:6px 10px;margin-bottom:4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:13px;opacity:0.75">'
             + '<span style="flex:1;min-width:220px;word-break:break-word">' + esc(c.name) + '</span>'
             + '<span>' + c.spend.toFixed(2) + ' €</span><span>' + c.purchases + ' nak.</span>'
             + '<span>' + (c.cpa ? c.cpa.toFixed(2) + ' € CPA' : '—') + '</span></div>';
