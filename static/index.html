@@ -14961,6 +14961,12 @@ function _dupAccSave() {
   try { localStorage.setItem('slx_dup_accounts', JSON.stringify([..._dupAccSel])); } catch(e) {}
 }
 let _dupShowReviewed = false;
+let _dupShowMatrix = true;   // 📊 matrika prekrivanj (privzeto odprta)
+function dupToggleMatrix() { _dupShowMatrix = !_dupShowMatrix; if (_dupData) dupRender(_dupData); }
+function dupJumpTo(key) {
+  const el = document.getElementById('dupCard_' + key.replace(/[^A-Za-z0-9]/g, '_'));
+  if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.style.outline = '2px solid var(--accent)'; setTimeout(() => { el.style.outline = ''; }, 1600); }
+}
 async function dupMarkReviewed(key, on) {
   try {
     const r = await fetch('/analiza-meta-duplicates-reviewed', { method:'POST',
@@ -15048,11 +15054,54 @@ function dupRender(d) {
     ok:      { t: '🔵 OK',      c: '#2563eb', bg: 'rgba(37,99,235,0.06)', tip: 'solidna — razmisli o konsolidaciji v KEEP' },
     premalo: { t: '⚪ PREMALO', c: 'var(--text-tertiary)', bg: 'var(--surface2)', tip: 'premalo podatkov — pusti, opazuj (ne ugašaj po šumu)' },
   };
+  // ── 📊 MATRIKA PREKRIVANJ: SKU × account, celica = št. aktivnih kampanj ──
+  let html0 = '';
+  if (shown.length) {
+    const mAccs = [...new Set(shown.map(g => g.account))].sort();
+    const bySku = {};
+    shown.forEach(g => {
+      const e = (bySku[g.sku] = bySku[g.sku] || { sku: g.sku, cells: {}, total: 0, waste: 0, keys: {} });
+      e.cells[g.account] = g.n; e.total += g.n; e.waste += (g.waste || 0);
+      e.keys[g.account] = g.sku + '|' + g.account;
+    });
+    const skuRows = Object.values(bySku).sort((a, b) => (b.waste - a.waste) || (b.total - a.total)).slice(0, 40);
+    const cellBg = n => n >= 4 ? 'rgba(153,27,27,0.85)' : (n === 3 ? 'rgba(226,75,74,0.75)' : 'rgba(217,119,6,0.65)');
+    html0 += '<div class="card" style="padding:12px 14px;margin-bottom:14px">'
+      + '<div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="dupToggleMatrix()">'
+      +   '<span style="font-size:11px;color:var(--text-tertiary)">' + (_dupShowMatrix ? '▾' : '▸') + '</span>'
+      +   '<b style="font-size:13px">📊 Matrika prekrivanj</b>'
+      +   '<span style="font-size:11px;color:var(--text-tertiary)">SKU × account · številka = aktivne kampanje · klik na celico skoči na skupino · top 40 po izgubi</span>'
+      + '</div>';
+    if (_dupShowMatrix) {
+      html0 += '<div style="overflow-x:auto;margin-top:10px"><table style="border-collapse:collapse;font-size:11px;min-width:100%">';
+      html0 += '<tr><th style="text-align:left;padding:5px 8px;position:sticky;left:0;background:var(--surface,#fff);z-index:2;font-weight:700">SKU</th>';
+      mAccs.forEach(a => { html0 += '<th style="padding:5px 6px;font-weight:600;color:var(--text-secondary);white-space:nowrap">' + esc(a) + '</th>'; });
+      html0 += '<th style="padding:5px 8px;font-weight:700;text-align:right">Σ kamp.</th><th style="padding:5px 8px;font-weight:700;text-align:right;color:var(--red)">€ izguba</th></tr>';
+      skuRows.forEach(r => {
+        html0 += '<tr style="border-top:1px solid var(--border)">'
+          + '<td style="padding:4px 8px;font-family:\'DM Mono\',monospace;font-weight:700;position:sticky;left:0;background:var(--surface,#fff);z-index:1;white-space:nowrap">' + esc(r.sku) + '</td>';
+        mAccs.forEach(a => {
+          const n = r.cells[a];
+          if (!n) { html0 += '<td style="padding:4px 6px;text-align:center;color:var(--border)">·</td>'; }
+          else {
+            const key = r.keys[a];
+            html0 += '<td onclick="dupJumpTo(\'' + esc(key).replace(/'/g, "\\'") + '\')" title="' + esc(r.sku) + ' @ ' + esc(a) + ' — ' + n + ' aktivnih kampanj (klik = skoči)" '
+              + 'style="padding:4px 6px;text-align:center;cursor:pointer;font-weight:800;color:#fff;background:' + cellBg(n) + ';border-radius:4px">' + n + '</td>';
+          }
+        });
+        html0 += '<td style="padding:4px 8px;text-align:right;font-weight:700">' + r.total + '</td>'
+          + '<td style="padding:4px 8px;text-align:right;font-weight:700;color:' + (r.waste ? 'var(--red)' : 'var(--text-tertiary)') + '">' + (r.waste ? r.waste.toFixed(0) : '—') + '</td></tr>';
+      });
+      html0 += '</table></div>';
+    }
+    html0 += '</div>';
+  }
+
   // grupiraj po accountu (sekcije), znotraj po izgubi
   const byAcc = {};
   shown.forEach(g => { (byAcc[g.account] = byAcc[g.account] || []).push(g); });
   const accOrder = Object.keys(byAcc).sort((a, b) => (accWaste[b] || 0) - (accWaste[a] || 0));
-  let html = '';
+  let html = html0;
   let gi = -1;
   accOrder.forEach(acc => {
     const gl = byAcc[acc];
@@ -15065,7 +15114,8 @@ function dupRender(d) {
       + (af ? ' · ⚠ freq: ' + af : '') + '</span></div>';
     gl.forEach(g => {
       gi++;
-    html += '<div class="card" style="padding:12px 14px;margin-bottom:10px">'
+      const _cardId = 'dupCard_' + (g.sku + '|' + g.account).replace(/[^A-Za-z0-9]/g, '_');
+    html += '<div class="card" id="' + _cardId + '" style="padding:12px 14px;margin-bottom:10px;transition:outline 0.3s">'
       + '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;cursor:pointer" onclick="dupToggle(' + gi + ')">'
       +   '<span id="dupCh' + gi + '" style="font-size:11px;color:var(--text-tertiary)">▸</span>'
       +   '<b style="font-family:\'DM Mono\',monospace;font-size:13px">' + esc(g.sku) + '</b>'
