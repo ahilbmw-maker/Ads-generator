@@ -1331,6 +1331,13 @@ function renderTable(rows) {
 }
 
 function updateStats(rows) {
+  // kartice štejejo enako kot tabela: pregledane danes so izvzete
+  // (združena naročila: vse-ali-nič — kontekst vrstice se štejejo)
+  if (_pcHideSeen) {
+    const _c = {}; rows.forEach(r => { _c[r.id] = (_c[r.id] || 0) + 1; });
+    const _u = new Set(rows.filter(r => !pcRowSeen(r)).map(r => r.id));
+    rows = rows.filter(r => !pcRowSeen(r) || (_c[r.id] > 1 && _u.has(r.id)));
+  }
   const errors = rows.filter(r => r.status === 'error' && !r.resolved).length;
   const warns = rows.filter(r => r.status === 'warn' && !r.resolved).length;
   const ok = rows.filter(r => r.status === 'ok').length;
