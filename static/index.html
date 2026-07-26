@@ -14963,6 +14963,11 @@ function _dupAccSave() {
 let _dupShowReviewed = false;
 let _dupShowMatrix = true;   // 📊 matrika prekrivanj (privzeto odprta)
 function dupToggleMatrix() { _dupShowMatrix = !_dupShowMatrix; if (_dupData) dupRender(_dupData); }
+let _dupSkuFilter = null;   // klik na SKU v matriki → prikaži samo ta SKU (čez vse accounte)
+function dupSkuFilterSet(sku) {
+  _dupSkuFilter = (_dupSkuFilter === sku) ? null : sku;   // ponovni klik = počisti
+  if (_dupData) dupRender(_dupData);
+}
 function dupJumpTo(key) {
   const el = document.getElementById('dupCard_' + key.replace(/[^A-Za-z0-9]/g, '_'));
   if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.style.outline = '2px solid var(--accent)'; setTimeout(() => { el.style.outline = ''; }, 1600); }
@@ -15039,7 +15044,10 @@ function dupRender(d) {
   }
 
   const _rev = new Set(d.reviewed_keys || []);
-  const _selGroups = d.groups.filter(g => sel.has(g.account));
+  let _selGroups = d.groups.filter(g => sel.has(g.account));
+  if (_dupSkuFilter && !_selGroups.some(g => g.sku === _dupSkuFilter)) _dupSkuFilter = null;   // SKU izginil (nov CSV/filter) → počisti
+  const _shownAll = _selGroups.filter(g => !_rev.has(g.sku + '|' + g.account));   // za matriko (VSI SKU-ji)
+  if (_dupSkuFilter) _selGroups = _selGroups.filter(g => g.sku === _dupSkuFilter);
   const shown = _selGroups.filter(g => !_rev.has(g.sku + '|' + g.account));
   const revGroups = _selGroups.filter(g => _rev.has(g.sku + '|' + g.account));
   if (!_selGroups.length) {
@@ -15056,10 +15064,10 @@ function dupRender(d) {
   };
   // ── 📊 MATRIKA PREKRIVANJ: SKU × account, celica = št. aktivnih kampanj ──
   let html0 = '';
-  if (shown.length) {
-    const mAccs = [...new Set(shown.map(g => g.account))].sort();
+  if (_shownAll.length) {
+    const mAccs = [...new Set(_shownAll.map(g => g.account))].sort();
     const bySku = {};
-    shown.forEach(g => {
+    _shownAll.forEach(g => {
       const e = (bySku[g.sku] = bySku[g.sku] || { sku: g.sku, cells: {}, total: 0, waste: 0, keys: {} });
       e.cells[g.account] = g.n; e.total += g.n; e.waste += (g.waste || 0);
       e.keys[g.account] = g.sku + '|' + g.account;
@@ -15079,7 +15087,11 @@ function dupRender(d) {
       html0 += '<th style="padding:5px 8px;font-weight:700;text-align:right">Σ kamp.</th><th style="padding:5px 8px;font-weight:700;text-align:right;color:var(--red)">€ izguba</th></tr>';
       skuRows.forEach(r => {
         html0 += '<tr style="border-top:1px solid var(--border)">'
-          + '<td style="padding:4px 8px;font-family:\'DM Mono\',monospace;font-weight:700;position:sticky;left:0;background:var(--surface,#fff);z-index:1;white-space:nowrap">' + esc(r.sku) + '</td>';
+          + '<td onclick="dupSkuFilterSet(\'' + esc(r.sku).replace(/'/g, "\\'") + '\')" '
+          +   'title="Klik: prikaži samo ta SKU čez vse accounte (ponovni klik = počisti)" '
+          +   'style="padding:4px 8px;font-family:\'DM Mono\',monospace;font-weight:700;position:sticky;left:0;z-index:1;white-space:nowrap;cursor:pointer;'
+          +   (_dupSkuFilter === r.sku ? 'background:var(--accent);color:#fff;border-radius:4px' : 'background:var(--surface,#fff);color:var(--accent)') + '">'
+          +   esc(r.sku) + '</td>';
         mAccs.forEach(a => {
           const n = r.cells[a];
           if (!n) { html0 += '<td style="padding:4px 6px;text-align:center;color:var(--border)">·</td>'; }
@@ -15095,6 +15107,15 @@ function dupRender(d) {
       html0 += '</table></div>';
     }
     html0 += '</div>';
+  }
+
+  // čip aktivnega SKU filtra
+  if (_dupSkuFilter) {
+    html0 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;font-size:12px">'
+      + '<span style="background:var(--accent);color:#fff;font-weight:700;padding:5px 12px;border-radius:20px;font-family:\'DM Mono\',monospace">🔎 ' + esc(_dupSkuFilter) + '</span>'
+      + '<span style="color:var(--text-tertiary)">prikazan samo ta SKU čez vse izbrane accounte</span>'
+      + '<span onclick="dupSkuFilterSet(\'' + esc(_dupSkuFilter).replace(/'/g, "\\'") + '\')" style="cursor:pointer;color:var(--red);font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:7px">✕ Počisti filter</span>'
+      + '</div>';
   }
 
   // grupiraj po accountu (sekcije), znotraj po izgubi
