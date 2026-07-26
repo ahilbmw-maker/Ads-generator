@@ -23597,6 +23597,110 @@ async def scale_log_prune():
 #   🟢 KEEP     — najboljša CPA v skupini (ob ≥5 nakupih)
 #   ⚪ PREMALO  — pod pragom signala → pusti, opazuj (NE ugašaj po šumu)
 
+META_ADS_3D_FILE = DATA_DIR / "meta_ads_report_3d.csv"
+META_ADS_3D_META = DATA_DIR / "meta_ads_3d_meta.json"
+
+
+@app.post("/analiza-meta-3d-upload")
+async def analiza_meta_3d_upload(file: UploadFile = File(...)):
+    """NEOBVEZNI 3-dnevni CSV (isti izvoz, obdobje zadnji 3 dnevi) — za TREND v 🧬 Dvojnikih.
+    Zamenja prejšnjega (ne akumulira — vedno svež 3-dnevni snapshot)."""
+    try:
+        content = await file.read()
+        text = content.decode('utf-8-sig', errors='replace')
+        if 'Campaign name' not in text.split('\n', 1)[0]:
+            return JSONResponse({"error": "CSV nima stolpca 'Campaign name'."}, status_code=400)
+        META_ADS_3D_FILE.write_text(text, encoding='utf-8')
+        META_ADS_3D_META.write_text(json.dumps({"uploaded_at": datetime.now().isoformat(timespec="minutes")}), encoding='utf-8')
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:300]}, status_code=500)
+
+
+META_DUP_REVIEWED_FILE = DATA_DIR / "meta_dup_reviewed.json"
+
+
+def _dup_csv_version() -> str:
+    """Verzija glavnega Meta CSV (mtime+size) — nov upload v Meta Ads = nova verzija
+    = oznake Pregledano se samodejno resetirajo (pokaže se spet vse)."""
+    try:
+        st = META_ADS_FILE.stat()
+        return f"{int(st.st_mtime)}_{st.st_size}"
+    except Exception:
+        return ""
+
+
+def _dup_rev_load() -> set:
+    """Množica pregledanih skupin (sku|account) za TRENUTNO verzijo CSV."""
+    try:
+        if META_DUP_REVIEWED_FILE.exists():
+            d = json.loads(META_DUP_REVIEWED_FILE.read_text(encoding="utf-8")) or {}
+            if d.get("version") == _dup_csv_version():
+                return set(d.get("keys") or [])
+    except Exception:
+        pass
+    return set()
+
+
+def _dup_rev_save(keys: set):
+    try:
+        tmp = META_DUP_REVIEWED_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"version": _dup_csv_version(), "keys": sorted(keys)}, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, META_DUP_REVIEWED_FILE)
+    except Exception as e:
+        print(f"[dup] rev save err: {e}")
+
+
+@app.post("/analiza-meta-duplicates-reviewed")
+async def analiza_meta_duplicates_reviewed(data: dict):
+    """Označi/odznači skupino dvojnikov kot Pregledano. data: { key: 'SKU|account', on: bool }
+    Velja do naslednjega uploada Meta CSV (nova verzija → samodejni reset)."""
+    key = str(data.get("key") or "").strip()
+    if not key:
+        return {"ok": False, "error": "Manjka key."}
+    keys = _dup_rev_load()
+    if data.get("on"):
+        keys.add(key)
+    else:
+        keys.discard(key)
+    _dup_rev_save(keys)
+    return {"ok": True, "n": len(keys)}
+
+
+def _dup_parse_3d():
+    """3-dnevni CSV → {(campaign_name, account): {spend, purchases, cpa}}."""
+    if not META_ADS_3D_FILE.exists():
+        return None
+    try:
+        text = META_ADS_3D_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        first = text.split('\n', 1)[0]
+        sep = ';' if first.count(';') > first.count(',') else ','
+        import csv as _csv
+        from io import StringIO as _SIO
+
+        def _f(v):
+            try: return float(str(v or '0').replace(',', '.'))
+            except: return 0.0
+        def _i(v):
+            try: return int(float(str(v or '0').replace(',', '.')))
+            except: return 0
+        out = {}
+        for row in _csv.DictReader(_SIO(text), delimiter=sep):
+            name = (row.get('Campaign name') or '').strip()
+            if not name:
+                continue
+            acc = (row.get('Account name') or '').strip() or '—'
+            out[(name, acc)] = {
+                "spend": _f(row.get('Amount spent (EUR)')),
+                "purchases": _i(row.get('Purchases')),
+                "cpa": _f(row.get('Cost per purchase')),
+            }
+        return out
+    except Exception as e:
+        print(f"[dup] 3d parse err: {e}")
+        return None
+
+
 def _dup_parse_campaigns():
     """Prebere Meta CSV → seznam kampanj {name, account, sku, spend, purchases, cpa, active}.
     Ista logika stolpcev in SKU ekstrakcije kot /analiza-meta-data."""
@@ -23634,6 +23738,7 @@ def _dup_parse_campaigns():
             "spend": _f(row.get('Amount spent (EUR)')),
             "purchases": _i(row.get('Purchases')),
             "cpa": _f(row.get('Cost per purchase')),
+            "freq": _f(row.get('Frequency')),
             "active": active,
         })
     return out
@@ -23654,6 +23759,11 @@ def _dup_analyze():
     MIN_PURCH = 5        # prag za CPA sodbo
     KANIBAL_X = 1.5      # CPA > 1,5× najboljše
     ZOMBIE_MIN = 15.0    # € minimalni spend za zombie
+    FREQ_HIGH = 2.5      # utežena frequency skupine ≥ 2.5 → verjeten audience overlap
+    TREND_IMP = 0.85     # 3d CPA < 0,85× 14d = izboljšuje se
+    TREND_WORS = 1.15    # 3d CPA > 1,15× 14d = slabša se
+
+    d3 = _dup_parse_3d()   # None = trend ni na voljo
 
     dup_groups = []
     for (sku, acc), lst in groups.items():
@@ -23664,26 +23774,52 @@ def _dup_analyze():
         rows = []
         waste = 0.0
         for c in lst:
+            # ── trend iz 3-dnevnega CSV (če je naložen) ──
+            t3 = d3.get((c["name"], c["account"])) if d3 else None
+            trend = None       # 'imp' | 'wors' | 'flat' | None
+            cpa3 = None
+            if t3:
+                cpa3 = t3["cpa"] if t3["cpa"] > 0 else None
+                if cpa3 and c["cpa"] > 0:
+                    r = cpa3 / c["cpa"]
+                    trend = "imp" if r <= TREND_IMP else ("wors" if r >= TREND_WORS else "flat")
+                elif t3["purchases"] == 0 and t3["spend"] > 0:
+                    trend = "wors"   # zadnje 3 dni spend brez nakupov
+                elif t3["purchases"] > 0 and c["purchases"] == 0:
+                    trend = "imp"    # 14d nič, zadnje 3 dni nakupi → oživlja
+
             if c["purchases"] == 0 and c["spend"] >= max((2 * best_cpa) if best_cpa else ZOMBIE_MIN, ZOMBIE_MIN):
-                verdict = "zombie"; waste += c["spend"]
+                # zombie, ki v zadnjih 3 dneh dobi nakupe → opazuj namesto ugasni
+                verdict = "premalo" if trend == "imp" else "zombie"
+                if verdict == "zombie":
+                    waste += c["spend"]
             elif best_cpa and c["purchases"] >= MIN_PURCH and c["cpa"] > KANIBAL_X * best_cpa:
-                verdict = "kanibal"; waste += c["spend"]
+                # KANIBAL: trend navzdol (izboljšuje) → počakaj; navzgor/plosko → ugasni zdaj
+                verdict = "kanibal_wait" if trend == "imp" else "kanibal"
+                if verdict == "kanibal":
+                    waste += c["spend"]
             elif best_cpa and c["purchases"] >= MIN_PURCH and abs(c["cpa"] - best_cpa) < 1e-9:
                 verdict = "keep"
             elif c["purchases"] >= MIN_PURCH:
                 verdict = "ok"       # solidna, a ne najboljša — ni za rezanje
             else:
                 verdict = "premalo"
-            rows.append({**{k: c[k] for k in ("name", "spend", "purchases", "cpa")}, "verdict": verdict})
+            rows.append({**{k: c[k] for k in ("name", "spend", "purchases", "cpa", "freq")},
+                         "cpa3": round(cpa3, 2) if cpa3 else None, "trend": trend, "verdict": verdict})
         rows.sort(key=lambda x: (x["verdict"] != "keep", -x["spend"]))
         total_spend = sum(c["spend"] for c in lst)
         total_purch = sum(c["purchases"] for c in lst)
+        # utežena frequency skupine (po spendu) → signal audience overlapa
+        _fs = [(c["freq"], c["spend"]) for c in lst if c.get("freq")]
+        freq_w = round(sum(f * sp for f, sp in _fs) / max(sum(sp for _, sp in _fs), 0.01), 2) if _fs else None
         dup_groups.append({
             "sku": sku, "account": acc, "n": len(lst),
             "total_spend": round(total_spend, 2), "total_purchases": total_purch,
             "group_cpa": round(total_spend / total_purch, 2) if total_purch else None,
             "best_cpa": round(best_cpa, 2) if best_cpa else None,
             "waste": round(waste, 2),
+            "freq_w": freq_w,
+            "high_freq": bool(freq_w and freq_w >= FREQ_HIGH),
             "campaigns": rows,
         })
     dup_groups.sort(key=lambda g: -g["waste"] if g["waste"] else -g["total_spend"] * 0.001)
@@ -23696,7 +23832,11 @@ def _dup_analyze():
         "n_flagged": n_flagged,
         "total_waste": round(sum(g["waste"] for g in dup_groups), 2),
         "groups": dup_groups,
-        "rules": {"min_purchases": MIN_PURCH, "kanibal_x": KANIBAL_X, "zombie_min_eur": ZOMBIE_MIN},
+        "reviewed_keys": sorted(_dup_rev_load()),
+        "has_3d": d3 is not None,
+        "n_high_freq": sum(1 for g in dup_groups if g.get("high_freq")),
+        "rules": {"min_purchases": MIN_PURCH, "kanibal_x": KANIBAL_X, "zombie_min_eur": ZOMBIE_MIN,
+                  "freq_high": FREQ_HIGH, "trend_imp": TREND_IMP, "trend_wors": TREND_WORS},
     }
 
 
@@ -23716,22 +23856,36 @@ async def analiza_meta_duplicates_ai(data: dict):
         d = _dup_analyze()
         if not d.get("loaded") or not d.get("groups"):
             return {"ok": False, "error": "Ni podatkov — naloži Meta Ads CSV v tabu Meta Ads."}
-        top = d["groups"][:40]   # največje po potencialni izgubi
+        accs = data.get("accounts")   # filter iz frontenda (izbrani accounti); None/[] = vsi
+        _rev = set(d.get("reviewed_keys") or [])
+        groups = [g for g in d["groups"] if (g["sku"] + "|" + g["account"]) not in _rev]
+        if accs:
+            _a = set(accs)
+            groups = [g for g in groups if g["account"] in _a]
+            if not groups:
+                return {"ok": False, "error": "Za izbrane accounte ni dvojnikov."}
+        top = groups[:40]   # največje po potencialni izgubi
         compact = []
         for g in top:
             compact.append({
                 "sku": g["sku"], "account": g["account"], "n": g["n"],
                 "spend": g["total_spend"], "purchases": g["total_purchases"],
                 "best_cpa": g["best_cpa"], "waste": g["waste"],
+                "freq_w": g.get("freq_w"), "high_freq": g.get("high_freq"),
                 "campaigns": [{"name": r["name"][:80], "spend": r["spend"],
-                               "purch": r["purchases"], "cpa": r["cpa"], "v": r["verdict"]}
+                               "purch": r["purchases"], "cpa": r["cpa"], "cpa3": r.get("cpa3"),
+                               "trend": r.get("trend"), "v": r["verdict"]}
                               for r in g["campaigns"]],
             })
         prompt = (
             "Si Meta Ads media buyer za COD e-commerce (EU, ~1000 kampanj). Spodaj so podvojene "
             "kampanje (isti SKU, isti account, 14-dnevno okno) z determinističnimi oznakami: "
             "zombie (spend brez nakupov), kanibal (CPA >1,5x najboljše sestrske, >=5 nakupov), "
-            "keep (najboljša), ok (solidna), premalo (premalo podatkov - NE ugašaj). "
+            "keep (najboljša), ok (solidna), premalo (premalo podatkov - NE ugašaj), "
+            "kanibal_wait (slab CPA, a 3-dnevni trend se IZBOLJŠUJE - počakaj 2-3 dni, ne ugašaj). "
+            "trend: imp=izboljšuje, wors=slabša, flat=plosko (cpa3 = zadnji 3 dnevi). "
+            "high_freq/freq_w: utežena frequency skupine - >=2.5 pomeni verjeten audience overlap "
+            "med dvojniki (isti ljudje vidijo vec oglasov) - to je mocan znak za konsolidacijo. "
             "Napiši KRATKO poročilo v slovenščini:\n"
             "1. TOP 10 ukrepov (konkretno: katera kampanja, kaj narediti, zakaj, koliko € na kocki)\n"
             "2. Skupine, kjer je smiselna KONSOLIDACIJA (več solidnih -> avkcijski overlap)\n"
