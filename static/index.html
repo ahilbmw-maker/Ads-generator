@@ -2826,6 +2826,22 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="analiza-tab-btn" id="analizaTab-cashflow" onclick="switchAnalizaTab('cashflow')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Cash Flow</button>
       <button class="analiza-tab-btn" id="analizaTab-shipping" onclick="switchAnalizaTab('shipping')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🚚 Stroški pošte</button>
       <button class="analiza-tab-btn" id="analizaTab-priporocila" onclick="switchAnalizaTab('priporocila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🎯 Priporočila</button>
+      <button class="analiza-tab-btn" id="analizaTab-dvojniki" onclick="switchAnalizaTab('dvojniki')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🧬 Dvojniki</button>
+    </div>
+
+    <!-- TAB: Dvojniki kampanj (🧬) -->
+    <div id="analizaSubpage-dvojniki" style="display:none;padding:14px 0 0 0">
+      <div class="card" style="padding:14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="slabel" style="margin:0">🧬 PODVOJENE KAMPANJE</span>
+          <span style="font-size:11px;color:var(--text-tertiary)">isti SKU × isti account (aktivne, 14 dni) · vir: Meta Ads CSV</span>
+          <button onclick="dupLoad(true)" style="margin-left:auto;padding:8px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Analiziraj</button>
+          <button onclick="dupAiReport()" id="dupAiBtn" style="padding:8px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🤖 AI poročilo</button>
+        </div>
+        <div id="dupSummary" style="display:none;margin-top:12px;display:flex;gap:18px;flex-wrap:wrap;font-size:12px"></div>
+      </div>
+      <div id="dupAiReport" style="display:none" class="card"></div>
+      <div id="dupResults"></div>
     </div>
 
     <!-- TAB: Priporočila cen (🎯) -->
@@ -14892,6 +14908,104 @@ async function recoRefresh() {
   }
 }
 
+// ─── 🧬 DVOJNIKI: podvojene kampanje po SKU na accountu ──────────────────────
+let _dupInited = false;
+let _dupData = null;
+
+function dupInit() { if (_dupInited) return; _dupInited = true; dupLoad(false); }
+
+async function dupLoad(manual) {
+  const wrap = document.getElementById('dupResults');
+  if (manual && wrap) wrap.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-tertiary);font-size:13px">⏳ Analiziram…</div>';
+  try {
+    const r = await fetch('/analiza-meta-duplicates');
+    const d = await r.json();
+    if (!d.loaded) {
+      if (wrap) wrap.innerHTML = '<div style="padding:2.5rem;text-align:center;color:var(--text-tertiary);font-size:13px">Ni Meta Ads podatkov.<br>Najprej naloži CSV v tabu <b>Meta Ads</b>' + (d.error ? '<br><span style="color:var(--red)">' + esc(d.error) + '</span>' : '') + '</div>';
+      return;
+    }
+    _dupData = d;
+    dupRender(d);
+  } catch(e) { if (wrap) wrap.innerHTML = '<div style="padding:2rem;color:var(--red);font-size:12px">✗ ' + esc(e.message) + '</div>'; }
+}
+
+function dupRender(d) {
+  const sum = document.getElementById('dupSummary');
+  if (sum) {
+    sum.style.display = 'flex';
+    sum.innerHTML =
+        '<span>Skupin dvojnikov: <b>' + d.n_groups + '</b></span>'
+      + '<span>Kampanj v dvojnikih: <b>' + d.n_campaigns + '</b></span>'
+      + '<span>Označenih (🧟+🔴): <b style="color:var(--red)">' + d.n_flagged + '</b></span>'
+      + '<span>Potencialna izguba (14 dni): <b style="color:var(--red)">' + d.total_waste.toFixed(2) + ' €</b></span>'
+      + '<span style="color:var(--text-tertiary)">pravila: CPA sodba ≥' + d.rules.min_purchases + ' nakupov · kanibal >' + d.rules.kanibal_x + '× · zombie ≥' + d.rules.zombie_min_eur + ' €</span>';
+  }
+  const wrap = document.getElementById('dupResults');
+  if (!wrap) return;
+  if (!d.groups.length) {
+    wrap.innerHTML = '<div style="padding:2.5rem;text-align:center;color:var(--green);font-size:13px">✓ Ni podvojenih kampanj — vsak SKU ima največ eno aktivno kampanjo na account.</div>';
+    return;
+  }
+  const V = {
+    zombie:  { t: '🧟 ZOMBIE',  c: '#7c3aed', bg: 'rgba(124,58,237,0.08)', tip: 'spend brez nakupov — ugasni' },
+    kanibal: { t: '🔴 KANIBAL', c: 'var(--red)', bg: 'rgba(226,75,74,0.08)', tip: 'CPA precej slabši od najboljše sestrske — preveri/ugasni' },
+    keep:    { t: '🟢 KEEP',    c: 'var(--green)', bg: 'rgba(29,158,117,0.08)', tip: 'najboljša CPA v skupini — pusti' },
+    ok:      { t: '🔵 OK',      c: '#2563eb', bg: 'rgba(37,99,235,0.06)', tip: 'solidna — razmisli o konsolidaciji v KEEP' },
+    premalo: { t: '⚪ PREMALO', c: 'var(--text-tertiary)', bg: 'var(--surface2)', tip: 'premalo podatkov — pusti, opazuj (ne ugašaj po šumu)' },
+  };
+  let html = '';
+  d.groups.forEach((g, gi) => {
+    html += '<div class="card" style="padding:12px 14px;margin-bottom:10px">'
+      + '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;cursor:pointer" onclick="dupToggle(' + gi + ')">'
+      +   '<span id="dupCh' + gi + '" style="font-size:11px;color:var(--text-tertiary)">▸</span>'
+      +   '<b style="font-family:\'DM Mono\',monospace;font-size:13px">' + esc(g.sku) + '</b>'
+      +   '<span style="font-size:12px;color:var(--text-secondary)">' + esc(g.account) + '</span>'
+      +   '<span style="font-size:12px">' + g.n + ' kampanj</span>'
+      +   '<span style="font-size:12px;color:var(--text-tertiary)">spend ' + g.total_spend.toFixed(0) + ' € · ' + g.total_purchases + ' nakupov' + (g.best_cpa ? ' · najboljši CPA ' + g.best_cpa.toFixed(2) + ' €' : '') + '</span>'
+      +   (g.waste ? '<span style="margin-left:auto;font-size:12px;font-weight:700;color:var(--red)">⚠ ' + g.waste.toFixed(0) + ' € na kocki</span>' : '')
+      + '</div>'
+      + '<div id="dupG' + gi + '" style="display:none;margin-top:10px">';
+    g.campaigns.forEach(c => {
+      const v = V[c.verdict] || V.premalo;
+      html += '<div title="' + v.tip + '" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:7px 10px;margin-bottom:4px;background:' + v.bg + ';border:1px solid var(--border);border-radius:7px;font-size:12px">'
+        + '<span style="min-width:92px;font-weight:700;color:' + v.c + '">' + v.t + '</span>'
+        + '<span style="flex:1;min-width:220px;word-break:break-word">' + esc(c.name) + '</span>'
+        + '<span>' + c.spend.toFixed(2) + ' €</span>'
+        + '<span>' + c.purchases + ' nak.</span>'
+        + '<span>' + (c.cpa ? c.cpa.toFixed(2) + ' € CPA' : '—') + '</span>'
+        + '</div>';
+    });
+    html += '</div></div>';
+  });
+  wrap.innerHTML = html;
+}
+
+function dupToggle(gi) {
+  const el = document.getElementById('dupG' + gi);
+  const ch = document.getElementById('dupCh' + gi);
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (ch) ch.textContent = open ? '▸' : '▾';
+}
+
+async function dupAiReport() {
+  const btn = document.getElementById('dupAiBtn');
+  const box = document.getElementById('dupAiReport');
+  if (!box) return;
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = '⏳ Pišem poročilo…';
+  box.style.display = 'block';
+  box.innerHTML = '<div style="padding:14px;color:var(--text-tertiary);font-size:12px">⏳ Claude analizira dvojnike…</div>';
+  try {
+    const r = await fetch('/analiza-meta-duplicates-ai', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' });
+    const d = await r.json();
+    if (!d.ok) { box.innerHTML = '<div style="padding:14px;color:var(--red);font-size:12px">✗ ' + esc(d.error||'napaka') + '</div>'; return; }
+    box.innerHTML = '<div style="padding:14px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary);margin-bottom:8px">🤖 AI poročilo</div>'
+      + '<div style="font-size:13px;line-height:1.65;white-space:pre-wrap">' + esc(d.report) + '</div></div>';
+  } catch(e) { box.innerHTML = '<div style="padding:14px;color:var(--red);font-size:12px">✗ ' + esc(e.message) + '</div>'; }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
 let _recoShowReviewed = false;   // ali je sekcija "Pregledano" razprta
 
 function recoRender(d) {
@@ -15171,7 +15285,7 @@ function recoDrawGraph(box, sku, sales, from, to) {
 }
 
 function switchAnalizaTab(tab) {
-  const _valid = ['meta', 'priporocila', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'shipping'];
+  const _valid = ['meta', 'priporocila', 'dvojniki', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'shipping'];
   if (!_valid.includes(tab)) tab = 'priporocila';   // odstranjen 'izdelki' → padec na Priporočila
   _valid.forEach(t => {
     const btn = document.getElementById('analizaTab-' + t);
@@ -15187,6 +15301,7 @@ function switchAnalizaTab(tab) {
   if (tab === 'obrat14') { o14LoadData(); o14LoadMetaInfo(); }
   if (tab === 'meta') { anLoadStock(); anLoadMetaFromServer(); }
   if (tab === 'priporocila') { recoInit(); }
+  if (tab === 'dvojniki') { dupInit(); }
   if (tab === 'obrat14tt') { tt14LoadData(); }
   if (tab === 'ttkreative') { ttKrLoadData(); }
   if (tab === 'beta') { betaLoadHistory(true); betaRestoreState(); }

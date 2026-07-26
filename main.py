@@ -23587,3 +23587,163 @@ async def scale_log_prune():
                 kept.append(e)
         _scale_log_save(kept)
     return JSONResponse({"ok": True, "kept": len(kept)})
+
+
+# ─── ANALIZA: 🧬 DVOJNIKI — podvojene kampanje po SKU na accountu ───────────────
+# Dvojnik = ≥2 AKTIVNI kampanji z istim SKU na ISTEM accountu (isti trg!).
+# Pravila sodbe (pragi po industrijski praksi):
+#   🧟 ZOMBIE   — 0 nakupov ob spendu ≥ max(2× CPA najboljše sestrske, 15 €)
+#   🔴 KANIBAL  — ≥5 nakupov in CPA > 1,5× najboljše sestrske → preveri/ugasni
+#   🟢 KEEP     — najboljša CPA v skupini (ob ≥5 nakupih)
+#   ⚪ PREMALO  — pod pragom signala → pusti, opazuj (NE ugašaj po šumu)
+
+def _dup_parse_campaigns():
+    """Prebere Meta CSV → seznam kampanj {name, account, sku, spend, purchases, cpa, active}.
+    Ista logika stolpcev in SKU ekstrakcije kot /analiza-meta-data."""
+    if not META_ADS_FILE.exists():
+        return None
+    text = META_ADS_FILE.read_text(encoding="utf-8-sig", errors="replace")
+    first_line = text.split('\n', 1)[0]
+    sep = ';' if first_line.count(';') > first_line.count(',') else ','
+    import csv as _csv
+    from io import StringIO as _SIO
+    reader = _csv.DictReader(_SIO(text), delimiter=sep)
+
+    def _f(v):
+        try: return float(str(v or '0').replace(',', '.'))
+        except: return 0.0
+    def _i(v):
+        try: return int(float(str(v or '0').replace(',', '.')))
+        except: return 0
+
+    known_skus = _load_known_skus()
+    out = []
+    for row in reader:
+        name = (row.get('Campaign name') or '').strip()
+        if not name:
+            continue
+        delivery = (row.get('Campaign Delivery') or '').strip().lower()
+        active = (delivery != 'inactive')   # manjka/neznano → aktivna (izvoz = samo aktivne)
+        skus = extract_skus_from_text(name, known_skus if known_skus else None)
+        if not skus:
+            continue   # za dvojnike štejemo samo kampanje s prepoznanim SKU
+        out.append({
+            "name": name,
+            "account": (row.get('Account name') or '').strip() or '—',
+            "skus": list(dict.fromkeys(skus)),
+            "spend": _f(row.get('Amount spent (EUR)')),
+            "purchases": _i(row.get('Purchases')),
+            "cpa": _f(row.get('Cost per purchase')),
+            "active": active,
+        })
+    return out
+
+
+def _dup_analyze():
+    camps = _dup_parse_campaigns()
+    if camps is None:
+        return {"loaded": False}
+    # skupine (sku, account) — samo aktivne kampanje
+    groups = {}
+    for c in camps:
+        if not c["active"]:
+            continue
+        for sku in c["skus"]:
+            groups.setdefault((sku, c["account"]), []).append(c)
+
+    MIN_PURCH = 5        # prag za CPA sodbo
+    KANIBAL_X = 1.5      # CPA > 1,5× najboljše
+    ZOMBIE_MIN = 15.0    # € minimalni spend za zombie
+
+    dup_groups = []
+    for (sku, acc), lst in groups.items():
+        if len(lst) < 2:
+            continue
+        judged = [c for c in lst if c["purchases"] >= MIN_PURCH and c["cpa"] > 0]
+        best_cpa = min((c["cpa"] for c in judged), default=None)
+        rows = []
+        waste = 0.0
+        for c in lst:
+            if c["purchases"] == 0 and c["spend"] >= max((2 * best_cpa) if best_cpa else ZOMBIE_MIN, ZOMBIE_MIN):
+                verdict = "zombie"; waste += c["spend"]
+            elif best_cpa and c["purchases"] >= MIN_PURCH and c["cpa"] > KANIBAL_X * best_cpa:
+                verdict = "kanibal"; waste += c["spend"]
+            elif best_cpa and c["purchases"] >= MIN_PURCH and abs(c["cpa"] - best_cpa) < 1e-9:
+                verdict = "keep"
+            elif c["purchases"] >= MIN_PURCH:
+                verdict = "ok"       # solidna, a ne najboljša — ni za rezanje
+            else:
+                verdict = "premalo"
+            rows.append({**{k: c[k] for k in ("name", "spend", "purchases", "cpa")}, "verdict": verdict})
+        rows.sort(key=lambda x: (x["verdict"] != "keep", -x["spend"]))
+        total_spend = sum(c["spend"] for c in lst)
+        total_purch = sum(c["purchases"] for c in lst)
+        dup_groups.append({
+            "sku": sku, "account": acc, "n": len(lst),
+            "total_spend": round(total_spend, 2), "total_purchases": total_purch,
+            "group_cpa": round(total_spend / total_purch, 2) if total_purch else None,
+            "best_cpa": round(best_cpa, 2) if best_cpa else None,
+            "waste": round(waste, 2),
+            "campaigns": rows,
+        })
+    dup_groups.sort(key=lambda g: -g["waste"] if g["waste"] else -g["total_spend"] * 0.001)
+
+    n_flagged = sum(1 for g in dup_groups for r in g["campaigns"] if r["verdict"] in ("zombie", "kanibal"))
+    return {
+        "loaded": True,
+        "n_groups": len(dup_groups),
+        "n_campaigns": sum(g["n"] for g in dup_groups),
+        "n_flagged": n_flagged,
+        "total_waste": round(sum(g["waste"] for g in dup_groups), 2),
+        "groups": dup_groups,
+        "rules": {"min_purchases": MIN_PURCH, "kanibal_x": KANIBAL_X, "zombie_min_eur": ZOMBIE_MIN},
+    }
+
+
+@app.get("/analiza-meta-duplicates")
+async def analiza_meta_duplicates():
+    """Detekcija podvojenih kampanj po SKU na accountu (isti CSV kot Meta Ads tab)."""
+    try:
+        return _dup_analyze()
+    except Exception as e:
+        return {"loaded": False, "error": str(e)[:300]}
+
+
+@app.post("/analiza-meta-duplicates-ai")
+async def analiza_meta_duplicates_ai(data: dict):
+    """AI poročilo: iz determinističnih oznak Claude napiše prioritete in ukrepe (SLO)."""
+    try:
+        d = _dup_analyze()
+        if not d.get("loaded") or not d.get("groups"):
+            return {"ok": False, "error": "Ni podatkov — naloži Meta Ads CSV v tabu Meta Ads."}
+        top = d["groups"][:40]   # največje po potencialni izgubi
+        compact = []
+        for g in top:
+            compact.append({
+                "sku": g["sku"], "account": g["account"], "n": g["n"],
+                "spend": g["total_spend"], "purchases": g["total_purchases"],
+                "best_cpa": g["best_cpa"], "waste": g["waste"],
+                "campaigns": [{"name": r["name"][:80], "spend": r["spend"],
+                               "purch": r["purchases"], "cpa": r["cpa"], "v": r["verdict"]}
+                              for r in g["campaigns"]],
+            })
+        prompt = (
+            "Si Meta Ads media buyer za COD e-commerce (EU, ~1000 kampanj). Spodaj so podvojene "
+            "kampanje (isti SKU, isti account, 14-dnevno okno) z determinističnimi oznakami: "
+            "zombie (spend brez nakupov), kanibal (CPA >1,5x najboljše sestrske, >=5 nakupov), "
+            "keep (najboljša), ok (solidna), premalo (premalo podatkov - NE ugašaj). "
+            "Napiši KRATKO poročilo v slovenščini:\n"
+            "1. TOP 10 ukrepov (konkretno: katera kampanja, kaj narediti, zakaj, koliko € na kocki)\n"
+            "2. Skupine, kjer je smiselna KONSOLIDACIJA (več solidnih -> avkcijski overlap)\n"
+            "3. Kratek povzetek: koliko € je vezanih v zombie+kanibal\n"
+            "Pravila: nikoli ne predlagaj ugašanja 'premalo' kampanj; števil ne izmišljuj, "
+            "uporabi samo podane; bodi jedrnat, brez uvoda.\n\n"
+            f"POVZETEK: {d['n_groups']} skupin, {d['n_campaigns']} kampanj, "
+            f"{d['n_flagged']} označenih, ~{d['total_waste']} EUR potencialne izgube.\n\n"
+            + json.dumps(compact, ensure_ascii=False)
+        )
+        text = await call_claude(prompt, "claude-sonnet-4-6", None, 4000)
+        return {"ok": True, "report": text, "summary": {k: d[k] for k in ("n_groups", "n_campaigns", "n_flagged", "total_waste")}}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
