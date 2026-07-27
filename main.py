@@ -8151,7 +8151,7 @@ async def kreative_batch_clear(data: dict):
 
 # ─── VIDEO ADS: priprava briefov (SKU → 5 Seedance promptov + reference) ────────
 # Tok: SKU-ji → (potrditveni pop-up SKU→URL, isti resolve kot batch slik) →
-# worker za vsak SKU: opis iz SL feeda + referenčne slike + Claude napiše 5
+# worker za vsak SKU: opis iz SL feeda + referenčne slike + Claude napiše 7
 # promptov po dogovorjeni predlogi (WINNER / drugi kot / SCROLL STOPPER /
 # lifestyle / premium; logo iz brand imena, ICONS ONLY, 5 scen, EN) →
 # brief za copy-paste v Claude chat (izvedba prek Higgsfield MCP na osebnem računu).
@@ -8161,34 +8161,31 @@ VA_REF_IMAGES = 1   # samo naslovna slika — galerija ima pogosto infografike s
 VA_PAUSE_S = 5
 
 VA_PROMPT_TEMPLATE = """You write Seedance 2.0 video-ad prompts for Facebook e-commerce ads.
-Write 5 prompts for the product below, EXACTLY in this structure and style (this is a proven template):
+Write 7 prompts for the product below, EXACTLY in this structure and style (this is a proven template):
 
 - Each prompt starts: "Generate a 12-second [viral/premium/ultra-viral] Facebook ad for [short product description]."
-- Then: Brand name: [BRAND]
-- Then an IMPORTANT block with these rules (adapt casing/lines to the example):
-  Create a premium modern logo from the brand name "[BRAND]".
-  NO OTHER TEXT. NO WORDS. NO LETTERS besides the [BRAND] logo. ICONS ONLY.
+- Then an IMPORTANT block with these ABSOLUTE rules (every prompt must contain them):
+  NO TEXT. NO WORDS. NO LETTERS. NO LOGO. NO BRAND NAME. NO CAPTIONS. NO NUMBERS.
+  ICONS ONLY (simple visual pictograms, no letters inside them).
   Plus category-appropriate safety constraints (e.g. NO MEDICAL CLAIMS for health-adjacent products,
   "Do NOT exaggerate performance" for optics/tools, NO GUARANTEED PROTECTION CLAIMS for repellents, etc.)
-- Then Scene 1 through Scene 5, short cinematic lines (one action per line), following these 5 angles:
+- Then Scene 1 through Scene 5, short cinematic lines (one action per line), following these 7 angles:
   PROMPT 1 — problem→freeze→product crashes into frame→relief (title it "(WINNER)")
   PROMPT 2 — practical everyday/second angle
   PROMPT 3 — extreme close-up hook, maximum scroll-stopping ("SCROLL STOPPER (BEST CTR)")
   PROMPT 4 — lifestyle montage angle
   PROMPT 5 — ultra-premium cinematic angle
-- Scene 5 always ends with "Floating premium [BRAND] hero shot." + "Display only visual icons:" + 4-5 relevant icon names
+  PROMPT 6 — before/after transformation angle
+  PROMPT 7 — dynamic fast-cut energy / satisfying-loop angle
+- Scene 5 always ends with "Floating premium hero shot of the product." + "Display only visual icons (no text):" + 4-5 relevant icon names
 - End tags like: Ultra realistic. Premium [category] commercial. Facebook winner style. / Facebook feed optimized. / Maximum premium aesthetic.
-- English only. No prices. No CTA words.
+- English only. No prices. No CTA words. Absolutely no on-screen text anywhere.
 
-Example of the exact voice and formatting (different product):
+Example of the exact voice and formatting (different product — note: NO logo, NO brand text):
 ---
 Generate a 12-second viral Facebook ad for a windshield sunshade.
-Brand name: Basic
 IMPORTANT:
-Create a premium modern logo from the brand name "Basic".
-NO OTHER TEXT.
-NO WORDS.
-NO LETTERS besides the Basic logo.
+NO TEXT. NO WORDS. NO LETTERS. NO LOGO. NO BRAND NAME. NO NUMBERS.
 ICONS ONLY.
 Focus on SUMMER. Focus on reducing heat buildup inside a parked car. NO WINTER. NO ICE. NO SNOW.
 Scene 1:
@@ -8199,7 +8196,7 @@ A wave of hot air escapes.
 Sun icon appears.
 Scene 2:
 Everything freezes.
-Basic windshield sunshade flies into frame.
+The windshield sunshade flies into frame.
 Premium cinematic product reveal.
 Scene 3:
 Sunshade unfolds instantly across the windshield.
@@ -8208,8 +8205,8 @@ Scene 4:
 Person returns. Interior looks noticeably cooler.
 Snowflake icon appears.
 Scene 5:
-Floating premium Basic hero product.
-Display only visual icons:
+Floating premium hero shot of the product.
+Display only visual icons (no text):
 sun icon
 snowflake icon
 car icon
@@ -8224,11 +8221,8 @@ Name: {name}
 SKU: {sku}
 Description (may be Slovenian — translate meaning, output English): {desc}
 
-Derive BRAND from the distinctive brand-like word in the product name (e.g. "CooliPix" from
-"Prenosni mini ventilator CooliPix"); if none exists, invent a short premium brand name that fits.
-
 Return ONLY JSON, no markdown:
-{{"brand": "...", "prompts": [{{"title": "PROMPT 1 — ... (WINNER)", "text": "..."}}, ... 5 items ...]}}"""
+{{"brand": "", "prompts": [{{"title": "PROMPT 1 — ... (WINNER)", "text": "..."}}, ... 7 items ...]}}"""
 
 
 def _va_load() -> list:
@@ -8308,8 +8302,8 @@ async def _va_process_one(job: dict):
                 txt = txt[4:]
         parsed = json.loads(txt)
         prompts = parsed.get("prompts") or []
-        if len(prompts) < 5:
-            raise RuntimeError(f"Claude vrnil samo {len(prompts)} promptov")
+        if len(prompts) < 7:
+            raise RuntimeError(f"Claude vrnil samo {len(prompts)} promptov (pričakovano 7)")
         await _va_set(jid, status="done", step="", brand=parsed.get("brand") or "",
                       prompts=prompts, finished=datetime.now(timezone.utc).isoformat())
         # brief zgradi in shrani (za gumb Kopiraj)
@@ -8317,7 +8311,7 @@ async def _va_process_one(job: dict):
         cur = next((j for j in jobs if j.get("id") == jid), None)
         if cur:
             await _va_set(jid, brief=_va_build_brief(cur))
-        print(f"[va] ✓ {job['sku']}: 5 promptov")
+        print(f"[va] ✓ {job['sku']}: {len(prompts)} promptov")
     except Exception as e:
         await _va_set(jid, status="error", error=str(e)[:300],
                       finished=datetime.now(timezone.utc).isoformat())

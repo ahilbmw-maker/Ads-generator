@@ -1753,12 +1753,12 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div><!-- /kr-panel-gemini -->
 
     <!-- Tab: Higgsfield -->
-    <!-- 🎥 VIDEO ADS: priprava briefov (5 Seedance promptov/SKU) za izvedbo prek Claude+Higgsfield MCP -->
+    <!-- 🎥 VIDEO ADS: priprava briefov (7 Seedance promptov/SKU) za izvedbo prek Claude+Higgsfield MCP -->
     <div id="kr-panel-videoads" style="display:none;padding:14px">
       <div class="card" style="padding:14px;margin-bottom:14px;max-width:760px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <span class="slabel" style="margin:0">🎥 VIDEO ADS — PRIPRAVA BRIEFOV</span>
-          <span style="font-size:11px;color:var(--text-tertiary)">SKU → 5 Seedance promptov + reference · izvedba v Claude chatu (tvoji Higgsfield kovanci)</span>
+          <span style="font-size:11px;color:var(--text-tertiary)">SKU → 7 Seedance promptov + reference · izvedba v Claude chatu (tvoji Higgsfield kovanci)</span>
         </div>
         <textarea id="vaSkus" rows="3" placeholder="SKU ali URL na vrstico, npr.&#10;AIRCOLIO&#10;https://www.maaarket.si/izdelek/..." style="width:100%;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;box-sizing:border-box;resize:vertical"></textarea>
         <div style="display:flex;gap:8px;margin-top:8px">
@@ -7042,7 +7042,7 @@ async function kQueueLoad() {
   kQueueProcess();
 }
 
-// ── 🎥 VIDEO ADS: briefi (SKU → 5 Seedance promptov; izvedba v Claude chatu) ──
+// ── 🎥 VIDEO ADS: briefi (SKU → 7 Seedance promptov; izvedba v Claude chatu) ──
 let _vaInited = false;
 let _vaPollTimer = null;
 let _vaJobs = [];
@@ -7235,7 +7235,7 @@ function vaCopyBrief(btn, jid) {
 function vaCopyAll() {
   const done = _vaJobs.filter(j => j.status === 'done' && j.brief);
   if (!done.length) return;
-  const all = VA_INSTR + '\nBriefov: ' + done.length + ' (vsak = 1 izdelek = 5 promptov = 5 videov)\n\n'
+  const all = VA_INSTR + '\nBriefov: ' + done.length + ' (vsak = 1 izdelek = 7 promptov = 7 videov)\n\n'
     + done.map(j => j.brief).join('\n\n');
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(all);
 }
