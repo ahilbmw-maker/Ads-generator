@@ -5455,11 +5455,30 @@ async def fetch_product_images(data: dict):
 
         # Extract img src attributes
         import re as _re
-        srcs = _re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html, _re.IGNORECASE)
+        # ODREŽI Xsell / "1+1 ponudba" / povezane izdelke — te vsebujejo slike DRUGIH izdelkov.
+        # Odrežemo HTML od prvega takega markerja naprej (galerija izdelka je vedno nad njim).
+        _cut_markers = [
+            r'top\s*1\s*\+\s*1', r'1\s*\+\s*1\s*ponudb', r'ponudba\s*danes',
+            r'class=["\'][^"\']*xsell', r'class=["\'][^"\']*x-sell',
+            r'class=["\'][^"\']*upsell', r'class=["\'][^"\']*cross-sell',
+            r'class=["\'][^"\']*related', r'class=["\'][^"\']*bundle',
+            r'class=["\'][^"\']*(?:povezani|priporo)', r'data-section=["\']xsell',
+            r'id=["\'][^"\']*(?:xsell|related|upsell|bundle)',
+        ]
+        _cut = len(html)
+        for _m in _cut_markers:
+            mm = _re.search(_m, html, _re.IGNORECASE)
+            if mm and mm.start() < _cut:
+                _cut = mm.start()
+        html_main = html[:_cut]   # samo del strani PRED xsell/related bloki
+        srcs = _re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html_main, _re.IGNORECASE)
 
         # Filter: only product-like images (skip icons, logos, tiny tracking pixels)
         from urllib.parse import urljoin
         base = url
+        # žetoni iz sluga izdelka (npr. "vakuumski-cistilec-bazena-poolvacc..." → poolvacc, cistilec...)
+        _slug = (extract_slug(url) or "").lower()
+        _slug_tokens = [t for t in _re.split(r"[^a-z0-9]+", _slug) if len(t) >= 5]
         images = []
         seen = set()
         for src in srcs:
@@ -5491,11 +5510,6 @@ async def generate_kreative(data: dict):
     import base64, struct, zlib
 
     product_name = data.get("productName", "")
-    coupon = str(data.get("coupon", "") or "").strip()[:24]   # npr. "SUMMER10" — če je, dodamo kupon značko
-    coupon_instr = (
-        f" Also add a small, tasteful promo badge/sticker in a corner that reads 'COUPON CODE: {coupon}' "
-        f"(keep it clearly legible, e-commerce sale style, do NOT cover the product)."
-    ) if coupon else ""
     a_options = data.get("aOptions", [])
     b_options = data.get("bOptions", [])
     count = data.get("count", 4)
@@ -5552,7 +5566,7 @@ async def generate_kreative(data: dict):
                 f"Try a more intense '{b.get('text', '')}' background. "
                 f"Do not include any text/words on the image except the device name in capital letters '{product_name}' — place it where it fits best or makes sense. "
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
-                f"Highlight (can be through icons or text in English) that it is: {a.get('text', '')}.{coupon_instr} "
+                f"Highlight (can be through icons or text in English) that it is: {a.get('text', '')}. "
                 f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. Square 1:1 format."
             )
             prompts_for_b.append((a, prompt))
@@ -7860,6 +7874,40 @@ async def _kbatch_set(jid: str, **fields):
         _kbatch_save(jobs)
 
 
+MAAARKET_IMAGES_URL = os.environ.get("MAAARKET_IMAGES_URL", "https://api.maaarket.si/api/v1/images")
+
+
+async def _kbatch_images_by_sku(sku: str, limit: int) -> list:
+    """Slike izdelka PO SKU iz maaarket feeda (glavna + galerija) — ISTI vir kot
+    Optimizacija slik (regen_read). NE scrapa strani → nikoli ne pobere Xsell/1+1 slik."""
+    sku = (sku or "").strip()
+    if not sku:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=30) as cli:
+            r = await cli.get(MAAARKET_IMAGES_URL, params={"sku": sku})
+        if r.status_code != 200:
+            return []
+        d = r.json() or {}
+        urls = []
+        main = d.get("picture") or (d.get("main") or {}).get("picture") if isinstance(d.get("main"), dict) else d.get("picture")
+        if d.get("picture"):
+            urls.append(d.get("picture"))
+        for g in (d.get("gallery") or []):
+            pic = g.get("picture") if isinstance(g, dict) else None
+            if pic:
+                urls.append(pic)
+        # počisti prazne/dvojnike, ohrani vrstni red
+        seen = set(); out = []
+        for u in urls:
+            if u and u not in seen:
+                seen.add(u); out.append(u)
+        return out[:limit]
+    except Exception as e:
+        print(f"[kbatch] images_by_sku err: {e}")
+        return []
+
+
 async def _kbatch_process_one(job: dict):
     """Obdela EN SKU: analiza → izbire → reference → generiranje → zapis v kQueue."""
     jid = job["id"]
@@ -7877,12 +7925,19 @@ async def _kbatch_process_one(job: dict):
             raise RuntimeError("analiza ni vrnila A/B opcij")
         a_opts = a_all[:KBATCH_A_COUNT]                                    # prva 2 teksta
         b_opts = [{**b, "model": "image2"} for b in b_all]                 # vseh 5 ozadij, Image2
+        # ročni vibe (če vpisan): zamenja ZADNJE (5.) ozadje, prva 4 ostanejo iz analize
+        _vibe = str(job.get("vibe", "") or "").strip()
+        if _vibe and b_opts:
+            b_opts[-1] = {"label": "Vibe", "text": _vibe, "model": "image2"}
         name = ana.get("name") or job.get("name") or sku
 
-        # 2) referenčne slike (glavna + galerija, isti vir kot Optimizacija slik)
+        # 2) referenčne slike PO SKU iz maaarket feeda (isti vir kot Optimizacija slik —
+        #    glavna + galerija, brez Xsell/1+1 slik). Scraper strani samo kot fallback.
         await _kbatch_set(jid, step="slike", name=name)
-        imgs = await fetch_product_images({"url": url})
-        img_urls = (imgs.get("images") or [])[:KBATCH_REF_IMAGES]
+        img_urls = await _kbatch_images_by_sku(sku, KBATCH_REF_IMAGES)
+        if not img_urls:
+            imgs = await fetch_product_images({"url": url})
+            img_urls = (imgs.get("images") or [])[:KBATCH_REF_IMAGES]
         refs = await _kbatch_download_refs(img_urls)
         if not refs:
             raise RuntimeError("ni referenčnih slik")
@@ -7892,7 +7947,6 @@ async def _kbatch_process_one(job: dict):
         gen = await generate_kreative({
             "productName": name, "aOptions": a_opts, "bOptions": b_opts,
             "count": min(int(job.get("count") or KBATCH_MAX_COUNT), KBATCH_MAX_COUNT), "images": refs, "model": "image2",
-            "coupon": job.get("coupon", ""),
         })
         if gen.get("error"):
             raise RuntimeError(f"generiranje: {gen['error']}")
@@ -8021,7 +8075,7 @@ async def kreative_batch_add(data: dict):
     skus = [str(x).strip() for x in (data.get("skus") or []) if str(x).strip()]
     entries = data.get("entries")   # pre-resolved iz potrditvenega pop-upa: [{sku,url,name}]
     count = max(1, min(KBATCH_MAX_COUNT, int(data.get("count") or KBATCH_MAX_COUNT)))
-    coupon = str(data.get("coupon", "") or "").strip()[:24]   # ista koda za vse SKU v tem batchu
+    vibe = str(data.get("vibe", "") or "").strip()[:300]   # ročni vibe — zamenja 5. ozadje pri vseh SKU
     if entries:
         # potrjeni vnosi — dodaj TOČNO te (brez ponovnega razreševanja)
         async with _kbatch_lock:
@@ -8037,7 +8091,7 @@ async def kreative_batch_add(data: dict):
                     dupl.append(sku); continue
                 jid = "kb" + str(int(_time.time() * 1000)) + str(len(jobs))
                 jobs.append({"id": jid, "sku": sku, "url": url, "name": e.get("name") or sku,
-                             "count": count, "coupon": coupon, "status": "waiting", "error": None, "step": "",
+                             "count": count, "vibe": vibe, "status": "waiting", "error": None, "step": "",
                              "created": datetime.now(timezone.utc).isoformat()})
                 added.append(sku); existing.add(sku.upper())
             _kbatch_save(jobs)
@@ -8067,7 +8121,7 @@ async def kreative_batch_add(data: dict):
                 not_found.append(sku)
             else:
                 jobs.append({"id": jid, "sku": sku, "url": url, "name": name, "count": count,
-                             "coupon": coupon, "status": "waiting", "error": None, "step": "",
+                             "vibe": vibe, "status": "waiting", "error": None, "step": "",
                              "created": datetime.now(timezone.utc).isoformat()})
                 added.append(sku)
                 existing.add(sku.upper())
@@ -8236,8 +8290,11 @@ async def _va_process_one(job: dict):
     jid = job["id"]
     try:
         await _va_set(jid, status="running", step="slike")
-        imgs = await fetch_product_images({"url": job["url"]})
-        refs = (imgs.get("images") or [])[:VA_REF_IMAGES]
+        # slike PO SKU iz maaarket feeda (brez Xsell); scraper samo fallback
+        refs = await _kbatch_images_by_sku(job["sku"], VA_REF_IMAGES)
+        if not refs:
+            imgs = await fetch_product_images({"url": job["url"]})
+            refs = (imgs.get("images") or [])[:VA_REF_IMAGES]
 
         await _va_set(jid, step="prompti", ref_images=refs)
         desc = _va_feed_desc(job["url"])
@@ -22753,7 +22810,6 @@ async def polcar_prices(limit: int = 50):
 #  Branje: maaarket API po SKU. Shramba: /data/regen (stabilni linki).
 #  Write nazaj na maaarket: /regen-push (stub — programer doda POST).
 # ═══════════════════════════════════════════════════════════════
-MAAARKET_IMAGES_URL = os.environ.get("MAAARKET_IMAGES_URL", "https://api.maaarket.si/api/v1/images")
 
 FX_CACHE_FILE = DATA_DIR / "ecb_fx_rates.json"   # ECB tečaji, cache
 FX_CACHE_HOURS = 6

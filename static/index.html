@@ -1627,13 +1627,9 @@ input[type="text"].error { border-color: var(--red) !important; }
             <button onclick="kbAdd()" id="kbAddBtn" style="flex:1;padding:9px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">▶ Dodaj v batch</button>
             <label style="font-size:11px;color:var(--text-tertiary);display:flex;align-items:center;gap:4px">slik/kombo <input id="kbCount" type="number" min="1" max="2" value="2" style="width:44px;padding:5px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;text-align:center"></label>
           </div>
-          <div style="margin-top:8px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
-            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;font-weight:600">
-              <input type="checkbox" id="kbCouponOn" onchange="document.getElementById('kbCouponCode').style.display=this.checked?'block':'none'">
-              🏷 Dodaj kupon značko na kreative
-            </label>
-            <input id="kbCouponCode" type="text" placeholder="Koda kupona, npr. SUMMER10" maxlength="24" style="display:none;width:100%;margin-top:7px;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;box-sizing:border-box;text-transform:uppercase">
-            <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">Če je obkljukano, se na VSE kreative v tem batchu doda značka »COUPON CODE: …«.</div>
+          <div style="margin-top:8px">
+            <label style="font-size:11px;color:var(--text-tertiary);display:block;margin-bottom:4px">✨ Moj vibe (neobvezno — zamenja zadnje, 5. ozadje pri vseh SKU)</label>
+            <textarea id="kbVibe" rows="2" placeholder="npr. minimalističen studijski vibe, pastelno ozadje, mehka senca" style="width:100%;padding:8px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;box-sizing:border-box;resize:vertical"></textarea>
           </div>
           <div id="kbStatus" style="margin-top:10px;display:none;font-size:11px;font-family:'DM Mono',monospace;line-height:1.7;max-height:180px;overflow-y:auto"></div>
           <div style="display:flex;gap:8px;margin-top:6px">
@@ -7329,10 +7325,9 @@ async function kbConfirmAdd() {
   const btn = document.getElementById('kbConfirmBtn');
   if (btn) btn.disabled = true;
   try {
-    const couponOn = document.getElementById('kbCouponOn')?.checked;
-    const coupon = couponOn ? (document.getElementById('kbCouponCode')?.value || '').trim().toUpperCase() : '';
+    const vibe = (document.getElementById('kbVibe')?.value || '').trim();
     const r = await fetch('/kreative-batch-add', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ entries: picked, count, coupon }) });
+      body: JSON.stringify({ entries: picked, count, vibe }) });
     const d = await r.json();
     if (!d.ok) { alert('Napaka: ' + (d.error||'')); return; }
     ov.remove();
