@@ -5491,6 +5491,11 @@ async def generate_kreative(data: dict):
     import base64, struct, zlib
 
     product_name = data.get("productName", "")
+    coupon = str(data.get("coupon", "") or "").strip()[:24]   # npr. "SUMMER10" — če je, dodamo kupon značko
+    coupon_instr = (
+        f" Also add a small, tasteful promo badge/sticker in a corner that reads 'COUPON CODE: {coupon}' "
+        f"(keep it clearly legible, e-commerce sale style, do NOT cover the product)."
+    ) if coupon else ""
     a_options = data.get("aOptions", [])
     b_options = data.get("bOptions", [])
     count = data.get("count", 4)
@@ -5547,7 +5552,7 @@ async def generate_kreative(data: dict):
                 f"Try a more intense '{b.get('text', '')}' background. "
                 f"Do not include any text/words on the image except the device name in capital letters '{product_name}' — place it where it fits best or makes sense. "
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
-                f"Highlight (can be through icons or text in English) that it is: {a.get('text', '')}. "
+                f"Highlight (can be through icons or text in English) that it is: {a.get('text', '')}.{coupon_instr} "
                 f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. Square 1:1 format."
             )
             prompts_for_b.append((a, prompt))
@@ -7887,6 +7892,7 @@ async def _kbatch_process_one(job: dict):
         gen = await generate_kreative({
             "productName": name, "aOptions": a_opts, "bOptions": b_opts,
             "count": min(int(job.get("count") or KBATCH_MAX_COUNT), KBATCH_MAX_COUNT), "images": refs, "model": "image2",
+            "coupon": job.get("coupon", ""),
         })
         if gen.get("error"):
             raise RuntimeError(f"generiranje: {gen['error']}")
@@ -8015,6 +8021,7 @@ async def kreative_batch_add(data: dict):
     skus = [str(x).strip() for x in (data.get("skus") or []) if str(x).strip()]
     entries = data.get("entries")   # pre-resolved iz potrditvenega pop-upa: [{sku,url,name}]
     count = max(1, min(KBATCH_MAX_COUNT, int(data.get("count") or KBATCH_MAX_COUNT)))
+    coupon = str(data.get("coupon", "") or "").strip()[:24]   # ista koda za vse SKU v tem batchu
     if entries:
         # potrjeni vnosi — dodaj TOČNO te (brez ponovnega razreševanja)
         async with _kbatch_lock:
@@ -8030,7 +8037,7 @@ async def kreative_batch_add(data: dict):
                     dupl.append(sku); continue
                 jid = "kb" + str(int(_time.time() * 1000)) + str(len(jobs))
                 jobs.append({"id": jid, "sku": sku, "url": url, "name": e.get("name") or sku,
-                             "count": count, "status": "waiting", "error": None, "step": "",
+                             "count": count, "coupon": coupon, "status": "waiting", "error": None, "step": "",
                              "created": datetime.now(timezone.utc).isoformat()})
                 added.append(sku); existing.add(sku.upper())
             _kbatch_save(jobs)
@@ -8060,7 +8067,7 @@ async def kreative_batch_add(data: dict):
                 not_found.append(sku)
             else:
                 jobs.append({"id": jid, "sku": sku, "url": url, "name": name, "count": count,
-                             "status": "waiting", "error": None, "step": "",
+                             "coupon": coupon, "status": "waiting", "error": None, "step": "",
                              "created": datetime.now(timezone.utc).isoformat()})
                 added.append(sku)
                 existing.add(sku.upper())
