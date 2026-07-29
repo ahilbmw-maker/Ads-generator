@@ -923,6 +923,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('apteluvoz')">Aptel naročanje</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('pricecheck')">Kontrola cen</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('zdrnarocila')">Zdru. naročila</div>
+    <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('urltosku')">URL→SKU</div>
     <div class="nav-sub-item" onclick="switchPage('zaloga');switchZalogaTab('inventura')">📋 Inventura</div>
   </div>
 
@@ -2367,6 +2368,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="orodja-tab-btn" id="orodjaTab-apteluvoz" onclick="switchOrodjaTab('apteluvoz')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🛒 Aptel naročanje</button>
       <button class="orodja-tab-btn" id="orodjaTab-pricecheck" onclick="switchOrodjaTab('pricecheck')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Kontrola cen</button>
       <button class="orodja-tab-btn" id="orodjaTab-zdrnarocila" onclick="switchOrodjaTab('zdrnarocila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔗 Združena naročila</button>
+      <button class="orodja-tab-btn" id="orodjaTab-urltosku" onclick="switchOrodjaTab('urltosku')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔑 URL→SKU</button>
       <button class="orodja-tab-btn" id="orodjaTab-inventura" onclick="switchOrodjaTab('inventura')" style="display:none"></button>
     </div>
 
@@ -2780,6 +2782,23 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
     </div>
     <!-- ZDRUŽENA NAROČILA TAB -->
+    <!-- 🔑 URL→SKU: prilepi URL-je (katerekoli znamke/jezika) → izpiše SKU-je -->
+    <div id="orodjaSubpage-urltosku" style="display:none;padding:14px">
+      <div class="card" style="padding:16px;max-width:900px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span class="slabel" style="margin:0">🔑 URL → SKU</span>
+          <span style="font-size:11px;color:var(--text-tertiary)">prilepi URL-je (easyzo, maaarket, zipply … katerikoli jezik) → izlušči SKU po slugu iz feeda</span>
+        </div>
+        <textarea id="u2sInput" rows="7" placeholder="En URL na vrstico, npr.&#10;https://www.easyzo.si/izdelek/ucinkovita-cistilna-metla-sweephero-4-pralne-krpe&#10;https://www.easyzo.ro/produs/banda-elastica-pentru-antrenament-elastband" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;box-sizing:border-box;resize:vertical"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
+          <button onclick="u2sRun()" id="u2sBtn" style="padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔍 Pretvori v SKU</button>
+          <button onclick="u2sCopyAll()" id="u2sCopyBtn" style="display:none;padding:9px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📋 Kopiraj vse SKU-je</button>
+          <span id="u2sSummary" style="font-size:12px;color:var(--text-tertiary)"></span>
+        </div>
+        <div id="u2sResults" style="margin-top:14px"></div>
+      </div>
+    </div>
+
     <div id="orodjaSubpage-zdrnarocila" style="display:none;padding:14px">
       <div style="display:grid;grid-template-columns:240px minmax(0,1fr);gap:14px;align-items:start">
 
@@ -10190,8 +10209,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // ─── ORODJA SUB-TABS + HS+ ─────────────────────────────────────────────────
+// ── 🔑 URL → SKU pretvornik ──
+let _u2sSkus = [];
+async function u2sRun() {
+  const txt = (document.getElementById('u2sInput').value || '').trim();
+  if (!txt) return;
+  const btn = document.getElementById('u2sBtn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = '⏳ Iščem…';
+  const wrap = document.getElementById('u2sResults');
+  wrap.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-tertiary);font-size:12px">⏳ Iščem SKU-je v feedu…</div>';
+  try {
+    const r = await fetch('/url-to-sku', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text: txt }) });
+    const d = await r.json();
+    if (!d.ok) { wrap.innerHTML = '<div style="padding:1rem;color:var(--red);font-size:12px">✗ ' + esc(d.error||'napaka') + '</div>'; return; }
+    _u2sSkus = d.skus || [];
+    document.getElementById('u2sSummary').textContent = '✓ ' + d.n_found + ' / ' + d.n + ' najdenih';
+    document.getElementById('u2sCopyBtn').style.display = _u2sSkus.length ? 'inline-block' : 'none';
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+      + '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:700">SKU</th><th style="text-align:left;padding:6px 8px;font-weight:600;color:var(--text-secondary)">Izdelek</th><th style="text-align:left;padding:6px 8px;font-weight:600;color:var(--text-tertiary)">URL</th></tr>';
+    (d.results || []).forEach(row => {
+      const ok = row.found;
+      html += '<tr style="border-bottom:1px solid var(--border)">'
+        + '<td style="padding:6px 8px;font-family:\'DM Mono\',monospace;font-weight:700;color:' + (ok ? 'var(--accent)' : 'var(--red)') + '">' + (ok ? esc(row.sku) : '✗ ni najden') + '</td>'
+        + '<td style="padding:6px 8px;color:var(--text-secondary)">' + esc(row.title || '') + '</td>'
+        + '<td style="padding:6px 8px;color:var(--text-tertiary);font-size:11px;word-break:break-all">' + esc((row.input||'').replace(/^https?:\/\//, '')) + '</td>'
+        + '</tr>';
+    });
+    html += '</table>';
+    wrap.innerHTML = html;
+  } catch(e) { wrap.innerHTML = '<div style="padding:1rem;color:var(--red);font-size:12px">✗ ' + esc(e.message) + '</div>'; }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+function u2sCopyAll() {
+  if (!_u2sSkus.length) return;
+  const btn = document.getElementById('u2sCopyBtn');
+  navigator.clipboard.writeText(_u2sSkus.join('\n')).then(() => {
+    const o = btn.textContent; btn.textContent = '✓ Kopirano (' + _u2sSkus.length + ')'; setTimeout(() => { btn.textContent = o; }, 1400);
+  }).catch(()=>{});
+}
+
 function switchOrodjaTab(tab) {
-  ['csv', 'hs', 'hsuvoz', 'hsplus', 'apteluvoz', 'pricecheck', 'zdrnarocila'].forEach(t => {
+  ['csv', 'hs', 'hsuvoz', 'hsplus', 'apteluvoz', 'pricecheck', 'zdrnarocila', 'urltosku'].forEach(t => {
     const btn = document.getElementById('orodjaTab-' + t);
     const sub = document.getElementById('orodjaSubpage-' + t);
     if (t === tab) {
