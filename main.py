@@ -23897,6 +23897,70 @@ def _dup_analyze():
     }
 
 
+# cache zaloge za naziv→SKU (osveži se, ko se spremeni mtime CSV)
+_stock_naziv_cache = {"mtime": None, "rows": []}
+
+
+def _stock_naziv_rows():
+    """[(SKU_upper, naziv_lower)] iz zaloge CSV — stolpci title/naziv/name (kot pri uploadu)."""
+    try:
+        if not STOCK_CSV_FILE.exists():
+            return []
+        mt = STOCK_CSV_FILE.stat().st_mtime
+        if _stock_naziv_cache["mtime"] == mt:
+            return _stock_naziv_cache["rows"]
+        import csv as _csv
+        from io import StringIO as _SIO
+        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        first = text.split("\n", 1)[0]
+        sep = ";" if first.count(";") > first.count(",") else ","
+        rd = _csv.DictReader(_SIO(text), delimiter=sep)
+        cols = {c.lower().strip(): c for c in (rd.fieldnames or [])}
+        sku_c = cols.get("product_sku") or cols.get("sku")
+        naz_c = cols.get("title") or cols.get("naziv") or cols.get("name")
+        rows = []
+        if sku_c and naz_c:
+            for row in rd:
+                sk = (row.get(sku_c) or "").strip()
+                nm = " ".join((row.get(naz_c) or "").lower().split())
+                if sk and nm:
+                    rows.append((sk.upper(), nm))
+        _stock_naziv_cache["mtime"] = mt
+        _stock_naziv_cache["rows"] = rows
+        return rows
+    except Exception as e:
+        print(f"[url2sku] stock naziv read err: {e}")
+        return []
+
+
+def _naziv_to_sku(naziv: str):
+    """Naziv izdelka (feed title) → SKU iz zaloge. Točno → redek žeton → difflib ≥0.80."""
+    import difflib as _dl, re as _re
+    nz = " ".join(str(naziv or "").lower().split())
+    if not nz:
+        return None
+    rows = _stock_naziv_rows()
+    if not rows:
+        return None
+    # 1) točno
+    for sk, nm in rows:
+        if nm == nz:
+            return sk
+    # 2) redek žeton ≥5 znakov, ki je v natanko enem nazivu
+    tokens = [w for w in _re.split(r"[^a-z0-9čšžćđ]+", nz) if len(w) >= 5]
+    for tok in sorted(tokens, key=len, reverse=True):
+        hits = [sk for sk, nm in rows if tok in nm]
+        if len(hits) == 1:
+            return hits[0]
+    # 3) podobnost
+    best = (0.0, None)
+    for sk, nm in rows:
+        r = _dl.SequenceMatcher(None, nz, nm).ratio()
+        if r > best[0]:
+            best = (r, sk)
+    return best[1] if best[0] >= 0.80 else None
+
+
 def _url_to_sku(url_or_slug: str):
     """URL (katerekoli znamke/jezika) ali slug → SKU iz maaarket feeda.
     Isti izdelek ima na vseh znamkah (maaarket/easyzo/zipply…) ISTI slug → poiščemo po slugu.
@@ -23935,27 +23999,21 @@ def _url_to_sku(url_or_slug: str):
         return {"input": url_or_slug, "sku": None, "found": False, "slug": slug}
 
     title = d.get("title") or ""
-    # izlušči PRAVI SKU (isti vir kot Batch SKU / Optimizacija slik):
-    # 1) brand-SKU iz glavne slike (Ikonka/Amio — poln, zanesljiv)
-    # 2) sku_exact indeks (če je zgrajen)  3) mpn  4) NAJDALJŠI kandidat iz image poti
+    # PRAVI SKU (tvoja logika): naziv iz feeda → SKU iz zaloge (skladišče).
+    # Fallback: mpn, nato brand-SKU iz slike (Ikonka/Amio).
     src = ""
-    sku = ""
-    try:
-        b = _extract_brand_sku(d.get("brand", ""), d.get("image", "")) or ""
-    except Exception:
-        b = ""
-    if b:
-        sku = b; src = "slika"
+    sku = _naziv_to_sku(title)
+    if sku:
+        src = "zaloga"
     if not sku and d.get("mpn"):
-        sku = d.get("mpn").strip(); src = "mpn"
+        sku = d.get("mpn").strip().upper(); src = "mpn"
     if not sku:
-        # iz vseh image poti zberi kandidate in vzemi NAJDALJŠEGA (pravi SKU je daljši,
-        # ne 3-črkovni prefiks) — enako kot v Batch SKU verigi
-        cands = []
-        for one in (d.get("all_images") or ([d.get("image")] if d.get("image") else [])):
-            cands += _extract_skus_from_image_url(one)
-        if cands:
-            sku = max(cands, key=len); src = "url"
+        try:
+            b = _extract_brand_sku(d.get("brand", ""), d.get("image", "")) or ""
+        except Exception:
+            b = ""
+        if b:
+            sku = b.upper(); src = "slika"
     sku = (sku or "").strip().upper()
     return {"input": url_or_slug, "sku": sku or None, "found": bool(sku),
             "title": title, "slug": slug, "src": src}
