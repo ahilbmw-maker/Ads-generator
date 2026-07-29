@@ -23897,6 +23897,77 @@ def _dup_analyze():
     }
 
 
+def _url_to_sku(url_or_slug: str):
+    """URL (katerekoli znamke/jezika) ali slug → SKU iz maaarket feeda.
+    Isti izdelek ima na vseh znamkah (maaarket/easyzo/zipply…) ISTI slug → poiščemo po slugu.
+    Veriga: slug→feed zapis → mpn → brand-SKU iz glavne slike → SKU iz image poti."""
+    raw = (url_or_slug or "").strip()
+    if not raw:
+        return {"input": url_or_slug, "sku": None, "found": False}
+    # slug: iz URL-ja (zadnji smiseln segment) ali kar vhod, če ni URL
+    slug = None
+    if raw.lower().startswith("http"):
+        slug = extract_slug(raw)
+    if not slug:
+        # vzemi zadnji neprazen segment poti
+        seg = [x for x in raw.rstrip("/").split("/") if x]
+        slug = (seg[-1] if seg else raw).lower()
+    slug = (slug or "").lower().strip()
+    if not slug:
+        return {"input": url_or_slug, "sku": None, "found": False}
+
+    # 1) natančno ujemanje slug → g_id (slug_to_id je zgrajen iz maaarket feeda)
+    g_id = slug_to_id.get(slug)
+    feed = feed_by_lang.get("sl") or {}
+    d = feed.get(g_id) if g_id else None
+
+    # 2) če ni v slug_to_id (SLO), poskusi še po drugih jezikih feeda
+    if not d:
+        for lang in ("hr", "rs", "hu", "pl", "cz", "sk", "gr", "bg", "ro"):
+            lf = feed_by_lang.get(lang) or {}
+            for gid2, dd in lf.items():
+                if (extract_slug(dd.get("url") or "") or "").lower() == slug:
+                    d = dd; break
+            if d:
+                break
+
+    if not d:
+        return {"input": url_or_slug, "sku": None, "found": False, "slug": slug}
+
+    # izlušči SKU: mpn → brand-SKU iz slike → SKU iz vseh image poti
+    sku = (d.get("mpn") or "").strip()
+    if not sku:
+        try:
+            sku = _extract_brand_sku(d.get("brand", ""), d.get("image", "")) or ""
+        except Exception:
+            sku = ""
+    if not sku:
+        for one in (d.get("all_images") or []):
+            found = _extract_skus_from_image_url(one)
+            if found:
+                sku = found[0]; break
+    sku = (sku or "").strip()
+    return {"input": url_or_slug, "sku": sku or None, "found": bool(sku),
+            "title": d.get("title") or "", "slug": slug}
+
+
+@app.post("/url-to-sku")
+async def url_to_sku(data: dict):
+    """Prilepljene URL-je/slugove → SKU. data: { urls: ["...","..."] } ali { text: "ena vrstica en URL" }"""
+    urls = data.get("urls")
+    if not urls:
+        txt = data.get("text") or ""
+        urls = [x.strip() for x in txt.replace(",", "\n").splitlines() if x.strip()]
+    urls = [u for u in urls if u][:500]
+    if not urls:
+        return {"ok": False, "error": "Ni URL-jev."}
+    await ensure_cache_fresh()
+    results = [_url_to_sku(u) for u in urls]
+    n_found = sum(1 for r in results if r["found"])
+    return {"ok": True, "results": results, "n": len(results), "n_found": n_found,
+            "skus": [r["sku"] for r in results if r["sku"]]}
+
+
 @app.get("/analiza-meta-duplicates")
 async def analiza_meta_duplicates():
     """Detekcija podvojenih kampanj po SKU na accountu (isti CSV kot Meta Ads tab)."""
