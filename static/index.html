@@ -2784,7 +2784,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <!-- ZDRUŽENA NAROČILA TAB -->
     <!-- 🔑 URL→SKU: prilepi URL-je (katerekoli znamke/jezika) → izpiše SKU-je -->
     <div id="orodjaSubpage-urltosku" style="display:none;padding:14px">
-      <div class="card" style="padding:16px;max-width:900px">
+      <div class="card" style="padding:16px;max-width:1200px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
           <span class="slabel" style="margin:0">🔑 URL → SKU</span>
           <span style="font-size:11px;color:var(--text-tertiary)">prilepi URL-je (easyzo, maaarket, zipply … katerikoli jezik) → izlušči SKU po slugu iz feeda</span>
@@ -10222,23 +10222,35 @@ async function u2sRun() {
     const r = await fetch('/url-to-sku', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text: txt }) });
     const d = await r.json();
     if (!d.ok) { wrap.innerHTML = '<div style="padding:1rem;color:var(--red);font-size:12px">✗ ' + esc(d.error||'napaka') + '</div>'; return; }
-    _u2sSkus = d.skus || [];
+    _u2sSkus = (d.skus || []).map(x => String(x).toUpperCase());
     document.getElementById('u2sSummary').textContent = '✓ ' + d.n_found + ' / ' + d.n + ' najdenih';
     document.getElementById('u2sCopyBtn').style.display = _u2sSkus.length ? 'inline-block' : 'none';
-    let html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
-      + '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:700">SKU</th><th style="text-align:left;padding:6px 8px;font-weight:600;color:var(--text-secondary)">Izdelek</th><th style="text-align:left;padding:6px 8px;font-weight:600;color:var(--text-tertiary)">URL</th></tr>';
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">'
+      + '<colgroup><col style="width:170px"><col style="width:38%"><col></colgroup>'
+      + '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:7px 10px;font-weight:700">SKU</th><th style="text-align:left;padding:7px 10px;font-weight:600;color:var(--text-secondary)">Izdelek</th><th style="text-align:left;padding:7px 10px;font-weight:600;color:var(--text-tertiary)">URL</th></tr>';
     (d.results || []).forEach(row => {
       const ok = row.found;
+      const skuU = ok ? String(row.sku).toUpperCase() : '';
       html += '<tr style="border-bottom:1px solid var(--border)">'
-        + '<td style="padding:6px 8px;font-family:\'DM Mono\',monospace;font-weight:700;color:' + (ok ? 'var(--accent)' : 'var(--red)') + '">' + (ok ? esc(row.sku) : '✗ ni najden') + '</td>'
-        + '<td style="padding:6px 8px;color:var(--text-secondary)">' + esc(row.title || '') + '</td>'
-        + '<td style="padding:6px 8px;color:var(--text-tertiary);font-size:11px;word-break:break-all">' + esc((row.input||'').replace(/^https?:\/\//, '')) + '</td>'
+        + '<td style="padding:7px 10px">'
+        +   (ok
+            ? '<span onclick="u2sCopyOne(this,\'' + esc(skuU).replace(/'/g, "\\'") + '\')" title="Klik za kopiranje" style="display:inline-block;font-family:\'DM Mono\',monospace;font-weight:700;font-size:13px;color:var(--accent);background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.25);border-radius:6px;padding:3px 10px;cursor:pointer;white-space:nowrap">' + esc(skuU) + ' ⎘</span>'
+            : '<span style="color:var(--red);font-weight:700;font-size:12px">✗ ni najden</span>')
+        + '</td>'
+        + '<td style="padding:7px 10px;color:var(--text-secondary);word-break:break-word">' + esc(row.title || '') + '</td>'
+        + '<td style="padding:7px 10px;color:var(--text-tertiary);font-size:11px;word-break:break-all">' + esc((row.input||'').replace(/^https?:\/\//, '')) + '</td>'
         + '</tr>';
     });
     html += '</table>';
     wrap.innerHTML = html;
   } catch(e) { wrap.innerHTML = '<div style="padding:1rem;color:var(--red);font-size:12px">✗ ' + esc(e.message) + '</div>'; }
   finally { btn.disabled = false; btn.textContent = orig; }
+}
+function u2sCopyOne(el, sku) {
+  navigator.clipboard.writeText(sku).then(() => {
+    const o = el.innerHTML; el.innerHTML = '✓ kopirano';
+    setTimeout(() => { el.innerHTML = o; }, 1000);
+  }).catch(()=>{});
 }
 function u2sCopyAll() {
   if (!_u2sSkus.length) return;
