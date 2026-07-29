@@ -23897,6 +23897,54 @@ def _dup_analyze():
     }
 
 
+def _naziv_to_sku_from_stock(naziv: str):
+    """Naziv izdelka (iz feed titla) → SKU iz zaloge CSV. Vrne SKU (UPPER) ali None.
+    1. točno ujemanje normaliziranega naziva  2. redek žeton ≥5 znakov v natanko enem nazivu
+    3. difflib podobnost ≥0.80. To da PRAVI SKU (ne kratkega ugibanja iz image poti)."""
+    import csv as _csv, difflib as _dl, re as _re
+    from io import StringIO as _SIO
+    nz = " ".join(str(naziv or "").lower().split())
+    if not nz or not STOCK_CSV_FILE.exists():
+        return None
+    try:
+        text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        first = text.split("\n", 1)[0]
+        sep = ";" if first.count(";") > first.count(",") else ","
+        rd = _csv.DictReader(_SIO(text), delimiter=sep)
+        cols = {c.lower().strip(): c for c in (rd.fieldnames or [])}
+        sku_c = cols.get("product_sku") or cols.get("sku")
+        naz_c = cols.get("naziv") or cols.get("name")
+        if not sku_c or not naz_c:
+            return None
+        rows = []
+        for row in rd:
+            sk = (row.get(sku_c) or "").strip()
+            nm = " ".join((row.get(naz_c) or "").lower().split())
+            if sk and nm:
+                rows.append((sk, nm))
+        # 1) točno
+        for sk, nm in rows:
+            if nm == nz:
+                return sk.upper()
+        # 2) redek žeton (≥5 znakov) iz naziva, ki je v natanko enem zapisu
+        tokens = [w for w in _re.split(r"[^a-z0-9čšžćđ]+", nz) if len(w) >= 5]
+        for tok in sorted(tokens, key=len, reverse=True):
+            hits = [sk for sk, nm in rows if tok in nm]
+            if len(hits) == 1:
+                return hits[0].upper()
+        # 3) podobnost
+        best = (0.0, None)
+        for sk, nm in rows:
+            r = _dl.SequenceMatcher(None, nz, nm).ratio()
+            if r > best[0]:
+                best = (r, sk)
+        if best[0] >= 0.80:
+            return best[1].upper()
+    except Exception as e:
+        print(f"[url2sku] naziv->sku err: {e}")
+    return None
+
+
 def _url_to_sku(url_or_slug: str):
     """URL (katerekoli znamke/jezika) ali slug → SKU iz maaarket feeda.
     Isti izdelek ima na vseh znamkah (maaarket/easyzo/zipply…) ISTI slug → poiščemo po slugu.
@@ -23934,21 +23982,26 @@ def _url_to_sku(url_or_slug: str):
     if not d:
         return {"input": url_or_slug, "sku": None, "found": False, "slug": slug}
 
-    # izlušči SKU: mpn → brand-SKU iz slike → SKU iz vseh image poti
+    title = d.get("title") or ""
+    # izlušči PRAVI SKU po zanesljivosti:
+    # 1) mpn (če feed ima)  2) naziv iz feeda → SKU iz zaloge CSV (pravi SKU, ne ugibanje)
+    # 3) brand-SKU iz slike (Ikonka/Amio, zanesljivo)
     sku = (d.get("mpn") or "").strip()
+    src = "mpn" if sku else ""
+    if not sku:
+        s2 = _naziv_to_sku_from_stock(title)
+        if s2:
+            sku = s2; src = "zaloga"
     if not sku:
         try:
-            sku = _extract_brand_sku(d.get("brand", ""), d.get("image", "")) or ""
+            b = _extract_brand_sku(d.get("brand", ""), d.get("image", "")) or ""
         except Exception:
-            sku = ""
-    if not sku:
-        for one in (d.get("all_images") or []):
-            found = _extract_skus_from_image_url(one)
-            if found:
-                sku = found[0]; break
-    sku = (sku or "").strip()
+            b = ""
+        if b:
+            sku = b; src = "slika"
+    sku = (sku or "").strip().upper()
     return {"input": url_or_slug, "sku": sku or None, "found": bool(sku),
-            "title": d.get("title") or "", "slug": slug}
+            "title": title, "slug": slug, "src": src}
 
 
 @app.post("/url-to-sku")

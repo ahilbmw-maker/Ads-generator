@@ -2784,7 +2784,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <!-- ZDRUŽENA NAROČILA TAB -->
     <!-- 🔑 URL→SKU: prilepi URL-je (katerekoli znamke/jezika) → izpiše SKU-je -->
     <div id="orodjaSubpage-urltosku" style="display:none;padding:14px">
-      <div class="card" style="padding:16px;max-width:1200px">
+      <div class="card" style="padding:16px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
           <span class="slabel" style="margin:0">🔑 URL → SKU</span>
           <span style="font-size:11px;color:var(--text-tertiary)">prilepi URL-je (easyzo, maaarket, zipply … katerikoli jezik) → izlušči SKU po slugu iz feeda</span>
@@ -10234,7 +10234,7 @@ async function u2sRun() {
       html += '<tr style="border-bottom:1px solid var(--border)">'
         + '<td style="padding:7px 10px">'
         +   (ok
-            ? '<span onclick="u2sCopyOne(this,\'' + esc(skuU).replace(/'/g, "\\'") + '\')" title="Klik za kopiranje" style="display:inline-block;font-family:\'DM Mono\',monospace;font-weight:700;font-size:13px;color:var(--accent);background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.25);border-radius:6px;padding:3px 10px;cursor:pointer;white-space:nowrap">' + esc(skuU) + ' ⎘</span>'
+            ? '<span onclick="u2sCopyOne(this,\'' + esc(skuU).replace(/'/g, "\\'") + '\')" title="Klik za kopiranje (vir: ' + esc(row.src||'?') + ')" style="display:inline-block;font-family:\'DM Mono\',monospace;font-weight:700;font-size:13px;color:var(--accent);background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.25);border-radius:6px;padding:3px 10px;cursor:pointer;white-space:nowrap">' + esc(skuU) + ' ⎘</span>'
             : '<span style="color:var(--red);font-weight:700;font-size:12px">✗ ni najden</span>')
         + '</td>'
         + '<td style="padding:7px 10px;color:var(--text-secondary);word-break:break-word">' + esc(row.title || '') + '</td>'
