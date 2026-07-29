@@ -1331,6 +1331,7 @@ function renderTable(rows) {
 }
 
 function updateStats(rows) {
+  const _rawTotal = rows.length;   // koliko je NALOŽENIH (pred skrivanjem pregledanih)
   // kartice štejejo enako kot tabela: pregledane danes so izvzete
   // (združena naročila: vse-ali-nič — kontekst vrstice se štejejo)
   if (_pcHideSeen) {
@@ -1338,6 +1339,7 @@ function updateStats(rows) {
     const _u = new Set(rows.filter(r => !pcRowSeen(r)).map(r => r.id));
     rows = rows.filter(r => !pcRowSeen(r) || (_c[r.id] > 1 && _u.has(r.id)));
   }
+  const _hiddenSeen = _rawTotal - rows.length;   // koliko jih skriva "pregledano danes"
   const errors = rows.filter(r => r.status === 'error' && !r.resolved).length;
   const warns = rows.filter(r => r.status === 'warn' && !r.resolved).length;
   const ok = rows.filter(r => r.status === 'ok').length;
@@ -1349,7 +1351,16 @@ function updateStats(rows) {
   rows.forEach(r => { idCounts[r.id] = (idCounts[r.id] || 0) + 1; });
   const multiCount = Object.values(idCounts).filter(c => c > 1).length;
 
-  document.getElementById('statTotal').textContent = rows.length;
+  document.getElementById('statTotal').textContent = _rawTotal;
+  // če "Vsa naročila" > vsota vidnih zaradi pregledanih danes → opozori z namigom na kartici
+  const _totalCard = document.getElementById('statTotal');
+  if (_totalCard) {
+    let hint = _totalCard.parentElement.querySelector('.pc-seen-hint');
+    if (_hiddenSeen > 0 && _pcHideSeen) {
+      if (!hint) { hint = document.createElement('div'); hint.className = 'pc-seen-hint'; hint.style.cssText = 'font-size:9px;color:#0369a1;margin-top:2px;cursor:pointer'; hint.onclick = pcSeenToggleHide; _totalCard.parentElement.appendChild(hint); }
+      hint.textContent = _hiddenSeen + ' skritih (pregledano) — klik';
+    } else if (hint) { hint.remove(); }
+  }
   document.getElementById('statErrors').textContent = errors;
   document.getElementById('statWarnings').textContent = warns;
   document.getElementById('statOk').textContent = ok;
