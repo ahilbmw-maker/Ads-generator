@@ -347,8 +347,13 @@
   <button class="filter-btn" id="groupSkuBtn" onclick="toggleGroupSku()" style="color:#7c3aed;border-color:#ddd6fe;background:#f5f3ff;font-weight:600">🌍 Primerjava po državah</button>
   <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti 2x+ in združena</button>
   <span style="color:var(--border);margin:0 4px">|</span>
-  <button class="filter-btn" id="pcSeenHideBtn" onclick="pcSeenToggleHide()" title="Skrij vrstice, ki si jih danes že pregledal z isto ceno. Spremenjene cene in novi izdelki se vedno pokažejo." style="color:#0369a1;border-color:#bae6fd;background:#f0f9ff">🕐 Skrij pregledane danes</button>
-  <button class="filter-btn" id="pcSeenMarkBtn" onclick="pcSeenMarkVisible()" title="Označi vse trenutno prikazane vrstice kot pregledane za danes (jutri reset)" style="color:var(--green)">✓ Pregledano — skrij prikazane</button>
+  <div title="Ko je vklopljeno, skrije postavke, ki si jih danes že izbrisal/pregledal z isto ceno. Nove in spremenjene cene se vedno pokažejo. Reset vsak dan." style="display:inline-flex;align-items:center;gap:9px;padding:5px 12px;border:1px solid var(--border);border-radius:20px;background:var(--surface,#fff);user-select:none">
+    <span style="font-size:12px;color:var(--muted)">Skrij že pregledane</span>
+    <span id="pcSeenSwitch" onclick="pcSeenToggleHide()" role="switch" style="position:relative;width:42px;height:24px;border-radius:12px;cursor:pointer;transition:background .18s;flex-shrink:0">
+      <span id="pcSeenKnob" style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:left .18s"></span>
+    </span>
+    <span id="pcSeenState" style="font-size:11px;font-weight:700;min-width:26px"></span>
+  </div>
 </div>
 </div><!-- /sticky -->
 
@@ -477,12 +482,17 @@ async function pcSeenLoad() {
 pcSeenLoad();
 
 function pcSeenUpdateBtn() {
-  const b = document.getElementById('pcSeenHideBtn');
-  if (!b) return;
+  const sw = document.getElementById('pcSeenSwitch');
+  const knob = document.getElementById('pcSeenKnob');
+  const st = document.getElementById('pcSeenState');
+  if (!sw || !knob) return;
   const n = allRows.filter(r => pcRowSeen(r)).length;
-  b.textContent = (_pcHideSeen ? '🕐 Skrij pregledane danes' : '🕐 Pokaži tudi pregledane') + (n ? ' (' + n + ')' : '');
-  b.style.background = _pcHideSeen ? '#f0f9ff' : '#0369a1';
-  b.style.color = _pcHideSeen ? '#0369a1' : '#fff';
+  sw.style.background = _pcHideSeen ? '#16a34a' : '#cbd5e1';   // zelena=ON, siva=OFF
+  knob.style.left = _pcHideSeen ? '20px' : '2px';
+  if (st) {
+    st.textContent = _pcHideSeen ? 'ON' : 'OFF';
+    st.style.color = _pcHideSeen ? '#16a34a' : '#94a3b8';
+  }
 }
 
 function pcSeenToggleHide() {
