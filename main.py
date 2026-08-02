@@ -936,6 +936,7 @@ async def startup_event():
     asyncio.create_task(_hsplus_daily_scheduler())
     asyncio.create_task(_regen_worker_loop())
     asyncio.create_task(_kreative_batch_worker_loop())
+    _nabava_seed_if_empty()
     asyncio.create_task(_video_ads_worker_loop())
 
 
@@ -24096,4 +24097,192 @@ async def analiza_meta_duplicates_ai(data: dict):
         return {"ok": True, "report": text, "summary": {k: d[k] for k in ("n_groups", "n_campaigns", "n_flagged", "total_waste")}}
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
+
+
+# ═══ NABAVA: naročanje izdelkov za kitajski program (kontejnerji) ═══════════════
+# 1 seznam, vsaka postavka ima container tag (Kontejner1,2,3…) in status.
+# Formule iz Excela: Total=Unit×Qty · Ctns=Qty/kos_kart · TotalCBM=CBM/CTN×Ctns
+#   FinalPrice=((TotalCBM×70)/Qty)+(Unit×0.85)×1.1
+NABAVA_FILE = DATA_DIR / "nabava_items.json"
+NABAVA_SEED = Path(__file__).parent / "nabava_seed.json"
+_nabava_lock = asyncio.Lock()
+
+
+def _nabava_load() -> list:
+    try:
+        if NABAVA_FILE.exists():
+            return json.loads(NABAVA_FILE.read_text(encoding="utf-8")) or []
+    except Exception:
+        pass
+    return []
+
+
+def _nabava_save(items: list):
+    tmp = NABAVA_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, NABAVA_FILE)
+
+
+def _nabava_seed_if_empty():
+    """Ob prvem zagonu napolni z 157 postavkami iz obstoječega Excela (nabava_seed.json)."""
+    if NABAVA_FILE.exists():
+        return
+    if not NABAVA_SEED.exists():
+        _nabava_save([]); return
+    try:
+        seed = json.loads(NABAVA_SEED.read_text(encoding="utf-8")) or []
+        for i, it in enumerate(seed):
+            it["id"] = it.get("id") or f"nb_seed_{i}"
+        _nabava_save(seed)
+        print(f"[nabava] seed: {len(seed)} postavk uvoženih")
+    except Exception as e:
+        print(f"[nabava] seed err: {e}")
+        _nabava_save([])
+
+
+def _nabava_calc(it: dict) -> dict:
+    """Preračuna formule (Total, Ctns, TotalCBM, FinalPrice) — override, če je ročno vpisan."""
+    def f(k, d=0.0):
+        try: return float(it.get(k) or 0)
+        except: return d
+    qty = f("qty"); unit = f("unit_price"); cbm_ctn = f("cbm_ctn"); ctns = f("ctns")
+    it["total_price"] = round(unit * qty, 2)
+    if not it.get("_ctns_manual") and it.get("pcs_per_ctn"):
+        try:
+            pc = float(it["pcs_per_ctn"])
+            if pc > 0:
+                ctns = qty / pc; it["ctns"] = round(ctns, 4)
+        except: pass
+    it["total_cbm"] = round(cbm_ctn * ctns, 4)
+    if qty > 0:
+        it["final_price"] = round(((it["total_cbm"] * 70) / qty) + (unit * 0.85) * 1.1, 4)
+    else:
+        it["final_price"] = 0.0
+    return it
+
+
+@app.get("/nabava-list")
+async def nabava_list():
+    items = _nabava_load()
+    # vsote po kontejnerjih
+    conts = {}
+    for it in items:
+        c = it.get("container") or "—"
+        g = conts.setdefault(c, {"container": c, "n": 0, "total_usd": 0.0, "total_cbm": 0.0,
+                                 "total_qty": 0.0, "final_sum": 0.0, "active": 0, "done": 0})
+        g["n"] += 1
+        g["total_usd"] += float(it.get("total_price") or 0)
+        g["total_cbm"] += float(it.get("total_cbm") or 0)
+        g["total_qty"] += float(it.get("qty") or 0)
+        g["final_sum"] += float(it.get("final_price") or 0) * float(it.get("qty") or 0)
+        if it.get("status") == "done": g["done"] += 1
+        else: g["active"] += 1
+    for g in conts.values():
+        for k in ("total_usd", "total_cbm", "final_sum"):
+            g[k] = round(g[k], 2)
+    # naravni sort kontejnerjev
+    def _cont_key(c):
+        m = re.search(r'(\d+)', c or "")
+        return int(m.group(1)) if m else 9999
+    order = sorted(conts.values(), key=lambda g: _cont_key(g["container"]))
+    return {"ok": True, "items": items, "containers": order}
+
+
+@app.post("/nabava-item")
+async def nabava_item_save(data: dict):
+    """Doda ali uredi postavko. Brez id = nova. Vrne preračunano postavko."""
+    async with _nabava_lock:
+        items = _nabava_load()
+        it = dict(data or {})
+        _nabava_calc(it)
+        if it.get("id"):
+            for i, x in enumerate(items):
+                if x.get("id") == it["id"]:
+                    items[i] = {**x, **it}; break
+            else:
+                items.append(it)
+        else:
+            it["id"] = "nb" + str(int(_time.time() * 1000))
+            it.setdefault("status", "active")
+            items.append(it)
+        _nabava_save(items)
+    return {"ok": True, "item": it}
+
+
+@app.delete("/nabava-item/{iid}")
+async def nabava_item_delete(iid: str):
+    async with _nabava_lock:
+        items = [x for x in _nabava_load() if x.get("id") != iid]
+        _nabava_save(items)
+    return {"ok": True}
+
+
+@app.post("/nabava-sku-lookup")
+async def nabava_sku_lookup(data: dict):
+    """SKU → naziv + link iz feeda (za kitajskega dobavitelja). + re-order zgodovina."""
+    sku = str(data.get("sku") or "").strip()
+    if not sku:
+        return {"ok": False, "error": "Ni SKU."}
+    await ensure_cache_fresh()
+    url, naziv = _kbatch_sku_to_url(sku)
+    # re-order: isti SKU v obstoječih postavkah (zadnja cena)
+    hist = []
+    for it in _nabava_load():
+        if str(it.get("sku") or "").strip().upper() == sku.upper():
+            hist.append({"container": it.get("container"), "unit_price": it.get("unit_price"),
+                         "qty": it.get("qty"), "date": it.get("date")})
+    return {"ok": True, "sku": sku, "naziv": naziv or "", "link": url or "",
+            "found": bool(url), "history": hist}
+
+
+@app.post("/nabava-container-close")
+async def nabava_container_close(data: dict):
+    """Zaključi kontejner: odprte postavke dobijo status=done ALI nov container tag.
+    data: { container: 'Kontejner3', move_to: 'Kontejner10'|None }"""
+    cont = str(data.get("container") or "").strip()
+    move_to = str(data.get("move_to") or "").strip()
+    if not cont:
+        return {"ok": False, "error": "Ni kontejnerja."}
+    async with _nabava_lock:
+        items = _nabava_load()
+        n = 0
+        for it in items:
+            if it.get("container") == cont and it.get("status") != "done":
+                if move_to:
+                    it["container"] = move_to      # premakni odprte v nov kontejner
+                else:
+                    it["status"] = "done"          # ali samo zaključi
+                n += 1
+        _nabava_save(items)
+    return {"ok": True, "affected": n}
+
+
+@app.get("/nabava-export-xlsx")
+async def nabava_export_xlsx():
+    """Izvoz v Excel v istem formatu kot original (en list na kontejner)."""
+    import openpyxl as _oxl
+    from collections import OrderedDict
+    items = _nabava_load()
+    wb = _oxl.Workbook(); wb.remove(wb.active)
+    hdr = ['Date','SKU','Qty','Our comment','Link from our site','Naziv','Unitprice ($)',
+           'Totalprice ($)','Specification','volumetric weight','Ctns','CBM/CTN','Total CBM',
+           'Final price (aprox)','Comment','Status']
+    by_c = OrderedDict()
+    for it in items:
+        by_c.setdefault(it.get("container") or "—", []).append(it)
+    for cont, lst in by_c.items():
+        ws = wb.create_sheet(title=str(cont)[:31])
+        ws.append(hdr)
+        for it in lst:
+            ws.append([it.get("date",""), it.get("sku",""), it.get("qty",""), it.get("comment",""),
+                       it.get("link",""), it.get("naziv",""), it.get("unit_price",""),
+                       it.get("total_price",""), it.get("specification",""), it.get("vol_weight",""),
+                       it.get("ctns",""), it.get("cbm_ctn",""), it.get("total_cbm",""),
+                       it.get("final_price",""), it.get("extra_comment",""), it.get("status","")])
+    import io as _io
+    buf = _io.BytesIO(); wb.save(buf); buf.seek(0)
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": 'attachment; filename="nabava.xlsx"'})
+
+
 
