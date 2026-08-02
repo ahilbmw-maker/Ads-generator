@@ -76,7 +76,8 @@
   .badge-supp{font-size:9px;font-weight:800;color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:1px 5px;text-transform:uppercase;letter-spacing:0.4px;}
   .field-supplier{background:var(--accent-soft);border:1px dashed var(--accent-line)!important;}
   .field-nego{background:var(--nego-soft);border:1px dashed var(--nego-line)!important;}
-  .cin.area{resize:vertical;min-height:30px;line-height:1.35;}
+  .cin.area{resize:none;min-height:30px;line-height:1.35;overflow:hidden;}
+  textarea.autogrow{overflow:hidden;resize:none;}
   select.contsel{border:1px solid var(--line);border-radius:7px;padding:4px 6px;font-size:11px;font-family:inherit;background:var(--panel);cursor:pointer;max-width:132px;}
 
   /* CARDS (Concept B) */
@@ -160,7 +161,14 @@
   .addlink{margin-top:2px;padding:8px 12px;border-radius:9px;border:1px dashed var(--accent-line);
     background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;}
   /* modal */
-  #modal{position:fixed;inset:0;background:rgba(20,15,10,0.5);display:none;align-items:center;justify-content:center;z-index:120;padding:20px;}
+  #modal,#setModal{position:fixed;inset:0;background:rgba(20,15,10,0.5);display:none;align-items:center;justify-content:center;z-index:120;padding:20px;}
+  #setModal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;width:420px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
+  #setModal h3{font-family:'Bricolage Grotesque',sans-serif;margin:0 0 4px;font-size:18px;}
+  #setModal .sub{font-size:12px;color:var(--ink3);margin-bottom:8px;line-height:1.5;}
+  #setModal label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink2);display:block;margin:14px 0 5px;}
+  #setModal input{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:14px;font-family:inherit;font-weight:700;}
+  #setModal input:focus{outline:none;border-color:var(--accent);}
+  #setModal .acts{display:flex;gap:9px;margin-top:20px;justify-content:flex-end;}
   #modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;width:440px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
   #modal h3{font-family:'Bricolage Grotesque',sans-serif;margin:0 0 4px;font-size:18px;}
   #modal .sub{font-size:12px;color:var(--ink3);margin-bottom:16px;}
@@ -186,6 +194,7 @@
     <button class="btn ghost" onclick="nabExport()">⬇ Export XLSX</button>
     <button class="btn warn" onclick="nabCloseContainer()">📦 Close container</button>
     <button class="btn primary" onclick="nabAddRow()">＋ New item</button>
+    <button class="btn ghost" onclick="nabOpenSettings()" title="Freight, exchange rate, customs">⚙ Settings</button>
     <a class="btn ghost" href="/nabava-logout">Logout</a>
   </div>
 
@@ -222,6 +231,21 @@
     <span class="hint">Watch CBM to know when to close a container (~68 m³ = full 40ft).</span>
   </div>
 
+  <div id="setModal"><div class="box">
+    <h3>Final price settings</h3>
+    <div class="sub">Final price is in EUR: ((Total&nbsp;CBM × freight) ÷ Qty) + (Unit&nbsp;$ × rate × customs). Change these when USD/EUR or freight moves.</div>
+    <label>Freight — € per 1 m³ (CBM)</label>
+    <input id="setFreight" type="number" step="0.01" inputmode="decimal">
+    <label>USD → EUR rate (e.g. 0.84)</label>
+    <input id="setRate" type="number" step="0.001" inputmode="decimal">
+    <label>Customs — % (e.g. 10)</label>
+    <input id="setCustoms" type="number" step="0.1" inputmode="decimal">
+    <div class="acts">
+      <button class="btn ghost" onclick="document.getElementById('setModal').style.display='none'">Cancel</button>
+      <button class="btn primary" onclick="nabSaveSettings()">Save</button>
+    </div>
+  </div></div>
+
   <div id="modal"><div class="box">
     <h3>Add image / link</h3>
     <div class="sub">Use this when the SKU has no picture (e.g. product with size/color variants). The SKU image always takes priority if it exists.</div>
@@ -247,6 +271,31 @@ let CONTLIST=[];
 let CONT=(localStorage.getItem('nab_cont')||'Nerazvrščeno');
 let VIEW=(localStorage.getItem('nab_view')||'cards');
 let SEL=new Set();
+// nastavitve končne cene (EUR) — nastavljivo v ⚙ Settings
+let SET={freight:72, rate:0.84, customs:10};
+try{ const sv=JSON.parse(localStorage.getItem('nab_settings')||'null'); if(sv) SET={...SET,...sv}; }catch(e){}
+function nabFinal(it){
+  const cbm=parseFloat(it.total_cbm)||0, qty=parseFloat(it.qty)||0, unit=parseFloat(it.unit_price)||0;
+  if(qty<=0) return 0;
+  return ((cbm*SET.freight)/qty) + (unit*SET.rate*(1+SET.customs/100));
+}
+function nabOpenSettings(){
+  document.getElementById('setFreight').value=SET.freight;
+  document.getElementById('setRate').value=SET.rate;
+  document.getElementById('setCustoms').value=SET.customs;
+  document.getElementById('setModal').style.display='flex';
+}
+function nabSaveSettings(){
+  const f=parseFloat(document.getElementById('setFreight').value);
+  const r=parseFloat(document.getElementById('setRate').value);
+  const c=parseFloat(document.getElementById('setCustoms').value);
+  if(!isNaN(f)) SET.freight=f;
+  if(!isNaN(r)) SET.rate=r;
+  if(!isNaN(c)) SET.customs=c;
+  localStorage.setItem('nab_settings',JSON.stringify(SET));
+  document.getElementById('setModal').style.display='none';
+  nabRender();
+}
 
 const PALETTE=['#2f6fb0','#2f9e6f','#c67a1e','#8a5cc4','#c0398a','#0e8a9e','#b08500','#c0392b','#4a52c4','#0f8a5f','#b23fb0','#1f77c4','#9a5b12','#6b52c4'];
 function contColor(name){ if(!name||name==='Nerazvrščeno') return '#a99f90';
@@ -341,6 +390,7 @@ function nabRender(){
   else box.innerHTML = VIEW==='cards'?renderCards(items):renderRows(items);
   nabLive(items);
   nabSelBar();
+  requestAnimationFrame(nabAutoSize);
 }
 
 /* selekcija */
@@ -415,12 +465,12 @@ function renderRows(items){
       +'<td>'+cin(it.id,'comment',it.comment,'150px')+'</td>'
       +'<td class="num" style="white-space:nowrap">'+cin(it.id,'unit_price',it.unit_price,'62px','right')+pupTag+'</td>'
       +'<td class="num" style="color:var(--ink2);font-weight:700">$'+num(it.total_price,0)+'</td>'
-      +'<td style="min-width:170px"><textarea class="cin area field-supplier" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="supplier spec…" style="width:170px">'+esc(it.specification||'')+'</textarea></td>'
-      +'<td style="min-width:170px"><textarea class="cin area field-nego" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="price talk…" style="width:170px">'+esc(it.negotiation||'')+'</textarea></td>'
+      +'<td style="min-width:170px"><textarea class="cin area field-supplier autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="supplier spec…" style="width:170px">'+esc(it.specification||'')+'</textarea></td>'
+      +'<td style="min-width:170px"><textarea class="cin area field-nego autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="price talk…" style="width:170px">'+esc(it.negotiation||'')+'</textarea></td>'
       +'<td class="num">'+cin(it.id,'ctns',it.ctns,'60px','right')+'</td>'
       +'<td class="num">'+cin(it.id,'cbm_ctn',it.cbm_ctn,'74px','right')+'</td>'
       +'<td class="num" style="color:var(--ink2)">'+num(it.total_cbm,3)+'</td>'
-      +'<td class="num final">$'+num(it.final_price,2)+'</td>'
+      +'<td class="num final">€'+nabFinal(it).toFixed(2)+'</td>'
       +'<td class="rowact" style="white-space:nowrap;text-align:center">'
         +'<span onclick="nabToggleDone(\''+it.id+'\','+(done?'false':'true')+')" title="'+(done?'Reopen':'Close')+'">'+(done?'↩':'✓')+'</span>'
         +'<span onclick="nabDelete(\''+it.id+'\')" title="Delete" style="color:var(--bad)">✕</span>'
@@ -464,17 +514,33 @@ function renderCards(items){
       +'</div>'
       +'<div class="notes">'
         +'<div class="note"><label>Our note</label><input value="'+esc(it.comment||'')+'" onchange="nabEdit(\''+it.id+'\',\'comment\',this.value)" placeholder="e.g. re-order, color, without stick"></div>'
-        +'<div class="note spec"><label>Specification <span class="badge-supp">supplier</span></label><textarea rows="2" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="dimensions, variation, set…">'+esc(it.specification||'')+'</textarea></div>'
-        +'<div class="note nego"><label>Price negotiation</label><textarea rows="2" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="target price, counter-offer, lobby…">'+esc(it.negotiation||'')+'</textarea></div>'
+        +'<div class="note spec"><label>Specification <span class="badge-supp">supplier</span></label><textarea class="autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="dimensions, variation, set…">'+esc(it.specification||'')+'</textarea></div>'
+        +'<div class="note nego"><label>Price negotiation</label><textarea class="autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="target price, counter-offer, lobby…">'+esc(it.negotiation||'')+'</textarea></div>'
         +'<button class="addlink" onclick="nabOpenLinks(\''+it.id+'\')" style="display:'+(dimg?'none':'block')+'">🔗 Add image / link</button>'
       +'</div>'
-      +'<div class="cfoot"><span class="final" style="color:var(--good)">$'+num(it.final_price,2)+' <small>final</small></span>'
+      +'<div class="cfoot"><span class="final" style="color:var(--good)">€'+nabFinal(it).toFixed(2)+' <small>final</small></span>'
         +'<span style="color:var(--ink3);font-size:11px">· CBM '+num(it.total_cbm,3)+'</span>'
         +'<span class="act"><span onclick="nabToggleDone(\''+it.id+'\','+(done?'false':'true')+')" title="'+(done?'Reopen':'Close')+'">'+(done?'↩':'✓')+'</span><span onclick="nabDelete(\''+it.id+'\')" title="Delete" style="color:var(--bad)">✕</span></span>'
       +'</div></div>';
   }).join('')+'</div>';
 }
 
+function nabGrow(t){
+  t.style.height='auto';
+  t.style.fontSize='';
+  let fs=parseFloat(getComputedStyle(t).fontSize);
+  let lh=parseFloat(getComputedStyle(t).lineHeight)||fs*1.35;
+  t.style.height=t.scrollHeight+'px';
+  let lines=Math.round(t.scrollHeight/lh);
+  while(lines>3 && fs>9){
+    fs-=0.5; t.style.fontSize=fs+'px';
+    t.style.height='auto'; t.style.height=t.scrollHeight+'px';
+    lh=parseFloat(getComputedStyle(t).lineHeight)||fs*1.35;
+    lines=Math.round(t.scrollHeight/lh);
+  }
+  t.style.height=t.scrollHeight+'px';
+}
+function nabAutoSize(){ document.querySelectorAll('textarea.autogrow').forEach(nabGrow); }
 function nabImgErr(img){
   img.style.display='none';
   const root=img.closest('.pcard')||img.closest('tr'); if(!root) return;
