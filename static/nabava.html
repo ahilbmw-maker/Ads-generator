@@ -5,148 +5,129 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Purchase Orders · Suban</title>
 <link rel="icon" type="image/png" href="/static/suban-s-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:#eef1f4; --panel:#ffffff; --panel2:#f6f8fa; --line:#dde3ea;
-    --ink:#141b26; --ink2:#5a6b7d; --ink3:#93a1b0;
-    --accent:#1f6feb; --accent-soft:#e7f0ff;
-    --good:#0f9d58; --warn:#c2680c; --warn-soft:#fdf0e2; --bad:#d1242f;
-    --r:10px;
+  :root{
+    --bg:#f3f0ea; --panel:#fffdf9; --panel2:#faf7f1; --line:#e5ded2;
+    --ink:#241f1a; --ink2:#6e655a; --ink3:#a99f90;
+    --accent:#2f6fb0; --accent-soft:#eef4fb; --accent-line:#d3e3f4;
+    --good:#2f9e6f; --nego:#c67a1e; --nego-soft:#fbf3e6; --nego-line:#f0dcbf;
+    --bad:#c0392b; --r:12px;
   }
-  * { box-sizing:border-box; }
-  html,body { margin:0; }
-  body { font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-    background:var(--bg); color:var(--ink); font-size:13px; line-height:1.4; padding-bottom:64px; }
-  .mono { font-family:'DM Mono','SF Mono',ui-monospace,monospace; }
+  *{box-sizing:border-box;} html,body{margin:0;}
+  body{background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;font-size:13px;line-height:1.4;padding-bottom:66px;}
+  .disp{font-family:'Bricolage Grotesque',sans-serif;}
+  .mono{font-family:'Inter',monospace;font-variant-numeric:tabular-nums;}
 
-  .bar { background:var(--panel); border-bottom:1px solid var(--line); padding:10px 18px;
-    display:flex; align-items:center; gap:14px; flex-wrap:wrap; position:sticky; top:0; z-index:30; }
-  .bar h1 { margin:0; font-size:15px; font-weight:800; letter-spacing:-0.2px; display:flex; align-items:center; gap:8px; }
-  .bar h1 .tag { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px;
-    color:var(--warn); background:var(--warn-soft); padding:2px 7px; border-radius:5px; }
-  .grow { flex:1 1 auto; }
-  .btn { padding:7px 13px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;
-    font-family:inherit; border:1px solid var(--line); background:var(--panel); color:var(--ink2); white-space:nowrap; }
-  .btn:hover { border-color:var(--ink3); }
-  .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
-  .btn.warn { color:var(--warn); border-color:#f2c68f; }
-  .btn.ghost { background:transparent; }
-  a.btn { text-decoration:none; display:inline-block; }
+  .bar{display:flex;align-items:center;gap:14px;padding:14px 22px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;flex-wrap:wrap;}
+  .bar h1{margin:0;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:19px;letter-spacing:-0.4px;display:flex;align-items:center;gap:8px;}
+  .bar h1 .tag{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:var(--nego);background:var(--nego-soft);padding:2px 7px;border-radius:5px;}
+  .grow{flex:1;}
+  .btn{padding:8px 14px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink2);white-space:nowrap;}
+  .btn:hover{border-color:var(--ink3);}
+  .btn.primary{background:var(--ink);color:var(--panel);border-color:var(--ink);}
+  .btn.warn{color:var(--nego);border-color:var(--nego-line);}
+  .btn.ghost{background:transparent;}
+  a.btn{text-decoration:none;display:inline-block;}
+  .vtoggle{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .vtoggle button{border:0;background:var(--panel);color:var(--ink2);font-family:inherit;font-weight:700;font-size:12px;padding:8px 14px;cursor:pointer;}
+  .vtoggle button.on{background:var(--ink);color:var(--panel);}
 
-  .vtoggle { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
-  .vtoggle button { border:none; background:var(--panel); color:var(--ink2); padding:7px 12px; font-size:12px;
-    font-weight:700; cursor:pointer; font-family:inherit; }
-  .vtoggle button.on { background:var(--accent); color:#fff; }
+  .controls{padding:14px 22px 4px;display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
+  .lbl{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink3);}
+  .kchip{display:inline-flex;align-items:center;gap:8px;padding:6px 13px;border-radius:22px;border:1px solid var(--line);background:var(--panel);font-weight:700;font-size:13px;cursor:pointer;color:var(--ink);}
+  .kchip .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .kchip .n{font-size:11px;color:var(--ink3);font-weight:600;}
+  .kchip.on{box-shadow:0 0 0 2px currentColor inset;border-color:transparent;}
+  .kchip.all.on{color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 1px var(--accent) inset;}
+  .toggle-lbl{display:inline-flex;align-items:center;gap:7px;cursor:pointer;padding:6px 13px;border:1px solid var(--line);border-radius:22px;background:var(--panel);font-size:12px;font-weight:600;}
 
-  .controls { padding:12px 18px 4px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .lbl { font-size:11px; font-weight:800; letter-spacing:0.5px; color:var(--ink3); text-transform:uppercase; }
-  .chip { cursor:pointer; padding:5px 11px 5px 9px; border-radius:20px; border:1px solid var(--line);
-    background:var(--panel); font-size:12px; font-weight:700; color:var(--ink); white-space:nowrap;
-    display:inline-flex; align-items:center; gap:6px; }
-  .chip .dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
-  .chip .cnt { font-size:10px; font-weight:600; color:var(--ink3); }
-  .chip.on { box-shadow:0 0 0 2px var(--accent) inset; }
-  .chip.all { font-weight:800; }
-  .chip.all.on { background:var(--accent-soft); color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
-  .toggle-lbl { display:inline-flex; align-items:center; gap:7px; cursor:pointer; padding:5px 12px;
-    border:1px solid var(--line); border-radius:20px; background:var(--panel); font-size:12px; font-weight:600; }
+  .wrap{padding:14px 22px 22px;}
 
-  .wrap { padding:12px 18px 20px; }
+  /* ROWS */
+  .tblwrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:auto;}
+  table{width:100%;border-collapse:collapse;min-width:1420px;}
+  thead th{position:sticky;top:0;background:var(--panel2);border-bottom:2px solid var(--line);padding:10px 9px;text-align:left;font-size:11px;font-weight:800;letter-spacing:0.3px;color:var(--ink2);text-transform:uppercase;white-space:nowrap;z-index:2;}
+  thead th.num{text-align:right;}
+  tbody td{border-bottom:1px solid var(--line);padding:5px 9px;vertical-align:middle;}
+  tbody tr:hover{background:var(--panel2);}
+  tr.done{opacity:0.5;}
+  .imgcell{display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .thumb{width:46px;height:46px;border-radius:9px;object-fit:cover;background:#efe9df;border:1px solid var(--line);cursor:zoom-in;display:block;}
+  .thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:18px;}
+  .golink{font-size:10px;color:var(--accent);text-decoration:none;font-weight:700;}
+  .golink.off{color:var(--ink3);cursor:default;}
+  .cin{border:1px solid transparent;border-radius:6px;background:transparent;color:var(--ink);font-size:12px;font-family:inherit;padding:4px 6px;width:100%;}
+  .cin:focus{outline:none;border-color:var(--accent);background:var(--panel2);}
+  .cin.mono{font-family:'Inter',monospace;}
+  .cin.right{text-align:right;}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;}
+  .reorder{font-size:9px;font-weight:800;color:var(--nego);background:var(--nego-soft);border-radius:4px;padding:1px 5px;white-space:nowrap;}
+  .final{font-weight:800;color:var(--good);}
+  .rowact span{cursor:pointer;font-size:14px;padding:0 3px;}
+  .badge-supp{font-size:9px;font-weight:800;color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:1px 5px;text-transform:uppercase;letter-spacing:0.4px;}
+  .field-supplier{background:var(--accent-soft);border:1px dashed var(--accent-line)!important;}
+  .field-nego{background:var(--nego-soft);border:1px dashed var(--nego-line)!important;}
+  .cin.area{resize:vertical;min-height:30px;line-height:1.35;}
+  select.contsel{border:1px solid var(--line);border-radius:7px;padding:4px 6px;font-size:11px;font-family:inherit;background:var(--panel);cursor:pointer;max-width:132px;}
 
-  .tblwrap { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); overflow:auto; }
-  table { width:100%; border-collapse:collapse; min-width:1560px; }
-  thead th { position:sticky; top:0; background:var(--panel2); border-bottom:2px solid var(--line);
-    padding:9px 8px; text-align:left; font-size:11px; font-weight:800; letter-spacing:0.3px;
-    color:var(--ink2); text-transform:uppercase; white-space:nowrap; z-index:2; }
-  thead th.num { text-align:right; }
-  tbody td { border-bottom:1px solid var(--line); padding:5px 8px; vertical-align:middle; }
-  tbody tr:hover { background:var(--panel2); }
-  tr.done { opacity:0.5; }
-  .thumb { width:44px; height:44px; border-radius:7px; object-fit:cover; background:var(--panel2);
-    border:1px solid var(--line); cursor:zoom-in; display:block; }
-  .thumb.ph { display:flex; align-items:center; justify-content:center; color:var(--ink3); font-size:16px; }
-  .cin { border:1px solid transparent; border-radius:5px; background:transparent; color:var(--ink);
-    font-size:12px; font-family:inherit; padding:4px 6px; width:100%; }
-  .cin:focus { outline:none; border-color:var(--accent); background:var(--panel2); }
-  .cin.mono { font-family:'DM Mono',monospace; }
-  .cin.right { text-align:right; }
-  td.num { text-align:right; font-variant-numeric:tabular-nums; }
-  .prodcell .nm { font-size:12px; }
-  .prodcell .nm a { color:var(--ink); text-decoration:none; }
-  .prodcell .nm a:hover { color:var(--accent); }
-  .reorder { font-size:9px; font-weight:800; color:var(--warn); background:var(--warn-soft);
-    border-radius:4px; padding:1px 5px; white-space:nowrap; }
-  .final { font-weight:800; color:var(--good); }
-  .rowact span { cursor:pointer; font-size:14px; padding:0 3px; }
-  .badge-supp { font-size:9px; font-weight:800; color:var(--accent); background:var(--accent-soft);
-    border-radius:4px; padding:1px 5px; text-transform:uppercase; letter-spacing:0.4px; }
+  /* CARDS (Concept B) */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;}
+  .pcard{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(60,50,40,0.04);display:flex;flex-direction:column;}
+  .pcard.done{opacity:0.55;}
+  .ribbon{height:5px;}
+  .chead{display:flex;gap:14px;padding:15px 16px 12px;}
+  .pimg{width:88px;height:88px;border-radius:14px;background:#efe9df;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;object-fit:cover;cursor:zoom-in;}
+  .chead .meta{min-width:0;flex:1;}
+  .ktag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;padding:3px 10px;border-radius:20px;}
+  .ktag .dot{width:7px;height:7px;border-radius:50%;}
+  .csku{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;letter-spacing:-0.3px;margin-top:8px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+  .csku input{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;border:1px solid transparent;border-radius:6px;padding:2px 5px;width:130px;color:var(--accent);}
+  .csku input:focus{outline:none;border-color:var(--accent);background:var(--panel2);}
+  .pname{color:var(--ink2);font-size:12.5px;margin-top:3px;line-height:1.35;}
+  .pname a{color:var(--ink2);text-decoration:none;}
+  .cmeta-row{margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 16px 12px;}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:8px 9px;}
+  .stat label{font-size:9px;font-weight:800;letter-spacing:0.4px;text-transform:uppercase;color:var(--ink3);display:block;}
+  .stat input{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px;border:none;background:transparent;width:100%;padding:2px 0 0;color:var(--ink);}
+  .stat input:focus{outline:none;}
+  .stat.ro .v{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px;margin-top:2px;}
+  .notes{padding:0 16px 14px;display:flex;flex-direction:column;gap:8px;}
+  .note{border-radius:11px;padding:9px 11px;}
+  .note label{font-size:9.5px;font-weight:800;letter-spacing:0.6px;text-transform:uppercase;margin-bottom:4px;display:flex;align-items:center;gap:6px;}
+  .note textarea,.note input{width:100%;border:none;background:transparent;font-family:inherit;font-size:12px;resize:vertical;color:var(--ink);}
+  .note textarea:focus,.note input:focus{outline:none;}
+  .note.spec{background:var(--accent-soft);border:1px solid var(--accent-line);} .note.spec label{color:var(--accent);}
+  .note.nego{background:var(--nego-soft);border:1px solid var(--nego-line);} .note.nego label{color:var(--nego);}
+  .note.urls{background:var(--panel2);border:1px dashed var(--line);}.note.urls label{color:var(--ink3);}
+  .note.urls input{font-size:11px;padding:3px 0;border-bottom:1px solid var(--line);border-radius:0;margin-bottom:4px;}
+  .cfoot{margin-top:auto;padding:11px 16px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;background:var(--panel2);}
+  .cfoot .final{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:20px;}
+  .cfoot .final small{font-size:11px;color:var(--ink3);font-weight:600;}
+  .cfoot .act{margin-left:auto;display:flex;gap:8px;color:var(--ink3);}
+  .cfoot .act span{cursor:pointer;font-size:16px;}
 
-  /* container tag pill */
-  .ctag { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:20px;
-    font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; border:1px solid transparent; }
-  .ctag .dot { width:8px; height:8px; border-radius:50%; }
+  /* live bar */
+  .live{position:fixed;left:0;right:0;bottom:0;background:var(--ink);color:#f3f0ea;padding:12px 22px;display:flex;gap:26px;align-items:center;z-index:40;flex-wrap:wrap;}
+  .live .scope{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;display:flex;align-items:center;gap:8px;}
+  .live .scope .dot{width:11px;height:11px;border-radius:50%;}
+  .live .s .k{font-size:9.5px;letter-spacing:0.8px;text-transform:uppercase;color:#b3a897;font-weight:700;}
+  .live .s .v{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:18px;}
+  .live .grow{flex:1;} .live .hint{font-size:11px;color:#b3a897;}
 
-  .cin.area { resize:vertical; min-height:30px; line-height:1.35; }
-  .field-supplier { background:#fbfdff; border:1px dashed #b9d4ff !important; }
-  .field-nego { background:#fffdf7; border:1px dashed #f0d09a !important; }
-
-  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:12px; }
-  .pcard { background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden;
-    display:flex; flex-direction:column; border-top:3px solid var(--line); }
-  .pcard.done { opacity:0.55; }
-  .pcard .head { display:flex; gap:12px; padding:12px; border-bottom:1px solid var(--line); }
-  .pcard .pimg { width:78px; height:78px; border-radius:10px; object-fit:cover; flex-shrink:0;
-    background:var(--panel2); border:1px solid var(--line); cursor:zoom-in; }
-  .pcard .pimg.ph { display:flex; align-items:center; justify-content:center; color:var(--ink3); font-size:22px; }
-  .pcard .htxt { min-width:0; flex:1; }
-  .pcard .sku { font-family:'DM Mono',monospace; font-weight:800; font-size:13px; color:var(--accent); }
-  .pcard .pname { font-size:12px; color:var(--ink2); margin-top:2px; overflow:hidden;
-    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
-  .pcard .pname a { color:var(--ink2); text-decoration:none; }
-  .pcard .body { padding:10px 12px; display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; }
-  .pcard .fld { display:flex; flex-direction:column; gap:2px; }
-  .pcard .fld label { font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:var(--ink3); }
-  .pcard .fld input, .pcard .fld textarea, .pcard .fld select { border:1px solid var(--line); border-radius:6px;
-    padding:5px 7px; font-size:12px; font-family:inherit; width:100%; }
-  .pcard .fld.wide { grid-column:1 / -1; }
-  .pcard .foot { margin-top:auto; padding:9px 12px; border-top:1px solid var(--line);
-    display:flex; align-items:center; gap:10px; background:var(--panel2); }
-  .pcard .foot .final { font-size:15px; }
-  .pcard .foot .spacer { flex:1; }
-
-  select.contsel { border:1px solid var(--line); border-radius:6px; padding:4px 6px; font-size:11px;
-    font-family:inherit; background:var(--panel); cursor:pointer; max-width:130px; }
-
-  /* sticky live totals */
-  .livebar { position:fixed; left:0; right:0; bottom:0; background:var(--ink); color:#fff;
-    padding:10px 18px; display:flex; align-items:center; gap:22px; z-index:40; flex-wrap:wrap;
-    box-shadow:0 -3px 14px rgba(0,0,0,0.18); }
-  .livebar .scope { font-size:12px; font-weight:800; display:inline-flex; align-items:center; gap:7px; }
-  .livebar .scope .dot { width:10px; height:10px; border-radius:50%; }
-  .livebar .stat { display:flex; flex-direction:column; }
-  .livebar .stat .k { font-size:9.5px; text-transform:uppercase; letter-spacing:0.6px; color:#9fb0c4; font-weight:700; }
-  .livebar .stat .v { font-size:16px; font-weight:800; font-variant-numeric:tabular-nums; }
-  .livebar .stat .v small { font-size:11px; font-weight:600; color:#9fb0c4; }
-  .livebar .spacer { flex:1; }
-  .livebar .hint { font-size:11px; color:#9fb0c4; }
-
-  #lb { position:fixed; inset:0; background:rgba(10,14,20,0.82); display:none; align-items:center;
-    justify-content:center; z-index:100; padding:24px; }
-  #lb img { max-width:90vw; max-height:90vh; border-radius:12px; }
-
-  .empty { text-align:center; padding:64px 20px; color:var(--ink3); }
-  .empty b { color:var(--ink2); display:block; font-size:15px; margin-bottom:6px; }
-
-  @media (max-width:640px) { .bar h1 span.full { display:none; } .cards { grid-template-columns:1fr; } }
+  #lb{position:fixed;inset:0;background:rgba(20,15,10,0.85);display:none;align-items:center;justify-content:center;z-index:100;padding:24px;}
+  #lb img{max-width:90vw;max-height:90vh;border-radius:14px;}
+  .empty{text-align:center;padding:60px 20px;color:var(--ink3);}
+  .empty b{color:var(--ink2);display:block;font-size:15px;margin-bottom:6px;}
+  @media (max-width:640px){.bar h1 span.full{display:none;} .cards{grid-template-columns:1fr;} .stats{grid-template-columns:repeat(2,1fr);}}
 </style>
 </head>
 <body>
   <div class="bar">
     <h1>🛒 <span class="full">Purchase Orders</span><span class="tag">China</span></h1>
-    <div class="vtoggle" id="viewToggle">
-      <button id="vt-rows" class="on" onclick="nabSetView('rows')">▤ Rows</button>
-      <button id="vt-cards" onclick="nabSetView('cards')">▦ Cards</button>
-    </div>
+    <div class="vtoggle"><button id="vt-rows" class="on" onclick="nabSetView('rows')">▤ Rows</button><button id="vt-cards" onclick="nabSetView('cards')">▦ Cards</button></div>
     <div class="grow"></div>
     <button class="btn ghost" onclick="nabRefreshImages()" id="imgBtn">🖼 Load images</button>
     <button class="btn ghost" onclick="nabExport()">⬇ Export XLSX</button>
@@ -157,8 +138,8 @@
 
   <div class="controls">
     <span class="lbl">Container</span>
-    <div id="contChips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></div>
-    <button class="btn ghost" style="padding:4px 10px" onclick="nabNewContainer()">＋ new container</button>
+    <div id="contChips" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>
+    <button class="btn ghost" style="padding:5px 11px" onclick="nabNewContainer()">＋ new container</button>
     <div class="grow"></div>
     <label class="toggle-lbl"><input type="checkbox" id="hideDone" checked onchange="nabRender()"> Hide closed</label>
     <button class="btn ghost" onclick="nabCopySupplier()">📋 Copy for supplier</button>
@@ -166,14 +147,14 @@
 
   <div class="wrap" id="content"></div>
 
-  <div class="livebar" id="livebar">
+  <div class="live" id="livebar">
     <span class="scope" id="liveScope">All containers</span>
-    <div class="stat"><span class="k">Items</span><span class="v" id="liveItems">0</span></div>
-    <div class="stat"><span class="k">Pieces</span><span class="v" id="livePcs">0</span></div>
-    <div class="stat"><span class="k">Order value</span><span class="v" id="liveUsd">$0</span></div>
-    <div class="stat"><span class="k">Total CBM</span><span class="v" id="liveCbm">0.00</span></div>
-    <div class="spacer"></div>
-    <span class="hint">Live totals for the current view — watch CBM to know when to close a container.</span>
+    <div class="s"><div class="k">Items</div><div class="v" id="liveItems">0</div></div>
+    <div class="s"><div class="k">Pieces</div><div class="v" id="livePcs">0</div></div>
+    <div class="s"><div class="k">Order value</div><div class="v" id="liveUsd">$0</div></div>
+    <div class="s"><div class="k">Total CBM</div><div class="v" id="liveCbm">0.00</div></div>
+    <div class="grow"></div>
+    <span class="hint">Watch CBM to know when to close a container (~68 m³ = full 40ft).</span>
   </div>
 
   <div id="lb" onclick="this.style.display='none'"><img id="lbimg" src="" alt=""></div>
@@ -182,73 +163,55 @@
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function num(v,d){const n=parseFloat(v);return isNaN(n)?0:(d!=null?+n.toFixed(d):n);}
 
-let DATA = { items:[], containers:[] };
-let CONTLIST = [];        // vsi imena kontejnerjev za dropdown
-let CONT = 'all';
-let VIEW = (localStorage.getItem('nab_view') || 'rows');
+let DATA={items:[],containers:[]};
+let CONTLIST=[];
+let CONT='all';
+let VIEW=(localStorage.getItem('nab_view')||'cards');
 
-// paleta barv — kontejnerju dodeljena deterministično po imenu
-const PALETTE = ['#1f6feb','#0f9d58','#c2680c','#8b5cf6','#e11d74','#0891b2','#ca8a04','#dc2626','#4f46e5','#059669','#d946ef','#0284c7','#b45309','#7c3aed'];
-function contColor(name){
-  if(!name || name==='Nerazvrščeno') return '#94a3b8';
-  let h=0; for(let i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))>>>0;
-  return PALETTE[h % PALETTE.length];
-}
+const PALETTE=['#2f6fb0','#2f9e6f','#c67a1e','#8a5cc4','#c0398a','#0e8a9e','#b08500','#c0392b','#4a52c4','#0f8a5f','#b23fb0','#1f77c4','#9a5b12','#6b52c4'];
+function contColor(name){ if(!name||name==='Nerazvrščeno') return '#a99f90';
+  let h=0; for(let i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))>>>0; return PALETTE[h%PALETTE.length]; }
 function hexA(hex,a){const n=parseInt(hex.slice(1),16);return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')';}
 
-async function nabLoad() {
-  try {
-    const [r1,r2] = await Promise.all([fetch('/nabava-list'), fetch('/nabava-containers')]);
-    const d = await r1.json(); const dc = await r2.json();
-    if (d.ok) { DATA = d; CONTLIST = (dc.ok?dc.containers:[]) || []; nabApplyViewButtons(); nabRender(); }
-    else { document.getElementById('content').innerHTML='<div class="empty"><b>Load error.</b>'+esc(d.error||'')+'</div>'; }
-  } catch(e){ document.getElementById('content').innerHTML='<div class="empty"><b>Could not load data.</b>Refresh to try again.</div>'; }
+async function nabLoad(){
+  try{
+    const [r1,r2]=await Promise.all([fetch('/nabava-list'),fetch('/nabava-containers')]);
+    const d=await r1.json(); const dc=await r2.json();
+    if(d.ok){ DATA=d; CONTLIST=(dc.ok?dc.containers:[])||[]; nabViewBtns(); nabRender(); }
+    else document.getElementById('content').innerHTML='<div class="empty"><b>Load error.</b>'+esc(d.error||'')+'</div>';
+  }catch(e){ document.getElementById('content').innerHTML='<div class="empty"><b>Could not load data.</b>Refresh to try again.</div>'; }
 }
-
-function nabApplyViewButtons(){
-  document.getElementById('vt-rows').classList.toggle('on', VIEW==='rows');
-  document.getElementById('vt-cards').classList.toggle('on', VIEW==='cards');
-}
-function nabSetView(v){ VIEW=v; localStorage.setItem('nab_view',v); nabApplyViewButtons(); nabRender(); }
+function nabViewBtns(){ document.getElementById('vt-rows').classList.toggle('on',VIEW==='rows'); document.getElementById('vt-cards').classList.toggle('on',VIEW==='cards'); }
+function nabSetView(v){ VIEW=v; localStorage.setItem('nab_view',v); nabViewBtns(); nabRender(); }
 function nabSetCont(c){ CONT=c; nabRender(); }
 
 function allContainerNames(){
-  const s=new Set(CONTLIST);
-  DATA.items.forEach(i=>{ if(i.container) s.add(i.container); });
-  const arr=[...s];
+  const s=new Set(CONTLIST); DATA.items.forEach(i=>{ if(i.container) s.add(i.container); }); s.add('Nerazvrščeno');
   const key=c=>{ if(c==='Nerazvrščeno')return[2,0]; const m=c.match(/(\d+)/); return m?[0,+m[1]]:[1,0]; };
-  return arr.sort((a,b)=>{const ka=key(a),kb=key(b);return ka[0]-kb[0]||ka[1]-kb[1];});
+  return [...s].sort((a,b)=>{const ka=key(a),kb=key(b);return ka[0]-kb[0]||ka[1]-kb[1];});
 }
-
 function visibleItems(){
-  let it = DATA.items.slice();
-  if (CONT!=='all') it = it.filter(x=>(x.container||'Nerazvrščeno')===CONT);
-  if (document.getElementById('hideDone')?.checked) it = it.filter(x=>x.status!=='done');
+  let it=DATA.items.slice();
+  if(CONT!=='all') it=it.filter(x=>(x.container||'Nerazvrščeno')===CONT);
+  if(document.getElementById('hideDone')?.checked) it=it.filter(x=>x.status!=='done');
   return it;
 }
-function reorderSet(){
-  const m={}; DATA.items.forEach(i=>{const k=(i.sku||'').toUpperCase(); if(k)(m[k]=m[k]||new Set()).add(i.container);});
-  return m;
-}
+function reorderSet(){ const m={}; DATA.items.forEach(i=>{const k=(i.sku||'').toUpperCase(); if(k)(m[k]=m[k]||new Set()).add(i.container);}); return m; }
 
 function nabRender(){
-  // chips
   const names=allContainerNames();
-  const cnt={}; DATA.items.forEach(i=>{const c=i.container||'Nerazvrščeno'; cnt[c]=(cnt[c]||0)+ (i.status!=='done'?1:0);});
+  const cnt={}; DATA.items.forEach(i=>{const c=i.container||'Nerazvrščeno'; if(i.status!=='done') cnt[c]=(cnt[c]||0)+1;});
   const cc=document.getElementById('contChips');
-  let h='<span class="chip all '+(CONT==='all'?'on':'')+'" onclick="nabSetCont(\'all\')">All <span class="cnt">('+DATA.items.filter(i=>i.status!=='done').length+')</span></span>';
-  names.forEach(c=>{
-    const col=contColor(c), on=CONT===c;
-    h+='<span class="chip '+(on?'on':'')+'" onclick="nabSetCont(\''+esc(c)+'\')" style="'+(on?'background:'+hexA(col,0.10)+';':'')+'border-color:'+(on?col:'var(--line)')+'">'
-      +'<span class="dot" style="background:'+col+'"></span>'+esc(c)+' <span class="cnt">('+(cnt[c]||0)+')</span></span>';
-  });
+  let h='<span class="kchip all '+(CONT==='all'?'on':'')+'" onclick="nabSetCont(\'all\')">All <span class="n">('+DATA.items.filter(i=>i.status!=='done').length+')</span></span>';
+  names.forEach(c=>{ const col=contColor(c),on=CONT===c;
+    h+='<span class="kchip '+(on?'on':'')+'" onclick="nabSetCont(\''+esc(c)+'\')" style="color:'+col+';'+(on?'background:'+hexA(col,0.10)+';':'')+'">'
+      +'<span class="dot" style="background:'+col+'"></span><span style="color:var(--ink)">'+esc(c)+'</span> <span class="n">('+(cnt[c]||0)+')</span></span>'; });
   cc.innerHTML=h;
 
   const items=visibleItems();
   const box=document.getElementById('content');
-  if(!items.length){ box.innerHTML='<div class="empty"><b>No items here.</b>Add one with ＋ New item, or pick another container.</div>'; }
-  else box.innerHTML = VIEW==='cards' ? renderCards(items) : renderRows(items);
-
+  if(!items.length) box.innerHTML='<div class="empty"><b>No items here.</b>Add one with ＋ New item, or pick another container.</div>';
+  else box.innerHTML = VIEW==='cards'?renderCards(items):renderRows(items);
   nabLive(items);
 }
 
@@ -258,21 +221,20 @@ function nabLive(items){
   const cbm=items.reduce((s,i)=>s+num(i.total_cbm),0);
   document.getElementById('liveItems').textContent=items.length;
   document.getElementById('livePcs').textContent=pcs.toLocaleString('en-US');
-  document.getElementById('liveUsd').innerHTML='$'+Math.round(usd).toLocaleString('en-US');
-  document.getElementById('liveCbm').innerHTML=cbm.toFixed(2)+' <small>m³</small>';
+  document.getElementById('liveUsd').textContent='$'+Math.round(usd).toLocaleString('en-US');
+  document.getElementById('liveCbm').innerHTML=cbm.toFixed(2)+' m³';
   const sc=document.getElementById('liveScope');
-  if(CONT==='all'){ sc.innerHTML='<span class="dot" style="background:#9fb0c4"></span>All containers'; }
-  else { const col=contColor(CONT); sc.innerHTML='<span class="dot" style="background:'+col+'"></span>'+esc(CONT); }
+  if(CONT==='all') sc.innerHTML='<span class="dot" style="background:#b3a897"></span>All containers';
+  else{ const col=contColor(CONT); sc.innerHTML='<span class="dot" style="background:'+col+'"></span>'+esc(CONT); }
 }
 
 function contSelect(it){
-  const names=allContainerNames();
-  const cur=it.container||'Nerazvrščeno';
+  const names=allContainerNames(); const cur=it.container||'Nerazvrščeno';
   const opts=names.map(n=>'<option '+(n===cur?'selected':'')+'>'+esc(n)+'</option>').join('');
   return '<select class="contsel" onchange="nabSetContainer(\''+it.id+'\',this.value)">'+opts+'</select>';
 }
 
-/* ---------- ROWS ---------- */
+/* ROWS — no Product column; ↗ sits under the image */
 function renderRows(items){
   const ro=reorderSet();
   const cin=(id,f,v,w,cls)=>'<input class="cin '+(cls||'')+'" value="'+esc(v==null?'':v)+'" onchange="nabEdit(\''+id+'\',\''+f+'\',this.value)" style="width:'+w+'">';
@@ -280,20 +242,20 @@ function renderRows(items){
     const done=it.status==='done'; const skuU=(it.sku||'').toUpperCase();
     const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
     const img=it.image?'<img class="thumb" src="'+esc(it.image)+'" onclick="nabZoom(\''+esc(it.image)+'\')" alt="">':'<div class="thumb ph">📦</div>';
+    const link=it.link?'<a class="golink" href="'+esc(it.link)+'" target="_blank" title="Open product page">open ↗</a>':'<span class="golink off">—</span>';
     return '<tr class="'+(done?'done':'')+'" style="border-left:3px solid '+col+'">'
-      +'<td>'+img+'</td>'
+      +'<td><div class="imgcell">'+img+link+'</div></td>'
       +'<td>'+contSelect(it)+'</td>'
       +'<td>'+cin(it.id,'date',it.date,'76px')+'</td>'
-      +'<td style="white-space:nowrap"><input class="cin mono" value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" style="width:104px;color:var(--accent);font-weight:700">'+(reord?' <span class="reorder">↻ re-order</span>':'')+'</td>'
-      +'<td style="max-width:210px"><div class="prodcell"><div class="nm">'+(it.link?'<a href="'+esc(it.link)+'" target="_blank" title="'+esc(it.naziv||'')+'">'+esc((it.naziv||'—').slice(0,42))+' ↗</a>':esc((it.naziv||'—').slice(0,42)))+'</div></div></td>'
-      +'<td class="num">'+cin(it.id,'qty',it.qty,'52px','right')+'</td>'
-      +'<td>'+cin(it.id,'comment',it.comment,'104px')+'</td>'
-      +'<td class="num">'+cin(it.id,'unit_price',it.unit_price,'52px','right')+'</td>'
+      +'<td style="white-space:nowrap"><input class="cin mono" value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" style="width:104px;color:var(--accent);font-weight:700" title="'+esc(it.naziv||'')+'">'+(reord?' <span class="reorder">↻</span>':'')+'</td>'
+      +'<td class="num">'+cin(it.id,'qty',it.qty,'54px','right')+'</td>'
+      +'<td>'+cin(it.id,'comment',it.comment,'110px')+'</td>'
+      +'<td class="num">'+cin(it.id,'unit_price',it.unit_price,'54px','right')+'</td>'
       +'<td class="num" style="color:var(--ink2);font-weight:700">$'+num(it.total_price,0)+'</td>'
       +'<td style="min-width:170px"><textarea class="cin area field-supplier" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="supplier spec…" style="width:170px">'+esc(it.specification||'')+'</textarea></td>'
-      +'<td style="min-width:170px"><textarea class="cin area field-nego" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="price talk / lobby…" style="width:170px">'+esc(it.negotiation||'')+'</textarea></td>'
-      +'<td class="num">'+cin(it.id,'ctns',it.ctns,'48px','right')+'</td>'
-      +'<td class="num">'+cin(it.id,'cbm_ctn',it.cbm_ctn,'60px','right')+'</td>'
+      +'<td style="min-width:170px"><textarea class="cin area field-nego" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="price talk…" style="width:170px">'+esc(it.negotiation||'')+'</textarea></td>'
+      +'<td class="num">'+cin(it.id,'ctns',it.ctns,'50px','right')+'</td>'
+      +'<td class="num">'+cin(it.id,'cbm_ctn',it.cbm_ctn,'62px','right')+'</td>'
       +'<td class="num" style="color:var(--ink2)">'+num(it.total_cbm,3)+'</td>'
       +'<td class="num final">$'+num(it.final_price,2)+'</td>'
       +'<td class="rowact" style="white-space:nowrap;text-align:center">'
@@ -302,41 +264,45 @@ function renderRows(items){
       +'</td></tr>';
   }).join('');
   return '<div class="tblwrap"><table><thead><tr>'
-    +'<th>Img</th><th>Container</th><th>Date</th><th>SKU</th><th>Product</th>'
+    +'<th>Img</th><th>Container</th><th>Date</th><th>SKU</th>'
     +'<th class="num">Qty</th><th>Our note</th><th class="num">Unit $</th><th class="num">Total $</th>'
     +'<th>Spec <span class="badge-supp">supplier</span></th><th>Price talk</th>'
     +'<th class="num">Ctns</th><th class="num">CBM/CTN</th><th class="num">Tot CBM</th><th class="num">Final $</th><th></th>'
     +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 
-/* ---------- CARDS ---------- */
+/* CARDS — Concept B */
 function renderCards(items){
   const ro=reorderSet();
   return '<div class="cards">'+items.map(it=>{
     const done=it.status==='done'; const skuU=(it.sku||'').toUpperCase();
     const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
-    const img=it.image?'<img class="pimg" src="'+esc(it.image)+'" onclick="nabZoom(\''+esc(it.image)+'\')" alt="">':'<div class="pimg ph">📦</div>';
-    const fnum=(f,v)=>'<input type="text" value="'+esc(v==null?'':v)+'" onchange="nabEdit(\''+it.id+'\',\''+f+'\',this.value)">';
-    return '<div class="pcard '+(done?'done':'')+'" style="border-top-color:'+col+'">'
-      +'<div class="head">'+img
-        +'<div class="htxt"><div class="sku">'+esc(it.sku||'—')+(reord?' <span class="reorder">↻</span>':'')+'</div>'
+    const img=it.image?'<img class="pimg" src="'+esc(it.image)+'" onclick="nabZoom(\''+esc(it.image)+'\')" alt="">':'<div class="pimg">📦</div>';
+    const inp=(f,v)=>'<input value="'+esc(v==null?'':v)+'" onchange="nabEdit(\''+it.id+'\',\''+f+'\',this.value)">';
+    return '<div class="pcard '+(done?'done':'')+'"><div class="ribbon" style="background:'+col+'"></div>'
+      +'<div class="chead">'+img
+        +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'"><span class="dot" style="background:'+col+'"></span>'+esc(it.container||'Nerazvrščeno')+'</span>'
+        +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+'</div>'
         +'<div class="pname">'+(it.link?'<a href="'+esc(it.link)+'" target="_blank">'+esc(it.naziv||'—')+' ↗</a>':esc(it.naziv||'—'))+'</div>'
-        +'<div style="margin-top:6px;display:flex;gap:6px;align-items:center">'+contSelect(it)
-        +' <input value="'+esc(it.date||'')+'" onchange="nabEdit(\''+it.id+'\',\'date\',this.value)" style="width:78px;border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit"></div>'
+        +'<div class="cmeta-row">'+contSelect(it)+' <input value="'+esc(it.date||'')+'" onchange="nabEdit(\''+it.id+'\',\'date\',this.value)" style="width:80px;border:1px solid var(--line);border-radius:7px;padding:3px 6px;font-size:11px;font-family:inherit"></div>'
         +'</div></div>'
-      +'<div class="body">'
-        +'<div class="fld"><label>Qty</label>'+fnum('qty',it.qty)+'</div>'
-        +'<div class="fld"><label>Unit $</label>'+fnum('unit_price',it.unit_price)+'</div>'
-        +'<div class="fld"><label>Ctns</label>'+fnum('ctns',it.ctns)+'</div>'
-        +'<div class="fld"><label>CBM / CTN</label>'+fnum('cbm_ctn',it.cbm_ctn)+'</div>'
-        +'<div class="fld wide"><label>Our note</label><input value="'+esc(it.comment||'')+'" onchange="nabEdit(\''+it.id+'\',\'comment\',this.value)"></div>'
-        +'<div class="fld wide"><label>Specification <span class="badge-supp">supplier fills</span></label><textarea rows="2" class="field-supplier" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="dimensions, variation, set…">'+esc(it.specification||'')+'</textarea></div>'
-        +'<div class="fld wide"><label>Price negotiation</label><textarea rows="2" class="field-nego" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="target price, counter-offer, lobby notes…">'+esc(it.negotiation||'')+'</textarea></div>'
+      +'<div class="stats">'
+        +'<div class="stat"><label>Qty</label>'+inp('qty',it.qty)+'</div>'
+        +'<div class="stat"><label>Unit $</label>'+inp('unit_price',it.unit_price)+'</div>'
+        +'<div class="stat"><label>Ctns</label>'+inp('ctns',it.ctns)+'</div>'
+        +'<div class="stat"><label>CBM/CTN</label>'+inp('cbm_ctn',it.cbm_ctn)+'</div>'
       +'</div>'
-      +'<div class="foot"><span style="color:var(--ink3);font-size:11px">Total $'+num(it.total_price,0)+' · CBM '+num(it.total_cbm,3)+'</span>'
-        +'<span class="spacer"></span><span class="final">$'+num(it.final_price,2)+'</span>'
-        +'<span onclick="nabToggleDone(\''+it.id+'\','+(done?'false':'true')+')" style="cursor:pointer;font-size:15px" title="'+(done?'Reopen':'Close')+'">'+(done?'↩':'✓')+'</span>'
-        +'<span onclick="nabDelete(\''+it.id+'\')" style="cursor:pointer;font-size:14px;color:var(--bad)" title="Delete">✕</span>'
+      +'<div class="notes">'
+        +'<div class="note"><label>Our note</label><input value="'+esc(it.comment||'')+'" onchange="nabEdit(\''+it.id+'\',\'comment\',this.value)" placeholder="e.g. re-order, color, without stick"></div>'
+        +'<div class="note spec"><label>Specification <span class="badge-supp">supplier</span></label><textarea rows="2" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="dimensions, variation, set…">'+esc(it.specification||'')+'</textarea></div>'
+        +'<div class="note nego"><label>Price negotiation</label><textarea rows="2" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="target price, counter-offer, lobby…">'+esc(it.negotiation||'')+'</textarea></div>'
+        +'<div class="note urls"><label>Manual links (used when SKU has no image)</label>'
+          +'<input value="'+esc(it.link||'')+'" onchange="nabEdit(\''+it.id+'\',\'link\',this.value)" placeholder="Product page URL">'
+          +'<input value="'+esc(it.image_url||'')+'" onchange="nabSetImageUrl(\''+it.id+'\',this.value)" placeholder="Image URL (loads the picture)"></div>'
+      +'</div>'
+      +'<div class="cfoot"><span class="final" style="color:var(--good)">$'+num(it.final_price,2)+' <small>final</small></span>'
+        +'<span style="color:var(--ink3);font-size:11px">· CBM '+num(it.total_cbm,3)+'</span>'
+        +'<span class="act"><span onclick="nabToggleDone(\''+it.id+'\','+(done?'false':'true')+')" title="'+(done?'Reopen':'Close')+'">'+(done?'↩':'✓')+'</span><span onclick="nabDelete(\''+it.id+'\')" title="Delete" style="color:var(--bad)">✕</span></span>'
       +'</div></div>';
   }).join('')+'</div>';
 }
@@ -349,54 +315,54 @@ async function nabEdit(id,f,v){
   try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
     const d=await r.json(); if(d.ok){ Object.assign(it,d.item); nabRender(); } }catch(e){}
 }
+async function nabSetImageUrl(id,v){
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  it.image_url=v;
+  // če SKU ni prinesel slike, ročni URL postane slika (backend enako uveljavi)
+  if(!(it.image||'').trim() && v.trim()) it.image=v.trim();
+  await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+  nabRender();
+}
 async function nabSetContainer(id,val){
   const it=DATA.items.find(x=>x.id===id); if(!it) return;
   it.container=val;
   await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
   nabRender();
 }
-
 async function nabLookup(id,sku){
   if(!sku||!sku.trim()) return;
   const it=DATA.items.find(x=>x.id===id); if(!it) return;
   try{ const r=await fetch('/nabava-sku-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku})});
     const d=await r.json();
-    if(d.ok&&d.found){ it.naziv=d.naziv; it.link=d.link; it.image=d.image;
-      await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
-      nabRender(); } }catch(e){}
+    if(d.ok&&d.found){ it.naziv=d.naziv; it.link=it.link||d.link;
+      if(d.image) it.image=d.image;  // SKU slika ima prednost
+      await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)}); nabRender(); } }catch(e){}
 }
-
 function nabNewContainer(){
-  const name=prompt('New container name:', 'Kontejner'+(CONTLIST.length+1));
+  const name=prompt('New container name:','Kontejner'+(CONTLIST.filter(c=>/\d/.test(c)).length+1));
   if(!name||!name.trim()) return;
-  const n=name.trim();
-  if(!CONTLIST.includes(n)) CONTLIST.push(n);
-  CONT=n; nabRender();
+  const n=name.trim(); if(!CONTLIST.includes(n)) CONTLIST.push(n); CONT=n; nabRender();
 }
-
 async function nabAddRow(){
   const cont = CONT!=='all'?CONT:'Nerazvrščeno';
   const it={container:cont,date:new Date().toLocaleDateString('sl-SI'),sku:'',qty:0,unit_price:0,cbm_ctn:0,ctns:0,status:'active'};
   try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
-    const d=await r.json(); if(d.ok){ DATA.items.push(d.item); nabRender();
-      window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); } }catch(e){}
+    const d=await r.json(); if(d.ok){ DATA.items.push(d.item); nabRender(); window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); } }catch(e){}
 }
 async function nabDelete(id){
   if(!confirm('Delete this item?')) return;
-  try{ await fetch('/nabava-item/'+encodeURIComponent(id),{method:'DELETE'});
-    DATA.items=DATA.items.filter(x=>x.id!==id); nabRender(); }catch(e){}
+  try{ await fetch('/nabava-item/'+encodeURIComponent(id),{method:'DELETE'}); DATA.items=DATA.items.filter(x=>x.id!==id); nabRender(); }catch(e){}
 }
 async function nabToggleDone(id,done){
   const it=DATA.items.find(x=>x.id===id); if(!it) return;
   it.status=done?'done':'active';
-  await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
-  nabRender();
+  await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)}); nabRender();
 }
 async function nabCloseContainer(){
-  const cs=allContainerNames();
-  const c=prompt('Close which container?\n('+cs.join(', ')+')', CONT!=='all'?CONT:(cs.slice(-1)[0]||''));
+  const cs=allContainerNames().filter(c=>c!=='Nerazvrščeno');
+  const c=prompt('Close which container?\n('+cs.join(', ')+')',CONT!=='all'&&CONT!=='Nerazvrščeno'?CONT:(cs.slice(-1)[0]||''));
   if(!c) return;
-  const mv=prompt('Move still-open items to a NEW container? Enter a name (e.g. Kontejner11), or leave EMPTY to just mark them closed.','');
+  const mv=prompt('Move still-open items to a NEW container? Name (e.g. Kontejner11), or leave EMPTY to just mark them closed.','');
   try{ const r=await fetch('/nabava-container-close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({container:c,move_to:(mv||'').trim()})});
     const d=await r.json(); if(d.ok){ alert('Done — '+d.affected+' items updated.'); nabLoad(); } }catch(e){ alert('Error: '+e.message); }
 }
@@ -404,7 +370,7 @@ async function nabRefreshImages(){
   const b=document.getElementById('imgBtn'); const o=b.textContent; b.disabled=true; b.textContent='⏳ Loading images…';
   try{ const r=await fetch('/nabava-refresh-images',{method:'POST'}); const d=await r.json();
     if(d.ok){ b.textContent='✓ '+d.updated+' images'; await nabLoad(); setTimeout(()=>{b.textContent=o;b.disabled=false;},1600); }
-    else { b.textContent=o; b.disabled=false; alert('Error: '+(d.error||'')); } }
+    else{ b.textContent=o; b.disabled=false; alert('Error: '+(d.error||'')); } }
   catch(e){ b.textContent=o; b.disabled=false; alert('Error: '+e.message); }
 }
 function nabExport(){ window.open('/nabava-export-xlsx','_blank'); }
@@ -416,8 +382,7 @@ function nabCopySupplier(){
   navigator.clipboard.writeText(txt).then(()=>alert('Copied '+it.length+' items.')).catch(()=>{});
 }
 
-nabApplyViewButtons();
-nabLoad();
+nabViewBtns(); nabLoad();
 </script>
 </body>
 </html>

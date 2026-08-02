@@ -24211,14 +24211,9 @@ def _nabava_seed_if_empty():
 
 
 def _nabava_calc(it: dict) -> dict:
-    """Preračuna formule (Total, Ctns, TotalCBM, FinalPrice)."""
+    """Preračuna formule (Total, Ctns, TotalCBM, FinalPrice) — override, če je ročno vpisan."""
     def f(k, d=0.0):
-        v = it.get(k)
-        if v is None: return d
-        if isinstance(v, (int, float)):
-            try: return float(v)
-            except: return d
-        try: return float(str(v).replace(",", ".").strip())
+        try: return float(it.get(k) or 0)
         except: return d
     qty = f("qty"); unit = f("unit_price"); cbm_ctn = f("cbm_ctn"); ctns = f("ctns")
     it["total_price"] = round(unit * qty, 2)
@@ -24236,52 +24231,13 @@ def _nabava_calc(it: dict) -> dict:
     return it
 
 
-@app.get("/nabava-debug")
-async def nabava_debug(request: Request):
-    """Diagnostika: kje je seed, ali obstaja, koliko postavk je naloženih."""
-    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
-        return {"ok": False, "error": "samo glavni admin"}
-    items = _nabava_load()
-    return {
-        "ok": True,
-        "nabava_file": str(NABAVA_FILE),
-        "nabava_file_exists": NABAVA_FILE.exists(),
-        "items_count": len(items),
-        "seed_file": str(NABAVA_SEED),
-        "seed_file_exists": NABAVA_SEED.exists(),
-        "seed_count": (len(json.loads(NABAVA_SEED.read_text(encoding="utf-8"))) if NABAVA_SEED.exists() else 0),
-        "cwd": os.getcwd(),
-    }
-
-
-@app.post("/nabava-force-reseed")
-async def nabava_force_reseed(request: Request):
-    """Ponovno uvozi seed (izbriše obstoječe in naloži iz nabava_seed.json). Samo glavni admin."""
-    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
-        return {"ok": False, "error": "samo glavni admin"}
-    if not NABAVA_SEED.exists():
-        return {"ok": False, "error": f"seed datoteka ne obstaja na: {NABAVA_SEED}"}
-    try:
-        seed = json.loads(NABAVA_SEED.read_text(encoding="utf-8")) or []
-        for i, it in enumerate(seed):
-            it["id"] = it.get("id") or f"nb_seed_{i}"
-        _nabava_save(seed)
-        return {"ok": True, "imported": len(seed)}
-    except Exception as e:
-        return {"ok": False, "error": str(e)[:300]}
-
-
 def _nab_f(v):
-    """Varni float: sprejme niz z vejico, prazno, None, tekst → 0.0 namesto napake."""
-    if v is None:
-        return 0.0
+    if v is None: return 0.0
     if isinstance(v, (int, float)):
         try: return float(v)
         except Exception: return 0.0
-    try:
-        return float(str(v).replace(",", ".").strip())
-    except Exception:
-        return 0.0
+    try: return float(str(v).replace(",", ".").strip())
+    except Exception: return 0.0
 
 
 @app.get("/nabava-list")
@@ -24292,7 +24248,7 @@ async def nabava_list():
         for it in items:
             if not isinstance(it, dict):
                 continue
-            c = it.get("container") or "—"
+            c = it.get("container") or "Nerazvrščeno"
             g = conts.setdefault(c, {"container": c, "n": 0, "total_usd": 0.0, "total_cbm": 0.0,
                                      "total_qty": 0.0, "final_sum": 0.0, "active": 0, "done": 0})
             g["n"] += 1
@@ -24306,25 +24262,27 @@ async def nabava_list():
             for k in ("total_usd", "total_cbm", "final_sum"):
                 g[k] = round(g[k], 2)
         def _cont_key(c):
+            if c == "Nerazvrščeno": return 100000
             m = re.search(r'(\d+)', c or "")
-            return int(m.group(1)) if m else 9999
+            return int(m.group(1)) if m else 99999
         order = sorted(conts.values(), key=lambda g: _cont_key(g["container"]))
         return {"ok": True, "items": items, "containers": order}
     except Exception as e:
         import traceback
-        print("[nabava-list] ERR:", e, traceback.format_exc()[:500])
+        print("[nabava-list] ERR:", e, traceback.format_exc()[:400])
         return {"ok": False, "error": str(e)[:300], "items": [], "containers": []}
 
 
 @app.get("/nabava-containers")
 async def nabava_containers():
-    """Vsi obstoječi kontejnerji (za dropdown), naravni vrstni red + Nerazvrščeno na koncu."""
     items = _nabava_load()
     seen = []
     for it in items:
         c = (it.get("container") or "").strip()
         if c and c not in seen:
             seen.append(c)
+    if "Nerazvrščeno" not in seen:
+        seen.append("Nerazvrščeno")
     def _k(c):
         if c == "Nerazvrščeno": return (2, 0)
         m = re.search(r'(\d+)', c)
@@ -24334,12 +24292,10 @@ async def nabava_containers():
 
 @app.post("/nabava-refresh-images")
 async def nabava_refresh_images():
-    """Povleče slike po SKU SAMO za postavke, ki slike še nimajo. Vrne koliko posodobljenih."""
+    """Za postavke brez slike: 1) SKU slika iz feeda (prednost), 2) ročni image_url, če vpisan."""
     await ensure_cache_fresh()
     async with _nabava_lock:
         items = _nabava_load()
-    updated = 0
-    # unikatni SKU-ji brez slike (da ne kličemo istega večkrat)
     need = {}
     for it in items:
         if not (it.get("image") or "").strip() and (it.get("sku") or "").strip():
@@ -24351,14 +24307,30 @@ async def nabava_refresh_images():
                 need[sku] = imgs[0]
         except Exception:
             pass
+    updated = 0
     async with _nabava_lock:
         items = _nabava_load()
         for it in items:
+            if (it.get("image") or "").strip():
+                continue
             sk = (it.get("sku") or "").strip().upper()
-            if sk in need and need[sk] and not (it.get("image") or "").strip():
+            # 1) SKU slika ima prednost
+            if sk in need and need[sk]:
                 it["image"] = need[sk]; updated += 1
+            # 2) ročni URL slike samo če SKU nima slike
+            elif (it.get("image_url") or "").strip():
+                it["image"] = it["image_url"].strip(); updated += 1
         _nabava_save(items)
     return {"ok": True, "updated": updated, "skus_checked": len(need)}
+
+
+@app.get("/nabava-debug")
+async def nabava_debug(request: Request):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return {"ok": False, "error": "samo glavni admin"}
+    items = _nabava_load()
+    return {"ok": True, "nabava_file": str(NABAVA_FILE), "exists": NABAVA_FILE.exists(),
+            "items": len(items), "seed": str(NABAVA_SEED), "seed_exists": NABAVA_SEED.exists()}
 
 
 @app.post("/nabava-item")
@@ -24368,6 +24340,9 @@ async def nabava_item_save(data: dict):
         items = _nabava_load()
         it = dict(data or {})
         _nabava_calc(it)
+        # ročni URL slike: uporabi kot sliko samo, če SKU ni prinesel slike
+        if not (it.get("image") or "").strip() and (it.get("image_url") or "").strip():
+            it["image"] = it["image_url"].strip()
         if it.get("id"):
             for i, x in enumerate(items):
                 if x.get("id") == it["id"]:
@@ -24400,14 +24375,15 @@ async def nabava_sku_lookup(data: dict):
         return {"ok": False, "error": "Ni SKU."}
     await ensure_cache_fresh()
     url, naziv = _kbatch_sku_to_url(sku)
-    # re-order: isti SKU v obstoječih postavkah (zadnja cena)
+    imgs = await _kbatch_images_by_sku(sku, 1)
+    image = imgs[0] if imgs else ""
     hist = []
     for it in _nabava_load():
         if str(it.get("sku") or "").strip().upper() == sku.upper():
             hist.append({"container": it.get("container"), "unit_price": it.get("unit_price"),
                          "qty": it.get("qty"), "date": it.get("date")})
     return {"ok": True, "sku": sku, "naziv": naziv or "", "link": url or "",
-            "found": bool(url), "history": hist}
+            "image": image, "found": bool(url or image), "history": hist}
 
 
 @app.post("/nabava-container-close")
