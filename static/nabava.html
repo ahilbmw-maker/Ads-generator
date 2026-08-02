@@ -328,9 +328,19 @@ async function nabLoad(){
   try{
     const [r1,r2]=await Promise.all([fetch('/nabava-list'),fetch('/nabava-containers')]);
     const d=await r1.json(); const dc=await r2.json();
-    if(d.ok){ DATA=d; CONTLIST=(dc.ok?dc.containers:[])||[]; nabViewBtns(); nabRender(); }
+    if(d.ok){ DATA=d; CONTLIST=(dc.ok?dc.containers:[])||[]; nabViewBtns(); nabRender(); nabBackfillDates(); }
     else document.getElementById('content').innerHTML='<div class="empty"><b>Load error.</b>'+esc(d.error||'')+'</div>';
   }catch(e){ document.getElementById('content').innerHTML='<div class="empty"><b>Could not load data.</b>Refresh to try again.</div>'; }
+}
+async function nabBackfillDates(){
+  const today=new Date().toLocaleDateString('sl-SI');
+  const empty=DATA.items.filter(i=>!(i.date||'').trim());
+  if(!empty.length) return;
+  for(const it of empty){
+    it.date=today;
+    try{ await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)}); }catch(e){}
+  }
+  nabRender();
 }
 function nabViewBtns(){ document.getElementById('vt-rows').classList.toggle('on',VIEW==='rows'); document.getElementById('vt-cards').classList.toggle('on',VIEW==='cards'); }
 function nabSetView(v){ VIEW=v; localStorage.setItem('nab_view',v); nabViewBtns(); nabRender(); }
