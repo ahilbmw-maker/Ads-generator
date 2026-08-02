@@ -24211,9 +24211,14 @@ def _nabava_seed_if_empty():
 
 
 def _nabava_calc(it: dict) -> dict:
-    """Preračuna formule (Total, Ctns, TotalCBM, FinalPrice) — override, če je ročno vpisan."""
+    """Preračuna formule (Total, Ctns, TotalCBM, FinalPrice)."""
     def f(k, d=0.0):
-        try: return float(it.get(k) or 0)
+        v = it.get(k)
+        if v is None: return d
+        if isinstance(v, (int, float)):
+            try: return float(v)
+            except: return d
+        try: return float(str(v).replace(",", ".").strip())
         except: return d
     qty = f("qty"); unit = f("unit_price"); cbm_ctn = f("cbm_ctn"); ctns = f("ctns")
     it["total_price"] = round(unit * qty, 2)
@@ -24266,31 +24271,49 @@ async def nabava_force_reseed(request: Request):
         return {"ok": False, "error": str(e)[:300]}
 
 
+def _nab_f(v):
+    """Varni float: sprejme niz z vejico, prazno, None, tekst → 0.0 namesto napake."""
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        try: return float(v)
+        except Exception: return 0.0
+    try:
+        return float(str(v).replace(",", ".").strip())
+    except Exception:
+        return 0.0
+
+
 @app.get("/nabava-list")
 async def nabava_list():
-    items = _nabava_load()
-    # vsote po kontejnerjih
-    conts = {}
-    for it in items:
-        c = it.get("container") or "—"
-        g = conts.setdefault(c, {"container": c, "n": 0, "total_usd": 0.0, "total_cbm": 0.0,
-                                 "total_qty": 0.0, "final_sum": 0.0, "active": 0, "done": 0})
-        g["n"] += 1
-        g["total_usd"] += float(it.get("total_price") or 0)
-        g["total_cbm"] += float(it.get("total_cbm") or 0)
-        g["total_qty"] += float(it.get("qty") or 0)
-        g["final_sum"] += float(it.get("final_price") or 0) * float(it.get("qty") or 0)
-        if it.get("status") == "done": g["done"] += 1
-        else: g["active"] += 1
-    for g in conts.values():
-        for k in ("total_usd", "total_cbm", "final_sum"):
-            g[k] = round(g[k], 2)
-    # naravni sort kontejnerjev
-    def _cont_key(c):
-        m = re.search(r'(\d+)', c or "")
-        return int(m.group(1)) if m else 9999
-    order = sorted(conts.values(), key=lambda g: _cont_key(g["container"]))
-    return {"ok": True, "items": items, "containers": order}
+    try:
+        items = _nabava_load()
+        conts = {}
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            c = it.get("container") or "—"
+            g = conts.setdefault(c, {"container": c, "n": 0, "total_usd": 0.0, "total_cbm": 0.0,
+                                     "total_qty": 0.0, "final_sum": 0.0, "active": 0, "done": 0})
+            g["n"] += 1
+            g["total_usd"] += _nab_f(it.get("total_price"))
+            g["total_cbm"] += _nab_f(it.get("total_cbm"))
+            g["total_qty"] += _nab_f(it.get("qty"))
+            g["final_sum"] += _nab_f(it.get("final_price")) * _nab_f(it.get("qty"))
+            if it.get("status") == "done": g["done"] += 1
+            else: g["active"] += 1
+        for g in conts.values():
+            for k in ("total_usd", "total_cbm", "final_sum"):
+                g[k] = round(g[k], 2)
+        def _cont_key(c):
+            m = re.search(r'(\d+)', c or "")
+            return int(m.group(1)) if m else 9999
+        order = sorted(conts.values(), key=lambda g: _cont_key(g["container"]))
+        return {"ok": True, "items": items, "containers": order}
+    except Exception as e:
+        import traceback
+        print("[nabava-list] ERR:", e, traceback.format_exc()[:500])
+        return {"ok": False, "error": str(e)[:300], "items": [], "containers": []}
 
 
 @app.post("/nabava-item")
