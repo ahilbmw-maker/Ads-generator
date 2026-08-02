@@ -24203,7 +24203,31 @@ def _nabava_load() -> list:
     return []
 
 
+NABAVA_BAK = DATA_DIR / "nabava_items.bak.json"
+NABAVA_BAK_DIR = DATA_DIR / "nabava_backups"
+
+
 def _nabava_save(items: list):
+    # 1) backup prejšnjega stanja (za takojšnjo obnovo, če gre kaj narobe)
+    try:
+        if NABAVA_FILE.exists():
+            NABAVA_BAK.write_text(NABAVA_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+    except Exception as e:
+        print(f"[nabava] bak err: {e}")
+    # 2) dnevni datirani backup (ena datoteka na dan)
+    try:
+        NABAVA_BAK_DIR.mkdir(exist_ok=True, parents=True)
+        day = _time.strftime("%Y-%m-%d")
+        daily = NABAVA_BAK_DIR / f"nabava_{day}.json"
+        daily.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        # obdrži zadnjih 30 dnevnih backupov
+        baks = sorted(NABAVA_BAK_DIR.glob("nabava_*.json"))
+        for old in baks[:-30]:
+            try: old.unlink()
+            except Exception: pass
+    except Exception as e:
+        print(f"[nabava] daily bak err: {e}")
+    # 3) atomarni zapis glavne datoteke
     tmp = NABAVA_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, NABAVA_FILE)
@@ -24456,6 +24480,44 @@ async def nabava_bulk_container(data: dict):
                 it["container"] = cont; n += 1
         _nabava_save(items)
     return {"ok": True, "affected": n, "container": cont}
+
+
+NABAVA_DEFAULT_SETTINGS = {"freight": 72.0, "rate": 0.84, "customs": 10.0}
+
+
+@app.get("/nabava-settings")
+async def nabava_get_settings():
+    meta = _nabava_meta_load()
+    st = {**NABAVA_DEFAULT_SETTINGS, **(meta.get("settings") or {})}
+    return {"ok": True, "settings": st}
+
+
+@app.post("/nabava-settings")
+async def nabava_set_settings(data: dict):
+    """Shrani nastavitve končne cene NA DISK (skupne za vso ekipo)."""
+    async with _nabava_lock:
+        meta = _nabava_meta_load()
+        cur = {**NABAVA_DEFAULT_SETTINGS, **(meta.get("settings") or {})}
+        for k in ("freight", "rate", "customs"):
+            if k in (data or {}):
+                try: cur[k] = float(data[k])
+                except Exception: pass
+        meta["settings"] = cur
+        _nabava_meta_save(meta)
+    return {"ok": True, "settings": cur}
+
+
+@app.get("/nabava-backup-json")
+async def nabava_backup_json():
+    """Prenos celotne kopije nabave (za ročni backup)."""
+    items = _nabava_load()
+    payload = json.dumps({"exported": _time.strftime("%Y-%m-%d %H:%M:%S"),
+                          "count": len(items), "items": items}, ensure_ascii=False, indent=2)
+    import io as _io
+    buf = _io.BytesIO(payload.encode("utf-8")); buf.seek(0)
+    fn = f"nabava_backup_{_time.strftime('%Y-%m-%d')}.json"
+    return StreamingResponse(buf, media_type="application/json",
+                             headers={"Content-Disposition": f'attachment; filename="{fn}"'})
 
 
 @app.get("/nabava-export-xlsx")

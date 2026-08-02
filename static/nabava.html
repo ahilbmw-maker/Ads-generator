@@ -152,6 +152,7 @@
   .viewbtn{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:6px 12px;border-radius:9px;
     background:var(--accent);color:#fff;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap;}
   .viewbtn:hover{filter:brightness(1.06);}
+  .viewbtn.viewbtn-add{background:var(--accent-soft);color:var(--accent);border:1px dashed var(--accent-line);font-family:inherit;cursor:pointer;}
   .pimgwrap{position:relative;width:88px;height:88px;flex-shrink:0;}
   .pimgwrap .pimg{width:88px;height:88px;}
   .pimgwrap .over{position:absolute;inset:0;}
@@ -192,6 +193,7 @@
     <div class="grow"></div>
     <button class="btn ghost" onclick="nabRefreshImages()" id="imgBtn">🖼 Load images</button>
     <button class="btn ghost" onclick="nabExport()">⬇ Export XLSX</button>
+    <button class="btn ghost" onclick="window.open('/nabava-backup-json','_blank')" title="Download full backup (JSON)">💾 Backup</button>
     <button class="btn warn" onclick="nabCloseContainer()">📦 Close container</button>
     <button class="btn primary" onclick="nabAddRow()">＋ New item</button>
     <button class="btn ghost" onclick="nabOpenSettings()" title="Freight, exchange rate, customs">⚙ Settings</button>
@@ -271,9 +273,13 @@ let CONTLIST=[];
 let CONT=(localStorage.getItem('nab_cont')||'Nerazvrščeno');
 let VIEW=(localStorage.getItem('nab_view')||'cards');
 let SEL=new Set();
-// nastavitve končne cene (EUR) — nastavljivo v ⚙ Settings
+// nastavitve končne cene (EUR) — shranjene NA DISK (skupne za ekipo)
 let SET={freight:72, rate:0.84, customs:10};
 try{ const sv=JSON.parse(localStorage.getItem('nab_settings')||'null'); if(sv) SET={...SET,...sv}; }catch(e){}
+async function nabLoadSettings(){
+  try{ const r=await fetch('/nabava-settings'); const d=await r.json();
+    if(d.ok&&d.settings){ SET={...SET,...d.settings}; localStorage.setItem('nab_settings',JSON.stringify(SET)); nabRender(); } }catch(e){}
+}
 function nabFinal(it){
   const cbm=parseFloat(it.total_cbm)||0, qty=parseFloat(it.qty)||0, unit=parseFloat(it.unit_price)||0;
   if(qty<=0) return 0;
@@ -293,6 +299,7 @@ function nabSaveSettings(){
   if(!isNaN(r)) SET.rate=r;
   if(!isNaN(c)) SET.customs=c;
   localStorage.setItem('nab_settings',JSON.stringify(SET));
+  fetch('/nabava-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(SET)}).catch(()=>{});
   document.getElementById('setModal').style.display='none';
   nabRender();
 }
@@ -448,10 +455,12 @@ function renderRows(items){
     const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
     const dimg=(it.image||'').trim()||(it.image_url||'').trim();
     const img=dimg
-      ?'<div class="thumbwrap"><div class="thumb ph">📦</div><img class="thumb over" src="'+esc(dimg)+'" onerror="nabImgErr(this)" onclick="nabZoom(\''+esc(dimg)+'\')" alt=""></div>'
+      ?'<div class="thumbwrap"><div class="thumb ph">📦</div><img class="thumb over" src="'+esc(dimg)+'" data-alt="'+esc((it.image_url||'').trim())+'" onerror="nabImgErr(this)" onclick="nabZoom(\''+esc(dimg)+'\')" alt=""></div>'
       :'<div class="thumbwrap"><div class="thumb ph">📦</div></div>';
-    const link=(it.link?'<a class="golink" href="'+esc(it.link)+'" target="_blank" title="Open product page">🔗 view</a>':'')
-      +'<span class="golink addrow" style="cursor:pointer;display:'+(dimg?'none':(it.link?'none':'inline'))+'" onclick="nabOpenLinks(\''+it.id+'\')">＋ link</span>';
+    const link=(it.link
+        ?'<a class="golink" href="'+esc(it.link)+'" target="_blank" title="Open product page">🔗 view</a>'
+        :'<span class="golink addrow" style="cursor:pointer" onclick="nabOpenLinks(\''+it.id+'\')">＋ link</span>')
+      +'<span class="golink" style="cursor:pointer;color:var(--ink3);font-size:10px" title="Edit image / product URL" onclick="nabOpenLinks(\''+it.id+'\')">✎</span>';
     const pup=window._PUP[it.id];
     const pupTag=pup?' <span class="priceup" title="Previous price $'+pup.prev.toFixed(2)+'">↑ +'+pup.pct+'%</span>':'';
     const seld=SEL.has(it.id);
@@ -492,7 +501,7 @@ function renderCards(items){
     const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
     const dimg=(it.image||'').trim()||(it.image_url||'').trim();
     const img=dimg
-      ?'<div class="pimgwrap"><div class="pimg ph">📦</div><img class="pimg over" src="'+esc(dimg)+'" onerror="nabImgErr(this)" onclick="nabZoom(\''+esc(dimg)+'\')" alt=""></div>'
+      ?'<div class="pimgwrap"><div class="pimg ph">📦</div><img class="pimg over" src="'+esc(dimg)+'" data-alt="'+esc((it.image_url||'').trim())+'" onerror="nabImgErr(this)" onclick="nabZoom(\''+esc(dimg)+'\')" alt=""></div>'
       :'<div class="pimgwrap"><div class="pimg ph">📦</div></div>';
     const inp=(f,v)=>'<input value="'+esc(v==null?'':v)+'" onchange="nabEdit(\''+it.id+'\',\''+f+'\',this.value)">';
     const pup=window._PUP[it.id];
@@ -503,7 +512,9 @@ function renderCards(items){
         +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'"><span class="dot" style="background:'+col+'"></span>'+esc(it.container||'Nerazvrščeno')+'</span>'
         +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+pupTag+'</div>'
         +'<div class="pname">'+esc(it.naziv||'—')+'</div>'
-        +(it.link?'<a class="viewbtn" href="'+esc(it.link)+'" target="_blank">🔗 View product</a>':'')
+        +(it.link
+            ?'<a class="viewbtn" href="'+esc(it.link)+'" target="_blank">🔗 View product</a>'
+            :'<button class="viewbtn viewbtn-add" onclick="nabOpenLinks(\''+it.id+'\')">＋ Add product link</button>')
         +'<div class="cmeta-row">'+contSelect(it)+' <input value="'+esc(it.date||'')+'" onchange="nabEdit(\''+it.id+'\',\'date\',this.value)" style="width:80px;border:1px solid var(--line);border-radius:7px;padding:3px 6px;font-size:11px;font-family:inherit"></div>'
         +'</div></div>'
       +'<div class="stats">'
@@ -516,7 +527,7 @@ function renderCards(items){
         +'<div class="note"><label>Our note</label><input value="'+esc(it.comment||'')+'" onchange="nabEdit(\''+it.id+'\',\'comment\',this.value)" placeholder="e.g. re-order, color, without stick"></div>'
         +'<div class="note spec"><label>Specification <span class="badge-supp">supplier</span></label><textarea class="autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="dimensions, variation, set…">'+esc(it.specification||'')+'</textarea></div>'
         +'<div class="note nego"><label>Price negotiation</label><textarea class="autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="target price, counter-offer, lobby…">'+esc(it.negotiation||'')+'</textarea></div>'
-        +'<button class="addlink" onclick="nabOpenLinks(\''+it.id+'\')" style="display:'+(dimg?'none':'block')+'">🔗 Add image / link</button>'
+        +'<button class="addlink" onclick="nabOpenLinks(\''+it.id+'\')">🔗 '+(dimg?'Edit':'Add')+' image / link</button>'
       +'</div>'
       +'<div class="cfoot"><span class="final" style="color:var(--good)">€'+nabFinal(it).toFixed(2)+' <small>final</small></span>'
         +'<span style="color:var(--ink3);font-size:11px">· CBM '+num(it.total_cbm,3)+'</span>'
@@ -542,6 +553,9 @@ function nabGrow(t){
 }
 function nabAutoSize(){ document.querySelectorAll('textarea.autogrow').forEach(nabGrow); }
 function nabImgErr(img){
+  // poskusi rezervni ročni URL, preden pokažeš placeholder
+  const alt=img.getAttribute('data-alt')||'';
+  if(alt && img.src!==alt){ img.src=alt; img.removeAttribute('data-alt'); return; }
   img.style.display='none';
   const root=img.closest('.pcard')||img.closest('tr'); if(!root) return;
   const b=root.querySelector('.addlink'); if(b) b.style.display='block';
@@ -565,8 +579,9 @@ async function nabSaveLinks(){
   const img=document.getElementById('mImg').value.trim();
   const link=document.getElementById('mLink').value.trim();
   it.image_url=img; it.link=link;
+  it.image=img;   // ročno dodana slika postane glavna (prepiše morebitno pokvarjeno SKU sliko)
   const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
-  try{ const d=await r.json(); if(d.ok) Object.assign(it,d.item); }catch(e){}
+  try{ const d=await r.json(); if(d.ok){ Object.assign(it,d.item); it.image=img; it.image_url=img; } }catch(e){}
   document.getElementById('modal').style.display='none';
   nabRender();
 }
@@ -654,7 +669,7 @@ function nabCopySupplier(){
   navigator.clipboard.writeText(txt).then(()=>alert('Copied '+it.length+' items.')).catch(()=>{});
 }
 
-nabViewBtns(); nabLoad();
+nabViewBtns(); nabLoad(); nabLoadSettings();
 </script>
 </body>
 </html>
