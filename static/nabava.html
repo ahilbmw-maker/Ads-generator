@@ -63,7 +63,7 @@
   .thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:18px;}
   .golink{font-size:10px;color:var(--accent);text-decoration:none;font-weight:700;}
   .golink.off{color:var(--ink3);cursor:default;}
-  .cin{border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);font-size:12px;font-family:inherit;padding:4px 6px;width:100%;transition:border-color .12s,box-shadow .12s;}
+  .cin{border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);font-size:12px;font-family:inherit;padding:4px 6px;width:100%;box-sizing:border-box;transition:border-color .12s,box-shadow .12s;}
   .cin:hover{border-color:var(--ink3);}
   .cin:focus{outline:none;border-color:var(--accent);background:#fff;box-shadow:0 0 0 2px var(--accent-soft);}
   .cin::placeholder{color:var(--ink3);}
@@ -101,10 +101,10 @@
   .cmeta-row{margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
   .cmeta-row input:hover,.contsel:hover{border-color:var(--ink3);}
   .cmeta-row input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 16px 12px;}
-  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:8px 9px;}
-  .stat label{font-size:9px;font-weight:800;letter-spacing:0.4px;text-transform:uppercase;color:var(--ink3);display:block;}
-  .stat input{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px;border:1px solid var(--line);border-radius:7px;background:#fff;width:100%;min-width:0;padding:4px 7px;margin-top:3px;color:var(--ink);}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:0 14px 12px;}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:7px 7px;min-width:0;}
+  .stat label{font-size:8.5px;font-weight:800;letter-spacing:0.3px;text-transform:uppercase;color:var(--ink3);display:block;white-space:nowrap;}
+  .stat input{box-sizing:border-box;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:13.5px;border:1px solid var(--line);border-radius:7px;background:#fff;width:100%;min-width:0;padding:5px 6px;margin-top:3px;color:var(--ink);text-align:left;}
   .stat{overflow:visible;}
   .stat input:hover{border-color:var(--ink3);}
   .stat input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
@@ -136,13 +136,25 @@
   .live .s .v{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:18px;}
   .live .grow{flex:1;} .live .hint{font-size:11px;color:#b3a897;}
 
-  .selbar{position:fixed;left:0;right:0;bottom:48px;background:#3a332c;color:#f3f0ea;padding:11px 22px;display:flex;gap:22px;align-items:center;z-index:41;flex-wrap:wrap;box-shadow:0 -2px 12px rgba(0,0,0,0.2);}
-  .selbar .selcount{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px;}
-  .selbar .selcount b{font-size:18px;}
-  .selbar .s .k{font-size:9px;letter-spacing:0.7px;text-transform:uppercase;color:#b3a897;font-weight:800;}
-  .selbar .s .v{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:16px;}
-  .selbar .grow{flex:1;}
-  .selassign{border:1px solid #5a524a;background:#2b2620;color:#f3f0ea;border-radius:8px;padding:6px 9px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;}
+  .selpill{position:fixed;left:50%;bottom:64px;transform:translateX(-50%) translateY(8px);opacity:0;
+    display:flex;align-items:center;gap:16px;background:var(--ink);color:#f3f0ea;
+    padding:10px 12px 10px 14px;border-radius:16px;z-index:45;
+    box-shadow:0 12px 34px rgba(0,0,0,0.28);transition:opacity .16s,transform .16s;white-space:nowrap;}
+  .selpill.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .selpill .pill-badge{background:var(--accent);color:#fff;border-radius:10px;padding:5px 12px;font-weight:800;
+    font-family:'Bricolage Grotesque',sans-serif;font-size:15px;}
+  .selpill .s{display:flex;flex-direction:column;}
+  .selpill .s .k{font-size:9px;letter-spacing:0.7px;text-transform:uppercase;color:#b3a897;font-weight:800;}
+  .selpill .s .v{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:16px;line-height:1.1;}
+  .selpill .s .v.cbm{color:#f5c06b;}
+  .selpill .pill-div{width:1px;height:28px;background:#4a423a;}
+  .selpill .pill-sel{background:#2b2620;color:#f3f0ea;border:1px solid #4a423a;border-radius:9px;
+    padding:8px 10px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;max-width:150px;}
+  .selpill .pill-move{background:#fff;color:var(--ink);border:none;border-radius:10px;padding:9px 15px;
+    font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;}
+  .selpill .pill-move:hover{filter:brightness(0.94);}
+  .selpill .pill-x{background:transparent;border:none;color:#b3a897;font-size:15px;cursor:pointer;padding:6px 8px;border-radius:8px;}
+  .selpill .pill-x:hover{background:#2b2620;color:#fff;}
   .selchk{width:16px;height:16px;cursor:pointer;accent-color:var(--accent);}
   .pcard.sel{box-shadow:0 0 0 2px var(--accent);}
   tr.sel{background:var(--accent-soft)!important;}
@@ -211,16 +223,15 @@
 
   <div class="wrap" id="content"></div>
 
-  <div class="selbar" id="selbar" style="display:none">
-    <span class="selcount"><b id="selN">0</b> selected</span>
+  <div class="selpill" id="selbar" style="display:none">
+    <span class="pill-badge" id="selN">0</span>
     <div class="s"><div class="k">Pieces</div><div class="v" id="selPcs">0</div></div>
     <div class="s"><div class="k">Value</div><div class="v" id="selUsd">$0</div></div>
-    <div class="s"><div class="k">CBM selected</div><div class="v" id="selCbm" style="color:#f5c06b">0.00 m³</div></div>
-    <div class="grow"></div>
-    <span style="font-size:12px;color:#d9cdba">Assign to:</span>
-    <select id="selAssign" class="selassign"></select>
-    <button class="btn" style="background:#fff;color:var(--ink);border:none;font-weight:800" onclick="nabBulkAssign()">Move selected</button>
-    <button class="btn ghost" style="color:#d9cdba;border-color:#4a423a" onclick="nabClearSel()">Clear</button>
+    <div class="s"><div class="k">CBM</div><div class="v cbm" id="selCbm">0.00 m³</div></div>
+    <div class="pill-div"></div>
+    <select id="selAssign" class="pill-sel"></select>
+    <button class="pill-move" onclick="nabBulkAssign()">Move →</button>
+    <button class="pill-x" onclick="nabClearSel()" title="Clear selection">✕</button>
   </div>
 
   <div class="live" id="livebar">
@@ -405,7 +416,7 @@ function nabToggleSel(id,ev){ if(ev){ev.stopPropagation();} if(SEL.has(id)) SEL.
 function nabClearSel(){ SEL.clear(); nabRender(); }
 function nabSelBar(){
   const bar=document.getElementById('selbar');
-  if(!SEL.size){ bar.style.display='none'; return; }
+  if(!SEL.size){ bar.classList.remove('show'); bar.style.display='none'; return; }
   const chosen=DATA.items.filter(i=>SEL.has(i.id));
   const pcs=chosen.reduce((s,i)=>s+num(i.qty),0);
   const usd=chosen.reduce((s,i)=>s+num(i.total_price),0);
@@ -418,6 +429,7 @@ function nabSelBar(){
   const names=allContainerNames();
   sel.innerHTML=names.map(n=>'<option>'+esc(n)+'</option>').join('')+'<option value="__new__">＋ new container…</option>';
   bar.style.display='flex';
+  requestAnimationFrame(()=>bar.classList.add('show'));
 }
 async function nabBulkAssign(){
   let cont=document.getElementById('selAssign').value;
@@ -551,7 +563,19 @@ function nabGrow(t){
   }
   t.style.height=t.scrollHeight+'px';
 }
-function nabAutoSize(){ document.querySelectorAll('textarea.autogrow').forEach(nabGrow); }
+function nabAutoSize(){
+  document.querySelectorAll('textarea.autogrow').forEach(nabGrow);
+  nabFitNumbers();
+}
+function nabFitNumbers(){
+  // če vpisana vrednost ne gre v polje (reže), postopno zmanjšaj font
+  document.querySelectorAll('.stat input, td.num .cin').forEach(el=>{
+    el.style.fontSize='';
+    let fs=parseFloat(getComputedStyle(el).fontSize);
+    let guard=0;
+    while(el.scrollWidth>el.clientWidth+1 && fs>9 && guard<12){ fs-=0.5; el.style.fontSize=fs+'px'; guard++; }
+  });
+}
 function nabImgErr(img){
   // poskusi rezervni ročni URL, preden pokažeš placeholder
   const alt=img.getAttribute('data-alt')||'';
