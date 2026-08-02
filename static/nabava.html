@@ -36,6 +36,11 @@
 
   .controls{padding:14px 22px 4px;display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
   .lbl{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink3);}
+  .contfilter{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);
+    font-family:inherit;font-size:13px;font-weight:700;padding:8px 12px;cursor:pointer;min-width:210px;}
+  .contfilter:hover{border-color:var(--ink3);}
+  .contfilter:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .cfdot{width:12px;height:12px;border-radius:50%;background:var(--ink3);display:inline-block;}
   .kchip{display:inline-flex;align-items:center;gap:8px;padding:6px 13px;border-radius:22px;border:1px solid var(--line);background:var(--panel);font-weight:700;font-size:13px;cursor:pointer;color:var(--ink);}
   .kchip .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
   .kchip .n{font-size:11px;color:var(--ink3);font-weight:600;}
@@ -186,16 +191,10 @@
 
   <div class="controls">
     <span class="lbl">Container</span>
-    <div id="contChips" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>
-    <button class="btn ghost" style="padding:5px 11px" onclick="nabNewContainer()">＋ new container</button>
+    <span id="contDot" class="cfdot"></span>
+    <select id="contFilter" class="contfilter" onchange="nabSetCont(this.value)"></select>
+    <button class="btn ghost" style="padding:6px 12px" onclick="nabNewContainer()">＋ new container</button>
     <div class="grow"></div>
-    <span class="toggle-lbl" style="gap:9px" title="ON skrije vse kontejnerje iz filtra in prikaže samo Nerazvrščeno (nerazporejene izdelke). Za pregled kontejnerjev izklopi.">
-      <span style="color:var(--ink2)">Only unsorted</span>
-      <span id="hcSwitch" onclick="nabToggleHideClosed()" role="switch" style="position:relative;width:42px;height:24px;border-radius:12px;cursor:pointer;transition:background .18s;flex-shrink:0">
-        <span id="hcKnob" style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:left .18s"></span>
-      </span>
-      <span id="hcState" style="font-size:11px;font-weight:800;min-width:24px"></span>
-    </span>
     <button class="btn ghost" onclick="nabCopySupplier()">📋 Copy for supplier</button>
   </div>
 
@@ -245,10 +244,8 @@ function num(v,d){const n=parseFloat(v);return isNaN(n)?0:(d!=null?+n.toFixed(d)
 
 let DATA={items:[],containers:[],closed:[]};
 let CONTLIST=[];
-let CONT='all';
+let CONT=(localStorage.getItem('nab_cont')||'Nerazvrščeno');
 let VIEW=(localStorage.getItem('nab_view')||'cards');
-let HIDECLOSED=(localStorage.getItem('nab_hideclosed')==='1'); // privzeto OFF (fokus vklopi ročno)
-let CLOSED=new Set();
 let SEL=new Set();
 
 const PALETTE=['#2f6fb0','#2f9e6f','#c67a1e','#8a5cc4','#c0398a','#0e8a9e','#b08500','#c0392b','#4a52c4','#0f8a5f','#b23fb0','#1f77c4','#9a5b12','#6b52c4'];
@@ -260,13 +257,13 @@ async function nabLoad(){
   try{
     const [r1,r2]=await Promise.all([fetch('/nabava-list'),fetch('/nabava-containers')]);
     const d=await r1.json(); const dc=await r2.json();
-    if(d.ok){ DATA=d; CLOSED=new Set(d.closed||[]); CONTLIST=(dc.ok?dc.containers:[])||[]; nabViewBtns(); nabRender(); }
+    if(d.ok){ DATA=d; CONTLIST=(dc.ok?dc.containers:[])||[]; nabViewBtns(); nabRender(); }
     else document.getElementById('content').innerHTML='<div class="empty"><b>Load error.</b>'+esc(d.error||'')+'</div>';
   }catch(e){ document.getElementById('content').innerHTML='<div class="empty"><b>Could not load data.</b>Refresh to try again.</div>'; }
 }
 function nabViewBtns(){ document.getElementById('vt-rows').classList.toggle('on',VIEW==='rows'); document.getElementById('vt-cards').classList.toggle('on',VIEW==='cards'); }
 function nabSetView(v){ VIEW=v; localStorage.setItem('nab_view',v); nabViewBtns(); nabRender(); }
-function nabSetCont(c){ CONT=c; nabRender(); }
+function nabSetCont(c){ CONT=c; localStorage.setItem('nab_cont',c); nabRender(); }
 
 function allContainerNames(){
   const s=new Set(CONTLIST); DATA.items.forEach(i=>{ if(i.container) s.add(i.container); }); s.add('Nerazvrščeno');
@@ -313,40 +310,30 @@ function priceUpMap(){
 }
 window._PUP={};
 
-function isHidden(it){
-  // ON = prikaži samo nerazvrščene (skrij vse kontejnerje)
-  if(HIDECLOSED && (it.container||'Nerazvrščeno')!=='Nerazvrščeno') return true;
-  return false;
-}
+function isHidden(it){ return false; }
 
 function nabRender(){
-  nabApplyToggle();
   window._PUP=priceUpMap();
   const names=allContainerNames();
-  const cnt={};   // aktivne postavke (za prikaz števila)
-  const allCnt={}; // VSE postavke (za odločitev, ali kontejner obstaja)
+  const cnt={}, allCnt={};
   DATA.items.forEach(i=>{const c=i.container||'Nerazvrščeno';
     allCnt[c]=(allCnt[c]||0)+1;
     if(i.status!=='done') cnt[c]=(cnt[c]||0)+1;});
-  // če je izbran kontejner ostal prazen (0 postavk) → skoči na All
-  if(CONT!=='all' && CONT!=='Nerazvrščeno' && !allCnt[CONT]) CONT='all';
-  if(HIDECLOSED) CONT='Nerazvrščeno';   // fokus mode: vedno nerazvrščeno
-  const cc=document.getElementById('contChips');
-  let h='';
-  if(HIDECLOSED){
-    // ON: samo Nerazvrščeno čip (vsi kontejnerji skriti — brez zmešnjave pri 100 kontejnerjih)
-    const col=contColor('Nerazvrščeno');
-    h='<span class="kchip on" onclick="nabSetCont(\'Nerazvrščeno\')" style="color:'+col+';background:'+hexA(col,0.10)+'"><span class="dot" style="background:'+col+'"></span><span style="color:var(--ink)">Nerazvrščeno</span> <span class="n">('+(cnt['Nerazvrščeno']||0)+')</span></span>'
-      +'<span style="font-size:11px;color:var(--ink3);margin-left:6px">containers hidden · toggle off to see them</span>';
-  } else {
-    h='<span class="kchip all '+(CONT==='all'?'on':'')+'" onclick="nabSetCont(\'all\')">All <span class="n">('+DATA.items.filter(i=>i.status!=='done').length+')</span></span>';
-    names.forEach(c=>{
-      const col=contColor(c),on=CONT===c;
-      if(c!=='Nerazvrščeno' && !allCnt[c]) return;   // skrij prazne
-      h+='<span class="kchip '+(on?'on':'')+'" onclick="nabSetCont(\''+esc(c)+'\')" style="color:'+col+';'+(on?'background:'+hexA(col,0.10)+';':'')+'">'
-        +'<span class="dot" style="background:'+col+'"></span><span style="color:var(--ink)">'+esc(c)+'</span> <span class="n">('+(cnt[c]||0)+')</span></span>'; });
+  // če je izbran kontejner ostal prazen → nazaj na Nerazvrščeno
+  if(CONT!=='all' && CONT!=='Nerazvrščeno' && !allCnt[CONT]){ CONT='Nerazvrščeno'; localStorage.setItem('nab_cont',CONT); }
+
+  // dropdown filter: All · Nerazvrščeno · [polni kontejnerji]
+  const sel=document.getElementById('contFilter');
+  if(sel){
+    const totalActive=DATA.items.filter(i=>i.status!=='done').length;
+    let opts='<option value="all"'+(CONT==='all'?' selected':'')+'>All containers ('+totalActive+')</option>';
+    opts+='<option value="Nerazvrščeno"'+(CONT==='Nerazvrščeno'?' selected':'')+'>Nerazvrščeno ('+(cnt['Nerazvrščeno']||0)+')</option>';
+    names.forEach(c=>{ if(c==='Nerazvrščeno') return; if(!allCnt[c]) return;
+      opts+='<option value="'+esc(c)+'"'+(CONT===c?' selected':'')+'>'+esc(c)+' ('+(cnt[c]||0)+')</option>'; });
+    sel.innerHTML=opts;
   }
-  cc.innerHTML=h;
+  const dot=document.getElementById('contDot');
+  if(dot) dot.style.background = CONT==='all'?'var(--ink3)':contColor(CONT);
 
   const items=visibleItems();
   const box=document.getElementById('content');
@@ -355,17 +342,6 @@ function nabRender(){
   nabLive(items);
   nabSelBar();
 }
-
-function nabApplyToggle(){
-  const sw=document.getElementById('hcSwitch'),kn=document.getElementById('hcKnob'),st=document.getElementById('hcState');
-  if(!sw) return;
-  sw.style.background=HIDECLOSED?'#2f9e6f':'#c9bfae';
-  kn.style.left=HIDECLOSED?'20px':'2px';
-  st.textContent=HIDECLOSED?'ON':'OFF'; st.style.color=HIDECLOSED?'#2f9e6f':'#a99f90';
-}
-function nabToggleHideClosed(){ HIDECLOSED=!HIDECLOSED; localStorage.setItem('nab_hideclosed',HIDECLOSED?'1':'0');
-  CONT = HIDECLOSED ? 'Nerazvrščeno' : 'all';   // ON → fokus na nerazvrščeno; OFF → vsi
-  nabRender(); }
 
 /* selekcija */
 function nabToggleSel(id,ev){ if(ev){ev.stopPropagation();} if(SEL.has(id)) SEL.delete(id); else SEL.add(id); nabRender(); }
@@ -420,12 +396,12 @@ function renderRows(items){
   const rows=items.map(it=>{
     const done=it.status==='done'; const skuU=(it.sku||'').toUpperCase();
     const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
-    const img=it.image
-      ?'<div class="thumbwrap"><div class="thumb ph">📦</div><img class="thumb over" src="'+esc(it.image)+'" onerror="nabImgErr(this)" onclick="nabZoom(\''+esc(it.image)+'\')" alt=""></div>'
+    const dimg=(it.image||'').trim()||(it.image_url||'').trim();
+    const img=dimg
+      ?'<div class="thumbwrap"><div class="thumb ph">📦</div><img class="thumb over" src="'+esc(dimg)+'" onerror="nabImgErr(this)" onclick="nabZoom(\''+esc(dimg)+'\')" alt=""></div>'
       :'<div class="thumbwrap"><div class="thumb ph">📦</div></div>';
     const link=(it.link?'<a class="golink" href="'+esc(it.link)+'" target="_blank" title="Open product page">🔗 view</a>':'')
-      +'<span class="golink addrow" style="cursor:pointer;display:'+(it.image?'none':(it.link?'none':'inline'))+'" onclick="nabOpenLinks(\''+it.id+'\')">＋ link</span>'
-      +((it.image||it.link)?'':'');
+      +'<span class="golink addrow" style="cursor:pointer;display:'+(dimg?'none':(it.link?'none':'inline'))+'" onclick="nabOpenLinks(\''+it.id+'\')">＋ link</span>';
     const pup=window._PUP[it.id];
     const pupTag=pup?' <span class="priceup" title="Previous price $'+pup.prev.toFixed(2)+'">↑ +'+pup.pct+'%</span>':'';
     const seld=SEL.has(it.id);
@@ -464,8 +440,9 @@ function renderCards(items){
   return '<div class="cards">'+items.map(it=>{
     const done=it.status==='done'; const skuU=(it.sku||'').toUpperCase();
     const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
-    const img=it.image
-      ?'<div class="pimgwrap"><div class="pimg ph">📦</div><img class="pimg over" src="'+esc(it.image)+'" onerror="nabImgErr(this)" onclick="nabZoom(\''+esc(it.image)+'\')" alt=""></div>'
+    const dimg=(it.image||'').trim()||(it.image_url||'').trim();
+    const img=dimg
+      ?'<div class="pimgwrap"><div class="pimg ph">📦</div><img class="pimg over" src="'+esc(dimg)+'" onerror="nabImgErr(this)" onclick="nabZoom(\''+esc(dimg)+'\')" alt=""></div>'
       :'<div class="pimgwrap"><div class="pimg ph">📦</div></div>';
     const inp=(f,v)=>'<input value="'+esc(v==null?'':v)+'" onchange="nabEdit(\''+it.id+'\',\''+f+'\',this.value)">';
     const pup=window._PUP[it.id];
@@ -489,7 +466,7 @@ function renderCards(items){
         +'<div class="note"><label>Our note</label><input value="'+esc(it.comment||'')+'" onchange="nabEdit(\''+it.id+'\',\'comment\',this.value)" placeholder="e.g. re-order, color, without stick"></div>'
         +'<div class="note spec"><label>Specification <span class="badge-supp">supplier</span></label><textarea rows="2" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="dimensions, variation, set…">'+esc(it.specification||'')+'</textarea></div>'
         +'<div class="note nego"><label>Price negotiation</label><textarea rows="2" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="target price, counter-offer, lobby…">'+esc(it.negotiation||'')+'</textarea></div>'
-        +'<button class="addlink" onclick="nabOpenLinks(\''+it.id+'\')" style="display:'+(it.image?'none':'block')+'">🔗 Add image / link</button>'
+        +'<button class="addlink" onclick="nabOpenLinks(\''+it.id+'\')" style="display:'+(dimg?'none':'block')+'">🔗 Add image / link</button>'
       +'</div>'
       +'<div class="cfoot"><span class="final" style="color:var(--good)">$'+num(it.final_price,2)+' <small>final</small></span>'
         +'<span style="color:var(--ink3);font-size:11px">· CBM '+num(it.total_cbm,3)+'</span>'
@@ -522,8 +499,8 @@ async function nabSaveLinks(){
   const img=document.getElementById('mImg').value.trim();
   const link=document.getElementById('mLink').value.trim();
   it.image_url=img; it.link=link;
-  if(img && !(it.image||'').trim()) it.image=img;   // SKU slika ima prednost; ročna samo če ni SKU slike
-  await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+  const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+  try{ const d=await r.json(); if(d.ok) Object.assign(it,d.item); }catch(e){}
   document.getElementById('modal').style.display='none';
   nabRender();
 }
@@ -539,7 +516,7 @@ async function nabSetImageUrl(id,v){
   const it=DATA.items.find(x=>x.id===id); if(!it) return;
   it.image_url=v;
   // če SKU ni prinesel slike, ročni URL postane slika (backend enako uveljavi)
-  if(!(it.image||'').trim() && v.trim()) it.image=v.trim();
+  // dimg (it.image||it.image_url) poskrbi za prikaz — image_url je dovolj
   await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
   nabRender();
 }
@@ -554,9 +531,13 @@ async function nabLookup(id,sku){
   const it=DATA.items.find(x=>x.id===id); if(!it) return;
   try{ const r=await fetch('/nabava-sku-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku})});
     const d=await r.json();
-    if(d.ok&&d.found){ it.naziv=d.naziv; it.link=it.link||d.link;
-      if(d.image) it.image=d.image;  // SKU slika ima prednost
-      await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)}); nabRender(); } }catch(e){}
+    if(d.ok&&d.found){
+      if(d.naziv) it.naziv=d.naziv;
+      if(d.link) it.link=d.link;      // vedno posodobi povezavo do izdelka (tudi nerazvrščeni)
+      if(d.image) it.image=d.image;   // SKU slika ima prednost
+      const r2=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+      try{ const d2=await r2.json(); if(d2.ok) Object.assign(it,d2.item); }catch(e){}
+      nabRender(); } }catch(e){}
 }
 async function nabNewContainer(){
   const name=prompt('New container name:','Kontejner'+(CONTLIST.filter(c=>/\d/.test(c)).length+1));
