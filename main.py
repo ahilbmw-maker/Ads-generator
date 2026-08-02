@@ -24290,6 +24290,9 @@ async def nabava_list():
         return {"ok": False, "error": str(e)[:300], "items": [], "containers": []}
 
 
+NABAVA_CONT_STATUSES = ["preparing", "in_transit", "arrived"]
+
+
 @app.get("/nabava-containers")
 async def nabava_containers():
     items = _nabava_load()
@@ -24304,7 +24307,28 @@ async def nabava_containers():
         if c == "Nerazvrščeno": return (2, 0)
         m = re.search(r'(\d+)', c)
         return (0, int(m.group(1))) if m else (1, 0)
-    return {"ok": True, "containers": sorted(seen, key=_k)}
+    meta = _nabava_meta_load()
+    statuses = meta.get("container_status") or {}
+    return {"ok": True, "containers": sorted(seen, key=_k), "statuses": statuses}
+
+
+@app.post("/nabava-container-status")
+async def nabava_container_status(data: dict):
+    """Nastavi status kontejnerja (preparing / in_transit / arrived). Shrani na disk."""
+    name = str(data.get("container") or "").strip()
+    status = str(data.get("status") or "").strip()
+    if not name:
+        return {"ok": False, "error": "Manjka ime kontejnerja."}
+    async with _nabava_lock:
+        meta = _nabava_meta_load()
+        cs = meta.get("container_status") or {}
+        if status in NABAVA_CONT_STATUSES:
+            cs[name] = status
+        else:
+            cs.pop(name, None)   # prazen status = odstrani
+        meta["container_status"] = cs
+        _nabava_meta_save(meta)
+    return {"ok": True, "statuses": meta["container_status"]}
 
 
 @app.post("/nabava-refresh-images")
@@ -24382,44 +24406,6 @@ async def nabava_item_delete(iid: str):
         items = [x for x in _nabava_load() if x.get("id") != iid]
         _nabava_save(items)
     return {"ok": True}
-
-
-@app.post("/nabava-title-from-url")
-async def nabava_title_from_url(data: dict):
-    """Potegne naziv izdelka iz podane strani (og:title → <title> → h1)."""
-    url = str(data.get("url") or "").strip()
-    if not url or not url.lower().startswith(("http://", "https://")):
-        return {"ok": False, "error": "Neveljaven URL."}
-    try:
-        async with httpx.AsyncClient(timeout=12, follow_redirects=True,
-                                     headers={"User-Agent": "Mozilla/5.0 (SubanBot)"}) as cli:
-            r = await cli.get(url)
-        html = r.text or ""
-    except Exception as e:
-        return {"ok": False, "error": f"Ni dostopa do strani: {str(e)[:120]}"}
-    title = ""
-    # 1) og:title
-    m = re.search(r'<meta[^>]+property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html, re.I)
-    if not m:
-        m = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*property=["\']og:title["\']', html, re.I)
-    if m:
-        title = m.group(1)
-    # 2) <title>
-    if not title:
-        m = re.search(r'<title[^>]*>(.*?)</title>', html, re.I | re.S)
-        if m:
-            title = m.group(1)
-    # 3) prvi <h1>
-    if not title:
-        m = re.search(r'<h1[^>]*>(.*?)</h1>', html, re.I | re.S)
-        if m:
-            title = re.sub(r'<[^>]+>', '', m.group(1))
-    # počisti
-    import html as _htmlmod
-    title = _htmlmod.unescape(re.sub(r'\s+', ' ', title)).strip()
-    # odreži pogoste pripone " | Trgovina", " - Maaarket" ipd.
-    title = re.split(r'\s[|\u2013\u2014-]\s', title)[0].strip() if title else title
-    return {"ok": bool(title), "title": title[:200]}
 
 
 @app.post("/nabava-sku-lookup")

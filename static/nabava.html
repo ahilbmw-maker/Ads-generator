@@ -41,6 +41,25 @@
   .contfilter:hover{border-color:var(--ink3);}
   .contfilter:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
   .cfdot{width:12px;height:12px;border-radius:50%;background:var(--ink3);display:inline-block;}
+  .cst-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;margin-left:6px;white-space:nowrap;vertical-align:middle;}
+  .cst-dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
+  .qs-wrap{display:inline-flex;align-items:center;gap:5px;margin-left:4px;}
+  .qs-wrap .qs-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--ink3);}
+  .qs-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--panel);
+    border-radius:8px;padding:5px 9px;font-family:inherit;font-size:11px;font-weight:700;color:var(--ink2);cursor:pointer;}
+  .qs-btn:hover{border-color:var(--ink3);}
+  .qs-btn.on{font-weight:800;}
+  /* manage modal */
+  #mgModal{position:fixed;inset:0;background:rgba(20,15,10,0.5);display:none;align-items:center;justify-content:center;z-index:120;padding:20px;}
+  #mgModal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;width:520px;max-width:94vw;max-height:80vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
+  #mgModal h3{font-family:'Bricolage Grotesque',sans-serif;margin:0 0 4px;font-size:18px;}
+  #mgModal .sub{font-size:12px;color:var(--ink3);margin-bottom:16px;}
+  #mgModal .mrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);}
+  #mgModal .mrow .cname{font-weight:800;font-family:'Bricolage Grotesque',sans-serif;flex:1;display:flex;align-items:center;gap:7px;}
+  #mgModal .mrow .cn-dot{width:10px;height:10px;border-radius:50%;}
+  #mgModal .mrow .cnt{font-size:11px;color:var(--ink3);font-weight:700;}
+  #mgModal .stbtns{display:flex;gap:5px;}
+  #mgModal .acts{display:flex;justify-content:flex-end;margin-top:16px;}
   .kchip{display:inline-flex;align-items:center;gap:8px;padding:6px 13px;border-radius:22px;border:1px solid var(--line);background:var(--panel);font-weight:700;font-size:13px;cursor:pointer;color:var(--ink);}
   .kchip .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
   .kchip .n{font-size:11px;color:var(--ink3);font-weight:600;}
@@ -221,7 +240,9 @@
     <span id="contDot" class="cfdot"></span>
     <select id="contFilter" class="contfilter" onchange="nabSetCont(this.value)"></select>
     <button class="btn ghost" style="padding:6px 12px" onclick="nabNewContainer()">＋ new container</button>
+    <span id="contStatusQuick" class="qs-wrap" style="display:none"></span>
     <div class="grow"></div>
+    <button class="btn ghost" onclick="nabManageContainers()">🚢 Containers</button>
     <button class="btn ghost" onclick="nabCopySupplier()">📋 Copy for supplier</button>
   </div>
 
@@ -247,6 +268,13 @@
     <div class="grow"></div>
     <span class="hint">Watch CBM to know when to close a container (~68 m³ = full 40ft).</span>
   </div>
+
+  <div id="mgModal"><div class="box">
+    <h3>🚢 Containers status</h3>
+    <div class="sub">Set where each container is: preparing, in transit, or arrived. Saved on the server.</div>
+    <div id="mgList"></div>
+    <div class="acts"><button class="btn ghost" onclick="document.getElementById('mgModal').style.display='none'">Close</button></div>
+  </div></div>
 
   <div id="setModal"><div class="box">
     <h3>Final price settings</h3>
@@ -285,6 +313,22 @@ function num(v,d){const n=parseFloat(v);return isNaN(n)?0:(d!=null?+n.toFixed(d)
 
 let DATA={items:[],containers:[],closed:[]};
 let CONTLIST=[];
+let CSTATUS={};   // { imeKontejnerja: "preparing"|"in_transit"|"arrived" }
+const CST_META={
+  preparing:  {label:'Preparing',  color:'#c67a1e', bg:'#fbefd9', dot:'#e08a1e'},
+  in_transit: {label:'In transit', color:'#1f6feb', bg:'#e3edfd', dot:'#1f6feb'},
+  arrived:    {label:'Arrived',    color:'#0f9d58', bg:'#e0f3e8', dot:'#12a35f'}
+};
+function cstLabel(st){ return CST_META[st]?CST_META[st].label:''; }
+function cstBadge(st){ const m=CST_META[st]; if(!m) return '';
+  return '<span class="cst-badge" style="background:'+m.bg+';color:'+m.color+'"><span class="cst-dot" style="background:'+m.dot+'"></span>'+m.label+'</span>'; }
+async function nabSetContStatus(name, st){
+  if(name==='all'||name==='Nerazvrščeno'||!name) return;
+  if(st){ CSTATUS[name]=st; } else { delete CSTATUS[name]; }
+  try{ await fetch('/nabava-container-status',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({container:name,status:st||''})}); }catch(e){}
+  nabRender();
+}
 let CONT=(localStorage.getItem('nab_cont')||'Nerazvrščeno');
 let VIEW=(localStorage.getItem('nab_view')||'cards');
 let SEL=new Set();
@@ -300,6 +344,22 @@ function nabFinal(it){
   if(qty<=0) return 0;
   return ((cbm*SET.freight)/qty) + (unit*SET.rate*(1+SET.customs/100));
 }
+function nabManageContainers(){
+  const cnt={}; DATA.items.forEach(i=>{const c=i.container||'Nerazvrščeno'; if(i.status!=='done') cnt[c]=(cnt[c]||0)+1;});
+  const names=allContainerNames().filter(c=>c!=='Nerazvrščeno' && (cnt[c]||0)>0);
+  const box=document.getElementById('mgList');
+  if(!names.length){ box.innerHTML='<div style="color:var(--ink3);font-size:13px;padding:12px 0">No containers yet. Assign items to a container first.</div>'; }
+  else{
+    box.innerHTML=names.map(c=>{
+      const col=contColor(c), cur=CSTATUS[c]||'';
+      const btns=Object.keys(CST_META).map(k=>{const m=CST_META[k];const on=cur===k;
+        return '<button class="qs-btn'+(on?' on':'')+'" style="'+(on?'background:'+m.bg+';color:'+m.color+';border-color:'+m.color:'')+'" onclick="nabMgSet(\''+esc(c)+'\',\''+(on?'':k)+'\')"><span class="cst-dot" style="background:'+m.dot+'"></span>'+m.label+'</button>';}).join('');
+      return '<div class="mrow"><div class="cname"><span class="cn-dot" style="background:'+col+'"></span>'+esc(c)+' <span class="cnt">('+(cnt[c]||0)+')</span></div><div class="stbtns">'+btns+'</div></div>';
+    }).join('');
+  }
+  document.getElementById('mgModal').style.display='flex';
+}
+async function nabMgSet(name, st){ await nabSetContStatus(name, st); nabManageContainers(); }
 function nabOpenSettings(){
   document.getElementById('setFreight').value=SET.freight;
   document.getElementById('setRate').value=SET.rate;
@@ -328,7 +388,7 @@ async function nabLoad(){
   try{
     const [r1,r2]=await Promise.all([fetch('/nabava-list'),fetch('/nabava-containers')]);
     const d=await r1.json(); const dc=await r2.json();
-    if(d.ok){ DATA=d; CONTLIST=(dc.ok?dc.containers:[])||[]; nabViewBtns(); nabRender(); nabBackfillDates(); }
+    if(d.ok){ DATA=d; CONTLIST=(dc.ok?dc.containers:[])||[]; CSTATUS=(dc.ok&&dc.statuses)?dc.statuses:{}; nabViewBtns(); nabRender(); nabBackfillDates(); }
     else document.getElementById('content').innerHTML='<div class="empty"><b>Load error.</b>'+esc(d.error||'')+'</div>';
   }catch(e){ document.getElementById('content').innerHTML='<div class="empty"><b>Could not load data.</b>Refresh to try again.</div>'; }
 }
@@ -410,11 +470,24 @@ function nabRender(){
     let opts='<option value="all"'+(CONT==='all'?' selected':'')+'>All containers ('+totalActive+')</option>';
     opts+='<option value="Nerazvrščeno"'+(CONT==='Nerazvrščeno'?' selected':'')+'>Nerazvrščeno ('+(cnt['Nerazvrščeno']||0)+')</option>';
     names.forEach(c=>{ if(c==='Nerazvrščeno') return; if(!allCnt[c]) return;
-      opts+='<option value="'+esc(c)+'"'+(CONT===c?' selected':'')+'>'+esc(c)+' ('+(cnt[c]||0)+')</option>'; });
+      const st=CSTATUS[c]?' · '+cstLabel(CSTATUS[c]):'';
+      opts+='<option value="'+esc(c)+'"'+(CONT===c?' selected':'')+'>'+esc(c)+' ('+(cnt[c]||0)+')'+st+'</option>'; });
     sel.innerHTML=opts;
   }
   const dot=document.getElementById('contDot');
   if(dot) dot.style.background = CONT==='all'?'var(--ink3)':contColor(CONT);
+  // hitri izbirnik statusa za trenutno izbrani kontejner
+  const qs=document.getElementById('contStatusQuick');
+  if(qs){
+    if(CONT==='all'||CONT==='Nerazvrščeno'){ qs.style.display='none'; }
+    else{
+      qs.style.display='inline-flex';
+      const cur=CSTATUS[CONT]||'';
+      qs.innerHTML='<span class="qs-lbl">Status:</span>'+
+        Object.keys(CST_META).map(k=>{const m=CST_META[k];const on=cur===k;
+          return '<button class="qs-btn'+(on?' on':'')+'" style="'+(on?'background:'+m.bg+';color:'+m.color+';border-color:'+m.color:'')+'" onclick="nabSetContStatus(\''+esc(CONT)+'\',\''+(on?'':k)+'\')"><span class="cst-dot" style="background:'+m.dot+'"></span>'+m.label+'</button>';}).join('');
+    }
+  }
 
   const items=visibleItems();
   const box=document.getElementById('content');
@@ -535,7 +608,7 @@ function renderCards(items){
     const seld=SEL.has(it.id);
     return '<div class="pcard '+(done?'done':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)"><div class="ribbon" style="background:'+col+'"></div>'
       +'<div class="chead">'+img
-        +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'" title="'+esc(it.container||'Nerazvrščeno')+'"><span class="dot" style="background:'+col+'"></span><span class="ktag-name">'+esc(it.container||'Nerazvrščeno')+'</span></span>'
+        +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'" title="'+esc(it.container||'Nerazvrščeno')+'"><span class="dot" style="background:'+col+'"></span><span class="ktag-name">'+esc(it.container||'Nerazvrščeno')+'</span></span>'+(CSTATUS[it.container]?cstBadge(CSTATUS[it.container]):'')
         +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+pupTag+'</div>'
         +'<div class="pname">'+esc(it.naziv||'—')+'</div>'
         +(it.link
