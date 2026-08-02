@@ -117,6 +117,19 @@
   .live .s .v{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:18px;}
   .live .grow{flex:1;} .live .hint{font-size:11px;color:#b3a897;}
 
+  .selbar{position:fixed;left:0;right:0;bottom:48px;background:#3a332c;color:#f3f0ea;padding:11px 22px;display:flex;gap:22px;align-items:center;z-index:41;flex-wrap:wrap;box-shadow:0 -2px 12px rgba(0,0,0,0.2);}
+  .selbar .selcount{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px;}
+  .selbar .selcount b{font-size:18px;}
+  .selbar .s .k{font-size:9px;letter-spacing:0.7px;text-transform:uppercase;color:#b3a897;font-weight:800;}
+  .selbar .s .v{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:16px;}
+  .selbar .grow{flex:1;}
+  .selassign{border:1px solid #5a524a;background:#2b2620;color:#f3f0ea;border-radius:8px;padding:6px 9px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;}
+  .selchk{width:16px;height:16px;cursor:pointer;accent-color:var(--accent);}
+  .pcard.sel{box-shadow:0 0 0 2px var(--accent);}
+  tr.sel{background:var(--accent-soft)!important;}
+  .cardchk{position:absolute;top:10px;left:10px;z-index:3;width:18px;height:18px;cursor:pointer;accent-color:var(--accent);}
+  .pcard{position:relative;}
+  .priceup{font-size:9px;font-weight:800;color:#fff;background:var(--bad);border-radius:4px;padding:1px 5px;white-space:nowrap;cursor:help;}
   #lb{position:fixed;inset:0;background:rgba(20,15,10,0.85);display:none;align-items:center;justify-content:center;z-index:100;padding:24px;}
   #lb img{max-width:90vw;max-height:90vh;border-radius:14px;}
   .empty{text-align:center;padding:60px 20px;color:var(--ink3);}
@@ -141,11 +154,29 @@
     <div id="contChips" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>
     <button class="btn ghost" style="padding:5px 11px" onclick="nabNewContainer()">＋ new container</button>
     <div class="grow"></div>
-    <label class="toggle-lbl"><input type="checkbox" id="hideDone" checked onchange="nabRender()"> Hide closed</label>
+    <span class="toggle-lbl" style="gap:9px" title="ON skrije zaključene kontejnerje in postavke; Nerazvrščeno ostane vidno">
+      <span style="color:var(--ink2)">Hide closed</span>
+      <span id="hcSwitch" onclick="nabToggleHideClosed()" role="switch" style="position:relative;width:42px;height:24px;border-radius:12px;cursor:pointer;transition:background .18s;flex-shrink:0">
+        <span id="hcKnob" style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:left .18s"></span>
+      </span>
+      <span id="hcState" style="font-size:11px;font-weight:800;min-width:24px"></span>
+    </span>
     <button class="btn ghost" onclick="nabCopySupplier()">📋 Copy for supplier</button>
   </div>
 
   <div class="wrap" id="content"></div>
+
+  <div class="selbar" id="selbar" style="display:none">
+    <span class="selcount"><b id="selN">0</b> selected</span>
+    <div class="s"><div class="k">Pieces</div><div class="v" id="selPcs">0</div></div>
+    <div class="s"><div class="k">Value</div><div class="v" id="selUsd">$0</div></div>
+    <div class="s"><div class="k">CBM selected</div><div class="v" id="selCbm" style="color:#f5c06b">0.00 m³</div></div>
+    <div class="grow"></div>
+    <span style="font-size:12px;color:#d9cdba">Assign to:</span>
+    <select id="selAssign" class="selassign"></select>
+    <button class="btn" style="background:#fff;color:var(--ink);border:none;font-weight:800" onclick="nabBulkAssign()">Move selected</button>
+    <button class="btn ghost" style="color:#d9cdba;border-color:#4a423a" onclick="nabClearSel()">Clear</button>
+  </div>
 
   <div class="live" id="livebar">
     <span class="scope" id="liveScope">All containers</span>
@@ -163,10 +194,13 @@
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function num(v,d){const n=parseFloat(v);return isNaN(n)?0:(d!=null?+n.toFixed(d):n);}
 
-let DATA={items:[],containers:[]};
+let DATA={items:[],containers:[],closed:[]};
 let CONTLIST=[];
 let CONT='all';
 let VIEW=(localStorage.getItem('nab_view')||'cards');
+let HIDECLOSED=(localStorage.getItem('nab_hideclosed')!=='0'); // privzeto ON
+let CLOSED=new Set();
+let SEL=new Set();
 
 const PALETTE=['#2f6fb0','#2f9e6f','#c67a1e','#8a5cc4','#c0398a','#0e8a9e','#b08500','#c0392b','#4a52c4','#0f8a5f','#b23fb0','#1f77c4','#9a5b12','#6b52c4'];
 function contColor(name){ if(!name||name==='Nerazvrščeno') return '#a99f90';
@@ -177,7 +211,7 @@ async function nabLoad(){
   try{
     const [r1,r2]=await Promise.all([fetch('/nabava-list'),fetch('/nabava-containers')]);
     const d=await r1.json(); const dc=await r2.json();
-    if(d.ok){ DATA=d; CONTLIST=(dc.ok?dc.containers:[])||[]; nabViewBtns(); nabRender(); }
+    if(d.ok){ DATA=d; CLOSED=new Set(d.closed||[]); CONTLIST=(dc.ok?dc.containers:[])||[]; nabViewBtns(); nabRender(); }
     else document.getElementById('content').innerHTML='<div class="empty"><b>Load error.</b>'+esc(d.error||'')+'</div>';
   }catch(e){ document.getElementById('content').innerHTML='<div class="empty"><b>Could not load data.</b>Refresh to try again.</div>'; }
 }
@@ -193,19 +227,66 @@ function allContainerNames(){
 function visibleItems(){
   let it=DATA.items.slice();
   if(CONT!=='all') it=it.filter(x=>(x.container||'Nerazvrščeno')===CONT);
-  if(document.getElementById('hideDone')?.checked) it=it.filter(x=>x.status!=='done');
+  it=it.filter(x=>!isHidden(x));
   return it;
 }
 function reorderSet(){ const m={}; DATA.items.forEach(i=>{const k=(i.sku||'').toUpperCase(); if(k)(m[k]=m[k]||new Set()).add(i.container);}); return m; }
 
+function parseDate(s){
+  if(!s) return 0;
+  const p=String(s).split(/[^0-9]+/).filter(Boolean).map(Number);
+  if(p.length<3) return 0;
+  let d,m,y;
+  if(p[0]>31){ y=p[0]; m=p[1]; d=p[2]; } else { d=p[0]; m=p[1]; y=p[2]; }
+  if(y<100) y+=2000;
+  return new Date(y,(m||1)-1,d||1).getTime()||0;
+}
+// za vsak item: če je isti SKU prej imel NIŽJO ceno, vrni {pct, prev}
+function priceUpMap(){
+  const groups={};
+  DATA.items.forEach(i=>{ const k=(i.sku||'').toUpperCase(); if(!k) return;
+    (groups[k]=groups[k]||[]).push(i); });
+  const out={};
+  Object.values(groups).forEach(arr=>{
+    if(arr.length<2) return;
+    const sorted=arr.slice().sort((a,b)=>parseDate(a.date)-parseDate(b.date));
+    for(let i=1;i<sorted.length;i++){
+      const cur=parseFloat(sorted[i].unit_price)||0;
+      // najdi zadnjo PREJŠNJO ceno (prvi prejšnji z veljavno ceno)
+      let prev=null;
+      for(let j=i-1;j>=0;j--){ const pv=parseFloat(sorted[j].unit_price)||0; if(pv>0){ prev=pv; break; } }
+      if(prev && cur>prev){
+        out[sorted[i].id]={pct:Math.round((cur-prev)/prev*100), prev:prev};
+      }
+    }
+  });
+  return out;
+}
+window._PUP={};
+
+function isHidden(it){
+  if(HIDECLOSED){
+    if(it.status==='done') return true;
+    const c=it.container||'Nerazvrščeno';
+    if(c!=='Nerazvrščeno' && CLOSED.has(c)) return true;
+  } else {
+    if(document.getElementById('hideDoneFallback')) {}
+  }
+  return false;
+}
+
 function nabRender(){
+  nabApplyToggle();
+  window._PUP=priceUpMap();
   const names=allContainerNames();
   const cnt={}; DATA.items.forEach(i=>{const c=i.container||'Nerazvrščeno'; if(i.status!=='done') cnt[c]=(cnt[c]||0)+1;});
   const cc=document.getElementById('contChips');
   let h='<span class="kchip all '+(CONT==='all'?'on':'')+'" onclick="nabSetCont(\'all\')">All <span class="n">('+DATA.items.filter(i=>i.status!=='done').length+')</span></span>';
-  names.forEach(c=>{ const col=contColor(c),on=CONT===c;
-    h+='<span class="kchip '+(on?'on':'')+'" onclick="nabSetCont(\''+esc(c)+'\')" style="color:'+col+';'+(on?'background:'+hexA(col,0.10)+';':'')+'">'
-      +'<span class="dot" style="background:'+col+'"></span><span style="color:var(--ink)">'+esc(c)+'</span> <span class="n">('+(cnt[c]||0)+')</span></span>'; });
+  names.forEach(c=>{
+    const col=contColor(c),on=CONT===c,closed=(c!=='Nerazvrščeno'&&CLOSED.has(c));
+    if(closed && HIDECLOSED && !on) return; // skrij zaključene čipe, ko je ON
+    h+='<span class="kchip '+(on?'on':'')+'" onclick="nabSetCont(\''+esc(c)+'\')" style="color:'+col+';'+(on?'background:'+hexA(col,0.10)+';':'')+(closed?'opacity:0.55;':'')+'" '+(closed?'title="Closed container">':'>')
+      +'<span class="dot" style="background:'+col+'"></span><span style="color:var(--ink)">'+(closed?'🔒 ':'')+esc(c)+'</span> <span class="n">('+(cnt[c]||0)+')</span></span>'; });
   cc.innerHTML=h;
 
   const items=visibleItems();
@@ -213,6 +294,43 @@ function nabRender(){
   if(!items.length) box.innerHTML='<div class="empty"><b>No items here.</b>Add one with ＋ New item, or pick another container.</div>';
   else box.innerHTML = VIEW==='cards'?renderCards(items):renderRows(items);
   nabLive(items);
+  nabSelBar();
+}
+
+function nabApplyToggle(){
+  const sw=document.getElementById('hcSwitch'),kn=document.getElementById('hcKnob'),st=document.getElementById('hcState');
+  if(!sw) return;
+  sw.style.background=HIDECLOSED?'#2f9e6f':'#c9bfae';
+  kn.style.left=HIDECLOSED?'20px':'2px';
+  st.textContent=HIDECLOSED?'ON':'OFF'; st.style.color=HIDECLOSED?'#2f9e6f':'#a99f90';
+}
+function nabToggleHideClosed(){ HIDECLOSED=!HIDECLOSED; localStorage.setItem('nab_hideclosed',HIDECLOSED?'1':'0'); nabRender(); }
+
+/* selekcija */
+function nabToggleSel(id,ev){ if(ev){ev.stopPropagation();} if(SEL.has(id)) SEL.delete(id); else SEL.add(id); nabRender(); }
+function nabClearSel(){ SEL.clear(); nabRender(); }
+function nabSelBar(){
+  const bar=document.getElementById('selbar');
+  if(!SEL.size){ bar.style.display='none'; return; }
+  const chosen=DATA.items.filter(i=>SEL.has(i.id));
+  const pcs=chosen.reduce((s,i)=>s+num(i.qty),0);
+  const usd=chosen.reduce((s,i)=>s+num(i.total_price),0);
+  const cbm=chosen.reduce((s,i)=>s+num(i.total_cbm),0);
+  document.getElementById('selN').textContent=SEL.size;
+  document.getElementById('selPcs').textContent=pcs.toLocaleString('en-US');
+  document.getElementById('selUsd').textContent='$'+Math.round(usd).toLocaleString('en-US');
+  document.getElementById('selCbm').textContent=cbm.toFixed(2)+' m³';
+  const sel=document.getElementById('selAssign');
+  const names=allContainerNames();
+  sel.innerHTML=names.map(n=>'<option>'+esc(n)+'</option>').join('')+'<option value="__new__">＋ new container…</option>';
+  bar.style.display='flex';
+}
+async function nabBulkAssign(){
+  let cont=document.getElementById('selAssign').value;
+  if(cont==='__new__'){ const nm=prompt('New container name:','Kontejner'+(CONTLIST.filter(c=>/\d/.test(c)).length+1)); if(!nm||!nm.trim())return; cont=nm.trim(); if(!CONTLIST.includes(cont))CONTLIST.push(cont); }
+  const ids=[...SEL];
+  try{ const r=await fetch('/nabava-bulk-container',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,container:cont})});
+    const d=await r.json(); if(d.ok){ ids.forEach(id=>{const it=DATA.items.find(x=>x.id===id); if(it) it.container=cont;}); SEL.clear(); await nabLoad(); } }catch(e){ alert('Error: '+e.message); }
 }
 
 function nabLive(items){
@@ -243,14 +361,18 @@ function renderRows(items){
     const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
     const img=it.image?'<img class="thumb" src="'+esc(it.image)+'" onclick="nabZoom(\''+esc(it.image)+'\')" alt="">':'<div class="thumb ph">📦</div>';
     const link=it.link?'<a class="golink" href="'+esc(it.link)+'" target="_blank" title="Open product page">open ↗</a>':'<span class="golink off">—</span>';
-    return '<tr class="'+(done?'done':'')+'" style="border-left:3px solid '+col+'">'
+    const pup=window._PUP[it.id];
+    const pupTag=pup?' <span class="priceup" title="Previous price $'+pup.prev.toFixed(2)+'">↑ +'+pup.pct+'%</span>':'';
+    const seld=SEL.has(it.id);
+    return '<tr class="'+(done?'done':'')+(seld?' sel':'')+'" style="border-left:3px solid '+col+'">'
+      +'<td style="text-align:center"><input type="checkbox" class="selchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)"></td>'
       +'<td><div class="imgcell">'+img+link+'</div></td>'
       +'<td>'+contSelect(it)+'</td>'
       +'<td>'+cin(it.id,'date',it.date,'76px')+'</td>'
       +'<td style="white-space:nowrap"><input class="cin mono" value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" style="width:104px;color:var(--accent);font-weight:700" title="'+esc(it.naziv||'')+'">'+(reord?' <span class="reorder">↻</span>':'')+'</td>'
       +'<td class="num">'+cin(it.id,'qty',it.qty,'54px','right')+'</td>'
       +'<td>'+cin(it.id,'comment',it.comment,'110px')+'</td>'
-      +'<td class="num">'+cin(it.id,'unit_price',it.unit_price,'54px','right')+'</td>'
+      +'<td class="num" style="white-space:nowrap">'+cin(it.id,'unit_price',it.unit_price,'54px','right')+pupTag+'</td>'
       +'<td class="num" style="color:var(--ink2);font-weight:700">$'+num(it.total_price,0)+'</td>'
       +'<td style="min-width:170px"><textarea class="cin area field-supplier" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="supplier spec…" style="width:170px">'+esc(it.specification||'')+'</textarea></td>'
       +'<td style="min-width:170px"><textarea class="cin area field-nego" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="price talk…" style="width:170px">'+esc(it.negotiation||'')+'</textarea></td>'
@@ -264,7 +386,7 @@ function renderRows(items){
       +'</td></tr>';
   }).join('');
   return '<div class="tblwrap"><table><thead><tr>'
-    +'<th>Img</th><th>Container</th><th>Date</th><th>SKU</th>'
+    +'<th style="width:26px"></th><th>Img</th><th>Container</th><th>Date</th><th>SKU</th>'
     +'<th class="num">Qty</th><th>Our note</th><th class="num">Unit $</th><th class="num">Total $</th>'
     +'<th>Spec <span class="badge-supp">supplier</span></th><th>Price talk</th>'
     +'<th class="num">Ctns</th><th class="num">CBM/CTN</th><th class="num">Tot CBM</th><th class="num">Final $</th><th></th>'
@@ -279,10 +401,13 @@ function renderCards(items){
     const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
     const img=it.image?'<img class="pimg" src="'+esc(it.image)+'" onclick="nabZoom(\''+esc(it.image)+'\')" alt="">':'<div class="pimg">📦</div>';
     const inp=(f,v)=>'<input value="'+esc(v==null?'':v)+'" onchange="nabEdit(\''+it.id+'\',\''+f+'\',this.value)">';
-    return '<div class="pcard '+(done?'done':'')+'"><div class="ribbon" style="background:'+col+'"></div>'
+    const pup=window._PUP[it.id];
+    const pupTag=pup?'<span class="priceup" title="Previous price $'+pup.prev.toFixed(2)+'">↑ +'+pup.pct+'%</span>':'';
+    const seld=SEL.has(it.id);
+    return '<div class="pcard '+(done?'done':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)"><div class="ribbon" style="background:'+col+'"></div>'
       +'<div class="chead">'+img
         +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'"><span class="dot" style="background:'+col+'"></span>'+esc(it.container||'Nerazvrščeno')+'</span>'
-        +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+'</div>'
+        +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+pupTag+'</div>'
         +'<div class="pname">'+(it.link?'<a href="'+esc(it.link)+'" target="_blank">'+esc(it.naziv||'—')+' ↗</a>':esc(it.naziv||'—'))+'</div>'
         +'<div class="cmeta-row">'+contSelect(it)+' <input value="'+esc(it.date||'')+'" onchange="nabEdit(\''+it.id+'\',\'date\',this.value)" style="width:80px;border:1px solid var(--line);border-radius:7px;padding:3px 6px;font-size:11px;font-family:inherit"></div>'
         +'</div></div>'

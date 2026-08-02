@@ -24175,6 +24175,22 @@ async def analiza_meta_duplicates_ai(data: dict):
 #   FinalPrice=((TotalCBM×70)/Qty)+(Unit×0.85)×1.1
 NABAVA_FILE = DATA_DIR / "nabava_items.json"
 NABAVA_SEED = Path(__file__).parent / "nabava_seed.json"
+NABAVA_META = DATA_DIR / "nabava_meta.json"
+
+
+def _nabava_meta_load() -> dict:
+    try:
+        if NABAVA_META.exists():
+            return json.loads(NABAVA_META.read_text(encoding="utf-8")) or {}
+    except Exception:
+        pass
+    return {}
+
+
+def _nabava_meta_save(meta: dict):
+    tmp = NABAVA_META.with_suffix(".tmp")
+    tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, NABAVA_META)
 _nabava_lock = asyncio.Lock()
 
 
@@ -24266,7 +24282,8 @@ async def nabava_list():
             m = re.search(r'(\d+)', c or "")
             return int(m.group(1)) if m else 99999
         order = sorted(conts.values(), key=lambda g: _cont_key(g["container"]))
-        return {"ok": True, "items": items, "containers": order}
+        closed = (_nabava_meta_load().get("closed") or [])
+        return {"ok": True, "items": items, "containers": order, "closed": closed}
     except Exception as e:
         import traceback
         print("[nabava-list] ERR:", e, traceback.format_exc()[:400])
@@ -24401,11 +24418,44 @@ async def nabava_container_close(data: dict):
             if it.get("container") == cont and it.get("status") != "done":
                 if move_to:
                     it["container"] = move_to      # premakni odprte v nov kontejner
-                else:
-                    it["status"] = "done"          # ali samo zaključi
                 n += 1
         _nabava_save(items)
+        # zabeleži kontejner kot zaključen (za Hide closed)
+        meta = _nabava_meta_load()
+        closed = set(meta.get("closed") or [])
+        closed.add(cont)
+        meta["closed"] = sorted(closed)
+        _nabava_meta_save(meta)
     return {"ok": True, "affected": n}
+
+
+@app.post("/nabava-container-reopen")
+async def nabava_container_reopen(data: dict):
+    """Ponovno odpri zaključen kontejner (odstrani iz closed)."""
+    cont = str(data.get("container") or "").strip()
+    async with _nabava_lock:
+        meta = _nabava_meta_load()
+        closed = [c for c in (meta.get("closed") or []) if c != cont]
+        meta["closed"] = closed
+        _nabava_meta_save(meta)
+    return {"ok": True}
+
+
+@app.post("/nabava-bulk-container")
+async def nabava_bulk_container(data: dict):
+    """Masovno dodeli kontejner izbranim postavkam. data: { ids:[...], container:'Kontejner3' }"""
+    ids = set(data.get("ids") or [])
+    cont = str(data.get("container") or "").strip() or "Nerazvrščeno"
+    if not ids:
+        return {"ok": False, "error": "Ni izbranih."}
+    async with _nabava_lock:
+        items = _nabava_load()
+        n = 0
+        for it in items:
+            if it.get("id") in ids:
+                it["container"] = cont; n += 1
+        _nabava_save(items)
+    return {"ok": True, "affected": n, "container": cont}
 
 
 @app.get("/nabava-export-xlsx")
