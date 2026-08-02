@@ -89,7 +89,9 @@
   .chead .meta{display:flex;flex-direction:column;}
   .pimg{width:88px;height:88px;border-radius:14px;background:#efe9df;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;object-fit:cover;cursor:zoom-in;}
   .chead .meta{min-width:0;flex:1;}
-  .ktag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;padding:3px 10px;border-radius:20px;}
+  .ktag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:20px;
+    max-width:calc(100% - 30px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+  .ktag .ktag-name{overflow:hidden;text-overflow:ellipsis;}
   .ktag .dot{width:7px;height:7px;border-radius:50%;}
   .csku{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;letter-spacing:-0.3px;margin-top:8px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
   .csku input{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;width:100%;max-width:170px;color:var(--accent);background:#fff;}
@@ -523,7 +525,7 @@ function renderCards(items){
     const seld=SEL.has(it.id);
     return '<div class="pcard '+(done?'done':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)"><div class="ribbon" style="background:'+col+'"></div>'
       +'<div class="chead">'+img
-        +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'"><span class="dot" style="background:'+col+'"></span>'+esc(it.container||'Nerazvrščeno')+'</span>'
+        +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'" title="'+esc(it.container||'Nerazvrščeno')+'"><span class="dot" style="background:'+col+'"></span><span class="ktag-name">'+esc(it.container||'Nerazvrščeno')+'</span></span>'
         +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+pupTag+'</div>'
         +'<div class="pname">'+esc(it.naziv||'—')+'</div>'
         +(it.link
@@ -605,9 +607,14 @@ async function nabSaveLinks(){
   const img=document.getElementById('mImg').value.trim();
   const link=document.getElementById('mLink').value.trim();
   it.image_url=img; it.link=link;
-  it.image=img;   // ročno dodana slika postane glavna (prepiše morebitno pokvarjeno SKU sliko)
+  if(img) it.image=img;   // ročno dodana slika postane glavna (prepiše morebitno pokvarjeno SKU sliko)
+  // če naziv še ni izpolnjen in imamo URL izdelka → potegni naziv iz strani (ne prepiše ročnega)
+  if(link && !(it.naziv||'').trim()){
+    try{ const tr=await fetch('/nabava-title-from-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:link})});
+      const td=await tr.json(); if(td.ok && td.title) it.naziv=td.title; }catch(e){}
+  }
   const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
-  try{ const d=await r.json(); if(d.ok){ Object.assign(it,d.item); it.image=img; it.image_url=img; } }catch(e){}
+  try{ const d=await r.json(); if(d.ok){ Object.assign(it,d.item); if(img){it.image=img;} it.image_url=img; } }catch(e){}
   document.getElementById('modal').style.display='none';
   nabRender();
 }

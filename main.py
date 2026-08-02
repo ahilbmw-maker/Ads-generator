@@ -105,38 +105,25 @@ def _nabava_authorized(request) -> bool:
 
 class AuthGateMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        try:
-            path = request.url.path
-            if path in _AUTH_EXEMPT_EXACT or path.startswith(_AUTH_EXEMPT_PREFIX):
+        path = request.url.path
+        if path in _AUTH_EXEMPT_EXACT or path.startswith(_AUTH_EXEMPT_PREFIX):
+            return await call_next(request)
+        # NABAVA: svoja zaščita (glavno ALI nabava geslo) — ne skozi glavni gate
+        if path == "/nabava" or path == "/nabava-login" or path.startswith("/nabava-"):
+            if _nabava_authorized(request):
                 return await call_next(request)
             accept = request.headers.get("accept", "")
-            wants_html = "text/html" in accept
-            # NABAVA: svoja zaščita (glavno ALI nabava geslo) — ne skozi glavni gate
-            if path == "/nabava" or path == "/nabava-login" or path.startswith("/nabava-"):
-                # login stran je vedno dostopna (sicer dobavitelj ne more do prijave)
-                if path == "/nabava-login":
-                    return await call_next(request)
-                if _nabava_authorized(request):
-                    return await call_next(request)
-                if wants_html:
-                    return RedirectResponse(url="/nabava-login", status_code=302)
-                return PlainTextResponse("401 — prijava potrebna", status_code=401)
-            if _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
-                return await call_next(request)
-            if wants_html:
-                return RedirectResponse(url="/login", status_code=302)
+            if "text/html" in accept:
+                return RedirectResponse(url="/nabava-login", status_code=302)
             return PlainTextResponse("401 — prijava potrebna", status_code=401)
-        except Exception as e:
-            import traceback
-            print("[authgate] ERR:", e, traceback.format_exc()[:600])
-            # ne vrni surovega 500 — preusmeri na login
-            try:
-                if "text/html" in request.headers.get("accept", ""):
-                    tgt = "/nabava-login" if request.url.path.startswith("/nabava") else "/login"
-                    return RedirectResponse(url=tgt, status_code=302)
-            except Exception:
-                pass
-            return PlainTextResponse("Auth error", status_code=401)
+        token = request.cookies.get(AUTH_COOKIE, "")
+        if _auth_check_token(token):
+            return await call_next(request)
+        # ni prijavljen
+        accept = request.headers.get("accept", "")
+        if "text/html" in accept:
+            return RedirectResponse(url="/login", status_code=302)
+        return PlainTextResponse("401 — prijava potrebna", status_code=401)
 
 app.add_middleware(AuthGateMiddleware)
 
@@ -24216,31 +24203,7 @@ def _nabava_load() -> list:
     return []
 
 
-NABAVA_BAK = DATA_DIR / "nabava_items.bak.json"
-NABAVA_BAK_DIR = DATA_DIR / "nabava_backups"
-
-
 def _nabava_save(items: list):
-    # 1) backup prejšnjega stanja (za takojšnjo obnovo, če gre kaj narobe)
-    try:
-        if NABAVA_FILE.exists():
-            NABAVA_BAK.write_text(NABAVA_FILE.read_text(encoding="utf-8"), encoding="utf-8")
-    except Exception as e:
-        print(f"[nabava] bak err: {e}")
-    # 2) dnevni datirani backup (ena datoteka na dan)
-    try:
-        NABAVA_BAK_DIR.mkdir(exist_ok=True, parents=True)
-        day = _time.strftime("%Y-%m-%d")
-        daily = NABAVA_BAK_DIR / f"nabava_{day}.json"
-        daily.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
-        # obdrži zadnjih 30 dnevnih backupov
-        baks = sorted(NABAVA_BAK_DIR.glob("nabava_*.json"))
-        for old in baks[:-30]:
-            try: old.unlink()
-            except Exception: pass
-    except Exception as e:
-        print(f"[nabava] daily bak err: {e}")
-    # 3) atomarni zapis glavne datoteke
     tmp = NABAVA_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, NABAVA_FILE)
@@ -24421,6 +24384,44 @@ async def nabava_item_delete(iid: str):
     return {"ok": True}
 
 
+@app.post("/nabava-title-from-url")
+async def nabava_title_from_url(data: dict):
+    """Potegne naziv izdelka iz podane strani (og:title → <title> → h1)."""
+    url = str(data.get("url") or "").strip()
+    if not url or not url.lower().startswith(("http://", "https://")):
+        return {"ok": False, "error": "Neveljaven URL."}
+    try:
+        async with httpx.AsyncClient(timeout=12, follow_redirects=True,
+                                     headers={"User-Agent": "Mozilla/5.0 (SubanBot)"}) as cli:
+            r = await cli.get(url)
+        html = r.text or ""
+    except Exception as e:
+        return {"ok": False, "error": f"Ni dostopa do strani: {str(e)[:120]}"}
+    title = ""
+    # 1) og:title
+    m = re.search(r'<meta[^>]+property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html, re.I)
+    if not m:
+        m = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*property=["\']og:title["\']', html, re.I)
+    if m:
+        title = m.group(1)
+    # 2) <title>
+    if not title:
+        m = re.search(r'<title[^>]*>(.*?)</title>', html, re.I | re.S)
+        if m:
+            title = m.group(1)
+    # 3) prvi <h1>
+    if not title:
+        m = re.search(r'<h1[^>]*>(.*?)</h1>', html, re.I | re.S)
+        if m:
+            title = re.sub(r'<[^>]+>', '', m.group(1))
+    # počisti
+    import html as _htmlmod
+    title = _htmlmod.unescape(re.sub(r'\s+', ' ', title)).strip()
+    # odreži pogoste pripone " | Trgovina", " - Maaarket" ipd.
+    title = re.split(r'\s[|\u2013\u2014-]\s', title)[0].strip() if title else title
+    return {"ok": bool(title), "title": title[:200]}
+
+
 @app.post("/nabava-sku-lookup")
 async def nabava_sku_lookup(data: dict):
     """SKU → naziv + link iz feeda (za kitajskega dobavitelja). + re-order zgodovina."""
@@ -24493,44 +24494,6 @@ async def nabava_bulk_container(data: dict):
                 it["container"] = cont; n += 1
         _nabava_save(items)
     return {"ok": True, "affected": n, "container": cont}
-
-
-NABAVA_DEFAULT_SETTINGS = {"freight": 72.0, "rate": 0.84, "customs": 10.0}
-
-
-@app.get("/nabava-settings")
-async def nabava_get_settings():
-    meta = _nabava_meta_load()
-    st = {**NABAVA_DEFAULT_SETTINGS, **(meta.get("settings") or {})}
-    return {"ok": True, "settings": st}
-
-
-@app.post("/nabava-settings")
-async def nabava_set_settings(data: dict):
-    """Shrani nastavitve končne cene NA DISK (skupne za vso ekipo)."""
-    async with _nabava_lock:
-        meta = _nabava_meta_load()
-        cur = {**NABAVA_DEFAULT_SETTINGS, **(meta.get("settings") or {})}
-        for k in ("freight", "rate", "customs"):
-            if k in (data or {}):
-                try: cur[k] = float(data[k])
-                except Exception: pass
-        meta["settings"] = cur
-        _nabava_meta_save(meta)
-    return {"ok": True, "settings": cur}
-
-
-@app.get("/nabava-backup-json")
-async def nabava_backup_json():
-    """Prenos celotne kopije nabave (za ročni backup)."""
-    items = _nabava_load()
-    payload = json.dumps({"exported": _time.strftime("%Y-%m-%d %H:%M:%S"),
-                          "count": len(items), "items": items}, ensure_ascii=False, indent=2)
-    import io as _io
-    buf = _io.BytesIO(payload.encode("utf-8")); buf.seek(0)
-    fn = f"nabava_backup_{_time.strftime('%Y-%m-%d')}.json"
-    return StreamingResponse(buf, media_type="application/json",
-                             headers={"Content-Disposition": f'attachment; filename="{fn}"'})
 
 
 @app.get("/nabava-export-xlsx")
