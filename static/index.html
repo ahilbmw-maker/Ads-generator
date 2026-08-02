@@ -908,11 +908,11 @@ input[type="text"].error { border-color: var(--red) !important; }
     <span class="nav-badge" style="background:rgba(34,197,94,0.12);color:#15803d">📥</span>
   </div>
 
-  <div class="nav-item nav-nabava" id="nav-nabava" onclick="switchPage('nabava')">
+  <a href="/nabava" target="_blank" class="nav-item nav-nabava" id="nav-nabava" style="text-decoration:none;color:var(--text)">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.3 2.3c-.6.6-.2 1.7.7 1.7H17"/><circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/></svg>
     Nabava
-    <span class="nav-badge" style="background:rgba(234,88,12,0.10);color:#c2410c">🇨🇳</span>
-  </div>
+    <span class="nav-badge" style="background:rgba(234,88,12,0.10);color:#c2410c">🇨🇳 ↗</span>
+  </a>
 
   <div style="margin:6px 10px;height:1px;background:var(--border)"></div>
   <div style="padding:4px 10px 4px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.7px;color:var(--text-tertiary)">Upravljanje</div>
@@ -5177,58 +5177,7 @@ input[type="text"].error { border-color: var(--red) !important; }
   </div>
   </div><!-- /page-prevzemi -->
 
-  <!-- ═══ NABAVA PAGE (kitajski program — kontejnerji) ═══ -->
-  <div class="page" id="page-nabava">
-    <div style="padding:14px;display:flex;flex-direction:column;gap:12px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span class="slabel" style="margin:0;font-size:15px">🛒 NABAVA · kitajski program</span>
-        <span style="font-size:11px;color:var(--text-tertiary)">seznam za naročanje po kontejnerjih · SKU povleče naziv + link za dobavitelja</span>
-        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-          <button onclick="nabavaExport()" style="padding:8px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">⬇ Izvozi XLSX</button>
-          <button onclick="nabavaCloseContainer()" style="padding:8px 14px;background:transparent;color:#c2410c;border:1px solid #fdba74;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📦 Zaključi kontejner</button>
-          <button onclick="nabavaAddRow()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">＋ Nova postavka</button>
-        </div>
-      </div>
 
-      <!-- filtri -->
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px">
-        <span style="font-weight:700;color:var(--text-tertiary)">KONTEJNER:</span>
-        <div id="nabavaContFilter" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-        <label style="margin-left:auto;display:flex;align-items:center;gap:7px;cursor:pointer;padding:5px 12px;border:1px solid var(--border);border-radius:20px">
-          <input type="checkbox" id="nabavaHideDone" checked onchange="nabavaRender()"> Skrij zaključene
-        </label>
-        <button onclick="nabavaCopySupplier()" style="padding:6px 12px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">📋 Kopiraj za dobavitelja</button>
-      </div>
-
-      <!-- vsote po kontejnerjih -->
-      <div id="nabavaSummary" style="display:flex;gap:10px;flex-wrap:wrap"></div>
-
-      <!-- tabela -->
-      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px">
-        <table id="nabavaTable" style="width:100%;border-collapse:collapse;font-size:12px;min-width:1400px">
-          <thead>
-            <tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
-              <th style="padding:8px 6px;text-align:left;font-weight:700">Kontejner</th>
-              <th style="padding:8px 6px;text-align:left;font-weight:700">Datum</th>
-              <th style="padding:8px 6px;text-align:left;font-weight:700">SKU</th>
-              <th style="padding:8px 6px;text-align:left;font-weight:700">Naziv</th>
-              <th style="padding:8px 6px;text-align:right;font-weight:700">Qty</th>
-              <th style="padding:8px 6px;text-align:left;font-weight:700">Komentar</th>
-              <th style="padding:8px 6px;text-align:right;font-weight:700">Unit $</th>
-              <th style="padding:8px 6px;text-align:right;font-weight:700">Total $</th>
-              <th style="padding:8px 6px;text-align:left;font-weight:700">Specifikacija</th>
-              <th style="padding:8px 6px;text-align:right;font-weight:700">Ctns</th>
-              <th style="padding:8px 6px;text-align:right;font-weight:700">CBM/CTN</th>
-              <th style="padding:8px 6px;text-align:right;font-weight:700">Tot. CBM</th>
-              <th style="padding:8px 6px;text-align:right;font-weight:700">Final $</th>
-              <th style="padding:8px 6px;text-align:center;font-weight:700"></th>
-            </tr>
-          </thead>
-          <tbody id="nabavaBody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div><!-- /page-nabava -->
 
 
 
@@ -5405,184 +5354,6 @@ function switchCalcTab(tab) {
   try { localStorage.setItem('slx_active_subtab', tab); } catch(e) {}
 }
 
-// ═══ NABAVA (kitajski program) ═══
-let _nabavaData = { items: [], containers: [] };
-let _nabavaInited = false;
-let _nabavaContSel = 'all';   // aktiven kontejner filter
-
-function nabavaInit() { if (_nabavaInited) return; _nabavaInited = true; nabavaLoad(); }
-
-async function nabavaLoad() {
-  try {
-    const r = await fetch('/nabava-list');
-    const d = await r.json();
-    if (d.ok) { _nabavaData = d; nabavaRender(); }
-  } catch(e) { console.warn('nabava load', e); }
-}
-
-function nabavaNum(v, dec) { const n = parseFloat(v); return isNaN(n) ? '' : (dec != null ? n.toFixed(dec) : n); }
-
-function nabavaContainers() {
-  return _nabavaData.containers.map(c => c.container);
-}
-
-function nabavaRender() {
-  const hideDone = document.getElementById('nabavaHideDone')?.checked;
-  // filter čipi
-  const cf = document.getElementById('nabavaContFilter');
-  if (cf) {
-    let h = '<span onclick="nabavaSetCont(\'all\')" style="cursor:pointer;padding:4px 12px;border-radius:7px;border:1px solid ' + (_nabavaContSel==='all'?'var(--accent)':'var(--border)') + ';background:' + (_nabavaContSel==='all'?'rgba(37,99,235,0.08)':'transparent') + ';font-weight:700">Vsi</span>';
-    _nabavaData.containers.forEach(c => {
-      const on = _nabavaContSel === c.container;
-      h += '<span onclick="nabavaSetCont(\'' + esc(c.container) + '\')" style="cursor:pointer;padding:4px 12px;border-radius:7px;border:1px solid ' + (on?'var(--accent)':'var(--border)') + ';background:' + (on?'rgba(37,99,235,0.08)':'transparent') + '">' + esc(c.container) + ' <b style="color:var(--text-tertiary);font-size:10px">' + c.active + '</b></span>';
-    });
-    cf.innerHTML = h;
-  }
-  // vsote
-  const sum = document.getElementById('nabavaSummary');
-  if (sum) {
-    let visible = _nabavaData.containers;
-    if (_nabavaContSel !== 'all') visible = visible.filter(c => c.container === _nabavaContSel);
-    sum.innerHTML = visible.map(c =>
-      '<div style="padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);font-size:11px;min-width:150px">'
-      + '<div style="font-weight:800;font-size:12px;margin-bottom:3px">' + esc(c.container) + ' <span style="color:var(--text-tertiary);font-weight:500">· ' + c.active + ' aktivnih' + (c.done?' · '+c.done+' zaključenih':'') + '</span></div>'
-      + '<div style="color:var(--text-secondary)">Σ ' + c.total_qty.toFixed(0) + ' kos · <b>$' + c.total_usd.toFixed(0) + '</b> · CBM <b>' + c.total_cbm.toFixed(2) + '</b></div>'
-      + '</div>'
-    ).join('');
-  }
-  // vrstice
-  const body = document.getElementById('nabavaBody');
-  if (!body) return;
-  let items = _nabavaData.items.slice();
-  if (_nabavaContSel !== 'all') items = items.filter(i => i.container === _nabavaContSel);
-  if (hideDone) items = items.filter(i => i.status !== 'done');
-  // re-order zaznava: SKU, ki se pojavi v več kot enem kontejnerju
-  const skuCount = {};
-  _nabavaData.items.forEach(i => { const k=(i.sku||'').toUpperCase(); if(k){ (skuCount[k]=skuCount[k]||new Set()).add(i.container); } });
-
-  if (!items.length) { body.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:2rem;color:var(--text-tertiary)">Ni postavk. Klikni ＋ Nova postavka.</td></tr>'; return; }
-
-  body.innerHTML = items.map(it => {
-    const done = it.status === 'done';
-    const skuU = (it.sku||'').toUpperCase();
-    const reorder = skuCount[skuU] && skuCount[skuU].size > 1;
-    const inp = (field, val, w, align, step) => '<input value="' + esc(val==null?'':val) + '" onchange="nabavaEdit(\'' + it.id + '\',\'' + field + '\',this.value)" style="width:' + w + ';padding:4px 5px;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--text);font-size:12px;text-align:' + (align||'left') + ';font-family:inherit" onfocus="this.style.borderColor=\'var(--border)\';this.style.background=\'var(--surface2)\'" onblur="this.style.borderColor=\'transparent\';this.style.background=\'transparent\'">';
-    return '<tr style="border-bottom:1px solid var(--border);' + (done?'opacity:0.5;':'') + '">'
-      + '<td style="padding:2px 6px">' + inp('container', it.container, '90px') + '</td>'
-      + '<td style="padding:2px 6px">' + inp('date', it.date, '78px') + '</td>'
-      + '<td style="padding:2px 6px;white-space:nowrap">'
-      +   '<input value="' + esc(it.sku||'') + '" onchange="nabavaEdit(\'' + it.id + '\',\'sku\',this.value)" onblur="nabavaSkuLookup(\'' + it.id + '\',this.value)" style="width:110px;padding:4px 5px;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--accent);font-weight:700;font-family:\'DM Mono\',monospace;font-size:12px" onfocus="this.style.borderColor=\'var(--border)\';this.style.background=\'var(--surface2)\'">'
-      +   (reorder ? ' <span title="Ta SKU si že naročal v drugem kontejnerju" style="font-size:9px;font-weight:700;color:#c2410c;background:rgba(234,88,12,0.10);border-radius:4px;padding:1px 5px">↻ re-order</span>' : '')
-      + '</td>'
-      + '<td style="padding:2px 6px;max-width:200px">'
-      +   (it.link ? '<a href="' + esc(it.link) + '" target="_blank" style="color:var(--text);text-decoration:none;font-size:11px" title="' + esc(it.naziv||'') + '">' + esc((it.naziv||'—').slice(0,40)) + ' ↗</a>' : '<span style="color:var(--text-tertiary);font-size:11px">' + esc((it.naziv||'—').slice(0,40)) + '</span>')
-      + '</td>'
-      + '<td style="padding:2px 6px;text-align:right">' + inp('qty', it.qty, '58px', 'right') + '</td>'
-      + '<td style="padding:2px 6px">' + inp('comment', it.comment, '110px') + '</td>'
-      + '<td style="padding:2px 6px;text-align:right">' + inp('unit_price', it.unit_price, '58px', 'right') + '</td>'
-      + '<td style="padding:2px 6px;text-align:right;font-weight:700;color:var(--text-secondary)">$' + nabavaNum(it.total_price,0) + '</td>'
-      + '<td style="padding:2px 6px">' + inp('specification', it.specification, '150px') + '</td>'
-      + '<td style="padding:2px 6px;text-align:right">' + inp('ctns', it.ctns, '52px', 'right') + '</td>'
-      + '<td style="padding:2px 6px;text-align:right">' + inp('cbm_ctn', it.cbm_ctn, '64px', 'right') + '</td>'
-      + '<td style="padding:2px 6px;text-align:right;color:var(--text-secondary)">' + nabavaNum(it.total_cbm,3) + '</td>'
-      + '<td style="padding:2px 6px;text-align:right;font-weight:800;color:#16a34a">$' + nabavaNum(it.final_price,2) + '</td>'
-      + '<td style="padding:2px 6px;text-align:center;white-space:nowrap">'
-      +   '<span onclick="nabavaToggleDone(\'' + it.id + '\',' + (done?'false':'true') + ')" title="' + (done?'Vrni med aktivne':'Zaključi') + '" style="cursor:pointer;font-size:14px">' + (done?'↩':'✓') + '</span> '
-      +   '<span onclick="nabavaDelete(\'' + it.id + '\')" title="Izbriši" style="cursor:pointer;font-size:13px;color:var(--red)">✕</span>'
-      + '</td>'
-      + '</tr>';
-  }).join('');
-}
-
-function nabavaSetCont(c) { _nabavaContSel = c; nabavaRender(); }
-
-async function nabavaEdit(id, field, value) {
-  const it = _nabavaData.items.find(x => x.id === id);
-  if (!it) return;
-  it[field] = value;
-  if (field === 'ctns') it._ctns_manual = true;
-  try {
-    const r = await fetch('/nabava-item', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(it) });
-    const d = await r.json();
-    if (d.ok) { Object.assign(it, d.item); nabavaRefreshTotals(); nabavaRender(); }
-  } catch(e) {}
-}
-
-async function nabavaRefreshTotals() {
-  // osveži samo vsote (list ponovno)
-  try { const r = await fetch('/nabava-list'); const d = await r.json(); if (d.ok) { _nabavaData.containers = d.containers; } } catch(e) {}
-}
-
-async function nabavaSkuLookup(id, sku) {
-  if (!sku || !sku.trim()) return;
-  const it = _nabavaData.items.find(x => x.id === id);
-  if (!it) return;
-  try {
-    const r = await fetch('/nabava-sku-lookup', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku }) });
-    const d = await r.json();
-    if (d.ok && d.found) {
-      it.naziv = d.naziv; it.link = d.link;
-      await fetch('/nabava-item', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(it) });
-      nabavaRender();
-    }
-  } catch(e) {}
-}
-
-async function nabavaAddRow() {
-  const cont = _nabavaContSel !== 'all' ? _nabavaContSel : (nabavaContainers().slice(-1)[0] || 'Kontejner1');
-  const today = new Date().toLocaleDateString('sl-SI');
-  const it = { container: cont, date: today, sku: '', qty: 0, unit_price: 0, cbm_ctn: 0, ctns: 0, status: 'active' };
-  try {
-    const r = await fetch('/nabava-item', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(it) });
-    const d = await r.json();
-    if (d.ok) { _nabavaData.items.push(d.item); await nabavaRefreshTotals(); nabavaRender(); }
-  } catch(e) {}
-}
-
-async function nabavaDelete(id) {
-  if (!confirm('Izbrišem to postavko?')) return;
-  try {
-    await fetch('/nabava-item/' + encodeURIComponent(id), { method:'DELETE' });
-    _nabavaData.items = _nabavaData.items.filter(x => x.id !== id);
-    await nabavaRefreshTotals(); nabavaRender();
-  } catch(e) {}
-}
-
-async function nabavaToggleDone(id, done) {
-  const it = _nabavaData.items.find(x => x.id === id);
-  if (!it) return;
-  it.status = done ? 'done' : 'active';
-  await fetch('/nabava-item', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(it) });
-  await nabavaRefreshTotals(); nabavaRender();
-}
-
-async function nabavaCloseContainer() {
-  const conts = nabavaContainers();
-  const cont = prompt('Kateri kontejner zaključiš?\n(' + conts.join(', ') + ')', _nabavaContSel !== 'all' ? _nabavaContSel : (conts.slice(-1)[0]||''));
-  if (!cont) return;
-  const moveTo = prompt('Odprte postavke premakni v nov kontejner? Vpiši ime (npr. Kontejner11) ali pusti PRAZNO, da jih samo označiš zaključene.', '');
-  try {
-    const r = await fetch('/nabava-container-close', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ container: cont, move_to: (moveTo||'').trim() }) });
-    const d = await r.json();
-    if (d.ok) { alert('Obdelano ' + d.affected + ' postavk.'); nabavaLoad(); }
-  } catch(e) { alert('Napaka: ' + e.message); }
-}
-
-function nabavaExport() { window.open('/nabava-export-xlsx', '_blank'); }
-
-function nabavaCopySupplier() {
-  let items = _nabavaData.items.slice();
-  if (_nabavaContSel !== 'all') items = items.filter(i => i.container === _nabavaContSel);
-  items = items.filter(i => i.status !== 'done' && i.sku);
-  if (!items.length) { alert('Ni aktivnih postavk za kopiranje.'); return; }
-  const lines = items.map(i => {
-    return [i.sku, 'Qty: ' + (i.qty||0), i.naziv || '', i.link || '', i.specification ? ('Spec: ' + i.specification) : '', i.comment ? ('Note: ' + i.comment) : ''].filter(Boolean).join(' | ');
-  });
-  const txt = 'Order' + (_nabavaContSel!=='all' ? ' — ' + _nabavaContSel : '') + ':\n\n' + lines.join('\n');
-  navigator.clipboard.writeText(txt).then(() => alert('Kopirano ' + items.length + ' postavk za dobavitelja.')).catch(()=>{});
-}
-
-
 function switchPage(page) {
   const idx = PAGES.indexOf(page);
   if(idx >= 0) currentIdx = idx;
@@ -5627,7 +5398,6 @@ function switchPage(page) {
   }
   if (page === 'tiktok') { ttLoadSkus(); }
   if (page === 'zaloga') { zalogaLoad(); zalogaSyncDailyAuto(); }
-  if (page === 'nabava') { if(typeof nabavaInit==='function') nabavaInit(); }
   if (page === 'xsell') { if(typeof xsellInit==='function') xsellInit(); }
   if (page === 'sporocanje') { if(typeof spLoadCommon==='function') spLoadCommon(); if(typeof spLoadMacros==='function') spLoadMacros(); }
   if (page === 'knjigovodstvo') { if(typeof knjLoadHistory==='function') knjLoadHistory(); }

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nabava · Purchase Orders — Suban AI</title>
+<link rel="icon" type="image/png" href="/static/suban-s-icon.png">
+<style>
+  :root {
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f8fafc; --border:#e2e8f0;
+    --text:#1e293b; --text-secondary:#475569; --text-tertiary:#94a3b8;
+    --accent:#3a6fff; --green:#16a34a; --red:#dc2626; --radius:10px;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background:var(--bg); color:var(--text); font-size:14px; }
+  .topbar { background:var(--surface); border-bottom:1px solid var(--border); padding:12px 20px;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap; position:sticky; top:0; z-index:10; }
+  .topbar .brand { font-weight:800; font-size:16px; }
+  .topbar .brand span { color:var(--accent); }
+  .wrap { padding:16px 20px; max-width:100%; }
+  .btn { padding:8px 14px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;
+    font-family:inherit; border:1px solid var(--border); background:transparent; color:var(--text-secondary); }
+  .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .btn.warn { color:#c2410c; border-color:#fdba74; }
+  .btn.accent { color:var(--accent); border-color:var(--accent); }
+  .chip { cursor:pointer; padding:4px 12px; border-radius:7px; border:1px solid var(--border);
+    background:transparent; font-size:12px; }
+  .chip.on { border-color:var(--accent); background:rgba(58,111,255,0.08); font-weight:700; }
+  table { width:100%; border-collapse:collapse; font-size:12px; min-width:1400px; }
+  thead tr { background:var(--surface2); border-bottom:2px solid var(--border); }
+  th { padding:8px 6px; text-align:left; font-weight:700; white-space:nowrap; }
+  td { padding:2px 6px; border-bottom:1px solid var(--border); }
+  .tbl-wrap { overflow-x:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface); }
+  .cell-inp { border:1px solid transparent; border-radius:4px; background:transparent; color:var(--text);
+    font-size:12px; font-family:inherit; padding:4px 5px; }
+  .cell-inp:focus { outline:none; border-color:var(--border); background:var(--surface2); }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); }
+  .sumcard { padding:8px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface2);
+    font-size:11px; min-width:150px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">🛒 Nabava<span> · Purchase Orders</span></div>
+    <span style="font-size:11px;color:var(--text-tertiary)">SKU → naziv + link · po kontejnerjih</span>
+    <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="nabavaExport()">⬇ Export XLSX</button>
+      <button class="btn warn" onclick="nabavaCloseContainer()">📦 Close container</button>
+      <button class="btn primary" onclick="nabavaAddRow()">＋ New item</button>
+      <a class="btn" href="/nabava-logout" style="text-decoration:none">Logout</a>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;margin-bottom:12px">
+      <span style="font-weight:700;color:var(--text-tertiary)">CONTAINER:</span>
+      <div id="nabavaContFilter" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <label style="margin-left:auto;display:flex;align-items:center;gap:7px;cursor:pointer;padding:5px 12px;border:1px solid var(--border);border-radius:20px">
+        <input type="checkbox" id="nabavaHideDone" checked onchange="nabavaRender()"> Hide closed
+      </label>
+      <button class="btn accent" onclick="nabavaCopySupplier()">📋 Copy for supplier</button>
+    </div>
+
+    <div id="nabavaSummary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px"></div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Container</th><th>Date</th><th>SKU</th><th>Product / link</th>
+            <th style="text-align:right">Qty</th><th>Comment</th>
+            <th style="text-align:right">Unit $</th><th style="text-align:right">Total $</th>
+            <th>Specification</th><th style="text-align:right">Ctns</th>
+            <th style="text-align:right">CBM/CTN</th><th style="text-align:right">Tot CBM</th>
+            <th style="text-align:right">Final $</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="nabavaBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+let _nabavaData = { items: [], containers: [] };
+let _nabavaContSel = 'all';
+
+async function nabavaLoad() {
+  try {
+    const r = await fetch('/nabava-list');
+    const d = await r.json();
+    if (d.ok) { _nabavaData = d; nabavaRender(); }
+  } catch(e) { console.warn('load', e); }
+}
+
+function nabavaNum(v, dec) { const n = parseFloat(v); return isNaN(n) ? '' : (dec != null ? n.toFixed(dec) : n); }
+function nabavaContainers() { return _nabavaData.containers.map(c => c.container); }
+
+function nabavaRender() {
+  const hideDone = document.getElementById('nabavaHideDone')?.checked;
+  const cf = document.getElementById('nabavaContFilter');
+  if (cf) {
+    let h = '<span class="chip ' + (_nabavaContSel==='all'?'on':'') + '" onclick="nabavaSetCont(\'all\')">All</span>';
+    _nabavaData.containers.forEach(c => {
+      h += '<span class="chip ' + (_nabavaContSel===c.container?'on':'') + '" onclick="nabavaSetCont(\'' + esc(c.container) + '\')">' + esc(c.container) + ' <b style="color:var(--text-tertiary);font-size:10px">' + c.active + '</b></span>';
+    });
+    cf.innerHTML = h;
+  }
+  const sum = document.getElementById('nabavaSummary');
+  if (sum) {
+    let visible = _nabavaData.containers;
+    if (_nabavaContSel !== 'all') visible = visible.filter(c => c.container === _nabavaContSel);
+    sum.innerHTML = visible.map(c =>
+      '<div class="sumcard">'
+      + '<div style="font-weight:800;font-size:12px;margin-bottom:3px">' + esc(c.container) + ' <span style="color:var(--text-tertiary);font-weight:500">· ' + c.active + ' active' + (c.done?' · '+c.done+' closed':'') + '</span></div>'
+      + '<div style="color:var(--text-secondary)">Σ ' + c.total_qty.toFixed(0) + ' pcs · <b>$' + c.total_usd.toFixed(0) + '</b> · CBM <b>' + c.total_cbm.toFixed(2) + '</b></div>'
+      + '</div>'
+    ).join('');
+  }
+  const body = document.getElementById('nabavaBody');
+  if (!body) return;
+  let items = _nabavaData.items.slice();
+  if (_nabavaContSel !== 'all') items = items.filter(i => i.container === _nabavaContSel);
+  if (hideDone) items = items.filter(i => i.status !== 'done');
+  const skuCount = {};
+  _nabavaData.items.forEach(i => { const k=(i.sku||'').toUpperCase(); if(k){ (skuCount[k]=skuCount[k]||new Set()).add(i.container); } });
+
+  if (!items.length) { body.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:2rem;color:var(--text-tertiary)">No items. Click ＋ New item.</td></tr>'; return; }
+
+  body.innerHTML = items.map(it => {
+    const done = it.status === 'done';
+    const skuU = (it.sku||'').toUpperCase();
+    const reorder = skuCount[skuU] && skuCount[skuU].size > 1;
+    const inp = (field, val, w, align) => '<input class="cell-inp" value="' + esc(val==null?'':val) + '" onchange="nabavaEdit(\'' + it.id + '\',\'' + field + '\',this.value)" style="width:' + w + ';text-align:' + (align||'left') + '">';
+    return '<tr style="' + (done?'opacity:0.5;':'') + '">'
+      + '<td>' + inp('container', it.container, '90px') + '</td>'
+      + '<td>' + inp('date', it.date, '78px') + '</td>'
+      + '<td style="white-space:nowrap">'
+      +   '<input class="cell-inp" value="' + esc(it.sku||'') + '" onchange="nabavaEdit(\'' + it.id + '\',\'sku\',this.value)" onblur="nabavaSkuLookup(\'' + it.id + '\',this.value)" style="width:110px;color:var(--accent);font-weight:700;font-family:\'DM Mono\',monospace">'
+      +   (reorder ? ' <span title="Already ordered in another container" style="font-size:9px;font-weight:700;color:#c2410c;background:rgba(234,88,12,0.10);border-radius:4px;padding:1px 5px">↻ re-order</span>' : '')
+      + '</td>'
+      + '<td style="max-width:220px">'
+      +   (it.link ? '<a href="' + esc(it.link) + '" target="_blank" style="text-decoration:none;color:var(--text);font-size:11px" title="' + esc(it.naziv||'') + '">' + esc((it.naziv||'—').slice(0,44)) + ' ↗</a>' : '<span style="color:var(--text-tertiary);font-size:11px">' + esc((it.naziv||'—').slice(0,44)) + '</span>')
+      + '</td>'
+      + '<td style="text-align:right">' + inp('qty', it.qty, '58px', 'right') + '</td>'
+      + '<td>' + inp('comment', it.comment, '110px') + '</td>'
+      + '<td style="text-align:right">' + inp('unit_price', it.unit_price, '58px', 'right') + '</td>'
+      + '<td style="text-align:right;font-weight:700;color:var(--text-secondary)">$' + nabavaNum(it.total_price,0) + '</td>'
+      + '<td>' + inp('specification', it.specification, '150px') + '</td>'
+      + '<td style="text-align:right">' + inp('ctns', it.ctns, '52px', 'right') + '</td>'
+      + '<td style="text-align:right">' + inp('cbm_ctn', it.cbm_ctn, '64px', 'right') + '</td>'
+      + '<td style="text-align:right;color:var(--text-secondary)">' + nabavaNum(it.total_cbm,3) + '</td>'
+      + '<td style="text-align:right;font-weight:800;color:var(--green)">$' + nabavaNum(it.final_price,2) + '</td>'
+      + '<td style="text-align:center;white-space:nowrap">'
+      +   '<span onclick="nabavaToggleDone(\'' + it.id + '\',' + (done?'false':'true') + ')" title="' + (done?'Reopen':'Close') + '" style="cursor:pointer;font-size:14px">' + (done?'↩':'✓') + '</span> '
+      +   '<span onclick="nabavaDelete(\'' + it.id + '\')" title="Delete" style="cursor:pointer;font-size:13px;color:var(--red)">✕</span>'
+      + '</td></tr>';
+  }).join('');
+}
+
+function nabavaSetCont(c) { _nabavaContSel = c; nabavaRender(); }
+
+async function nabavaEdit(id, field, value) {
+  const it = _nabavaData.items.find(x => x.id === id);
+  if (!it) return;
+  it[field] = value;
+  if (field === 'ctns') it._ctns_manual = true;
+  try {
+    const r = await fetch('/nabava-item', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(it) });
+    const d = await r.json();
+    if (d.ok) { Object.assign(it, d.item); await nabavaRefreshTotals(); nabavaRender(); }
+  } catch(e) {}
+}
+
+async function nabavaRefreshTotals() {
+  try { const r = await fetch('/nabava-list'); const d = await r.json(); if (d.ok) _nabavaData.containers = d.containers; } catch(e) {}
+}
+
+async function nabavaSkuLookup(id, sku) {
+  if (!sku || !sku.trim()) return;
+  const it = _nabavaData.items.find(x => x.id === id);
+  if (!it) return;
+  try {
+    const r = await fetch('/nabava-sku-lookup', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku }) });
+    const d = await r.json();
+    if (d.ok && d.found) {
+      it.naziv = d.naziv; it.link = d.link;
+      await fetch('/nabava-item', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(it) });
+      nabavaRender();
+    }
+  } catch(e) {}
+}
+
+async function nabavaAddRow() {
+  const cont = _nabavaContSel !== 'all' ? _nabavaContSel : (nabavaContainers().slice(-1)[0] || 'Kontejner1');
+  const today = new Date().toLocaleDateString('sl-SI');
+  const it = { container: cont, date: today, sku: '', qty: 0, unit_price: 0, cbm_ctn: 0, ctns: 0, status: 'active' };
+  try {
+    const r = await fetch('/nabava-item', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(it) });
+    const d = await r.json();
+    if (d.ok) { _nabavaData.items.push(d.item); await nabavaRefreshTotals(); nabavaRender(); }
+  } catch(e) {}
+}
+
+async function nabavaDelete(id) {
+  if (!confirm('Delete this item?')) return;
+  try {
+    await fetch('/nabava-item/' + encodeURIComponent(id), { method:'DELETE' });
+    _nabavaData.items = _nabavaData.items.filter(x => x.id !== id);
+    await nabavaRefreshTotals(); nabavaRender();
+  } catch(e) {}
+}
+
+async function nabavaToggleDone(id, done) {
+  const it = _nabavaData.items.find(x => x.id === id);
+  if (!it) return;
+  it.status = done ? 'done' : 'active';
+  await fetch('/nabava-item', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(it) });
+  await nabavaRefreshTotals(); nabavaRender();
+}
+
+async function nabavaCloseContainer() {
+  const conts = nabavaContainers();
+  const cont = prompt('Which container to close?\n(' + conts.join(', ') + ')', _nabavaContSel !== 'all' ? _nabavaContSel : (conts.slice(-1)[0]||''));
+  if (!cont) return;
+  const moveTo = prompt('Move open items to a new container? Enter name (e.g. Kontejner11) or leave EMPTY to just mark them closed.', '');
+  try {
+    const r = await fetch('/nabava-container-close', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ container: cont, move_to: (moveTo||'').trim() }) });
+    const d = await r.json();
+    if (d.ok) { alert('Processed ' + d.affected + ' items.'); nabavaLoad(); }
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+function nabavaExport() { window.open('/nabava-export-xlsx', '_blank'); }
+
+function nabavaCopySupplier() {
+  let items = _nabavaData.items.slice();
+  if (_nabavaContSel !== 'all') items = items.filter(i => i.container === _nabavaContSel);
+  items = items.filter(i => i.status !== 'done' && i.sku);
+  if (!items.length) { alert('No active items to copy.'); return; }
+  const lines = items.map(i => [i.sku, 'Qty: ' + (i.qty||0), i.naziv || '', i.link || '', i.specification ? ('Spec: ' + i.specification) : '', i.comment ? ('Note: ' + i.comment) : ''].filter(Boolean).join(' | '));
+  const txt = 'Order' + (_nabavaContSel!=='all' ? ' — ' + _nabavaContSel : '') + ':\n\n' + lines.join('\n');
+  navigator.clipboard.writeText(txt).then(() => alert('Copied ' + items.length + ' items for supplier.')).catch(()=>{});
+}
+
+nabavaLoad();
+</script>
+</body>
+</html>

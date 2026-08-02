@@ -51,6 +51,10 @@ from starlette.responses import RedirectResponse, PlainTextResponse
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "siluxar2026")  # SPREMENI prek env na Renderju!
 APP_SECRET = os.environ.get("APP_SECRET", APP_PASSWORD + "_slx_sign_v1")
 AUTH_COOKIE = "slx_auth"
+# LOČENO geslo samo za NABAVO (kitajski dobavitelji) — dostop LE do /nabava, ne cele platforme
+NABAVA_PASSWORD = os.environ.get("NABAVA_PASSWORD", "nabava2026")
+NABAVA_SECRET = os.environ.get("NABAVA_SECRET", NABAVA_PASSWORD + "_nabava_sign_v1")
+NABAVA_COOKIE = "slx_nabava_auth"
 AUTH_TTL = 60 * 60 * 24 * 30  # seja velja 30 dni
 
 # Poti, ki so DOSTOPNE BREZ prijave
@@ -74,11 +78,44 @@ def _auth_check_token(token: str) -> bool:
     except Exception:
         return False
 
+
+def _nabava_make_token():
+    exp = str(int(_time.time()) + AUTH_TTL)
+    sig = _hmac.new(NABAVA_SECRET.encode(), exp.encode(), _hashlib.sha256).hexdigest()
+    return _b64.urlsafe_b64encode(f"{exp}:{sig}".encode()).decode()
+
+
+def _nabava_check_token(token: str) -> bool:
+    try:
+        raw = _b64.urlsafe_b64decode(token.encode()).decode()
+        exp_str, sig = raw.split(":", 1)
+        expected = _hmac.new(NABAVA_SECRET.encode(), exp_str.encode(), _hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(sig, expected):
+            return False
+        return int(exp_str) > int(_time.time())
+    except Exception:
+        return False
+
+
+def _nabava_authorized(request) -> bool:
+    """Dostop do nabave: glavni prijavljen uporabnik ALI nabava-geslo."""
+    if _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return True
+    return _nabava_check_token(request.cookies.get(NABAVA_COOKIE, ""))
+
 class AuthGateMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
         if path in _AUTH_EXEMPT_EXACT or path.startswith(_AUTH_EXEMPT_PREFIX):
             return await call_next(request)
+        # NABAVA: svoja zaščita (glavno ALI nabava geslo) — ne skozi glavni gate
+        if path == "/nabava" or path == "/nabava-login" or path.startswith("/nabava-"):
+            if _nabava_authorized(request):
+                return await call_next(request)
+            accept = request.headers.get("accept", "")
+            if "text/html" in accept:
+                return RedirectResponse(url="/nabava-login", status_code=302)
+            return PlainTextResponse("401 — prijava potrebna", status_code=401)
         token = request.cookies.get(AUTH_COOKIE, "")
         if _auth_check_token(token):
             return await call_next(request)
@@ -133,6 +170,39 @@ async def login_submit(password: str = Form("")):
                         httponly=True, samesite="lax")
         return resp
     return RedirectResponse(url="/login?err=1", status_code=302)
+
+@app.get("/nabava-login", response_class=HTMLResponse)
+async def nabava_login_page(err: str = ""):
+    msg = "Wrong password." if err else ""
+    html = _LOGIN_HTML.replace("Vpiši geslo za dostop", "Purchase order access · vpiši geslo") \
+                      .replace('action="/login"', 'action="/nabava-login"') \
+                      .replace("__ERR__", msg)
+    return HTMLResponse(html)
+
+
+@app.post("/nabava-login")
+async def nabava_login_submit(password: str = Form("")):
+    # sprejmi nabava geslo ALI glavno geslo
+    if _hmac.compare_digest(password, NABAVA_PASSWORD) or _hmac.compare_digest(password, APP_PASSWORD):
+        resp = RedirectResponse(url="/nabava", status_code=302)
+        resp.set_cookie(NABAVA_COOKIE, _nabava_make_token(), max_age=AUTH_TTL,
+                        httponly=True, samesite="lax")
+        return resp
+    return RedirectResponse(url="/nabava-login?err=1", status_code=302)
+
+
+@app.get("/nabava-logout")
+async def nabava_logout():
+    resp = RedirectResponse(url="/nabava-login", status_code=302)
+    resp.delete_cookie(NABAVA_COOKIE)
+    return resp
+
+
+@app.get("/nabava")
+async def serve_nabava():
+    return FileResponse("static/nabava.html", headers={
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+
 
 @app.get("/logout")
 async def logout():
