@@ -47,7 +47,7 @@
 
   /* ROWS */
   .tblwrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:auto;}
-  table{width:100%;border-collapse:collapse;min-width:1420px;}
+  table{width:100%;border-collapse:collapse;min-width:1600px;}
   thead th{position:sticky;top:0;background:var(--panel2);border-bottom:2px solid var(--line);padding:10px 9px;text-align:left;font-size:11px;font-weight:800;letter-spacing:0.3px;color:var(--ink2);text-transform:uppercase;white-space:nowrap;z-index:2;}
   thead th.num{text-align:right;}
   tbody td{border-bottom:1px solid var(--line);padding:5px 9px;vertical-align:middle;}
@@ -62,7 +62,7 @@
   .cin:focus{outline:none;border-color:var(--accent);background:var(--panel2);}
   .cin.mono{font-family:'Inter',monospace;}
   .cin.right{text-align:right;}
-  td.num{text-align:right;font-variant-numeric:tabular-nums;}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
   .reorder{font-size:9px;font-weight:800;color:var(--nego);background:var(--nego-soft);border-radius:4px;padding:1px 5px;white-space:nowrap;}
   .final{font-weight:800;color:var(--good);}
   .rowact span{cursor:pointer;font-size:14px;padding:0 3px;}
@@ -83,7 +83,8 @@
   .ktag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;padding:3px 10px;border-radius:20px;}
   .ktag .dot{width:7px;height:7px;border-radius:50%;}
   .csku{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;letter-spacing:-0.3px;margin-top:8px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
-  .csku input{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;border:1px solid transparent;border-radius:6px;padding:2px 5px;width:130px;color:var(--accent);}
+  .csku input{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;border:1px solid transparent;border-radius:6px;padding:2px 5px;width:100%;max-width:170px;color:var(--accent);}
+  .csku{flex-wrap:nowrap;}
   .csku input:focus{outline:none;border-color:var(--accent);background:var(--panel2);}
   .pname{color:var(--ink2);font-size:12.5px;margin-top:3px;line-height:1.35;}
   .pname a{color:var(--ink2);text-decoration:none;}
@@ -91,7 +92,8 @@
   .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 16px 12px;}
   .stat{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:8px 9px;}
   .stat label{font-size:9px;font-weight:800;letter-spacing:0.4px;text-transform:uppercase;color:var(--ink3);display:block;}
-  .stat input{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px;border:none;background:transparent;width:100%;padding:2px 0 0;color:var(--ink);}
+  .stat input{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px;border:none;background:transparent;width:100%;min-width:0;padding:2px 0 0;color:var(--ink);}
+  .stat{overflow:visible;}
   .stat input:focus{outline:none;}
   .stat.ro .v{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px;margin-top:2px;}
   .notes{padding:0 16px 14px;display:flex;flex-direction:column;gap:8px;}
@@ -130,6 +132,22 @@
   .cardchk{position:absolute;top:10px;left:10px;z-index:3;width:18px;height:18px;cursor:pointer;accent-color:var(--accent);}
   .pcard{position:relative;}
   .priceup{font-size:9px;font-weight:800;color:#fff;background:var(--bad);border-radius:4px;padding:1px 5px;white-space:nowrap;cursor:help;}
+  .viewbtn{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:6px 12px;border-radius:9px;
+    background:var(--accent);color:#fff;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap;}
+  .viewbtn:hover{filter:brightness(1.06);}
+  .addlink{margin-top:2px;padding:8px 12px;border-radius:9px;border:1px dashed var(--accent-line);
+    background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;}
+  /* modal */
+  #modal{position:fixed;inset:0;background:rgba(20,15,10,0.5);display:none;align-items:center;justify-content:center;z-index:120;padding:20px;}
+  #modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;width:440px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
+  #modal h3{font-family:'Bricolage Grotesque',sans-serif;margin:0 0 4px;font-size:18px;}
+  #modal .sub{font-size:12px;color:var(--ink3);margin-bottom:16px;}
+  #modal label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink2);display:block;margin:12px 0 5px;}
+  #modal input{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:13px;font-family:inherit;}
+  #modal input:focus{outline:none;border-color:var(--accent);}
+  #modal .prev{margin-top:10px;text-align:center;}
+  #modal .prev img{max-width:120px;max-height:120px;border-radius:10px;border:1px solid var(--line);}
+  #modal .acts{display:flex;gap:9px;margin-top:18px;justify-content:flex-end;}
   #lb{position:fixed;inset:0;background:rgba(20,15,10,0.85);display:none;align-items:center;justify-content:center;z-index:100;padding:24px;}
   #lb img{max-width:90vw;max-height:90vh;border-radius:14px;}
   .empty{text-align:center;padding:60px 20px;color:var(--ink3);}
@@ -187,6 +205,20 @@
     <div class="grow"></div>
     <span class="hint">Watch CBM to know when to close a container (~68 m³ = full 40ft).</span>
   </div>
+
+  <div id="modal"><div class="box">
+    <h3>Add image / link</h3>
+    <div class="sub">Use this when the SKU has no picture (e.g. product with size/color variants). The SKU image always takes priority if it exists.</div>
+    <label>Image URL — loads the picture</label>
+    <input id="mImg" placeholder="https://…/image.jpg" oninput="nabModalPreview()">
+    <div class="prev" id="mPrev"></div>
+    <label>Product page URL — for the supplier to open the product</label>
+    <input id="mLink" placeholder="https://maaarket.si/izdelek/…">
+    <div class="acts">
+      <button class="btn ghost" onclick="document.getElementById('modal').style.display='none'">Cancel</button>
+      <button class="btn primary" onclick="nabSaveLinks()">Save</button>
+    </div>
+  </div></div>
 
   <div id="lb" onclick="this.style.display='none'"><img id="lbimg" src="" alt=""></div>
 
@@ -360,7 +392,7 @@ function renderRows(items){
     const done=it.status==='done'; const skuU=(it.sku||'').toUpperCase();
     const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
     const img=it.image?'<img class="thumb" src="'+esc(it.image)+'" onclick="nabZoom(\''+esc(it.image)+'\')" alt="">':'<div class="thumb ph">📦</div>';
-    const link=it.link?'<a class="golink" href="'+esc(it.link)+'" target="_blank" title="Open product page">open ↗</a>':'<span class="golink off">—</span>';
+    const link=it.link?'<a class="golink" href="'+esc(it.link)+'" target="_blank" title="Open product page">🔗 view</a>':(!it.image?'<span class="golink" style="cursor:pointer" onclick="nabOpenLinks(\''+it.id+'\')">＋ link</span>':'<span class="golink off">—</span>');
     const pup=window._PUP[it.id];
     const pupTag=pup?' <span class="priceup" title="Previous price $'+pup.prev.toFixed(2)+'">↑ +'+pup.pct+'%</span>':'';
     const seld=SEL.has(it.id);
@@ -369,15 +401,15 @@ function renderRows(items){
       +'<td><div class="imgcell">'+img+link+'</div></td>'
       +'<td>'+contSelect(it)+'</td>'
       +'<td>'+cin(it.id,'date',it.date,'76px')+'</td>'
-      +'<td style="white-space:nowrap"><input class="cin mono" value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" style="width:104px;color:var(--accent);font-weight:700" title="'+esc(it.naziv||'')+'">'+(reord?' <span class="reorder">↻</span>':'')+'</td>'
-      +'<td class="num">'+cin(it.id,'qty',it.qty,'54px','right')+'</td>'
-      +'<td>'+cin(it.id,'comment',it.comment,'110px')+'</td>'
-      +'<td class="num" style="white-space:nowrap">'+cin(it.id,'unit_price',it.unit_price,'54px','right')+pupTag+'</td>'
+      +'<td style="white-space:nowrap"><input class="cin mono" value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" style="width:136px;min-width:136px;color:var(--accent);font-weight:700" title="'+esc(it.naziv||'')+'">'+(reord?' <span class="reorder">↻</span>':'')+'</td>'
+      +'<td class="num">'+cin(it.id,'qty',it.qty,'66px','right')+'</td>'
+      +'<td>'+cin(it.id,'comment',it.comment,'150px')+'</td>'
+      +'<td class="num" style="white-space:nowrap">'+cin(it.id,'unit_price',it.unit_price,'62px','right')+pupTag+'</td>'
       +'<td class="num" style="color:var(--ink2);font-weight:700">$'+num(it.total_price,0)+'</td>'
       +'<td style="min-width:170px"><textarea class="cin area field-supplier" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="supplier spec…" style="width:170px">'+esc(it.specification||'')+'</textarea></td>'
       +'<td style="min-width:170px"><textarea class="cin area field-nego" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="price talk…" style="width:170px">'+esc(it.negotiation||'')+'</textarea></td>'
-      +'<td class="num">'+cin(it.id,'ctns',it.ctns,'50px','right')+'</td>'
-      +'<td class="num">'+cin(it.id,'cbm_ctn',it.cbm_ctn,'62px','right')+'</td>'
+      +'<td class="num">'+cin(it.id,'ctns',it.ctns,'60px','right')+'</td>'
+      +'<td class="num">'+cin(it.id,'cbm_ctn',it.cbm_ctn,'74px','right')+'</td>'
       +'<td class="num" style="color:var(--ink2)">'+num(it.total_cbm,3)+'</td>'
       +'<td class="num final">$'+num(it.final_price,2)+'</td>'
       +'<td class="rowact" style="white-space:nowrap;text-align:center">'
@@ -408,7 +440,8 @@ function renderCards(items){
       +'<div class="chead">'+img
         +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'"><span class="dot" style="background:'+col+'"></span>'+esc(it.container||'Nerazvrščeno')+'</span>'
         +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+pupTag+'</div>'
-        +'<div class="pname">'+(it.link?'<a href="'+esc(it.link)+'" target="_blank">'+esc(it.naziv||'—')+' ↗</a>':esc(it.naziv||'—'))+'</div>'
+        +'<div class="pname">'+esc(it.naziv||'—')+'</div>'
+        +(it.link?'<a class="viewbtn" href="'+esc(it.link)+'" target="_blank">🔗 View product</a>':'')
         +'<div class="cmeta-row">'+contSelect(it)+' <input value="'+esc(it.date||'')+'" onchange="nabEdit(\''+it.id+'\',\'date\',this.value)" style="width:80px;border:1px solid var(--line);border-radius:7px;padding:3px 6px;font-size:11px;font-family:inherit"></div>'
         +'</div></div>'
       +'<div class="stats">'
@@ -421,9 +454,7 @@ function renderCards(items){
         +'<div class="note"><label>Our note</label><input value="'+esc(it.comment||'')+'" onchange="nabEdit(\''+it.id+'\',\'comment\',this.value)" placeholder="e.g. re-order, color, without stick"></div>'
         +'<div class="note spec"><label>Specification <span class="badge-supp">supplier</span></label><textarea rows="2" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="dimensions, variation, set…">'+esc(it.specification||'')+'</textarea></div>'
         +'<div class="note nego"><label>Price negotiation</label><textarea rows="2" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="target price, counter-offer, lobby…">'+esc(it.negotiation||'')+'</textarea></div>'
-        +'<div class="note urls"><label>Manual links (used when SKU has no image)</label>'
-          +'<input value="'+esc(it.link||'')+'" onchange="nabEdit(\''+it.id+'\',\'link\',this.value)" placeholder="Product page URL">'
-          +'<input value="'+esc(it.image_url||'')+'" onchange="nabSetImageUrl(\''+it.id+'\',this.value)" placeholder="Image URL (loads the picture)"></div>'
+        +(!it.image?'<button class="addlink" onclick="nabOpenLinks(\''+it.id+'\')">🔗 Add image / link</button>':'')
       +'</div>'
       +'<div class="cfoot"><span class="final" style="color:var(--good)">$'+num(it.final_price,2)+' <small>final</small></span>'
         +'<span style="color:var(--ink3);font-size:11px">· CBM '+num(it.total_cbm,3)+'</span>'
@@ -432,6 +463,29 @@ function renderCards(items){
   }).join('')+'</div>';
 }
 
+let _linkItemId=null;
+function nabOpenLinks(id){
+  _linkItemId=id;
+  const it=DATA.items.find(x=>x.id===id)||{};
+  document.getElementById('mImg').value=it.image_url||'';
+  document.getElementById('mLink').value=it.link||'';
+  nabModalPreview();
+  document.getElementById('modal').style.display='flex';
+}
+function nabModalPreview(){
+  const u=document.getElementById('mImg').value.trim();
+  document.getElementById('mPrev').innerHTML = u?'<img src="'+esc(u)+'" alt="" onerror="this.style.display=\'none\'">':'';
+}
+async function nabSaveLinks(){
+  const it=DATA.items.find(x=>x.id===_linkItemId); if(!it){ document.getElementById('modal').style.display='none'; return; }
+  const img=document.getElementById('mImg').value.trim();
+  const link=document.getElementById('mLink').value.trim();
+  it.image_url=img; it.link=link;
+  if(img && !(it.image||'').trim()) it.image=img;   // SKU slika ima prednost; ročna samo če ni SKU slike
+  await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+  document.getElementById('modal').style.display='none';
+  nabRender();
+}
 function nabZoom(src){ document.getElementById('lbimg').src=src; document.getElementById('lb').style.display='flex'; }
 
 async function nabEdit(id,f,v){
