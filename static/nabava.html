@@ -41,7 +41,9 @@
   .contfilter:hover{border-color:var(--ink3);}
   .contfilter:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
   .cfdot{width:12px;height:12px;border-radius:50%;background:var(--ink3);display:inline-block;}
-  .cst-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;margin-left:6px;white-space:nowrap;vertical-align:middle;}
+  .cst-row{margin-top:5px;}
+  .cst-badge{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap;
+    max-width:calc(100% - 30px);overflow:hidden;text-overflow:ellipsis;}
   .cst-dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
   .qs-wrap{display:inline-flex;align-items:center;gap:5px;margin-left:4px;}
   .qs-wrap .qs-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--ink3);}
@@ -608,7 +610,7 @@ function renderCards(items){
     const seld=SEL.has(it.id);
     return '<div class="pcard '+(done?'done':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)"><div class="ribbon" style="background:'+col+'"></div>'
       +'<div class="chead">'+img
-        +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'" title="'+esc(it.container||'Nerazvrščeno')+'"><span class="dot" style="background:'+col+'"></span><span class="ktag-name">'+esc(it.container||'Nerazvrščeno')+'</span></span>'+(CSTATUS[it.container]?cstBadge(CSTATUS[it.container]):'')
+        +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'" title="'+esc(it.container||'Nerazvrščeno')+'"><span class="dot" style="background:'+col+'"></span><span class="ktag-name">'+esc(it.container||'Nerazvrščeno')+'</span></span>'+(CSTATUS[it.container]?'<div class="cst-row">'+cstBadge(CSTATUS[it.container])+'</div>':'')
         +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+pupTag+'</div>'
         +'<div class="pname">'+esc(it.naziv||'—')+'</div>'
         +(it.link
