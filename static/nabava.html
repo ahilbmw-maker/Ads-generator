@@ -16,11 +16,11 @@
   * { box-sizing:border-box; }
   html,body { margin:0; }
   body { font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-    background:var(--bg); color:var(--ink); font-size:13px; line-height:1.4; }
+    background:var(--bg); color:var(--ink); font-size:13px; line-height:1.4; padding-bottom:64px; }
   .mono { font-family:'DM Mono','SF Mono',ui-monospace,monospace; }
 
   .bar { background:var(--panel); border-bottom:1px solid var(--line); padding:10px 18px;
-    display:flex; align-items:center; gap:14px; flex-wrap:wrap; position:sticky; top:0; z-index:20; }
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap; position:sticky; top:0; z-index:30; }
   .bar h1 { margin:0; font-size:15px; font-weight:800; letter-spacing:-0.2px; display:flex; align-items:center; gap:8px; }
   .bar h1 .tag { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px;
     color:var(--warn); background:var(--warn-soft); padding:2px 7px; border-radius:5px; }
@@ -40,24 +40,21 @@
 
   .controls { padding:12px 18px 4px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .lbl { font-size:11px; font-weight:800; letter-spacing:0.5px; color:var(--ink3); text-transform:uppercase; }
-  .chip { cursor:pointer; padding:5px 11px; border-radius:20px; border:1px solid var(--line);
-    background:var(--panel); font-size:12px; font-weight:600; color:var(--ink2); white-space:nowrap; }
-  .chip.on { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); font-weight:800; }
-  .chip b { font-weight:800; }
+  .chip { cursor:pointer; padding:5px 11px 5px 9px; border-radius:20px; border:1px solid var(--line);
+    background:var(--panel); font-size:12px; font-weight:700; color:var(--ink); white-space:nowrap;
+    display:inline-flex; align-items:center; gap:6px; }
+  .chip .dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .chip .cnt { font-size:10px; font-weight:600; color:var(--ink3); }
+  .chip.on { box-shadow:0 0 0 2px var(--accent) inset; }
+  .chip.all { font-weight:800; }
+  .chip.all.on { background:var(--accent-soft); color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
   .toggle-lbl { display:inline-flex; align-items:center; gap:7px; cursor:pointer; padding:5px 12px;
     border:1px solid var(--line); border-radius:20px; background:var(--panel); font-size:12px; font-weight:600; }
 
-  .sums { padding:6px 18px 12px; display:flex; gap:9px; flex-wrap:wrap; }
-  .sumcard { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:9px 13px; min-width:158px; }
-  .sumcard .c { font-weight:800; font-size:13px; margin-bottom:3px; }
-  .sumcard .c small { font-weight:600; color:var(--ink3); }
-  .sumcard .m { font-size:11.5px; color:var(--ink2); }
-  .sumcard .m b { color:var(--ink); }
-
-  .wrap { padding:0 18px 60px; }
+  .wrap { padding:12px 18px 20px; }
 
   .tblwrap { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); overflow:auto; }
-  table { width:100%; border-collapse:collapse; min-width:1500px; }
+  table { width:100%; border-collapse:collapse; min-width:1560px; }
   thead th { position:sticky; top:0; background:var(--panel2); border-bottom:2px solid var(--line);
     padding:9px 8px; text-align:left; font-size:11px; font-weight:800; letter-spacing:0.3px;
     color:var(--ink2); text-transform:uppercase; white-space:nowrap; z-index:2; }
@@ -74,7 +71,6 @@
   .cin.mono { font-family:'DM Mono',monospace; }
   .cin.right { text-align:right; }
   td.num { text-align:right; font-variant-numeric:tabular-nums; }
-  .prodcell { display:flex; align-items:center; gap:9px; }
   .prodcell .nm { font-size:12px; }
   .prodcell .nm a { color:var(--ink); text-decoration:none; }
   .prodcell .nm a:hover { color:var(--accent); }
@@ -85,13 +81,18 @@
   .badge-supp { font-size:9px; font-weight:800; color:var(--accent); background:var(--accent-soft);
     border-radius:4px; padding:1px 5px; text-transform:uppercase; letter-spacing:0.4px; }
 
+  /* container tag pill */
+  .ctag { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:20px;
+    font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; border:1px solid transparent; }
+  .ctag .dot { width:8px; height:8px; border-radius:50%; }
+
   .cin.area { resize:vertical; min-height:30px; line-height:1.35; }
   .field-supplier { background:#fbfdff; border:1px dashed #b9d4ff !important; }
   .field-nego { background:#fffdf7; border:1px dashed #f0d09a !important; }
 
   .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:12px; }
   .pcard { background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden;
-    display:flex; flex-direction:column; }
+    display:flex; flex-direction:column; border-top:3px solid var(--line); }
   .pcard.done { opacity:0.55; }
   .pcard .head { display:flex; gap:12px; padding:12px; border-bottom:1px solid var(--line); }
   .pcard .pimg { width:78px; height:78px; border-radius:10px; object-fit:cover; flex-shrink:0;
@@ -99,19 +100,35 @@
   .pcard .pimg.ph { display:flex; align-items:center; justify-content:center; color:var(--ink3); font-size:22px; }
   .pcard .htxt { min-width:0; flex:1; }
   .pcard .sku { font-family:'DM Mono',monospace; font-weight:800; font-size:13px; color:var(--accent); }
-  .pcard .pname { font-size:12px; color:var(--ink2); margin-top:2px; overflow:hidden; text-overflow:ellipsis;
+  .pcard .pname { font-size:12px; color:var(--ink2); margin-top:2px; overflow:hidden;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
   .pcard .pname a { color:var(--ink2); text-decoration:none; }
   .pcard .body { padding:10px 12px; display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; }
   .pcard .fld { display:flex; flex-direction:column; gap:2px; }
   .pcard .fld label { font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:var(--ink3); }
-  .pcard .fld input, .pcard .fld textarea { border:1px solid var(--line); border-radius:6px; padding:5px 7px;
-    font-size:12px; font-family:inherit; width:100%; }
+  .pcard .fld input, .pcard .fld textarea, .pcard .fld select { border:1px solid var(--line); border-radius:6px;
+    padding:5px 7px; font-size:12px; font-family:inherit; width:100%; }
   .pcard .fld.wide { grid-column:1 / -1; }
   .pcard .foot { margin-top:auto; padding:9px 12px; border-top:1px solid var(--line);
     display:flex; align-items:center; gap:10px; background:var(--panel2); }
   .pcard .foot .final { font-size:15px; }
   .pcard .foot .spacer { flex:1; }
+
+  select.contsel { border:1px solid var(--line); border-radius:6px; padding:4px 6px; font-size:11px;
+    font-family:inherit; background:var(--panel); cursor:pointer; max-width:130px; }
+
+  /* sticky live totals */
+  .livebar { position:fixed; left:0; right:0; bottom:0; background:var(--ink); color:#fff;
+    padding:10px 18px; display:flex; align-items:center; gap:22px; z-index:40; flex-wrap:wrap;
+    box-shadow:0 -3px 14px rgba(0,0,0,0.18); }
+  .livebar .scope { font-size:12px; font-weight:800; display:inline-flex; align-items:center; gap:7px; }
+  .livebar .scope .dot { width:10px; height:10px; border-radius:50%; }
+  .livebar .stat { display:flex; flex-direction:column; }
+  .livebar .stat .k { font-size:9.5px; text-transform:uppercase; letter-spacing:0.6px; color:#9fb0c4; font-weight:700; }
+  .livebar .stat .v { font-size:16px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .livebar .stat .v small { font-size:11px; font-weight:600; color:#9fb0c4; }
+  .livebar .spacer { flex:1; }
+  .livebar .hint { font-size:11px; color:#9fb0c4; }
 
   #lb { position:fixed; inset:0; background:rgba(10,14,20,0.82); display:none; align-items:center;
     justify-content:center; z-index:100; padding:24px; }
@@ -120,10 +137,7 @@
   .empty { text-align:center; padding:64px 20px; color:var(--ink3); }
   .empty b { color:var(--ink2); display:block; font-size:15px; margin-bottom:6px; }
 
-  @media (max-width:640px) {
-    .bar h1 span.full { display:none; }
-    .cards { grid-template-columns:1fr; }
-  }
+  @media (max-width:640px) { .bar h1 span.full { display:none; } .cards { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -134,6 +148,7 @@
       <button id="vt-cards" onclick="nabSetView('cards')">▦ Cards</button>
     </div>
     <div class="grow"></div>
+    <button class="btn ghost" onclick="nabRefreshImages()" id="imgBtn">🖼 Load images</button>
     <button class="btn ghost" onclick="nabExport()">⬇ Export XLSX</button>
     <button class="btn warn" onclick="nabCloseContainer()">📦 Close container</button>
     <button class="btn primary" onclick="nabAddRow()">＋ New item</button>
@@ -142,30 +157,52 @@
 
   <div class="controls">
     <span class="lbl">Container</span>
-    <div id="contChips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    <div id="contChips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></div>
+    <button class="btn ghost" style="padding:4px 10px" onclick="nabNewContainer()">＋ new container</button>
     <div class="grow"></div>
     <label class="toggle-lbl"><input type="checkbox" id="hideDone" checked onchange="nabRender()"> Hide closed</label>
     <button class="btn ghost" onclick="nabCopySupplier()">📋 Copy for supplier</button>
   </div>
 
-  <div class="sums" id="sums"></div>
-
   <div class="wrap" id="content"></div>
+
+  <div class="livebar" id="livebar">
+    <span class="scope" id="liveScope">All containers</span>
+    <div class="stat"><span class="k">Items</span><span class="v" id="liveItems">0</span></div>
+    <div class="stat"><span class="k">Pieces</span><span class="v" id="livePcs">0</span></div>
+    <div class="stat"><span class="k">Order value</span><span class="v" id="liveUsd">$0</span></div>
+    <div class="stat"><span class="k">Total CBM</span><span class="v" id="liveCbm">0.00</span></div>
+    <div class="spacer"></div>
+    <span class="hint">Live totals for the current view — watch CBM to know when to close a container.</span>
+  </div>
 
   <div id="lb" onclick="this.style.display='none'"><img id="lbimg" src="" alt=""></div>
 
 <script>
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function num(v,d){const n=parseFloat(v);return isNaN(n)?'':(d!=null?n.toFixed(d):n);}
+function num(v,d){const n=parseFloat(v);return isNaN(n)?0:(d!=null?+n.toFixed(d):n);}
 
 let DATA = { items:[], containers:[] };
+let CONTLIST = [];        // vsi imena kontejnerjev za dropdown
 let CONT = 'all';
 let VIEW = (localStorage.getItem('nab_view') || 'rows');
 
+// paleta barv — kontejnerju dodeljena deterministično po imenu
+const PALETTE = ['#1f6feb','#0f9d58','#c2680c','#8b5cf6','#e11d74','#0891b2','#ca8a04','#dc2626','#4f46e5','#059669','#d946ef','#0284c7','#b45309','#7c3aed'];
+function contColor(name){
+  if(!name || name==='Nerazvrščeno') return '#94a3b8';
+  let h=0; for(let i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))>>>0;
+  return PALETTE[h % PALETTE.length];
+}
+function hexA(hex,a){const n=parseInt(hex.slice(1),16);return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')';}
+
 async function nabLoad() {
-  try { const r = await fetch('/nabava-list'); const d = await r.json();
-    if (d.ok) { DATA = d; nabApplyViewButtons(); nabRender(); } }
-  catch(e){ document.getElementById('content').innerHTML = '<div class="empty"><b>Could not load data.</b>Refresh the page to try again.</div>'; }
+  try {
+    const [r1,r2] = await Promise.all([fetch('/nabava-list'), fetch('/nabava-containers')]);
+    const d = await r1.json(); const dc = await r2.json();
+    if (d.ok) { DATA = d; CONTLIST = (dc.ok?dc.containers:[]) || []; nabApplyViewButtons(); nabRender(); }
+    else { document.getElementById('content').innerHTML='<div class="empty"><b>Load error.</b>'+esc(d.error||'')+'</div>'; }
+  } catch(e){ document.getElementById('content').innerHTML='<div class="empty"><b>Could not load data.</b>Refresh to try again.</div>'; }
 }
 
 function nabApplyViewButtons(){
@@ -175,10 +212,17 @@ function nabApplyViewButtons(){
 function nabSetView(v){ VIEW=v; localStorage.setItem('nab_view',v); nabApplyViewButtons(); nabRender(); }
 function nabSetCont(c){ CONT=c; nabRender(); }
 
-function containers(){ return DATA.containers.map(c=>c.container); }
+function allContainerNames(){
+  const s=new Set(CONTLIST);
+  DATA.items.forEach(i=>{ if(i.container) s.add(i.container); });
+  const arr=[...s];
+  const key=c=>{ if(c==='Nerazvrščeno')return[2,0]; const m=c.match(/(\d+)/); return m?[0,+m[1]]:[1,0]; };
+  return arr.sort((a,b)=>{const ka=key(a),kb=key(b);return ka[0]-kb[0]||ka[1]-kb[1];});
+}
+
 function visibleItems(){
   let it = DATA.items.slice();
-  if (CONT!=='all') it = it.filter(x=>x.container===CONT);
+  if (CONT!=='all') it = it.filter(x=>(x.container||'Nerazvrščeno')===CONT);
   if (document.getElementById('hideDone')?.checked) it = it.filter(x=>x.status!=='done');
   return it;
 }
@@ -188,31 +232,57 @@ function reorderSet(){
 }
 
 function nabRender(){
+  // chips
+  const names=allContainerNames();
+  const cnt={}; DATA.items.forEach(i=>{const c=i.container||'Nerazvrščeno'; cnt[c]=(cnt[c]||0)+ (i.status!=='done'?1:0);});
   const cc=document.getElementById('contChips');
-  let h='<span class="chip '+(CONT==='all'?'on':'')+'" onclick="nabSetCont(\'all\')">All</span>';
-  DATA.containers.forEach(c=>{ h+='<span class="chip '+(CONT===c.container?'on':'')+'" onclick="nabSetCont(\''+esc(c.container)+'\')">'+esc(c.container)+' <b>'+c.active+'</b></span>'; });
+  let h='<span class="chip all '+(CONT==='all'?'on':'')+'" onclick="nabSetCont(\'all\')">All <span class="cnt">('+DATA.items.filter(i=>i.status!=='done').length+')</span></span>';
+  names.forEach(c=>{
+    const col=contColor(c), on=CONT===c;
+    h+='<span class="chip '+(on?'on':'')+'" onclick="nabSetCont(\''+esc(c)+'\')" style="'+(on?'background:'+hexA(col,0.10)+';':'')+'border-color:'+(on?col:'var(--line)')+'">'
+      +'<span class="dot" style="background:'+col+'"></span>'+esc(c)+' <span class="cnt">('+(cnt[c]||0)+')</span></span>';
+  });
   cc.innerHTML=h;
-  let vis=DATA.containers; if(CONT!=='all') vis=vis.filter(c=>c.container===CONT);
-  document.getElementById('sums').innerHTML = vis.map(c=>
-    '<div class="sumcard"><div class="c">'+esc(c.container)+' <small>· '+c.active+' active'+(c.done?' · '+c.done+' closed':'')+'</small></div>'
-    +'<div class="m">Σ '+c.total_qty.toFixed(0)+' pcs · <b>$'+c.total_usd.toFixed(0)+'</b> · CBM <b>'+c.total_cbm.toFixed(2)+'</b></div></div>'
-  ).join('');
+
   const items=visibleItems();
   const box=document.getElementById('content');
-  if(!items.length){ box.innerHTML='<div class="empty"><b>No items here.</b>Add one with ＋ New item, or pick another container.</div>'; return; }
-  box.innerHTML = VIEW==='cards' ? renderCards(items) : renderRows(items);
+  if(!items.length){ box.innerHTML='<div class="empty"><b>No items here.</b>Add one with ＋ New item, or pick another container.</div>'; }
+  else box.innerHTML = VIEW==='cards' ? renderCards(items) : renderRows(items);
+
+  nabLive(items);
 }
 
+function nabLive(items){
+  const pcs=items.reduce((s,i)=>s+num(i.qty),0);
+  const usd=items.reduce((s,i)=>s+num(i.total_price),0);
+  const cbm=items.reduce((s,i)=>s+num(i.total_cbm),0);
+  document.getElementById('liveItems').textContent=items.length;
+  document.getElementById('livePcs').textContent=pcs.toLocaleString('en-US');
+  document.getElementById('liveUsd').innerHTML='$'+Math.round(usd).toLocaleString('en-US');
+  document.getElementById('liveCbm').innerHTML=cbm.toFixed(2)+' <small>m³</small>';
+  const sc=document.getElementById('liveScope');
+  if(CONT==='all'){ sc.innerHTML='<span class="dot" style="background:#9fb0c4"></span>All containers'; }
+  else { const col=contColor(CONT); sc.innerHTML='<span class="dot" style="background:'+col+'"></span>'+esc(CONT); }
+}
+
+function contSelect(it){
+  const names=allContainerNames();
+  const cur=it.container||'Nerazvrščeno';
+  const opts=names.map(n=>'<option '+(n===cur?'selected':'')+'>'+esc(n)+'</option>').join('');
+  return '<select class="contsel" onchange="nabSetContainer(\''+it.id+'\',this.value)">'+opts+'</select>';
+}
+
+/* ---------- ROWS ---------- */
 function renderRows(items){
   const ro=reorderSet();
   const cin=(id,f,v,w,cls)=>'<input class="cin '+(cls||'')+'" value="'+esc(v==null?'':v)+'" onchange="nabEdit(\''+id+'\',\''+f+'\',this.value)" style="width:'+w+'">';
   const rows=items.map(it=>{
     const done=it.status==='done'; const skuU=(it.sku||'').toUpperCase();
-    const reord=ro[skuU]&&ro[skuU].size>1;
+    const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
     const img=it.image?'<img class="thumb" src="'+esc(it.image)+'" onclick="nabZoom(\''+esc(it.image)+'\')" alt="">':'<div class="thumb ph">📦</div>';
-    return '<tr class="'+(done?'done':'')+'">'
+    return '<tr class="'+(done?'done':'')+'" style="border-left:3px solid '+col+'">'
       +'<td>'+img+'</td>'
-      +'<td>'+cin(it.id,'container',it.container,'86px')+'</td>'
+      +'<td>'+contSelect(it)+'</td>'
       +'<td>'+cin(it.id,'date',it.date,'76px')+'</td>'
       +'<td style="white-space:nowrap"><input class="cin mono" value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" style="width:104px;color:var(--accent);font-weight:700">'+(reord?' <span class="reorder">↻ re-order</span>':'')+'</td>'
       +'<td style="max-width:210px"><div class="prodcell"><div class="nm">'+(it.link?'<a href="'+esc(it.link)+'" target="_blank" title="'+esc(it.naziv||'')+'">'+esc((it.naziv||'—').slice(0,42))+' ↗</a>':esc((it.naziv||'—').slice(0,42)))+'</div></div></td>'
@@ -239,18 +309,20 @@ function renderRows(items){
     +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 
+/* ---------- CARDS ---------- */
 function renderCards(items){
   const ro=reorderSet();
   return '<div class="cards">'+items.map(it=>{
     const done=it.status==='done'; const skuU=(it.sku||'').toUpperCase();
-    const reord=ro[skuU]&&ro[skuU].size>1;
+    const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
     const img=it.image?'<img class="pimg" src="'+esc(it.image)+'" onclick="nabZoom(\''+esc(it.image)+'\')" alt="">':'<div class="pimg ph">📦</div>';
     const fnum=(f,v)=>'<input type="text" value="'+esc(v==null?'':v)+'" onchange="nabEdit(\''+it.id+'\',\''+f+'\',this.value)">';
-    return '<div class="pcard '+(done?'done':'')+'">'
+    return '<div class="pcard '+(done?'done':'')+'" style="border-top-color:'+col+'">'
       +'<div class="head">'+img
         +'<div class="htxt"><div class="sku">'+esc(it.sku||'—')+(reord?' <span class="reorder">↻</span>':'')+'</div>'
         +'<div class="pname">'+(it.link?'<a href="'+esc(it.link)+'" target="_blank">'+esc(it.naziv||'—')+' ↗</a>':esc(it.naziv||'—'))+'</div>'
-        +'<div style="margin-top:5px"><input value="'+esc(it.container||'')+'" onchange="nabEdit(\''+it.id+'\',\'container\',this.value)" style="width:100px;border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit"> <input value="'+esc(it.date||'')+'" onchange="nabEdit(\''+it.id+'\',\'date\',this.value)" style="width:80px;border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit"></div>'
+        +'<div style="margin-top:6px;display:flex;gap:6px;align-items:center">'+contSelect(it)
+        +' <input value="'+esc(it.date||'')+'" onchange="nabEdit(\''+it.id+'\',\'date\',this.value)" style="width:78px;border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit"></div>'
         +'</div></div>'
       +'<div class="body">'
         +'<div class="fld"><label>Qty</label>'+fnum('qty',it.qty)+'</div>'
@@ -275,9 +347,14 @@ async function nabEdit(id,f,v){
   const it=DATA.items.find(x=>x.id===id); if(!it) return;
   it[f]=v;
   try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
-    const d=await r.json(); if(d.ok){ Object.assign(it,d.item); await refreshTotals(); nabRender(); } }catch(e){}
+    const d=await r.json(); if(d.ok){ Object.assign(it,d.item); nabRender(); } }catch(e){}
 }
-async function refreshTotals(){ try{ const r=await fetch('/nabava-list'); const d=await r.json(); if(d.ok) DATA.containers=d.containers; }catch(e){} }
+async function nabSetContainer(id,val){
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  it.container=val;
+  await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+  nabRender();
+}
 
 async function nabLookup(id,sku){
   if(!sku||!sku.trim()) return;
@@ -289,31 +366,46 @@ async function nabLookup(id,sku){
       nabRender(); } }catch(e){}
 }
 
+function nabNewContainer(){
+  const name=prompt('New container name:', 'Kontejner'+(CONTLIST.length+1));
+  if(!name||!name.trim()) return;
+  const n=name.trim();
+  if(!CONTLIST.includes(n)) CONTLIST.push(n);
+  CONT=n; nabRender();
+}
+
 async function nabAddRow(){
-  const cont = CONT!=='all'?CONT:(containers().slice(-1)[0]||'Kontejner1');
+  const cont = CONT!=='all'?CONT:'Nerazvrščeno';
   const it={container:cont,date:new Date().toLocaleDateString('sl-SI'),sku:'',qty:0,unit_price:0,cbm_ctn:0,ctns:0,status:'active'};
   try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
-    const d=await r.json(); if(d.ok){ DATA.items.push(d.item); await refreshTotals(); nabRender();
+    const d=await r.json(); if(d.ok){ DATA.items.push(d.item); nabRender();
       window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); } }catch(e){}
 }
 async function nabDelete(id){
   if(!confirm('Delete this item?')) return;
   try{ await fetch('/nabava-item/'+encodeURIComponent(id),{method:'DELETE'});
-    DATA.items=DATA.items.filter(x=>x.id!==id); await refreshTotals(); nabRender(); }catch(e){}
+    DATA.items=DATA.items.filter(x=>x.id!==id); nabRender(); }catch(e){}
 }
 async function nabToggleDone(id,done){
   const it=DATA.items.find(x=>x.id===id); if(!it) return;
   it.status=done?'done':'active';
   await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
-  await refreshTotals(); nabRender();
+  nabRender();
 }
 async function nabCloseContainer(){
-  const cs=containers();
+  const cs=allContainerNames();
   const c=prompt('Close which container?\n('+cs.join(', ')+')', CONT!=='all'?CONT:(cs.slice(-1)[0]||''));
   if(!c) return;
   const mv=prompt('Move still-open items to a NEW container? Enter a name (e.g. Kontejner11), or leave EMPTY to just mark them closed.','');
   try{ const r=await fetch('/nabava-container-close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({container:c,move_to:(mv||'').trim()})});
     const d=await r.json(); if(d.ok){ alert('Done — '+d.affected+' items updated.'); nabLoad(); } }catch(e){ alert('Error: '+e.message); }
+}
+async function nabRefreshImages(){
+  const b=document.getElementById('imgBtn'); const o=b.textContent; b.disabled=true; b.textContent='⏳ Loading images…';
+  try{ const r=await fetch('/nabava-refresh-images',{method:'POST'}); const d=await r.json();
+    if(d.ok){ b.textContent='✓ '+d.updated+' images'; await nabLoad(); setTimeout(()=>{b.textContent=o;b.disabled=false;},1600); }
+    else { b.textContent=o; b.disabled=false; alert('Error: '+(d.error||'')); } }
+  catch(e){ b.textContent=o; b.disabled=false; alert('Error: '+e.message); }
 }
 function nabExport(){ window.open('/nabava-export-xlsx','_blank'); }
 function nabCopySupplier(){

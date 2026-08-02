@@ -24316,6 +24316,51 @@ async def nabava_list():
         return {"ok": False, "error": str(e)[:300], "items": [], "containers": []}
 
 
+@app.get("/nabava-containers")
+async def nabava_containers():
+    """Vsi obstoječi kontejnerji (za dropdown), naravni vrstni red + Nerazvrščeno na koncu."""
+    items = _nabava_load()
+    seen = []
+    for it in items:
+        c = (it.get("container") or "").strip()
+        if c and c not in seen:
+            seen.append(c)
+    def _k(c):
+        if c == "Nerazvrščeno": return (2, 0)
+        m = re.search(r'(\d+)', c)
+        return (0, int(m.group(1))) if m else (1, 0)
+    return {"ok": True, "containers": sorted(seen, key=_k)}
+
+
+@app.post("/nabava-refresh-images")
+async def nabava_refresh_images():
+    """Povleče slike po SKU SAMO za postavke, ki slike še nimajo. Vrne koliko posodobljenih."""
+    await ensure_cache_fresh()
+    async with _nabava_lock:
+        items = _nabava_load()
+    updated = 0
+    # unikatni SKU-ji brez slike (da ne kličemo istega večkrat)
+    need = {}
+    for it in items:
+        if not (it.get("image") or "").strip() and (it.get("sku") or "").strip():
+            need.setdefault(it["sku"].strip().upper(), None)
+    for sku in list(need.keys()):
+        try:
+            imgs = await _kbatch_images_by_sku(sku, 1)
+            if imgs:
+                need[sku] = imgs[0]
+        except Exception:
+            pass
+    async with _nabava_lock:
+        items = _nabava_load()
+        for it in items:
+            sk = (it.get("sku") or "").strip().upper()
+            if sk in need and need[sk] and not (it.get("image") or "").strip():
+                it["image"] = need[sk]; updated += 1
+        _nabava_save(items)
+    return {"ok": True, "updated": updated, "skus_checked": len(need)}
+
+
 @app.post("/nabava-item")
 async def nabava_item_save(data: dict):
     """Doda ali uredi postavko. Brez id = nova. Vrne preračunano postavko."""
@@ -24332,6 +24377,8 @@ async def nabava_item_save(data: dict):
         else:
             it["id"] = "nb" + str(int(_time.time() * 1000))
             it.setdefault("status", "active")
+            if not (it.get("container") or "").strip():
+                it["container"] = "Nerazvrščeno"
             items.append(it)
         _nabava_save(items)
     return {"ok": True, "item": it}
