@@ -51,6 +51,7 @@ from starlette.responses import RedirectResponse, PlainTextResponse
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "siluxar2026")  # SPREMENI prek env na Renderju!
 APP_SECRET = os.environ.get("APP_SECRET", APP_PASSWORD + "_slx_sign_v1")
 AUTH_COOKIE = "slx_auth"
+# LOČENO geslo samo za NABAVO (kitajski dobavitelji) — dostop LE do /nabava, ne cele platforme
 NABAVA_PASSWORD = os.environ.get("NABAVA_PASSWORD", "nabava2026")
 NABAVA_SECRET = os.environ.get("NABAVA_SECRET", NABAVA_PASSWORD + "_nabava_sign_v1")
 NABAVA_COOKIE = "slx_nabava_auth"
@@ -77,6 +78,7 @@ def _auth_check_token(token: str) -> bool:
     except Exception:
         return False
 
+
 def _nabava_make_token():
     exp = str(int(_time.time()) + AUTH_TTL)
     sig = _hmac.new(NABAVA_SECRET.encode(), exp.encode(), _hashlib.sha256).hexdigest()
@@ -96,22 +98,24 @@ def _nabava_check_token(token: str) -> bool:
 
 
 def _nabava_authorized(request) -> bool:
+    """Dostop do nabave: glavni prijavljen uporabnik ALI nabava-geslo."""
     if _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         return True
     return _nabava_check_token(request.cookies.get(NABAVA_COOKIE, ""))
-
 
 class AuthGateMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
         if path in _AUTH_EXEMPT_EXACT or path.startswith(_AUTH_EXEMPT_PREFIX):
             return await call_next(request)
+        # NABAVA: svoja zaščita (glavno ALI nabava geslo) — ne skozi glavni gate
         if path == "/nabava" or path == "/nabava-login" or path.startswith("/nabava-"):
             if _nabava_authorized(request):
                 return await call_next(request)
-            if "text/html" in request.headers.get("accept", ""):
+            accept = request.headers.get("accept", "")
+            if "text/html" in accept:
                 return RedirectResponse(url="/nabava-login", status_code=302)
-            return PlainTextResponse("401", status_code=401)
+            return PlainTextResponse("401 — prijava potrebna", status_code=401)
         token = request.cookies.get(AUTH_COOKIE, "")
         if _auth_check_token(token):
             return await call_next(request)
@@ -170,16 +174,19 @@ async def login_submit(password: str = Form("")):
 @app.get("/nabava-login", response_class=HTMLResponse)
 async def nabava_login_page(err: str = ""):
     msg = "Wrong password." if err else ""
-    html = _LOGIN_HTML.replace("Vpiši geslo za dostop", "Purchase order access") \
-                      .replace('action="/login"', 'action="/nabava-login"').replace("__ERR__", msg)
+    html = _LOGIN_HTML.replace("Vpiši geslo za dostop", "Purchase order access · vpiši geslo") \
+                      .replace('action="/login"', 'action="/nabava-login"') \
+                      .replace("__ERR__", msg)
     return HTMLResponse(html)
 
 
 @app.post("/nabava-login")
 async def nabava_login_submit(password: str = Form("")):
+    # sprejmi nabava geslo ALI glavno geslo
     if _hmac.compare_digest(password, NABAVA_PASSWORD) or _hmac.compare_digest(password, APP_PASSWORD):
         resp = RedirectResponse(url="/nabava", status_code=302)
-        resp.set_cookie(NABAVA_COOKIE, _nabava_make_token(), max_age=AUTH_TTL, httponly=True, samesite="lax")
+        resp.set_cookie(NABAVA_COOKIE, _nabava_make_token(), max_age=AUTH_TTL,
+                        httponly=True, samesite="lax")
         return resp
     return RedirectResponse(url="/nabava-login?err=1", status_code=302)
 
@@ -193,7 +200,8 @@ async def nabava_logout():
 
 @app.get("/nabava")
 async def serve_nabava():
-    return FileResponse("static/nabava.html", headers={"Cache-Control": "no-store, max-age=0"})
+    return FileResponse("static/nabava.html", headers={
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
 
 
 @app.get("/logout")
@@ -24161,7 +24169,10 @@ async def analiza_meta_duplicates_ai(data: dict):
         return {"ok": False, "error": str(e)[:300]}
 
 
-# ═══ NABAVA v2: naročanje za kitajski program (kontejnerji + slika + pogajanje) ══
+# ═══ NABAVA: naročanje izdelkov za kitajski program (kontejnerji) ═══════════════
+# 1 seznam, vsaka postavka ima container tag (Kontejner1,2,3…) in status.
+# Formule iz Excela: Total=Unit×Qty · Ctns=Qty/kos_kart · TotalCBM=CBM/CTN×Ctns
+#   FinalPrice=((TotalCBM×70)/Qty)+(Unit×0.85)×1.1
 NABAVA_FILE = DATA_DIR / "nabava_items.json"
 NABAVA_SEED = Path(__file__).parent / "nabava_seed.json"
 _nabava_lock = asyncio.Lock()
@@ -24183,60 +24194,108 @@ def _nabava_save(items: list):
 
 
 def _nabava_seed_if_empty():
-    """Ob prvem zagonu napolni s postavkami iz Excela (nabava_seed.json). Enkratno."""
+    """Ob prvem zagonu napolni z 157 postavkami iz obstoječega Excela (nabava_seed.json)."""
     if NABAVA_FILE.exists():
         return
+    if not NABAVA_SEED.exists():
+        _nabava_save([]); return
     try:
-        if NABAVA_SEED.exists():
-            seed = json.loads(NABAVA_SEED.read_text(encoding="utf-8")) or []
-            for i, it in enumerate(seed):
-                it["id"] = it.get("id") or f"nb_seed_{i}"
-            _nabava_save(seed)
-            print(f"[nabava] seed: {len(seed)} postavk uvoženih")
-        else:
-            print("[nabava] seed datoteka ne obstaja — začnem prazno")
-            _nabava_save([])
+        seed = json.loads(NABAVA_SEED.read_text(encoding="utf-8")) or []
+        for i, it in enumerate(seed):
+            it["id"] = it.get("id") or f"nb_seed_{i}"
+        _nabava_save(seed)
+        print(f"[nabava] seed: {len(seed)} postavk uvoženih")
     except Exception as e:
         print(f"[nabava] seed err: {e}")
         _nabava_save([])
 
 
 def _nabava_calc(it: dict) -> dict:
-    def f(k):
+    """Preračuna formule (Total, Ctns, TotalCBM, FinalPrice) — override, če je ročno vpisan."""
+    def f(k, d=0.0):
         try: return float(it.get(k) or 0)
-        except: return 0.0
+        except: return d
     qty = f("qty"); unit = f("unit_price"); cbm_ctn = f("cbm_ctn"); ctns = f("ctns")
     it["total_price"] = round(unit * qty, 2)
+    if not it.get("_ctns_manual") and it.get("pcs_per_ctn"):
+        try:
+            pc = float(it["pcs_per_ctn"])
+            if pc > 0:
+                ctns = qty / pc; it["ctns"] = round(ctns, 4)
+        except: pass
     it["total_cbm"] = round(cbm_ctn * ctns, 4)
-    it["final_price"] = round(((it["total_cbm"] * 70) / qty) + (unit * 0.85) * 1.1, 4) if qty > 0 else 0.0
+    if qty > 0:
+        it["final_price"] = round(((it["total_cbm"] * 70) / qty) + (unit * 0.85) * 1.1, 4)
+    else:
+        it["final_price"] = 0.0
     return it
+
+
+@app.get("/nabava-debug")
+async def nabava_debug(request: Request):
+    """Diagnostika: kje je seed, ali obstaja, koliko postavk je naloženih."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return {"ok": False, "error": "samo glavni admin"}
+    items = _nabava_load()
+    return {
+        "ok": True,
+        "nabava_file": str(NABAVA_FILE),
+        "nabava_file_exists": NABAVA_FILE.exists(),
+        "items_count": len(items),
+        "seed_file": str(NABAVA_SEED),
+        "seed_file_exists": NABAVA_SEED.exists(),
+        "seed_count": (len(json.loads(NABAVA_SEED.read_text(encoding="utf-8"))) if NABAVA_SEED.exists() else 0),
+        "cwd": os.getcwd(),
+    }
+
+
+@app.post("/nabava-force-reseed")
+async def nabava_force_reseed(request: Request):
+    """Ponovno uvozi seed (izbriše obstoječe in naloži iz nabava_seed.json). Samo glavni admin."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return {"ok": False, "error": "samo glavni admin"}
+    if not NABAVA_SEED.exists():
+        return {"ok": False, "error": f"seed datoteka ne obstaja na: {NABAVA_SEED}"}
+    try:
+        seed = json.loads(NABAVA_SEED.read_text(encoding="utf-8")) or []
+        for i, it in enumerate(seed):
+            it["id"] = it.get("id") or f"nb_seed_{i}"
+        _nabava_save(seed)
+        return {"ok": True, "imported": len(seed)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
 
 
 @app.get("/nabava-list")
 async def nabava_list():
     items = _nabava_load()
+    # vsote po kontejnerjih
     conts = {}
     for it in items:
         c = it.get("container") or "—"
         g = conts.setdefault(c, {"container": c, "n": 0, "total_usd": 0.0, "total_cbm": 0.0,
-                                 "total_qty": 0.0, "active": 0, "done": 0})
+                                 "total_qty": 0.0, "final_sum": 0.0, "active": 0, "done": 0})
         g["n"] += 1
         g["total_usd"] += float(it.get("total_price") or 0)
         g["total_cbm"] += float(it.get("total_cbm") or 0)
         g["total_qty"] += float(it.get("qty") or 0)
+        g["final_sum"] += float(it.get("final_price") or 0) * float(it.get("qty") or 0)
         if it.get("status") == "done": g["done"] += 1
         else: g["active"] += 1
     for g in conts.values():
-        for k in ("total_usd", "total_cbm"):
+        for k in ("total_usd", "total_cbm", "final_sum"):
             g[k] = round(g[k], 2)
-    def _ck(c):
-        m = re.search(r'(\d+)', c or ""); return int(m.group(1)) if m else 9999
-    order = sorted(conts.values(), key=lambda g: _ck(g["container"]))
+    # naravni sort kontejnerjev
+    def _cont_key(c):
+        m = re.search(r'(\d+)', c or "")
+        return int(m.group(1)) if m else 9999
+    order = sorted(conts.values(), key=lambda g: _cont_key(g["container"]))
     return {"ok": True, "items": items, "containers": order}
 
 
 @app.post("/nabava-item")
 async def nabava_item_save(data: dict):
+    """Doda ali uredi postavko. Brez id = nova. Vrne preračunano postavko."""
     async with _nabava_lock:
         items = _nabava_load()
         it = dict(data or {})
@@ -24258,41 +24317,46 @@ async def nabava_item_save(data: dict):
 @app.delete("/nabava-item/{iid}")
 async def nabava_item_delete(iid: str):
     async with _nabava_lock:
-        _nabava_save([x for x in _nabava_load() if x.get("id") != iid])
+        items = [x for x in _nabava_load() if x.get("id") != iid]
+        _nabava_save(items)
     return {"ok": True}
 
 
 @app.post("/nabava-sku-lookup")
 async def nabava_sku_lookup(data: dict):
-    """SKU → naziv + link + SLIKA iz feeda + re-order zgodovina."""
+    """SKU → naziv + link iz feeda (za kitajskega dobavitelja). + re-order zgodovina."""
     sku = str(data.get("sku") or "").strip()
     if not sku:
         return {"ok": False, "error": "Ni SKU."}
     await ensure_cache_fresh()
     url, naziv = _kbatch_sku_to_url(sku)
-    imgs = await _kbatch_images_by_sku(sku, 1)
-    image = imgs[0] if imgs else ""
+    # re-order: isti SKU v obstoječih postavkah (zadnja cena)
     hist = []
     for it in _nabava_load():
         if str(it.get("sku") or "").strip().upper() == sku.upper():
             hist.append({"container": it.get("container"), "unit_price": it.get("unit_price"),
                          "qty": it.get("qty"), "date": it.get("date")})
     return {"ok": True, "sku": sku, "naziv": naziv or "", "link": url or "",
-            "image": image, "found": bool(url or image), "history": hist}
+            "found": bool(url), "history": hist}
 
 
 @app.post("/nabava-container-close")
 async def nabava_container_close(data: dict):
+    """Zaključi kontejner: odprte postavke dobijo status=done ALI nov container tag.
+    data: { container: 'Kontejner3', move_to: 'Kontejner10'|None }"""
     cont = str(data.get("container") or "").strip()
     move_to = str(data.get("move_to") or "").strip()
     if not cont:
         return {"ok": False, "error": "Ni kontejnerja."}
     async with _nabava_lock:
-        items = _nabava_load(); n = 0
+        items = _nabava_load()
+        n = 0
         for it in items:
             if it.get("container") == cont and it.get("status") != "done":
-                if move_to: it["container"] = move_to
-                else: it["status"] = "done"
+                if move_to:
+                    it["container"] = move_to      # premakni odprte v nov kontejner
+                else:
+                    it["status"] = "done"          # ali samo zaključi
                 n += 1
         _nabava_save(items)
     return {"ok": True, "affected": n}
@@ -24300,22 +24364,26 @@ async def nabava_container_close(data: dict):
 
 @app.get("/nabava-export-xlsx")
 async def nabava_export_xlsx():
+    """Izvoz v Excel v istem formatu kot original (en list na kontejner)."""
     import openpyxl as _oxl
     from collections import OrderedDict
     items = _nabava_load()
     wb = _oxl.Workbook(); wb.remove(wb.active)
-    hdr = ['Date','SKU','Qty','Our comment','Link','Naziv','Unitprice ($)','Totalprice ($)',
-           'Specification (supplier)','Ctns','CBM/CTN','Total CBM','Final price','Price negotiation','Status']
+    hdr = ['Date','SKU','Qty','Our comment','Link from our site','Naziv','Unitprice ($)',
+           'Totalprice ($)','Specification','volumetric weight','Ctns','CBM/CTN','Total CBM',
+           'Final price (aprox)','Comment','Status']
     by_c = OrderedDict()
     for it in items:
         by_c.setdefault(it.get("container") or "—", []).append(it)
     for cont, lst in by_c.items():
-        ws = wb.create_sheet(title=str(cont)[:31]); ws.append(hdr)
+        ws = wb.create_sheet(title=str(cont)[:31])
+        ws.append(hdr)
         for it in lst:
             ws.append([it.get("date",""), it.get("sku",""), it.get("qty",""), it.get("comment",""),
-                       it.get("link",""), it.get("naziv",""), it.get("unit_price",""), it.get("total_price",""),
-                       it.get("specification",""), it.get("ctns",""), it.get("cbm_ctn",""), it.get("total_cbm",""),
-                       it.get("final_price",""), it.get("negotiation",""), it.get("status","")])
+                       it.get("link",""), it.get("naziv",""), it.get("unit_price",""),
+                       it.get("total_price",""), it.get("specification",""), it.get("vol_weight",""),
+                       it.get("ctns",""), it.get("cbm_ctn",""), it.get("total_cbm",""),
+                       it.get("final_price",""), it.get("extra_comment",""), it.get("status","")])
     import io as _io
     buf = _io.BytesIO(); wb.save(buf); buf.seek(0)
     return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
