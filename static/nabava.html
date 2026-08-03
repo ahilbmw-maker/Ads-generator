@@ -84,7 +84,10 @@
   thead th.num{text-align:right;}
   tbody td{border-bottom:1px solid var(--line);padding:5px 9px;vertical-align:middle;}
   tbody tr:hover{background:var(--panel2);}
-  tr.done{opacity:0.5;}
+  tr.approved{background:#eaf7ee;}
+  tr.approved td{background:transparent;}
+  .appbtn{cursor:pointer;font-size:16px;color:var(--ink3);}
+  .appbtn.on{color:#0f9d58;}
   .imgcell{display:flex;flex-direction:column;align-items:center;gap:2px;}
   .thumb{width:46px;height:46px;border-radius:9px;object-fit:cover;background:#efe9df;border:1px solid var(--line);cursor:zoom-in;display:block;}
   .thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:18px;}
@@ -115,7 +118,12 @@
   /* CARDS (Concept B) */
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;}
   .pcard{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(60,50,40,0.04);display:flex;flex-direction:column;}
-  .pcard.done{opacity:0.55;}
+  .pcard.approved{background:#eaf7ee;border-color:#bfe3ca;}
+  .pcard.approved .chead,.pcard.approved .cfoot{background:transparent;}
+  /* vnosna polja ostanejo bela, ne prekrita z zeleno */
+  .pcard.approved .cin,.pcard.approved .stat input,.pcard.approved .csku input,
+  .pcard.approved .note textarea,.pcard.approved .note input,.pcard.approved textarea.autogrow,
+  .pcard.approved select,.pcard.approved input[type=text]{background:#fff !important;}
   .ribbon{height:5px;}
   .chead{display:flex;gap:14px;padding:15px 16px 12px;min-height:150px;align-items:flex-start;}
   .chead .meta{display:flex;flex-direction:column;}
@@ -242,7 +250,6 @@
     <button class="btn ghost" onclick="nabRefreshImages()" id="imgBtn">🖼 Load images</button>
     <button class="btn ghost" onclick="nabExport()">⬇ Export XLSX</button>
     <button class="btn ghost" onclick="window.open('/nabava-backup-json','_blank')" title="Download full backup (JSON)">💾 Backup</button>
-    <button class="btn warn" onclick="nabCloseContainer()">📦 Close container</button>
     <button class="btn primary" onclick="nabAddRow()">＋ New item</button>
     <button class="btn ghost" onclick="nabOpenSettings()" title="Freight, exchange rate, customs">⚙ Settings</button>
     <a class="btn ghost" href="/nabava-logout">Logout</a>
@@ -588,7 +595,7 @@ function renderRows(items){
   const ro=reorderSet();
   const cin=(id,f,v,w,cls)=>'<input class="cin '+(cls||'')+'" value="'+esc(v==null?'':v)+'" onchange="nabEdit(\''+id+'\',\''+f+'\',this.value)" style="width:'+w+'">';
   const rows=items.map(it=>{
-    const done=it.status==='done'; const skuU=(it.sku||'').toUpperCase();
+    const appr=!!it.approved; const skuU=(it.sku||'').toUpperCase();
     const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
     const dimg=(it.image||'').trim()||(it.image_url||'').trim();
     const img=dimg
@@ -603,7 +610,7 @@ function renderRows(items){
     const dupN=(it.container||'Nerazvrščeno')==='Nerazvrščeno'?dupUnsortedIds(it.sku,it.id).length:0;
     const dupTag=dupN?' <span class="duptag" title="Isti SKU je '+(dupN+1)+'× v Nerazvrščeno">⚠ '+(dupN+1)+'×</span>':'';
     const seld=SEL.has(it.id);
-    return '<tr class="'+(done?'done':'')+(seld?' sel':'')+'" style="border-left:3px solid '+col+'">'
+    return '<tr class="'+(appr?'approved':'')+(seld?' sel':'')+'" style="border-left:3px solid '+col+'">'
       +'<td style="text-align:center"><input type="checkbox" class="selchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)"></td>'
       +'<td><div class="imgcell">'+img+link+'</div></td>'
       +'<td>'+contSelect(it)+'</td>'
@@ -620,7 +627,7 @@ function renderRows(items){
       +'<td class="num" style="color:var(--ink2)">'+num(it.total_cbm,3)+'</td>'
       +'<td class="num final">€'+nabFinal(it).toFixed(2)+'</td>'
       +'<td class="rowact" style="white-space:nowrap;text-align:center">'
-        +'<span onclick="nabToggleDone(\''+it.id+'\','+(done?'false':'true')+')" title="'+(done?'Reopen':'Close')+'">'+(done?'↩':'✓')+'</span>'
+        +'<span class="appbtn'+(appr?' on':'')+'" onclick="nabToggleApproved(\''+it.id+'\')" title="'+(appr?'Approved — price OK, supplier can order (click to unapprove)':'Approve — price OK, supplier can order')+'">✓</span>'
         +'<span onclick="nabDelete(\''+it.id+'\')" title="Delete" style="color:var(--bad)">✕</span>'
       +'</td></tr>';
   }).join('');
@@ -636,7 +643,7 @@ function renderRows(items){
 function renderCards(items){
   const ro=reorderSet();
   return '<div class="cards">'+items.map(it=>{
-    const done=it.status==='done'; const skuU=(it.sku||'').toUpperCase();
+    const appr=!!it.approved; const skuU=(it.sku||'').toUpperCase();
     const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
     const dimg=(it.image||'').trim()||(it.image_url||'').trim();
     const img=dimg
@@ -648,7 +655,7 @@ function renderCards(items){
     const dupN=(it.container||'Nerazvrščeno')==='Nerazvrščeno'?dupUnsortedIds(it.sku,it.id).length:0;
     const dupTag=dupN?'<span class="duptag" title="Isti SKU je '+(dupN+1)+'× v Nerazvrščeno">⚠ '+(dupN+1)+'×</span>':'';
     const seld=SEL.has(it.id);
-    return '<div class="pcard '+(done?'done':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)"><div class="ribbon" style="background:'+col+'"></div>'
+    return '<div class="pcard '+(appr?'approved':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)"><div class="ribbon" style="background:'+col+'"></div>'
       +'<div class="chead">'+img
         +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'" title="'+esc(it.container||'Nerazvrščeno')+'"><span class="dot" style="background:'+col+'"></span><span class="ktag-name">'+esc(it.container||'Nerazvrščeno')+'</span></span>'+(CSTATUS[it.container]?'<div class="cst-row">'+cstBadge(CSTATUS[it.container])+'</div>':'')
         +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+pupTag+dupTag+'</div>'
@@ -672,7 +679,7 @@ function renderCards(items){
       +'</div>'
       +'<div class="cfoot"><span class="final" style="color:var(--good)">€'+nabFinal(it).toFixed(2)+' <small>final</small></span>'
         +'<span style="color:var(--ink3);font-size:11px">· CBM '+num(it.total_cbm,3)+'</span>'
-        +'<span class="act"><span onclick="nabToggleDone(\''+it.id+'\','+(done?'false':'true')+')" title="'+(done?'Reopen':'Close')+'">'+(done?'↩':'✓')+'</span><span onclick="nabDelete(\''+it.id+'\')" title="Delete" style="color:var(--bad)">✕</span></span>'
+        +'<span class="act"><span class="appbtn'+(appr?' on':'')+'" onclick="nabToggleApproved(\''+it.id+'\')" title="'+(appr?'Approved — price OK, supplier can order (click to unapprove)':'Approve — price OK, supplier can order')+'">✓</span><span onclick="nabDelete(\''+it.id+'\')" title="Delete" style="color:var(--bad)">✕</span></span>'
       +'</div></div>';
   }).join('')+'</div>';
 }
@@ -814,18 +821,11 @@ async function nabDelete(id){
   if(!confirm('Delete this item?')) return;
   try{ await fetch('/nabava-item/'+encodeURIComponent(id),{method:'DELETE'}); DATA.items=DATA.items.filter(x=>x.id!==id); nabRender(); }catch(e){}
 }
-async function nabToggleDone(id,done){
+async function nabToggleApproved(id){
   const it=DATA.items.find(x=>x.id===id); if(!it) return;
-  it.status=done?'done':'active';
-  await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)}); nabRender();
-}
-async function nabCloseContainer(){
-  const cs=allContainerNames().filter(c=>c!=='Nerazvrščeno');
-  const c=prompt('Close which container?\n('+cs.join(', ')+')',CONT!=='all'&&CONT!=='Nerazvrščeno'?CONT:(cs.slice(-1)[0]||''));
-  if(!c) return;
-  const mv=prompt('Move still-open items to a NEW container? Name (e.g. Kontejner11), or leave EMPTY to just mark them closed.','');
-  try{ const r=await fetch('/nabava-container-close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({container:c,move_to:(mv||'').trim()})});
-    const d=await r.json(); if(d.ok){ alert('Done — '+d.affected+' items updated.'); nabLoad(); } }catch(e){ alert('Error: '+e.message); }
+  it.approved = it.approved ? 0 : 1;   // potrjeno = cena OK, dobavitelj lahko naroči
+  await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+  nabRender();
 }
 async function nabRefreshImages(){
   const b=document.getElementById('imgBtn'); const o=b.textContent; b.disabled=true; b.textContent='⏳ Loading images…';
