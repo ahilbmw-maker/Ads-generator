@@ -105,25 +105,37 @@ def _nabava_authorized(request) -> bool:
 
 class AuthGateMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        path = request.url.path
-        if path in _AUTH_EXEMPT_EXACT or path.startswith(_AUTH_EXEMPT_PREFIX):
-            return await call_next(request)
-        # NABAVA: svoja zaščita (glavno ALI nabava geslo) — ne skozi glavni gate
-        if path == "/nabava" or path == "/nabava-login" or path.startswith("/nabava-"):
-            if _nabava_authorized(request):
+        try:
+            path = request.url.path
+            if path in _AUTH_EXEMPT_EXACT or path.startswith(_AUTH_EXEMPT_PREFIX):
                 return await call_next(request)
             accept = request.headers.get("accept", "")
-            if "text/html" in accept:
-                return RedirectResponse(url="/nabava-login", status_code=302)
+            wants_html = "text/html" in accept
+            # NABAVA: svoja zaščita (glavno ALI nabava geslo)
+            if path == "/nabava" or path == "/nabava-login" or path.startswith("/nabava-"):
+                # login stran je VEDNO dostopna — sicer nastane redirect zanka
+                if path == "/nabava-login":
+                    return await call_next(request)
+                if _nabava_authorized(request):
+                    return await call_next(request)
+                if wants_html:
+                    return RedirectResponse(url="/nabava-login", status_code=302)
+                return PlainTextResponse("401 — prijava potrebna", status_code=401)
+            if _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+                return await call_next(request)
+            if wants_html:
+                return RedirectResponse(url="/login", status_code=302)
             return PlainTextResponse("401 — prijava potrebna", status_code=401)
-        token = request.cookies.get(AUTH_COOKIE, "")
-        if _auth_check_token(token):
-            return await call_next(request)
-        # ni prijavljen
-        accept = request.headers.get("accept", "")
-        if "text/html" in accept:
-            return RedirectResponse(url="/login", status_code=302)
-        return PlainTextResponse("401 — prijava potrebna", status_code=401)
+        except Exception as e:
+            import traceback
+            print("[authgate] ERR:", e, traceback.format_exc()[:600])
+            try:
+                if "text/html" in request.headers.get("accept", ""):
+                    tgt = "/nabava-login" if request.url.path.startswith("/nabava") else "/login"
+                    return RedirectResponse(url=tgt, status_code=302)
+            except Exception:
+                pass
+            return PlainTextResponse("Auth error", status_code=401)
 
 app.add_middleware(AuthGateMiddleware)
 
@@ -186,7 +198,7 @@ async def nabava_login_submit(password: str = Form("")):
     if _hmac.compare_digest(password, NABAVA_PASSWORD) or _hmac.compare_digest(password, APP_PASSWORD):
         resp = RedirectResponse(url="/nabava", status_code=302)
         resp.set_cookie(NABAVA_COOKIE, _nabava_make_token(), max_age=AUTH_TTL,
-                        httponly=True, samesite="lax")
+                        httponly=True, samesite="lax", secure=True, path="/")
         return resp
     return RedirectResponse(url="/nabava-login?err=1", status_code=302)
 
