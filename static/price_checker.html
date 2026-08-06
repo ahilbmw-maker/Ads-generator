@@ -244,7 +244,21 @@
   .group-rows tr:hover td { background: var(--surface2); }
   #multiView { display: none; padding: 16px 24px 32px; }
   .multi-stats { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 16px; font-size: 11px; color: var(--muted); background: var(--surface); border-radius: 10px; margin-bottom: 12px; border: 1px solid var(--border); }
+
+  .salesbtn{cursor:pointer;font-size:14px;opacity:0.55;margin-left:6px;}
+  .salesbtn:hover{opacity:1;}
+  #pcSalesModal{position:fixed;inset:0;background:rgba(15,20,30,0.55);display:none;align-items:center;justify-content:center;z-index:9000;padding:20px;}
+  #pcSalesModal .box{background:#fff;border-radius:16px;padding:20px 22px;width:760px;max-width:96vw;max-height:88vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,0.3);}
+  #pcSalesModal h3{margin:0 0 2px;font-size:18px;font-weight:800;}
+  #pcSalesModal .sub{font-size:12px;color:#6b7280;margin-bottom:14px;}
+  #pcSalesModal .close{float:right;cursor:pointer;font-size:20px;color:#9ca3af;line-height:1;}
+  #pcSalesModal .stats{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+  #pcSalesModal .stat{flex:1;min-width:110px;background:#f7f8fa;border:1px solid #eef0f3;border-radius:10px;padding:10px 12px;}
+  #pcSalesModal .stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:#8a94a6;font-weight:700;}
+  #pcSalesModal .stat .v{font-size:18px;font-weight:800;margin-top:2px;}
+  #pcSalesLoad{padding:40px;text-align:center;color:#6b7280;font-size:14px;}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -1367,7 +1381,7 @@ function renderTable(rows) {
       <td style="font-size:15px;color:var(--muted)">${row.marza}</td>
       <td><span style="color:var(--muted);font-size:15px">${row.currency}</span></td>
       <td style="color:var(--muted);font-size:15px">${row.store}</td>
-      <td>${statusBadge}</td>
+      <td>${statusBadge} <span class="salesbtn" title="Graf prodaje" onclick="event.stopPropagation();pcOpenSales('${escHtml(row.sku)}')">📈</span></td>
     `;
     tbody.appendChild(tr);
   }
@@ -2886,5 +2900,71 @@ function fallbackCopy(text, callback) {
 }
 </script>
 
+
+<div id="pcSalesModal">
+  <div class="box">
+    <span class="close" onclick="document.getElementById('pcSalesModal').style.display='none'">✕</span>
+    <h3 id="pcSalesTitle">Prodaja</h3>
+    <div class="sub" id="pcSalesSub">zadnjih 30 dni</div>
+    <div id="pcSalesLoad">⏳ Nalagam prodajo…</div>
+    <div id="pcSalesBody" style="display:none">
+      <canvas id="pcSalesChart" height="150"></canvas>
+      <div class="stats" id="pcSalesStats"></div>
+    </div>
+  </div>
+</div>
+<script>
+let _pcSalesChart = null;
+function _pcDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _pcTrend(series){
+  const n=series.length; if(n<4) return {dir:'flat',pct:0};
+  const h=Math.floor(n/2); const a=series.slice(0,h).reduce((x,y)=>x+y,0)/h;
+  const b=series.slice(h).reduce((x,y)=>x+y,0)/(n-h);
+  if(a===0&&b===0) return {dir:'flat',pct:0};
+  const pct=a===0?100:Math.round((b-a)/a*100);
+  return {dir: pct>8?'up':(pct<-8?'down':'flat'), pct};
+}
+async function pcOpenSales(sku){
+  sku=(sku||'').trim(); if(!sku) return;
+  document.getElementById('pcSalesTitle').textContent='Prodaja · '+sku;
+  document.getElementById('pcSalesLoad').style.display='block';
+  document.getElementById('pcSalesBody').style.display='none';
+  document.getElementById('pcSalesModal').style.display='flex';
+  const to=new Date(); const from=new Date(); from.setDate(from.getDate()-29);
+  const df=_pcDate(from), dt=_pcDate(to);
+  document.getElementById('pcSalesSub').textContent=df+' → '+dt+' (30 dni)';
+  try{
+    const r=await fetch('/product-sales',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({products:[sku],date_from:df,date_to:dt})});
+    const d=await r.json();
+    if(!d.ok){ document.getElementById('pcSalesLoad').textContent='✗ '+(d.error||'napaka'); return; }
+    const rows=(d.sales&&d.sales[sku.toUpperCase()])||(d.sales&&d.sales[sku])||[];
+    // enotna os
+    const dates=[]; for(let x=new Date(from); x<=to; x.setDate(x.getDate()+1)) dates.push(_pcDate(x));
+    const byDate={}; rows.forEach(rr=>{ byDate[rr.date]=rr.sales; });
+    const series=dates.map(dd=>byDate[dd]!=null?byDate[dd]:0);
+    const total=series.reduce((a,b)=>a+b,0);
+    const avg=series.length?(total/series.length):0;
+    const peak=Math.max(...series,0);
+    const tr=_pcTrend(series);
+    const arrow=tr.dir==='up'?'↑':(tr.dir==='down'?'↓':'→');
+    const trColor=tr.dir==='up'?'#16a34a':(tr.dir==='down'?'#ef4444':'#8a94a6');
+    document.getElementById('pcSalesStats').innerHTML=
+      '<div class="stat"><div class="k">Skupaj prodano</div><div class="v">'+total+'</div></div>'+
+      '<div class="stat"><div class="k">Povprečje/dan</div><div class="v">'+avg.toFixed(1)+'</div></div>'+
+      '<div class="stat"><div class="k">Najboljši dan</div><div class="v">'+peak+'</div></div>'+
+      '<div class="stat"><div class="k">Tendenca</div><div class="v" style="color:'+trColor+'">'+arrow+' '+(tr.pct>0?'+':'')+tr.pct+'%</div></div>';
+    document.getElementById('pcSalesLoad').style.display='none';
+    document.getElementById('pcSalesBody').style.display='block';
+    const ctx=document.getElementById('pcSalesChart');
+    if(_pcSalesChart){ _pcSalesChart.destroy(); _pcSalesChart=null; }
+    _pcSalesChart=new Chart(ctx,{type:'line',data:{labels:dates.map(x=>x.slice(5)),
+      datasets:[{label:'Prodaja/dan',data:series,borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,0.12)',
+        tension:0.3,borderWidth:2,pointRadius:2,fill:true}]},
+      options:{responsive:true,plugins:{legend:{display:false}},
+        scales:{y:{beginAtZero:true,ticks:{precision:0}},x:{ticks:{maxTicksLimit:12,font:{size:10}}}}}});
+  }catch(e){ document.getElementById('pcSalesLoad').textContent='✗ '+e.message; }
+}
+</script>
 </body>
 </html>
