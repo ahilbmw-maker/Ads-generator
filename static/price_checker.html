@@ -308,6 +308,7 @@
   <div style="display:flex;flex-direction:column;justify-content:center;gap:6px">
     <button class="btn secondary" onclick="copyIssues()" style="font-size:11px;font-family:var(--sans);white-space:nowrap">📋 Kopiraj ID-je z napakami</button>
     <button class="btn secondary" onclick="removeDuplicates()" style="font-size:11px;font-family:var(--sans);white-space:nowrap">🧹 Pobriši dvojnike</button>
+    <button class="btn secondary" onclick="removeSaleItems()" style="font-size:11px;font-family:var(--sans);white-space:nowrap">🏷 Odstrani SALE</button>
     <button class="btn secondary" onclick="clearTable()" style="font-size:11px;font-family:var(--sans);background:var(--red-dim);color:var(--red);border-color:var(--red);white-space:nowrap">🗑 Zbriši seznam</button>
   </div>
 </div>
@@ -1311,6 +1312,11 @@ function renderTable(rows) {
     const tr = document.createElement('tr');
     tr.className = row.isNull ? 'row-null' : `row-${row.status}`;
     if (seenCtx) tr.style.opacity = '0.55';   // pregledana, prikazana le za kontekst
+    // poudari zalogo: 0/nizka (≤5 rdeča, ≤20 rumena) — leva črtica + rahlo ozadje
+    if (row.stock != null && !isNaN(row.stock)) {
+      if (row.stock <= 5) { tr.style.boxShadow = 'inset 4px 0 0 #ef4444'; tr.style.background = 'rgba(239,68,68,0.06)'; }
+      else if (row.stock <= 20) { tr.style.boxShadow = 'inset 4px 0 0 #f59e0b'; tr.style.background = 'rgba(245,158,11,0.07)'; }
+    }
 
     const statusBadge = row.isNull
       ? '<span class="badge badge-null">🚫 NULL</span>'
@@ -2383,6 +2389,35 @@ async function removeDuplicates() {
     } catch(e) { _pccToast('⚠ siluxar nedosegljiv (lokalno pobrisano)', '#d97706'); }
   } else {
     _pccToast(`✓ Pobrisano ${toRemove.length} dvojnikov`, '#16a34a');
+  }
+}
+
+async function removeSaleItems() {
+  // odstrani vse izdelke z oznako SALE (razprodaja)
+  const toRemove = allRows.filter(r => isSaleSku(r.sku));
+  if (!toRemove.length) { _pccToast('Ni izdelkov na razprodaji (SALE).', '#16a34a'); return; }
+
+  const psIds = [...new Set(toRemove.map(r => r.siluxar_id).filter(x => x != null && String(x).trim() !== ''))];
+
+  if (!confirm(`Odstranim ${toRemove.length} izdelkov z oznako SALE?\n${psIds.length ? '\nIzbriše tudi '+psIds.length+' postavk v siluxarju.' : ''}`)) return;
+
+  const removeKeys = new Set(toRemove.map(r => r.id + '|' + r.sku + '|' + r.currency + '|' + r.priceRaw));
+  if (typeof pcSeenRecordRows === 'function') pcSeenRecordRows(toRemove);
+  allRows = allRows.filter(r => !removeKeys.has(r.id + '|' + r.sku + '|' + r.currency + '|' + r.priceRaw));
+
+  try { localStorage.setItem('price_checker_table', JSON.stringify(allRows)); } catch(e) {}
+  updateStats(allRows);
+  renderTable(allRows);
+
+  if (psIds.length) {
+    try {
+      const r = await fetch('/siluxar-delete-alerts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ids: psIds }) });
+      const d = await r.json();
+      if (d.ok) _pccToast(`✓ Odstranjeno ${toRemove.length} SALE · ${d.poslano} tudi v siluxar`, '#16a34a');
+      else _pccToast(`⚠ siluxar brisanje: ${d.error || 'napaka'}`, '#d97706');
+    } catch(e) { _pccToast('⚠ siluxar nedosegljiv (lokalno odstranjeno)', '#d97706'); }
+  } else {
+    _pccToast(`✓ Odstranjeno ${toRemove.length} SALE izdelkov`, '#16a34a');
   }
 }
 
