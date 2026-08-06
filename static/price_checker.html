@@ -1372,7 +1372,7 @@ function renderTable(rows) {
       <td>
         <a href="https://www.siluxar.si/narocilnice/${row.id}" target="_blank" class="id-badge" style="text-decoration:none;color:var(--green);border-color:rgba(64,193,80,0.4)">${row.id} ↗</a>
       </td>
-      <td style="font-weight:600;color:var(--text)">${skuHtml(row.sku)}${idCounts[row.id] > 1 ? ` <span style="display:inline-flex;align-items:center;gap:3px;background:var(--purple-dim);color:var(--purple);border:1px solid var(--purple-border);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;vertical-align:middle">🔗 Združeno</span>` : ''}</td>
+      <td style="font-weight:600;color:var(--text)">${skuHtml(row.sku)}${idCounts[row.id] > 1 ? ` <span style="display:inline-flex;align-items:center;gap:3px;background:var(--purple-dim);color:var(--purple);border:1px solid var(--purple-border);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;vertical-align:middle">🔗 Združeno</span>` : ''} <span class="salesbtn" title="Graf prodaje" onclick="event.stopPropagation();pcOpenSales('${escHtml(row.sku)}')">📈</span></td>
       <td>${priceDisplay}</td>
       <td>${suggestedDisplay}</td>
       <td style="font-size:12px;font-weight:600;text-align:center;${row.stock <= 5 ? 'color:#ef4444' : row.stock <= 20 ? 'color:#f59e0b' : 'color:#16a34a'}">${row.stock ?? '—'}</td>
@@ -1381,7 +1381,7 @@ function renderTable(rows) {
       <td style="font-size:15px;color:var(--muted)">${row.marza}</td>
       <td><span style="color:var(--muted);font-size:15px">${row.currency}</span></td>
       <td style="color:var(--muted);font-size:15px">${row.store}</td>
-      <td>${statusBadge} <span class="salesbtn" title="Graf prodaje" onclick="event.stopPropagation();pcOpenSales('${escHtml(row.sku)}')">📈</span></td>
+      <td>${statusBadge}</td>
     `;
     tbody.appendChild(tr);
   }
