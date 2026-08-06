@@ -20,7 +20,8 @@
   .disp{font-family:'Bricolage Grotesque',sans-serif;}
   .mono{font-family:'Inter',monospace;font-variant-numeric:tabular-nums;}
 
-  .bar{display:flex;align-items:center;gap:14px;padding:14px 22px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;flex-wrap:wrap;}
+  .stickytop{position:sticky;top:0;z-index:30;}
+  .bar{display:flex;align-items:center;gap:14px;padding:14px 22px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;}
   .bar h1{margin:0;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:19px;letter-spacing:-0.4px;display:flex;align-items:center;gap:8px;}
   .bar h1 .tag{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:var(--nego);background:var(--nego-soft);padding:2px 7px;border-radius:5px;}
   .grow{flex:1;}
@@ -34,7 +35,9 @@
   .vtoggle button{border:0;background:var(--panel);color:var(--ink2);font-family:inherit;font-weight:700;font-size:12px;padding:8px 14px;cursor:pointer;}
   .vtoggle button.on{background:var(--ink);color:var(--panel);}
 
-  .controls{padding:14px 22px 4px;display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
+  .ctrlwrap{background:var(--bg);border-bottom:1px solid var(--line);
+    box-shadow:0 2px 8px rgba(60,50,40,0.05);}
+  .controls{padding:12px 22px 4px;display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
   .lbl{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink3);}
   .nsearch{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:10px;
     background:var(--panel);padding:7px 11px;color:var(--ink3);min-width:230px;}
@@ -47,6 +50,13 @@
   .contfilter:hover{border-color:var(--ink3);}
   .contfilter:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
   .cfdot{width:12px;height:12px;border-radius:50%;background:var(--ink3);display:inline-block;}
+  .controls2{margin-top:-2px;padding-top:0;padding-bottom:10px;}
+  .stchips{display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center;}
+  .stchip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--panel);
+    border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;color:var(--ink2);cursor:pointer;transition:all .12s;}
+  .stchip:hover{border-color:var(--ink3);}
+  .stchip.on{color:#fff;border-color:transparent;}
+  .stchip .cdot{width:7px;height:7px;border-radius:50%;}
   .cst-row{margin-top:5px;}
   .cst-badge{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap;
     max-width:calc(100% - 30px);overflow:hidden;text-overflow:ellipsis;}
@@ -80,7 +90,7 @@
   /* ROWS */
   .tblwrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:auto;}
   table{width:100%;border-collapse:collapse;min-width:1600px;}
-  thead th{position:sticky;top:0;background:var(--panel2);border-bottom:2px solid var(--line);padding:10px 9px;text-align:left;font-size:11px;font-weight:800;letter-spacing:0.3px;color:var(--ink2);text-transform:uppercase;white-space:nowrap;z-index:2;}
+  thead th{position:sticky;top:118px;background:var(--panel2);border-bottom:2px solid var(--line);padding:10px 9px;text-align:left;font-size:11px;font-weight:800;letter-spacing:0.3px;color:var(--ink2);text-transform:uppercase;white-space:nowrap;z-index:2;}
   thead th.num{text-align:right;}
   tbody td{border-bottom:1px solid var(--line);padding:5px 9px;vertical-align:middle;}
   tbody tr:hover{background:var(--panel2);}
@@ -253,6 +263,7 @@
 </style>
 </head>
 <body>
+  <div class="stickytop">
   <div class="bar">
     <h1>🛒 <span class="full">Purchase Orders</span><span class="tag">China</span></h1>
     <div class="vtoggle"><button id="vt-rows" class="on" onclick="nabSetView('rows')">▤ Rows</button><button id="vt-cards" onclick="nabSetView('cards')">▦ Cards</button></div>
@@ -265,6 +276,7 @@
     <a class="btn ghost" href="/nabava-logout">Logout</a>
   </div>
 
+  <div class="ctrlwrap">
   <div class="controls">
     <span class="lbl">Container</span>
     <span id="contDot" class="cfdot"></span>
@@ -279,6 +291,23 @@
     </div>
     <button class="btn ghost" onclick="nabManageContainers()">🚢 Containers</button>
     <button class="btn ghost" onclick="nabCopySupplier()">📋 Copy for supplier</button>
+  </div>
+
+  <div class="controls controls2">
+    <span class="lbl">Status</span>
+    <div id="statusChips" class="stchips"></div>
+    <div class="grow"></div>
+    <span class="lbl">Sort by</span>
+    <select id="sortSel" class="contfilter" style="min-width:180px" onchange="nabSetSort(this.value)">
+      <option value="date_desc">Date · newest</option>
+      <option value="date_asc">Date · oldest</option>
+      <option value="sku_az">SKU · A–Z</option>
+      <option value="sku_za">SKU · Z–A</option>
+      <option value="cbm_asc">CBM · small→large</option>
+      <option value="cbm_desc">CBM · large→small</option>
+    </select>
+  </div>
+  </div>
   </div>
 
   <div class="wrap" id="content"></div>
@@ -447,6 +476,36 @@ function allContainerNames(){
   return [...s].sort((a,b)=>{const ka=key(a),kb=key(b);return ka[0]-kb[0]||ka[1]-kb[1];});
 }
 let SEARCH='';
+let SORT=(localStorage.getItem('nab_sort')||'date_desc');
+let STFILTER=(localStorage.getItem('nab_stfilter')||'all');   // all|new|review|confirmed
+function itemStatus(it){
+  if(it.approved) return 'confirmed';
+  if((it.negotiation||'').trim()) return 'review';
+  if(isNewItem(it)) return 'new';
+  return 'none';
+}
+function nabSetSort(v){ SORT=v; localStorage.setItem('nab_sort',v); nabRender(); }
+function nabSetStatus(v){ STFILTER=v; localStorage.setItem('nab_stfilter',v); nabRender(); }
+const ST_META={
+  all:      {label:'All',       color:'#6e655a', dot:'#a99f90'},
+  new:      {label:'New',       color:'#e11d48', dot:'#e11d48'},
+  review:   {label:'Review',    color:'#c68410', dot:'#e0a417'},
+  confirmed:{label:'Confirmed', color:'#0f9d58', dot:'#12a35f'}
+};
+function nabStatusChips(){
+  const cc=document.getElementById('statusChips'); if(!cc) return;
+  // preštej po statusih (znotraj trenutnega kontejnerja/iskanja, brez status filtra)
+  let base=DATA.items.slice();
+  if(!SEARCH && CONT!=='all') base=base.filter(x=>(x.container||'Nerazvrščeno')===CONT);
+  if(SEARCH) base=base.filter(matchSearch);
+  const cnt={all:base.length,new:0,review:0,confirmed:0};
+  base.forEach(x=>{const st=itemStatus(x); if(cnt[st]!=null) cnt[st]++;});
+  cc.innerHTML=Object.keys(ST_META).map(k=>{const m=ST_META[k];const on=STFILTER===k;
+    return '<span class="stchip'+(on?' on':'')+'" style="'+(on?'background:'+m.color:'')+'" onclick="nabSetStatus(\''+k+'\')">'
+      +(k!=='all'?'<span class="cdot" style="background:'+(on?'#fff':m.dot)+'"></span>':'')
+      +m.label+' <span style="opacity:.7">('+(cnt[k]||0)+')</span></span>';}).join('');
+}
+
 function isNewItem(it){
   // dobavitelj še ni vpisal: UNIT $, CTNS in CBM/CTN vsi 0/prazni
   const z=v=>{const n=parseFloat(v); return !n || isNaN(n);};
@@ -475,6 +534,22 @@ function visibleItems(){
   if(!SEARCH && CONT!=='all') it=it.filter(x=>(x.container||'Nerazvrščeno')===CONT);
   it=it.filter(x=>!isHidden(x));
   if(SEARCH) it=it.filter(matchSearch);
+  // status filter
+  if(STFILTER!=='all') it=it.filter(x=>itemStatus(x)===STFILTER);
+  // sortiranje
+  const num=v=>{const n=parseFloat(v); return isNaN(n)?0:n;};
+  const sku=x=>(x.sku||'').toUpperCase();
+  it.sort((a,b)=>{
+    switch(SORT){
+      case 'sku_az': return sku(a)<sku(b)?-1:sku(a)>sku(b)?1:0;
+      case 'sku_za': return sku(a)>sku(b)?-1:sku(a)<sku(b)?1:0;
+      case 'date_asc': return parseDate(a.date)-parseDate(b.date);
+      case 'date_desc': return parseDate(b.date)-parseDate(a.date);
+      case 'cbm_asc': return num(a.total_cbm)-num(b.total_cbm);
+      case 'cbm_desc': return num(b.total_cbm)-num(a.total_cbm);
+      default: return 0;
+    }
+  });
   return it;
 }
 function reorderSet(){ const m={}; DATA.items.forEach(i=>{const k=(i.sku||'').toUpperCase(); if(k)(m[k]=m[k]||new Set()).add(i.container);}); return m; }
@@ -555,6 +630,8 @@ function nabRender(){
   else box.innerHTML = VIEW==='cards'?renderCards(items):renderRows(items);
   nabLive(items);
   nabSelBar();
+  nabStatusChips();
+  const ss=document.getElementById('sortSel'); if(ss && ss.value!==SORT) ss.value=SORT;
   requestAnimationFrame(nabAutoSize);
 }
 
