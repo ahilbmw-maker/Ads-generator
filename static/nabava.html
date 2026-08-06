@@ -121,6 +121,41 @@
   .revcorner{position:absolute;top:12px;left:-32px;transform:rotate(-45deg);background:#e0a417;color:#fff;
     font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:10px;letter-spacing:1.5px;
     padding:3px 36px;z-index:4;box-shadow:0 1px 4px rgba(0,0,0,0.2);}
+  /* nego summary na kartici */
+  .negobox{background:var(--nego-soft);border:1px solid var(--nego-line);border-radius:10px;padding:9px;}
+  .negobox .lastmsg{font-size:12px;color:var(--ink2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .negobox .lastmsg .who{font-weight:800;color:var(--ink);}
+  .negobox .empty-nego{font-size:12px;color:var(--ink3);}
+  .negobox .openchat{margin-top:8px;display:flex;align-items:center;justify-content:space-between;background:#fff;
+    border:1px solid var(--nego-line);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:700;color:var(--nego);}
+  .negobox .openchat:hover{background:#fffaf0;}
+  .negobox .openchat .badge{background:var(--nego);color:#fff;border-radius:20px;font-size:10px;padding:1px 7px;font-weight:800;}
+  /* nego row (Rows pogled) */
+  .negorow{display:flex;align-items:center;gap:6px;justify-content:space-between;background:var(--nego-soft);
+    border:1px solid var(--nego-line);border-radius:8px;padding:6px 9px;cursor:pointer;width:150px;}
+  .negorow:hover{background:#fffaf0;}
+  .negorow .nr-txt{font-size:11px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .negorow .badge{background:var(--nego);color:#fff;border-radius:20px;font-size:10px;padding:1px 7px;font-weight:800;white-space:nowrap;}
+  /* chat modal */
+  #negoModal{position:fixed;inset:0;background:rgba(20,15,10,0.5);display:none;align-items:center;justify-content:center;z-index:130;padding:20px;}
+  .negobox-modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;width:460px;max-width:96vw;
+    box-shadow:0 22px 60px rgba(0,0,0,0.25);overflow:hidden;display:flex;flex-direction:column;max-height:82vh;}
+  .negobox-modal .mhead{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;}
+  .negobox-modal .mhead .t{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:16px;}
+  .negobox-modal .mhead .sku{font-size:12px;color:var(--accent);font-weight:700;}
+  .negobox-modal .mhead .x{margin-left:auto;color:var(--ink3);cursor:pointer;font-size:18px;}
+  .negobox-modal .chat{padding:14px 16px;background:#f6f2ea;overflow:auto;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;}
+  .negobox-modal .msg{max-width:80%;padding:8px 12px;border-radius:14px;font-size:13px;line-height:1.4;word-break:break-word;}
+  .negobox-modal .msg .meta{font-size:10px;color:var(--ink3);margin-top:4px;}
+  .negobox-modal .msg.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px;}
+  .negobox-modal .msg.me .meta{color:rgba(255,255,255,.75);text-align:right;}
+  .negobox-modal .msg.them{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px;}
+  .negobox-modal .daysep{align-self:center;font-size:10px;color:var(--ink3);background:rgba(0,0,0,.05);padding:2px 10px;border-radius:20px;}
+  .negobox-modal .composer{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:var(--panel);}
+  .negobox-modal .composer select{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;}
+  .negobox-modal .composer input{flex:1;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-family:inherit;font-size:13px;}
+  .negobox-modal .composer input:focus{outline:none;border-color:var(--accent);}
+  .negobox-modal .composer button{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:0 16px;font-weight:800;cursor:pointer;}
   .newtag{font-size:9px;font-weight:800;color:#fff;background:#e11d48;border-radius:4px;padding:1px 6px;letter-spacing:1px;white-space:nowrap;}
   .nab-toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%) translateY(10px);opacity:0;pointer-events:none;
     background:#b42318;color:#fff;font-size:13px;font-weight:700;padding:11px 18px;border-radius:12px;z-index:200;
@@ -333,6 +368,24 @@
     <span class="hint">Watch CBM to know when to close a container (~68 m³ = full 40ft).</span>
   </div>
 
+  <div id="negoModal">
+    <div class="negobox-modal">
+      <div class="mhead">
+        <div><div class="t">Price negotiation</div><div class="sku" id="negoSku"></div></div>
+        <span class="x" onclick="document.getElementById('negoModal').style.display='none'">✕</span>
+      </div>
+      <div class="chat" id="negoChat"></div>
+      <div class="composer">
+        <select id="negoSideSel" onchange="nabNegoSide(this.value)">
+          <option value="me">You</option>
+          <option value="them">Supplier</option>
+        </select>
+        <input id="negoInput" placeholder="Type a message…" onkeydown="nabNegoKey(event)">
+        <button onclick="nabSendNego()">Send</button>
+      </div>
+    </div>
+  </div>
+
   <div id="mgModal"><div class="box">
     <h3>🚢 Containers status</h3>
     <div class="sub">Set where each container is: preparing, in transit, or arrived. Saved on the server.</div>
@@ -478,9 +531,21 @@ function allContainerNames(){
 let SEARCH='';
 let SORT=(localStorage.getItem('nab_sort')||'date_desc');
 let STFILTER=(localStorage.getItem('nab_stfilter')||'all');   // all|new|review|confirmed
+function negoChat(it){
+  // vrni polje sporočil; migriraj star negotiation tekst kot prvo sporočilo (od tebe)
+  let arr = Array.isArray(it.nego_chat) ? it.nego_chat : [];
+  if(!arr.length && (it.negotiation||'').trim()){
+    arr = [{who:'me', text:(it.negotiation||'').trim(), ts:(it.date||'')}];
+  }
+  return arr;
+}
+function negoCount(it){ return negoChat(it).length; }
+function negoLast(it){ const a=negoChat(it); return a.length?a[a.length-1]:null; }
+function hasNego(it){ return negoCount(it)>0; }
+
 function itemStatus(it){
   if(it.approved) return 'confirmed';
-  if((it.negotiation||'').trim()) return 'review';
+  if(hasNego(it)) return 'review';
   if(isNewItem(it)) return 'new';
   return 'none';
 }
@@ -525,7 +590,7 @@ function nabClearSearch(){ SEARCH=''; const el=document.getElementById('nabSearc
   document.getElementById('nabSearchClear').style.display='none'; nabRender(); }
 function matchSearch(x){
   if(!SEARCH) return true;
-  const hay=[(x.sku||''),(x.naziv||''),(x.comment||''),(x.specification||''),(x.negotiation||''),(x.container||'')].join(' ').toLowerCase();
+  const hay=[(x.sku||''),(x.naziv||''),(x.comment||''),(x.specification||''),negoChat(x).map(m=>m.text).join(' '),(x.container||'')].join(' ').toLowerCase();
   return hay.indexOf(SEARCH)!==-1;
 }
 function visibleItems(){
@@ -713,7 +778,7 @@ function renderRows(items){
       +'<td class="num" style="white-space:nowrap">'+cin(it.id,'unit_price',it.unit_price,'62px','right')+pupTag+'</td>'
       +'<td class="num" style="color:var(--ink2);font-weight:700">$'+num(it.total_price,0)+'</td>'
       +'<td style="min-width:170px"><textarea class="cin area field-supplier autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="supplier spec…" style="width:170px">'+esc(it.specification||'')+'</textarea></td>'
-      +'<td style="min-width:170px"><textarea class="cin area field-nego autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="price talk…" style="width:170px">'+esc(it.negotiation||'')+'</textarea></td>'
+      +'<td style="min-width:150px">'+nabNegoSummaryRow(it)+'</td>'
       +'<td class="num">'+cin(it.id,'ctns',it.ctns,'60px','right')+'</td>'
       +'<td class="num">'+cin(it.id,'cbm_ctn',it.cbm_ctn,'74px','right')+'</td>'
       +'<td class="num" style="color:var(--ink2)">'+num(it.total_cbm,3)+'</td>'
@@ -748,7 +813,7 @@ function renderCards(items){
     const dupTag=dupN?'<span class="duptag" title="Isti SKU je '+(dupN+1)+'× v Nerazvrščeno">⚠ '+(dupN+1)+'×</span>':'';
     const seld=SEL.has(it.id);
     const isNew=isNewItem(it);
-    return '<div class="pcard '+(appr?'approved':'')+(isNew?' isnew':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)">'+(appr?'<div class="okcorner">Confirmed</div>':((it.negotiation||'').trim()?'<div class="revcorner">REVIEW</div>':(isNew?'<div class="newcorner">NEW</div>':'')))+'<div class="ribbon" style="background:'+col+'"></div>'
+    return '<div class="pcard '+(appr?'approved':'')+(isNew?' isnew':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)">'+(appr?'<div class="okcorner">Confirmed</div>':(hasNego(it)?'<div class="revcorner">REVIEW</div>':(isNew?'<div class="newcorner">NEW</div>':'')))+'<div class="ribbon" style="background:'+col+'"></div>'
       +'<div class="chead">'+img
         +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'" title="'+esc(it.container||'Nerazvrščeno')+'"><span class="dot" style="background:'+col+'"></span><span class="ktag-name">'+esc(it.container||'Nerazvrščeno')+'</span></span>'+(CSTATUS[it.container]?'<div class="cst-row">'+cstBadge(CSTATUS[it.container])+'</div>':'')
         +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+pupTag+dupTag+'</div>'
@@ -767,7 +832,7 @@ function renderCards(items){
       +'<div class="notes">'
         +'<div class="note"><label>Our note</label><textarea class="autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'comment\',this.value)" placeholder="e.g. re-order, color, without stick">'+esc(it.comment||'')+'</textarea></div>'
         +'<div class="note spec"><label>Specification <span class="badge-supp">supplier</span></label><textarea class="autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="dimensions, variation, set…">'+esc(it.specification||'')+'</textarea></div>'
-        +'<div class="note nego"><label>Price negotiation</label><textarea class="autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'negotiation\',this.value)" placeholder="target price, counter-offer, lobby…">'+esc(it.negotiation||'')+'</textarea></div>'
+        +nabNegoSummary(it)
         +'<button class="addlink" onclick="nabOpenLinks(\''+it.id+'\')">🔗 '+(dimg?'Edit':'Add')+' image / link</button>'
       +'</div>'
       +'<div class="cfoot"><span class="final" style="color:var(--good)">€'+nabFinal(it).toFixed(2)+' <small>final</small></span>'
@@ -843,6 +908,66 @@ async function nabSaveLinks(){
   document.getElementById('modal').style.display='none';
   nabRender();
 }
+function nabNegoSummary(it){
+  const n=negoCount(it), last=negoLast(it);
+  const inner = last
+    ? '<div class="lastmsg"><span class="who">'+(last.who==='me'?'You':'Supplier')+':</span> '+esc(last.text)+'</div>'
+    : '<div class="empty-nego">No messages yet.</div>';
+  return '<div class="note nego"><label>Price negotiation</label>'
+    +'<div class="negobox">'+inner
+    +'<div class="openchat" onclick="nabOpenNego(\''+it.id+'\')">💬 '+(n?'Open negotiation':'Start negotiation')+' <span class="badge">'+n+'</span></div>'
+    +'</div></div>';
+}
+function nabNegoSummaryRow(it){
+  const n=negoCount(it), last=negoLast(it);
+  const txt = last ? (last.who==='me'?'You: ':'Supp: ')+last.text : 'price talk…';
+  return '<div class="negorow" onclick="nabOpenNego(\''+it.id+'\')" title="Open negotiation">'
+    +'<span class="nr-txt">'+esc(txt)+'</span><span class="badge">💬 '+n+'</span></div>';
+}
+let _negoItemId=null, _negoSide='me';
+function nabOpenNego(id){
+  _negoItemId=id;
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  document.getElementById('negoSku').textContent=(it.sku||'—')+' · '+(it.container||'Nerazvrščeno');
+  nabRenderChat();
+  document.getElementById('negoModal').style.display='flex';
+  setTimeout(()=>{const inp=document.getElementById('negoInput'); if(inp) inp.focus();},50);
+}
+function nabRenderChat(){
+  const it=DATA.items.find(x=>x.id===_negoItemId); if(!it) return;
+  const arr=negoChat(it);
+  const box=document.getElementById('negoChat');
+  if(!arr.length){ box.innerHTML='<div class="daysep">No messages yet — start the negotiation.</div>'; return; }
+  let h='', lastDay='';
+  arr.forEach(m=>{
+    const day=(m.ts||'').split(/[ ,]/)[0]||'';
+    if(day && day!==lastDay){ h+='<div class="daysep">'+esc(day)+'</div>'; lastDay=day; }
+    h+='<div class="msg '+(m.who==='me'?'me':'them')+'">'+esc(m.text)
+      +'<div class="meta">'+(m.who==='me'?'You':'Supplier')+(m.ts?(' · '+esc(m.ts)):'')+'</div></div>';
+  });
+  box.innerHTML=h;
+  box.scrollTop=box.scrollHeight;
+}
+function nabNegoSide(v){ _negoSide=v; }
+async function nabSendNego(){
+  const it=DATA.items.find(x=>x.id===_negoItemId); if(!it) return;
+  const inp=document.getElementById('negoInput'); const txt=(inp.value||'').trim();
+  if(!txt) return;
+  let arr=negoChat(it).slice();   // vključi migriran star tekst
+  const now=new Date();
+  const ts=now.toLocaleDateString('sl-SI')+' '+now.toTimeString().slice(0,5);
+  arr.push({who:_negoSide, text:txt, ts});
+  it.nego_chat=arr;
+  it.negotiation='';   // star tekst je zdaj v chatu (migriran) — sprosti staro polje
+  inp.value='';
+  nabRenderChat();
+  try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+    const d=await r.json(); if(d.ok) Object.assign(it,d.item); }catch(e){}
+  nabRender();
+  nabRenderChat();
+}
+function nabNegoKey(e){ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); nabSendNego(); } }
+
 function nabZoom(src){ document.getElementById('lbimg').src=src; document.getElementById('lb').style.display='flex'; }
 
 async function nabEdit(id,f,v){
