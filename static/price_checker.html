@@ -1179,9 +1179,46 @@ function _updateRazponCounts(rows) {
   currentRazpon = saved;
 }
 
+// Barvna lestvica za Razliko: nizka = rdeča, visoka = zelena (prosojno, da je št. berljiva)
+let _razMin = 0, _razMax = 1;
+function _computeRazRange(rows) {
+  const vals = rows.filter(r => !r.isNull && r.razlikaNum != null && !isNaN(r.razlikaNum))
+                   .map(r => Math.abs(r.razlikaNum));
+  if (!vals.length) { _razMin = 0; _razMax = 1; return; }
+  _razMin = Math.min(...vals); _razMax = Math.max(...vals);
+  if (_razMax === _razMin) _razMax = _razMin + 1;   // izogni deljenju z 0
+}
+function _razColorStyle(r) {
+  if (r.isNull || r.razlikaNum == null || isNaN(r.razlikaNum)) return '';
+  const v = Math.abs(r.razlikaNum);
+  let t = (v - _razMin) / (_razMax - _razMin);      // 0 = najnižja, 1 = najvišja
+  t = Math.max(0, Math.min(1, t));
+  // barvni prehod rdeča → oranžna → rumena → zelena
+  const stops = [
+    [0.00, [229, 83, 75]],   // rdeča
+    [0.35, [229,140, 59]],   // oranžna
+    [0.55, [200,180, 45]],   // rumena
+    [0.75, [140,195, 70]],   // svetlo zelena
+    [1.00, [ 46,160, 60]]    // zelena
+  ];
+  let c = stops[stops.length-1][1];
+  for (let i = 0; i < stops.length-1; i++) {
+    if (t >= stops[i][0] && t <= stops[i+1][0]) {
+      const lt = (t - stops[i][0]) / (stops[i+1][0] - stops[i][0]);
+      const a = stops[i][1], b = stops[i+1][1];
+      c = [0,1,2].map(k => Math.round(a[k] + (b[k]-a[k])*lt));
+      break;
+    }
+  }
+  const rgb = c.join(',');
+  const bgA = 0.07 + t * 0.08;   // rahlo ozadje, malo bolj nasičeno pri visokih
+  return 'box-shadow:inset 4px 0 0 rgb('+rgb+');background:rgba('+rgb+','+bgA.toFixed(3)+');padding-left:16px;';
+}
+
 function renderTable(rows) {
   let filtered = rows;
   _updateRazponCounts(rows);
+  _computeRazRange(rows);
 
   // Preštej koliko postavk ima vsak ID (za "Združeno" badge)
   const idCounts = {};
@@ -1320,7 +1357,7 @@ function renderTable(rows) {
       <td>${suggestedDisplay}</td>
       <td style="font-size:12px;font-weight:600;text-align:center;${row.stock <= 5 ? 'color:#ef4444' : row.stock <= 20 ? 'color:#f59e0b' : 'color:#16a34a'}">${row.stock ?? '—'}</td>
       <td style="font-size:15px;color:var(--muted)">${row.nc}</td>
-      <td style="font-size:15px;color:var(--muted)">${row.razlika}</td>
+      <td style="font-size:15px;color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;${_razColorStyle(row)}">${row.razlika}</td>
       <td style="font-size:15px;color:var(--muted)">${row.marza}</td>
       <td><span style="color:var(--muted);font-size:15px">${row.currency}</span></td>
       <td style="color:var(--muted);font-size:15px">${row.store}</td>
