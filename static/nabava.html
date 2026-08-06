@@ -102,8 +102,9 @@
   td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
   .reorder{font-size:9px;font-weight:800;color:var(--nego);background:var(--nego-soft);border-radius:4px;padding:1px 5px;white-space:nowrap;}
   .duptag{font-size:9px;font-weight:800;color:#b42318;background:#fde7e5;border:1px solid #f5c6c2;border-radius:4px;padding:1px 5px;white-space:nowrap;cursor:help;}
-  .newbar{background:#e11d48;color:#fff;text-align:center;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;
-    font-size:12px;letter-spacing:2px;padding:5px;}
+  .newcorner{position:absolute;top:12px;left:-34px;transform:rotate(-45deg);background:#e11d48;color:#fff;
+    font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:10px;letter-spacing:1.5px;
+    padding:3px 36px;z-index:4;box-shadow:0 1px 4px rgba(0,0,0,0.2);}
   .newtag{font-size:9px;font-weight:800;color:#fff;background:#e11d48;border-radius:4px;padding:1px 6px;letter-spacing:1px;white-space:nowrap;}
   .nab-toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%) translateY(10px);opacity:0;pointer-events:none;
     background:#b42318;color:#fff;font-size:13px;font-weight:700;padding:11px 18px;border-radius:12px;z-index:200;
@@ -664,7 +665,7 @@ function renderCards(items){
     const dupTag=dupN?'<span class="duptag" title="Isti SKU je '+(dupN+1)+'× v Nerazvrščeno">⚠ '+(dupN+1)+'×</span>':'';
     const seld=SEL.has(it.id);
     const isNew=isNewItem(it);
-    return '<div class="pcard '+(appr?'approved':'')+(isNew?' isnew':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)">'+(isNew?'<div class="newbar">NEW</div>':'')+'<div class="ribbon" style="background:'+col+'"></div>'
+    return '<div class="pcard '+(appr?'approved':'')+(isNew?' isnew':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)">'+(isNew?'<div class="newcorner">NEW</div>':'')+'<div class="ribbon" style="background:'+col+'"></div>'
       +'<div class="chead">'+img
         +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'" title="'+esc(it.container||'Nerazvrščeno')+'"><span class="dot" style="background:'+col+'"></span><span class="ktag-name">'+esc(it.container||'Nerazvrščeno')+'</span></span>'+(CSTATUS[it.container]?'<div class="cst-row">'+cstBadge(CSTATUS[it.container])+'</div>':'')
         +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+pupTag+dupTag+'</div>'
