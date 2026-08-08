@@ -616,8 +616,8 @@ function visibleItems(){
     switch(SORT){
       case 'sku_az': return sku(a)<sku(b)?-1:sku(a)>sku(b)?1:0;
       case 'sku_za': return sku(a)>sku(b)?-1:sku(a)<sku(b)?1:0;
-      case 'date_asc': return parseDate(a.date)-parseDate(b.date);
-      case 'date_desc': return parseDate(b.date)-parseDate(a.date);
+      case 'date_asc': { const d=parseDate(a.date)-parseDate(b.date); return d!==0?d:((a.created_ts||0)-(b.created_ts||0)); }
+      case 'date_desc': { const d=parseDate(b.date)-parseDate(a.date); return d!==0?d:((b.created_ts||0)-(a.created_ts||0)); }
       case 'cbm_asc': return num(a.total_cbm)-num(b.total_cbm);
       case 'cbm_desc': return num(b.total_cbm)-num(a.total_cbm);
       default: return 0;
@@ -1039,9 +1039,21 @@ async function nabNewContainer(){
 }
 async function nabAddRow(){
   const cont = CONT!=='all'?CONT:'Nerazvrščeno';
-  const it={container:cont,date:new Date().toLocaleDateString('sl-SI'),sku:'',qty:0,unit_price:0,cbm_ctn:0,ctns:0,status:'active'};
+  const now=new Date();
+  const it={container:cont,date:now.toLocaleDateString('sl-SI'),created_ts:now.getTime(),sku:'',qty:0,unit_price:0,cbm_ctn:0,ctns:0,status:'active'};
   try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
-    const d=await r.json(); if(d.ok){ DATA.items.push(d.item); nabRender(); window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); } }catch(e){}
+    const d=await r.json();
+    if(d.ok){
+      DATA.items.unshift(d.item);            // na začetek seznama
+      // da je nova postavka zagotovo vidna na vrhu: sort=najnovejši, status filter=all
+      SORT='date_desc'; localStorage.setItem('nab_sort',SORT);
+      if(STFILTER!=='all'){ STFILTER='all'; localStorage.setItem('nab_stfilter','all'); }
+      nabRender();
+      window.scrollTo({top:0,behavior:'smooth'});   // skoči na VRH, ne na dno
+      // fokusiraj SKU polje nove postavke, če obstaja
+      setTimeout(()=>{ const el=document.querySelector('[data-newfocus="'+d.item.id+'"]'); if(el) el.focus(); },120);
+    }
+  }catch(e){}
 }
 async function nabDelete(id){
   const it=DATA.items.find(x=>x.id===id); if(!it) return;
