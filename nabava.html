@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Purchase Orders · Suban</title>
+<link rel="icon" type="image/png" href="/static/suban-s-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f3f0ea; --panel:#fffdf9; --panel2:#faf7f1; --line:#e5ded2;
+    --ink:#241f1a; --ink2:#6e655a; --ink3:#a99f90;
+    --accent:#2f6fb0; --accent-soft:#eef4fb; --accent-line:#d3e3f4;
+    --good:#2f9e6f; --nego:#c67a1e; --nego-soft:#fbf3e6; --nego-line:#f0dcbf;
+    --bad:#c0392b; --r:12px;
+  }
+  *{box-sizing:border-box;} html,body{margin:0;}
+  body{background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;font-size:13px;line-height:1.4;padding-bottom:66px;}
+  .disp{font-family:'Bricolage Grotesque',sans-serif;}
+  .mono{font-family:'Inter',monospace;font-variant-numeric:tabular-nums;}
+
+  .stickytop{position:sticky;top:0;z-index:30;}
+  .bar{display:flex;align-items:center;gap:14px;padding:14px 22px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  .bar h1{margin:0;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:19px;letter-spacing:-0.4px;display:flex;align-items:center;gap:8px;}
+  .bar h1 .tag{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:var(--nego);background:var(--nego-soft);padding:2px 7px;border-radius:5px;}
+  .grow{flex:1;}
+  .btn{padding:8px 14px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink2);white-space:nowrap;}
+  .btn:hover{border-color:var(--ink3);}
+  .btn.primary{background:var(--ink);color:var(--panel);border-color:var(--ink);}
+  .btn.warn{color:var(--nego);border-color:var(--nego-line);}
+  .btn.ghost{background:transparent;}
+  a.btn{text-decoration:none;display:inline-block;}
+  .vtoggle{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .vtoggle button{border:0;background:var(--panel);color:var(--ink2);font-family:inherit;font-weight:700;font-size:12px;padding:8px 14px;cursor:pointer;}
+  .vtoggle button.on{background:var(--ink);color:var(--panel);}
+
+  .ctrlwrap{background:var(--bg);border-bottom:1px solid var(--line);
+    box-shadow:0 2px 8px rgba(60,50,40,0.05);}
+  .controls{padding:12px 22px 4px;display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
+  .lbl{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink3);}
+  .nsearch{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:10px;
+    background:var(--panel);padding:7px 11px;color:var(--ink3);min-width:230px;}
+  .nsearch:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);color:var(--accent);}
+  .nsearch input{border:none;background:transparent;outline:none;font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);width:100%;}
+  .nsearch .nsx{cursor:pointer;font-size:12px;color:var(--ink3);}
+  .nsearch .nsx:hover{color:var(--ink);}
+  .contfilter{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);
+    font-family:inherit;font-size:13px;font-weight:700;padding:8px 12px;cursor:pointer;min-width:210px;}
+  .contfilter:hover{border-color:var(--ink3);}
+  .contfilter:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .cfdot{width:12px;height:12px;border-radius:50%;background:var(--ink3);display:inline-block;}
+  .controls2{margin-top:-2px;padding-top:0;padding-bottom:10px;}
+  .stchips{display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center;}
+  .sttip{position:absolute;top:calc(100% + 12px);left:-8px;z-index:60;background:#1f2937;color:#fff;border-radius:12px;
+    padding:14px 16px;width:300px;box-shadow:0 12px 34px rgba(0,0,0,0.3);font-weight:400;text-transform:none;letter-spacing:0;
+    animation:tipIn .25s ease;}
+  @keyframes tipIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+  .sttip-t{font-weight:800;font-size:13px;margin-bottom:6px;}
+  .sttip-b{font-size:12px;line-height:1.55;color:#d1d5db;}
+  .sttip-b .sttip-new{color:#fb7185;font-weight:800;}
+  .sttip-b .sttip-rev{color:#fbbf24;font-weight:800;}
+  .sttip-x{margin-top:10px;background:#fff;color:#1f2937;border:none;border-radius:8px;padding:6px 14px;
+    font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;}
+  .sttip-x:hover{background:#e5e7eb;}
+  .sttip-arrow{position:absolute;top:-6px;left:22px;width:12px;height:12px;background:#1f2937;transform:rotate(45deg);}
+  .stchip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--panel);
+    border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;color:var(--ink2);cursor:pointer;transition:all .12s;}
+  .stchip:hover{border-color:var(--ink3);}
+  .stchip.on{color:#fff;border-color:transparent;}
+  .stchip .cdot{width:7px;height:7px;border-radius:50%;}
+  .cst-row{margin-top:5px;}
+  .cst-badge{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap;
+    max-width:calc(100% - 30px);overflow:hidden;text-overflow:ellipsis;}
+  .cst-dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
+  .qs-wrap{display:inline-flex;align-items:center;gap:5px;margin-left:4px;}
+  .qs-wrap .qs-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--ink3);}
+  .qs-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--panel);
+    border-radius:8px;padding:5px 9px;font-family:inherit;font-size:11px;font-weight:700;color:var(--ink2);cursor:pointer;}
+  .qs-btn:hover{border-color:var(--ink3);}
+  .qs-btn.on{font-weight:800;}
+  /* manage modal */
+  #mgModal{position:fixed;inset:0;background:rgba(20,15,10,0.5);display:none;align-items:center;justify-content:center;z-index:120;padding:20px;}
+  #mgModal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;width:520px;max-width:94vw;max-height:80vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
+  #mgModal h3{font-family:'Bricolage Grotesque',sans-serif;margin:0 0 4px;font-size:18px;}
+  #mgModal .sub{font-size:12px;color:var(--ink3);margin-bottom:16px;}
+  #mgModal .mrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);}
+  #mgModal .mrow .cname{font-weight:800;font-family:'Bricolage Grotesque',sans-serif;flex:1;display:flex;align-items:center;gap:7px;}
+  #mgModal .mrow .cn-dot{width:10px;height:10px;border-radius:50%;}
+  #mgModal .mrow .cnt{font-size:11px;color:var(--ink3);font-weight:700;}
+  #mgModal .stbtns{display:flex;gap:5px;}
+  #mgModal .acts{display:flex;justify-content:flex-end;margin-top:16px;}
+  .kchip{display:inline-flex;align-items:center;gap:8px;padding:6px 13px;border-radius:22px;border:1px solid var(--line);background:var(--panel);font-weight:700;font-size:13px;cursor:pointer;color:var(--ink);}
+  .kchip .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .kchip .n{font-size:11px;color:var(--ink3);font-weight:600;}
+  .kchip.on{box-shadow:0 0 0 2px currentColor inset;border-color:transparent;}
+  .kchip.all.on{color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 1px var(--accent) inset;}
+  .toggle-lbl{display:inline-flex;align-items:center;gap:7px;cursor:pointer;padding:6px 13px;border:1px solid var(--line);border-radius:22px;background:var(--panel);font-size:12px;font-weight:600;}
+
+  .wrap{padding:14px 22px 22px;}
+
+  /* ROWS */
+  .tblwrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:auto;}
+  table{width:100%;border-collapse:collapse;min-width:1600px;}
+  thead th{position:sticky;top:0;background:var(--panel2);border-bottom:2px solid var(--line);padding:10px 9px;text-align:left;font-size:11px;font-weight:800;letter-spacing:0.3px;color:var(--ink2);text-transform:uppercase;white-space:nowrap;z-index:5;}
+  thead th.num{text-align:right;}
+  tbody td{border-bottom:1px solid var(--line);padding:5px 9px;vertical-align:middle;}
+  tbody tr:hover{background:var(--panel2);}
+  tr.approved{background:#eaf7ee;}
+  tr.approved td{background:transparent;}
+  .appbtn{cursor:pointer;font-size:16px;color:var(--ink3);}
+  .appbtn.on{color:#0f9d58;}
+  .imgcell{display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .thumb{width:46px;height:46px;border-radius:9px;object-fit:cover;background:#efe9df;border:1px solid var(--line);cursor:zoom-in;display:block;}
+  .thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:18px;}
+  .golink{font-size:10px;color:var(--accent);text-decoration:none;font-weight:700;}
+  .golink.off{color:var(--ink3);cursor:default;}
+  .cin{border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);font-size:12px;font-family:inherit;padding:4px 6px;width:100%;box-sizing:border-box;transition:border-color .12s,box-shadow .12s;}
+  .cin:hover{border-color:var(--ink3);}
+  .cin:focus{outline:none;border-color:var(--accent);background:#fff;box-shadow:0 0 0 2px var(--accent-soft);}
+  .cin::placeholder{color:var(--ink3);}
+  .cin.mono{font-family:'Inter',monospace;}
+  .cin.right{text-align:right;}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .reorder{font-size:9px;font-weight:800;color:var(--nego);background:var(--nego-soft);border-radius:4px;padding:1px 5px;white-space:nowrap;}
+  .duptag{font-size:9px;font-weight:800;color:#b42318;background:#fde7e5;border:1px solid #f5c6c2;border-radius:4px;padding:1px 5px;white-space:nowrap;cursor:help;}
+  .newcorner{position:absolute;top:12px;left:-34px;transform:rotate(-45deg);background:#e11d48;color:#fff;
+    font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:10px;letter-spacing:1.5px;
+    padding:3px 36px;z-index:4;box-shadow:0 1px 4px rgba(0,0,0,0.2);}
+  .okcorner{position:absolute;top:14px;left:-30px;transform:rotate(-45deg);background:#0f9d58;color:#fff;
+    font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:9.5px;letter-spacing:1px;
+    padding:3px 34px;z-index:4;box-shadow:0 1px 4px rgba(0,0,0,0.2);}
+  .delcorner{position:absolute;top:13px;left:-32px;transform:rotate(-45deg);background:#8a8177;color:#fff;
+    font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:10px;letter-spacing:1px;
+    padding:3px 36px;z-index:4;box-shadow:0 1px 4px rgba(0,0,0,0.2);}
+  .pcard.deleted{opacity:0.6;background:#f4f2ee;}
+  tr.row-deleted{opacity:0.55;background:#f4f2ee;}
+  .revcorner{position:absolute;top:12px;left:-32px;transform:rotate(-45deg);background:#e0a417;color:#fff;
+    font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:10px;letter-spacing:1.5px;
+    padding:3px 36px;z-index:4;box-shadow:0 1px 4px rgba(0,0,0,0.2);}
+  /* nego summary na kartici */
+  .negobox{background:var(--nego-soft);border:1px solid var(--nego-line);border-radius:10px;padding:9px;}
+  .negobox .lastmsg{font-size:12px;color:var(--ink2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .negobox .lastmsg .who{font-weight:800;color:var(--ink);}
+  .negobox .empty-nego{font-size:12px;color:var(--ink3);}
+  .negobox .openchat{margin-top:8px;display:flex;align-items:center;justify-content:space-between;background:#fff;
+    border:1px solid var(--nego-line);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:700;color:var(--nego);}
+  .negobox .openchat:hover{background:#fffaf0;}
+  .negobox .openchat .badge{background:var(--nego);color:#fff;border-radius:20px;font-size:10px;padding:1px 7px;font-weight:800;}
+  /* nego row (Rows pogled) */
+  .negorow{display:flex;align-items:center;gap:6px;justify-content:space-between;background:var(--nego-soft);
+    border:1px solid var(--nego-line);border-radius:8px;padding:6px 9px;cursor:pointer;width:150px;}
+  .negorow:hover{background:#fffaf0;}
+  .negorow .nr-txt{font-size:11px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .negorow .badge{background:var(--nego);color:#fff;border-radius:20px;font-size:10px;padding:1px 7px;font-weight:800;white-space:nowrap;}
+  /* chat modal */
+  #negoModal{position:fixed;inset:0;background:rgba(20,15,10,0.5);display:none;align-items:center;justify-content:center;z-index:130;padding:20px;}
+  .negobox-modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;width:460px;max-width:96vw;
+    box-shadow:0 22px 60px rgba(0,0,0,0.25);overflow:hidden;display:flex;flex-direction:column;max-height:82vh;}
+  .negobox-modal .mhead{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;}
+  .negobox-modal .mhead .t{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:16px;}
+  .negobox-modal .mhead .sku{font-size:12px;color:var(--accent);font-weight:700;}
+  .negobox-modal .mhead .x{margin-left:auto;color:var(--ink3);cursor:pointer;font-size:18px;}
+  .negobox-modal .chat{padding:14px 16px;background:#f6f2ea;overflow:auto;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;}
+  .negobox-modal .msg{max-width:80%;padding:8px 12px;border-radius:14px;font-size:13px;line-height:1.4;word-break:break-word;}
+  .negobox-modal .msg .meta{font-size:10px;color:var(--ink3);margin-top:4px;}
+  .negobox-modal .msg.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px;}
+  .negobox-modal .msg.me .meta{color:rgba(255,255,255,.75);text-align:right;}
+  .negobox-modal .msg.them{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px;}
+  .negobox-modal .daysep{align-self:center;font-size:10px;color:var(--ink3);background:rgba(0,0,0,.05);padding:2px 10px;border-radius:20px;}
+  .negobox-modal .composer{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:var(--panel);}
+  .negobox-modal .composer select{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;}
+  .negobox-modal .composer input{flex:1;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-family:inherit;font-size:13px;}
+  .negobox-modal .composer input:focus{outline:none;border-color:var(--accent);}
+  .negobox-modal .composer button{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:0 16px;font-weight:800;cursor:pointer;}
+  .newtag{font-size:9px;font-weight:800;color:#fff;background:#e11d48;border-radius:4px;padding:1px 6px;letter-spacing:1px;white-space:nowrap;}
+  .nab-toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%) translateY(10px);opacity:0;pointer-events:none;
+    background:#b42318;color:#fff;font-size:13px;font-weight:700;padding:11px 18px;border-radius:12px;z-index:200;
+    box-shadow:0 10px 30px rgba(0,0,0,0.25);transition:opacity .18s,transform .18s;max-width:90vw;}
+  .nab-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .final{font-weight:800;color:var(--good);}
+  .rowact span{cursor:pointer;font-size:14px;padding:0 3px;}
+  .badge-supp{font-size:9px;font-weight:800;color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:1px 5px;text-transform:uppercase;letter-spacing:0.4px;}
+  .field-supplier{background:var(--accent-soft);border:1px dashed var(--accent-line)!important;}
+  .field-nego{background:var(--nego-soft);border:1px dashed var(--nego-line)!important;}
+  .cin.area{resize:none;min-height:30px;line-height:1.35;overflow:hidden;}
+  textarea.autogrow{overflow:hidden;resize:none;}
+  select.contsel{border:1px solid var(--line);border-radius:7px;padding:4px 6px;font-size:11px;font-family:inherit;background:var(--panel);cursor:pointer;max-width:132px;}
+
+  /* CARDS (Concept B) */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;}
+  .pcard{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(60,50,40,0.04);display:flex;flex-direction:column;}
+  .pcard.approved{background:#eaf7ee;border-color:#bfe3ca;}
+  .pcard.approved .chead,.pcard.approved .cfoot{background:transparent;}
+  /* vnosna polja ostanejo bela, ne prekrita z zeleno */
+  .pcard.approved .cin,.pcard.approved .stat input,.pcard.approved .csku input,
+  .pcard.approved .note textarea,.pcard.approved .note input,.pcard.approved textarea.autogrow,
+  .pcard.approved select,.pcard.approved input[type=text]{background:#fff !important;}
+  .ribbon{height:5px;}
+  .chead{display:flex;gap:14px;padding:15px 16px 12px;min-height:150px;align-items:flex-start;}
+  .chead .meta{display:flex;flex-direction:column;}
+  .pimg{width:88px;height:88px;border-radius:14px;background:#efe9df;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;object-fit:cover;cursor:zoom-in;}
+  .chead .meta{min-width:0;flex:1;}
+  .ktag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:20px;
+    max-width:calc(100% - 30px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+  .ktag .ktag-name{overflow:hidden;text-overflow:ellipsis;}
+  .ktag .dot{width:7px;height:7px;border-radius:50%;}
+  .csku{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;letter-spacing:-0.3px;margin-top:8px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+  .csku input{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;width:100%;max-width:170px;color:var(--accent);background:#fff;}
+  .csku input:hover{border-color:var(--ink3);}
+  .csku input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .csku{flex-wrap:nowrap;}
+  .csku input:focus{outline:none;border-color:var(--accent);background:var(--panel2);}
+  .pname{color:var(--ink2);font-size:12.5px;margin-top:3px;line-height:1.35;
+    overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;min-height:34px;}
+  .pname a{color:var(--ink2);text-decoration:none;}
+  .cmeta-row{margin-top:auto;padding-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .cmeta-row input:hover,.contsel:hover{border-color:var(--ink3);}
+  .cmeta-row input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:0 14px 12px;}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:7px 7px;min-width:0;}
+  .stat label{font-size:8.5px;font-weight:800;letter-spacing:0.3px;text-transform:uppercase;color:var(--ink3);display:block;white-space:nowrap;}
+  .stat input{box-sizing:border-box;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:13.5px;border:1px solid var(--line);border-radius:7px;background:#fff;width:100%;min-width:0;padding:5px 6px;margin-top:3px;color:var(--ink);text-align:left;}
+  .stat{overflow:visible;}
+  .stat input:hover{border-color:var(--ink3);}
+  .stat input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .stat.ro .v{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px;margin-top:2px;}
+  .notes{padding:0 16px 14px;display:flex;flex-direction:column;gap:8px;}
+  .note{border-radius:11px;padding:9px 11px;}
+  .note label{font-size:9.5px;font-weight:800;letter-spacing:0.6px;text-transform:uppercase;margin-bottom:4px;display:flex;align-items:center;gap:6px;}
+  .note textarea,.note input{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff;font-family:inherit;font-size:12px;resize:vertical;color:var(--ink);padding:7px 9px;transition:border-color .12s,box-shadow .12s;}
+  .note textarea:hover,.note input:hover{border-color:var(--ink3);}
+  .note textarea:focus,.note input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .note textarea::placeholder,.note input::placeholder{color:var(--ink3);}
+  .note.spec{background:var(--accent-soft);border:1px solid var(--accent-line);} .note.spec label{color:var(--accent);}
+  .note.spec textarea,.note.spec input{background:#fff;border-color:var(--accent-line);}
+  .note.nego{background:var(--nego-soft);border:1px solid var(--nego-line);} .note.nego label{color:var(--nego);}
+  .note.nego textarea,.note.nego input{background:#fff;border-color:var(--nego-line);}
+  .note.urls{background:var(--panel2);border:1px dashed var(--line);}.note.urls label{color:var(--ink3);}
+  .note.urls input{font-size:11px;padding:3px 0;border-bottom:1px solid var(--line);border-radius:0;margin-bottom:4px;}
+  .cfoot{margin-top:auto;padding:11px 16px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;background:var(--panel2);}
+  .cfoot .final{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:20px;}
+  .cfoot .final small{font-size:11px;color:var(--ink3);font-weight:600;}
+  .cfoot .act{margin-left:auto;display:flex;gap:8px;color:var(--ink3);}
+  .cfoot .act span{cursor:pointer;font-size:16px;}
+
+  /* live bar */
+  .live{position:fixed;left:0;right:0;bottom:0;background:var(--ink);color:#f3f0ea;padding:12px 22px;display:flex;gap:26px;align-items:center;z-index:40;flex-wrap:wrap;}
+  .live .scope{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;display:flex;align-items:center;gap:8px;}
+  .live .scope .dot{width:11px;height:11px;border-radius:50%;}
+  .live .s .k{font-size:9.5px;letter-spacing:0.8px;text-transform:uppercase;color:#b3a897;font-weight:700;}
+  .live .s .v{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:18px;}
+  .live .grow{flex:1;} .live .hint{font-size:11px;color:#b3a897;}
+
+  .selpill{position:fixed;left:50%;bottom:64px;transform:translateX(-50%) translateY(8px);opacity:0;
+    display:flex;align-items:center;gap:16px;background:var(--ink);color:#f3f0ea;
+    padding:10px 12px 10px 14px;border-radius:16px;z-index:45;
+    box-shadow:0 12px 34px rgba(0,0,0,0.28);transition:opacity .16s,transform .16s;white-space:nowrap;}
+  .selpill.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .selpill .pill-badge{background:var(--accent);color:#fff;border-radius:10px;padding:5px 12px;font-weight:800;
+    font-family:'Bricolage Grotesque',sans-serif;font-size:15px;}
+  .selpill .s{display:flex;flex-direction:column;}
+  .selpill .s .k{font-size:9px;letter-spacing:0.7px;text-transform:uppercase;color:#b3a897;font-weight:800;}
+  .selpill .s .v{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:16px;line-height:1.1;}
+  .selpill .s .v.cbm{color:#f5c06b;}
+  .selpill .pill-div{width:1px;height:28px;background:#4a423a;}
+  .selpill .pill-sel{background:#2b2620;color:#f3f0ea;border:1px solid #4a423a;border-radius:9px;
+    padding:8px 10px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;max-width:150px;}
+  .selpill .pill-move{background:#fff;color:var(--ink);border:none;border-radius:10px;padding:9px 15px;
+    font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;}
+  .selpill .pill-move:hover{filter:brightness(0.94);}
+  .selpill .pill-x{background:transparent;border:none;color:#b3a897;font-size:15px;cursor:pointer;padding:6px 8px;border-radius:8px;}
+  .selpill .pill-x:hover{background:#2b2620;color:#fff;}
+  .selchk{width:16px;height:16px;cursor:pointer;accent-color:var(--accent);}
+  .pcard.sel{box-shadow:0 0 0 2px var(--accent);}
+  tr.sel{background:var(--accent-soft)!important;}
+  .cardchk{position:absolute;top:10px;right:10px;z-index:3;width:18px;height:18px;cursor:pointer;accent-color:var(--accent);}
+  .pcard{position:relative;}
+  .priceup{font-size:9px;font-weight:800;color:#fff;background:var(--bad);border-radius:4px;padding:1px 5px;white-space:nowrap;cursor:help;}
+  .viewbtn{display:inline-flex;align-items:center;gap:5px;margin-top:6px;align-self:flex-start;padding:6px 12px;border-radius:9px;
+    background:var(--accent);color:#fff;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap;}
+  .viewbtn:hover{filter:brightness(1.06);}
+  .viewbtn.viewbtn-add{background:var(--accent-soft);color:var(--accent);border:1px dashed var(--accent-line);font-family:inherit;cursor:pointer;}
+  .pimgwrap{position:relative;width:88px;height:88px;flex-shrink:0;}
+  .pimgwrap .pimg{width:88px;height:88px;}
+  .pimgwrap .over{position:absolute;inset:0;}
+  .thumbwrap{position:relative;width:46px;height:46px;}
+  .thumbwrap .thumb{width:46px;height:46px;}
+  .thumbwrap .over{position:absolute;inset:0;}
+  .addlink{margin-top:2px;padding:8px 12px;border-radius:9px;border:1px dashed var(--accent-line);
+    background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;}
+  /* modal */
+  #modal,#setModal{position:fixed;inset:0;background:rgba(20,15,10,0.5);display:none;align-items:center;justify-content:center;z-index:120;padding:20px;}
+  #setModal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;width:420px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
+  #setModal h3{font-family:'Bricolage Grotesque',sans-serif;margin:0 0 4px;font-size:18px;}
+  #setModal .sub{font-size:12px;color:var(--ink3);margin-bottom:8px;line-height:1.5;}
+  #setModal label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink2);display:block;margin:14px 0 5px;}
+  #setModal input{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:14px;font-family:inherit;font-weight:700;}
+  #setModal input:focus{outline:none;border-color:var(--accent);}
+  #setModal .acts{display:flex;gap:9px;margin-top:20px;justify-content:flex-end;}
+  #modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;width:440px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
+  #modal h3{font-family:'Bricolage Grotesque',sans-serif;margin:0 0 4px;font-size:18px;}
+  #modal .sub{font-size:12px;color:var(--ink3);margin-bottom:16px;}
+  #modal label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink2);display:block;margin:12px 0 5px;}
+  #modal input{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:13px;font-family:inherit;}
+  #modal input:focus{outline:none;border-color:var(--accent);}
+  #modal .prev{margin-top:10px;text-align:center;}
+  #modal .prev img{max-width:120px;max-height:120px;border-radius:10px;border:1px solid var(--line);}
+  #modal .acts{display:flex;gap:9px;margin-top:18px;justify-content:flex-end;}
+  #lb{position:fixed;inset:0;background:rgba(20,15,10,0.85);display:none;align-items:center;justify-content:center;z-index:100;padding:24px;}
+  #lb img{max-width:90vw;max-height:90vh;border-radius:14px;}
+  .empty{text-align:center;padding:60px 20px;color:var(--ink3);}
+  .empty b{color:var(--ink2);display:block;font-size:15px;margin-bottom:6px;}
+  @media (max-width:640px){.bar h1 span.full{display:none;} .cards{grid-template-columns:1fr;} .stats{grid-template-columns:repeat(2,1fr);}}
+</style>
+</head>
+<body>
+  <div class="stickytop">
+  <div class="bar">
+    <h1>🛒 <span class="full">Purchase Orders</span><span class="tag">China</span></h1>
+    <div class="vtoggle"><button id="vt-rows" class="on" onclick="nabSetView('rows')">▤ Rows</button><button id="vt-cards" onclick="nabSetView('cards')">▦ Cards</button></div>
+    <div class="grow"></div>
+    <button class="btn ghost" onclick="nabRefreshImages()" id="imgBtn">🖼 Load images</button>
+    <button class="btn ghost" onclick="nabExport()">⬇ Export XLSX</button>
+    <button class="btn ghost" onclick="window.open('/nabava-backup-json','_blank')" title="Download full backup (JSON)">💾 Backup</button>
+    <button class="btn primary" onclick="nabAddRow()">＋ New item</button>
+    <button class="btn ghost" onclick="nabOpenSettings()" title="Freight, exchange rate, customs">⚙ Settings</button>
+    <a class="btn ghost" href="/nabava-logout">Logout</a>
+  </div>
+
+  <div class="ctrlwrap">
+  <div class="controls">
+    <span class="lbl">Container</span>
+    <span id="contDot" class="cfdot"></span>
+    <select id="contFilter" class="contfilter" onchange="nabSetCont(this.value)"></select>
+    <button class="btn ghost" style="padding:6px 12px" onclick="nabNewContainer()">＋ new container</button>
+    <span id="contStatusQuick" class="qs-wrap" style="display:none"></span>
+    <div class="grow"></div>
+    <div class="nsearch">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="nabSearch" type="text" placeholder="Search SKU, name, note…" oninput="nabDoSearch(this.value)">
+      <span id="nabSearchClear" class="nsx" style="display:none" onclick="nabClearSearch()">✕</span>
+    </div>
+    <button class="btn ghost" onclick="nabManageContainers()">🚢 Containers</button>
+    <button class="btn ghost" onclick="nabCopySupplier()">📋 Copy for supplier</button>
+  </div>
+
+  <div class="controls controls2">
+    <span class="lbl" style="position:relative">Status
+      <div id="stTip" class="sttip" style="display:none">
+        <div class="sttip-t">💡 Check and use the status filters</div>
+        <div class="sttip-b">Please review items marked <span class="sttip-new">● New</span> (fill in price, CTNS, CBM) and <span class="sttip-rev">● Review</span> (open price negotiation) separately.</div>
+        <button class="sttip-x" onclick="nabDismissTip()">Got it</button>
+        <div class="sttip-arrow"></div>
+      </div>
+    </span>
+    <div id="statusChips" class="stchips"></div>
+    <div class="grow"></div>
+    <span class="lbl">Sort by</span>
+    <select id="sortSel" class="contfilter" style="min-width:180px" onchange="nabSetSort(this.value)">
+      <option value="date_desc">Date · newest</option>
+      <option value="date_asc">Date · oldest</option>
+      <option value="sku_az">SKU · A–Z</option>
+      <option value="sku_za">SKU · Z–A</option>
+      <option value="cbm_asc">CBM · small→large</option>
+      <option value="cbm_desc">CBM · large→small</option>
+    </select>
+  </div>
+  </div>
+  </div>
+
+  <div class="wrap" id="content"></div>
+
+  <div class="selpill" id="selbar" style="display:none">
+    <span class="pill-badge" id="selN">0</span>
+    <div class="s"><div class="k">Pieces</div><div class="v" id="selPcs">0</div></div>
+    <div class="s"><div class="k">Value</div><div class="v" id="selUsd">$0</div></div>
+    <div class="s"><div class="k">CBM</div><div class="v cbm" id="selCbm">0.00 m³</div></div>
+    <div class="pill-div"></div>
+    <select id="selAssign" class="pill-sel"></select>
+    <button class="pill-move" onclick="nabBulkAssign()">Move →</button>
+    <button class="pill-x" onclick="nabClearSel()" title="Clear selection">✕</button>
+  </div>
+
+  <div class="live" id="livebar">
+    <span class="scope" id="liveScope">All containers</span>
+    <div class="s"><div class="k">Items</div><div class="v" id="liveItems">0</div></div>
+    <div class="s"><div class="k">Pieces</div><div class="v" id="livePcs">0</div></div>
+    <div class="s"><div class="k">Order value</div><div class="v" id="liveUsd">$0</div></div>
+    <div class="s"><div class="k">Total CBM</div><div class="v" id="liveCbm">0.00</div></div>
+    <div class="grow"></div>
+    <span class="hint">Watch CBM to know when to close a container (~68 m³ = full 40ft).</span>
+  </div>
+
+  <div id="negoModal">
+    <div class="negobox-modal">
+      <div class="mhead">
+        <div><div class="t">Price negotiation</div><div class="sku" id="negoSku"></div></div>
+        <span class="x" onclick="document.getElementById('negoModal').style.display='none'">✕</span>
+      </div>
+      <div class="chat" id="negoChat"></div>
+      <div class="composer">
+        <select id="negoSideSel" onchange="nabNegoSide(this.value)">
+          <option value="me">You</option>
+          <option value="them">Supplier</option>
+        </select>
+        <input id="negoInput" placeholder="Type a message…" onkeydown="nabNegoKey(event)">
+        <button onclick="nabSendNego()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="mgModal"><div class="box">
+    <h3>🚢 Containers status</h3>
+    <div class="sub">Set where each container is: preparing, in transit, or arrived. Saved on the server.</div>
+    <div id="mgList"></div>
+    <div class="acts"><button class="btn ghost" onclick="document.getElementById('mgModal').style.display='none'">Close</button></div>
+  </div></div>
+
+  <div id="setModal"><div class="box">
+    <h3>Final price settings</h3>
+    <div class="sub">Final price is in EUR: ((Total&nbsp;CBM × freight) ÷ Qty) + (Unit&nbsp;$ × rate × customs). Change these when USD/EUR or freight moves.</div>
+    <label>Freight — € per 1 m³ (CBM)</label>
+    <input id="setFreight" type="number" step="0.01" inputmode="decimal">
+    <label>USD → EUR rate (e.g. 0.84)</label>
+    <input id="setRate" type="number" step="0.001" inputmode="decimal">
+    <label>Customs — % (e.g. 10)</label>
+    <input id="setCustoms" type="number" step="0.1" inputmode="decimal">
+    <div class="acts">
+      <button class="btn ghost" onclick="document.getElementById('setModal').style.display='none'">Cancel</button>
+      <button class="btn primary" onclick="nabSaveSettings()">Save</button>
+    </div>
+  </div></div>
+
+  <div id="modal"><div class="box">
+    <h3>Add image / link</h3>
+    <div class="sub">Use this when the SKU has no picture (e.g. product with size/color variants). The SKU image always takes priority if it exists.</div>
+    <label>Image URL — loads the picture</label>
+    <input id="mImg" placeholder="https://…/image.jpg" oninput="nabModalPreview()">
+    <div class="prev" id="mPrev"></div>
+    <label>Product page URL — for the supplier to open the product</label>
+    <input id="mLink" placeholder="https://maaarket.si/izdelek/…">
+    <div class="acts">
+      <button class="btn ghost" onclick="document.getElementById('modal').style.display='none'">Cancel</button>
+      <button class="btn primary" onclick="nabSaveLinks()">Save</button>
+    </div>
+  </div></div>
+
+  <div id="lb" onclick="this.style.display='none'"><img id="lbimg" src="" alt=""></div>
+
+<script>
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function num(v,d){const n=parseFloat(v);return isNaN(n)?0:(d!=null?+n.toFixed(d):n);}
+
+let DATA={items:[],containers:[],closed:[]};
+let CONTLIST=[];
+let CSTATUS={};   // { imeKontejnerja: "preparing"|"in_transit"|"arrived" }
+const CST_META={
+  preparing:  {label:'Preparing',  color:'#c67a1e', bg:'#fbefd9', dot:'#e08a1e'},
+  in_transit: {label:'In transit', color:'#1f6feb', bg:'#e3edfd', dot:'#1f6feb'},
+  arrived:    {label:'Arrived',    color:'#0f9d58', bg:'#e0f3e8', dot:'#12a35f'}
+};
+function cstLabel(st){ return CST_META[st]?CST_META[st].label:''; }
+function cstBadge(st){ const m=CST_META[st]; if(!m) return '';
+  return '<span class="cst-badge" style="background:'+m.bg+';color:'+m.color+'"><span class="cst-dot" style="background:'+m.dot+'"></span>'+m.label+'</span>'; }
+async function nabSetContStatus(name, st){
+  if(name==='all'||name==='Nerazvrščeno'||!name) return;
+  if(st){ CSTATUS[name]=st; } else { delete CSTATUS[name]; }
+  try{ await fetch('/nabava-container-status',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({container:name,status:st||''})}); }catch(e){}
+  nabRender();
+}
+let CONT=(localStorage.getItem('nab_cont')||'Nerazvrščeno');
+let VIEW=(localStorage.getItem('nab_view')||'cards');
+let SEL=new Set();
+// nastavitve končne cene (EUR) — shranjene NA DISK (skupne za ekipo)
+let SET={freight:72, rate:0.84, customs:10};
+try{ const sv=JSON.parse(localStorage.getItem('nab_settings')||'null'); if(sv) SET={...SET,...sv}; }catch(e){}
+async function nabLoadSettings(){
+  try{ const r=await fetch('/nabava-settings'); const d=await r.json();
+    if(d.ok&&d.settings){ SET={...SET,...d.settings}; localStorage.setItem('nab_settings',JSON.stringify(SET)); nabRender(); } }catch(e){}
+}
+function nabFinal(it){
+  const cbm=parseFloat(it.total_cbm)||0, qty=parseFloat(it.qty)||0, unit=parseFloat(it.unit_price)||0;
+  if(qty<=0) return 0;
+  return ((cbm*SET.freight)/qty) + (unit*SET.rate*(1+SET.customs/100));
+}
+function nabManageContainers(){
+  const cnt={}; DATA.items.forEach(i=>{const c=i.container||'Nerazvrščeno'; if(i.status!=='done') cnt[c]=(cnt[c]||0)+1;});
+  const names=allContainerNames().filter(c=>c!=='Nerazvrščeno' && (cnt[c]||0)>0);
+  const box=document.getElementById('mgList');
+  if(!names.length){ box.innerHTML='<div style="color:var(--ink3);font-size:13px;padding:12px 0">No containers yet. Assign items to a container first.</div>'; }
+  else{
+    box.innerHTML=names.map(c=>{
+      const col=contColor(c), cur=CSTATUS[c]||'';
+      const btns=Object.keys(CST_META).map(k=>{const m=CST_META[k];const on=cur===k;
+        return '<button class="qs-btn'+(on?' on':'')+'" style="'+(on?'background:'+m.bg+';color:'+m.color+';border-color:'+m.color:'')+'" onclick="nabMgSet(\''+esc(c)+'\',\''+(on?'':k)+'\')"><span class="cst-dot" style="background:'+m.dot+'"></span>'+m.label+'</button>';}).join('');
+      return '<div class="mrow"><div class="cname"><span class="cn-dot" style="background:'+col+'"></span>'+esc(c)+' <span class="cnt">('+(cnt[c]||0)+')</span></div><div class="stbtns">'+btns+'</div></div>';
+    }).join('');
+  }
+  document.getElementById('mgModal').style.display='flex';
+}
+async function nabMgSet(name, st){ await nabSetContStatus(name, st); nabManageContainers(); }
+function nabOpenSettings(){
+  document.getElementById('setFreight').value=SET.freight;
+  document.getElementById('setRate').value=SET.rate;
+  document.getElementById('setCustoms').value=SET.customs;
+  document.getElementById('setModal').style.display='flex';
+}
+function nabSaveSettings(){
+  const f=parseFloat(document.getElementById('setFreight').value);
+  const r=parseFloat(document.getElementById('setRate').value);
+  const c=parseFloat(document.getElementById('setCustoms').value);
+  if(!isNaN(f)) SET.freight=f;
+  if(!isNaN(r)) SET.rate=r;
+  if(!isNaN(c)) SET.customs=c;
+  localStorage.setItem('nab_settings',JSON.stringify(SET));
+  fetch('/nabava-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(SET)}).catch(()=>{});
+  document.getElementById('setModal').style.display='none';
+  nabRender();
+}
+
+const PALETTE=['#2f6fb0','#2f9e6f','#c67a1e','#8a5cc4','#c0398a','#0e8a9e','#b08500','#c0392b','#4a52c4','#0f8a5f','#b23fb0','#1f77c4','#9a5b12','#6b52c4'];
+function contColor(name){ if(!name||name==='Nerazvrščeno') return '#a99f90';
+  let h=0; for(let i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))>>>0; return PALETTE[h%PALETTE.length]; }
+function hexA(hex,a){const n=parseInt(hex.slice(1),16);return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')';}
+
+async function nabLoad(){
+  try{
+    const [r1,r2]=await Promise.all([fetch('/nabava-list'),fetch('/nabava-containers')]);
+    const d=await r1.json(); const dc=await r2.json();
+    if(d.ok){ DATA=d; CONTLIST=(dc.ok?dc.containers:[])||[]; CSTATUS=(dc.ok&&dc.statuses)?dc.statuses:{}; nabViewBtns(); nabRender(); nabBackfillDates(); }
+    else document.getElementById('content').innerHTML='<div class="empty"><b>Load error.</b>'+esc(d.error||'')+'</div>';
+  }catch(e){ document.getElementById('content').innerHTML='<div class="empty"><b>Could not load data.</b>Refresh to try again.</div>'; }
+}
+async function nabBackfillDates(){
+  const today=new Date().toLocaleDateString('sl-SI');
+  const empty=DATA.items.filter(i=>!(i.date||'').trim());
+  if(!empty.length) return;
+  for(const it of empty){
+    it.date=today;
+    try{ await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)}); }catch(e){}
+  }
+  nabRender();
+}
+function nabViewBtns(){ document.getElementById('vt-rows').classList.toggle('on',VIEW==='rows'); document.getElementById('vt-cards').classList.toggle('on',VIEW==='cards'); }
+function nabSetView(v){ VIEW=v; localStorage.setItem('nab_view',v); nabViewBtns(); nabRender(); }
+function nabSetCont(c){ CONT=c; localStorage.setItem('nab_cont',c); nabRender(); }
+
+function allContainerNames(){
+  const s=new Set(CONTLIST); DATA.items.forEach(i=>{ if(i.container) s.add(i.container); }); s.add('Nerazvrščeno');
+  const key=c=>{ if(c==='Nerazvrščeno')return[2,0]; const m=c.match(/(\d+)/); return m?[0,+m[1]]:[1,0]; };
+  return [...s].sort((a,b)=>{const ka=key(a),kb=key(b);return ka[0]-kb[0]||ka[1]-kb[1];});
+}
+let SEARCH='';
+let SORT=(localStorage.getItem('nab_sort')||'date_desc');
+let STFILTER=(localStorage.getItem('nab_stfilter')||'all');   // all|new|review|confirmed
+function negoChat(it){
+  // vrni polje sporočil; migriraj star negotiation tekst kot prvo sporočilo (od tebe)
+  let arr = Array.isArray(it.nego_chat) ? it.nego_chat : [];
+  if(!arr.length && (it.negotiation||'').trim()){
+    arr = [{who:'me', text:(it.negotiation||'').trim(), ts:(it.date||'')}];
+  }
+  return arr;
+}
+function negoCount(it){ return negoChat(it).length; }
+function negoLast(it){ const a=negoChat(it); return a.length?a[a.length-1]:null; }
+function hasNego(it){ return negoCount(it)>0; }
+
+function itemStatus(it){
+  if(it.deleted) return 'deleted';
+  if(it.approved) return 'confirmed';
+  if(hasNego(it)) return 'review';
+  if(isNewItem(it)) return 'new';
+  return 'none';
+}
+function nabSetSort(v){ SORT=v; localStorage.setItem('nab_sort',v); nabRender(); }
+function nabSetStatus(v){ STFILTER=v; localStorage.setItem('nab_stfilter',v); nabRender(); }
+const ST_META={
+  all:      {label:'All',       color:'#6e655a', dot:'#a99f90'},
+  new:      {label:'New',       color:'#e11d48', dot:'#e11d48'},
+  review:   {label:'Review',    color:'#c68410', dot:'#e0a417'},
+  confirmed:{label:'Confirmed', color:'#0f9d58', dot:'#12a35f'},
+  deleted:  {label:'Deleted',   color:'#8a8177', dot:'#8a8177'}
+};
+function nabStatusChips(){
+  const cc=document.getElementById('statusChips'); if(!cc) return;
+  // preštej po statusih (znotraj trenutnega kontejnerja/iskanja, brez status filtra)
+  let base=DATA.items.slice();
+  if(!SEARCH && CONT!=='all') base=base.filter(x=>(x.container||'Nerazvrščeno')===CONT);
+  if(SEARCH) base=base.filter(matchSearch);
+  const cnt={all:0,new:0,review:0,confirmed:0,deleted:0};
+  base.forEach(x=>{const st=itemStatus(x); if(cnt[st]!=null) cnt[st]++; if(st!=='deleted') cnt.all++;});
+  cc.innerHTML=Object.keys(ST_META).map(k=>{const m=ST_META[k];const on=STFILTER===k;
+    return '<span class="stchip'+(on?' on':'')+'" style="'+(on?'background:'+m.color:'')+'" onclick="nabSetStatus(\''+k+'\')">'
+      +(k!=='all'?'<span class="cdot" style="background:'+(on?'#fff':m.dot)+'"></span>':'')
+      +m.label+' <span style="opacity:.7">('+(cnt[k]||0)+')</span></span>';}).join('');
+}
+
+function isNewItem(it){
+  // dobavitelj še ni vpisal: UNIT $, CTNS in CBM/CTN vsi 0/prazni
+  const z=v=>{const n=parseFloat(v); return !n || isNaN(n);};
+  return z(it.unit_price) && z(it.ctns) && z(it.cbm_ctn);
+}
+function dupUnsortedIds(sku, exceptId){
+  const k=(sku||'').trim().toUpperCase(); if(!k) return [];
+  return DATA.items.filter(x=>x.id!==exceptId && (x.container||'Nerazvrščeno')==='Nerazvrščeno'
+    && (x.sku||'').trim().toUpperCase()===k).map(x=>x.id);
+}
+function nabDoSearch(v){
+  SEARCH=(v||'').trim().toLowerCase();
+  document.getElementById('nabSearchClear').style.display=SEARCH?'inline':'none';
+  nabRender();
+}
+function nabClearSearch(){ SEARCH=''; const el=document.getElementById('nabSearch'); if(el) el.value='';
+  document.getElementById('nabSearchClear').style.display='none'; nabRender(); }
+function matchSearch(x){
+  if(!SEARCH) return true;
+  const hay=[(x.sku||''),(x.naziv||''),(x.comment||''),(x.specification||''),negoChat(x).map(m=>m.text).join(' '),(x.container||'')].join(' ').toLowerCase();
+  return hay.indexOf(SEARCH)!==-1;
+}
+function visibleItems(){
+  let it=DATA.items.slice();
+  // iskanje deluje čez vse kontejnerje; sicer velja izbrani filter
+  if(!SEARCH && CONT!=='all') it=it.filter(x=>(x.container||'Nerazvrščeno')===CONT);
+  it=it.filter(x=>!isHidden(x));
+  if(SEARCH) it=it.filter(matchSearch);
+  if(STFILTER!=='deleted') it=it.filter(x=>!x.deleted);
+  // status filter
+  if(STFILTER!=='all') it=it.filter(x=>itemStatus(x)===STFILTER);
+  // sortiranje
+  const num=v=>{const n=parseFloat(v); return isNaN(n)?0:n;};
+  const sku=x=>(x.sku||'').toUpperCase();
+  it.sort((a,b)=>{
+    switch(SORT){
+      case 'sku_az': return sku(a)<sku(b)?-1:sku(a)>sku(b)?1:0;
+      case 'sku_za': return sku(a)>sku(b)?-1:sku(a)<sku(b)?1:0;
+      case 'date_asc': { const d=parseDate(a.date)-parseDate(b.date); return d!==0?d:((a.created_ts||0)-(b.created_ts||0)); }
+      case 'date_desc': { const d=parseDate(b.date)-parseDate(a.date); return d!==0?d:((b.created_ts||0)-(a.created_ts||0)); }
+      case 'cbm_asc': return num(a.total_cbm)-num(b.total_cbm);
+      case 'cbm_desc': return num(b.total_cbm)-num(a.total_cbm);
+      default: return 0;
+    }
+  });
+  return it;
+}
+function reorderSet(){ const m={}; DATA.items.forEach(i=>{const k=(i.sku||'').toUpperCase(); if(k)(m[k]=m[k]||new Set()).add(i.container);}); return m; }
+
+function parseDate(s){
+  if(!s) return 0;
+  const p=String(s).split(/[^0-9]+/).filter(Boolean).map(Number);
+  if(p.length<3) return 0;
+  let d,m,y;
+  if(p[0]>31){ y=p[0]; m=p[1]; d=p[2]; } else { d=p[0]; m=p[1]; y=p[2]; }
+  if(y<100) y+=2000;
+  return new Date(y,(m||1)-1,d||1).getTime()||0;
+}
+// za vsak item: če je isti SKU prej imel NIŽJO ceno, vrni {pct, prev}
+function priceUpMap(){
+  const groups={};
+  DATA.items.forEach(i=>{ const k=(i.sku||'').toUpperCase(); if(!k) return;
+    (groups[k]=groups[k]||[]).push(i); });
+  const out={};
+  Object.values(groups).forEach(arr=>{
+    if(arr.length<2) return;
+    const sorted=arr.slice().sort((a,b)=>parseDate(a.date)-parseDate(b.date));
+    for(let i=1;i<sorted.length;i++){
+      const cur=parseFloat(sorted[i].unit_price)||0;
+      // najdi zadnjo PREJŠNJO ceno (prvi prejšnji z veljavno ceno)
+      let prev=null;
+      for(let j=i-1;j>=0;j--){ const pv=parseFloat(sorted[j].unit_price)||0; if(pv>0){ prev=pv; break; } }
+      if(prev && cur>prev){
+        out[sorted[i].id]={pct:Math.round((cur-prev)/prev*100), prev:prev};
+      }
+    }
+  });
+  return out;
+}
+window._PUP={};
+
+function isHidden(it){ return false; }
+
+function nabSyncTheadTop(){
+  const tw=document.querySelector('.tblwrap');
+  if(!tw) return;
+  const h=window.innerHeight - tw.getBoundingClientRect().top - 18;
+  if(h>200) tw.style.maxHeight=h+'px';
+}
+window.addEventListener('resize', nabSyncTheadTop);
+
+function nabRender(){
+  window._PUP=priceUpMap();
+  const names=allContainerNames();
+  const cnt={}, allCnt={};
+  DATA.items.forEach(i=>{const c=i.container||'Nerazvrščeno';
+    allCnt[c]=(allCnt[c]||0)+1;
+    if(i.status!=='done') cnt[c]=(cnt[c]||0)+1;});
+  // če je izbran kontejner ostal prazen → nazaj na Nerazvrščeno
+  if(CONT!=='all' && CONT!=='Nerazvrščeno' && !allCnt[CONT]){ CONT='Nerazvrščeno'; localStorage.setItem('nab_cont',CONT); }
+
+  // dropdown filter: All · Nerazvrščeno · [polni kontejnerji]
+  const sel=document.getElementById('contFilter');
+  if(sel){
+    const totalActive=DATA.items.filter(i=>i.status!=='done').length;
+    let opts='<option value="all"'+(CONT==='all'?' selected':'')+'>All containers ('+totalActive+')</option>';
+    opts+='<option value="Nerazvrščeno"'+(CONT==='Nerazvrščeno'?' selected':'')+'>Nerazvrščeno ('+(cnt['Nerazvrščeno']||0)+')</option>';
+    names.forEach(c=>{ if(c==='Nerazvrščeno') return; if(!allCnt[c]) return;
+      const st=CSTATUS[c]?' · '+cstLabel(CSTATUS[c]):'';
+      opts+='<option value="'+esc(c)+'"'+(CONT===c?' selected':'')+'>'+esc(c)+' ('+(cnt[c]||0)+')'+st+'</option>'; });
+    sel.innerHTML=opts;
+  }
+  const dot=document.getElementById('contDot');
+  if(dot) dot.style.background = CONT==='all'?'var(--ink3)':contColor(CONT);
+  // hitri izbirnik statusa za trenutno izbrani kontejner
+  const qs=document.getElementById('contStatusQuick');
+  if(qs){
+    if(CONT==='all'||CONT==='Nerazvrščeno'){ qs.style.display='none'; }
+    else{
+      qs.style.display='inline-flex';
+      const cur=CSTATUS[CONT]||'';
+      qs.innerHTML='<span class="qs-lbl">Status:</span>'+
+        Object.keys(CST_META).map(k=>{const m=CST_META[k];const on=cur===k;
+          return '<button class="qs-btn'+(on?' on':'')+'" style="'+(on?'background:'+m.bg+';color:'+m.color+';border-color:'+m.color:'')+'" onclick="nabSetContStatus(\''+esc(CONT)+'\',\''+(on?'':k)+'\')"><span class="cst-dot" style="background:'+m.dot+'"></span>'+m.label+'</button>';}).join('');
+    }
+  }
+
+  const items=visibleItems();
+  const box=document.getElementById('content');
+  if(!items.length) box.innerHTML='<div class="empty"><b>No items here.</b>Add one with ＋ New item, or pick another container.</div>';
+  else box.innerHTML = VIEW==='cards'?renderCards(items):renderRows(items);
+  nabLive(items);
+  nabSelBar();
+  nabStatusChips();
+  const ss=document.getElementById('sortSel'); if(ss && ss.value!==SORT) ss.value=SORT;
+  requestAnimationFrame(nabAutoSize);
+  requestAnimationFrame(nabSyncTheadTop);
+}
+
+/* selekcija */
+function nabToggleSel(id,ev){ if(ev){ev.stopPropagation();} if(SEL.has(id)) SEL.delete(id); else SEL.add(id); nabRender(); }
+function nabClearSel(){ SEL.clear(); nabRender(); }
+function nabSelBar(){
+  const bar=document.getElementById('selbar');
+  if(!SEL.size){ bar.classList.remove('show'); bar.style.display='none'; return; }
+  const chosen=DATA.items.filter(i=>SEL.has(i.id));
+  const pcs=chosen.reduce((s,i)=>s+num(i.qty),0);
+  const usd=chosen.reduce((s,i)=>s+num(i.total_price),0);
+  const cbm=chosen.reduce((s,i)=>s+num(i.total_cbm),0);
+  document.getElementById('selN').textContent=SEL.size;
+  document.getElementById('selPcs').textContent=pcs.toLocaleString('en-US');
+  document.getElementById('selUsd').textContent='$'+Math.round(usd).toLocaleString('en-US');
+  document.getElementById('selCbm').textContent=cbm.toFixed(2)+' m³';
+  const sel=document.getElementById('selAssign');
+  const names=allContainerNames();
+  sel.innerHTML=names.map(n=>'<option>'+esc(n)+'</option>').join('')+'<option value="__new__">＋ new container…</option>';
+  bar.style.display='flex';
+  requestAnimationFrame(()=>bar.classList.add('show'));
+}
+async function nabBulkAssign(){
+  let cont=document.getElementById('selAssign').value;
+  if(cont==='__new__'){ const nm=prompt('New container name:','Kontejner'+(CONTLIST.filter(c=>/\d/.test(c)).length+1)); if(!nm||!nm.trim())return; cont=nm.trim(); if(!CONTLIST.includes(cont))CONTLIST.push(cont); }
+  const ids=[...SEL];
+  try{ const r=await fetch('/nabava-bulk-container',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,container:cont})});
+    const d=await r.json(); if(d.ok){ ids.forEach(id=>{const it=DATA.items.find(x=>x.id===id); if(it) it.container=cont;}); SEL.clear(); await nabLoad(); } }catch(e){ alert('Error: '+e.message); }
+}
+
+function nabLive(items){
+  const pcs=items.reduce((s,i)=>s+num(i.qty),0);
+  const usd=items.reduce((s,i)=>s+num(i.total_price),0);
+  const cbm=items.reduce((s,i)=>s+num(i.total_cbm),0);
+  document.getElementById('liveItems').textContent=items.length;
+  document.getElementById('livePcs').textContent=pcs.toLocaleString('en-US');
+  document.getElementById('liveUsd').textContent='$'+Math.round(usd).toLocaleString('en-US');
+  document.getElementById('liveCbm').innerHTML=cbm.toFixed(2)+' m³';
+  const sc=document.getElementById('liveScope');
+  if(CONT==='all') sc.innerHTML='<span class="dot" style="background:#b3a897"></span>All containers';
+  else{ const col=contColor(CONT); sc.innerHTML='<span class="dot" style="background:'+col+'"></span>'+esc(CONT); }
+}
+
+function contSelect(it){
+  const names=allContainerNames(); const cur=it.container||'Nerazvrščeno';
+  const opts=names.map(n=>'<option '+(n===cur?'selected':'')+'>'+esc(n)+'</option>').join('');
+  return '<select class="contsel" onchange="nabSetContainer(\''+it.id+'\',this.value)">'+opts+'</select>';
+}
+
+/* ROWS — no Product column; ↗ sits under the image */
+function renderRows(items){
+  const ro=reorderSet();
+  const cin=(id,f,v,w,cls)=>'<input class="cin '+(cls||'')+'" value="'+esc(v==null?'':v)+'" onchange="nabEdit(\''+id+'\',\''+f+'\',this.value)" style="width:'+w+'">';
+  const rows=items.map(it=>{
+    const appr=!!it.approved; const skuU=(it.sku||'').toUpperCase();
+    const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
+    const dimg=(it.image||'').trim()||(it.image_url||'').trim();
+    const img=dimg
+      ?'<div class="thumbwrap"><div class="thumb ph">📦</div><img class="thumb over" src="'+esc(dimg)+'" data-alt="'+esc((it.image_url||'').trim())+'" onerror="nabImgErr(this)" onclick="nabZoom(\''+esc(dimg)+'\')" alt=""></div>'
+      :'<div class="thumbwrap"><div class="thumb ph">📦</div></div>';
+    const link=(it.link
+        ?'<a class="golink" href="'+esc(it.link)+'" target="_blank" title="Open product page">🔗 view</a>'
+        :'<span class="golink addrow" style="cursor:pointer" onclick="nabOpenLinks(\''+it.id+'\')">＋ link</span>')
+      +'<span class="golink" style="cursor:pointer;color:var(--ink3);font-size:10px" title="Edit image / product URL" onclick="nabOpenLinks(\''+it.id+'\')">✎</span>';
+    const pup=window._PUP[it.id];
+    const pupTag=pup?' <span class="priceup" title="Previous price $'+pup.prev.toFixed(2)+'">↑ +'+pup.pct+'%</span>':'';
+    const dupN=(it.container||'Nerazvrščeno')==='Nerazvrščeno'?dupUnsortedIds(it.sku,it.id).length:0;
+    const dupTag=dupN?' <span class="duptag" title="Isti SKU je '+(dupN+1)+'× v Nerazvrščeno">⚠ '+(dupN+1)+'×</span>':'';
+    const seld=SEL.has(it.id);
+    return '<tr class="'+(it.deleted?'row-deleted ':'')+(appr?'approved':'')+(seld?' sel':'')+'" style="border-left:3px solid '+(it.deleted?'#8a8177':col)+'">'
+      +'<td style="text-align:center"><input type="checkbox" class="selchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)"></td>'
+      +'<td><div class="imgcell">'+img+link+'</div></td>'
+      +'<td>'+contSelect(it)+'</td>'
+      +'<td>'+cin(it.id,'date',it.date,'76px')+'</td>'
+      +'<td style="white-space:nowrap"><input class="cin mono" value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" style="width:136px;min-width:136px;color:var(--accent);font-weight:700" title="'+esc(it.naziv||'')+'">'+(reord?' <span class="reorder">↻</span>':'')+dupTag+(isNewItem(it)?' <span class="newtag">NEW</span>':'')+'</td>'
+      +'<td class="num">'+cin(it.id,'qty',it.qty,'66px','right')+'</td>'
+      +'<td style="min-width:150px"><textarea class="cin area autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'comment\',this.value)" placeholder="note…" style="width:150px">'+esc(it.comment||'')+'</textarea></td>'
+      +'<td class="num" style="white-space:nowrap">'+cin(it.id,'unit_price',it.unit_price,'62px','right')+pupTag+'</td>'
+      +'<td class="num" style="color:var(--ink2);font-weight:700">$'+num(it.total_price,0)+'</td>'
+      +'<td style="min-width:170px"><textarea class="cin area field-supplier autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="supplier spec…" style="width:170px">'+esc(it.specification||'')+'</textarea></td>'
+      +'<td style="min-width:150px">'+nabNegoSummaryRow(it)+'</td>'
+      +'<td class="num">'+cin(it.id,'ctns',it.ctns,'60px','right')+'</td>'
+      +'<td class="num">'+cin(it.id,'cbm_ctn',it.cbm_ctn,'74px','right')+'</td>'
+      +'<td class="num" style="color:var(--ink2)">'+num(it.total_cbm,3)+'</td>'
+      +'<td class="num final">€'+nabFinal(it).toFixed(2)+'</td>'
+      +'<td class="rowact" style="white-space:nowrap;text-align:center">'
+        +'<span class="appbtn'+(appr?' on':'')+'" onclick="nabToggleApproved(\''+it.id+'\')" title="'+(appr?'Approved — price OK, supplier can order (click to unapprove)':'Approve — price OK, supplier can order')+'">✓</span>'
+        +(it.deleted
+          ? '<span onclick="nabRestore(\''+it.id+'\')" title="Restore to active list" style="color:var(--good);cursor:pointer">↩</span><span onclick="nabPurge(\''+it.id+'\')" title="Delete permanently (cannot undo)" style="color:var(--bad);cursor:pointer;margin-left:8px">🗑</span>'
+          : '<span onclick="nabDelete(\''+it.id+'\')" title="Remove (keep in history as Deleted)" style="color:var(--bad);cursor:pointer">✕</span>')
+      +'</td></tr>';
+  }).join('');
+  return '<div class="tblwrap"><table><thead><tr>'
+    +'<th style="width:26px"></th><th>Img</th><th>Container</th><th>Date</th><th>SKU</th>'
+    +'<th class="num">Qty</th><th>Our note</th><th class="num">Unit $</th><th class="num">Total $</th>'
+    +'<th>Spec <span class="badge-supp">supplier</span></th><th>Price talk</th>'
+    +'<th class="num">Ctns</th><th class="num">CBM/CTN</th><th class="num">Tot CBM</th><th class="num">Final $</th><th></th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+
+/* CARDS — Concept B */
+function renderCards(items){
+  const ro=reorderSet();
+  return '<div class="cards">'+items.map(it=>{
+    const appr=!!it.approved; const skuU=(it.sku||'').toUpperCase();
+    const reord=ro[skuU]&&ro[skuU].size>1; const col=contColor(it.container||'Nerazvrščeno');
+    const dimg=(it.image||'').trim()||(it.image_url||'').trim();
+    const img=dimg
+      ?'<div class="pimgwrap"><div class="pimg ph">📦</div><img class="pimg over" src="'+esc(dimg)+'" data-alt="'+esc((it.image_url||'').trim())+'" onerror="nabImgErr(this)" onclick="nabZoom(\''+esc(dimg)+'\')" alt=""></div>'
+      :'<div class="pimgwrap"><div class="pimg ph">📦</div></div>';
+    const inp=(f,v)=>'<input value="'+esc(v==null?'':v)+'" onchange="nabEdit(\''+it.id+'\',\''+f+'\',this.value)">';
+    const pup=window._PUP[it.id];
+    const pupTag=pup?'<span class="priceup" title="Previous price $'+pup.prev.toFixed(2)+'">↑ +'+pup.pct+'%</span>':'';
+    const dupN=(it.container||'Nerazvrščeno')==='Nerazvrščeno'?dupUnsortedIds(it.sku,it.id).length:0;
+    const dupTag=dupN?'<span class="duptag" title="Isti SKU je '+(dupN+1)+'× v Nerazvrščeno">⚠ '+(dupN+1)+'×</span>':'';
+    const seld=SEL.has(it.id);
+    const isNew=isNewItem(it);
+    return '<div class="pcard '+(it.deleted?'deleted ':'')+(appr?'approved':'')+(isNew?' isnew':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)">'+(it.deleted?'<div class="delcorner">Deleted</div>':(appr?'<div class="okcorner">Confirmed</div>':(hasNego(it)?'<div class="revcorner">REVIEW</div>':(isNew?'<div class="newcorner">NEW</div>':''))))+'<div class="ribbon" style="background:'+col+'"></div>'
+      +'<div class="chead">'+img
+        +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'" title="'+esc(it.container||'Nerazvrščeno')+'"><span class="dot" style="background:'+col+'"></span><span class="ktag-name">'+esc(it.container||'Nerazvrščeno')+'</span></span>'+(CSTATUS[it.container]?'<div class="cst-row">'+cstBadge(CSTATUS[it.container])+'</div>':'')
+        +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+pupTag+dupTag+'</div>'
+        +'<div class="pname">'+esc(it.naziv||'—')+'</div>'
+        +(it.link
+            ?'<a class="viewbtn" href="'+esc(it.link)+'" target="_blank">🔗 View product</a>'
+            :'<button class="viewbtn viewbtn-add" onclick="nabOpenLinks(\''+it.id+'\')">＋ Add product link</button>')
+        +'<div class="cmeta-row">'+contSelect(it)+' <input value="'+esc(it.date||'')+'" onchange="nabEdit(\''+it.id+'\',\'date\',this.value)" style="width:80px;border:1px solid var(--line);border-radius:7px;padding:3px 6px;font-size:11px;font-family:inherit"></div>'
+        +'</div></div>'
+      +'<div class="stats">'
+        +'<div class="stat"><label>Qty</label>'+inp('qty',it.qty)+'</div>'
+        +'<div class="stat"><label>Unit $</label>'+inp('unit_price',it.unit_price)+'</div>'
+        +'<div class="stat"><label>Ctns</label>'+inp('ctns',it.ctns)+'</div>'
+        +'<div class="stat"><label>CBM/CTN</label>'+inp('cbm_ctn',it.cbm_ctn)+'</div>'
+      +'</div>'
+      +'<div class="notes">'
+        +'<div class="note"><label>Our note</label><textarea class="autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'comment\',this.value)" placeholder="e.g. re-order, color, without stick">'+esc(it.comment||'')+'</textarea></div>'
+        +'<div class="note spec"><label>Specification <span class="badge-supp">supplier</span></label><textarea class="autogrow" oninput="nabGrow(this)" onchange="nabEdit(\''+it.id+'\',\'specification\',this.value)" placeholder="dimensions, variation, set…">'+esc(it.specification||'')+'</textarea></div>'
+        +nabNegoSummary(it)
+        +'<button class="addlink" onclick="nabOpenLinks(\''+it.id+'\')">🔗 '+(dimg?'Edit':'Add')+' image / link</button>'
+      +'</div>'
+      +'<div class="cfoot"><span class="final" style="color:var(--good)">€'+nabFinal(it).toFixed(2)+' <small>final</small></span>'
+        +'<span style="color:var(--ink3);font-size:11px">· CBM '+num(it.total_cbm,3)+'</span>'
+        +'<span class="act"><span class="appbtn'+(appr?' on':'')+'" onclick="nabToggleApproved(\''+it.id+'\')" title="'+(appr?'Approved — price OK, supplier can order (click to unapprove)':'Approve — price OK, supplier can order')+'">✓</span>'+(it.deleted
+          ? '<span onclick="nabRestore(\''+it.id+'\')" title="Restore to active list" style="color:var(--good);cursor:pointer">↩</span><span onclick="nabPurge(\''+it.id+'\')" title="Delete permanently (cannot undo)" style="color:var(--bad);cursor:pointer;margin-left:6px">🗑</span>'
+          : '<span onclick="nabDelete(\''+it.id+'\')" title="Remove (keep in history)" style="color:var(--bad);cursor:pointer">✕</span>')+'</span>'
+      +'</div></div>';
+  }).join('')+'</div>';
+}
+
+function nabGrow(t){
+  t.style.height='auto';
+  t.style.fontSize='';
+  let fs=parseFloat(getComputedStyle(t).fontSize);
+  let lh=parseFloat(getComputedStyle(t).lineHeight)||fs*1.35;
+  t.style.height=t.scrollHeight+'px';
+  let lines=Math.round(t.scrollHeight/lh);
+  while(lines>3 && fs>9){
+    fs-=0.5; t.style.fontSize=fs+'px';
+    t.style.height='auto'; t.style.height=t.scrollHeight+'px';
+    lh=parseFloat(getComputedStyle(t).lineHeight)||fs*1.35;
+    lines=Math.round(t.scrollHeight/lh);
+  }
+  t.style.height=t.scrollHeight+'px';
+}
+function nabAutoSize(){
+  document.querySelectorAll('textarea.autogrow').forEach(nabGrow);
+  nabFitNumbers();
+}
+function nabFitNumbers(){
+  // če vpisana vrednost ne gre v polje (reže), postopno zmanjšaj font
+  document.querySelectorAll('.stat input, td.num .cin').forEach(el=>{
+    el.style.fontSize='';
+    let fs=parseFloat(getComputedStyle(el).fontSize);
+    let guard=0;
+    while(el.scrollWidth>el.clientWidth+1 && fs>9 && guard<12){ fs-=0.5; el.style.fontSize=fs+'px'; guard++; }
+  });
+}
+function nabImgErr(img){
+  // poskusi rezervni ročni URL, preden pokažeš placeholder
+  const alt=img.getAttribute('data-alt')||'';
+  if(alt && img.src!==alt){ img.src=alt; img.removeAttribute('data-alt'); return; }
+  img.style.display='none';
+  const root=img.closest('.pcard')||img.closest('tr'); if(!root) return;
+  const b=root.querySelector('.addlink'); if(b) b.style.display='block';
+  const sp=root.querySelector('.addrow'); if(sp) sp.style.display='inline';
+}
+let _linkItemId=null;
+function nabOpenLinks(id){
+  _linkItemId=id;
+  const it=DATA.items.find(x=>x.id===id)||{};
+  document.getElementById('mImg').value=it.image_url||'';
+  document.getElementById('mLink').value=it.link||'';
+  nabModalPreview();
+  document.getElementById('modal').style.display='flex';
+}
+function nabModalPreview(){
+  const u=document.getElementById('mImg').value.trim();
+  document.getElementById('mPrev').innerHTML = u?'<img src="'+esc(u)+'" alt="" onerror="this.style.display=\'none\'">':'';
+}
+async function nabSaveLinks(){
+  const it=DATA.items.find(x=>x.id===_linkItemId); if(!it){ document.getElementById('modal').style.display='none'; return; }
+  const img=document.getElementById('mImg').value.trim();
+  const link=document.getElementById('mLink').value.trim();
+  it.image_url=img; it.link=link;
+  if(img) it.image=img;   // ročno dodana slika postane glavna (prepiše morebitno pokvarjeno SKU sliko)
+  // če naziv še ni izpolnjen in imamo URL izdelka → potegni naziv iz strani (ne prepiše ročnega)
+  if(link && !(it.naziv||'').trim()){
+    try{ const tr=await fetch('/nabava-title-from-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:link})});
+      const td=await tr.json(); if(td.ok && td.title) it.naziv=td.title; }catch(e){}
+  }
+  const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+  try{ const d=await r.json(); if(d.ok){ Object.assign(it,d.item); if(img){it.image=img;} it.image_url=img; } }catch(e){}
+  document.getElementById('modal').style.display='none';
+  nabRender();
+}
+function nabNegoSummary(it){
+  const n=negoCount(it), last=negoLast(it);
+  const inner = last
+    ? '<div class="lastmsg"><span class="who">'+(last.who==='me'?'You':'Supplier')+':</span> '+esc(last.text)+'</div>'
+    : '<div class="empty-nego">No messages yet.</div>';
+  return '<div class="note nego"><label>Price negotiation</label>'
+    +'<div class="negobox">'+inner
+    +'<div class="openchat" onclick="nabOpenNego(\''+it.id+'\')">💬 '+(n?'Open negotiation':'Start negotiation')+' <span class="badge">'+n+'</span></div>'
+    +'</div></div>';
+}
+function nabNegoSummaryRow(it){
+  const n=negoCount(it), last=negoLast(it);
+  const txt = last ? (last.who==='me'?'You: ':'Supp: ')+last.text : 'price talk…';
+  return '<div class="negorow" onclick="nabOpenNego(\''+it.id+'\')" title="Open negotiation">'
+    +'<span class="nr-txt">'+esc(txt)+'</span><span class="badge">💬 '+n+'</span></div>';
+}
+let _negoItemId=null, _negoSide='me';
+function nabOpenNego(id){
+  _negoItemId=id;
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  document.getElementById('negoSku').textContent=(it.sku||'—')+' · '+(it.container||'Nerazvrščeno');
+  nabRenderChat();
+  document.getElementById('negoModal').style.display='flex';
+  setTimeout(()=>{const inp=document.getElementById('negoInput'); if(inp) inp.focus();},50);
+}
+function nabRenderChat(){
+  const it=DATA.items.find(x=>x.id===_negoItemId); if(!it) return;
+  const arr=negoChat(it);
+  const box=document.getElementById('negoChat');
+  if(!arr.length){ box.innerHTML='<div class="daysep">No messages yet — start the negotiation.</div>'; return; }
+  let h='', lastDay='';
+  arr.forEach(m=>{
+    const day=(m.ts||'').split(/[ ,]/)[0]||'';
+    if(day && day!==lastDay){ h+='<div class="daysep">'+esc(day)+'</div>'; lastDay=day; }
+    h+='<div class="msg '+(m.who==='me'?'me':'them')+'">'+esc(m.text)
+      +'<div class="meta">'+(m.who==='me'?'You':'Supplier')+(m.ts?(' · '+esc(m.ts)):'')+'</div></div>';
+  });
+  box.innerHTML=h;
+  box.scrollTop=box.scrollHeight;
+}
+function nabNegoSide(v){ _negoSide=v; }
+async function nabSendNego(){
+  const it=DATA.items.find(x=>x.id===_negoItemId); if(!it) return;
+  const inp=document.getElementById('negoInput'); const txt=(inp.value||'').trim();
+  if(!txt) return;
+  let arr=negoChat(it).slice();   // vključi migriran star tekst
+  const now=new Date();
+  const ts=now.toLocaleDateString('sl-SI')+' '+now.toTimeString().slice(0,5);
+  arr.push({who:_negoSide, text:txt, ts});
+  it.nego_chat=arr;
+  it.negotiation='';   // star tekst je zdaj v chatu (migriran) — sprosti staro polje
+  inp.value='';
+  nabRenderChat();
+  try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+    const d=await r.json(); if(d.ok) Object.assign(it,d.item); }catch(e){}
+  nabRender();
+  nabRenderChat();
+}
+function nabNegoKey(e){ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); nabSendNego(); } }
+
+function nabZoom(src){ document.getElementById('lbimg').src=src; document.getElementById('lb').style.display='flex'; }
+
+async function nabEdit(id,f,v){
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  it[f]=v;
+  try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+    const d=await r.json(); if(d.ok){ Object.assign(it,d.item); nabRender(); } }catch(e){}
+}
+async function nabSetImageUrl(id,v){
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  it.image_url=v;
+  // če SKU ni prinesel slike, ročni URL postane slika (backend enako uveljavi)
+  // dimg (it.image||it.image_url) poskrbi za prikaz — image_url je dovolj
+  await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+  nabRender();
+}
+async function nabSetContainer(id,val){
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  it.container=val;
+  await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+  nabRender();
+}
+async function nabLookup(id,sku){
+  if(!sku||!sku.trim()) return;
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  try{ const r=await fetch('/nabava-sku-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku})});
+    const d=await r.json();
+    if(d.ok&&d.found){
+      if(d.naziv) it.naziv=d.naziv;
+      if(d.link) it.link=d.link;      // vedno posodobi povezavo do izdelka (tudi nerazvrščeni)
+      if(d.image) it.image=d.image;   // SKU slika ima prednost
+      const r2=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+      try{ const d2=await r2.json(); if(d2.ok) Object.assign(it,d2.item); }catch(e){}
+      nabRender();
+    }
+    nabWarnDup(it);
+  }catch(e){}
+}
+function nabWarnDup(it){
+  if((it.container||'Nerazvrščeno')!=='Nerazvrščeno') return;
+  const dups=dupUnsortedIds(it.sku, it.id);
+  if(dups.length){
+    nabToast('⚠ SKU '+(it.sku||'')+' že obstaja v Nerazvrščeno ('+(dups.length+1)+'×). Preveri, da ne podvajaš.');
+  }
+}
+function nabToast(msg){
+  let t=document.getElementById('nabToast');
+  if(!t){ t=document.createElement('div'); t.id='nabToast'; t.className='nab-toast'; document.body.appendChild(t); }
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'), 5000);
+}
+async function nabNewContainer(){
+  const name=prompt('New container name:','Kontejner'+(CONTLIST.filter(c=>/\d/.test(c)).length+1));
+  if(!name||!name.trim()) return;
+  const n=name.trim(); if(!CONTLIST.includes(n)) CONTLIST.push(n); CONT=n;
+  // dodaj prvo prazno postavko, da kontejner takoj obstaja (sicer bi ga prazen filter skril)
+  const it={container:n,date:new Date().toLocaleDateString('sl-SI'),sku:'',qty:0,unit_price:0,cbm_ctn:0,ctns:0,status:'active'};
+  try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+    const d=await r.json(); if(d.ok) DATA.items.push(d.item); }catch(e){}
+  nabRender();
+}
+async function nabAddRow(){
+  const cont = CONT!=='all'?CONT:'Nerazvrščeno';
+  const now=new Date();
+  const it={container:cont,date:now.toLocaleDateString('sl-SI'),created_ts:now.getTime(),sku:'',qty:0,unit_price:0,cbm_ctn:0,ctns:0,status:'active'};
+  try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+    const d=await r.json();
+    if(d.ok){
+      DATA.items.unshift(d.item);            // na začetek seznama
+      // da je nova postavka zagotovo vidna na vrhu: sort=najnovejši, status filter=all
+      SORT='date_desc'; localStorage.setItem('nab_sort',SORT);
+      if(STFILTER!=='all'){ STFILTER='all'; localStorage.setItem('nab_stfilter','all'); }
+      nabRender();
+      window.scrollTo({top:0,behavior:'smooth'});   // skoči na VRH, ne na dno
+      // fokusiraj SKU polje nove postavke, če obstaja
+      setTimeout(()=>{ const el=document.querySelector('[data-newfocus="'+d.item.id+'"]'); if(el) el.focus(); },120);
+    }
+  }catch(e){}
+}
+async function nabDelete(id){
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  if(it.deleted) return;   // že v Deleted → uporabi gumba ↩ / 🗑
+  if(!confirm('Remove this item?\n\nIt will be hidden and marked "Deleted" — kept in history as reference of the last China offer.')) return;
+  it.deleted=1;
+  it.deleted_at=new Date().toLocaleDateString('sl-SI');
+  await nabSaveItem(it);
+  nabRender();
+}
+async function nabRestore(id){
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  it.deleted=0;
+  await nabSaveItem(it);
+  nabRender();
+}
+async function nabPurge(id){
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  const label=(it.sku||'').trim()||'this empty item';
+  if(!confirm('Permanently delete '+label+'?\n\nThis removes it completely — cannot be undone.')) return;
+  try{ await fetch('/nabava-item/'+encodeURIComponent(id),{method:'DELETE'}); DATA.items=DATA.items.filter(x=>x.id!==id); nabRender(); }catch(e){}
+}
+async function nabSaveItem(it){
+  try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+    const d=await r.json(); if(d.ok) Object.assign(it,d.item); }catch(e){}
+}
+async function nabToggleApproved(id){
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  it.approved = it.approved ? 0 : 1;   // potrjeno = cena OK, dobavitelj lahko naroči
+  await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
+  nabRender();
+}
+async function nabRefreshImages(){
+  const b=document.getElementById('imgBtn'); const o=b.textContent; b.disabled=true; b.textContent='⏳ Loading images…';
+  try{ const r=await fetch('/nabava-refresh-images',{method:'POST'}); const d=await r.json();
+    if(d.ok){ b.textContent='✓ '+d.updated+' images'; await nabLoad(); setTimeout(()=>{b.textContent=o;b.disabled=false;},1600); }
+    else{ b.textContent=o; b.disabled=false; alert('Error: '+(d.error||'')); } }
+  catch(e){ b.textContent=o; b.disabled=false; alert('Error: '+e.message); }
+}
+function nabExport(){
+  // izvozi samo trenutno izbrani kontejner (privzeto Nerazvrščeno)
+  if(CONT==='all'){
+    if(!confirm('Export ALL containers?\n\nTip: select a container first to export only that one.')) return;
+    window.open('/nabava-export-xlsx','_blank');
+    return;
+  }
+  window.open('/nabava-export-xlsx?container='+encodeURIComponent(CONT),'_blank');
+}
+function nabCopySupplier(){
+  let it=visibleItems().filter(i=>i.sku);
+  if(!it.length){ alert('Nothing to copy in this view.'); return; }
+  const lines=it.map(i=>[i.sku,'Qty: '+(i.qty||0),i.naziv||'',i.link||'',i.specification?('Spec: '+i.specification):'',i.negotiation?('Price: '+i.negotiation):'',i.comment?('Note: '+i.comment):''].filter(Boolean).join(' | '));
+  const txt='Order'+(CONT!=='all'?' — '+CONT:'')+':\n\n'+lines.join('\n');
+  navigator.clipboard.writeText(txt).then(()=>alert('Copied '+it.length+' items.')).catch(()=>{});
+}
+
+nabViewBtns(); nabLoad(); nabLoadSettings();
+// enkratni tooltip za status filtre (pokaže se samo ob prvem obisku)
+function nabDismissTip(){
+  const t=document.getElementById('stTip'); if(t) t.style.display='none';
+  try{ localStorage.setItem('nab_sttip_seen','1'); }catch(e){}
+}
+(function(){
+  try{
+    if(!localStorage.getItem('nab_sttip_seen')){
+      setTimeout(()=>{ const t=document.getElementById('stTip'); if(t) t.style.display='block'; }, 900);
+    }
+  }catch(e){}
+})();
+</script>
+</body>
+</html>
