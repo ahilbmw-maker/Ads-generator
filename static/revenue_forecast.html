@@ -445,13 +445,18 @@
           </div>
 
           <!-- ══ TIMELINE DNEVNIK (beleženje skozi dan) ══ -->
-          <div class="card" id="rvc-tl-card" style="margin-top:12px;display:none">
+          <div class="card" id="rvc-tl-card" style="margin-top:12px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
               <div class="card-title" style="margin-bottom:0">📈 Potek skozi dan</div>
               <span style="font-size:11px;color:var(--text-tertiary)">vsak "Obdelaj in shrani" doda točko · počisti se z "nov dan"</span>
             </div>
-            <div style="position:relative;width:100%;height:240px;margin:8px 0 14px"><canvas id="rvc-tl-chart"></canvas></div>
-            <div id="rvc-tl-table" style="font-size:13px;overflow-x:auto"></div>
+            <div id="rvc-tl-empty" style="padding:20px;text-align:center;color:var(--text-tertiary);font-size:13px">
+              Še ni beleženja za danes. Klikni "Obdelaj in shrani" — vsak vnos se zabeleži tukaj, da vidiš potek skozi dan.
+            </div>
+            <div id="rvc-tl-body" style="display:none">
+              <div style="position:relative;width:100%;height:240px;margin:8px 0 14px"><canvas id="rvc-tl-chart"></canvas></div>
+              <div id="rvc-tl-table" style="font-size:13px;overflow-x:auto"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -2000,7 +2005,8 @@ function rvcTLSet(arr){
 function rvcTLReset(){
   try { localStorage.removeItem(rvcTLKey()); } catch(e){}
   if (rvcTLChart){ rvcTLChart.destroy(); rvcTLChart = null; }
-  const card = document.getElementById('rvc-tl-card'); if (card) card.style.display = 'none';
+  const emp=document.getElementById('rvc-tl-empty'); const bod=document.getElementById('rvc-tl-body');
+  if(emp) emp.style.display=''; if(bod) bod.style.display='none';
 }
 function rvcTLSnapshot(data){
   const t = (data && data.total) ? data.total : {};
@@ -2022,8 +2028,9 @@ function rvcTLRender(){
   const arr = rvcTLGet();
   const card = document.getElementById('rvc-tl-card');
   if (!card) return;
-  if (!arr.length){ card.style.display = 'none'; return; }
-  card.style.display = '';
+  const emp=document.getElementById('rvc-tl-empty'); const bod=document.getElementById('rvc-tl-body');
+  if (!arr.length){ if(emp)emp.style.display=''; if(bod)bod.style.display='none'; return; }
+  if(emp)emp.style.display='none'; if(bod)bod.style.display='';
 
   // ── tabela ──
   const eur = n => (n===null||n===undefined) ? '—' : Number(n).toLocaleString('sl-SI',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
