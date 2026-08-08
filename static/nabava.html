@@ -100,7 +100,7 @@
   .wrap{padding:14px 22px 22px;}
 
   /* ROWS */
-  .tblwrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:auto;max-height:calc(100vh - 190px);}
+  .tblwrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:auto;}
   table{width:100%;border-collapse:collapse;min-width:1600px;}
   thead th{position:sticky;top:0;background:var(--panel2);border-bottom:2px solid var(--line);padding:10px 9px;text-align:left;font-size:11px;font-weight:800;letter-spacing:0.3px;color:var(--ink2);text-transform:uppercase;white-space:nowrap;z-index:5;}
   thead th.num{text-align:right;}
@@ -680,6 +680,14 @@ window._PUP={};
 
 function isHidden(it){ return false; }
 
+function nabSyncTheadTop(){
+  const tw=document.querySelector('.tblwrap');
+  if(!tw) return;
+  const h=window.innerHeight - tw.getBoundingClientRect().top - 18;
+  if(h>200) tw.style.maxHeight=h+'px';
+}
+window.addEventListener('resize', nabSyncTheadTop);
+
 function nabRender(){
   window._PUP=priceUpMap();
   const names=allContainerNames();
@@ -725,6 +733,7 @@ function nabRender(){
   nabStatusChips();
   const ss=document.getElementById('sortSel'); if(ss && ss.value!==SORT) ss.value=SORT;
   requestAnimationFrame(nabAutoSize);
+  requestAnimationFrame(nabSyncTheadTop);
 }
 
 /* selekcija */
