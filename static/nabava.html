@@ -793,7 +793,9 @@ function renderRows(items){
       +'<td class="num final">€'+nabFinal(it).toFixed(2)+'</td>'
       +'<td class="rowact" style="white-space:nowrap;text-align:center">'
         +'<span class="appbtn'+(appr?' on':'')+'" onclick="nabToggleApproved(\''+it.id+'\')" title="'+(appr?'Approved — price OK, supplier can order (click to unapprove)':'Approve — price OK, supplier can order')+'">✓</span>'
-        +'<span onclick="nabDelete(\''+it.id+'\')" title="'+(it.deleted?'Deleted — click to restore':'Remove (keep in history)')+'" style="color:'+(it.deleted?'var(--ink3)':'var(--bad)')+'">'+(it.deleted?'↩':'✕')+'</span>'
+        +(it.deleted
+          ? '<span onclick="nabRestore(\''+it.id+'\')" title="Restore to active list" style="color:var(--good);cursor:pointer">↩</span><span onclick="nabPurge(\''+it.id+'\')" title="Delete permanently (cannot undo)" style="color:var(--bad);cursor:pointer;margin-left:8px">🗑</span>'
+          : '<span onclick="nabDelete(\''+it.id+'\')" title="Remove (keep in history as Deleted)" style="color:var(--bad);cursor:pointer">✕</span>')
       +'</td></tr>';
   }).join('');
   return '<div class="tblwrap"><table><thead><tr>'
@@ -845,7 +847,9 @@ function renderCards(items){
       +'</div>'
       +'<div class="cfoot"><span class="final" style="color:var(--good)">€'+nabFinal(it).toFixed(2)+' <small>final</small></span>'
         +'<span style="color:var(--ink3);font-size:11px">· CBM '+num(it.total_cbm,3)+'</span>'
-        +'<span class="act"><span class="appbtn'+(appr?' on':'')+'" onclick="nabToggleApproved(\''+it.id+'\')" title="'+(appr?'Approved — price OK, supplier can order (click to unapprove)':'Approve — price OK, supplier can order')+'">✓</span><span onclick="nabDelete(\''+it.id+'\')" title="'+(it.deleted?'Deleted — click to restore':'Remove (keep in history)')+'" style="color:'+(it.deleted?'var(--ink3)':'var(--bad)')+'">'+(it.deleted?'↩':'✕')+'</span></span>'
+        +'<span class="act"><span class="appbtn'+(appr?' on':'')+'" onclick="nabToggleApproved(\''+it.id+'\')" title="'+(appr?'Approved — price OK, supplier can order (click to unapprove)':'Approve — price OK, supplier can order')+'">✓</span>'+(it.deleted
+          ? '<span onclick="nabRestore(\''+it.id+'\')" title="Restore to active list" style="color:var(--good);cursor:pointer">↩</span><span onclick="nabPurge(\''+it.id+'\')" title="Delete permanently (cannot undo)" style="color:var(--bad);cursor:pointer;margin-left:6px">🗑</span>'
+          : '<span onclick="nabDelete(\''+it.id+'\')" title="Remove (keep in history)" style="color:var(--bad);cursor:pointer">✕</span>')+'</span>'
       +'</div></div>';
   }).join('')+'</div>';
 }
@@ -1057,18 +1061,24 @@ async function nabAddRow(){
 }
 async function nabDelete(id){
   const it=DATA.items.find(x=>x.id===id); if(!it) return;
-  if(it.deleted){
-    if(confirm('Restore this item to the active list?')){ it.deleted=0; await nabSaveItem(it); nabRender(); }
-    else if(confirm('Permanently delete this item? (removes from history)')){
-      try{ await fetch('/nabava-item/'+encodeURIComponent(id),{method:'DELETE'}); DATA.items=DATA.items.filter(x=>x.id!==id); nabRender(); }catch(e){}
-    }
-    return;
-  }
+  if(it.deleted) return;   // že v Deleted → uporabi gumba ↩ / 🗑
   if(!confirm('Remove this item?\n\nIt will be hidden and marked "Deleted" — kept in history as reference of the last China offer.')) return;
   it.deleted=1;
   it.deleted_at=new Date().toLocaleDateString('sl-SI');
   await nabSaveItem(it);
   nabRender();
+}
+async function nabRestore(id){
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  it.deleted=0;
+  await nabSaveItem(it);
+  nabRender();
+}
+async function nabPurge(id){
+  const it=DATA.items.find(x=>x.id===id); if(!it) return;
+  const label=(it.sku||'').trim()||'this empty item';
+  if(!confirm('Permanently delete '+label+'?\n\nThis removes it completely — cannot be undone.')) return;
+  try{ await fetch('/nabava-item/'+encodeURIComponent(id),{method:'DELETE'}); DATA.items=DATA.items.filter(x=>x.id!==id); nabRender(); }catch(e){}
 }
 async function nabSaveItem(it){
   try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
