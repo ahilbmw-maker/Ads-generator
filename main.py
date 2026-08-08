@@ -24576,18 +24576,24 @@ async def nabava_bulk_container(data: dict):
 
 
 @app.get("/nabava-export-xlsx")
-async def nabava_export_xlsx():
-    """Izvoz v Excel v istem formatu kot original (en list na kontejner)."""
+async def nabava_export_xlsx(container: str = ""):
+    """Izvoz v Excel. Če je podan ?container=X, izvozi samo ta kontejner (en list);
+    sicer vse (en list na kontejner). Izbrisane (deleted) postavke so izpuščene."""
     import openpyxl as _oxl
     from collections import OrderedDict
-    items = _nabava_load()
+    items = [it for it in _nabava_load() if not it.get("deleted")]
+    cont_filter = (container or "").strip()
+    if cont_filter:
+        items = [it for it in items if (it.get("container") or "Nerazvrščeno") == cont_filter]
     wb = _oxl.Workbook(); wb.remove(wb.active)
     hdr = ['Date','SKU','Qty','Our comment','Link from our site','Naziv','Unitprice ($)',
            'Totalprice ($)','Specification','volumetric weight','Ctns','CBM/CTN','Total CBM',
            'Final price (aprox)','Comment','Status']
     by_c = OrderedDict()
     for it in items:
-        by_c.setdefault(it.get("container") or "—", []).append(it)
+        by_c.setdefault(it.get("container") or "Nerazvrščeno", []).append(it)
+    if not by_c:   # prazen izbor → vseeno en prazen list, da datoteka ni pokvarjena
+        by_c[cont_filter or "—"] = []
     for cont, lst in by_c.items():
         ws = wb.create_sheet(title=str(cont)[:31])
         ws.append(hdr)
@@ -24599,8 +24605,10 @@ async def nabava_export_xlsx():
                        it.get("final_price",""), it.get("extra_comment",""), it.get("status","")])
     import io as _io
     buf = _io.BytesIO(); wb.save(buf); buf.seek(0)
+    safe = (cont_filter or "nabava").replace('"','')
+    fn = f"nabava_{safe}.xlsx" if cont_filter else "nabava.xlsx"
     return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                             headers={"Content-Disposition": 'attachment; filename="nabava.xlsx"'})
+                             headers={"Content-Disposition": f'attachment; filename="{fn}"'})
 
 
 

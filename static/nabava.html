@@ -52,6 +52,18 @@
   .cfdot{width:12px;height:12px;border-radius:50%;background:var(--ink3);display:inline-block;}
   .controls2{margin-top:-2px;padding-top:0;padding-bottom:10px;}
   .stchips{display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center;}
+  .sttip{position:absolute;top:calc(100% + 12px);left:-8px;z-index:60;background:#1f2937;color:#fff;border-radius:12px;
+    padding:14px 16px;width:300px;box-shadow:0 12px 34px rgba(0,0,0,0.3);font-weight:400;text-transform:none;letter-spacing:0;
+    animation:tipIn .25s ease;}
+  @keyframes tipIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+  .sttip-t{font-weight:800;font-size:13px;margin-bottom:6px;}
+  .sttip-b{font-size:12px;line-height:1.55;color:#d1d5db;}
+  .sttip-b .sttip-new{color:#fb7185;font-weight:800;}
+  .sttip-b .sttip-rev{color:#fbbf24;font-weight:800;}
+  .sttip-x{margin-top:10px;background:#fff;color:#1f2937;border:none;border-radius:8px;padding:6px 14px;
+    font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;}
+  .sttip-x:hover{background:#e5e7eb;}
+  .sttip-arrow{position:absolute;top:-6px;left:22px;width:12px;height:12px;background:#1f2937;transform:rotate(45deg);}
   .stchip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--panel);
     border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;color:var(--ink2);cursor:pointer;transition:all .12s;}
   .stchip:hover{border-color:var(--ink3);}
@@ -334,7 +346,14 @@
   </div>
 
   <div class="controls controls2">
-    <span class="lbl">Status</span>
+    <span class="lbl" style="position:relative">Status
+      <div id="stTip" class="sttip" style="display:none">
+        <div class="sttip-t">💡 Check and use the status filters</div>
+        <div class="sttip-b">Please review items marked <span class="sttip-new">● New</span> (fill in price, CTNS, CBM) and <span class="sttip-rev">● Review</span> (open price negotiation) separately.</div>
+        <button class="sttip-x" onclick="nabDismissTip()">Got it</button>
+        <div class="sttip-arrow"></div>
+      </div>
+    </span>
     <div id="statusChips" class="stchips"></div>
     <div class="grow"></div>
     <span class="lbl">Sort by</span>
@@ -1097,7 +1116,15 @@ async function nabRefreshImages(){
     else{ b.textContent=o; b.disabled=false; alert('Error: '+(d.error||'')); } }
   catch(e){ b.textContent=o; b.disabled=false; alert('Error: '+e.message); }
 }
-function nabExport(){ window.open('/nabava-export-xlsx','_blank'); }
+function nabExport(){
+  // izvozi samo trenutno izbrani kontejner (privzeto Nerazvrščeno)
+  if(CONT==='all'){
+    if(!confirm('Export ALL containers?\n\nTip: select a container first to export only that one.')) return;
+    window.open('/nabava-export-xlsx','_blank');
+    return;
+  }
+  window.open('/nabava-export-xlsx?container='+encodeURIComponent(CONT),'_blank');
+}
 function nabCopySupplier(){
   let it=visibleItems().filter(i=>i.sku);
   if(!it.length){ alert('Nothing to copy in this view.'); return; }
@@ -1107,6 +1134,18 @@ function nabCopySupplier(){
 }
 
 nabViewBtns(); nabLoad(); nabLoadSettings();
+// enkratni tooltip za status filtre (pokaže se samo ob prvem obisku)
+function nabDismissTip(){
+  const t=document.getElementById('stTip'); if(t) t.style.display='none';
+  try{ localStorage.setItem('nab_sttip_seen','1'); }catch(e){}
+}
+(function(){
+  try{
+    if(!localStorage.getItem('nab_sttip_seen')){
+      setTimeout(()=>{ const t=document.getElementById('stTip'); if(t) t.style.display='block'; }, 900);
+    }
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
