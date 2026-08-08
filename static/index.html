@@ -963,11 +963,6 @@ input[type="text"].error { border-color: var(--red) !important; }
     Storage
     <span style="margin-left:auto;font-size:13px">💾</span>
   </div>
-  <div class="nav-item nav-nabava" id="nav-nabava" onclick="window.open('/nabava','_blank')">
-    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-    Nabava 🇨🇳
-    <span style="margin-left:auto;font-size:11px">↗</span>
-  </div>
 </nav>
 
 <!-- MAIN -->
@@ -3236,6 +3231,13 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
           <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:12px">
             Cilj: CPA &lt; 7.5€ · min 15 nakupov (7 dni) · trend, frekvenca, CTR, bid headroom. 🟢 SCALE · 🟣 POTENCIAL (3–14 nakupov, CPA &lt; 6€, bid ≤ 9) · 🟡 DRŽI · 🔴 NE · 🔵 OPAZUJEM (7 dni po dvigu)
+          </div>
+          <div id="bcKillSub" style="display:none;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+            <span style="font-size:11px;color:var(--text-secondary);font-weight:700">Med "NE" pokaži:</span>
+            <button id="bcKill-all" onclick="bcSetKillFilter('all')" style="padding:4px 10px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:var(--accent);color:#fff">Vse</button>
+            <button id="bcKill-kill" onclick="bcSetKillFilter('kill')" style="padding:4px 10px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🛑 Res ugasni</button>
+            <button id="bcKill-fix" onclick="bcSetKillFilter('fix')" style="padding:4px 10px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🔧 Popravi (ne ugašaj)</button>
+            <button id="bcKill-wait" onclick="bcSetKillFilter('wait')" style="padding:4px 10px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">⏳ Premalo podatkov</button>
           </div>
           <div id="bcTableWrap"></div>
         </div>
@@ -21782,6 +21784,97 @@ function bcParseFromRows(rows){
   return out;
 }
 
+// ═══ KILL ANALIZA — naj odloči, kaj RES ugasniti (7d podatki) ═══
+// Vrne { verdict:'kill'|'fix'|'wait', title, color, rules:[{ok,text}] }
+// verdict:
+//   kill = res ugasni (zapravlja, CPA nad break-even, ni obetov)
+//   fix  = ne ugašaj še — kreativa/bid problem, poskusi popraviti
+//   wait = premalo podatkov za odločitev (ne ugašaj na slepo)
+const BC_MIN_SPEND_KILL = 20;   // €: pod tem porabe 7d ni zanesljive sodbe
+function bcKillAnalysis(a){
+  const be = bcBreakevenFor(a.name) || bcBreakevenFor(a.campaign||'') || null;  // break-even CPA po državi
+  const cpa = a.cpa7;
+  const cpa3 = a.cpa3;
+  const spend = a.spend || 0;
+  const purch = a.purch || 0;
+  const freq = a.avgFreq || 0;
+  const ctr = a.avgCtr || 0;
+  const atc = a.atc || 0;
+  const rules = [];
+  const R = (ok, text) => rules.push({ ok, text });
+
+  // meja izgube: break-even, sicer cilj×1.3 kot varovalo
+  const lossLine = be != null ? be : (BC_CPA_TARGET * 1.3);
+
+  // 1) dovolj porabe za sodbo?
+  const enoughSpend = spend >= BC_MIN_SPEND_KILL;
+  R(enoughSpend, enoughSpend
+     ? `Poraba 7d ${spend.toFixed(0)}€ — dovolj za oceno.`
+     : `Poraba 7d ${spend.toFixed(0)}€ < ${BC_MIN_SPEND_KILL}€ — premalo za zanesljivo sodbo.`);
+
+  // 2) nič konverzij kljub porabi = jasen kill signal
+  const noConv = purch === 0;
+  const noConvKill = noConv && spend >= (lossLine * 2);
+  if (noConv){
+    R(!noConvKill, noConvKill
+       ? `0 nakupov ob ${spend.toFixed(0)}€ porabe (> 2× break-even ${lossLine.toFixed(1)}€) — денар brez rezultata.`
+       : `0 nakupov, a poraba še nizka — daj mu do ~${(lossLine*2).toFixed(0)}€, preden sodiš.`);
+  }
+
+  // 3) CPA vs break-even (izgublja na naročilo?)
+  let cpaVerdict = null;
+  if (cpa != null && purch > 0){
+    if (be != null){
+      const over = (cpa - be) / be;
+      if (cpa <= be){ R(true, `CPA ${cpa.toFixed(2)}€ ≤ break-even ${be.toFixed(2)}€ — še dela pozitivno.`); cpaVerdict='ok'; }
+      else if (over <= 0.15){ R(false, `CPA ${cpa.toFixed(2)}€ rahlo nad break-even ${be.toFixed(2)}€ (+${(over*100).toFixed(0)}%) — na robu.`); cpaVerdict='edge'; }
+      else { R(false, `CPA ${cpa.toFixed(2)}€ NAD break-even ${be.toFixed(2)}€ (+${(over*100).toFixed(0)}%) — izgublja na naročilo.`); cpaVerdict='loss'; }
+    } else {
+      // brez break-even: primerjaj s ciljem
+      if (cpa <= BC_CPA_TARGET){ R(true, `CPA ${cpa.toFixed(2)}€ ≤ cilj ${BC_CPA_TARGET}€.`); cpaVerdict='ok'; }
+      else if (cpa <= BC_CPA_TARGET*1.3){ R(false, `CPA ${cpa.toFixed(2)}€ nad ciljem ${BC_CPA_TARGET}€, a < 1.3×.`); cpaVerdict='edge'; }
+      else { R(false, `CPA ${cpa.toFixed(2)}€ > 1.3× cilj — predrago.`); cpaVerdict='loss'; }
+    }
+  }
+
+  // 4) trend 3d vs 7d (se slabša ali obrača?)
+  let trendBad=false, trendGood=false;
+  if (cpa != null && cpa3 != null && cpa > 0){
+    const delta = (cpa3 - cpa) / cpa;
+    if (delta <= -0.10){ trendGood=true; R(true, `Trend ↑: CPA 3d ${cpa3.toFixed(2)}€ boljši od 7d — obrača se na bolje.`); }
+    else if (delta >= 0.15){ trendBad=true; R(false, `Trend ↓: CPA 3d ${cpa3.toFixed(2)}€ slabši od 7d (+${(delta*100).toFixed(0)}%) — poslabšuje se.`); }
+    else { R(true, `Trend stabilen (3d ≈ 7d).`); }
+  }
+
+  // 5) kreativa: frekvenca + CTR (utrujenost)
+  const fatigued = freq >= 3.0 && ctr>0 && ctr < 1.0;
+  if (freq >= 3.0) R(false, `Frekvenca ${freq.toFixed(2)} — visoka (nasičenost publike).`);
+  if (ctr>0 && ctr < 0.8) R(false, `CTR ${ctr.toFixed(2)}% — nizek (kreativa slabi).`);
+  if (fatigued) R(false, `Znaki utrujenosti kreative (visoka freq + nizek CTR) — problem je kreativa, ne nujno kampanja.`);
+
+  // ── SKLEP ──
+  let verdict, title, color;
+  if (!enoughSpend){
+    verdict='wait'; title='⏳ Premalo podatkov — ne ugašaj še'; color='#d29922';
+  } else if (noConvKill){
+    verdict='kill'; title='🛑 UGASNI — poraba brez konverzij'; color='#ef4444';
+  } else if (cpaVerdict==='loss' && (trendBad || fatigued || purch>=5)){
+    verdict='kill'; title='🛑 UGASNI — izgublja nad break-even, brez obrata'; color='#ef4444';
+  } else if (cpaVerdict==='loss' && trendGood){
+    verdict='fix'; title='🔧 ŠE PUSTI — CPA visok, a trend se obrača'; color='#3fb950';
+  } else if (fatigued && cpaVerdict!=='ok'){
+    verdict='fix'; title='🔧 OSVEŽI KREATIVO — ne ugašaj kampanje'; color='#d29922';
+  } else if (cpaVerdict==='edge'){
+    verdict='fix'; title='🔧 ROB — znižaj bid / optimiziraj, ne ugašaj'; color='#d29922';
+  } else if (cpaVerdict==='ok'){
+    verdict='fix'; title='✅ NE UGAŠAJ — dela znotraj break-even'; color='#3fb950';
+  } else {
+    verdict='wait'; title='⏳ Nejasno — spremljaj še 2–3 dni'; color='#d29922';
+  }
+
+  return { verdict, title, color, rules, breakeven: be };
+}
+
 // SCORING — profesionalna deterministična pravila
 function bcScore(a){
   const reasons = [];
@@ -22071,6 +22164,7 @@ function bcToggleCountries(){
 }
 
 let bcStatusFilter = 'all';
+let bcKillFilter = 'all';   // podfilter znotraj NE: all|kill|fix|wait
 let bcBidUnder9 = false;
 function bcToggleBidUnder9(){
   bcBidUnder9 = !bcBidUnder9;
@@ -22080,10 +22174,22 @@ function bcToggleBidUnder9(){
 }
 function bcSetStatusFilter(st){
   bcStatusFilter = st;
+  if (st !== 'NE') bcKillFilter = 'all';
   for (const k of ['all','SCALE','POTENCIAL','DRŽI','NE','WATCH']){
     const b = document.getElementById('bcFilt-'+k);
     if (b){ b.style.background = (k===st)?'var(--accent)':'transparent'; b.style.color = (k===st)?'#fff':'var(--text-secondary)'; }
-  }  bcRenderTable();
+  }
+  const sub = document.getElementById('bcKillSub');
+  if (sub) sub.style.display = (st==='NE') ? 'flex' : 'none';
+  bcRenderTable();
+}
+function bcSetKillFilter(v){
+  bcKillFilter = v;
+  for (const k of ['all','kill','fix','wait']){
+    const b = document.getElementById('bcKill-'+k);
+    if (b){ b.style.background = (k===v)?'var(--accent)':'transparent'; b.style.color = (k===v)?'#fff':'var(--text-secondary)'; }
+  }
+  bcRenderTable();
 }
 
 function bcPrepareItems(){
@@ -22097,6 +22203,10 @@ function bcPrepareItems(){
       const st = x.cd ? 'WATCH' : x.sc.label;
       return st === bcStatusFilter;
     });
+    // podfilter znotraj NE po kill verdiktu
+    if (bcStatusFilter === 'NE' && bcKillFilter !== 'all'){
+      items = items.filter(x => bcKillAnalysis(x.a).verdict === bcKillFilter);
+    }
   }
   if (q) items = items.filter(x => x.a.name.toLowerCase().includes(q) || (x.a.campaign||'').toLowerCase().includes(q));
   items.sort((x,y)=>{
@@ -22222,9 +22332,25 @@ function bcCardHtml(it){
       +   bcActionBadge(sc.action)
       +   bcActionBtn(a,sc,cd)
       + `</div>`
+      + ((!inCd && sc.label==='NE') ? bcKillBlock(a) : '')
       + `<details style="margin-top:8px"><summary style="font-size:11px;color:var(--text-tertiary);cursor:pointer">💡 analiza</summary>`
       +   `<div style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin-top:5px">${sc.reasons.map(r=>'• '+r).join('<br>')}</div></details>`
       + `</div>`;
+}
+function bcKillBlock(a){
+  const k = bcKillAnalysis(a);
+  const chip = v => v==='kill' ? '🛑 UGASNI' : (v==='fix' ? '🔧 POPRAVI' : '⏳ POČAKAJ');
+  const rulesHtml = k.rules.map(r =>
+    `<div style="display:flex;gap:6px;align-items:flex-start;font-size:11px;line-height:1.45;margin-top:3px">`
+    + `<span style="flex-shrink:0">${r.ok?'✅':'⚠️'}</span><span style="color:var(--text-secondary)">${r.text}</span></div>`
+  ).join('');
+  return `<div style="margin-top:8px;border:1px solid ${k.color};border-radius:8px;overflow:hidden">`
+    + `<div style="background:${k.color}1a;color:${k.color};font-weight:800;font-size:12px;padding:7px 10px">${k.title}</div>`
+    + `<details style="padding:6px 10px 8px"><summary style="font-size:11px;color:var(--text-tertiary);cursor:pointer">📋 pravila odločitve (${chip(k.verdict)})</summary>`
+    + `<div style="margin-top:5px">${rulesHtml}</div>`
+    + (k.breakeven!=null ? `<div style="margin-top:6px;font-size:10px;color:var(--text-tertiary)">Break-even CPA: ${k.breakeven.toFixed(2)}€ (RVC/naročilo za to državo)</div>`
+                        : `<div style="margin-top:6px;font-size:10px;color:var(--text-tertiary)">⚠ Break-even za to državo ni naložen — uporabljen cilj ${BC_CPA_TARGET}€×1.3.</div>`)
+    + `</details></div>`;
 }
 
 function bcRenderCards(items){
