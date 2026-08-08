@@ -90,7 +90,7 @@
   /* ROWS */
   .tblwrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:auto;}
   table{width:100%;border-collapse:collapse;min-width:1600px;}
-  thead th{position:sticky;top:118px;background:var(--panel2);border-bottom:2px solid var(--line);padding:10px 9px;text-align:left;font-size:11px;font-weight:800;letter-spacing:0.3px;color:var(--ink2);text-transform:uppercase;white-space:nowrap;z-index:2;}
+  thead th{position:sticky;top:var(--thead-top, 0px);background:var(--panel2);border-bottom:2px solid var(--line);padding:10px 9px;text-align:left;font-size:11px;font-weight:800;letter-spacing:0.3px;color:var(--ink2);text-transform:uppercase;white-space:nowrap;z-index:2;}
   thead th.num{text-align:right;}
   tbody td{border-bottom:1px solid var(--line);padding:5px 9px;vertical-align:middle;}
   tbody tr:hover{background:var(--panel2);}
@@ -118,12 +118,6 @@
   .okcorner{position:absolute;top:14px;left:-30px;transform:rotate(-45deg);background:#0f9d58;color:#fff;
     font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:9.5px;letter-spacing:1px;
     padding:3px 34px;z-index:4;box-shadow:0 1px 4px rgba(0,0,0,0.2);}
-  .delcorner{position:absolute;top:13px;left:-32px;transform:rotate(-45deg);background:#8a8177;color:#fff;
-    font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:10px;letter-spacing:1px;
-    padding:3px 36px;z-index:4;box-shadow:0 1px 4px rgba(0,0,0,0.2);}
-  .pcard.deleted{opacity:0.6;background:#f4f2ee;}
-  tr.row-deleted{opacity:0.55;background:#f4f2ee;}
-  .pcard.deleted .chead .pname a{color:var(--ink3);}
   .revcorner{position:absolute;top:12px;left:-32px;transform:rotate(-45deg);background:#e0a417;color:#fff;
     font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:10px;letter-spacing:1.5px;
     padding:3px 36px;z-index:4;box-shadow:0 1px 4px rgba(0,0,0,0.2);}
@@ -550,7 +544,6 @@ function negoLast(it){ const a=negoChat(it); return a.length?a[a.length-1]:null;
 function hasNego(it){ return negoCount(it)>0; }
 
 function itemStatus(it){
-  if(it.deleted) return 'deleted';
   if(it.approved) return 'confirmed';
   if(hasNego(it)) return 'review';
   if(isNewItem(it)) return 'new';
@@ -562,8 +555,7 @@ const ST_META={
   all:      {label:'All',       color:'#6e655a', dot:'#a99f90'},
   new:      {label:'New',       color:'#e11d48', dot:'#e11d48'},
   review:   {label:'Review',    color:'#c68410', dot:'#e0a417'},
-  confirmed:{label:'Confirmed', color:'#0f9d58', dot:'#12a35f'},
-  deleted:  {label:'Deleted',   color:'#8a8177', dot:'#8a8177'}
+  confirmed:{label:'Confirmed', color:'#0f9d58', dot:'#12a35f'}
 };
 function nabStatusChips(){
   const cc=document.getElementById('statusChips'); if(!cc) return;
@@ -571,8 +563,8 @@ function nabStatusChips(){
   let base=DATA.items.slice();
   if(!SEARCH && CONT!=='all') base=base.filter(x=>(x.container||'Nerazvrščeno')===CONT);
   if(SEARCH) base=base.filter(matchSearch);
-  const cnt={all:0,new:0,review:0,confirmed:0,deleted:0};
-  base.forEach(x=>{const st=itemStatus(x); if(cnt[st]!=null) cnt[st]++; if(st!=='deleted') cnt.all++;});
+  const cnt={all:base.length,new:0,review:0,confirmed:0};
+  base.forEach(x=>{const st=itemStatus(x); if(cnt[st]!=null) cnt[st]++;});
   cc.innerHTML=Object.keys(ST_META).map(k=>{const m=ST_META[k];const on=STFILTER===k;
     return '<span class="stchip'+(on?' on':'')+'" style="'+(on?'background:'+m.color:'')+'" onclick="nabSetStatus(\''+k+'\')">'
       +(k!=='all'?'<span class="cdot" style="background:'+(on?'#fff':m.dot)+'"></span>':'')
@@ -607,8 +599,6 @@ function visibleItems(){
   if(!SEARCH && CONT!=='all') it=it.filter(x=>(x.container||'Nerazvrščeno')===CONT);
   it=it.filter(x=>!isHidden(x));
   if(SEARCH) it=it.filter(matchSearch);
-  // izbrisane skrij, razen ko je izrecno izbran Deleted filter
-  if(STFILTER!=='deleted') it=it.filter(x=>!x.deleted);
   // status filter
   if(STFILTER!=='all') it=it.filter(x=>itemStatus(x)===STFILTER);
   // sortiranje
@@ -663,6 +653,14 @@ window._PUP={};
 
 function isHidden(it){ return false; }
 
+function nabSyncTheadTop(){
+  const st=document.querySelector('.stickytop');
+  if(!st) return;
+  const h=st.getBoundingClientRect().height;
+  document.documentElement.style.setProperty('--thead-top', (h-1)+'px');
+}
+window.addEventListener('resize', nabSyncTheadTop);
+
 function nabRender(){
   window._PUP=priceUpMap();
   const names=allContainerNames();
@@ -707,6 +705,7 @@ function nabRender(){
   nabSelBar();
   nabStatusChips();
   const ss=document.getElementById('sortSel'); if(ss && ss.value!==SORT) ss.value=SORT;
+  requestAnimationFrame(nabSyncTheadTop);
   requestAnimationFrame(nabAutoSize);
 }
 
@@ -777,7 +776,7 @@ function renderRows(items){
     const dupN=(it.container||'Nerazvrščeno')==='Nerazvrščeno'?dupUnsortedIds(it.sku,it.id).length:0;
     const dupTag=dupN?' <span class="duptag" title="Isti SKU je '+(dupN+1)+'× v Nerazvrščeno">⚠ '+(dupN+1)+'×</span>':'';
     const seld=SEL.has(it.id);
-    return '<tr class="'+(it.deleted?'row-deleted ':'')+(appr?'approved':'')+(seld?' sel':'')+'" style="border-left:3px solid '+(it.deleted?'#8a8177':col)+'">'
+    return '<tr class="'+(appr?'approved':'')+(seld?' sel':'')+'" style="border-left:3px solid '+col+'">'
       +'<td style="text-align:center"><input type="checkbox" class="selchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)"></td>'
       +'<td><div class="imgcell">'+img+link+'</div></td>'
       +'<td>'+contSelect(it)+'</td>'
@@ -795,7 +794,7 @@ function renderRows(items){
       +'<td class="num final">€'+nabFinal(it).toFixed(2)+'</td>'
       +'<td class="rowact" style="white-space:nowrap;text-align:center">'
         +'<span class="appbtn'+(appr?' on':'')+'" onclick="nabToggleApproved(\''+it.id+'\')" title="'+(appr?'Approved — price OK, supplier can order (click to unapprove)':'Approve — price OK, supplier can order')+'">✓</span>'
-        +'<span onclick="nabDelete(\''+it.id+'\')" title="'+(it.deleted?'Deleted — click to restore':'Remove (keep in history as Deleted)')+'" style="color:'+(it.deleted?'var(--ink3)':'var(--bad)')+'">'+(it.deleted?'↩':'✕')+'</span>'
+        +'<span onclick="nabDelete(\''+it.id+'\')" title="Delete" style="color:var(--bad)">✕</span>'
       +'</td></tr>';
   }).join('');
   return '<div class="tblwrap"><table><thead><tr>'
@@ -823,7 +822,7 @@ function renderCards(items){
     const dupTag=dupN?'<span class="duptag" title="Isti SKU je '+(dupN+1)+'× v Nerazvrščeno">⚠ '+(dupN+1)+'×</span>':'';
     const seld=SEL.has(it.id);
     const isNew=isNewItem(it);
-    return '<div class="pcard '+(it.deleted?'deleted ':'')+(appr?'approved':'')+(isNew?' isnew':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)">'+(it.deleted?'<div class="delcorner">Deleted</div>':(appr?'<div class="okcorner">Confirmed</div>':(hasNego(it)?'<div class="revcorner">REVIEW</div>':(isNew?'<div class="newcorner">NEW</div>':''))))+'<div class="ribbon" style="background:'+col+'"></div>'
+    return '<div class="pcard '+(appr?'approved':'')+(isNew?' isnew':'')+(seld?' sel':'')+'"><input type="checkbox" class="cardchk" '+(seld?'checked':'')+' onclick="nabToggleSel(\''+it.id+'\',event)">'+(appr?'<div class="okcorner">Confirmed</div>':(hasNego(it)?'<div class="revcorner">REVIEW</div>':(isNew?'<div class="newcorner">NEW</div>':'')))+'<div class="ribbon" style="background:'+col+'"></div>'
       +'<div class="chead">'+img
         +'<div class="meta"><span class="ktag" style="background:'+hexA(col,0.12)+';color:'+col+'" title="'+esc(it.container||'Nerazvrščeno')+'"><span class="dot" style="background:'+col+'"></span><span class="ktag-name">'+esc(it.container||'Nerazvrščeno')+'</span></span>'+(CSTATUS[it.container]?'<div class="cst-row">'+cstBadge(CSTATUS[it.container])+'</div>':'')
         +'<div class="csku"><input value="'+esc(it.sku||'')+'" onchange="nabEdit(\''+it.id+'\',\'sku\',this.value)" onblur="nabLookup(\''+it.id+'\',this.value)" placeholder="SKU">'+(reord?'<span class="reorder">↻</span>':'')+pupTag+dupTag+'</div>'
@@ -847,7 +846,7 @@ function renderCards(items){
       +'</div>'
       +'<div class="cfoot"><span class="final" style="color:var(--good)">€'+nabFinal(it).toFixed(2)+' <small>final</small></span>'
         +'<span style="color:var(--ink3);font-size:11px">· CBM '+num(it.total_cbm,3)+'</span>'
-        +'<span class="act"><span class="appbtn'+(appr?' on':'')+'" onclick="nabToggleApproved(\''+it.id+'\')" title="'+(appr?'Approved — price OK, supplier can order (click to unapprove)':'Approve — price OK, supplier can order')+'">✓</span><span onclick="nabDelete(\''+it.id+'\')" title="'+(it.deleted?'Deleted — click to restore':'Remove (keep in history)')+'" style="color:'+(it.deleted?'var(--ink3)':'var(--bad)')+'">'+(it.deleted?'↩':'✕')+'</span></span>'
+        +'<span class="act"><span class="appbtn'+(appr?' on':'')+'" onclick="nabToggleApproved(\''+it.id+'\')" title="'+(appr?'Approved — price OK, supplier can order (click to unapprove)':'Approve — price OK, supplier can order')+'">✓</span><span onclick="nabDelete(\''+it.id+'\')" title="Delete" style="color:var(--bad)">✕</span></span>'
       +'</div></div>';
   }).join('')+'</div>';
 }
@@ -1046,24 +1045,8 @@ async function nabAddRow(){
     const d=await r.json(); if(d.ok){ DATA.items.push(d.item); nabRender(); window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); } }catch(e){}
 }
 async function nabDelete(id){
-  const it=DATA.items.find(x=>x.id===id); if(!it) return;
-  if(it.deleted){
-    // že izbrisano → ponudi obnovo ali trajni izbris
-    if(confirm('Restore this item to the active list?')){ it.deleted=0; await nabSaveItem(it); nabRender(); }
-    else if(confirm('Permanently delete this item? (removes from history)')){
-      try{ await fetch('/nabava-item/'+encodeURIComponent(id),{method:'DELETE'}); DATA.items=DATA.items.filter(x=>x.id!==id); nabRender(); }catch(e){}
-    }
-    return;
-  }
-  if(!confirm('Remove this item?\n\nIt will be hidden and marked "Deleted" — kept in history as reference of the last China offer.')) return;
-  it.deleted=1;
-  it.deleted_at=new Date().toLocaleDateString('sl-SI');
-  await nabSaveItem(it);
-  nabRender();
-}
-async function nabSaveItem(it){
-  try{ const r=await fetch('/nabava-item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)});
-    const d=await r.json(); if(d.ok) Object.assign(it,d.item); }catch(e){}
+  if(!confirm('Delete this item?')) return;
+  try{ await fetch('/nabava-item/'+encodeURIComponent(id),{method:'DELETE'}); DATA.items=DATA.items.filter(x=>x.id!==id); nabRender(); }catch(e){}
 }
 async function nabToggleApproved(id){
   const it=DATA.items.find(x=>x.id===id); if(!it) return;
