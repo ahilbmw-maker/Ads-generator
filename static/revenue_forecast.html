@@ -443,6 +443,16 @@
             </div>
             <div id="rvc-table" style="font-size:14px"></div>
           </div>
+
+          <!-- ══ TIMELINE DNEVNIK (beleženje skozi dan) ══ -->
+          <div class="card" id="rvc-tl-card" style="margin-top:12px;display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <div class="card-title" style="margin-bottom:0">📈 Potek skozi dan</div>
+              <span style="font-size:11px;color:var(--text-tertiary)">vsak "Obdelaj in shrani" doda točko · počisti se z "nov dan"</span>
+            </div>
+            <div style="position:relative;width:100%;height:240px;margin:8px 0 14px"><canvas id="rvc-tl-chart"></canvas></div>
+            <div id="rvc-tl-table" style="font-size:13px;overflow-x:auto"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -1847,6 +1857,7 @@ async function rvcSave() {
     if (data.ok) {
       toast('✓ Shranjeno');
       document.getElementById('rvc-input').value = '';
+      rvcTLSnapshot(data);   // zabeleži trenutek v dnevnik skozi dan
       rvcRender(data);
     } else {
       toast('✗ ' + (data.error || 'napaka'), true);
@@ -1864,6 +1875,7 @@ async function rvcClear() {
       document.getElementById('rvc-empty').style.display = '';
       document.getElementById('rvc-content').style.display = 'none';
       if (rvcChart) { rvcChart.destroy(); rvcChart = null; }
+      rvcTLReset();   // nov dan → prazen timeline
     } else {
       toast('✗ ' + (data.error || 'napaka'), true);
     }
@@ -1876,6 +1888,7 @@ async function rvcLoad() {
     const data = await r.json();
     if (data.ok && data.markets && data.markets.length) {
       rvcRender(data);
+      rvcTLRender();
     } else {
       document.getElementById('rvc-empty').style.display = '';
       document.getElementById('rvc-content').style.display = 'none';
@@ -1973,6 +1986,108 @@ function rvcRender(data) {
     const d = new Date(data.updated_at);
     document.getElementById('rvc-meta').textContent = 'Zadnji vnos: ' + d.toLocaleString('sl-SI');
   }
+}
+
+// ═══ TIMELINE DNEVNIK — beleženje skozi dan ═══
+let rvcTLChart = null;
+function rvcTLKey(){ return 'rvc_timeline_' + getTodayLJ(); }   // ključ na današnji dan (LJ)
+function rvcTLGet(){
+  try { return JSON.parse(localStorage.getItem(rvcTLKey()) || '[]'); } catch(e){ return []; }
+}
+function rvcTLSet(arr){
+  try { localStorage.setItem(rvcTLKey(), JSON.stringify(arr)); } catch(e){}
+}
+function rvcTLReset(){
+  try { localStorage.removeItem(rvcTLKey()); } catch(e){}
+  if (rvcTLChart){ rvcTLChart.destroy(); rvcTLChart = null; }
+  const card = document.getElementById('rvc-tl-card'); if (card) card.style.display = 'none';
+}
+function rvcTLSnapshot(data){
+  const t = (data && data.total) ? data.total : {};
+  const snap = {
+    time: getCurrentTimeLJ(),
+    narocila: (t.narocila ?? null),
+    rvc_nar: (t.rvc_nar ?? null),
+    rvc_bruto: (t.rvc_bruto ?? null),
+    skupaj: (t.skupaj ?? null)
+  };
+  const arr = rvcTLGet();
+  // če je isti čas (minuta) — prepiši zadnji, sicer dodaj
+  if (arr.length && arr[arr.length-1].time === snap.time) arr[arr.length-1] = snap;
+  else arr.push(snap);
+  rvcTLSet(arr);
+  rvcTLRender();
+}
+function rvcTLRender(){
+  const arr = rvcTLGet();
+  const card = document.getElementById('rvc-tl-card');
+  if (!card) return;
+  if (!arr.length){ card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  // ── tabela ──
+  const eur = n => (n===null||n===undefined) ? '—' : Number(n).toLocaleString('sl-SI',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+  let rowsHtml = '';
+  for (let i=0;i<arr.length;i++){
+    const c = arr[i], p = i>0 ? arr[i-1] : null;
+    // Δ naročil vs prejšnji snapshot
+    let dNar = '<span class="rvc-flat">—</span>', tempo = '<span class="rvc-flat">start</span>';
+    if (p && c.narocila!=null && p.narocila!=null){
+      const dn = c.narocila - p.narocila;
+      const pct = p.narocila ? (dn/p.narocila*100) : 0;
+      const up = dn>0, cls = up?'rvc-up':(dn<0?'rvc-down':'rvc-flat'), arr2 = up?'▲':(dn<0?'▼':'→');
+      dNar = `<span class="${cls}">${arr2} ${up?'+':''}${dn} (${up?'+':''}${pct.toFixed(1)}%)</span>`;
+      // tempo naročil/h med snapshotoma
+      const mins = rvcTLMinDiff(p.time, c.time);
+      if (mins>0){ const perH = Math.round(dn / (mins/60)); tempo = `<span style="color:var(--text-secondary)">${perH} nar/h</span>`; }
+    }
+    const dSkup = (p && c.skupaj!=null && p.skupaj!=null)
+      ? (()=>{ const d=c.skupaj-p.skupaj; const up=d>0; return `<span class="${up?'rvc-up':(d<0?'rvc-down':'rvc-flat')}">${up?'▲ +':(d<0?'▼ −':'')}${eur(Math.abs(d))}</span>`; })()
+      : '<span class="rvc-flat">—</span>';
+    rowsHtml += `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 10px;font-weight:700">${c.time}</td>
+      <td style="padding:8px 10px;text-align:right">${c.narocila ?? '—'}</td>
+      <td style="padding:8px 10px;text-align:right;font-size:12px">${dNar}</td>
+      <td style="padding:8px 10px;text-align:right">${eur(c.rvc_nar)}</td>
+      <td style="padding:8px 10px;text-align:right">${eur(c.rvc_bruto)}</td>
+      <td style="padding:8px 10px;text-align:right;font-weight:600">${eur(c.skupaj)}</td>
+      <td style="padding:8px 10px;text-align:right;font-size:12px">${dSkup}</td>
+      <td style="padding:8px 10px;text-align:right;font-size:12px">${tempo}</td>
+    </tr>`;
+  }
+  document.getElementById('rvc-tl-table').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;min-width:640px">
+      <thead><tr style="text-align:left;color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border)">
+        <th style="padding:8px 10px">Čas</th><th style="padding:8px 10px;text-align:right">Naročil</th>
+        <th style="padding:8px 10px;text-align:right">Δ naročil</th><th style="padding:8px 10px;text-align:right">RVC/nar.</th>
+        <th style="padding:8px 10px;text-align:right">RVC bruto</th><th style="padding:8px 10px;text-align:right">Skupaj €</th>
+        <th style="padding:8px 10px;text-align:right">Δ skupaj</th><th style="padding:8px 10px;text-align:right">Tempo</th>
+      </tr></thead><tbody>${rowsHtml}</tbody>
+    </table>`;
+
+  // ── graf: naročila (levo) + RVC skupaj € (desno) ──
+  const labels = arr.map(x=>x.time);
+  const nar = arr.map(x=>x.narocila);
+  const skup = arr.map(x=>x.skupaj);
+  if (rvcTLChart) rvcTLChart.destroy();
+  rvcTLChart = new Chart(document.getElementById('rvc-tl-chart'), {
+    data:{ labels, datasets:[
+      { type:'line', label:'Naročil skupaj', data:nar, borderColor:'#5b5bd6', backgroundColor:'rgba(91,91,214,.10)', yAxisID:'y', tension:.3, borderWidth:2, pointRadius:3, fill:true },
+      { type:'line', label:'RVC skupaj (€)', data:skup, borderColor:'#1D9E75', backgroundColor:'rgba(29,158,117,.06)', yAxisID:'y1', tension:.3, borderWidth:2, pointRadius:3, borderDash:[4,3] }
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{ position:'top', labels:{boxWidth:10,font:{size:11}} } },
+      scales:{
+        y:{ position:'left', title:{display:true,text:'Naročil'} },
+        y1:{ position:'right', title:{display:true,text:'RVC € skupaj'}, grid:{drawOnChartArea:false}, ticks:{ callback:v=>v+' €' } }
+      } }
+  });
+}
+function rvcTLMinDiff(t1, t2){
+  // "HH:MM" → minute razlike (t2 - t1)
+  const p1=t1.split(':'), p2=t2.split(':');
+  if (p1.length<2||p2.length<2) return 0;
+  return (parseInt(p2[0])*60+parseInt(p2[1])) - (parseInt(p1[0])*60+parseInt(p1[1]));
 }
 </script>
 </body>
