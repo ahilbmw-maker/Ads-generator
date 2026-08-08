@@ -109,12 +109,9 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
             path = request.url.path
             if path in _AUTH_EXEMPT_EXACT or path.startswith(_AUTH_EXEMPT_PREFIX):
                 return await call_next(request)
-            accept = request.headers.get("accept", "")
-            wants_html = "text/html" in accept
-            # NABAVA: svoja zaščita (glavno ALI nabava geslo)
+            wants_html = "text/html" in request.headers.get("accept", "")
             if path == "/nabava" or path == "/nabava-login" or path.startswith("/nabava-"):
-                # login stran je VEDNO dostopna — sicer nastane redirect zanka
-                if path == "/nabava-login":
+                if path == "/nabava-login":          # VEDNO dostopen — sicer redirect zanka
                     return await call_next(request)
                 if _nabava_authorized(request):
                     return await call_next(request)
@@ -24215,7 +24212,30 @@ def _nabava_load() -> list:
     return []
 
 
+NABAVA_BAK = DATA_DIR / "nabava_items.bak.json"
+NABAVA_BAK_DIR = DATA_DIR / "nabava_backups"
+
+
 def _nabava_save(items: list):
+    import time as _t
+    # 1) backup prejšnjega stanja
+    try:
+        if NABAVA_FILE.exists():
+            NABAVA_BAK.write_text(NABAVA_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+    except Exception as e:
+        print(f"[nabava] bak err: {e}")
+    # 2) dnevni datirani backup (obdrži zadnjih 30)
+    try:
+        NABAVA_BAK_DIR.mkdir(exist_ok=True, parents=True)
+        day = _t.strftime("%Y-%m-%d")
+        (NABAVA_BAK_DIR / f"nabava_{day}.json").write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        baks = sorted(NABAVA_BAK_DIR.glob("nabava_*.json"))
+        for old in baks[:-30]:
+            try: old.unlink()
+            except Exception: pass
+    except Exception as e:
+        print(f"[nabava] daily bak err: {e}")
+    # 3) atomarni zapis
     tmp = NABAVA_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, NABAVA_FILE)
@@ -24418,6 +24438,67 @@ async def nabava_item_delete(iid: str):
         items = [x for x in _nabava_load() if x.get("id") != iid]
         _nabava_save(items)
     return {"ok": True}
+
+
+NABAVA_DEFAULT_SETTINGS = {"freight": 72.0, "rate": 0.84, "customs": 10.0}
+
+
+@app.get("/nabava-settings")
+async def nabava_get_settings():
+    meta = _nabava_meta_load()
+    return {"ok": True, "settings": {**NABAVA_DEFAULT_SETTINGS, **(meta.get("settings") or {})}}
+
+
+@app.post("/nabava-settings")
+async def nabava_set_settings(data: dict):
+    async with _nabava_lock:
+        meta = _nabava_meta_load()
+        cur = {**NABAVA_DEFAULT_SETTINGS, **(meta.get("settings") or {})}
+        for k in ("freight", "rate", "customs"):
+            if k in (data or {}):
+                try: cur[k] = float(data[k])
+                except Exception: pass
+        meta["settings"] = cur
+        _nabava_meta_save(meta)
+    return {"ok": True, "settings": cur}
+
+
+@app.get("/nabava-backup-json")
+async def nabava_backup_json():
+    import time as _t, io as _io
+    items = _nabava_load()
+    payload = json.dumps({"exported": _t.strftime("%Y-%m-%d %H:%M:%S"), "count": len(items), "items": items}, ensure_ascii=False, indent=2)
+    buf = _io.BytesIO(payload.encode("utf-8")); buf.seek(0)
+    fn = f"nabava_backup_{_t.strftime('%Y-%m-%d')}.json"
+    return StreamingResponse(buf, media_type="application/json", headers={"Content-Disposition": f'attachment; filename="{fn}"'})
+
+
+@app.post("/nabava-title-from-url")
+async def nabava_title_from_url(data: dict):
+    url = str(data.get("url") or "").strip()
+    if not url or not url.lower().startswith(("http://", "https://")):
+        return {"ok": False, "error": "Neveljaven URL."}
+    try:
+        async with httpx.AsyncClient(timeout=12, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (SubanBot)"}) as cli:
+            r = await cli.get(url)
+        html = r.text or ""
+    except Exception as e:
+        return {"ok": False, "error": f"Ni dostopa: {str(e)[:120]}"}
+    title = ""
+    m = re.search(r'<meta[^>]+property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html, re.I) or \
+        re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*property=["\']og:title["\']', html, re.I)
+    if m: title = m.group(1)
+    if not title:
+        m = re.search(r'<title[^>]*>(.*?)</title>', html, re.I | re.S)
+        if m: title = m.group(1)
+    if not title:
+        m = re.search(r'<h1[^>]*>(.*?)</h1>', html, re.I | re.S)
+        if m: title = re.sub(r'<[^>]+>', '', m.group(1))
+    import html as _htmlmod
+    title = _htmlmod.unescape(re.sub(r'\s+', ' ', title)).strip()
+    if title:
+        title = re.split(r'\s[|\u2013\u2014-]\s', title)[0].strip()
+    return {"ok": bool(title), "title": title[:200]}
 
 
 @app.post("/nabava-sku-lookup")
