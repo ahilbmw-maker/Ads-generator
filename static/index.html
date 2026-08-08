@@ -3210,8 +3210,8 @@ input[type="text"].error { border-color: var(--red) !important; }
               </div>
               <button id="bcGroupCampBtn" onclick="bcToggleGroupCampaign()" title="Grupiraj ad sete iste kampanije skupaj (vse države ene kampanije na enem mestu)" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text-secondary);font-size:11px;font-family:inherit;cursor:pointer">🗂 Grupiraj po kampaniji</button>
               <button id="bcOnlyCountries" onclick="bcToggleCountries()" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text-secondary);font-size:11px;font-family:inherit;cursor:pointer">🌍 Samo države</button>
-              <input type="file" id="bc7dInput" accept=".csv" style="display:none" onchange="bcLoad7d(event)">
-              <button id="bc7dBtn" onclick="document.getElementById('bc7dInput').click()" title="Naloži 7-dnevni export (zadnji teden) za primerjavo s 14d — loči 'crknilo' od 'nikoli delalo'" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text-secondary);font-size:11px;font-family:inherit;cursor:pointer">📅 Naloži 7d (za KILL)</button>
+              <input type="file" id="bc14dInput" accept=".csv" style="display:none" onchange="bcLoad14d(event)">
+              <button id="bc14dBtn" onclick="document.getElementById('bc14dInput').click()" title="Naloži 14-dnevni export (širši kontekst) za KILL trend. Glavni pogled ostane 7d — 14d se uporabi SAMO za odločitev o ugasnitvi." style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text-secondary);font-size:11px;font-family:inherit;cursor:pointer">📅 Naloži 14d (za KILL trend)</button>
               <div style="display:flex;gap:2px;background:var(--surface2);border-radius:7px;padding:2px">
                 <button id="bcFilt-all" onclick="bcSetStatusFilter('all')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:var(--accent);color:#fff">Vse</button>
                 <button id="bcFilt-SCALE" onclick="bcSetStatusFilter('SCALE')" style="padding:4px 8px;border:none;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-secondary)">🟢 Scale</button>
@@ -3232,7 +3232,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             </div>
           </div>
           <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:12px">
-            Cilj: CPA &lt; 7.5€ · min 15 nakupov · trend, frekvenca, CTR, bid headroom. 🟢 SCALE · 🟣 POTENCIAL (3–14 nakupov, CPA &lt; 6€, bid ≤ 9) · 🟡 DRŽI · 🔴 NE · 🔵 OPAZUJEM (7 dni po dvigu)<br>💡 Za KILL analizo: naloži glavni export (14 dni) + klikni "📅 Naloži 7d" (zadnji teden). Sistem primerja obe okni — loči "crknilo" (prej dobro, zdaj slabo) od "nikoli delalo".
+            Cilj: CPA &lt; 7.5€ · min 15 nakupov (7 dni) · trend, frekvenca, CTR, bid headroom. 🟢 SCALE · 🟣 POTENCIAL (3–14 nakupov, CPA &lt; 6€, bid ≤ 9) · 🟡 DRŽI · 🔴 NE · 🔵 OPAZUJEM (7 dni po dvigu)<br>💡 Vsi statusi so na 7 dni (glavni export). Za KILL analizo dodatno klikni "📅 Naloži 14d" — sistem uporabi 14d SAMO kot kontekst/trend, da loči "crknilo" (14d zdrav → 7d slab) od "nikoli delalo".
           </div>
           <div id="bcKillSub" style="display:none;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap">
             <span style="font-size:11px;color:var(--text-secondary);font-weight:700">Med "NE" pokaži:</span>
@@ -21631,8 +21631,8 @@ function betaRenderBody(body, color) {
 //  Parsing 7d po ad-setih → scoring → tabela → scale-an + cooldown
 // ═══════════════════════════════════════════════════════════════
 let bcAdsets = [];        // agregirani ad-seti (glavni = 14d, če naložiš 14d export)
-let bc7dByKey = {};        // { matchKey: {cpa, purch, spend, avgFreq, avgCtr} } iz 7d exporta
-let bc7dLoaded = false;
+let bc14dByKey = {};       // { matchKey: {cpa, purch, spend, avgFreq, avgCtr} } iz 14d exporta (kontekst za KILL)
+let bc14dLoaded = false;
 function bcCsvToRows(text){
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const lines = text.split('\n').filter(l => l.trim());
@@ -21644,20 +21644,20 @@ function bcCsvToRows(text){
     const o={}; headers.forEach((h,i)=>o[h]=(vals[i]||'').trim()); return o;
   });
 }
-function bcLoad7d(ev){
+function bcLoad14d(ev){
   const file = ev.target.files[0]; if(!file) return;
   const reader = new FileReader();
   reader.onload = e => {
     try{
       const rows = bcCsvToRows(e.target.result);
-      const sets = bcParseFromRows(rows);
-      bc7dByKey = {};
-      sets.forEach(a => { bc7dByKey[a.matchKey] = {cpa:a.cpa7, purch:a.purch, spend:a.spend, avgFreq:a.avgFreq, avgCtr:a.avgCtr}; });
-      bc7dLoaded = true;
-      const b=document.getElementById('bc7dBtn');
-      if(b){ b.textContent='✅ 7d naložen ('+sets.length+')'; b.style.color='#3fb950'; b.style.borderColor='#3fb950'; }
+      const sets = bcParseFromRows(rows);   // 14d export → to so 14-dnevne vrednosti
+      bc14dByKey = {};
+      sets.forEach(a => { bc14dByKey[a.matchKey] = {cpa:a.cpa7, purch:a.purch, spend:a.spend, avgFreq:a.avgFreq, avgCtr:a.avgCtr}; });
+      bc14dLoaded = true;
+      const b=document.getElementById('bc14dBtn');
+      if(b){ b.textContent='✅ 14d naložen ('+sets.length+')'; b.style.color='#3fb950'; b.style.borderColor='#3fb950'; }
       bcRenderTable();
-    }catch(err){ console.error('bc7d', err); alert('Napaka pri 7d exportu: '+err.message); }
+    }catch(err){ console.error('bc14d', err); alert('Napaka pri 14d exportu: '+err.message); }
   };
   reader.readAsText(file, 'UTF-8');
 }
@@ -21822,70 +21822,68 @@ function bcParseFromRows(rows){
 //   kill = res ugasni (zapravlja, CPA nad break-even, ni obetov)
 //   fix  = ne ugašaj še — kreativa/bid problem, poskusi popraviti
 //   wait = premalo podatkov za odločitev (ne ugašaj na slepo)
-const BC_MIN_SPEND_KILL = 15;   // €: pod tem porabe okna ni zanesljive sodbe
-const BC_KILL_MIN_PURCH = 15;   // ≥ toliko nakupov = CPA je zanesljiv (KILL na samem CPA)
-// Analiza: primerja glavno okno (a = 14d, če naložen) s 7d (bc7dByKey).
+const BC_MIN_SPEND_KILL = 15;   // €: pod tem porabe 7d ni zanesljive sodbe
+const BC_KILL_MIN_PURCH = 15;   // ≥ toliko nakupov v 7d = CPA zanesljiv
+// GLAVNI pogled je 7d (a). 14d (bc14dByKey) je SAMO kontekst za KILL trend.
 function bcKillAnalysis(a){
   const be = bcBreakevenFor(a.name) || bcBreakevenFor(a.campaign||'') || null;
   const lossLine = be != null ? be : (BC_CPA_TARGET * 1.3);
   const cpa = a.cpa7, cpa3 = a.cpa3, spend = a.spend||0, purch = a.purch||0, freq = a.avgFreq||0, ctr = a.avgCtr||0;
-  const seven = bc7dLoaded ? (bc7dByKey[a.matchKey] || null) : null;   // 7d podatki, če naloženi
-  const rules = [];
-  const R=(ok,text)=>rules.push({ok,text});
+  const ctx14 = bc14dLoaded ? (bc14dByKey[a.matchKey] || null) : null;   // 14d kontekst
+  const rules=[]; const R=(ok,text)=>rules.push({ok,text});
 
-  // 0) okno info
-  if (bc7dLoaded){
-    if (seven) R(true, `Primerjava: glavno okno CPA ${cpa!=null?cpa.toFixed(2):'—'}€ (${purch} nak.) vs zadnjih 7d CPA ${seven.cpa!=null?seven.cpa.toFixed(2):'—'}€ (${seven.purch} nak.).`);
-    else R(false, `V 7d exportu ni te kampanje — verjetno je bila aktivna prej, zadnji teden ne (kandidat za kill).`);
+  // 0) 14d kontekst info
+  if (bc14dLoaded){
+    if (ctx14) R(true, `Kontekst 14d: CPA ${ctx14.cpa!=null?ctx14.cpa.toFixed(2):'—'}€, ${ctx14.purch} nak. · zdaj 7d: CPA ${cpa!=null?cpa.toFixed(2):'—'}€, ${purch} nak.`);
+    else R(true, `V 14d exportu ni te kampanje — verjetno nova (ni zgodovine za trend).`);
   }
 
-  // 1) dovolj porabe (glavno okno)
+  // 1) dovolj porabe v 7d?
   const enoughSpend = spend >= BC_MIN_SPEND_KILL;
-  R(enoughSpend, enoughSpend ? `Poraba ${spend.toFixed(0)}€ — dovolj za oceno.` : `Poraba ${spend.toFixed(0)}€ < ${BC_MIN_SPEND_KILL}€ — premalo za sodbo.`);
+  R(enoughSpend, enoughSpend ? `Poraba 7d ${spend.toFixed(0)}€ — dovolj za oceno.` : `Poraba 7d ${spend.toFixed(0)}€ < ${BC_MIN_SPEND_KILL}€ — premalo.`);
 
-  // 2) poraba brez trakcije (tvoj primer: ~23€, 1 nakup) — velja tudi pri malo nakupih
+  // 2) poraba brez trakcije (tvoj primer: 23€, 1 nakup) — velja tudi pri malo nakupih
   const wasteNoTraction = purch <= 1 && spend >= (lossLine * 2);
   if (wasteNoTraction) R(false, `Samo ${purch} nakup ob ${spend.toFixed(0)}€ porabe (≥2× break-even ${lossLine.toFixed(1)}€) — denar brez rezultata.`);
   const zeroConvKill = purch === 0 && spend >= (lossLine * 2);
-  if (purch===0) R(!zeroConvKill, zeroConvKill ? `0 nakupov ob ${spend.toFixed(0)}€ (≥2× break-even) — nič ne prijema.` : `0 nakupov, a poraba še nizka.`);
+  if (purch===0 && !wasteNoTraction) R(!zeroConvKill, zeroConvKill ? `0 nakupov ob ${spend.toFixed(0)}€ (≥2× break-even).` : `0 nakupov, a poraba nizka.`);
 
-  // 3) CPA vs break-even (glavno okno)
+  // 3) CPA vs break-even (7d)
   let cpaVerdict=null;
   if (cpa!=null && purch>0){
     if (be!=null){
       const over=(cpa-be)/be;
-      if (cpa<=be){ R(true, `CPA ${cpa.toFixed(2)}€ ≤ break-even ${be.toFixed(2)}€ — pozitivno.`); cpaVerdict='ok'; }
-      else if (over<=0.15){ R(false, `CPA ${cpa.toFixed(2)}€ rahlo nad break-even (+${(over*100).toFixed(0)}%).`); cpaVerdict='edge'; }
-      else { R(false, `CPA ${cpa.toFixed(2)}€ NAD break-even ${be.toFixed(2)}€ (+${(over*100).toFixed(0)}%) — izgublja/naročilo.`); cpaVerdict='loss'; }
+      if (cpa<=be){ R(true, `CPA 7d ${cpa.toFixed(2)}€ ≤ break-even ${be.toFixed(2)}€.`); cpaVerdict='ok'; }
+      else if (over<=0.15){ R(false, `CPA 7d ${cpa.toFixed(2)}€ rahlo nad break-even (+${(over*100).toFixed(0)}%).`); cpaVerdict='edge'; }
+      else { R(false, `CPA 7d ${cpa.toFixed(2)}€ NAD break-even ${be.toFixed(2)}€ (+${(over*100).toFixed(0)}%).`); cpaVerdict='loss'; }
     } else {
-      if (cpa<=BC_CPA_TARGET){ R(true, `CPA ${cpa.toFixed(2)}€ ≤ cilj.`); cpaVerdict='ok'; }
-      else if (cpa<=BC_CPA_TARGET*1.3){ R(false, `CPA ${cpa.toFixed(2)}€ nad ciljem, < 1.3×.`); cpaVerdict='edge'; }
-      else { R(false, `CPA ${cpa.toFixed(2)}€ > 1.3× cilj.`); cpaVerdict='loss'; }
+      if (cpa<=BC_CPA_TARGET){ R(true, `CPA 7d ${cpa.toFixed(2)}€ ≤ cilj.`); cpaVerdict='ok'; }
+      else if (cpa<=BC_CPA_TARGET*1.3){ R(false, `CPA 7d ${cpa.toFixed(2)}€ nad ciljem, < 1.3×.`); cpaVerdict='edge'; }
+      else { R(false, `CPA 7d ${cpa.toFixed(2)}€ > 1.3× cilj.`); cpaVerdict='loss'; }
     }
   }
 
-  // 4) 14d-vs-7d: bil zdrav, zdaj strmo slabši = CRKNILO
+  // 4) 14d→7d TREND: bil zdrav v 14d, zdaj v 7d strmo slabši = CRKNILO
   let decayKill=false, recovering=false;
-  if (seven && cpa!=null && seven.cpa!=null && purch>=5){
-    const wasHealthy = (be!=null ? cpa<=be : cpa<=BC_CPA_TARGET) && purch>=5;
-    const cpaJump = seven.cpa >= cpa*1.8;
-    // nakupi/dan: glavno okno ~14d, sedem ~7d
-    const rate14 = purch/14, rate7 = seven.purch/7;
+  if (ctx14 && cpa!=null && ctx14.cpa!=null && ctx14.purch>=5){
+    const wasHealthy = (be!=null ? ctx14.cpa<=be : ctx14.cpa<=BC_CPA_TARGET);
+    const cpaJump = cpa >= ctx14.cpa*1.5;   // 7d CPA ≥ 1.5× 14d CPA (7d je znotraj 14d, zato manjši prag)
+    const rate14 = ctx14.purch/14, rate7 = purch/7;
     const purchDrop = rate14>0 && rate7 <= rate14*0.5;
     if (wasHealthy && (cpaJump || purchDrop)){
       decayKill=true;
-      R(false, `CRKNILO: prej zdrav (CPA ${cpa.toFixed(2)}€), zadnjih 7d ${cpaJump?('CPA skočil na '+seven.cpa.toFixed(2)+'€'):''}${(cpaJump&&purchDrop)?' + ':''}${purchDrop?('nakupi/dan padli '+(rate14>0?Math.round((1-rate7/rate14)*100):0)+'%'):''}.`);
-    } else if (seven.cpa <= cpa*0.85){
-      recovering=true; R(true, `Zadnjih 7d se obrača na bolje (CPA ${seven.cpa.toFixed(2)}€ < glavno ${cpa.toFixed(2)}€).`);
+      R(false, `CRKNILO: 14d je bil zdrav (CPA ${ctx14.cpa.toFixed(2)}€), zdaj 7d ${cpaJump?('CPA '+cpa.toFixed(2)+'€ (≥1.5× več)'):''}${(cpaJump&&purchDrop)?' + ':''}${purchDrop?('nakupi/dan −'+(rate14>0?Math.round((1-rate7/rate14)*100):0)+'%'):''}.`);
+    } else if (!wasHealthy && cpa!=null && cpa <= ctx14.cpa*0.85){
+      recovering=true; R(true, `14d je bil slab, a 7d se obrača na bolje (CPA ${cpa.toFixed(2)}€ < 14d ${ctx14.cpa.toFixed(2)}€).`);
     }
   }
 
-  // 5) trend 3d (znotraj glavnega okna)
-  let trendBad=false, trendGood=false;
+  // 5) trend 3d znotraj 7d
+  let trendGood=false;
   if (cpa!=null && cpa3!=null && cpa>0){
     const delta=(cpa3-cpa)/cpa;
-    if (delta<=-0.10){ trendGood=true; R(true, `Trend 3d ↑ (${cpa3.toFixed(2)}€ boljši).`); }
-    else if (delta>=0.15){ trendBad=true; R(false, `Trend 3d ↓ (${cpa3.toFixed(2)}€ slabši).`); }
+    if (delta<=-0.10){ trendGood=true; R(true, `Trend 3d ↑ (${cpa3.toFixed(2)}€ boljši) — sveži signal se obrača.`); }
+    else if (delta>=0.15){ R(false, `Trend 3d ↓ (${cpa3.toFixed(2)}€ slabši).`); }
   }
 
   // 6) kreativa
@@ -21895,31 +21893,29 @@ function bcKillAnalysis(a){
   if (fatigued) R(false, `Utrujena kreativa (freq↑ + CTR↓).`);
 
   // ── SKLEP ──
-  const reliableCPA = purch >= BC_KILL_MIN_PURCH;   // dovolj nakupov = CPA zanesljiv
+  const reliableCPA = purch >= BC_KILL_MIN_PURCH;
   let verdict, title, color;
   if (decayKill){
-    verdict='kill'; title='🛑 UGASNI — crknilo (prej zdrav, zdaj strmo slabši)'; color='#ef4444';
+    verdict='kill'; title='🛑 UGASNI — crknilo (14d zdrav → 7d strmo slabši)'; color='#ef4444';
   } else if (zeroConvKill || wasteNoTraction){
     verdict='kill'; title='🛑 UGASNI — poraba brez trakcije'; color='#ef4444';
-  } else if (recovering){
-    verdict='fix'; title='🔧 ŠE PUSTI — zadnji teden se obrača'; color='#3fb950';
-  } else if (reliableCPA && cpaVerdict==='loss' && !trendGood){
-    verdict='kill'; title='🛑 UGASNI — zanesljiv CPA nad break-even'; color='#ef4444';
-  } else if (reliableCPA && cpaVerdict==='loss' && trendGood){
-    verdict='fix'; title='🔧 ŠE PUSTI — CPA visok, a 3d se obrača'; color='#d29922';
+  } else if (recovering || (trendGood && cpaVerdict!=='ok')){
+    verdict='fix'; title='🔧 ŠE PUSTI — trend se obrača na bolje'; color='#3fb950';
+  } else if (reliableCPA && cpaVerdict==='loss'){
+    verdict='kill'; title='🛑 UGASNI — zanesljiv CPA (≥15 nak.) nad break-even'; color='#ef4444';
   } else if (fatigued && cpaVerdict!=='ok'){
     verdict='fix'; title='🔧 OSVEŽI KREATIVO — ne ugašaj kampanje'; color='#d29922';
   } else if (cpaVerdict==='edge'){
     verdict='fix'; title='🔧 ROB — znižaj bid / optimiziraj'; color='#d29922';
   } else if (cpaVerdict==='ok'){
     verdict='fix'; title='✅ NE UGAŠAJ — znotraj break-even'; color='#3fb950';
-  } else if (!enoughSpend || (!reliableCPA && !wasteNoTraction && !zeroConvKill)){
-    verdict='wait'; title='⏳ Premalo podatkov — ne ugašaj še'+(bc7dLoaded?'':' (naloži 7d za boljšo sodbo)'); color='#d29922';
+  } else if (!enoughSpend || !reliableCPA){
+    verdict='wait'; title='⏳ Premalo podatkov'+(bc14dLoaded?'':' — naloži 14d za trend'); color='#d29922';
   } else {
     verdict='wait'; title='⏳ Nejasno — spremljaj še 2–3 dni'; color='#d29922';
   }
 
-  return { verdict, title, color, rules, breakeven: be, seven };
+  return { verdict, title, color, rules, breakeven: be, ctx14 };
 }
 
 // SCORING — profesionalna deterministična pravila
