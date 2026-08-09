@@ -17075,7 +17075,9 @@ function anRenderTable() {
   } else if (anFilter === 'not_advertised') {
     filtered = filtered.filter(r => !r._ad || r._ad.campaign_count === 0);
   } else if (anFilter === 'potential' || anFilter === 'opportunity') {
-    filtered = filtered.filter(r => r.stock >= 20 && r.stock30 >= 3 && (!r._ad || r._ad.campaign_count === 0));
+    // obrat (stock30) upoštevaj samo, če je obrat CSV naložen — sicer filter = zaloga + brez ads
+    const hasObrat = filtered.some(r => (r.stock30 || 0) > 0);
+    filtered = filtered.filter(r => r.stock >= 20 && (!hasObrat || r.stock30 >= 3) && (!r._ad || r._ad.campaign_count === 0));
   } else if (anFilter === 'underperforming') {
     filtered = filtered.filter(r => r.ad_cpa !== null && r.ad_cpa > 15);
   } else if (anFilter === 'top_performers') {
