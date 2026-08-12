@@ -24217,7 +24217,7 @@ async def medskl_item(data: dict):
             it = next((x for x in items if x.get("id") == iid), None)
             if not it:
                 return {"ok": False, "error": "Postavka ne obstaja."}
-            for k in ("sku", "qty", "unit", "wh", "done"):
+            for k in ("sku", "qty", "unit", "wh", "done", "status"):
                 if k in data:
                     it[k] = data[k]
         else:
@@ -24228,6 +24228,7 @@ async def medskl_item(data: dict):
                 "unit": (data.get("unit") or "ctn"),
                 "wh": (data.get("wh") or "novo"),
                 "done": False,
+                "status": "",
                 "ts": _t.strftime("%Y-%m-%d %H:%M"),
             }
             if not it["sku"]:
