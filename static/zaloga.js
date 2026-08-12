@@ -6,6 +6,58 @@ const MARKET_KEY = 'zaloga_market';  // localStorage: aktivni trg (ostane ob osv
 let MARKET = (function(){ try { return localStorage.getItem(MARKET_KEY) || 'slo'; } catch(e){ return 'slo'; } })();
 const EXPANDED_KEY = 'zaloga_expanded';  // localStorage: kateri zavihki odprti (per naprava)
 
+// ── OUTBOX: neuspešna shranjevanja kljukic (potekla seja / ni povezave) čakajo lokalno ──
+const OUTBOX_KEY = 'zaloga_outbox';
+function outboxGet(){ try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]'); } catch(e){ return []; } }
+function outboxSet(a){ try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(a)); } catch(e){} }
+function outboxAdd(idx, market, patch){
+  const q = outboxGet();
+  const e = q.find(x => x.idx === idx && x.market === market);
+  if (e) e.patch = { ...e.patch, ...patch };
+  else q.push({ idx, market, patch, ts: Date.now() });
+  outboxSet(q); outboxBanner();
+}
+function outboxBanner(){
+  const q = outboxGet();
+  let b = document.getElementById('outboxBar');
+  if (!q.length){ if (b) b.remove(); return; }
+  if (!b){
+    b = document.createElement('div');
+    b.id = 'outboxBar';
+    b.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#b45309;color:#fff;'
+      + 'padding:10px 14px;font-size:13px;font-weight:700;text-align:center;box-shadow:0 -2px 10px rgba(0,0,0,0.25)';
+    document.body.appendChild(b);
+  }
+  b.textContent = '⚠ ' + q.length + ' sprememb še NI shranjenih na strežnik — hranim lokalno in poskušam znova. Ne zapiraj/pobriši brskalnika. Če traja, osveži stran in se prijavi.';
+}
+let _outboxFlushing = false;
+async function outboxFlush(){
+  if (_outboxFlushing) return;
+  const q = outboxGet(); if (!q.length) return;
+  _outboxFlushing = true;
+  try {
+    for (const e of q.slice()) {
+      try {
+        const r = await fetch('/zaloga-update-item', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ idx: e.idx, market: e.market, ...e.patch })
+        });
+        const d = await r.json();
+        if (d && d.ok) {
+          const q2 = outboxGet();
+          outboxSet(q2.filter(x => !(x.idx === e.idx && x.market === e.market)));
+        } else break;   // strežnik zavrača → nehaj, poskusi kasneje
+      } catch(err) { break; }   // ni povezave/prijave → poskusi kasneje
+    }
+  } finally {
+    _outboxFlushing = false;
+    outboxBanner();
+  }
+}
+setInterval(outboxFlush, 15000);           // vsakih 15 s poskusi splakniti
+window.addEventListener('online', outboxFlush);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) outboxFlush(); });
+
 // market query suffix za fetch klice
 function mq(extra) {
   const sep = extra && extra.includes('?') ? '&' : '?';
@@ -70,6 +122,13 @@ async function loadSession() {
     if (data.ok && data.items && data.items.length) {
       SESSION = data;
       ITEMS = data.items;
+      // čakajoče (neshranjene) spremembe iz prejšnje seje apliciraj lokalno in poskusi shraniti
+      const _q = outboxGet().filter(x => x.market === MARKET);
+      if (_q.length){
+        _q.forEach(e => { const it = ITEMS.find(x => x.idx === e.idx); if (it) Object.assign(it, e.patch); });
+        outboxBanner();
+        setTimeout(outboxFlush, 800);
+      }
       // naloži sekundarne (backup) lokacije — ista baza kot "Zaloga in vračila"
       try {
         const er = await fetch('/zaloga-extra-positions');
@@ -2121,6 +2180,7 @@ async function saveItem(idx, patch) {
       body: JSON.stringify({ idx, market: MARKET, ...patch })
     });
     const data = await r.json();
+    if (!data || !data.ok) { outboxAdd(idx, MARKET, patch); return; }   // strežnik ni sprejel → čakalna vrsta
     if (data && data.ok && SESSION) {
       // osveži časovnico (server pove, kdaj se je začelo/končalo nabiranje)
       const prevStart = SESSION.pick_started_at, prevFin = SESSION.pick_finished_at, prevPause = SESSION.pick_paused_at;
@@ -2132,7 +2192,7 @@ async function saveItem(idx, patch) {
         updatePickTimer();
       }
     }
-  } catch(e) { /* tiho — nabiralec ne sme biti moten */ }
+  } catch(e) { outboxAdd(idx, MARKET, patch); /* nabiralec ne sme biti moten — sprememba čaka v vrsti */ }
 }
 
 // ── Arhiviraj ──
@@ -2418,7 +2478,9 @@ async function pollSync() {
       }
       // posodobi samo statuse/picked (ne uniči odprtih zavihkov)
       let changed = false;
+      const _pend = new Set(outboxGet().filter(x=>x.market===MARKET).map(x=>x.idx));
       data.items.forEach(srv => {
+        if (_pend.has(srv.idx)) return;   // lokalna sprememba še čaka na strežnik — ne povozi
         const local = ITEMS.find(x => x.idx === srv.idx);
         if (local && (local.status !== srv.status || local.picked !== srv.picked)) {
           local.status = srv.status; local.picked = srv.picked;

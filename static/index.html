@@ -254,6 +254,37 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #inv-pdf-btn { display: none !important; }
   #inv-grid { display: block !important; grid-template-columns: 1fr !important; }
   #zalogaSubpage-inventura { overflow-x: hidden !important; }
+  /* ─── Medskladiščnica (Koncept C) ─── */
+  .msk-head{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin:0 0 10px;}
+  .msk-clear{background:transparent;border:1px solid var(--border);border-radius:9px;padding:6px 10px;font-size:11.5px;color:var(--text-secondary);cursor:pointer;font-family:inherit;}
+  .msk-prog{height:6px;background:var(--surface2);border-radius:6px;margin-top:10px;overflow:hidden;}
+  .msk-prog i{display:block;height:100%;background:#12a35f;width:0%;transition:width .3s;}
+  .msk-tabs{display:flex;gap:6px;margin-bottom:10px;}
+  .msk-tab{flex:1;text-align:center;padding:9px 0;border-radius:10px;font-size:12.5px;font-weight:800;background:var(--surface2);color:var(--text-secondary);cursor:pointer;user-select:none;}
+  .msk-tab.on{background:var(--text);color:var(--surface);}
+  .msk-card{background:var(--surface);border-radius:16px;margin:8px 0;padding:12px;border:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative;}
+  .msk-card.done{opacity:.45;}
+  .msk-qty{width:70px;height:70px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;}
+  .msk-qty.novo{background:#e4f5ec;color:#0f8a4f;} .msk-qty.car{background:#e3edfb;color:#1d5bbf;} .msk-qty.any{background:#f3e8fb;color:#7c3aed;}
+  .msk-qty b{font-size:24px;line-height:1;} .msk-qty small{font-size:10.5px;font-weight:800;text-transform:uppercase;margin-top:2px;}
+  .msk-mid{flex:1;min-width:0;}
+  .msk-sku{font-size:16.5px;font-weight:800;word-break:break-all;color:var(--text);}
+  .msk-badge{display:inline-block;font-size:10px;font-weight:800;border-radius:6px;padding:2px 8px;text-transform:uppercase;letter-spacing:.4px;margin-top:4px;}
+  .msk-badge.novo{background:#e4f5ec;color:#0f8a4f;border:1px solid #bfe3ca;}
+  .msk-badge.car{background:#e3edfb;color:#1d5bbf;border:1px solid #c3d9f5;}
+  .msk-badge.any{background:#f3e8fb;color:#7c3aed;border:1px solid #e2cdf7;}
+  .msk-done{width:54px;height:54px;border-radius:50%;border:2.5px solid var(--border);background:var(--surface);font-size:21px;color:var(--border);flex-shrink:0;cursor:pointer;}
+  .msk-done.on{background:#12a35f;border-color:#12a35f;color:#fff;}
+  .msk-del{position:absolute;top:6px;right:8px;color:var(--text-tertiary);font-size:13px;cursor:pointer;padding:4px;}
+  .msk-fab{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);width:min(92%,560px);background:var(--accent);color:#fff;border:none;border-radius:14px;padding:15px;font-size:15px;font-weight:800;box-shadow:0 8px 22px rgba(91,91,214,.45);cursor:pointer;z-index:50;font-family:inherit;}
+  .msk-addpanel{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);width:min(92%,560px);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:0 14px 40px rgba(0,0,0,.3);z-index:51;}
+  .msk-in{border:1.5px solid var(--border);border-radius:10px;padding:12px;font-size:15px;font-weight:700;font-family:inherit;background:var(--surface);color:var(--text);box-sizing:border-box;}
+  .msk-seg{flex:1;display:flex;background:var(--surface2);border-radius:10px;padding:3px;}
+  .msk-seg span{flex:1;text-align:center;padding:9px 0;font-size:12px;font-weight:800;border-radius:8px;color:var(--text-secondary);cursor:pointer;user-select:none;}
+  .msk-seg span.on{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+  .msk-cancel{flex:1;background:var(--surface2);border:none;border-radius:11px;padding:12px;font-size:14px;font-weight:800;color:var(--text-secondary);cursor:pointer;font-family:inherit;}
+  .msk-save{flex:2;background:var(--accent);color:#fff;border:none;border-radius:11px;padding:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;}
+  .msk-empty{text-align:center;color:var(--text-secondary);font-size:13px;padding:34px 10px;}
   /* admin del (uvoz + zgodovina) skrit v predal — delavec takoj vidi seznam */
   #inv-admin-toggle { display: flex !important; }
   #inv-admin-col { display: none !important; }
@@ -4028,6 +4059,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="zaloga-tab-btn" id="zalogaTab-pozicije" onclick="switchZalogaTab('pozicije')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📍 Sprememba pozicij</button>
       <button class="zaloga-tab-btn" id="zalogaTab-sekundarne" onclick="switchZalogaTab('sekundarne')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🗂️ Sekundarne pozicije</button>
       <button class="zaloga-tab-btn" id="zalogaTab-inventura" onclick="switchZalogaTab('inventura')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Inventura</button>
+      <button class="zaloga-tab-btn" id="zalogaTab-medskl" onclick="switchZalogaTab('medskl')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Medskladiščnica</button>
     </div>
 
     <!-- ═══ NOV MOBILNI TOPBAR (samo mobil): iskalnik + tabe-čipke v ENEM fiksnem bloku ═══ -->
@@ -4047,6 +4079,7 @@ input[type="text"].error { border-color: var(--red) !important; }
         <button class="zmt-chip" id="zmtChip-pozicije" onclick="switchZalogaTab('pozicije')">📍 Pozicije</button>
         <button class="zmt-chip" id="zmtChip-sekundarne" onclick="switchZalogaTab('sekundarne')">🗂️ Sekundarne</button>
         <button class="zmt-chip" id="zmtChip-inventura" onclick="switchZalogaTab('inventura')">📋 Inventura</button>
+        <button class="zmt-chip" id="zmtChip-medskl" onclick="switchZalogaTab('medskl')">🔄 Medskl.</button>
       </div>
     </div>
 
@@ -4654,6 +4687,44 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </div>
     </div>
+
+  <div id="zalogaSubpage-medskl" style="display:none;padding:14px 8px 110px;max-width:620px;margin:0 auto;width:100%">
+    <div class="msk-head">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div>
+          <div style="font-size:16px;font-weight:800">🔄 Medskladiščnica</div>
+          <div id="mskSub" style="font-size:11.5px;color:var(--text-secondary);margin-top:1px">Skladišče → Pakirnica</div>
+        </div>
+        <button class="msk-clear" onclick="mskClear()">🗑 Počisti</button>
+      </div>
+      <div class="msk-prog"><i id="mskProgBar"></i></div>
+    </div>
+    <div class="msk-tabs">
+      <div class="msk-tab on" id="mskTab-all" onclick="mskSetFilter('all')">Vse</div>
+      <div class="msk-tab" id="mskTab-novo" onclick="mskSetFilter('novo')">🟢 Novo</div>
+      <div class="msk-tab" id="mskTab-car" onclick="mskSetFilter('car')">🔵 Carglass</div>
+    </div>
+    <div id="mskList"></div>
+    <div id="mskAddPanel" class="msk-addpanel" style="display:none">
+      <div style="display:flex;gap:8px">
+        <input id="mskSku" class="msk-in" placeholder="SKU (npr. BS-115)" style="flex:1;text-transform:uppercase">
+        <input id="mskQty" class="msk-in" placeholder="Kol." inputmode="numeric" style="width:70px;text-align:center">
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <div class="msk-seg" id="mskUnitSeg">
+          <span class="on" data-v="ctn" onclick="mskSeg(this)">CTN</span><span data-v="kos" onclick="mskSeg(this)">KOS</span>
+        </div>
+        <div class="msk-seg" id="mskWhSeg">
+          <span class="on" data-v="novo" onclick="mskSeg(this)">Novo</span><span data-v="car" onclick="mskSeg(this)">Carglass</span><span data-v="any" onclick="mskSeg(this)">Oboje</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="msk-cancel" onclick="mskToggleAdd(false)">Prekliči</button>
+        <button class="msk-save" onclick="mskAdd()">＋ Dodaj</button>
+      </div>
+    </div>
+    <button class="msk-fab" id="mskFab" onclick="mskToggleAdd(true)">＋ Nova postavka</button>
+  </div>
 
   </div><!-- /page-zaloga -->
 
@@ -26027,8 +26098,122 @@ async function pozSaveValidList(mode) {
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
 }
 
+// ═══ MEDSKLADIŠČNICA (Skladišče → Pakirnica) ═══
+let MSK = [];
+let _mskFilter = 'all';
+function _mskEsc(t){ return String(t==null?'':t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function mskLoad(){
+  try {
+    const r = await fetch('/medskl-list');
+    const d = await r.json();
+    if (d && d.ok) { MSK = d.items || []; mskRender(); }
+  } catch(e) {}
+}
+function mskSetFilter(f){
+  _mskFilter = f;
+  ['all','novo','car'].forEach(k => {
+    const t = document.getElementById('mskTab-' + k);
+    if (t) t.classList.toggle('on', k === f);
+  });
+  mskRender();
+}
+function mskWhLabel(w){ return w === 'car' ? 'Carglass' : (w === 'any' ? 'Oboje' : 'Novo'); }
+function mskRender(){
+  const box = document.getElementById('mskList'); if (!box) return;
+  let items = MSK.slice();
+  if (_mskFilter === 'novo') items = items.filter(x => x.wh === 'novo' || x.wh === 'any');
+  if (_mskFilter === 'car')  items = items.filter(x => x.wh === 'car'  || x.wh === 'any');
+  items.sort((a,b) => (a.done?1:0) - (b.done?1:0));
+  const total = MSK.length, done = MSK.filter(x => x.done).length;
+  const sub = document.getElementById('mskSub');
+  if (sub) sub.textContent = total ? ('Skladišče → Pakirnica · ' + done + ' / ' + total + ' pripeljano') : 'Skladišče → Pakirnica';
+  const bar = document.getElementById('mskProgBar');
+  if (bar) bar.style.width = total ? Math.round(done/total*100) + '%' : '0%';
+  const cN = MSK.filter(x => x.wh === 'novo' || x.wh === 'any').length;
+  const cC = MSK.filter(x => x.wh === 'car'  || x.wh === 'any').length;
+  const tA = document.getElementById('mskTab-all');  if (tA) tA.textContent = 'Vse (' + total + ')';
+  const tN = document.getElementById('mskTab-novo'); if (tN) tN.textContent = '🟢 Novo (' + cN + ')';
+  const tC = document.getElementById('mskTab-car');  if (tC) tC.textContent = '🔵 Carglass (' + cC + ')';
+  if (!items.length) {
+    box.innerHTML = '<div class="msk-empty">Seznam je prazen.<br>Dodaj postavke z gumbom spodaj — nabiralci jih vidijo takoj.</div>';
+    return;
+  }
+  box.innerHTML = items.map(it => {
+    const w = it.wh || 'novo';
+    return '<div class="msk-card ' + (it.done?'done':'') + '">'
+      + '<span class="msk-del" onclick="mskDel(\'' + it.id + '\')" title="Odstrani">✕</span>'
+      + '<div class="msk-qty ' + w + '"><b>' + _mskEsc(it.qty||0) + '</b><small>' + _mskEsc(it.unit||'ctn') + '</small></div>'
+      + '<div class="msk-mid"><div class="msk-sku">' + _mskEsc(it.sku||'') + '</div>'
+      + '<span class="msk-badge ' + w + '">' + mskWhLabel(w) + '</span></div>'
+      + '<button class="msk-done ' + (it.done?'on':'') + '" onclick="mskToggle(\'' + it.id + '\')">✓</button>'
+      + '</div>';
+  }).join('');
+}
+async function mskToggle(id){
+  const it = MSK.find(x => x.id === id); if (!it) return;
+  const prev = !!it.done;
+  it.done = !prev; mskRender();
+  try {
+    const r = await fetch('/medskl-item', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ id: id, done: it.done }) });
+    const d = await r.json();
+    if (!d || !d.ok) { it.done = prev; mskRender(); alert('⚠ Ni shranjeno — poskusi znova'); }
+  } catch(e) { it.done = prev; mskRender(); alert('⚠ Ni povezave — poskusi znova'); }
+}
+async function mskDel(id){
+  if (!confirm('Odstranim postavko s seznama?')) return;
+  try {
+    const r = await fetch('/medskl-item/' + encodeURIComponent(id), { method:'DELETE' });
+    const d = await r.json();
+    if (d && d.ok) { MSK = MSK.filter(x => x.id !== id); mskRender(); }
+  } catch(e) { alert('⚠ Ni povezave'); }
+}
+async function mskClear(){
+  if (!confirm('Počistim CEL seznam medskladiščnice?\n\nTo naredi prazen seznam za nov prenos.')) return;
+  try {
+    const r = await fetch('/medskl-clear', { method:'POST' });
+    const d = await r.json();
+    if (d && d.ok) { MSK = []; mskRender(); }
+  } catch(e) { alert('⚠ Ni povezave'); }
+}
+function mskToggleAdd(show){
+  const p = document.getElementById('mskAddPanel');
+  const f = document.getElementById('mskFab');
+  if (p) p.style.display = show ? '' : 'none';
+  if (f) f.style.display = show ? 'none' : '';
+  if (show) setTimeout(() => { const i = document.getElementById('mskSku'); if (i) i.focus(); }, 60);
+}
+function mskSeg(el){
+  el.parentElement.querySelectorAll('span').forEach(x => x.classList.remove('on'));
+  el.classList.add('on');
+}
+async function mskAdd(){
+  const sku = (document.getElementById('mskSku').value || '').trim().toUpperCase();
+  const qty = parseInt(document.getElementById('mskQty').value) || 0;
+  const unitEl = document.querySelector('#mskUnitSeg span.on');
+  const whEl = document.querySelector('#mskWhSeg span.on');
+  const unit = unitEl ? unitEl.dataset.v : 'ctn';
+  const wh = whEl ? whEl.dataset.v : 'novo';
+  if (!sku) { alert('Vpiši SKU'); return; }
+  if (qty <= 0) { alert('Vpiši količino'); return; }
+  try {
+    const r = await fetch('/medskl-item', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ sku: sku, qty: qty, unit: unit, wh: wh }) });
+    const d = await r.json();
+    if (d && d.ok) {
+      MSK.push(d.item); mskRender();
+      document.getElementById('mskSku').value = '';
+      document.getElementById('mskQty').value = '';
+      document.getElementById('mskSku').focus();
+    } else alert('⚠ ' + ((d && d.error) || 'Napaka'));
+  } catch(e) { alert('⚠ Ni povezave'); }
+}
+
 function switchZalogaTab(tab) {
-  ['zaloga', 'vracila', 'skeniranje', 'pozicije', 'sekundarne', 'inventura'].forEach(t => {
+  // medskladiščnica: naloži/ustavi osveževanje
+  if (tab === 'medskl') { mskLoad(); if (!window._mskPoll) window._mskPoll = setInterval(mskLoad, 20000); }
+  else if (window._mskPoll) { clearInterval(window._mskPoll); window._mskPoll = null; }
+  ['zaloga', 'vracila', 'skeniranje', 'pozicije', 'sekundarne', 'inventura', 'medskl'].forEach(t => {
     const btn = document.getElementById('zalogaTab-' + t);
     const sub = document.getElementById('zalogaSubpage-' + t);
     if (t === tab) {

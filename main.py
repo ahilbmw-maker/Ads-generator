@@ -24182,6 +24182,78 @@ async def analiza_meta_duplicates_ai(data: dict):
 # 1 seznam, vsaka postavka ima container tag (Kontejner1,2,3…) in status.
 # Formule iz Excela: Total=Unit×Qty · Ctns=Qty/kos_kart · TotalCBM=CBM/CTN×Ctns
 #   FinalPrice=((TotalCBM×70)/Qty)+(Unit×0.85)×1.1
+# ═══ MEDSKLADIŠČNICA — seznam za prenos med skladišči (Novo/Carglass → pakirnica) ═══
+MEDSKL_FILE = DATA_DIR / "medskl_items.json"
+_medskl_lock = asyncio.Lock()
+
+
+def _medskl_load() -> list:
+    try:
+        if MEDSKL_FILE.exists():
+            return json.loads(MEDSKL_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[medskl] load err: {e}")
+    return []
+
+
+def _medskl_save(items: list):
+    tmp = MEDSKL_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, MEDSKL_FILE)
+
+
+@app.get("/medskl-list")
+async def medskl_list():
+    return {"ok": True, "items": _medskl_load()}
+
+
+@app.post("/medskl-item")
+async def medskl_item(data: dict):
+    import uuid as _uuid, time as _t
+    async with _medskl_lock:
+        items = _medskl_load()
+        iid = str(data.get("id") or "").strip()
+        if iid:
+            it = next((x for x in items if x.get("id") == iid), None)
+            if not it:
+                return {"ok": False, "error": "Postavka ne obstaja."}
+            for k in ("sku", "qty", "unit", "wh", "done"):
+                if k in data:
+                    it[k] = data[k]
+        else:
+            it = {
+                "id": _uuid.uuid4().hex[:10],
+                "sku": str(data.get("sku") or "").strip(),
+                "qty": data.get("qty") or 0,
+                "unit": (data.get("unit") or "ctn"),
+                "wh": (data.get("wh") or "novo"),
+                "done": False,
+                "ts": _t.strftime("%Y-%m-%d %H:%M"),
+            }
+            if not it["sku"]:
+                return {"ok": False, "error": "SKU je prazen."}
+            items.append(it)
+        _medskl_save(items)
+        return {"ok": True, "item": it}
+
+
+@app.delete("/medskl-item/{iid}")
+async def medskl_delete(iid: str):
+    async with _medskl_lock:
+        items = _medskl_load()
+        n0 = len(items)
+        items = [x for x in items if x.get("id") != iid]
+        _medskl_save(items)
+        return {"ok": True, "deleted": n0 - len(items)}
+
+
+@app.post("/medskl-clear")
+async def medskl_clear():
+    async with _medskl_lock:
+        _medskl_save([])
+    return {"ok": True}
+
+
 NABAVA_FILE = DATA_DIR / "nabava_items.json"
 NABAVA_SEED = Path(__file__).parent / "nabava_seed.json"
 NABAVA_META = DATA_DIR / "nabava_meta.json"
