@@ -254,37 +254,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #inv-pdf-btn { display: none !important; }
   #inv-grid { display: block !important; grid-template-columns: 1fr !important; }
   #zalogaSubpage-inventura { overflow-x: hidden !important; }
-  /* ─── Medskladiščnica (Koncept C) ─── */
-  .msk-head{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin:0 0 10px;}
-  .msk-clear{background:transparent;border:1px solid var(--border);border-radius:9px;padding:6px 10px;font-size:11.5px;color:var(--text-secondary);cursor:pointer;font-family:inherit;}
-  .msk-prog{height:6px;background:var(--surface2);border-radius:6px;margin-top:10px;overflow:hidden;}
-  .msk-prog i{display:block;height:100%;background:#12a35f;width:0%;transition:width .3s;}
-  .msk-tabs{display:flex;gap:6px;margin-bottom:10px;}
-  .msk-tab{flex:1;text-align:center;padding:9px 0;border-radius:10px;font-size:12.5px;font-weight:800;background:var(--surface2);color:var(--text-secondary);cursor:pointer;user-select:none;}
-  .msk-tab.on{background:var(--text);color:var(--surface);}
-  .msk-card{background:var(--surface);border-radius:16px;margin:8px 0;padding:12px;border:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative;}
-  .msk-card.done{opacity:.45;}
-  .msk-qty{width:70px;height:70px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;}
-  .msk-qty.novo{background:#e4f5ec;color:#0f8a4f;} .msk-qty.car{background:#e3edfb;color:#1d5bbf;} .msk-qty.any{background:#f3e8fb;color:#7c3aed;}
-  .msk-qty b{font-size:24px;line-height:1;} .msk-qty small{font-size:10.5px;font-weight:800;text-transform:uppercase;margin-top:2px;}
-  .msk-mid{flex:1;min-width:0;}
-  .msk-sku{font-size:16.5px;font-weight:800;word-break:break-all;color:var(--text);}
-  .msk-badge{display:inline-block;font-size:10px;font-weight:800;border-radius:6px;padding:2px 8px;text-transform:uppercase;letter-spacing:.4px;margin-top:4px;}
-  .msk-badge.novo{background:#e4f5ec;color:#0f8a4f;border:1px solid #bfe3ca;}
-  .msk-badge.car{background:#e3edfb;color:#1d5bbf;border:1px solid #c3d9f5;}
-  .msk-badge.any{background:#f3e8fb;color:#7c3aed;border:1px solid #e2cdf7;}
-  .msk-done{width:54px;height:54px;border-radius:50%;border:2.5px solid var(--border);background:var(--surface);font-size:21px;color:var(--border);flex-shrink:0;cursor:pointer;}
-  .msk-done.on{background:#12a35f;border-color:#12a35f;color:#fff;}
-  .msk-del{position:absolute;top:6px;right:8px;color:var(--text-tertiary);font-size:13px;cursor:pointer;padding:4px;}
-  .msk-fab{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);width:min(92%,560px);background:var(--accent);color:#fff;border:none;border-radius:14px;padding:15px;font-size:15px;font-weight:800;box-shadow:0 8px 22px rgba(91,91,214,.45);cursor:pointer;z-index:50;font-family:inherit;}
-  .msk-addpanel{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);width:min(92%,560px);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:0 14px 40px rgba(0,0,0,.3);z-index:51;}
-  .msk-in{border:1.5px solid var(--border);border-radius:10px;padding:12px;font-size:15px;font-weight:700;font-family:inherit;background:var(--surface);color:var(--text);box-sizing:border-box;}
-  .msk-seg{flex:1;display:flex;background:var(--surface2);border-radius:10px;padding:3px;}
-  .msk-seg span{flex:1;text-align:center;padding:9px 0;font-size:12px;font-weight:800;border-radius:8px;color:var(--text-secondary);cursor:pointer;user-select:none;}
-  .msk-seg span.on{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.12);}
-  .msk-cancel{flex:1;background:var(--surface2);border:none;border-radius:11px;padding:12px;font-size:14px;font-weight:800;color:var(--text-secondary);cursor:pointer;font-family:inherit;}
-  .msk-save{flex:2;background:var(--accent);color:#fff;border:none;border-radius:11px;padding:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;}
-  .msk-empty{text-align:center;color:var(--text-secondary);font-size:13px;padding:34px 10px;}
   /* admin del (uvoz + zgodovina) skrit v predal — delavec takoj vidi seznam */
   #inv-admin-toggle { display: flex !important; }
   #inv-admin-col { display: none !important; }
@@ -800,6 +769,37 @@ input[type="text"].error { border-color: var(--red) !important; }
 .pn-in:focus { outline:none; border-color:var(--accent); }
 .pn-hist-card { border:1px solid var(--border); border-radius:var(--radius); padding:8px 10px; cursor:default; }
 .pn-hist-card:hover { border-color:var(--accent); }
+  /* ─── Medskladiščnica (Koncept C) ─── */
+  .msk-head{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin:0 0 10px;}
+  .msk-clear{background:transparent;border:1px solid var(--border);border-radius:9px;padding:6px 10px;font-size:11.5px;color:var(--text-secondary);cursor:pointer;font-family:inherit;}
+  .msk-prog{height:6px;background:var(--surface2);border-radius:6px;margin-top:10px;overflow:hidden;}
+  .msk-prog i{display:block;height:100%;background:#12a35f;width:0%;transition:width .3s;}
+  .msk-tabs{display:flex;gap:6px;margin-bottom:10px;}
+  .msk-tab{flex:1;text-align:center;padding:9px 0;border-radius:10px;font-size:12.5px;font-weight:800;background:var(--surface2);color:var(--text-secondary);cursor:pointer;user-select:none;}
+  .msk-tab.on{background:var(--text);color:var(--surface);}
+  .msk-card{background:var(--surface);border-radius:16px;margin:8px 0;padding:12px;border:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative;}
+  .msk-card.done{opacity:.45;}
+  .msk-qty{width:70px;height:70px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;}
+  .msk-qty.novo{background:#e4f5ec;color:#0f8a4f;} .msk-qty.car{background:#e3edfb;color:#1d5bbf;} .msk-qty.any{background:#f3e8fb;color:#7c3aed;}
+  .msk-qty b{font-size:24px;line-height:1;} .msk-qty small{font-size:10.5px;font-weight:800;text-transform:uppercase;margin-top:2px;}
+  .msk-mid{flex:1;min-width:0;}
+  .msk-sku{font-size:16.5px;font-weight:800;word-break:break-all;color:var(--text);}
+  .msk-badge{display:inline-block;font-size:10px;font-weight:800;border-radius:6px;padding:2px 8px;text-transform:uppercase;letter-spacing:.4px;margin-top:4px;}
+  .msk-badge.novo{background:#e4f5ec;color:#0f8a4f;border:1px solid #bfe3ca;}
+  .msk-badge.car{background:#e3edfb;color:#1d5bbf;border:1px solid #c3d9f5;}
+  .msk-badge.any{background:#f3e8fb;color:#7c3aed;border:1px solid #e2cdf7;}
+  .msk-done{width:54px;height:54px;border-radius:50%;border:2.5px solid var(--border);background:var(--surface);font-size:21px;color:var(--border);flex-shrink:0;cursor:pointer;}
+  .msk-done.on{background:#12a35f;border-color:#12a35f;color:#fff;}
+  .msk-del{position:absolute;top:6px;right:8px;color:var(--text-tertiary);font-size:13px;cursor:pointer;padding:4px;}
+  .msk-fab{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);width:min(92%,560px);background:var(--accent);color:#fff;border:none;border-radius:14px;padding:15px;font-size:15px;font-weight:800;box-shadow:0 8px 22px rgba(91,91,214,.45);cursor:pointer;z-index:50;font-family:inherit;}
+  .msk-addpanel{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);width:min(92%,560px);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:0 14px 40px rgba(0,0,0,.3);z-index:51;}
+  .msk-in{border:1.5px solid var(--border);border-radius:10px;padding:12px;font-size:15px;font-weight:700;font-family:inherit;background:var(--surface);color:var(--text);box-sizing:border-box;}
+  .msk-seg{flex:1;display:flex;background:var(--surface2);border-radius:10px;padding:3px;}
+  .msk-seg span{flex:1;text-align:center;padding:9px 0;font-size:12px;font-weight:800;border-radius:8px;color:var(--text-secondary);cursor:pointer;user-select:none;}
+  .msk-seg span.on{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+  .msk-cancel{flex:1;background:var(--surface2);border:none;border-radius:11px;padding:12px;font-size:14px;font-weight:800;color:var(--text-secondary);cursor:pointer;font-family:inherit;}
+  .msk-save{flex:2;background:var(--accent);color:#fff;border:none;border-radius:11px;padding:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;}
+  .msk-empty{text-align:center;color:var(--text-secondary);font-size:13px;padding:34px 10px;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
 </head>
