@@ -24417,6 +24417,150 @@ async def semafor_spend(data: dict):
         return {"ok": True, "saved": len(rows), "overwritten": conflicts if force else []}
 
 
+# ═══ SEMAFOR: UVOZ PORABE S PRILEPLJANJEM SLIKC (Claude vision) ═══
+# Slikci (FB poraba po državah, Google poraba po Maaarket.xx računih) gresta v
+# Claude vision → JSON po trgih. Endpoint SAMO razčleni in vrne predogled —
+# shranjevanje gre izključno skozi /semafor-spend (kjer Irenej potrdi datum).
+SEMAFOR_VISION_MODEL = "claude-sonnet-4-6"
+
+_SEMAFOR_VISION_COMMON = (
+    "\n\nVRNI IZKLJUČNO JSON, brez razlage in brez markdown ograj:\n"
+    '{"rows":[{"market":"SI","label":"kar piše v izpisu","amount":123.45}],'
+    '"total_shown":null,"period_text":null,"date":null,"currency":"EUR"}\n'
+    "PRAVILA:\n"
+    "- amount je število z decimalno PIKO, brez valute in brez ločil tisočic "
+    "(1.234,56 € → 1234.56; 1,234.56 → 1234.56).\n"
+    "- market je dvočrkovna ISO koda z VELIKIMI črkami: Slovenija/Slovenia→SI, "
+    "Hrvaška/Croatia→HR, Srbija/Serbia→RS, Madžarska/Hungary→HU, Češka/Czechia→CZ, "
+    "Slovaška/Slovakia→SK, Poljska/Poland→PL, Grčija/Greece→GR, Romunija/Romania→RO, "
+    "Bolgarija/Bulgaria→BG. Za druge države vrni njihovo ISO kodo.\n"
+    "- Vrstice Total/Skupaj/Vsota NE daj med rows — njihov znesek daj v total_shown.\n"
+    "- Če je vidno obdobje poročila, ga dobesedno prepiši v period_text; če gre za EN sam "
+    "dan, ga daj še v date v obliki YYYY-MM-DD, sicer date=null.\n"
+    "- Če se isti trg pojavi na več slikah, vrni ločene vrstice — seštevek naredim sam.\n"
+    "- Ne ugibaj: če zneska ne prebereš zanesljivo, vrstico izpusti.\n"
+)
+
+
+def _semafor_vision_prompt(kind: str) -> str:
+    if kind == "fb":
+        return ("Na slikah je izpis porabe iz Facebook/Meta Ads Managerja, razbit po državah "
+                "(stolpec Country / Država / Regija). Za vsako državo izvleci porabo "
+                "(Amount spent / Porabljeni znesek)." + _SEMAFOR_VISION_COMMON)
+    return ("Na slikah je izpis iz Google Ads po računih. Ime računa je oblike 'Maaarket.si', "
+            "'Maaarket.bg' ipd. — koda trga je KONČNICA imena računa (.bg → BG). Za vsak račun "
+            "izvleci strošek (Cost / Stroški / Cena). Račune brez prepoznavne končnice izpusti."
+            + _SEMAFOR_VISION_COMMON)
+
+
+def _semafor_vision_num(v):
+    """'1.234,56 €' / '1,234.56' / 1234.56 → 1234.56 (None če ne gre)."""
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v or "").strip()
+    for ch in ("€", "EUR", "eur", " ", "\u00a0", "\u202f"):
+        s = s.replace(ch, "")
+    if not s:
+        return None
+    neg = s.startswith("-")
+    s = s.lstrip("-+")
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".") if s.rfind(",") > s.rfind(".") else s.replace(",", "")
+    elif "," in s:
+        s = s.replace(",", ".") if len(s.rsplit(",", 1)[1]) <= 2 else s.replace(",", "")
+    try:
+        f = float(s)
+    except Exception:
+        return None
+    return -f if neg else f
+
+
+@app.post("/semafor-spend-vision")
+async def semafor_spend_vision(data: dict):
+    """Prilepljene screenshote razčleni v porabo po trgih. NE shranjuje."""
+    kind = str((data or {}).get("kind") or "").lower().strip()
+    images = (data or {}).get("images") or []
+    if kind not in ("fb", "google"):
+        return {"ok": False, "error": "Neznan tip (fb / google)."}
+    if not images:
+        return {"ok": False, "error": "Ni slik."}
+
+    content = []
+    for im in images[:8]:
+        b64 = str((im or {}).get("data") or "")
+        if b64.startswith("data:") and "," in b64:
+            b64 = b64.split(",", 1)[1]
+        b64 = b64.strip()
+        if not b64:
+            continue
+        mt = str((im or {}).get("media_type") or "image/png")
+        if mt not in ("image/png", "image/jpeg", "image/gif", "image/webp"):
+            mt = "image/png"
+        content.append({"type": "image", "source": {"type": "base64", "media_type": mt, "data": b64}})
+    if not content:
+        return {"ok": False, "error": "Ni veljavnih slik."}
+    content.append({"type": "text", "text": _semafor_vision_prompt(kind)})
+
+    loop = asyncio.get_event_loop()
+
+    def _call():
+        return client.messages.create(
+            model=SEMAFOR_VISION_MODEL, max_tokens=2000,
+            messages=[{"role": "user", "content": content}])
+
+    msg, last_err = None, ""
+    for attempt in range(3):
+        try:
+            msg = await loop.run_in_executor(None, _call)
+            break
+        except Exception as e:
+            last_err = str(e)
+            print(f"[semafor-vision] ({kind}) poskus {attempt+1}/3: {type(e).__name__}: {last_err[:160]}")
+            if attempt < 2:
+                await asyncio.sleep(2)
+    if msg is None:
+        return {"ok": False, "error": "Claude ni odgovoril: " + last_err[:200]}
+
+    raw = "".join(getattr(b, "text", "") for b in msg.content).strip()
+    raw = re.sub(r"^```(?:json)?", "", raw).strip()
+    raw = re.sub(r"```$", "", raw).strip()
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        m = re.search(r"\{.*\}", raw, re.S)
+        if not m:
+            return {"ok": False, "error": "Neberljiv odgovor modela.", "raw": raw[:400]}
+        try:
+            parsed = json.loads(m.group(0))
+        except Exception:
+            return {"ok": False, "error": "Neberljiv JSON iz modela.", "raw": raw[:400]}
+
+    markets, skipped, seen = {}, [], []
+    for r in (parsed.get("rows") or []):
+        code = str((r or {}).get("market") or "").upper().strip()
+        amt = _semafor_vision_num((r or {}).get("amount"))
+        if amt is None:
+            continue
+        label = str((r or {}).get("label") or "")
+        if code in SEMAFOR_MARKETS:
+            markets[code] = round(markets.get(code, 0.0) + amt, 2)
+        else:
+            skipped.append({"market": code or "?", "label": label, "amount": round(amt, 2)})
+        seen.append({"market": code, "label": label, "amount": round(amt, 2)})
+
+    total = round(sum(markets.values()), 2)
+    total_all = round(total + sum(float(x.get("amount") or 0) for x in skipped), 2)
+    total_shown = _semafor_vision_num(parsed.get("total_shown"))
+    if not markets:
+        return {"ok": False, "error": "Na slikah ni prepoznanih trgov.", "skipped": skipped}
+    return {"ok": True, "kind": kind, "markets": markets, "skipped": skipped,
+            "total": total, "total_all": total_all, "total_shown": total_shown,
+            "period_text": parsed.get("period_text") or None,
+            "date": parsed.get("date") or None,
+            "currency": (parsed.get("currency") or "EUR"),
+            "rows": seen, "images": len(content) - 1}
+
+
 # ═══ MEDSKLADIŠČNICA — seznam za prenos med skladišči (Novo/Carglass → pakirnica) ═══
 MEDSKL_FILE = DATA_DIR / "medskl_items.json"
 _medskl_lock = asyncio.Lock()

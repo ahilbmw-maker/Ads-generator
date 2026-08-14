@@ -2924,6 +2924,8 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div id="semWarn" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(217,153,27,0.12);border:1px solid #d9992166;border-radius:var(--radius);font-size:12px;color:#b8860b"></div>
       </div>
 
+      <div id="semProfitBox"></div>
+
 <div class="card" style="margin-bottom:12px">
         <div style="font-weight:700;font-size:13px;margin-bottom:8px">Semafor <span style="font-weight:400;font-size:11px;color:var(--text-tertiary)">— urejeno po prispevku · CPA vpišeš ročno (poraba / realna naročila iz ERP, brez organic)</span></div>
         <div id="semTableBox" style="overflow-x:auto"><div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px">Nalagam…</div></div>
@@ -2947,16 +2949,39 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
           <div style="font-weight:700;font-size:13px">💸 Uvoz porabe za prejšnji dan (FB + Google)</div>
-          <span style="font-size:11px;color:var(--text-tertiary)">poraba po državah ÷ naročila iz posnetkov istih dni = dejanski CPA</span>
+          <span style="font-size:11px;color:var(--text-tertiary)">prilepi screenshota (Ctrl+V) → Claude prebere zneske · poraba ÷ naročila iz posnetkov istih dni = dejanski CPA</span>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px">
-          <label style="padding:7px 12px;border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer">📘 FB CSV <input id="semFbCsv" type="file" accept=".csv" style="display:none" onchange="semSpendFile(this,'fb')"><span id="semFbName" style="color:var(--text-tertiary)">— izberi</span></label>
-          <label style="padding:7px 12px;border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer">🔎 Google CSV <input id="semGCsv" type="file" accept=".csv" style="display:none" onchange="semSpendFile(this,'g')"><span id="semGName" style="color:var(--text-tertiary)">— izberi</span></label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">
+          <div id="semPasteBox-fb" tabindex="0" onclick="semPasteFocus('fb')" onfocus="semPasteFocus('fb')" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="semImgDrop(event,'fb')" style="border:1.5px dashed var(--border);border-radius:12px;padding:12px;min-height:92px;cursor:pointer;background:var(--surface);outline:none">
+            <div style="font-size:12.5px;font-weight:700">📘 Facebook — poraba po državah</div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">klikni sem in prilepi (Ctrl+V) · lahko več slik · ali <span onclick="event.stopPropagation();semImgPick('fb')" style="text-decoration:underline">izberi datoteke</span></div>
+            <div id="semThumbs-fb" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
+          </div>
+          <div id="semPasteBox-google" tabindex="0" onclick="semPasteFocus('google')" onfocus="semPasteFocus('google')" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="semImgDrop(event,'google')" style="border:1.5px dashed var(--border);border-radius:12px;padding:12px;min-height:92px;cursor:pointer;background:var(--surface);outline:none">
+            <div style="font-size:12.5px;font-weight:700">🔎 Google — poraba po Maaarket.xx računih</div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">klikni sem in prilepi (Ctrl+V) · končnica računa = trg · ali <span onclick="event.stopPropagation();semImgPick('google')" style="text-decoration:underline">izberi datoteke</span></div>
+            <div id="semThumbs-google" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
+          </div>
+        </div>
+        <input type="file" id="semImgInp-fb" accept="image/*" multiple style="display:none" onchange="semImgFiles(this,'fb')">
+        <input type="file" id="semImgInp-google" accept="image/*" multiple style="display:none" onchange="semImgFiles(this,'google')">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;margin-top:10px">
+          <button id="semVisionBtn" onclick="semVisionRun()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">🤖 Preberi slike</button>
           <label>Datum <input id="semSpendDate" type="date" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"></label>
-          <button id="semSpendSaveBtn" onclick="semSpendSave(false)" style="display:none;padding:8px 16px;background:#12a35f;color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">💾 Shrani porabo</button>
+          <span id="semSpendDateHint" style="font-size:11px;color:var(--text-tertiary)"></span>
+          <button id="semSpendSaveBtn" onclick="semSpendSave(false)" style="display:none;padding:8px 16px;background:#12a35f;color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">💾 Potrdi datum in shrani</button>
+          <button id="semSpendClearBtn" onclick="semSpendReset()" style="display:none;padding:8px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;cursor:pointer;font-family:inherit">✕ Počisti</button>
           <span id="semSpendMsg" style="color:var(--text-secondary)"></span>
         </div>
         <div id="semSpendPrev" style="margin-top:10px;overflow-x:auto"></div>
+        <details style="margin-top:10px">
+          <summary style="cursor:pointer;font-size:11.5px;color:var(--text-tertiary)">📄 Rezerva: uvoz iz CSV (FB export / Google performance report)</summary>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;margin-top:8px">
+            <label style="padding:7px 12px;border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer">📘 FB CSV <input id="semFbCsv" type="file" accept=".csv" style="display:none" onchange="semSpendFile(this,'fb')"><span id="semFbName" style="color:var(--text-tertiary)">— izberi</span></label>
+            <label style="padding:7px 12px;border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer">🔎 Google CSV <input id="semGCsv" type="file" accept=".csv" style="display:none" onchange="semSpendFile(this,'g')"><span id="semGName" style="color:var(--text-tertiary)">— izberi</span></label>
+            <span style="font-size:11px;color:var(--text-tertiary)">CSV prepiše prebrano s slik za isti vir</span>
+          </div>
+        </details>
       </div>
 
       <details class="card" style="margin-bottom:12px">
@@ -15827,6 +15852,7 @@ async function semLoad(){
     if (dt && !dt.value){ const y = new Date(Date.now() - 86400000); dt.value = y.toISOString().slice(0,10); }
     semRenderFail();
     semRenderTable();
+    semRenderProfit();
   }catch(e){ console.error('semafor', e); }
 }
 async function semSaveSettings(){
@@ -15962,23 +15988,176 @@ function semSpendParse(text, kind, fname){
   else if (di && date && di.value !== date) di.value = date;   // datum iz fajla je merodajen
   semSpendPreview();
 }
+// ── PRILEPLJANJE SLIKC → Claude vision (CSV ostaja kot rezerva) ──────────────
+let _semImgs = {fb:[], google:[]};      // {url, data(b64), media_type}
+let _semPasteKind = 'fb';
+let _semSrcMeta = {fb:null, g:null};    // metapodatki s slik: total_shown, period_text, currency, skipped
+function semPasteFocus(kind){
+  _semPasteKind = kind;
+  ['fb','google'].forEach(k => { const b = document.getElementById('semPasteBox-'+k);
+    if (b) b.style.borderColor = (k===kind) ? 'var(--accent)' : 'var(--border)'; });
+  const box = document.getElementById('semPasteBox-'+kind);
+  if (box) { try{ box.focus({preventScroll:true}); }catch(e){ box.focus(); } }
+}
+function semImgPick(kind){ const i = document.getElementById('semImgInp-'+kind); if (i) i.click(); }
+function semImgFiles(inp, kind){ [...(inp.files||[])].forEach(f => semImgAdd(f, kind)); inp.value=''; semPasteFocus(kind); }
+function semImgDrop(e, kind){
+  e.preventDefault();
+  const b = document.getElementById('semPasteBox-'+kind); if (b) b.style.borderColor='var(--border)';
+  const fs = [...(e.dataTransfer.files||[])].filter(f => f.type && f.type.startsWith('image/'));
+  fs.forEach(f => semImgAdd(f, kind));
+  if (fs.length) semPasteFocus(kind);
+}
+document.addEventListener('paste', function(e){
+  const sub = document.getElementById('analizaSubpage-semafor');
+  if (!sub || sub.style.display === 'none' || sub.offsetParent === null) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  const items = [...(((e.clipboardData||{}).items)||[])].filter(i => i.type && i.type.startsWith('image/'));
+  if (!items.length) return;
+  e.preventDefault();
+  items.forEach(i => { const f = i.getAsFile(); if (f) semImgAdd(f, _semPasteKind); });
+});
+async function semImgAdd(file, kind){
+  if (!file || !(file.type||'').startsWith('image/')) return;
+  const arr = _semImgs[kind];
+  if (arr.length >= 8){ document.getElementById('semSpendMsg').textContent = 'Največ 8 slik na vir.'; return; }
+  const prep = await semImgPrepare(file);
+  arr.push(prep);
+  semRenderThumbs(kind);
+  const msg = document.getElementById('semSpendMsg'); if (msg) msg.textContent = '';
+}
+function semImgPrepare(file){
+  // >1568 px se pomanjša (meja Anthropic vision) — manjše pusti v originalu
+  return new Promise(res => {
+    const rd = new FileReader();
+    rd.onload = () => {
+      const src = String(rd.result||'');
+      const img = new Image();
+      img.onload = () => {
+        const MAXW = 1568;
+        if (img.width <= MAXW && src.length < 3.6e6){
+          res({url:src, data:src.split(',')[1], media_type:(file.type||'image/png')}); return;
+        }
+        const sc = Math.min(1, MAXW/img.width);
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(img.width*sc); cv.height = Math.round(img.height*sc);
+        const cx = cv.getContext('2d');
+        cx.fillStyle = '#fff'; cx.fillRect(0,0,cv.width,cv.height);
+        cx.drawImage(img, 0, 0, cv.width, cv.height);
+        const out = cv.toDataURL('image/jpeg', 0.92);
+        res({url:out, data:out.split(',')[1], media_type:'image/jpeg'});
+      };
+      img.onerror = () => res({url:src, data:src.split(',')[1], media_type:(file.type||'image/png')});
+      img.src = src;
+    };
+    rd.readAsDataURL(file);
+  });
+}
+function semRenderThumbs(kind){
+  const box = document.getElementById('semThumbs-'+kind); if (!box) return;
+  box.innerHTML = _semImgs[kind].map((x,i) =>
+    '<span style="position:relative;display:inline-block">'
+    + '<img src="' + x.url + '" style="height:52px;border-radius:7px;border:1px solid var(--border);display:block">'
+    + '<button onclick="event.stopPropagation();semImgDel(\'' + kind + '\',' + i + ')" title="odstrani" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;line-height:1;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:11px;padding:0">×</button></span>').join('');
+}
+function semImgDel(kind, idx){ _semImgs[kind].splice(idx,1); semRenderThumbs(kind); }
+async function semVisionRun(){
+  const btn = document.getElementById('semVisionBtn');
+  const msg = document.getElementById('semSpendMsg');
+  const kinds = ['fb','google'].filter(k => _semImgs[k].length);
+  if (!kinds.length){ msg.textContent = 'Najprej prilepi vsaj eno sliko.'; return; }
+  btn.disabled = true; const lbl = btn.textContent; btn.textContent = '⏳ Berem slike…'; msg.textContent = '';
+  const errs = [], oks = [];
+  for (const k of kinds){
+    try{
+      const r = await fetch('/semafor-spend-vision', {method:'POST',headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({kind:k, images:_semImgs[k].map(x => ({data:x.data, media_type:x.media_type}))})});
+      const d = await r.json();
+      if (!d || !d.ok){ errs.push((k==='fb'?'FB':'Google') + ': ' + ((d && d.error) || 'napaka')); continue; }
+      const slot = (k === 'fb') ? 'fb' : 'g';
+      _semSpend[slot] = {map:d.markets||{}, date:d.date||'', src:'vision'};
+      _semSrcMeta[slot] = {total_shown:d.total_shown, period_text:d.period_text, currency:d.currency,
+                           skipped:d.skipped||[], total:d.total, total_all:d.total_all};
+      oks.push((k==='fb'?'FB':'Google') + ' ' + Object.keys(d.markets||{}).length + ' trgov');
+      const di = document.getElementById('semSpendDate');
+      if (di && d.date && !di.value) di.value = d.date;
+    }catch(e){ errs.push((k==='fb'?'FB':'Google') + ': ' + e.message); }
+  }
+  btn.disabled = false; btn.textContent = lbl;
+  msg.innerHTML = (oks.length ? '✓ ' + oks.join(' · ') + ' — <b>preveri SKUPAJ in datum</b>, nato shrani. ' : '')
+                + (errs.length ? '<span style="color:#e5484d">✗ ' + errs.join(' · ') + '</span>' : '');
+  semSpendHint();
+  semSpendPreview();
+}
+function semSpendHint(){
+  const h = document.getElementById('semSpendDateHint'); if (!h) return;
+  const p = [];
+  if (_semSrcMeta.fb && _semSrcMeta.fb.period_text) p.push('FB: ' + _semSrcMeta.fb.period_text);
+  if (_semSrcMeta.g && _semSrcMeta.g.period_text) p.push('Google: ' + _semSrcMeta.g.period_text);
+  h.textContent = p.length ? 'obdobje s slike → ' + p.join(' · ') : '';
+}
+function semSpendReset(){
+  _semSpend = {fb:null, g:null}; _semSrcMeta = {fb:null, g:null}; _semImgs = {fb:[], google:[]};
+  semRenderThumbs('fb'); semRenderThumbs('google');
+  document.getElementById('semSpendPrev').innerHTML = '';
+  document.getElementById('semSpendSaveBtn').style.display = 'none';
+  document.getElementById('semSpendClearBtn').style.display = 'none';
+  document.getElementById('semSpendMsg').innerHTML = '';
+  document.getElementById('semSpendDateHint').textContent = '';
+  const fb = document.getElementById('semFbName'), g = document.getElementById('semGName');
+  if (fb) fb.textContent = '— izberi'; if (g) g.textContent = '— izberi';
+  const fi = document.getElementById('semFbCsv'), gi = document.getElementById('semGCsv');
+  if (fi) fi.value = ''; if (gi) gi.value = '';
+}
 function semSpendPreview(){
   const box = document.getElementById('semSpendPrev');
   const btn = document.getElementById('semSpendSaveBtn');
+  const clr = document.getElementById('semSpendClearBtn');
   const fb = _semSpend.fb ? _semSpend.fb.map : {};
   const g = _semSpend.g ? _semSpend.g.map : {};
   const mkts = SEM_MARKETS.filter(m => (fb[m]||0) > 0 || (g[m]||0) > 0);
-  if (!mkts.length){ box.innerHTML=''; btn.style.display='none'; return; }
+  if (!mkts.length){ box.innerHTML=''; btn.style.display='none'; if (clr) clr.style.display='none'; return; }
   let tf=0, tg=0;
+  const rowsHtml = mkts.map(m => { const a=fb[m]||0, b=g[m]||0; tf+=a; tg+=b;
+    return '<tr style="border-top:1px solid var(--border)"><td style="padding:5px 10px;font-weight:700">' + m + '</td>'
+      + '<td style="padding:5px 10px;text-align:right">' + a.toFixed(2) + '</td>'
+      + '<td style="padding:5px 10px;text-align:right">' + b.toFixed(2) + '</td>'
+      + '<td style="padding:5px 10px;text-align:right;font-weight:700">' + (a+b).toFixed(2) + '</td></tr>'; }).join('');
   box.innerHTML = '<table style="border-collapse:collapse;font-size:12px;min-width:420px">'
     + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:5px 10px">Trg</th><th style="text-align:right;padding:5px 10px">FB €</th><th style="text-align:right;padding:5px 10px">Google €</th><th style="text-align:right;padding:5px 10px">Skupaj €</th></tr>'
-    + mkts.map(m => { const a=fb[m]||0, b=g[m]||0; tf+=a; tg+=b;
-      return '<tr style="border-top:1px solid var(--border)"><td style="padding:5px 10px;font-weight:700">' + m + '</td>'
-        + '<td style="padding:5px 10px;text-align:right">' + a.toFixed(2) + '</td>'
-        + '<td style="padding:5px 10px;text-align:right">' + b.toFixed(2) + '</td>'
-        + '<td style="padding:5px 10px;text-align:right;font-weight:700">' + (a+b).toFixed(2) + '</td></tr>'; }).join('')
-    + '<tr style="border-top:2px solid var(--border)"><td style="padding:5px 10px;font-weight:800">SKUPAJ</td><td style="padding:5px 10px;text-align:right">' + tf.toFixed(2) + '</td><td style="padding:5px 10px;text-align:right">' + tg.toFixed(2) + '</td><td style="padding:5px 10px;text-align:right;font-weight:800">' + (tf+tg).toFixed(2) + '</td></tr></table>';
-  btn.style.display = '';
+    + rowsHtml
+    + '<tr style="border-top:2px solid var(--border);background:var(--surface2)"><td style="padding:6px 10px;font-weight:800">SKUPAJ</td><td style="padding:6px 10px;text-align:right;font-weight:800">' + tf.toFixed(2) + '</td><td style="padding:6px 10px;text-align:right;font-weight:800">' + tg.toFixed(2) + '</td><td style="padding:6px 10px;text-align:right;font-weight:800">' + (tf+tg).toFixed(2) + '</td></tr></table>'
+    + semSpendChecks(tf, tg);
+  btn.style.display = ''; if (clr) clr.style.display = '';
+}
+function semSpendChecks(tf, tg){
+  // kontrola: ali se seštevek ujema s SKUPAJ, ki je viden na sliki + kaj je bilo preskočeno
+  const out = [];
+  [['fb','FB',tf], ['g','Google',tg]].forEach(([slot, name, sum]) => {
+    const meta = _semSrcMeta[slot];
+    const src = _semSpend[slot];
+    if (!meta || !src || src.src !== 'vision') return;
+    if (meta.currency && String(meta.currency).toUpperCase() !== 'EUR')
+      out.push('<span style="color:#d9921b">⚠ ' + name + ': valuta na sliki je ' + meta.currency + ', ne EUR — preveri.</span>');
+    if (meta.total_shown != null){
+      // kontrola gre proti VSEM prebranim vrsticam (tudi trgom izven seznama),
+      // ker SKUPAJ na sliki vsebuje tudi tiste
+      const all = (meta.total_all != null) ? meta.total_all : sum;
+      const diff = all - meta.total_shown;
+      const extra = Math.abs(all - sum) > 0.005 ? ' (od tega naši trgi ' + sum.toFixed(2) + ' €)' : '';
+      if (Math.abs(diff) > Math.max(0.5, Math.abs(meta.total_shown)*0.005))
+        out.push('<span style="color:#e5484d">⚠ ' + name + ': SKUPAJ s slike ' + meta.total_shown.toFixed(2)
+          + ' € ≠ prebrano ' + all.toFixed(2) + ' € (razlika ' + (diff>0?'+':'') + diff.toFixed(2)
+          + ' €)' + extra + ' — preveri, ali je katera vrstica ostala neprebrana.</span>');
+      else
+        out.push('<span style="color:#12a35f">✓ ' + name + ': ujema se s SKUPAJ na sliki (' + meta.total_shown.toFixed(2) + ' €)' + extra + '</span>');
+    }
+    if (meta.skipped && meta.skipped.length)
+      out.push('<span style="color:var(--text-tertiary)">' + name + ' — izven naših trgov (ni shranjeno): '
+        + meta.skipped.map(x => (x.market||'?') + ' ' + Number(x.amount||0).toFixed(2) + ' €').join(', ') + '</span>');
+  });
+  return out.length ? '<div style="margin-top:8px;display:flex;flex-direction:column;gap:3px;font-size:11.5px">' + out.join('') + '</div>' : '';
 }
 async function semSpendSave(force){
   const date = document.getElementById('semSpendDate').value;
@@ -15988,21 +16167,101 @@ async function semSpendSave(force){
   const rows = SEM_MARKETS.filter(m => (fb[m]||0)>0 || (g[m]||0)>0)
     .map(m => ({market:m, fb:+(fb[m]||0).toFixed(2), google:+(g[m]||0).toFixed(2)}));
   if (!rows.length || !date){ msg.textContent = 'Ni podatkov ali datuma.'; return; }
+  if (!force){
+    const tot = rows.reduce((a,b) => a + b.fb + b.google, 0);
+    if (!confirm('Shranim porabo za DATUM ' + date + '?\n\n' + rows.length + ' trgov · skupaj '
+        + tot.toFixed(2) + ' €\n(FB ' + rows.reduce((a,b)=>a+b.fb,0).toFixed(2) + ' € · Google '
+        + rows.reduce((a,b)=>a+b.google,0).toFixed(2) + ' €)')) return;
+  }
   try{
     const r = await fetch('/semafor-spend', {method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify({date, rows, force:!!force})});
     const d = await r.json();
     if (d && d.ok){
-      msg.textContent = '✓ Poraba shranjena za ' + date + (d.overwritten && d.overwritten.length ? ' (prepisano)' : '');
-      _semSpend = {fb:null, g:null};
-      document.getElementById('semSpendPrev').innerHTML=''; document.getElementById('semSpendSaveBtn').style.display='none';
-      document.getElementById('semFbName').textContent='— izberi'; document.getElementById('semGName').textContent='— izberi';
-      document.getElementById('semFbCsv').value=''; document.getElementById('semGCsv').value='';
+      semSpendReset();
+      document.getElementById('semSpendMsg').textContent = '✓ Poraba shranjena za ' + date + (d.overwritten && d.overwritten.length ? ' (prepisano: ' + d.overwritten.join(', ') + ')' : '');
       semLoad();
     } else if (d && d.conflicts){
       if (confirm('Za ' + date + ' poraba že obstaja (' + d.conflicts.join(', ') + '). Prepišem?')) semSpendSave(true);
     } else msg.textContent = '✗ ' + ((d && d.error) || 'napaka');
   }catch(e){ msg.textContent = '✗ ' + e.message; }
+}
+// ── 💰 DOBIČEK DNEVA: RVC skupaj − poraba (FB+Google) za dan, ki ima OBOJE ────
+function semProfitDates(){
+  const snaps = (SEMD && SEMD.snapshots) || [], sp = (SEMD && SEMD.spend) || [];
+  const pd = new Set(sp.map(x => x.date));
+  return [...new Set(snaps.map(x => x.date))].filter(d => pd.has(d)).sort().reverse();
+}
+function semRenderProfit(){
+  const box = document.getElementById('semProfitBox'); if (!box || !SEMD) return;
+  const dates = semProfitDates();
+  if (!dates.length){ box.innerHTML = ''; return; }
+  const sel = document.getElementById('semProfitDate');
+  const date = (sel && dates.indexOf(sel.value) >= 0) ? sel.value : dates[0];
+  const snaps = (SEMD.snapshots || []).filter(x => x.date === date);
+  const spend = (SEMD.spend || []).filter(x => x.date === date);
+  const fr = SEMD.fail_rates || {};
+  const seen = new Set([...snaps.map(x=>x.market), ...spend.map(x=>x.market)]);
+  let rvcSum=0, realSum=0, fbSum=0, gSum=0, ordSum=0;
+  const noFail = [], noSnap = [], rows = [];
+  SEM_MARKETS.filter(m => seen.has(m)).forEach(m => {
+    const s = snaps.find(x => x.market === m), p = spend.find(x => x.market === m);
+    const orders = s ? (s.orders || 0) : 0;
+    const rvcT = s ? ((s.rvc_total != null) ? s.rvc_total : (s.rvc_per_order != null ? orders * s.rvc_per_order : 0)) : 0;
+    const fe = fr[m] || {};
+    const f = (fe.fail_rate == null || fe.fail_rate === '') ? null : fe.fail_rate/100;
+    let realT = rvcT;
+    if (s){
+      if (f != null && s.rvc_per_order != null && s.rvc_gross_per_order != null)
+        realT = orders * (s.rvc_per_order - f * s.rvc_gross_per_order);
+      else noFail.push(m);
+    } else noSnap.push(m);
+    const a = p ? (p.fb || 0) : 0, b = p ? (p.google || 0) : 0;
+    rvcSum += rvcT; realSum += realT; fbSum += a; gSum += b; ordSum += orders;
+    rows.push({m, orders, rvcT, realT, sp:a+b, fail:f, noSnap:!s, noSpend:!p});
+  });
+  const spendSum = fbSum + gSum, profit = rvcSum - spendSum, real = realSum - spendSum;
+  const eur = v => (Number(v||0)).toFixed(2).replace('.', ',') + ' €';
+  const sgn = v => (v > 0 ? '+' : '') + eur(v);
+  const pc = profit >= 0 ? '#12a35f' : '#e5484d';
+  const rc = real >= 0 ? '#12a35f' : '#e5484d';
+  const warn = [];
+  if (noSnap.length) warn.push('⚠ poraba brez RVC posnetka: ' + noSnap.join(', ') + ' — dobiček je podcenjen');
+  if (noFail.length) warn.push('⚠ brez fail % (realni = bruto): ' + noFail.join(', '));
+  const noSpendM = rows.filter(r => r.noSpend && !r.noSnap).map(r => r.m);
+  if (noSpendM.length) warn.push('ℹ RVC brez uvožene porabe: ' + noSpendM.join(', '));
+  const detail = '<table style="border-collapse:collapse;font-size:12px;min-width:560px;width:100%">'
+    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:5px 8px">Trg</th><th style="text-align:right;padding:5px 8px">Naročil</th><th style="text-align:right;padding:5px 8px">RVC</th><th style="text-align:right;padding:5px 8px">Poraba</th><th style="text-align:right;padding:5px 8px">Dobiček</th><th style="text-align:right;padding:5px 8px">Realni</th></tr>'
+    + rows.map(r => { const d1 = r.rvcT - r.sp, d2 = r.realT - r.sp;
+      return '<tr style="border-top:1px solid var(--border)"><td style="padding:5px 8px;font-weight:700">' + r.m
+        + (r.noSnap ? ' <span style="font-size:10px;color:#e5484d">brez posnetka</span>' : '') + '</td>'
+        + '<td style="padding:5px 8px;text-align:right">' + r.orders + '</td>'
+        + '<td style="padding:5px 8px;text-align:right">' + eur(r.rvcT) + '</td>'
+        + '<td style="padding:5px 8px;text-align:right">' + eur(r.sp) + '</td>'
+        + '<td style="padding:5px 8px;text-align:right;font-weight:700;color:' + (d1>=0?'#12a35f':'#e5484d') + '">' + sgn(d1) + '</td>'
+        + '<td style="padding:5px 8px;text-align:right;color:' + (d2>=0?'#12a35f':'#e5484d') + '">' + sgn(d2) + '</td></tr>'; }).join('')
+    + '<tr style="border-top:2px solid var(--border);background:var(--surface2)"><td style="padding:6px 8px;font-weight:800">SKUPAJ</td>'
+    + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + ordSum + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + eur(rvcSum) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + eur(spendSum) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + pc + '">' + sgn(profit) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + rc + '">' + sgn(real) + '</td></tr></table>';
+  box.innerHTML = '<div class="card" style="margin-bottom:12px;border-left:5px solid ' + pc + '">'
+    + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">'
+    + '<div><div style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text-tertiary)">💰 Dobiček dneva</div>'
+    + '<div style="font-size:46px;line-height:1.05;font-weight:800;color:' + pc + ';margin:4px 0 2px">' + sgn(profit) + '</div>'
+    + '<div style="font-size:13.5px;color:var(--text-secondary)">realni <b style="color:' + rc + ';font-size:15px">' + sgn(real) + '</b> '
+    + '<span style="font-size:11px;color:var(--text-tertiary)">— z odbitim pričakovanim fail % po trgih</span></div></div>'
+    + '<div style="text-align:right;font-size:12px;color:var(--text-secondary);min-width:210px">'
+    + '<label style="font-size:11px;color:var(--text-tertiary)">dan <select id="semProfitDate" onchange="semRenderProfit()" style="padding:4px 7px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:12px">'
+    + dates.map(d => '<option value="' + d + '"' + (d === date ? ' selected' : '') + '>' + d + '</option>').join('') + '</select></label>'
+    + '<div style="margin-top:9px">RVC skupaj <b style="font-size:14px">' + eur(rvcSum) + '</b></div>'
+    + '<div>− poraba <b style="font-size:14px">' + eur(spendSum) + '</b></div>'
+    + '<div style="font-size:11px;color:var(--text-tertiary)">FB ' + eur(fbSum) + ' · Google ' + eur(gSum) + ' · ' + ordSum + ' naročil</div>'
+    + '</div></div>'
+    + (warn.length ? '<div style="margin-top:10px;font-size:11.5px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px">' + warn.map(w => '<span>' + w + '</span>').join('') + '</div>' : '')
+    + '<details style="margin-top:10px"><summary style="cursor:pointer;font-size:11.5px;color:var(--text-tertiary)">▦ Razčlenitev po trgih</summary><div style="margin-top:8px;overflow-x:auto">' + detail + '</div></details>'
+    + '</div>';
 }
 function semCompute(){
   // izračun IZKLJUČNO nad shranjenimi posnetki (TRDO PRAVILO — nikoli iz živega vira)
