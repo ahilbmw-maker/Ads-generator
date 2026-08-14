@@ -24197,7 +24197,7 @@ async def analiza_meta_duplicates_ai(data: dict):
 SEMAFOR_FILE = DATA_DIR / "semafor_cpa.json"
 _semafor_lock = asyncio.Lock()
 
-SEMAFOR_DEFAULT_SETTINGS = {"window_days": 7, "target_contribution": 2.50, "reserve": 0.40}
+SEMAFOR_DEFAULT_SETTINGS = {"window_days": 1, "target_contribution": 2.50, "reserve": 0.40}
 # začetne vrednosti fail rate (avgust 2026) — program jih NIKOLI ne prepiše sam
 SEMAFOR_DEFAULT_FAILRATES = {
     "SI": {"fail_rate": 12.0, "note": ""},
@@ -24226,6 +24226,10 @@ def _semafor_load() -> dict:
     for m, v in SEMAFOR_DEFAULT_FAILRATES.items():
         d["fail_rates"].setdefault(m, {**v, "updated_at": ""})
     d.setdefault("settings", dict(SEMAFOR_DEFAULT_SETTINGS))
+    # enkratna migracija: semafor je dneven (okno = izbrani dan), ne 7-dnevni seštevek
+    if not d["settings"].get("day_mode"):
+        d["settings"]["window_days"] = 1
+        d["settings"]["day_mode"] = True
     d.setdefault("cpa_manual", {})         # {market: {cpa, updated_at}} — ročni vnos (točka 9)
     d.setdefault("spend", [])              # dnevna poraba po trgu: {date, market, fb, google}
     return d
@@ -24449,8 +24453,8 @@ async def semafor_settings(data: dict):
         st = d["settings"]
         if "window_days" in (data or {}):
             w = int(data["window_days"])
-            if w not in (7, 14):
-                return {"ok": False, "error": "Okno je lahko 7 ali 14 dni."}
+            if w not in (1, 3, 7, 14):
+                return {"ok": False, "error": "Okno je lahko 1, 3, 7 ali 14 dni."}
             st["window_days"] = w
         for k in ("target_contribution", "reserve"):
             if k in (data or {}):

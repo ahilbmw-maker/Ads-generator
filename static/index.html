@@ -2916,7 +2916,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div style="font-size:11.5px;color:var(--text-secondary)">Mejni CPA, pri katerem je naročilo še dobičkonosno — iz shranjenih dnevnih posnetkov. Modul samo računa in prikazuje.</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">
-            <label>Okno <select id="semWin" onchange="semSaveSettings()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"><option value="7">7 dni</option><option value="14">14 dni</option></select></label>
+            <label>Okno <select id="semWin" onchange="semSaveSettings()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"><option value="1">1 dan (izbrani)</option><option value="3">3 dni</option><option value="7">7 dni</option><option value="14">14 dni</option></select></label>
             <label>Cilj €/nar <input id="semTarget" type="number" step="0.1" style="width:64px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit" onchange="semSaveSettings()"></label>
             <label>Rezerva € <input id="semReserve" type="number" step="0.1" style="width:58px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit" onchange="semSaveSettings()"></label>
           </div>
@@ -2942,7 +2942,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div id="semProfitBox"></div>
 
 <div class="card" style="margin-bottom:12px">
-        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Semafor <span style="font-weight:400;font-size:11px;color:var(--text-tertiary)">— urejeno po prispevku · CPA vpišeš ročno (poraba / realna naročila iz ERP, brez organic)</span></div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Semafor <span style="font-weight:400;font-size:11px;color:var(--text-tertiary)">— za dan, izbran v dnevnem listu zgoraj · urejeno po prispevku · CPA se izračuna iz uvožene porabe (ali ga vpišeš ročno)</span></div>
         <div id="semTableBox" style="overflow-x:auto"><div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px">Nalagam…</div></div>
       </div>
 
@@ -16215,7 +16215,7 @@ function semDaySet(d){
   const el = document.getElementById('semDay'); if (el) el.value = d;
   const a = document.getElementById('semDate'); if (a) a.value = d;
   const b = document.getElementById('semSpendDate'); if (b) b.value = d;
-  semDayRender(); semRenderProfit();
+  semDayRender(); semRenderProfit(); semRenderTable();
 }
 function semDayShift(n){
   const d = new Date(semDayGet() + 'T12:00:00'); d.setDate(d.getDate() + n);
@@ -16463,7 +16463,16 @@ function semCompute(){
   const st = (SEMD && SEMD.settings) || {window_days:7, target_contribution:2.5, reserve:0.4};
   const snaps = (SEMD && SEMD.snapshots) || [];
   if (!snaps.length) return {rows:[], daysInWindow:0, latest:null, windowDays:st.window_days};
-  const latest = snaps.map(x=>x.date).sort().pop();
+  // okno se KONČA na dnevu, izbranem v dnevnem listu (če zanj ali prej sploh so posnetki)
+  const allDates = snaps.map(x=>x.date).sort();
+  const sel = (typeof semDayGet === 'function') ? semDayGet() : allDates[allDates.length-1];
+  let latest;
+  if (st.window_days === 1){
+    latest = sel;                       // dnevni način: točno izbrani dan, brez seštevanja
+  } else {
+    const upto = allDates.filter(d => d <= sel);
+    latest = upto.length ? upto[upto.length-1] : allDates[allDates.length-1];
+  }
   const start = new Date(new Date(latest + 'T00:00:00').getTime() - (st.window_days - 1) * 86400000).toISOString().slice(0,10);
   const inWin = snaps.filter(x => x.date >= start && x.date <= latest);
   const rows = [];
@@ -16512,7 +16521,7 @@ function semCompute(){
   });
   rows.sort((a,b) => (b.contribution ?? -1e9) - (a.contribution ?? -1e9));
   const daysGlobal = new Set(inWin.map(x=>x.date)).size;
-  return {rows, daysInWindow:daysGlobal, latest, windowDays:st.window_days};
+  return {rows, daysInWindow:daysGlobal, latest, start, windowDays:st.window_days};
 }
 function semRenderTable(){
   const box = document.getElementById('semTableBox'); if (!box || !SEMD) return;
@@ -16524,7 +16533,11 @@ function semRenderTable(){
     } else warn.style.display = 'none';
   }
   if (!c.rows.length){
-    box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px">Ni shranjenih posnetkov v oknu. Naredi prvi dnevni vnos zgoraj.</div>';
+    const last = ((SEMD.snapshots||[]).map(x=>x.date).sort().pop()) || null;
+    box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px">'
+      + 'Za <b>' + semDayGet() + '</b> ni shranjenega RVC posnetka — vnesi ga spodaj.'
+      + (last && last !== semDayGet() ? '<div style="margin-top:8px"><button onclick="semDaySet(\'' + last + '\')" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Pokaži zadnji dan s podatki (' + last + ')</button></div>' : '')
+      + '</div>';
     return;
   }
   const col = r => {
@@ -16583,7 +16596,7 @@ function semRenderTable(){
   const mx = Math.max(...c.rows.filter(r=>r.be!=null).map(r=>r.be*1.15), ...c.rows.filter(r=>r.cpa!=null).map(r=>r.cpa*1.05), 1);
   const pct = v => Math.max(0, Math.min(102, v/mx*100)).toFixed(1) + '%';
   const v1 = '<table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:860px">'
-    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Trg</th><th style="text-align:left;padding:6px 8px;min-width:240px">Kje je CPA — zelena→cilj · oranžna→break-even · rdeča čez</th><th style="text-align:right;padding:6px 8px">Dejanski CPA</th><th style="text-align:right;padding:6px 8px">Break-even</th><th style="text-align:right;padding:6px 8px">Cilj</th><th style="text-align:right;padding:6px 8px">Prispevek</th><th style="text-align:right;padding:6px 8px">Naročil</th><th style="text-align:right;padding:6px 8px">Realni dobiček<div style="font-weight:400;text-transform:none;font-size:9px">v celem oknu</div></th></tr>'
+    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Trg</th><th style="text-align:left;padding:6px 8px;min-width:240px">Kje je CPA — zelena→cilj · oranžna→break-even · rdeča čez</th><th style="text-align:right;padding:6px 8px">Dejanski CPA</th><th style="text-align:right;padding:6px 8px">Break-even</th><th style="text-align:right;padding:6px 8px">Cilj</th><th style="text-align:right;padding:6px 8px">Prispevek</th><th style="text-align:right;padding:6px 8px">Naročil</th><th style="text-align:right;padding:6px 8px">Realni dobiček<div style="font-weight:400;text-transform:none;font-size:9px">' + (c.windowDays===1 ? 'ta dan' : 'v celem oknu') + '</div></th></tr>'
     + c.rows.map(r => {
       const st2 = (r.cpa==null || r.target==null) ? '' : (r.cpa <= r.target ? 'g' : (r.cpa <= r.down ? 'o' : 'r'));
       const pc = st2==='g' ? '#12a35f' : st2==='o' ? '#d9921b' : st2==='r' ? '#e5484d' : 'var(--border)';
@@ -16609,13 +16622,21 @@ function semRenderTable(){
         return '<tr style="border-top:2px solid var(--border);background:var(--surface2)">'
           + '<td style="padding:9px 8px;font-weight:800">SKUPAJ <span style="font-size:10px;color:var(--text-tertiary);font-weight:400">' + rp.length + ' z znanim CPA</span></td>'
           + '<td colspan="4"></td>'
-          + '<td style="padding:9px 8px;text-align:right;font-weight:800;color:var(--text-tertiary);font-size:11px">' + c.windowDays + ' dni</td>'
+          + '<td style="padding:9px 8px;text-align:right;font-weight:800;color:var(--text-tertiary);font-size:11px">' + (c.windowDays===1 ? c.latest : c.windowDays + ' dni') + '</td>'
           + '<td style="padding:9px 8px;text-align:right;font-weight:800">' + ord + '</td>'
           + '<td style="padding:9px 8px;text-align:right;font-weight:800;font-size:15px;color:' + (tot>=0?'#12a35f':'#e5484d') + '">' + semSgn(tot)
-          + '<div style="font-size:10px;font-weight:600;color:var(--text-tertiary)">⌀ ' + semSgn(tot/Math.max(1, c.daysInWindow)) + ' / dan</div></td></tr>';
+          + (c.windowDays===1 ? '' : '<div style="font-size:10px;font-weight:600;color:var(--text-tertiary)">⌀ ' + semSgn(tot/Math.max(1, c.daysInWindow)) + ' / dan</div>') + '</td></tr>';
       })()
     + '</table>';
-  box.innerHTML = v1
+  const totOrd = c.rows.reduce((a,b) => a + (b.orders||0), 0);
+  const info = '<div style="font-size:11.5px;color:var(--text-tertiary);margin-bottom:8px">'
+    + (c.windowDays === 1
+        ? '📅 <b style="color:var(--text)">' + c.latest + '</b> — samo ta dan · naročil: <b style="color:var(--text)">' + totOrd + '</b>'
+        : 'okno <b>' + c.windowDays + ' dni</b>: ' + c.start + ' → ' + c.latest
+          + ' · dni s posnetki: <b>' + c.daysInWindow + '</b> · naročil: <b>' + totOrd + '</b>'
+          + (c.daysInWindow > 1 ? ' <span style="color:#d9921b">(vsota čez ' + c.daysInWindow + ' dni — za en sam dan izberi okno »1 dan«)</span>' : ''))
+    + '</div>';
+  box.innerHTML = info + v1
     + '<details style="margin-top:10px"><summary style="font-size:11.5px;color:var(--text-tertiary);cursor:pointer">▦ Podrobna tabela (RVC, fail %, razdalja, max fail, handikap CPA)</summary><div style="margin-top:8px;overflow-x:auto">' + fullTable + '</div></details>';
 }
 
