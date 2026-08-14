@@ -15875,15 +15875,24 @@ async function semLoad(){
   }catch(e){ console.error('semafor', e); }
 }
 async function semSaveSettings(){
+  // POZOR: "|| privzeto" je vrednost 0 tiho spremenil v privzeto (0,4) — zato je
+  // break-even skakal gor/dol. Zdaj se prevzame točno to, kar je vpisano.
+  const num = (id, def) => { const v = parseFloat(document.getElementById(id).value);
+    return isNaN(v) ? def : Math.max(0, v); };
   const body = {
-    window_days: parseInt(document.getElementById('semWin').value) || 7,
-    target_contribution: parseFloat(document.getElementById('semTarget').value) || 2.5,
-    reserve: parseFloat(document.getElementById('semReserve').value) || 0.4
+    window_days: parseInt(document.getElementById('semWin').value) || 1,
+    target_contribution: num('semTarget', 2.5),
+    reserve: num('semReserve', 0)
   };
   try{
     const r = await fetch('/semafor-settings', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d = await r.json();
-    if (d && d.ok){ SEMD.settings = d.settings; semRenderTable(); }
+    if (d && d.ok){
+      SEMD.settings = d.settings;
+      document.getElementById('semTarget').value = d.settings.target_contribution;
+      document.getElementById('semReserve').value = d.settings.reserve;
+      semRenderTable();
+    }
   }catch(e){}
 }
 async function semPreview(){
@@ -16571,7 +16580,7 @@ function semRenderTable(){
     + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px">'
     + '<th style="text-align:left;padding:6px 8px">Trg</th><th style="text-align:right;padding:6px 8px">Naročil</th>'
     + '<th style="text-align:right;padding:6px 8px">RVC</th><th style="text-align:right;padding:6px 8px">RVC bruto</th>'
-    + '<th style="text-align:right;padding:6px 8px">Fail %</th><th style="text-align:center;padding:6px 10px;background:var(--accent-dim);color:var(--accent);font-weight:700">Break-even</th>'
+    + '<th style="text-align:right;padding:6px 8px">Fail %</th><th style="text-align:right;padding:6px 8px">BE pred fiksnimi</th><th style="text-align:center;padding:6px 10px;background:var(--accent-dim);color:var(--accent);font-weight:700">Break-even</th>'
     + '<th style="text-align:right;padding:6px 8px">Ciljni CPA</th><th style="text-align:right;padding:6px 8px">Dejanski CPA</th>'
     + '<th style="text-align:right;padding:6px 8px">Prispevek</th><th style="text-align:right;padding:6px 8px">Razdalja</th>'
     + '<th style="text-align:right;padding:6px 8px">Max fail</th><th style="text-align:right;padding:6px 8px">Handikap CPA</th><th style="text-align:right;padding:6px 8px">Realni dobiček (okno)</th></tr>'
@@ -16585,6 +16594,7 @@ function semRenderTable(){
         + '<td style="padding:6px 8px;text-align:right">' + semEur(r.rvc) + '</td>'
         + '<td style="padding:6px 8px;text-align:right">' + semEur(r.rvcB) + '</td>'
         + '<td style="padding:6px 8px;text-align:right">' + (noFail ? '<span style="color:#e5484d;font-size:11px">vpiši ↑</span>' : (r.fail*100).toFixed(0) + ' %') + '</td>'
+        + '<td style="padding:6px 8px;text-align:right;color:var(--text-secondary)">' + semEur(r.beGross) + (r.fixed ? '<div style="font-size:9px;color:var(--text-tertiary)">− ' + semEur(r.fixed) + '</div>' : '') + '</td>'
         + '<td style="padding:6px 10px;text-align:center;font-weight:800;font-size:16px;background:var(--accent-dim);color:var(--accent);border-left:1px solid var(--accent-border);border-right:1px solid var(--accent-border)">' + semEur(r.be) + '</td>'
         + '<td style="padding:6px 8px;text-align:right">' + semEur(r.target) + '</td>'
         + '<td style="padding:6px 8px;text-align:right"><input value="' + (r.cpa==null?'':(Math.round(r.cpa*100)/100)) + '" placeholder="—" onchange="semSaveCpa(\'' + r.market + '\',this.value)" title="Ročni vnos prepiše avtomatskega; izprazni za vrnitev na auto" style="width:62px;padding:3px 6px;text-align:right;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:inherit;font-weight:700">' + (r.cpaSrc ? '<div style="font-size:9px;color:var(--text-tertiary)">' + r.cpaSrc + '</div>' : '') + '</td>'
@@ -16638,6 +16648,7 @@ function semRenderTable(){
   const info = '<div style="font-size:11.5px;color:var(--text-tertiary);margin-bottom:8px">'
     + (c.windowDays === 1
         ? '📅 <b style="color:var(--text)">' + c.latest + '</b> — samo ta dan · naročil: <b style="color:var(--text)">' + totOrd + '</b>'
+          + ' · <span style="color:var(--accent)">break-even znižan za fiksne ' + semEur(((SEMD.settings||{}).reserve)||0) + '/nar</span>'
         : 'okno <b>' + c.windowDays + ' dni</b>: ' + c.start + ' → ' + c.latest
           + ' · dni s posnetki: <b>' + c.daysInWindow + '</b> · naročil: <b>' + totOrd + '</b>'
           + (c.daysInWindow > 1 ? ' <span style="color:#d9921b">(vsota čez ' + c.daysInWindow + ' dni — za en sam dan izberi okno »1 dan«)</span>' : ''))
