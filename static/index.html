@@ -2930,8 +2930,9 @@ input[type="text"].error { border-color: var(--red) !important; }
           <button onclick="semDayShift(-1)" title="dan nazaj" style="padding:5px 10px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;cursor:pointer;font-family:inherit">‹</button>
           <input id="semDay" type="date" onchange="semDaySet(this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-weight:700">
           <button onclick="semDayShift(1)" title="dan naprej" style="padding:5px 10px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;cursor:pointer;font-family:inherit">›</button>
-          <button onclick="semDaySet(semYday())" style="padding:5px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">včeraj</button>
-          <button onclick="semDaySet(semToday())" style="padding:5px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">danes</button>
+          <button id="semBtnY" onclick="semDaySet(semYday())" style="padding:5px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit">včeraj</button>
+          <button id="semBtnT" onclick="semDaySet(semToday())" style="padding:5px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit">danes</button>
+          <button id="semBtnDel" onclick="semDayDelete()" title="pobriši vse zapise tega dne (npr. če je bil vnesen z napačnim datumom)" style="display:none;padding:5px 12px;background:transparent;color:#e5484d;border:1px solid rgba(229,72,77,.4);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">🗑 pobriši ta dan</button>
           <span id="semDayStatus" style="display:flex;gap:6px;flex-wrap:wrap;margin-left:4px"></span>
         </div>
         <div style="font-size:11px;color:var(--text-tertiary);margin-top:7px">Izbrani dan velja za cel zavihek — vnos RVC, uvoz porabe in izračun dobička. Vsak dan je svoj list; star dan lahko kadarkoli odpreš in popraviš končne številke.</div>
@@ -15864,7 +15865,7 @@ async function semLoad(){
     const t = document.getElementById('semTarget'); if (t) t.value = st.target_contribution ?? 2.5;
     const rz = document.getElementById('semReserve'); if (rz) rz.value = st.reserve ?? 0.4;
     const dy = document.getElementById('semDay');
-    if (dy && !dy.value) dy.value = semYday();          // nov dan = nov list (privzeto včeraj)
+    if (dy && !dy.value) dy.value = semToday();         // nov dan = nov list (privzeto danes)
     const dt = document.getElementById('semDate'); if (dt && !dt.value) dt.value = semDayGet();
     const ds = document.getElementById('semSpendDate'); if (ds && !ds.value) ds.value = semDayGet();
     semDayRender();
@@ -16240,6 +16241,16 @@ function semDayRender(){
     + (ok ? '✓ ' : '○ ') + txt + '</span>';
   box.innerHTML = pill(sn.length > 0, sn.length ? 'RVC posnetek — ' + plT(sn.length) + ', ' + ord + ' naročil' + tm(sn) : 'RVC posnetek še ni vnesen')
     + ' ' + pill(sp.length > 0, sp.length ? 'poraba — ' + plT(sp.length) + ', ' + eur(spSum) + tm(sp) : 'poraba še ni uvožena');
+  const act = (el, on) => { if (!el) return;
+    el.style.background = on ? 'var(--accent)' : 'transparent';
+    el.style.color = on ? '#fff' : 'var(--text-secondary)';
+    el.style.borderColor = on ? 'var(--accent)' : 'var(--border)'; };
+  act(document.getElementById('semBtnT'), day === semToday());
+  act(document.getElementById('semBtnY'), day === semYday());
+  const di = document.getElementById('semDay');
+  if (di) di.style.borderColor = (day === semToday() || day === semYday()) ? 'var(--accent)' : 'var(--border)';
+  const del = document.getElementById('semBtnDel');
+  if (del) del.style.display = (sn.length || sp.length) ? '' : 'none';
   const sb = document.getElementById('semSaveBtn');
   if (sb) sb.textContent = sn.length ? '💾 Posodobi posnetke (' + day + ')' : '💾 Shrani posnetke (' + day + ')';
   const pb = document.getElementById('semSpendSaveBtn');
@@ -16253,8 +16264,22 @@ function semDayRender(){
         : '💾 shranjeno na trajni disk <b>' + (s.path || '/data/semafor_cpa.json') + '</b>')
       + ' · ' + plD(dni) + ' v arhivu'
       + (s.size ? ' · ' + (s.size/1024).toFixed(1).replace('.', ',') + ' kB' : '')
-      + (s.mtime ? ' · zadnji zapis ' + String(s.mtime).replace('T',' ').slice(0,16) : '');
+      + (s.mtime ? ' · zadnji zapis ' + String(s.mtime).replace('T',' ').slice(0,16) : '')
+      + (s.cleaned ? ' · <span style="color:#d9921b">očiščenih ' + s.cleaned + ' podvojenih zapisov</span>' : '');
   }
+}
+async function semDayDelete(){
+  const day = semDayGet();
+  const sn = (SEMD.snapshots || []).filter(x => x.date === day);
+  const sp = (SEMD.spend || []).filter(x => x.date === day);
+  if (!sn.length && !sp.length) return;
+  if (!confirm('Pobrišem VSE zapise za ' + day + '?\n\nRVC posnetki: ' + sn.length + ' trgov\nPoraba: ' + sp.length + ' trgov\n\nUporabi, če je bil dan vnesen z napačnim datumom.')) return;
+  try{
+    const r = await fetch('/semafor-delete-day', {method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({date:day, what:'both'})});
+    const d = await r.json();
+    if (d && d.ok) semLoad();
+  }catch(e){ alert('Napaka: ' + e.message); }
 }
 function semProfitDates(){
   const snaps = (SEMD && SEMD.snapshots) || [], sp = (SEMD && SEMD.spend) || [];
@@ -16532,7 +16557,7 @@ function semRenderTable(){
     + '<th style="text-align:right;padding:6px 8px">Fail %</th><th style="text-align:right;padding:6px 8px">Break-even</th>'
     + '<th style="text-align:right;padding:6px 8px">Ciljni CPA</th><th style="text-align:right;padding:6px 8px">Dejanski CPA</th>'
     + '<th style="text-align:right;padding:6px 8px">Prispevek</th><th style="text-align:right;padding:6px 8px">Razdalja</th>'
-    + '<th style="text-align:right;padding:6px 8px">Max fail</th><th style="text-align:right;padding:6px 8px">Handikap CPA</th><th style="text-align:right;padding:6px 8px">Realni dobiček</th></tr>'
+    + '<th style="text-align:right;padding:6px 8px">Max fail</th><th style="text-align:right;padding:6px 8px">Handikap CPA</th><th style="text-align:right;padding:6px 8px">Realni dobiček (okno)</th></tr>'
     + c.rows.map(r => {
       const weak = r.orders < 20;
       const noFail = r.fail == null;
@@ -16558,7 +16583,7 @@ function semRenderTable(){
   const mx = Math.max(...c.rows.filter(r=>r.be!=null).map(r=>r.be*1.15), ...c.rows.filter(r=>r.cpa!=null).map(r=>r.cpa*1.05), 1);
   const pct = v => Math.max(0, Math.min(102, v/mx*100)).toFixed(1) + '%';
   const v1 = '<table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:860px">'
-    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Trg</th><th style="text-align:left;padding:6px 8px;min-width:240px">Kje je CPA — zelena→cilj · oranžna→break-even · rdeča čez</th><th style="text-align:right;padding:6px 8px">Dejanski CPA</th><th style="text-align:right;padding:6px 8px">Break-even</th><th style="text-align:right;padding:6px 8px">Cilj</th><th style="text-align:right;padding:6px 8px">Prispevek</th><th style="text-align:right;padding:6px 8px">Naročil</th><th style="text-align:right;padding:6px 8px">Realni dobiček</th></tr>'
+    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Trg</th><th style="text-align:left;padding:6px 8px;min-width:240px">Kje je CPA — zelena→cilj · oranžna→break-even · rdeča čez</th><th style="text-align:right;padding:6px 8px">Dejanski CPA</th><th style="text-align:right;padding:6px 8px">Break-even</th><th style="text-align:right;padding:6px 8px">Cilj</th><th style="text-align:right;padding:6px 8px">Prispevek</th><th style="text-align:right;padding:6px 8px">Naročil</th><th style="text-align:right;padding:6px 8px">Realni dobiček<div style="font-weight:400;text-transform:none;font-size:9px">v celem oknu</div></th></tr>'
     + c.rows.map(r => {
       const st2 = (r.cpa==null || r.target==null) ? '' : (r.cpa <= r.target ? 'g' : (r.cpa <= r.down ? 'o' : 'r'));
       const pc = st2==='g' ? '#12a35f' : st2==='o' ? '#d9921b' : st2==='r' ? '#e5484d' : 'var(--border)';
@@ -16586,7 +16611,8 @@ function semRenderTable(){
           + '<td colspan="4"></td>'
           + '<td style="padding:9px 8px;text-align:right;font-weight:800;color:var(--text-tertiary);font-size:11px">' + c.windowDays + ' dni</td>'
           + '<td style="padding:9px 8px;text-align:right;font-weight:800">' + ord + '</td>'
-          + '<td style="padding:9px 8px;text-align:right;font-weight:800;font-size:15px;color:' + (tot>=0?'#12a35f':'#e5484d') + '">' + semSgn(tot) + '</td></tr>';
+          + '<td style="padding:9px 8px;text-align:right;font-weight:800;font-size:15px;color:' + (tot>=0?'#12a35f':'#e5484d') + '">' + semSgn(tot)
+          + '<div style="font-size:10px;font-weight:600;color:var(--text-tertiary)">⌀ ' + semSgn(tot/Math.max(1, c.daysInWindow)) + ' / dan</div></td></tr>';
       })()
     + '</table>';
   box.innerHTML = v1

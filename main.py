@@ -24246,12 +24246,101 @@ def _semafor_market_code(trg: str) -> str:
     return ""
 
 
+def _semafor_dedupe(d: dict) -> int:
+    """Za vsak (datum, trg) obdrži SAMO ZADNJI zapis. Popravi tudi stare podvojene
+    vnose, ki so nastali pri večkratnem lepljenju istega dne."""
+    removed = 0
+    for key in ("snapshots", "spend"):
+        rows = d.get(key) or []
+        keep = {}
+        for r in rows:
+            k = (r.get("date"), r.get("market"))
+            prev = keep.get(k)
+            if prev is None or str(r.get("created_at") or "") >= str(prev.get("created_at") or ""):
+                keep[k] = r
+        if len(keep) != len(rows):
+            removed += len(rows) - len(keep)
+            d[key] = sorted(keep.values(), key=lambda x: (x.get("date") or "", x.get("market") or ""))
+    return removed
+
+
+def _semafor_merge_snapshot_rows(rows: list) -> list:
+    """En trg = ena vrstica. Če je v prilepljenem izpisu več trgovin istega trga
+    (npr. Maaarket.si + Zipply.si → SI), jih SEŠTEJE in preračuna na naročilo."""
+    by, order = {}, []
+    for r in rows or []:
+        m = str((r or {}).get("market") or "").upper().strip()
+        if not m:
+            continue
+        if m not in by:
+            e = dict(r); e["market"] = m
+            by[m] = e; order.append(m)
+            continue
+        a = by[m]
+        o = int(a.get("orders") or 0) + int(r.get("orders") or 0)
+        sh = float(a.get("shipping_total") or 0) + float(r.get("shipping_total") or 0)
+        rv = float(a.get("rvc_total") or 0) + float(r.get("rvc_total") or 0)
+        a["orders"] = o
+        a["shipping_total"] = round(sh, 2)
+        a["rvc_total"] = round(rv, 2)
+        a["rvc_per_order"] = round(rv / o, 2) if o else None
+        a["rvc_gross_per_order"] = round((rv + sh) / o, 2) if o else None
+    return [by[m] for m in order]
+
+
+def _semafor_merge_spend_rows(rows: list) -> list:
+    """En trg = ena vrstica porabe (FB + Google seštet)."""
+    by, order = {}, []
+    for r in rows or []:
+        m = str((r or {}).get("market") or "").upper().strip()
+        if m not in SEMAFOR_MARKETS:
+            continue
+        if m not in by:
+            by[m] = {"market": m, "fb": 0.0, "google": 0.0}; order.append(m)
+        try:
+            by[m]["fb"] += float(r.get("fb") or 0)
+            by[m]["google"] += float(r.get("google") or 0)
+        except Exception:
+            pass
+    for m in order:
+        by[m]["fb"] = round(by[m]["fb"], 2)
+        by[m]["google"] = round(by[m]["google"], 2)
+    return [by[m] for m in order]
+
+
+@app.post("/semafor-delete-day")
+async def semafor_delete_day(data: dict):
+    """Pobriše zapise za en dan (posnetek / poraba / oboje) — za popravek napačnega datuma."""
+    date = str((data or {}).get("date") or "").strip()
+    what = str((data or {}).get("what") or "both").lower()
+    if what not in ("snapshot", "spend", "both"):
+        return {"ok": False, "error": "Neznan tip."}
+    async with _semafor_lock:
+        d = _semafor_load()
+        n = 0
+        if what in ("snapshot", "both"):
+            before = len(d["snapshots"])
+            d["snapshots"] = [s for s in d["snapshots"] if s.get("date") != date]
+            n += before - len(d["snapshots"])
+        if what in ("spend", "both"):
+            before = len(d["spend"])
+            d["spend"] = [s for s in d["spend"] if s.get("date") != date]
+            n += before - len(d["spend"])
+        _semafor_save(d)
+        return {"ok": True, "deleted": n, "date": date}
+
+
 @app.get("/semafor-data")
 async def semafor_data():
     """Vse iz semafor_cpa.json na disku + info o shrambi (da se vidi, da nič ne izgine)."""
     from datetime import datetime as _dt
-    d = _semafor_load()
-    storage = {"path": str(SEMAFOR_FILE), "exists": SEMAFOR_FILE.exists(),
+    async with _semafor_lock:
+        d = _semafor_load()
+        cleaned = _semafor_dedupe(d)          # (datum, trg) samo enkrat — zadnji zapis
+        if cleaned:
+            print(f"[semafor] počiščenih podvojenih zapisov: {cleaned}")
+            _semafor_save(d)
+    storage = {"path": str(SEMAFOR_FILE), "exists": SEMAFOR_FILE.exists(), "cleaned": cleaned,
                "persistent": str(SEMAFOR_FILE).startswith("/data"), "size": 0, "mtime": None}
     try:
         if SEMAFOR_FILE.exists():
@@ -24303,8 +24392,10 @@ async def semafor_snapshot(data: dict):
         return {"ok": False, "error": "Neveljaven datum (YYYY-MM-DD)."}
     if not rows:
         return {"ok": False, "error": "Ni vrstic."}
+    rows = _semafor_merge_snapshot_rows(rows)      # en trg = ena vrstica (brez podvajanja)
     async with _semafor_lock:
         d = _semafor_load()
+        _semafor_dedupe(d)
         existing = {(s["date"], s["market"]) for s in d["snapshots"]}
         conflicts = [r["market"] for r in rows if (date, r.get("market")) in existing]
         if conflicts and not force:
@@ -24324,6 +24415,7 @@ async def semafor_snapshot(data: dict):
                 "rvc_total": r.get("rvc_total"),
                 "created_at": now,
             })
+        _semafor_dedupe(d)                      # varovalka: (datum, trg) ostane unikat
         d["snapshots"].sort(key=lambda s: (s["date"], s["market"]))
         _semafor_save(d)
         return {"ok": True, "saved": len(rows), "overwritten": conflicts if force else []}
@@ -24405,8 +24497,10 @@ async def semafor_spend(data: dict):
         return {"ok": False, "error": "Neveljaven datum (YYYY-MM-DD)."}
     if not rows:
         return {"ok": False, "error": "Ni vrstic."}
+    rows = _semafor_merge_spend_rows(rows)         # en trg = ena vrstica
     async with _semafor_lock:
         d = _semafor_load()
+        _semafor_dedupe(d)
         existing = {(x["date"], x["market"]) for x in d["spend"]}
         conflicts = [r["market"] for r in rows if (date, r.get("market")) in existing]
         if conflicts and not force:
@@ -24423,6 +24517,7 @@ async def semafor_spend(data: dict):
             d["spend"].append({"date": date, "market": m,
                                "fb": float(r.get("fb") or 0), "google": float(r.get("google") or 0),
                                "created_at": now})
+        _semafor_dedupe(d)
         d["spend"].sort(key=lambda x: (x["date"], x["market"]))
         _semafor_save(d)
         return {"ok": True, "saved": len(rows), "overwritten": conflicts if force else []}
