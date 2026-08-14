@@ -2924,7 +2924,12 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div id="semWarn" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(217,153,27,0.12);border:1px solid #d9992166;border-radius:var(--radius);font-size:12px;color:#b8860b"></div>
       </div>
 
-      <div class="card" style="margin-bottom:12px">
+<div class="card" style="margin-bottom:12px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Semafor <span style="font-weight:400;font-size:11px;color:var(--text-tertiary)">— urejeno po prispevku · CPA vpišeš ročno (poraba / realna naročila iz ERP, brez organic)</span></div>
+        <div id="semTableBox" style="overflow-x:auto"><div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px">Nalagam…</div></div>
+      </div>
+
+            <div class="card" style="margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
           <div style="font-weight:700;font-size:13px">📥 Dnevni vnos</div>
           <label style="font-size:12px">Datum <input id="semDate" type="date" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"></label>
@@ -2959,11 +2964,7 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div id="semFailBox" style="margin-top:10px;overflow-x:auto"></div>
       </details>
 
-      <div class="card">
-        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Semafor <span style="font-weight:400;font-size:11px;color:var(--text-tertiary)">— urejeno po prispevku · CPA vpišeš ročno (poraba / realna naročila iz ERP, brez organic)</span></div>
-        <div id="semTableBox" style="overflow-x:auto"><div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px">Nalagam…</div></div>
-      </div>
-    </div>
+          </div>
 
     <div id="analizaSubpage-dvojniki" style="display:none;padding:14px 0 0 0">
       <div class="card" style="padding:14px;margin-bottom:14px">
@@ -16093,7 +16094,7 @@ function semRenderTable(){
         + '<div style="font-size:11px;color:var(--text-secondary)">CPA: <b>' + (r.cpa==null?'—':semEur(r.cpa)) + '</b>' + (r.distance!=null ? ' · ' + (r.distance>0?'<span style="color:#e5484d">+':'<span style="color:#12a35f">') + r.distance.toFixed(2).replace('.',',') + ' €</span> od cilja' : '') + '</div>'
         + '</div>';
     }).join('') + '</div>';
-  box.innerHTML = beCards + '<table style="border-collapse:collapse;font-size:12px;min-width:980px;width:100%">'
+  const fullTable = '<table style="border-collapse:collapse;font-size:12px;min-width:980px;width:100%">'
     + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px">'
     + '<th style="text-align:left;padding:6px 8px">Trg</th><th style="text-align:right;padding:6px 8px">Naročil</th>'
     + '<th style="text-align:right;padding:6px 8px">RVC</th><th style="text-align:right;padding:6px 8px">RVC bruto</th>'
@@ -16122,6 +16123,28 @@ function semRenderTable(){
     }).join('')
     + '</table>'
     + '<div style="margin-top:8px;font-size:11px;color:var(--text-tertiary)">🟢 pod ciljnim CPA · 🟠 med ciljem in break-even−rezerva · 🔴 nad break-even−rezerva. Razdalja = dejanski − ciljni CPA (negativno = dobro). Max fail = koliko neprevzetih trg še prenese pri tem CPA. Handikap CPA = CPA + (najvišji break-even − break-even trga) za pošteno primerjavo med trgi.</div>';
+  const mx = Math.max(...c.rows.filter(r=>r.be!=null).map(r=>r.be*1.15), ...c.rows.filter(r=>r.cpa!=null).map(r=>r.cpa*1.05), 1);
+  const pct = v => Math.max(0, Math.min(102, v/mx*100)).toFixed(1) + '%';
+  const v1 = '<table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:860px">'
+    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Trg</th><th style="text-align:left;padding:6px 8px;min-width:240px">Kje je CPA — zelena→cilj · oranžna→break-even · rdeča čez</th><th style="text-align:right;padding:6px 8px">Dejanski CPA</th><th style="text-align:right;padding:6px 8px">Break-even</th><th style="text-align:right;padding:6px 8px">Cilj</th><th style="text-align:right;padding:6px 8px">Prispevek</th><th style="text-align:right;padding:6px 8px">Naročil</th></tr>'
+    + c.rows.map(r => {
+      const st2 = (r.cpa==null || r.target==null) ? '' : (r.cpa <= r.target ? 'g' : (r.cpa <= r.down ? 'o' : 'r'));
+      const pc = st2==='g' ? '#12a35f' : st2==='o' ? '#d9921b' : st2==='r' ? '#e5484d' : 'var(--border)';
+      const zone = r.be==null ? '' : '<div style="position:relative;height:20px;border-radius:7px;background:linear-gradient(to right,#c9ecd9 0%,#c9ecd9 ' + pct(r.target) + ',#f6e3bd ' + pct(r.target) + ',#f6e3bd ' + pct(r.down) + ',#f6cdd0 ' + pct(r.down) + ',#f6cdd0 100%)">'
+        + '<span style="position:absolute;top:-3px;bottom:-3px;width:2px;background:rgba(26,31,46,.4);left:' + pct(r.be) + '"></span>'
+        + (r.cpa!=null ? '<span style="position:absolute;top:50%;transform:translate(-50%,-50%);left:' + pct(r.cpa) + ';width:14px;height:14px;border-radius:50%;background:var(--text);border:2.5px solid var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.35)"></span>' : '')
+        + '</div>';
+      return '<tr style="border-top:1px solid var(--border)">'
+        + '<td style="padding:9px 8px;font-weight:800;font-size:14px;white-space:nowrap"><span style="display:inline-block;width:8px;height:24px;border-radius:5px;background:' + pc + ';vertical-align:middle;margin-right:9px"></span>' + r.market + (r.orders<20 ? ' <span style="font-size:10px;color:#d9921b">⚠</span>' : '') + ' <span style="font-size:10px;color:var(--text-tertiary)">' + r.days + 'd</span></td>'
+        + '<td style="padding:9px 8px">' + zone + '</td>'
+        + '<td style="padding:9px 8px;text-align:right"><input value="' + (r.cpa==null?'':(Math.round(r.cpa*100)/100)) + '" placeholder="—" onchange="semSaveCpa(\'' + r.market + '\',this.value)" title="Ročni vnos prepiše auto; izprazni za auto" style="width:62px;padding:3px 6px;text-align:right;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:' + (pc==='var(--border)'?'var(--text)':pc) + ';font-family:inherit;font-weight:800;font-size:13px">' + (r.cpaSrc ? '<div style="font-size:9px;color:var(--text-tertiary)">' + r.cpaSrc + '</div>' : '') + '</td>'
+        + '<td style="padding:9px 8px;text-align:right;font-weight:800;font-size:15px">' + semEur(r.be) + '</td>'
+        + '<td style="padding:9px 8px;text-align:right">' + semEur(r.target) + '</td>'
+        + '<td style="padding:9px 8px;text-align:right;font-weight:800;color:' + (r.contribution==null?'var(--text-tertiary)':(r.contribution>=0?'#12a35f':'#e5484d')) + '">' + (r.contribution==null?'—':((r.contribution>0?'+':'')+r.contribution.toFixed(2).replace('.',',')+' €')) + '</td>'
+        + '<td style="padding:9px 8px;text-align:right">' + r.orders + '</td></tr>';
+    }).join('') + '</table>';
+  box.innerHTML = v1
+    + '<details style="margin-top:10px"><summary style="font-size:11.5px;color:var(--text-tertiary);cursor:pointer">▦ Podrobna tabela (RVC, fail %, razdalja, max fail, handikap CPA)</summary><div style="margin-top:8px;overflow-x:auto">' + fullTable + '</div></details>';
 }
 
 function switchAnalizaTab(tab) {
