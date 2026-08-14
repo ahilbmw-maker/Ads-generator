@@ -24227,6 +24227,7 @@ def _semafor_load() -> dict:
         d["fail_rates"].setdefault(m, {**v, "updated_at": ""})
     d.setdefault("settings", dict(SEMAFOR_DEFAULT_SETTINGS))
     d.setdefault("cpa_manual", {})         # {market: {cpa, updated_at}} — ročni vnos (točka 9)
+    d.setdefault("spend", [])              # dnevna poraba po trgu: {date, market, fb, google}
     return d
 
 
@@ -24377,6 +24378,43 @@ async def semafor_cpa(data: dict):
                 return {"ok": False, "error": "Neveljaven CPA."}
         _semafor_save(d)
         return {"ok": True, "cpa_manual": d["cpa_manual"]}
+
+
+@app.post("/semafor-spend")
+async def semafor_spend(data: dict):
+    """Dnevna poraba oglaševanja po trgu (FB + Google). Unikat (date, market);
+    obstoječih ne prepiše brez force. CPA = poraba / naročila iz POSNETKOV istih dni."""
+    from datetime import datetime as _dt
+    date = str((data or {}).get("date") or "").strip()
+    rows = (data or {}).get("rows") or []
+    force = bool((data or {}).get("force"))
+    try:
+        _dt.strptime(date, "%Y-%m-%d")
+    except Exception:
+        return {"ok": False, "error": "Neveljaven datum (YYYY-MM-DD)."}
+    if not rows:
+        return {"ok": False, "error": "Ni vrstic."}
+    async with _semafor_lock:
+        d = _semafor_load()
+        existing = {(x["date"], x["market"]) for x in d["spend"]}
+        conflicts = [r["market"] for r in rows if (date, r.get("market")) in existing]
+        if conflicts and not force:
+            return {"ok": False, "conflicts": conflicts,
+                    "error": "Za ta datum poraba že obstaja: " + ", ".join(conflicts)}
+        if force and conflicts:
+            d["spend"] = [x for x in d["spend"]
+                          if not (x["date"] == date and x["market"] in conflicts)]
+        now = _dt.now().isoformat(timespec="seconds")
+        for r in rows:
+            m = str(r.get("market") or "").upper()
+            if m not in SEMAFOR_MARKETS:
+                continue
+            d["spend"].append({"date": date, "market": m,
+                               "fb": float(r.get("fb") or 0), "google": float(r.get("google") or 0),
+                               "created_at": now})
+        d["spend"].sort(key=lambda x: (x["date"], x["market"]))
+        _semafor_save(d)
+        return {"ok": True, "saved": len(rows), "overwritten": conflicts if force else []}
 
 
 # ═══ MEDSKLADIŠČNICA — seznam za prenos med skladišči (Novo/Carglass → pakirnica) ═══
