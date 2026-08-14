@@ -16473,7 +16473,9 @@ function semCompute(){
     const upto = allDates.filter(d => d <= sel);
     latest = upto.length ? upto[upto.length-1] : allDates[allDates.length-1];
   }
-  const start = new Date(new Date(latest + 'T00:00:00').getTime() - (st.window_days - 1) * 86400000).toISOString().slice(0,10);
+  // POZOR: brez UTC pretvorbe — new Date('...T00:00:00') + toISOString() v CEST vrne dan PREJ
+  const _s = new Date(latest + 'T12:00:00'); _s.setDate(_s.getDate() - (st.window_days - 1));
+  const start = _s.toISOString().slice(0,10);
   const inWin = snaps.filter(x => x.date >= start && x.date <= latest);
   const rows = [];
   for (const m of SEM_MARKETS){
