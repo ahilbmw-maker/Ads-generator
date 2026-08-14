@@ -24248,8 +24248,19 @@ def _semafor_market_code(trg: str) -> str:
 
 @app.get("/semafor-data")
 async def semafor_data():
+    """Vse iz semafor_cpa.json na disku + info o shrambi (da se vidi, da nič ne izgine)."""
+    from datetime import datetime as _dt
     d = _semafor_load()
-    return {"ok": True, **d}
+    storage = {"path": str(SEMAFOR_FILE), "exists": SEMAFOR_FILE.exists(),
+               "persistent": str(SEMAFOR_FILE).startswith("/data"), "size": 0, "mtime": None}
+    try:
+        if SEMAFOR_FILE.exists():
+            st = SEMAFOR_FILE.stat()
+            storage["size"] = st.st_size
+            storage["mtime"] = _dt.fromtimestamp(st.st_mtime).isoformat(timespec="seconds")
+    except Exception as e:
+        print(f"[semafor] stat err: {e}")
+    return {"ok": True, "storage": storage, **d}
 
 
 @app.post("/semafor-parse")

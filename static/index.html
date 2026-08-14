@@ -2924,6 +2924,20 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div id="semWarn" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(217,153,27,0.12);border:1px solid #d9992166;border-radius:var(--radius);font-size:12px;color:#b8860b"></div>
       </div>
 
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="font-weight:800;font-size:14px;white-space:nowrap">📅 Dnevni list</div>
+          <button onclick="semDayShift(-1)" title="dan nazaj" style="padding:5px 10px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;cursor:pointer;font-family:inherit">‹</button>
+          <input id="semDay" type="date" onchange="semDaySet(this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-weight:700">
+          <button onclick="semDayShift(1)" title="dan naprej" style="padding:5px 10px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;cursor:pointer;font-family:inherit">›</button>
+          <button onclick="semDaySet(semYday())" style="padding:5px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">včeraj</button>
+          <button onclick="semDaySet(semToday())" style="padding:5px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">danes</button>
+          <span id="semDayStatus" style="display:flex;gap:6px;flex-wrap:wrap;margin-left:4px"></span>
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-top:7px">Izbrani dan velja za cel zavihek — vnos RVC, uvoz porabe in izračun dobička. Vsak dan je svoj list; star dan lahko kadarkoli odpreš in popraviš končne številke.</div>
+        <div id="semDayStore" style="font-size:11px;color:var(--text-tertiary);margin-top:3px"></div>
+      </div>
+
       <div id="semProfitBox"></div>
 
 <div class="card" style="margin-bottom:12px">
@@ -15849,8 +15863,11 @@ async function semLoad(){
     const w = document.getElementById('semWin'); if (w) w.value = String(st.window_days || 7);
     const t = document.getElementById('semTarget'); if (t) t.value = st.target_contribution ?? 2.5;
     const rz = document.getElementById('semReserve'); if (rz) rz.value = st.reserve ?? 0.4;
-    const dt = document.getElementById('semDate');
-    if (dt && !dt.value){ const y = new Date(Date.now() - 86400000); dt.value = y.toISOString().slice(0,10); }
+    const dy = document.getElementById('semDay');
+    if (dy && !dy.value) dy.value = semYday();          // nov dan = nov list (privzeto včeraj)
+    const dt = document.getElementById('semDate'); if (dt && !dt.value) dt.value = semDayGet();
+    const ds = document.getElementById('semSpendDate'); if (ds && !ds.value) ds.value = semDayGet();
+    semDayRender();
     semRenderFail();
     semRenderTable();
     semRenderProfit();
@@ -15909,7 +15926,7 @@ async function semSaveSnap(force){
       _semRows = null;
       semLoad();
     } else if (d && d.conflicts){
-      if (confirm('Za ' + date + ' že obstajajo posnetki: ' + d.conflicts.join(', ') + '.\n\nPrepišem obstoječe? (Posnetki so sicer nespremenljivi — prepiši samo, če je bil vnos napačen.)')) semSaveSnap(true);
+      if (confirm('Za ' + date + ' so posnetki že shranjeni: ' + d.conflicts.join(', ') + '.\n\nPosodobim s temi (končnimi) številkami?\nStare vrednosti za te trge se zamenjajo.')) semSaveSnap(true);
     } else {
       msg.textContent = '✗ ' + ((d && d.error) || 'napaka');
     }
@@ -16183,24 +16200,93 @@ async function semSpendSave(force){
       document.getElementById('semSpendMsg').textContent = '✓ Poraba shranjena za ' + date + (d.overwritten && d.overwritten.length ? ' (prepisano: ' + d.overwritten.join(', ') + ')' : '');
       semLoad();
     } else if (d && d.conflicts){
-      if (confirm('Za ' + date + ' poraba že obstaja (' + d.conflicts.join(', ') + '). Prepišem?')) semSpendSave(true);
+      if (confirm('Za ' + date + ' je poraba že shranjena (' + d.conflicts.join(', ') + ').\n\nPosodobim s temi (končnimi) številkami?')) semSpendSave(true);
     } else msg.textContent = '✗ ' + ((d && d.error) || 'napaka');
   }catch(e){ msg.textContent = '✗ ' + e.message; }
 }
-// ── 💰 DOBIČEK DNEVA: RVC skupaj − poraba (FB+Google) za dan, ki ima OBOJE ────
+// ── 📅 DNEVNI LIST: en datum vodi cel zavihek (vnos RVC, uvoz porabe, dobiček) ──
+// Vse je na disku v /data/semafor_cpa.json — nič ni v brskalniku, nič se ne resetira.
+function semToday(){ return new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function semYday(){ return new Date(Date.now() - 86400000 - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function semDayGet(){ const el = document.getElementById('semDay'); return (el && el.value) ? el.value : semYday(); }
+function semDaySet(d){
+  if (!d) return;
+  const el = document.getElementById('semDay'); if (el) el.value = d;
+  const a = document.getElementById('semDate'); if (a) a.value = d;
+  const b = document.getElementById('semSpendDate'); if (b) b.value = d;
+  semDayRender(); semRenderProfit();
+}
+function semDayShift(n){
+  const d = new Date(semDayGet() + 'T12:00:00'); d.setDate(d.getDate() + n);
+  const iso = d.toISOString().slice(0,10);
+  if (iso > semToday()) return;                 // v prihodnost ne gremo
+  semDaySet(iso);
+}
+function semDayRender(){
+  const box = document.getElementById('semDayStatus'); if (!box || !SEMD) return;
+  const day = semDayGet();
+  const sn = (SEMD.snapshots || []).filter(x => x.date === day);
+  const sp = (SEMD.spend || []).filter(x => x.date === day);
+  const ord = sn.reduce((a,b) => a + (b.orders||0), 0);
+  const spSum = sp.reduce((a,b) => a + (b.fb||0) + (b.google||0), 0);
+  const eur = v => (Number(v||0)).toFixed(2).replace('.', ',') + ' €';
+  const plT = n => { const r = n % 100; return n + ' ' + (r===1?'trg':(r===2?'trga':((r===3||r===4)?'trgi':'trgov'))); };
+  const plD = n => { const r = n % 100; return n + ' ' + (r===1?'dan':(r===2?'dneva':((r===3||r===4)?'dnevi':'dni'))); };
+  const tm = arr => { const t = arr.map(x => x.created_at).filter(Boolean).sort().pop();
+    return t ? ' <span style="color:var(--text-tertiary)">· ' + String(t).slice(11,16) + '</span>' : ''; };
+  const pill = (ok, txt) => '<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11.5px;'
+    + (ok ? 'background:rgba(18,163,95,.12);color:#12a35f;border:1px solid rgba(18,163,95,.35)'
+          : 'background:var(--surface2);color:var(--text-secondary);border:1px solid var(--border)') + '">'
+    + (ok ? '✓ ' : '○ ') + txt + '</span>';
+  box.innerHTML = pill(sn.length > 0, sn.length ? 'RVC posnetek — ' + plT(sn.length) + ', ' + ord + ' naročil' + tm(sn) : 'RVC posnetek še ni vnesen')
+    + ' ' + pill(sp.length > 0, sp.length ? 'poraba — ' + plT(sp.length) + ', ' + eur(spSum) + tm(sp) : 'poraba še ni uvožena');
+  const sb = document.getElementById('semSaveBtn');
+  if (sb) sb.textContent = sn.length ? '💾 Posodobi posnetke (' + day + ')' : '💾 Shrani posnetke (' + day + ')';
+  const pb = document.getElementById('semSpendSaveBtn');
+  if (pb) pb.textContent = sp.length ? '💾 Posodobi porabo (' + day + ')' : '💾 Potrdi datum in shrani (' + day + ')';
+  const st = document.getElementById('semDayStore');
+  if (st){
+    const s = SEMD.storage || {};
+    const dni = new Set([...(SEMD.snapshots||[]).map(x=>x.date), ...(SEMD.spend||[]).map(x=>x.date)]).size;
+    st.innerHTML = (s.persistent === false
+        ? '<span style="color:#e5484d">⚠ POZOR: ' + (s.path || 'datoteka') + ' ni na trajnem disku — ob deployu se lahko izgubi.</span> '
+        : '💾 shranjeno na trajni disk <b>' + (s.path || '/data/semafor_cpa.json') + '</b>')
+      + ' · ' + plD(dni) + ' v arhivu'
+      + (s.size ? ' · ' + (s.size/1024).toFixed(1).replace('.', ',') + ' kB' : '')
+      + (s.mtime ? ' · zadnji zapis ' + String(s.mtime).replace('T',' ').slice(0,16) : '');
+  }
+}
 function semProfitDates(){
   const snaps = (SEMD && SEMD.snapshots) || [], sp = (SEMD && SEMD.spend) || [];
   const pd = new Set(sp.map(x => x.date));
   return [...new Set(snaps.map(x => x.date))].filter(d => pd.has(d)).sort().reverse();
 }
+function semAllDays(){
+  const snaps = (SEMD && SEMD.snapshots) || [], sp = (SEMD && SEMD.spend) || [];
+  return [...new Set([...snaps.map(x=>x.date), ...sp.map(x=>x.date)])].sort().reverse();
+}
+function semDayChips(date){
+  const full = new Set(semProfitDates());
+  return '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:10px;align-items:center">'
+    + '<span style="font-size:10.5px;color:var(--text-tertiary)">dnevi z vnosom:</span>'
+    + semAllDays().slice(0,14).map(d => '<span onclick="semDaySet(\'' + d + '\')" title="' + d + (full.has(d)?' — RVC + poraba':' — nepopoln dan') + '" style="cursor:pointer;border:1px solid ' + (full.has(d)?'rgba(18,163,95,.45)':'var(--border)') + ';border-radius:999px;padding:2px 9px;font-size:10.5px;'
+        + (d === date ? 'background:var(--accent);color:#fff;border-color:var(--accent)' : (full.has(d)?'color:#12a35f':'color:var(--text-tertiary)')) + '">'
+        + (full.has(d)?'':'· ') + d.slice(5) + '</span>').join('')
+    + '</div>';
+}
 function semRenderProfit(){
   const box = document.getElementById('semProfitBox'); if (!box || !SEMD) return;
-  const dates = semProfitDates();
-  if (!dates.length){ box.innerHTML = ''; return; }
-  const sel = document.getElementById('semProfitDate');
-  const date = (sel && dates.indexOf(sel.value) >= 0) ? sel.value : dates[0];
+  const date = semDayGet();
   const snaps = (SEMD.snapshots || []).filter(x => x.date === date);
   const spend = (SEMD.spend || []).filter(x => x.date === date);
+  const eur0 = v => (Number(v||0)).toFixed(2).replace('.', ',') + ' €';
+  const head = '<div style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text-tertiary)">💰 Dobiček dneva <span style="color:var(--text-secondary)">· ' + date + '</span></div>';
+  if (!snaps.length && !spend.length){
+    box.innerHTML = '<div class="card" style="margin-bottom:12px">' + head
+      + '<div style="font-size:13px;color:var(--text-secondary);margin-top:6px">Za ta dan še ni ne RVC posnetka ne porabe — vnesi ju spodaj.</div>'
+      + semDayChips(date) + '</div>';
+    return;
+  }
   const fr = SEMD.fail_rates || {};
   const seen = new Set([...snaps.map(x=>x.market), ...spend.map(x=>x.market)]);
   let rvcSum=0, realSum=0, fbSum=0, gSum=0, ordSum=0, grossSum=0;
@@ -16223,7 +16309,21 @@ function semRenderProfit(){
     rows.push({m, orders, rvcT, realT, sp:a+b, fb:a, g:b, fail:f, noSnap:!s, noSpend:!p});
   });
   const spendSum = fbSum + gSum, profit = rvcSum - spendSum, real = realSum - spendSum;
-  const eur = v => (Number(v||0)).toFixed(2).replace('.', ',') + ' €';
+
+  // nepopoln dan → nobene velike (in napačne) številke, samo kaj manjka
+  if (!snaps.length || !spend.length){
+    const miss = !snaps.length ? 'RVC posnetek' : 'poraba (FB + Google)';
+    const have = !snaps.length
+      ? 'Poraba je shranjena: <b>' + eur0(spendSum) + '</b> (FB ' + eur0(fbSum) + ' · Google ' + eur0(gSum) + ')'
+      : 'RVC je shranjen: <b>' + eur0(rvcSum) + '</b> · ' + ordSum + ' naročil · realni ' + eur0(realSum);
+    box.innerHTML = '<div class="card" style="margin-bottom:12px;border-left:5px solid var(--border)">' + head
+      + '<div style="font-size:19px;font-weight:800;color:var(--text-secondary);margin:6px 0 2px">⏳ manjka ' + miss + '</div>'
+      + '<div style="font-size:12.5px;color:var(--text-secondary)">' + have + ' — dobiček se izračuna, ko je shranjeno oboje.</div>'
+      + semDayChips(date) + '</div>';
+    return;
+  }
+
+  const eur = eur0;
   const sgn = v => (v > 0 ? '+' : '') + eur(v);
   const nm  = (v, d) => (v==null || !isFinite(v)) ? '—' : Number(v).toFixed(d===undefined?2:d).replace('.', ',');
   const pctv = (v, d) => (v==null || !isFinite(v)) ? '—' : Number(v).toFixed(d===undefined?1:d).replace('.', ',') + ' %';
@@ -16232,18 +16332,18 @@ function semRenderProfit(){
   const pc = profit >= 0 ? '#12a35f' : '#e5484d';
   const rc = real >= 0 ? '#12a35f' : '#e5484d';
 
-  const poas     = div(rvcSum, spendSum);          // RVC / poraba
+  const poas     = div(rvcSum, spendSum);
   const poasReal = div(realSum, spendSum);
   const cpa      = div(spendSum, ordSum);
   const rvcOrd   = div(rvcSum, ordSum);
-  const beOrd    = div(realSum, ordSum);           // utežni break-even CPA čez vse trge
+  const beOrd    = div(realSum, ordSum);
   const profOrd  = div(profit, ordSum);
   const realOrd  = div(real, ordSum);
   const marza    = div(profit, rvcSum);
   const marzaR   = div(real, rvcSum);
   const fbShare  = div(fbSum, spendSum);
-  const headroom = div(real, spendSum);            // za koliko % lahko zraste poraba do realne ničle
-  const failEff  = (grossSum > 0) ? (rvcSum - realSum)/grossSum : null;   // utežni pričakovani fail %
+  const headroom = div(real, spendSum);
+  const failEff  = (grossSum > 0) ? (rvcSum - realSum)/grossSum : null;
   const posM = rows.filter(r => r.rvcT - r.sp > 0).length;
   const negM = rows.filter(r => r.rvcT - r.sp < 0).length;
   const best = rows.slice().sort((a,b) => (b.rvcT-b.sp) - (a.rvcT-a.sp))[0];
@@ -16319,19 +16419,18 @@ function semRenderProfit(){
 
   box.innerHTML = '<div class="card" style="margin-bottom:12px;border-left:5px solid ' + pc + '">'
     + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">'
-    + '<div><div style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text-tertiary)">💰 Dobiček dneva</div>'
+    + '<div>' + head
     + '<div style="font-size:46px;line-height:1.05;font-weight:800;color:' + pc + ';margin:4px 0 2px">' + sgn(profit) + '</div>'
     + '<div style="font-size:13.5px;color:var(--text-secondary)">realni <b style="color:' + rc + ';font-size:15px">' + sgn(real) + '</b> '
     + '<span style="font-size:11px;color:var(--text-tertiary)">— z odbitim pričakovanim fail % po trgih</span></div></div>'
     + '<div style="text-align:right;font-size:12px;color:var(--text-secondary);min-width:200px">'
-    + '<label style="font-size:11px;color:var(--text-tertiary)">dan <select id="semProfitDate" onchange="semRenderProfit()" style="padding:4px 7px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:12px">'
-    + dates.map(d => '<option value="' + d + '"' + (d === date ? ' selected' : '') + '>' + d + '</option>').join('') + '</select></label>'
-    + '<div style="margin-top:9px">RVC <b style="font-size:14px">' + eur(rvcSum) + '</b> − poraba <b style="font-size:14px">' + eur(spendSum) + '</b></div>'
+    + '<div>RVC <b style="font-size:14px">' + eur(rvcSum) + '</b> − poraba <b style="font-size:14px">' + eur(spendSum) + '</b></div>'
     + (best && worst && best.m !== worst.m ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">najbolje ' + best.m + ' ' + sgn(best.rvcT-best.sp) + ' · najslabše ' + worst.m + ' ' + sgn(worst.rvcT-worst.sp) + '</div>' : '')
     + '</div></div>'
     + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:12px">' + tiles + '</div>'
     + (warn.length ? '<div style="margin-top:10px;font-size:11.5px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px">' + warn.map(w => '<span>' + w + '</span>').join('') + '</div>' : '')
     + '<details style="margin-top:10px"><summary style="cursor:pointer;font-size:11.5px;color:var(--text-tertiary)">▦ Razčlenitev po trgih (RVC · FB · Google · CPA · POAS · fail)</summary><div style="margin-top:8px;overflow-x:auto">' + detail + '</div></details>'
+    + semDayChips(date)
     + '</div>';
 }
 function semCompute(){
