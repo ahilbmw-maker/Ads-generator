@@ -16202,12 +16202,13 @@ function semRenderProfit(){
   const spend = (SEMD.spend || []).filter(x => x.date === date);
   const fr = SEMD.fail_rates || {};
   const seen = new Set([...snaps.map(x=>x.market), ...spend.map(x=>x.market)]);
-  let rvcSum=0, realSum=0, fbSum=0, gSum=0, ordSum=0;
+  let rvcSum=0, realSum=0, fbSum=0, gSum=0, ordSum=0, grossSum=0;
   const noFail = [], noSnap = [], rows = [];
   SEM_MARKETS.filter(m => seen.has(m)).forEach(m => {
     const s = snaps.find(x => x.market === m), p = spend.find(x => x.market === m);
     const orders = s ? (s.orders || 0) : 0;
     const rvcT = s ? ((s.rvc_total != null) ? s.rvc_total : (s.rvc_per_order != null ? orders * s.rvc_per_order : 0)) : 0;
+    const grossT = (s && s.rvc_gross_per_order != null) ? orders * s.rvc_gross_per_order : 0;
     const fe = fr[m] || {};
     const f = (fe.fail_rate == null || fe.fail_rate === '') ? null : fe.fail_rate/100;
     let realT = rvcT;
@@ -16217,50 +16218,119 @@ function semRenderProfit(){
       else noFail.push(m);
     } else noSnap.push(m);
     const a = p ? (p.fb || 0) : 0, b = p ? (p.google || 0) : 0;
-    rvcSum += rvcT; realSum += realT; fbSum += a; gSum += b; ordSum += orders;
-    rows.push({m, orders, rvcT, realT, sp:a+b, fail:f, noSnap:!s, noSpend:!p});
+    rvcSum += rvcT; realSum += realT; fbSum += a; gSum += b; ordSum += orders; grossSum += grossT;
+    rows.push({m, orders, rvcT, realT, sp:a+b, fb:a, g:b, fail:f, noSnap:!s, noSpend:!p});
   });
   const spendSum = fbSum + gSum, profit = rvcSum - spendSum, real = realSum - spendSum;
   const eur = v => (Number(v||0)).toFixed(2).replace('.', ',') + ' €';
   const sgn = v => (v > 0 ? '+' : '') + eur(v);
+  const nm  = (v, d) => (v==null || !isFinite(v)) ? '—' : Number(v).toFixed(d===undefined?2:d).replace('.', ',');
+  const pctv = (v, d) => (v==null || !isFinite(v)) ? '—' : Number(v).toFixed(d===undefined?1:d).replace('.', ',') + ' %';
+  const div = (a, b) => (b > 0) ? a/b : null;
+  const plT = n => { const r = n % 100; return n + ' ' + (r===1?'trg':(r===2?'trga':((r===3||r===4)?'trgi':'trgov'))); };
   const pc = profit >= 0 ? '#12a35f' : '#e5484d';
   const rc = real >= 0 ? '#12a35f' : '#e5484d';
+
+  const poas     = div(rvcSum, spendSum);          // RVC / poraba
+  const poasReal = div(realSum, spendSum);
+  const cpa      = div(spendSum, ordSum);
+  const rvcOrd   = div(rvcSum, ordSum);
+  const beOrd    = div(realSum, ordSum);           // utežni break-even CPA čez vse trge
+  const profOrd  = div(profit, ordSum);
+  const realOrd  = div(real, ordSum);
+  const marza    = div(profit, rvcSum);
+  const marzaR   = div(real, rvcSum);
+  const fbShare  = div(fbSum, spendSum);
+  const headroom = div(real, spendSum);            // za koliko % lahko zraste poraba do realne ničle
+  const failEff  = (grossSum > 0) ? (rvcSum - realSum)/grossSum : null;   // utežni pričakovani fail %
+  const posM = rows.filter(r => r.rvcT - r.sp > 0).length;
+  const negM = rows.filter(r => r.rvcT - r.sp < 0).length;
+  const best = rows.slice().sort((a,b) => (b.rvcT-b.sp) - (a.rvcT-a.sp))[0];
+  const worst = rows.slice().sort((a,b) => (a.rvcT-a.sp) - (b.rvcT-b.sp))[0];
+
+  const tile = (label, value, sub, color) =>
+    '<div style="border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:var(--surface)">'
+    + '<div style="font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text-tertiary)">' + label + '</div>'
+    + '<div style="font-size:18px;font-weight:800;margin-top:2px;color:' + (color || 'var(--text)') + '">' + value + '</div>'
+    + (sub ? '<div style="font-size:10.5px;color:var(--text-tertiary);margin-top:1px">' + sub + '</div>' : '')
+    + '</div>';
+
+  const tiles = [
+    tile('POAS', poas==null?'—':nm(poas)+'×', 'realni <b>' + (poasReal==null?'—':nm(poasReal)+'×') + '</b> · prag 1,00×',
+         poas==null?null:(poas>=1?'#12a35f':'#e5484d')),
+    tile('Poraba skupaj', eur(spendSum), 'FB ' + pctv((fbShare||0)*100,0) + ' · Google ' + pctv((1-(fbShare||0))*100,0)),
+    tile('📘 FB', eur(fbSum), plT(rows.filter(r=>r.fb>0).length)),
+    tile('🔎 Google', eur(gSum), plT(rows.filter(r=>r.g>0).length)),
+    tile('RVC skupaj', eur(rvcSum), 'realni <b>' + eur(realSum) + '</b>'),
+    tile('Naročil', String(ordSum), plT(rows.length) + ' · ' + posM + ' 🟢 / ' + negM + ' 🔴'),
+    tile('CPA skupni', cpa==null?'—':eur(cpa), 'break-even ' + (beOrd==null?'—':eur(beOrd))
+         + (cpa!=null&&beOrd!=null ? ' · ' + (beOrd-cpa>=0?'<span style="color:#12a35f">rezerva ':'<span style="color:#e5484d">manjka ') + eur(Math.abs(beOrd-cpa)) + '</span>' : '')),
+    tile('RVC / naročilo', rvcOrd==null?'—':eur(rvcOrd), 'realni ' + (beOrd==null?'—':eur(beOrd))),
+    tile('Dobiček / naročilo', profOrd==null?'—':sgn(profOrd), 'realni <b>' + (realOrd==null?'—':sgn(realOrd)) + '</b>',
+         profOrd==null?null:(profOrd>=0?'#12a35f':'#e5484d')),
+    tile('Marža na RVC', marza==null?'—':pctv(marza*100), 'realna ' + (marzaR==null?'—':pctv(marzaR*100)),
+         marza==null?null:(marza>=0?'#12a35f':'#e5484d')),
+    tile('Rezerva do ničle', headroom==null?'—':(headroom>0?'+':'')+pctv(headroom*100,0),
+         'toliko lahko zraste poraba (realno)', headroom==null?null:(headroom>=0?'#12a35f':'#e5484d')),
+    tile('Pričakovani fail', failEff==null?'—':pctv(failEff*100), 'utežno čez trge · odbitek ' + eur(rvcSum-realSum))
+  ].join('');
+
   const warn = [];
   if (noSnap.length) warn.push('⚠ poraba brez RVC posnetka: ' + noSnap.join(', ') + ' — dobiček je podcenjen');
   if (noFail.length) warn.push('⚠ brez fail % (realni = bruto): ' + noFail.join(', '));
   const noSpendM = rows.filter(r => r.noSpend && !r.noSnap).map(r => r.m);
   if (noSpendM.length) warn.push('ℹ RVC brez uvožene porabe: ' + noSpendM.join(', '));
-  const detail = '<table style="border-collapse:collapse;font-size:12px;min-width:560px;width:100%">'
-    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:5px 8px">Trg</th><th style="text-align:right;padding:5px 8px">Naročil</th><th style="text-align:right;padding:5px 8px">RVC</th><th style="text-align:right;padding:5px 8px">Poraba</th><th style="text-align:right;padding:5px 8px">Dobiček</th><th style="text-align:right;padding:5px 8px">Realni</th></tr>'
-    + rows.map(r => { const d1 = r.rvcT - r.sp, d2 = r.realT - r.sp;
+
+  const drows = rows.slice().sort((a,b) => (b.rvcT-b.sp) - (a.rvcT-a.sp));
+  const detail = '<table style="border-collapse:collapse;font-size:12px;min-width:860px;width:100%">'
+    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px">'
+    + '<th style="text-align:left;padding:5px 8px">Trg</th><th style="text-align:right;padding:5px 8px">Naročil</th>'
+    + '<th style="text-align:right;padding:5px 8px">RVC</th><th style="text-align:right;padding:5px 8px">FB</th>'
+    + '<th style="text-align:right;padding:5px 8px">Google</th><th style="text-align:right;padding:5px 8px">Poraba</th>'
+    + '<th style="text-align:right;padding:5px 8px">CPA</th><th style="text-align:right;padding:5px 8px">POAS</th>'
+    + '<th style="text-align:right;padding:5px 8px">Fail</th>'
+    + '<th style="text-align:right;padding:5px 8px">Dobiček</th><th style="text-align:right;padding:5px 8px">Realni</th></tr>'
+    + drows.map(r => { const d1 = r.rvcT - r.sp, d2 = r.realT - r.sp;
+      const rp = div(r.rvcT, r.sp), rc2 = div(r.sp, r.orders);
       return '<tr style="border-top:1px solid var(--border)"><td style="padding:5px 8px;font-weight:700">' + r.m
         + (r.noSnap ? ' <span style="font-size:10px;color:#e5484d">brez posnetka</span>' : '') + '</td>'
         + '<td style="padding:5px 8px;text-align:right">' + r.orders + '</td>'
         + '<td style="padding:5px 8px;text-align:right">' + eur(r.rvcT) + '</td>'
+        + '<td style="padding:5px 8px;text-align:right;color:var(--text-secondary)">' + eur(r.fb) + '</td>'
+        + '<td style="padding:5px 8px;text-align:right;color:var(--text-secondary)">' + eur(r.g) + '</td>'
         + '<td style="padding:5px 8px;text-align:right">' + eur(r.sp) + '</td>'
+        + '<td style="padding:5px 8px;text-align:right">' + (rc2==null?'—':eur(rc2)) + '</td>'
+        + '<td style="padding:5px 8px;text-align:right;font-weight:700;color:' + (rp==null?'var(--text-tertiary)':(rp>=1?'#12a35f':'#e5484d')) + '">' + (rp==null?'—':nm(rp)+'×') + '</td>'
+        + '<td style="padding:5px 8px;text-align:right;color:var(--text-tertiary)">' + (r.fail==null?'—':pctv(r.fail*100,0)) + '</td>'
         + '<td style="padding:5px 8px;text-align:right;font-weight:700;color:' + (d1>=0?'#12a35f':'#e5484d') + '">' + sgn(d1) + '</td>'
         + '<td style="padding:5px 8px;text-align:right;color:' + (d2>=0?'#12a35f':'#e5484d') + '">' + sgn(d2) + '</td></tr>'; }).join('')
     + '<tr style="border-top:2px solid var(--border);background:var(--surface2)"><td style="padding:6px 8px;font-weight:800">SKUPAJ</td>'
     + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + ordSum + '</td>'
     + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + eur(rvcSum) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + eur(fbSum) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + eur(gSum) + '</td>'
     + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + eur(spendSum) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + (cpa==null?'—':eur(cpa)) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + (poas==null?'var(--text)':(poas>=1?'#12a35f':'#e5484d')) + '">' + (poas==null?'—':nm(poas)+'×') + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + (failEff==null?'—':pctv(failEff*100,0)) + '</td>'
     + '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + pc + '">' + sgn(profit) + '</td>'
     + '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + rc + '">' + sgn(real) + '</td></tr></table>';
+
   box.innerHTML = '<div class="card" style="margin-bottom:12px;border-left:5px solid ' + pc + '">'
     + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">'
     + '<div><div style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text-tertiary)">💰 Dobiček dneva</div>'
     + '<div style="font-size:46px;line-height:1.05;font-weight:800;color:' + pc + ';margin:4px 0 2px">' + sgn(profit) + '</div>'
     + '<div style="font-size:13.5px;color:var(--text-secondary)">realni <b style="color:' + rc + ';font-size:15px">' + sgn(real) + '</b> '
     + '<span style="font-size:11px;color:var(--text-tertiary)">— z odbitim pričakovanim fail % po trgih</span></div></div>'
-    + '<div style="text-align:right;font-size:12px;color:var(--text-secondary);min-width:210px">'
+    + '<div style="text-align:right;font-size:12px;color:var(--text-secondary);min-width:200px">'
     + '<label style="font-size:11px;color:var(--text-tertiary)">dan <select id="semProfitDate" onchange="semRenderProfit()" style="padding:4px 7px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:12px">'
     + dates.map(d => '<option value="' + d + '"' + (d === date ? ' selected' : '') + '>' + d + '</option>').join('') + '</select></label>'
-    + '<div style="margin-top:9px">RVC skupaj <b style="font-size:14px">' + eur(rvcSum) + '</b></div>'
-    + '<div>− poraba <b style="font-size:14px">' + eur(spendSum) + '</b></div>'
-    + '<div style="font-size:11px;color:var(--text-tertiary)">FB ' + eur(fbSum) + ' · Google ' + eur(gSum) + ' · ' + ordSum + ' naročil</div>'
+    + '<div style="margin-top:9px">RVC <b style="font-size:14px">' + eur(rvcSum) + '</b> − poraba <b style="font-size:14px">' + eur(spendSum) + '</b></div>'
+    + (best && worst && best.m !== worst.m ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">najbolje ' + best.m + ' ' + sgn(best.rvcT-best.sp) + ' · najslabše ' + worst.m + ' ' + sgn(worst.rvcT-worst.sp) + '</div>' : '')
     + '</div></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:12px">' + tiles + '</div>'
     + (warn.length ? '<div style="margin-top:10px;font-size:11.5px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px">' + warn.map(w => '<span>' + w + '</span>').join('') + '</div>' : '')
-    + '<details style="margin-top:10px"><summary style="cursor:pointer;font-size:11.5px;color:var(--text-tertiary)">▦ Razčlenitev po trgih</summary><div style="margin-top:8px;overflow-x:auto">' + detail + '</div></details>'
+    + '<details style="margin-top:10px"><summary style="cursor:pointer;font-size:11.5px;color:var(--text-tertiary)">▦ Razčlenitev po trgih (RVC · FB · Google · CPA · POAS · fail)</summary><div style="margin-top:8px;overflow-x:auto">' + detail + '</div></details>'
     + '</div>';
 }
 function semCompute(){
