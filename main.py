@@ -24182,6 +24182,203 @@ async def analiza_meta_duplicates_ai(data: dict):
 # 1 seznam, vsaka postavka ima container tag (Kontejner1,2,3…) in status.
 # Formule iz Excela: Total=Unit×Qty · Ctns=Qty/kos_kart · TotalCBM=CBM/CTN×Ctns
 #   FinalPrice=((TotalCBM×70)/Qty)+(Unit×0.85)×1.1
+# ═══ SEMAFOR CPA PO TRGIH ═══
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │ TRDO PRAVILO (glej semafor-cpa-specifikacija.md, točka 2):              │
+# │ RVC se v viru knjiži OB SPREJEMU naročila. Neprevzeti paketi se         │
+# │ razrešijo 7–21 dni kasneje in so pri poizvedbi za nazaj ŽE ODŠTETI.     │
+# │ Če bi brali živi vir po datumskem razponu in NATO odšteli še fail rate, │
+# │ bi neprevzete odbili DVAKRAT → break-even 2–3 € prenizko → semafor      │
+# │ ubija dobičkonosne kampanje.                                            │
+# │ ZATO: NIKOLI ne poizveduj po viru z datumskim razponom. Beri IZKLJUČNO  │
+# │ shranjene dnevne posnetke (daily_snapshot). Posnetek je NESPREMENLJIV — │
+# │ ko je zapisan, se NIKOLI ne preračuna iz vira.                          │
+# └─────────────────────────────────────────────────────────────────────────┘
+SEMAFOR_FILE = DATA_DIR / "semafor_cpa.json"
+_semafor_lock = asyncio.Lock()
+
+SEMAFOR_DEFAULT_SETTINGS = {"window_days": 7, "target_contribution": 2.50, "reserve": 0.40}
+# začetne vrednosti fail rate (avgust 2026) — program jih NIKOLI ne prepiše sam
+SEMAFOR_DEFAULT_FAILRATES = {
+    "SI": {"fail_rate": 12.0, "note": ""},
+    "HR": {"fail_rate": 13.0, "note": "DPD HR"},
+    "RS": {"fail_rate": 19.0, "note": ""},
+    "HU": {"fail_rate": 17.0, "note": "EX1 HU"},
+    "SK": {"fail_rate": 19.0, "note": "GLS SK"},
+    "RO": {"fail_rate": 24.0, "note": "FAN Courier RO"},
+    "PL": {"fail_rate": 26.0, "note": "InPost PL"},
+    "CZ": {"fail_rate": 28.0, "note": "CZ POST"},
+    "GR": {"fail_rate": 28.0, "note": "ELTA GR"},
+    "BG": {"fail_rate": 32.0, "note": "Econt"},
+}
+SEMAFOR_MARKETS = ["SI", "HR", "RS", "HU", "CZ", "SK", "PL", "GR", "RO", "BG"]
+
+
+def _semafor_load() -> dict:
+    d = {}
+    try:
+        if SEMAFOR_FILE.exists():
+            d = json.loads(SEMAFOR_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[semafor] load err: {e}")
+    d.setdefault("snapshots", [])          # daily_snapshot — NESPREMENLJIVI zapisi
+    d.setdefault("fail_rates", {})         # delivery_rate — SAMO ročno urejanje
+    for m, v in SEMAFOR_DEFAULT_FAILRATES.items():
+        d["fail_rates"].setdefault(m, {**v, "updated_at": ""})
+    d.setdefault("settings", dict(SEMAFOR_DEFAULT_SETTINGS))
+    d.setdefault("cpa_manual", {})         # {market: {cpa, updated_at}} — ročni vnos (točka 9)
+    return d
+
+
+def _semafor_save(d: dict):
+    tmp = SEMAFOR_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, SEMAFOR_FILE)
+
+
+def _semafor_market_code(trg: str) -> str:
+    """Maaarket.si → SI. Prazno, če ni prepoznano."""
+    t = (trg or "").strip().lower()
+    for code in SEMAFOR_MARKETS:
+        if t.endswith("." + code.lower()) or t == code.lower():
+            return code
+    return ""
+
+
+@app.get("/semafor-data")
+async def semafor_data():
+    d = _semafor_load()
+    return {"ok": True, **d}
+
+
+@app.post("/semafor-parse")
+async def semafor_parse(data: dict):
+    """Razčleni prilepljen izpis (isti format kot RVC vnos) v predogled vrstic.
+    SKUPAJ preskoči; Δ/odstotki so izpeljani in jih parser itak ne bere."""
+    text = (data or {}).get("text", "")
+    parsed = _rvc_parse(text)
+    rows, skipped = [], []
+    for m in parsed.get("markets", []):
+        code = _semafor_market_code(m.get("trg", ""))
+        if not code:
+            skipped.append(m.get("trg", "?"))
+            continue
+        orders = int(m.get("narocila") or 0)
+        post = m.get("postnina")
+        rvc = m.get("rvc_nar")
+        skup = m.get("skupaj")          # bruto skupaj (z poštnino)
+        gross = round(skup / orders, 2) if (skup and orders) else None
+        rows.append({
+            "market": code, "trg": m.get("trg", ""), "orders": orders,
+            "shipping_total": post, "rvc_per_order": rvc,
+            "rvc_gross_per_order": gross,
+            "rvc_total": round((skup - post), 2) if (skup is not None and post is not None) else skup,
+        })
+    return {"ok": bool(rows), "rows": rows, "skipped": skipped,
+            "error": None if rows else "ni prepoznanih trgov — preveri format"}
+
+
+@app.post("/semafor-snapshot")
+async def semafor_snapshot(data: dict):
+    """Shrani dnevne posnetke. (date, market) unikat; obstoječih NE prepiše brez force."""
+    from datetime import datetime as _dt
+    date = str((data or {}).get("date") or "").strip()
+    rows = (data or {}).get("rows") or []
+    force = bool((data or {}).get("force"))
+    try:
+        _dt.strptime(date, "%Y-%m-%d")
+    except Exception:
+        return {"ok": False, "error": "Neveljaven datum (YYYY-MM-DD)."}
+    if not rows:
+        return {"ok": False, "error": "Ni vrstic."}
+    async with _semafor_lock:
+        d = _semafor_load()
+        existing = {(s["date"], s["market"]) for s in d["snapshots"]}
+        conflicts = [r["market"] for r in rows if (date, r.get("market")) in existing]
+        if conflicts and not force:
+            return {"ok": False, "conflicts": conflicts,
+                    "error": "Za ta datum že obstajajo posnetki: " + ", ".join(conflicts)}
+        if force and conflicts:
+            d["snapshots"] = [s for s in d["snapshots"]
+                              if not (s["date"] == date and s["market"] in conflicts)]
+        now = _dt.now().isoformat(timespec="seconds")
+        for r in rows:
+            d["snapshots"].append({
+                "date": date, "market": r.get("market"),
+                "orders": int(r.get("orders") or 0),
+                "shipping_total": r.get("shipping_total"),
+                "rvc_per_order": r.get("rvc_per_order"),
+                "rvc_gross_per_order": r.get("rvc_gross_per_order"),
+                "rvc_total": r.get("rvc_total"),
+                "created_at": now,
+            })
+        d["snapshots"].sort(key=lambda s: (s["date"], s["market"]))
+        _semafor_save(d)
+        return {"ok": True, "saved": len(rows), "overwritten": conflicts if force else []}
+
+
+@app.post("/semafor-failrate")
+async def semafor_failrate(data: dict):
+    from datetime import datetime as _dt
+    m = str((data or {}).get("market") or "").upper().strip()
+    if m not in SEMAFOR_MARKETS:
+        return {"ok": False, "error": "Neznan trg."}
+    async with _semafor_lock:
+        d = _semafor_load()
+        e = d["fail_rates"].setdefault(m, {})
+        if "fail_rate" in data:
+            try:
+                e["fail_rate"] = float(data["fail_rate"])
+            except Exception:
+                return {"ok": False, "error": "Neveljaven fail rate."}
+        if "note" in data:
+            e["note"] = str(data["note"] or "")
+        e["updated_at"] = _dt.now().isoformat(timespec="seconds")
+        _semafor_save(d)
+        return {"ok": True, "fail_rates": d["fail_rates"]}
+
+
+@app.post("/semafor-settings")
+async def semafor_settings(data: dict):
+    async with _semafor_lock:
+        d = _semafor_load()
+        st = d["settings"]
+        if "window_days" in (data or {}):
+            w = int(data["window_days"])
+            if w not in (7, 14):
+                return {"ok": False, "error": "Okno je lahko 7 ali 14 dni."}
+            st["window_days"] = w
+        for k in ("target_contribution", "reserve"):
+            if k in (data or {}):
+                try:
+                    st[k] = float(data[k])
+                except Exception:
+                    pass
+        _semafor_save(d)
+        return {"ok": True, "settings": st}
+
+
+@app.post("/semafor-cpa")
+async def semafor_cpa(data: dict):
+    """Ročni vnos dejanskega CPA po trgu (točka 9 — dokler ni avtomatskega vira)."""
+    from datetime import datetime as _dt
+    m = str((data or {}).get("market") or "").upper().strip()
+    if m not in SEMAFOR_MARKETS:
+        return {"ok": False, "error": "Neznan trg."}
+    async with _semafor_lock:
+        d = _semafor_load()
+        cpa = (data or {}).get("cpa")
+        if cpa in (None, ""):
+            d["cpa_manual"].pop(m, None)
+        else:
+            try:
+                d["cpa_manual"][m] = {"cpa": float(cpa), "updated_at": _dt.now().isoformat(timespec="seconds")}
+            except Exception:
+                return {"ok": False, "error": "Neveljaven CPA."}
+        _semafor_save(d)
+        return {"ok": True, "cpa_manual": d["cpa_manual"]}
+
+
 # ═══ MEDSKLADIŠČNICA — seznam za prenos med skladišči (Novo/Carglass → pakirnica) ═══
 MEDSKL_FILE = DATA_DIR / "medskl_items.json"
 _medskl_lock = asyncio.Lock()

@@ -2904,9 +2904,52 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="analiza-tab-btn" id="analizaTab-shipping" onclick="switchAnalizaTab('shipping')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🚚 Stroški pošte</button>
       <button class="analiza-tab-btn" id="analizaTab-priporocila" onclick="switchAnalizaTab('priporocila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🎯 Priporočila</button>
       <button class="analiza-tab-btn" id="analizaTab-dvojniki" onclick="switchAnalizaTab('dvojniki')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🧬 Dvojniki</button>
+      <button class="analiza-tab-btn" id="analizaTab-semafor" onclick="switchAnalizaTab('semafor')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🚦 Semafor CPA</button>
     </div>
 
     <!-- TAB: Dvojniki kampanj (🧬) -->
+    <div id="analizaSubpage-semafor" style="display:none;padding:14px 0 0 0">
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:800;font-size:15px">🚦 Semafor CPA po trgih</div>
+            <div style="font-size:11.5px;color:var(--text-secondary)">Mejni CPA, pri katerem je naročilo še dobičkonosno — iz shranjenih dnevnih posnetkov. Modul samo računa in prikazuje.</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">
+            <label>Okno <select id="semWin" onchange="semSaveSettings()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"><option value="7">7 dni</option><option value="14">14 dni</option></select></label>
+            <label>Cilj €/nar <input id="semTarget" type="number" step="0.1" style="width:64px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit" onchange="semSaveSettings()"></label>
+            <label>Rezerva € <input id="semReserve" type="number" step="0.1" style="width:58px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit" onchange="semSaveSettings()"></label>
+          </div>
+        </div>
+        <div id="semWarn" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(217,153,27,0.12);border:1px solid #d9992166;border-radius:var(--radius);font-size:12px;color:#b8860b"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+          <div style="font-weight:700;font-size:13px">📥 Dnevni vnos</div>
+          <label style="font-size:12px">Datum <input id="semDate" type="date" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"></label>
+          <span style="font-size:11px;color:var(--text-tertiary)">privzeto včerajšnji · prilepi isti izpis kot pri RVC vnosu</span>
+        </div>
+        <textarea id="semText" placeholder="Prilepi izpis (Trgovina, Število naročil, …). Vrstica SKUPAJ in Δ stolpci se preskočijo." style="width:100%;box-sizing:border-box;min-height:90px;padding:10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:ui-monospace,Menlo,monospace;font-size:12px"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
+          <button onclick="semPreview()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">👁 Predogled</button>
+          <button id="semSaveBtn" onclick="semSaveSnap(false)" style="display:none;padding:8px 16px;background:#12a35f;color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">💾 Shrani posnetke</button>
+          <span id="semParseMsg" style="font-size:12px;color:var(--text-secondary)"></span>
+        </div>
+        <div id="semPreviewBox" style="margin-top:10px;overflow-x:auto"></div>
+      </div>
+
+      <details class="card" style="margin-bottom:12px">
+        <summary style="cursor:pointer;font-weight:700;font-size:13px">🚚 Fail rate po trgih (ročno) <span style="font-weight:400;font-size:11px;color:var(--text-tertiary)">— delež neprevzetih; program tega nikoli ne spremeni sam</span></summary>
+        <div id="semFailBox" style="margin-top:10px;overflow-x:auto"></div>
+      </details>
+
+      <div class="card">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Semafor <span style="font-weight:400;font-size:11px;color:var(--text-tertiary)">— urejeno po prispevku · CPA vpišeš ročno (poraba / realna naročila iz ERP, brez organic)</span></div>
+        <div id="semTableBox" style="overflow-x:auto"><div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px">Nalagam…</div></div>
+      </div>
+    </div>
+
     <div id="analizaSubpage-dvojniki" style="display:none;padding:14px 0 0 0">
       <div class="card" style="padding:14px;margin-bottom:14px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -15746,8 +15789,217 @@ function recoDrawGraph(box, sku, sales, from, to) {
   });
 }
 
+// ═══ SEMAFOR CPA PO TRGIH ═══
+// TRDO PRAVILO: vsi izračuni tečejo IZKLJUČNO nad shranjenimi dnevnimi posnetki
+// (/semafor-data → snapshots). Nikoli ne poizveduj po živem viru za nazaj —
+// neprevzeti bi bili odbiti dvakrat (glej semafor-cpa-specifikacija.md, točka 2).
+let SEMD = null;
+let _semRows = null;   // predogled razčlenjenih vrstic
+const SEM_MARKETS = ['SI','HR','RS','HU','CZ','SK','PL','GR','RO','BG'];
+function semEur(v, dec){ return (v===null||v===undefined||isNaN(v)) ? '—' : Number(v).toFixed(dec===undefined?2:dec).replace('.',',') + ' €'; }
+async function semLoad(){
+  try{
+    const r = await fetch('/semafor-data');
+    const d = await r.json();
+    if (!d || !d.ok) return;
+    SEMD = d;
+    const st = d.settings || {};
+    const w = document.getElementById('semWin'); if (w) w.value = String(st.window_days || 7);
+    const t = document.getElementById('semTarget'); if (t) t.value = st.target_contribution ?? 2.5;
+    const rz = document.getElementById('semReserve'); if (rz) rz.value = st.reserve ?? 0.4;
+    const dt = document.getElementById('semDate');
+    if (dt && !dt.value){ const y = new Date(Date.now() - 86400000); dt.value = y.toISOString().slice(0,10); }
+    semRenderFail();
+    semRenderTable();
+  }catch(e){ console.error('semafor', e); }
+}
+async function semSaveSettings(){
+  const body = {
+    window_days: parseInt(document.getElementById('semWin').value) || 7,
+    target_contribution: parseFloat(document.getElementById('semTarget').value) || 2.5,
+    reserve: parseFloat(document.getElementById('semReserve').value) || 0.4
+  };
+  try{
+    const r = await fetch('/semafor-settings', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d = await r.json();
+    if (d && d.ok){ SEMD.settings = d.settings; semRenderTable(); }
+  }catch(e){}
+}
+async function semPreview(){
+  const text = document.getElementById('semText').value || '';
+  const msg = document.getElementById('semParseMsg');
+  const box = document.getElementById('semPreviewBox');
+  const btn = document.getElementById('semSaveBtn');
+  _semRows = null; btn.style.display = 'none'; box.innerHTML = '';
+  if (!text.trim()){ msg.textContent = 'Prilepi izpis.'; return; }
+  try{
+    const r = await fetch('/semafor-parse', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+    const d = await r.json();
+    if (!d || !d.ok){ msg.textContent = '✗ ' + ((d && d.error) || 'napaka'); return; }
+    _semRows = d.rows;
+    msg.textContent = '✓ ' + d.rows.length + ' trgov razčlenjenih' + (d.skipped && d.skipped.length ? ' · preskočeno: ' + d.skipped.join(', ') : '');
+    box.innerHTML = '<table style="border-collapse:collapse;font-size:12px;min-width:520px">'
+      + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:5px 10px">Trg</th><th style="text-align:right;padding:5px 10px">Naročil</th><th style="text-align:right;padding:5px 10px">Poštnina</th><th style="text-align:right;padding:5px 10px">RVC/nar</th><th style="text-align:right;padding:5px 10px">RVC bruto/nar</th><th style="text-align:right;padding:5px 10px">RVC skupaj</th></tr>'
+      + d.rows.map(x => '<tr style="border-top:1px solid var(--border)"><td style="padding:5px 10px;font-weight:700">' + x.market + ' <span style="color:var(--text-tertiary);font-weight:400">' + x.trg + '</span></td>'
+        + '<td style="padding:5px 10px;text-align:right">' + x.orders + '</td>'
+        + '<td style="padding:5px 10px;text-align:right">' + semEur(x.shipping_total) + '</td>'
+        + '<td style="padding:5px 10px;text-align:right">' + semEur(x.rvc_per_order) + '</td>'
+        + '<td style="padding:5px 10px;text-align:right">' + semEur(x.rvc_gross_per_order) + '</td>'
+        + '<td style="padding:5px 10px;text-align:right">' + semEur(x.rvc_total) + '</td></tr>').join('')
+      + '</table>';
+    btn.style.display = '';
+  }catch(e){ msg.textContent = '✗ ' + e.message; }
+}
+async function semSaveSnap(force){
+  if (!_semRows || !_semRows.length) return;
+  const date = document.getElementById('semDate').value;
+  const msg = document.getElementById('semParseMsg');
+  try{
+    const r = await fetch('/semafor-snapshot', {method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({date, rows:_semRows, force:!!force})});
+    const d = await r.json();
+    if (d && d.ok){
+      msg.textContent = '✓ Shranjenih ' + d.saved + ' posnetkov za ' + date + (d.overwritten && d.overwritten.length ? ' (prepisani: ' + d.overwritten.join(', ') + ')' : '');
+      document.getElementById('semText').value = '';
+      document.getElementById('semPreviewBox').innerHTML = '';
+      document.getElementById('semSaveBtn').style.display = 'none';
+      _semRows = null;
+      semLoad();
+    } else if (d && d.conflicts){
+      if (confirm('Za ' + date + ' že obstajajo posnetki: ' + d.conflicts.join(', ') + '.\n\nPrepišem obstoječe? (Posnetki so sicer nespremenljivi — prepiši samo, če je bil vnos napačen.)')) semSaveSnap(true);
+    } else {
+      msg.textContent = '✗ ' + ((d && d.error) || 'napaka');
+    }
+  }catch(e){ msg.textContent = '✗ ' + e.message; }
+}
+function semRenderFail(){
+  const box = document.getElementById('semFailBox'); if (!box || !SEMD) return;
+  const fr = SEMD.fail_rates || {};
+  box.innerHTML = '<table style="border-collapse:collapse;font-size:12px;min-width:480px">'
+    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:5px 10px">Trg</th><th style="text-align:right;padding:5px 10px">Fail %</th><th style="text-align:left;padding:5px 10px">Opomba (vir, prevoznik)</th><th></th></tr>'
+    + SEM_MARKETS.map(m => { const e = fr[m] || {};
+      return '<tr style="border-top:1px solid var(--border)"><td style="padding:5px 10px;font-weight:700">' + m + '</td>'
+        + '<td style="padding:5px 10px;text-align:right"><input id="semFr-' + m + '" type="number" step="0.5" value="' + (e.fail_rate ?? '') + '" style="width:64px;padding:4px 6px;text-align:right;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:inherit"> %</td>'
+        + '<td style="padding:5px 10px"><input id="semFrN-' + m + '" value="' + (e.note || '').replace(/"/g,'&quot;') + '" style="width:180px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:inherit"></td>'
+        + '<td style="padding:5px 6px"><button onclick="semSaveFail(\'' + m + '\',this)" style="padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--text);font-family:inherit">💾</button></td></tr>'; }).join('')
+    + '</table>';
+}
+async function semSaveFail(m, btn){
+  const fr = parseFloat(document.getElementById('semFr-' + m).value);
+  const note = document.getElementById('semFrN-' + m).value;
+  try{
+    const r = await fetch('/semafor-failrate', {method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({market:m, fail_rate:fr, note})});
+    const d = await r.json();
+    if (d && d.ok){ SEMD.fail_rates = d.fail_rates; btn.textContent = '✓'; setTimeout(()=>btn.textContent='💾', 1200); semRenderTable(); }
+  }catch(e){}
+}
+async function semSaveCpa(m, val){
+  try{
+    const r = await fetch('/semafor-cpa', {method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({market:m, cpa: val === '' ? '' : parseFloat(val)})});
+    const d = await r.json();
+    if (d && d.ok){ SEMD.cpa_manual = d.cpa_manual; semRenderTable(); }
+  }catch(e){}
+}
+function semCompute(){
+  // izračun IZKLJUČNO nad shranjenimi posnetki (TRDO PRAVILO — nikoli iz živega vira)
+  const st = (SEMD && SEMD.settings) || {window_days:7, target_contribution:2.5, reserve:0.4};
+  const snaps = (SEMD && SEMD.snapshots) || [];
+  if (!snaps.length) return {rows:[], daysInWindow:0, latest:null, windowDays:st.window_days};
+  const latest = snaps.map(x=>x.date).sort().pop();
+  const start = new Date(new Date(latest + 'T00:00:00').getTime() - (st.window_days - 1) * 86400000).toISOString().slice(0,10);
+  const inWin = snaps.filter(x => x.date >= start && x.date <= latest);
+  const rows = [];
+  for (const m of SEM_MARKETS){
+    const ms = inWin.filter(x => x.market === m && (x.orders||0) > 0);
+    if (!ms.length) continue;                        // brez posnetka v oknu → ne prikaži
+    const ordSum = ms.reduce((a,b)=>a+(b.orders||0),0);
+    const wAvg = f => { let n=0,d=0; ms.forEach(x=>{ const v=x[f]; if(v!=null){ n += v*(x.orders||0); d += (x.orders||0);} }); return d? n/d : null; };
+    const rvc = wAvg('rvc_per_order');               // UTEŽNO povprečje (utež = orders)
+    const rvcB = wAvg('rvc_gross_per_order');
+    const fe = (SEMD.fail_rates || {})[m] || {};
+    const fail = (fe.fail_rate===null||fe.fail_rate===undefined||fe.fail_rate==='') ? null : fe.fail_rate/100;
+    let be=null, target=null, down=null;
+    if (rvc!=null && rvcB!=null && fail!=null){
+      be = rvc - fail*rvcB;
+      target = be - st.target_contribution;
+      down = be - st.reserve;
+    }
+    const cpaE = (SEMD.cpa_manual || {})[m];
+    const cpa = cpaE ? cpaE.cpa : null;
+    rows.push({market:m, days:new Set(ms.map(x=>x.date)).size, orders:ordSum, rvc, rvcB, fail, be, target, down, cpa});
+  }
+  const maxBE = Math.max(...rows.filter(r=>r.be!=null).map(r=>r.be), -Infinity);
+  rows.forEach(r => {
+    r.handicap = (r.be!=null && isFinite(maxBE)) ? maxBE - r.be : null;
+    r.contribution = (r.be!=null && r.cpa!=null) ? r.be - r.cpa : null;
+    r.distance = (r.target!=null && r.cpa!=null) ? r.cpa - r.target : null;
+    r.maxFail = (r.rvc!=null && r.rvcB && r.cpa!=null) ? (r.rvc - r.cpa)/r.rvcB : null;
+    r.adjCpa = (r.cpa!=null && r.handicap!=null) ? r.cpa + r.handicap : null;
+  });
+  rows.sort((a,b) => (b.contribution ?? -1e9) - (a.contribution ?? -1e9));
+  const daysGlobal = new Set(inWin.map(x=>x.date)).size;
+  return {rows, daysInWindow:daysGlobal, latest, windowDays:st.window_days};
+}
+function semRenderTable(){
+  const box = document.getElementById('semTableBox'); if (!box || !SEMD) return;
+  const c = semCompute();
+  const warn = document.getElementById('semWarn');
+  if (warn){
+    if (c.rows.length && c.daysInWindow < c.windowDays){
+      warn.style.display = ''; warn.textContent = '⚠ Vzorec ' + c.daysInWindow + ' dni od ' + c.windowDays + ' — številke so še nestabilne. Zadnji posnetek: ' + (c.latest || '—') + '.';
+    } else warn.style.display = 'none';
+  }
+  if (!c.rows.length){
+    box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px">Ni shranjenih posnetkov v oknu. Naredi prvi dnevni vnos zgoraj.</div>';
+    return;
+  }
+  const col = r => {
+    if (r.cpa==null || r.target==null) return '';
+    if (r.cpa <= r.target) return 'background:rgba(18,163,95,0.10)';
+    if (r.cpa <= r.down) return 'background:rgba(217,153,27,0.13)';
+    return 'background:rgba(229,72,77,0.12)';
+  };
+  const distTxt = r => {
+    if (r.distance==null) return '—';
+    const s = (r.distance>0?'+':'') + r.distance.toFixed(2).replace('.',',') + ' €';
+    return r.distance <= 0 ? '<span style="color:#12a35f;font-weight:700">' + s + '</span>' : '<span style="color:#e5484d;font-weight:700">' + s + '</span>';
+  };
+  box.innerHTML = '<table style="border-collapse:collapse;font-size:12px;min-width:980px;width:100%">'
+    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px">'
+    + '<th style="text-align:left;padding:6px 8px">Trg</th><th style="text-align:right;padding:6px 8px">Naročil</th>'
+    + '<th style="text-align:right;padding:6px 8px">RVC</th><th style="text-align:right;padding:6px 8px">RVC bruto</th>'
+    + '<th style="text-align:right;padding:6px 8px">Fail %</th><th style="text-align:right;padding:6px 8px">Break-even</th>'
+    + '<th style="text-align:right;padding:6px 8px">Ciljni CPA</th><th style="text-align:right;padding:6px 8px">Dejanski CPA</th>'
+    + '<th style="text-align:right;padding:6px 8px">Prispevek</th><th style="text-align:right;padding:6px 8px">Razdalja</th>'
+    + '<th style="text-align:right;padding:6px 8px">Max fail</th><th style="text-align:right;padding:6px 8px">Handikap CPA</th></tr>'
+    + c.rows.map(r => {
+      const weak = r.orders < 20;
+      const noFail = r.fail == null;
+      return '<tr style="border-top:1px solid var(--border);' + col(r) + '">'
+        + '<td style="padding:6px 8px;font-weight:800">' + r.market
+          + (weak ? ' <span title="Manj kot 20 naročil v oknu — statistično šibko" style="font-size:10px;color:#d9992">⚠' + r.days + 'd</span>' : ' <span style="font-size:10px;color:var(--text-tertiary)">' + r.days + 'd</span>') + '</td>'
+        + '<td style="padding:6px 8px;text-align:right">' + r.orders + (weak?' ⚠':'') + '</td>'
+        + '<td style="padding:6px 8px;text-align:right">' + semEur(r.rvc) + '</td>'
+        + '<td style="padding:6px 8px;text-align:right">' + semEur(r.rvcB) + '</td>'
+        + '<td style="padding:6px 8px;text-align:right">' + (noFail ? '<span style="color:#e5484d;font-size:11px">vpiši ↑</span>' : (r.fail*100).toFixed(0) + ' %') + '</td>'
+        + '<td style="padding:6px 8px;text-align:right;font-weight:700">' + semEur(r.be) + '</td>'
+        + '<td style="padding:6px 8px;text-align:right">' + semEur(r.target) + '</td>'
+        + '<td style="padding:6px 8px;text-align:right"><input value="' + (r.cpa==null?'':r.cpa) + '" placeholder="—" onchange="semSaveCpa(\'' + r.market + '\',this.value)" style="width:62px;padding:3px 6px;text-align:right;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:inherit;font-weight:700"></td>'
+        + '<td style="padding:6px 8px;text-align:right;font-weight:700">' + (r.contribution==null?'—':((r.contribution>0?'+':'')+r.contribution.toFixed(2).replace('.',',')+' €')) + '</td>'
+        + '<td style="padding:6px 8px;text-align:right">' + distTxt(r) + '</td>'
+        + '<td style="padding:6px 8px;text-align:right">' + (r.maxFail==null?'—':(r.maxFail*100).toFixed(0)+' %') + '</td>'
+        + '<td style="padding:6px 8px;text-align:right">' + semEur(r.adjCpa) + '</td>'
+        + '</tr>';
+    }).join('')
+    + '</table>'
+    + '<div style="margin-top:8px;font-size:11px;color:var(--text-tertiary)">🟢 pod ciljnim CPA · 🟠 med ciljem in break-even−rezerva · 🔴 nad break-even−rezerva. Razdalja = dejanski − ciljni CPA (negativno = dobro). Max fail = koliko neprevzetih trg še prenese pri tem CPA. Handikap CPA = CPA + (najvišji break-even − break-even trga) za pošteno primerjavo med trgi.</div>';
+}
+
 function switchAnalizaTab(tab) {
-  const _valid = ['meta', 'priporocila', 'dvojniki', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'shipping'];
+  if (tab === 'semafor') setTimeout(semLoad, 50);
+  const _valid = ['meta', 'priporocila', 'dvojniki', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'shipping', 'semafor'];
   if (!_valid.includes(tab)) tab = 'priporocila';   // odstranjen 'izdelki' → padec na Priporočila
   _valid.forEach(t => {
     const btn = document.getElementById('analizaTab-' + t);
