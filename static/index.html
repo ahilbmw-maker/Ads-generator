@@ -15837,6 +15837,7 @@ function recoDrawGraph(box, sku, sales, from, to) {
 let SEMD = null;
 let _semRows = null;   // predogled razčlenjenih vrstic
 const SEM_MARKETS = ['SI','HR','RS','HU','CZ','SK','PL','GR','RO','BG'];
+function semSgn(v){ return (v===null||v===undefined||isNaN(v)) ? '—' : (v>0?'+':'') + Number(v).toFixed(2).replace('.',',') + ' €'; }
 function semEur(v, dec){ return (v===null||v===undefined||isNaN(v)) ? '—' : Number(v).toFixed(dec===undefined?2:dec).replace('.',',') + ' €'; }
 async function semLoad(){
   try{
@@ -16382,6 +16383,8 @@ function semCompute(){
     r.distance = (r.target!=null && r.cpa!=null) ? r.cpa - r.target : null;
     r.maxFail = (r.rvc!=null && r.rvcB && r.cpa!=null) ? (r.rvc - r.cpa)/r.rvcB : null;
     r.adjCpa = (r.cpa!=null && r.handicap!=null) ? r.cpa + r.handicap : null;
+    // realni dobiček v oknu = prispevek na naročilo × št. naročil (fail % je že v break-even)
+    r.realProfit = (r.contribution!=null) ? r.contribution * r.orders : null;
   });
   rows.sort((a,b) => (b.contribution ?? -1e9) - (a.contribution ?? -1e9));
   const daysGlobal = new Set(inWin.map(x=>x.date)).size;
@@ -16430,7 +16433,7 @@ function semRenderTable(){
     + '<th style="text-align:right;padding:6px 8px">Fail %</th><th style="text-align:right;padding:6px 8px">Break-even</th>'
     + '<th style="text-align:right;padding:6px 8px">Ciljni CPA</th><th style="text-align:right;padding:6px 8px">Dejanski CPA</th>'
     + '<th style="text-align:right;padding:6px 8px">Prispevek</th><th style="text-align:right;padding:6px 8px">Razdalja</th>'
-    + '<th style="text-align:right;padding:6px 8px">Max fail</th><th style="text-align:right;padding:6px 8px">Handikap CPA</th></tr>'
+    + '<th style="text-align:right;padding:6px 8px">Max fail</th><th style="text-align:right;padding:6px 8px">Handikap CPA</th><th style="text-align:right;padding:6px 8px">Realni dobiček</th></tr>'
     + c.rows.map(r => {
       const weak = r.orders < 20;
       const noFail = r.fail == null;
@@ -16448,14 +16451,15 @@ function semRenderTable(){
         + '<td style="padding:6px 8px;text-align:right">' + distTxt(r) + '</td>'
         + '<td style="padding:6px 8px;text-align:right">' + (r.maxFail==null?'—':(r.maxFail*100).toFixed(0)+' %') + '</td>'
         + '<td style="padding:6px 8px;text-align:right">' + semEur(r.adjCpa) + '</td>'
+        + '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + (r.realProfit==null?'var(--text-tertiary)':(r.realProfit>=0?'#12a35f':'#e5484d')) + '">' + semSgn(r.realProfit) + '</td>'
         + '</tr>';
     }).join('')
     + '</table>'
-    + '<div style="margin-top:8px;font-size:11px;color:var(--text-tertiary)">🟢 pod ciljnim CPA · 🟠 med ciljem in break-even−rezerva · 🔴 nad break-even−rezerva. Razdalja = dejanski − ciljni CPA (negativno = dobro). Max fail = koliko neprevzetih trg še prenese pri tem CPA. Handikap CPA = CPA + (najvišji break-even − break-even trga) za pošteno primerjavo med trgi.</div>';
+    + '<div style="margin-top:8px;font-size:11px;color:var(--text-tertiary)">🟢 pod ciljnim CPA · 🟠 med ciljem in break-even−rezerva · 🔴 nad break-even−rezerva. Razdalja = dejanski − ciljni CPA (negativno = dobro). Max fail = koliko neprevzetih trg še prenese pri tem CPA. Handikap CPA = CPA + (najvišji break-even − break-even trga) za pošteno primerjavo med trgi. Realni dobiček = prispevek × naročila v oknu (fail % je že odbit).</div>';
   const mx = Math.max(...c.rows.filter(r=>r.be!=null).map(r=>r.be*1.15), ...c.rows.filter(r=>r.cpa!=null).map(r=>r.cpa*1.05), 1);
   const pct = v => Math.max(0, Math.min(102, v/mx*100)).toFixed(1) + '%';
   const v1 = '<table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:860px">'
-    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Trg</th><th style="text-align:left;padding:6px 8px;min-width:240px">Kje je CPA — zelena→cilj · oranžna→break-even · rdeča čez</th><th style="text-align:right;padding:6px 8px">Dejanski CPA</th><th style="text-align:right;padding:6px 8px">Break-even</th><th style="text-align:right;padding:6px 8px">Cilj</th><th style="text-align:right;padding:6px 8px">Prispevek</th><th style="text-align:right;padding:6px 8px">Naročil</th></tr>'
+    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Trg</th><th style="text-align:left;padding:6px 8px;min-width:240px">Kje je CPA — zelena→cilj · oranžna→break-even · rdeča čez</th><th style="text-align:right;padding:6px 8px">Dejanski CPA</th><th style="text-align:right;padding:6px 8px">Break-even</th><th style="text-align:right;padding:6px 8px">Cilj</th><th style="text-align:right;padding:6px 8px">Prispevek</th><th style="text-align:right;padding:6px 8px">Naročil</th><th style="text-align:right;padding:6px 8px">Realni dobiček</th></tr>'
     + c.rows.map(r => {
       const st2 = (r.cpa==null || r.target==null) ? '' : (r.cpa <= r.target ? 'g' : (r.cpa <= r.down ? 'o' : 'r'));
       const pc = st2==='g' ? '#12a35f' : st2==='o' ? '#d9921b' : st2==='r' ? '#e5484d' : 'var(--border)';
@@ -16470,8 +16474,22 @@ function semRenderTable(){
         + '<td style="padding:9px 8px;text-align:right;font-weight:800;font-size:15px">' + semEur(r.be) + '</td>'
         + '<td style="padding:9px 8px;text-align:right">' + semEur(r.target) + '</td>'
         + '<td style="padding:9px 8px;text-align:right;font-weight:800;color:' + (r.contribution==null?'var(--text-tertiary)':(r.contribution>=0?'#12a35f':'#e5484d')) + '">' + (r.contribution==null?'—':((r.contribution>0?'+':'')+r.contribution.toFixed(2).replace('.',',')+' €')) + '</td>'
-        + '<td style="padding:9px 8px;text-align:right">' + r.orders + '</td></tr>';
-    }).join('') + '</table>';
+        + '<td style="padding:9px 8px;text-align:right">' + r.orders + '</td>'
+        + '<td style="padding:9px 8px;text-align:right;font-weight:800;font-size:14px;color:' + (r.realProfit==null?'var(--text-tertiary)':(r.realProfit>=0?'#12a35f':'#e5484d')) + '">' + semSgn(r.realProfit) + '</td></tr>';
+    }).join('')
+    + (function(){
+        const rp = c.rows.filter(r => r.realProfit != null);
+        if (!rp.length) return '';
+        const tot = rp.reduce((a,b) => a + b.realProfit, 0);
+        const ord = rp.reduce((a,b) => a + b.orders, 0);
+        return '<tr style="border-top:2px solid var(--border);background:var(--surface2)">'
+          + '<td style="padding:9px 8px;font-weight:800">SKUPAJ <span style="font-size:10px;color:var(--text-tertiary);font-weight:400">' + rp.length + ' z znanim CPA</span></td>'
+          + '<td colspan="4"></td>'
+          + '<td style="padding:9px 8px;text-align:right;font-weight:800;color:var(--text-tertiary);font-size:11px">' + c.windowDays + ' dni</td>'
+          + '<td style="padding:9px 8px;text-align:right;font-weight:800">' + ord + '</td>'
+          + '<td style="padding:9px 8px;text-align:right;font-weight:800;font-size:15px;color:' + (tot>=0?'#12a35f':'#e5484d') + '">' + semSgn(tot) + '</td></tr>';
+      })()
+    + '</table>';
   box.innerHTML = v1
     + '<details style="margin-top:10px"><summary style="font-size:11.5px;color:var(--text-tertiary);cursor:pointer">▦ Podrobna tabela (RVC, fail %, razdalja, max fail, handikap CPA)</summary><div style="margin-top:8px;overflow-x:auto">' + fullTable + '</div></details>';
 }
