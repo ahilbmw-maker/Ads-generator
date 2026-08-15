@@ -5656,24 +5656,30 @@ function homeSemRender(){
     box.innerHTML = '<div class="card" style="margin-bottom:18px;border-left:4px solid var(--border);cursor:pointer" onclick="homeSemOpen()">'
       + '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary)">🚦 Semafor CPA</div>'
-      + '<div style="font-size:13px;color:var(--text-secondary)">za danes še ni vnosa</div>'
+      + '<div style="font-size:13px;color:var(--text-secondary)">še ni nobenega dnevnega vnosa</div>'
       + '<div style="margin-left:auto;font-size:12.5px;color:var(--accent);font-weight:700">odpri →</div>'
       + '</div></div>';
     return;
   }
 
   const bars = (d.markets||[]).map(m => '<span title="' + m.market + '" style="width:11px;height:26px;border-radius:3px;background:' + (col[m.status]||col.grey) + '"></span>').join('');
-  const accent = d.red ? '#e5484d' : (d.amber ? '#e0a33a' : '#12a35f');
-  const left = d.owner
-    ? '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary)">🚦 Semafor CPA · danes</div>'
-      + '<div style="font-size:30px;line-height:1.15;font-weight:800;color:' + (d.profit>=0?'#12a35f':'#e5484d') + '">' + sgn0(d.profit) + '</div>'
+  const accent = d.stale ? 'var(--text-tertiary)' : (d.red ? '#e5484d' : (d.amber ? '#e0a33a' : '#12a35f'));
+  const dayLbl = !d.stale ? 'danes'
+    : (d.days_ago === 1 ? 'včeraj' : d.date + (d.days_ago > 1 ? ' · pred ' + d.days_ago + ' dnevi' : ''));
+  const dayPill = d.stale
+    ? ' <span title="za današnji dan še ni vnosa" style="display:inline-block;padding:1px 8px;border-radius:999px;background:var(--surface2);border:1px solid var(--border);color:var(--text-secondary);font-size:10px;letter-spacing:0;text-transform:none;font-weight:700">📅 ' + dayLbl + '</span>'
+    : '';
+  const head = '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary)">🚦 Semafor CPA' + (d.stale ? '' : ' · danes') + dayPill + '</div>';
+  const money = d.owner && d.profit != null;
+  const left = head + (money
+    ? '<div style="font-size:30px;line-height:1.15;font-weight:800;color:' + (d.profit>=0?'#12a35f':'#e5484d') + '">' + sgn0(d.profit) + '</div>'
       + '<div style="font-size:12px;color:var(--text-secondary)">realni <b>' + sgn0(d.real) + '</b>' + (d.poas ? ' · POAS ' + String(d.poas).replace('.',',') + '×' : '') + '</div>'
-    : '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary)">🚦 Semafor CPA · danes</div>'
-      + '<div style="font-size:28px;line-height:1.2;font-weight:800;color:var(--text)">' + d.green + ' <span style="font-size:17px;font-weight:600;color:var(--text-tertiary)">od ' + (d.markets||[]).length + ' trgov v zelenem</span></div>';
+    : '<div style="font-size:28px;line-height:1.2;font-weight:800;color:var(--text)">' + d.green + ' <span style="font-size:17px;font-weight:600;color:var(--text-tertiary)">od ' + (d.markets||[]).length + ' trgov v zelenem</span></div>'
+      + (d.owner && !d.has_spend ? '<div style="font-size:12px;color:#d9921b">poraba za ta dan še ni uvožena</div>' : ''));
 
   const right = '<div style="font-size:12.5px;color:var(--text-secondary);line-height:1.65;text-align:right">'
     + '<div>' + d.orders + ' naročil' + (d.cpa != null ? ' · CPA ' + Number(d.cpa).toFixed(2).replace('.',',') + ' €' : '') + '</div>'
-    + (d.owner
+    + (d.owner && d.has_spend
         ? '<div style="color:var(--text-tertiary)">poraba ' + eur0(d.spend) + ' <span style="opacity:.7">(📘 ' + eur0(d.fb) + ' · 🔎 ' + eur0(d.google) + ')</span> · RVC ' + eur0(d.rvc) + '</div>'
         : '<div style="color:var(--text-tertiary)">' + (d.attention ? 'pozornost: <b>' + d.attention + '</b>' : 'vsi trgi v redu') + '</div>')
     + '</div>';

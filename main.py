@@ -57,6 +57,13 @@ NABAVA_SECRET = os.environ.get("NABAVA_SECRET", NABAVA_PASSWORD + "_nabava_sign_
 NABAVA_COOKIE = "slx_nabava_auth"
 AUTH_TTL = 60 * 60 * 24 * 30  # seja velja 30 dni
 
+# Lastniško geslo: odklene zneske (uvodni trak). Nastavi OWNER_PASSWORD na Renderju.
+# Velja tudi kot navadna prijava, zato Irenej z njim dobi dostop IN zneske naenkrat.
+OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
+OWNER_SECRET = os.environ.get("OWNER_SECRET", (OWNER_PASSWORD or APP_SECRET) + "_owner_sign_v1")
+OWNER_COOKIE = "slx_owner"
+OWNER_TTL = 60 * 60 * 24 * 30
+
 # Poti, ki so DOSTOPNE BREZ prijave
 _AUTH_EXEMPT_EXACT = {"/login", "/healthz", "/favicon.ico"}
 _AUTH_EXEMPT_PREFIX = ("/static/", "/regen-img/")
@@ -173,10 +180,17 @@ async def login_page(err: str = ""):
 
 @app.post("/login")
 async def login_submit(password: str = Form("")):
-    if _hmac.compare_digest(password, APP_PASSWORD):
+    is_app = _hmac.compare_digest(password, APP_PASSWORD)
+    # Lastniško geslo velja tudi za navadno prijavo IN hkrati odklene zneske,
+    # tako da Irenej z enim geslom dobi vse; ekipa se prijavlja z APP_PASSWORD.
+    is_owner = bool(OWNER_PASSWORD) and _hmac.compare_digest(password, OWNER_PASSWORD)
+    if is_app or is_owner:
         resp = RedirectResponse(url="/", status_code=302)
         resp.set_cookie(AUTH_COOKIE, _auth_make_token(), max_age=AUTH_TTL,
                         httponly=True, samesite="lax")
+        if is_owner:
+            resp.set_cookie(OWNER_COOKIE, _owner_make_token(), max_age=OWNER_TTL,
+                            httponly=True, samesite="lax")
         return resp
     return RedirectResponse(url="/login?err=1", status_code=302)
 
@@ -217,6 +231,7 @@ async def serve_nabava():
 async def logout():
     resp = RedirectResponse(url="/login", status_code=302)
     resp.delete_cookie(AUTH_COOKIE)
+    resp.delete_cookie(OWNER_COOKIE)
     return resp
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -24406,10 +24421,6 @@ async def semafor_day_curve(days: int = 7):
 # Vsi zaposleni se prijavljajo z istim APP_PASSWORD, zato ločeno geslo samo za
 # prikaz zneskov. Brez veljavnega piškotka strežnik zneskov SPLOH NE POŠLJE.
 # Geslo nastavi na Renderju: OWNER_PASSWORD=<nekaj, kar ve samo Irenej>
-OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
-OWNER_SECRET = os.environ.get("OWNER_SECRET", (OWNER_PASSWORD or APP_SECRET) + "_owner_sign_v1")
-OWNER_COOKIE = "slx_owner"
-OWNER_TTL = 60 * 60 * 24 * 30
 
 
 def _owner_make_token():
@@ -24445,7 +24456,7 @@ async def owner_login(request: Request, data: dict):
         return {"ok": False, "error": "Napačno geslo."}
     resp = JSONResponse({"ok": True, "owner": True})
     resp.set_cookie(OWNER_COOKIE, _owner_make_token(), max_age=OWNER_TTL,
-                    httponly=True, samesite="lax", secure=True)
+                    httponly=True, samesite="lax")
     return resp
 
 
@@ -24465,8 +24476,22 @@ async def semafor_home(request: Request):
     d = _semafor_load()
     _semafor_dedupe(d)
     today = _lj_today()
-    snaps = [s for s in d["snapshots"] if s.get("date") == today]
-    spend = [s for s in d["spend"] if s.get("date") == today]
+    # če za danes še ni vnosa, pokaži ZADNJI dan s posnetkom (in to jasno označi)
+    date_used = today
+    if not [s for s in d["snapshots"] if s.get("date") == today]:
+        prev = sorted({s.get("date") for s in d["snapshots"] if s.get("date")})
+        date_used = prev[-1] if prev else today
+    snaps = [s for s in d["snapshots"] if s.get("date") == date_used]
+    spend = [s for s in d["spend"] if s.get("date") == date_used]
+    stale = date_used != today
+    days_ago = 0
+    if stale:
+        try:
+            from datetime import date as _date
+            a = _date.fromisoformat(date_used); b = _date.fromisoformat(today)
+            days_ago = (b - a).days
+        except Exception:
+            days_ago = 1
     if not snaps:
         return {"ok": True, "owner": owner, "owner_enabled": bool(OWNER_PASSWORD),
                 "date": today, "has_data": False}
@@ -24525,7 +24550,8 @@ async def semafor_home(request: Request):
     markets.sort(key=lambda x: ({"green": 0, "amber": 1, "red": 2, "grey": 3}[x["status"]], x["market"]))
     spend_sum = fb_sum + g_sum
     out = {"ok": True, "owner": owner, "owner_enabled": bool(OWNER_PASSWORD),
-           "date": today, "has_data": True, "orders": int(orders),
+           "date": date_used, "today": today, "stale": stale, "days_ago": days_ago,
+           "has_spend": bool(spend), "has_data": True, "orders": int(orders),
            "markets": markets, "green": green, "amber": amber, "red": red,
            "attention": worst_m,
            "cpa": round(spend_sum / orders, 2) if orders and spend_sum else None,
@@ -24533,8 +24559,8 @@ async def semafor_home(request: Request):
     if owner:
         out.update({"rvc": round(rvc_sum, 2), "spend": round(spend_sum, 2),
                     "fb": round(fb_sum, 2), "google": round(g_sum, 2),
-                    "profit": round(rvc_sum - spend_sum, 2),
-                    "real": round(real_sum - spend_sum, 2),
+                    "profit": round(rvc_sum - spend_sum, 2) if spend else None,
+                    "real": round(real_sum - spend_sum, 2) if spend else None,
                     "poas": round(rvc_sum / spend_sum, 2) if spend_sum else None})
     return out
 
