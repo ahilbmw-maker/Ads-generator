@@ -24402,6 +24402,143 @@ async def semafor_day_curve(days: int = 7):
     return {"ok": True, "curve": curve, "days_used": used, "days": len(used), "source": "forecast2"}
 
 
+# ═══ LASTNIŠKI POGLED (zneski na uvodni strani) ═══
+# Vsi zaposleni se prijavljajo z istim APP_PASSWORD, zato ločeno geslo samo za
+# prikaz zneskov. Brez veljavnega piškotka strežnik zneskov SPLOH NE POŠLJE.
+# Geslo nastavi na Renderju: OWNER_PASSWORD=<nekaj, kar ve samo Irenej>
+OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
+OWNER_SECRET = os.environ.get("OWNER_SECRET", (OWNER_PASSWORD or APP_SECRET) + "_owner_sign_v1")
+OWNER_COOKIE = "slx_owner"
+OWNER_TTL = 60 * 60 * 24 * 30
+
+
+def _owner_make_token():
+    exp = str(int(_time.time()) + OWNER_TTL)
+    sig = _hmac.new(OWNER_SECRET.encode(), exp.encode(), _hashlib.sha256).hexdigest()
+    return _b64.urlsafe_b64encode(f"{exp}:{sig}".encode()).decode()
+
+
+def _owner_check_token(token: str) -> bool:
+    try:
+        raw = _b64.urlsafe_b64decode(token.encode()).decode()
+        exp_str, sig = raw.split(":", 1)
+        expected = _hmac.new(OWNER_SECRET.encode(), exp_str.encode(), _hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(sig, expected):
+            return False
+        return int(exp_str) > int(_time.time())
+    except Exception:
+        return False
+
+
+def _owner_authorized(request) -> bool:
+    if not OWNER_PASSWORD:
+        return False
+    return _owner_check_token(request.cookies.get(OWNER_COOKIE, ""))
+
+
+@app.post("/owner-login")
+async def owner_login(request: Request, data: dict):
+    if not OWNER_PASSWORD:
+        return {"ok": False, "error": "OWNER_PASSWORD ni nastavljen v Render env."}
+    pw = str((data or {}).get("password") or "")
+    if not _hmac.compare_digest(pw, OWNER_PASSWORD):
+        return {"ok": False, "error": "Napačno geslo."}
+    resp = JSONResponse({"ok": True, "owner": True})
+    resp.set_cookie(OWNER_COOKIE, _owner_make_token(), max_age=OWNER_TTL,
+                    httponly=True, samesite="lax", secure=True)
+    return resp
+
+
+@app.post("/owner-logout")
+async def owner_logout():
+    resp = JSONResponse({"ok": True, "owner": False})
+    resp.delete_cookie(OWNER_COOKIE)
+    return resp
+
+
+@app.get("/semafor-home")
+async def semafor_home(request: Request):
+    """Kratek povzetek Semaforja za uvodno stran.
+    NEVTRALNI del (vidijo vsi): stanje trgov, naročila, CPA, projekcija naročil.
+    ZNESKI (rvc/poraba/dobiček): samo z veljavnim lastniškim piškotkom."""
+    owner = _owner_authorized(request)
+    d = _semafor_load()
+    _semafor_dedupe(d)
+    today = _lj_today()
+    snaps = [s for s in d["snapshots"] if s.get("date") == today]
+    spend = [s for s in d["spend"] if s.get("date") == today]
+    if not snaps:
+        return {"ok": True, "owner": owner, "owner_enabled": bool(OWNER_PASSWORD),
+                "date": today, "has_data": False}
+
+    st = d.get("settings") or {}
+    fixed = float(st.get("reserve") or 0)
+    fr = d.get("fail_rates") or {}
+    spend_by = {}
+    for p in spend:
+        e = spend_by.setdefault(p["market"], {"fb": 0.0, "google": 0.0})
+        e["fb"] += float(p.get("fb") or 0)
+        e["google"] += float(p.get("google") or 0)
+
+    orders = rvc_sum = real_sum = fb_sum = g_sum = 0.0
+    green = amber = red = 0
+    worst_m, worst_c = None, None
+    markets = []
+    for s in snaps:
+        m = s.get("market")
+        o = int(s.get("orders") or 0)
+        rvc = s.get("rvc_per_order")
+        rvcb = s.get("rvc_gross_per_order")
+        rvc_t = s.get("rvc_total")
+        if rvc_t is None and rvc is not None:
+            rvc_t = o * float(rvc)
+        f = (fr.get(m) or {}).get("fail_rate")
+        f = None if f in (None, "") else float(f) / 100.0
+        sp = spend_by.get(m) or {"fb": 0.0, "google": 0.0}
+        spend_m = sp["fb"] + sp["google"]
+        cpa = (spend_m / o) if o else None
+        real_t = float(rvc_t or 0)
+        be = None
+        if rvc is not None and rvcb is not None and f is not None:
+            be = float(rvc) - f * float(rvcb) - fixed
+            real_t = o * (float(rvc) - f * float(rvcb))
+        orders += o
+        rvc_sum += float(rvc_t or 0)
+        real_sum += real_t
+        fb_sum += sp["fb"]
+        g_sum += sp["google"]
+        status = "grey"
+        if be is not None and cpa is not None:
+            target = be - float(st.get("target_contribution") or 0)
+            status = "green" if cpa <= target else ("amber" if cpa <= be else "red")
+            contrib = be - cpa
+            if worst_c is None or contrib < worst_c:
+                worst_c, worst_m = contrib, m
+        if status == "green":
+            green += 1
+        elif status == "amber":
+            amber += 1
+        elif status == "red":
+            red += 1
+        markets.append({"market": m, "status": status})
+
+    markets.sort(key=lambda x: ({"green": 0, "amber": 1, "red": 2, "grey": 3}[x["status"]], x["market"]))
+    spend_sum = fb_sum + g_sum
+    out = {"ok": True, "owner": owner, "owner_enabled": bool(OWNER_PASSWORD),
+           "date": today, "has_data": True, "orders": int(orders),
+           "markets": markets, "green": green, "amber": amber, "red": red,
+           "attention": worst_m,
+           "cpa": round(spend_sum / orders, 2) if orders and spend_sum else None,
+           "updated_at": max([s.get("created_at") or "" for s in snaps] or [""]) or None}
+    if owner:
+        out.update({"rvc": round(rvc_sum, 2), "spend": round(spend_sum, 2),
+                    "fb": round(fb_sum, 2), "google": round(g_sum, 2),
+                    "profit": round(rvc_sum - spend_sum, 2),
+                    "real": round(real_sum - spend_sum, 2),
+                    "poas": round(rvc_sum / spend_sum, 2) if spend_sum else None})
+    return out
+
+
 @app.post("/semafor-delete-day")
 async def semafor_delete_day(data: dict):
     """Pobriše zapise za en dan (posnetek / poraba / oboje) — za popravek napačnega datuma."""
