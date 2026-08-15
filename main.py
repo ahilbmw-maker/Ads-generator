@@ -110,6 +110,30 @@ def _nabava_authorized(request) -> bool:
         return True
     return _nabava_check_token(request.cookies.get(NABAVA_COOKIE, ""))
 
+def _owner_make_token():
+    exp = str(int(_time.time()) + OWNER_TTL)
+    sig = _hmac.new(OWNER_SECRET.encode(), exp.encode(), _hashlib.sha256).hexdigest()
+    return _b64.urlsafe_b64encode(f"{exp}:{sig}".encode()).decode()
+
+
+def _owner_check_token(token: str) -> bool:
+    try:
+        raw = _b64.urlsafe_b64decode(token.encode()).decode()
+        exp_str, sig = raw.split(":", 1)
+        expected = _hmac.new(OWNER_SECRET.encode(), exp_str.encode(), _hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(sig, expected):
+            return False
+        return int(exp_str) > int(_time.time())
+    except Exception:
+        return False
+
+
+def _owner_authorized(request) -> bool:
+    if not OWNER_PASSWORD:
+        return False
+    return _owner_check_token(request.cookies.get(OWNER_COOKIE, ""))
+
+
 class AuthGateMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         try:
@@ -126,6 +150,12 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
                     return RedirectResponse(url="/nabava-login", status_code=302)
                 return PlainTextResponse("401 — prijava potrebna", status_code=401)
             if _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+                # Semafor CPA je lastniški: brez lastniškega piškotka strežnik
+                # zneskov sploh ne postreže. /semafor-home je namenoma odprt —
+                # vrača le nevtralen povzetek (stanje trgov, naročila, CPA).
+                if (path.startswith("/semafor") and path != "/semafor-home"
+                        and OWNER_PASSWORD and not _owner_check_token(request.cookies.get(OWNER_COOKIE, ""))):
+                    return PlainTextResponse("403 — samo za lastnika", status_code=403)
                 return await call_next(request)
             if wants_html:
                 return RedirectResponse(url="/login", status_code=302)
@@ -24421,30 +24451,6 @@ async def semafor_day_curve(days: int = 7):
 # Vsi zaposleni se prijavljajo z istim APP_PASSWORD, zato ločeno geslo samo za
 # prikaz zneskov. Brez veljavnega piškotka strežnik zneskov SPLOH NE POŠLJE.
 # Geslo nastavi na Renderju: OWNER_PASSWORD=<nekaj, kar ve samo Irenej>
-
-
-def _owner_make_token():
-    exp = str(int(_time.time()) + OWNER_TTL)
-    sig = _hmac.new(OWNER_SECRET.encode(), exp.encode(), _hashlib.sha256).hexdigest()
-    return _b64.urlsafe_b64encode(f"{exp}:{sig}".encode()).decode()
-
-
-def _owner_check_token(token: str) -> bool:
-    try:
-        raw = _b64.urlsafe_b64decode(token.encode()).decode()
-        exp_str, sig = raw.split(":", 1)
-        expected = _hmac.new(OWNER_SECRET.encode(), exp_str.encode(), _hashlib.sha256).hexdigest()
-        if not _hmac.compare_digest(sig, expected):
-            return False
-        return int(exp_str) > int(_time.time())
-    except Exception:
-        return False
-
-
-def _owner_authorized(request) -> bool:
-    if not OWNER_PASSWORD:
-        return False
-    return _owner_check_token(request.cookies.get(OWNER_COOKIE, ""))
 
 
 @app.post("/owner-login")

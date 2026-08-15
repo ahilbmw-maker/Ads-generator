@@ -5642,6 +5642,9 @@ async function homeSemLoad(){
     HOMESEM = await r.json();
   }catch(e){ HOMESEM = null; }
   homeSemRender();
+  // zavihek Semafor CPA v Analizi je lastniški (strežnik itak vrne 403)
+  const tab = document.getElementById('analizaTab-semafor');
+  if (tab) tab.style.display = (HOMESEM && HOMESEM.owner_enabled && !HOMESEM.owner) ? 'none' : '';
 }
 function homeSemRender(){
   const box = document.getElementById('homeSemBar'); if (!box) return;
@@ -5653,11 +5656,11 @@ function homeSemRender(){
   const col = {green:'#12a35f', amber:'#e0a33a', red:'#e5484d', grey:'var(--border)'};
 
   if (!d.has_data){
-    box.innerHTML = '<div class="card" style="margin-bottom:18px;border-left:4px solid var(--border);cursor:pointer" onclick="homeSemOpen()">'
+    box.innerHTML = '<div class="card" style="margin-bottom:18px;border-left:4px solid var(--border)' + (d.owner ? ';cursor:pointer" onclick="homeSemOpen()"' : '"') + '>'
       + '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary)">🚦 Semafor CPA</div>'
       + '<div style="font-size:13px;color:var(--text-secondary)">še ni nobenega dnevnega vnosa</div>'
-      + '<div style="margin-left:auto;font-size:12.5px;color:var(--accent);font-weight:700">odpri →</div>'
+      + (d.owner ? '<div style="margin-left:auto;font-size:12.5px;color:var(--accent);font-weight:700">odpri →</div>' : '')
       + '</div></div>';
     return;
   }
@@ -5684,38 +5687,22 @@ function homeSemRender(){
         : '<div style="color:var(--text-tertiary)">' + (d.attention ? 'pozornost: <b>' + d.attention + '</b>' : 'vsi trgi v redu') + '</div>')
     + '</div>';
 
-  const lock = d.owner_enabled
-    ? '<button onclick="event.stopPropagation();homeSemLock()" title="' + (d.owner ? 'skrij zneske' : 'pokaži zneske') + '" style="background:transparent;border:1px solid var(--border);border-radius:8px;padding:5px 9px;cursor:pointer;font-size:13px;font-family:inherit;color:var(--text-tertiary)">' + (d.owner ? '🔓' : '🔒') + '</button>'
-    : '';
+  const openBtn = d.owner
+    ? '<span style="font-size:12.5px;color:var(--accent);font-weight:700;white-space:nowrap">odpri →</span>' : '';
 
-  box.innerHTML = '<div class="card" style="margin-bottom:18px;border-left:4px solid ' + accent + ';cursor:pointer" onclick="homeSemOpen()">'
+  box.innerHTML = '<div class="card" style="margin-bottom:18px;border-left:4px solid ' + accent + (d.owner ? ';cursor:pointer" onclick="homeSemOpen()"' : '"') + '>'
     + '<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap">'
     + '<div style="min-width:180px">' + left + '</div>'
     + '<div style="display:flex;gap:5px;align-items:center">' + bars
     + '<span style="font-size:12px;color:var(--text-secondary);margin-left:8px">' + d.green + ' 🟢'
     + (d.amber ? ' · ' + d.amber + ' 🟠' : '') + (d.red ? ' · ' + d.red + ' 🔴' : '') + '</span></div>'
     + '<div style="margin-left:auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end">'
-    + right + lock
-    + '<span style="font-size:12.5px;color:var(--accent);font-weight:700;white-space:nowrap">odpri →</span>'
+    + right + openBtn
     + '</div></div></div>';
 }
 function homeSemOpen(){
   switchPage('analiza');
   setTimeout(() => { try{ switchAnalizaTab('semafor'); }catch(e){} }, 60);
-}
-async function homeSemLock(){
-  if (HOMESEM && HOMESEM.owner){
-    try{ await fetch('/owner-logout', {method:'POST'}); }catch(e){}
-    homeSemLoad(); return;
-  }
-  const pw = prompt('Geslo za prikaz zneskov:');
-  if (!pw) return;
-  try{
-    const r = await fetch('/owner-login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
-    const d = await r.json();
-    if (!d || !d.ok){ alert((d && d.error) || 'Napaka.'); return; }
-    homeSemLoad();
-  }catch(e){ alert('Napaka: ' + e.message); }
 }
 async function homeLoadStats() {
   const panel = document.getElementById('homeStatsPanel');
