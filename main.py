@@ -24312,6 +24312,96 @@ def _semafor_merge_spend_rows(rows: list) -> list:
     return [by[m] for m in order]
 
 
+def _curve_interp(points, h):
+    """Kumulativni delež ob uri h (0–24) iz točk [(ura_float, delež)], urejenih naraščajoče.
+    Pred prvo točko linearno od 0 ob 00:00, za zadnjo linearno do 1,0 ob 24:00."""
+    if not points:
+        return None
+    first_t, first_v = points[0]
+    last_t, last_v = points[-1]
+    if h <= 0:
+        return 0.0
+    if h >= 24:
+        return 1.0
+    if h <= first_t:
+        return (h / first_t) * first_v if first_t > 0 else first_v
+    if h >= last_t:
+        span = 24.0 - last_t
+        return last_v + (1.0 - last_v) * ((h - last_t) / span) if span > 0 else 1.0
+    for i in range(1, len(points)):
+        t0, v0 = points[i-1]
+        t1, v1 = points[i]
+        if t0 <= h <= t1:
+            if t1 == t0:
+                return v1
+            return v0 + (v1 - v0) * ((h - t0) / (t1 - t0))
+    return last_v
+
+
+@app.get("/semafor-day-curve")
+async def semafor_day_curve(days: int = 7):
+    """Povprečna urna krivulja dneva = kumulativni delež dnevnih naročil po urah.
+    Vir: arhiv /data/forecast2/YYYY-MM-DD.json (urni kumulativni zapisi 6:00–23:00).
+    Uporablja se za projekcijo dneva v Semaforju — namesto ravne premice."""
+    today = _lj_today()
+    try:
+        files = sorted(FORECAST2_DIR.glob("*.json"), reverse=True)
+    except Exception as e:
+        return {"ok": False, "error": f"Arhiv ni berljiv: {e}"}
+    curves, used = [], []
+    for p in files:
+        date_iso = p.stem
+        if date_iso >= today:          # samo zaključeni dnevi
+            continue
+        try:
+            day = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        entries = [e for e in (day.get("entries") or []) if e.get("time")]
+        if len(entries) < 5:
+            continue
+        final = 0
+        try:
+            final = int((day.get("final") or {}).get("orders") or 0)
+        except Exception:
+            final = 0
+        if final <= 0:
+            final = max((int(e.get("orders") or 0) for e in entries), default=0)
+        if final < 10:
+            continue
+        pts = {}
+        for e in entries:
+            try:
+                hh, mm = str(e.get("time")).split(":")[:2]
+                t = int(hh) + int(mm) / 60.0
+                share = float(int(e.get("orders") or 0)) / final
+            except Exception:
+                continue
+            if 0 <= t <= 24:
+                pts[t] = max(pts.get(t, 0.0), min(share, 1.0))
+        if len(pts) < 5:
+            continue
+        curves.append(sorted(pts.items()))
+        used.append(date_iso)
+        if len(used) >= max(1, min(days, 30)):
+            break
+
+    if not curves:
+        return {"ok": True, "curve": [], "days_used": [], "source": "forecast2",
+                "note": "Premalo zgodovine — projekcija bo linearna."}
+
+    curve, prev = [], 0.0
+    for h in range(0, 25):
+        vals = [v for v in (_curve_interp(c, h) for c in curves) if v is not None]
+        v = (sum(vals) / len(vals)) if vals else prev
+        v = max(prev, min(1.0, v))        # krivulja ne sme padati
+        prev = v
+        curve.append({"hour": h, "share": round(v, 4)})
+    curve[0]["share"] = 0.0
+    curve[24]["share"] = 1.0
+    return {"ok": True, "curve": curve, "days_used": used, "days": len(used), "source": "forecast2"}
+
+
 @app.post("/semafor-delete-day")
 async def semafor_delete_day(data: dict):
     """Pobriše zapise za en dan (posnetek / poraba / oboje) — za popravek napačnega datuma."""
@@ -24350,7 +24440,7 @@ async def semafor_data():
         if SEMAFOR_FILE.exists():
             st = SEMAFOR_FILE.stat()
             storage["size"] = st.st_size
-            storage["mtime"] = _dt.fromtimestamp(st.st_mtime).isoformat(timespec="seconds")
+            storage["mtime"] = _dt.fromtimestamp(st.st_mtime, tz=timezone.utc).astimezone(_lj_now().tzinfo).isoformat(timespec="seconds")
     except Exception as e:
         print(f"[semafor] stat err: {e}")
     return {"ok": True, "storage": storage, **d}
@@ -24408,7 +24498,7 @@ async def semafor_snapshot(data: dict):
         if force and conflicts:
             d["snapshots"] = [s for s in d["snapshots"]
                               if not (s["date"] == date and s["market"] in conflicts)]
-        now = _dt.now().isoformat(timespec="seconds")
+        now = _lj_now().isoformat(timespec="seconds")   # ljubljanski čas, ne UTC
         for r in rows:
             d["snapshots"].append({
                 "date": date, "market": r.get("market"),
@@ -24513,7 +24603,7 @@ async def semafor_spend(data: dict):
         if force and conflicts:
             d["spend"] = [x for x in d["spend"]
                           if not (x["date"] == date and x["market"] in conflicts)]
-        now = _dt.now().isoformat(timespec="seconds")
+        now = _lj_now().isoformat(timespec="seconds")   # ljubljanski čas, ne UTC
         for r in rows:
             m = str(r.get("market") or "").upper()
             if m not in SEMAFOR_MARKETS:
