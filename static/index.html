@@ -3003,6 +3003,23 @@ input[type="text"].error { border-color: var(--red) !important; }
 
       <div id="semProjBox"></div>
 
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <div style="font-weight:700;font-size:13px">📊 Statistika po dnevih</div>
+          <label style="font-size:12px">od <input id="semStatFrom" type="date" onchange="semStatsRender()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"></label>
+          <label style="font-size:12px">do <input id="semStatTo" type="date" onchange="semStatsRender()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"></label>
+          <button onclick="semStatsQuick(7)" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">7 dni</button>
+          <button onclick="semStatsQuick(14)" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">14 dni</button>
+          <button onclick="semStatsQuick(30)" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">30 dni</button>
+          <button onclick="semStatsQuick('mesec')" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">ta mesec</button>
+          <button onclick="semStatsQuick('pmesec')" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">prejšnji mesec</button>
+          <button onclick="semStatsQuick('vse')" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">vse</button>
+          <button onclick="semStatsCsv()" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit;margin-left:auto">⬇ CSV</button>
+        </div>
+        <div id="semStatsBox" style="overflow-x:auto"></div>
+      </div>
+
+
       <details class="card" style="margin-bottom:12px">
         <summary style="cursor:pointer;font-weight:700;font-size:13px">🚚 Fail rate po trgih (ročno) <span style="font-weight:400;font-size:11px;color:var(--text-tertiary)">— delež neprevzetih; program tega nikoli ne spremeni sam</span></summary>
         <div id="semFailBox" style="margin-top:10px;overflow-x:auto"></div>
@@ -15946,6 +15963,7 @@ async function semLoad(){
     const ds = document.getElementById('semSpendDate'); if (ds && !ds.value) ds.value = semDayGet();
     semDayRender();
     semRenderProjection();
+    semStatsRender();
     if (SEMCURVE === null) semLoadCurve();      // urna krivulja iz arhiva napovedi prometa
     semRenderFail();
     semRenderTable();
@@ -16383,6 +16401,131 @@ async function semDayDelete(){
     const d = await r.json();
     if (d && d.ok) semLoad();
   }catch(e){ alert('Napaka: ' + e.message); }
+}
+// ── 📊 STATISTIKA PO DNEVIH (poljubno obdobje) ───────────────────────────────
+function semStatsDefaults(){
+  const f = document.getElementById('semStatFrom'), t = document.getElementById('semStatTo');
+  if (!f || !t) return;
+  if (!t.value) t.value = semToday();
+  if (!f.value){ const d = new Date(semToday() + 'T12:00:00'); d.setDate(d.getDate() - 13); f.value = d.toISOString().slice(0,10); }
+}
+function semStatsQuick(n){
+  const f = document.getElementById('semStatFrom'), t = document.getElementById('semStatTo');
+  if (!f || !t) return;
+  const all = [...new Set([...((SEMD.snapshots||[]).map(x=>x.date)), ...((SEMD.spend||[]).map(x=>x.date))])].sort();
+  if (n === 'vse'){ f.value = all[0] || semToday(); t.value = all[all.length-1] || semToday(); }
+  else if (n === 'mesec'){ const d = new Date(semToday() + 'T12:00:00'); f.value = d.toISOString().slice(0,8) + '01'; t.value = semToday(); }
+  else if (n === 'pmesec'){
+    const d = new Date(semToday() + 'T12:00:00'); d.setDate(1); d.setMonth(d.getMonth()-1);
+    f.value = d.toISOString().slice(0,10);
+    const e = new Date(d); e.setMonth(e.getMonth()+1); e.setDate(0);
+    t.value = e.toISOString().slice(0,10);
+  } else {
+    const d = new Date(semToday() + 'T12:00:00'); d.setDate(d.getDate() - (n-1));
+    f.value = d.toISOString().slice(0,10); t.value = semToday();
+  }
+  semStatsRender();
+}
+function semStatsRows(){
+  const f = (document.getElementById('semStatFrom')||{}).value || '0000-01-01';
+  const t = (document.getElementById('semStatTo')||{}).value || '9999-12-31';
+  const fr = SEMD.fail_rates || {};
+  const dates = [...new Set([...((SEMD.snapshots||[]).map(x=>x.date)), ...((SEMD.spend||[]).map(x=>x.date))])]
+    .filter(d => d >= f && d <= t).sort().reverse();
+  return dates.map(date => {
+    const sn = (SEMD.snapshots||[]).filter(x => x.date === date);
+    const sp = (SEMD.spend||[]).filter(x => x.date === date);
+    let orders=0, rvc=0, gross=0, real=0, fb=0, g=0, noFail=0;
+    sn.forEach(s => {
+      const o = s.orders || 0;
+      const rt = (s.rvc_total != null) ? s.rvc_total : (s.rvc_per_order != null ? o*s.rvc_per_order : 0);
+      const gt = (s.rvc_gross_per_order != null) ? o*s.rvc_gross_per_order : 0;
+      const fe = fr[s.market] || {};
+      const ff = (fe.fail_rate == null || fe.fail_rate === '') ? null : fe.fail_rate/100;
+      let rl = rt;
+      if (ff != null && s.rvc_per_order != null && s.rvc_gross_per_order != null) rl = o*(s.rvc_per_order - ff*s.rvc_gross_per_order);
+      else noFail++;
+      orders += o; rvc += rt; gross += gt; real += rl;
+    });
+    sp.forEach(p => { fb += p.fb||0; g += p.google||0; });
+    const spend = fb + g;
+    return {date, markets:sn.length, spendMarkets:sp.length, orders, rvc, gross, real, fb, g, spend,
+            profit: rvc - spend, realProfit: real - spend, noFail,
+            hasSnap: sn.length>0, hasSpend: sp.length>0};
+  });
+}
+function semStatsRender(){
+  const box = document.getElementById('semStatsBox'); if (!box || !SEMD) return;
+  semStatsDefaults();
+  const rows = semStatsRows();
+  const nm = (v,d) => (v==null || !isFinite(v)) ? '—' : Number(v).toFixed(d===undefined?2:d).replace('.', ',');
+  const eur = v => nm(v) + ' €';
+  const sgn = v => (v>0?'+':'') + eur(v);
+  const pct = v => (v==null || !isFinite(v)) ? '—' : nm(v*100,1) + ' %';
+  const div = (a,b) => (b>0) ? a/b : null;
+  const dow = ['ned','pon','tor','sre','čet','pet','sob'];
+  if (!rows.length){ box.innerHTML = '<div style="padding:16px;font-size:12.5px;color:var(--text-secondary)">V izbranem obdobju ni vnosov.</div>'; return; }
+  const T = rows.reduce((a,r) => ({orders:a.orders+r.orders, rvc:a.rvc+r.rvc, gross:a.gross+r.gross, real:a.real+r.real,
+    fb:a.fb+r.fb, g:a.g+r.g, spend:a.spend+r.spend, profit:a.profit+r.profit, realProfit:a.realProfit+r.realProfit}),
+    {orders:0,rvc:0,gross:0,real:0,fb:0,g:0,spend:0,profit:0,realProfit:0});
+  const n = rows.length;
+  const th = (t, al) => '<th style="text-align:' + (al||'right') + ';padding:6px 8px;font-weight:600;white-space:nowrap">' + t + '</th>';
+  const td = (t, st) => '<td style="padding:6px 8px;text-align:right;white-space:nowrap;' + (st||'') + '">' + t + '</td>';
+  const head = '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:9.5px">'
+    + th('Datum','left') + th('Naročil') + th('RVC') + th('RVC/nar') + th('Realni RVC') + th('Fail')
+    + th('📘 FB') + th('🔎 Google') + th('Poraba') + th('CPA') + th('POAS') + th('Dobiček') + th('Realni dobiček') + th('Marža') + '</tr>';
+  const body = rows.map(r => {
+    const fail = div(r.rvc - r.real, r.gross), cpa = div(r.spend, r.orders), poas = div(r.rvc, r.spend);
+    const warn = (!r.hasSpend ? ' <span title="poraba za ta dan ni uvožena" style="color:#d9921b">⚠</span>'
+                  : (r.spendMarkets < r.markets ? ' <span title="poraba manjka za ' + (r.markets - r.spendMarkets) + ' trg(ov) — dobiček je precenjen" style="color:#d9921b">⚠</span>' : ''))
+               + (!r.hasSnap ? ' <span title="ni RVC posnetka" style="color:#e5484d">⚠</span>' : '');
+    return '<tr style="border-top:1px solid var(--border)">'
+      + '<td style="padding:6px 8px;font-weight:700;white-space:nowrap"><span onclick="semDaySet(\'' + r.date + '\')" style="cursor:pointer;text-decoration:underline dotted">' + r.date + '</span> <span style="font-weight:400;color:var(--text-tertiary);font-size:10px">' + dow[new Date(r.date + 'T12:00:00').getDay()] + '</span>' + warn + '</td>'
+      + td(r.orders) + td(eur(r.rvc)) + td(eur(div(r.rvc, r.orders))) + td(eur(r.real), 'color:var(--text-secondary)')
+      + td(pct(fail), 'color:var(--text-tertiary)')
+      + td(eur(r.fb), 'color:var(--text-secondary)') + td(eur(r.g), 'color:var(--text-secondary)') + td(eur(r.spend))
+      + td(cpa==null?'—':eur(cpa)) + td(poas==null?'—':nm(poas)+'×', 'font-weight:700;color:' + (poas==null?'var(--text-tertiary)':(poas>=1?'#12a35f':'#e5484d')))
+      + td(sgn(r.profit), 'font-weight:700;color:' + (r.profit>=0?'#12a35f':'#e5484d'))
+      + td(sgn(r.realProfit), 'font-weight:800;font-size:13px;color:' + (r.realProfit>=0?'#12a35f':'#e5484d'))
+      + td(pct(div(r.profit, r.rvc)), 'color:var(--text-tertiary)')
+      + '</tr>';
+  }).join('');
+  const tRow = (label, o, sub) => '<tr style="border-top:2px solid var(--border);background:var(--surface2)">'
+    + '<td style="padding:8px;font-weight:800;white-space:nowrap">' + label + ' <span style="font-weight:400;font-size:10px;color:var(--text-tertiary)">' + sub + '</span></td>'
+    + td(Math.round(o.orders), 'font-weight:800') + td(eur(o.rvc), 'font-weight:800') + td(eur(div(o.rvc, o.orders)))
+    + td(eur(o.real)) + td(pct(div(o.rvc - o.real, o.gross)))
+    + td(eur(o.fb)) + td(eur(o.g)) + td(eur(o.spend), 'font-weight:800')
+    + td(div(o.spend,o.orders)==null?'—':eur(div(o.spend, o.orders)))
+    + td(div(o.rvc,o.spend)==null?'—':nm(div(o.rvc, o.spend))+'×', 'font-weight:800')
+    + td(sgn(o.profit), 'font-weight:800;color:' + (o.profit>=0?'#12a35f':'#e5484d'))
+    + td(sgn(o.realProfit), 'font-weight:800;font-size:14px;color:' + (o.realProfit>=0?'#12a35f':'#e5484d'))
+    + td(pct(div(o.profit, o.rvc))) + '</tr>';
+  const avg = {orders:T.orders/n, rvc:T.rvc/n, gross:T.gross/n, real:T.real/n, fb:T.fb/n, g:T.g/n,
+               spend:T.spend/n, profit:T.profit/n, realProfit:T.realProfit/n};
+  box.innerHTML = '<table style="border-collapse:collapse;font-size:12px;width:100%;min-width:1180px">'
+    + head + body + tRow('SKUPAJ', T, n + (n===1?' dan':(n===2?' dneva':(n<5?' dnevi':' dni'))))
+    + tRow('⌀ NA DAN', avg, 'povprečje') + '</table>';
+}
+function semStatsCsv(){
+  const rows = semStatsRows(); if (!rows.length) return;
+  const num = v => (v==null || !isFinite(v)) ? '' : Number(v).toFixed(2).replace('.', ',');
+  const div = (a,b) => (b>0) ? a/b : null;
+  const head = ['Datum','Naročil','RVC','RVC/nar','Realni RVC','Fail %','FB','Google','Poraba','CPA','POAS','Dobiček','Realni dobiček'];
+  const lines = [head.join(';')];
+  rows.forEach(r => lines.push([r.date, r.orders, num(r.rvc), num(div(r.rvc,r.orders)), num(r.real),
+    num(div(r.rvc-r.real, r.gross)*100), num(r.fb), num(r.g), num(r.spend), num(div(r.spend,r.orders)),
+    num(div(r.rvc,r.spend)), num(r.profit), num(r.realProfit)].join(';')));
+  const T = rows.reduce((a,r) => ({orders:a.orders+r.orders, rvc:a.rvc+r.rvc, gross:a.gross+r.gross, real:a.real+r.real,
+    fb:a.fb+r.fb, g:a.g+r.g, spend:a.spend+r.spend, profit:a.profit+r.profit, realProfit:a.realProfit+r.realProfit}),
+    {orders:0,rvc:0,gross:0,real:0,fb:0,g:0,spend:0,profit:0,realProfit:0});
+  lines.push(['SKUPAJ', T.orders, num(T.rvc), num(div(T.rvc,T.orders)), num(T.real),
+    num(div(T.rvc-T.real, T.gross)*100), num(T.fb), num(T.g), num(T.spend), num(div(T.spend,T.orders)),
+    num(div(T.rvc,T.spend)), num(T.profit), num(T.realProfit)].join(';'));
+  const blob = new Blob(['\ufeff' + lines.join('\n')], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'semafor_' + (document.getElementById('semStatFrom').value) + '_' + (document.getElementById('semStatTo').value) + '.csv';
+  a.click(); URL.revokeObjectURL(a.href);
 }
 // ── 🔮 PROJEKCIJA DNEVA (različica 3: krivulja dneva) ────────────────────────
 // Tempo dneva se vzame iz povprečne urne krivulje zadnjih 7 zaključenih dni
