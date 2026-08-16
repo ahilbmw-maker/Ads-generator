@@ -15987,7 +15987,7 @@ async function semSaveSettings(){
       SEMD.settings = d.settings;
       document.getElementById('semTarget').value = d.settings.target_contribution;
       document.getElementById('semReserve').value = d.settings.reserve;
-      semRenderTable();
+      semRenderTable(); semRenderProfit(); semRenderProjection(); semStatsRender();
     }
   }catch(e){}
 }
@@ -16312,6 +16312,9 @@ async function semSpendSave(force){
 }
 // ── 📅 DNEVNI LIST: en datum vodi cel zavihek (vnos RVC, uvoz porabe, dobiček) ──
 // Vse je na disku v /data/semafor_cpa.json — nič ni v brskalniku, nič se ne resetira.
+// Fail % se aplicira IZKLJUČNO na RVC/naročilo: poštnina je v RVC že odbita,
+// zavrnjen paket pa nas ne stane nič. rvc_gross_per_order tu NI osnova.
+function semFailBasis(s){ return (s && s.rvc_per_order != null) ? s.rvc_per_order : null; }
 function semTime(ts){
   if (!ts) return '';
   const s = String(ts);
@@ -16443,7 +16446,8 @@ function semStatsRows(){
       const fe = fr[s.market] || {};
       const ff = (fe.fail_rate == null || fe.fail_rate === '') ? null : fe.fail_rate/100;
       let rl = rt;
-      if (ff != null && s.rvc_per_order != null && s.rvc_gross_per_order != null) rl = o*(s.rvc_per_order - ff*s.rvc_gross_per_order);
+      const bs = semFailBasis(s);
+      if (ff != null && s.rvc_per_order != null && bs != null) rl = o*(s.rvc_per_order - ff*bs);
       else noFail++;
       orders += o; rvc += rt; gross += gt; real += rl;
     });
@@ -16475,7 +16479,7 @@ function semStatsRender(){
     + th('Datum','left') + th('Naročil') + th('RVC') + th('RVC/nar') + th('Realni RVC') + th('Fail')
     + th('📘 FB') + th('🔎 Google') + th('Poraba') + th('CPA') + th('POAS') + th('Dobiček') + th('Realni dobiček') + th('Marža') + '</tr>';
   const body = rows.map(r => {
-    const fail = div(r.rvc - r.real, r.gross), cpa = div(r.spend, r.orders), poas = div(r.rvc, r.spend);
+    const fail = div(r.rvc - r.real, r.rvc), cpa = div(r.spend, r.orders), poas = div(r.rvc, r.spend);
     const warn = (!r.hasSpend ? ' <span title="poraba za ta dan ni uvožena" style="color:#d9921b">⚠</span>'
                   : (r.spendMarkets < r.markets ? ' <span title="poraba manjka za ' + (r.markets - r.spendMarkets) + ' trg(ov) — dobiček je precenjen" style="color:#d9921b">⚠</span>' : ''))
                + (!r.hasSnap ? ' <span title="ni RVC posnetka" style="color:#e5484d">⚠</span>' : '');
@@ -16493,7 +16497,7 @@ function semStatsRender(){
   const tRow = (label, o, sub) => '<tr style="border-top:2px solid var(--border);background:var(--surface2)">'
     + '<td style="padding:8px;font-weight:800;white-space:nowrap">' + label + ' <span style="font-weight:400;font-size:10px;color:var(--text-tertiary)">' + sub + '</span></td>'
     + td(Math.round(o.orders), 'font-weight:800') + td(eur(o.rvc), 'font-weight:800') + td(eur(div(o.rvc, o.orders)))
-    + td(eur(o.real)) + td(pct(div(o.rvc - o.real, o.gross)))
+    + td(eur(o.real)) + td(pct(div(o.rvc - o.real, o.rvc)))
     + td(eur(o.fb)) + td(eur(o.g)) + td(eur(o.spend), 'font-weight:800')
     + td(div(o.spend,o.orders)==null?'—':eur(div(o.spend, o.orders)))
     + td(div(o.rvc,o.spend)==null?'—':nm(div(o.rvc, o.spend))+'×', 'font-weight:800')
@@ -16513,13 +16517,13 @@ function semStatsCsv(){
   const head = ['Datum','Naročil','RVC','RVC/nar','Realni RVC','Fail %','FB','Google','Poraba','CPA','POAS','Dobiček','Realni dobiček'];
   const lines = [head.join(';')];
   rows.forEach(r => lines.push([r.date, r.orders, num(r.rvc), num(div(r.rvc,r.orders)), num(r.real),
-    num(div(r.rvc-r.real, r.gross)*100), num(r.fb), num(r.g), num(r.spend), num(div(r.spend,r.orders)),
+    num(div(r.rvc-r.real, r.rvc)*100), num(r.fb), num(r.g), num(r.spend), num(div(r.spend,r.orders)),
     num(div(r.rvc,r.spend)), num(r.profit), num(r.realProfit)].join(';')));
   const T = rows.reduce((a,r) => ({orders:a.orders+r.orders, rvc:a.rvc+r.rvc, gross:a.gross+r.gross, real:a.real+r.real,
     fb:a.fb+r.fb, g:a.g+r.g, spend:a.spend+r.spend, profit:a.profit+r.profit, realProfit:a.realProfit+r.realProfit}),
     {orders:0,rvc:0,gross:0,real:0,fb:0,g:0,spend:0,profit:0,realProfit:0});
   lines.push(['SKUPAJ', T.orders, num(T.rvc), num(div(T.rvc,T.orders)), num(T.real),
-    num(div(T.rvc-T.real, T.gross)*100), num(T.fb), num(T.g), num(T.spend), num(div(T.spend,T.orders)),
+    num(div(T.rvc-T.real, T.rvc)*100), num(T.fb), num(T.g), num(T.spend), num(div(T.spend,T.orders)),
     num(div(T.rvc,T.spend)), num(T.profit), num(T.realProfit)].join(';'));
   const blob = new Blob(['\ufeff' + lines.join('\n')], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a');
@@ -16581,8 +16585,9 @@ function semRenderProjection(){
     const fe = fr[s.market] || {};
     const f = (fe.fail_rate == null || fe.fail_rate === '') ? null : fe.fail_rate/100;
     let realT = rvcT;
-    if (f != null && s.rvc_per_order != null && s.rvc_gross_per_order != null)
-      realT = o * (s.rvc_per_order - f * s.rvc_gross_per_order);
+    const bs = semFailBasis(s);
+    if (f != null && s.rvc_per_order != null && bs != null)
+      realT = o * (s.rvc_per_order - f * bs);
     else noFail.push(s.market);
     orders += o; rvcSum += rvcT; realSum += realT;
   });
@@ -16719,8 +16724,9 @@ function semRenderProfit(){
     const f = (fe.fail_rate == null || fe.fail_rate === '') ? null : fe.fail_rate/100;
     let realT = rvcT;
     if (s){
-      if (f != null && s.rvc_per_order != null && s.rvc_gross_per_order != null)
-        realT = orders * (s.rvc_per_order - f * s.rvc_gross_per_order);
+      const bs = semFailBasis(s);
+      if (f != null && s.rvc_per_order != null && bs != null)
+        realT = orders * (s.rvc_per_order - f * bs);
       else noFail.push(m);
     } else noSnap.push(m);
     const a = p ? (p.fb || 0) : 0, b = p ? (p.google || 0) : 0;
@@ -16762,7 +16768,7 @@ function semRenderProfit(){
   const marzaR   = div(real, rvcSum);
   const fbShare  = div(fbSum, spendSum);
   const headroom = div(real, spendSum);
-  const failEff  = (grossSum > 0) ? (rvcSum - realSum)/grossSum : null;
+  const failEff  = (rvcSum > 0) ? (rvcSum - realSum)/rvcSum : null;   // fail od RVC
   const posM = rows.filter(r => r.rvcT - r.sp > 0).length;
   const negM = rows.filter(r => r.rvcT - r.sp < 0).length;
   const best = rows.slice().sort((a,b) => (b.rvcT-b.sp) - (a.rvcT-a.sp))[0];
@@ -16883,8 +16889,8 @@ function semCompute(){
     const fail = (fe.fail_rate===null||fe.fail_rate===undefined||fe.fail_rate==='') ? null : fe.fail_rate/100;
     const fixedC = Number(st.reserve) || 0;      // fiksni stroški na naročilo (faktura, ovojnica, trak, karton)
     let be=null, beGross=null, target=null, down=null;
-    if (rvc!=null && rvcB!=null && fail!=null){
-      beGross = rvc - fail*rvcB;                 // prispevek po odbitem fail %
+    if (rvc!=null && fail!=null){
+      beGross = rvc * (1 - fail);                // realni RVC/nar (fail samo od RVC)
       be = beGross - fixedC;                     // PRAVI break-even CPA (že brez fiksnih stroškov)
       target = be - st.target_contribution;
       down = be;                                 // nad break-even = rdeče
@@ -16912,7 +16918,7 @@ function semCompute(){
     r.handicap = (r.be!=null && isFinite(maxBE)) ? maxBE - r.be : null;
     r.contribution = (r.be!=null && r.cpa!=null) ? r.be - r.cpa : null;
     r.distance = (r.target!=null && r.cpa!=null) ? r.cpa - r.target : null;
-    r.maxFail = (r.rvc!=null && r.rvcB && r.cpa!=null) ? (r.rvc - (r.fixed||0) - r.cpa)/r.rvcB : null;
+    r.maxFail = (r.rvc!=null && r.rvc && r.cpa!=null) ? (r.rvc - (r.fixed||0) - r.cpa)/r.rvc : null;
     r.adjCpa = (r.cpa!=null && r.handicap!=null) ? r.cpa + r.handicap : null;
     // realni dobiček = (bruto break-even − CPA) × naročila — fail % je odbit,
     // fiksni strošek/naročilo pa NE (ta služi le kot varnostna rezerva pri break-even)

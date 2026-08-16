@@ -24242,6 +24242,8 @@ async def analiza_meta_duplicates_ai(data: dict):
 SEMAFOR_FILE = DATA_DIR / "semafor_cpa.json"
 _semafor_lock = asyncio.Lock()
 
+# Fail % se aplicira IZKLJUČNO na RVC/naročilo. Poštnina je v RVC že odbita in
+# zavrnjen paket nas ne stane nič, zato rvc_gross_per_order NI osnova za fail.
 SEMAFOR_DEFAULT_SETTINGS = {"window_days": 1, "target_contribution": 2.50, "reserve": 0.40}
 # začetne vrednosti fail rate (avgust 2026) — program jih NIKOLI ne prepiše sam
 SEMAFOR_DEFAULT_FAILRATES = {
@@ -24271,6 +24273,8 @@ def _semafor_load() -> dict:
     for m, v in SEMAFOR_DEFAULT_FAILRATES.items():
         d["fail_rates"].setdefault(m, {**v, "updated_at": ""})
     d.setdefault("settings", dict(SEMAFOR_DEFAULT_SETTINGS))
+    d["settings"].pop("fail_base", None)      # opuščeno: fail vedno samo od RVC
+    d["settings"].pop("fail_base_v2", None)
     # enkratna migracija: semafor je dneven (okno = izbrani dan), ne 7-dnevni seštevek
     if not d["settings"].get("day_mode"):
         d["settings"]["window_days"] = 1
@@ -24519,7 +24523,6 @@ async def semafor_home(request: Request):
         m = s.get("market")
         o = int(s.get("orders") or 0)
         rvc = s.get("rvc_per_order")
-        rvcb = s.get("rvc_gross_per_order")
         rvc_t = s.get("rvc_total")
         if rvc_t is None and rvc is not None:
             rvc_t = o * float(rvc)
@@ -24530,9 +24533,9 @@ async def semafor_home(request: Request):
         cpa = (spend_m / o) if o else None
         real_t = float(rvc_t or 0)
         be = None
-        if rvc is not None and rvcb is not None and f is not None:
-            be = float(rvc) - f * float(rvcb) - fixed
-            real_t = o * (float(rvc) - f * float(rvcb))
+        if rvc is not None and f is not None:
+            be = float(rvc) * (1 - f) - fixed          # fail samo od RVC
+            real_t = o * float(rvc) * (1 - f)
         orders += o
         rvc_sum += float(rvc_t or 0)
         real_sum += real_t
