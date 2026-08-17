@@ -5903,9 +5903,24 @@ async def asana_attach(data: dict):
     """Priloži slike (base64 data URLs) na Asana task."""
     task_id = data.get("task_id", "")
     image_urls = data.get("image_urls", [])
+    filenames = data.get("filenames") or []      # imena po SKU-ju (iz frontenda)
 
     if not task_id or not image_urls:
         return {"error": "Manjka task_id ali slike."}
+
+    def _safe_name(raw: str, i: int, ext: str) -> str:
+        """SKU_kombinacija_n.ext — brez šumnikov, presledkov in nevarnih znakov."""
+        s = str(raw or "").strip()
+        for a, b in (("č","c"),("Č","C"),("š","s"),("Š","S"),("ž","z"),("Ž","Z"),
+                     ("ć","c"),("Ć","C"),("đ","d"),("Đ","D")):
+            s = s.replace(a, b)
+        s = re.sub(r"[^A-Za-z0-9._-]+", "_", s).strip("_.-")
+        s = re.sub(r"_+", "_", s)[:80]
+        if not s:
+            s = f"kreativa_{i+1}"
+        if s.lower().endswith("." + ext.lower()):
+            return s
+        return f"{s}.{ext}"
 
     token = os.environ.get("ASANA_API_KEY", "")
     if not token:
@@ -5913,6 +5928,7 @@ async def asana_attach(data: dict):
 
     attached = 0
     errors = []
+    names = []
 
     async with httpx.AsyncClient(timeout=60.0) as hc:
         for i, img_url in enumerate(image_urls):
@@ -5930,7 +5946,7 @@ async def asana_attach(data: dict):
                     mime = img_resp.headers.get("content-type", "image/png")
                     ext = "png"
 
-                filename = f"kreativa_{i+1}.{ext}"
+                filename = _safe_name(filenames[i] if i < len(filenames) else "", i, ext)
 
                 # Upload to Asana as attachment
                 files = {"file": (filename, img_bytes, mime)}
@@ -5942,13 +5958,14 @@ async def asana_attach(data: dict):
 
                 if attach_resp.status_code in (200, 201):
                     attached += 1
+                    names.append(filename)
                 else:
                     errors.append(f"Slika {i+1}: {attach_resp.text[:100]}")
 
             except Exception as e:
                 errors.append(f"Slika {i+1}: {str(e)}")
 
-    return {"attached": attached, "errors": errors, "total": len(image_urls)}
+    return {"attached": attached, "errors": errors, "total": len(image_urls), "names": names}
 
 
 # ─── LOKALIZACIJA ENDPOINT ───────────────────────────────────────────────────

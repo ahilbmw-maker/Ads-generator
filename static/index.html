@@ -8169,6 +8169,7 @@ document.addEventListener('mousemove', e => {
 
 let kSelectedImgCards = new Set();
 let kAsanaPendingUrls = [];
+let kAsanaPendingNames = [];   // imena datotek za Asano (po SKU-ju)
 let kAsanaSelectedTaskId = null;
 let kAsanaSelectedTaskName = '';
 
@@ -8278,15 +8279,34 @@ function kDeleteCard(idx) {
   kUpdateBulkBar();
 }
 
+// SKU za poimenovanje datotek: najprej polje "Ime izdelka", sicer slug iz URL-ja
+function kSkuBase() {
+  let s = (document.getElementById('kProductName')?.value || '').trim();
+  if (!s) {
+    const u = (document.getElementById('kUrlInput')?.value || '').trim();
+    if (u) {
+      try {
+        const parts = new URL(u).pathname.split('/').filter(Boolean);
+        s = decodeURIComponent(parts[parts.length-1] || '');
+      } catch(e) {
+        s = u.split('?')[0].split('/').filter(Boolean).pop() || '';
+      }
+      s = s.replace(/\.(html?|php|aspx?)$/i, '');
+    }
+  }
+  s = s.replace(/[^a-zA-Z0-9ČŠŽčšž_-]+/g, '_').replace(/_+/g, '_').replace(/^[_-]+|[_-]+$/g, '');
+  return s || 'kreativa';
+}
+function kCardFileName(idx) {
+  const c = window.kCardsData?.[idx] || {};
+  const combo = (c.combo || '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+  return kSkuBase() + (combo ? '_' + combo : '') + '_' + (idx+1);
+}
 function kDownloadCard(idx) {
   const c = window.kCardsData?.[idx];
   if (!c?.url) return;
   const a = document.createElement('a');
-  // Ime izdelka kot prefix (npr. WEEDZAP_PROBLEM_SOLUTION___BEST_14)
-  const productName = (document.getElementById('kProductName')?.value || '').trim().replace(/[^a-zA-Z0-9]/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
-  const combo = (c.combo||'kreativa').replace(/[^a-zA-Z0-9]/g,'_');
-  const name = productName ? `${productName}_${combo}` : combo;
-  a.href = c.url; a.download = name + '_' + (idx+1) + '.png'; a.click();
+  a.href = c.url; a.download = kCardFileName(idx) + '.png'; a.click();
 }
 
 function kBulkDownload() {
@@ -8302,7 +8322,9 @@ function kBulkDownload() {
 function kOpenAsanaModal(idxArray) {
   // idxArray = null means use selected, else specific indices
   const indices = idxArray || [...kSelectedImgCards];
-  kAsanaPendingUrls = indices.map(i => window.kCardsData?.[i]?.url).filter(Boolean);
+  const picked = indices.filter(i => window.kCardsData?.[i]?.url);
+  kAsanaPendingUrls = picked.map(i => window.kCardsData[i].url);
+  kAsanaPendingNames = picked.map(i => kCardFileName(i));
   if (!kAsanaPendingUrls.length) return;
   kAsanaSelectedTaskId = null;
   kAsanaSelectedTaskName = '';
@@ -8397,7 +8419,8 @@ async function kAsanaAttach() {
     const res = await fetch('/asana-attach', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({task_id: kAsanaSelectedTaskId, image_urls: kAsanaPendingUrls})
+      body: JSON.stringify({task_id: kAsanaSelectedTaskId, image_urls: kAsanaPendingUrls,
+                            filenames: kAsanaPendingNames})
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -8749,6 +8772,9 @@ function lokAsanaOne(idx) {
   const r = lokResultsData[idx];
   if (!r || !r.url) return;
   kAsanaPendingUrls = [r.url];
+  const lokSku = (document.getElementById('lokSku')?.value || '').trim().replace(/[^a-zA-Z0-9_-]+/g,'_').replace(/^_|_$/g,'');
+  const lokLang = (r.lang || r.market || r.code || '').toString().replace(/[^a-zA-Z0-9]+/g,'');
+  kAsanaPendingNames = [((lokSku || 'kreativa') + (lokLang ? '_' + lokLang : '') + '_' + (idx+1))];
   kAsanaSelectedTaskId = null;
   kAsanaSelectedTaskName = '';
   const lokUrl = document.getElementById('lokAsanaUrl')?.value?.trim();
