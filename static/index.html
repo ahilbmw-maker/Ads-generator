@@ -16503,7 +16503,8 @@ function semStatsRender(){
   const td = (t, st) => '<td style="padding:6px 8px;text-align:right;white-space:nowrap;' + (st||'') + '">' + t + '</td>';
   const head = '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:9.5px">'
     + th('Datum','left') + th('Naročil') + th('RVC') + th('RVC/nar') + th('Realni RVC') + th('Fail')
-    + th('📘 FB') + th('🔎 Google') + th('Poraba') + th('CPA') + th('POAS') + th('Dobiček') + th('Realni dobiček') + th('Marža') + '</tr>';
+    + th('📘 FB') + th('🔎 Google') + th('Poraba') + th('CPA') + th('POAS') + th('Dobiček') + th('Realni dobiček')
+    + th('⭐ Realni/nar') + th('Marža') + '</tr>';
   const body = rows.map(r => {
     const fail = div(r.rvc - r.real, r.rvc), cpa = div(r.spend, r.orders), poas = div(r.rvc, r.spend);
     const warn = (!r.hasSpend ? ' <span title="poraba za ta dan ni uvožena" style="color:#d9921b">⚠</span>'
@@ -16517,6 +16518,7 @@ function semStatsRender(){
       + td(cpa==null?'—':eur(cpa)) + td(poas==null?'—':nm(poas)+'×', 'font-weight:700;color:' + (poas==null?'var(--text-tertiary)':(poas>=1?'#12a35f':'#e5484d')))
       + td(sgn(r.profit), 'font-weight:700;color:' + (r.profit>=0?'#12a35f':'#e5484d'))
       + td(sgn(r.realProfit), 'font-weight:800;font-size:13px;color:' + (r.realProfit>=0?'#12a35f':'#e5484d'))
+      + td(div(r.realProfit, r.orders)==null?'—':sgn(div(r.realProfit, r.orders)), 'font-weight:800;font-size:14px;color:' + (r.realProfit>=0?'#12a35f':'#e5484d'))
       + td(pct(div(r.profit, r.rvc)), 'color:var(--text-tertiary)')
       + '</tr>';
   }).join('');
@@ -16529,6 +16531,7 @@ function semStatsRender(){
     + td(div(o.rvc,o.spend)==null?'—':nm(div(o.rvc, o.spend))+'×', 'font-weight:800')
     + td(sgn(o.profit), 'font-weight:800;color:' + (o.profit>=0?'#12a35f':'#e5484d'))
     + td(sgn(o.realProfit), 'font-weight:800;font-size:14px;color:' + (o.realProfit>=0?'#12a35f':'#e5484d'))
+    + td(div(o.realProfit, o.orders)==null?'—':sgn(div(o.realProfit, o.orders)), 'font-weight:800;font-size:15px;color:' + (o.realProfit>=0?'#12a35f':'#e5484d'))
     + td(pct(div(o.profit, o.rvc))) + '</tr>';
   const avg = {orders:T.orders/n, rvc:T.rvc/n, gross:T.gross/n, real:T.real/n, fb:T.fb/n, g:T.g/n,
                spend:T.spend/n, profit:T.profit/n, realProfit:T.realProfit/n};
@@ -16540,17 +16543,17 @@ function semStatsCsv(){
   const rows = semStatsRows(); if (!rows.length) return;
   const num = v => (v==null || !isFinite(v)) ? '' : Number(v).toFixed(2).replace('.', ',');
   const div = (a,b) => (b>0) ? a/b : null;
-  const head = ['Datum','Naročil','RVC','RVC/nar','Realni RVC','Fail %','FB','Google','Poraba','CPA','POAS','Dobiček','Realni dobiček'];
+  const head = ['Datum','Naročil','RVC','RVC/nar','Realni RVC','Fail %','FB','Google','Poraba','CPA','POAS','Dobiček','Realni dobiček','Realni dobiček/naročilo'];
   const lines = [head.join(';')];
   rows.forEach(r => lines.push([r.date, r.orders, num(r.rvc), num(div(r.rvc,r.orders)), num(r.real),
     num(div(r.rvc-r.real, r.rvc)*100), num(r.fb), num(r.g), num(r.spend), num(div(r.spend,r.orders)),
-    num(div(r.rvc,r.spend)), num(r.profit), num(r.realProfit)].join(';')));
+    num(div(r.rvc,r.spend)), num(r.profit), num(r.realProfit), num(div(r.realProfit, r.orders))].join(';')));
   const T = rows.reduce((a,r) => ({orders:a.orders+r.orders, rvc:a.rvc+r.rvc, gross:a.gross+r.gross, real:a.real+r.real,
     fb:a.fb+r.fb, g:a.g+r.g, spend:a.spend+r.spend, profit:a.profit+r.profit, realProfit:a.realProfit+r.realProfit}),
     {orders:0,rvc:0,gross:0,real:0,fb:0,g:0,spend:0,profit:0,realProfit:0});
   lines.push(['SKUPAJ', T.orders, num(T.rvc), num(div(T.rvc,T.orders)), num(T.real),
     num(div(T.rvc-T.real, T.rvc)*100), num(T.fb), num(T.g), num(T.spend), num(div(T.spend,T.orders)),
-    num(div(T.rvc,T.spend)), num(T.profit), num(T.realProfit)].join(';'));
+    num(div(T.rvc,T.spend)), num(T.profit), num(T.realProfit), num(div(T.realProfit, T.orders))].join(';'));
   const blob = new Blob(['\ufeff' + lines.join('\n')], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -16874,7 +16877,12 @@ function semRenderProfit(){
     + '<div style="font-size:46px;line-height:1.05;font-weight:800;color:' + pc + ';margin:4px 0 2px">' + sgn(profit) + '</div>'
     + '<div style="font-size:13.5px;color:var(--text-secondary)">realni <b style="color:' + rc + ';font-size:15px">' + sgn(real) + '</b> '
     + '<span style="font-size:11px;color:var(--text-tertiary)">— z odbitim pričakovanim fail % po trgih</span></div></div>'
-    + '<div style="text-align:right;font-size:12px;color:var(--text-secondary);min-width:200px">'
+    + '<div style="min-width:210px;padding-left:20px;border-left:2px solid ' + rc + '">'
+    + '<div style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text-tertiary)">⭐ Realni dobiček / naročilo</div>'
+    + '<div style="font-size:46px;line-height:1.05;font-weight:800;color:' + rc + ';margin:4px 0 2px">' + (realOrd==null?'—':sgn(realOrd)) + '</div>'
+    + '<div style="font-size:12.5px;color:var(--text-secondary)">bruto <b>' + (profOrd==null?'—':sgn(profOrd)) + '</b> · ' + ordSum + ' naročil</div>'
+    + '<div style="font-size:11px;color:var(--text-tertiary)">RVC/nar ' + (rvcOrd==null?'—':eur(rvcOrd)) + ' − fail − CPA ' + (cpa==null?'—':eur(cpa)) + '</div></div>'
+    + '<div style="text-align:right;font-size:12px;color:var(--text-secondary);min-width:200px;margin-left:auto">'
     + '<div>RVC <b style="font-size:14px">' + eur(rvcSum) + '</b> − poraba <b style="font-size:14px">' + eur(spendSum) + '</b></div>'
     + (best && worst && best.m !== worst.m ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">najbolje ' + best.m + ' ' + sgn(best.rvcT-best.sp) + ' · najslabše ' + worst.m + ' ' + sgn(worst.rvcT-worst.sp) + '</div>' : '')
     + '</div></div>'
