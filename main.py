@@ -7803,6 +7803,42 @@ async def orodja_hs_history_delete(filename: str):
 # ─── ORODJA: Kontrola cen — Stock CSV upload + match s PDF predračun ────────
 
 STOCK_CSV_FILE = DATA_DIR / "stock_inventory.csv"
+# Gostitelj siluxar.si je nastavljiv prek env (ob menjavi strežnika ni treba v kodo).
+# Primeri: https://siluxar.si  ·  https://www.siluxar.si  ·  https://novi.streznik.si
+SILUXAR_BASE = os.environ.get("SILUXAR_BASE", "https://www.siluxar.si").rstrip("/")
+
+
+def _slx(path: str) -> str:
+    """Sestavi naslov siluxar API-ja glede na SILUXAR_BASE."""
+    return f"{SILUXAR_BASE}/{str(path).lstrip('/')}"
+
+
+async def _slx_get(url: str, *, headers=None, auth=None, timeout=60, method="GET", **kw):
+    """Klic na siluxar z ROČNIM sledenjem preusmeritvam.
+    httpx privzeto 301/302 ne sledi, ob menjavi gostitelja (www ↔ brez www) pa
+    odvrže glavo Authorization — zato jo ob vsakem skoku znova pripnemo sami.
+    Vrne (response, chain), kjer je chain seznam preusmeritev za diagnostiko."""
+    chain = []
+    cur = url
+    async with httpx.AsyncClient(timeout=timeout, auth=auth, follow_redirects=False) as cli:
+        r = None
+        for _ in range(5):
+            r = await cli.request(method, cur, headers=dict(headers or {}), **kw)
+            if r.status_code in (301, 302, 303, 307, 308):
+                loc = r.headers.get("location", "")
+                if not loc:
+                    break
+                nxt = str(httpx.URL(cur).join(loc))
+                chain.append({"status": r.status_code, "from": cur, "to": nxt})
+                cur = nxt
+                if r.status_code == 303:
+                    method = "GET"
+                    kw.pop("json", None); kw.pop("data", None); kw.pop("content", None)
+                continue
+            break
+        return r, chain
+
+
 SILUXAR_PUSH_LOG = DATA_DIR / "siluxar_push_log.json"   # zadnja pošiljanja pozicij (debug)
 SILUXAR_DELETE_LOG = DATA_DIR / "siluxar_delete_log.json"   # zadnja brisanja alarmov (debug)
 
@@ -7827,14 +7863,13 @@ async def product_sales(data: dict):
         if u and u not in seen:
             seen.add(u); skus.append(u)
     key = os.environ.get("SILUXAR_SALES_KEY", "") or "WoodchuckShouldChuckWood"
-    url = "https://www.siluxar.si/apiproductsales"
+    url = _slx("/apiproductsales")
     payload = {"products": skus, "date_from": date_from, "date_to": date_to}
     try:
-        async with httpx.AsyncClient(timeout=60) as cli:
-            r = await cli.post(url, json=payload, headers={
-                "Authorization": key,
-                "Content-Type": "application/json",
-            })
+        r, _redir = await _slx_get(url, method="POST", json=payload, timeout=60, headers={
+            "Authorization": key,
+            "Content-Type": "application/json",
+        })
     except Exception as e:
         return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}"}
     if r.status_code != 200:
@@ -8756,7 +8791,7 @@ async def product_recommendations_refresh(data: dict):
     date_to = today.isoformat()
     date_from = (today - timedelta(days=days)).isoformat()
     key = os.environ.get("SILUXAR_SALES_KEY", "") or "WoodchuckShouldChuckWood"
-    url = "https://www.siluxar.si/apiproductsales"
+    url = _slx("/apiproductsales")
 
     sale_set = _zaloga_load_sale()   # SKU-ji, ki so že v SALE (velike črke)
 
@@ -8765,7 +8800,7 @@ async def product_recommendations_refresh(data: dict):
     t_start = _time.perf_counter()
     n_batches = (len(skus) + batch_size - 1) // batch_size
 
-    async with httpx.AsyncClient(timeout=120) as cli:
+    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as cli:
         for bi in range(n_batches):
             chunk = skus[bi * batch_size:(bi + 1) * batch_size]
             t0 = _time.perf_counter()
@@ -9077,7 +9112,8 @@ async def siluxar_diag():
         out["outbound_ip"] = f"napaka: {e}"
 
     out["steps"] = []
-    host = "www.siluxar.si"
+    host = httpx.URL(SILUXAR_BASE).host
+    out["base"] = SILUXAR_BASE
 
     # 1) DNS razrešitev
     try:
@@ -9114,6 +9150,28 @@ async def siluxar_diag():
         return {"status": resp.status_code, "body_len": len(resp.text or ""),
                 "body_preview": body, "content_type": ct, "content_length": clen,
                 "www_authenticate": wa, "server": srv}
+
+    # 2b) PREUSMERITVE: kam nas strežnik pošlje in ali pri tem pade Authorization
+    out["redirects"] = {}
+    key0 = os.environ.get("SILUXAR_STOCK_KEY", "")
+    for label, base in [("nastavljeni (SILUXAR_BASE)", SILUXAR_BASE),
+                        ("www.siluxar.si", "https://www.siluxar.si"),
+                        ("siluxar.si (brez www)", "https://siluxar.si")]:
+        try:
+            r2, chain = await _slx_get(f"{base}/apistockexport",
+                                       headers={"Authorization": key0} if key0 else {}, timeout=25)
+            out["redirects"][label] = {
+                "koncni_status": r2.status_code if r2 is not None else None,
+                "preusmeritve": chain,
+                "koncni_naslov": (chain[-1]["to"] if chain else f"{base}/apistockexport"),
+                "body_preview": ((r2.text or "")[:200] if r2 is not None else ""),
+            }
+        except Exception as e:
+            out["redirects"][label] = {"error": str(e)}
+    _r = out["redirects"].get("nastavljeni (SILUXAR_BASE)", {})
+    if _r.get("preusmeritve"):
+        out["redirect_note"] = ("Strežnik preusmerja — Suban zdaj preusmeritvi sledi in ključ znova pripne. "
+                                "Če katera druga varianta vrne 200, jo nastavi v SILUXAR_BASE.")
 
     tests = {}
     # (a) brez avtentikacije
@@ -9227,7 +9285,7 @@ async def _zaloga_sync_core():
     _backup_ime = _make_stock_backup("pred-sync")
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
-    url = "https://www.siluxar.si/apistockexport"
+    url = _slx("/apistockexport")
     # Avtentikacija: Markov ključ gre v Authorization glavo (kot v programerjevem curl).
     # Če sta nastavljena Basic user/pass IN ni ključa, uporabi Basic Auth (fallback).
     headers = {}
@@ -9237,8 +9295,7 @@ async def _zaloga_sync_core():
     elif basic_user or basic_pass:
         _auth = httpx.BasicAuth(basic_user, basic_pass)
     try:
-        async with httpx.AsyncClient(timeout=90, auth=_auth) as cli:
-            r = await cli.get(url, headers=headers)
+        r, _redir = await _slx_get(url, headers=headers, auth=_auth, timeout=90)
     except Exception as e:
         return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}"}
     if r.status_code != 200:
@@ -9622,7 +9679,7 @@ async def price_stock_fetch():
         return {"ok": False, "error": "Manjka SILUXAR_STOCK_KEY (nastavi v Render okoljskih spremenljivkah)."}
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
-    url = "https://www.siluxar.si/apistockalertsexport"
+    url = _slx("/apistockalertsexport")
     # Ključ v Authorization glavo (kot programerjev curl); Basic Auth samo kot fallback brez ključa.
     headers = {}
     _auth = None
@@ -9631,8 +9688,7 @@ async def price_stock_fetch():
     elif basic_user or basic_pass:
         _auth = httpx.BasicAuth(basic_user, basic_pass)
     try:
-        async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
-            r = await cli.get(url, headers=headers)
+        r, _redir = await _slx_get(url, headers=headers, auth=_auth, timeout=60)
         if r.status_code != 200:
             return {"ok": False, "error": f"siluxar.si vrnil status {r.status_code}", "status": r.status_code}
         text = r.text or ""
@@ -16559,7 +16615,7 @@ async def zaloga_debug_vsota():
     elif basic_user or basic_pass: _auth = httpx.BasicAuth(basic_user, basic_pass)
     try:
         async with httpx.AsyncClient(timeout=90, auth=_auth) as cli:
-            r = await cli.get("https://www.siluxar.si/apistockexport", headers=headers)
+            r = await cli.get(_slx("/apistockexport"), headers=headers)
         jd = json.loads(r.text or "[]")
         if isinstance(jd, dict):
             for kk in ("data", "items", "rows", "products", "stock"):
@@ -16708,7 +16764,7 @@ async def zaloga_debug_sku(q: str = ""):
     elif basic_user or basic_pass: _auth = httpx.BasicAuth(basic_user, basic_pass)
     try:
         async with httpx.AsyncClient(timeout=90, auth=_auth) as cli:
-            r = await cli.get("https://www.siluxar.si/apistockexport", headers=headers)
+            r = await cli.get(_slx("/apistockexport"), headers=headers)
         jd = json.loads(r.text or "[]")
         if isinstance(jd, dict):
             for kk in ("data", "items", "rows", "products", "stock"):
@@ -16749,7 +16805,7 @@ async def zaloga_sync_raw():
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
-    url = "https://www.siluxar.si/apistockexport"
+    url = _slx("/apistockexport")
     headers = {}
     _auth = None
     if key:
@@ -16757,8 +16813,7 @@ async def zaloga_sync_raw():
     elif basic_user or basic_pass:
         _auth = httpx.BasicAuth(basic_user, basic_pass)
     try:
-        async with httpx.AsyncClient(timeout=90, auth=_auth) as cli:
-            r = await cli.get(url, headers=headers)
+        r, _redir = await _slx_get(url, headers=headers, auth=_auth, timeout=90)
         text = r.text or ""
         # poskusi razbrati JSON in pokazati KLJUČE prve vrstice (imena polj)
         field_names = None
@@ -16792,7 +16847,7 @@ async def forecast2_sum_raw():
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
-    url = "https://www.siluxar.si/apisumexport"
+    url = _slx("/apisumexport")
     headers = {}
     _auth = None
     if key:
@@ -16800,8 +16855,7 @@ async def forecast2_sum_raw():
     elif basic_user or basic_pass:
         _auth = httpx.BasicAuth(basic_user, basic_pass)
     try:
-        async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
-            r = await cli.get(url, headers=headers)
+        r, _redir = await _slx_get(url, headers=headers, auth=_auth, timeout=60)
         return {"status": r.status_code, "content_type": r.headers.get("content-type", ""),
                 "raw": (r.text or "")[:2000]}
     except Exception as e:
@@ -16838,7 +16892,7 @@ async def _forecast2_fetch_core(force=False, min_gap_min=55):
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
     if not key and not (basic_user or basic_pass):
         return {"ok": False, "error": "Manjka SILUXAR_STOCK_KEY (Render okoljska spremenljivka)."}
-    url = "https://www.siluxar.si/apisumexport"
+    url = _slx("/apisumexport")
     headers = {}
     _auth = None
     if key:
@@ -16847,8 +16901,7 @@ async def _forecast2_fetch_core(force=False, min_gap_min=55):
         _auth = httpx.BasicAuth(basic_user, basic_pass)
     # 1) potegni
     try:
-        async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
-            r = await cli.get(url, headers=headers)
+        r, _redir = await _slx_get(url, headers=headers, auth=_auth, timeout=60)
     except Exception as e:
         return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}"}
     if r.status_code != 200:
@@ -21897,7 +21950,7 @@ async def siluxar_push_positions(data: dict):
             _auth = httpx.BasicAuth(basic_user, basic_pass)
 
         # PRODUKCIJSKI zapisovalni endpoint
-        url = "https://www.siluxar.si/apistockexport"
+        url = _slx("/apistockexport")
 
         def _zabelezi(status, ok, resp_text, err=None, exc=None):
             """Zabeleži pošiljanje v log (zadnjih 50) za debug."""
@@ -21925,8 +21978,8 @@ async def siluxar_push_positions(data: dict):
                 pass
 
         try:
-            async with httpx.AsyncClient(timeout=60, auth=_auth) as cli:
-                r = await cli.post(url, headers=headers, json=payload)
+            r, _redir = await _slx_get(url, method="POST", headers=headers, auth=_auth,
+                                       timeout=60, json=payload)
         except Exception as e:
             _zabelezi(None, False, None, err=f"Napaka pri klicu siluxar.si: {e}", exc=str(e))
             return {"ok": False, "error": f"Napaka pri klicu siluxar.si: {e}", "poslano": len(payload)}
@@ -21976,7 +22029,7 @@ async def siluxar_delete_alerts(data: dict):
         elif basic_user or basic_pass:
             _auth = httpx.BasicAuth(basic_user, basic_pass)
 
-        url = "https://www.siluxar.si/apistockalertsexport"
+        url = _slx("/apistockalertsexport")
 
         def _zabelezi(status, ok, resp_text, err=None, exc=None):
             try:
@@ -22045,7 +22098,7 @@ async def siluxar_push_authtest():
     key = os.environ.get("SILUXAR_STOCK_KEY", "")
     basic_user = os.environ.get("SILUXAR_BASIC_USER", "")
     basic_pass = os.environ.get("SILUXAR_BASIC_PASS", "")
-    url = "https://www.siluxar.si/apistockexport"
+    url = _slx("/apistockexport")
     test_payload = [{"sku": "_TEST_", "position": "_TEST_"}]
 
     # katere poverilnice sploh imamo (brez razkrivanja gesel)
@@ -22059,7 +22112,7 @@ async def siluxar_push_authtest():
 
     async def _poskus(opis, headers=None, auth=None):
         try:
-            async with httpx.AsyncClient(timeout=40, auth=auth) as cli:
+            async with httpx.AsyncClient(timeout=40, auth=auth, follow_redirects=True) as cli:
                 r = await cli.post(url, headers=(headers or {"Content-Type": "application/json"}), json=test_payload)
             body = (r.text or "")[:200]
             je_401 = r.status_code == 401
@@ -23363,7 +23416,7 @@ async def regen_push(req: RegenPushReq):
             _regen_queue_save(jobs)
 
     try:
-        async with httpx.AsyncClient(timeout=120) as cli:
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as cli:
             r = await cli.post(MAAARKET_IMAGES_URL, json=payload)
         body = r.text[:4000]
         try:
