@@ -25162,6 +25162,60 @@ async def selitev_list():
     unknown = sorted({(e.get("sku") or "").strip() for e in entries
                       if (e.get("sku") or "").strip() and e["sku"].upper() not in known})
     sent = d.get("sent", [])
+
+    # ── NAVZKRIŽNE ANOMALIJE (za pregled pred prenosom) ──
+    # 1) brez pozicije (ne sme se poslati — siluxar bi bral kot izbris)
+    brez_pozicije = sorted({(e.get("sku") or "").strip() for e in entries
+                            if (e.get("sku") or "").strip() and not (e.get("position") or "").strip()})
+    # 2) že POSLAN isti (SKU+pozicija) — podvojen prenos
+    sent_pairs = {((x.get("sku") or "").strip().upper(), (x.get("position") or "").strip().upper()) for x in sent}
+    ze_poslano = []
+    for e in entries:
+        sku = (e.get("sku") or "").strip(); pos = (e.get("position") or "").strip()
+        if sku and pos and (sku.upper(), pos.upper()) in sent_pairs:
+            ze_poslano.append({"sku": sku, "position": pos})
+    # 3) SKU že poslan na DRUGO pozicijo (opozorilo, ne blokada)
+    sent_by_sku = {}
+    for x in sent:
+        _s = (x.get("sku") or "").strip().upper()
+        if _s: sent_by_sku.setdefault(_s, set()).add((x.get("position") or "").strip().upper())
+    poslan_drugam = []
+    for e in entries:
+        sku = (e.get("sku") or "").strip(); pos = (e.get("position") or "").strip()
+        if sku and pos and sku.upper() in sent_by_sku and pos.upper() not in sent_by_sku[sku.upper()]:
+            poslan_drugam.append({"sku": sku, "position": pos,
+                                  "ze_poslano_na": sorted(sent_by_sku[sku.upper()])})
+    # 4) SKU, ki NI v skladišču silux (nima silux siluxar_id) — bi šel v napačno/nikamor
+    silux_skus = set()
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+        if STOCK_CSV_FILE.exists():
+            for _row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"))):
+                _wh = (_row.get("warehouse") or "").strip().lower()
+                _sid = (_row.get("siluxar_id") or "").strip()
+                _sk = (_row.get("product_sku") or "").strip()
+                if _sk and _wh == SELITEV_WAREHOUSE and _sid and _sid not in ("0", "0.0"):
+                    silux_skus.add(_sk.upper())
+    except Exception:
+        silux_skus = set()
+    ni_v_siluxu = sorted({(e.get("sku") or "").strip() for e in entries
+                          if (e.get("sku") or "").strip() and (e.get("position") or "").strip()
+                          and e["sku"].upper() in known           # je v zalogi
+                          and e["sku"].upper() not in silux_skus}) # a ne v silux z veljavnim id
+
+    # skupni števec anomalij (za gumb/gate)
+    anomalije = {
+        "brez_pozicije": brez_pozicije,
+        "ze_poslano": ze_poslano,
+        "poslan_drugam": poslan_drugam,
+        "ni_v_siluxu": ni_v_siluxu,
+        "vec_pozicij": multi,
+        "neznani_sku": unknown,
+    }
+    # BLOKIRAJOČE anomalije (preprečijo prenos): brez pozicije, že poslano, ni v siluxu, neznan
+    blokira = bool(brez_pozicije or ze_poslano or ni_v_siluxu or unknown)
+
     return {
         "ok": True,
         "entries": entries,
@@ -25170,8 +25224,10 @@ async def selitev_list():
         "vec_pozicij": multi,
         "neznani_sku": unknown,
         "warehouse": SELITEV_WAREHOUSE,
-        "sent": sent[-200:],            # zadnjih 200 prenesenih (aktivno → poslano)
+        "sent": sent[-200:],
         "sent_stevilo": len(sent),
+        "anomalije": anomalije,
+        "blokira_prenos": blokira,
     }
 
 
@@ -25258,35 +25314,79 @@ async def selitev_transfer(data: dict):
     if not bool(data.get("confirm")):
         return {"ok": False, "error": "Manjka potrditev (confirm=true)."}
     d = _selitev_load()
-    entries = [e for e in d.get("entries", []) if (e.get("position") or "").strip()]
+    entries_all = d.get("entries", [])
+    entries = [e for e in entries_all if (e.get("position") or "").strip()]
     if not entries:
         return {"ok": False, "error": "V začasni zalogi ni nobene pozicije za prenos."}
 
-    # id po (sku, silux) iz aktivne CSV zaloge — da push cilja pravo kartico
-    id_by_sku = {}
+    # ═══ TRDNA VALIDACIJA PRED PRENOSOM (strežniška, ne le UI) ═══
+    lookup = _load_stock_lookup()
+    known = set(lookup.keys())
+    sent = d.get("sent", [])
+    sent_pairs = {((x.get("sku") or "").strip().upper(), (x.get("position") or "").strip().upper()) for x in sent}
+    # silux SKU-ji z veljavnim id
+    silux_ids = {}
     try:
         import csv as _csv
         from io import StringIO as _SIO
         if STOCK_CSV_FILE.exists():
             for _row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"))):
-                _s = (_row.get("product_sku") or "").strip()
-                _sid = (_row.get("siluxar_id") or "").strip()
                 _wh = (_row.get("warehouse") or "").strip().lower()
-                if _s and _sid and _sid not in ("0", "0.0") and _wh == SELITEV_WAREHOUSE:
-                    id_by_sku.setdefault(_s.upper(), _sid)
+                _sid = (_row.get("siluxar_id") or "").strip()
+                _sk = (_row.get("product_sku") or "").strip()
+                if _sk and _wh == SELITEV_WAREHOUSE and _sid and _sid not in ("0", "0.0"):
+                    silux_ids.setdefault(_sk.upper(), _sid)
     except Exception:
-        id_by_sku = {}
+        silux_ids = {}
 
-    # sestavi items za obstoječi /siluxar-push-positions (z warehouse + id → varno)
-    items = []
-    for e in entries:
+    napake = {"brez_pozicije": [], "ze_poslano": [], "neznani": [], "ni_v_siluxu": []}
+    cisti = []
+    for e in entries_all:
         sku = (e.get("sku") or "").strip()
         pos = (e.get("position") or "").strip()
-        if not sku or not pos:
+        if not sku:
             continue
-        items.append({"sku": sku, "position": pos,
-                      "warehouse": SELITEV_WAREHOUSE,
-                      "id": id_by_sku.get(sku.upper(), "")})
+        if not pos:                                   # BLOKADA: brez pozicije
+            napake["brez_pozicije"].append(sku); continue
+        if sku.upper() not in known:                  # BLOKADA: neznan SKU
+            napake["neznani"].append(sku); continue
+        if (sku.upper(), pos.upper()) in sent_pairs:  # BLOKADA: že poslano
+            napake["ze_poslano"].append(f"{sku}@{pos}"); continue
+        if sku.upper() not in silux_ids:              # BLOKADA: ni v silux (samo silux!)
+            napake["ni_v_siluxu"].append(sku); continue
+        cisti.append({"sku": sku, "position": pos, "id": silux_ids[sku.upper()]})
+
+    st_napak = sum(len(v) for v in napake.values())
+    # če KATERAKOLI blokirajoča anomalija in ni izrecnega override → zavrni
+    if st_napak and not bool(data.get("ignore_anomalije")):
+        return {"ok": False, "blokirano": True, "napake": napake, "st_napak": st_napak,
+                "cistih": len(cisti),
+                "error": (f"Prenos ustavljen — {st_napak} anomalij. "
+                          + (f"{len(napake['brez_pozicije'])} brez pozicije. " if napake['brez_pozicije'] else "")
+                          + (f"{len(napake['ze_poslano'])} že poslanih. " if napake['ze_poslano'] else "")
+                          + (f"{len(napake['neznani'])} neznanih SKU. " if napake['neznani'] else "")
+                          + (f"{len(napake['ni_v_siluxu'])} ni v skladišču silux. " if napake['ni_v_siluxu'] else ""))}
+    if not cisti:
+        return {"ok": False, "error": "Po validaciji ni ostalo nič za prenos."}
+
+    # ═══ BACKUP PRED PRENOSOM (varnostna kopija stanja) ═══
+    try:
+        arh = DATA_DIR / "selitev_arhiv"
+        arh.mkdir(exist_ok=True)
+        (arh / f"pred-prenosom_{_lj_now().strftime('%Y%m%d_%H%M%S')}.json").write_text(
+            json.dumps({"entries": entries_all, "sent": sent, "za_prenos": cisti},
+                       ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as _e:
+        print(f"[selitev] backup pred prenosom err: {_e}")
+    # backup tudi žive zaloge (obstoječi mehanizem)
+    try:
+        _make_stock_backup("pred-selitev-prenos")
+    except Exception:
+        pass
+
+    # uporabi VALIDIRANE "cisti" (že imajo silux id) → v silux, nikoli silux2
+    items = [{"sku": c["sku"], "position": c["position"],
+              "warehouse": SELITEV_WAREHOUSE, "id": c["id"]} for c in cisti]
 
     # pokliči obstoječo varno funkcijo (ima vse zaščite in logira v push-log)
     res = await siluxar_push_positions({"items": items, "confirm_bulk": True})
