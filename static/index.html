@@ -5720,6 +5720,7 @@ function switchPage(page) {
   if (page === 'tiktok') { ttLoadSkus(); }
   if (page === 'zaloga') { zalogaLoad(); zalogaSyncDailyAuto(); }
   if (page === 'selitev') { if(typeof selInit==='function') selInit(); }
+  else { if(typeof selStopPolling==='function') selStopPolling(); }
   if (page === 'xsell') { if(typeof xsellInit==='function') xsellInit(); }
   if (page === 'sporocanje') { if(typeof spLoadCommon==='function') spLoadCommon(); if(typeof spLoadMacros==='function') spLoadMacros(); }
   if (page === 'knjigovodstvo') { if(typeof knjLoadHistory==='function') knjLoadHistory(); }
@@ -27793,13 +27794,27 @@ function selPos(){ return (_selNav.vrsta && _selNav.regal && _selNav.polica) ? (
 function selSaveNav(){ try{ localStorage.setItem(SEL_LS, JSON.stringify(_selNav)); }catch(e){} }
 function selLoadNav(){ try{ const v=JSON.parse(localStorage.getItem(SEL_LS)||'null'); if(v&&typeof v==='object') _selNav=Object.assign({vrsta:null,regal:null,polica:null},v); }catch(e){} }
 
+let _selPollTimer = null;
+let _selLastSig = '';       // podpis zadnjih podatkov (da ne prerisujemo po nepotrebnem)
 function selInit(){
   selLoadNav();                       // zapomni si, kje si končal
   selSwitch('vpis');
   selRenderGrid();
   selReload();
   if (!_selSkuCache) selLoadSkuCache();
+  selStartPolling();
 }
+function selStartPolling(){
+  if (_selPollTimer) return;
+  // vsi vnašalci (6-8 ljudi) vidijo iste žive podatke — osveži vsake 3 s
+  _selPollTimer = setInterval(() => {
+    // osveži samo, ko je stran Selitev dejansko odprta
+    const pg = document.getElementById('page-selitev');
+    if (!pg || !pg.classList.contains('active')) return;
+    selReload(true);   // tiho (brez rušenja tipkanja)
+  }, 3000);
+}
+function selStopPolling(){ if (_selPollTimer){ clearInterval(_selPollTimer); _selPollTimer = null; } }
 function selSwitch(pane){
   const vpis = pane === 'vpis';
   document.getElementById('selPaneVpis').style.display = vpis ? '' : 'none';
@@ -27962,12 +27977,25 @@ async function selRemove(sku, pos){
 }
 
 // ── pregled ──
-async function selReload(){
-  try{ const r = await fetch('/selitev-list'); _selData = await r.json(); }
-  catch(e){ _selData = {entries:[]}; }
-  const cnt = (_selData && _selData.entries) ? _selData.entries.length : 0;
+async function selReload(silent){
+  let fresh;
+  try{ const r = await fetch('/selitev-list'); fresh = await r.json(); }
+  catch(e){ if (silent) return; fresh = {entries:[]}; }   // ob tihi napaki (npr. trenutek brez neta) obdrži staro
+  // podpis: če se nič ni spremenilo, ne prerisuj (da ne migeta med tipkanjem)
+  const sig = JSON.stringify((fresh.entries||[]).map(e => e.sku + '|' + e.position).sort());
+  _selData = fresh;
+  const cnt = (_selData.entries||[]).length;
   const badge = document.getElementById('selCount'); if (badge) badge.textContent = cnt ? '(' + cnt + ')' : '';
-  if (document.getElementById('selPanePregled') && document.getElementById('selPanePregled').style.display !== 'none') selRenderPregled();
+  if (silent && sig === _selLastSig) return;   // nič novega → miruj
+  _selLastSig = sig;
+  // osveži prikaze, ki so trenutno vidni
+  const preg = document.getElementById('selPanePregled');
+  if (preg && preg.style.display !== 'none') selRenderPregled();
+  const entry = document.getElementById('selEntry');
+  if (entry && entry.style.display !== 'none') selRenderOnPos();   // "na tej polici" v živo
+  // osveži števce na mreži (če smo v izbiri)
+  const grid = document.getElementById('selGrid');
+  if (grid && grid.style.display !== 'none') selRenderGrid();
 }
 function selRenderPregled(){
   if (!_selData) return;
