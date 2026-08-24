@@ -4199,6 +4199,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="zaloga-tab-btn" id="zalogaTab-inventura" onclick="switchZalogaTab('inventura')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Inventura</button>
       <button class="zaloga-tab-btn" id="zalogaTab-medskl" onclick="switchZalogaTab('medskl')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Medskladiščnica</button>
       <button class="zaloga-tab-btn" id="zalogaTab-siluxlog" onclick="switchZalogaTab('siluxlog')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">↗ Siluxar sync</button>
+      <button class="zaloga-tab-btn" id="zalogaTab-selitev" onclick="switchZalogaTab('selitev')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🚚 Selitev</button>
     </div>
 
     <!-- ═══ NOV MOBILNI TOPBAR (samo mobil): iskalnik + tabe-čipke v ENEM fiksnem bloku ═══ -->
@@ -4220,6 +4221,7 @@ input[type="text"].error { border-color: var(--red) !important; }
         <button class="zmt-chip" id="zmtChip-inventura" onclick="switchZalogaTab('inventura')">📋 Inventura</button>
         <button class="zmt-chip" id="zmtChip-medskl" onclick="switchZalogaTab('medskl')">🔄 Medskl.</button>
         <button class="zmt-chip" id="zmtChip-siluxlog" onclick="switchZalogaTab('siluxlog')">↗ Siluxar</button>
+        <button class="zmt-chip" id="zmtChip-selitev" onclick="switchZalogaTab('selitev')">🚚 Selitev</button>
       </div>
     </div>
 
@@ -4827,6 +4829,68 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </div>
     </div>
+
+  <div id="zalogaSubpage-selitev" style="display:none;padding:12px 12px 130px;width:100%">
+    <div style="max-width:900px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <div>
+          <div style="font-size:17px;font-weight:800">🚚 Selitev — vpis pozicij</div>
+          <div style="font-size:11.5px;color:var(--text-secondary);margin-top:1px">Začasna zaloga · nič ne gre v siluxar do potrditve prenosa</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button id="selTabVpis" onclick="selSwitch('vpis')" style="padding:10px 16px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">📍 Vpis</button>
+          <button id="selTabPregled" onclick="selSwitch('pregled')" style="padding:10px 16px;background:transparent;border:1px solid var(--border);border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;color:var(--text-secondary)">📋 Pregled <span id="selCount" style="opacity:.7"></span></button>
+        </div>
+      </div>
+
+      <!-- ── VPIS ── -->
+      <div id="selPaneVpis">
+        <!-- breadcrumb / pot -->
+        <div id="selCrumb" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 14px"></div>
+
+        <!-- velika mreža izbire (vrste / regali / police) -->
+        <div id="selGrid" style="display:grid;gap:12px;margin-bottom:16px"></div>
+
+        <!-- vpis SKU na izbrano pozicijo -->
+        <div id="selEntry" style="display:none">
+          <div class="card" style="border-left:5px solid var(--accent);margin-bottom:12px;padding:16px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+              <div style="font-size:13px;font-weight:700;color:var(--text-secondary)">Polica</div>
+              <div id="selPosBadge" style="padding:6px 16px;border-radius:10px;background:var(--accent);color:#fff;font-family:monospace;font-size:22px;font-weight:800">—</div>
+              <button onclick="selBackToPolice()" style="margin-left:auto;padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit;color:var(--text-secondary)">← nazaj</button>
+            </div>
+            <input id="selSkuInput" type="text" autocomplete="off" inputmode="text" placeholder="Vpiši ali skeniraj SKU + Enter…"
+              oninput="selSkuSuggest()" onkeydown="if(event.key==='Enter'){event.preventDefault();selAddSku();}"
+              style="width:100%;padding:15px 16px;border:2px solid var(--accent);border-radius:12px;background:var(--surface2);color:var(--text);font-family:inherit;font-size:18px;box-sizing:border-box">
+            <div id="selSug" style="margin-top:8px"></div>
+            <div id="selOnPos" style="margin-top:12px"></div>
+            <button onclick="selNextPolica()" style="width:100%;margin-top:14px;padding:15px;background:#16a34a;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit">Pelji me na naslednjo polico →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PREGLED ── -->
+      <div id="selPanePregled" style="display:none">
+        <div id="selWarnings" style="margin:10px 0"></div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:800">📋 Vse vpisane pozicije <span id="selPregCount" style="font-weight:600;color:var(--text-tertiary)"></span></div>
+            <div style="display:flex;gap:8px">
+              <button onclick="selReload()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-secondary)">🔄 Osveži</button>
+              <button onclick="selClearAll()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:#e5484d">🗑 Počisti vse</button>
+            </div>
+          </div>
+          <div id="selPregList" style="overflow-x:auto"></div>
+        </div>
+        <div class="card" style="margin-top:12px;border-left:5px solid #16a34a">
+          <div style="font-size:13px;font-weight:800;margin-bottom:4px">✅ Prenos v aktivno zalogo + siluxar</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Ko je vse pregledano, prenesi vse naenkrat. Varna pot (prava kartica po skladišču, nikoli prazna pozicija).</div>
+          <button id="selTransferBtn" onclick="selTransfer()" style="padding:13px 22px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">↗ Prenesi vse v aktivno zalogo</button>
+          <span id="selTransferStatus" style="margin-left:10px;font-size:12.5px;color:var(--text-secondary)"></span>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="zalogaSubpage-siluxlog" style="display:none;padding:14px 14px 110px;width:100%">
     <div style="max-width:1100px;margin:0 auto">
@@ -27670,7 +27734,7 @@ function switchZalogaTab(tab) {
   // medskladiščnica: naloži/ustavi osveževanje
   if (tab === 'medskl') { mskLoad(); if (!window._mskPoll) window._mskPoll = setInterval(mskLoad, 20000); }
   else if (window._mskPoll) { clearInterval(window._mskPoll); window._mskPoll = null; }
-  ['zaloga', 'vracila', 'skeniranje', 'pozicije', 'sekundarne', 'inventura', 'medskl', 'siluxlog'].forEach(t => {
+  ['zaloga', 'vracila', 'skeniranje', 'pozicije', 'sekundarne', 'inventura', 'medskl', 'siluxlog', 'selitev'].forEach(t => {
     const btn = document.getElementById('zalogaTab-' + t);
     const sub = document.getElementById('zalogaSubpage-' + t);
     if (t === tab) {
@@ -27703,7 +27767,246 @@ function switchZalogaTab(tab) {
     if (typeof zalogaLoad === 'function' && (!_zalogaData || !_zalogaData.length)) zalogaLoad();
   } else if (tab === 'siluxlog') {
     siluxLogInit();
+  } else if (tab === 'selitev') {
+    selInit();
   }
+}
+
+// ═══ SELITEV SKLADIŠČA — vpis pozicij (Vrsta → Regal → Polica) ═══
+// Oznaka 01-1A: 01=VRSTA (01–16), 1=REGAL (1–5), A=POLICA (A–F)
+const SEL_VRSTE = Array.from({length:16}, (_,i) => String(i+1).padStart(2,'0'));  // 01..16
+const SEL_REGALI = ['1','2','3','4','5'];
+const SEL_POLICE = ['A','B','C','D','E','F'];
+let _selNav = {vrsta:null, regal:null, polica:null};
+let _selData = null;
+let _selSkuCache = null;
+const SEL_LS = 'suban_selitev_nav';
+
+function selEsc(t){ return String(t==null?'':t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function selPos(){ return (_selNav.vrsta && _selNav.regal && _selNav.polica) ? (_selNav.vrsta + '-' + _selNav.regal + _selNav.polica) : null; }
+function selSaveNav(){ try{ localStorage.setItem(SEL_LS, JSON.stringify(_selNav)); }catch(e){} }
+function selLoadNav(){ try{ const v=JSON.parse(localStorage.getItem(SEL_LS)||'null'); if(v&&typeof v==='object') _selNav=Object.assign({vrsta:null,regal:null,polica:null},v); }catch(e){} }
+
+function selInit(){
+  selLoadNav();                       // zapomni si, kje si končal
+  selSwitch('vpis');
+  selRenderGrid();
+  selReload();
+  if (!_selSkuCache) selLoadSkuCache();
+}
+function selSwitch(pane){
+  const vpis = pane === 'vpis';
+  document.getElementById('selPaneVpis').style.display = vpis ? '' : 'none';
+  document.getElementById('selPanePregled').style.display = vpis ? 'none' : '';
+  const bV = document.getElementById('selTabVpis'), bP = document.getElementById('selTabPregled');
+  const on = (b,a)=>{ if(!b)return; b.style.background=a?'var(--accent)':'transparent'; b.style.color=a?'#fff':'var(--text-secondary)'; b.style.border=a?'none':'1px solid var(--border)'; };
+  on(bV,vpis); on(bP,!vpis);
+  if (!vpis) selRenderPregled();
+}
+
+// ── breadcrumb ──
+function selRenderCrumb(){
+  const c = document.getElementById('selCrumb'); if (!c) return;
+  const step = (label, active, onclick) =>
+    '<span onclick="' + (onclick||'') + '" style="cursor:' + (onclick?'pointer':'default') + ';padding:6px 12px;border-radius:8px;background:' + (active?'var(--accent)':'var(--surface2)') + ';color:' + (active?'#fff':'var(--text-secondary)') + ';font-weight:700;font-size:13px">' + label + '</span>';
+  const arr = '<span style="color:var(--text-tertiary)">›</span>';
+  let h = step('Vse vrste', !_selNav.vrsta, 'selReset()');
+  if (_selNav.vrsta) h += arr + step('Vrsta ' + _selNav.vrsta, !_selNav.regal, "selPickVrsta('" + _selNav.vrsta + "')");
+  if (_selNav.regal) h += arr + step('Regal ' + _selNav.regal, !_selNav.polica, "selPickRegal('" + _selNav.regal + "')");
+  if (_selNav.polica) h += arr + step('Polica ' + _selNav.polica, true, '');
+  c.innerHTML = h;
+}
+
+// ── velike mrežne tipke ──
+function selBigCell(label, onclick, sub, badge){
+  return '<div onclick="' + onclick + '" style="cursor:pointer;padding:22px 8px;border:2px solid var(--border);border-radius:14px;text-align:center;background:var(--surface);position:relative;user-select:none;transition:.1s" '
+    + 'onmouseover="this.style.borderColor=\'var(--accent)\';this.style.background=\'var(--surface2)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.background=\'var(--surface)\'" '
+    + 'ontouchstart="this.style.background=\'var(--surface2)\'" ontouchend="this.style.background=\'var(--surface)\'">'
+    + '<div style="font-size:26px;font-weight:800;line-height:1.1">' + label + '</div>'
+    + (sub ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">' + sub + '</div>' : '')
+    + (badge ? '<div style="position:absolute;top:6px;right:8px;font-size:11px;font-weight:800;color:#16a34a">' + badge + '</div>' : '')
+    + '</div>';
+}
+function selRenderGrid(){
+  selRenderCrumb();
+  const g = document.getElementById('selGrid');
+  const entry = document.getElementById('selEntry');
+  if (!g) return;
+  if (!_selNav.vrsta){
+    g.style.display = 'grid';
+    g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(88px,1fr))';
+    g.innerHTML = SEL_VRSTE.map(v => selBigCell(v, "selPickVrsta('" + v + "')", 'vrsta', selCount(x => x.startsWith(v + '-')) || '')).join('');
+    entry.style.display = 'none';
+  } else if (!_selNav.regal){
+    g.style.display = 'grid';
+    g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(120px,1fr))';
+    g.innerHTML = SEL_REGALI.map(r => selBigCell('Regal ' + r, "selPickRegal('" + r + "')", '', selCount(x => x.startsWith(_selNav.vrsta + '-' + r)) || '')).join('');
+    entry.style.display = 'none';
+  } else if (!_selNav.polica){
+    g.style.display = 'grid';
+    g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(120px,1fr))';
+    g.innerHTML = SEL_POLICE.map(p => selBigCell(p, "selPickPolica('" + p + "')", _selNav.vrsta + '-' + _selNav.regal + p, selCount(x => x === (_selNav.vrsta + '-' + _selNav.regal + p)) || '')).join('');
+    entry.style.display = 'none';
+  } else {
+    g.style.display = 'none';
+    entry.style.display = '';
+    const badge = document.getElementById('selPosBadge'); if (badge) badge.textContent = selPos();
+    const inp = document.getElementById('selSkuInput'); if (inp){ inp.value=''; setTimeout(()=>inp.focus(),60); }
+    document.getElementById('selSug').innerHTML = '';
+    selRenderOnPos();
+  }
+  selSaveNav();
+}
+function selCount(fn){
+  if (!_selData || !_selData.entries) return 0;
+  return _selData.entries.filter(e => fn(e.position||'')).length;
+}
+function selReset(){ _selNav = {vrsta:null, regal:null, polica:null}; selRenderGrid(); }
+function selPickVrsta(v){ _selNav = {vrsta:v, regal:null, polica:null}; selRenderGrid(); }
+function selPickRegal(r){ _selNav.regal = r; _selNav.polica = null; selRenderGrid(); }
+function selPickPolica(p){ _selNav.polica = p; selRenderGrid(); }
+function selBackToPolice(){ _selNav.polica = null; selRenderGrid(); }
+
+// ── naslednja polica: A→F, potem naslednji regal, potem naslednja vrsta ──
+function selNextPolica(){
+  let vi = SEL_VRSTE.indexOf(_selNav.vrsta);
+  let ri = SEL_REGALI.indexOf(_selNav.regal);
+  let pi = SEL_POLICE.indexOf(_selNav.polica);
+  pi++;
+  if (pi >= SEL_POLICE.length){ pi = 0; ri++; }
+  if (ri >= SEL_REGALI.length){ ri = 0; vi++; }
+  if (vi >= SEL_VRSTE.length){
+    // konec skladišča
+    const st = document.getElementById('selOnPos');
+    if (st) st.innerHTML = '<div style="font-size:13px;color:#16a34a;font-weight:700;padding:8px 0">✓ Zadnja polica (16-5F) — konec skladišča.</div>';
+    return;
+  }
+  _selNav = {vrsta: SEL_VRSTE[vi], regal: SEL_REGALI[ri], polica: SEL_POLICE[pi]};
+  selRenderGrid();
+}
+
+// ── SKU predlogi ──
+async function selLoadSkuCache(){
+  _selSkuCache = {};
+  try{
+    if ((typeof _zalogaData === 'undefined' || !_zalogaData || !_zalogaData.length) && typeof zalogaLoad === 'function'){
+      try{ await zalogaLoad(); }catch(e){}
+    }
+    const rows = (typeof _zalogaData !== 'undefined' && _zalogaData) ? _zalogaData : [];
+    rows.forEach(x => { const s=(x.product_sku||x.sku||'').trim(); if (s) _selSkuCache[s.toUpperCase()] = (x.title||''); });
+  }catch(e){}
+}
+function selSkuSuggest(){
+  const inp = document.getElementById('selSkuInput'); const box = document.getElementById('selSug');
+  if (!inp || !box) return;
+  const q = (inp.value||'').trim().toUpperCase();
+  if (q.length < 2 || !_selSkuCache){ box.innerHTML=''; return; }
+  const hits = Object.keys(_selSkuCache).filter(s => s.includes(q)).slice(0,6);
+  box.innerHTML = hits.map(s => '<div onclick="selPickSug(\'' + selEsc(s) + '\')" style="cursor:pointer;padding:9px 12px;border-radius:9px;font-size:15px;display:flex;gap:8px;border:1px solid var(--border);margin-bottom:4px" ontouchstart="this.style.background=\'var(--surface2)\'"><b>' + selEsc(s) + '</b> <span style="color:var(--text-tertiary)">' + selEsc(_selSkuCache[s]||'') + '</span></div>').join('');
+}
+function selPickSug(sku){ const inp=document.getElementById('selSkuInput'); if(inp){inp.value=sku;} document.getElementById('selSug').innerHTML=''; selAddSku(); }
+
+async function selAddSku(){
+  const inp = document.getElementById('selSkuInput'); if (!inp) return;
+  const sku = (inp.value||'').trim();
+  const pos = selPos();
+  if (!sku || !pos) return;
+  try{
+    const r = await fetch('/selitev-add', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku, position:pos})});
+    const d = await r.json();
+    if (!d.ok){ selToast(d.error || 'Napaka', true); return; }
+    inp.value=''; inp.focus();
+    document.getElementById('selSug').innerHTML='';
+    let msg = '✓ ' + selEsc(d.sku) + (d.title ? ' — ' + selEsc(d.title) : '') + ' → ' + selEsc(pos);
+    let warn = false;
+    if (d.duplikat){ msg = 'ℹ ' + selEsc(d.opozorilo); warn = true; }
+    else if (d.opozorilo){ msg += '  ⚠ ' + selEsc(d.opozorilo); warn = true; }
+    if (d.neznan){ msg += '  ⚠ ' + selEsc(d.neznan); warn = true; }
+    selToast(msg, warn);
+    await selReload();
+    selRenderOnPos();
+  }catch(e){ selToast('Napaka: ' + e.message, true); }
+}
+function selToast(msg, warn){
+  const box = document.getElementById('selSug');
+  if (box) box.innerHTML = '<div style="padding:10px 12px;border-radius:9px;font-size:14px;background:' + (warn?'rgba(217,151,34,.14)':'rgba(18,163,95,.12)') + ';color:' + (warn?'#b57611':'#0f8a4f') + '">' + msg + '</div>';
+}
+function selRenderOnPos(){
+  const box = document.getElementById('selOnPos'); if (!box || !_selData) return;
+  const pos = selPos();
+  const here = (_selData.entries||[]).filter(e => (e.position||'') === pos);
+  if (!here.length){ box.innerHTML = '<div style="font-size:13px;color:var(--text-tertiary)">Na tej polici še ni vpisov.</div>'; return; }
+  box.innerHTML = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px">Na tej polici (' + here.length + ')</div>'
+    + here.map(e => '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border);font-size:15px">'
+      + '<b>' + selEsc(e.sku) + '</b><span style="color:var(--text-tertiary);font-size:13px">' + selEsc(e.title||'') + '</span>'
+      + '<button onclick="selRemove(\'' + selEsc(e.sku) + '\',\'' + selEsc(pos) + '\')" style="margin-left:auto;background:transparent;border:none;cursor:pointer;color:#e5484d;font-size:20px;padding:0 6px" title="odstrani">×</button></div>').join('');
+}
+async function selRemove(sku, pos){
+  try{ await fetch('/selitev-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku,position:pos})}); }catch(e){}
+  await selReload(); selRenderOnPos(); selRenderGrid();
+}
+
+// ── pregled ──
+async function selReload(){
+  try{ const r = await fetch('/selitev-list'); _selData = await r.json(); }
+  catch(e){ _selData = {entries:[]}; }
+  const cnt = (_selData && _selData.entries) ? _selData.entries.length : 0;
+  const badge = document.getElementById('selCount'); if (badge) badge.textContent = cnt ? '(' + cnt + ')' : '';
+  if (document.getElementById('selPanePregled') && document.getElementById('selPanePregled').style.display !== 'none') selRenderPregled();
+}
+function selRenderPregled(){
+  if (!_selData) return;
+  const warn = document.getElementById('selWarnings');
+  const list = document.getElementById('selPregList');
+  const cnt = document.getElementById('selPregCount');
+  const e = _selData.entries || [];
+  if (cnt) cnt.textContent = e.length ? '· ' + e.length + ' vpisov, ' + (_selData.unikatnih_sku||0) + ' SKU' : '';
+  let w = '';
+  (_selData.vec_pozicij||[]).forEach(m => {
+    w += '<div style="padding:9px 12px;border-radius:9px;background:rgba(217,151,34,.14);color:#b57611;font-size:13px;margin-bottom:6px">⚠ <b>' + selEsc(m.sku) + '</b> je na več policah: ' + m.pozicije.map(selEsc).join(', ') + '</div>';
+  });
+  if ((_selData.neznani_sku||[]).length){
+    w += '<div style="padding:9px 12px;border-radius:9px;background:rgba(229,72,77,.12);color:#e5484d;font-size:13px;margin-bottom:6px">⚠ Neznani SKU: ' + _selData.neznani_sku.map(selEsc).join(', ') + '</div>';
+  }
+  if (warn) warn.innerHTML = w || '<div style="font-size:13px;color:#0f8a4f">✓ Ni opozoril.</div>';
+  if (!e.length){ if (list) list.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);padding:8px 0">Še ni vpisov.</div>'; return; }
+  const sorted = e.slice().sort((a,b) => (a.position||'').localeCompare(b.position||''));
+  if (list) list.innerHTML = '<table style="border-collapse:collapse;width:100%;font-size:13px;min-width:520px">'
+    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Polica</th><th style="text-align:left;padding:6px 8px">SKU</th><th style="text-align:left;padding:6px 8px">Naziv</th><th style="text-align:left;padding:6px 8px">Stara</th><th></th></tr>'
+    + sorted.map(x => '<tr style="border-top:1px solid var(--border)">'
+      + '<td style="padding:8px;font-family:monospace;font-weight:700">' + selEsc(x.position) + '</td>'
+      + '<td style="padding:8px;font-weight:700">' + selEsc(x.sku) + (x.known===false?' <span style="color:#e5484d" title="ni v zalogi">?</span>':'') + '</td>'
+      + '<td style="padding:8px;color:var(--text-secondary)">' + selEsc(x.title||'') + '</td>'
+      + '<td style="padding:8px;color:var(--text-tertiary);font-family:monospace">' + selEsc(x.old_position||'—') + '</td>'
+      + '<td style="padding:8px;text-align:right"><button onclick="selRemove(\'' + selEsc(x.sku) + '\',\'' + selEsc(x.position) + '\')" style="background:transparent;border:none;cursor:pointer;color:#e5484d;font-size:18px">×</button></td>'
+      + '</tr>').join('') + '</table>';
+}
+async function selClearAll(){
+  if (!confirm('Počistim VSE vpise začasne zaloge?\\n\\nNe vpliva na siluxar.')) return;
+  try{ await fetch('/selitev-clear',{method:'POST'}); }catch(e){}
+  await selReload(); selRenderPregled();
+}
+async function selTransfer(){
+  const st = document.getElementById('selTransferStatus');
+  const n = (_selData && _selData.entries) ? _selData.entries.length : 0;
+  if (!n){ if(st){st.style.color='#e5484d';st.textContent='Ni vpisov za prenos.';} return; }
+  const multi = (_selData.vec_pozicij||[]).length;
+  let msg = 'Prenesem ' + n + ' pozicij v aktivno zalogo in siluxar?';
+  if (multi) msg += '\\n\\n⚠ ' + multi + ' SKU je na več policah — dovoljeno, a preveri, da je namerno.';
+  if (!confirm(msg)) return;
+  if (st){ st.style.color='var(--text-secondary)'; st.textContent='prenašam…'; }
+  const btn = document.getElementById('selTransferBtn'); if (btn) btn.disabled = true;
+  try{
+    const r = await fetch('/selitev-transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
+    const d = await r.json();
+    if (d.ok){
+      if (st){ st.style.color='#0f8a4f'; st.textContent='✓ Preneseno ' + (d.poslano||n) + ' pozicij (status ' + (d.status||'') + ').' + (d.preskoceno?' Preskočenih '+d.preskoceno+'.':''); }
+      await selReload();
+    } else {
+      if (st){ st.style.color='#e5484d'; st.textContent='⚠ ' + (d.error||'napaka'); }
+      if (btn) btn.disabled = false;
+    }
+  }catch(e){ if(st){st.style.color='#e5484d';st.textContent='⚠ '+e.message;} if(btn) btn.disabled=false; }
 }
 
 // ═══ SILUXAR SYNC: čakajoči + zgodovina pošiljanj ═══

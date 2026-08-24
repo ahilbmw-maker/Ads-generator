@@ -25099,6 +25099,198 @@ async def semafor_spend_vision(data: dict):
             "rows": seen, "images": len(content) - 1}
 
 
+# ═══ SELITEV SKLADIŠČA — začasna zaloga pozicij (staging, ločeno od siluxarja) ═══
+# Vpisi gredo v ločeno datoteko in NE potujejo v siluxar, dokler jih izrecno
+# ne prenesemo prek /selitev-transfer (ki uporabi obstoječo varno pot push-positions).
+_selitev_lock = asyncio.Lock()
+SELITEV_FILE = DATA_DIR / "selitev_pozicije.json"
+SELITEV_WAREHOUSE = "silux"        # selitev velja SAMO za glavno skladišče
+
+
+def _selitev_load() -> dict:
+    try:
+        if SELITEV_FILE.exists():
+            d = json.loads(SELITEV_FILE.read_text(encoding="utf-8")) or {}
+            if isinstance(d, dict):
+                d.setdefault("entries", [])
+                return d
+    except Exception as e:
+        print(f"[selitev] load err: {e}")
+    return {"entries": []}
+
+
+def _selitev_save(d: dict):
+    tmp = SELITEV_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, SELITEV_FILE)
+
+
+def _selitev_valid_position(pos: str) -> bool:
+    """Preveri, da je pozicija v strukturi POLICA(01–16)-VRSTA(1–5)MESTO(A–F)."""
+    import re as _re
+    m = _re.match(r"^(\d{2})-([1-5])([A-F])$", str(pos or "").strip())
+    if not m:
+        return False
+    return 1 <= int(m.group(1)) <= 16
+
+
+@app.get("/selitev-list")
+async def selitev_list():
+    """Vrne vse vpise začasne zaloge + navzkrižni pregled (za pod-zavihek Pregled)."""
+    d = _selitev_load()
+    lookup = _load_stock_lookup()
+    entries = d.get("entries", [])
+    # obogati z nazivom in staro pozicijo iz aktivne zaloge
+    by_sku = {}
+    for e in entries:
+        sku = (e.get("sku") or "").strip()
+        if not sku:
+            continue
+        info = lookup.get(sku.upper(), {})
+        e["title"] = info.get("title", "")
+        e["stock"] = info.get("stock", None)
+        e["old_position"] = info.get("position", "")
+        by_sku.setdefault(sku.upper(), []).append(e)
+    # opozorila
+    multi = []   # isti SKU na več pozicijah
+    for k, lst in by_sku.items():
+        pos_set = sorted({(x.get("position") or "").strip() for x in lst if (x.get("position") or "").strip()})
+        if len(pos_set) > 1:
+            multi.append({"sku": lst[0].get("sku"), "pozicije": pos_set})
+    known = set(lookup.keys())
+    unknown = sorted({(e.get("sku") or "").strip() for e in entries
+                      if (e.get("sku") or "").strip() and e["sku"].upper() not in known})
+    return {
+        "ok": True,
+        "entries": entries,
+        "stevilo": len(entries),
+        "unikatnih_sku": len(by_sku),
+        "vec_pozicij": multi,
+        "neznani_sku": unknown,
+        "warehouse": SELITEV_WAREHOUSE,
+    }
+
+
+@app.post("/selitev-add")
+async def selitev_add(data: dict):
+    """Dodeli SKU-ju pozicijo v začasni zalogi. Ne gre v siluxar."""
+    sku = (str(data.get("sku") or "")).strip()
+    pos = (str(data.get("position") or "")).strip().upper()
+    if not sku:
+        return {"ok": False, "error": "Manjka SKU."}
+    if not _selitev_valid_position(pos):
+        return {"ok": False, "error": f"Pozicija '{pos}' ni v strukturi polic (01-16, vrsta 1-5, mesto A-F)."}
+    lookup = _load_stock_lookup()
+    info = lookup.get(sku.upper())
+    known = info is not None
+    async with _selitev_lock:
+        d = _selitev_load()
+        # ali ta SKU že ima kakšno pozicijo (za opozorilo) in ali je TA že vpisana (duplikat)
+        same_sku = [e for e in d["entries"] if (e.get("sku") or "").strip().upper() == sku.upper()]
+        exact = next((e for e in same_sku if (e.get("position") or "").strip().upper() == pos), None)
+        obstaja_druge = sorted({(e.get("position") or "").strip() for e in same_sku
+                                if (e.get("position") or "").strip() and (e.get("position") or "").strip().upper() != pos})
+        if exact:
+            return {"ok": True, "duplikat": True, "sku": sku, "position": pos,
+                    "title": (info or {}).get("title", ""),
+                    "opozorilo": f"SKU {sku} je na poziciji {pos} že vpisan."}
+        d["entries"].append({
+            "sku": info["sku"] if known else sku,
+            "position": pos,
+            "known": known,
+            "ts": _lj_now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        _selitev_save(d)
+    return {
+        "ok": True,
+        "sku": info["sku"] if known else sku,
+        "title": (info or {}).get("title", ""),
+        "stock": (info or {}).get("stock", None),
+        "position": pos,
+        "known": known,
+        "ze_na_drugih": obstaja_druge,   # frontend pokaže opozorilo, če ni prazno
+        "opozorilo": (f"SKU {sku} je že vpisan na: {', '.join(obstaja_druge)}." if obstaja_druge else None),
+        "neznan": (None if known else f"SKU {sku} ni v aktivni zalogi — preveri, ali je pravilen."),
+    }
+
+
+@app.post("/selitev-remove")
+async def selitev_remove(data: dict):
+    """Odstrani en vpis (SKU + pozicija) iz začasne zaloge."""
+    sku = (str(data.get("sku") or "")).strip().upper()
+    pos = (str(data.get("position") or "")).strip().upper()
+    async with _selitev_lock:
+        d = _selitev_load()
+        before = len(d["entries"])
+        d["entries"] = [e for e in d["entries"]
+                        if not ((e.get("sku") or "").strip().upper() == sku
+                                and (e.get("position") or "").strip().upper() == pos)]
+        _selitev_save(d)
+    return {"ok": True, "odstranjeno": before - len(d["entries"])}
+
+
+@app.post("/selitev-clear")
+async def selitev_clear():
+    """Počisti CELOTNO začasno zalogo (ne vpliva na siluxar/aktivno zalogo)."""
+    async with _selitev_lock:
+        _selitev_save({"entries": []})
+    return {"ok": True}
+
+
+@app.post("/selitev-transfer")
+async def selitev_transfer(data: dict):
+    """Prenese pregledane pozicije iz začasne zaloge v AKTIVNO zalogo + siluxar.
+    Uporabi obstoječo VARNO pot (pravi id po skladišču, nikoli prazna pozicija).
+    Body: {confirm: true}."""
+    if not bool(data.get("confirm")):
+        return {"ok": False, "error": "Manjka potrditev (confirm=true)."}
+    d = _selitev_load()
+    entries = [e for e in d.get("entries", []) if (e.get("position") or "").strip()]
+    if not entries:
+        return {"ok": False, "error": "V začasni zalogi ni nobene pozicije za prenos."}
+
+    # id po (sku, silux) iz aktivne CSV zaloge — da push cilja pravo kartico
+    id_by_sku = {}
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+        if STOCK_CSV_FILE.exists():
+            for _row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"))):
+                _s = (_row.get("product_sku") or "").strip()
+                _sid = (_row.get("siluxar_id") or "").strip()
+                _wh = (_row.get("warehouse") or "").strip().lower()
+                if _s and _sid and _sid not in ("0", "0.0") and _wh == SELITEV_WAREHOUSE:
+                    id_by_sku.setdefault(_s.upper(), _sid)
+    except Exception:
+        id_by_sku = {}
+
+    # sestavi items za obstoječi /siluxar-push-positions (z warehouse + id → varno)
+    items = []
+    for e in entries:
+        sku = (e.get("sku") or "").strip()
+        pos = (e.get("position") or "").strip()
+        if not sku or not pos:
+            continue
+        items.append({"sku": sku, "position": pos,
+                      "warehouse": SELITEV_WAREHOUSE,
+                      "id": id_by_sku.get(sku.upper(), "")})
+
+    # pokliči obstoječo varno funkcijo (ima vse zaščite in logira v push-log)
+    res = await siluxar_push_positions({"items": items, "confirm_bulk": True})
+    # ob uspehu izprazni začasno zalogo (arhiviraj v backup)
+    if isinstance(res, dict) and res.get("ok"):
+        try:
+            arh = DATA_DIR / "selitev_arhiv"
+            arh.mkdir(exist_ok=True)
+            (arh / f"selitev_{_lj_now().strftime('%Y%m%d_%H%M%S')}.json").write_text(
+                json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        async with _selitev_lock:
+            _selitev_save({"entries": []})
+    return res
+
+
 # ═══ MEDSKLADIŠČNICA — seznam za prenos med skladišči (Novo/Carglass → pakirnica) ═══
 MEDSKL_FILE = DATA_DIR / "medskl_items.json"
 _medskl_lock = asyncio.Lock()
