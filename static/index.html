@@ -645,6 +645,21 @@ input[type="text"].error { border-color: var(--red) !important; }
 .tt-master-btn:hover { opacity: 0.85; }
 .tt-master-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 @media(max-width:600px){ .tt-layout { grid-template-columns: 1fr; } }
+/* SELITEV — celice */
+.sel-cell{ padding:30px 12px 22px; min-height:96px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.sel-cell-num{ font-size:32px; }
+.sel-cell-sub{ font-size:12px; }
+.sel-badge{ position:absolute; top:7px; right:7px; min-width:26px; height:22px; padding:0 7px; border-radius:11px;
+  background:#16a34a; color:#fff; font-size:13px; font-weight:800; display:flex; align-items:center; justify-content:center;
+  box-shadow:0 1px 3px rgba(0,0,0,.18); z-index:2; }
+@media(max-width:600px){
+  #page-selitev .sel-cell{ padding:24px 6px 16px; min-height:78px; }
+  #page-selitev .sel-cell-num{ font-size:24px; }
+  #page-selitev .sel-cell-sub{ font-size:10px; }
+  #page-selitev .sel-badge{ min-width:22px; height:20px; font-size:11px; top:5px; right:5px; }
+  #page-selitev #selGrid{ gap:9px !important; grid-template-columns:repeat(3,1fr) !important; }
+  #page-selitev #selCrumb span{ font-size:12px !important; padding:5px 9px !important; }
+}
 .tt-download-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; display: flex; align-items: center; gap: 16px; }
 .tt-download-icon { width: 48px; height: 48px; border-radius: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .tt-download-icon svg { width: 22px; height: 22px; stroke: var(--text-secondary); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
@@ -4912,22 +4927,24 @@ input[type="text"].error { border-color: var(--red) !important; }
        XSELL — Cross-sell suggestion engine
        ═══════════════════════════════════════════════════════════════════════ -->
   <div class="page" id="page-selitev">
-    <div style="padding:14px 16px 130px;width:100%">
-  
-    <div style="width:100%;max-width:1600px;margin:0 auto">
+    <div style="padding:12px 14px 120px;width:100%">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-        <div>
-          <div style="font-size:17px;font-weight:800">🚚 Selitev — vpis pozicij</div>
-          <div style="font-size:11.5px;color:var(--text-secondary);margin-top:1px">Začasna zaloga · nič ne gre v siluxar do potrditve prenosa</div>
-        </div>
+        <div style="font-size:16px;font-weight:800;display:flex;align-items:center;gap:6px">🚚 Selitev</div>
         <div style="display:flex;gap:6px">
-          <button id="selTabVpis" onclick="selSwitch('vpis')" style="padding:10px 16px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">📍 Vpis</button>
-          <button id="selTabPregled" onclick="selSwitch('pregled')" style="padding:10px 16px;background:transparent;border:1px solid var(--border);border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;color:var(--text-secondary)">📋 Pregled <span id="selCount" style="opacity:.7"></span></button>
+          <button id="selTabVpis" onclick="selSwitch('vpis')" style="padding:9px 15px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">📍 Vpis</button>
+          <button id="selTabPregled" onclick="selSwitch('pregled')" style="padding:9px 15px;background:transparent;border:1px solid var(--border);border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;color:var(--text-secondary)">📋 Pregled <span id="selCount" style="opacity:.7"></span></button>
         </div>
       </div>
 
       <!-- ── VPIS ── -->
       <div id="selPaneVpis">
+        <!-- globalni iskalnik po SKU — SAMO na pogledu vrst -->
+        <div id="selSkuFind" style="margin:0 0 12px;display:none">
+          <input id="selFindInput" type="text" autocomplete="off" placeholder="🔍 Poišči SKU — kje je vpisan…"
+            oninput="selFindSku()" style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);font-family:inherit;font-size:15px;box-sizing:border-box">
+          <div id="selFindRes" style="margin-top:6px"></div>
+        </div>
+
         <!-- breadcrumb / pot -->
         <div id="selCrumb" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 14px"></div>
 
@@ -4973,7 +4990,6 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </div>
     </div>
-      </div>
   </div>
 
   <div class="page" id="page-xsell">
@@ -27840,32 +27856,42 @@ function selRenderCrumb(){
 
 // ── velike mrežne tipke ──
 function selBigCell(label, onclick, sub, badge){
-  return '<div onclick="' + onclick + '" style="cursor:pointer;padding:22px 8px;border:2px solid var(--border);border-radius:14px;text-align:center;background:var(--surface);position:relative;user-select:none;transition:.1s" '
+  // badge: pri 100+ pokaži "99+" da ne razbije postavitve
+  let bhtml = '';
+  if (badge){
+    const n = parseInt(badge, 10);
+    const txt = (!isNaN(n) && n > 99) ? '99+' : String(badge);
+    bhtml = '<div class="sel-badge">' + txt + '</div>';
+  }
+  return '<div onclick="' + onclick + '" class="sel-cell" style="cursor:pointer;border:2px solid var(--border);border-radius:14px;text-align:center;background:var(--surface);position:relative;user-select:none;transition:.1s;overflow:hidden" '
     + 'onmouseover="this.style.borderColor=\'var(--accent)\';this.style.background=\'var(--surface2)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.background=\'var(--surface)\'" '
     + 'ontouchstart="this.style.background=\'var(--surface2)\'" ontouchend="this.style.background=\'var(--surface)\'">'
-    + '<div style="font-size:26px;font-weight:800;line-height:1.1">' + label + '</div>'
-    + (sub ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">' + sub + '</div>' : '')
-    + (badge ? '<div style="position:absolute;top:6px;right:8px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:#16a34a;color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center">' + badge + '</div>' : '')
+    + bhtml
+    + '<div class="sel-cell-num" style="font-weight:800;line-height:1.1">' + label + '</div>'
+    + (sub ? '<div class="sel-cell-sub" style="color:var(--text-tertiary);margin-top:3px">' + sub + '</div>' : '')
     + '</div>';
 }
 function selRenderGrid(){
   selRenderCrumb();
   const g = document.getElementById('selGrid');
   const entry = document.getElementById('selEntry');
+  const find = document.getElementById('selSkuFind');
   if (!g) return;
+  // iskalnik po SKU samo na najvišjem pogledu (vrste)
+  if (find) find.style.display = (!_selNav.vrsta) ? '' : 'none';
   if (!_selNav.vrsta){
     g.style.display = 'grid';
-    g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(88px,1fr))';
+    g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(130px,1fr))';
     g.innerHTML = SEL_VRSTE.map(v => selBigCell(v, "selPickVrsta('" + v + "')", 'vrsta', selCount(x => x.startsWith(v + '-')) || '')).join('');
     entry.style.display = 'none';
   } else if (!_selNav.regal){
     g.style.display = 'grid';
-    g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(120px,1fr))';
+    g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(160px,1fr))';
     g.innerHTML = SEL_REGALI.map(r => selBigCell('Regal ' + r, "selPickRegal('" + r + "')", '', selCount(x => x.startsWith(_selNav.vrsta + '-' + r)) || '')).join('');
     entry.style.display = 'none';
   } else if (!_selNav.polica){
     g.style.display = 'grid';
-    g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(120px,1fr))';
+    g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(150px,1fr))';
     g.innerHTML = SEL_POLICE.map(p => selBigCell(p, "selPickPolica('" + p + "')", _selNav.vrsta + '-' + _selNav.regal + p, selCount(x => x === (_selNav.vrsta + '-' + _selNav.regal + p)) || '')).join('');
     entry.style.display = 'none';
   } else {
@@ -27903,6 +27929,29 @@ function selNextPolica(){
     return;
   }
   _selNav = {vrsta: SEL_VRSTE[vi], regal: SEL_REGALI[ri], polica: SEL_POLICE[pi]};
+  selRenderGrid();
+}
+
+// ── iskanje: kje je SKU vpisan (v začasni zalogi) ──
+function selFindSku(){
+  const inp = document.getElementById('selFindInput'); const box = document.getElementById('selFindRes');
+  if (!inp || !box) return;
+  const q = (inp.value||'').trim().toUpperCase();
+  if (q.length < 2){ box.innerHTML=''; return; }
+  const hits = (_selData && _selData.entries ? _selData.entries : []).filter(e => (e.sku||'').toUpperCase().includes(q));
+  if (!hits.length){ box.innerHTML = '<div style="padding:8px 10px;font-size:13px;color:var(--text-tertiary)">Ni vpisov za »' + selEsc(q) + '«.</div>'; return; }
+  box.innerHTML = hits.slice(0,12).map(e =>
+    '<div onclick="selGotoPos(\'' + selEsc(e.position) + '\')" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;margin-bottom:4px;font-size:14px" ontouchstart="this.style.background=\'var(--surface2)\'">'
+    + '<span style="font-family:monospace;font-weight:800;color:var(--accent)">' + selEsc(e.position) + '</span>'
+    + '<b>' + selEsc(e.sku) + '</b><span style="color:var(--text-tertiary);font-size:12px">' + selEsc(e.title||'') + '</span>'
+    + '<span style="margin-left:auto;font-size:11px;color:var(--text-tertiary)">odpri →</span></div>').join('');
+}
+function selGotoPos(pos){
+  const m = String(pos||'').match(/^(\d{2})-([1-5])([A-F])$/);
+  if (!m) return;
+  _selNav = {vrsta:m[1], regal:m[2], polica:m[3]};
+  const inp = document.getElementById('selFindInput'); if (inp) inp.value='';
+  const box = document.getElementById('selFindRes'); if (box) box.innerHTML='';
   selRenderGrid();
 }
 
