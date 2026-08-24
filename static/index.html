@@ -873,7 +873,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">v1.0</div>
+      <div class="sidebar-logo-sub">v1.0 · build 24.08 selitev+</div>
     </div>
   </div>
 
@@ -1138,6 +1138,14 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
 
       <div id="homeSemBar" style="display:none"></div>
+
+      <div id="homeSelitevBtn" style="margin-bottom:20px">
+        <button onclick="switchPage('selitev')" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;color:var(--text);transition:.12s" onmouseover="this.style.borderColor='#f59e0b';this.style.background='var(--surface2)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+          <svg viewBox="0 0 24 24" style="width:17px;height:17px;stroke:#f59e0b;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+          Selitev
+          <span style="background:#f59e0b;color:#3d2600;font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px;letter-spacing:.5px">NOVO</span>
+        </button>
+      </div>
 
       <div style="margin-bottom:24px">
         <div class="home-section-label" id="homeFirstSection">Oglaševanje</div>
@@ -28111,24 +28119,57 @@ function selRenderPregled(){
       + '</tr>').join('') + '</table>';
   selRenderSent();
 }
+let _selSentRows = [];      // naložene vrstice (najnovejši prvi)
+let _selSentPrevTotal = 0;
+let _selSentTotal = 0;
+let _selSentLoaded = 0;     // koliko jih je že naloženih
+const SEL_SENT_PAGE = 50;
+function selSentRowHtml(x){
+  return '<tr style="border-top:1px solid var(--border)">'
+    + '<td style="padding:7px 8px;white-space:nowrap;font-family:monospace;font-size:11px;color:var(--text-tertiary)">' + selEsc(x.sent_ts||'') + '</td>'
+    + '<td style="padding:7px 8px;font-family:monospace;font-weight:700">' + selEsc(x.position||'') + '</td>'
+    + '<td style="padding:7px 8px;font-weight:700">' + selEsc(x.sku||'') + '</td>'
+    + '<td style="padding:7px 8px;text-align:center">' + (x.status==='ok' ? '<span style="color:#12a35f;font-weight:800">✓</span>' : '<span style="color:#0f8a4f">poslano</span>') + '</td>'
+    + '</tr>';
+}
 function selRenderSent(){
   const list = document.getElementById('selSentList');
   const cnt = document.getElementById('selSentCount');
-  const sent = (_selData && _selData.sent) ? _selData.sent : [];
-  const total = (_selData && _selData.sent_stevilo) ? _selData.sent_stevilo : sent.length;
-  if (cnt) cnt.textContent = total ? '· ' + total + ' prenesenih' : '';
+  // prvo stran vzamemo iz _selData (polling jo osvežuje), ostalo iz naloženih strani
+  const firstPage = (_selData && _selData.sent) ? _selData.sent : [];   // že najnovejši prvi
+  _selSentTotal = (_selData && _selData.sent_stevilo) ? _selData.sent_stevilo : firstPage.length;
+  // reset le ob prvem prikazu ALI ko total naraste (nov prenos) — sicer obdrži naloženo (gumb »več«)
+  const grew = _selSentTotal > _selSentPrevTotal;
+  if (!_selSentLoaded || grew){ _selSentRows = firstPage.slice(); _selSentLoaded = _selSentRows.length; }
+  _selSentPrevTotal = _selSentTotal;
+  if (cnt) cnt.textContent = _selSentTotal ? '· ' + _selSentTotal + ' prenesenih' : '';
   if (!list) return;
-  if (!sent.length){ list.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);padding:8px 0">Še nič ni bilo prenesenega.</div>'; return; }
-  // najnovejši zgoraj
-  const rows = sent.slice().reverse();
-  list.innerHTML = '<table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:520px">'
+  if (!_selSentRows.length){ list.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);padding:8px 0">Še nič ni bilo prenesenega.</div>'; return; }
+  let html = '<table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:520px">'
     + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Čas</th><th style="text-align:left;padding:6px 8px">Polica</th><th style="text-align:left;padding:6px 8px">SKU</th><th style="text-align:center;padding:6px 8px">Status</th></tr>'
-    + rows.map(x => '<tr style="border-top:1px solid var(--border)">'
-      + '<td style="padding:7px 8px;white-space:nowrap;font-family:monospace;font-size:11px;color:var(--text-tertiary)">' + selEsc(x.sent_ts||'') + '</td>'
-      + '<td style="padding:7px 8px;font-family:monospace;font-weight:700">' + selEsc(x.position||'') + '</td>'
-      + '<td style="padding:7px 8px;font-weight:700">' + selEsc(x.sku||'') + '</td>'
-      + '<td style="padding:7px 8px;text-align:center">' + (x.status==='ok' ? '<span style="color:#12a35f;font-weight:800">✓</span>' : '<span style="color:#0f8a4f">poslano</span>') + '</td>'
-      + '</tr>').join('') + '</table>';
+    + _selSentRows.map(selSentRowHtml).join('') + '</table>';
+  // gumb "Naloži več" če jih je še
+  if (_selSentLoaded < _selSentTotal){
+    const preostalo = _selSentTotal - _selSentLoaded;
+    html += '<div style="text-align:center;margin-top:10px"><button id="selSentMore" onclick="selSentLoadMore()" style="padding:10px 20px;background:transparent;border:1px solid var(--border);border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--accent)">↓ Naloži več (' + preostalo + ' preostalih)</button></div>';
+  } else if (_selSentTotal > SEL_SENT_PAGE){
+    html += '<div style="text-align:center;margin-top:8px;font-size:11px;color:var(--text-tertiary)">— prikazanih vseh ' + _selSentTotal + ' —</div>';
+  }
+  list.innerHTML = html;
+}
+async function selSentLoadMore(){
+  const btn = document.getElementById('selSentMore');
+  if (btn){ btn.disabled = true; btn.textContent = 'nalagam…'; }
+  try{
+    const r = await fetch('/selitev-sent?offset=' + _selSentLoaded + '&limit=' + SEL_SENT_PAGE);
+    const d = await r.json();
+    if (d.ok && d.sent){
+      _selSentRows = _selSentRows.concat(d.sent);
+      _selSentLoaded = _selSentRows.length;
+      _selSentTotal = d.skupaj;
+      selRenderSent();
+    } else if (btn){ btn.disabled=false; btn.textContent='↓ Naloži več'; }
+  }catch(e){ if(btn){ btn.disabled=false; btn.textContent='↓ Naloži več'; } }
 }
 async function selClearActive(){
   if (!confirm('Počistim AKTIVNE vpise (ki še niso preneseni)?\\n\\nZgodovina »Poslano« ostane. Ne vpliva na siluxar.')) return;
