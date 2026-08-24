@@ -808,6 +808,21 @@ input[type="text"].error { border-color: var(--red) !important; }
   .msk-cancel{flex:1;background:var(--surface2);border:none;border-radius:11px;padding:12px;font-size:14px;font-weight:800;color:var(--text-secondary);cursor:pointer;font-family:inherit;}
   .msk-save{flex:2;background:var(--accent);color:#fff;border:none;border-radius:11px;padding:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;}
   .msk-empty{text-align:center;color:var(--text-secondary);font-size:13px;padding:34px 10px;}
+  /* skupni komentar pod seznamom — enak na desktopu in mobilnem */
+  .msk-note{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin:14px 0 4px;}
+  .msk-note-lbl{font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary);
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .msk-note-ta{width:100%;margin-top:8px;min-height:64px;max-height:220px;resize:vertical;padding:10px 12px;
+    border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);
+    font-family:inherit;font-size:15px;line-height:1.45;box-sizing:border-box;}
+  .msk-note-ta:focus{outline:none;border-color:var(--accent);}
+  .msk-note-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;}
+  .msk-note-save{padding:10px 18px;background:var(--accent);color:#fff;border:none;border-radius:10px;
+    font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;}
+  .msk-note-save:disabled{opacity:.45;cursor:default;}
+  .msk-note-meta{font-size:11.5px;color:var(--text-tertiary);}
+  .msk-note-view{margin-top:6px;font-size:15px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}
+  @media(max-width:600px){ .msk-note-ta{font-size:16px;} .msk-note-save{width:100%;} }
   .bc-idbtn{margin-top:8px;width:100%;padding:6px 10px;background:transparent;border:1px dashed var(--border);border-radius:var(--radius);
     font-size:11px;font-weight:700;color:var(--text-secondary);cursor:pointer;font-family:inherit;}
   .bc-idbtn:hover{border-color:var(--accent);color:var(--accent);border-style:solid;}
@@ -4843,6 +4858,18 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div class="msk-tab" id="mskTab-car" onclick="mskSetFilter('car')">🔵 Carglass</div>
     </div>
     <div id="mskList"></div>
+
+    <div class="msk-note">
+      <div class="msk-note-lbl">💬 Opomba za nabiralce <span id="mskNoteMeta" class="msk-note-meta" style="text-transform:none;letter-spacing:0;font-weight:400"></span></div>
+      <textarea id="mskNote" class="msk-note-ta" maxlength="600" placeholder="Kratek komentar, ki ga vidijo vsi (npr. »Vse v modri paleti pri vratih«, »AG664D nujno prvo«)…"
+        oninput="mskNoteDirty()" onblur="mskNoteSave()"></textarea>
+      <div class="msk-note-row">
+        <button id="mskNoteBtn" class="msk-note-save" onclick="mskNoteSave()" disabled>💾 Shrani opombo</button>
+        <span id="mskNoteStatus" class="msk-note-meta"></span>
+        <span id="mskNoteCount" class="msk-note-meta" style="margin-left:auto">0 / 600</span>
+      </div>
+    </div>
+
     <div id="mskAddPanel" class="msk-addpanel" style="display:none">
       <div style="display:flex;gap:8px">
         <input id="mskSku" class="msk-in" placeholder="SKU (npr. BS-115)" style="flex:1;text-transform:uppercase">
@@ -27476,7 +27503,7 @@ async function mskLoad(){
   try {
     const r = await fetch('/medskl-list');
     const d = await r.json();
-    if (d && d.ok) { MSK = d.items || []; mskRender(); }
+    if (d && d.ok) { MSK = d.items || []; mskRender(); mskNoteApply(d.note || {text:'',ts:''}); }
   } catch(e) {}
 }
 function mskSetFilter(f){
@@ -27529,6 +27556,53 @@ function mskRender(){
       + '</div></div>';
   }).join('');
 }
+// ── skupni komentar ───────────────────────────────────────────────────────
+let _mskNote = {text:'', ts:''};
+let _mskNoteDirty = false;
+function mskNoteCount(){
+  const ta = document.getElementById('mskNote'), c = document.getElementById('mskNoteCount');
+  if (ta && c) c.textContent = (ta.value || '').length + ' / 600';
+}
+function mskNoteDirty(){
+  _mskNoteDirty = true;
+  const b = document.getElementById('mskNoteBtn'); if (b) b.disabled = false;
+  const s = document.getElementById('mskNoteStatus'); if (s) s.textContent = 'ni shranjeno';
+  mskNoteCount();
+}
+function mskNoteApply(note){
+  _mskNote = {text: (note.text || ''), ts: (note.ts || '')};
+  const ta = document.getElementById('mskNote');
+  const meta = document.getElementById('mskNoteMeta');
+  // med tipkanjem ne prepiši svojega besedila s strežniškim
+  if (ta && !_mskNoteDirty && document.activeElement !== ta) ta.value = _mskNote.text;
+  if (meta) meta.textContent = _mskNote.ts ? '· zapisano ' + _mskNote.ts : '';
+  mskNoteCount();
+}
+async function mskNoteSave(){
+  const ta = document.getElementById('mskNote'); if (!ta) return;
+  const txt = (ta.value || '').trim();
+  if (!_mskNoteDirty && txt === (_mskNote.text || '')) return;
+  const b = document.getElementById('mskNoteBtn'), s = document.getElementById('mskNoteStatus');
+  if (b) b.disabled = true;
+  if (s) s.textContent = 'shranjujem…';
+  try{
+    const r = await fetch('/medskl-note', {method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text: txt})});
+    const d = await r.json();
+    if (d && d.ok){
+      _mskNoteDirty = false;
+      mskNoteApply(d.note || {text:txt, ts:''});
+      if (s) s.textContent = '✓ shranjeno';
+      setTimeout(() => { if (s && s.textContent === '✓ shranjeno') s.textContent = ''; }, 2500);
+    } else {
+      if (s) s.textContent = '✗ ni shranjeno';
+      if (b) b.disabled = false;
+    }
+  }catch(e){
+    if (s) s.textContent = '✗ ' + e.message;
+    if (b) b.disabled = false;
+  }
+}
 async function mskSetStatus(id, st){
   const it = MSK.find(x => x.id === id); if (!it) return;
   const prevS = it.status || '', prevD = !!it.done;
@@ -27553,7 +27627,9 @@ async function mskDel(id){
 async function mskClear(){
   if (!confirm('Počistim CEL seznam medskladiščnice?\n\nTo naredi prazen seznam za nov prenos.')) return;
   try {
-    const r = await fetch('/medskl-clear', { method:'POST' });
+    const r = await fetch('/medskl-clear', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({}) });
+    _mskNoteDirty = false;
+    const _ta = document.getElementById('mskNote'); if (_ta) _ta.value = '';
     const d = await r.json();
     if (d && d.ok) { MSK = []; mskRender(); }
   } catch(e) { alert('⚠ Ni povezave'); }
