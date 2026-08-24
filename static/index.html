@@ -982,6 +982,12 @@ input[type="text"].error { border-color: var(--red) !important; }
     <span style="margin-left:auto;font-size:13px">📦</span>
   </div>
 
+  <div class="nav-item nav-selitev" id="nav-selitev" onclick="switchPage('selitev')">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+    Selitev
+    <span class="nav-badge" style="background:#f59e0b;color:#3d2600;margin-left:auto">NOVO</span>
+  </div>
+
   <div class="nav-item nav-xsell" id="nav-xsell" onclick="switchPage('xsell')">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
     Xsell
@@ -4199,7 +4205,6 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="zaloga-tab-btn" id="zalogaTab-inventura" onclick="switchZalogaTab('inventura')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Inventura</button>
       <button class="zaloga-tab-btn" id="zalogaTab-medskl" onclick="switchZalogaTab('medskl')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Medskladiščnica</button>
       <button class="zaloga-tab-btn" id="zalogaTab-siluxlog" onclick="switchZalogaTab('siluxlog')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">↗ Siluxar sync</button>
-      <button class="zaloga-tab-btn" id="zalogaTab-selitev" onclick="switchZalogaTab('selitev')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🚚 Selitev</button>
     </div>
 
     <!-- ═══ NOV MOBILNI TOPBAR (samo mobil): iskalnik + tabe-čipke v ENEM fiksnem bloku ═══ -->
@@ -4221,7 +4226,6 @@ input[type="text"].error { border-color: var(--red) !important; }
         <button class="zmt-chip" id="zmtChip-inventura" onclick="switchZalogaTab('inventura')">📋 Inventura</button>
         <button class="zmt-chip" id="zmtChip-medskl" onclick="switchZalogaTab('medskl')">🔄 Medskl.</button>
         <button class="zmt-chip" id="zmtChip-siluxlog" onclick="switchZalogaTab('siluxlog')">↗ Siluxar</button>
-        <button class="zmt-chip" id="zmtChip-selitev" onclick="switchZalogaTab('selitev')">🚚 Selitev</button>
       </div>
     </div>
 
@@ -4830,68 +4834,6 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
     </div>
 
-  <div id="zalogaSubpage-selitev" style="display:none;padding:12px 12px 130px;width:100%">
-    <div style="max-width:900px;margin:0 auto">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-        <div>
-          <div style="font-size:17px;font-weight:800">🚚 Selitev — vpis pozicij</div>
-          <div style="font-size:11.5px;color:var(--text-secondary);margin-top:1px">Začasna zaloga · nič ne gre v siluxar do potrditve prenosa</div>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button id="selTabVpis" onclick="selSwitch('vpis')" style="padding:10px 16px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">📍 Vpis</button>
-          <button id="selTabPregled" onclick="selSwitch('pregled')" style="padding:10px 16px;background:transparent;border:1px solid var(--border);border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;color:var(--text-secondary)">📋 Pregled <span id="selCount" style="opacity:.7"></span></button>
-        </div>
-      </div>
-
-      <!-- ── VPIS ── -->
-      <div id="selPaneVpis">
-        <!-- breadcrumb / pot -->
-        <div id="selCrumb" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 14px"></div>
-
-        <!-- velika mreža izbire (vrste / regali / police) -->
-        <div id="selGrid" style="display:grid;gap:12px;margin-bottom:16px"></div>
-
-        <!-- vpis SKU na izbrano pozicijo -->
-        <div id="selEntry" style="display:none">
-          <div class="card" style="border-left:5px solid var(--accent);margin-bottom:12px;padding:16px">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-              <div style="font-size:13px;font-weight:700;color:var(--text-secondary)">Polica</div>
-              <div id="selPosBadge" style="padding:6px 16px;border-radius:10px;background:var(--accent);color:#fff;font-family:monospace;font-size:22px;font-weight:800">—</div>
-              <button onclick="selBackToPolice()" style="margin-left:auto;padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit;color:var(--text-secondary)">← nazaj</button>
-            </div>
-            <input id="selSkuInput" type="text" autocomplete="off" inputmode="text" placeholder="Vpiši ali skeniraj SKU + Enter…"
-              oninput="selSkuSuggest()" onkeydown="if(event.key==='Enter'){event.preventDefault();selAddSku();}"
-              style="width:100%;padding:15px 16px;border:2px solid var(--accent);border-radius:12px;background:var(--surface2);color:var(--text);font-family:inherit;font-size:18px;box-sizing:border-box">
-            <div id="selSug" style="margin-top:8px"></div>
-            <div id="selOnPos" style="margin-top:12px"></div>
-            <button onclick="selNextPolica()" style="width:100%;margin-top:14px;padding:15px;background:#16a34a;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit">Pelji me na naslednjo polico →</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── PREGLED ── -->
-      <div id="selPanePregled" style="display:none">
-        <div id="selWarnings" style="margin:10px 0"></div>
-        <div class="card">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-            <div style="font-size:13px;font-weight:800">📋 Vse vpisane pozicije <span id="selPregCount" style="font-weight:600;color:var(--text-tertiary)"></span></div>
-            <div style="display:flex;gap:8px">
-              <button onclick="selReload()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-secondary)">🔄 Osveži</button>
-              <button onclick="selClearAll()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:#e5484d">🗑 Počisti vse</button>
-            </div>
-          </div>
-          <div id="selPregList" style="overflow-x:auto"></div>
-        </div>
-        <div class="card" style="margin-top:12px;border-left:5px solid #16a34a">
-          <div style="font-size:13px;font-weight:800;margin-bottom:4px">✅ Prenos v aktivno zalogo + siluxar</div>
-          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Ko je vse pregledano, prenesi vse naenkrat. Varna pot (prava kartica po skladišču, nikoli prazna pozicija).</div>
-          <button id="selTransferBtn" onclick="selTransfer()" style="padding:13px 22px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">↗ Prenesi vse v aktivno zalogo</button>
-          <span id="selTransferStatus" style="margin-left:10px;font-size:12.5px;color:var(--text-secondary)"></span>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <div id="zalogaSubpage-siluxlog" style="display:none;padding:14px 14px 110px;width:100%">
     <div style="max-width:1100px;margin:0 auto">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:4px">
@@ -4969,6 +4911,71 @@ input[type="text"].error { border-color: var(--red) !important; }
   <!-- ═══════════════════════════════════════════════════════════════════════
        XSELL — Cross-sell suggestion engine
        ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="page" id="page-selitev">
+    <div style="padding:14px 16px 130px;width:100%">
+  
+    <div style="width:100%;max-width:1600px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <div>
+          <div style="font-size:17px;font-weight:800">🚚 Selitev — vpis pozicij</div>
+          <div style="font-size:11.5px;color:var(--text-secondary);margin-top:1px">Začasna zaloga · nič ne gre v siluxar do potrditve prenosa</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button id="selTabVpis" onclick="selSwitch('vpis')" style="padding:10px 16px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">📍 Vpis</button>
+          <button id="selTabPregled" onclick="selSwitch('pregled')" style="padding:10px 16px;background:transparent;border:1px solid var(--border);border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;color:var(--text-secondary)">📋 Pregled <span id="selCount" style="opacity:.7"></span></button>
+        </div>
+      </div>
+
+      <!-- ── VPIS ── -->
+      <div id="selPaneVpis">
+        <!-- breadcrumb / pot -->
+        <div id="selCrumb" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 14px"></div>
+
+        <!-- velika mreža izbire (vrste / regali / police) -->
+        <div id="selGrid" style="display:grid;gap:12px;margin-bottom:16px"></div>
+
+        <!-- vpis SKU na izbrano pozicijo -->
+        <div id="selEntry" style="display:none">
+          <div class="card" style="border-left:5px solid var(--accent);margin-bottom:12px;padding:16px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+              <div style="font-size:13px;font-weight:700;color:var(--text-secondary)">Polica</div>
+              <div id="selPosBadge" style="padding:6px 16px;border-radius:10px;background:var(--accent);color:#fff;font-family:monospace;font-size:22px;font-weight:800">—</div>
+              <button onclick="selBackToPolice()" style="margin-left:auto;padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit;color:var(--text-secondary)">← nazaj</button>
+            </div>
+            <input id="selSkuInput" type="text" autocomplete="off" inputmode="text" placeholder="Vpiši ali skeniraj SKU + Enter…"
+              oninput="selSkuSuggest()" onkeydown="if(event.key==='Enter'){event.preventDefault();selAddSku();}"
+              style="width:100%;padding:15px 16px;border:2px solid var(--accent);border-radius:12px;background:var(--surface2);color:var(--text);font-family:inherit;font-size:18px;box-sizing:border-box">
+            <div id="selSug" style="margin-top:8px"></div>
+            <div id="selOnPos" style="margin-top:12px"></div>
+            <button onclick="selNextPolica()" style="width:100%;margin-top:14px;padding:15px;background:#16a34a;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit">Pelji me na naslednjo polico →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PREGLED ── -->
+      <div id="selPanePregled" style="display:none">
+        <div id="selWarnings" style="margin:10px 0"></div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:800">📋 Vse vpisane pozicije <span id="selPregCount" style="font-weight:600;color:var(--text-tertiary)"></span></div>
+            <div style="display:flex;gap:8px">
+              <button onclick="selReload()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-secondary)">🔄 Osveži</button>
+              <button onclick="selClearAll()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:#e5484d">🗑 Počisti vse</button>
+            </div>
+          </div>
+          <div id="selPregList" style="overflow-x:auto"></div>
+        </div>
+        <div class="card" style="margin-top:12px;border-left:5px solid #16a34a">
+          <div style="font-size:13px;font-weight:800;margin-bottom:4px">✅ Prenos v aktivno zalogo + siluxar</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Ko je vse pregledano, prenesi vse naenkrat. Varna pot (prava kartica po skladišču, nikoli prazna pozicija).</div>
+          <button id="selTransferBtn" onclick="selTransfer()" style="padding:13px 22px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">↗ Prenesi vse v aktivno zalogo</button>
+          <span id="selTransferStatus" style="margin-left:10px;font-size:12.5px;color:var(--text-secondary)"></span>
+        </div>
+      </div>
+    </div>
+      </div>
+  </div>
+
   <div class="page" id="page-xsell">
     <div style="max-width:1500px;width:100%;margin:0;padding:14px">
 
@@ -5645,7 +5652,7 @@ function closeMenu(){
   document.querySelector('.sidebar').classList.remove('open');
   document.getElementById('overlay').classList.remove('open');
 }
-const PAGES = ['home','meta','tiktok','calc','forecast','kreative','lokalizacija','prodgen','narocilnice','videoads','orodja','analiza','knjigovodstvo','zaloga','xsell','sporocanje','odprema','storage','prevzemi'];
+const PAGES = ['home','meta','tiktok','calc','forecast','kreative','lokalizacija','prodgen','narocilnice','videoads','orodja','analiza','knjigovodstvo','zaloga','selitev','xsell','sporocanje','odprema','storage','prevzemi'];
 let currentIdx = 0;
 
 function switchCalcTab(tab) {
@@ -5680,7 +5687,7 @@ function switchPage(page) {
   // Wide layout
   const mainEl = document.querySelector('.main');
   if(mainEl) {
-    if(page==='forecast' || page==='calc' || page==='tiktok' || page==='kreative' || page==='lokalizacija' || page==='narocilnice' || page==='videoads' || page==='orodja' || page==='analiza' || page==='knjigovodstvo' || page==='zaloga' || page==='odprema' || page==='sporocanje' || page==='storage' || page==='prevzemi' || page==='prodgen') {
+    if(page==='forecast' || page==='calc' || page==='tiktok' || page==='kreative' || page==='lokalizacija' || page==='narocilnice' || page==='videoads' || page==='orodja' || page==='analiza' || page==='knjigovodstvo' || page==='zaloga' || page==='selitev' || page==='odprema' || page==='sporocanje' || page==='storage' || page==='prevzemi' || page==='prodgen') {
       mainEl.classList.add('wide');
     } else if(page==='meta') {
       const formVisible = document.getElementById('metaFormSection').style.display !== 'none';
@@ -5712,6 +5719,7 @@ function switchPage(page) {
   }
   if (page === 'tiktok') { ttLoadSkus(); }
   if (page === 'zaloga') { zalogaLoad(); zalogaSyncDailyAuto(); }
+  if (page === 'selitev') { if(typeof selInit==='function') selInit(); }
   if (page === 'xsell') { if(typeof xsellInit==='function') xsellInit(); }
   if (page === 'sporocanje') { if(typeof spLoadCommon==='function') spLoadCommon(); if(typeof spLoadMacros==='function') spLoadMacros(); }
   if (page === 'knjigovodstvo') { if(typeof knjLoadHistory==='function') knjLoadHistory(); }
@@ -27734,7 +27742,7 @@ function switchZalogaTab(tab) {
   // medskladiščnica: naloži/ustavi osveževanje
   if (tab === 'medskl') { mskLoad(); if (!window._mskPoll) window._mskPoll = setInterval(mskLoad, 20000); }
   else if (window._mskPoll) { clearInterval(window._mskPoll); window._mskPoll = null; }
-  ['zaloga', 'vracila', 'skeniranje', 'pozicije', 'sekundarne', 'inventura', 'medskl', 'siluxlog', 'selitev'].forEach(t => {
+  ['zaloga', 'vracila', 'skeniranje', 'pozicije', 'sekundarne', 'inventura', 'medskl', 'siluxlog'].forEach(t => {
     const btn = document.getElementById('zalogaTab-' + t);
     const sub = document.getElementById('zalogaSubpage-' + t);
     if (t === tab) {
@@ -27767,8 +27775,6 @@ function switchZalogaTab(tab) {
     if (typeof zalogaLoad === 'function' && (!_zalogaData || !_zalogaData.length)) zalogaLoad();
   } else if (tab === 'siluxlog') {
     siluxLogInit();
-  } else if (tab === 'selitev') {
-    selInit();
   }
 }
 
@@ -27824,7 +27830,7 @@ function selBigCell(label, onclick, sub, badge){
     + 'ontouchstart="this.style.background=\'var(--surface2)\'" ontouchend="this.style.background=\'var(--surface)\'">'
     + '<div style="font-size:26px;font-weight:800;line-height:1.1">' + label + '</div>'
     + (sub ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">' + sub + '</div>' : '')
-    + (badge ? '<div style="position:absolute;top:6px;right:8px;font-size:11px;font-weight:800;color:#16a34a">' + badge + '</div>' : '')
+    + (badge ? '<div style="position:absolute;top:6px;right:8px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:#16a34a;color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center">' + badge + '</div>' : '')
     + '</div>';
 }
 function selRenderGrid(){
@@ -27939,10 +27945,19 @@ function selRenderOnPos(){
   box.innerHTML = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px">Na tej polici (' + here.length + ')</div>'
     + here.map(e => '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border);font-size:15px">'
       + '<b>' + selEsc(e.sku) + '</b><span style="color:var(--text-tertiary);font-size:13px">' + selEsc(e.title||'') + '</span>'
-      + '<button onclick="selRemove(\'' + selEsc(e.sku) + '\',\'' + selEsc(pos) + '\')" style="margin-left:auto;background:transparent;border:none;cursor:pointer;color:#e5484d;font-size:20px;padding:0 6px" title="odstrani">×</button></div>').join('');
+      + '<button onclick="selRemove(\'' + selEsc(e.sku) + '\',\'' + selEsc(pos) + '\')" style="margin-left:auto;background:transparent;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:#e5484d;font-size:12px;font-weight:700;padding:6px 12px" title="odstrani vpis">🗑 Odstrani</button></div>').join('');
 }
 async function selRemove(sku, pos){
-  try{ await fetch('/selitev-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku,position:pos})}); }catch(e){}
+  // TRDNA VAROVALKA: brisanje pozicije zahteva izrecno potrditev (dvojni klik po pomoti = izguba)
+  if (!confirm('Odstranim vpis?\n\nSKU: ' + sku + '\nPolica: ' + pos + '\n\nTo pobriše ta vpis iz začasne zaloge.')) return;
+  try{
+    const r = await fetch('/selitev-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku,position:pos})});
+    const d = await r.json();
+    if (!d || !d.ok || !d.odstranjeno){
+      // če ni nič odstranil, ne delaj tihe škode — obvesti
+      if (d && d.ok && !d.odstranjeno){ /* nič ni bilo za odstranit */ }
+    }
+  }catch(e){ alert('Napaka pri brisanju: ' + e.message); return; }
   await selReload(); selRenderOnPos(); selRenderGrid();
 }
 
@@ -27978,7 +27993,7 @@ function selRenderPregled(){
       + '<td style="padding:8px;font-weight:700">' + selEsc(x.sku) + (x.known===false?' <span style="color:#e5484d" title="ni v zalogi">?</span>':'') + '</td>'
       + '<td style="padding:8px;color:var(--text-secondary)">' + selEsc(x.title||'') + '</td>'
       + '<td style="padding:8px;color:var(--text-tertiary);font-family:monospace">' + selEsc(x.old_position||'—') + '</td>'
-      + '<td style="padding:8px;text-align:right"><button onclick="selRemove(\'' + selEsc(x.sku) + '\',\'' + selEsc(x.position) + '\')" style="background:transparent;border:none;cursor:pointer;color:#e5484d;font-size:18px">×</button></td>'
+      + '<td style="padding:8px;text-align:right"><button onclick="selRemove(\'' + selEsc(x.sku) + '\',\'' + selEsc(x.position) + '\')" style="background:transparent;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:#e5484d;font-size:12px;font-weight:700;padding:5px 10px">🗑</button></td>'
       + '</tr>').join('') + '</table>';
 }
 async function selClearAll(){
