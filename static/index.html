@@ -808,21 +808,6 @@ input[type="text"].error { border-color: var(--red) !important; }
   .msk-cancel{flex:1;background:var(--surface2);border:none;border-radius:11px;padding:12px;font-size:14px;font-weight:800;color:var(--text-secondary);cursor:pointer;font-family:inherit;}
   .msk-save{flex:2;background:var(--accent);color:#fff;border:none;border-radius:11px;padding:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;}
   .msk-empty{text-align:center;color:var(--text-secondary);font-size:13px;padding:34px 10px;}
-  /* skupni komentar pod seznamom — enak na desktopu in mobilnem */
-  .msk-note{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin:14px 0 4px;}
-  .msk-note-lbl{font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary);
-    display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-  .msk-note-ta{width:100%;margin-top:8px;min-height:120px;max-height:60vh;resize:vertical;overflow-y:auto;padding:11px 13px;
-    border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);
-    font-family:inherit;font-size:15px;line-height:1.5;box-sizing:border-box;}
-  .msk-note-ta:focus{outline:none;border-color:var(--accent);}
-  .msk-note-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;}
-  .msk-note-save{padding:10px 18px;background:var(--accent);color:#fff;border:none;border-radius:10px;
-    font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;}
-  .msk-note-save:disabled{opacity:.45;cursor:default;}
-  .msk-note-meta{font-size:11.5px;color:var(--text-tertiary);}
-  .msk-note-view{margin-top:6px;font-size:15px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}
-  @media(max-width:600px){ .msk-note-ta{font-size:16px;} .msk-note-save{width:100%;} }
   .bc-idbtn{margin-top:8px;width:100%;padding:6px 10px;background:transparent;border:1px dashed var(--border);border-radius:var(--radius);
     font-size:11px;font-weight:700;color:var(--text-secondary);cursor:pointer;font-family:inherit;}
   .bc-idbtn:hover{border-color:var(--accent);color:var(--accent);border-style:solid;}
@@ -4858,18 +4843,6 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div class="msk-tab" id="mskTab-car" onclick="mskSetFilter('car')">🔵 Carglass</div>
     </div>
     <div id="mskList"></div>
-
-    <div class="msk-note">
-      <div class="msk-note-lbl">💬 Opomba za nabiralce <span id="mskNoteMeta" class="msk-note-meta" style="text-transform:none;letter-spacing:0;font-weight:400"></span></div>
-      <textarea id="mskNote" class="msk-note-ta" maxlength="600" placeholder="Kratek komentar, ki ga vidijo vsi (npr. »Vse v modri paleti pri vratih«, »AG664D nujno prvo«)…"
-        oninput="mskNoteDirty()" onblur="mskNoteSave()"></textarea>
-      <div class="msk-note-row">
-        <button id="mskNoteBtn" class="msk-note-save" onclick="mskNoteSave()" disabled>💾 Shrani opombo</button>
-        <span id="mskNoteStatus" class="msk-note-meta"></span>
-        <span id="mskNoteCount" class="msk-note-meta" style="margin-left:auto">0 / 600</span>
-      </div>
-    </div>
-
     <div id="mskAddPanel" class="msk-addpanel" style="display:none">
       <div style="display:flex;gap:8px">
         <input id="mskSku" class="msk-in" placeholder="SKU (npr. BS-115)" style="flex:1;text-transform:uppercase">
@@ -19363,18 +19336,48 @@ async function zalogaPushPositions(btn) {
     .map(it => ({ sku: (it.product_sku||it.sku||'').trim(), position: (it.position||'').trim() }))
     .filter(x => x.sku);
   if (!items.length) { alert('Ni spremenjenih pozicij za pošiljanje.'); _pozChanged.clear(); _updatePushBtnCount(); return; }
-  if (!confirm(`Pošljem ${items.length} SPREMENJENIH pozicij v siluxar?`)) return;
+
+  // VARNOST: prazne pozicije NE pošljemo (siluxar bi jih razumel kot izbris zaloge).
+  const prazne = items.filter(x => !x.position);
+  const veljavne = items.filter(x => x.position);
+  if (!veljavne.length) {
+    alert('Vse spremenjene postavke imajo PRAZNO pozicijo — pošiljanje ustavljeno.\n\n' +
+          'Prazna pozicija bi v siluxarju izbrisala zalogo. Najprej vpiši pozicije.');
+    return;
+  }
+  let potrdilo = `Pošljem ${veljavne.length} pozicij v siluxar?`;
+  if (prazne.length) {
+    potrdilo += `\n\n⚠ ${prazne.length} postavk ima prazno pozicijo in bo PRESKOČENIH (${prazne.slice(0,8).map(x=>x.sku).join(', ')}${prazne.length>8?'…':''}).`;
+  }
+  if (veljavne.length > 25) {
+    potrdilo += `\n\n⚠ To je veliko pozicij naenkrat (${veljavne.length}). Če je namen selitev skladišča, potrdi.`;
+  }
+  if (!confirm(potrdilo)) return;
+  // pošlji samo veljavne + confirm_bulk, če jih je veliko
+  const payloadItems = veljavne;
+  const bulkConfirm = veljavne.length > 25;
   const status = document.getElementById('zalogaStatus');
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span>⏳</span><span>Pošiljam...</span>'; }
   if (status) { status.style.display='block'; status.style.color='var(--text-secondary)'; status.textContent=`⏳ Pošiljam ${items.length} sprememb v siluxar...`; }
   try {
-    const res = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ items }) });
+    const res = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ items: payloadItems, confirm_bulk: bulkConfirm }) });
     const d = await res.json();
     if (d.ok) {
-      if (status) { status.style.color='var(--green)'; status.textContent=`✓ Poslano ${d.poslano} sprememb v siluxar (status ${d.status}).`; }
-      _pozChanged.clear();   // uspešno → počisti čakalno vrsto
+      let msg = `✓ Poslano ${d.poslano} pozicij v siluxar (status ${d.status}).`;
+      if (d.preskoceno) msg += ` Preskočenih ${d.preskoceno}.`;
+      if (status) { status.style.color='var(--green)'; status.textContent = msg; }
+      // počisti iz čakalne vrste samo dejansko poslane
+      payloadItems.forEach(x => _pozChanged.delete(x.sku));
       _updatePushBtnCount();
+    } else if (d.needs_confirm) {
+      // strežnik zahteva izrecno potrditev množičnega pošiljanja
+      if (confirm(`Strežnik opozarja: pošiljaš ${d.pozicij} pozicij naenkrat.\n\nSi prepričan? (selitev = da)`)) {
+        const res2 = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ items: payloadItems, confirm_bulk: true }) });
+        const d2 = await res2.json();
+        if (d2.ok) { if (status){ status.style.color='var(--green)'; status.textContent=`✓ Poslano ${d2.poslano} pozicij (status ${d2.status}).`; } payloadItems.forEach(x=>_pozChanged.delete(x.sku)); _updatePushBtnCount(); }
+        else if (status) { status.style.color='var(--red)'; status.textContent='⚠ ' + (d2.error||'napaka'); }
+      }
     } else {
       if (status) { status.style.color='var(--red)'; status.textContent='⚠ siluxar: ' + (d.error || 'napaka') + (d.poslano ? ` (poskus ${d.poslano})` : ''); }
     }
@@ -27320,21 +27323,26 @@ async function pozQuickSave() {
       }
       if (typeof zalogaRender === 'function') zalogaRender();
       _pozChanged.add(_pozQuickSku);   // označi kot spremenjeno (za masovni push)
-      // BETA: pošlji pozicijo tudi v siluxar (dodatno — če pade, ne blokira lokalnega shranjevanja)
-      try {
-        const sr = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _pozQuickSku, position: pos }) });
-        const sd = await sr.json();
-        if (sd.ok) {
-          st.innerHTML += '<br><span style="color:#16a34a;font-size:11px">↗ poslano v siluxar</span>';
-          _pozChanged.delete(_pozQuickSku);   // uspešno poslano → ni več "čaka na pošiljanje"
-        } else {
-          st.innerHTML += '<br><span style="color:#d97706;font-size:11px">⚠ siluxar: ' + pozEsc(sd.error||'ni odgovora') + ' (ostane v čakalni vrsti)</span>';
+      // Samodejni push v siluxar SAMO če je pozicija NEPRAZNA.
+      // Prazno pozicijo siluxar razume kot izbris → NIKOLI je ne pošljemo.
+      if (pos) {
+        try {
+          const sr = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _pozQuickSku, position: pos }) });
+          const sd = await sr.json();
+          if (sd.ok && sd.poslano > 0) {
+            st.innerHTML += '<br><span style="color:#16a34a;font-size:11px">↗ takoj poslano v siluxar ✓</span>';
+            _pozChanged.delete(_pozQuickSku);   // uspešno poslano → ni več v čakalni vrsti
+          } else {
+            st.innerHTML += '<br><span style="color:#d97706;font-size:11px">⚠ siluxar: ' + pozEsc(sd.error||'ni sprejel') + ' (ostane v čakalni vrsti)</span>';
+          }
+        } catch(e) {
+          st.innerHTML += '<br><span style="color:#d97706;font-size:11px">⚠ siluxar nedosegljiv (ostane v čakalni vrsti, pošlješ kasneje)</span>';
         }
-      } catch(e) {
-        st.innerHTML += '<br><span style="color:#d97706;font-size:11px">⚠ siluxar nedosegljiv (ostane v čakalni vrsti)</span>';
+      } else {
+        st.innerHTML += '<br><span style="color:var(--text-tertiary);font-size:11px">pozicija prazna — v siluxar NI poslano (varovalka)</span>';
       }
       _updatePushBtnCount();
-      setTimeout(pozQuickClose, 1400);
+      setTimeout(pozQuickClose, 1600);
     } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
 }
@@ -27503,7 +27511,7 @@ async function mskLoad(){
   try {
     const r = await fetch('/medskl-list');
     const d = await r.json();
-    if (d && d.ok) { MSK = d.items || []; mskRender(); mskNoteApply(d.note || {text:'',ts:''}); }
+    if (d && d.ok) { MSK = d.items || []; mskRender(); }
   } catch(e) {}
 }
 function mskSetFilter(f){
@@ -27556,60 +27564,6 @@ function mskRender(){
       + '</div></div>';
   }).join('');
 }
-// ── skupni komentar ───────────────────────────────────────────────────────
-let _mskNote = {text:'', ts:''};
-let _mskNoteDirty = false;
-function mskNoteCount(){
-  const ta = document.getElementById('mskNote'), c = document.getElementById('mskNoteCount');
-  if (ta && c) c.textContent = (ta.value || '').length + ' / 600';
-}
-function mskNoteAutoGrow(){
-  const ta = document.getElementById('mskNote'); if (!ta) return;
-  ta.style.height = 'auto';                                   // najprej sprosti
-  ta.style.height = Math.min(ta.scrollHeight + 2, window.innerHeight * 0.6) + 'px';
-}
-function mskNoteDirty(){
-  _mskNoteDirty = true;
-  mskNoteAutoGrow();
-  const b = document.getElementById('mskNoteBtn'); if (b) b.disabled = false;
-  const s = document.getElementById('mskNoteStatus'); if (s) s.textContent = 'ni shranjeno';
-  mskNoteCount();
-}
-function mskNoteApply(note){
-  _mskNote = {text: (note.text || ''), ts: (note.ts || '')};
-  const ta = document.getElementById('mskNote');
-  const meta = document.getElementById('mskNoteMeta');
-  // med tipkanjem ne prepiši svojega besedila s strežniškim
-  if (ta && !_mskNoteDirty && document.activeElement !== ta) ta.value = _mskNote.text;
-  if (meta) meta.textContent = _mskNote.ts ? '· zapisano ' + _mskNote.ts : '';
-  mskNoteCount();
-  mskNoteAutoGrow();
-}
-async function mskNoteSave(){
-  const ta = document.getElementById('mskNote'); if (!ta) return;
-  const txt = (ta.value || '').trim();
-  if (!_mskNoteDirty && txt === (_mskNote.text || '')) return;
-  const b = document.getElementById('mskNoteBtn'), s = document.getElementById('mskNoteStatus');
-  if (b) b.disabled = true;
-  if (s) s.textContent = 'shranjujem…';
-  try{
-    const r = await fetch('/medskl-note', {method:'POST',headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({text: txt})});
-    const d = await r.json();
-    if (d && d.ok){
-      _mskNoteDirty = false;
-      mskNoteApply(d.note || {text:txt, ts:''});
-      if (s) s.textContent = '✓ shranjeno';
-      setTimeout(() => { if (s && s.textContent === '✓ shranjeno') s.textContent = ''; }, 2500);
-    } else {
-      if (s) s.textContent = '✗ ni shranjeno';
-      if (b) b.disabled = false;
-    }
-  }catch(e){
-    if (s) s.textContent = '✗ ' + e.message;
-    if (b) b.disabled = false;
-  }
-}
 async function mskSetStatus(id, st){
   const it = MSK.find(x => x.id === id); if (!it) return;
   const prevS = it.status || '', prevD = !!it.done;
@@ -27634,9 +27588,7 @@ async function mskDel(id){
 async function mskClear(){
   if (!confirm('Počistim CEL seznam medskladiščnice?\n\nTo naredi prazen seznam za nov prenos.')) return;
   try {
-    const r = await fetch('/medskl-clear', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({}) });
-    _mskNoteDirty = false;
-    const _ta = document.getElementById('mskNote'); if (_ta) _ta.value = '';
+    const r = await fetch('/medskl-clear', { method:'POST' });
     const d = await r.json();
     if (d && d.ok) { MSK = []; mskRender(); }
   } catch(e) { alert('⚠ Ni povezave'); }
