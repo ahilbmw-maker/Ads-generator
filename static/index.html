@@ -4198,6 +4198,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="zaloga-tab-btn" id="zalogaTab-sekundarne" onclick="switchZalogaTab('sekundarne')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🗂️ Sekundarne pozicije</button>
       <button class="zaloga-tab-btn" id="zalogaTab-inventura" onclick="switchZalogaTab('inventura')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Inventura</button>
       <button class="zaloga-tab-btn" id="zalogaTab-medskl" onclick="switchZalogaTab('medskl')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Medskladiščnica</button>
+      <button class="zaloga-tab-btn" id="zalogaTab-siluxlog" onclick="switchZalogaTab('siluxlog')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">↗ Siluxar sync</button>
     </div>
 
     <!-- ═══ NOV MOBILNI TOPBAR (samo mobil): iskalnik + tabe-čipke v ENEM fiksnem bloku ═══ -->
@@ -4218,6 +4219,7 @@ input[type="text"].error { border-color: var(--red) !important; }
         <button class="zmt-chip" id="zmtChip-sekundarne" onclick="switchZalogaTab('sekundarne')">🗂️ Sekundarne</button>
         <button class="zmt-chip" id="zmtChip-inventura" onclick="switchZalogaTab('inventura')">📋 Inventura</button>
         <button class="zmt-chip" id="zmtChip-medskl" onclick="switchZalogaTab('medskl')">🔄 Medskl.</button>
+        <button class="zmt-chip" id="zmtChip-siluxlog" onclick="switchZalogaTab('siluxlog')">↗ Siluxar</button>
       </div>
     </div>
 
@@ -4825,6 +4827,40 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </div>
     </div>
+
+  <div id="zalogaSubpage-siluxlog" style="display:none;padding:14px 14px 110px;width:100%">
+    <div style="max-width:1100px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+        <div>
+          <div style="font-size:16px;font-weight:800">↗ Siluxar sinhronizacija pozicij</div>
+          <div style="font-size:11.5px;color:var(--text-secondary);margin-top:1px">Čakajoči na pošiljanje in zgodovina zapisov v siluxar</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="siluxLogInit()" style="padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-secondary)">🔄 Osveži</button>
+        </div>
+      </div>
+
+      <!-- ČAKAJOČI -->
+      <div class="card" style="margin:12px 0;border-left:4px solid #d97706">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div style="font-size:13px;font-weight:800">⏳ Čakajo na pošiljanje <span id="slxWaitCount" style="font-weight:600;color:var(--text-tertiary)"></span></div>
+          <div style="display:flex;gap:8px">
+            <button id="slxWaitPush" onclick="zalogaPushPositions(this)" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">↗ Pošlji vse čakajoče</button>
+          </div>
+        </div>
+        <div id="slxWaitList" style="margin-top:10px"></div>
+      </div>
+
+      <!-- ZGODOVINA -->
+      <div class="card" style="margin:12px 0">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+          <div style="font-size:13px;font-weight:800">📜 Zgodovina pošiljanj <span id="slxLogStat" style="font-weight:600;color:var(--text-tertiary)"></span></div>
+          <button onclick="siluxLogClear()" style="padding:6px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-tertiary)">🗑 Počisti dnevnik</button>
+        </div>
+        <div id="slxLogList" style="overflow-x:auto"></div>
+      </div>
+    </div>
+  </div>
 
   <div id="zalogaSubpage-medskl" style="display:none;padding:14px 14px 110px;width:100%">
     <div class="msk-head">
@@ -27630,7 +27666,7 @@ function switchZalogaTab(tab) {
   // medskladiščnica: naloži/ustavi osveževanje
   if (tab === 'medskl') { mskLoad(); if (!window._mskPoll) window._mskPoll = setInterval(mskLoad, 20000); }
   else if (window._mskPoll) { clearInterval(window._mskPoll); window._mskPoll = null; }
-  ['zaloga', 'vracila', 'skeniranje', 'pozicije', 'sekundarne', 'inventura', 'medskl'].forEach(t => {
+  ['zaloga', 'vracila', 'skeniranje', 'pozicije', 'sekundarne', 'inventura', 'medskl', 'siluxlog'].forEach(t => {
     const btn = document.getElementById('zalogaTab-' + t);
     const sub = document.getElementById('zalogaSubpage-' + t);
     if (t === tab) {
@@ -27661,7 +27697,79 @@ function switchZalogaTab(tab) {
     if (typeof invLoadCurrent === 'function') invLoadCurrent();
     // zagotovi, da je zaloga naložena (za iskanje pozicije pri tekstovnem vnosu SKU)
     if (typeof zalogaLoad === 'function' && (!_zalogaData || !_zalogaData.length)) zalogaLoad();
+  } else if (tab === 'siluxlog') {
+    siluxLogInit();
   }
+}
+
+// ═══ SILUXAR SYNC: čakajoči + zgodovina pošiljanj ═══
+async function siluxLogInit(){
+  siluxRenderWaiting();
+  await siluxLoadLog();
+}
+function siluxRenderWaiting(){
+  const box = document.getElementById('slxWaitList');
+  const cnt = document.getElementById('slxWaitCount');
+  const btn = document.getElementById('slxWaitPush');
+  if (!box) return;
+  const skus = Array.from((typeof _pozChanged !== 'undefined' && _pozChanged) ? _pozChanged : []);
+  if (cnt) cnt.textContent = '(' + skus.length + ')';
+  if (btn) btn.disabled = skus.length === 0;
+  if (!skus.length){
+    box.innerHTML = '<div style="font-size:12.5px;color:var(--text-secondary);padding:6px 0">Nič ne čaka — vse spremenjene pozicije so že poslane v siluxar. ✓</div>';
+    return;
+  }
+  const rows = skus.map(sku => {
+    const it = (typeof _zalogaData !== 'undefined' ? _zalogaData : []).find(x => (x.product_sku||x.sku) === sku) || {};
+    const pos = (it.position||'').trim();
+    const empty = !pos;
+    return '<tr style="border-top:1px solid var(--border)">'
+      + '<td style="padding:6px 8px;font-weight:700">' + siluxEsc(sku) + '</td>'
+      + '<td style="padding:6px 8px">' + (empty ? '<span style="color:#e5484d">⚠ prazna — ne bo poslana</span>' : '📍 ' + siluxEsc(pos)) + '</td>'
+      + '<td style="padding:6px 8px;color:var(--text-tertiary)">' + siluxEsc(it.warehouse||'') + '</td>'
+      + '</tr>';
+  }).join('');
+  const nEmpty = skus.filter(sku => {
+    const it = (typeof _zalogaData !== 'undefined' ? _zalogaData : []).find(x => (x.product_sku||x.sku) === sku) || {};
+    return !((it.position||'').trim());
+  }).length;
+  box.innerHTML = '<table style="border-collapse:collapse;width:100%;font-size:12.5px"><tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:4px 8px">SKU</th><th style="text-align:left;padding:4px 8px">Pozicija</th><th style="text-align:left;padding:4px 8px">Skladišče</th></tr>' + rows + '</table>'
+    + (nEmpty ? '<div style="margin-top:8px;font-size:11.5px;color:#d97706">⚠ ' + nEmpty + ' z prazno pozicijo bo pri pošiljanju preskočenih (varovalka proti izbrisu zaloge).</div>' : '');
+}
+function siluxEsc(t){ return String(t==null?'':t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function siluxLoadLog(){
+  const box = document.getElementById('slxLogList');
+  const stat = document.getElementById('slxLogStat');
+  if (!box) return;
+  box.innerHTML = '<div style="font-size:12.5px;color:var(--text-secondary);padding:6px 0">⏳ nalagam…</div>';
+  try{
+    const r = await fetch('/siluxar-push-debug?limit=50');
+    const d = await r.json();
+    if (!d.ok){ box.innerHTML = '<div style="color:#e5484d;font-size:12.5px">Napaka: ' + siluxEsc(d.error||'') + '</div>'; return; }
+    if (stat) stat.textContent = d.skupaj_zapisov ? '· ' + d.uspesnih + ' ✓ / ' + d.neuspesnih + ' ✕ (zadnjih ' + (d.zapisi||[]).length + ')' : '';
+    const zap = d.zapisi || [];
+    if (!zap.length){ box.innerHTML = '<div style="font-size:12.5px;color:var(--text-secondary);padding:6px 0">Še ni nobenega pošiljanja.</div>'; return; }
+    box.innerHTML = '<table style="border-collapse:collapse;width:100%;font-size:12px;min-width:640px">'
+      + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px">'
+      + '<th style="text-align:left;padding:5px 8px">Čas</th><th style="text-align:right;padding:5px 8px">Poslano</th>'
+      + '<th style="text-align:center;padding:5px 8px">Status</th><th style="text-align:left;padding:5px 8px">Primeri / napaka</th></tr>'
+      + zap.map(z => {
+          const ok = z.ok;
+          const primeri = (z.primeri_poslanih||[]).map(p => p.sku + (p.position?('→'+p.position):'') ).slice(0,4).join(', ');
+          const info = ok ? primeri : (siluxEsc(z.napaka || z.exception || 'napaka') + (primeri?(' · '+primeri):''));
+          return '<tr style="border-top:1px solid var(--border)">'
+            + '<td style="padding:6px 8px;white-space:nowrap;font-family:monospace;font-size:11px">' + siluxEsc(z.cas||'') + '</td>'
+            + '<td style="padding:6px 8px;text-align:right;font-weight:700">' + (z.poslano_stevilo||0) + '</td>'
+            + '<td style="padding:6px 8px;text-align:center">' + (ok ? '<span style="color:#12a35f;font-weight:800">✓ ' + (z.status||'') + '</span>' : '<span style="color:#e5484d;font-weight:800">✕ ' + (z.status||'') + '</span>') + '</td>'
+            + '<td style="padding:6px 8px;color:var(--text-secondary)">' + siluxEsc(info) + '</td>'
+            + '</tr>';
+        }).join('') + '</table>';
+  }catch(e){ box.innerHTML = '<div style="color:#e5484d;font-size:12.5px">Napaka: ' + siluxEsc(e.message) + '</div>'; }
+}
+async function siluxLogClear(){
+  if (!confirm('Počistim dnevnik pošiljanj?\n\nTo NE vpliva na pozicije v siluxarju — samo pobriše zgodovino zapisov.')) return;
+  try{ await fetch('/siluxar-push-log-clear', {method:'POST'}); }catch(e){}
+  siluxLoadLog();
 }
 
 async function vracilaInit() {

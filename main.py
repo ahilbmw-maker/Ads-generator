@@ -22216,19 +22216,36 @@ async def siluxar_push_authtest():
 
 
 @app.get("/siluxar-push-debug")
-async def siluxar_push_debug():
-    """Debug: pokaže zadnjih 50 pošiljanj pozicij v siluxar (kaj poslano, status, odgovor)."""
+async def siluxar_push_debug(limit: int = 50):
+    """Zgodovina pošiljanj pozicij v siluxar (kaj poslano, status, odgovor)."""
     if not SILUXAR_PUSH_LOG.exists():
-        return {"sporocilo": "Še ni nobenega pošiljanja.", "zapisi": []}
+        return {"ok": True, "sporocilo": "Še ni nobenega pošiljanja.", "zapisi": [], "skupaj_zapisov": 0}
     try:
         log = json.loads(SILUXAR_PUSH_LOG.read_text(encoding="utf-8"))
+        if not isinstance(log, list):
+            log = []
+        ok_n = sum(1 for x in log if x.get("ok"))
         return {
-            "skupaj_zapisov": len(log) if isinstance(log, list) else 0,
+            "ok": True,
+            "skupaj_zapisov": len(log),
+            "uspesnih": ok_n,
+            "neuspesnih": len(log) - ok_n,
             "zadnje_posiljanje": log[0] if log else None,
-            "zapisi": log,
+            "zapisi": log[:max(1, min(limit, 50))],
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/siluxar-push-log-clear")
+async def siluxar_push_log_clear():
+    """Počisti dnevnik pošiljanj (ne vpliva na pozicije v siluxarju)."""
+    try:
+        if SILUXAR_PUSH_LOG.exists():
+            SILUXAR_PUSH_LOG.write_text("[]", encoding="utf-8")
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.post("/pozicije-update-one")
