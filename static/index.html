@@ -19369,7 +19369,7 @@ async function zalogaPushPositions(btn) {
       const sku = (it.product_sku||it.sku||'').trim();
       return (it.warehouse||'').trim().toLowerCase() === 'silux' && _pozChanged.has(sku);
     })
-    .map(it => ({ sku: (it.product_sku||it.sku||'').trim(), position: (it.position||'').trim() }))
+    .map(it => ({ sku: (it.product_sku||it.sku||'').trim(), position: (it.position||'').trim(), warehouse: (it.warehouse||'').trim(), id: String(it.siluxar_id||'').trim() }))
     .filter(x => x.sku);
   if (!items.length) { alert('Ni spremenjenih pozicij za pošiljanje.'); _pozChanged.clear(); _updatePushBtnCount(); return; }
 
@@ -20133,7 +20133,7 @@ function zalogaRender() {
           var posE = esc((it.position||'').replace(/'/g,"\\'"));
           // svinčnik za primarno: samo silux. silux2/external: brez.
           var editPrimary = (wh === 'silux')
-            ? '<span onclick="event.stopPropagation();pozQuickOpen(\'' + skuE + '\',\'' + titE + '\',\'' + posE + '\')" title="Spremeni primarno pozicijo" style="cursor:pointer;font-size:12px;opacity:0.6;flex-shrink:0" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">✏️</span>'
+            ? '<span onclick="event.stopPropagation();pozQuickOpen(\'' + skuE + '\',\'' + titE + '\',\'' + posE + '\',\'' + esc(String(it.warehouse||'').replace(/\'/g,"\\'")) + '\',\'' + esc(String(it.siluxar_id||'').replace(/\'/g,"\\'")) + '\')" title="Spremeni primarno pozicijo" style="cursor:pointer;font-size:12px;opacity:0.6;flex-shrink:0" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">✏️</span>'
             : '';
           // dodatne (backup) lokacije za ta SKU
           var extras = _zalExtraPos[(it.product_sku||'').trim()] || [];
@@ -27280,8 +27280,12 @@ function zalExtraPickPos(pos) {
 let _pozQuickSku = null;
 let _pozQuickTimer = null;
 
-function pozQuickOpen(sku, title, currentPos) {
+let _pozQuickWh = '';
+let _pozQuickId = '';
+function pozQuickOpen(sku, title, currentPos, warehouse, siluxarId) {
   _pozQuickSku = sku;
+  _pozQuickWh = warehouse || '';
+  _pozQuickId = siluxarId || '';
   document.getElementById('pozQuickSku').textContent = sku;
   document.getElementById('pozQuickTitle').textContent = title || '';
   document.getElementById('pozQuickCurrent').innerHTML = currentPos ? 'trenutno: 📍 <b>' + pozEsc(currentPos) + '</b>' : '<span style="color:var(--text-tertiary)">brez pozicije</span>';
@@ -27348,7 +27352,7 @@ async function pozQuickSave() {
   const st = document.getElementById('pozQuickStatus');
   st.innerHTML = '<span style="color:var(--text-secondary)">⏳ shranjujem...</span>';
   try {
-    const r = await fetch('/pozicije-update-one', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _pozQuickSku, position: pos }) });
+    const r = await fetch('/pozicije-update-one', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _pozQuickSku, position: pos, warehouse: _pozQuickWh }) });
     const d = await r.json();
     if (d.ok) {
       st.innerHTML = `<span style="color:#16a34a">✓ Shranjeno: ${pozEsc(d.sku)} → 📍 ${pozEsc(d.position||'—')}</span>`;
@@ -27363,7 +27367,7 @@ async function pozQuickSave() {
       // Prazno pozicijo siluxar razume kot izbris → NIKOLI je ne pošljemo.
       if (pos) {
         try {
-          const sr = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _pozQuickSku, position: pos }) });
+          const sr = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: _pozQuickSku, position: pos, warehouse: _pozQuickWh, id: _pozQuickId }) });
           const sd = await sr.json();
           if (sd.ok && sd.poslano > 0) {
             st.innerHTML += '<br><span style="color:#16a34a;font-size:11px">↗ takoj poslano v siluxar ✓</span>';

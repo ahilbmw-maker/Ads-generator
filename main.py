@@ -21889,6 +21889,7 @@ async def siluxar_push_positions(data: dict):
         # Zato keyiramo po (sku, warehouse), da pošljemo id PRAVEGA skladišča.
         _id_by_sku_wh = {}
         _id_by_sku_first = {}
+        _wh_by_sku = {}          # SKU -> množica skladišč z veljavnim id (za odkrivanje dvoumnih)
         try:
             if STOCK_CSV_FILE.exists():
                 for _row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8"))):
@@ -21898,13 +21899,15 @@ async def siluxar_push_positions(data: dict):
                     if _s and _sid and _sid not in ("0", "0.0"):
                         _id_by_sku_wh.setdefault((_s, _wh), _sid)
                         _id_by_sku_first.setdefault(_s, _sid)
+                        _wh_by_sku.setdefault(_s, set()).add(_wh)
         except Exception:
-            _id_by_sku_wh = {}; _id_by_sku_first = {}
+            _id_by_sku_wh = {}; _id_by_sku_first = {}; _wh_by_sku = {}
 
         # očisti: sku + position (+ stock če podan), brez praznih
         payload = []
         _rejected_empty = []      # namera position, a prazna → ZAVRNJENO (varnost)
         _rejected_nothing = []    # ne position ne stock → nič za poslati
+        _rejected_ambiguous = []  # podvojen SKU brez jasnega skladišča/id → ZAVRNJENO (varnost)
         _with_position = 0
         for it in items:
             sku = (str(it.get("sku") or "")).strip()
@@ -21935,8 +21938,16 @@ async def siluxar_push_positions(data: dict):
                 _eid = (str(it.get("id") or "")).strip()
                 if not _eid and _wh_it:
                     _eid = _id_by_sku_wh.get((sku, _wh_it), "")
-                if not _eid:
-                    _eid = _id_by_sku_first.get(sku, "")
+                # VARNOST pri PODVOJENEM SKU (silux + silux2):
+                # če je isti SKU v več skladiščih in nimamo ne izrecnega id ne skladišča,
+                # bi "vzemi prvega" lahko naslovil napačno kartico → siluxar resetira OBE.
+                # Zato tako postavko ZAVRNEMO, namesto da bi ugibali.
+                _ambiguous = len(_wh_by_sku.get(sku, set())) > 1
+                if not _eid and _ambiguous and not _wh_it:
+                    _rejected_ambiguous.append(sku)
+                    continue
+                if not _eid and not _ambiguous:
+                    _eid = _id_by_sku_first.get(sku, "")   # varno le, če je SKU v enem skladišču
                 if _eid:
                     entry["id"] = _eid
             # ═══ VARNOSTNA VALIDACIJA (selitev skladišča) ═══
@@ -21958,8 +21969,9 @@ async def siluxar_push_positions(data: dict):
         _skipped = {
             "prazna_pozicija": _rejected_empty,
             "brez_podatka": _rejected_nothing,
+            "dvoumen_sku": _rejected_ambiguous,
         }
-        _skipped_total = len(_rejected_empty) + len(_rejected_nothing)
+        _skipped_total = len(_rejected_empty) + len(_rejected_nothing) + len(_rejected_ambiguous)
 
         if not payload:
             return {"ok": False, "poslano": 0, "preskoceno": _skipped_total,
@@ -21967,7 +21979,8 @@ async def siluxar_push_positions(data: dict):
                     "error": ("Ni veljavnih postavk za pošiljanje. "
                               + (f"{len(_rejected_empty)} postavk je imelo PRAZNO pozicijo (zavrnjeno — sicer bi siluxar zbrisal zalogo). "
                                  if _rejected_empty else "")
-                              + (f"{len(_rejected_nothing)} postavk brez pozicije in zaloge. " if _rejected_nothing else ""))}
+                              + (f"{len(_rejected_nothing)} postavk brez pozicije in zaloge. " if _rejected_nothing else "")
+                              + (f"{len(_rejected_ambiguous)} podvojenih SKU (silux+silux2) brez jasnega skladišča — zavrnjeno, da ne resetira obeh. " if _rejected_ambiguous else ""))}
 
         # ── VAROVALKA MASOVNEGA POŠILJANJA ───────────────────────────────────
         # Če se pošilja veliko pozicij hkrati (tipično med selitvijo), zahtevaj
