@@ -25113,10 +25113,11 @@ def _selitev_load() -> dict:
             d = json.loads(SELITEV_FILE.read_text(encoding="utf-8")) or {}
             if isinstance(d, dict):
                 d.setdefault("entries", [])
+                d.setdefault("sent", [])       # zgodovina prenesenih (aktivno → poslano)
                 return d
     except Exception as e:
         print(f"[selitev] load err: {e}")
-    return {"entries": []}
+    return {"entries": [], "sent": []}
 
 
 def _selitev_save(d: dict):
@@ -25160,6 +25161,7 @@ async def selitev_list():
     known = set(lookup.keys())
     unknown = sorted({(e.get("sku") or "").strip() for e in entries
                       if (e.get("sku") or "").strip() and e["sku"].upper() not in known})
+    sent = d.get("sent", [])
     return {
         "ok": True,
         "entries": entries,
@@ -25168,6 +25170,8 @@ async def selitev_list():
         "vec_pozicij": multi,
         "neznani_sku": unknown,
         "warehouse": SELITEV_WAREHOUSE,
+        "sent": sent[-200:],            # zadnjih 200 prenesenih (aktivno → poslano)
+        "sent_stevilo": len(sent),
     }
 
 
@@ -25230,11 +25234,20 @@ async def selitev_remove(data: dict):
 
 
 @app.post("/selitev-clear")
-async def selitev_clear():
-    """Počisti CELOTNO začasno zalogo (ne vpliva na siluxar/aktivno zalogo)."""
+async def selitev_clear(data: dict | None = None):
+    """Počisti začasno zalogo. Privzeto SAMO aktivne (ne posla).
+    Body: {kaj: 'aktivno'|'poslano'|'vse'} — privzeto 'aktivno'."""
+    kaj = (str((data or {}).get("kaj") or "aktivno")).strip().lower()
     async with _selitev_lock:
-        _selitev_save({"entries": []})
-    return {"ok": True}
+        d = _selitev_load()
+        if kaj == "vse":
+            d = {"entries": [], "sent": []}
+        elif kaj == "poslano":
+            d["sent"] = []
+        else:  # aktivno
+            d["entries"] = []
+        _selitev_save(d)
+    return {"ok": True, "kaj": kaj}
 
 
 @app.post("/selitev-transfer")
@@ -25277,7 +25290,7 @@ async def selitev_transfer(data: dict):
 
     # pokliči obstoječo varno funkcijo (ima vse zaščite in logira v push-log)
     res = await siluxar_push_positions({"items": items, "confirm_bulk": True})
-    # ob uspehu izprazni začasno zalogo (arhiviraj v backup)
+    # ob uspehu: aktivne PREMAKNI v "poslano" (ne izbriši!), arhiviraj
     if isinstance(res, dict) and res.get("ok"):
         try:
             arh = DATA_DIR / "selitev_arhiv"
@@ -25286,8 +25299,21 @@ async def selitev_transfer(data: dict):
                 json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception:
             pass
+        _ts = _lj_now().strftime("%Y-%m-%d %H:%M:%S")
+        _batch = _lj_now().strftime("%Y%m%d_%H%M%S")
         async with _selitev_lock:
-            _selitev_save({"entries": []})
+            d2 = _selitev_load()
+            moved = []
+            for e in d2.get("entries", []):
+                if (e.get("position") or "").strip():
+                    moved.append({"sku": e.get("sku"), "position": e.get("position"),
+                                  "sent_ts": _ts, "batch": _batch,
+                                  "status": ("ok" if res.get("status") == 200 else "poslano")})
+            d2["sent"] = (d2.get("sent", []) + moved)[-500:]     # obdrži zadnjih 500
+            # v aktivnih pusti samo tiste brez pozicije (če bi kdaj bili)
+            d2["entries"] = [e for e in d2.get("entries", []) if not (e.get("position") or "").strip()]
+            _selitev_save(d2)
+        res["preneseno"] = len(moved)
     return res
 
 

@@ -662,6 +662,8 @@ input[type="text"].error { border-color: var(--red) !important; }
   #page-selitev .sel-badge{ min-width:22px; height:20px; font-size:11px; top:5px; right:5px; }
   #page-selitev #selGrid{ gap:9px !important; grid-template-columns:repeat(3,1fr) !important; }
   #page-selitev #selCrumb span{ font-size:12px !important; padding:5px 9px !important; }
+  #page-selitev .sel-transfer-card{ display:none !important; }
+  #page-selitev .sel-transfer-mobilenote{ display:block !important; }
 }
 .tt-download-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; display: flex; align-items: center; gap: 16px; }
 .tt-download-icon { width: 48px; height: 48px; border-radius: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -4975,21 +4977,38 @@ input[type="text"].error { border-color: var(--red) !important; }
       <!-- ── PREGLED ── -->
       <div id="selPanePregled" style="display:none">
         <div id="selWarnings" style="margin:10px 0"></div>
-        <div class="card">
+
+        <!-- AKTIVNO: še ni preneseno -->
+        <div class="card" style="border-left:5px solid var(--accent)">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-            <div style="font-size:13px;font-weight:800">📋 Vse vpisane pozicije <span id="selPregCount" style="font-weight:600;color:var(--text-tertiary)"></span></div>
+            <div style="font-size:13px;font-weight:800">📝 Aktivno — čaka na prenos <span id="selPregCount" style="font-weight:600;color:var(--text-tertiary)"></span></div>
             <div style="display:flex;gap:8px">
               <button onclick="selReload()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-secondary)">🔄 Osveži</button>
-              <button onclick="selClearAll()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:#e5484d">🗑 Počisti vse</button>
+              <button onclick="selClearActive()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:#e5484d">🗑 Počisti aktivno</button>
             </div>
           </div>
           <div id="selPregList" style="overflow-x:auto"></div>
         </div>
-        <div class="card" style="margin-top:12px;border-left:5px solid #16a34a">
-          <div style="font-size:13px;font-weight:800;margin-bottom:4px">✅ Prenos v aktivno zalogo + siluxar</div>
-          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Ko je vse pregledano, prenesi vse naenkrat. Varna pot (prava kartica po skladišču, nikoli prazna pozicija).</div>
-          <button id="selTransferBtn" onclick="selTransfer()" style="padding:13px 22px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">↗ Prenesi vse v aktivno zalogo</button>
+
+        <!-- PRENOS gumb (SAMO DESKTOP) -->
+        <div class="card sel-transfer-card" style="margin-top:12px;border-left:5px solid #16a34a">
+          <div style="font-size:13px;font-weight:800;margin-bottom:4px">✅ Prenesi v siluxar</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Pozicije gredo naravnost v siluxar (vir resnice). Ob naslednji sinhronizaciji se vrnejo v skladišče-zalogo. Prenesene se premaknejo v »Poslano« spodaj — NE izgubijo se.</div>
+          <button id="selTransferBtn" onclick="selTransfer()" style="padding:13px 22px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">↗ Prenesi vse v siluxar</button>
           <span id="selTransferStatus" style="margin-left:10px;font-size:12.5px;color:var(--text-secondary)"></span>
+        </div>
+        <div class="sel-transfer-mobilenote card" style="margin-top:12px;display:none;border-left:5px solid #f59e0b">
+          <div style="font-size:13px;color:#b57611;font-weight:700">📱 Prenos v siluxar je na voljo samo na računalniku</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Na telefonu lahko vpisuješ in pregleduješ; končni prenos naredi nekdo na desktopu, ko je vse pregledano.</div>
+        </div>
+
+        <!-- POSLANO: zgodovina prenosov -->
+        <div class="card" style="margin-top:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:800">📤 Poslano — zgodovina prenosov <span id="selSentCount" style="font-weight:600;color:var(--text-tertiary)"></span></div>
+            <button onclick="selClearSent()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-tertiary)">🗑 Počisti zgodovino</button>
+          </div>
+          <div id="selSentList" style="overflow-x:auto"></div>
         </div>
       </div>
     </div>
@@ -28056,15 +28075,30 @@ function selRenderPregled(){
   const cnt = document.getElementById('selPregCount');
   const e = _selData.entries || [];
   if (cnt) cnt.textContent = e.length ? '· ' + e.length + ' vpisov, ' + (_selData.unikatnih_sku||0) + ' SKU' : '';
+  const A = _selData.anomalije || {};
+  const bad = (txt) => '<div style="padding:9px 12px;border-radius:9px;background:rgba(229,72,77,.12);color:#e5484d;font-size:13px;margin-bottom:6px;font-weight:600">🚫 ' + txt + '</div>';
+  const warnRow = (txt) => '<div style="padding:9px 12px;border-radius:9px;background:rgba(217,151,34,.14);color:#b57611;font-size:13px;margin-bottom:6px">⚠ ' + txt + '</div>';
   let w = '';
-  (_selData.vec_pozicij||[]).forEach(m => {
-    w += '<div style="padding:9px 12px;border-radius:9px;background:rgba(217,151,34,.14);color:#b57611;font-size:13px;margin-bottom:6px">⚠ <b>' + selEsc(m.sku) + '</b> je na več policah: ' + m.pozicije.map(selEsc).join(', ') + '</div>';
-  });
-  if ((_selData.neznani_sku||[]).length){
-    w += '<div style="padding:9px 12px;border-radius:9px;background:rgba(229,72,77,.12);color:#e5484d;font-size:13px;margin-bottom:6px">⚠ Neznani SKU: ' + _selData.neznani_sku.map(selEsc).join(', ') + '</div>';
+  // BLOKIRAJOČE (rdeče, s prepovedjo)
+  if ((A.brez_pozicije||[]).length) w += bad('<b>Brez pozicije</b> (NE bo poslano): ' + A.brez_pozicije.map(selEsc).join(', '));
+  if ((A.ze_poslano||[]).length) w += bad('<b>Že poslano</b> (podvojen prenos): ' + A.ze_poslano.map(x => selEsc(x.sku)+'@'+selEsc(x.position)).join(', '));
+  if ((A.ni_v_siluxu||[]).length) w += bad('<b>Ni v skladišču silux</b> (samo silux se sme): ' + A.ni_v_siluxu.map(selEsc).join(', '));
+  if ((_selData.neznani_sku||[]).length) w += bad('<b>Neznan SKU</b> (ni v zalogi): ' + _selData.neznani_sku.map(selEsc).join(', '));
+  // OPOZORILA (rumene, dovoljeno)
+  (_selData.vec_pozicij||[]).forEach(m => { w += warnRow('<b>' + selEsc(m.sku) + '</b> je na več policah: ' + m.pozicije.map(selEsc).join(', ')); });
+  (A.poslan_drugam||[]).forEach(x => { w += warnRow('<b>' + selEsc(x.sku) + '</b> → ' + selEsc(x.position) + ' (že poslan na: ' + (x.ze_poslano_na||[]).map(selEsc).join(', ') + ')'); });
+  if (warn) warn.innerHTML = w || '<div style="font-size:13px;color:#0f8a4f;padding:9px 12px;border-radius:9px;background:rgba(18,163,95,.1)">✓ Ni anomalij — pripravljeno za prenos.</div>';
+  // GATE: onemogoči gumb za prenos ob blokirajočih anomalijah
+  const tbtn = document.getElementById('selTransferBtn');
+  if (tbtn){
+    if (_selData.blokira_prenos){
+      tbtn.disabled = true; tbtn.style.opacity = '.45'; tbtn.style.cursor = 'not-allowed';
+      tbtn.title = 'Najprej odpravi rdeče anomalije zgoraj';
+    } else {
+      tbtn.disabled = false; tbtn.style.opacity = '1'; tbtn.style.cursor = 'pointer'; tbtn.title = '';
+    }
   }
-  if (warn) warn.innerHTML = w || '<div style="font-size:13px;color:#0f8a4f">✓ Ni opozoril.</div>';
-  if (!e.length){ if (list) list.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);padding:8px 0">Še ni vpisov.</div>'; return; }
+  if (!e.length){ if (list) list.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);padding:8px 0">Še ni aktivnih vpisov.</div>'; selRenderSent(); return; }
   const sorted = e.slice().sort((a,b) => (a.position||'').localeCompare(b.position||''));
   if (list) list.innerHTML = '<table style="border-collapse:collapse;width:100%;font-size:13px;min-width:520px">'
     + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Polica</th><th style="text-align:left;padding:6px 8px">SKU</th><th style="text-align:left;padding:6px 8px">Naziv</th><th style="text-align:left;padding:6px 8px">Stara</th><th></th></tr>'
@@ -28075,28 +28109,67 @@ function selRenderPregled(){
       + '<td style="padding:8px;color:var(--text-tertiary);font-family:monospace">' + selEsc(x.old_position||'—') + '</td>'
       + '<td style="padding:8px;text-align:right"><button onclick="selRemove(\'' + selEsc(x.sku) + '\',\'' + selEsc(x.position) + '\')" style="background:transparent;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:#e5484d;font-size:12px;font-weight:700;padding:5px 10px">🗑</button></td>'
       + '</tr>').join('') + '</table>';
+  selRenderSent();
 }
-async function selClearAll(){
-  if (!confirm('Počistim VSE vpise začasne zaloge?\\n\\nNe vpliva na siluxar.')) return;
-  try{ await fetch('/selitev-clear',{method:'POST'}); }catch(e){}
+function selRenderSent(){
+  const list = document.getElementById('selSentList');
+  const cnt = document.getElementById('selSentCount');
+  const sent = (_selData && _selData.sent) ? _selData.sent : [];
+  const total = (_selData && _selData.sent_stevilo) ? _selData.sent_stevilo : sent.length;
+  if (cnt) cnt.textContent = total ? '· ' + total + ' prenesenih' : '';
+  if (!list) return;
+  if (!sent.length){ list.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);padding:8px 0">Še nič ni bilo prenesenega.</div>'; return; }
+  // najnovejši zgoraj
+  const rows = sent.slice().reverse();
+  list.innerHTML = '<table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:520px">'
+    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Čas</th><th style="text-align:left;padding:6px 8px">Polica</th><th style="text-align:left;padding:6px 8px">SKU</th><th style="text-align:center;padding:6px 8px">Status</th></tr>'
+    + rows.map(x => '<tr style="border-top:1px solid var(--border)">'
+      + '<td style="padding:7px 8px;white-space:nowrap;font-family:monospace;font-size:11px;color:var(--text-tertiary)">' + selEsc(x.sent_ts||'') + '</td>'
+      + '<td style="padding:7px 8px;font-family:monospace;font-weight:700">' + selEsc(x.position||'') + '</td>'
+      + '<td style="padding:7px 8px;font-weight:700">' + selEsc(x.sku||'') + '</td>'
+      + '<td style="padding:7px 8px;text-align:center">' + (x.status==='ok' ? '<span style="color:#12a35f;font-weight:800">✓</span>' : '<span style="color:#0f8a4f">poslano</span>') + '</td>'
+      + '</tr>').join('') + '</table>';
+}
+async function selClearActive(){
+  if (!confirm('Počistim AKTIVNE vpise (ki še niso preneseni)?\\n\\nZgodovina »Poslano« ostane. Ne vpliva na siluxar.')) return;
+  try{ await fetch('/selitev-clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kaj:'aktivno'})}); }catch(e){}
+  await selReload(); selRenderPregled();
+}
+async function selClearSent(){
+  if (!confirm('Počistim zgodovino »Poslano«?\\n\\nTo je samo pregled prenosov — ne vpliva na siluxar ne na aktivne vpise.')) return;
+  try{ await fetch('/selitev-clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kaj:'poslano'})}); }catch(e){}
   await selReload(); selRenderPregled();
 }
 async function selTransfer(){
   const st = document.getElementById('selTransferStatus');
-  const n = (_selData && _selData.entries) ? _selData.entries.length : 0;
+  const n = (_selData && _selData.entries) ? _selData.entries.filter(e => (e.position||'').trim()).length : 0;
   if (!n){ if(st){st.style.color='#e5484d';st.textContent='Ni vpisov za prenos.';} return; }
+  // TRDNA VAROVALKA: če so blokirajoče anomalije, sploh ne poskušaj
+  if (_selData.blokira_prenos){
+    if(st){ st.style.color='#e5484d'; st.textContent='🚫 Odpravi rdeče anomalije zgoraj (brez pozicije / že poslano / ni v silux / neznan SKU).'; }
+    return;
+  }
   const multi = (_selData.vec_pozicij||[]).length;
-  let msg = 'Prenesem ' + n + ' pozicij v aktivno zalogo in siluxar?';
-  if (multi) msg += '\\n\\n⚠ ' + multi + ' SKU je na več policah — dovoljeno, a preveri, da je namerno.';
+  let msg = 'PRENOS V SILUXAR\n\n' + n + ' pozicij bo šlo naravnost v siluxar (skladišče silux).\n\nTo je nepovratno — siluxar postane vir resnice.';
+  if (multi) msg += '\n\n⚠ ' + multi + ' SKU je na več policah (dovoljeno, a preveri).';
+  msg += '\n\nNadaljujem?';
   if (!confirm(msg)) return;
+  // druga potrditev pri večjem obsegu
+  if (n > 50 && !confirm('Res? ' + n + ' pozicij naenkrat. To je veliko — potrdi še enkrat.')) return;
   if (st){ st.style.color='var(--text-secondary)'; st.textContent='prenašam…'; }
   const btn = document.getElementById('selTransferBtn'); if (btn) btn.disabled = true;
   try{
     const r = await fetch('/selitev-transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
     const d = await r.json();
     if (d.ok){
-      if (st){ st.style.color='#0f8a4f'; st.textContent='✓ Preneseno ' + (d.poslano||n) + ' pozicij (status ' + (d.status||'') + ').' + (d.preskoceno?' Preskočenih '+d.preskoceno+'.':''); }
-      await selReload();
+      if (st){ st.style.color='#0f8a4f'; st.textContent='✓ Preneseno ' + (d.preneseno||d.poslano||n) + ' pozicij v siluxar (status ' + (d.status||'') + '). Glej »Poslano« spodaj.'; }
+      if (btn) btn.disabled = false;
+      await selReload(); selRenderPregled();
+    } else if (d.blokirano){
+      // strežnik zavrnil zaradi anomalij (dodatna varovalka)
+      if (st){ st.style.color='#e5484d'; st.textContent='🚫 ' + (d.error||'blokirano'); }
+      if (btn) btn.disabled = false;
+      await selReload(); selRenderPregled();
     } else {
       if (st){ st.style.color='#e5484d'; st.textContent='⚠ ' + (d.error||'napaka'); }
       if (btn) btn.disabled = false;
