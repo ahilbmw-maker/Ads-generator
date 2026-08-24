@@ -9480,7 +9480,23 @@ async def _zaloga_scheduler_loop():
     """Notranji scheduler (always-on Render Pro): vsake 4 ure v ozadju potegne zalogo s siluxar.
     Teče znotraj web procesa → dostop do /data brez konflikta. Gumb ostane za ročni poteg."""
     await asyncio.sleep(120)   # počakaj, da se startup dokonča (in feed/zaloga naložita)
-    INTERVAL = 4 * 60 * 60     # 4 ure
+    # Interval je odvisen od ure (ljubljanski čas). Vse nastavljivo prek env —
+    # spremembe pobere ob naslednjem ciklu, brez deploya:
+    #   ZALOGA_SYNC_MINUTES_DAY   med delovnim časom (privzeto 60 min)
+    #   ZALOGA_SYNC_MINUTES_NIGHT izven delovnega časa   (privzeto 240 min = 4 ure)
+    #   ZALOGA_SYNC_DAY_FROM / ZALOGA_SYNC_DAY_TO  delovni čas (privzeto 8–17)
+    def _env_int(name, default):
+        try:
+            return int(os.environ.get(name, str(default)))
+        except Exception:
+            return default
+    def _interval_sec():
+        h = _lj_now().hour
+        d_from = _env_int("ZALOGA_SYNC_DAY_FROM", 8)
+        d_to   = _env_int("ZALOGA_SYNC_DAY_TO", 17)
+        in_work = d_from <= h < d_to
+        m = _env_int("ZALOGA_SYNC_MINUTES_DAY", 60) if in_work else _env_int("ZALOGA_SYNC_MINUTES_NIGHT", 240)
+        return max(5, m) * 60, in_work    # varovalka: nikoli pod 5 min
     while True:
         try:
             res = await _zaloga_sync_core()
@@ -9489,7 +9505,10 @@ async def _zaloga_scheduler_loop():
                       f"added {res.get('added')}, updated {res.get('updated')}")
             else:
                 print(f"[zaloga-cron] FAIL — {res.get('error')}")
-            await asyncio.sleep(INTERVAL)
+            _iv, _work = _interval_sec()
+            print(f"[zaloga-cron] {'delovni čas' if _work else 'izven delovnega časa'} — "
+                  f"naslednji poteg čez {_iv // 60} min")
+            await asyncio.sleep(_iv)
         except Exception as e:
             print(f"[zaloga-cron] Error: {e}")
             await asyncio.sleep(1800)   # 30 min pred ponovnim poskusom
