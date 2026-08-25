@@ -25437,9 +25437,39 @@ def _medskl_save(items: list):
     os.replace(tmp, MEDSKL_FILE)
 
 
+MEDSKL_NOTE_FILE = DATA_DIR / "medskl_note.json"
+
+
+def _medskl_note_load() -> dict:
+    try:
+        if MEDSKL_NOTE_FILE.exists():
+            d = json.loads(MEDSKL_NOTE_FILE.read_text(encoding="utf-8")) or {}
+            if isinstance(d, dict):
+                return {"text": str(d.get("text") or ""), "ts": d.get("ts") or ""}
+    except Exception as e:
+        print(f"[medskl] note load err: {e}")
+    return {"text": "", "ts": ""}
+
+
+def _medskl_note_save(note: dict):
+    tmp = MEDSKL_NOTE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(note, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, MEDSKL_NOTE_FILE)
+
+
 @app.get("/medskl-list")
 async def medskl_list():
-    return {"ok": True, "items": _medskl_load()}
+    return {"ok": True, "items": _medskl_load(), "note": _medskl_note_load()}
+
+
+@app.post("/medskl-note")
+async def medskl_note(data: dict):
+    """Skupni komentar pod seznamom — vidijo ga vsi (desktop in mobilni)."""
+    txt = str((data or {}).get("text") or "").strip()[:600]
+    async with _medskl_lock:
+        note = {"text": txt, "ts": _lj_now().strftime("%Y-%m-%d %H:%M") if txt else ""}
+        _medskl_note_save(note)
+    return {"ok": True, "note": note}
 
 
 @app.post("/medskl-item")
@@ -25452,7 +25482,7 @@ async def medskl_item(data: dict):
             it = next((x for x in items if x.get("id") == iid), None)
             if not it:
                 return {"ok": False, "error": "Postavka ne obstaja."}
-            for k in ("sku", "qty", "unit", "wh", "done", "status"):
+            for k in ("sku", "qty", "unit", "wh", "done", "status", "note"):
                 if k in data:
                     it[k] = data[k]
         else:
@@ -25462,6 +25492,7 @@ async def medskl_item(data: dict):
                 "qty": data.get("qty") or 0,
                 "unit": (data.get("unit") or "ctn"),
                 "wh": (data.get("wh") or "novo"),
+                "note": str(data.get("note") or "").strip()[:200],
                 "done": False,
                 "status": "",
                 "ts": _t.strftime("%Y-%m-%d %H:%M"),
@@ -25484,9 +25515,12 @@ async def medskl_delete(iid: str):
 
 
 @app.post("/medskl-clear")
-async def medskl_clear():
+async def medskl_clear(data: dict | None = None):
+    keep_note = bool((data or {}).get("keep_note"))
     async with _medskl_lock:
         _medskl_save([])
+        if not keep_note:
+            _medskl_note_save({"text": "", "ts": ""})
     return {"ok": True}
 
 
