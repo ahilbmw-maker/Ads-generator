@@ -25231,6 +25231,44 @@ async def selitev_list():
     }
 
 
+@app.get("/selitev-sent")
+async def selitev_sent(offset: int = 0, limit: int = 50):
+    """Paginirana zgodovina poslanih (najnovejši prvi). Za gumb »Naloži več«."""
+    d = _selitev_load()
+    sent = list(reversed(d.get("sent", [])))
+    total = len(sent)
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    page = sent[offset:offset + limit]
+    return {"ok": True, "sent": page, "offset": offset, "limit": limit,
+            "vrnjeno": len(page), "skupaj": total, "je_se": offset + len(page) < total}
+
+
+@app.get("/selitev-sent-csv")
+async def selitev_sent_csv():
+    """Izvoz cele zgodovine poslanih v CSV — za ročni uvoz v zalogo, če gre kaj narobe.
+    Stolpci: SKU, pozicija, skladisce (vedno silux)."""
+    import csv as _csv
+    from io import StringIO as _SIO
+    from fastapi.responses import Response as _Resp
+    d = _selitev_load()
+    sent = list(reversed(d.get("sent", [])))   # najnovejši prvi
+    buf = _SIO()
+    buf.write("\ufeff")                          # BOM za Excel (šumniki)
+    w = _csv.writer(buf, delimiter=";")
+    w.writerow(["SKU", "pozicija", "skladisce", "cas"])
+    for x in sent:
+        sku = (x.get("sku") or "").strip()
+        pos = (x.get("position") or "").strip()
+        if not sku or not pos:
+            continue
+        w.writerow([sku, pos, SELITEV_WAREHOUSE, (x.get("sent_ts") or "")])
+    fname = f"selitev_poslano_{_lj_now().strftime('%Y%m%d_%H%M')}.csv"
+    return _Resp(content=buf.getvalue(),
+                 media_type="text/csv; charset=utf-8",
+                 headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
 @app.post("/selitev-add")
 async def selitev_add(data: dict):
     """Dodeli SKU-ju pozicijo v začasni zalogi. Ne gre v siluxar."""

@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-25 10:20</div>
+      <div class="sidebar-logo-sub">build 2026-08-25 10:35</div>
     </div>
   </div>
 
@@ -5050,7 +5050,10 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div class="card" style="margin-top:12px">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
             <div style="font-size:13px;font-weight:800">📤 Poslano — zgodovina prenosov <span id="selSentCount" style="font-weight:600;color:var(--text-tertiary)"></span></div>
-            <button onclick="selClearSent()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-tertiary)">🗑 Počisti zgodovino</button>
+            <div style="display:flex;gap:8px">
+              <button onclick="selSentCsv()" style="padding:8px 14px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">⬇ CSV</button>
+              <button onclick="selClearSent()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-tertiary)">🗑 Počisti zgodovino</button>
+            </div>
           </div>
           <div id="selSentList" style="overflow-x:auto"></div>
         </div>
@@ -28271,6 +28274,15 @@ async function selClearActive(){
   if (!confirm('Počistim AKTIVNE vpise (ki še niso preneseni)?\\n\\nZgodovina »Poslano« ostane. Ne vpliva na siluxar.')) return;
   try{ await fetch('/selitev-clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kaj:'aktivno'})}); }catch(e){}
   await selReload(); selRenderPregled();
+}
+function selSentCsv(){
+  const total = (_selData && _selData.sent_stevilo) ? _selData.sent_stevilo : 0;
+  if (!total){ alert('Zgodovina je prazna — ni kaj izvoziti.'); return; }
+  // sproži prenos datoteke prek skritega linka
+  const a = document.createElement('a');
+  a.href = '/selitev-sent-csv';
+  a.download = '';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 async function selClearSent(){
   if (!confirm('Počistim zgodovino »Poslano«?\\n\\nTo je samo pregled prenosov — ne vpliva na siluxar ne na aktivne vpise.')) return;
