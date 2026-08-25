@@ -799,7 +799,7 @@ input[type="text"].error { border-color: var(--red) !important; }
   .msk-tab{flex:1;text-align:center;padding:9px 0;border-radius:10px;font-size:12.5px;font-weight:800;background:var(--surface2);color:var(--text-secondary);cursor:pointer;user-select:none;}
   .msk-tab.on{background:var(--text);color:var(--surface);}
   #mskList{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));}
-  .msk-card{background:var(--surface);border-radius:16px;margin:0;padding:12px;padding-top:16px;border:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative;}
+  .msk-card{background:var(--surface);border-radius:16px;margin:0;padding:12px;padding-top:16px;border:1px solid var(--border);display:flex;flex-direction:column;gap:0;position:relative;}
   .msk-card.done{opacity:.5;}
   .msk-card.notfound{opacity:.6;border-color:#f5c6c2;background:rgba(229,72,77,0.04);}
   .msk-qty{width:70px;height:70px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;}
@@ -807,13 +807,13 @@ input[type="text"].error { border-color: var(--red) !important; }
   /* barva po ENOTI (prevlada nad skladiščem): CTN zelena, KOS oranžna */
   .msk-qty.unit-ctn{background:#e4f5ec;color:#0f8a4f;} .msk-qty.unit-kos{background:#fdecd8;color:#c2710c;}
   .msk-qty{cursor:pointer;transition:.1s} .msk-qty:hover{filter:brightness(.96)}
-  .msk-itemnote{margin-top:8px;padding:0 2px;}
+  .msk-itemnote{margin-top:10px;padding:0 2px;width:100%;box-sizing:border-box;}
   .msk-itemnote input{width:100%;box-sizing:border-box;padding:8px 11px;border:1px dashed var(--border);border-radius:9px;background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px;}
   .msk-itemnote input:focus{outline:none;border-style:solid;border-color:var(--accent);}
   .msk-itemnote input::placeholder{color:var(--text-tertiary);font-style:italic;}
   .msk-qty b{font-size:24px;line-height:1;} .msk-qty small{font-size:10.5px;font-weight:800;text-transform:uppercase;margin-top:2px;}
   .msk-mid{flex:1;min-width:0;}
-  .msk-sku{font-size:16.5px;font-weight:800;word-break:break-all;color:var(--text);}
+  .msk-sku{font-size:16.5px;font-weight:800;word-break:normal;overflow-wrap:anywhere;color:var(--text);line-height:1.2;}
   .msk-badge{display:inline-block;font-size:10px;font-weight:800;border-radius:6px;padding:2px 8px;text-transform:uppercase;letter-spacing:.4px;margin-top:4px;}
   .msk-badge.novo{background:#e4f5ec;color:#0f8a4f;border:1px solid #bfe3ca;}
   .msk-badge.car{background:#e3edfb;color:#1d5bbf;border:1px solid #c3d9f5;}
@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-25 10:05</div>
+      <div class="sidebar-logo-sub">build 2026-08-25 10:20</div>
     </div>
   </div>
 
@@ -27753,8 +27753,7 @@ function mskRender(){
       + '<div class="msk-cardtop" style="display:flex;align-items:center;gap:12px;width:100%">'
       + '<span class="msk-del" onclick="mskDel(\'' + it.id + '\')" title="Odstrani postavko s seznama"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>'
       + '<div class="msk-qty unit-' + unit + '" onclick="mskEditQty(\'' + it.id + '\')" title="Klikni za urejanje količine"><b>' + _mskEsc(it.qty||0) + '</b><small>' + _mskEsc(it.unit||'ctn') + '</small></div>'
-      + '<div class="msk-mid"><div class="msk-sku">' + _mskEsc(it.sku||'') + '</div>'
-      + '<span class="msk-badge ' + w + '">' + mskWhLabel(w) + '</span></div>'
+      + '<div class="msk-mid"><div class="msk-sku">' + _mskEsc(it.sku||'') + '</div></div>'
       + '<div class="msk-acts">'
       +   '<button class="msk-ok ' + (st==='ok'?'on':'') + '" onclick="mskSetStatus(\'' + it.id + '\',\'ok\')" title="Pripeljano">✓</button>'
       +   '<button class="msk-ni ' + (st==='ni'?'on':'') + '" onclick="mskSetStatus(\'' + it.id + '\',\'ni\')" title="Nismo našli">✕</button>'
