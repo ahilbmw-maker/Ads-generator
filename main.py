@@ -24447,7 +24447,33 @@ def _semafor_load() -> dict:
         d["settings"]["day_mode"] = True
     d.setdefault("cpa_manual", {})         # {market: {cpa, updated_at}} — ročni vnos (točka 9)
     d.setdefault("spend", [])              # dnevna poraba po trgu: {date, market, fb, google}
+    # fail rate PO MESECIH: {"YYYY-MM": {market: {fail_rate, note, updated_at}}}
+    # vsak mesec brez svoje vrednosti podeduje od zadnjega prejšnjega meseca, ki jo ima
+    d.setdefault("fail_rates_by_month", {})
     return d
+
+
+def _failrate_for_month(d: dict, market: str, ym: str):
+    """Vrne fail_rate (v %) za trg v danem mesecu 'YYYY-MM'.
+    Pravilo: uporabi vrednost tega meseca; če je ni, prevzemi od NAJBLIŽJEGA
+    prejšnjega meseca, ki jo ima; sicer pade na globalni fail_rates / default."""
+    bym = d.get("fail_rates_by_month") or {}
+    # mesec sam
+    cur = (bym.get(ym) or {}).get(market) or {}
+    if cur.get("fail_rate") not in (None, ""):
+        return float(cur["fail_rate"])
+    # poišči zadnji PREJŠNJI mesec z vpisano vrednostjo
+    months = sorted([k for k in bym.keys() if k < ym], reverse=True)
+    for mk in months:
+        e = (bym.get(mk) or {}).get(market) or {}
+        if e.get("fail_rate") not in (None, ""):
+            return float(e["fail_rate"])
+    # rezerva: globalni fail_rates ali default
+    g = ((d.get("fail_rates") or {}).get(market) or {}).get("fail_rate")
+    if g not in (None, ""):
+        return float(g)
+    dv = (SEMAFOR_DEFAULT_FAILRATES.get(market) or {}).get("fail_rate")
+    return float(dv) if dv not in (None, "") else None
 
 
 def _semafor_save(d: dict):
@@ -24692,7 +24718,8 @@ async def semafor_home(request: Request):
         rvc_t = s.get("rvc_total")
         if rvc_t is None and rvc is not None:
             rvc_t = o * float(rvc)
-        f = (fr.get(m) or {}).get("fail_rate")
+        _ym = (str(s.get("date") or "")[:7])   # YYYY-MM iz datuma snapshota
+        f = _failrate_for_month(d, m, _ym) if _ym else (fr.get(m) or {}).get("fail_rate")
         f = None if f in (None, "") else float(f) / 100.0
         sp = spend_by.get(m) or {"fb": 0.0, "google": 0.0}
         spend_m = sp["fb"] + sp["google"]
@@ -24859,9 +24886,30 @@ async def semafor_failrate(data: dict):
     m = str((data or {}).get("market") or "").upper().strip()
     if m not in SEMAFOR_MARKETS:
         return {"ok": False, "error": "Neznan trg."}
+    # mesec, na katerega se vpis nanaša (YYYY-MM). Če ni podan → globalni (staro obnašanje).
+    ym = str((data or {}).get("month") or "").strip()[:7]
+    import re as _re
+    if ym and not _re.match(r"^\d{4}-\d{2}$", ym):
+        return {"ok": False, "error": "Neveljaven mesec (pričakujem YYYY-MM)."}
     async with _semafor_lock:
         d = _semafor_load()
-        e = d["fail_rates"].setdefault(m, {})
+        # gumb ↺: odstrani vrednost tega meseca (spet podeduje)
+        if bool((data or {}).get("clear")) and ym:
+            bym = d.setdefault("fail_rates_by_month", {})
+            if ym in bym and m in bym[ym]:
+                del bym[ym][m]
+                if not bym[ym]:
+                    del bym[ym]
+            _semafor_save(d)
+            return {"ok": True, "month": ym, "cleared": True,
+                    "fail_rates": d["fail_rates"],
+                    "fail_rates_by_month": d.get("fail_rates_by_month", {})}
+        if ym:
+            bym = d.setdefault("fail_rates_by_month", {})
+            mo = bym.setdefault(ym, {})
+            e = mo.setdefault(m, {})
+        else:
+            e = d["fail_rates"].setdefault(m, {})
         if "fail_rate" in data:
             try:
                 e["fail_rate"] = float(data["fail_rate"])
@@ -24871,7 +24919,9 @@ async def semafor_failrate(data: dict):
             e["note"] = str(data["note"] or "")
         e["updated_at"] = _dt.now().isoformat(timespec="seconds")
         _semafor_save(d)
-        return {"ok": True, "fail_rates": d["fail_rates"]}
+        return {"ok": True, "month": ym,
+                "fail_rates": d["fail_rates"],
+                "fail_rates_by_month": d.get("fail_rates_by_month", {})}
 
 
 @app.post("/semafor-settings")
