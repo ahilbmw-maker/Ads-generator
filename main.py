@@ -10664,6 +10664,99 @@ async def xsell_cache_clear():
         return {"ok": False, "error": str(e)}
 
 
+@app.get("/silux2-merge-report")
+async def silux2_merge_report(request: Request):
+    """KORAK 1 — SAMO POROČILO, nič se ne zapiše.
+    Analizira združitev silux2 → silux1 (ista lokacija zdaj).
+    Bere iste vrstice kot stran Skladišče → Zaloga."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    if not STOCK_CSV_FILE.exists():
+        return {"ok": False, "error": "Ni zaloge."}
+    import csv as _csv
+    from io import StringIO as _SIO
+    text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+    first = text.split("\n", 1)[0]
+    sep = ";" if first.count(";") > first.count(",") else ","
+
+    # zberi po SKU → skladišče → {stock, id, position}
+    per = {}   # sku_upper -> {"silux": {...}, "silux2": {...}, "sku": izvirni}
+    for row in _csv.DictReader(_SIO(text), delimiter=sep):
+        sku = (row.get("product_sku") or row.get("sku") or "").strip()
+        if not sku:
+            continue
+        wh = (row.get("warehouse") or "").strip().lower()
+        if wh not in ("silux", "silux2"):
+            continue
+        try:
+            st = int(float(str(row.get("stock") or 0).replace(",", ".")))
+        except Exception:
+            st = 0
+        k = sku.upper()
+        e = per.setdefault(k, {"sku": sku, "silux": None, "silux2": None})
+        try:
+            pr = float(str(row.get("price_netto") or row.get("price") or 0).replace(",", "."))
+        except Exception:
+            pr = 0.0
+        e[wh] = {"stock": st, "price": pr,
+                 "id": (row.get("siluxar_id") or "").strip(),
+                 "position": (row.get("position") or "").strip()}
+
+    # razvrsti v tri skupine
+    v_obeh = []        # v silux in silux2 → seštevek
+    samo_silux2 = []   # samo silux2 → ustvariti v silux1
+    samo_silux = 0     # samo silux1 → nedotaknjeno (samo štejemo)
+    for k, e in per.items():
+        s1, s2 = e["silux"], e["silux2"]
+        if s1 and s2:
+            v_obeh.append({"sku": e["sku"], "silux_stock": s1["stock"], "silux2_stock": s2["stock"],
+                           "vsota": s1["stock"] + s2["stock"],
+                           "silux_id": s1["id"], "silux2_id": s2["id"],
+                           "silux_pos": s1["position"], "silux2_pos": s2["position"],
+                           "ista_id": bool(s1["id"]) and s1["id"] == s2["id"]})
+        elif s2 and not s1:
+            samo_silux2.append({"sku": e["sku"], "silux2_stock": s2["stock"],
+                                "silux2_id": s2["id"], "silux2_pos": s2["position"]})
+        elif s1 and not s2:
+            samo_silux += 1
+
+    # anomalije
+    ista_id = [x for x in v_obeh if x["ista_id"]]            # isti siluxar_id v obeh (sumljivo!)
+    s2_brez_id = [x for x in samo_silux2 if not x["silux2_id"]]  # silux2 brez id → težko pisati
+
+    sum_silux2 = sum(x["silux2_stock"] for x in v_obeh) + sum(x["silux2_stock"] for x in samo_silux2)
+    sum_v_obeh_po = sum(x["vsota"] for x in v_obeh)
+
+    # VREDNOST (stock × price) po skladiščih — za primerjavo s siluxarjem
+    val_silux = val_silux2 = 0.0
+    for e in per.values():
+        if e.get("silux"):  val_silux  += e["silux"]["stock"]  * e["silux"].get("price", 0.0)
+        if e.get("silux2"): val_silux2 += e["silux2"]["stock"] * e["silux2"].get("price", 0.0)
+
+    return {
+        "ok": True,
+        "povzetek": {
+            "skupaj_sku_v_silux_ali_silux2": len(per),
+            "v_obeh_stevilo": len(v_obeh),
+            "samo_silux2_stevilo": len(samo_silux2),
+            "samo_silux_stevilo": samo_silux,
+            "skupna_zaloga_silux2_ki_se_seli": sum_silux2,
+            "vrednost_silux_eur": round(val_silux, 2),
+            "vrednost_silux2_eur": round(val_silux2, 2),
+            "vrednost_skupaj_eur": round(val_silux + val_silux2, 2),
+            "anomalije": {
+                "isti_siluxar_id_v_obeh": len(ista_id),
+                "silux2_brez_id": len(s2_brez_id),
+            },
+        },
+        "v_obeh": sorted(v_obeh, key=lambda x: -x["vsota"])[:500],
+        "samo_silux2": sorted(samo_silux2, key=lambda x: -x["silux2_stock"])[:500],
+        "anomalije_isti_id": ista_id[:200],
+        "anomalije_s2_brez_id": s2_brez_id[:200],
+    }
+
+
 @app.get("/orodja-stock-data")
 async def orodja_stock_data():
     """Vrne celoten seznam zaloge iz shranjenega CSV."""
