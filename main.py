@@ -10894,9 +10894,9 @@ async def zaloga_cleanup_page(request: Request):
     """Samostojna stran za čiščenje podvojenih zapisov — predogled + potrditev."""
     if not _owner_authorized(request):
         return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik. Prijavi se v glavni aplikaciji.</h3>", status_code=403)
-    html = """<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Čiščenje podvojenih zapisov</title>
+<title>Ciscenje podvojenih zapisov</title>
 <style>
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:900px;margin:0 auto;padding:20px;background:#f7f7f8;color:#1a1a1a}
   h1{font-size:20px} .sub{color:#666;font-size:13px;margin-bottom:20px;line-height:1.5}
@@ -10909,60 +10909,70 @@ async def zaloga_cleanup_page(request: Request):
   th{background:#f0f0f2;font-size:11px;text-transform:uppercase;color:#888}
   .del{color:#dc2626;font-weight:700} .keep{color:#16a34a}
   .box{background:#fff;border-radius:10px;padding:16px;margin-top:16px;border:1px solid #e5e5e5}
-  .warn{background:#fef3cd;border:1px solid #f0d98a;padding:10px 12px;border-radius:8px;font-size:13px;color:#8a6d1a;margin-top:12px}
-  #status{margin-top:12px;font-size:14px;font-weight:600}
+  #status{margin-top:12px;font-size:14px;font-weight:600;min-height:20px}
 </style></head><body>
-<h1>&#129529; Čiščenje podvojenih zapisov v suban.ai</h1>
-<div class="sub">Vpiši SKU-je (ločene z vejico ali novo vrstico). Orodje primerja s siluxarjem in izbriše SAMO tiste zapise v suban.ai, ki jih siluxar ne pozna. Nikoli ne piše v siluxar. Vedno najprej predogled.</div>
+<h1>Ciscenje podvojenih zapisov v suban.ai</h1>
+<div class="sub">Vpisi SKU-je (locene z vejico ali novo vrstico). Orodje primerja s siluxarjem in izbrise SAMO tiste zapise v suban.ai, ki jih siluxar ne pozna. Nikoli ne pise v siluxar. Vedno najprej predogled.</div>
 <textarea id="skus" placeholder="wiper575, wiper700, wiper375, silux143 ..."></textarea>
 <div class="row">
-  <button class="b-prev" onclick="preview()">&#128065; Predogled (nič ne izbriše)</button>
-  <button class="b-go" id="goBtn" onclick="doDelete()" disabled>&#128465; Izbriši potrjene</button>
+  <button class="b-prev" onclick="preview()">Predogled (nic ne izbrise)</button>
+  <button class="b-go" id="goBtn" onclick="doDelete()" disabled>Izbrisi potrjene</button>
 </div>
 <div id="status"></div>
 <div id="result"></div>
 <script>
-let _last = null;
-async function preview(){
-  const skus = document.getElementById('skus').value.split(/[,\n]/).map(x=>x.trim()).filter(Boolean);
-  if(!skus.length){ alert('Vpiši vsaj en SKU.'); return; }
-  document.getElementById('status').textContent = 'Preverjam s siluxarjem...';
-  document.getElementById('goBtn').disabled = true;
-  try{
-    const r = await fetch('/sku-cleanup-duplicates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus, dry_run:true})});
-    const d = await r.json();
-    if(!d.ok){ document.getElementById('status').innerHTML='<span style="color:#dc2626">&#10007; '+(d.error||'napaka')+'</span>'; render(d); return; }
-    _last = skus;
-    const n = d.stevilo_za_brisat||0;
-    document.getElementById('status').innerHTML = n? '<span style="color:#dc2626">Za brisanje: '+n+' zapisov.</span> Preglej spodaj, nato potrdi.' : '<span style="color:#16a34a">Ni odvečnih zapisov za te SKU-je.</span>';
-    document.getElementById('goBtn').disabled = (n===0);
-    render(d);
-  }catch(e){ document.getElementById('status').textContent='Napaka: '+e.message; }
+var _last = null;
+function parseSkus(){
+  var raw = document.getElementById('skus').value;
+  var parts = raw.split(/[\s,]+/);
+  var out = [];
+  for (var i=0;i<parts.length;i++){ var t=parts[i].trim(); if(t) out.push(t); }
+  return out;
 }
-async function doDelete(){
-  if(!_last){ return; }
-  if(!confirm('Dokončno izbrišem prikazane odvečne zapise iz suban.ai?\n\nBackup se naredi samodejno.')) return;
-  document.getElementById('status').textContent = 'Brišem...';
+function preview(){
+  var skus = parseSkus();
+  if(!skus.length){ alert('Vpisi vsaj en SKU.'); return; }
+  var st = document.getElementById('status');
+  st.textContent = 'Preverjam s siluxarjem...';
   document.getElementById('goBtn').disabled = true;
-  try{
-    const r = await fetch('/sku-cleanup-duplicates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus:_last, dry_run:false})});
-    const d = await r.json();
-    if(d.ok){ document.getElementById('status').innerHTML='<span style="color:#16a34a">&#10003; Izbrisano '+(d.izbrisano||0)+' zapisov. Osveži zalogo, da vidiš nov znesek.</span>'; document.getElementById('result').innerHTML=''; }
-    else document.getElementById('status').innerHTML='<span style="color:#dc2626">&#10007; '+(d.error||'napaka')+'</span>';
-  }catch(e){ document.getElementById('status').textContent='Napaka: '+e.message; }
+  fetch('/sku-cleanup-duplicates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus:skus, dry_run:true})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">Napaka: '+(d.error||'')+'</span>'; render(d); return; }
+      _last = skus;
+      var n = d.stevilo_za_brisat||0;
+      st.innerHTML = n ? '<span style="color:#dc2626">Za brisanje: '+n+' zapisov.</span> Preglej spodaj, nato potrdi.' : '<span style="color:#16a34a">Ni odvecnih zapisov za te SKU-je.</span>';
+      document.getElementById('goBtn').disabled = (n===0);
+      render(d);
+    })
+    .catch(function(e){ st.innerHTML='<span style="color:#dc2626">Napaka pri klicu: '+e.message+'</span>'; });
+}
+function doDelete(){
+  if(!_last){ return; }
+  if(!confirm('Dokoncno izbrisem prikazane odvecne zapise iz suban.ai? Backup se naredi samodejno.')) return;
+  var st = document.getElementById('status');
+  st.textContent = 'Brisem...';
+  document.getElementById('goBtn').disabled = true;
+  fetch('/sku-cleanup-duplicates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus:_last, dry_run:false})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.ok){ st.innerHTML='<span style="color:#16a34a">Izbrisano '+(d.izbrisano||0)+' zapisov. Osvezi zalogo, da vidis nov znesek.</span>'; document.getElementById('result').innerHTML=''; }
+      else st.innerHTML='<span style="color:#dc2626">Napaka: '+(d.error||'')+'</span>';
+    })
+    .catch(function(e){ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
 }
 function render(d){
-  let h='';
-  const del = d.bi_izbrisal||[];
-  const keep = d.obdrzal||[];
+  var h='';
+  var del = d.bi_izbrisal||[];
+  var keep = d.obdrzal||[];
   if(del.length){
-    h+='<div class="box"><b style="color:#dc2626">Za brisanje ('+del.length+'):</b><table><tr><th>SKU</th><th>Skladišče</th><th>Zaloga</th><th>siluxar_id</th><th>Naziv</th></tr>';
-    del.forEach(x=>{ h+='<tr><td class="del">'+x.sku+'</td><td class="del">'+x.skladisce+'</td><td>'+x.stock+'</td><td>'+x.siluxar_id+'</td><td>'+(x.naziv||'')+'</td></tr>'; });
+    h+='<div class="box"><b style="color:#dc2626">Za brisanje ('+del.length+'):</b><table><tr><th>SKU</th><th>Skladisce</th><th>Zaloga</th><th>siluxar_id</th><th>Naziv</th></tr>';
+    for(var i=0;i<del.length;i++){ var x=del[i]; h+='<tr><td class="del">'+x.sku+'</td><td class="del">'+x.skladisce+'</td><td>'+x.stock+'</td><td>'+x.siluxar_id+'</td><td>'+(x.naziv||'')+'</td></tr>'; }
     h+='</table></div>';
   }
   if(keep.length){
-    h+='<div class="box"><b class="keep">Obdržim ('+keep.length+'):</b><table><tr><th>SKU</th><th>Skladišče</th><th>Zaloga</th><th>Status</th></tr>';
-    keep.forEach(x=>{ h+='<tr><td>'+x.sku+'</td><td>'+x.skladisce+'</td><td>'+x.stock+'</td><td style="font-size:11px;color:#888">'+x.status+'</td></tr>'; });
+    h+='<div class="box"><b class="keep">Obdrzim ('+keep.length+'):</b><table><tr><th>SKU</th><th>Skladisce</th><th>Zaloga</th><th>Status</th></tr>';
+    for(var j=0;j<keep.length;j++){ var y=keep[j]; h+='<tr><td>'+y.sku+'</td><td>'+y.skladisce+'</td><td>'+y.stock+'</td><td style="font-size:11px;color:#888">'+y.status+'</td></tr>'; }
     h+='</table></div>';
   }
   document.getElementById('result').innerHTML = h;
