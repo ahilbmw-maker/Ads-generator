@@ -10757,6 +10757,138 @@ async def silux2_merge_report(request: Request):
     }
 
 
+@app.post("/sku-cleanup-duplicates")
+async def sku_cleanup_duplicates(request: Request, data: dict):
+    """Odstrani ODVEČNE podvojene zapise v suban.ai — SAMO tiste, ki jih siluxar NE pozna.
+    Body: {skus:[...], dry_run: true/false}
+    - dry_run=true (privzeto): samo pokaže, kaj BI izbrisal (nič ne zapiše).
+    - dry_run=false: dejansko zapiše (naredi backup prej).
+    NIKOLI ne piše v siluxar. Briše samo (SKU, skladišče) zapis, ki v siluxarju ne obstaja."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    import csv as _csv
+    from io import StringIO as _SIO
+    want = {str(x).strip().upper() for x in (data.get("skus") or []) if str(x).strip()}
+    if not want:
+        return {"ok": False, "error": "Podaj skus: [...]"}
+    dry = data.get("dry_run", True)
+    if dry is None: dry = True
+
+    # 1) preberi siluxar: kateri (SKU, skladišče) pari OBSTAJAJO tam
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    headers = {}; _auth = None
+    if key: headers["Authorization"] = key
+    else:
+        bu=os.environ.get("SILUXAR_BASIC_USER",""); bp=os.environ.get("SILUXAR_BASIC_PASS","")
+        if bu or bp: _auth = httpx.BasicAuth(bu, bp)
+    try:
+        r, _ = await _slx_get(_slx("/apistockexport"), headers=headers, auth=_auth, timeout=90)
+    except Exception as e:
+        return {"ok": False, "error": f"Napaka pri klicu siluxar: {e}"}
+    if r.status_code != 200:
+        return {"ok": False, "error": f"siluxar status {r.status_code}"}
+    text = r.text or ""
+    incoming = []
+    if "json" in r.headers.get("content-type","") or text.lstrip()[:1] in ("[","{"):
+        try:
+            jd = json.loads(text)
+            if isinstance(jd, dict):
+                for kk in ("data","items","rows","products","stock"):
+                    if isinstance(jd.get(kk), list): jd = jd[kk]; break
+            if isinstance(jd, list): incoming = [x for x in jd if isinstance(x, dict)]
+        except: incoming = []
+    if not incoming:
+        _sep = ";" if text.split("\n",1)[0].count(";") > text.split("\n",1)[0].count(",") else ","
+        incoming = list(_csv.DictReader(_SIO(text), delimiter=_sep))
+    if not incoming:
+        return {"ok": False, "error": "siluxar ni vrnil vrstic — prekinjam (varnost)."}
+    keys = list(incoming[0].keys())
+    def fc(*c):
+        for x in c:
+            for k in keys:
+                if k.strip().lower()==x.lower(): return k
+        return None
+    c_sku=fc("product_sku","sku"); c_wh=fc("skladisce","skladišče","warehouse","store","source")
+    # množica (SKU_upper, wh) ki OBSTAJA v siluxarju
+    slx_pairs = set()
+    slx_has_sku = set()
+    for row in incoming:
+        sku=(row.get(c_sku) or "").strip() if c_sku else ""
+        if not sku: continue
+        wh=(row.get(c_wh) or "").strip().lower() if c_wh else ""
+        slx_pairs.add((sku.upper(), wh))
+        slx_has_sku.add(sku.upper())
+
+    # 2) preberi suban.ai CSV, poišči odvečne (SKU v want, par ki ga siluxar NIMA)
+    if not STOCK_CSV_FILE.exists():
+        return {"ok": False, "error": "Ni CSV zaloge."}
+    _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+    _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
+    reader = _csv.DictReader(_SIO(_t), delimiter=_sep)
+    fieldnames = reader.fieldnames or []
+    rows = list(reader)
+
+    za_brisat = []
+    ohranjeni = []
+    for row in rows:
+        sku=(row.get("product_sku") or row.get("sku") or "").strip()
+        wh=(row.get("warehouse") or "").strip().lower()
+        if sku.upper() not in want:
+            continue
+        pair=(sku.upper(), wh)
+        rec={"sku":sku,"skladisce":wh,"stock":(row.get("stock") or "").strip(),
+             "siluxar_id":(row.get("siluxar_id") or "").strip(),"naziv":(row.get("title") or "").strip()}
+        # VARNOST: briši samo če je SKU v siluxarju SPLOH prisoten (sicer ne vemo kaj je pravo)
+        if sku.upper() not in slx_has_sku:
+            rec["status"]="PRESKOČENO — SKU sploh ni v siluxarju"
+            ohranjeni.append(rec); continue
+        if pair in slx_pairs:
+            rec["status"]="obdržim (obstaja v siluxarju)"
+            ohranjeni.append(rec)
+        else:
+            rec["status"]="ODVEČEN — ni v siluxarju → BRIŠEM"
+            za_brisat.append(rec)
+
+    # VARNOST: za vsak SKU mora po brisanju ostati vsaj en zapis, ki JE v siluxarju
+    _po_sku = {}
+    for r_ in ohranjeni:
+        if "obdržim" in r_["status"]:
+            _po_sku.setdefault(r_["sku"].upper(), 0)
+            _po_sku[r_["sku"].upper()] += 1
+    _nevarni = []
+    for r_ in za_brisat:
+        if _po_sku.get(r_["sku"].upper(), 0) == 0:
+            _nevarni.append(r_["sku"])
+    if _nevarni:
+        return {"ok": False, "error": f"VARNOST: za {sorted(set(_nevarni))} bi brisanje pustilo 0 veljavnih zapisov. Prekinjam.",
+                "za_brisat": za_brisat, "ohranjeni": ohranjeni}
+
+    if dry or not za_brisat:
+        return {"ok": True, "dry_run": True, "bi_izbrisal": za_brisat, "obdrzal": ohranjeni,
+                "stevilo_za_brisat": len(za_brisat)}
+
+    # 3) DEJANSKO brisanje — backup najprej
+    try:
+        _make_stock_backup("pred-cleanup-duplikatov")
+    except Exception:
+        pass
+    _brisati = {(r_["sku"].upper(), r_["skladisce"]) for r_ in za_brisat}
+    out = _SIO()
+    w = _csv.DictWriter(out, fieldnames=fieldnames, extrasaction="ignore")
+    w.writeheader()
+    izbrisanih = 0
+    for row in rows:
+        sku=(row.get("product_sku") or row.get("sku") or "").strip()
+        wh=(row.get("warehouse") or "").strip().lower()
+        if (sku.upper(), wh) in _brisati:
+            izbrisanih += 1
+            continue
+        w.writerow(row)
+    STOCK_CSV_FILE.write_text(out.getvalue(), encoding="utf-8")
+    return {"ok": True, "dry_run": False, "izbrisano": izbrisanih, "detajli": za_brisat}
+
+
 @app.get("/sku-inspect")
 async def sku_inspect(request: Request, skus: str = ""):
     """Za vsak podani SKU (vejica-ločeno) pokaže VSE zapise — v suban.ai IN v siluxarju.
