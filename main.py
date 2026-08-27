@@ -10757,6 +10757,119 @@ async def silux2_merge_report(request: Request):
     }
 
 
+@app.get("/silux2-compare-live")
+async def silux2_compare_live(request: Request):
+    """Primerja suban.ai zalogo s ŽIVIM siluxar izvozom, PO SKLADIŠČIH.
+    Samo bere (siluxar GET izvoz + lokalni CSV). Pokaže, kje je razkorak."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    import csv as _csv
+    from io import StringIO as _SIO
+
+    # ── 1) SUBAN.AI (lokalni CSV) po skladiščih ──
+    sub = {}   # (sku_upper, wh) -> {"stock", "price"}
+    if STOCK_CSV_FILE.exists():
+        _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
+        for row in _csv.DictReader(_SIO(_t), delimiter=_sep):
+            sku = (row.get("product_sku") or row.get("sku") or "").strip()
+            if not sku: continue
+            wh = (row.get("warehouse") or "").strip().lower()
+            try: st = int(float(str(row.get("stock") or 0).replace(",", ".")))
+            except: st = 0
+            try: pr = float(str(row.get("price_netto") or row.get("price") or 0).replace(",", "."))
+            except: pr = 0.0
+            sub[(sku.upper(), wh)] = {"stock": st, "price": pr, "sku": sku}
+
+    # ── 2) SILUXAR (živ izvoz, isti klic kot sync) ──
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    headers = {}
+    _auth = None
+    if key:
+        headers["Authorization"] = key
+    else:
+        bu = os.environ.get("SILUXAR_BASIC_USER",""); bp = os.environ.get("SILUXAR_BASIC_PASS","")
+        if bu or bp: _auth = httpx.BasicAuth(bu, bp)
+    try:
+        r, _ = await _slx_get(_slx("/apistockexport"), headers=headers, auth=_auth, timeout=90)
+    except Exception as e:
+        return {"ok": False, "error": f"Napaka pri klicu siluxar: {e}"}
+    if r.status_code != 200:
+        return {"ok": False, "error": f"siluxar status {r.status_code}"}
+    text = r.text or ""
+    incoming = []
+    if "json" in r.headers.get("content-type","") or text.lstrip()[:1] in ("[","{"):
+        try:
+            jd = json.loads(text)
+            if isinstance(jd, dict):
+                for kk in ("data","items","rows","products","stock"):
+                    if isinstance(jd.get(kk), list): jd = jd[kk]; break
+            if isinstance(jd, list): incoming = [x for x in jd if isinstance(x, dict)]
+        except: incoming = []
+    if not incoming:
+        _sep = ";" if text.split("\n",1)[0].count(";") > text.split("\n",1)[0].count(",") else ","
+        incoming = list(_csv.DictReader(_SIO(text), delimiter=_sep))
+    if not incoming:
+        return {"ok": False, "error": "siluxar ni vrnil vrstic"}
+
+    keys = list(incoming[0].keys())
+    def fc(*c):
+        for x in c:
+            for k in keys:
+                if k.strip().lower() == x.lower(): return k
+        return None
+    c_sku = fc("product_sku","sku"); c_st = fc("product_stock","stock","qty","kolicina","zaloga")
+    c_pr = fc("product_price_netto","price_netto","product_price","price","cena")
+    c_wh = fc("skladisce","skladišče","warehouse","store","source")
+
+    slx = {}   # (sku_upper, wh) -> {"stock","price"}  (sešteje podvojene)
+    for row in incoming:
+        sku = (row.get(c_sku) or "").strip() if c_sku else ""
+        if not sku: continue
+        wh = (row.get(c_wh) or "").strip().lower() if c_wh else ""
+        try: st = int(float(str(row.get(c_st) or 0).replace(",", "."))) if c_st else 0
+        except: st = 0
+        try: pr = float(str(row.get(c_pr) or 0).replace(",", ".")) if c_pr else 0.0
+        except: pr = 0.0
+        k = (sku.upper(), wh)
+        if k in slx: slx[k]["stock"] += st
+        else: slx[k] = {"stock": st, "price": pr, "sku": sku}
+
+    # ── 3) primerjaj po skladiščih ──
+    def val(d, whset):
+        return round(sum(v["stock"]*v["price"] for (s,w),v in d.items() if w in whset), 2)
+    sub_silux  = val(sub, {"silux"});  sub_silux2 = val(sub, {"silux2"})
+    slx_silux  = val(slx, {"silux"});  slx_silux2 = val(slx, {"silux2"})
+
+    # SKU-ji z največjo razliko v VREDNOSTI (suban - siluxar), po skladišču
+    diffs = []
+    allkeys = set(sub.keys()) | set(slx.keys())
+    for k in allkeys:
+        s_sub = sub.get(k, {"stock":0,"price":0.0})
+        s_slx = slx.get(k, {"stock":0,"price":0.0})
+        vsub = s_sub["stock"]*s_sub["price"]; vslx = s_slx["stock"]*s_slx["price"]
+        d = round(vsub - vslx, 2)
+        if abs(d) >= 1:   # samo opazne
+            diffs.append({"sku": s_sub.get("sku") or s_slx.get("sku"), "skladisce": k[1],
+                          "suban_stock": s_sub["stock"], "siluxar_stock": s_slx["stock"],
+                          "suban_val": round(vsub,2), "siluxar_val": round(vslx,2), "razlika_eur": d})
+    diffs.sort(key=lambda x: -abs(x["razlika_eur"]))
+
+    return {
+        "ok": True,
+        "suban": {"silux_eur": sub_silux, "silux2_eur": sub_silux2, "skupaj_eur": round(sub_silux+sub_silux2,2)},
+        "siluxar": {"silux_eur": slx_silux, "silux2_eur": slx_silux2, "skupaj_eur": round(slx_silux+slx_silux2,2)},
+        "razlika": {
+            "silux_eur": round(sub_silux - slx_silux, 2),
+            "silux2_eur": round(sub_silux2 - slx_silux2, 2),
+            "skupaj_eur": round((sub_silux+sub_silux2) - (slx_silux+slx_silux2), 2),
+        },
+        "najvecje_razlike": diffs[:60],
+        "stevilo_razlik": len(diffs),
+    }
+
+
 @app.get("/orodja-stock-data")
 async def orodja_stock_data():
     """Vrne celoten seznam zaloge iz shranjenega CSV."""
