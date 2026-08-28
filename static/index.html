@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-28 00:15</div>
+      <div class="sidebar-logo-sub">build 2026-08-28 01:30</div>
     </div>
   </div>
 
@@ -28018,6 +28018,10 @@ let _selData = null;
 let _selActiveSort = { col: 'position', dir: 1 };   // aktivni seznam: stolpec + smer (1=A-Z, -1=Z-A)
 let _selSentSort = { col: 'sent_ts', dir: -1 };      // poslani seznam
 let _selActiveFilter = 'vsi';                        // 'vsi' | 'dvojniki' | 'brez_pozicije'
+let _selActiveSearch = '';                           // iskalni niz (SKU/pozicija)
+let _selActiveLimit = 100;                           // koliko vrstic naenkrat (gumb 'vse' ga sprosti)
+function selSetSearch(v){ _selActiveSearch = (v||'').trim().toLowerCase(); _selActiveLimit = 100; selRenderPregled(); }
+function selShowAll(){ _selActiveLimit = 999999; selRenderPregled(); }
 function selSortEntries(arr, sortState){
   const col = sortState.col, dir = sortState.dir;
   return arr.slice().sort((a,b) => {
@@ -28047,7 +28051,7 @@ function selSentSortBy(col){
   else { _selSentSort.col = col; _selSentSort.dir = 1; }
   selRenderSent();
 }
-function selSetFilter(f){ _selActiveFilter = f; selRenderPregled(); }
+function selSetFilter(f){ _selActiveFilter = f; _selActiveLimit = 100; selRenderPregled(); }
 let _selSkuCache = null;
 const SEL_LS = 'suban_selitev_nav';
 
@@ -28331,6 +28335,12 @@ function selRenderPregled(){
   let shown = e.slice();
   if (_selActiveFilter === 'dvojniki') shown = shown.filter(x => dupSet.has((x.sku||'').toUpperCase()));
   else if (_selActiveFilter === 'brez_pozicije') shown = shown.filter(x => !(x.position||'').trim());
+  // iskanje po SKU ali poziciji
+  if (_selActiveSearch){
+    shown = shown.filter(x => (x.sku||'').toLowerCase().includes(_selActiveSearch)
+                           || (x.position||'').toLowerCase().includes(_selActiveSearch)
+                           || (x.title||'').toLowerCase().includes(_selActiveSearch));
+  }
   // filter vrstica (gumbi)
   const nDup = e.filter(x => dupSet.has((x.sku||'').toUpperCase())).length;
   const nBrez = e.filter(x => !(x.position||'').trim()).length;
@@ -28340,7 +28350,12 @@ function selRenderPregled(){
     + fbtn('dvojniki','⚠ Dvojniki', nDup, _selActiveFilter==='dvojniki', true)
     + fbtn('brez_pozicije','🚫 Brez pozicije', nBrez, _selActiveFilter==='brez_pozicije', true)
     + '</div>';
-  const sorted = selSortEntries(shown, _selActiveSort);
+  // iskalno polje
+  filterRow += '<div style="margin-bottom:8px"><input id="selActiveSearchInput" type="text" placeholder="🔍 Išči po SKU, poziciji ali nazivu..." value="' + selEsc(_selActiveSearch) + '" oninput="selSetSearch(this.value)" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;color:var(--text);background:var(--bg-secondary)"></div>';
+  // sortiraj vse, nato omeji prikaz
+  const sortedAll = selSortEntries(shown, _selActiveSort);
+  const totalShown = sortedAll.length;
+  const sorted = sortedAll.slice(0, _selActiveLimit);
   let tbl = '<table style="border-collapse:collapse;width:100%;font-size:13px;min-width:520px">'
     + '<tr style="text-transform:uppercase;font-size:10px">'
     + selSortHeader('Polica','position',_selActiveSort,'selActiveSortBy')
@@ -28363,7 +28378,24 @@ function selRenderPregled(){
       + '</tr>';
     }).join('') + '</table>';
   if (!sorted.length) tbl += '<div style="font-size:12px;color:var(--text-tertiary);padding:8px">Ni vpisov za ta filter.</div>';
+  // gumb "prikaži vse" če je skritih vpisov
+  if (totalShown > sorted.length){
+    const skritih = totalShown - sorted.length;
+    tbl += '<div style="text-align:center;margin-top:10px"><button onclick="selShowAll()" style="padding:10px 20px;background:transparent;border:1px solid var(--accent);border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--accent)">↓ Prikaži vse (' + skritih + ' skritih, prikazanih ' + sorted.length + ')</button></div>';
+  } else if (totalShown > 100){
+    tbl += '<div style="text-align:center;margin-top:8px;font-size:11px;color:var(--text-tertiary)">— prikazanih vseh ' + totalShown + ' —</div>';
+  }
+  // ohrani fokus/kazalec v iskalnem polju čez re-render (polling vsake 3s)
+  let _searchWasFocused = false, _selStart = 0, _selEnd = 0;
+  const _oldSearch = document.getElementById('selActiveSearchInput');
+  if (_oldSearch && document.activeElement === _oldSearch){
+    _searchWasFocused = true; _selStart = _oldSearch.selectionStart; _selEnd = _oldSearch.selectionEnd;
+  }
   if (list) list.innerHTML = filterRow + tbl;
+  if (_searchWasFocused){
+    const ns = document.getElementById('selActiveSearchInput');
+    if (ns){ ns.focus(); try{ ns.setSelectionRange(_selStart, _selEnd); }catch(e){} }
+  }
   selRenderSent();
 }
 async function selEditPos(sku, oldPos){
@@ -28478,14 +28510,23 @@ async function selTransfer(){
   msg += '\n\nNadaljujem?';
   if (!confirm(msg)) return;
   // druga potrditev pri večjem obsegu
-  if (n > 50 && !confirm('Res? ' + n + ' pozicij naenkrat. To je veliko — potrdi še enkrat.')) return;
+  if (n > 50 && !confirm('Res? ' + n + ' pozicij. Poslano bo v svežnjih po 100 (varno). Če kak sveženj pade, ostane v aktivnih za ponovni poskus. Potrdi.')) return;
   if (st){ st.style.color='var(--text-secondary)'; st.textContent='prenašam…'; }
   const btn = document.getElementById('selTransferBtn'); if (btn) btn.disabled = true;
   try{
-    const r = await fetch('/selitev-transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
+    const r = await fetch('/selitev-transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true, batch_size:100})});
     const d = await r.json();
     if (d.ok){
-      if (st){ st.style.color='#0f8a4f'; st.textContent='✓ Preneseno ' + (d.preneseno||d.poslano||n) + ' pozicij v siluxar (status ' + (d.status||'') + '). Glej »Poslano« spodaj.'; }
+      const sveznji = d.sveznji || [];
+      const padli = sveznji.filter(s => !s.ok);
+      if (padli.length){
+        // DELNI uspeh — nekaj svežnjev padlo
+        let txt = '⚠ Delno preneseno: ' + (d.poslano||0) + ' pozicij v ' + (sveznji.length - padli.length) + '/' + (d.sveznjev||sveznji.length) + ' svežnjih. ';
+        txt += padli.length + ' svežnjev PADLO — ti SKU ostajajo v aktivnih za ponovni poskus.';
+        if (st){ st.style.color='#b57611'; st.innerHTML = txt + ' <button onclick="selShowBatchLog()" style="margin-left:6px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:transparent;cursor:pointer;font-size:11px;font-weight:700;color:var(--accent)">📋 Log</button>'; }
+      } else {
+        if (st){ st.style.color='#0f8a4f'; st.innerHTML='✓ Preneseno ' + (d.preneseno||d.poslano||n) + ' pozicij v siluxar v ' + (d.sveznjev||1) + ' svežnjih. Glej »Poslano« spodaj. <button onclick="selShowBatchLog()" style="margin-left:6px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:transparent;cursor:pointer;font-size:11px;font-weight:700;color:var(--accent)">📋 Log</button>'; }
+      }
       if (btn) btn.disabled = false;
       await selReload(); selRenderPregled();
     } else if (d.blokirano){
@@ -28498,6 +28539,25 @@ async function selTransfer(){
       if (btn) btn.disabled = false;
     }
   }catch(e){ if(st){st.style.color='#e5484d';st.textContent='⚠ '+e.message;} if(btn) btn.disabled=false; }
+}
+
+async function selShowBatchLog(){
+  try{
+    const r = await fetch('/selitev-batch-log');
+    const d = await r.json();
+    const log = (d.log||[]);
+    if (!log.length){ alert('Log je prazen.'); return; }
+    const zadnji = log[0];
+    let txt = 'ZADNJI PRENOS — ' + zadnji.cas + '\n';
+    txt += 'Skupaj: ' + zadnji.skupaj_sku + ' SKU v ' + zadnji.sveznjev + ' svežnjih (po ' + zadnji.batch_size + ')\n';
+    txt += 'Poslano skupaj: ' + zadnji.poslano_skupaj + '\n\n';
+    (zadnji.sveznji||[]).forEach(s => {
+      txt += (s.ok ? '✓' : '✗') + ' Sveženj ' + s.svezenj + '/' + s.od + ': ' + s.poslano + '/' + s.sku_v_svznju + ' poslano';
+      if (!s.ok) txt += '  — NAPAKA: ' + (s.napaka||'?');
+      txt += '\n';
+    });
+    alert(txt);
+  }catch(e){ alert('Napaka pri branju loga: ' + e.message); }
 }
 
 // ═══ SILUXAR SYNC: čakajoči + zgodovina pošiljanj ═══

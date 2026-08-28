@@ -7840,6 +7840,7 @@ async def _slx_get(url: str, *, headers=None, auth=None, timeout=60, method="GET
 
 
 SILUXAR_PUSH_LOG = DATA_DIR / "siluxar_push_log.json"   # zadnja pošiljanja pozicij (debug)
+SELITEV_BATCH_LOG = DATA_DIR / "selitev_batch_log.json"   # log prenosov po svežnjih (za 1000+ SKU)
 SILUXAR_DELETE_LOG = DATA_DIR / "siluxar_delete_log.json"   # zadnja brisanja alarmov (debug)
 
 
@@ -26180,6 +26181,19 @@ async def selitev_sent(offset: int = 0, limit: int = 50):
             "vrnjeno": len(page), "skupaj": total, "je_se": offset + len(page) < total}
 
 
+@app.get("/selitev-batch-log")
+async def selitev_batch_log():
+    """Vrne log zadnjih prenosov po svežnjih (za 1000+ SKU) — kaj je uspelo, kaj padlo."""
+    try:
+        if SELITEV_BATCH_LOG.exists():
+            log = json.loads(SELITEV_BATCH_LOG.read_text(encoding="utf-8")) or []
+        else:
+            log = []
+    except Exception:
+        log = []
+    return {"ok": True, "log": log}
+
+
 @app.get("/selitev-sent-csv")
 async def selitev_sent_csv():
     """Izvoz cele zgodovine poslanih v CSV — za ročni uvoz v zalogo, če gre kaj narobe.
@@ -26423,8 +26437,66 @@ async def selitev_transfer(data: dict):
     items = [{"sku": c["sku"], "position": c["position"],
               "warehouse": SELITEV_WAREHOUSE, "id": c["id"]} for c in cisti]
 
-    # pokliči obstoječo varno funkcijo (ima vse zaščite in logira v push-log)
-    res = await siluxar_push_positions({"items": items, "confirm_bulk": True})
+    # ═══ PRENOS PO SVEŽNJIH (batch) — varno za 1000+ SKU ═══
+    # Namesto enega velikega POST-a razbijemo na svežnje po BATCH_SIZE.
+    # Vsak sveženj se pošlje in zabeleži posebej. Če eden pade, ostali gredo naprej.
+    BATCH_SIZE = int(data.get("batch_size") or 100)
+    if BATCH_SIZE < 1: BATCH_SIZE = 100
+    if BATCH_SIZE > 500: BATCH_SIZE = 500
+    _batch_ts = _lj_now().strftime("%Y-%m-%d %H:%M:%S")
+    svezenj_rez = []
+    poslano_skupaj = 0
+    vsi_ok = True
+    _uspeli_items = []     # items iz uspešnih svežnjev (samo te premaknemo v 'poslano')
+    total_sv = (len(items) + BATCH_SIZE - 1) // BATCH_SIZE
+    for _i in range(0, len(items), BATCH_SIZE):
+        _chunk = items[_i:_i+BATCH_SIZE]
+        _sv_num = (_i // BATCH_SIZE) + 1
+        try:
+            _r = await siluxar_push_positions({"items": _chunk, "confirm_bulk": True})
+            _ok = bool(isinstance(_r, dict) and _r.get("ok"))
+            _status = (_r.get("status") if isinstance(_r, dict) else None)
+            _poslano = (_r.get("poslano") if isinstance(_r, dict) else 0) or 0
+        except Exception as _e:
+            _ok = False; _status = None; _poslano = 0
+            _r = {"ok": False, "error": str(_e)}
+        if _ok:
+            poslano_skupaj += _poslano
+            _uspeli_items.extend(_chunk)
+        else:
+            vsi_ok = False
+        svezenj_rez.append({
+            "svezenj": _sv_num, "od": total_sv,
+            "sku_v_svznju": len(_chunk),
+            "poslano": _poslano, "ok": _ok, "status": _status,
+            "napaka": (None if _ok else (_r.get("error") if isinstance(_r, dict) else "neznana")),
+            "primeri": [c["sku"] for c in _chunk[:5]],
+        })
+        # kratka pavza med svežnji, da siluxarja ne preobremenimo
+        if _sv_num < total_sv:
+            await asyncio.sleep(0.4)
+    # zapiši batch log (obdrži zadnjih 20 prenosov)
+    try:
+        _blog = []
+        if SELITEV_BATCH_LOG.exists():
+            _blog = json.loads(SELITEV_BATCH_LOG.read_text(encoding="utf-8")) or []
+        _blog.insert(0, {
+            "cas": _batch_ts, "skupaj_sku": len(items),
+            "sveznjev": total_sv, "batch_size": BATCH_SIZE,
+            "poslano_skupaj": poslano_skupaj, "vsi_ok": vsi_ok,
+            "sveznji": svezenj_rez,
+        })
+        _blog = _blog[:20]
+        _tmp = SELITEV_BATCH_LOG.with_suffix(".tmp")
+        _tmp.write_text(json.dumps(_blog, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(str(_tmp), str(SELITEV_BATCH_LOG))
+    except Exception as _e:
+        print(f"[selitev] batch log err: {_e}")
+    # skupni rezultat v obliki, ki jo pričakuje spodnja koda
+    res = {"ok": (poslano_skupaj > 0), "status": (200 if vsi_ok else 207),
+           "poslano": poslano_skupaj, "sveznji": svezenj_rez,
+           "vsi_ok": vsi_ok, "sveznjev": total_sv,
+           "_uspeli_sku": set((c["sku"] or "").strip().upper() for c in _uspeli_items)}
     # ob uspehu: aktivne PREMAKNI v "poslano" (ne izbriši!), arhiviraj
     if isinstance(res, dict) and res.get("ok"):
         try:
@@ -26436,19 +26508,29 @@ async def selitev_transfer(data: dict):
             pass
         _ts = _lj_now().strftime("%Y-%m-%d %H:%M:%S")
         _batch = _lj_now().strftime("%Y%m%d_%H%M%S")
+        _uspeli_sku = res.get("_uspeli_sku") or set()
         async with _selitev_lock:
             d2 = _selitev_load()
             moved = []
+            _ostanejo = []
             for e in d2.get("entries", []):
-                if (e.get("position") or "").strip():
+                _pos = (e.get("position") or "").strip()
+                _sk = (e.get("sku") or "").strip().upper()
+                if _pos and _sk in _uspeli_sku:
+                    # USPEŠNO poslan → premakni v poslano
                     moved.append({"sku": e.get("sku"), "position": e.get("position"),
                                   "sent_ts": _ts, "batch": _batch,
                                   "status": ("ok" if res.get("status") == 200 else "poslano")})
+                else:
+                    # NEUSPEL sveženj ali brez pozicije → OSTANE v aktivnih (za ponovni poskus)
+                    _ostanejo.append(e)
             d2["sent"] = (d2.get("sent", []) + moved)[-500:]     # obdrži zadnjih 500
-            # v aktivnih pusti samo tiste brez pozicije (če bi kdaj bili)
-            d2["entries"] = [e for e in d2.get("entries", []) if not (e.get("position") or "").strip()]
+            d2["entries"] = _ostanejo
             _selitev_save(d2)
         res["preneseno"] = len(moved)
+    # počisti interno polje (set ni JSON-serializable) — VEDNO, tudi če prenos ni uspel
+    if isinstance(res, dict):
+        res.pop("_uspeli_sku", None)
     return res
 
 
