@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-27 22:30</div>
+      <div class="sidebar-logo-sub">build 2026-08-27 23:15</div>
     </div>
   </div>
 
@@ -4586,7 +4586,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div class="card" style="margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <span style="font-size:12px;font-weight:700;color:var(--text)">2️⃣ Pozicija</span>
-          <button onclick="pozOpenValidList()" style="font-size:11px;padding:3px 9px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit">📋 Seznam pozicij</button>
+          <button onclick="pozOpenValidList()" style="font-size:12px;font-weight:700;padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:inherit">📋 Uredi seznam pozicij</button>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
           <label class="poz-photo-btn" style="flex:1">
@@ -4635,6 +4635,9 @@ input[type="text"].error { border-color: var(--red) !important; }
             <button onclick="pozCloseValidList()" style="background:transparent;border:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">✕</button>
           </div>
           <p style="font-size:12px;color:var(--text-tertiary);margin:0 0 8px">Prilepi vse veljavne pozicije (vrstice/vejice/presledki). Uporabljajo se za validacijo in autosuggest.</p>
+          <div style="margin-bottom:8px">
+            <button onclick="pozInsertRange('S',1,14)" style="font-size:11px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit;color:var(--text)">+ Vstavi S1–S14</button>
+          </div>
           <textarea id="pozValidInput" placeholder="P1-A&#10;P2-B&#10;P8-C&#10;02-3E ..." style="width:100%;min-height:140px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
           <div style="display:flex;gap:8px;margin-top:8px">
             <button onclick="pozSaveValidList('replace')" style="flex:1;padding:9px;background:var(--accent);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💾 Shrani (nadomesti)</button>
@@ -27750,6 +27753,15 @@ async function pozOpenValidList() {
   } catch (e) {}
 }
 function pozCloseValidList() { document.getElementById('pozValidModal').style.display = 'none'; }
+function pozInsertRange(prefix, from, to){
+  const ta = document.getElementById('pozValidInput');
+  const have = new Set((ta.value||'').split(/[\s,;]+/).map(x=>x.trim().toUpperCase()).filter(Boolean));
+  const add = [];
+  for(let i=from;i<=to;i++){ const p = prefix+i; if(!have.has(p.toUpperCase())) add.push(p); }
+  if(!add.length){ return; }
+  const cur = (ta.value||'').trim();
+  ta.value = (cur ? cur + '\n' : '') + add.join('\n');
+}
 function pozRenderValidChips(positions) {
   const el = document.getElementById('pozValidChips');
   if (!el) return;
