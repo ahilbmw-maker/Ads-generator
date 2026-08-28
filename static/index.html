@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-27 23:15</div>
+      <div class="sidebar-logo-sub">build 2026-08-28 00:15</div>
     </div>
   </div>
 
@@ -5031,6 +5031,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div style="font-size:13px;font-weight:800">📝 Aktivno — čaka na prenos <span id="selPregCount" style="font-weight:600;color:var(--text-tertiary)"></span></div>
             <div style="display:flex;gap:8px">
               <button onclick="selReload()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-secondary)">🔄 Osveži</button>
+              <button onclick="selActiveCsv()" style="padding:8px 12px;background:transparent;border:1px solid #12a35f;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:#12a35f">⬇ CSV</button>
               <button onclick="selClearActive()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:#e5484d">🗑 Počisti aktivno</button>
             </div>
           </div>
@@ -28014,10 +28015,44 @@ const SEL_REGALI = ['1','2','3','4','5'];
 const SEL_POLICE = ['A','B','C','D','E','F'];
 let _selNav = {vrsta:null, regal:null, polica:null};
 let _selData = null;
+let _selActiveSort = { col: 'position', dir: 1 };   // aktivni seznam: stolpec + smer (1=A-Z, -1=Z-A)
+let _selSentSort = { col: 'sent_ts', dir: -1 };      // poslani seznam
+let _selActiveFilter = 'vsi';                        // 'vsi' | 'dvojniki' | 'brez_pozicije'
+function selSortEntries(arr, sortState){
+  const col = sortState.col, dir = sortState.dir;
+  return arr.slice().sort((a,b) => {
+    let va, vb;
+    if (col === 'position'){ va=(a.position||''); vb=(b.position||''); }
+    else if (col === 'sku'){ va=(a.sku||''); vb=(b.sku||''); }
+    else if (col === 'title'){ va=(a.title||''); vb=(b.title||''); }
+    else if (col === 'old'){ va=(a.old_position||''); vb=(b.old_position||''); }
+    else if (col === 'sent_ts'){ va=(a.sent_ts||''); vb=(b.sent_ts||''); }
+    else { va=(a[col]||''); vb=(b[col]||''); }
+    return dir * String(va).localeCompare(String(vb), 'sl', {numeric:true, sensitivity:'base'});
+  });
+}
+function selSortHeader(label, col, sortState, onclickFn){
+  const active = sortState.col === col;
+  const arrow = active ? (sortState.dir === 1 ? ' ▲' : ' ▼') : ' ⇅';
+  const color = active ? 'var(--accent)' : 'var(--text-tertiary)';
+  return '<th style="text-align:left;padding:6px 8px;cursor:pointer;user-select:none;color:'+color+'" onclick="'+onclickFn+'(\''+col+'\')">'+selEsc(label)+'<span style="font-size:9px">'+arrow+'</span></th>';
+}
+function selActiveSortBy(col){
+  if (_selActiveSort.col === col) _selActiveSort.dir *= -1;
+  else { _selActiveSort.col = col; _selActiveSort.dir = 1; }
+  selRenderPregled();
+}
+function selSentSortBy(col){
+  if (_selSentSort.col === col) _selSentSort.dir *= -1;
+  else { _selSentSort.col = col; _selSentSort.dir = 1; }
+  selRenderSent();
+}
+function selSetFilter(f){ _selActiveFilter = f; selRenderPregled(); }
 let _selSkuCache = null;
 const SEL_LS = 'suban_selitev_nav';
 
 function selEsc(t){ return String(t==null?'':t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function selQ(s){ return "'" + String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "'"; }
 function selPos(){ return (_selNav.vrsta && _selNav.regal && _selNav.polica) ? (_selNav.vrsta + '-' + _selNav.regal + _selNav.polica) : null; }
 function selSaveNav(){ try{ localStorage.setItem(SEL_LS, JSON.stringify(_selNav)); }catch(e){} }
 function selLoadNav(){ try{ const v=JSON.parse(localStorage.getItem(SEL_LS)||'null'); if(v&&typeof v==='object') _selNav=Object.assign({vrsta:null,regal:null,polica:null},v); }catch(e){} }
@@ -28289,17 +28324,60 @@ function selRenderPregled(){
     }
   }
   if (!e.length){ if (list) list.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);padding:8px 0">Še ni aktivnih vpisov.</div>'; selRenderSent(); return; }
-  const sorted = e.slice().sort((a,b) => (a.position||'').localeCompare(b.position||''));
-  if (list) list.innerHTML = '<table style="border-collapse:collapse;width:100%;font-size:13px;min-width:520px">'
-    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Polica</th><th style="text-align:left;padding:6px 8px">SKU</th><th style="text-align:left;padding:6px 8px">Naziv</th><th style="text-align:left;padding:6px 8px">Stara</th><th></th></tr>'
-    + sorted.map(x => '<tr style="border-top:1px solid var(--border)">'
-      + '<td style="padding:8px;font-family:monospace;font-weight:700">' + selEsc(x.position) + '</td>'
+  // ── množice za filtre anomalij ──
+  const dupSet = new Set();   // SKU-ji na VEČ različnih policah
+  (_selData.vec_pozicij||[]).forEach(m => dupSet.add((m.sku||'').toUpperCase()));
+  // filtriraj glede na izbran filter
+  let shown = e.slice();
+  if (_selActiveFilter === 'dvojniki') shown = shown.filter(x => dupSet.has((x.sku||'').toUpperCase()));
+  else if (_selActiveFilter === 'brez_pozicije') shown = shown.filter(x => !(x.position||'').trim());
+  // filter vrstica (gumbi)
+  const nDup = e.filter(x => dupSet.has((x.sku||'').toUpperCase())).length;
+  const nBrez = e.filter(x => !(x.position||'').trim()).length;
+  const fbtn = (id,label,n,active,warn) => '<button onclick="selSetFilter(\''+id+'\')" style="padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;border:1px solid '+(active?'var(--accent)':'var(--border)')+';background:'+(active?'var(--accent)':'transparent')+';color:'+(active?'#fff':(warn&&n?'#b57611':'var(--text-secondary)'))+'">'+label+(n?' ('+n+')':'')+'</button>';
+  let filterRow = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+    + fbtn('vsi','Vsi', e.length, _selActiveFilter==='vsi', false)
+    + fbtn('dvojniki','⚠ Dvojniki', nDup, _selActiveFilter==='dvojniki', true)
+    + fbtn('brez_pozicije','🚫 Brez pozicije', nBrez, _selActiveFilter==='brez_pozicije', true)
+    + '</div>';
+  const sorted = selSortEntries(shown, _selActiveSort);
+  let tbl = '<table style="border-collapse:collapse;width:100%;font-size:13px;min-width:520px">'
+    + '<tr style="text-transform:uppercase;font-size:10px">'
+    + selSortHeader('Polica','position',_selActiveSort,'selActiveSortBy')
+    + selSortHeader('SKU','sku',_selActiveSort,'selActiveSortBy')
+    + selSortHeader('Naziv','title',_selActiveSort,'selActiveSortBy')
+    + selSortHeader('Stara','old',_selActiveSort,'selActiveSortBy')
+    + '<th></th></tr>'
+    + sorted.map(x => {
+      const isDup = dupSet.has((x.sku||'').toUpperCase());
+      const rowBg = isDup ? 'background:rgba(217,151,34,.08)' : '';
+      return '<tr style="border-top:1px solid var(--border);'+rowBg+'">'
+      + '<td style="padding:8px;font-family:monospace;font-weight:700">' + selEsc(x.position||'—') + (isDup?' <span style="color:#b57611;font-size:10px" title="isti SKU na več policah">⚠</span>':'') + '</td>'
       + '<td style="padding:8px;font-weight:700">' + selEsc(x.sku) + (x.known===false?' <span style="color:#e5484d" title="ni v zalogi">?</span>':'') + '</td>'
       + '<td style="padding:8px;color:var(--text-secondary)">' + selEsc(x.title||'') + '</td>'
       + '<td style="padding:8px;color:var(--text-tertiary);font-family:monospace">' + selEsc(x.old_position||'—') + '</td>'
-      + '<td style="padding:8px;text-align:right"><button onclick="selRemove(\'' + selEsc(x.sku) + '\',\'' + selEsc(x.position) + '\')" style="background:transparent;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:#e5484d;font-size:12px;font-weight:700;padding:5px 10px">🗑</button></td>'
-      + '</tr>').join('') + '</table>';
+      + '<td style="padding:8px;text-align:right;white-space:nowrap">'
+        + '<button onclick="selEditPos(' + selQ(x.sku) + ',' + selQ(x.position) + ')" style="background:transparent;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--accent);font-size:12px;font-weight:700;padding:5px 9px;margin-right:4px" title="Spremeni pozicijo">✏️</button>'
+        + '<button onclick="selRemove(' + selQ(x.sku) + ',' + selQ(x.position) + ')" style="background:transparent;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:#e5484d;font-size:12px;font-weight:700;padding:5px 9px" title="Izbriši vpis">🗑</button>'
+      + '</td>'
+      + '</tr>';
+    }).join('') + '</table>';
+  if (!sorted.length) tbl += '<div style="font-size:12px;color:var(--text-tertiary);padding:8px">Ni vpisov za ta filter.</div>';
+  if (list) list.innerHTML = filterRow + tbl;
   selRenderSent();
+}
+async function selEditPos(sku, oldPos){
+  const novo = prompt('Nova pozicija za ' + sku + ' (trenutno ' + (oldPos||'brez') + '):', oldPos||'');
+  if (novo === null) return;
+  const np = (novo||'').trim();
+  if (!np){ alert('Pozicija ne sme biti prazna. Za izbris uporabi 🗑.'); return; }
+  if (np.toUpperCase() === (oldPos||'').toUpperCase()) return;
+  try {
+    const r = await fetch('/selitev-edit-position',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku, old_position:oldPos, new_position:np})});
+    const d = await r.json();
+    if (d.ok && d.spremenjeni){ selReload(); }
+    else alert('Ni spremenjeno: ' + ((d&&d.error)||'vpis ni najden'));
+  } catch(e){ alert('Napaka: ' + e.message); }
 }
 let _selSentRows = [];      // naložene vrstice (najnovejši prvi)
 let _selSentPrevTotal = 0;
@@ -28327,9 +28405,14 @@ function selRenderSent(){
   if (cnt) cnt.textContent = _selSentTotal ? '· ' + _selSentTotal + ' prenesenih' : '';
   if (!list) return;
   if (!_selSentRows.length){ list.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);padding:8px 0">Še nič ni bilo prenesenega.</div>'; return; }
+  const sentSorted = selSortEntries(_selSentRows, _selSentSort);
   let html = '<table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:520px">'
-    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">Čas</th><th style="text-align:left;padding:6px 8px">Polica</th><th style="text-align:left;padding:6px 8px">SKU</th><th style="text-align:center;padding:6px 8px">Status</th></tr>'
-    + _selSentRows.map(selSentRowHtml).join('') + '</table>';
+    + '<tr style="text-transform:uppercase;font-size:10px">'
+    + selSortHeader('Čas','sent_ts',_selSentSort,'selSentSortBy')
+    + selSortHeader('Polica','position',_selSentSort,'selSentSortBy')
+    + selSortHeader('SKU','sku',_selSentSort,'selSentSortBy')
+    + '<th style="text-align:center;padding:6px 8px;color:var(--text-tertiary)">Status</th></tr>'
+    + sentSorted.map(selSentRowHtml).join('') + '</table>';
   // gumb "Naloži več" če jih je še
   if (_selSentLoaded < _selSentTotal){
     const preostalo = _selSentTotal - _selSentLoaded;
@@ -28352,6 +28435,14 @@ async function selSentLoadMore(){
       selRenderSent();
     } else if (btn){ btn.disabled=false; btn.textContent='↓ Naloži več'; }
   }catch(e){ if(btn){ btn.disabled=false; btn.textContent='↓ Naloži več'; } }
+}
+function selActiveCsv(){
+  const n = (_selData && _selData.entries) ? _selData.entries.length : 0;
+  if(!n){ alert('Ni aktivnih vpisov za izvoz.'); return; }
+  const a = document.createElement('a');
+  a.href = '/selitev-active-csv';
+  a.download = '';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 async function selClearActive(){
   if (!confirm('Počistim AKTIVNE vpise (ki še niso preneseni)?\\n\\nZgodovina »Poslano« ostane. Ne vpliva na siluxar.')) return;

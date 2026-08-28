@@ -26205,6 +26205,45 @@ async def selitev_sent_csv():
                  headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
+@app.get("/selitev-active-csv")
+async def selitev_active_csv():
+    """Izvoz AKTIVNIH (čaka na prenos) v CSV — varovalka PRED množičnim prenosom.
+    Če prenos v siluxar spodleti, imaš police zapisane za ročni uvoz.
+    Stolpci: SKU, pozicija, stara_pozicija, skladisce (vedno silux)."""
+    import csv as _csv
+    from io import StringIO as _SIO
+    from fastapi.responses import Response as _Resp
+    d = _selitev_load()
+    entries = d.get("entries", [])
+    # mapiranje SKU -> trenutna (stara) pozicija iz zaloge
+    lookup = {}
+    try:
+        if STOCK_CSV_FILE.exists():
+            _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+            _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
+            for row in _csv.DictReader(_SIO(_t), delimiter=_sep):
+                sv = (row.get("product_sku") or row.get("sku") or "").strip()
+                if sv and sv.upper() not in lookup:
+                    lookup[sv.upper()] = (row.get("position") or "").strip()
+    except Exception:
+        pass
+    buf = _SIO()
+    buf.write("\ufeff")                          # BOM za Excel (šumniki)
+    w = _csv.writer(buf, delimiter=";")
+    w.writerow(["SKU", "pozicija", "stara_pozicija", "skladisce"])
+    for e in entries:
+        sku = (e.get("sku") or "").strip()
+        pos = (e.get("position") or "").strip()
+        if not sku or not pos:
+            continue
+        stara = lookup.get(sku.upper(), "")
+        w.writerow([sku, pos, stara, SELITEV_WAREHOUSE])
+    fname = f"selitev_aktivno_{_lj_now().strftime('%Y%m%d_%H%M')}.csv"
+    return _Resp(content=buf.getvalue(),
+                 media_type="text/csv; charset=utf-8",
+                 headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
 @app.post("/selitev-add")
 async def selitev_add(data: dict):
     """Dodeli SKU-ju pozicijo v začasni zalogi. Ne gre v siluxar."""
@@ -26261,6 +26300,28 @@ async def selitev_remove(data: dict):
                                 and (e.get("position") or "").strip().upper() == pos)]
         _selitev_save(d)
     return {"ok": True, "odstranjeno": before - len(d["entries"])}
+
+
+@app.post("/selitev-edit-position")
+async def selitev_edit_position(data: dict):
+    """Spremeni pozicijo enega obstoječega vpisa (za urejanje dvojnikov).
+    Body: {sku, old_position, new_position}. Uskladi le TISTI en vpis (sku+old_position)."""
+    sku = (str(data.get("sku") or "")).strip()
+    old = (str(data.get("old_position") or "")).strip().upper()
+    new = (str(data.get("new_position") or "")).strip().upper()
+    if not sku or not new:
+        return {"ok": False, "error": "Manjka SKU ali nova pozicija."}
+    async with _selitev_lock:
+        d = _selitev_load()
+        spremenjeni = 0
+        for e in d["entries"]:
+            if (e.get("sku") or "").strip().upper() == sku.upper() and (e.get("position") or "").strip().upper() == old:
+                e["position"] = new
+                spremenjeni += 1
+                break   # samo prvi zadetek (en vpis)
+        if spremenjeni:
+            _selitev_save(d)
+    return {"ok": True, "spremenjeni": spremenjeni}
 
 
 @app.post("/selitev-clear")
