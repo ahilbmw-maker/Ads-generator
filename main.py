@@ -9470,6 +9470,118 @@ async def _zaloga_sync_core():
             "synced_at": meta['last_siluxar_sync']}
 
 
+@app.post("/zaloga-positions-cleanup")
+async def zaloga_positions_cleanup(request: Request, data: dict | None = None):
+    """Uskladi pozicije s siluxarjem: kjer siluxar NIMA pozicije (prazna),
+    v suban.ai pa je stara → to je NAPAČNA pozicija (hujše kot brez).
+    DVOFAZNO:
+      dry_run=true (privzeto): pokaže seznam, kaj BI izbrisal. Nič ne zapiše.
+      dry_run=false: dejansko izbriše (backup prej). NE piše v siluxar.
+    Lokalne/sekundarne pozicije (extra_positions.json) ostanejo nedotaknjene."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    data = data or {}
+    dry = data.get("dry_run", True)
+    if dry is None: dry = True
+    import csv as _csv
+    from io import StringIO as _SIO
+
+    # 1) živ siluxar izvoz → mapa (SKU_upper, wh) -> pozicija (kakršna je, lahko prazna)
+    key = os.environ.get("SILUXAR_STOCK_KEY", "")
+    headers = {}; _auth = None
+    if key: headers["Authorization"] = key
+    else:
+        bu=os.environ.get("SILUXAR_BASIC_USER",""); bp=os.environ.get("SILUXAR_BASIC_PASS","")
+        if bu or bp: _auth = httpx.BasicAuth(bu, bp)
+    try:
+        r, _ = await _slx_get(_slx("/apistockexport"), headers=headers, auth=_auth, timeout=90)
+    except Exception as e:
+        return {"ok": False, "error": f"Napaka pri klicu siluxar: {e}"}
+    if r.status_code != 200:
+        return {"ok": False, "error": f"siluxar status {r.status_code}"}
+    text = r.text or ""
+    incoming = []
+    if "json" in r.headers.get("content-type","") or text.lstrip()[:1] in ("[","{"):
+        try:
+            jd = json.loads(text)
+            if isinstance(jd, dict):
+                for kk in ("data","items","rows","products","stock"):
+                    if isinstance(jd.get(kk), list): jd = jd[kk]; break
+            if isinstance(jd, list): incoming = [x for x in jd if isinstance(x, dict)]
+        except: incoming = []
+    if not incoming:
+        _sep = ";" if text.split("\n",1)[0].count(";") > text.split("\n",1)[0].count(",") else ","
+        incoming = list(_csv.DictReader(_SIO(text), delimiter=_sep))
+    if not incoming:
+        return {"ok": False, "error": "siluxar ni vrnil vrstic — prekinjam (varnost)."}
+    keys = list(incoming[0].keys())
+    def fc(*c):
+        for x in c:
+            for k in keys:
+                if k.strip().lower()==x.lower(): return k
+        return None
+    c_sku=fc("product_sku","sku"); c_wh=fc("skladisce","skladišče","warehouse","store","source")
+    c_pos=fc("position","pozicija","lokacija")
+    slx_pos = {}    # (sku_up, wh) -> pozicija iz siluxarja
+    for row in incoming:
+        sku=(row.get(c_sku) or "").strip() if c_sku else ""
+        if not sku: continue
+        wh=(row.get(c_wh) or "").strip().lower() if c_wh else ""
+        pos=(row.get(c_pos) or "").strip() if c_pos else ""
+        slx_pos[(sku.upper(), wh)] = pos
+
+    # 2) suban.ai CSV → poišči vrstice, kjer imamo pozicijo, siluxar pa NE
+    if not STOCK_CSV_FILE.exists():
+        return {"ok": False, "error": "Ni CSV zaloge."}
+    _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+    _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
+    reader = _csv.DictReader(_SIO(_t), delimiter=_sep)
+    fieldnames = reader.fieldnames or []
+    rows = list(reader)
+
+    za_brisat = []
+    for row in rows:
+        sku=(row.get("product_sku") or row.get("sku") or "").strip()
+        if not sku: continue
+        wh=(row.get("warehouse") or "").strip().lower()
+        sub_pos=(row.get("position") or "").strip()
+        if not sub_pos:
+            continue    # v suban.ai že prazno → ni kaj brisati
+        pair=(sku.upper(), wh)
+        # ključni pogoj: suban ima pozicijo, siluxar za isti (SKU,wh) ima PRAZNO ali para sploh ni
+        slx_p = slx_pos.get(pair, None)
+        if slx_p is None or slx_p == "":
+            za_brisat.append({"sku": sku, "skladisce": wh, "stara_pozicija": sub_pos,
+                              "naziv": (row.get("title") or "").strip(),
+                              "razlog": ("siluxar nima te vrstice" if slx_p is None else "siluxar ima prazno pozicijo")})
+
+    if dry or not za_brisat:
+        return {"ok": True, "dry_run": True, "bi_izbrisal_pozicijo": za_brisat,
+                "stevilo": len(za_brisat),
+                "opozorilo": "Pozicije bodo POBRISANE v suban.ai (postavljene na prazno). Siluxar se NE dotika. Lokalne/sekundarne pozicije ostanejo."}
+
+    # 3) dejansko — backup, nato izprazni position pri teh vrsticah
+    try:
+        _make_stock_backup("pred-ciscenjem-pozicij")
+    except Exception:
+        pass
+    brisati = {(x["sku"].upper(), x["skladisce"]) for x in za_brisat}
+    out = _SIO()
+    w = _csv.DictWriter(out, fieldnames=fieldnames, extrasaction="ignore")
+    w.writeheader()
+    izbrisano = 0
+    for row in rows:
+        sku=(row.get("product_sku") or row.get("sku") or "").strip()
+        wh=(row.get("warehouse") or "").strip().lower()
+        if (sku.upper(), wh) in brisati and (row.get("position") or "").strip():
+            row["position"] = ""
+            izbrisano += 1
+        w.writerow(row)
+    STOCK_CSV_FILE.write_text(out.getvalue(), encoding="utf-8")
+    return {"ok": True, "dry_run": False, "izbrisano_pozicij": izbrisano}
+
+
 @app.post("/zaloga-sync-siluxar")
 async def zaloga_sync_siluxar():
     """Ročna sinhronizacija zaloge s siluxar (gumb). Scheduler kliče isto jedro vsake 4h."""
@@ -10887,6 +10999,79 @@ async def sku_cleanup_duplicates(request: Request, data: dict):
         w.writerow(row)
     STOCK_CSV_FILE.write_text(out.getvalue(), encoding="utf-8")
     return {"ok": True, "dry_run": False, "izbrisano": izbrisanih, "detajli": za_brisat}
+
+
+@app.get("/zaloga-pozicije-cleanup", response_class=HTMLResponse)
+async def zaloga_pozicije_cleanup_page(request: Request):
+    """Stran za uskladitev pozicij s siluxarjem — predogled + potrditev."""
+    if not _owner_authorized(request):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik.</h3>", status_code=403)
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uskladitev pozicij</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:900px;margin:0 auto;padding:20px;background:#f7f7f8;color:#1a1a1a}
+  h1{font-size:20px} .sub{color:#666;font-size:13px;margin-bottom:16px;line-height:1.5}
+  button{padding:11px 20px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .b-prev{background:#2563eb;color:#fff} .b-go{background:#dc2626;color:#fff} .b-go:disabled{background:#ccc;cursor:default}
+  .row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  table{border-collapse:collapse;width:100%;margin-top:16px;font-size:13px;background:#fff;border-radius:8px;overflow:hidden}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #eee}
+  th{background:#f0f0f2;font-size:11px;text-transform:uppercase;color:#888}
+  .box{background:#fff;border-radius:10px;padding:16px;margin-top:16px;border:1px solid #e5e5e5}
+  .warn{background:#fef3cd;border:1px solid #f0d98a;padding:12px;border-radius:8px;font-size:13px;color:#8a6d1a;margin-top:12px;line-height:1.5}
+  #status{margin-top:12px;font-size:14px;font-weight:600;min-height:20px}
+</style></head><body>
+<h1>Uskladitev pozicij s siluxarjem</h1>
+<div class="sub">Kjer ima suban.ai pozicijo, siluxar pa NE (prazno) - je to STARA, napacna pozicija. Napacna pozicija je hujsa od nobene. Tu jih pobrisemo v suban.ai (postavimo na prazno). Siluxar se NE dotika. Lokalne/sekundarne pozicije ostanejo.</div>
+<div class="warn"><b>Kdaj uporabiti:</b> ko je Marko pobrisal pozicije v siluxarju in jih boste vpisali na novo. Najprej predogled - pokaze vse, kar bo izbrisano.</div>
+<div class="row">
+  <button class="b-prev" onclick="preview()">Predogled (nic ne izbrise)</button>
+  <button class="b-go" id="goBtn" onclick="doDelete()" disabled>Izbrisi napacne pozicije</button>
+</div>
+<div id="status"></div>
+<div id="result"></div>
+<script>
+var _ready = false;
+function preview(){
+  var st = document.getElementById('status');
+  st.textContent = 'Preverjam s siluxarjem... (lahko traja nekaj sekund)';
+  document.getElementById('goBtn').disabled = true;
+  fetch('/zaloga-positions-cleanup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:true})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">Napaka: '+(d.error||'')+'</span>'; return; }
+      var n = d.stevilo||0;
+      st.innerHTML = n ? '<span style="color:#dc2626">Napacnih pozicij za izbris: '+n+'</span>. Preglej spodaj, nato potrdi.' : '<span style="color:#16a34a">Ni napacnih pozicij - vse se ujema s siluxarjem.</span>';
+      _ready = (n>0);
+      document.getElementById('goBtn').disabled = !_ready;
+      render(d.bi_izbrisal_pozicijo||[]);
+    })
+    .catch(function(e){ st.innerHTML='<span style="color:#dc2626">Napaka pri klicu: '+e.message+'</span>'; });
+}
+function doDelete(){
+  if(!_ready) return;
+  if(!confirm('Dokoncno pobrisem prikazane napacne pozicije v suban.ai? Backup se naredi samodejno. Siluxar se NE dotika.')) return;
+  var st = document.getElementById('status');
+  st.textContent = 'Brisem...';
+  document.getElementById('goBtn').disabled = true;
+  fetch('/zaloga-positions-cleanup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:false})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.ok){ st.innerHTML='<span style="color:#16a34a">Pobrisano '+(d.izbrisano_pozicij||0)+' pozicij. Osvezi zalogo.</span>'; document.getElementById('result').innerHTML=''; }
+      else st.innerHTML='<span style="color:#dc2626">Napaka: '+(d.error||'')+'</span>';
+    })
+    .catch(function(e){ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+function render(list){
+  if(!list.length){ document.getElementById('result').innerHTML=''; return; }
+  var h='<div class="box"><b style="color:#dc2626">Napacne pozicije ('+list.length+'):</b><table><tr><th>SKU</th><th>Skladisce</th><th>Stara pozicija</th><th>Razlog</th><th>Naziv</th></tr>';
+  for(var i=0;i<list.length;i++){ var x=list[i]; h+='<tr><td>'+x.sku+'</td><td>'+x.skladisce+'</td><td style="color:#dc2626;font-weight:700">'+x.stara_pozicija+'</td><td style="font-size:11px;color:#888">'+x.razlog+'</td><td>'+(x.naziv||'')+'</td></tr>'; }
+  h+='</table></div>';
+  document.getElementById('result').innerHTML = h;
+}
+</script></body></html>"""
+    return HTMLResponse(html)
 
 
 @app.get("/zaloga-cleanup", response_class=HTMLResponse)
