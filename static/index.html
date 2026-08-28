@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-26 17:00</div>
+      <div class="sidebar-logo-sub">build 2026-08-27 22:30</div>
     </div>
   </div>
 
@@ -27380,11 +27380,31 @@ function sekPozRender() {
   }
 }
 
+async function sekPozRemoveOne(sku, pos, ev){
+  if(ev) ev.stopPropagation();
+  if(!confirm('Odstranim sekundarno pozicijo "' + pos + '" za ' + sku + '?')) return;
+  try{
+    const r = await fetch('/zaloga-extra-position-remove', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: sku, position: pos }) });
+    const d = await r.json();
+    if(d && d.ok){
+      // posodobi lokalni cache in ponovno izriši
+      if(_zalExtraPos && _zalExtraPos[sku]){
+        _zalExtraPos[sku] = (d.positions || []);
+        if(!_zalExtraPos[sku].length) delete _zalExtraPos[sku];
+      }
+      sekPozRender();
+    } else {
+      alert('Napaka: ' + ((d && d.error) || 'ni odstranjeno'));
+    }
+  }catch(e){ alert('Napaka: ' + e.message); }
+}
 function sekPozRowHtml(r, stockHtml, whLabel, inGroup) {
   const skuE = esc((r.sku || '').replace(/'/g, "\\'"));
   const titE = esc((r.title || '').replace(/'/g, "\\'"));
   const extraChips = r.extras.map(p =>
-    '<span style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;color:#854F0B;background:#FAEEDA;border:0.5px solid #EF9F27;padding:2px 8px;border-radius:5px">↳ ' + esc(p) + '</span>').join(' ');
+    '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#854F0B;background:#FAEEDA;border:0.5px solid #EF9F27;padding:2px 6px 2px 8px;border-radius:5px">↳ ' + esc(p) +
+    '<span onclick="sekPozRemoveOne(\'' + esc((r.sku||'').replace(/'/g,"\\'")) + '\',\'' + esc(String(p).replace(/'/g,"\\'")) + '\',event)" title="Odstrani to sekundarno pozicijo" style="cursor:pointer;color:#c2410c;font-weight:800;font-size:13px;line-height:1;padding:0 2px;border-radius:3px" onmouseover="this.style.background=\'#EF9F27\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'\';this.style.color=\'#c2410c\'">×</span>' +
+    '</span>').join(' ');
   return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border)">' +
     '<div style="flex:1;min-width:0">' +
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
