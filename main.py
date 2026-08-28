@@ -11001,6 +11001,106 @@ async def sku_cleanup_duplicates(request: Request, data: dict):
     return {"ok": True, "dry_run": False, "izbrisano": izbrisanih, "detajli": za_brisat}
 
 
+@app.get("/zaloga-dodatna-pozicija", response_class=HTMLResponse)
+async def zaloga_dodatna_pozicija_page(request: Request):
+    """Stran za MNOŽIČNO dodajanje dodatne pozicije seznamu SKU-jev."""
+    if not _owner_authorized(request):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik.</h3>", status_code=403)
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mnozicna dodatna pozicija</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:900px;margin:0 auto;padding:20px;background:#f7f7f8;color:#1a1a1a}
+  h1{font-size:20px} .sub{color:#666;font-size:13px;margin-bottom:16px;line-height:1.5}
+  label{font-size:13px;font-weight:700;display:block;margin:14px 0 6px}
+  input[type=text]{width:100%;box-sizing:border-box;padding:11px;border:1px solid #ccc;border-radius:8px;font-size:15px;font-family:inherit}
+  textarea{width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:8px;font-family:monospace;font-size:14px;min-height:160px}
+  button{padding:11px 20px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .b-prev{background:#2563eb;color:#fff} .b-go{background:#16a34a;color:#fff} .b-go:disabled{background:#ccc;cursor:default}
+  .b-rem{background:#fff;color:#dc2626;border:1px solid #dc2626}
+  .row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;align-items:center}
+  table{border-collapse:collapse;width:100%;margin-top:16px;font-size:13px;background:#fff;border-radius:8px;overflow:hidden}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #eee}
+  th{background:#f0f0f2;font-size:11px;text-transform:uppercase;color:#888}
+  .box{background:#fff;border-radius:10px;padding:16px;margin-top:16px;border:1px solid #e5e5e5}
+  .warn{background:#fef3cd;border:1px solid #f0d98a;padding:10px 12px;border-radius:8px;font-size:12.5px;color:#8a6d1a;margin-top:8px}
+  #status{margin-top:12px;font-size:14px;font-weight:600;min-height:20px}
+</style></head><body>
+<h1>Mnozicna dodatna pozicija</h1>
+<div class="sub">Doda dodatno (sekundarno) pozicijo naenkrat vsem vnesenim SKU-jem. Ne dotika se primarne pozicije ne siluxarja - samo dodatnih lokacij. Vedno najprej predogled.</div>
+<label>Pozicija (npr. IOC Skladisce)</label>
+<input type="text" id="pos" value="IOC Skladisce">
+<label>SKU-ji (eden na vrstico ali loceni z vejico)</label>
+<textarea id="skus" placeholder="SKU1&#10;SKU2&#10;SKU3 ..."></textarea>
+<div class="row">
+  <button class="b-prev" onclick="preview('add')">Predogled DODAJ</button>
+  <button class="b-go" id="goBtn" onclick="doIt()" disabled>Potrdi</button>
+  <button class="b-rem" onclick="preview('remove')" style="margin-left:auto">Predogled ODSTRANI</button>
+</div>
+<div id="status"></div>
+<div id="result"></div>
+<script>
+var _act='add', _ready=false;
+function parseSkus(){
+  var parts=document.getElementById('skus').value.split(/[\s,;]+/); var o=[];
+  for(var i=0;i<parts.length;i++){ var t=parts[i].trim(); if(t) o.push(t); }
+  return o;
+}
+function preview(act){
+  _act=act;
+  var pos=document.getElementById('pos').value.trim();
+  var skus=parseSkus();
+  var st=document.getElementById('status');
+  if(!pos){ alert('Vpisi pozicijo.'); return; }
+  if(!skus.length){ alert('Vpisi vsaj en SKU.'); return; }
+  st.textContent='Pripravljam predogled...';
+  document.getElementById('goBtn').disabled=true;
+  fetch('/zaloga-extra-position-bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus:skus.join("\n"),position:pos,action:act,dry_run:true})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">Napaka: '+(d.error||'')+'</span>'; return; }
+      var n=d.stevilo_sprememb||0;
+      var lbl = act==='remove' ? 'Za odstranitev' : 'Za dodajanje';
+      st.innerHTML = n ? '<span style="color:#16a34a">'+lbl+': '+n+' SKU-jev.</span> Preglej, nato Potrdi.' : '<span style="color:#888">Ni sprememb ('+(act==='remove'?'nihce nima te pozicije':'vsi ze imajo to pozicijo')+').</span>';
+      _ready=(n>0);
+      document.getElementById('goBtn').disabled=!_ready;
+      document.getElementById('goBtn').textContent = act==='remove' ? 'Potrdi ODSTRANITEV' : 'Potrdi DODAJANJE';
+      render(d);
+    })
+    .catch(function(e){ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+function doIt(){
+  if(!_ready) return;
+  var pos=document.getElementById('pos').value.trim();
+  var skus=parseSkus();
+  var word = _act==='remove'?'odstranim':'dodam';
+  if(!confirm('Dokoncno '+word+' pozicijo "'+pos+'" za '+skus.length+' SKU-jev?')) return;
+  var st=document.getElementById('status'); st.textContent='Izvajam...';
+  document.getElementById('goBtn').disabled=true;
+  fetch('/zaloga-extra-position-bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus:skus.join("\n"),position:pos,action:_act,dry_run:false})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.ok){ st.innerHTML='<span style="color:#16a34a">Koncano - spremenjenih '+(d.spremenjeni||0)+' SKU-jev.</span>'; document.getElementById('result').innerHTML=''; document.getElementById('goBtn').disabled=true; }
+      else st.innerHTML='<span style="color:#dc2626">Napaka: '+(d.error||'')+'</span>';
+    })
+    .catch(function(e){ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+function render(d){
+  var h='';
+  var main = _act==='remove' ? (d.bo_odstranjeno||[]) : (d.bo_dodano||[]);
+  if(main.length){
+    h+='<div class="box"><b>'+(_act==='remove'?'Za odstranitev':'Za dodajanje')+' ('+main.length+'):</b><table><tr><th>SKU</th><th>V zalogi?</th></tr>';
+    for(var i=0;i<main.length;i++){ var x=main[i]; h+='<tr><td>'+x.sku+'</td><td>'+(x.obstaja_v_zalogi?'da':'<span style="color:#dc2626">NE - preveri</span>')+'</td></tr>'; }
+    h+='</table></div>';
+  }
+  if((d.ze_ima||[]).length){ h+='<div class="warn">Ze ima pozicijo ('+d.ze_ima.length+'): '+d.ze_ima.map(function(x){return x.sku;}).join(', ')+'</div>'; }
+  if((d.neznani||[]).length){ h+='<div class="warn"><b>Ni v zalogi ('+d.neznani.length+'):</b> '+d.neznani.map(function(x){return x.sku;}).join(', ')+' - preveri crkovanje.</div>'; }
+  document.getElementById('result').innerHTML=h;
+}
+</script></body></html>"""
+    return HTMLResponse(html)
+
+
 @app.get("/zaloga-pozicije-cleanup", response_class=HTMLResponse)
 async def zaloga_pozicije_cleanup_page(request: Request):
     """Stran za uskladitev pozicij s siluxarjem — predogled + potrditev."""
@@ -23176,6 +23276,77 @@ async def zaloga_extra_position_add(data: dict):
         return {"ok": True, "sku": sku, "positions": lst}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+@app.post("/zaloga-extra-position-bulk")
+async def zaloga_extra_position_bulk(data: dict):
+    """MNOŽIČNO doda (ali odstrani) dodatno pozicijo za seznam SKU-jev.
+    data: { skus: "SKU1\nSKU2...", position: "IOC Skladišče", action: "add"|"remove", dry_run: true/false }
+    Ne dotika se primarne pozicije ne siluxarja — samo dodatne (extra_positions.json)."""
+    raw = data.get("skus") or ""
+    pos = (data.get("position") or "").strip()
+    action = (data.get("action") or "add").strip().lower()
+    dry = data.get("dry_run", True)
+    if dry is None: dry = True
+    if not pos:
+        return {"ok": False, "error": "Manjka pozicija (npr. 'IOC Skladišče')."}
+    skus = [x.strip() for x in re.split(r"[\r\n,;]+", raw) if x.strip()]
+    if not skus:
+        return {"ok": False, "error": "Ni vnesenih SKU-jev."}
+
+    # preveri, kateri SKU-ji obstajajo v zalogi (opozorilo za neznane)
+    znani = set()
+    try:
+        if STOCK_CSV_FILE.exists():
+            import csv as _csv
+            from io import StringIO as _SIO
+            text = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+            _sep = ";" if text.split("\n",1)[0].count(";") > text.split("\n",1)[0].count(",") else ","
+            for row in _csv.DictReader(_SIO(text), delimiter=_sep):
+                sv = (row.get("product_sku") or row.get("sku") or "").strip()
+                if sv: znani.add(sv.upper())
+    except Exception:
+        pass
+
+    store = _zaloga_load_extra_pos()
+    bo_dodano = []; ze_ima = []; neznani = []; bo_odstranjeno = []
+    for sku in skus:
+        lst = store.get(sku, [])
+        if not isinstance(lst, list): lst = []
+        ima = any(p.strip().lower() == pos.lower() for p in lst)
+        rec = {"sku": sku, "obstaja_v_zalogi": (sku.upper() in znani)}
+        if sku.upper() not in znani:
+            neznani.append(rec)
+        if action == "remove":
+            if ima: bo_odstranjeno.append(rec)
+        else:
+            if ima: ze_ima.append(rec)
+            else: bo_dodano.append(rec)
+
+    if dry:
+        return {"ok": True, "dry_run": True, "action": action, "position": pos,
+                "bo_dodano": bo_dodano, "ze_ima": ze_ima,
+                "bo_odstranjeno": bo_odstranjeno, "neznani": neznani,
+                "stevilo_sprememb": (len(bo_odstranjeno) if action=="remove" else len(bo_dodano))}
+
+    # dejansko
+    spremenjeni = 0
+    for sku in skus:
+        lst = store.get(sku, [])
+        if not isinstance(lst, list): lst = []
+        ima = any(p.strip().lower() == pos.lower() for p in lst)
+        if action == "remove":
+            if ima:
+                lst = [p for p in lst if p.strip().lower() != pos.lower()]
+                spremenjeni += 1
+                if lst: store[sku] = lst
+                else: store.pop(sku, None)
+        else:
+            if not ima:
+                lst.append(pos); store[sku] = lst; spremenjeni += 1
+    _zaloga_save_extra_pos(store)
+    return {"ok": True, "dry_run": False, "action": action, "position": pos,
+            "spremenjeni": spremenjeni, "neznani_stevilo": len(neznani)}
+
 
 @app.post("/zaloga-extra-position-remove")
 async def zaloga_extra_position_remove(data: dict):
