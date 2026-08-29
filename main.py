@@ -22350,11 +22350,16 @@ def _poz_load_stock():
             sku = (row.get("product_sku") or row.get("sku") or "").strip()
             if not sku:
                 continue
+            try:
+                _st = int(float(str(row.get("stock") or 0).replace(",", ".")))
+            except Exception:
+                _st = 0
             out.append({
                 "sku": sku,
                 "title": (row.get("title") or "").strip(),
                 "position": (row.get("position") or "").strip(),
                 "product_id": (row.get("product_id") or "").strip(),
+                "stock": _st,
             })
         return out
     except Exception:
@@ -22396,10 +22401,21 @@ async def pozicije_suggest(q: str = ""):
     if len(q) < 1:
         return {"ok": True, "suggestions": []}
     stock = _poz_load_stock()
+    # agregiraj po SKU (vsota zaloge po skladiščih; pozicija = prva neprazna)
+    agg = {}
+    for it in stock:
+        k = it["sku"].upper()
+        a = agg.get(k)
+        if not a:
+            a = {"sku": it["sku"], "title": it["title"], "position": it["position"], "stock": 0}
+            agg[k] = a
+        a["stock"] += int(it.get("stock") or 0)
+        if not a["position"] and it["position"]:
+            a["position"] = it["position"]
     qn = _poz_norm(q)
     ql = q.lower()
     pref, contains_sku, in_title = [], [], []
-    for it in stock:
+    for it in agg.values():
         skn = _poz_norm(it["sku"])
         if skn.startswith(qn):
             pref.append(it)
@@ -22407,13 +22423,17 @@ async def pozicije_suggest(q: str = ""):
             contains_sku.append(it)
         elif ql in it["title"].lower():
             in_title.append(it)
+    # znotraj relevance: zaloga >0 pred zaloga =0 (stabilno)
+    def _split_stock(lst):
+        return [x for x in lst if x["stock"] > 0] + [x for x in lst if x["stock"] <= 0]
+    ordered = _split_stock(pref) + _split_stock(contains_sku) + _split_stock(in_title)
     seen = set(); out = []
-    for it in pref + contains_sku + in_title:
+    for it in ordered:
         if it["sku"] in seen:
             continue
         seen.add(it["sku"])
-        out.append({"sku": it["sku"], "title": it["title"], "position": it["position"]})
-        if len(out) >= 12:
+        out.append({"sku": it["sku"], "title": it["title"], "position": it["position"], "stock": it["stock"]})
+        if len(out) >= 20:
             break
     return {"ok": True, "suggestions": out}
 

@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-28 03:20</div>
+      <div class="sidebar-logo-sub">build 2026-08-28 03:45</div>
     </div>
   </div>
 
@@ -27112,11 +27112,20 @@ function pozSuggest(q) {
       const r = await fetch('/pozicije-suggest?q=' + encodeURIComponent(q));
       const d = await r.json();
       if (!d.ok || !d.suggestions.length) { box.style.display = 'none'; return; }
-      box.innerHTML = d.suggestions.map(s =>
-        `<div class="poz-suggest-item" onclick="pozPickSku('${pozEsc(s.sku).replace(/'/g,"\\'")}','${pozEsc(s.title).replace(/'/g,"\\'")}','${pozEsc(s.position).replace(/'/g,"\\'")}')">
-          <div style="font-weight:700;font-size:13px;color:var(--text)">${pozEsc(s.sku)}</div>
-          <div style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pozEsc(s.title)}${s.position ? ' · 📍'+pozEsc(s.position) : ''}</div>
-        </div>`).join('');
+      box.innerHTML = d.suggestions.map(s => {
+        const naZalogi = (s.stock || 0) > 0;
+        const dim = naZalogi ? '' : 'opacity:.45;';
+        const stockBadge = naZalogi
+          ? `<span style="font-size:10px;font-weight:700;color:#0f8a4f;background:rgba(15,138,79,.12);padding:1px 6px;border-radius:5px;white-space:nowrap">zaloga ${s.stock}</span>`
+          : `<span style="font-size:10px;font-weight:700;color:var(--text-tertiary);background:var(--border);padding:1px 6px;border-radius:5px;white-space:nowrap">ni zaloge</span>`;
+        return `<div class="poz-suggest-item" style="${dim}display:flex;align-items:center;gap:8px;justify-content:space-between" onclick="pozPickSku('${pozEsc(s.sku).replace(/'/g,"\\'")}','${pozEsc(s.title).replace(/'/g,"\\'")}','${pozEsc(s.position).replace(/'/g,"\\'")}')">
+          <div style="min-width:0;flex:1">
+            <div style="font-weight:700;font-size:13px;color:var(--text)">${pozEsc(s.sku)}</div>
+            <div style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pozEsc(s.title)}${s.position ? ' · 📍'+pozEsc(s.position) : ''}</div>
+          </div>
+          ${stockBadge}
+        </div>`;
+      }).join('');
       box.style.display = 'block';
     } catch (e) { box.style.display = 'none'; }
   }, 200);
