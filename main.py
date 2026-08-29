@@ -27749,9 +27749,28 @@ async def selitev_transfer_one(request: Request, data: dict):
         if not pos:
             return {"ok": False, "error": "Vpis nima pozicije."}
 
-    # pošlji SAMO tega enega
+    # poišči silux siluxar_id (isto kot glavni transfer — samo silux, ne silux2)
+    silux_id = ""
     try:
-        r = await siluxar_push_positions({"items": [{"sku": sku, "position": pos}], "confirm_bulk": True})
+        import csv as _csv
+        from io import StringIO as _SIO
+        if STOCK_CSV_FILE.exists():
+            for _row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"))):
+                _wh = (_row.get("warehouse") or "").strip().lower()
+                _sid = (_row.get("siluxar_id") or "").strip()
+                _sk = (_row.get("product_sku") or "").strip()
+                if _sk.upper() == sku.upper() and _wh == SELITEV_WAREHOUSE and _sid and _sid not in ("0", "0.0"):
+                    silux_id = _sid
+                    break
+    except Exception:
+        silux_id = ""
+    if not silux_id:
+        return {"ok": False, "error": f"SKU '{sku}' nima veljavnega silux siluxar_id (ni v skladišču silux). Ne pošiljam, da ne zadenem napačne kartice."}
+
+    # pošlji SAMO tega enega — z warehouse silux + id (kot glavni transfer)
+    _item = {"sku": sku, "position": pos, "warehouse": SELITEV_WAREHOUSE, "id": silux_id}
+    try:
+        r = await siluxar_push_positions({"items": [_item], "confirm_bulk": True})
         ok = bool(isinstance(r, dict) and r.get("ok"))
         poslano = (r.get("poslano") if isinstance(r, dict) else 0) or 0
         status = (r.get("status") if isinstance(r, dict) else None)
