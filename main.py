@@ -11002,6 +11002,101 @@ async def sku_cleanup_duplicates(request: Request, data: dict):
     return {"ok": True, "dry_run": False, "izbrisano": izbrisanih, "detajli": za_brisat}
 
 
+@app.get("/pozicije-dobavitelj", response_class=HTMLResponse)
+async def pozicije_dobavitelj_page(request: Request):
+    """Stran: dodeli pozicijo vsem SKU-jem dobavitelja (amio/ikonka) iz XML vira."""
+    if not _owner_authorized(request):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik.</h3>", status_code=403)
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pozicije po dobavitelju</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:900px;margin:0 auto;padding:20px;background:#f7f7f8;color:#1a1a1a}
+  h1{font-size:20px} .sub{color:#666;font-size:13px;margin-bottom:16px;line-height:1.5}
+  label{font-size:13px;font-weight:700;display:block;margin:12px 0 5px}
+  input[type=text]{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;font-family:inherit}
+  textarea{width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:8px;font-family:monospace;font-size:13px;min-height:160px}
+  button{padding:11px 20px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .b-prev{background:#2563eb;color:#fff} .b-go{background:#16a34a;color:#fff} .b-go:disabled{background:#ccc;cursor:default}
+  .row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .box{background:#fff;border-radius:10px;padding:16px;margin-top:16px;border:1px solid #e5e5e5}
+  .warn{background:#fef3cd;border:1px solid #f0d98a;padding:10px 12px;border-radius:8px;font-size:12.5px;color:#8a6d1a;margin-top:8px}
+  #status{margin-top:12px;font-size:14px;font-weight:600;min-height:20px}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px}
+  th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #eee}
+</style></head><body>
+<h1>Pozicije po dobavitelju (iz XML)</h1>
+<div class="sub">Prilepi SKU-je (npr. iz manjkajocih). Sistem prepozna, kateri so AMIO in kateri IKONKA iz XML vira (vezava crtna koda -> P/N), in jim dodeli tvojo pozicijo kot DODATNO (sekundarno) pozicijo. Ne dotika glavne pozicije. Neprepoznane pusti pri miru.</div>
+<div class="grid2">
+  <div><label>Pozicija za AMIO</label><input type="text" id="posAmio" value="Pri Amiotu"></div>
+  <div><label>Pozicija za IKONKA</label><input type="text" id="posIkonka" value="Ikonka"></div>
+</div>
+<label>SKU-ji (eden na vrstico, ali prilepi CSV - vzame prvi stolpec)</label>
+<textarea id="skus" placeholder="KX5099&#10;01191&#10;..."></textarea>
+<div class="row">
+  <button class="b-prev" onclick="preview()">Predogled</button>
+  <button class="b-go" id="goBtn" onclick="doIt()" disabled>Potrdi in dodeli</button>
+</div>
+<div id="status"></div>
+<div id="result"></div>
+<script>
+function parseSkus(){
+  const raw=document.getElementById('skus').value;
+  const out=[];
+  raw.split(/[\r\n]+/).forEach(line=>{
+    const first=line.split(/[;,\t]/)[0].trim();
+    if(first && first.toUpperCase()!=='SKU') out.push(first);
+  });
+  return out;
+}
+function getMapping(){
+  const m={};
+  const a=document.getElementById('posAmio').value.trim();
+  const i=document.getElementById('posIkonka').value.trim();
+  if(a) m.amio=a;
+  if(i) m.ikonka=i;
+  return m;
+}
+function preview(){
+  const skus=parseSkus(); const mapping=getMapping();
+  const st=document.getElementById('status');
+  if(!skus.length){ alert('Vpisi SKU-je.'); return; }
+  st.textContent='Prepoznavam iz XML...';
+  document.getElementById('goBtn').disabled=true;
+  fetch('/pozicije-po-dobavitelju',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus,mapping,dry_run:true})})
+    .then(r=>r.json()).then(d=>{
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>'; return; }
+      let h='<div class="box"><b>Prepoznano:</b><table><tr><th>Dobavitelj</th><th>Pozicija</th><th>Stevilo</th><th>Primeri</th></tr>';
+      Object.keys(d.povzetek||{}).forEach(sup=>{
+        const p=d.povzetek[sup];
+        h+='<tr><td><b>'+sup+'</b></td><td>'+p.pozicija+'</td><td>'+p.stevilo+'</td><td style="font-size:11px;color:#888">'+(p.primeri||[]).join(', ')+'</td></tr>';
+      });
+      h+='</table>';
+      h+='<div style="margin-top:10px;font-size:13px">Skupaj za dodeliti: <b>'+(d.skupaj_dodeljenih||0)+'</b></div>';
+      if(d.neprepoznanih) h+='<div class="warn">Neprepoznanih (niso amio/ikonka v XML, ostanejo): '+d.neprepoznanih+' — '+(d.neprepoznani_primeri||[]).join(', ')+'...</div>';
+      if(d.konfliktnih) h+='<div class="warn">Konfliktnih (isti SKU pri dveh dobaviteljih): '+d.konfliktnih+' — '+(d.konfliktni_primeri||[]).join(', ')+'</div>';
+      h+='</div>';
+      document.getElementById('result').innerHTML=h;
+      st.innerHTML='<span style="color:#16a34a">Predogled pripravljen.</span>';
+      document.getElementById('goBtn').disabled=(d.skupaj_dodeljenih||0)===0;
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+function doIt(){
+  const skus=parseSkus(); const mapping=getMapping();
+  if(!confirm('Dodelim pozicije '+skus.length+' SKU-jem po dobavitelju?')) return;
+  const st=document.getElementById('status'); st.textContent='Dodeljujem...';
+  document.getElementById('goBtn').disabled=true;
+  fetch('/pozicije-po-dobavitelju',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus,mapping,dry_run:false})})
+    .then(r=>r.json()).then(d=>{
+      if(d.ok){ let msg='Dodano '+(d.dodano||0)+' pozicij.'; if(d.po_dobavitelju) msg+=' ('+JSON.stringify(d.po_dobavitelju)+')'; st.innerHTML='<span style="color:#16a34a">'+msg+'</span>'; document.getElementById('result').innerHTML=''; }
+      else st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>';
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+</script></body></html>"""
+    return HTMLResponse(html)
+
+
 @app.get("/zaloga-dodatna-pozicija", response_class=HTMLResponse)
 async def zaloga_dodatna_pozicija_page(request: Request):
     """Stran za MNOŽIČNO dodajanje dodatne pozicije seznamu SKU-jev."""
@@ -23418,6 +23513,85 @@ async def zaloga_extra_position_add(data: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.post("/pozicije-po-dobavitelju")
+async def pozicije_po_dobavitelju(request: Request, data: dict):
+    """Dodeli pozicijo VSEM SKU-jem danega dobavitelja (amio/ikonka), prepoznanim iz
+    barcode_index (XML vira, vezava barcode↔P/N). Deluje SAMO na SKU-jih, ki jih pošlješ
+    (npr. manjkajoči), in samo tistim, ki so v barcode_index zanesljivo tega dobavitelja.
+    Body: { skus:[...], mapping:{ 'amio':'Pri Amiotu', 'ikonka':'Ikonka' }, dry_run:true/false }
+    Piše kot SEKUNDARNO/dodatno pozicijo (extra_positions.json), NE povozi glavne pozicije."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    skus = [str(x).strip() for x in (data.get("skus") or []) if str(x).strip()]
+    mapping = data.get("mapping") or {}
+    dry = data.get("dry_run", True)
+    if dry is None: dry = True
+    if not skus:
+        return {"ok": False, "error": "Ni SKU-jev."}
+    if not mapping:
+        return {"ok": False, "error": "Ni mapiranja dobavitelj→pozicija."}
+    # normaliziraj mapping ključe na male črke
+    mapping = {str(k).strip().lower(): str(v).strip() for k, v in mapping.items() if str(v).strip()}
+
+    # zagotovi, da je barcode_index naložen
+    if not barcode_index:
+        _load_barcode_cache()
+    if not barcode_index:
+        return {"ok": False, "error": "Barcode indeks (XML amio/ikonka) ni naložen na strežniku. Osveži črtne kode."}
+
+    # obrni indeks: SKU_upper → supplier (prvi zmaga; če je isti SKU pri dveh, označi konflikt)
+    sku2sup = {}
+    konflikt = set()
+    for _bc, info in barcode_index.items():
+        kod = (info.get("kod") or "").strip()
+        sup = (info.get("supplier") or "").strip().lower()
+        if not kod or not sup:
+            continue
+        k = kod.upper()
+        if k in sku2sup and sku2sup[k] != sup:
+            konflikt.add(k)
+        else:
+            sku2sup[k] = sup
+
+    razvrsceni = {}   # supplier → [sku,...]
+    neprepoznani = []
+    konfliktni = []
+    for sku in skus:
+        k = sku.upper()
+        if k in konflikt:
+            konfliktni.append(sku); continue
+        sup = sku2sup.get(k)
+        if sup and sup in mapping:
+            razvrsceni.setdefault(sup, []).append(sku)
+        else:
+            neprepoznani.append(sku)
+
+    povzetek = {sup: {"pozicija": mapping[sup], "stevilo": len(lst), "primeri": lst[:8]}
+                for sup, lst in razvrsceni.items()}
+
+    if dry:
+        return {"ok": True, "dry_run": True, "povzetek": povzetek,
+                "neprepoznanih": len(neprepoznani), "neprepoznani_primeri": neprepoznani[:15],
+                "konfliktnih": len(konfliktni), "konfliktni_primeri": konfliktni[:15],
+                "skupaj_dodeljenih": sum(len(v) for v in razvrsceni.values())}
+
+    # dejansko: zapiši kot sekundarno pozicijo
+    store = _zaloga_load_extra_pos()
+    dodano = 0
+    for sup, lst in razvrsceni.items():
+        poz = mapping[sup]
+        for sku in lst:
+            cur = store.get(sku, [])
+            if not isinstance(cur, list): cur = []
+            if not any(p.strip().lower() == poz.lower() for p in cur):
+                cur.append(poz); store[sku] = cur; dodano += 1
+    _zaloga_save_extra_pos(store)
+    return {"ok": True, "dry_run": False, "dodano": dodano,
+            "po_dobavitelju": {sup: len(lst) for sup, lst in razvrsceni.items()},
+            "neprepoznanih": len(neprepoznani)}
+
+
 @app.post("/zaloga-extra-position-bulk")
 async def zaloga_extra_position_bulk(data: dict):
     """MNOŽIČNO doda (ali odstrani) dodatno pozicijo za seznam SKU-jev.
@@ -26282,6 +26456,25 @@ async def selitev_list():
                           and e["sku"].upper() not in silux_skus}) # a ne v silux z veljavnim id
 
     # skupni števec anomalij (za gumb/gate)
+    # SKU-ji vpisani v Selitvi, ki NIMAJO zaloge (stock <= 0) — te je treba ročno napolniti
+    # v siluxarju/suban.ai PREDEN pošljemo pozicije (sicer pozicija za prazen izdelek nima učinka).
+    brez_zaloge = []
+    _bz_seen = set()
+    for e in entries:
+        sku = (e.get("sku") or "").strip()
+        if not sku or sku.upper() in _bz_seen:
+            continue
+        st = e.get("stock", None)
+        try:
+            st_num = int(float(str(st).replace(",", "."))) if st is not None else None
+        except Exception:
+            st_num = None
+        # stock je None → SKU ni v zalogi; stock 0 → je v zalogi a prazen. Oboje = brez zaloge.
+        if st_num is None or st_num <= 0:
+            _bz_seen.add(sku.upper())
+            brez_zaloge.append({"sku": sku, "position": (e.get("position") or "").strip(),
+                                "title": e.get("title", ""), "stock": (st_num if st_num is not None else 0)})
+
     anomalije = {
         "brez_pozicije": brez_pozicije,
         "ze_poslano": ze_poslano,
@@ -26289,6 +26482,7 @@ async def selitev_list():
         "ni_v_siluxu": ni_v_siluxu,
         "vec_pozicij": multi,
         "neznani_sku": unknown,
+        "brez_zaloge": brez_zaloge,
     }
     # BLOKIRAJOČE anomalije (preprečijo prenos): brez pozicije, že poslano, ni v siluxu, neznan
     blokira = bool(brez_pozicije or ze_poslano or ni_v_siluxu or unknown)
@@ -26300,6 +26494,7 @@ async def selitev_list():
         "unikatnih_sku": len(by_sku),
         "vec_pozicij": multi,
         "neznani_sku": unknown,
+        "brez_zaloge": brez_zaloge,
         "warehouse": SELITEV_WAREHOUSE,
         "sent": sent[-200:],
         "sent_stevilo": len(sent),

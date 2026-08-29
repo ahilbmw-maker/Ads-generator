@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-28 04:40</div>
+      <div class="sidebar-logo-sub">build 2026-08-28 05:00</div>
     </div>
   </div>
 
@@ -28474,6 +28474,32 @@ async function selReload(silent){
   const grid = document.getElementById('selGrid');
   if (grid && grid.style.display !== 'none') selRenderGrid();
 }
+function selToggleBrezZaloge(){
+  const box = document.getElementById('selBrezZalogeList');
+  if (!box) return;
+  if (box.style.display !== 'none'){ box.style.display='none'; return; }
+  const bz = (_selData && _selData.anomalije && _selData.anomalije.brez_zaloge) || [];
+  if (!bz.length){ box.innerHTML='<div style="font-size:12px">Ni takih.</div>'; box.style.display='block'; return; }
+  let h = '<table style="border-collapse:collapse;width:100%;font-size:12.5px;background:var(--surface);border-radius:8px;overflow:hidden">'
+    + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:6px 8px">SKU</th><th style="text-align:left;padding:6px 8px">Polica</th><th style="text-align:left;padding:6px 8px">Naziv</th></tr>';
+  bz.forEach(x => {
+    h += '<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-weight:700;color:var(--text)">'+selEsc(x.sku)+'</td><td style="padding:6px 8px;font-family:monospace">'+selEsc(x.position||'')+'</td><td style="padding:6px 8px;color:var(--text-secondary)">'+selEsc(x.title||'')+'</td></tr>';
+  });
+  h += '</table>';
+  box.innerHTML = h; box.style.display='block';
+}
+function selBrezZalogeCsv(){
+  const bz = (_selData && _selData.anomalije && _selData.anomalije.brez_zaloge) || [];
+  if (!bz.length){ alert('Ni izdelkov brez zaloge.'); return; }
+  let csv = '\ufeffSKU;polica;naziv\n';
+  bz.forEach(x => { csv += (x.sku||'') + ';' + (x.position||'') + ';' + (x.title||'').replace(/;/g,',') + '\n'; });
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'selitev_brez_zaloge.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
 function selRenderPregled(){
   if (!_selData) return;
   const warn = document.getElementById('selWarnings');
@@ -28493,6 +28519,16 @@ function selRenderPregled(){
   // OPOZORILA (rumene, dovoljeno)
   (_selData.vec_pozicij||[]).forEach(m => { w += warnRow('<b>' + selEsc(m.sku) + '</b> je na več policah: ' + m.pozicije.map(selEsc).join(', ')); });
   (A.poslan_drugam||[]).forEach(x => { w += warnRow('<b>' + selEsc(x.sku) + '</b> → ' + selEsc(x.position) + ' (že poslan na: ' + (x.ze_poslano_na||[]).map(selEsc).join(', ') + ')'); });
+  // BREZ ZALOGE — posebna kartica z akcijo (ročno napolniti pred pošiljanjem pozicij)
+  const bz = A.brez_zaloge || [];
+  if (bz.length){
+    w += '<div style="padding:11px 13px;border-radius:9px;background:rgba(217,151,34,.14);color:#b57611;font-size:13px;margin-bottom:6px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+      + '<span><b>📦 Vpisani BREZ zaloge (' + bz.length + ')</b> — dodaj količino v siluxarju/suban.ai pred pošiljanjem pozicij.</span>'
+      + '<span style="display:flex;gap:6px"><button onclick="selToggleBrezZaloge()" style="padding:5px 11px;border:1px solid #b57611;border-radius:7px;background:transparent;color:#b57611;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Prikaži</button>'
+      + '<button onclick="selBrezZalogeCsv()" style="padding:5px 11px;border:1px solid #12a35f;border-radius:7px;background:transparent;color:#12a35f;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">⬇ CSV</button></span>'
+      + '</div><div id="selBrezZalogeList" style="margin-top:8px;display:none"></div></div>';
+  }
   if (warn) warn.innerHTML = w || '<div style="font-size:13px;color:#0f8a4f;padding:9px 12px;border-radius:9px;background:rgba(18,163,95,.1)">✓ Ni anomalij — pripravljeno za prenos.</div>';
   // GATE: onemogoči gumb za prenos ob blokirajočih anomalijah
   const tbtn = document.getElementById('selTransferBtn');
