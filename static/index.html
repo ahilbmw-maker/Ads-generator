@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-28 01:30</div>
+      <div class="sidebar-logo-sub">build 2026-08-28 02:30</div>
     </div>
   </div>
 
@@ -4566,6 +4566,21 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px">Slikaj etiketo (SKU se ujame z bazo) ali vpiši ročno. Slikaj/vpiši pozicijo. Spodaj se gradi seznam SKU : Pozicija.</div>
       </div>
 
+      <!-- ŠTEVEC POKRITOSTI POZICIJ -->
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:12px;font-weight:700;color:var(--text)">📊 Pokritost pozicij <span style="font-weight:400;color:var(--text-tertiary)">(SKU z zalogo &gt;0)</span></span>
+          <button onclick="pozRefreshCoverage()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit;color:var(--text-secondary)">🔄 Osveži</button>
+        </div>
+        <div id="pozCoverageBox" style="font-size:13px;color:var(--text-secondary)">Naloži z gumbom »Osveži«.</div>
+        <div id="pozCoverageBar" style="height:10px;background:var(--border);border-radius:6px;overflow:hidden;margin-top:8px;display:none"><div id="pozCoverageFill" style="height:100%;width:0%;background:#0f8a4f;transition:width .3s"></div></div>
+        <div style="margin-top:10px;display:none" id="pozMissingWrap">
+          <button onclick="pozShowMissing()" style="font-size:12px;font-weight:700;padding:7px 14px;background:transparent;border:1px solid #b57611;border-radius:8px;cursor:pointer;font-family:inherit;color:#b57611">📋 Seznam manjkajočih (<span id="pozMissingCount">0</span>)</button>
+          <button onclick="pozMissingCsv()" style="font-size:12px;font-weight:700;padding:7px 14px;background:transparent;border:1px solid #12a35f;border-radius:8px;cursor:pointer;font-family:inherit;color:#12a35f;margin-left:6px">⬇ CSV</button>
+        </div>
+        <div id="pozMissingList" style="margin-top:10px"></div>
+      </div>
+
       <!-- KORAK 1: SKU -->
       <div class="card" style="margin-bottom:10px">
         <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px">1️⃣ Izdelek (SKU)</div>
@@ -5063,6 +5078,15 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </div>
     </div>
+      <!-- STICKY ŠTEVEC POKRITOSTI (samo pri Vse vrste / Pregled) -->
+      <div id="selCoverageSticky" style="display:none;position:sticky;bottom:0;left:0;right:0;z-index:40;margin:12px -0.6rem 0;padding:10px 14px;background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -4px 12px rgba(0,0,0,.08)">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:900px;margin:0 auto">
+          <span style="font-size:12px;font-weight:800;color:var(--text);white-space:nowrap">📊 Pokritost</span>
+          <div style="flex:1;min-width:120px;height:9px;background:var(--border);border-radius:6px;overflow:hidden"><div id="selCovStickyFill" style="height:100%;width:0%;background:#0f8a4f;transition:width .3s"></div></div>
+          <span id="selCovStickyTxt" style="font-size:12.5px;font-weight:700;color:var(--text-secondary);white-space:nowrap">—</span>
+          <button onclick="pozRefreshCoverage(true)" style="font-size:11px;padding:4px 9px;background:transparent;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit;color:var(--text-secondary)">🔄</button>
+        </div>
+      </div>
   </div>
 
   <div class="page" id="page-xsell">
@@ -27741,6 +27765,55 @@ async function stockQuickSave() {
   } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
 }
 
+async function pozRefreshCoverage(){
+  const box = document.getElementById('pozCoverageBox');
+  if (box) box.textContent = 'Računam…';
+  try{
+    const r = await fetch('/pozicije-pokritost');
+    const d = await r.json();
+    if (!d.ok){ if(box) box.innerHTML='<span style="color:#e5484d">'+(d.error||'napaka')+'</span>'; return; }
+    _pozCoverageData = d;
+    const pct = d.odstotek_pokritih || 0;
+    if (box) box.innerHTML = '<b style="color:var(--text);font-size:15px">' + d.pokriti_sku + ' / ' + d.na_zalogi_sku + '</b> SKU ima pozicijo &nbsp;·&nbsp; <span style="color:'+(d.manjka_sku?'#b57611':'#0f8a4f')+';font-weight:700">' + d.manjka_sku + ' manjka</span> &nbsp;·&nbsp; ' + pct + '%';
+    const bar = document.getElementById('pozCoverageBar'); const fill = document.getElementById('pozCoverageFill');
+    if (bar){ bar.style.display='block'; }
+    if (fill){ fill.style.width = pct + '%'; fill.style.background = (pct>=100?'#0f8a4f':(pct>=80?'#0f8a4f':(pct>=50?'#b57611':'#e5484d'))); }
+    const wrap = document.getElementById('pozMissingWrap');
+    const cnt = document.getElementById('pozMissingCount');
+    if (wrap) wrap.style.display = d.manjka_sku ? 'block' : 'none';
+    if (cnt) cnt.textContent = d.manjka_sku || 0;
+    // posodobi tudi sticky števec (če obstaja)
+    const sFill = document.getElementById('selCovStickyFill');
+    const sTxt = document.getElementById('selCovStickyTxt');
+    if (sFill) sFill.style.width = pct + '%';
+    if (sFill) sFill.style.background = (pct>=80?'#0f8a4f':(pct>=50?'#b57611':'#e5484d'));
+    if (sTxt) sTxt.innerHTML = d.pokriti_sku + '/' + d.na_zalogi_sku + ' &middot; ' + (d.manjka_sku||0) + ' manjka &middot; ' + pct + '%';
+    // če ni manjkajočih, počisti seznam
+    if (!d.manjka_sku){ const ml=document.getElementById('pozMissingList'); if(ml) ml.innerHTML='<div style="font-size:13px;color:#0f8a4f;font-weight:600;padding:6px 0">✓ Vsi izdelki na zalogi imajo pozicijo!</div>'; }
+  }catch(e){ if(box) box.innerHTML='<span style="color:#e5484d">Napaka: '+e.message+'</span>'; }
+}
+async function pozShowMissing(){
+  const list = document.getElementById('pozMissingList');
+  if (list) list.innerHTML = 'Nalagam…';
+  try{
+    const r = await fetch('/pozicije-pokritost?manjkajoci=1&limit=500');
+    const d = await r.json();
+    const m = d.manjkajoci || [];
+    if (!m.length){ if(list) list.innerHTML='<div style="font-size:13px;color:#0f8a4f;font-weight:600;padding:6px 0">✓ Nič ne manjka!</div>'; return; }
+    let h = '<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px">Prikazanih ' + m.length + (d.manjkajoci_skupaj>m.length ? ' od ' + d.manjkajoci_skupaj + ' (za vse uporabi CSV)' : '') + ' — razvrščeno po zalogi:</div>';
+    h += '<table style="border-collapse:collapse;width:100%;font-size:13px"><tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:5px 8px">SKU</th><th style="text-align:right;padding:5px 8px">Zaloga</th><th style="text-align:left;padding:5px 8px">Naziv</th></tr>';
+    m.forEach(x => {
+      h += '<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-weight:700">'+siluxEsc(x.sku)+'</td><td style="padding:6px 8px;text-align:right;color:#b57611;font-weight:700">'+x.stock+'</td><td style="padding:6px 8px;color:var(--text-secondary)">'+siluxEsc(x.title||'')+'</td></tr>';
+    });
+    h += '</table>';
+    if (list) list.innerHTML = h;
+  }catch(e){ if(list) list.innerHTML='<span style="color:#e5484d">Napaka: '+e.message+'</span>'; }
+}
+function pozMissingCsv(){
+  const a = document.createElement('a');
+  a.href = '/pozicije-pokritost-csv'; a.download = '';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
 async function pozOpenValidList() {
   document.getElementById('pozValidModal').style.display = 'flex';
   document.getElementById('pozValidStatus').textContent = '';
@@ -28015,6 +28088,7 @@ const SEL_REGALI = ['1','2','3','4','5'];
 const SEL_POLICE = ['A','B','C','D','E','F'];
 let _selNav = {vrsta:null, regal:null, polica:null};
 let _selData = null;
+let _pozCoverageData = null;
 let _selActiveSort = { col: 'position', dir: 1 };   // aktivni seznam: stolpec + smer (1=A-Z, -1=Z-A)
 let _selSentSort = { col: 'sent_ts', dir: -1 };      // poslani seznam
 let _selActiveFilter = 'vsi';                        // 'vsi' | 'dvojniki' | 'brez_pozicije'
@@ -28082,6 +28156,17 @@ function selStartPolling(){
   }, 3000);
 }
 function selStopPolling(){ if (_selPollTimer){ clearInterval(_selPollTimer); _selPollTimer = null; } }
+function selCoverageStickyVisible(){
+  // pokaži samo pri: Pregled zavihek, ALI Vpis+Vse vrste (brez izbrane vrste)
+  const sticky = document.getElementById('selCoverageSticky');
+  if (!sticky) return;
+  const pregledOpen = document.getElementById('selPanePregled') && document.getElementById('selPanePregled').style.display !== 'none';
+  const vseVrste = !_selNav.vrsta;   // v Vpisu, a še ni izbrana vrsta
+  const vpisOpen = document.getElementById('selPaneVpis') && document.getElementById('selPaneVpis').style.display !== 'none';
+  const show = pregledOpen || (vpisOpen && vseVrste);
+  sticky.style.display = show ? 'block' : 'none';
+  if (show && _pozCoverageData == null) pozRefreshCoverage(true);   // prvič naloži
+}
 function selSwitch(pane){
   const vpis = pane === 'vpis';
   document.getElementById('selPaneVpis').style.display = vpis ? '' : 'none';
@@ -28090,6 +28175,7 @@ function selSwitch(pane){
   const on = (b,a)=>{ if(!b)return; b.style.background=a?'var(--accent)':'transparent'; b.style.color=a?'#fff':'var(--text-secondary)'; b.style.border=a?'none':'1px solid var(--border)'; };
   on(bV,vpis); on(bP,!vpis);
   if (!vpis) selRenderPregled();
+  selCoverageStickyVisible();
 }
 
 // ── breadcrumb ──
@@ -28154,6 +28240,7 @@ function selRenderGrid(){
     selRenderOnPos();
   }
   selSaveNav();
+  if (typeof selCoverageStickyVisible === 'function') selCoverageStickyVisible();
 }
 function selCount(fn){
   if (!_selData || !_selData.entries) return 0;

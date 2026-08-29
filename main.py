@@ -11480,6 +11480,109 @@ async def silux2_compare_live(request: Request):
     }
 
 
+@app.get("/pozicije-pokritost")
+async def pozicije_pokritost(manjkajoci: int = 0, limit: int = 0):
+    """Števec pokritosti pozicij: koliko UNIKATNIH SKU-jev (zaloga >0) ima pozicijo.
+    Pravilo: 1 SKU = 1 enota (ne glede na količino ali skladišče).
+    - SKU je 'na zalogi', če ima skupno zalogo (vsota po skladiščih) > 0.
+    - SKU je 'pokrit', če ima pozicijo v KATEREMKOLI svojem zapisu (glavno ali sekundarno).
+    ?manjkajoci=1 → doda seznam SKU-jev brez pozicije (z zalogo >0).
+    ?limit=N → omeji seznam manjkajočih na N (0 = vsi)."""
+    import csv as _csv
+    from io import StringIO as _SIO
+    if not STOCK_CSV_FILE.exists():
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Ni CSV zaloge."}, status_code=400)
+    _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+    _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
+
+    # agregacija po SKU (združi silux + silux2 + zunanje)
+    per_sku = {}   # SKU_upper -> {"sku","stock_sum","has_pos","title","external_only"}
+    for row in _csv.DictReader(_SIO(_t), delimiter=_sep):
+        sku = (row.get("product_sku") or row.get("sku") or "").strip()
+        if not sku:
+            continue
+        key = sku.upper()
+        try:
+            st = int(float(str(row.get("stock") or 0).replace(",", ".")))
+        except Exception:
+            st = 0
+        pos = (row.get("position") or "").strip()
+        is_ext = str(row.get("is_external") or "").strip().lower() in ("1","true","yes","da")
+        rec = per_sku.get(key)
+        if not rec:
+            rec = {"sku": sku, "stock_sum": 0, "has_pos": False, "title": (row.get("title") or "").strip(), "any_nonext": False}
+            per_sku[key] = rec
+        rec["stock_sum"] += st
+        if pos:
+            rec["has_pos"] = True
+        if not is_ext:
+            rec["any_nonext"] = True
+
+    # dodaj sekundarne (dodatne) pozicije — če ima SKU dodatno pozicijo, šteje kot pokrit
+    try:
+        extra = _zaloga_load_extra_pos()
+        for sku, lst in (extra or {}).items():
+            if lst:
+                k = sku.upper()
+                if k in per_sku:
+                    per_sku[k]["has_pos"] = True
+    except Exception:
+        pass
+
+    na_zalogi = 0
+    pokriti = 0
+    manjkajoci_list = []
+    for key, rec in per_sku.items():
+        if rec["stock_sum"] <= 0:
+            continue                    # samo zaloga >0
+        na_zalogi += 1
+        if rec["has_pos"]:
+            pokriti += 1
+        else:
+            manjkajoci_list.append({"sku": rec["sku"], "stock": rec["stock_sum"], "title": rec["title"]})
+
+    manjka = na_zalogi - pokriti
+    odstotek = round((pokriti / na_zalogi * 100), 1) if na_zalogi else 0.0
+
+    out = {
+        "ok": True,
+        "na_zalogi_sku": na_zalogi,       # unikatnih SKU z zalogo >0
+        "pokriti_sku": pokriti,           # od tega s pozicijo
+        "manjka_sku": manjka,             # brez pozicije
+        "odstotek_pokritih": odstotek,
+    }
+    if manjkajoci:
+        manjkajoci_list.sort(key=lambda x: -x["stock"])   # najprej največja zaloga
+        out["manjkajoci_skupaj"] = len(manjkajoci_list)
+        if limit and limit > 0:
+            out["manjkajoci"] = manjkajoci_list[:limit]
+            out["manjkajoci_prikazano"] = min(limit, len(manjkajoci_list))
+        else:
+            out["manjkajoci"] = manjkajoci_list
+            out["manjkajoci_prikazano"] = len(manjkajoci_list)
+    return out
+
+
+@app.get("/pozicije-pokritost-csv")
+async def pozicije_pokritost_csv():
+    """CSV izvoz manjkajočih pozicij (SKU z zalogo >0 brez pozicije)."""
+    import csv as _csv
+    from io import StringIO as _SIO
+    from fastapi.responses import Response as _Resp
+    res = await pozicije_pokritost(manjkajoci=1, limit=0)
+    manjk = res.get("manjkajoci", []) if isinstance(res, dict) else []
+    buf = _SIO()
+    buf.write("\ufeff")
+    w = _csv.writer(buf, delimiter=";")
+    w.writerow(["SKU", "zaloga", "naziv"])
+    for m in manjk:
+        w.writerow([m.get("sku",""), m.get("stock",0), m.get("title","")])
+    fname = f"manjkajoce_pozicije_{_lj_now().strftime('%Y%m%d_%H%M')}.csv"
+    return _Resp(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                 headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
 @app.get("/orodja-stock-data")
 async def orodja_stock_data():
     """Vrne celoten seznam zaloge iz shranjenega CSV."""
