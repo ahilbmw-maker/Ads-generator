@@ -11002,6 +11002,93 @@ async def sku_cleanup_duplicates(request: Request, data: dict):
     return {"ok": True, "dry_run": False, "izbrisano": izbrisanih, "detajli": za_brisat}
 
 
+@app.get("/pozicije-avtomat", response_class=HTMLResponse)
+async def pozicije_avtomat_page(request: Request):
+    """VSE V ENEM: naloži CSV → prepozna Amio/Ikonka/KX → doda v Selitev z glavno pozicijo."""
+    if not _owner_authorized(request):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik.</h3>", status_code=403)
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pozicije v Selitev (avtomat)</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:840px;margin:0 auto;padding:20px;background:#f7f7f8;color:#1a1a1a}
+  h1{font-size:20px} .sub{color:#666;font-size:13px;margin-bottom:16px;line-height:1.5}
+  label{font-size:13px;font-weight:700;display:block;margin:12px 0 5px}
+  input[type=text]{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;font-family:inherit}
+  input[type=file]{font-size:13px;margin-top:6px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  textarea{width:100%;box-sizing:border-box;min-height:120px;padding:12px;border:1px solid #ccc;border-radius:8px;font-family:monospace;font-size:13px}
+  button{padding:11px 20px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .b-prev{background:#2563eb;color:#fff} .b-go{background:#16a34a;color:#fff} .b-go:disabled{background:#ccc;cursor:default}
+  .row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .box{background:#fff;border-radius:10px;padding:16px;margin-top:16px;border:1px solid #e5e5e5}
+  .warn{background:#fef3cd;border:1px solid #f0d98a;padding:10px 12px;border-radius:8px;font-size:12.5px;color:#8a6d1a;margin-top:8px}
+  #status{margin-top:12px;font-size:14px;font-weight:600;min-height:20px}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px}
+  th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #eee}
+</style></head><body>
+<h1>Pozicije &rarr; Selitev (Amio + Ikonka + KX naenkrat)</h1>
+<div class="sub">Nalozi CSV. Sistem prepozna AMIO in IKONKA iz XML vira (po P/N) IN vse KX (Ikonkina koda), ter jih doda v SELITEV z glavno pozicijo. NE poslje v siluxar &mdash; vse ostane v Selitvi, da pregledas celoto in POTEM posljes vse hkrati. Neprepoznane (niso amio/ikonka/kx) pusti pri miru.</div>
+<div class="grid2">
+  <div><label>Pozicija AMIO</label><input type="text" id="posAmio" value="Pri Amiotu"></div>
+  <div><label>Pozicija IKONKA + KX</label><input type="text" id="posIkonka" value="Ikonka"></div>
+</div>
+<label>Nalozi CSV</label>
+<input type="file" id="file" accept=".csv,.txt" onchange="loadFile()">
+<label>ali prilepi (prvi stolpec = SKU)</label>
+<textarea id="text" placeholder="01191;...&#10;KX5099;..."></textarea>
+<div class="row">
+  <button class="b-prev" onclick="preview()">Predogled</button>
+  <button class="b-go" id="goBtn" onclick="doIt()" disabled>Dodaj v Selitev</button>
+</div>
+<div id="status"></div>
+<div id="result"></div>
+<script>
+function loadFile(){
+  const f=document.getElementById('file').files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=e=>{ document.getElementById('text').value=e.target.result; document.getElementById('status').textContent='Nalozeno ('+f.name+'). Klikni Predogled.'; };
+  rd.readAsText(f,'utf-8');
+}
+function body(dry){
+  return { text:document.getElementById('text').value,
+           pos_amio:document.getElementById('posAmio').value.trim(),
+           pos_ikonka:document.getElementById('posIkonka').value.trim(),
+           dry_run:dry };
+}
+function preview(){
+  const st=document.getElementById('status'); st.textContent='Prepoznavam...';
+  document.getElementById('goBtn').disabled=true;
+  fetch('/pozicije-avtomat-selitev',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body(true))})
+    .then(r=>r.json()).then(d=>{
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>'; return; }
+      let h='<div class="box"><table><tr><th>Skupina</th><th>Najdenih</th></tr>';
+      h+='<tr><td>AMIO &rarr; '+document.getElementById('posAmio').value+'</td><td><b>'+d.amio_najdenih+'</b></td></tr>';
+      h+='<tr><td>IKONKA + KX &rarr; '+document.getElementById('posIkonka').value+'</td><td><b>'+d.ikonka_najdenih+'</b></td></tr>';
+      h+='</table>';
+      h+='<div style="margin-top:10px;font-size:13px">Skupaj za dodati v Selitev: <b>'+d.skupaj+'</b> &middot; novih: <b>'+d.novih+'</b> &middot; ze v Selitvi: '+d.ze_v_selitvi+'</div>';
+      if(d.ostali_neprepoznani) h+='<div class="warn">Neprepoznanih (niso amio/ikonka/kx, ostanejo): '+d.ostali_neprepoznani+' &mdash; '+(d.ostali_primeri||[]).join(', ')+'...</div>';
+      if(d.neznanih) h+='<div class="warn">Ni v zalogi (preveri): '+d.neznanih+'</div>';
+      h+='</div>';
+      document.getElementById('result').innerHTML=h;
+      st.innerHTML='<span style="color:#16a34a">Predogled pripravljen.</span>';
+      document.getElementById('goBtn').disabled=(d.skupaj===0);
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+function doIt(){
+  if(!confirm('Dodam prepoznane SKU-je v Selitev z glavno pozicijo? (NE poslje v siluxar)')) return;
+  const st=document.getElementById('status'); st.textContent='Dodajam v Selitev...';
+  document.getElementById('goBtn').disabled=true;
+  fetch('/pozicije-avtomat-selitev',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body(false))})
+    .then(r=>r.json()).then(d=>{
+      if(d.ok){ st.innerHTML='<span style="color:#16a34a">Dodano '+(d.dodano||0)+' v Selitev'+(d.preskoceno?' ('+d.preskoceno+' ze bilo)':'')+'. Zdaj pojdi v Selitev &rarr; Pregled in poslji vse hkrati.</span>'; document.getElementById('result').innerHTML=''; }
+      else st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>';
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+</script></body></html>"""
+    return HTMLResponse(html)
+
+
 @app.get("/pozicije-prefix", response_class=HTMLResponse)
 async def pozicije_prefix_page(request: Request):
     """Stran: naloži CSV, sistem potegne vse SKU-je s prefiksom (npr. KX) in jim
@@ -23681,6 +23768,154 @@ async def pozicije_extra_cleanup_by_value(request: Request, data: dict):
     _zaloga_save_extra_pos(new_store)
     return {"ok": True, "dry_run": False, "sku_prizadetih": len(prizadeti),
             "odstranjenih_pozicij": odstranjenih}
+
+
+@app.post("/pozicije-avtomat-selitev")
+async def pozicije_avtomat_selitev(request: Request, data: dict):
+    """VSE V ENEM: iz CSV/besedila prepozna Amio & Ikonka (iz XML vira, po P/N) IN vse s
+    prefiksom KX, ter jih doda v SELITEV (staging) z glavno pozicijo:
+      - Amio  → position (privzeto 'Pri Amiotu')
+      - Ikonka (XML) → position (privzeto 'Ikonka')
+      - KX prefiks   → ista Ikonka pozicija (Ikonkina lastna koda)
+    NE pošlje v siluxar — vse ostane v Selitvi, da pošlješ vse hkrati.
+    Body: { text?, skus?, pos_amio:'Pri Amiotu', pos_ikonka:'Ikonka', dry_run }"""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+
+    pos_amio = (data.get("pos_amio") or "Pri Amiotu").strip()
+    pos_ikonka = (data.get("pos_ikonka") or "Ikonka").strip()
+    dry = data.get("dry_run", True)
+    if dry is None: dry = True
+
+    # zberi SKU-je
+    skus = []
+    if data.get("skus"):
+        skus = [str(x).strip() for x in data["skus"] if str(x).strip()]
+    elif data.get("text"):
+        import re as _re
+        for line in str(data["text"]).splitlines():
+            first = _re.split(r"[;,\t]", line.strip())[0].strip()
+            if first and first.upper() != "SKU":
+                skus.append(first)
+    if not skus:
+        return {"ok": False, "error": "Ni SKU-jev (naloži CSV ali prilepi)."}
+
+    # barcode_index → SKU_upper → supplier
+    if not barcode_index:
+        _load_barcode_cache()
+    sku2sup = {}
+    if barcode_index:
+        for _bc, info in barcode_index.items():
+            kod = (info.get("kod") or "").strip()
+            sup = (info.get("supplier") or "").strip().lower()
+            if kod and sup:
+                sku2sup.setdefault(kod.upper(), sup)
+
+    amio_skus, ikonka_skus, ostali = [], [], []
+    _seen = set()
+    for sku in skus:
+        k = sku.upper()
+        if k in _seen:
+            continue
+        _seen.add(k)
+        sup = sku2sup.get(k)
+        if k.startswith("KX"):
+            ikonka_skus.append(sku)           # KX = Ikonka (lastna koda), ne glede na XML
+        elif sup == "amio":
+            amio_skus.append(sku)
+        elif sup == "ikonka":
+            ikonka_skus.append(sku)
+        else:
+            ostali.append(sku)
+
+    skupine = []
+    if amio_skus:   skupine.append({"skus": amio_skus, "position": pos_amio})
+    if ikonka_skus: skupine.append({"skus": ikonka_skus, "position": pos_ikonka})
+
+    # deleguj na /pozicije-v-selitev (ista logika dodajanja)
+    res = await pozicije_v_selitev(request, {"skupine": skupine, "dry_run": dry})
+    if isinstance(res, dict):
+        res["amio_najdenih"] = len(amio_skus)
+        res["ikonka_najdenih"] = len(ikonka_skus)
+        res["ostali_neprepoznani"] = len(ostali)
+        res["ostali_primeri"] = ostali[:15]
+    return res
+
+
+@app.post("/pozicije-v-selitev")
+async def pozicije_v_selitev(request: Request, data: dict):
+    """Doda skupine SKU-jev v SELITEV (staging) z GLAVNO pozicijo — NE pošlje v siluxar.
+    Tako se vse zbere v Selitvi (Amio, Ikonka, KX, ročni vpisi) in POTEM vse hkrati pošlješ.
+    Body: { skupine: [ {skus:[...], position:'Pri Amiotu'}, {skus:[...], position:'Ikonka'} ], dry_run }
+    Preskoči SKU-je, ki so na tej poziciji v Selitvi že vpisani (brez dvojnikov)."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    skupine = data.get("skupine") or []
+    dry = data.get("dry_run", True)
+    if dry is None: dry = True
+    if not skupine:
+        return {"ok": False, "error": "Ni skupin."}
+
+    lookup = _load_stock_lookup()
+
+    # pripravi načrt: (sku, position) pari, deduplicirano znotraj vhoda
+    nacrt = []          # [{sku, position, known}]
+    seen_pairs = set()
+    per_pos = {}        # position -> count
+    neznani = []
+    for g in skupine:
+        pos = (str(g.get("position") or "")).strip()
+        if not pos:
+            continue
+        for raw in (g.get("skus") or []):
+            sku = str(raw).strip()
+            if not sku:
+                continue
+            key = (sku.upper(), pos.upper())
+            if key in seen_pairs:
+                continue
+            seen_pairs.add(key)
+            info = lookup.get(sku.upper())
+            known = info is not None
+            if not known:
+                neznani.append(sku)
+            nacrt.append({"sku": (info["sku"] if known else sku), "position": pos, "known": known})
+            per_pos[pos] = per_pos.get(pos, 0) + 1
+
+    if dry:
+        # koliko jih je ŽE v selitvi na isti poziciji (bomo preskočili)
+        d = _selitev_load()
+        obstoj = {((e.get("sku") or "").strip().upper(), (e.get("position") or "").strip().upper())
+                  for e in d.get("entries", [])}
+        ze_vpisani = sum(1 for n in nacrt if (n["sku"].upper(), n["position"].upper()) in obstoj)
+        return {"ok": True, "dry_run": True,
+                "skupaj": len(nacrt), "po_poziciji": per_pos,
+                "ze_v_selitvi": ze_vpisani, "novih": len(nacrt) - ze_vpisani,
+                "neznanih": len(neznani), "neznani_primeri": neznani[:15]}
+
+    # dejansko: dodaj v selitev entries (brez dvojnikov)
+    dodano = 0
+    preskoceno = 0
+    async with _selitev_lock:
+        d = _selitev_load()
+        obstoj = {((e.get("sku") or "").strip().upper(), (e.get("position") or "").strip().upper())
+                  for e in d.get("entries", [])}
+        ts = _lj_now().strftime("%Y-%m-%d %H:%M:%S")
+        for n in nacrt:
+            pk = (n["sku"].upper(), n["position"].upper())
+            if pk in obstoj:
+                preskoceno += 1
+                continue
+            d["entries"].append({
+                "sku": n["sku"], "position": n["position"],
+                "known": n["known"], "ts": ts,
+            })
+            obstoj.add(pk); dodano += 1
+        _selitev_save(d)
+    return {"ok": True, "dry_run": False, "dodano": dodano, "preskoceno": preskoceno,
+            "po_poziciji": per_pos, "neznanih": len(neznani)}
 
 
 @app.post("/pozicije-prefix-push")
