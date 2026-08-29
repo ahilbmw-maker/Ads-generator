@@ -11530,6 +11530,23 @@ async def pozicije_pokritost(manjkajoci: int = 0, limit: int = 0):
     except Exception:
         pass
 
+    # dodaj SELITEV vpise (čaka na prenos + poslano) — da bar raste SPROTI, še preden sync
+    # prinese pozicije nazaj v suban.ai CSV. Če je SKU vpisan v Selitvi (s pozicijo), šteje kot pokrit.
+    try:
+        _sel = _selitev_load()
+        for _e in (_sel.get("entries", []) or []):
+            if (_e.get("position") or "").strip():
+                _k = (_e.get("sku") or "").strip().upper()
+                if _k in per_sku:
+                    per_sku[_k]["has_pos"] = True
+        for _e in (_sel.get("sent", []) or []):
+            if (_e.get("position") or "").strip():
+                _k = (_e.get("sku") or "").strip().upper()
+                if _k in per_sku:
+                    per_sku[_k]["has_pos"] = True
+    except Exception:
+        pass
+
     na_zalogi = 0
     pokriti = 0
     manjkajoci_list = []

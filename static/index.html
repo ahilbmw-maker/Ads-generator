@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-28 04:20</div>
+      <div class="sidebar-logo-sub">build 2026-08-28 04:40</div>
     </div>
   </div>
 
@@ -28219,7 +28219,7 @@ function selCoverageStickyVisible(){
   const vpisOpen = document.getElementById('selPaneVpis') && document.getElementById('selPaneVpis').style.display !== 'none';
   const show = vpisOpen && vseVrste;
   card.style.display = show ? 'block' : 'none';
-  if (show && _pozCoverageData == null) pozRefreshCoverage(true);   // prvič naloži
+  if (show) pozRefreshCoverage(true);   // osveži VSAKIČ ob prihodu na Vse vrste (da bar raste sproti)
 }
 function selSwitch(pane){
   const vpis = pane === 'vpis';
