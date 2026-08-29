@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-28 05:00</div>
+      <div class="sidebar-logo-sub">build 2026-08-28 05:30</div>
     </div>
   </div>
 
@@ -28139,6 +28139,7 @@ function switchZalogaTab(tab) {
 // ═══ SELITEV SKLADIŠČA — vpis pozicij (Vrsta → Regal → Polica) ═══
 // Oznaka 01-1A: 01=VRSTA (01–16), 1=REGAL (1–5), A=POLICA (A–F)
 const SEL_VRSTE = Array.from({length:16}, (_,i) => String(i+1).padStart(2,'0'));  // 01..16
+const SEL_NAMED = ['Ikonka', 'Pri Amiotu'];   // imenske pozicije (niso 01-16 police) — svoja kvadratka
 const SEL_REGALI = ['1','2','3','4','5'];
 const SEL_POLICE = ['A','B','C','D','E','F'];
 let _selNav = {vrsta:null, regal:null, polica:null};
@@ -28186,9 +28187,9 @@ const SEL_LS = 'suban_selitev_nav';
 
 function selEsc(t){ return String(t==null?'':t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function selQ(s){ return "'" + String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "'"; }
-function selPos(){ return (_selNav.vrsta && _selNav.regal && _selNav.polica) ? (_selNav.vrsta + '-' + _selNav.regal + _selNav.polica) : null; }
+function selPos(){ if (_selNav.named) return _selNav.named; return (_selNav.vrsta && _selNav.regal && _selNav.polica) ? (_selNav.vrsta + '-' + _selNav.regal + _selNav.polica) : null; }
 function selSaveNav(){ try{ localStorage.setItem(SEL_LS, JSON.stringify(_selNav)); }catch(e){} }
-function selLoadNav(){ try{ const v=JSON.parse(localStorage.getItem(SEL_LS)||'null'); if(v&&typeof v==='object') _selNav=Object.assign({vrsta:null,regal:null,polica:null},v); }catch(e){} }
+function selLoadNav(){ try{ const v=JSON.parse(localStorage.getItem(SEL_LS)||'null'); if(v&&typeof v==='object') _selNav=Object.assign({vrsta:null,regal:null,polica:null,named:null},v); }catch(e){} }
 
 let _selPollTimer = null;
 let _selLastSig = '';       // podpis zadnjih podatkov (da ne prerisujemo po nepotrebnem)
@@ -28238,7 +28239,8 @@ function selRenderCrumb(){
   const step = (label, active, onclick) =>
     '<span onclick="' + (onclick||'') + '" style="cursor:' + (onclick?'pointer':'default') + ';padding:6px 12px;border-radius:8px;background:' + (active?'var(--accent)':'var(--surface2)') + ';color:' + (active?'#fff':'var(--text-secondary)') + ';font-weight:700;font-size:13px">' + label + '</span>';
   const arr = '<span style="color:var(--text-tertiary)">›</span>';
-  let h = step('Vse vrste', !_selNav.vrsta, 'selReset()');
+  let h = step('Vse vrste', !_selNav.vrsta && !_selNav.named, 'selReset()');
+  if (_selNav.named) h += arr + step(_selNav.named, true, '');
   if (_selNav.vrsta) h += arr + step('Vrsta ' + _selNav.vrsta, !_selNav.regal, "selPickVrsta('" + _selNav.vrsta + "')");
   if (_selNav.regal) h += arr + step('Regal ' + _selNav.regal, !_selNav.polica, "selPickRegal('" + _selNav.regal + "')");
   if (_selNav.polica) h += arr + step('Polica ' + _selNav.polica, true, '');
@@ -28270,10 +28272,13 @@ function selRenderGrid(){
   if (!g) return;
   // iskalnik po SKU samo na najvišjem pogledu (vrste)
   if (find) find.style.display = (!_selNav.vrsta) ? '' : 'none';
-  if (!_selNav.vrsta){
+  if (!_selNav.vrsta && !_selNav.named){
     g.style.display = 'grid';
     g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(130px,1fr))';
-    g.innerHTML = SEL_VRSTE.map(v => selBigCell(v, "selPickVrsta('" + v + "')", 'vrsta', selCount(x => x.startsWith(v + '-')) || '')).join('');
+    // najprej imenske pozicije (Ikonka, Pri Amiotu) — poudarjeni kvadratki
+    let cells = SEL_NAMED.map(nm => selBigCell(nm, "selPickNamed(" + selQ(nm) + ")", '📦 dobavitelj', selCount(x => x === nm) || '')).join('');
+    cells += SEL_VRSTE.map(v => selBigCell(v, "selPickVrsta('" + v + "')", 'vrsta', selCount(x => x.startsWith(v + '-')) || '')).join('');
+    g.innerHTML = cells;
     entry.style.display = 'none';
   } else if (!_selNav.regal){
     g.style.display = 'grid';
@@ -28285,7 +28290,7 @@ function selRenderGrid(){
     g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(150px,1fr))';
     g.innerHTML = SEL_POLICE.map(p => selBigCell(p, "selPickPolica('" + p + "')", _selNav.vrsta + '-' + _selNav.regal + p, selCount(x => x === (_selNav.vrsta + '-' + _selNav.regal + p)) || '')).join('');
     entry.style.display = 'none';
-  } else {
+  } else if (_selNav.named || _selNav.polica){
     g.style.display = 'none';
     entry.style.display = '';
     const badge = document.getElementById('selPosBadge'); if (badge) badge.textContent = selPos();
@@ -28300,8 +28305,9 @@ function selCount(fn){
   if (!_selData || !_selData.entries) return 0;
   return _selData.entries.filter(e => fn(e.position||'')).length;
 }
-function selReset(){ _selNav = {vrsta:null, regal:null, polica:null}; selRenderGrid(); }
-function selPickVrsta(v){ _selNav = {vrsta:v, regal:null, polica:null}; selRenderGrid(); }
+function selReset(){ _selNav = {vrsta:null, regal:null, polica:null, named:null}; selRenderGrid(); }
+function selPickVrsta(v){ _selNav = {vrsta:v, regal:null, polica:null, named:null}; selRenderGrid(); }
+function selPickNamed(nm){ _selNav = {vrsta:null, regal:null, polica:null, named:nm}; selRenderGrid(); }
 function selPickRegal(r){ _selNav.regal = r; _selNav.polica = null; selRenderGrid(); }
 function selPickPolica(p){ _selNav.polica = p; selRenderGrid(); }
 function selBackToPolice(){ _selNav.polica = null; selRenderGrid(); }

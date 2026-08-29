@@ -26878,10 +26878,16 @@ def _selitev_save(d: dict):
     os.replace(tmp, SELITEV_FILE)
 
 
+SEL_NAMED_POSITIONS = {"ikonka", "pri amiotu"}   # imenske pozicije (dobavitelji) — dovoljene poleg polic
+
 def _selitev_valid_position(pos: str) -> bool:
-    """Preveri, da je pozicija v strukturi POLICA(01–16)-VRSTA(1–5)MESTO(A–F)."""
+    """Preveri, da je pozicija v strukturi POLICA(01–16)-VRSTA(1–5)MESTO(A–F),
+    ALI da je imenska pozicija dobavitelja (Ikonka, Pri Amiotu)."""
+    p = str(pos or "").strip()
+    if p.lower() in SEL_NAMED_POSITIONS:
+        return True
     import re as _re
-    m = _re.match(r"^(\d{2})-([1-5])([A-F])$", str(pos or "").strip())
+    m = _re.match(r"^(\d{2})-([1-5])([A-F])$", p)
     if not m:
         return False
     return 1 <= int(m.group(1)) <= 16
@@ -27098,7 +27104,9 @@ async def selitev_active_csv():
 async def selitev_add(data: dict):
     """Dodeli SKU-ju pozicijo v začasni zalogi. Ne gre v siluxar."""
     sku = (str(data.get("sku") or "")).strip()
-    pos = (str(data.get("position") or "")).strip().upper()
+    _pos_raw = (str(data.get("position") or "")).strip()
+    # imenske pozicije (Ikonka, Pri Amiotu) ohrani kot so; police uppercase (02-1a → 02-1A)
+    pos = _pos_raw if _pos_raw.lower() in SEL_NAMED_POSITIONS else _pos_raw.upper()
     if not sku:
         return {"ok": False, "error": "Manjka SKU."}
     if not _selitev_valid_position(pos):
