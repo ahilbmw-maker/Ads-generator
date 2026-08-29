@@ -11002,6 +11002,70 @@ async def sku_cleanup_duplicates(request: Request, data: dict):
     return {"ok": True, "dry_run": False, "izbrisano": izbrisanih, "detajli": za_brisat}
 
 
+@app.get("/selitev-mapiraj", response_class=HTMLResponse)
+async def selitev_mapiraj_page(request: Request):
+    """Stran: naloži CSV/Excel (SKU, pozicija), zmapira vse v Selitev na svoje pozicije."""
+    if not _owner_authorized(request):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik.</h3>", status_code=403)
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapiraj SKU→pozicija v Selitev</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:760px;margin:0 auto;padding:20px;background:#f7f7f8;color:#1a1a1a}
+  h1{font-size:20px} .sub{color:#666;font-size:13px;margin-bottom:16px;line-height:1.5}
+  input[type=file]{font-size:14px;margin:10px 0;display:block}
+  button{padding:11px 20px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .b-prev{background:#2563eb;color:#fff} .b-go{background:#16a34a;color:#fff} .b-go:disabled{background:#ccc;cursor:default}
+  .row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .box{background:#fff;border-radius:10px;padding:16px;margin-top:16px;border:1px solid #e5e5e5}
+  .warn{background:#fef3cd;border:1px solid #f0d98a;padding:10px 12px;border-radius:8px;font-size:12.5px;color:#8a6d1a;margin-top:8px}
+  #status{margin-top:12px;font-size:14px;font-weight:600;min-height:20px}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px}
+  th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #eee}
+  th{background:#f0f0f2;font-size:10px;text-transform:uppercase}
+</style></head><body>
+<h1>Mapiraj SKU &rarr; pozicija v Selitev</h1>
+<div class="sub">Nalozi CSV ali Excel. <b>1. stolpec = SKU, 2. stolpec = pozicija.</b> Sistem grupira po poziciji in doda vse v SELITEV (vsak SKU na svojo pozicijo iz datoteke). NE poslje v siluxar - potem posljes vse hkrati. Pozicija je lahko polica (02-1A) ali imenska (Ikonka, Polcar).</div>
+<input type="file" id="file" accept=".csv,.xlsx,.xls">
+<div class="row">
+  <button class="b-prev" onclick="go(true)">Predogled</button>
+  <button class="b-go" id="goBtn" onclick="go(false)" disabled>Dodaj vse v Selitev</button>
+</div>
+<div id="status"></div>
+<div id="result"></div>
+<script>
+let _lastFile=null;
+function go(dry){
+  const f=document.getElementById('file').files[0];
+  if(!f){ alert('Izberi datoteko.'); return; }
+  _lastFile=f;
+  const st=document.getElementById('status'); st.textContent=dry?'Berem...':'Dodajam v Selitev...';
+  if(!dry) document.getElementById('goBtn').disabled=true;
+  const fd=new FormData(); fd.append('file',f); fd.append('dry_run', dry?'1':'0');
+  fetch('/selitev-mapiraj-file',{method:'POST',body:fd})
+    .then(r=>r.json()).then(d=>{
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>'; return; }
+      if(dry){
+        let h='<div class="box"><b>Prebrano '+d.prebranih_parov+' parov, '+d.razlicnih_pozicij+' razlicnih pozicij.</b>';
+        h+='<div style="margin-top:6px;font-size:13px">Skupaj za dodati: <b>'+d.skupaj+'</b> &middot; novih: <b>'+d.novih+'</b> &middot; ze v Selitvi: '+d.ze_v_selitvi+'</div>';
+        h+='<table><tr><th>Pozicija</th><th>SKU-jev</th></tr>';
+        (d.pozicije_seznam||[]).forEach(p=>{ h+='<tr><td>'+p.pozicija+'</td><td>'+p.stevilo+'</td></tr>'; });
+        h+='</table>';
+        if(d.neznanih) h+='<div class="warn">Ni v zalogi (preveri): '+d.neznanih+' &mdash; '+(d.neznani_primeri||[]).join(', ')+'</div>';
+        h+='</div>';
+        document.getElementById('result').innerHTML=h;
+        st.innerHTML='<span style="color:#16a34a">Predogled pripravljen.</span>';
+        document.getElementById('goBtn').disabled=(d.skupaj===0);
+      } else {
+        st.innerHTML='<span style="color:#16a34a">Dodano '+(d.dodano||0)+' v Selitev'+(d.preskoceno?' ('+d.preskoceno+' ze bilo)':'')+'. Pojdi v Selitev &rarr; Pregled.</span>';
+        document.getElementById('result').innerHTML='';
+      }
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+</script></body></html>"""
+    return HTMLResponse(html)
+
+
 @app.get("/selitev-masovno", response_class=HTMLResponse)
 async def selitev_masovno_page(request: Request):
     """Stran: prilepi SKU-je, vpiši ENO pozicijo, vsi gredo v Selitev na to pozicijo."""
@@ -24110,6 +24174,68 @@ async def pozicije_avtomat_selitev(request: Request, data: dict):
         res["ikonka_najdenih"] = len(ikonka_skus)
         res["ostali_neprepoznani"] = len(ostali)
         res["ostali_primeri"] = ostali[:15]
+    return res
+
+
+@app.post("/selitev-mapiraj-file")
+async def selitev_mapiraj_file(request: Request, file: UploadFile = File(...), dry_run: str = "1"):
+    """Naloži CSV ali Excel (1. stolpec SKU, 2. stolpec pozicija). Grupira po poziciji in
+    doda v SELITEV (staging). NE pošlje v siluxar. Podpira .csv, .xlsx, .xls."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    import io as _io
+    raw = await file.read()
+    fname = (file.filename or "").lower()
+
+    pary = []   # (sku, pozicija)
+    try:
+        if fname.endswith(".xlsx") or fname.endswith(".xls"):
+            import openpyxl
+            wb = openpyxl.load_workbook(_io.BytesIO(raw), read_only=True, data_only=True)
+            ws = wb.active
+            for r in ws.iter_rows(values_only=True):
+                if not r or len(r) < 2:
+                    continue
+                sku = str(r[0] or "").strip()
+                poz = str(r[1] or "").strip()
+                if sku and poz:
+                    pary.append((sku, poz))
+        else:
+            text = raw.decode("utf-8-sig", errors="replace")
+            import csv as _csv
+            from io import StringIO as _SIO
+            _fl = text.split("\n", 1)[0]
+            _sep = ";" if _fl.count(";") > _fl.count(",") else ","
+            for row in _csv.reader(_SIO(text), delimiter=_sep):
+                if not row or len(row) < 2:
+                    continue
+                sku = str(row[0] or "").strip()
+                poz = str(row[1] or "").strip()
+                if sku and poz:
+                    pary.append((sku, poz))
+    except Exception as ex:
+        return {"ok": False, "error": f"Branje datoteke ni uspelo: {ex}"}
+
+    if not pary:
+        return {"ok": False, "error": "Ni parov SKU+pozicija (preveri, da sta 2 stolpca)."}
+
+    # odstrani glavo, če prva vrstica izgleda kot naslov
+    if pary and pary[0][0].lower() in ("sku", "product_sku", "koda"):
+        pary = pary[1:]
+
+    # grupiraj po poziciji
+    po_poziciji = {}
+    for sku, poz in pary:
+        po_poziciji.setdefault(poz, []).append(sku)
+    skupine = [{"skus": skus, "position": poz} for poz, skus in po_poziciji.items()]
+
+    dry = str(dry_run) not in ("0", "false", "False", "no")
+    res = await pozicije_v_selitev(request, {"skupine": skupine, "dry_run": dry})
+    if isinstance(res, dict):
+        res["prebranih_parov"] = len(pary)
+        res["razlicnih_pozicij"] = len(po_poziciji)
+        res["pozicije_seznam"] = [{"pozicija": p, "stevilo": len(sk)} for p, sk in po_poziciji.items()][:50]
     return res
 
 
