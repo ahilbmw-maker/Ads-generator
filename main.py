@@ -11002,6 +11002,97 @@ async def sku_cleanup_duplicates(request: Request, data: dict):
     return {"ok": True, "dry_run": False, "izbrisano": izbrisanih, "detajli": za_brisat}
 
 
+@app.get("/pozicije-prefix", response_class=HTMLResponse)
+async def pozicije_prefix_page(request: Request):
+    """Stran: naloži CSV, sistem potegne vse SKU-je s prefiksom (npr. KX) in jim
+    pošlje GLAVNO pozicijo v siluxar."""
+    if not _owner_authorized(request):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik.</h3>", status_code=403)
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pozicija po prefiksu</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:840px;margin:0 auto;padding:20px;background:#f7f7f8;color:#1a1a1a}
+  h1{font-size:20px} .sub{color:#666;font-size:13px;margin-bottom:16px;line-height:1.5}
+  label{font-size:13px;font-weight:700;display:block;margin:12px 0 5px}
+  input[type=text]{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;font-family:inherit}
+  input[type=file]{font-size:13px;margin-top:6px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  button{padding:11px 20px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .b-prev{background:#2563eb;color:#fff} .b-go{background:#16a34a;color:#fff} .b-go:disabled{background:#ccc;cursor:default}
+  .row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .box{background:#fff;border-radius:10px;padding:16px;margin-top:16px;border:1px solid #e5e5e5}
+  .warn{background:#fef3cd;border:1px solid #f0d98a;padding:10px 12px;border-radius:8px;font-size:12.5px;color:#8a6d1a;margin-top:8px}
+  #status{margin-top:12px;font-size:14px;font-weight:600;min-height:20px}
+  .chips{font-size:12px;color:#555;margin-top:8px;line-height:1.9;font-family:monospace}
+</style></head><body>
+<h1>Glavna pozicija po prefiksu &rarr; siluxar</h1>
+<div class="sub">Nalozi CSV (ali prilepi besedilo). Sistem potegne VSE SKU-je z izbranim prefiksom (npr. KX) in jim poslje GLAVNO pozicijo v siluxar. Ker gre v siluxar, ob naslednjem sinhu pride nazaj v suban.ai brez povoza. Deluje po prefiksu, ne po XML &mdash; ker je KX Ikonkina lastna koda.</div>
+<div class="grid2">
+  <div><label>Prefiks</label><input type="text" id="prefix" value="KX"></div>
+  <div><label>Glavna pozicija</label><input type="text" id="position" value="Ikonka"></div>
+</div>
+<label>Nalozi CSV datoteko</label>
+<input type="file" id="file" accept=".csv,.txt" onchange="loadFile()">
+<label>ali prilepi vsebino (prvi stolpec = SKU)</label>
+<textarea id="text" style="width:100%;box-sizing:border-box;min-height:120px;padding:12px;border:1px solid #ccc;border-radius:8px;font-family:monospace;font-size:13px" placeholder="KX3393;5;...&#10;KX4281_2;3;..."></textarea>
+<div class="row">
+  <button class="b-prev" onclick="preview()">Predogled (koliko jih najde)</button>
+  <button class="b-go" id="goBtn" onclick="doIt()" disabled>Poslji v siluxar</button>
+</div>
+<div id="status"></div>
+<div id="result"></div>
+<script>
+function loadFile(){
+  const f=document.getElementById('file').files[0];
+  if(!f) return;
+  const rd=new FileReader();
+  rd.onload=e=>{ document.getElementById('text').value=e.target.result; document.getElementById('status').textContent='Datoteka nalozena ('+f.name+'). Klikni Predogled.'; };
+  rd.readAsText(f,'utf-8');
+}
+function getBody(dry){
+  return { text: document.getElementById('text').value,
+           prefix: document.getElementById('prefix').value.trim(),
+           position: document.getElementById('position').value.trim(),
+           dry_run: dry };
+}
+function preview(){
+  const st=document.getElementById('status'); st.textContent='Iscem...';
+  document.getElementById('goBtn').disabled=true;
+  fetch('/pozicije-prefix-push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(getBody(true))})
+    .then(r=>r.json()).then(d=>{
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>'; return; }
+      let h='<div class="box"><b>Najdenih '+d.najdenih+' SKU-jev s prefiksom "'+d.prefix+'"</b>';
+      h+=' &rarr; glavna pozicija <b>'+d.position+'</b>';
+      h+='<div style="font-size:12px;color:#888;margin-top:4px">(od '+d.vseh_v_vhodu+' v datoteki)</div>';
+      if(d.primeri&&d.primeri.length) h+='<div class="chips">'+d.primeri.join(' &middot; ')+(d.najdenih>d.primeri.length?' &middot; ...':'')+'</div>';
+      h+='</div>';
+      document.getElementById('result').innerHTML=h;
+      st.innerHTML='<span style="color:#16a34a">Predogled pripravljen.</span>';
+      document.getElementById('goBtn').disabled=(d.najdenih===0);
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+function doIt(){
+  const b=getBody(false);
+  if(!confirm('Poslji GLAVNO pozicijo "'+b.position+'" vsem "'+b.prefix+'" SKU-jem v siluxar?')) return;
+  const st=document.getElementById('status'); st.textContent='Posiljam v siluxar...';
+  document.getElementById('goBtn').disabled=true;
+  fetch('/pozicije-prefix-push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})
+    .then(r=>r.json()).then(d=>{
+      if(d.ok){
+        let msg='Poslano '+(d.poslano||0)+' pozicij v '+(d.sveznjev||1)+' sveznjih.';
+        if(!d.vsi_ok) msg+=' (nekaj sveznjev padlo - glej spodaj)';
+        st.innerHTML='<span style="color:#16a34a">'+msg+'</span>';
+        let h='';
+        (d.sveznji||[]).forEach(s=>{ h+='<div style="font-size:12px;color:'+(s.ok?'#16a34a':'#dc2626')+'">'+(s.ok?'OK':'X')+' sveznj '+s.svezenj+'/'+s.od+': '+s.poslano+' poslano'+(s.napaka?' - '+s.napaka:'')+'</div>'; });
+        document.getElementById('result').innerHTML='<div class="box">'+h+'</div>';
+      } else st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>';
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+</script></body></html>"""
+    return HTMLResponse(html)
+
+
 @app.get("/pozicije-dobavitelj", response_class=HTMLResponse)
 async def pozicije_dobavitelj_page(request: Request):
     """Stran: dodeli pozicijo vsem SKU-jem dobavitelja (amio/ikonka) iz XML vira."""
@@ -11027,7 +11118,7 @@ async def pozicije_dobavitelj_page(request: Request):
   th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #eee}
 </style></head><body>
 <h1>Pozicije po dobavitelju (iz XML)</h1>
-<div class="sub">Prilepi SKU-je (npr. iz manjkajocih). Sistem prepozna, kateri so AMIO in kateri IKONKA iz XML vira (vezava crtna koda -> P/N), in jim dodeli tvojo pozicijo kot DODATNO (sekundarno) pozicijo. Ne dotika glavne pozicije. Neprepoznane pusti pri miru.</div>
+<div class="sub">Prilepi SKU-je (npr. iz manjkajocih). Sistem prepozna, kateri so AMIO in kateri IKONKA iz XML vira (vezava crtna koda -> P/N), in jim poslje GLAVNO pozicijo v siluxar. Ob sinhu pride nazaj v suban.ai. Neprepoznane pusti pri miru.</div>
 <div class="grid2">
   <div><label>Pozicija za AMIO</label><input type="text" id="posAmio" value="Pri Amiotu"></div>
   <div><label>Pozicija za IKONKA</label><input type="text" id="posIkonka" value="Ikonka"></div>
@@ -11040,6 +11131,44 @@ async def pozicije_dobavitelj_page(request: Request):
 </div>
 <div id="status"></div>
 <div id="result"></div>
+
+<hr style="margin:24px 0;border:none;border-top:1px solid #ddd">
+<div style="background:#fff8ec;border:1px solid #f0d98a;border-radius:10px;padding:14px">
+  <div style="font-size:14px;font-weight:700;color:#8a6d1a;margin-bottom:6px">Cisti sekundarne pozicije (ce so bile prej pomotoma dodane)</div>
+  <div style="font-size:12.5px;color:#8a6d1a;line-height:1.5;margin-bottom:10px">Ce si prej dodal Amio/Ikonka kot DODATNE pozicije, jih tu odstranis (ker zdaj gredo v GLAVNO). Odstrani samo 'Pri Amiotu' in 'Ikonka' - druge sekundarne (npr. IOC Skladisce) pusti pri miru.</div>
+  <button class="b-prev" onclick="cleanPreview()" style="background:#b57611">Predogled ciscenja</button>
+  <button class="b-go" id="cleanBtn" onclick="cleanDo()" disabled style="background:#dc2626">Odstrani sekundarne</button>
+  <div id="cleanStatus" style="margin-top:10px;font-size:13px;font-weight:600"></div>
+  <div id="cleanResult"></div>
+</div>
+
+<script>
+function cleanVals(){
+  const a=document.getElementById('posAmio').value.trim();
+  const i=document.getElementById('posIkonka').value.trim();
+  const v=[]; if(a) v.push(a); if(i) v.push(i); return v;
+}
+function cleanPreview(){
+  const st=document.getElementById('cleanStatus'); st.textContent='Preverjam...';
+  document.getElementById('cleanBtn').disabled=true;
+  fetch('/pozicije-extra-cleanup-by-value',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:cleanVals(),dry_run:true})})
+    .then(r=>r.json()).then(d=>{
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>'; return; }
+      st.innerHTML='<span style="color:#8a6d1a">Naslo '+d.sku_prizadetih+' SKU-jev, '+d.odstranjenih_pozicij+' sekundarnih pozicij za odstranit.</span>';
+      document.getElementById('cleanBtn').disabled=(d.sku_prizadetih===0);
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+function cleanDo(){
+  if(!confirm('Odstranim sekundarne pozicije Amio/Ikonka? (druge ostanejo)')) return;
+  const st=document.getElementById('cleanStatus'); st.textContent='Ciscim...';
+  document.getElementById('cleanBtn').disabled=true;
+  fetch('/pozicije-extra-cleanup-by-value',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:cleanVals(),dry_run:false})})
+    .then(r=>r.json()).then(d=>{
+      if(d.ok) st.innerHTML='<span style="color:#16a34a">Odstranjenih '+(d.odstranjenih_pozicij||0)+' sekundarnih pozicij.</span>';
+      else st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>';
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+</script>
 <script>
 function parseSkus(){
   const raw=document.getElementById('skus').value;
@@ -11089,7 +11218,7 @@ function doIt(){
   document.getElementById('goBtn').disabled=true;
   fetch('/pozicije-po-dobavitelju',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus,mapping,dry_run:false})})
     .then(r=>r.json()).then(d=>{
-      if(d.ok){ let msg='Dodano '+(d.dodano||0)+' pozicij.'; if(d.po_dobavitelju) msg+=' ('+JSON.stringify(d.po_dobavitelju)+')'; st.innerHTML='<span style="color:#16a34a">'+msg+'</span>'; document.getElementById('result').innerHTML=''; }
+      if(d.ok){ let msg='Poslano '+(d.poslano||0)+' pozicij v siluxar'+(d.sveznjev?' ('+d.sveznjev+' sveznjev)':'')+'.'; if(d.po_dobavitelju) msg+=' '+JSON.stringify(d.po_dobavitelju); if(!d.vsi_ok) msg+=' - nekaj padlo!'; st.innerHTML='<span style="color:#16a34a">'+msg+'</span>'; document.getElementById('result').innerHTML=''; }
       else st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>';
     }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
 }
@@ -23513,13 +23642,131 @@ async def zaloga_extra_position_add(data: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.post("/pozicije-extra-cleanup-by-value")
+async def pozicije_extra_cleanup_by_value(request: Request, data: dict):
+    """Počisti SEKUNDARNE pozicije z določeno vrednostjo (npr. 'Pri Amiotu', 'Ikonka').
+    Uporabno, ko so bile pomotoma dodane kot sekundarne, zdaj pa gredo v glavno.
+    Druge sekundarne (npr. 'IOC Skladišče') ostanejo nedotaknjene.
+    Body: { values:['Pri Amiotu','Ikonka'], dry_run:true/false }"""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    values = [str(v).strip().lower() for v in (data.get("values") or []) if str(v).strip()]
+    dry = data.get("dry_run", True)
+    if dry is None: dry = True
+    if not values:
+        return {"ok": False, "error": "Ni vrednosti za čiščenje."}
+
+    store = _zaloga_load_extra_pos()
+    prizadeti = []       # SKU-ji, ki jim bomo odstranili pozicijo
+    odstranjenih = 0
+    new_store = {}
+    for sku, lst in store.items():
+        if not isinstance(lst, list):
+            new_store[sku] = lst; continue
+        keep = [p for p in lst if p.strip().lower() not in values]
+        removed = [p for p in lst if p.strip().lower() in values]
+        if removed:
+            prizadeti.append({"sku": sku, "odstranjeno": removed, "ostane": keep})
+            odstranjenih += len(removed)
+        if keep:
+            new_store[sku] = keep
+        # če keep prazen, SKU izpade iz store (ni več sekundarnih)
+
+    if dry:
+        return {"ok": True, "dry_run": True, "values": values,
+                "sku_prizadetih": len(prizadeti), "odstranjenih_pozicij": odstranjenih,
+                "primeri": prizadeti[:15]}
+
+    _zaloga_save_extra_pos(new_store)
+    return {"ok": True, "dry_run": False, "sku_prizadetih": len(prizadeti),
+            "odstranjenih_pozicij": odstranjenih}
+
+
+@app.post("/pozicije-prefix-push")
+async def pozicije_prefix_push(request: Request, data: dict):
+    """Iz seznama SKU-jev (ali naloženega CSV besedila) potegne vse s podanim PREFIKSOM
+    (npr. 'KX') in jim pošlje GLAVNO pozicijo v siluxar (prek siluxar_push_positions).
+    Body: { text?:'<csv/besedilo>', skus?:[...], prefix:'KX', position:'Ikonka',
+            batch_size?:100, dry_run:true/false }
+    Ker gre v siluxar, ob naslednjem sinhu pride pozicija nazaj v suban.ai brez povoza."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+
+    prefix = (data.get("prefix") or "").strip().upper()
+    position = (data.get("position") or "").strip()
+    dry = data.get("dry_run", True)
+    if dry is None: dry = True
+    if not prefix:
+        return {"ok": False, "error": "Ni prefiksa."}
+    if not position:
+        return {"ok": False, "error": "Ni pozicije."}
+
+    # zberi SKU-je: iz 'skus' seznama ALI iz 'text' (CSV/prosto besedilo, prvi stolpec)
+    skus = []
+    if data.get("skus"):
+        skus = [str(x).strip() for x in data["skus"] if str(x).strip()]
+    elif data.get("text"):
+        import re as _re
+        for line in str(data["text"]).splitlines():
+            first = _re.split(r"[;,\t]", line.strip())[0].strip()
+            if first and first.upper() != "SKU":
+                skus.append(first)
+
+    if not skus:
+        return {"ok": False, "error": "Ni SKU-jev (naloži CSV ali prilepi besedilo)."}
+
+    # filtriraj po prefiksu (case-insensitive), odstrani dvojnike (ohrani vrstni red)
+    _seen = set(); ujeti = []
+    for s in skus:
+        if s.upper().startswith(prefix) and s.upper() not in _seen:
+            _seen.add(s.upper()); ujeti.append(s)
+
+    if dry:
+        return {"ok": True, "dry_run": True, "prefix": prefix, "position": position,
+                "najdenih": len(ujeti), "primeri": ujeti[:20], "vseh_v_vhodu": len(skus)}
+
+    if not ujeti:
+        return {"ok": False, "error": f"Noben SKU se ne začne s '{prefix}'."}
+
+    # pošlji v siluxar V SVEŽNJIH (varno za 100+); vsak batch svoj push
+    items = [{"sku": s, "position": position} for s in ujeti]
+    BATCH = int(data.get("batch_size") or 100)
+    if BATCH < 1: BATCH = 100
+    if BATCH > 500: BATCH = 500
+    poslano = 0; sveznji = []; vsi_ok = True; uspeli = []
+    total = (len(items) + BATCH - 1) // BATCH
+    for i in range(0, len(items), BATCH):
+        chunk = items[i:i+BATCH]
+        n = (i // BATCH) + 1
+        try:
+            r = await siluxar_push_positions({"items": chunk, "confirm_bulk": True})
+            ok = bool(isinstance(r, dict) and r.get("ok"))
+            pos_cnt = (r.get("poslano") if isinstance(r, dict) else 0) or 0
+        except Exception as e:
+            ok = False; pos_cnt = 0; r = {"ok": False, "error": str(e)}
+        if ok:
+            poslano += pos_cnt; uspeli.extend(c["sku"] for c in chunk)
+        else:
+            vsi_ok = False
+        sveznji.append({"svezenj": n, "od": total, "poslano": pos_cnt, "ok": ok,
+                        "napaka": (None if ok else (r.get("error") if isinstance(r, dict) else "?"))})
+        if n < total:
+            await asyncio.sleep(0.4)
+
+    return {"ok": (poslano > 0), "dry_run": False, "prefix": prefix, "position": position,
+            "najdenih": len(ujeti), "poslano": poslano, "sveznjev": total,
+            "vsi_ok": vsi_ok, "sveznji": sveznji}
+
+
 @app.post("/pozicije-po-dobavitelju")
 async def pozicije_po_dobavitelju(request: Request, data: dict):
     """Dodeli pozicijo VSEM SKU-jem danega dobavitelja (amio/ikonka), prepoznanim iz
     barcode_index (XML vira, vezava barcode↔P/N). Deluje SAMO na SKU-jih, ki jih pošlješ
     (npr. manjkajoči), in samo tistim, ki so v barcode_index zanesljivo tega dobavitelja.
     Body: { skus:[...], mapping:{ 'amio':'Pri Amiotu', 'ikonka':'Ikonka' }, dry_run:true/false }
-    Piše kot SEKUNDARNO/dodatno pozicijo (extra_positions.json), NE povozi glavne pozicije."""
+    Pošlje GLAVNO pozicijo v siluxar (v svežnjih). Ob sinhu pride nazaj v suban.ai."""
     if not _owner_authorized(request):
         from fastapi.responses import JSONResponse
         return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
@@ -23576,18 +23823,37 @@ async def pozicije_po_dobavitelju(request: Request, data: dict):
                 "konfliktnih": len(konfliktni), "konfliktni_primeri": konfliktni[:15],
                 "skupaj_dodeljenih": sum(len(v) for v in razvrsceni.values())}
 
-    # dejansko: zapiši kot sekundarno pozicijo
-    store = _zaloga_load_extra_pos()
-    dodano = 0
+    # dejansko: pošlji GLAVNO pozicijo v siluxar (v svežnjih, varno za 100+)
+    # Vsak dobavitelj ima svojo pozicijo; sestavimo skupni seznam items in pošljemo po svežnjih.
+    items = []
     for sup, lst in razvrsceni.items():
         poz = mapping[sup]
         for sku in lst:
-            cur = store.get(sku, [])
-            if not isinstance(cur, list): cur = []
-            if not any(p.strip().lower() == poz.lower() for p in cur):
-                cur.append(poz); store[sku] = cur; dodano += 1
-    _zaloga_save_extra_pos(store)
-    return {"ok": True, "dry_run": False, "dodano": dodano,
+            items.append({"sku": sku, "position": poz})
+    BATCH = int(data.get("batch_size") or 100)
+    if BATCH < 1: BATCH = 100
+    if BATCH > 500: BATCH = 500
+    poslano = 0; sveznji = []; vsi_ok = True
+    total = (len(items) + BATCH - 1) // BATCH
+    for i in range(0, len(items), BATCH):
+        chunk = items[i:i+BATCH]
+        n = (i // BATCH) + 1
+        try:
+            r = await siluxar_push_positions({"items": chunk, "confirm_bulk": True})
+            ok = bool(isinstance(r, dict) and r.get("ok"))
+            pos_cnt = (r.get("poslano") if isinstance(r, dict) else 0) or 0
+        except Exception as e:
+            ok = False; pos_cnt = 0; r = {"ok": False, "error": str(e)}
+        if ok:
+            poslano += pos_cnt
+        else:
+            vsi_ok = False
+        sveznji.append({"svezenj": n, "od": total, "poslano": pos_cnt, "ok": ok,
+                        "napaka": (None if ok else (r.get("error") if isinstance(r, dict) else "?"))})
+        if n < total:
+            await asyncio.sleep(0.4)
+    return {"ok": (poslano > 0), "dry_run": False, "poslano": poslano,
+            "sveznjev": total, "vsi_ok": vsi_ok, "sveznji": sveznji,
             "po_dobavitelju": {sup: len(lst) for sup, lst in razvrsceni.items()},
             "neprepoznanih": len(neprepoznani)}
 
