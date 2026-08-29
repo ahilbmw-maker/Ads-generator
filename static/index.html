@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-28 03:00</div>
+      <div class="sidebar-logo-sub">build 2026-08-28 03:20</div>
     </div>
   </div>
 
@@ -5013,7 +5013,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
           <div style="height:10px;background:var(--border);border-radius:6px;overflow:hidden;margin-bottom:10px"><div id="selCovFill" style="height:100%;width:0%;background:#0f8a4f;transition:width .3s"></div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <button id="selCovMissBtn" onclick="pozShowMissing('selCovMissList')" style="display:none;font-size:12px;font-weight:700;padding:7px 13px;background:transparent;border:1px solid #b57611;border-radius:8px;cursor:pointer;font-family:inherit;color:#b57611">📋 Seznam manjkajočih (<span id="selCovMissCnt">0</span>)</button>
+            <button id="selCovMissBtn" onclick="pozToggleMissing('selCovMissList','selCovMissBtn')" style="display:none;font-size:12px;font-weight:700;padding:7px 13px;background:transparent;border:1px solid #b57611;border-radius:8px;cursor:pointer;font-family:inherit;color:#b57611">📋 Seznam manjkajočih (<span id="selCovMissCnt">0</span>)</button>
             <button onclick="pozMissingCsv()" style="font-size:12px;font-weight:700;padding:7px 13px;background:transparent;border:1px solid #12a35f;border-radius:8px;cursor:pointer;font-family:inherit;color:#12a35f">⬇ CSV</button>
             <button onclick="pozRefreshCoverage(true)" style="font-size:12px;font-weight:700;padding:7px 13px;background:transparent;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-family:inherit;color:var(--text-secondary)">🔄 Osveži</button>
           </div>
@@ -27798,10 +27798,35 @@ async function pozRefreshCoverage(){
     const cCnt = document.getElementById('selCovMissCnt');
     if (cBtn) cBtn.style.display = d.manjka_sku ? 'inline-block' : 'none';
     if (cCnt) cCnt.textContent = d.manjka_sku || 0;
-    if (!d.manjka_sku){ const ml=document.getElementById('selCovMissList'); if(ml) ml.innerHTML='<div style="font-size:13px;color:#0f8a4f;font-weight:600;padding:4px 0">✓ Vsi izdelki na zalogi imajo pozicijo!</div>'; }
+    const cMl = document.getElementById('selCovMissList');
+    if (!d.manjka_sku){
+      if (cMl){ cMl.innerHTML='<div style="font-size:13px;color:#0f8a4f;font-weight:600;padding:4px 0">✓ Vsi izdelki na zalogi imajo pozicijo!</div>'; cMl.setAttribute('data-open','0'); }
+    } else if (cMl && cMl.getAttribute('data-open') === '1'){
+      // seznam je odprt → osveži njegovo vsebino (gumb ostane na "Zapri")
+      pozShowMissing('selCovMissList');
+      if (cBtn){ cBtn.innerHTML = '✕ Zapri seznam (<span id="selCovMissCnt">' + (d.manjka_sku||0) + '</span>)'; }
+    }
     // če ni manjkajočih, počisti seznam
     if (!d.manjka_sku){ const ml=document.getElementById('pozMissingList'); if(ml) ml.innerHTML='<div style="font-size:13px;color:#0f8a4f;font-weight:600;padding:6px 0">✓ Vsi izdelki na zalogi imajo pozicijo!</div>'; }
   }catch(e){ if(box) box.innerHTML='<span style="color:#e5484d">Napaka: '+e.message+'</span>'; }
+}
+function pozToggleMissing(targetId, btnId){
+  const list = document.getElementById(targetId);
+  if (!list) return;
+  const odprt = list.getAttribute('data-open') === '1';
+  if (odprt){
+    // ZAPRI
+    list.innerHTML = '';
+    list.setAttribute('data-open','0');
+    const btn = document.getElementById(btnId);
+    if (btn){ const cnt = btn.querySelector('span'); const n = cnt ? cnt.textContent : ''; btn.innerHTML = '📋 Seznam manjkajočih (<span id="'+(cnt?cnt.id:'')+'">'+n+'</span>)'; }
+  } else {
+    // ODPRI
+    list.setAttribute('data-open','1');
+    pozShowMissing(targetId);
+    const btn = document.getElementById(btnId);
+    if (btn){ const cntEl = btn.querySelector('span'); const n = cntEl ? cntEl.textContent : ''; const cid = cntEl ? cntEl.id : ''; btn.innerHTML = '✕ Zapri seznam (<span id="'+cid+'">'+n+'</span>)'; }
+  }
 }
 async function pozShowMissing(targetId){
   const list = document.getElementById(targetId || 'pozMissingList');
