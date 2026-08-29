@@ -11678,6 +11678,197 @@ async def sku_inspect(request: Request, skus: str = ""):
     return {"ok": True, "rezultat": out}
 
 
+@app.get("/cena-diff", response_class=HTMLResponse)
+async def cena_diff_page(request: Request):
+    """Stran: izberi dva backupa in primerjaj cene/vrednost — najdi vzrok skoka vrednosti."""
+    if not _owner_authorized(request):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik.</h3>", status_code=403)
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analiza razlike vrednosti</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:1000px;margin:0 auto;padding:20px;background:#f7f7f8;color:#1a1a1a}
+  h1{font-size:20px} .sub{color:#666;font-size:13px;margin-bottom:16px;line-height:1.5}
+  label{font-size:13px;font-weight:700;display:block;margin:12px 0 5px}
+  select{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:13px;font-family:inherit}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  button{padding:11px 20px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff;font-family:inherit;margin-top:14px}
+  .box{background:#fff;border-radius:10px;padding:16px;margin-top:16px;border:1px solid #e5e5e5}
+  .big{font-size:15px;font-weight:700}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:10px}
+  th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #eee}
+  th{background:#f0f0f2;font-size:10px;text-transform:uppercase}
+  .red{color:#dc2626;font-weight:700} .amber{color:#b57611;font-weight:700}
+  #status{margin-top:12px;font-size:14px;font-weight:600}
+</style></head><body>
+<h1>Analiza razlike vrednosti zaloge</h1>
+<div class="sub">Primerja dva posnetka zaloge (backup) po SKU. Najde, kje se je spremenila CENA (glavni sum za skok vrednosti po zdruzitvi silux1+silux2) ali zaloga. Bere samo &mdash; nic ne spreminja.</div>
+<div class="grid2">
+  <div><label>STAR posnetek (prej, npr. zjutraj)</label><select id="star"></select></div>
+  <div><label>NOV posnetek (zdaj)</label><select id="nov"></select></div>
+</div>
+<button onclick="run()">Primerjaj</button>
+<div id="status"></div>
+<div id="result"></div>
+<script>
+async function loadList(){
+  const r=await fetch('/cena-diff-backup'); const d=await r.json();
+  const opts=(d.backups||[]).map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+  document.getElementById('star').innerHTML=opts;
+  document.getElementById('nov').innerHTML='<option value="now">-- TRENUTNA ZALOGA (zdaj) --</option>'+opts;
+}
+loadList();
+function run(){
+  const star=document.getElementById('star').value, nov=document.getElementById('nov').value;
+  const st=document.getElementById('status'); st.textContent='Racunam...';
+  fetch('/cena-diff-backup?star='+encodeURIComponent(star)+'&nov='+encodeURIComponent(nov))
+    .then(r=>r.json()).then(d=>{
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>'; return; }
+      st.textContent='';
+      let h='<div class="box"><div class="big">Vrednost prej: '+d.vrednost_prej.toLocaleString()+' EUR &rarr; zdaj: '+d.vrednost_zdaj.toLocaleString()+' EUR</div>';
+      h+='<div class="big" style="color:'+(Math.abs(d.skupna_razlika)>1?'#dc2626':'#16a34a')+'">Razlika: '+d.skupna_razlika.toLocaleString()+' EUR</div>';
+      h+='<div style="margin-top:8px;font-size:13px">SKU z razliko: <b>'+d.sku_z_razliko+'</b> &middot; samo cena: <b class="red">'+d.vzrok_samo_cena+'</b> &middot; samo zaloga: '+d.vzrok_samo_zaloga+' &middot; oboje: '+d.vzrok_oboje+'</div>';
+      h+='</div>';
+      h+='<div class="box"><b>Najvecji krivci (po razliki vrednosti):</b><table><tr><th>SKU</th><th>Cena prej</th><th>Cena zdaj</th><th>Zaloga prej</th><th>Zaloga zdaj</th><th>Razlika EUR</th><th>Opomba</th></tr>';
+      (d.najvecje_razlike||[]).forEach(x=>{
+        let op=[];
+        if(x.cena_spremenjena) op.push('<span class="red">CENA</span>');
+        if(x.zaloga_spremenjena) op.push('<span class="amber">zaloga</span>');
+        if(x.cene_razlicne_v_zapisih_zdaj) op.push('<span class="amber">razl.cene '+x.cena_min_zdaj+'-'+x.cena_max_zdaj+'</span>');
+        h+='<tr><td><b>'+x.sku+'</b></td><td>'+x.cena_prej+'</td><td>'+x.cena_zdaj+'</td><td>'+x.zaloga_prej+'</td><td>'+x.zaloga_zdaj+'</td><td class="'+(Math.abs(x.razlika_vrednosti)>1?'red':'')+'">'+x.razlika_vrednosti.toLocaleString()+'</td><td>'+op.join(' ')+'</td></tr>';
+      });
+      h+='</table></div>';
+      document.getElementById('result').innerHTML=h;
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+</script></body></html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/cena-diff-backup")
+async def cena_diff_backup(request: Request, star: str = "", nov: str = ""):
+    """Primerja DVA backupa zaloge po SKU: cena prej vs zdaj, vrednost prej vs zdaj.
+    Najde SKU-je, kjer se je CENA spremenila (glavni sum za skok vrednosti po združitvi silux1+2).
+    ?star=<ime_backupa.csv>  ?nov=<ime_backupa.csv ali 'now' za trenutno zalogo>
+    Če ni podan star/nov, vrne seznam razpoložljivih backupov."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    import csv as _csv
+    from io import StringIO as _SIO
+
+    def _read_stock_csv(text):
+        """Vrne {SKU_upper: {stock_sum, price(prva neprazna), title}} — VSOTA zaloge po SKU."""
+        _fl = text.split("\n", 1)[0]
+        _sep = ";" if _fl.count(";") > _fl.count(",") else ","
+        agg = {}
+        for row in _csv.DictReader(_SIO(text), delimiter=_sep):
+            sku = (row.get("product_sku") or row.get("sku") or "").strip()
+            if not sku:
+                continue
+            k = sku.upper()
+            try:
+                st = int(float(str(row.get("stock") or 0).replace(",", ".")))
+            except Exception:
+                st = 0
+            try:
+                pr = float(str(row.get("price_netto") or row.get("price") or 0).replace(",", "."))
+            except Exception:
+                pr = 0.0
+            a = agg.get(k)
+            if not a:
+                a = {"sku": sku, "stock": 0, "prices": [], "title": (row.get("title") or "").strip()}
+                agg[k] = a
+            a["stock"] += st
+            if pr > 0:
+                a["prices"].append(pr)
+        # cena = max cena med zapisi (če se razlikujejo, to je ravno sumljivo) + zabeleži razpon
+        for k, a in agg.items():
+            ps = a["prices"]
+            a["price"] = (max(ps) if ps else 0.0)
+            a["price_min"] = (min(ps) if ps else 0.0)
+            a["price_razlicne"] = (len(set(round(x,4) for x in ps)) > 1)
+        return agg
+
+    # seznam backupov, če ni izbire
+    if not star or not nov:
+        bl = []
+        if STOCK_BACKUP_DIR.exists():
+            for p in sorted(STOCK_BACKUP_DIR.glob("stock_*.csv"), key=lambda x: x.stat().st_mtime, reverse=True):
+                bl.append(p.name)
+        return {"ok": True, "izberi": True, "backups": bl,
+                "navodilo": "Podaj ?star=<ime>&nov=<ime ali 'now'>"}
+
+    # naloži star
+    star_path = STOCK_BACKUP_DIR / star
+    if not star_path.exists():
+        return {"ok": False, "error": f"Star backup '{star}' ne obstaja."}
+    star_data = _read_stock_csv(star_path.read_text(encoding="utf-8-sig", errors="replace"))
+
+    # naloži nov (backup ali trenutna zaloga)
+    if nov == "now":
+        if not STOCK_CSV_FILE.exists():
+            return {"ok": False, "error": "Trenutna zaloga ne obstaja."}
+        nov_data = _read_stock_csv(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"))
+    else:
+        nov_path = STOCK_BACKUP_DIR / nov
+        if not nov_path.exists():
+            return {"ok": False, "error": f"Nov backup '{nov}' ne obstaja."}
+        nov_data = _read_stock_csv(nov_path.read_text(encoding="utf-8-sig", errors="replace"))
+
+    # skupni vrednosti
+    val_star = sum(a["stock"] * a["price"] for a in star_data.values())
+    val_nov = sum(a["stock"] * a["price"] for a in nov_data.values())
+
+    # razlike po SKU: primerjaj ceno in vrednost
+    razlike = []
+    vse_sku = set(star_data.keys()) | set(nov_data.keys())
+    for k in vse_sku:
+        st_a = star_data.get(k)
+        nv_a = nov_data.get(k)
+        cena_star = st_a["price"] if st_a else 0.0
+        cena_nov = nv_a["price"] if nv_a else 0.0
+        stock_star = st_a["stock"] if st_a else 0
+        stock_nov = nv_a["stock"] if nv_a else 0
+        val_s = stock_star * cena_star
+        val_n = stock_nov * cena_nov
+        d_val = val_n - val_s
+        if abs(d_val) >= 1:   # samo smiselne razlike
+            razlike.append({
+                "sku": (nv_a or st_a)["sku"],
+                "cena_prej": round(cena_star, 2), "cena_zdaj": round(cena_nov, 2),
+                "cena_spremenjena": (abs(cena_star - cena_nov) > 0.001),
+                "zaloga_prej": stock_star, "zaloga_zdaj": stock_nov,
+                "zaloga_spremenjena": (stock_star != stock_nov),
+                "vrednost_prej": round(val_s, 2), "vrednost_zdaj": round(val_n, 2),
+                "razlika_vrednosti": round(d_val, 2),
+                "cene_razlicne_v_zapisih_zdaj": (nv_a["price_razlicne"] if nv_a else False),
+                "cena_min_zdaj": round(nv_a["price_min"], 2) if nv_a else 0,
+                "cena_max_zdaj": round(nv_a["price"], 2) if nv_a else 0,
+            })
+    # sortiraj po absolutni razliki vrednosti (največji krivci zgoraj)
+    razlike.sort(key=lambda x: -abs(x["razlika_vrednosti"]))
+
+    # loči po vzroku
+    samo_cena = [r for r in razlike if r["cena_spremenjena"] and not r["zaloga_spremenjena"]]
+    samo_zaloga = [r for r in razlike if r["zaloga_spremenjena"] and not r["cena_spremenjena"]]
+    oboje = [r for r in razlike if r["cena_spremenjena"] and r["zaloga_spremenjena"]]
+
+    return {
+        "ok": True,
+        "star": star, "nov": nov,
+        "vrednost_prej": round(val_star, 2),
+        "vrednost_zdaj": round(val_nov, 2),
+        "skupna_razlika": round(val_nov - val_star, 2),
+        "sku_z_razliko": len(razlike),
+        "vzrok_samo_cena": len(samo_cena),
+        "vzrok_samo_zaloga": len(samo_zaloga),
+        "vzrok_oboje": len(oboje),
+        "najvecje_razlike": razlike[:40],
+        "krivci_cena": samo_cena[:40],
+    }
+
+
 @app.get("/silux2-compare-live")
 async def silux2_compare_live(request: Request):
     """Primerja suban.ai zalogo s ŽIVIM siluxar izvozom, PO SKLADIŠČIH.
@@ -26899,6 +27090,30 @@ async def selitev_list():
     d = _selitev_load()
     lookup = _load_stock_lookup()
     entries = d.get("entries", [])
+    # SKUPNA zaloga po SKU (VSOTA vseh zapisov: silux + silux2 + vse lokacije).
+    # POMEMBNO: _load_stock_lookup vrne EN zapis na SKU (zadnji povozi prejšnje), zato
+    # bi SKU z več lokacijami (npr. SUNDEO na 3 lokacijah) dobil napačno/0 zalogo.
+    # Tu preberemo CSV posebej in SEŠTEJEMO stock po SKU.
+    stock_sum_by_sku = {}
+    try:
+        import csv as _csv2
+        from io import StringIO as _SIO2
+        if STOCK_CSV_FILE.exists():
+            _t2 = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+            _fl = _t2.split("\n", 1)[0]
+            _sep2 = ";" if _fl.count(";") > _fl.count(",") else ","
+            for _r in _csv2.DictReader(_SIO2(_t2), delimiter=_sep2):
+                _sk = (_r.get("product_sku") or _r.get("sku") or "").strip()
+                if not _sk:
+                    continue
+                try:
+                    _stv = int(float(str(_r.get("stock") or 0).replace(",", ".")))
+                except Exception:
+                    _stv = 0
+                stock_sum_by_sku[_sk.upper()] = stock_sum_by_sku.get(_sk.upper(), 0) + _stv
+    except Exception as _e:
+        print(f"[selitev] stock sum err: {_e}")
+
     # obogati z nazivom in staro pozicijo iz aktivne zaloge
     by_sku = {}
     for e in entries:
@@ -26907,7 +27122,8 @@ async def selitev_list():
             continue
         info = lookup.get(sku.upper(), {})
         e["title"] = info.get("title", "")
-        e["stock"] = info.get("stock", None)
+        # zaloga = VSOTA po SKU (če SKU obstaja v CSV); sicer None (ni v zalogi)
+        e["stock"] = stock_sum_by_sku.get(sku.upper(), None)
         e["old_position"] = info.get("position", "")
         by_sku.setdefault(sku.upper(), []).append(e)
     # opozorila
