@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-28 06:00</div>
+      <div class="sidebar-logo-sub">build 2026-08-28 06:30</div>
     </div>
   </div>
 
@@ -28620,6 +28620,7 @@ function selRenderPregled(){
       + '<td style="padding:8px;color:var(--text-secondary)">' + selEsc(x.title||'') + '</td>'
       + '<td style="padding:8px;color:var(--text-tertiary);font-family:monospace">' + selEsc(x.old_position||'—') + '</td>'
       + '<td style="padding:8px;text-align:right;white-space:nowrap">'
+        + '<button onclick="selTransferOne(' + selQ(x.sku) + ',' + selQ(x.position) + ')" style="background:transparent;border:1px solid #16a34a;border-radius:8px;cursor:pointer;color:#16a34a;font-size:12px;font-weight:700;padding:5px 9px;margin-right:4px" title="TEST: pošlji samo tega v siluxar">🚀</button>'
         + '<button onclick="selEditPos(' + selQ(x.sku) + ',' + selQ(x.position) + ')" style="background:transparent;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--accent);font-size:12px;font-weight:700;padding:5px 9px;margin-right:4px" title="Spremeni pozicijo">✏️</button>'
         + '<button onclick="selRemove(' + selQ(x.sku) + ',' + selQ(x.position) + ')" style="background:transparent;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:#e5484d;font-size:12px;font-weight:700;padding:5px 9px" title="Izbriši vpis">🗑</button>'
       + '</td>'
@@ -28645,6 +28646,19 @@ function selRenderPregled(){
     if (ns){ ns.focus(); try{ ns.setSelectionRange(_selStart, _selEnd); }catch(e){} }
   }
   selRenderSent();
+}
+async function selTransferOne(sku, position){
+  if (!confirm('TEST: poslji SAMO "' + sku + '" (pozicija: ' + position + ') v siluxar?\n\nZa preverjanje, ali siluxar sprejme pozicijo. Ostali vpisi ostanejo.')) return;
+  try{
+    const r = await fetch('/selitev-transfer-one',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku, position})});
+    const d = await r.json();
+    if (d.ok){
+      alert('✓ Poslan "' + d.sku + '" na pozicijo "' + d.pozicija + '".\n\nZDAJ PREVERI V SILUXARJU:\n- Ce je pozicija prisla → siluxar sprejme nove pozicije, lahko posljes vse.\n- Ce NI prisla → pozicije moras najprej ustvariti v siluxarju.');
+      await selReload(); selRenderPregled();
+    } else {
+      alert('✗ Ni uspelo: ' + (d.error || 'napaka'));
+    }
+  }catch(e){ alert('Napaka: ' + e.message); }
 }
 async function selEditPos(sku, oldPos){
   const novo = prompt('Nova pozicija za ' + sku + ' (trenutno ' + (oldPos||'brez') + '):', oldPos||'');

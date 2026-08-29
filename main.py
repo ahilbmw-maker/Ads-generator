@@ -27473,6 +27473,50 @@ async def selitev_sent(offset: int = 0, limit: int = 50):
             "vrnjeno": len(page), "skupaj": total, "je_se": offset + len(page) < total}
 
 
+@app.get("/selitev-sku-check")
+async def selitev_sku_check(request: Request):
+    """Diagnostika: pokaže Selitev SKU-je, ki NISO v zalogi (verjetno napačni — npr. odrezana ničla).
+    Za vsak tak SKU poišče, ali obstaja različica z vodilno ničlo (0+SKU), ki JE v zalogi."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    d = _selitev_load()
+    lookup = _load_stock_lookup()
+    lk = set(lookup.keys())   # SKU_upper, ki so v zalogi
+
+    ni_v_zalogi = []
+    resitev_z_niclo = []
+    for e in d.get("entries", []):
+        sku = (e.get("sku") or "").strip()
+        if not sku:
+            continue
+        if sku.upper() in lk:
+            continue    # OK, je v zalogi
+        # ni v zalogi — preveri, ali obstaja z vodilnimi ničlami
+        najden_z_niclo = None
+        for pad in ("0", "00", "000"):
+            kand = (pad + sku).upper()
+            if kand in lk:
+                najden_z_niclo = pad + sku
+                break
+        rec = {"selitev_sku": sku, "position": e.get("position", "")}
+        if najden_z_niclo:
+            rec["pravi_sku_v_zalogi"] = najden_z_niclo
+            resitev_z_niclo.append(rec)
+        else:
+            ni_v_zalogi.append(rec)
+
+    return {
+        "ok": True,
+        "skupaj_entries": len(d.get("entries", [])),
+        "ni_v_zalogi_skupaj": len(ni_v_zalogi) + len(resitev_z_niclo),
+        "popravljivih_z_niclo": len(resitev_z_niclo),
+        "popravljivi_primeri": resitev_z_niclo[:20],
+        "res_neznanih": len(ni_v_zalogi),
+        "res_neznani_primeri": ni_v_zalogi[:20],
+    }
+
+
 @app.get("/selitev-batch-log")
 async def selitev_batch_log():
     """Vrne log zadnjih prenosov po svežnjih (za 1000+ SKU) — kaj je uspelo, kaj padlo."""
@@ -27676,6 +27720,69 @@ async def selitev_remove(data: dict):
                                 and (e.get("position") or "").strip().upper() == pos)]
         _selitev_save(d)
     return {"ok": True, "odstranjeno": before - len(d["entries"])}
+
+
+@app.post("/selitev-transfer-one")
+async def selitev_transfer_one(request: Request, data: dict):
+    """TEST: pošlje SAMO EN SKU (z njegovo pozicijo) v siluxar. Za preizkus, ali siluxar
+    sprejme novo/imensko pozicijo, preden pošlješ vse. Ob uspehu ga premakne v 'poslano'."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    sku = (str(data.get("sku") or "")).strip()
+    position = (str(data.get("position") or "")).strip()
+    if not sku:
+        return {"ok": False, "error": "Ni SKU."}
+
+    # poišči vnos v aktivnih (če pozicija ni podana, vzemi iz vnosa)
+    async with _selitev_lock:
+        d = _selitev_load()
+        target = None
+        for e in d.get("entries", []):
+            if (e.get("sku") or "").strip().upper() == sku.upper():
+                if not position or (e.get("position") or "").strip() == position:
+                    target = e
+                    break
+        if not target:
+            return {"ok": False, "error": f"SKU '{sku}' ni v aktivnih vpisih."}
+        pos = (target.get("position") or "").strip()
+        if not pos:
+            return {"ok": False, "error": "Vpis nima pozicije."}
+
+    # pošlji SAMO tega enega
+    try:
+        r = await siluxar_push_positions({"items": [{"sku": sku, "position": pos}], "confirm_bulk": True})
+        ok = bool(isinstance(r, dict) and r.get("ok"))
+        poslano = (r.get("poslano") if isinstance(r, dict) else 0) or 0
+        status = (r.get("status") if isinstance(r, dict) else None)
+        napaka = (None if ok else (r.get("error") if isinstance(r, dict) else "neznana"))
+    except Exception as e:
+        ok = False; poslano = 0; status = None; napaka = str(e)
+
+    if not ok:
+        return {"ok": False, "error": f"Push ni uspel: {napaka}", "sku": sku, "pozicija": pos, "status": status}
+
+    # uspeh: premakni ta en vnos v 'poslano'
+    from datetime import datetime as _dt
+    async with _selitev_lock:
+        d = _selitev_load()
+        _ts = _lj_now().strftime("%Y-%m-%d %H:%M:%S")
+        ostanejo = []
+        premaknjen = False
+        for e in d.get("entries", []):
+            if (not premaknjen and (e.get("sku") or "").strip().upper() == sku.upper()
+                    and (e.get("position") or "").strip() == pos):
+                d.setdefault("sent", []).append({"sku": e.get("sku"), "position": e.get("position"),
+                                                 "sent_ts": _ts, "status": "ok-test"})
+                premaknjen = True
+            else:
+                ostanejo.append(e)
+        d["entries"] = ostanejo
+        d["sent"] = d.get("sent", [])[-500:]
+        _selitev_save(d)
+
+    return {"ok": True, "sku": sku, "pozicija": pos, "poslano": poslano, "status": status,
+            "sporocilo": f"✓ Poslan '{sku}' → '{pos}' v siluxar. Preveri v siluxarju, ali je pozicija prišla."}
 
 
 @app.post("/selitev-edit-position")
