@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-28 04:00</div>
+      <div class="sidebar-logo-sub">build 2026-08-28 04:20</div>
     </div>
   </div>
 
@@ -28355,7 +28355,13 @@ async function selLoadSkuCache(){
       try{ await zalogaLoad(); }catch(e){}
     }
     const rows = (typeof _zalogaData !== 'undefined' && _zalogaData) ? _zalogaData : [];
-    rows.forEach(x => { const s=(x.product_sku||x.sku||'').trim(); if (s) _selSkuCache[s.toUpperCase()] = (x.title||''); });
+    rows.forEach(x => {
+      const s=(x.product_sku||x.sku||'').trim(); if (!s) return;
+      const k = s.toUpperCase();
+      let st = 0; try{ st = parseInt(String(x.stock||0).replace(',','.'),10)||0; }catch(e){}
+      if (_selSkuCache[k]){ _selSkuCache[k].stock += st; }
+      else { _selSkuCache[k] = { title:(x.title||''), stock: st }; }
+    });
   }catch(e){}
 }
 function selSkuSuggest(){
@@ -28363,8 +28369,38 @@ function selSkuSuggest(){
   if (!inp || !box) return;
   const q = (inp.value||'').trim().toUpperCase();
   if (q.length < 2 || !_selSkuCache){ box.innerHTML=''; return; }
-  const hits = Object.keys(_selSkuCache).filter(s => s.includes(q)).slice(0,6);
-  box.innerHTML = hits.map(s => '<div onclick="selPickSug(\'' + selEsc(s) + '\')" style="cursor:pointer;padding:9px 12px;border-radius:9px;font-size:15px;display:flex;gap:8px;border:1px solid var(--border);margin-bottom:4px" ontouchstart="this.style.background=\'var(--surface2)\'"><b>' + selEsc(s) + '</b> <span style="color:var(--text-tertiary)">' + selEsc(_selSkuCache[s]||'') + '</span></div>').join('');
+  // najdi zadetke, potem razvrsti: NA ZALOGI (>0) zgoraj, BREZ zaloge spodaj
+  let hits = Object.keys(_selSkuCache).filter(s => s.includes(q));
+  const info = s => {
+    const c = _selSkuCache[s];
+    return (typeof c === 'object' && c) ? c : { title: (c||''), stock: 0 };
+  };
+  hits.sort((a,b) => {
+    const sa = info(a).stock>0?1:0, sb = info(b).stock>0?1:0;
+    if (sa !== sb) return sb - sa;         // na zalogi najprej
+    return a.localeCompare(b);
+  });
+  hits = hits.slice(0,10);
+  let prevNaZalogi = null;
+  box.innerHTML = hits.map(s => {
+    const c = info(s);
+    const naZalogi = (c.stock||0) > 0;
+    let sep = '';
+    if (prevNaZalogi === true && naZalogi === false){
+      sep = '<div style="padding:4px 10px;font-size:10px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:.5px;margin:4px 0 2px">Brez zaloge</div>';
+    }
+    prevNaZalogi = naZalogi;
+    const skuColor = naZalogi ? 'var(--text)' : 'var(--text-tertiary)';
+    const titleColor = 'var(--text-tertiary)';
+    const rowStyle = naZalogi
+      ? 'border:1px solid var(--border);background:var(--surface)'
+      : 'border:1px solid var(--border);background:var(--surface2);opacity:.7';
+    const badge = naZalogi
+      ? '<span style="font-size:10px;font-weight:700;color:#0f8a4f;background:rgba(15,138,79,.14);padding:2px 7px;border-radius:5px;white-space:nowrap;margin-left:auto">zaloga ' + c.stock + '</span>'
+      : '<span style="font-size:10px;font-weight:700;color:var(--text-tertiary);background:var(--border);padding:2px 7px;border-radius:5px;white-space:nowrap;margin-left:auto">ni zaloge</span>';
+    return sep + '<div onclick="selPickSug(\'' + selEsc(s) + '\')" style="cursor:pointer;padding:9px 12px;border-radius:9px;font-size:15px;display:flex;align-items:center;gap:8px;' + rowStyle + ';margin-bottom:4px" ontouchstart="this.style.background=\'var(--surface2)\'">'
+      + '<b style="color:' + skuColor + '">' + selEsc(s) + '</b> <span style="color:' + titleColor + ';font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + selEsc(c.title||'') + '</span>' + badge + '</div>';
+  }).join('');
 }
 function selPickSug(sku){ const inp=document.getElementById('selSkuInput'); if(inp){inp.value=sku;} document.getElementById('selSug').innerHTML=''; selAddSku(); }
 
