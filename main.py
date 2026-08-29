@@ -12186,7 +12186,7 @@ async def silux2_compare_live(request: Request):
 
 
 @app.get("/pozicije-pokritost")
-async def pozicije_pokritost(manjkajoci: int = 0, limit: int = 0):
+async def pozicije_pokritost(manjkajoci: int = 0, limit: int = 0, samo_glavna: int = 1):
     """Števec pokritosti pozicij: koliko UNIKATNIH SKU-jev (zaloga >0) ima pozicijo.
     Pravilo: 1 SKU = 1 enota (ne glede na količino ali skladišče).
     - SKU je 'na zalogi', če ima skupno zalogo (vsota po skladiščih) > 0.
@@ -12224,33 +12224,35 @@ async def pozicije_pokritost(manjkajoci: int = 0, limit: int = 0):
         if not is_ext:
             rec["any_nonext"] = True
 
-    # dodaj sekundarne (dodatne) pozicije — če ima SKU dodatno pozicijo, šteje kot pokrit
-    try:
-        extra = _zaloga_load_extra_pos()
-        for sku, lst in (extra or {}).items():
-            if lst:
-                k = sku.upper()
-                if k in per_sku:
-                    per_sku[k]["has_pos"] = True
-    except Exception:
-        pass
+    # dodaj sekundarne (dodatne) pozicije — LE če ne štejemo samo glavne
+    if not samo_glavna:
+        try:
+            extra = _zaloga_load_extra_pos()
+            for sku, lst in (extra or {}).items():
+                if lst:
+                    k = sku.upper()
+                    if k in per_sku:
+                        per_sku[k]["has_pos"] = True
+        except Exception:
+            pass
 
     # dodaj SELITEV vpise (čaka na prenos + poslano) — da bar raste SPROTI, še preden sync
     # prinese pozicije nazaj v suban.ai CSV. Če je SKU vpisan v Selitvi (s pozicijo), šteje kot pokrit.
-    try:
-        _sel = _selitev_load()
-        for _e in (_sel.get("entries", []) or []):
-            if (_e.get("position") or "").strip():
-                _k = (_e.get("sku") or "").strip().upper()
-                if _k in per_sku:
-                    per_sku[_k]["has_pos"] = True
-        for _e in (_sel.get("sent", []) or []):
-            if (_e.get("position") or "").strip():
-                _k = (_e.get("sku") or "").strip().upper()
-                if _k in per_sku:
-                    per_sku[_k]["has_pos"] = True
-    except Exception:
-        pass
+    if not samo_glavna:
+        try:
+            _sel = _selitev_load()
+            for _e in (_sel.get("entries", []) or []):
+                if (_e.get("position") or "").strip():
+                    _k = (_e.get("sku") or "").strip().upper()
+                    if _k in per_sku:
+                        per_sku[_k]["has_pos"] = True
+            for _e in (_sel.get("sent", []) or []):
+                if (_e.get("position") or "").strip():
+                    _k = (_e.get("sku") or "").strip().upper()
+                    if _k in per_sku:
+                        per_sku[_k]["has_pos"] = True
+        except Exception:
+            pass
 
     na_zalogi = 0
     pokriti = 0
