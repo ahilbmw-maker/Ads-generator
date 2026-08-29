@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-28 05:30</div>
+      <div class="sidebar-logo-sub">build 2026-08-28 06:00</div>
     </div>
   </div>
 
@@ -28139,7 +28139,14 @@ function switchZalogaTab(tab) {
 // ═══ SELITEV SKLADIŠČA — vpis pozicij (Vrsta → Regal → Polica) ═══
 // Oznaka 01-1A: 01=VRSTA (01–16), 1=REGAL (1–5), A=POLICA (A–F)
 const SEL_VRSTE = Array.from({length:16}, (_,i) => String(i+1).padStart(2,'0'));  // 01..16
-const SEL_NAMED = ['Ikonka', 'Pri Amiotu'];   // imenske pozicije (niso 01-16 police) — svoja kvadratka
+let SEL_NAMED = ['Ikonka', 'Pri Amiotu'];   // imenske pozicije — naložijo se iz /selitev-imenske-list
+async function selLoadNamed(){
+  try{
+    const r = await fetch('/selitev-imenske-list');
+    const d = await r.json();
+    if (d.ok && Array.isArray(d.pozicije)) { SEL_NAMED = d.pozicije; if (typeof selRenderGrid==='function' && !_selNav.vrsta && !_selNav.named) selRenderGrid(); }
+  }catch(e){}
+}
 const SEL_REGALI = ['1','2','3','4','5'];
 const SEL_POLICE = ['A','B','C','D','E','F'];
 let _selNav = {vrsta:null, regal:null, polica:null};
@@ -28198,8 +28205,28 @@ function selInit(){
   selSwitch('vpis');
   selRenderGrid();
   selReload();
+  selLoadNamed();                     // naloži imenske pozicije (Ikonka, Polcar ...) za kvadratke
   if (!_selSkuCache) selLoadSkuCache();
   selStartPolling();
+}
+async function selManageNamed(){
+  // preprost upravljalnik imenskih pozicij (dodaj/odstrani) prek prompt
+  let d;
+  try{ d = await (await fetch('/selitev-imenske-list')).json(); }catch(e){ alert('Napaka pri branju.'); return; }
+  const shr = (d.shranjene||[]);
+  const akcija = prompt('IMENSKE POZICIJE:\n\n' + (shr.length?shr.join(', '):'(prazno)') + '\n\nZa DODATI: vpiši ime nove pozicije\nZa ODSTRANITI: vpiši "-ime" (npr. -Polcar)\nZa preklic: pusti prazno');
+  if (!akcija) return;
+  const a = akcija.trim();
+  if (a.startsWith('-')){
+    const ime = a.slice(1).trim();
+    if (!ime) return;
+    if (!confirm('Odstranim imensko pozicijo "' + ime + '"? (obstoječi vpisi ostanejo)')) return;
+    await fetch('/selitev-imenske-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ime})});
+  } else {
+    await fetch('/selitev-imenske-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ime:a})});
+  }
+  await selLoadNamed();
+  selRenderGrid();
 }
 function selStartPolling(){
   if (_selPollTimer) return;
@@ -28276,7 +28303,9 @@ function selRenderGrid(){
     g.style.display = 'grid';
     g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(130px,1fr))';
     // najprej imenske pozicije (Ikonka, Pri Amiotu) — poudarjeni kvadratki
-    let cells = SEL_NAMED.map(nm => selBigCell(nm, "selPickNamed(" + selQ(nm) + ")", '📦 dobavitelj', selCount(x => x === nm) || '')).join('');
+    let cells = SEL_NAMED.map(nm => selBigCell(nm, "selPickNamed(" + selQ(nm) + ")", '📦 imenska', selCount(x => x === nm) || '')).join('');
+    // gumb za urejanje imenskih pozicij (dodaj/odstrani)
+    cells += '<div onclick="selManageNamed()" style="cursor:pointer;border:1px dashed var(--border);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:72px;color:var(--text-tertiary);font-size:12px;font-weight:700;background:transparent">⚙<br>uredi imenske</div>';
     cells += SEL_VRSTE.map(v => selBigCell(v, "selPickVrsta('" + v + "')", 'vrsta', selCount(x => x.startsWith(v + '-')) || '')).join('');
     g.innerHTML = cells;
     entry.style.display = 'none';

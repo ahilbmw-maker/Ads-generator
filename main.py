@@ -11002,6 +11002,85 @@ async def sku_cleanup_duplicates(request: Request, data: dict):
     return {"ok": True, "dry_run": False, "izbrisano": izbrisanih, "detajli": za_brisat}
 
 
+@app.get("/selitev-masovno", response_class=HTMLResponse)
+async def selitev_masovno_page(request: Request):
+    """Stran: prilepi SKU-je, vpiši ENO pozicijo, vsi gredo v Selitev na to pozicijo."""
+    if not _owner_authorized(request):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik.</h3>", status_code=403)
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Masovno v Selitev</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:760px;margin:0 auto;padding:20px;background:#f7f7f8;color:#1a1a1a}
+  h1{font-size:20px} .sub{color:#666;font-size:13px;margin-bottom:16px;line-height:1.5}
+  label{font-size:13px;font-weight:700;display:block;margin:12px 0 5px}
+  input[type=text]{width:100%;box-sizing:border-box;padding:11px;border:1px solid #ccc;border-radius:8px;font-size:15px;font-family:inherit}
+  textarea{width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:8px;font-family:monospace;font-size:13px;min-height:200px}
+  button{padding:11px 20px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .b-prev{background:#2563eb;color:#fff} .b-go{background:#16a34a;color:#fff} .b-go:disabled{background:#ccc;cursor:default}
+  .row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .box{background:#fff;border-radius:10px;padding:16px;margin-top:16px;border:1px solid #e5e5e5}
+  .warn{background:#fef3cd;border:1px solid #f0d98a;padding:10px 12px;border-radius:8px;font-size:12.5px;color:#8a6d1a;margin-top:8px}
+  #status{margin-top:12px;font-size:14px;font-weight:600;min-height:20px}
+</style></head><body>
+<h1>Masovno &rarr; Selitev (ista pozicija za vse)</h1>
+<div class="sub">Vpisi ENO pozicijo, prilepi SKU-je (eden na vrstico, ali prilepi CSV - vzame prvi stolpec). Vsi gredo v SELITEV na to pozicijo. NE poslje v siluxar - potem posljes vse hkrati iz Selitve. Pozicija je lahko polica (02-1A) ali imenska (Ikonka, Pri Amiotu).</div>
+<label>Pozicija (za vse)</label>
+<input type="text" id="pos" placeholder="npr. 02-1A ali Ikonka">
+<label>SKU-ji</label>
+<textarea id="skus" placeholder="SKU1&#10;SKU2&#10;..."></textarea>
+<div class="row">
+  <button class="b-prev" onclick="preview()">Predogled</button>
+  <button class="b-go" id="goBtn" onclick="doIt()" disabled>Dodaj v Selitev</button>
+</div>
+<div id="status"></div>
+<div id="result"></div>
+<script>
+function parseSkus(){
+  const out=[];
+  document.getElementById('skus').value.split(/[\r\n]+/).forEach(line=>{
+    const first=line.split(/[;,\t]/)[0].trim();
+    if(first && first.toUpperCase()!=='SKU') out.push(first);
+  });
+  return out;
+}
+function bodyData(dry){
+  const pos=document.getElementById('pos').value.trim();
+  return { skupine:[{skus:parseSkus(), position:pos}], dry_run:dry };
+}
+function preview(){
+  const pos=document.getElementById('pos').value.trim();
+  const skus=parseSkus();
+  const st=document.getElementById('status');
+  if(!pos){ alert('Vpisi pozicijo.'); return; }
+  if(!skus.length){ alert('Prilepi SKU-je.'); return; }
+  st.textContent='Preverjam...'; document.getElementById('goBtn').disabled=true;
+  fetch('/pozicije-v-selitev',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(bodyData(true))})
+    .then(r=>r.json()).then(d=>{
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>'; return; }
+      let h='<div class="box"><b>'+d.skupaj+' SKU-jev</b> gre na pozicijo <b>'+pos+'</b>.';
+      h+='<div style="margin-top:6px;font-size:13px">Novih: <b>'+d.novih+'</b> &middot; ze v Selitvi: '+d.ze_v_selitvi+'</div>';
+      if(d.neznanih) h+='<div class="warn">Ni v zalogi (preveri): '+d.neznanih+' &mdash; '+(d.neznani_primeri||[]).join(', ')+'</div>';
+      h+='</div>';
+      document.getElementById('result').innerHTML=h;
+      st.innerHTML='<span style="color:#16a34a">Predogled pripravljen.</span>';
+      document.getElementById('goBtn').disabled=(d.skupaj===0);
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+function doIt(){
+  const pos=document.getElementById('pos').value.trim();
+  if(!confirm('Dodam SKU-je v Selitev na pozicijo "'+pos+'"?')) return;
+  const st=document.getElementById('status'); st.textContent='Dodajam...'; document.getElementById('goBtn').disabled=true;
+  fetch('/pozicije-v-selitev',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(bodyData(false))})
+    .then(r=>r.json()).then(d=>{
+      if(d.ok){ st.innerHTML='<span style="color:#16a34a">Dodano '+(d.dodano||0)+' v Selitev'+(d.preskoceno?' ('+d.preskoceno+' ze bilo)':'')+'. Pojdi v Selitev &rarr; Pregled.</span>'; document.getElementById('result').innerHTML=''; document.getElementById('skus').value=''; }
+      else st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>';
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+</script></body></html>"""
+    return HTMLResponse(html)
+
+
 @app.get("/pozicije-avtomat", response_class=HTMLResponse)
 async def pozicije_avtomat_page(request: Request):
     """VSE V ENEM: naloži CSV → prepozna Amio/Ikonka/KX → doda v Selitev z glavno pozicijo."""
@@ -27069,13 +27148,42 @@ def _selitev_save(d: dict):
     os.replace(tmp, SELITEV_FILE)
 
 
-SEL_NAMED_POSITIONS = {"ikonka", "pri amiotu"}   # imenske pozicije (dobavitelji) — dovoljene poleg polic
+# Imenske pozicije (Ikonka, Pri Amiotu, Polcar, Neznano ...) — shranjene, urejaš jih prek /selitev-imenske
+SELITEV_NAMED_FILE = DATA_DIR / "selitev_imenske_pozicije.json"
+_SEL_NAMED_DEFAULT = ["Ikonka", "Pri Amiotu"]   # privzete ob prvem zagonu
+
+def _sel_named_load() -> list:
+    """Vrne seznam imenskih pozicij (kot jih je vpisal uporabnik, s pravo velikostjo črk)."""
+    try:
+        if SELITEV_NAMED_FILE.exists():
+            d = json.loads(SELITEV_NAMED_FILE.read_text(encoding="utf-8"))
+            if isinstance(d, list):
+                return [str(x).strip() for x in d if str(x).strip()]
+    except Exception as e:
+        print(f"[selitev] named load err: {e}")
+    return list(_SEL_NAMED_DEFAULT)
+
+def _sel_named_save(lst: list):
+    # deduplikacija (case-insensitive), ohrani vrstni red in izvirno velikost črk
+    seen = set(); out = []
+    for x in lst:
+        x = str(x).strip()
+        if x and x.lower() not in seen:
+            seen.add(x.lower()); out.append(x)
+    tmp = SELITEV_NAMED_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, SELITEV_NAMED_FILE)
+    return out
+
+def _sel_named_set() -> set:
+    """Množica malih črk za hitro validacijo."""
+    return {p.lower() for p in _sel_named_load()}
 
 def _selitev_valid_position(pos: str) -> bool:
     """Preveri, da je pozicija v strukturi POLICA(01–16)-VRSTA(1–5)MESTO(A–F),
-    ALI da je imenska pozicija dobavitelja (Ikonka, Pri Amiotu)."""
+    ALI da je ena od shranjenih imenskih pozicij (Ikonka, Pri Amiotu, Polcar ...)."""
     p = str(pos or "").strip()
-    if p.lower() in SEL_NAMED_POSITIONS:
+    if p.lower() in _sel_named_set():
         return True
     import re as _re
     m = _re.match(r"^(\d{2})-([1-5])([A-F])$", p)
@@ -27316,13 +27424,81 @@ async def selitev_active_csv():
                  headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
+@app.get("/selitev-imenske-list")
+async def selitev_imenske_list():
+    """Vrne imenske pozicije za Selitev: SHRANJENE (ročno dodane) + tiste, ki že OBSTAJAJO
+    v zalogi (prišle iz siluxarja prek sinca, niso format police). Frontend iz tega izriše kvadratke."""
+    shranjene = _sel_named_load()
+    shranjene_low = {p.lower() for p in shranjene}
+    # poišči imenske pozicije, ki so že v zalogi (position, ki NI format police)
+    import re as _re
+    iz_zaloge = {}
+    try:
+        if STOCK_CSV_FILE.exists():
+            import csv as _csv
+            from io import StringIO as _SIO
+            _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+            _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
+            for row in _csv.DictReader(_SIO(_t), delimiter=_sep):
+                pos = (row.get("position") or "").strip()
+                if not pos:
+                    continue
+                if _re.match(r"^\d{2}-[1-5][A-F]$", pos):
+                    continue    # to je polica, ne imenska
+                if pos.lower() not in iz_zaloge:
+                    iz_zaloge[pos.lower()] = pos
+    except Exception as e:
+        print(f"[selitev] imenske iz zaloge err: {e}")
+    # združi: shranjene + iz zaloge (ki niso že v shranjenih)
+    zdruzene = list(shranjene)
+    samo_v_zalogi = []
+    for low, orig in iz_zaloge.items():
+        if low not in shranjene_low:
+            zdruzene.append(orig)
+            samo_v_zalogi.append(orig)
+    return {"ok": True, "pozicije": zdruzene, "shranjene": shranjene, "samo_v_zalogi": samo_v_zalogi}
+
+
+@app.post("/selitev-imenske-add")
+async def selitev_imenske_add(request: Request, data: dict):
+    """Doda novo imensko pozicijo v shranjeni seznam."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    ime = (str(data.get("ime") or "")).strip()
+    if not ime:
+        return {"ok": False, "error": "Ni imena."}
+    # zavrni format police (da ne meša)
+    import re as _re
+    if _re.match(r"^\d{2}-[1-5][A-F]$", ime):
+        return {"ok": False, "error": "To je format police, ne imenske pozicije."}
+    lst = _sel_named_load()
+    lst.append(ime)
+    out = _sel_named_save(lst)
+    return {"ok": True, "pozicije": out}
+
+
+@app.post("/selitev-imenske-remove")
+async def selitev_imenske_remove(request: Request, data: dict):
+    """Odstrani imensko pozicijo iz shranjenega seznama (NE briše vpisov, ki jo že uporabljajo)."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    ime = (str(data.get("ime") or "")).strip().lower()
+    if not ime:
+        return {"ok": False, "error": "Ni imena."}
+    lst = [p for p in _sel_named_load() if p.lower() != ime]
+    out = _sel_named_save(lst)
+    return {"ok": True, "pozicije": out}
+
+
 @app.post("/selitev-add")
 async def selitev_add(data: dict):
     """Dodeli SKU-ju pozicijo v začasni zalogi. Ne gre v siluxar."""
     sku = (str(data.get("sku") or "")).strip()
     _pos_raw = (str(data.get("position") or "")).strip()
     # imenske pozicije (Ikonka, Pri Amiotu) ohrani kot so; police uppercase (02-1a → 02-1A)
-    pos = _pos_raw if _pos_raw.lower() in SEL_NAMED_POSITIONS else _pos_raw.upper()
+    pos = _pos_raw if _pos_raw.lower() in _sel_named_set() else _pos_raw.upper()
     if not sku:
         return {"ok": False, "error": "Manjka SKU."}
     if not _selitev_valid_position(pos):
