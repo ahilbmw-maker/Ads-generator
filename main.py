@@ -27473,6 +27473,84 @@ async def selitev_sent(offset: int = 0, limit: int = 50):
             "vrnjeno": len(page), "skupaj": total, "je_se": offset + len(page) < total}
 
 
+@app.get("/sku-poz-trace")
+async def sku_poz_trace(request: Request, sku: str = ""):
+    """Diagnostika za EN SKU: pokaže zalogo in KJE ima pozicijo (glavna CSV / sekundarna /
+    Selitev aktivno / Selitev poslano). Pojasni, zakaj je (ali ni) na seznamu manjkajočih."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    sku = (sku or "").strip()
+    if not sku:
+        return {"ok": False, "error": "Podaj ?sku=..."}
+    k = sku.upper()
+    import csv as _csv
+    from io import StringIO as _SIO
+
+    # glavna zaloga: vsi zapisi + pozicije + skupna zaloga
+    zapisi = []
+    stock_sum = 0
+    glavna_pozicija = []
+    if STOCK_CSV_FILE.exists():
+        _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
+        for row in _csv.DictReader(_SIO(_t), delimiter=_sep):
+            if (row.get("product_sku") or row.get("sku") or "").strip().upper() != k:
+                continue
+            try:
+                st = int(float(str(row.get("stock") or 0).replace(",", ".")))
+            except Exception:
+                st = 0
+            pos = (row.get("position") or "").strip()
+            stock_sum += st
+            zapisi.append({"warehouse": (row.get("warehouse") or "").strip(), "stock": st, "position": pos})
+            if pos:
+                glavna_pozicija.append(pos)
+
+    # sekundarne
+    sekundarne = []
+    try:
+        extra = _zaloga_load_extra_pos()
+        sekundarne = extra.get(sku) or extra.get(k) or []
+    except Exception:
+        pass
+
+    # Selitev
+    sel = _selitev_load()
+    v_aktivnih = [ (e.get("position") or "") for e in sel.get("entries", []) if (e.get("sku") or "").strip().upper() == k ]
+    v_poslanih = [ (e.get("position") or "") for e in sel.get("sent", []) if (e.get("sku") or "").strip().upper() == k ]
+
+    ima_pozicijo = bool(glavna_pozicija or sekundarne or [p for p in v_aktivnih if p] or [p for p in v_poslanih if p])
+    na_zalogi = stock_sum > 0
+    na_seznamu_manjkajocih = na_zalogi and not ima_pozicijo
+
+    razlog = ""
+    if not na_zalogi:
+        razlog = "NI na seznamu manjkajočih, ker NI na zalogi (stock=0)."
+    elif ima_pozicijo:
+        kje = []
+        if glavna_pozicija: kje.append("glavna zaloga")
+        if sekundarne: kje.append("sekundarna")
+        if [p for p in v_aktivnih if p]: kje.append("Selitev aktivno")
+        if [p for p in v_poslanih if p]: kje.append("Selitev poslano")
+        razlog = "NI na seznamu manjkajočih, ker ŽE IMA pozicijo v: " + ", ".join(kje) + "."
+    else:
+        razlog = "JE (ali bi moral biti) na seznamu manjkajočih: na zalogi, brez pozicije."
+
+    return {
+        "ok": True, "sku": sku,
+        "skupna_zaloga": stock_sum, "na_zalogi": na_zalogi,
+        "glavna_pozicija": glavna_pozicija,
+        "sekundarne_pozicije": sekundarne,
+        "selitev_aktivno": v_aktivnih,
+        "selitev_poslano": v_poslanih,
+        "ima_pozicijo": ima_pozicijo,
+        "na_seznamu_manjkajocih": na_seznamu_manjkajocih,
+        "razlog": razlog,
+        "zapisi_v_zalogi": zapisi,
+    }
+
+
 @app.get("/selitev-sku-check")
 async def selitev_sku_check(request: Request):
     """Diagnostika: pokaže Selitev SKU-je, ki NISO v zalogi (verjetno napačni — npr. odrezana ničla).
@@ -27797,7 +27875,7 @@ async def selitev_transfer_one(request: Request, data: dict):
             else:
                 ostanejo.append(e)
         d["entries"] = ostanejo
-        d["sent"] = d.get("sent", [])[-500:]
+        d["sent"] = d.get("sent", [])[-2500:]
         _selitev_save(d)
 
     return {"ok": True, "sku": sku, "pozicija": pos, "poslano": poslano, "status": status,
@@ -28012,7 +28090,7 @@ async def selitev_transfer(data: dict):
                 else:
                     # NEUSPEL sveženj ali brez pozicije → OSTANE v aktivnih (za ponovni poskus)
                     _ostanejo.append(e)
-            d2["sent"] = (d2.get("sent", []) + moved)[-500:]     # obdrži zadnjih 500
+            d2["sent"] = (d2.get("sent", []) + moved)[-2500:]     # obdrži zadnjih 2500 (veliki prenosi)
             d2["entries"] = _ostanejo
             _selitev_save(d2)
         res["preneseno"] = len(moved)
