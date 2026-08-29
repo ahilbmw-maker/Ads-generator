@@ -11002,6 +11002,66 @@ async def sku_cleanup_duplicates(request: Request, data: dict):
     return {"ok": True, "dry_run": False, "izbrisano": izbrisanih, "detajli": za_brisat}
 
 
+@app.get("/selitev-vrni", response_class=HTMLResponse)
+async def selitev_vrni_page(request: Request):
+    """Stran: naloži CSV (SKU;pozicija) in vrni te pare nazaj v Selitev aktivno (za ponovni prenos)."""
+    if not _owner_authorized(request):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik.</h3>", status_code=403)
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vrni v Selitev aktivno</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:760px;margin:0 auto;padding:20px;background:#f7f7f8;color:#1a1a1a}
+  h1{font-size:20px} .sub{color:#666;font-size:13px;margin-bottom:16px;line-height:1.5}
+  input[type=file]{font-size:14px;margin:10px 0;display:block}
+  textarea{width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:8px;font-family:monospace;font-size:13px;min-height:160px}
+  button{padding:11px 20px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .b-prev{background:#2563eb;color:#fff} .b-go{background:#16a34a;color:#fff} .b-go:disabled{background:#ccc;cursor:default}
+  .row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .box{background:#fff;border-radius:10px;padding:16px;margin-top:16px;border:1px solid #e5e5e5}
+  #status{margin-top:12px;font-size:14px;font-weight:600;min-height:20px}
+</style></head><body>
+<h1>Vrni pare (SKU;pozicija) v Selitev aktivno</h1>
+<div class="sub">Za pozicije, ki niso prijele (npr. police se niso obstajale v siluxarju). Nalozi CSV <b>SKU;pozicija</b> ali prilepi. Sistem jih vrne iz "poslano" nazaj v "aktivno", da jih znova posljes. Zdaj ko police obstajajo, bodo prijele.</div>
+<input type="file" id="file" accept=".csv,.txt" onchange="loadFile()">
+<label style="font-size:13px;font-weight:700;display:block;margin:12px 0 5px">ali prilepi (SKU;pozicija na vrstico)</label>
+<textarea id="text" placeholder="VOZIBAG;10-4A&#10;CHARFILTER;09-4D&#10;..."></textarea>
+<div class="row">
+  <button class="b-prev" onclick="go(true)">Predogled</button>
+  <button class="b-go" id="goBtn" onclick="go(false)" disabled>Vrni v aktivno</button>
+</div>
+<div id="status"></div>
+<div id="result"></div>
+<script>
+function loadFile(){
+  const f=document.getElementById('file').files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=e=>{ document.getElementById('text').value=e.target.result; document.getElementById('status').textContent='Nalozeno ('+f.name+'). Klikni Predogled.'; };
+  rd.readAsText(f,'utf-8');
+}
+function go(dry){
+  const text=document.getElementById('text').value;
+  if(!text.trim()){ alert('Nalozi ali prilepi pare.'); return; }
+  const st=document.getElementById('status'); st.textContent=dry?'Preverjam...':'Vracam...';
+  if(!dry) document.getElementById('goBtn').disabled=true;
+  fetch('/selitev-vrni-v-aktivno',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text, dry_run:dry})})
+    .then(r=>r.json()).then(d=>{
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">'+(d.error||'napaka')+'</span>'; return; }
+      if(dry){
+        let h='<div class="box"><b>Prebrano '+d.prebranih_parov+' parov.</b><div style="margin-top:6px;font-size:13px">Za vrniti v aktivno: <b>'+d.za_vrniti+'</b> &middot; ze v aktivnem: '+d.ze_v_aktivnem+'</div></div>';
+        document.getElementById('result').innerHTML=h;
+        st.innerHTML='<span style="color:#16a34a">Predogled pripravljen.</span>';
+        document.getElementById('goBtn').disabled=(d.za_vrniti===0);
+      } else {
+        st.innerHTML='<span style="color:#16a34a">Vrnjeno '+(d.vrnjeno_v_aktivno||0)+' v aktivno (odstranjeno iz poslano: '+(d.odstranjeno_iz_poslano||0)+'). Zdaj pojdi v Selitev &rarr; Pregled in posiljaj znova.</span>';
+        document.getElementById('result').innerHTML='';
+      }
+    }).catch(e=>{ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; });
+}
+</script></body></html>"""
+    return HTMLResponse(html)
+
+
 @app.get("/selitev-mapiraj", response_class=HTMLResponse)
 async def selitev_mapiraj_page(request: Request):
     """Stran: naloži CSV/Excel (SKU, pozicija), zmapira vse v Selitev na svoje pozicije."""
@@ -27473,6 +27533,76 @@ async def selitev_sent(offset: int = 0, limit: int = 50):
             "vrnjeno": len(page), "skupaj": total, "je_se": offset + len(page) < total}
 
 
+@app.post("/sku-batch-diag")
+async def sku_batch_diag(request: Request, data: dict):
+    """Za seznam SKU-jev preveri, ZAKAJ pozicija ni prijela: ali imajo veljaven silux siluxar_id,
+    ali so v silux skladišču, ali imajo zalogo. Loči vzrok A (pozicija ne obstaja) od B (ni id-ja)."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    skus = [str(x).strip().upper() for x in (data.get("skus") or []) if str(x).strip()]
+    if not skus:
+        return {"ok": False, "error": "Ni SKU-jev."}
+    skus_set = set(skus)
+    import csv as _csv
+    from io import StringIO as _SIO
+
+    # zberi po SKU: silux id, silux2 id, zaloga, pozicija v glavni
+    info = {k: {"silux_id": "", "silux2_id": "", "stock": 0, "glavna_poz": "",
+                "v_siluxu": False, "v_silux2": False} for k in skus_set}
+    if STOCK_CSV_FILE.exists():
+        _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
+        for row in _csv.DictReader(_SIO(_t), delimiter=_sep):
+            k = (row.get("product_sku") or row.get("sku") or "").strip().upper()
+            if k not in skus_set:
+                continue
+            wh = (row.get("warehouse") or "").strip().lower()
+            sid = (row.get("siluxar_id") or "").strip()
+            try: st = int(float(str(row.get("stock") or 0).replace(",", ".")))
+            except Exception: st = 0
+            pos = (row.get("position") or "").strip()
+            rec = info[k]
+            rec["stock"] += st
+            if wh == "silux":
+                rec["v_siluxu"] = True
+                if sid and sid not in ("0","0.0"): rec["silux_id"] = sid
+                if pos: rec["glavna_poz"] = pos
+            elif wh == "silux2":
+                rec["v_silux2"] = True
+                if sid and sid not in ("0","0.0"): rec["silux2_id"] = sid
+
+    # klasificiraj vzrok
+    brez_silux_id = []       # B: ni veljavnega silux id
+    ni_v_siluxu = []         # ni v silux skladišču sploh
+    ima_vse_a_ni_poz = []    # A: ima silux id + zalogo, a pozicija ni v glavni (→ pozicija ni prijela)
+    ima_pozicijo_zdaj = []   # pozicija JE v glavni (prijela je)
+    ni_v_zalogi = []
+    for k in skus_set:
+        r = info[k]
+        if r["glavna_poz"]:
+            ima_pozicijo_zdaj.append(k); continue
+        if r["stock"] <= 0:
+            ni_v_zalogi.append(k); continue
+        if not r["v_siluxu"]:
+            ni_v_siluxu.append(k); continue
+        if not r["silux_id"]:
+            brez_silux_id.append(k); continue
+        ima_vse_a_ni_poz.append(k)
+
+    return {
+        "ok": True, "skupaj": len(skus_set),
+        "ima_pozicijo_zdaj": len(ima_pozicijo_zdaj),
+        "ni_v_zalogi": len(ni_v_zalogi),
+        "ni_v_silux_skladiscu": len(ni_v_siluxu),
+        "brez_veljavnega_silux_id_B": len(brez_silux_id),
+        "ima_id_zalogo_a_poz_ni_prijela_A": len(ima_vse_a_ni_poz),
+        "primeri_brez_id": brez_silux_id[:15],
+        "primeri_poz_ni_prijela": ima_vse_a_ni_poz[:15],
+        "primeri_ni_v_siluxu": ni_v_siluxu[:15],
+    }
+
+
 @app.get("/sku-poz-trace")
 async def sku_poz_trace(request: Request, sku: str = ""):
     """Diagnostika za EN SKU: pokaže zalogo in KJE ima pozicijo (glavna CSV / sekundarna /
@@ -27798,6 +27928,88 @@ async def selitev_remove(data: dict):
                                 and (e.get("position") or "").strip().upper() == pos)]
         _selitev_save(d)
     return {"ok": True, "odstranjeno": before - len(d["entries"])}
+
+
+@app.post("/selitev-vrni-v-aktivno")
+async def selitev_vrni_v_aktivno(request: Request, data: dict):
+    """Vrne pare (SKU, pozicija) NAZAJ v Selitev aktivno (entries), da jih znova pošlješ.
+    Uporabno, ko pozicije niso prijele (npr. police še niso obstajale v siluxarju).
+    Body: { pary: [{sku, position}, ...], ali text: '<CSV besedilo SKU;pozicija>', dry_run }
+    Odstrani jih iz 'sent' (če so tam) in doda v 'entries' (brez dvojnikov)."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+
+    # zberi pare
+    pary = []
+    if data.get("pary"):
+        for p in data["pary"]:
+            sku = str(p.get("sku") or "").strip()
+            pos = str(p.get("position") or "").strip()
+            if sku and pos:
+                pary.append((sku, pos))
+    elif data.get("text"):
+        import re as _re
+        for line in str(data["text"]).splitlines():
+            cols = _re.split(r"[;,\t]", line.strip())
+            if len(cols) >= 2:
+                sku = cols[0].strip(); pos = cols[1].strip()
+                if sku and pos and sku.upper() != "SKU":
+                    pary.append((sku, pos))
+    if not pary:
+        return {"ok": False, "error": "Ni parov (sku, position)."}
+
+    dry = data.get("dry_run", True)
+    if dry is None: dry = True
+
+    d = _selitev_load()
+    obstoj_aktivno = {((e.get("sku") or "").strip().upper(), (e.get("position") or "").strip().upper())
+                      for e in d.get("entries", [])}
+
+    ze_v_aktivnem = 0
+    za_dodati = []
+    for sku, pos in pary:
+        pk = (sku.upper(), pos.upper())
+        if pk in obstoj_aktivno:
+            ze_v_aktivnem += 1
+        else:
+            za_dodati.append((sku, pos))
+
+    if dry:
+        return {"ok": True, "dry_run": True, "prebranih_parov": len(pary),
+                "ze_v_aktivnem": ze_v_aktivnem, "za_vrniti": len(za_dodati),
+                "primeri": [{"sku": s, "position": p} for s, p in za_dodati[:15]]}
+
+    from datetime import datetime as _dt
+    async with _selitev_lock:
+        d = _selitev_load()
+        # množica za odstranitev iz sent
+        vrnjeni_set = {(s.upper(), p.upper()) for s, p in za_dodati}
+        # odstrani iz sent
+        novi_sent = []
+        odstranjenih_iz_sent = 0
+        for e in d.get("sent", []):
+            key = ((e.get("sku") or "").strip().upper(), (e.get("position") or "").strip().upper())
+            if key in vrnjeni_set:
+                odstranjenih_iz_sent += 1
+            else:
+                novi_sent.append(e)
+        d["sent"] = novi_sent
+        # dodaj v entries (brez dvojnikov)
+        obstoj = {((e.get("sku") or "").strip().upper(), (e.get("position") or "").strip().upper())
+                  for e in d.get("entries", [])}
+        ts = _lj_now().strftime("%Y-%m-%d %H:%M:%S")
+        dodano = 0
+        for sku, pos in za_dodati:
+            pk = (sku.upper(), pos.upper())
+            if pk in obstoj:
+                continue
+            d["entries"].append({"sku": sku, "position": pos, "known": True, "ts": ts})
+            obstoj.add(pk); dodano += 1
+        _selitev_save(d)
+
+    return {"ok": True, "dry_run": False, "vrnjeno_v_aktivno": dodano,
+            "odstranjeno_iz_poslano": odstranjenih_iz_sent, "ze_bilo_v_aktivnem": ze_v_aktivnem}
 
 
 @app.post("/selitev-transfer-one")
