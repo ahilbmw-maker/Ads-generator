@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-30 09:00</div>
+      <div class="sidebar-logo-sub">build 2026-08-30 09:30</div>
     </div>
   </div>
 
@@ -27860,16 +27860,59 @@ async function pozShowMissing(targetId){
     h += '<div id="missRows">';
     m.forEach((x, i) => {
       const sk = siluxEsc(x.sku);
-      h += '<div class="miss-row" data-sku="'+sk+'" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;border-top:1px solid var(--border);padding:8px">'
-        + '<div style="flex:1 1 160px;min-width:0"><div style="font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis">'+sk+' <span style="color:#b57611;font-weight:700">('+x.stock+')</span></div>'
-        + '<div style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+siluxEsc(x.title||'')+'</div></div>'
-        + '<input type="text" class="miss-pos" placeholder="pozicija" style="flex:0 0 110px;width:110px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit" onkeydown="if(event.key===\'Enter\')missSaveOne(this)">'
-        + '<button onclick="missSaveOne(this.previousElementSibling)" style="flex:0 0 auto;padding:8px 12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Shrani</button>'
-        + '<span class="miss-ok" style="flex:0 0 auto;font-size:12px;font-weight:700"></span></div>';
+      h += '<div class="miss-row" data-sku="'+sk+'" style="border-top:1px solid var(--border);padding:10px 4px">'
+        // vrstica 1: SKU + zaloga + naziv (cela širina)
+        + '<div style="margin-bottom:8px"><span style="font-weight:700;font-size:14px">'+sk+'</span> <span style="color:#b57611;font-weight:700;font-size:13px">('+x.stock+' kos)</span>'
+        + '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px">'+siluxEsc(x.title||'')+'</div></div>'
+        // vrstica 2: veliko vnosno polje + gumb
+        + '<div style="display:flex;gap:8px;align-items:stretch;position:relative">'
+        + '<div style="flex:1 1 auto;position:relative">'
+        + '<input type="text" class="miss-pos" placeholder="vpiši pozicijo…" autocomplete="off" '
+        + 'style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:16px;font-family:inherit" '
+        + 'oninput="missSuggest(this)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();missSaveOne(this);}" onblur="missBlur(this)">'
+        + '<div class="miss-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:30;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-top:4px;box-shadow:0 6px 20px rgba(0,0,0,0.12);max-height:220px;overflow-y:auto"></div>'
+        + '</div>'
+        + '<button onclick="missSaveOne(this.parentElement.querySelector(\'.miss-pos\'))" style="flex:0 0 auto;padding:12px 18px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">Shrani</button>'
+        + '</div>'
+        + '<div class="miss-ok" style="font-size:12px;font-weight:700;margin-top:4px;min-height:14px"></div>'
+        + '</div>';
     });
     h += '</div>';
     if (list) list.innerHTML = h;
   }catch(e){ if(list) list.innerHTML='<span style="color:#e5484d">Napaka: '+e.message+'</span>'; }
+}
+let _missSuggestTimer = null;
+function missSuggest(inputEl){
+  clearTimeout(_missSuggestTimer);
+  const row = inputEl.closest('.miss-row');
+  const box = row ? row.querySelector('.miss-suggest') : null;
+  if (!box) return;
+  const q = (inputEl.value || '').trim();
+  if (!q){ box.style.display = 'none'; return; }
+  _missSuggestTimer = setTimeout(async () => {
+    try{
+      const r = await fetch('/pozicije-pos-suggest?q=' + encodeURIComponent(q));
+      const d = await r.json();
+      if (!d.ok || !d.suggestions || !d.suggestions.length){ box.style.display = 'none'; return; }
+      box.innerHTML = d.suggestions.map(s =>
+        '<div onmousedown="event.preventDefault()" onclick="missPick(this)" data-pos="'+pozEsc(s).replace(/"/g,'&quot;')+'" style="padding:11px 14px;font-weight:600;font-size:15px;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border)">📍 '+pozEsc(s)+'</div>').join('');
+      box.style.display = 'block';
+    }catch(e){ box.style.display = 'none'; }
+  }, 160);
+}
+function missPick(el){
+  const box = el.closest('.miss-suggest');
+  const row = el.closest('.miss-row');
+  const input = row ? row.querySelector('.miss-pos') : null;
+  if (input){ input.value = el.getAttribute('data-pos'); }
+  if (box){ box.style.display = 'none'; }
+  if (input){ input.focus(); }
+}
+function missBlur(inputEl){
+  // zakasni skritje, da klik na predlog uspe
+  const row = inputEl.closest('.miss-row');
+  const box = row ? row.querySelector('.miss-suggest') : null;
+  setTimeout(()=>{ if(box) box.style.display='none'; }, 180);
 }
 async function missSaveOne(inputEl){
   const row = inputEl.closest('.miss-row');
