@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-30 09:30</div>
+      <div class="sidebar-logo-sub">build 2026-08-30 10:00</div>
     </div>
   </div>
 
@@ -28286,16 +28286,19 @@ async function selManageNamed(){
   let d;
   try{ d = await (await fetch('/selitev-imenske-list')).json(); }catch(e){ alert('Napaka pri branju.'); return; }
   const shr = (d.shranjene||[]);
-  const akcija = prompt('IMENSKE POZICIJE:\n\n' + (shr.length?shr.join(', '):'(prazno)') + '\n\nZa DODATI: vpiši ime nove pozicije\nZa ODSTRANITI: vpiši "-ime" (npr. -Polcar)\nZa preklic: pusti prazno');
+  const akcija = prompt('IMENSKE POZICIJE:\n\n' + (shr.length?shr.join(', '):'(prazno)') + '\n\nDODATI: vpiši ime (ali VEČ, ločenih z vejico: S1, S2, S3)\nODSTRANITI: "-ime" (ali več: -S1, -S2)\nPreklic: pusti prazno');
   if (!akcija) return;
   const a = akcija.trim();
-  if (a.startsWith('-')){
-    const ime = a.slice(1).trim();
-    if (!ime) return;
-    if (!confirm('Odstranim imensko pozicijo "' + ime + '"? (obstoječi vpisi ostanejo)')) return;
+  // razdeli po vejici ali novi vrstici — omogoča VEČ naenkrat
+  const kosi = a.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
+  const dodaj = [], odstrani = [];
+  kosi.forEach(k => { if (k.startsWith('-')) { const n=k.slice(1).trim(); if(n) odstrani.push(n); } else { dodaj.push(k); } });
+  if (odstrani.length && !confirm('Odstranim ' + odstrani.length + ' imenskih pozicij (' + odstrani.join(', ') + ')? Obstoječi vpisi ostanejo.')) return;
+  for (const ime of dodaj){
+    await fetch('/selitev-imenske-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ime})});
+  }
+  for (const ime of odstrani){
     await fetch('/selitev-imenske-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ime})});
-  } else {
-    await fetch('/selitev-imenske-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ime:a})});
   }
   await selLoadNamed();
   selRenderGrid();

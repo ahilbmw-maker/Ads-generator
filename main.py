@@ -2488,6 +2488,18 @@ async def zaloga_update_item(data: dict):
                         it["picked"] = max(0, int(data["picked"]))
                     except (ValueError, TypeError):
                         pass
+                    # SAMODEJNO potrdi postavko, ko je nabranih dovolj (picked >= qty)
+                    # in status še ni bil ročno postavljen. Tako se veliki %, trak in
+                    # barva postavke ujemajo (prej: picked=qty a status prazen → 0%).
+                    try:
+                        _q = int(it.get("qty", 0) or 0)
+                        _p = int(it.get("picked", 0) or 0)
+                        if _q > 0 and _p >= _q and it.get("status") not in ("ok", "ni"):
+                            it["status"] = "ok"
+                            if not it.get("picked_at"):
+                                it["picked_at"] = now_iso
+                    except (ValueError, TypeError):
+                        pass
                 if "opomba" in data:
                     it["opomba"] = str(data["opomba"]).strip()
                 found = True
