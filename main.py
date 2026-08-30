@@ -23401,7 +23401,9 @@ async def pozicije_valid_save(data: dict):
         import re as _re
         raw = data.get("raw", "")
         mode = data.get("mode", "replace")
-        parsed = [p.strip() for p in _re.split(r"[\s,;\n\r\t]+", str(raw)) if p.strip()]
+        # razdeli SAMO po novih vrsticah, vejicah in podpičjih — NE po presledku,
+        # da imenske pozicije s presledkom (npr. "Pri Amiotu", "IOC Skladišče") ostanejo cele
+        parsed = [p.strip() for p in _re.split(r"[,;\n\r\t]+", str(raw)) if p.strip()]
         # dedup ohrani vrstni red
         cur = [] if mode == "replace" else _poz_valid_load()
         seen = set(_poz_norm(x) for x in cur)
@@ -23420,9 +23422,28 @@ async def pozicije_valid_save(data: dict):
 
 @app.get("/pozicije-pos-suggest")
 async def pozicije_pos_suggest(q: str = ""):
-    """Autosuggest veljavnih pozicij (za ročni vnos)."""
+    """Autosuggest veljavnih pozicij (za ročni vnos). Vključuje POLICE (PN_POZ_VALID)
+    IN imenske pozicije (Ikonka, Pri Amiotu, Polcar, Omara ...) — te cele, ne razbite."""
     q = (q or "").strip()
-    valid = _poz_valid_load()
+    valid = list(_poz_valid_load() or [])
+    # dodaj imenske pozicije PRED police (cele, s presledki), brez dvojnikov
+    try:
+        named = _sel_named_load()
+        valid = named + [v for v in valid if v not in named]
+    except Exception:
+        pass
+    # izloči osamele delce imenskih pozicij (stara napaka: "Pri Amiotu" razbito na "Pri"+"Amiotu")
+    try:
+        named = _sel_named_load()
+        deli = set()
+        for nm in named:
+            for w in str(nm).split():
+                if w and w.lower() not in [x.lower() for x in named]:
+                    deli.add(w.lower())
+        if deli:
+            valid = [v for v in valid if v.lower() in [n.lower() for n in named] or v.lower() not in deli]
+    except Exception:
+        pass
     if not valid:
         return {"ok": True, "suggestions": []}
     if not q:
