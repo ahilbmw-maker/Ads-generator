@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-28 06:45</div>
+      <div class="sidebar-logo-sub">build 2026-08-30 09:00</div>
     </div>
   </div>
 
@@ -27855,14 +27855,43 @@ async function pozShowMissing(targetId){
     const d = await r.json();
     const m = d.manjkajoci || [];
     if (!m.length){ if(list) list.innerHTML='<div style="font-size:13px;color:#0f8a4f;font-weight:600;padding:6px 0">✓ Nič ne manjka!</div>'; return; }
-    let h = '<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px">Prikazanih ' + m.length + (d.manjkajoci_skupaj>m.length ? ' od ' + d.manjkajoci_skupaj + ' (za vse uporabi CSV)' : '') + ' — razvrščeno po zalogi:</div>';
-    h += '<table style="border-collapse:collapse;width:100%;font-size:13px"><tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px"><th style="text-align:left;padding:5px 8px">SKU</th><th style="text-align:right;padding:5px 8px">Zaloga</th><th style="text-align:left;padding:5px 8px">Naziv</th></tr>';
-    m.forEach(x => {
-      h += '<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-weight:700">'+siluxEsc(x.sku)+'</td><td style="padding:6px 8px;text-align:right;color:#b57611;font-weight:700">'+x.stock+'</td><td style="padding:6px 8px;color:var(--text-secondary)">'+siluxEsc(x.title||'')+'</td></tr>';
+    let h = '<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">Prikazanih ' + m.length + (d.manjkajoci_skupaj>m.length ? ' od ' + d.manjkajoci_skupaj + ' (za vse uporabi CSV)' : '') + ' — vpiši pozicijo poleg vsakega in shrani (gre v Selitev):</div>';
+    // mobil-prijazen seznam: vsak SKU kartica z vpisnim poljem za pozicijo
+    h += '<div id="missRows">';
+    m.forEach((x, i) => {
+      const sk = siluxEsc(x.sku);
+      h += '<div class="miss-row" data-sku="'+sk+'" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;border-top:1px solid var(--border);padding:8px">'
+        + '<div style="flex:1 1 160px;min-width:0"><div style="font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis">'+sk+' <span style="color:#b57611;font-weight:700">('+x.stock+')</span></div>'
+        + '<div style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+siluxEsc(x.title||'')+'</div></div>'
+        + '<input type="text" class="miss-pos" placeholder="pozicija" style="flex:0 0 110px;width:110px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit" onkeydown="if(event.key===\'Enter\')missSaveOne(this)">'
+        + '<button onclick="missSaveOne(this.previousElementSibling)" style="flex:0 0 auto;padding:8px 12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Shrani</button>'
+        + '<span class="miss-ok" style="flex:0 0 auto;font-size:12px;font-weight:700"></span></div>';
     });
-    h += '</table>';
+    h += '</div>';
     if (list) list.innerHTML = h;
   }catch(e){ if(list) list.innerHTML='<span style="color:#e5484d">Napaka: '+e.message+'</span>'; }
+}
+async function missSaveOne(inputEl){
+  const row = inputEl.closest('.miss-row');
+  if (!row) return;
+  const sku = row.getAttribute('data-sku');
+  const pos = (inputEl.value || '').trim();
+  const okEl = row.querySelector('.miss-ok');
+  if (!pos){ if(okEl){ okEl.style.color='#e5484d'; okEl.textContent='vpiši pozicijo'; } inputEl.focus(); return; }
+  if (okEl){ okEl.style.color='var(--text-tertiary)'; okEl.textContent='…'; }
+  try{
+    const r = await fetch('/selitev-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku, position:pos})});
+    const d = await r.json();
+    if (d.ok){
+      if (okEl){ okEl.style.color='#16a34a'; okEl.textContent='✓ '+pos; }
+      inputEl.disabled = true;
+      // po kratkem času skrij vrstico (je urejena)
+      setTimeout(()=>{ row.style.opacity='0.45'; }, 300);
+      if (typeof selReload==='function') selReload();
+    } else {
+      if (okEl){ okEl.style.color='#e5484d'; okEl.textContent=(d.error||'napaka'); }
+    }
+  }catch(e){ if(okEl){ okEl.style.color='#e5484d'; okEl.textContent='napaka'; } }
 }
 function pozMissingCsv(){
   const a = document.createElement('a');
@@ -28302,11 +28331,11 @@ function selRenderGrid(){
   if (!_selNav.vrsta && !_selNav.named){
     g.style.display = 'grid';
     g.style.gridTemplateColumns = 'repeat(auto-fill,minmax(130px,1fr))';
-    // najprej imenske pozicije (Ikonka, Pri Amiotu) — poudarjeni kvadratki
-    let cells = SEL_NAMED.map(nm => selBigCell(nm, "selPickNamed(" + selQ(nm) + ")", '📦 imenska', selCount(x => x === nm) || '')).join('');
-    // gumb za urejanje imenskih pozicij (dodaj/odstrani)
-    cells += '<div onclick="selManageNamed()" style="cursor:pointer;border:1px dashed var(--border);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:72px;color:var(--text-tertiary);font-size:12px;font-weight:700;background:transparent">⚙<br>uredi imenske</div>';
-    cells += SEL_VRSTE.map(v => selBigCell(v, "selPickVrsta('" + v + "')", 'vrsta', selCount(x => x.startsWith(v + '-')) || '')).join('');
+    // NAJPREJ vrste 01-16, POTEM imenske pozicije (Ikonka, Pri Amiotu, Polcar, Omara)
+    let cells = SEL_VRSTE.map(v => selBigCell(v, "selPickVrsta('" + v + "')", 'vrsta', selCount(x => x.startsWith(v + '-')) || '')).join('');
+    cells += SEL_NAMED.map(nm => selBigCell(nm, "selPickNamed(" + selQ(nm) + ")", '📦 imenska', selCount(x => x === nm) || '')).join('');
+    // gumb za urejanje imenskih pozicij — NA KONCU, manjši
+    cells += '<div onclick="selManageNamed()" style="cursor:pointer;border:1px dashed var(--border);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:72px;color:var(--text-tertiary);font-size:11px;font-weight:700;background:transparent">⚙<br>uredi<br>imenske</div>';
     g.innerHTML = cells;
     entry.style.display = 'none';
   } else if (!_selNav.regal){
