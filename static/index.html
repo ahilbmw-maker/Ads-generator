@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-30 10:00</div>
+      <div class="sidebar-logo-sub">build 2026-08-30 11:00</div>
     </div>
   </div>
 
@@ -4652,6 +4652,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <p style="font-size:12px;color:var(--text-tertiary);margin:0 0 8px">Prilepi vse veljavne pozicije (vrstice/vejice/presledki). Uporabljajo se za validacijo in autosuggest.</p>
           <div style="margin-bottom:8px">
             <button onclick="pozInsertRange('S',1,14)" style="font-size:11px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit;color:var(--text)">+ Vstavi S1–S14</button>
+            <button onclick="pozCleanupValid()" style="font-size:11px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit;color:var(--text);margin-left:6px">🧹 Počisti razbite</button>
           </div>
           <textarea id="pozValidInput" placeholder="P1-A&#10;P2-B&#10;P8-C&#10;02-3E ..." style="width:100%;min-height:140px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
           <div style="display:flex;gap:8px;margin-top:8px">
@@ -27967,6 +27968,21 @@ function pozRenderValidChips(positions) {
   const el = document.getElementById('pozValidChips');
   if (!el) return;
   el.innerHTML = positions.slice(0, 60).map(p => `<span style="font-size:11px;padding:2px 8px;background:var(--surface2);border-radius:5px;color:var(--text-secondary)">${pozEsc(p)}</span>`).join('') + (positions.length > 60 ? `<span style="font-size:11px;color:var(--text-tertiary)">+${positions.length-60} več</span>` : '');
+}
+async function pozCleanupValid() {
+  const st = document.getElementById('pozValidStatus');
+  st.textContent = '🧹 čistim...';
+  try {
+    const r = await fetch('/pozicije-valid-cleanup', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json();
+    if (d.ok) {
+      const odst = (d.odstranjeni||[]).length, dod = (d.dodani||[]).length;
+      st.innerHTML = '<span style="color:#16a34a">✓ Počiščeno: odstranjenih ' + odst + ' delcev' + (odst?' ('+d.odstranjeni.join(', ')+')':'') + (dod?', dodanih '+dod+' celih imenskih':'') + '</span>';
+      document.getElementById('pozValidInput').value = (d.positions||[]).join('\n');
+      document.getElementById('pozValidCount').textContent = '(' + d.count + ')';
+      pozRenderValidChips(d.positions||[]);
+    } else { st.innerHTML = '<span style="color:#dc2626">✗ ' + pozEsc(d.error||'napaka') + '</span>'; }
+  } catch (e) { st.innerHTML = '<span style="color:#dc2626">✗ napaka</span>'; }
 }
 async function pozSaveValidList(mode) {
   const raw = document.getElementById('pozValidInput').value.trim();

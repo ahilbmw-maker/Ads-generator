@@ -23438,6 +23438,53 @@ async def pozicije_valid_get():
     return {"ok": True, "positions": _poz_valid_load()}
 
 
+@app.post("/pozicije-valid-cleanup")
+async def pozicije_valid_cleanup(request: Request):
+    """Počisti seznam veljavnih pozicij: odstrani OSAMELE delce imenskih pozicij
+    (npr. 'Pri', 'Amiotu' če je 'Pri Amiotu' imenska) in doda cele imenske pozicije.
+    Vrne, kaj je bilo odstranjeno in dodano."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    valid = list(_poz_valid_load() or [])
+    named = _sel_named_load()
+    named_low = {n.lower() for n in named}
+
+    # zberi delce imenskih pozicij (besede, ki sestavljajo imenske, a niso cela imenska)
+    deli = set()
+    for nm in named:
+        for w in str(nm).split():
+            if w and w.lower() not in named_low:
+                deli.add(w.lower())
+
+    odstranjeni = []
+    ohranjeni = []
+    for v in valid:
+        vl = v.strip().lower()
+        # če je osamel delec imenske (in NI cela imenska) → odstrani
+        if vl in deli and vl not in named_low:
+            odstranjeni.append(v)
+        else:
+            ohranjeni.append(v)
+
+    # dodaj cele imenske pozicije, ki manjkajo
+    ohranjeni_low = {x.lower() for x in ohranjeni}
+    dodani = []
+    for nm in named:
+        if nm.lower() not in ohranjeni_low:
+            ohranjeni.append(nm)
+            dodani.append(nm)
+
+    # shrani
+    tmp = PN_POZ_VALID.with_suffix(".tmp")
+    tmp.write_text(json.dumps(ohranjeni, ensure_ascii=False, indent=2), encoding="utf-8")
+    import os as _os
+    _os.replace(str(tmp), str(PN_POZ_VALID))
+
+    return {"ok": True, "positions": ohranjeni, "count": len(ohranjeni),
+            "odstranjeni": odstranjeni, "dodani": dodani}
+
+
 @app.post("/pozicije-valid-save")
 async def pozicije_valid_save(data: dict):
     """Nastavi/dopolni seznam veljavnih pozicij.
