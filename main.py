@@ -2221,6 +2221,39 @@ async def zaloga_current_get(market: str = "slo"):
         return {"ok": False, "error": str(e)}
 
 
+@app.get("/zaloga-current-since")
+async def zaloga_current_since(market: str = "slo", since: str = ""):
+    """Lahek poll za real-time osveževanje med nabiralci. Vrne spremembe OD podanega
+    'since' (updated_at). Če ni sprememb → {changed: False} (droben odgovor).
+    Če je → vrne posodobljene statuse/picked + časovnico (ne celega seznama)."""
+    try:
+        path = _zaloga_current_path(market)
+        if not path.exists():
+            return {"ok": True, "changed": False, "active": False}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        items = data.get("items", [])
+        if not items:
+            return {"ok": True, "changed": False, "active": False}
+        upd = data.get("updated_at", "")
+        # ni spremembe → droben odgovor
+        if since and upd and since == upd:
+            return {"ok": True, "changed": False, "updated_at": upd}
+        # sprememba (ali prvi klic) → vrni samo lahke podatke za sinhronizacijo
+        light = [{"idx": it.get("idx"), "status": it.get("status", ""),
+                  "picked": it.get("picked", 0)} for it in items]
+        return {
+            "ok": True, "changed": True, "updated_at": upd,
+            "items": light,
+            "pick_started_at": data.get("pick_started_at"),
+            "pick_finished_at": data.get("pick_finished_at"),
+            "pick_paused_at": data.get("pick_paused_at"),
+            "pick_pause_offset_s": data.get("pick_pause_offset_s", 0),
+            "integrity": data.get("integrity"),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "changed": False}
+
+
 @app.post("/zaloga-hsplus-upload")
 async def zaloga_hsplus_upload(file: UploadFile = File(...), market: str = "slo"):
     """Uvoz 'HS PLUS' seznama (XLSX/CSV s stolpcema sku, stock).
