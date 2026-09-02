@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-30 11:00</div>
+      <div class="sidebar-logo-sub">build 2026-08-30 12:00</div>
     </div>
   </div>
 
@@ -4621,9 +4621,9 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <span style="font-size:12px;font-weight:700;color:#854F0B">➕ Sekundarna lokacija <span style="font-weight:400;color:var(--text-tertiary)">(opcijsko, backup)</span></span>
         </div>
-        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;line-height:1.4">Kadar je isti izdelek še na drugi polici. Doda se k primarni, ne nadomesti je.</div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;line-height:1.4">Kadar je isti izdelek še na drugih policah. Več lokacij ločiš z vejico (P2-B, S3). Doda se k primarni, ne nadomesti je.</div>
         <div style="position:relative">
-          <input type="text" id="pozPos2Input" placeholder="vpiši dodatno polico: P2-B (autosuggest)" autocomplete="off" oninput="pozPos2Suggest(this.value)" style="width:100%;padding:10px 12px;border:1px solid #EF9F27;border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:#FFFBF3">
+          <input type="text" id="pozPos2Input" placeholder="dodatne police, ločene z vejico: P2-B, S3 (autosuggest)" autocomplete="off" oninput="pozPos2Suggest(this.value)" style="width:100%;padding:10px 12px;border:1px solid #EF9F27;border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box;color:var(--text);background:#FFFBF3">
           <div id="pozPos2SuggestList" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:3px;max-height:240px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)"></div>
         </div>
       </div>
@@ -27238,19 +27238,25 @@ async function pozAddRow() {
     if (d.ok) {
       _pozPending = d.items;
       pozRenderPending();
-      // sekundarna pozicija (opcijsko) → shrani takoj kot dodatno lokacijo
+      // sekundarne pozicije (opcijsko) → VEČ, ločenih z vejico (P2-B, S3) → shrani vsako
       let extraMsg = '';
       if (pos2Val) {
-        try {
-          const er = await fetch('/zaloga-extra-position-add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: skuVal, position: pos2Val }) });
-          const ed = await er.json();
-          if (ed.ok) {
-            if (typeof _zalExtraPos !== 'undefined') _zalExtraPos[skuVal] = ed.positions;
-            extraMsg = ' + sekundarna ➕ ' + pozEsc(pos2Val);
-          } else {
-            extraMsg = ' <span style="color:#d97706">(sekundarna: ' + pozEsc(ed.error||'napaka') + ')</span>';
-          }
-        } catch(e) { extraMsg = ' <span style="color:#d97706">(sekundarna ni shranjena)</span>'; }
+        const pos2List = pos2Val.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+        const dodane = [], napake = [];
+        for (const p2 of pos2List) {
+          try {
+            const er = await fetch('/zaloga-extra-position-add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: skuVal, position: p2 }) });
+            const ed = await er.json();
+            if (ed.ok) {
+              if (typeof _zalExtraPos !== 'undefined') _zalExtraPos[skuVal] = ed.positions;
+              dodane.push(p2);
+            } else {
+              napake.push(p2 + ' (' + (ed.error||'napaka') + ')');
+            }
+          } catch(e) { napake.push(p2 + ' (ni shranjena)'); }
+        }
+        if (dodane.length) extraMsg = ' + sekundarne ➕ ' + pozEsc(dodane.join(', '));
+        if (napake.length) extraMsg += ' <span style="color:#d97706">(' + pozEsc(napake.join('; ')) + ')</span>';
       }
       // reset za naslednji vnos
       document.getElementById('pozSkuInput').value = '';
@@ -27269,10 +27275,12 @@ let _pozPos2SuggestTimer = null;
 function pozPos2Suggest(q) {
   clearTimeout(_pozPos2SuggestTimer);
   const box = document.getElementById('pozPos2SuggestList');
-  if (!(q || '').trim()) { box.style.display = 'none'; return; }
+  // predlagaj samo za ZADNJO pozicijo (za zadnjo vejico) — omogoča več lokacij v polju
+  const zadnji = String(q || '').split(/[,;]/).pop().trim();
+  if (!zadnji) { box.style.display = 'none'; return; }
   _pozPos2SuggestTimer = setTimeout(async () => {
     try {
-      const r = await fetch('/pozicije-pos-suggest?q=' + encodeURIComponent((q||'').trim()));
+      const r = await fetch('/pozicije-pos-suggest?q=' + encodeURIComponent(zadnji));
       const d = await r.json();
       if (!d.ok || !d.suggestions.length) { box.style.display = 'none'; return; }
       box.innerHTML = d.suggestions.map(s =>
@@ -27282,8 +27290,17 @@ function pozPos2Suggest(q) {
   }, 180);
 }
 function pozPos2PickPos(pos) {
-  document.getElementById('pozPos2Input').value = pos;
+  const inp = document.getElementById('pozPos2Input');
+  // zamenjaj samo zadnjo pozicijo (za zadnjo vejico), ohrani prej vpisane
+  const deli = String(inp.value || '').split(/([,;])/);
+  // deli = [poz1, ',', poz2, ...] — nadomesti zadnji neprazen segment
+  let zamenjano = false;
+  for (let i = deli.length - 1; i >= 0; i--) {
+    if (deli[i] !== ',' && deli[i] !== ';') { deli[i] = (i > 0 ? ' ' : '') + pos; zamenjano = true; break; }
+  }
+  inp.value = zamenjano ? deli.join('').replace(/\s+,/g, ',').trim() : pos;
   document.getElementById('pozPos2SuggestList').style.display = 'none';
+  inp.focus();
 }
 
 function pozRenderPending() {
