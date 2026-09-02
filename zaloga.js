@@ -122,7 +122,6 @@ async function loadSession() {
     if (data.ok && data.items && data.items.length) {
       SESSION = data;
       ITEMS = data.items;
-      lastUpdate = data.updated_at || null;   // sinhroniziraj z real-time pollom (da prvi poll ne prerisuje)
       // čakajoče (neshranjene) spremembe iz prejšnje seje apliciraj lokalno in poskusi shraniti
       const _q = outboxGet().filter(x => x.market === MARKET);
       if (_q.length){
@@ -2049,11 +2048,21 @@ function changeQty(idx, delta) {
   const it = ITEMS.find(x => x.idx === idx);
   if (!it) return;
   it.picked = Math.max(0, it.picked + delta);
+  // ko nabranih doseže potrebno (picked >= qty) in postavka še ni ročno označena,
+  // jo samodejno potrdi kot 'ok' — da se veliki %, trak in barva ujemajo
+  let statusChanged = false;
+  if (it.qty > 0 && it.picked >= it.qty && it.status !== 'ok' && it.status !== 'ni') {
+    it.status = 'ok';
+    statusChanged = true;
+  }
   // posodobi samo to vrstico (brez polnega re-renderja, da ne zapre zavihka)
   refreshItem(it);
+  refreshShelfProgress(it.group);   // POPRAVEK: osveži trak police (prej: trak je ostal star → rdeč košček kljub polnemu picked)
   refreshSidebarAndStats();
-  saveItem(idx, { picked: it.picked });
+  if (statusChanged) { updateGlobalStat(); syncFilterToggleLabel(); if (isRS()) refreshBoxCounters(); }
+  saveItem(idx, statusChanged ? { picked: it.picked, status: it.status } : { picked: it.picked });
   reorderShelf(it.group);   // delni manjko (npr. 5/6) → pripni na vrh
+  if (statusChanged) maybeAutoHideShelf(it.group);
 }
 
 // ── Status OK/NI ──
@@ -2444,14 +2453,10 @@ function toast(msg, dur) {
 let lastUpdate = null;
 async function pollSync() {
   if (!ITEMS.length) return;
-  // ne osvežuj, medtem ko nabiralec tipka v polje (da mu ne skvarimo vnosa)
-  const ae = document.activeElement;
-  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
   try {
-    // LAHEK poll: strežnik vrne changed:false, če ni sprememb (droben odgovor, hitro)
-    const r = await fetch(mq('/zaloga-current-since') + '&since=' + encodeURIComponent(lastUpdate || ''));
+    const r = await fetch(mq('/zaloga-current'));
     const data = await r.json();
-    if (data.ok && data.changed && data.updated_at && data.updated_at !== lastUpdate) {
+    if (data.ok && data.updated_at && data.updated_at !== lastUpdate) {
       lastUpdate = data.updated_at;
       // VAROVALKA: osveži integriteto in opozori, če je seštevek padel
       if (SESSION) {
@@ -2669,7 +2674,7 @@ async function copyAllManko(btn) {
 // ── Init ──
 initMarketTab();
 loadSession();
-setInterval(pollSync, 2500);   // real-time občutek: osveži vsake 2,5s (lahek poll)
+setInterval(pollSync, 15000);
 // ob spremembi velikosti / rotaciji osveži mobilni box-bar (pojavi/skrije se po potrebi)
 window.addEventListener('resize', () => { updateMobileBoxBar(); updateStickyOffset(); });
 
