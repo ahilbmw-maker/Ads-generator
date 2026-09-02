@@ -2245,7 +2245,7 @@ function extraPosRenderList() {
   let html = '<div class="ep-row ep-prim"><span class="ep-tag ep-tag-prim">PRIM</span><span class="ep-pos">' + esc(primary) + '</span><span class="ep-note">primarna</span></div>';
   if (extras.length) {
     html += extras.map(p =>
-      '<div class="ep-row ep-sec"><span class="ep-tag ep-tag-sec">DOD</span><span class="ep-pos">' + esc(p) + '</span><span class="ep-del" onclick="removeExtraPos(\'' + jsStr(p) + '\')" title="Odstrani">🗑️</span></div>').join('');
+      '<div class="ep-row ep-sec"><span class="ep-tag ep-tag-sec ' + _pozTipClass(p) + '">DOD</span><span class="ep-pos">' + esc(p) + '</span><span class="ep-del" onclick="removeExtraPos(\'' + jsStr(p) + '\')" title="Odstrani">🗑️</span></div>').join('');
   } else {
     html += '<div class="ep-empty">Ni dodatnih lokacij.</div>';
   }
@@ -2310,6 +2310,18 @@ function pickExtraPos(pos) {
   document.getElementById('extraPosSuggestList').style.display = 'none';
 }
 
+// Prepozna tip pozicije za barvo čipa: mrežna (01-1D → modra), S-polica (S3 → zelena),
+// IOC/imenska (vse ostalo → rumena, privzeto).
+function _pozTip(pos) {
+  const p = String(pos || '').trim();
+  if (/^\d{2}-[1-9][A-Za-z]$/.test(p)) return 'grid';       // mrežna 01-1D
+  if (/^S\d{1,3}$/i.test(p)) return 'spolica';               // S-polica S3, S14
+  return 'imenska';                                          // IOC, Pri Amiotu, ...
+}
+function _pozTipClass(pos) {
+  const t = _pozTip(pos);
+  return t === 'grid' ? 'pec-grid' : (t === 'spolica' ? 'pec-spolica' : 'pec-imenska');
+}
 function _pozCellHtml(it) {
   const sku = it.sku || '';
   const extras = EXTRA_POS[String(sku).trim()] || [];
@@ -2317,7 +2329,7 @@ function _pozCellHtml(it) {
   let second;
   if (extras.length) {
     const chips = extras.map(p =>
-      '<span class="poz-extra-chip">↳ ' + esc(p) + '</span>').join('');
+      '<span class="poz-extra-chip ' + _pozTipClass(p) + '">↳ ' + esc(p) + '</span>').join('');
     second = '<span class="poz-extra-row" onclick="event.stopPropagation();openExtraPos(\'' + jsStr(sku) + '\',\'' + jsStr(it.naziv||'') + '\')" title="Uredi dodatne lokacije"><span class="poz-extra-edit">✎</span>' + chips + '</span>';
   } else {
     second = '<span class="poz-add-btn" onclick="event.stopPropagation();openExtraPos(\'' + jsStr(sku) + '\',\'' + jsStr(it.naziv||'') + '\')" title="Dodaj dodatno lokacijo">＋ lokacija</span>';
