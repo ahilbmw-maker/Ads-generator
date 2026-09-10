@@ -416,7 +416,7 @@ feed_by_lang: dict = {}
 slug_to_id: dict = {}
 sl_image_index: dict = {}   # SLO slike: { "mpn_upper": img, "slug_lower": img, "title_lower": img } za hitri lookup
 last_fetch: Optional[datetime] = None
-CACHE_TTL_HOURS = 168  # 7 dni — slike/SKU se redko spreminjajo, ni potrebe po pogostem osveževanju
+CACHE_TTL_HOURS = 24  # 1x dnevno — novi izdelki se zajamejo v 24h (prej 168h/7 dni)
 _feed_lock: Optional["asyncio.Lock"] = None  # prepreči sočasne prenose feeda
 
 
