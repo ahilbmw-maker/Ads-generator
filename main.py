@@ -8380,14 +8380,17 @@ async def kreative_batch_clear(data: dict):
 # brief za copy-paste v Claude chat (izvedba prek Higgsfield MCP na osebnem računu).
 VIDEO_ADS_FILE = DATA_DIR / "video_ads_jobs.json"
 _va_lock = asyncio.Lock()
-VA_REF_IMAGES = 1   # samo naslovna slika — galerija ima pogosto infografike s tekstom (konflikt z NO TEXT)
+VA_REF_IMAGES = 4   # do 4 slike za identiteto izdelka (Sprememba 1). Opozorilo: galerija ima lahko infografike s tekstom — prednostno izberi packshote s čistim ozadjem
 VA_PAUSE_S = 5
 
 VA_PROMPT_TEMPLATE = """You write Seedance 2.0 video-ad prompts for Facebook e-commerce ads.
 Write 7 prompts for the product below, EXACTLY in this structure and style (this is a proven template):
 
-- Each prompt starts: "Generate a 12-second [viral/premium/ultra-viral] Facebook ad for [short product description]."
-- Then an IMPORTANT block with these ABSOLUTE rules (every prompt must contain them):
+- Each prompt starts EXACTLY like: "Generate a 12-second [viral/premium/ultra-viral] Facebook ad for the exact [PRODUCT_DESC] shown in the reference images."
+  where [PRODUCT_DESC] is the concrete physical description you build in PRODUCT_DESC below.
+  NEVER use a bare generic category name (e.g. "a foot massager"); ALWAYS "the exact ... shown in the reference images".
+- Then an IMPORTANT block with these ABSOLUTE rules (every prompt must contain them, in this order):
+  CRITICAL: The on-screen product MUST match the reference images exactly in shape, colour, material and proportions in EVERY scene. Do NOT redesign it or invent a different device. Keep the product identity consistent from the first frame to the last.
   NO TEXT. NO WORDS. NO LETTERS. NO LOGO. NO BRAND NAME. NO CAPTIONS. NO NUMBERS.
   ICONS ONLY (simple visual pictograms, no letters inside them).
   Plus category-appropriate safety constraints (e.g. NO MEDICAL CLAIMS for health-adjacent products,
@@ -8444,8 +8447,14 @@ Name: {name}
 SKU: {sku}
 Description (may be Slovenian — translate meaning, output English): {desc}
 
+PRODUCT_DESC (build this FIRST, before writing prompts):
+From the name + description, write ONE concise PHYSICAL description of the product in English —
+colour, shape, material and the single key feature (e.g. "matt black oval wireless heated foot
+massager with a soft grey fabric foot opening"). No marketing words, no claims, just what it
+physically looks like. Use this exact string as [PRODUCT_DESC] in the first line of EVERY prompt.
+
 Return ONLY JSON, no markdown:
-{{"brand": "", "prompts": [{{"title": "PROMPT 1 — ... (WINNER)", "text": "..."}}, ... 7 items ...]}}"""
+{{"brand": "", "product_desc": "<the physical description>", "prompts": [{{"title": "PROMPT 1 — ... (WINNER)", "text": "..."}}, ... 7 items ...]}}"""
 
 
 def _va_load() -> list:
@@ -8489,12 +8498,25 @@ def _va_build_brief(job: dict) -> str:
              f"Izdelek: {job.get('name')}",
              f"URL: {job.get('url')}",
              f"Brand: {job.get('brand') or '?'}",
-             "",
-             "Referenčna slika (uvozi kot image_references):"]
-    for u in (job.get("ref_images") or []):
-        lines.append(f"- {u}")
+             ""]
+    # SPREMEMBA 2: OPIS IZDELKA (fizični opis za vstavljanje v prompte)
+    pdesc = (job.get("product_desc") or "").strip()
+    if pdesc:
+        lines += ["OPIS IZDELKA (za vstavljanje v prompte):", pdesc, ""]
+    # SPREMEMBA 1: uporabi VSE slike; prvo kot start_image, vse kot image_references
+    refs = job.get("ref_images") or []
+    if len(refs) > 1:
+        lines.append("Referenčne slike (uvozi VSE; prvo kot start_image, vse kot image_references):")
+        for i, u in enumerate(refs):
+            lines.append(f"- {u}" + ("   <- primarna (start_image)" if i == 0 else ""))
+    else:
+        lines.append("Referenčna slika (uvozi kot image_references):")
+        for u in refs:
+            lines.append(f"- {u}")
+    # SPREMEMBA 5: fiksni, popolni tehnični parametri
+    _ar = "9:16" if str(job.get("aspect") or "").strip() in ("9:16", "reels", "tiktok") else "1:1"
     lines += ["",
-              "Model: seedance_2_0 · 1:1 (univerzalen FB placement) · 12 s · 720p · 1 video na prompt",
+              f"Model: seedance_2_0 · aspect_ratio: {_ar} · duration: 12 · resolution: 720p · mode: std · generate_audio: true · count: 1",
               ""]
     for p in (job.get("prompts") or []):
         lines.append(f"--- {p.get('title')} ---")
@@ -8528,6 +8550,7 @@ async def _va_process_one(job: dict):
         if len(prompts) < 7:
             raise RuntimeError(f"Claude vrnil samo {len(prompts)} promptov (pričakovano 7)")
         await _va_set(jid, status="done", step="", brand=parsed.get("brand") or "",
+                      product_desc=parsed.get("product_desc") or "",
                       prompts=prompts, finished=datetime.now(timezone.utc).isoformat())
         # brief zgradi in shrani (za gumb Kopiraj)
         jobs = _va_load()
