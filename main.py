@@ -802,7 +802,7 @@ def _save_feed_cache_to_disk():
         print(f"[feed cache] shranjevanje spodletelo: {e}")
 
 
-def _load_feed_cache_from_disk() -> bool:
+def _load_feed_cache_from_disk(allow_stale: bool = False) -> bool:
     """Naloži feed cache z diska, če obstaja, je svež (<TTL) in pravilne format verzije.
     Vrne True ob uspehu."""
     global feed_by_lang, slug_to_id, sl_image_index, last_fetch
@@ -815,9 +815,16 @@ def _load_feed_cache_from_disk() -> bool:
             print(f"[feed cache] format verzija se ne ujema (disk={payload.get('format_version')}, koda={CACHE_FORMAT_VERSION}) — bo zgrajen znova")
             return False
         saved_at = datetime.fromisoformat(payload["saved_at"])
-        if datetime.now() - saved_at > timedelta(hours=CACHE_TTL_HOURS):
+        # POMEMBNO: star cache VSEENO naložimo (feed ne sme biti nikoli prazen — sicer
+        # "URL ni najden" v generatorju in price checkerju). TTL le sproži osvežitev
+        # v ozadju (ensure_cache_fresh/periodic_refresh), a stari URL-ji ostanejo na voljo.
+        _star = datetime.now() - saved_at > timedelta(hours=CACHE_TTL_HOURS)
+        if _star and not allow_stale:
+            # cache je star IN klicatelj noče starega (hoče sprožiti prenos) → ne naloži, vrni False
             print("[feed cache] disk cache zastarel, bo osvežen")
             return False
+        if _star:
+            print(f"[feed cache] disk cache je star ({(datetime.now()-saved_at).days} dni) — vseeno naložen (allow_stale), osvežitev sledi")
         feed_by_lang = payload.get("feed_by_lang", {})
         slug_to_id = payload.get("slug_to_id", {})
         sl_image_index = payload.get("sl_image_index", {})
@@ -1044,8 +1051,11 @@ async def startup_event():
 
     # Feed cache: disk je hiter (preživi deploy), zato ga poskusimo takoj (ms).
     # Če diska ni / je zastarel, NE blokiramo zagona — prenos gre v ozadje.
-    loaded = _load_feed_cache_from_disk()
-    if not loaded:
+    # naloži cache z diska za TAKOJŠNJO uporabo — tudi če je star (feed ne sme biti prazen).
+    # allow_stale=True: stari URL-ji so na voljo takoj po restartu; svež prenos gre v ozadje.
+    loaded = _load_feed_cache_from_disk(allow_stale=True)
+    # če ni bil naložen SVEŽ (ni ga, ali je star), sproži prenos v ozadju
+    if is_cache_stale():
         asyncio.create_task(fetch_all_feeds())
 
     # FFmpeg warm-up v ozadju (lahko traja do 30s ob prvem zagonu) — ne sme blokirati startupa
