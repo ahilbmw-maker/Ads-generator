@@ -8394,13 +8394,19 @@ VA_REF_IMAGES = 4   # do 4 slike za identiteto izdelka (Sprememba 1). Opozorilo:
 VA_PAUSE_S = 5
 
 VA_PROMPT_TEMPLATE = """You write Seedance 2.5 video-ad prompts for Facebook e-commerce ads.
-Write 7 prompts for the product below, EXACTLY in this structure and style (this is a proven template):
+Write 7 prompts for the product below, EXACTLY in this structure and style (this is a proven template).
+
+TOP PRIORITY — PRODUCT FIDELITY: These ads are for a REAL product that has reference images.
+The single most important thing is that the AI video reproduces the EXACT product from the reference
+images and never invents or substitutes a different one. Every prompt you write must relentlessly
+reinforce this: the product on screen = the product in the reference image, identical in every scene.
+Write each prompt so a video model that tends to drift is forced to stay locked to the reference.
 
 - Each prompt starts EXACTLY like: "Generate a 12-second [viral/premium/ultra-viral] Facebook ad for the exact [PRODUCT_DESC] shown in the reference images."
   where [PRODUCT_DESC] is the concrete physical description you build in PRODUCT_DESC below.
   NEVER use a bare generic category name (e.g. "a foot massager"); ALWAYS "the exact ... shown in the reference images".
 - Then an IMPORTANT block with these ABSOLUTE rules (every prompt must contain them, in this order):
-  CRITICAL: The on-screen product MUST match the reference images exactly in shape, colour, material and proportions in EVERY scene. Do NOT redesign it or invent a different device. Keep the product identity consistent from the first frame to the last.
+  CRITICAL PRODUCT LOCK: Use the EXACT product shown in the reference images and NOTHING ELSE. Do NOT invent, imagine, redesign, restyle, or substitute a different product. This is a real physical product — reproduce it precisely: same shape, same colour, same material, same size, same proportions, same every detail, in EVERY single scene from the first frame to the last. The product must be visually IDENTICAL to the reference image in every shot. If a scene shows the product, it must be THIS product, not a similar or generic one. Never let the product morph, change design, or drift between scenes.
   NO TEXT. NO WORDS. NO LETTERS. NO LOGO. NO BRAND NAME. NO CAPTIONS. NO NUMBERS.
   ICONS ONLY (simple visual pictograms, no letters inside them).
   Plus category-appropriate safety constraints (e.g. NO MEDICAL CLAIMS for health-adjacent products,
