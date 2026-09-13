@@ -8393,7 +8393,7 @@ _va_lock = asyncio.Lock()
 VA_REF_IMAGES = 4   # do 4 slike za identiteto izdelka (Sprememba 1). Opozorilo: galerija ima lahko infografike s tekstom — prednostno izberi packshote s čistim ozadjem
 VA_PAUSE_S = 5
 
-VA_PROMPT_TEMPLATE = """You write Seedance 2.0 video-ad prompts for Facebook e-commerce ads.
+VA_PROMPT_TEMPLATE = """You write Seedance 2.5 video-ad prompts for Facebook e-commerce ads.
 Write 7 prompts for the product below, EXACTLY in this structure and style (this is a proven template):
 
 - Each prompt starts EXACTLY like: "Generate a 12-second [viral/premium/ultra-viral] Facebook ad for the exact [PRODUCT_DESC] shown in the reference images."
@@ -8513,12 +8513,12 @@ def _va_build_brief(job: dict) -> str:
     pdesc = (job.get("product_desc") or "").strip()
     if pdesc:
         lines += ["OPIS IZDELKA (za vstavljanje v prompte):", pdesc, ""]
-    # SPREMEMBA 1: uporabi VSE slike; prvo kot start_image, vse kot image_references
+    # SPREMEMBA 1 (2.5): uporabi VSE slike kot image_references (omni_reference ne rabi start_image)
     refs = job.get("ref_images") or []
     if len(refs) > 1:
-        lines.append("Referenčne slike (uvozi VSE; prvo kot start_image, vse kot image_references):")
+        lines.append("Referenčne slike (uvozi VSE kot role image_references):")
         for i, u in enumerate(refs):
-            lines.append(f"- {u}" + ("   <- primarna (start_image)" if i == 0 else ""))
+            lines.append(f"- {u}" + ("   <- primarna" if i == 0 else ""))
     else:
         lines.append("Referenčna slika (uvozi kot image_references):")
         for u in refs:
@@ -8526,7 +8526,7 @@ def _va_build_brief(job: dict) -> str:
     # SPREMEMBA 5: fiksni, popolni tehnični parametri
     _ar = "9:16" if str(job.get("aspect") or "").strip() in ("9:16", "reels", "tiktok") else "1:1"
     lines += ["",
-              f"Model: seedance_2_0 · aspect_ratio: {_ar} · duration: 12 · resolution: 720p · mode: std · generate_audio: true · count: 1",
+              f"Model: seedance_2_5 · mode: omni_reference · aspect_ratio: {_ar} · duration: 12 · resolution: 720p · generate_audio: true · count: 1",
               ""]
     for p in (job.get("prompts") or []):
         lines.append(f"--- {p.get('title')} ---")
