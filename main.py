@@ -5690,10 +5690,14 @@ async def flare_zadnja_napaka(request: Request):
     if not _owner_authorized(request):
         from fastapi.responses import JSONResponse
         return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    return {"ok": True,
-            "flare_klicev_skupaj": globals().get("_FLARE_CALL_COUNT", 0),
-            "zadnji_uspeh": globals().get("_FLARE_LAST_OK", False),
-            "zadnja_flare_napaka": globals().get("_FLARE_LAST_ERR", "ni zabeležene napake")}
+    import json as _j
+    _f = DATA_DIR / "flare_debug.json"
+    if _f.exists():
+        try:
+            return {"ok": True, "iz_datoteke": _j.loads(_f.read_text())}
+        except Exception as e:
+            return {"ok": True, "napaka_branja": str(e)}
+    return {"ok": True, "sporocilo": "flare_debug.json še ne obstaja — Flare še ni tekel po tem deployu (poženi compare4, POTEM preveri)"}
 
 
 @app.get("/flare-batch-test")
@@ -6122,12 +6126,21 @@ async def generate_kreative(data: dict):
             if resp.status_code != 200:
                 _emsg = result.get("error", {}).get("message", str(result))[:250]
                 try:
-                    globals()["_FLARE_LAST_ERR"] = {"status": resp.status_code, "koda": result.get("error",{}).get("code"), "napaka": _emsg}
+                    import json as _j
+                    (DATA_DIR / "flare_debug.json").write_text(_j.dumps({
+                        "cas": datetime.now(timezone.utc).isoformat(),
+                        "status": resp.status_code,
+                        "koda": (result.get("error",{}) or {}).get("code"),
+                        "tip": (result.get("error",{}) or {}).get("type"),
+                        "napaka": _emsg}, ensure_ascii=False))
                 except Exception: pass
                 return None, _emsg
             data_arr = result.get("data", [])
             if data_arr and data_arr[0].get("b64_json"):
-                try: globals()["_FLARE_LAST_OK"] = True
+                try:
+                    import json as _j
+                    (DATA_DIR / "flare_debug.json").write_text(_j.dumps({
+                        "cas": datetime.now(timezone.utc).isoformat(), "status": 200, "USPEH": True}, ensure_ascii=False))
                 except Exception: pass
                 return f"data:image/jpeg;base64,{data_arr[0]['b64_json']}", None
             try: globals()["_FLARE_LAST_ERR"] = {"status": 200, "napaka": "ni b64 slike: " + str(result)[:150]}
