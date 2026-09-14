@@ -5684,6 +5684,53 @@ async def fetch_product_images(data: dict):
         return {"error": str(e)}
 
 
+@app.get("/flare-debug")
+async def flare_debug(request: Request):
+    """Poskusi Flare z RAZLIČNIMI parametri, da najde, kateri deluje.
+    Vrne za vsako varianto status + napako."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if not openai_key:
+        return {"ok": False, "napaka": "OPENAI_API_KEY ni nastavljen"}
+    import io as _io
+    try:
+        from PIL import Image as _PILImg
+        _img = _PILImg.new("RGB", (256, 256), (150, 120, 90))
+        _b = _io.BytesIO(); _img.save(_b, format="PNG"); _png = _b.getvalue()
+        _b2 = _io.BytesIO(); _img.save(_b2, format="JPEG"); _jpg = _b2.getvalue()
+    except Exception as e:
+        return {"ok": False, "napaka": f"PIL: {e}"}
+
+    variante = [
+        ("A: jpeg + 1024x1024", {"model":"gpt-image-2.5-flare","prompt":"a product on a clean studio background","size":"1024x1024","n":"1","output_format":"jpeg"}, ("t.jpg",_jpg,"image/jpeg")),
+        ("B: brez output_format", {"model":"gpt-image-2.5-flare","prompt":"a product on a clean studio background","size":"1024x1024","n":"1"}, ("t.png",_png,"image/png")),
+        ("C: png slika", {"model":"gpt-image-2.5-flare","prompt":"a product on a clean studio background","size":"1024x1024","n":"1"}, ("t.png",_png,"image/png")),
+        ("D: quality high", {"model":"gpt-image-2.5-flare","prompt":"a product on a clean studio background","size":"1024x1024","n":"1","quality":"high"}, ("t.png",_png,"image/png")),
+        ("E: size auto", {"model":"gpt-image-2.5-flare","prompt":"a product on a clean studio background","size":"auto","n":"1"}, ("t.png",_png,"image/png")),
+    ]
+    out = []
+    for ime, form, filetuple in variante:
+        try:
+            files = {"image[]": filetuple}
+            async with httpx.AsyncClient(timeout=120.0) as hc:
+                resp = await hc.post("https://api.openai.com/v1/images/edits",
+                                     headers={"Authorization": f"Bearer {openai_key}"},
+                                     data=form, files=files)
+            if resp.status_code == 200:
+                out.append({"varianta": ime, "status": 200, "USPEH": True})
+            else:
+                try: err = resp.json().get("error", {})
+                except Exception: err = {"message": resp.text[:200]}
+                out.append({"varianta": ime, "status": resp.status_code, "USPEH": False,
+                            "koda": err.get("code"), "param": err.get("param"),
+                            "napaka": (err.get("message") or "")[:250]})
+        except Exception as e:
+            out.append({"varianta": ime, "napaka": str(e)[:200]})
+    return {"ok": True, "rezultati": out}
+
+
 @app.get("/flare-cena")
 async def flare_cena(request: Request):
     """Prava cena: naredi EN Flare klic z realno sliko + prebere usage (porabo tokenov)
