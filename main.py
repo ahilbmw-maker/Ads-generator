@@ -5690,7 +5690,10 @@ async def flare_zadnja_napaka(request: Request):
     if not _owner_authorized(request):
         from fastapi.responses import JSONResponse
         return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    return {"ok": True, "zadnja_flare_napaka": globals().get("_FLARE_LAST_ERR", "še ni napake (ali Flare še ni tekel po tem deployu)")}
+    return {"ok": True,
+            "flare_klicev_skupaj": globals().get("_FLARE_CALL_COUNT", 0),
+            "zadnji_uspeh": globals().get("_FLARE_LAST_OK", False),
+            "zadnja_flare_napaka": globals().get("_FLARE_LAST_ERR", "ni zabeležene napake")}
 
 
 @app.get("/flare-batch-test")
@@ -6096,7 +6099,13 @@ async def generate_kreative(data: dict):
     async def generate_one_flare(combo_prompt):
         """GPT Image 2.5 Flare prek OpenAI images/edits (multipart). Referenčna slika obvezna.
         Novejši model (izšel 9.9.2026): boljša konsistentnost izdelka, 50% hitrejši od GPT Image 2."""
+        try:
+            _c = globals().get("_FLARE_CALL_COUNT", 0) + 1
+            globals()["_FLARE_CALL_COUNT"] = _c
+        except Exception: pass
         if not openai_key:
+            try: globals()["_FLARE_LAST_ERR"] = {"faza": "pred klicem", "napaka": "OPENAI_API_KEY ni nastavljen"}
+            except Exception: pass
             return None, "OPENAI_API_KEY ni nastavljen."
         if not _ref_raw:
             return None, "GPT Image 2.5 Flare potrebuje referenčno sliko."
@@ -6118,6 +6127,8 @@ async def generate_kreative(data: dict):
                 return None, _emsg
             data_arr = result.get("data", [])
             if data_arr and data_arr[0].get("b64_json"):
+                try: globals()["_FLARE_LAST_OK"] = True
+                except Exception: pass
                 return f"data:image/jpeg;base64,{data_arr[0]['b64_json']}", None
             try: globals()["_FLARE_LAST_ERR"] = {"status": 200, "napaka": "ni b64 slike: " + str(result)[:150]}
             except Exception: pass
