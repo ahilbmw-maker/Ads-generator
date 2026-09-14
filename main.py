@@ -5684,6 +5684,60 @@ async def fetch_product_images(data: dict):
         return {"error": str(e)}
 
 
+@app.get("/flare-batch-test")
+async def flare_batch_test(request: Request, sku: str = ""):
+    """Poskusi Flare z REALNO batch situacijo: prava produktna slika + pravi dolgi batch prompt.
+    To reproducira, zakaj Flare pade v compare4. ?sku=STUFFMASTER"""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if not openai_key:
+        return {"ok": False, "napaka": "OPENAI_API_KEY ni nastavljen"}
+    sku = (sku or "").strip()
+    if not sku:
+        return {"ok": False, "napaka": "Podaj ?sku=..."}
+    # dobi pravo referenčno sliko po SKU
+    img_urls = await _kbatch_images_by_sku(sku, 1)
+    if not img_urls:
+        return {"ok": False, "napaka": f"Ni slike za SKU {sku}"}
+    refs = await _kbatch_download_refs(img_urls[:1])
+    if not refs:
+        return {"ok": False, "napaka": "Prenos slike ni uspel"}
+    # pretvori data URL v raw
+    import base64 as _b64
+    _d = refs[0]
+    _b64part = _d.split(",",1)[1] if "," in _d else _d
+    raw = _b64.b64decode(_b64part)
+    # PRAVI batch prompt
+    prompt = ("From these reference images create a new FB ad creative. "
+              "Try a more intense 'studio background' background. "
+              f"Do not include any text/words on the image except the device name in capital letters '{sku}' — place it where it fits best or makes sense. "
+              "If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
+              "Highlight (can be through icons or text in English) that it is: hands-free. "
+              "Keep all text and icons well within the image borders — nothing should be cut off at the edges. Square 1:1 format.")
+    out = {}
+    for model_id in ("gpt-image-2.5-flare", "gpt-image-2"):
+        try:
+            files = {"image[]": ("ref.jpg", raw, "image/jpeg")}
+            form = {"model": model_id, "prompt": prompt, "size": "1024x1024", "n": "1", "output_format": "jpeg"}
+            async with httpx.AsyncClient(timeout=120.0) as hc:
+                resp = await hc.post("https://api.openai.com/v1/images/edits",
+                                     headers={"Authorization": f"Bearer {openai_key}"},
+                                     data=form, files=files)
+            if resp.status_code == 200:
+                out[model_id] = {"status": 200, "USPEH": True}
+            else:
+                try: err = resp.json().get("error", {})
+                except Exception: err = {"message": resp.text[:250]}
+                out[model_id] = {"status": resp.status_code, "USPEH": False,
+                                 "koda": err.get("code"), "tip": err.get("type"),
+                                 "napaka": (err.get("message") or "")[:300]}
+        except Exception as e:
+            out[model_id] = {"napaka": str(e)[:250]}
+    return {"ok": True, "sku": sku, "rezultati": out}
+
+
 @app.get("/flare-debug")
 async def flare_debug(request: Request):
     """Poskusi Flare z RAZLIČNIMI parametri, da najde, kateri deluje.
