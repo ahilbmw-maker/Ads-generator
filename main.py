@@ -5888,9 +5888,37 @@ async def generate_kreative(data: dict):
         except Exception as e:
             return None, str(e)
 
+    async def generate_one_flare(combo_prompt):
+        """GPT Image 2.5 Flare prek OpenAI images/edits (multipart). Referenčna slika obvezna.
+        Novejši model (izšel 9.9.2026): boljša konsistentnost izdelka, 50% hitrejši od GPT Image 2."""
+        if not openai_key:
+            return None, "OPENAI_API_KEY ni nastavljen."
+        if not _ref_raw:
+            return None, "GPT Image 2.5 Flare potrebuje referenčno sliko."
+        try:
+            files = {"image[]": (_ref_raw[2], _ref_raw[0], _ref_raw[1])}
+            form = {"model": "gpt-image-2.5-flare", "prompt": combo_prompt, "size": "1024x1024", "n": "1", "output_format": "jpeg"}
+            async with httpx.AsyncClient(timeout=180.0) as hc:
+                resp = await hc.post(
+                    "https://api.openai.com/v1/images/edits",
+                    headers={"Authorization": f"Bearer {openai_key}"},
+                    data=form, files=files,
+                )
+                result = resp.json()
+            if resp.status_code != 200:
+                return None, result.get("error", {}).get("message", str(result))[:200]
+            data_arr = result.get("data", [])
+            if data_arr and data_arr[0].get("b64_json"):
+                return f"data:image/jpeg;base64,{data_arr[0]['b64_json']}", None
+            return None, "GPT Image 2.5 Flare ni vrnil slike: " + str(result)[:150]
+        except Exception as e:
+            return None, str(e)
+
     async def generate_one_image(combo_prompt, model_key, idx):
         if model_key == "image2":
             return await generate_one_image2(combo_prompt)
+        if model_key == "flare":
+            return await generate_one_flare(combo_prompt)
         return await generate_one_gemini(combo_prompt, model_key)
 
     async def generate_combo(combo):
