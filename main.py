@@ -5736,6 +5736,7 @@ async def generate_kreative(data: dict):
     # image2 je konsistenten (malo variira), zato 1 slika zadošča.
     IMAGE2_CAP = 1
     combos = []
+    _compare4_idx = [0]   # ciklični števec za enakomerno razporeditev modelov v načinu primerjave
     for b in b_options:
         b_model = (b.get("model") or _model_choice or "flash").lower()
         # koliko slik skupaj ima ta vibe: št. A-tekstov × count
@@ -5751,7 +5752,16 @@ async def generate_kreative(data: dict):
             )
             prompts_for_b.append((a, prompt))
 
-        if b_model == "image2":
+        if b_model == "compare4":
+            # PRIMERJAVA: skupno št. slik (kombinacije × count) razdeli CIKLIČNO med 4 modele,
+            # da vsak model dobi enak delež (npr. 10 kombinacij × 2 = 20 slik → 5 na model).
+            _cmp_models = ("image2", "flare", "flash", "pro")
+            for a, prompt in prompts_for_b:
+                for _i in range(count):
+                    mk = _cmp_models[_compare4_idx[0] % 4]
+                    _compare4_idx[0] += 1
+                    combos.append({"combo": f"{a.get('label','A')} × {b.get('label','B')}", "prompt": prompt, "model": mk, "n_images": 1})
+        elif b_model == "image2":
             # razdeli IMAGE2_CAP image2 slik čez kombinacije, ostalo NB2
             image2_left = IMAGE2_CAP
             for a, prompt in prompts_for_b:
@@ -8185,11 +8195,15 @@ async def _kbatch_process_one(job: dict):
         if not a_all or not b_all:
             raise RuntimeError("analiza ni vrnila A/B opcij")
         a_opts = a_all[:KBATCH_A_COUNT]                                    # prva 2 teksta
-        b_opts = [{**b, "model": "image2"} for b in b_all]                 # vseh 5 ozadij, Image2
+        # MODEL za cel batch — iz joba (flash|pro|image2|flare), privzeto image2
+        _bmodel = str(job.get("model", "") or "image2").lower()
+        if _bmodel not in ("flash", "pro", "image2", "flare", "compare4"):
+            _bmodel = "image2"
+        b_opts = [{**b, "model": _bmodel} for b in b_all]                 # vseh 5 ozadij, izbrani model
         # ročni vibe (če vpisan): zamenja ZADNJE (5.) ozadje, prva 4 ostanejo iz analize
         _vibe = str(job.get("vibe", "") or "").strip()
         if _vibe and b_opts:
-            b_opts[-1] = {"label": "Vibe", "text": _vibe, "model": "image2"}
+            b_opts[-1] = {"label": "Vibe", "text": _vibe, "model": _bmodel}
         name = ana.get("name") or job.get("name") or sku
 
         # 2) referenčne slike PO SKU iz maaarket feeda (isti vir kot Optimizacija slik —
@@ -8207,7 +8221,7 @@ async def _kbatch_process_one(job: dict):
         await _kbatch_set(jid, step=f"generiranje ({len(a_opts)}×{len(b_opts)})")
         gen = await generate_kreative({
             "productName": name, "aOptions": a_opts, "bOptions": b_opts,
-            "count": min(int(job.get("count") or KBATCH_MAX_COUNT), KBATCH_MAX_COUNT), "images": refs, "model": "image2",
+            "count": min(int(job.get("count") or KBATCH_MAX_COUNT), KBATCH_MAX_COUNT), "images": refs, "model": _bmodel,
         })
         if gen.get("error"):
             raise RuntimeError(f"generiranje: {gen['error']}")
@@ -8337,6 +8351,9 @@ async def kreative_batch_add(data: dict):
     entries = data.get("entries")   # pre-resolved iz potrditvenega pop-upa: [{sku,url,name}]
     count = max(1, min(KBATCH_MAX_COUNT, int(data.get("count") or KBATCH_MAX_COUNT)))
     vibe = str(data.get("vibe", "") or "").strip()[:300]   # ročni vibe — zamenja 5. ozadje pri vseh SKU
+    bmodel = str(data.get("model", "") or "image2").lower()   # model za cel batch
+    if bmodel not in ("flash", "pro", "image2", "flare", "compare4"):
+        bmodel = "image2"
     if entries:
         # potrjeni vnosi — dodaj TOČNO te (brez ponovnega razreševanja)
         async with _kbatch_lock:
@@ -8352,7 +8369,7 @@ async def kreative_batch_add(data: dict):
                     dupl.append(sku); continue
                 jid = "kb" + str(int(_time.time() * 1000)) + str(len(jobs))
                 jobs.append({"id": jid, "sku": sku, "url": url, "name": e.get("name") or sku,
-                             "count": count, "vibe": vibe, "status": "waiting", "error": None, "step": "",
+                             "count": count, "vibe": vibe, "model": bmodel, "status": "waiting", "error": None, "step": "",
                              "created": datetime.now(timezone.utc).isoformat()})
                 added.append(sku); existing.add(sku.upper())
             _kbatch_save(jobs)
@@ -8382,7 +8399,7 @@ async def kreative_batch_add(data: dict):
                 not_found.append(sku)
             else:
                 jobs.append({"id": jid, "sku": sku, "url": url, "name": name, "count": count,
-                             "vibe": vibe, "status": "waiting", "error": None, "step": "",
+                             "vibe": vibe, "model": bmodel, "status": "waiting", "error": None, "step": "",
                              "created": datetime.now(timezone.utc).isoformat()})
                 added.append(sku)
                 existing.add(sku.upper())

@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-30 13:00</div>
+      <div class="sidebar-logo-sub">build 2026-08-30 14:30</div>
     </div>
   </div>
 
@@ -1741,6 +1741,13 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
             <button onclick="kbAdd()" id="kbAddBtn" style="flex:1;padding:9px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">▶ Dodaj v batch</button>
             <label style="font-size:11px;color:var(--text-tertiary);display:flex;align-items:center;gap:4px">slik/kombo <input id="kbCount" type="number" min="1" max="2" value="2" style="width:44px;padding:5px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;text-align:center"></label>
+            <label style="font-size:11px;color:var(--text-tertiary);display:flex;align-items:center;gap:4px">model <select id="kbModel" style="padding:5px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">
+              <option value="compare4">🔬 Primerjava (vsi 4 enakomerno — po ~5 slik/model)</option>
+              <option value="image2">🟢 GPT Image 2</option>
+              <option value="flare">🔶 GPT Image 2.5 Flare</option>
+              <option value="flash">⚡ Nano Banana 2</option>
+              <option value="pro">✨ Nano Banana Pro</option>
+            </select></label>
           </div>
           <div style="margin-top:8px">
             <label style="font-size:11px;color:var(--text-tertiary);display:block;margin-bottom:4px">✨ Moj vibe (neobvezno — zamenja zadnje, 5. ozadje pri vseh SKU)</label>
@@ -7871,7 +7878,7 @@ async function kbConfirmAdd() {
   try {
     const vibe = (document.getElementById('kbVibe')?.value || '').trim();
     const r = await fetch('/kreative-batch-add', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ entries: picked, count, vibe }) });
+      body: JSON.stringify({ entries: picked, count, vibe, model: (document.getElementById('kbModel')?.value || 'image2') }) });
     const d = await r.json();
     if (!d.ok) { alert('Napaka: ' + (d.error||'')); return; }
     ov.remove();
