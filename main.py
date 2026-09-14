@@ -5684,6 +5684,15 @@ async def fetch_product_images(data: dict):
         return {"error": str(e)}
 
 
+@app.get("/flare-zadnja-napaka")
+async def flare_zadnja_napaka(request: Request):
+    """Vrne ZADNJO napako, ki jo je Flare vrnil v pravem generiranju (compare4/batch)."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    return {"ok": True, "zadnja_flare_napaka": globals().get("_FLARE_LAST_ERR", "še ni napake (ali Flare še ni tekel po tem deployu)")}
+
+
 @app.get("/flare-batch-test")
 async def flare_batch_test(request: Request, sku: str = ""):
     """Poskusi Flare z REALNO batch situacijo: prava produktna slika + pravi dolgi batch prompt.
@@ -6102,10 +6111,16 @@ async def generate_kreative(data: dict):
                 )
                 result = resp.json()
             if resp.status_code != 200:
-                return None, result.get("error", {}).get("message", str(result))[:200]
+                _emsg = result.get("error", {}).get("message", str(result))[:250]
+                try:
+                    globals()["_FLARE_LAST_ERR"] = {"status": resp.status_code, "koda": result.get("error",{}).get("code"), "napaka": _emsg}
+                except Exception: pass
+                return None, _emsg
             data_arr = result.get("data", [])
             if data_arr and data_arr[0].get("b64_json"):
                 return f"data:image/jpeg;base64,{data_arr[0]['b64_json']}", None
+            try: globals()["_FLARE_LAST_ERR"] = {"status": 200, "napaka": "ni b64 slike: " + str(result)[:150]}
+            except Exception: pass
             return None, "GPT Image 2.5 Flare ni vrnil slike: " + str(result)[:150]
         except Exception as e:
             return None, str(e)
