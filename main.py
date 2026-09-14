@@ -5684,6 +5684,44 @@ async def fetch_product_images(data: dict):
         return {"error": str(e)}
 
 
+@app.get("/flare-test")
+async def flare_test(request: Request):
+    """Diagnostika: poskusi EN klic na gpt-image-2.5-flare in vrne točno napako OpenAI,
+    da vidimo, zakaj Flare ne dela (verifikacija org / dostop / ime modela)."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if not openai_key:
+        return {"ok": False, "napaka": "OPENAI_API_KEY ni nastavljen"}
+    # majhna testna slika (1x1 px PNG) za /images/edits
+    import base64 as _b64
+    tiny_png = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+    results = {}
+    for model_id in ("gpt-image-2.5-flare", "gpt-image-2"):
+        try:
+            files = {"image[]": ("test.png", tiny_png, "image/png")}
+            form = {"model": model_id, "prompt": "make it blue", "size": "1024x1024", "n": "1"}
+            async with httpx.AsyncClient(timeout=60.0) as hc:
+                resp = await hc.post("https://api.openai.com/v1/images/edits",
+                                     headers={"Authorization": f"Bearer {openai_key}"},
+                                     data=form, files=files)
+            if resp.status_code == 200:
+                results[model_id] = {"status": 200, "ok": True, "napaka": None}
+            else:
+                try:
+                    err = resp.json().get("error", {})
+                except Exception:
+                    err = {"message": resp.text[:300]}
+                results[model_id] = {"status": resp.status_code, "ok": False,
+                                     "koda": err.get("code"), "tip": err.get("type"),
+                                     "napaka": (err.get("message") or "")[:400]}
+        except Exception as e:
+            results[model_id] = {"status": None, "ok": False, "napaka": str(e)[:300]}
+    return {"ok": True, "rezultati": results,
+            "razlaga": "Če flare pade z 'model_not_found' ali 'verification' → moraš preveriti organizacijo v OpenAI konzoli ali model še ni dostopen."}
+
+
 @app.post("/generate-kreative")
 async def generate_kreative(data: dict):
     """Generira kreative z Google Gemini (Nano Banana 2) API."""
