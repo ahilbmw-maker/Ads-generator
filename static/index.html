@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-30 15:00</div>
+      <div class="sidebar-logo-sub">build 2026-08-30 16:00</div>
     </div>
   </div>
 
@@ -8437,8 +8437,9 @@ function kRenderResults(results) {
       flash: {t:'⚡ NB2', bg:'#3b82f6'},
       pro:   {t:'✨ Pro', bg:'#8b5cf6'},
       image2:{t:'🟢 Image2', bg:'#10b981'},
+      flare: {t:'🔶 Flare', bg:'#f59e0b'},
     };
-    const info = map[m] || map.flash;
+    const info = map[m] || {t:'? ' + (m||''), bg:'#6b7280'};
     return '<span style="display:inline-block;font-size:9px;font-weight:700;color:#fff;background:' + info.bg + ';padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle">' + info.t + '</span>';
   };
 
