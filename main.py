@@ -5684,6 +5684,53 @@ async def fetch_product_images(data: dict):
         return {"error": str(e)}
 
 
+@app.get("/flare-cena")
+async def flare_cena(request: Request):
+    """Prava cena: naredi EN Flare klic z realno sliko + prebere usage (porabo tokenov)
+    iz OpenAI odgovora → točna cena na sliko, ne po člankih."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if not openai_key:
+        return {"ok": False, "napaka": "OPENAI_API_KEY ni nastavljen"}
+    # realna testna slika — majhen barvni JPEG (16x16), da ne pade na moderation kot 1px
+    import base64 as _b64, io as _io
+    try:
+        from PIL import Image as _PILImg
+        _img = _PILImg.new("RGB", (64, 64), (120, 140, 160))
+        _b = _io.BytesIO(); _img.save(_b, format="JPEG"); _raw = _b.getvalue()
+    except Exception:
+        _raw = _b64.b64decode("/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAAQABABAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA//9k=")
+    out = {}
+    for model_id in ("gpt-image-2.5-flare", "gpt-image-2"):
+        try:
+            files = {"image[]": ("t.jpg", _raw, "image/jpeg")}
+            form = {"model": model_id, "prompt": "a product on a clean studio background", "size": "1024x1024", "n": "1"}
+            async with httpx.AsyncClient(timeout=120.0) as hc:
+                resp = await hc.post("https://api.openai.com/v1/images/edits",
+                                     headers={"Authorization": f"Bearer {openai_key}"},
+                                     data=form, files=files)
+            j = resp.json()
+            if resp.status_code == 200:
+                usage = j.get("usage", {})
+                # izračun cene: image output $30/1M, image input $8/1M, text input $5/1M
+                it = usage.get("input_tokens", 0)
+                ot = usage.get("output_tokens", 0)
+                itd = usage.get("input_tokens_details", {}) or {}
+                text_in = itd.get("text_tokens", 0)
+                img_in = itd.get("image_tokens", 0)
+                cena = (img_in/1_000_000*8) + (text_in/1_000_000*5) + (ot/1_000_000*30)
+                out[model_id] = {"status": 200, "usage": usage,
+                                 "cena_na_sliko_USD": round(cena, 5)}
+            else:
+                out[model_id] = {"status": resp.status_code, "napaka": (j.get("error", {}) or {}).get("message", str(j))[:250]}
+        except Exception as e:
+            out[model_id] = {"status": None, "napaka": str(e)[:250]}
+    return {"ok": True, "rezultati": out,
+            "opomba": "cena_na_sliko_USD je izračunana iz DEJANSKE porabe tokenov (usage), ne iz člankov."}
+
+
 @app.get("/flare-test")
 async def flare_test(request: Request):
     """Diagnostika: poskusi EN klic na gpt-image-2.5-flare in vrne točno napako OpenAI,
