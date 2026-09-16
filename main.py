@@ -12551,38 +12551,51 @@ async def skladisce_tloris_page(request: Request):
   :root{--bg:#f7f7f8;--card:#fff;--bd:#e2e2e5;--txt:#1a1a1a;--txt2:#666;--txt3:#999}
   @media(prefers-color-scheme:dark){:root{--bg:#1a1a1c;--card:#242427;--bd:#38383c;--txt:#e8e8ea;--txt2:#a0a0a5;--txt3:#78787e}}
   *{box-sizing:border-box}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:16px;background:var(--bg);color:var(--txt)}
-  h1{font-size:19px;margin:0 0 4px}
-  .sub{font-size:12px;color:var(--txt2);margin-bottom:14px}
-  .legenda{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--txt2);margin-bottom:16px;align-items:center}
-  .lg{display:inline-flex;align-items:center;gap:5px}
-  .lg-box{width:14px;height:14px;border-radius:3px;border:1px solid var(--bd)}
-  .tloris{display:flex;gap:8px;align-items:stretch}
-  .stena{display:flex;flex-direction:column;gap:6px;flex-shrink:0}
-  .stena-box{flex:1;border-radius:8px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;min-height:120px;border:1px solid var(--bd)}
-  .regali{flex:1;display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
-  .regal{border:1px solid var(--bd);border-radius:8px;overflow:hidden;background:var(--card)}
-  .regal-hd{display:flex;font-size:10px;font-weight:700;text-align:center;background:rgba(0,0,0,0.03)}
-  .regal-hd>div{flex:1;padding:3px 0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:18px;background:var(--bg);color:var(--txt);max-width:1400px;margin:0 auto}
+  h1{font-size:24px;margin:0 0 4px}
+  .sub{font-size:14px;color:var(--txt2);margin-bottom:16px}
+  .legenda{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--txt2);margin-bottom:18px;align-items:center}
+  .lg{display:inline-flex;align-items:center;gap:6px}
+  .lg-box{width:18px;height:18px;border-radius:4px;border:1px solid var(--bd)}
+  .tloris{display:flex;gap:10px;align-items:stretch}
+  .stena{display:flex;flex-direction:column;gap:8px;flex-shrink:0}
+  .stena-box{flex:1;border-radius:10px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;font-size:15px;font-weight:800;letter-spacing:2px;cursor:pointer;min-height:200px;border:1px solid var(--bd)}
+  .regali{flex:1;display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+  .regal{border:1px solid var(--bd);border-radius:10px;overflow:hidden;background:var(--card)}
+  .regal-hd{display:flex;font-size:14px;font-weight:800;text-align:center;background:rgba(0,0,0,0.04)}
+  .regal-hd>div{flex:1;padding:6px 0}
   .regal-hd>div:first-child{border-right:1px solid var(--bd)}
   .regal-body{display:flex}
   .regal-col{flex:1}
   .regal-col:first-child{border-right:1px solid var(--bd)}
-  .cell{text-align:center;padding:5px 2px;border-bottom:1px solid var(--bd);cursor:pointer;font-size:9px;line-height:1.25;transition:.1s}
+  .cell{text-align:center;padding:10px 3px;border-bottom:1px solid var(--bd);cursor:pointer;font-size:12px;line-height:1.35;transition:.1s;min-height:52px;display:flex;flex-direction:column;justify-content:center}
   .cell:last-child{border-bottom:none}
   .cell:hover{outline:2px solid #2563eb;outline-offset:-2px}
-  .cell .rn{font-weight:700;font-size:9px}
-  .cell .num{font-size:8.5px;opacity:.85}
+  .cell .rn{font-weight:800;font-size:13px}
+  .cell .num{font-size:11px;opacity:.9;margin-top:2px}
   .c-empty{background:rgba(150,150,150,0.12);color:var(--txt3)}
-  .c-low{background:rgba(245,158,11,0.22);color:#8a5a00}
-  .c-full{background:rgba(34,197,94,0.20);color:#15803d}
+  .c-low{background:rgba(245,158,11,0.24);color:#8a5a00}
+  .c-full{background:rgba(34,197,94,0.22);color:#15803d}
   @media(prefers-color-scheme:dark){.c-low{color:#fbbf24}.c-full{color:#4ade80}}
-  .dodatne{margin-top:8px;border:1px solid var(--bd);border-radius:8px;padding:8px;background:var(--card)}
-  .dodatne-hd{font-size:11px;font-weight:700;color:var(--txt2);margin-bottom:6px}
-  .spolice{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:5px}
-  .spol{border:1px solid var(--bd);border-radius:6px;padding:5px 2px;text-align:center;font-size:9px;cursor:pointer}
+  .dodatne{margin-top:10px;border:1px solid var(--bd);border-radius:10px;padding:12px;background:var(--card)}
+  .dodatne-hd{font-size:14px;font-weight:800;color:var(--txt2);margin-bottom:8px}
+  .spolice{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px}
+  .spol{border:1px solid var(--bd);border-radius:8px;padding:10px 3px;text-align:center;font-size:13px;cursor:pointer;min-height:50px;display:flex;flex-direction:column;justify-content:center}
+  /* MOBILNO: vse v en stolpec, stene kot vodoravni pasovi, regali 2 stolpca */
+  @media(max-width:720px){
+    body{padding:12px}
+    h1{font-size:20px}
+    .tloris{flex-direction:column;gap:8px}
+    .stena{flex-direction:row;width:100%!important}
+    .stena-box{writing-mode:horizontal-tb;min-height:48px;font-size:14px;letter-spacing:1px;flex:1}
+    .regali{grid-template-columns:repeat(2,1fr);gap:8px}
+    .cell{font-size:13px;min-height:56px;padding:11px 3px}
+    .cell .rn{font-size:14px}
+    .cell .num{font-size:12px}
+    .spolice{grid-template-columns:repeat(auto-fill,minmax(64px,1fr))}
+  }
   #search{width:100%;padding:9px 11px;border:1px solid var(--bd);border-radius:8px;font-size:13px;margin-bottom:12px;background:var(--card);color:var(--txt)}
-  #panel{position:fixed;top:0;right:0;width:min(380px,90vw);height:100%;background:var(--card);border-left:1px solid var(--bd);box-shadow:-4px 0 20px rgba(0,0,0,0.15);transform:translateX(100%);transition:.2s;overflow-y:auto;z-index:50;padding:16px}
+  #panel{position:fixed;top:0;right:0;width:min(460px,94vw);height:100%;background:var(--card);border-left:1px solid var(--bd);box-shadow:-4px 0 20px rgba(0,0,0,0.15);transform:translateX(100%);transition:.2s;overflow-y:auto;z-index:50;padding:16px}
   #panel.open{transform:translateX(0)}
   #panel h3{margin:0 0 2px;font-size:16px}
   .prow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--bd)}
@@ -12661,16 +12674,65 @@ function render(){
   document.getElementById('spolice').innerHTML = sp;
 }
 
+function shelfColor(sku){ if(!sku) return {fill:'rgba(150,150,150,0.13)', txt:'#888', side:'rgba(150,150,150,0.08)', lbl:'prazno'}; if(sku<5) return {fill:'rgba(245,158,11,0.26)', txt:'#8a5a00', side:'rgba(245,158,11,0.15)', lbl:'skoraj prazno'}; return {fill:'rgba(34,197,94,0.24)', txt:'#15803d', side:'rgba(34,197,94,0.14)', lbl:'polno'}; }
+
+let _curRegal = null;
 function openCell(vrsta, regal){
-  const c = (DATA.vrste[vrsta] && DATA.vrste[vrsta][regal]) || {izdelki:[]};
-  showPanel('Vrsta '+parseInt(vrsta)+' · Regal '+regal, c.izdelki || []);
+  _curRegal = {vrsta, regal};
+  const c = (DATA.vrste[vrsta] && DATA.vrste[vrsta][regal]) || {police:{}};
+  const police = c.police || {};
+  const mesta = ['A','B','C','D','E','F'];
+  // SVG 3D regal — police A(vrh) do F(tla)
+  const X0=70, X1=330, XT0=110, XT1=370, Y0=70, dyTop=30;
+  const hRow=66, yStart=70;
+  let svg = '<svg viewBox="0 0 420 520" width="100%" style="max-width:420px;display:block;margin:0 auto" xmlns="http://www.w3.org/2000/svg">';
+  svg += '<g stroke="#2a2a2e" stroke-width="2.5" stroke-linejoin="round">';
+  // vrhnja ploskev
+  svg += '<line x1="70" y1="70" x2="110" y2="40" stroke-width="3"/><line x1="330" y1="70" x2="370" y2="40" stroke-width="3"/>';
+  svg += '<line x1="110" y1="40" x2="370" y2="40" stroke-width="2"/><line x1="110" y1="40" x2="110" y2="440" stroke-width="2"/><line x1="370" y1="40" x2="370" y2="440" stroke-width="2"/>';
+  svg += '<polygon points="70,70 110,40 370,40 330,70" fill="#b8b8bc"/>';
+  svg += '<rect x="70" y="70" width="260" height="400" fill="var(--card)"/>';
+  mesta.forEach((mesto, i) => {
+    const p = police[mesto] || {sku_stevilo:0, kosov:0};
+    const col = shelfColor(p.sku_stevilo);
+    const y = yStart + i*hRow;
+    const yb = (i===5) ? 470 : (y+hRow);
+    const ytop = y - 30, ybtop = yb - 30;  // approx za stransko ploskev
+    // sprednja ploskev police (klikljiva)
+    svg += '<g style="cursor:pointer" onclick="openShelf(&apos;'+vrsta+'&apos;,&apos;'+regal+'&apos;,&apos;'+mesto+'&apos;)">';
+    svg += '<rect x="70" y="'+y+'" width="260" height="'+(i===5?70:hRow)+'" fill="'+col.fill+'"/>';
+    // stranska ploskev (globina)
+    const yTopSide = 40 + i*(400/6);
+    const yBotSide = 40 + (i+1)*(400/6);
+    svg += '<polygon points="330,'+y+' 370,'+yTopSide+' 370,'+yBotSide+' 330,'+yb+'" fill="'+col.side+'"/>';
+    svg += '<text x="90" y="'+(y+30)+'" font-family="sans-serif" font-size="17" font-weight="600" fill="'+col.txt+'">'+parseInt(vrsta)+'-'+regal+mesto+'</text>';
+    const podnapis = p.sku_stevilo ? (p.sku_stevilo+' izd · '+p.kosov+' kos') : 'prazno';
+    svg += '<text x="90" y="'+(y+50)+'" font-family="sans-serif" font-size="11" fill="'+col.txt+'">'+podnapis+'</text>';
+    svg += '</g>';
+  });
+  // ogrodje + noge
+  svg += '<line x1="70" y1="70" x2="70" y2="470" stroke-width="4"/><line x1="330" y1="70" x2="330" y2="470" stroke-width="4"/><line x1="70" y1="470" x2="330" y2="470" stroke-width="3"/>';
+  svg += '<line x1="70" y1="470" x2="70" y2="495" stroke-width="4"/><line x1="330" y1="470" x2="330" y2="495" stroke-width="4"/><line x1="370" y1="440" x2="370" y2="465" stroke-width="3"/>';
+  svg += '</g></svg>';
+  let h = '<h3>Vrsta '+parseInt(vrsta)+' · Regal '+regal+'</h3>';
+  h += '<div style="font-size:12px;color:var(--txt2);margin-bottom:10px">A = vrh · F = tla · klik na polico za izdelke</div>';
+  h += svg;
+  document.getElementById('panelBody').innerHTML = h;
+  document.getElementById('panel').classList.add('open');
+}
+function openShelf(vrsta, regal, mesto){
+  const c = (DATA.vrste[vrsta] && DATA.vrste[vrsta][regal]) || {police:{}};
+  const p = (c.police && c.police[mesto]) || {izdelki:[]};
+  showPanel(parseInt(vrsta)+'-'+regal+mesto, p.izdelki || [], true);
 }
 function openImenska(ime){
   const c = DATA.imenske[ime] || {izdelki:[]};
   showPanel(ime, c.izdelki || []);
 }
-function showPanel(naslov, izdelki){
-  let h = '<h3>'+naslov+'</h3><div style="font-size:12px;color:var(--txt2);margin-bottom:8px">'+izdelki.length+' izdelkov</div>';
+function showPanel(naslov, izdelki, jePolica){
+  let h = '';
+  if(jePolica && _curRegal) h += '<button onclick="openCell(\''+_curRegal.vrsta+'\',\''+_curRegal.regal+'\')" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:13px;padding:0;margin-bottom:8px">← nazaj na regal</button>';
+  h += '<h3>'+naslov+'</h3><div style="font-size:12px;color:var(--txt2);margin-bottom:8px">'+izdelki.length+' izdelkov</div>';
   if(!izdelki.length) h += '<div style="color:var(--txt3);font-size:13px;padding:20px 0;text-align:center">Prazno — ni izdelkov</div>';
   izdelki.forEach(it => {
     const pill = it.vir==='sekundarna' ? '<span class="pill pill-s">sek</span>' : '<span class="pill pill-g">gl</span>';
@@ -12774,13 +12836,21 @@ async def skladisce_vizualizacija(request: Request):
     # celica = vrsta+regal → seštej vse izdelke čez mesta A-F
     def _cell_stats(vrsta, regal):
         skus = set(); kosov = 0; izdelki = []
-        prefix = f"{vrsta}-{regal}"
+        # razčlenjeno po policah A-F
+        police = {p: {"sku_stevilo": 0, "kosov": 0, "izdelki": []} for p in "ABCDEF"}
         for pos, items in po_poziciji.items():
-            if pos.startswith(prefix) and _re.match(rf"^{vrsta}-{regal}[A-F]$", pos):
+            m = _re.match(rf"^{vrsta}-{regal}([A-F])$", pos)
+            if m:
+                mesto = m.group(1)
+                _pskus = set()
                 for it in items:
                     skus.add(it["sku"]); kosov += it["zaloga"]
                     izdelki.append({**it, "pozicija": pos})
-        return {"sku_stevilo": len(skus), "kosov": kosov, "izdelki": izdelki}
+                    police[mesto]["kosov"] += it["zaloga"]
+                    police[mesto]["izdelki"].append({**it, "pozicija": pos})
+                    _pskus.add(it["sku"])
+                police[mesto]["sku_stevilo"] = len(set(x["sku"] for x in police[mesto]["izdelki"]))
+        return {"sku_stevilo": len(skus), "kosov": kosov, "izdelki": izdelki, "police": police}
 
     vrste_data = {}
     for v in range(1, 13):
