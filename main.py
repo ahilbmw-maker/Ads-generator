@@ -12552,6 +12552,14 @@ async def skladisce_tloris_page(request: Request):
   @media(prefers-color-scheme:dark){:root{--bg:#1a1a1c;--card:#242427;--bd:#38383c;--txt:#e8e8ea;--txt2:#a0a0a5;--txt3:#78787e}}
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:20px 28px;background:var(--bg);color:var(--txt);width:100%}
+  /* TV način: brez glave, večji tloris, zapolni zaslon */
+  body.tv-on{padding:16px 20px}
+  body.tv-on .cell{min-height:92px;font-size:16px}
+  body.tv-on .cell .rn{font-size:20px}
+  body.tv-on .cell .num{font-size:15px}
+  body.tv-on .regal-hd{font-size:21px}
+  body.tv-on .stena-box{font-size:22px;min-height:400px}
+  body.tv-on .spol{min-height:76px;font-size:17px}
   h1{font-size:24px;margin:0 0 4px}
   .sub{font-size:14px;color:var(--txt2);margin-bottom:16px}
   .legenda{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--txt2);margin-bottom:18px;align-items:center}
@@ -12604,8 +12612,11 @@ async def skladisce_tloris_page(request: Request):
   .pill-s{background:rgba(245,158,11,0.2);color:#8a5a00}
   .closex{position:absolute;top:12px;right:14px;font-size:22px;cursor:pointer;color:var(--txt2);background:none;border:none}
 </style></head><body>
-<h1>🏬 Tloris skladišča</h1>
-<div style="display:inline-block;background:rgba(37,99,235,0.12);color:#1d4ed8;font-size:14px;font-weight:800;padding:5px 14px;border-radius:8px;margin-bottom:6px">SKLADIŠČE A</div>
+<div id="tvHideHeader">
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+  <h1 style="margin:0">🏬 Tloris skladišča</h1>
+  <button onclick="tvMode()" style="padding:9px 18px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📺 Prikaži kot TV tabla</button>
+</div>
 <div class="sub">Kaj je na kateri polici · barva = zasedenost · klik za seznam izdelkov</div>
 <div class="legenda">
   <span style="font-weight:700;color:var(--txt)">Zasedenost regala (koliko polic je zasedenih):</span>
@@ -12618,6 +12629,9 @@ async def skladisce_tloris_page(request: Request):
 </div>
 <input type="text" id="search" placeholder="🔍 Vpiši SKU — pove, na kateri poziciji je" oninput="doSearch(this.value)">
 <div id="searchRes" style="font-size:12px;margin-bottom:10px"></div>
+</div>
+
+<button id="tvExitBtn" onclick="tvExit()" style="display:none;position:fixed;top:10px;right:14px;z-index:100;padding:8px 14px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">✕ Zapri TV</button>
 
 <div style="display:flex;gap:20px;align-items:stretch">
 
@@ -12816,6 +12830,22 @@ function doSearch(q){
   el.innerHTML = najdeni.length ? ('<b>'+najdeni.length+' najdenih:</b><br>'+najdeni.slice(0,20).join('<br>')) : '<span style="color:var(--txt3)">Ni najdeno v skladišču (morda brez pozicije)</span>';
 }
 
+function tvMode(){
+  document.getElementById('tvHideHeader').style.display = 'none';
+  document.getElementById('tvExitBtn').style.display = 'block';
+  document.body.classList.add('tv-on');
+  // poskusi fullscreen (deluje po kliku uporabnika)
+  try{ if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); }catch(e){}
+  // samodejno osveževanje podatkov vsakih 60s v TV načinu
+  if(!window._tvTimer) window._tvTimer = setInterval(load, 60000);
+}
+function tvExit(){
+  document.getElementById('tvHideHeader').style.display = '';
+  document.getElementById('tvExitBtn').style.display = 'none';
+  document.body.classList.remove('tv-on');
+  try{ if(document.exitFullscreen && document.fullscreenElement) document.exitFullscreen(); }catch(e){}
+  if(window._tvTimer){ clearInterval(window._tvTimer); window._tvTimer = null; }
+}
 async function load(){
   try{
     const r = await fetch('/skladisce-vizualizacija');
@@ -12827,6 +12857,34 @@ async function load(){
 load();
 </script></body></html>"""
     return HTMLResponse(html)
+
+
+@app.post("/ioc-poenoti")
+async def ioc_poenoti(request: Request):
+    """Poenoti vse IOC variante sekundarnih pozicij na eno: "IOC Skladisce".
+    (Trenutno sta "IOC Skladisce" in "IOC skladišče" — ju zlije v eno.)"""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    CILJ = "IOC Skladisce"
+    extra = _zaloga_load_extra_pos()
+    spremenjenih = 0
+    for sku, poslist in list(extra.items()):
+        nova = []
+        spremenjeno = False
+        for pos in (poslist or []):
+            if "ioc" in str(pos).lower():
+                if pos != CILJ:
+                    spremenjeno = True
+                nova.append(CILJ)
+            else:
+                nova.append(pos)
+        nova = list(dict.fromkeys(nova))   # dedup (če je bil na obeh variantah)
+        if spremenjeno or len(nova) != len(poslist or []):
+            extra[sku] = nova
+            spremenjenih += 1
+    _zaloga_save_extra_pos(extra)
+    return {"ok": True, "poenotenih_izdelkov": spremenjenih, "cilj": CILJ}
 
 
 @app.get("/ioc-diag")
