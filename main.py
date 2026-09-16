@@ -12607,10 +12607,12 @@ async def skladisce_tloris_page(request: Request):
 <h1>🏬 Tloris skladišča</h1>
 <div class="sub">Kaj je na kateri polici · barva = zasedenost · klik za seznam izdelkov</div>
 <div class="legenda">
-  <span class="lg"><span class="lg-box" style="background:rgba(150,150,150,0.12)"></span> prazno (0)</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(245,158,11,0.22)"></span> skoraj prazno (1–4)</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(34,197,94,0.20)"></span> polno (5+)</span>
-  <span class="lg" style="margin-left:auto">R1↓/R1↑ = serpentina</span>
+  <span style="font-weight:700;color:var(--txt)">Regal:</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(21,128,61,0.42)"></span> poln (0 prosto)</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(34,197,94,0.30)"></span> skoraj poln (1–2 prosto)</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(134,239,172,0.35)"></span> še prostor (3–4)</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(150,150,150,0.13)"></span> večinoma prazno</span>
+  <span class="lg" style="margin-left:auto">"prosto" = police z 0–4 izdelki · R1↓/R1↑ = serpentina</span>
 </div>
 <input type="text" id="search" placeholder="🔍 Vpiši SKU — pove, na kateri poziciji je" oninput="doSearch(this.value)">
 <div id="searchRes" style="font-size:12px;margin-bottom:10px"></div>
@@ -12642,21 +12644,37 @@ const PARI2 = [['12','11'],['10','09'],['08','07'],['06','05'],['04','03'],['02'
 
 function cellClass(sku){ if(!sku) return 'c-empty'; if(sku<5) return 'c-low'; return 'c-full'; }
 
+// Barva REGALA po prostih policah (0-4 izdelkov = prosto). 0 prostih = temno zeleno (poln),
+// več prostih = svetlejše. To pove nabiralcu, kje je še prostor v regalu.
+function regalStyle(prostih){
+  // prostih: 0 (poln) do 6 (vse prazno)
+  if(prostih===undefined || prostih===null) prostih = 6;
+  if(prostih===0) return 'background:rgba(21,128,61,0.42);color:#0a3d1e';       // poln — temno zeleno
+  if(prostih<=2) return 'background:rgba(34,197,94,0.30);color:#15803d';        // skoraj poln
+  if(prostih<=4) return 'background:rgba(134,239,172,0.35);color:#3d8a5f';      // pol prostora — svetlo zeleno
+  return 'background:rgba(150,150,150,0.13);color:var(--txt3)';                 // večinoma prazno — sivo
+}
+function prostoLabel(prostih, sku){
+  if(sku===0 && prostih===6) return 'prazno';
+  if(prostih===0) return 'poln';
+  return prostih + ' prosto';
+}
+
 function renderRegal(vLeva, vDesna){
   // leva vrsta: R1 zgoraj (R1↓), desna vrsta: R1 spodaj (R1↑) — serpentina
   const dl = DATA.vrste[vLeva] || {};
   const dd = DATA.vrste[vDesna] || {};
   let left = '';
   for(let r=1;r<=5;r++){
-    const c = dl[r] || {sku_stevilo:0,kosov:0};
+    const c = dl[r] || {sku_stevilo:0,kosov:0,prostih_polic:6};
     const lbl = r===1 ? 'R1↓' : ('R'+r);
-    left += '<div class="cell '+cellClass(c.sku_stevilo)+'" onclick="openCell(\''+vLeva+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+c.sku_stevilo+' izd · '+c.kosov+'</div></div>';
+    left += '<div class="cell" style="'+regalStyle(c.prostih_polic)+'" onclick="openCell(\''+vLeva+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.prostih_polic, c.sku_stevilo)+'</div></div>';
   }
   let right = '';
   for(let r=5;r>=1;r--){
-    const c = dd[r] || {sku_stevilo:0,kosov:0};
+    const c = dd[r] || {sku_stevilo:0,kosov:0,prostih_polic:6};
     const lbl = r===1 ? 'R1↑' : ('R'+r);
-    right += '<div class="cell '+cellClass(c.sku_stevilo)+'" onclick="openCell(\''+vDesna+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+c.sku_stevilo+' izd · '+c.kosov+'</div></div>';
+    right += '<div class="cell" style="'+regalStyle(c.prostih_polic)+'" onclick="openCell(\''+vDesna+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.prostih_polic, c.sku_stevilo)+'</div></div>';
   }
   return '<div class="regal"><div class="regal-hd"><div>V'+parseInt(vLeva)+'</div><div>V'+parseInt(vDesna)+'</div></div>'
     + '<div class="regal-body"><div class="regal-col">'+left+'</div><div class="regal-col">'+right+'</div></div></div>';
@@ -12838,7 +12856,11 @@ async def skladisce_vizualizacija(request: Request):
                     police[mesto]["izdelki"].append({**it, "pozicija": pos})
                     _pskus.add(it["sku"])
                 police[mesto]["sku_stevilo"] = len(set(x["sku"] for x in police[mesto]["izdelki"]))
-        return {"sku_stevilo": len(skus), "kosov": kosov, "izdelki": izdelki, "police": police}
+        # koliko od 6 polic je "prostih" (0-4 izdelkov = prazna ali skoraj prazna)
+        prostih = sum(1 for p in "ABCDEF" if police[p]["sku_stevilo"] < 5)
+        polnih = 6 - prostih
+        return {"sku_stevilo": len(skus), "kosov": kosov, "izdelki": izdelki, "police": police,
+                "prostih_polic": prostih, "polnih_polic": polnih}
 
     vrste_data = {}
     for v in range(1, 13):
