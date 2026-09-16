@@ -6211,6 +6211,147 @@ async def get_narocilnice_history():
             return []
     return []
 
+PRIPRAVA_SEZNAM_FILE = DATA_DIR / "priprava_seznam_korak1.json"
+
+@app.post("/priprava-korak1")
+async def priprava_korak1(request: Request, file: UploadFile = File(...)):
+    """Korak 1: naloži dokument, poišči postavke kjer je 'Prodano razlika' < 10,
+    shrani (SKU, prodano razlika) na disk. Vrne koliko jih je našel."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    import io as _io
+    raw = await file.read()
+    fname = (file.filename or "").lower()
+    try:
+        if fname.endswith(".xlsx") or fname.endswith(".xls"):
+            import openpyxl
+            wb = openpyxl.load_workbook(_io.BytesIO(raw), read_only=True, data_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+        else:
+            text = raw.decode("utf-8-sig", errors="replace")
+            import csv as _csv
+            from io import StringIO as _SIO
+            _fl = text.split("\n",1)[0]
+            _sep = ";" if _fl.count(";") > _fl.count(",") else ","
+            rows = list(_csv.reader(_SIO(text), delimiter=_sep))
+    except Exception as e:
+        return {"ok": False, "error": f"Branje ni uspelo: {e}"}
+    if not rows:
+        return {"ok": False, "error": "Prazen dokument."}
+    hdr = [str(c or "").strip() for c in rows[0]]
+    # najdi stolpca SKU in Prodano razlika
+    def _find(names):
+        for i, h in enumerate(hdr):
+            if h.lower() in [n.lower() for n in names]:
+                return i
+        return -1
+    i_sku = _find(["SKU"])
+    i_pr = _find(["Prodano razlika"])
+    if i_sku < 0 or i_pr < 0:
+        return {"ok": False, "error": f"Ne najdem stolpcev SKU/Prodano razlika. Glava: {hdr}"}
+    shranjeni = {}
+    for row in rows[1:]:
+        if not row or len(row) <= max(i_sku, i_pr):
+            continue
+        sku = str(row[i_sku] or "").strip()
+        if not sku:
+            continue
+        try:
+            pr = float(str(row[i_pr]).replace(",", "."))
+        except (ValueError, TypeError):
+            continue
+        if pr < 10:
+            shranjeni[sku.upper()] = pr   # zadnja vrednost obvelja
+    # shrani na disk
+    import json as _j
+    tmp = PRIPRAVA_SEZNAM_FILE.with_suffix(".tmp")
+    tmp.write_text(_j.dumps({"skus": shranjeni, "shranjeno": len(shranjeni)}, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, PRIPRAVA_SEZNAM_FILE)
+    primeri = [{"sku": k, "prodano_razlika": v} for k, v in list(shranjeni.items())[:15]]
+    return {"ok": True, "shranjenih_sku": len(shranjeni), "primeri": primeri}
+
+
+@app.get("/priprava-korak1-status")
+async def priprava_korak1_status(request: Request):
+    """Vrne, koliko SKU-jev je shranjenih iz koraka 1."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    import json as _j
+    if PRIPRAVA_SEZNAM_FILE.exists():
+        try:
+            d = _j.loads(PRIPRAVA_SEZNAM_FILE.read_text(encoding="utf-8"))
+            return {"ok": True, "shranjenih_sku": d.get("shranjeno", 0)}
+        except Exception:
+            pass
+    return {"ok": True, "shranjenih_sku": 0}
+
+
+@app.post("/priprava-korak2")
+async def priprava_korak2(request: Request, file: UploadFile = File(...)):
+    """Korak 2: naloži drugi dokument, odstrani VSE vrstice s SKU-ji shranjenimi v koraku 1
+    (Prodano razlika < 10). Vrne preostanek kot CSV."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    import json as _j
+    if not PRIPRAVA_SEZNAM_FILE.exists():
+        return {"ok": False, "error": "Najprej naloži korak 1 (ni shranjenih SKU-jev)."}
+    try:
+        d = _j.loads(PRIPRAVA_SEZNAM_FILE.read_text(encoding="utf-8"))
+        odstrani = set(str(k).strip().upper() for k in (d.get("skus") or {}).keys())
+    except Exception as e:
+        return {"ok": False, "error": f"Branje shranjenih SKU: {e}"}
+    if not odstrani:
+        return {"ok": False, "error": "Ni shranjenih SKU-jev iz koraka 1."}
+    import io as _io
+    raw = await file.read()
+    fname = (file.filename or "").lower()
+    try:
+        if fname.endswith(".xlsx") or fname.endswith(".xls"):
+            import openpyxl
+            wb = openpyxl.load_workbook(_io.BytesIO(raw), read_only=True, data_only=True)
+            ws = wb.active
+            rows = [list(r) for r in ws.iter_rows(values_only=True)]
+        else:
+            text = raw.decode("utf-8-sig", errors="replace")
+            import csv as _csv
+            from io import StringIO as _SIO
+            _fl = text.split("\n",1)[0]
+            _sep = ";" if _fl.count(";") > _fl.count(",") else ","
+            rows = [list(r) for r in _csv.reader(_SIO(text), delimiter=_sep)]
+    except Exception as e:
+        return {"ok": False, "error": f"Branje ni uspelo: {e}"}
+    if not rows:
+        return {"ok": False, "error": "Prazen dokument."}
+    hdr = [str(c or "").strip() for c in rows[0]]
+    i_sku = next((i for i, h in enumerate(hdr) if h.lower() == "sku"), -1)
+    if i_sku < 0:
+        return {"ok": False, "error": f"Ne najdem SKU stolpca. Glava: {hdr}"}
+    obdrzane = [rows[0]]
+    odstranjenih = 0
+    for row in rows[1:]:
+        if not row or len(row) <= i_sku:
+            continue
+        sku = str(row[i_sku] or "").strip().upper()
+        if sku in odstrani:
+            odstranjenih += 1
+        else:
+            obdrzane.append(row)
+    # sestavi CSV
+    import csv as _csv
+    from io import StringIO as _SIO
+    buf = _SIO()
+    w = _csv.writer(buf, delimiter=";")
+    for row in obdrzane:
+        w.writerow(["" if c is None else c for c in row])
+    csv_text = buf.getvalue()
+    return {"ok": True, "odstranjenih_vrstic": odstranjenih,
+            "ostane_vrstic": len(obdrzane) - 1, "csv": csv_text}
+
+
 @app.post("/narocilnice-history")
 async def save_narocilnice_history(data: dict):
     try:

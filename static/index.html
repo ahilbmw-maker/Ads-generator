@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-08-30 19:00</div>
+      <div class="sidebar-logo-sub">build 2026-09-16 09:30</div>
     </div>
   </div>
 
@@ -2103,6 +2103,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="narc-tab" id="narcTab-vecja" onclick="narcSwitchTab('vecja')">📦 Večja naročila (&gt;3)</button>
       <button class="narc-tab" id="narcTab-dvojniki" onclick="narcSwitchTab('dvojniki')">👥 Dvojniki</button>
       <button class="narc-tab" id="narcTab-karantena" onclick="narcSwitchTab('karantena')">Karantena</button>
+      <button class="narc-tab" id="narcTab-priprava" onclick="narcSwitchTab('priprava')">📋 Priprava seznama</button>
     </div>
 
     <!-- TAB: NEGATIVNE RAZLIKE -->
@@ -2343,6 +2344,28 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
     </div>
     </div><!-- /panel karantena -->
+
+    <!-- TAB: PRIPRAVA SEZNAMA -->
+    <div id="narcPanel-priprava" style="display:none">
+      <div style="max-width:760px">
+        <div class="card" style="margin-bottom:16px">
+          <span class="slabel">KORAK 1 — naloži prvi dokument</span>
+          <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.5;margin:6px 0 12px">Sistem poišče postavke, kjer je <b>Prodano razlika &lt; 10</b>, in shrani te SKU-je v ozadje. (.xlsx ali .csv)</div>
+          <input type="file" id="prip1File" accept=".xlsx,.xls,.csv" style="font-size:13px;display:block;margin-bottom:10px">
+          <button onclick="prip1Upload()" style="padding:10px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Naloži korak 1</button>
+          <div id="prip1Status" style="margin-top:10px;font-size:13px"></div>
+        </div>
+
+        <div class="card">
+          <span class="slabel">KORAK 2 — naloži drugi dokument</span>
+          <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.5;margin:6px 0 12px">Iz tega dokumenta se odstranijo <b>vse vrstice</b> s SKU-ji, shranjenimi v koraku 1. Rezultat dobiš kot CSV.</div>
+          <div id="prip2Guard" style="font-size:12px;color:#d97706;margin-bottom:10px;display:none">⚠ Najprej naloži korak 1.</div>
+          <input type="file" id="prip2File" accept=".xlsx,.xls,.csv" style="font-size:13px;display:block;margin-bottom:10px">
+          <button onclick="prip2Upload()" id="prip2Btn" style="padding:10px 18px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Obdelaj in prenesi CSV</button>
+          <div id="prip2Status" style="margin-top:10px;font-size:13px"></div>
+        </div>
+      </div>
+    </div><!-- /panel priprava -->
 
   </div><!-- /page-narocilnice -->
 
@@ -9452,11 +9475,66 @@ function narcSwitchTab(tab) {
   document.getElementById('narcPanel-vecja').style.display = tab === 'vecja' ? 'block' : 'none';
   document.getElementById('narcPanel-dvojniki').style.display = tab === 'dvojniki' ? 'block' : 'none';
   document.getElementById('narcPanel-karantena').style.display = tab === 'karantena' ? 'block' : 'none';
+  const pripP = document.getElementById('narcPanel-priprava'); if (pripP) pripP.style.display = tab === 'priprava' ? 'block' : 'none';
   document.getElementById('narcTab-razlike').classList.toggle('active', tab === 'razlike');
   document.getElementById('narcTab-vecja').classList.toggle('active', tab === 'vecja');
   document.getElementById('narcTab-dvojniki').classList.toggle('active', tab === 'dvojniki');
   document.getElementById('narcTab-karantena').classList.toggle('active', tab === 'karantena');
+  const pripT = document.getElementById('narcTab-priprava'); if (pripT) pripT.classList.toggle('active', tab === 'priprava');
+  if (tab === 'priprava') prip1CheckStatus();
   try { localStorage.setItem('slx_active_subtab', tab); } catch(e) {}
+}
+
+async function prip1CheckStatus(){
+  try{
+    const r = await fetch('/priprava-korak1-status');
+    const d = await r.json();
+    const guard = document.getElementById('prip2Guard');
+    if (d.ok && d.shranjenih_sku > 0){
+      document.getElementById('prip1Status').innerHTML = '<span style="color:#16a34a">✓ Shranjenih '+d.shranjenih_sku+' SKU iz koraka 1</span>';
+      if (guard) guard.style.display = 'none';
+    } else {
+      if (guard) guard.style.display = 'block';
+    }
+  }catch(e){}
+}
+async function prip1Upload(){
+  const f = document.getElementById('prip1File').files[0];
+  if (!f){ alert('Izberi dokument za korak 1.'); return; }
+  const st = document.getElementById('prip1Status'); st.textContent = 'Nalagam...';
+  const fd = new FormData(); fd.append('file', f);
+  try{
+    const r = await fetch('/priprava-korak1', { method:'POST', body:fd });
+    const d = await r.json();
+    if (d.ok){
+      st.innerHTML = '<span style="color:#16a34a">✓ Shranjenih '+d.shranjenih_sku+' SKU (Prodano razlika &lt; 10)</span>';
+      const guard = document.getElementById('prip2Guard'); if (guard) guard.style.display = 'none';
+    } else {
+      st.innerHTML = '<span style="color:#dc2626">'+(d.error||'napaka')+'</span>';
+    }
+  }catch(e){ st.innerHTML = '<span style="color:#dc2626">Napaka: '+e.message+'</span>'; }
+}
+async function prip2Upload(){
+  const f = document.getElementById('prip2File').files[0];
+  if (!f){ alert('Izberi dokument za korak 2.'); return; }
+  const st = document.getElementById('prip2Status'); st.textContent = 'Obdelujem...';
+  const fd = new FormData(); fd.append('file', f);
+  try{
+    const r = await fetch('/priprava-korak2', { method:'POST', body:fd });
+    const d = await r.json();
+    if (d.ok){
+      st.innerHTML = '<span style="color:#16a34a">✓ Odstranjenih '+d.odstranjenih_vrstic+' vrstic · ostane '+d.ostane_vrstic+' vrstic. Prenos...</span>';
+      // prenesi CSV
+      const blob = new Blob([d.csv], { type:'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'priprava_seznam_' + new Date().toISOString().slice(0,10) + '.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else {
+      st.innerHTML = '<span style="color:#dc2626">'+(d.error||'napaka')+'</span>';
+    }
+  }catch(e){ st.innerHTML = '<span style="color:#dc2626">Napaka: '+e.message+'</span>'; }
 }
 
 function narcLangToFlag(lang) {
