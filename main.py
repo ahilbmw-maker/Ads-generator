@@ -12641,6 +12641,8 @@ async function load(){
     DATA = await r.json();
     if(!DATA.ok){ document.body.innerHTML='<p style="padding:40px">Napaka: '+(DATA.error||'')+'</p>'; return; }
     render();
+    // če je ?tv=1 v URL, samodejno aktiviraj TV način (za direkten dostop iz menija)
+    try{ if(new URLSearchParams(location.search).get('tv')==='1') tvMode(); }catch(e){}
   }catch(e){ document.body.innerHTML='<p style="padding:40px">Napaka: '+e.message+'</p>'; }
 }
 load();
