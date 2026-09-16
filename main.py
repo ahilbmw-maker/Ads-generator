@@ -12605,6 +12605,7 @@ async def skladisce_tloris_page(request: Request):
   .closex{position:absolute;top:12px;right:14px;font-size:22px;cursor:pointer;color:var(--txt2);background:none;border:none}
 </style></head><body>
 <h1>🏬 Tloris skladišča</h1>
+<div style="display:inline-block;background:rgba(37,99,235,0.12);color:#1d4ed8;font-size:14px;font-weight:800;padding:5px 14px;border-radius:8px;margin-bottom:6px">SKLADIŠČE A</div>
 <div class="sub">Kaj je na kateri polici · barva = zasedenost · klik za seznam izdelkov</div>
 <div class="legenda">
   <span style="font-weight:700;color:var(--txt)">Zasedenost regala (koliko polic je zasedenih):</span>
@@ -12617,22 +12618,35 @@ async def skladisce_tloris_page(request: Request):
 </div>
 <input type="text" id="search" placeholder="🔍 Vpiši SKU — pove, na kateri poziciji je" oninput="doSearch(this.value)">
 <div id="searchRes" style="font-size:12px;margin-bottom:10px"></div>
-<div class="tloris">
-  <div class="stena" style="width:52px">
-    <div class="stena-box" style="background:rgba(37,99,235,0.14);color:#1d4ed8" onclick="openImenska('Omara')">OMARA</div>
-    <div class="stena-box" style="background:rgba(0,0,0,0.04);color:var(--txt2)" onclick="openImenska('Pod mizo')">POD MIZO</div>
-  </div>
-  <div style="flex:1;display:flex;flex-direction:column;gap:10px">
-    <div class="regali" id="regali"></div>
-    <div class="dodatne" style="flex:1;display:flex;flex-direction:column">
-      <div class="dodatne-hd">DODATNE POZICIJE (S1–S14)</div>
-      <div class="spolice" id="spolice" style="flex:1;align-content:start"></div>
+
+<div style="display:flex;gap:20px;align-items:stretch">
+
+  <div style="flex:1 1 auto;min-width:0">
+    <div style="display:inline-block;background:rgba(37,99,235,0.12);color:#1d4ed8;font-size:15px;font-weight:800;padding:5px 14px;border-radius:8px;margin-bottom:8px">SKLADIŠČE A</div>
+    <div class="tloris">
+      <div class="stena" style="width:52px">
+        <div class="stena-box" style="background:rgba(37,99,235,0.14);color:#1d4ed8" onclick="openImenska('Omara')">OMARA</div>
+        <div class="stena-box" style="background:rgba(0,0,0,0.04);color:var(--txt2)" onclick="openImenska('Pod mizo')">POD MIZO</div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:10px">
+        <div class="regali" id="regali"></div>
+        <div class="dodatne" style="flex:1;display:flex;flex-direction:column">
+          <div class="dodatne-hd">DODATNE POZICIJE (S1–S14)</div>
+          <div class="spolice" id="spolice" style="flex:1;align-content:start"></div>
+        </div>
+      </div>
+      <div class="stena" style="width:60px">
+        <div class="stena-box" style="background:rgba(245,158,11,0.18);color:#8a5a00" onclick="openImenska('Pri Amiotu')">AMIO</div>
+        <div class="stena-box" style="background:rgba(245,158,11,0.18);color:#8a5a00" onclick="openImenska('Ikonka')">IKONKA</div>
+      </div>
     </div>
   </div>
-  <div class="stena" style="width:60px">
-    <div class="stena-box" style="background:rgba(245,158,11,0.18);color:#8a5a00" onclick="openImenska('Pri Amiotu')">AMIO</div>
-    <div class="stena-box" style="background:rgba(245,158,11,0.18);color:#8a5a00" onclick="openImenska('Ikonka')">IKONKA</div>
+
+  <div style="flex:0 0 340px;display:flex;flex-direction:column">
+    <div style="display:inline-block;background:rgba(245,158,11,0.15);color:#8a5a00;font-size:15px;font-weight:800;padding:5px 14px;border-radius:8px;margin-bottom:8px;align-self:flex-start">SKLADIŠČE B (IOC)</div>
+    <div id="iocBlok" style="flex:1;border:1px solid var(--bd);border-radius:12px;padding:20px;background:var(--card)"></div>
   </div>
+
 </div>
 <div id="panel"><button class="closex" onclick="closePanel()">×</button><div id="panelBody"></div></div>
 <script>
@@ -12692,6 +12706,24 @@ function render(){
     sp += '<div class="spol '+cellClass(d.sku_stevilo)+'" onclick="openImenska(\''+key+'\')"><div style="font-weight:700">'+key+'</div><div style="font-size:8px">'+d.sku_stevilo+'·'+d.kosov+'</div></div>';
   }
   document.getElementById('spolice').innerHTML = sp;
+  renderIOC();
+}
+
+function renderIOC(){
+  // Skladišče B = IOC. Poišči IOC pozicijo v imenskih (ime vsebuje "IOC")
+  let iocKey = null;
+  Object.keys(DATA.imenske || {}).forEach(k => { if(k.toLowerCase().indexOf('ioc') >= 0) iocKey = k; });
+  const el = document.getElementById('iocBlok');
+  if(!el) return;
+  if(!iocKey){ el.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:4px">PALETNO SKLADIŠČE</div><div style="font-size:12.5px;color:var(--txt2);line-height:1.5">Trenutno še nimamo paletnih regalov — jih bomo kmalu imeli. Ko bo, se tu izpiše količina izdelkov.</div>'; return; }
+  const d = DATA.imenske[iocKey] || {sku_stevilo:0, kosov:0, izdelki:[]};
+  el.style.cursor = 'pointer';
+  el.setAttribute('onclick', 'openImenska(&apos;'+iocKey+'&apos;)');
+  el.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:4px">PALETNO SKLADIŠČE</div>'
+    + '<div style="font-size:12.5px;color:var(--txt2);line-height:1.5;margin-bottom:18px">Samo zapišeš količino izdelkov. Trenutno še nimamo paletnih regalov — jih bomo kmalu imeli.</div>'
+    + '<div style="margin-bottom:16px"><div style="font-size:38px;font-weight:800;color:#8a5a00;line-height:1">'+d.sku_stevilo+'</div><div style="font-size:13px;color:var(--txt2)">različnih izdelkov</div></div>'
+    + '<div style="margin-bottom:20px"><div style="font-size:38px;font-weight:800;line-height:1">'+d.kosov+'</div><div style="font-size:13px;color:var(--txt2)">kosov skupaj</div></div>'
+    + '<div style="color:#2563eb;font-size:14px;font-weight:700">klikni za seznam →</div>';
 }
 
 function shelfColor(sku){ if(!sku) return {fill:'rgba(150,150,150,0.13)', txt:'#888', side:'rgba(150,150,150,0.08)', lbl:'prazno'}; if(sku<5) return {fill:'rgba(245,158,11,0.26)', txt:'#8a5a00', side:'rgba(245,158,11,0.15)', lbl:'skoraj prazno'}; return {fill:'rgba(34,197,94,0.24)', txt:'#15803d', side:'rgba(34,197,94,0.14)', lbl:'polno'}; }
