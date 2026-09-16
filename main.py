@@ -12227,13 +12227,20 @@ async def skladisce_tloris_page(request: Request):
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:20px 28px;background:var(--bg);color:var(--txt);width:100%}
   /* TV način: brez glave, večji tloris, zapolni zaslon */
-  body.tv-on{padding:16px 20px}
-  body.tv-on .cell{min-height:92px;font-size:16px}
-  body.tv-on .cell .rn{font-size:20px}
+  body.tv-on{padding:14px 18px}
+  /* TV: tloris zapolni razpoložljivo višino — celice zrastejo */
+  body.tv-on .ab-wrap{min-height:calc(100vh - 240px)}
+  body.tv-on .ab-a{display:flex;flex-direction:column}
+  body.tv-on .tloris{flex:1}
+  body.tv-on .regal{display:flex;flex-direction:column}
+  body.tv-on .regal-body{flex:1}
+  body.tv-on .regal-col{display:flex;flex-direction:column}
+  body.tv-on .cell{flex:1;min-height:92px;font-size:17px}
+  body.tv-on .cell .rn{font-size:21px}
   body.tv-on .cell .num{font-size:15px}
-  body.tv-on .regal-hd{font-size:21px}
+  body.tv-on .regal-hd{font-size:22px}
   body.tv-on .stena-box{font-size:22px;min-height:400px}
-  body.tv-on .spol{min-height:76px;font-size:17px}
+  body.tv-on .spol{min-height:84px;font-size:18px}
   /* TV statistične kartice — slog kot Domov (hsp-card), mehkejši */
   .tvc{flex:1;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;min-width:0}
   .tvc-proj{flex:1.3;background:#534AB7;border-color:#534AB7}
@@ -12311,14 +12318,13 @@ async def skladisce_tloris_page(request: Request):
 </div>
 <div class="sub">Kaj je na kateri polici · barva = zasedenost · klik za seznam izdelkov</div>
 <div class="legenda">
-  <span style="font-weight:700;color:var(--txt)">Zasedenost po kosih (samodejno umerjeno):</span>
+  <span style="font-weight:700;color:var(--txt)">Zasedenost po kosih:</span>
   <span class="lg"><span class="lg-box" style="background:rgba(150,150,150,0.13)"></span> prazno</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(245,180,80,0.42)"></span> malo</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(225,205,55,0.50)"></span> srednje</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(120,200,110,0.58)"></span> dosti</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(40,150,90,0.72)"></span> veliko</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(40,110,170,0.80)"></span> največ</span>
-  <span class="lg" style="margin-left:auto">R1↓/R1↑ = serpentina</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(229,72,77,0.24)"></span> malo (dopolni)</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(245,158,11,0.30)"></span> srednje</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(34,197,94,0.34)"></span> dosti</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(34,197,94,0.60)"></span> poln</span>
+  <span class="lg" style="margin-left:auto">rdeča = dopolni · R1↓/R1↑ = serpentina</span>
 </div>
 <input type="text" id="search" placeholder="🔍 Vpiši SKU — pove, na kateri poziciji je" oninput="doSearch(this.value)">
 <div id="searchRes" style="font-size:12px;margin-bottom:10px"></div>
@@ -12406,17 +12412,16 @@ function izracunajMax(){
     }));
   }
 }
-// TOPLOTNA KARTA: siva (prazno) → rumena → zelena → modra (najbolj poln).
+// SEMAFOR: rdeča (malo — dopolni!) → rumena (srednje) → zelena (polno).
 // Delež = kosov / _maxKosov (samodejna umeritev po največjem regalu).
 function regalStyle(kosov, zasedenih){
   if(!kosov || kosov===0) return 'background:rgba(150,150,150,0.13);color:var(--txt3)';   // prazno — sivo
   const d = Math.min(1, kosov / _maxKosov);   // 0..1
   let bg, txt;
-  if(d < 0.20){ bg='rgba(245,180,80,0.42)'; txt='#8a5a00'; }        // malo — rumena
-  else if(d < 0.45){ bg='rgba(225,205,55,0.50)'; txt='#6b6810'; }   // srednje — rumeno-zelena
-  else if(d < 0.70){ bg='rgba(120,200,110,0.58)'; txt='#2d6b1a'; }  // dosti — zelena
-  else if(d < 0.90){ bg='rgba(40,150,90,0.72)'; txt='#ffffff'; }    // veliko — temno zelena
-  else { bg='rgba(40,110,170,0.80)'; txt='#ffffff'; }               // največ — modra
+  if(d < 0.30){ bg='rgba(229,72,77,0.24)'; txt='#a32d2d'; }         // malo — RDEČA (dopolni)
+  else if(d < 0.65){ bg='rgba(245,158,11,0.30)'; txt='#8a5a00'; }   // srednje — RUMENA
+  else if(d < 0.90){ bg='rgba(34,197,94,0.34)'; txt='#15803d'; }    // dosti — ZELENA
+  else { bg='rgba(34,197,94,0.60)'; txt='#0a3d1e'; }                // poln — TEMNO ZELENA
   return 'background:'+bg+';color:'+txt;
 }
 function prostoLabel(kosov, zasedenih){
