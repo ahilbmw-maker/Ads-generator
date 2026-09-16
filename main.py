@@ -12817,7 +12817,42 @@ load();
     return HTMLResponse(html)
 
 
-@app.get("/skladisce-vizualizacija")
+@app.get("/ioc-diag")
+async def ioc_diag(request: Request):
+    """Diagnostika: kje vse se pojavi IOC — glavna pozicija (stock CSV) in sekundarna."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    import csv as _csv
+    from io import StringIO as _SIO
+    glavna_ioc = []; stock_by = {}
+    if STOCK_CSV_FILE.exists():
+        _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
+        for row in _csv.DictReader(_SIO(_t), delimiter=_sep):
+            sku = (row.get("product_sku") or "").strip()
+            pos = (row.get("position") or "").strip()
+            try: st = int(float(str(row.get("stock") or 0).replace(",",".")))
+            except Exception: st = 0
+            if sku: stock_by[sku.upper()] = stock_by.get(sku.upper(), 0) + st
+            if pos and "ioc" in pos.lower():
+                glavna_ioc.append({"sku": sku, "pos": pos, "stock": st})
+    sek_ioc = []
+    try:
+        extra = _zaloga_load_extra_pos()
+        for sku, poslist in (extra or {}).items():
+            for pos in (poslist or []):
+                if "ioc" in str(pos).lower():
+                    sek_ioc.append({"sku": sku, "pos": pos, "stock": stock_by.get(sku.upper(), 0)})
+    except Exception as e:
+        return {"ok": False, "napaka": str(e)}
+    return {"ok": True,
+            "glavna_ioc_stevilo": len(glavna_ioc), "glavna_ioc_kosov": sum(x["stock"] for x in glavna_ioc),
+            "glavna_primeri": glavna_ioc[:10],
+            "sekundarna_ioc_stevilo": len(sek_ioc), "sekundarna_ioc_kosov": sum(x["stock"] for x in sek_ioc),
+            "sekundarna_primeri": sek_ioc[:10],
+            "ioc_pozicije_glavna": sorted(set(x["pos"] for x in glavna_ioc)),
+            "ioc_pozicije_sekundarna": sorted(set(x["pos"] for x in sek_ioc))}
 
 
 @app.get("/skladisce-vizualizacija")
