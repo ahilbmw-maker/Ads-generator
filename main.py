@@ -12607,12 +12607,13 @@ async def skladisce_tloris_page(request: Request):
 <h1>🏬 Tloris skladišča</h1>
 <div class="sub">Kaj je na kateri polici · barva = zasedenost · klik za seznam izdelkov</div>
 <div class="legenda">
-  <span style="font-weight:700;color:var(--txt)">Regal:</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(21,128,61,0.42)"></span> poln (0 prosto)</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(34,197,94,0.30)"></span> skoraj poln (1–2 prosto)</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(134,239,172,0.35)"></span> še prostor (3–4)</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(150,150,150,0.13)"></span> večinoma prazno</span>
-  <span class="lg" style="margin-left:auto">"prosto" = police z 0–4 izdelki · R1↓/R1↑ = serpentina</span>
+  <span style="font-weight:700;color:var(--txt)">Zasedenost regala (polnih polic):</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(150,150,150,0.13)"></span> prazno</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(34,150,80,0.195)"></span> 1</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(34,150,80,0.30)"></span> 3</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(34,150,80,0.415)"></span> 5</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(34,150,80,0.47)"></span> 6 (poln)</span>
+  <span class="lg" style="margin-left:auto">več zelene = bolj poln · R1↓/R1↑ = serpentina</span>
 </div>
 <input type="text" id="search" placeholder="🔍 Vpiši SKU — pove, na kateri poziciji je" oninput="doSearch(this.value)">
 <div id="searchRes" style="font-size:12px;margin-bottom:10px"></div>
@@ -12647,17 +12648,20 @@ function cellClass(sku){ if(!sku) return 'c-empty'; if(sku<5) return 'c-low'; re
 // Barva REGALA po prostih policah (0-4 izdelkov = prosto). 0 prostih = temno zeleno (poln),
 // več prostih = svetlejše. To pove nabiralcu, kje je še prostor v regalu.
 function regalStyle(prostih){
-  // prostih: 0 (poln) do 6 (vse prazno)
+  // PROGRESIVNO: barva po ŠTEVILU POLNIH polic (5+ izdelkov). Več polnih = bolj zeleno.
+  // 0 polnih = sivo (prazno), 1 = najsvetlejša zelena, 6 = najtemnejša.
   if(prostih===undefined || prostih===null) prostih = 6;
-  if(prostih===0) return 'background:rgba(21,128,61,0.42);color:#0a3d1e';       // poln — temno zeleno
-  if(prostih<=2) return 'background:rgba(34,197,94,0.30);color:#15803d';        // skoraj poln
-  if(prostih<=4) return 'background:rgba(134,239,172,0.35);color:#3d8a5f';      // pol prostora — svetlo zeleno
-  return 'background:rgba(150,150,150,0.13);color:var(--txt3)';                 // večinoma prazno — sivo
+  const polnih = 6 - prostih;   // koliko polic je polnih (5+)
+  if(polnih===0) return 'background:rgba(150,150,150,0.13);color:var(--txt3)';   // res prazno — sivo
+  // progresivna zelena: alpha in temnost rasteta s polnimi policami
+  const alpha = (0.14 + polnih*0.055).toFixed(3);   // 1→0.20 ... 6→0.47
+  const txt = polnih>=5 ? '#0a3d1e' : (polnih>=3 ? '#15803d' : '#3d8a5f');
+  return 'background:rgba(34,150,80,'+alpha+');color:'+txt;
 }
 function prostoLabel(prostih, sku){
-  if(sku===0 && prostih===6) return 'prazno';
-  if(prostih===0) return 'poln';
-  return prostih + ' prosto';
+  const polnih = 6 - prostih;
+  if(polnih===0) return 'prazno';
+  return polnih + '/6 polnih';
 }
 
 function renderRegal(vLeva, vDesna){
