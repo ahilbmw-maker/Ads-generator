@@ -5684,208 +5684,6 @@ async def fetch_product_images(data: dict):
         return {"error": str(e)}
 
 
-@app.get("/flare-zadnja-napaka")
-async def flare_zadnja_napaka(request: Request):
-    """Vrne ZADNJO napako, ki jo je Flare vrnil v pravem generiranju (compare4/batch)."""
-    if not _owner_authorized(request):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    import json as _j
-    _f = DATA_DIR / "flare_debug.json"
-    if _f.exists():
-        try:
-            return {"ok": True, "iz_datoteke": _j.loads(_f.read_text())}
-        except Exception as e:
-            return {"ok": True, "napaka_branja": str(e)}
-    return {"ok": True, "sporocilo": "flare_debug.json še ne obstaja — Flare še ni tekel po tem deployu (poženi compare4, POTEM preveri)"}
-
-
-@app.get("/flare-batch-test")
-async def flare_batch_test(request: Request, sku: str = ""):
-    """Poskusi Flare z REALNO batch situacijo: prava produktna slika + pravi dolgi batch prompt.
-    To reproducira, zakaj Flare pade v compare4. ?sku=STUFFMASTER"""
-    if not _owner_authorized(request):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    openai_key = os.environ.get("OPENAI_API_KEY", "")
-    if not openai_key:
-        return {"ok": False, "napaka": "OPENAI_API_KEY ni nastavljen"}
-    sku = (sku or "").strip()
-    if not sku:
-        return {"ok": False, "napaka": "Podaj ?sku=..."}
-    # dobi pravo referenčno sliko po SKU
-    img_urls = await _kbatch_images_by_sku(sku, 1)
-    if not img_urls:
-        return {"ok": False, "napaka": f"Ni slike za SKU {sku}"}
-    refs = await _kbatch_download_refs(img_urls[:1])
-    if not refs:
-        return {"ok": False, "napaka": "Prenos slike ni uspel"}
-    # pretvori data URL v raw
-    import base64 as _b64
-    _d = refs[0]
-    _b64part = _d.split(",",1)[1] if "," in _d else _d
-    raw = _b64.b64decode(_b64part)
-    # PRAVI batch prompt
-    prompt = ("From these reference images create a new FB ad creative. "
-              "Try a more intense 'studio background' background. "
-              f"Do not include any text/words on the image except the device name in capital letters '{sku}' — place it where it fits best or makes sense. "
-              "If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
-              "Highlight (can be through icons or text in English) that it is: hands-free. "
-              "Keep all text and icons well within the image borders — nothing should be cut off at the edges. Square 1:1 format.")
-    out = {}
-    for model_id in ("gpt-image-2.5-flare", "gpt-image-2"):
-        try:
-            files = {"image[]": ("ref.jpg", raw, "image/jpeg")}
-            form = {"model": model_id, "prompt": prompt, "size": "1024x1024", "n": "1", "output_format": "jpeg"}
-            async with httpx.AsyncClient(timeout=120.0) as hc:
-                resp = await hc.post("https://api.openai.com/v1/images/edits",
-                                     headers={"Authorization": f"Bearer {openai_key}"},
-                                     data=form, files=files)
-            if resp.status_code == 200:
-                out[model_id] = {"status": 200, "USPEH": True}
-            else:
-                try: err = resp.json().get("error", {})
-                except Exception: err = {"message": resp.text[:250]}
-                out[model_id] = {"status": resp.status_code, "USPEH": False,
-                                 "koda": err.get("code"), "tip": err.get("type"),
-                                 "napaka": (err.get("message") or "")[:300]}
-        except Exception as e:
-            out[model_id] = {"napaka": str(e)[:250]}
-    return {"ok": True, "sku": sku, "rezultati": out}
-
-
-@app.get("/flare-debug")
-async def flare_debug(request: Request):
-    """Poskusi Flare z RAZLIČNIMI parametri, da najde, kateri deluje.
-    Vrne za vsako varianto status + napako."""
-    if not _owner_authorized(request):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    openai_key = os.environ.get("OPENAI_API_KEY", "")
-    if not openai_key:
-        return {"ok": False, "napaka": "OPENAI_API_KEY ni nastavljen"}
-    import io as _io
-    try:
-        from PIL import Image as _PILImg
-        _img = _PILImg.new("RGB", (256, 256), (150, 120, 90))
-        _b = _io.BytesIO(); _img.save(_b, format="PNG"); _png = _b.getvalue()
-        _b2 = _io.BytesIO(); _img.save(_b2, format="JPEG"); _jpg = _b2.getvalue()
-    except Exception as e:
-        return {"ok": False, "napaka": f"PIL: {e}"}
-
-    variante = [
-        ("A: jpeg + 1024x1024", {"model":"gpt-image-2.5-flare","prompt":"a product on a clean studio background","size":"1024x1024","n":"1","output_format":"jpeg"}, ("t.jpg",_jpg,"image/jpeg")),
-        ("B: brez output_format", {"model":"gpt-image-2.5-flare","prompt":"a product on a clean studio background","size":"1024x1024","n":"1"}, ("t.png",_png,"image/png")),
-        ("C: png slika", {"model":"gpt-image-2.5-flare","prompt":"a product on a clean studio background","size":"1024x1024","n":"1"}, ("t.png",_png,"image/png")),
-        ("D: quality high", {"model":"gpt-image-2.5-flare","prompt":"a product on a clean studio background","size":"1024x1024","n":"1","quality":"high"}, ("t.png",_png,"image/png")),
-        ("E: size auto", {"model":"gpt-image-2.5-flare","prompt":"a product on a clean studio background","size":"auto","n":"1"}, ("t.png",_png,"image/png")),
-    ]
-    out = []
-    for ime, form, filetuple in variante:
-        try:
-            files = {"image[]": filetuple}
-            async with httpx.AsyncClient(timeout=120.0) as hc:
-                resp = await hc.post("https://api.openai.com/v1/images/edits",
-                                     headers={"Authorization": f"Bearer {openai_key}"},
-                                     data=form, files=files)
-            if resp.status_code == 200:
-                out.append({"varianta": ime, "status": 200, "USPEH": True})
-            else:
-                try: err = resp.json().get("error", {})
-                except Exception: err = {"message": resp.text[:200]}
-                out.append({"varianta": ime, "status": resp.status_code, "USPEH": False,
-                            "koda": err.get("code"), "param": err.get("param"),
-                            "napaka": (err.get("message") or "")[:250]})
-        except Exception as e:
-            out.append({"varianta": ime, "napaka": str(e)[:200]})
-    return {"ok": True, "rezultati": out}
-
-
-@app.get("/flare-cena")
-async def flare_cena(request: Request):
-    """Prava cena: naredi EN Flare klic z realno sliko + prebere usage (porabo tokenov)
-    iz OpenAI odgovora → točna cena na sliko, ne po člankih."""
-    if not _owner_authorized(request):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    openai_key = os.environ.get("OPENAI_API_KEY", "")
-    if not openai_key:
-        return {"ok": False, "napaka": "OPENAI_API_KEY ni nastavljen"}
-    # realna testna slika — majhen barvni JPEG (16x16), da ne pade na moderation kot 1px
-    import base64 as _b64, io as _io
-    try:
-        from PIL import Image as _PILImg
-        _img = _PILImg.new("RGB", (64, 64), (120, 140, 160))
-        _b = _io.BytesIO(); _img.save(_b, format="JPEG"); _raw = _b.getvalue()
-    except Exception:
-        _raw = _b64.b64decode("/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAAQABABAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA//9k=")
-    out = {}
-    for model_id in ("gpt-image-2.5-flare", "gpt-image-2"):
-        try:
-            files = {"image[]": ("t.jpg", _raw, "image/jpeg")}
-            form = {"model": model_id, "prompt": "a product on a clean studio background", "size": "1024x1024", "n": "1"}
-            async with httpx.AsyncClient(timeout=120.0) as hc:
-                resp = await hc.post("https://api.openai.com/v1/images/edits",
-                                     headers={"Authorization": f"Bearer {openai_key}"},
-                                     data=form, files=files)
-            j = resp.json()
-            if resp.status_code == 200:
-                usage = j.get("usage", {})
-                # izračun cene: image output $30/1M, image input $8/1M, text input $5/1M
-                it = usage.get("input_tokens", 0)
-                ot = usage.get("output_tokens", 0)
-                itd = usage.get("input_tokens_details", {}) or {}
-                text_in = itd.get("text_tokens", 0)
-                img_in = itd.get("image_tokens", 0)
-                cena = (img_in/1_000_000*8) + (text_in/1_000_000*5) + (ot/1_000_000*30)
-                out[model_id] = {"status": 200, "usage": usage,
-                                 "cena_na_sliko_USD": round(cena, 5)}
-            else:
-                out[model_id] = {"status": resp.status_code, "napaka": (j.get("error", {}) or {}).get("message", str(j))[:250]}
-        except Exception as e:
-            out[model_id] = {"status": None, "napaka": str(e)[:250]}
-    return {"ok": True, "rezultati": out,
-            "opomba": "cena_na_sliko_USD je izračunana iz DEJANSKE porabe tokenov (usage), ne iz člankov."}
-
-
-@app.get("/flare-test")
-async def flare_test(request: Request):
-    """Diagnostika: poskusi EN klic na gpt-image-2.5-flare in vrne točno napako OpenAI,
-    da vidimo, zakaj Flare ne dela (verifikacija org / dostop / ime modela)."""
-    if not _owner_authorized(request):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    openai_key = os.environ.get("OPENAI_API_KEY", "")
-    if not openai_key:
-        return {"ok": False, "napaka": "OPENAI_API_KEY ni nastavljen"}
-    # majhna testna slika (1x1 px PNG) za /images/edits
-    import base64 as _b64
-    tiny_png = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
-    results = {}
-    for model_id in ("gpt-image-2.5-flare", "gpt-image-2"):
-        try:
-            files = {"image[]": ("test.png", tiny_png, "image/png")}
-            form = {"model": model_id, "prompt": "make it blue", "size": "1024x1024", "n": "1"}
-            async with httpx.AsyncClient(timeout=60.0) as hc:
-                resp = await hc.post("https://api.openai.com/v1/images/edits",
-                                     headers={"Authorization": f"Bearer {openai_key}"},
-                                     data=form, files=files)
-            if resp.status_code == 200:
-                results[model_id] = {"status": 200, "ok": True, "napaka": None}
-            else:
-                try:
-                    err = resp.json().get("error", {})
-                except Exception:
-                    err = {"message": resp.text[:300]}
-                results[model_id] = {"status": resp.status_code, "ok": False,
-                                     "koda": err.get("code"), "tip": err.get("type"),
-                                     "napaka": (err.get("message") or "")[:400]}
-        except Exception as e:
-            results[model_id] = {"status": None, "ok": False, "napaka": str(e)[:300]}
-    return {"ok": True, "rezultati": results,
-            "razlaga": "Če flare pade z 'model_not_found' ali 'verification' → moraš preveriti organizacijo v OpenAI konzoli ali model še ni dostopen."}
-
-
 @app.post("/generate-kreative")
 async def generate_kreative(data: dict):
     """Generira kreative z Google Gemini (Nano Banana 2) API."""
@@ -6103,13 +5901,7 @@ async def generate_kreative(data: dict):
     async def generate_one_flare(combo_prompt):
         """GPT Image 2.5 Flare prek OpenAI images/edits (multipart). Referenčna slika obvezna.
         Novejši model (izšel 9.9.2026): boljša konsistentnost izdelka, 50% hitrejši od GPT Image 2."""
-        try:
-            _c = globals().get("_FLARE_CALL_COUNT", 0) + 1
-            globals()["_FLARE_CALL_COUNT"] = _c
-        except Exception: pass
         if not openai_key:
-            try: globals()["_FLARE_LAST_ERR"] = {"faza": "pred klicem", "napaka": "OPENAI_API_KEY ni nastavljen"}
-            except Exception: pass
             return None, "OPENAI_API_KEY ni nastavljen."
         if not _ref_raw:
             return None, "GPT Image 2.5 Flare potrebuje referenčno sliko."
@@ -6124,27 +5916,10 @@ async def generate_kreative(data: dict):
                 )
                 result = resp.json()
             if resp.status_code != 200:
-                _emsg = result.get("error", {}).get("message", str(result))[:250]
-                try:
-                    import json as _j
-                    (DATA_DIR / "flare_debug.json").write_text(_j.dumps({
-                        "cas": datetime.now(timezone.utc).isoformat(),
-                        "status": resp.status_code,
-                        "koda": (result.get("error",{}) or {}).get("code"),
-                        "tip": (result.get("error",{}) or {}).get("type"),
-                        "napaka": _emsg}, ensure_ascii=False))
-                except Exception: pass
-                return None, _emsg
+                return None, result.get("error", {}).get("message", str(result))[:250]
             data_arr = result.get("data", [])
             if data_arr and data_arr[0].get("b64_json"):
-                try:
-                    import json as _j
-                    (DATA_DIR / "flare_debug.json").write_text(_j.dumps({
-                        "cas": datetime.now(timezone.utc).isoformat(), "status": 200, "USPEH": True}, ensure_ascii=False))
-                except Exception: pass
                 return f"data:image/jpeg;base64,{data_arr[0]['b64_json']}", None
-            try: globals()["_FLARE_LAST_ERR"] = {"status": 200, "napaka": "ni b64 slike: " + str(result)[:150]}
-            except Exception: pass
             return None, "GPT Image 2.5 Flare ni vrnil slike: " + str(result)[:150]
         except Exception as e:
             return None, str(e)
@@ -12135,106 +11910,6 @@ function render(d){
     return HTMLResponse(html)
 
 
-@app.get("/sku-inspect")
-async def sku_inspect(request: Request, skus: str = ""):
-    """Za vsak podani SKU (vejica-ločeno) pokaže VSE zapise — v suban.ai IN v siluxarju.
-    Da se vidi dvojnost (isti SKU v dveh skladiščih / dva izdelka / različna cena/id).
-    Samo bere."""
-    if not _owner_authorized(request):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    import csv as _csv
-    from io import StringIO as _SIO
-    want = {x.strip().upper() for x in (skus or "").split(",") if x.strip()}
-    if not want:
-        return {"ok": False, "error": "Podaj ?skus=SKU1,SKU2"}
-
-    # ── suban.ai zapisi ──
-    sub_rows = {}   # sku_upper -> [zapisi]
-    if STOCK_CSV_FILE.exists():
-        _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
-        _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
-        for row in _csv.DictReader(_SIO(_t), delimiter=_sep):
-            sku = (row.get("product_sku") or row.get("sku") or "").strip()
-            if sku.upper() not in want:
-                continue
-            sub_rows.setdefault(sku.upper(), []).append({
-                "sku": sku,
-                "naziv": (row.get("title") or "").strip(),
-                "skladisce": (row.get("warehouse") or "").strip(),
-                "stock": (row.get("stock") or "").strip(),
-                "cena": (row.get("price_netto") or row.get("price") or "").strip(),
-                "siluxar_id": (row.get("siluxar_id") or "").strip(),
-                "product_id": (row.get("product_id") or "").strip(),
-                "pozicija": (row.get("position") or "").strip(),
-            })
-
-    # ── siluxar zapisi (živ izvoz) ──
-    key = os.environ.get("SILUXAR_STOCK_KEY", "")
-    headers = {}; _auth = None
-    if key: headers["Authorization"] = key
-    else:
-        bu = os.environ.get("SILUXAR_BASIC_USER",""); bp = os.environ.get("SILUXAR_BASIC_PASS","")
-        if bu or bp: _auth = httpx.BasicAuth(bu, bp)
-    slx_rows = {}
-    try:
-        r, _ = await _slx_get(_slx("/apistockexport"), headers=headers, auth=_auth, timeout=90)
-        if r.status_code == 200:
-            text = r.text or ""
-            incoming = []
-            if "json" in r.headers.get("content-type","") or text.lstrip()[:1] in ("[","{"):
-                try:
-                    jd = json.loads(text)
-                    if isinstance(jd, dict):
-                        for kk in ("data","items","rows","products","stock"):
-                            if isinstance(jd.get(kk), list): jd = jd[kk]; break
-                    if isinstance(jd, list): incoming = [x for x in jd if isinstance(x, dict)]
-                except: incoming = []
-            if not incoming:
-                _sep = ";" if text.split("\n",1)[0].count(";") > text.split("\n",1)[0].count(",") else ","
-                incoming = list(_csv.DictReader(_SIO(text), delimiter=_sep))
-            keys = list(incoming[0].keys()) if incoming else []
-            def fc(*c):
-                for x in c:
-                    for k in keys:
-                        if k.strip().lower() == x.lower(): return k
-                return None
-            c_sku=fc("product_sku","sku"); c_st=fc("product_stock","stock","qty","zaloga")
-            c_pr=fc("product_price_netto","price_netto","product_price","price","cena")
-            c_wh=fc("skladisce","skladišče","warehouse","store","source")
-            c_ti=fc("product_title","title","naziv","name"); c_id=fc("id"); c_pos=fc("position","pozicija")
-            for row in incoming:
-                sku=(row.get(c_sku) or "").strip() if c_sku else ""
-                if sku.upper() not in want: continue
-                slx_rows.setdefault(sku.upper(), []).append({
-                    "sku": sku,
-                    "naziv": (row.get(c_ti) or "").strip() if c_ti else "",
-                    "skladisce": (row.get(c_wh) or "").strip() if c_wh else "",
-                    "stock": (row.get(c_st) or "").strip() if c_st else "",
-                    "cena": (row.get(c_pr) or "").strip() if c_pr else "",
-                    "siluxar_id": (row.get(c_id) or "").strip() if c_id else "",
-                    "pozicija": (row.get(c_pos) or "").strip() if c_pos else "",
-                })
-    except Exception as e:
-        slx_err = str(e)
-        slx_rows = {}
-
-    out = []
-    for sku in sorted(want):
-        out.append({
-            "sku": sku,
-            "suban_ai": sub_rows.get(sku, []),
-            "siluxar": slx_rows.get(sku, []),
-            "opozorilo": (
-                ("VeČ ZAPISOV v suban.ai" if len(sub_rows.get(sku,[]))>1 else "")
-                + (" | VEČ ZAPISOV v siluxarju" if len(slx_rows.get(sku,[]))>1 else "")
-                + (" | NI v siluxarju" if not slx_rows.get(sku) else "")
-                + (" | NI v suban.ai" if not sub_rows.get(sku) else "")
-            ).strip(" |") or "ok",
-        })
-    return {"ok": True, "rezultat": out}
-
-
 @app.get("/cena-diff", response_class=HTMLResponse)
 async def cena_diff_page(request: Request):
     """Stran: izberi dva backupa in primerjaj cene/vrednost — najdi vzrok skoka vrednosti."""
@@ -12859,7 +12534,7 @@ load();
     return HTMLResponse(html)
 
 
-@app.post("/ioc-poenoti")
+@app.get("/ioc-poenoti")
 async def ioc_poenoti(request: Request):
     """Poenoti vse IOC variante sekundarnih pozicij na eno: "IOC Skladisce".
     (Trenutno sta "IOC Skladisce" in "IOC skladišče" — ju zlije v eno.)"""
@@ -12885,44 +12560,6 @@ async def ioc_poenoti(request: Request):
             spremenjenih += 1
     _zaloga_save_extra_pos(extra)
     return {"ok": True, "poenotenih_izdelkov": spremenjenih, "cilj": CILJ}
-
-
-@app.get("/ioc-diag")
-async def ioc_diag(request: Request):
-    """Diagnostika: kje vse se pojavi IOC — glavna pozicija (stock CSV) in sekundarna."""
-    if not _owner_authorized(request):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    import csv as _csv
-    from io import StringIO as _SIO
-    glavna_ioc = []; stock_by = {}
-    if STOCK_CSV_FILE.exists():
-        _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
-        _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
-        for row in _csv.DictReader(_SIO(_t), delimiter=_sep):
-            sku = (row.get("product_sku") or "").strip()
-            pos = (row.get("position") or "").strip()
-            try: st = int(float(str(row.get("stock") or 0).replace(",",".")))
-            except Exception: st = 0
-            if sku: stock_by[sku.upper()] = stock_by.get(sku.upper(), 0) + st
-            if pos and "ioc" in pos.lower():
-                glavna_ioc.append({"sku": sku, "pos": pos, "stock": st})
-    sek_ioc = []
-    try:
-        extra = _zaloga_load_extra_pos()
-        for sku, poslist in (extra or {}).items():
-            for pos in (poslist or []):
-                if "ioc" in str(pos).lower():
-                    sek_ioc.append({"sku": sku, "pos": pos, "stock": stock_by.get(sku.upper(), 0)})
-    except Exception as e:
-        return {"ok": False, "napaka": str(e)}
-    return {"ok": True,
-            "glavna_ioc_stevilo": len(glavna_ioc), "glavna_ioc_kosov": sum(x["stock"] for x in glavna_ioc),
-            "glavna_primeri": glavna_ioc[:10],
-            "sekundarna_ioc_stevilo": len(sek_ioc), "sekundarna_ioc_kosov": sum(x["stock"] for x in sek_ioc),
-            "sekundarna_primeri": sek_ioc[:10],
-            "ioc_pozicije_glavna": sorted(set(x["pos"] for x in glavna_ioc)),
-            "ioc_pozicije_sekundarna": sorted(set(x["pos"] for x in sek_ioc))}
 
 
 @app.get("/skladisce-vizualizacija")
@@ -28505,128 +28142,6 @@ async def sku_batch_diag(request: Request, data: dict):
         "primeri_brez_id": brez_silux_id[:15],
         "primeri_poz_ni_prijela": ima_vse_a_ni_poz[:15],
         "primeri_ni_v_siluxu": ni_v_siluxu[:15],
-    }
-
-
-@app.get("/sku-poz-trace")
-async def sku_poz_trace(request: Request, sku: str = ""):
-    """Diagnostika za EN SKU: pokaže zalogo in KJE ima pozicijo (glavna CSV / sekundarna /
-    Selitev aktivno / Selitev poslano). Pojasni, zakaj je (ali ni) na seznamu manjkajočih."""
-    if not _owner_authorized(request):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    sku = (sku or "").strip()
-    if not sku:
-        return {"ok": False, "error": "Podaj ?sku=..."}
-    k = sku.upper()
-    import csv as _csv
-    from io import StringIO as _SIO
-
-    # glavna zaloga: vsi zapisi + pozicije + skupna zaloga
-    zapisi = []
-    stock_sum = 0
-    glavna_pozicija = []
-    if STOCK_CSV_FILE.exists():
-        _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
-        _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
-        for row in _csv.DictReader(_SIO(_t), delimiter=_sep):
-            if (row.get("product_sku") or row.get("sku") or "").strip().upper() != k:
-                continue
-            try:
-                st = int(float(str(row.get("stock") or 0).replace(",", ".")))
-            except Exception:
-                st = 0
-            pos = (row.get("position") or "").strip()
-            stock_sum += st
-            zapisi.append({"warehouse": (row.get("warehouse") or "").strip(), "stock": st, "position": pos})
-            if pos:
-                glavna_pozicija.append(pos)
-
-    # sekundarne
-    sekundarne = []
-    try:
-        extra = _zaloga_load_extra_pos()
-        sekundarne = extra.get(sku) or extra.get(k) or []
-    except Exception:
-        pass
-
-    # Selitev
-    sel = _selitev_load()
-    v_aktivnih = [ (e.get("position") or "") for e in sel.get("entries", []) if (e.get("sku") or "").strip().upper() == k ]
-    v_poslanih = [ (e.get("position") or "") for e in sel.get("sent", []) if (e.get("sku") or "").strip().upper() == k ]
-
-    ima_pozicijo = bool(glavna_pozicija or sekundarne or [p for p in v_aktivnih if p] or [p for p in v_poslanih if p])
-    na_zalogi = stock_sum > 0
-    na_seznamu_manjkajocih = na_zalogi and not ima_pozicijo
-
-    razlog = ""
-    if not na_zalogi:
-        razlog = "NI na seznamu manjkajočih, ker NI na zalogi (stock=0)."
-    elif ima_pozicijo:
-        kje = []
-        if glavna_pozicija: kje.append("glavna zaloga")
-        if sekundarne: kje.append("sekundarna")
-        if [p for p in v_aktivnih if p]: kje.append("Selitev aktivno")
-        if [p for p in v_poslanih if p]: kje.append("Selitev poslano")
-        razlog = "NI na seznamu manjkajočih, ker ŽE IMA pozicijo v: " + ", ".join(kje) + "."
-    else:
-        razlog = "JE (ali bi moral biti) na seznamu manjkajočih: na zalogi, brez pozicije."
-
-    return {
-        "ok": True, "sku": sku,
-        "skupna_zaloga": stock_sum, "na_zalogi": na_zalogi,
-        "glavna_pozicija": glavna_pozicija,
-        "sekundarne_pozicije": sekundarne,
-        "selitev_aktivno": v_aktivnih,
-        "selitev_poslano": v_poslanih,
-        "ima_pozicijo": ima_pozicijo,
-        "na_seznamu_manjkajocih": na_seznamu_manjkajocih,
-        "razlog": razlog,
-        "zapisi_v_zalogi": zapisi,
-    }
-
-
-@app.get("/selitev-sku-check")
-async def selitev_sku_check(request: Request):
-    """Diagnostika: pokaže Selitev SKU-je, ki NISO v zalogi (verjetno napačni — npr. odrezana ničla).
-    Za vsak tak SKU poišče, ali obstaja različica z vodilno ničlo (0+SKU), ki JE v zalogi."""
-    if not _owner_authorized(request):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    d = _selitev_load()
-    lookup = _load_stock_lookup()
-    lk = set(lookup.keys())   # SKU_upper, ki so v zalogi
-
-    ni_v_zalogi = []
-    resitev_z_niclo = []
-    for e in d.get("entries", []):
-        sku = (e.get("sku") or "").strip()
-        if not sku:
-            continue
-        if sku.upper() in lk:
-            continue    # OK, je v zalogi
-        # ni v zalogi — preveri, ali obstaja z vodilnimi ničlami
-        najden_z_niclo = None
-        for pad in ("0", "00", "000"):
-            kand = (pad + sku).upper()
-            if kand in lk:
-                najden_z_niclo = pad + sku
-                break
-        rec = {"selitev_sku": sku, "position": e.get("position", "")}
-        if najden_z_niclo:
-            rec["pravi_sku_v_zalogi"] = najden_z_niclo
-            resitev_z_niclo.append(rec)
-        else:
-            ni_v_zalogi.append(rec)
-
-    return {
-        "ok": True,
-        "skupaj_entries": len(d.get("entries", [])),
-        "ni_v_zalogi_skupaj": len(ni_v_zalogi) + len(resitev_z_niclo),
-        "popravljivih_z_niclo": len(resitev_z_niclo),
-        "popravljivi_primeri": resitev_z_niclo[:20],
-        "res_neznanih": len(ni_v_zalogi),
-        "res_neznani_primeri": ni_v_zalogi[:20],
     }
 
 
