@@ -12551,36 +12551,36 @@ async def skladisce_tloris_page(request: Request):
   :root{--bg:#f7f7f8;--card:#fff;--bd:#e2e2e5;--txt:#1a1a1a;--txt2:#666;--txt3:#999}
   @media(prefers-color-scheme:dark){:root{--bg:#1a1a1c;--card:#242427;--bd:#38383c;--txt:#e8e8ea;--txt2:#a0a0a5;--txt3:#78787e}}
   *{box-sizing:border-box}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:18px;background:var(--bg);color:var(--txt);max-width:1400px;margin:0 auto}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:24px;background:var(--bg);color:var(--txt);max-width:1700px;margin:0 auto}
   h1{font-size:24px;margin:0 0 4px}
   .sub{font-size:14px;color:var(--txt2);margin-bottom:16px}
   .legenda{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--txt2);margin-bottom:18px;align-items:center}
   .lg{display:inline-flex;align-items:center;gap:6px}
   .lg-box{width:18px;height:18px;border-radius:4px;border:1px solid var(--bd)}
   .tloris{display:flex;gap:10px;align-items:stretch}
-  .stena{display:flex;flex-direction:column;gap:8px;flex-shrink:0}
-  .stena-box{flex:1;border-radius:10px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;font-size:15px;font-weight:800;letter-spacing:2px;cursor:pointer;min-height:200px;border:1px solid var(--bd)}
-  .regali{flex:1;display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+  .stena{display:flex;flex-direction:column;gap:10px;flex-shrink:0}
+  .stena-box{flex:1;border-radius:10px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;font-size:18px;font-weight:800;letter-spacing:3px;cursor:pointer;min-height:280px;border:1px solid var(--bd)}
+  .regali{flex:1;display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
   .regal{border:1px solid var(--bd);border-radius:10px;overflow:hidden;background:var(--card)}
-  .regal-hd{display:flex;font-size:14px;font-weight:800;text-align:center;background:rgba(0,0,0,0.04)}
-  .regal-hd>div{flex:1;padding:6px 0}
+  .regal-hd{display:flex;font-size:17px;font-weight:800;text-align:center;background:rgba(0,0,0,0.04)}
+  .regal-hd>div{flex:1;padding:9px 0}
   .regal-hd>div:first-child{border-right:1px solid var(--bd)}
   .regal-body{display:flex}
   .regal-col{flex:1}
   .regal-col:first-child{border-right:1px solid var(--bd)}
-  .cell{text-align:center;padding:10px 3px;border-bottom:1px solid var(--bd);cursor:pointer;font-size:12px;line-height:1.35;transition:.1s;min-height:52px;display:flex;flex-direction:column;justify-content:center}
+  .cell{text-align:center;padding:14px 4px;border-bottom:1px solid var(--bd);cursor:pointer;font-size:14px;line-height:1.4;transition:.1s;min-height:68px;display:flex;flex-direction:column;justify-content:center}
   .cell:last-child{border-bottom:none}
   .cell:hover{outline:2px solid #2563eb;outline-offset:-2px}
-  .cell .rn{font-weight:800;font-size:13px}
-  .cell .num{font-size:11px;opacity:.9;margin-top:2px}
+  .cell .rn{font-weight:800;font-size:16px}
+  .cell .num{font-size:13px;opacity:.9;margin-top:3px}
   .c-empty{background:rgba(150,150,150,0.12);color:var(--txt3)}
   .c-low{background:rgba(245,158,11,0.24);color:#8a5a00}
   .c-full{background:rgba(34,197,94,0.22);color:#15803d}
   @media(prefers-color-scheme:dark){.c-low{color:#fbbf24}.c-full{color:#4ade80}}
   .dodatne{margin-top:10px;border:1px solid var(--bd);border-radius:10px;padding:12px;background:var(--card)}
   .dodatne-hd{font-size:14px;font-weight:800;color:var(--txt2);margin-bottom:8px}
-  .spolice{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px}
-  .spol{border:1px solid var(--bd);border-radius:8px;padding:10px 3px;text-align:center;font-size:13px;cursor:pointer;min-height:50px;display:flex;flex-direction:column;justify-content:center}
+  .spolice{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px}
+  .spol{border:1px solid var(--bd);border-radius:8px;padding:13px 4px;text-align:center;font-size:15px;cursor:pointer;min-height:60px;display:flex;flex-direction:column;justify-content:center}
   /* MOBILNO: vse v en stolpec, stene kot vodoravni pasovi, regali 2 stolpca */
   @media(max-width:720px){
     body{padding:12px}
@@ -12595,7 +12595,7 @@ async def skladisce_tloris_page(request: Request):
     .spolice{grid-template-columns:repeat(auto-fill,minmax(64px,1fr))}
   }
   #search{width:100%;padding:9px 11px;border:1px solid var(--bd);border-radius:8px;font-size:13px;margin-bottom:12px;background:var(--card);color:var(--txt)}
-  #panel{position:fixed;top:0;right:0;width:min(460px,94vw);height:100%;background:var(--card);border-left:1px solid var(--bd);box-shadow:-4px 0 20px rgba(0,0,0,0.15);transform:translateX(100%);transition:.2s;overflow-y:auto;z-index:50;padding:16px}
+  #panel{position:fixed;top:0;right:0;width:min(480px,95vw);height:100%;background:var(--card);border-left:1px solid var(--bd);box-shadow:-4px 0 20px rgba(0,0,0,0.15);transform:translateX(100%);transition:.2s;overflow-y:auto;z-index:50;padding:16px}
   #panel.open{transform:translateX(0)}
   #panel h3{margin:0 0 2px;font-size:16px}
   .prow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--bd)}
@@ -12615,7 +12615,7 @@ async def skladisce_tloris_page(request: Request):
 <input type="text" id="search" placeholder="🔍 Vpiši SKU — pove, na kateri poziciji je" oninput="doSearch(this.value)">
 <div id="searchRes" style="font-size:12px;margin-bottom:10px"></div>
 <div class="tloris">
-  <div class="stena" style="width:34px">
+  <div class="stena" style="width:44px">
     <div class="stena-box" style="background:rgba(37,99,235,0.14);color:#1d4ed8" onclick="openImenska('Omara')">OMARA</div>
     <div class="stena-box" style="background:rgba(0,0,0,0.04);color:var(--txt2)" onclick="openImenska('Pod mizo')">POD MIZO</div>
   </div>
@@ -12626,7 +12626,7 @@ async def skladisce_tloris_page(request: Request):
       <div class="spolice" id="spolice"></div>
     </div>
   </div>
-  <div class="stena" style="width:40px">
+  <div class="stena" style="width:52px">
     <div class="stena-box" style="background:rgba(245,158,11,0.18);color:#8a5a00" onclick="openImenska('Pri Amiotu')">AMIO</div>
     <div class="stena-box" style="background:rgba(245,158,11,0.18);color:#8a5a00" onclick="openImenska('Ikonka')">IKONKA</div>
   </div>
@@ -12677,46 +12677,34 @@ function render(){
 function shelfColor(sku){ if(!sku) return {fill:'rgba(150,150,150,0.13)', txt:'#888', side:'rgba(150,150,150,0.08)', lbl:'prazno'}; if(sku<5) return {fill:'rgba(245,158,11,0.26)', txt:'#8a5a00', side:'rgba(245,158,11,0.15)', lbl:'skoraj prazno'}; return {fill:'rgba(34,197,94,0.24)', txt:'#15803d', side:'rgba(34,197,94,0.14)', lbl:'polno'}; }
 
 let _curRegal = null;
+function shelfDot(sku){ if(!sku) return '#b4b4b8'; if(sku<5) return '#f59e0b'; return '#22c55e'; }
+function shelfPct(kosov){ if(!kosov) return 0; return Math.min(100, Math.round(kosov/3)); }
+
 function openCell(vrsta, regal){
   _curRegal = {vrsta, regal};
   const c = (DATA.vrste[vrsta] && DATA.vrste[vrsta][regal]) || {police:{}};
   const police = c.police || {};
   const mesta = ['A','B','C','D','E','F'];
-  // SVG 3D regal — police A(vrh) do F(tla)
-  const X0=70, X1=330, XT0=110, XT1=370, Y0=70, dyTop=30;
-  const hRow=66, yStart=70;
-  let svg = '<svg viewBox="0 0 420 520" width="100%" style="max-width:420px;display:block;margin:0 auto" xmlns="http://www.w3.org/2000/svg">';
-  svg += '<g stroke="#2a2a2e" stroke-width="2.5" stroke-linejoin="round">';
-  // vrhnja ploskev
-  svg += '<line x1="70" y1="70" x2="110" y2="40" stroke-width="3"/><line x1="330" y1="70" x2="370" y2="40" stroke-width="3"/>';
-  svg += '<line x1="110" y1="40" x2="370" y2="40" stroke-width="2"/><line x1="110" y1="40" x2="110" y2="440" stroke-width="2"/><line x1="370" y1="40" x2="370" y2="440" stroke-width="2"/>';
-  svg += '<polygon points="70,70 110,40 370,40 330,70" fill="#b8b8bc"/>';
-  svg += '<rect x="70" y="70" width="260" height="400" fill="var(--card)"/>';
+  let h = '<h3>Vrsta '+parseInt(vrsta)+' \u00b7 Regal '+regal+'</h3>';
+  h += '<div style="font-size:12px;color:var(--txt2);margin-bottom:12px">A = vrh \u00b7 F = tla \u00b7 klik na polico za izdelke</div>';
+  h += '<div style="border:1.5px solid var(--bd);border-radius:10px;overflow:hidden">';
   mesta.forEach((mesto, i) => {
     const p = police[mesto] || {sku_stevilo:0, kosov:0};
-    const col = shelfColor(p.sku_stevilo);
-    const y = yStart + i*hRow;
-    const yb = (i===5) ? 470 : (y+hRow);
-    const ytop = y - 30, ybtop = yb - 30;  // approx za stransko ploskev
-    // sprednja ploskev police (klikljiva)
-    svg += '<g style="cursor:pointer" onclick="openShelf(&apos;'+vrsta+'&apos;,&apos;'+regal+'&apos;,&apos;'+mesto+'&apos;)">';
-    svg += '<rect x="70" y="'+y+'" width="260" height="'+(i===5?70:hRow)+'" fill="'+col.fill+'"/>';
-    // stranska ploskev (globina)
-    const yTopSide = 40 + i*(400/6);
-    const yBotSide = 40 + (i+1)*(400/6);
-    svg += '<polygon points="330,'+y+' 370,'+yTopSide+' 370,'+yBotSide+' 330,'+yb+'" fill="'+col.side+'"/>';
-    svg += '<text x="90" y="'+(y+30)+'" font-family="sans-serif" font-size="17" font-weight="600" fill="'+col.txt+'">'+parseInt(vrsta)+'-'+regal+mesto+'</text>';
-    const podnapis = p.sku_stevilo ? (p.sku_stevilo+' izd · '+p.kosov+' kos') : 'prazno';
-    svg += '<text x="90" y="'+(y+50)+'" font-family="sans-serif" font-size="11" fill="'+col.txt+'">'+podnapis+'</text>';
-    svg += '</g>';
+    const dot = shelfDot(p.sku_stevilo);
+    const pct = p.sku_stevilo ? shelfPct(p.kosov) : 0;
+    const prazno = !p.sku_stevilo;
+    const podnapis = prazno ? 'prazno' : (p.sku_stevilo + ' \u00b7 ' + p.kosov);
+    const bt = i>0 ? 'border-top:1px solid var(--bd);' : '';
+    h += '<div style="padding:12px 14px;background:var(--card);cursor:pointer;'+bt+'" onclick="openShelf(&apos;'+vrsta+'&apos;,&apos;'+regal+'&apos;,&apos;'+mesto+'&apos;)">';
+    h += '<div style="display:flex;align-items:center;gap:9px">';
+    h += '<span style="width:11px;height:11px;border-radius:50%;background:'+dot+';flex-shrink:0"></span>';
+    h += '<span style="font-size:15px;font-weight:600'+(prazno?';color:var(--txt3)':'')+'">'+parseInt(vrsta)+'-'+regal+mesto+'</span>';
+    h += '<span style="margin-left:auto;font-size:12px;color:var(--txt2)'+(prazno?';color:var(--txt3)':'')+'">'+podnapis+'</span>';
+    h += '</div>';
+    h += '<div style="height:5px;background:var(--bg);border-radius:3px;margin-top:7px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+dot+'"></div></div>';
+    h += '</div>';
   });
-  // ogrodje + noge
-  svg += '<line x1="70" y1="70" x2="70" y2="470" stroke-width="4"/><line x1="330" y1="70" x2="330" y2="470" stroke-width="4"/><line x1="70" y1="470" x2="330" y2="470" stroke-width="3"/>';
-  svg += '<line x1="70" y1="470" x2="70" y2="495" stroke-width="4"/><line x1="330" y1="470" x2="330" y2="495" stroke-width="4"/><line x1="370" y1="440" x2="370" y2="465" stroke-width="3"/>';
-  svg += '</g></svg>';
-  let h = '<h3>Vrsta '+parseInt(vrsta)+' · Regal '+regal+'</h3>';
-  h += '<div style="font-size:12px;color:var(--txt2);margin-bottom:10px">A = vrh · F = tla · klik na polico za izdelke</div>';
-  h += svg;
+  h += '</div>';
   document.getElementById('panelBody').innerHTML = h;
   document.getElementById('panel').classList.add('open');
 }
