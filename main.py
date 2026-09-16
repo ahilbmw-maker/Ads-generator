@@ -12318,13 +12318,13 @@ async def skladisce_tloris_page(request: Request):
 </div>
 <div class="sub">Kaj je na kateri polici · barva = zasedenost · klik za seznam izdelkov</div>
 <div class="legenda">
-  <span style="font-weight:700;color:var(--txt)">Zasedenost po kosih:</span>
+  <span style="font-weight:700;color:var(--txt)">Količina (zelena):</span>
   <span class="lg"><span class="lg-box" style="background:rgba(150,150,150,0.13)"></span> prazno</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(229,72,77,0.24)"></span> malo (dopolni)</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(245,158,11,0.30)"></span> srednje</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(34,197,94,0.34)"></span> dosti</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(34,197,94,0.60)"></span> poln</span>
-  <span class="lg" style="margin-left:auto">rdeča = dopolni · R1↓/R1↑ = serpentina</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(40,150,80,0.25)"></span> malo</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(40,150,80,0.55)"></span> srednje</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(40,150,80,0.85)"></span> veliko</span>
+  <span class="lg" style="margin-left:14px"><span class="lg-box" style="background:transparent;outline:2px solid #f59e0b;outline-offset:-2px"></span> rumen rob = niso vse police polne</span>
+  <span class="lg" style="margin-left:auto">R1↓/R1↑ = serpentina</span>
 </div>
 <input type="text" id="search" placeholder="🔍 Vpiši SKU — pove, na kateri poziciji je" oninput="doSearch(this.value)">
 <div id="searchRes" style="font-size:12px;margin-bottom:10px"></div>
@@ -12412,17 +12412,16 @@ function izracunajMax(){
     }));
   }
 }
-// SEMAFOR: rdeča (malo — dopolni!) → rumena (srednje) → zelena (polno).
-// Delež = kosov / _maxKosov (samodejna umeritev po največjem regalu).
+// PREDLOG C: ena ZELENA po kosih (svetlo→temno), ROB rumen če NI vseh 6 polic zasedenih.
+// Ozadje = koliko kosov · rob = koliko polic pokritih. Dva podatka, ena mirna barva.
 function regalStyle(kosov, zasedenih){
-  if(!kosov || kosov===0) return 'background:rgba(150,150,150,0.13);color:var(--txt3)';   // prazno — sivo
-  const d = Math.min(1, kosov / _maxKosov);   // 0..1
-  let bg, txt;
-  if(d < 0.30){ bg='rgba(229,72,77,0.24)'; txt='#a32d2d'; }         // malo — RDEČA (dopolni)
-  else if(d < 0.65){ bg='rgba(245,158,11,0.30)'; txt='#8a5a00'; }   // srednje — RUMENA
-  else if(d < 0.90){ bg='rgba(34,197,94,0.34)'; txt='#15803d'; }    // dosti — ZELENA
-  else { bg='rgba(34,197,94,0.60)'; txt='#0a3d1e'; }                // poln — TEMNO ZELENA
-  return 'background:'+bg+';color:'+txt;
+  if(!kosov || kosov===0) return 'background:rgba(150,150,150,0.10);color:var(--txt3)';   // prazno — sivo
+  const d = Math.min(1, kosov / _maxKosov);   // 0..1 — zelena progresija po kosih
+  const alpha = (0.16 + d*0.70).toFixed(3);   // svetlo → temno zelena
+  const txt = d >= 0.55 ? '#ffffff' : (d >= 0.30 ? '#256025' : '#3d6b15');
+  // če NI vseh 6 polic zasedenih → rumen notranji rob (outline), da se vidi "še prostor"
+  const outline = (zasedenih < 6) ? ';outline:2px solid #f59e0b;outline-offset:-2px' : '';
+  return 'background:rgba(40,150,80,'+alpha+');color:'+txt+outline;
 }
 function prostoLabel(kosov, zasedenih){
   if(!kosov || kosov===0) return 'prazno';
