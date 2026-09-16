@@ -12227,26 +12227,15 @@ async def skladisce_tloris_page(request: Request):
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:20px 28px;background:var(--bg);color:var(--txt);width:100%}
   /* TV način: brez glave, večji tloris, zapolni zaslon */
-  body.tv-on{padding:12px 16px;min-height:100vh;display:flex;flex-direction:column}
-  /* TV: tloris zapolni preostalo višino (flex), ne glede na višino statistik/nabiranja */
-  body.tv-on #tvStats{flex:0 0 auto}
-  body.tv-on .ab-wrap{flex:1 1 auto;align-items:stretch;min-height:0}
-  body.tv-on .ab-a{display:flex;flex-direction:column}
-  body.tv-on .ab-a > div:last-child{flex:1;display:flex;flex-direction:column}
-  body.tv-on .tloris{flex:1;align-items:stretch}
-  body.tv-on .tloris > div:nth-child(2){display:flex;flex-direction:column}
-  body.tv-on .regali{flex:1}
-  body.tv-on .regal{display:flex;flex-direction:column}
-  body.tv-on .regal-body{flex:1}
-  body.tv-on .regal-col{display:flex;flex-direction:column}
-  body.tv-on .cell{flex:1;min-height:0;font-size:18px}
+  body.tv-on{padding:12px 16px}
+  /* TV: enostavno večje celice (fiksno), brez agresivnega flex-a — regali večji, brez praznega prostora */
+  body.tv-on .cell{min-height:112px;font-size:18px}
   body.tv-on .cell .rn{font-size:22px}
   body.tv-on .cell .num{font-size:16px}
   body.tv-on .regal-hd{font-size:23px}
   body.tv-on .stena-box{font-size:24px}
-  body.tv-on .dodatne{flex:0 0 auto}
-  body.tv-on .spol{min-height:70px;font-size:18px}
-  body.tv-on #tvStats{margin-bottom:12px}
+  body.tv-on .spol{min-height:80px;font-size:18px}
+  body.tv-on #tvStats{margin-bottom:14px}
   /* TV statistične kartice — slog kot Domov (hsp-card), mehkejši */
   .tvc{flex:1;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;min-width:0}
   .tvc-proj{flex:1.3;background:#534AB7;border-color:#534AB7}
