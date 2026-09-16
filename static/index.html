@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-16 09:30</div>
+      <div class="sidebar-logo-sub">build 2026-09-16 09:45</div>
     </div>
   </div>
 
@@ -2358,7 +2358,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
         <div class="card">
           <span class="slabel">KORAK 2 — naloži drugi dokument</span>
-          <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.5;margin:6px 0 12px">Iz tega dokumenta se odstranijo <b>vse vrstice</b> s SKU-ji, shranjenimi v koraku 1. Rezultat dobiš kot CSV.</div>
+          <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.5;margin:6px 0 12px">Iz tega dokumenta se odstranijo <b>vse vrstice</b> s SKU-ji, shranjenimi v koraku 1. Dobiš <b>oba</b> očiščena CSV-ja (korak1 brez vrstic &lt;10, korak2 brez teh SKU).</div>
           <div id="prip2Guard" style="font-size:12px;color:#d97706;margin-bottom:10px;display:none">⚠ Najprej naloži korak 1.</div>
           <input type="file" id="prip2File" accept=".xlsx,.xls,.csv" style="font-size:13px;display:block;margin-bottom:10px">
           <button onclick="prip2Upload()" id="prip2Btn" style="padding:10px 18px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Obdelaj in prenesi CSV</button>
@@ -9523,14 +9523,18 @@ async function prip2Upload(){
     const r = await fetch('/priprava-korak2', { method:'POST', body:fd });
     const d = await r.json();
     if (d.ok){
-      st.innerHTML = '<span style="color:#16a34a">✓ Odstranjenih '+d.odstranjenih_vrstic+' vrstic · ostane '+d.ostane_vrstic+' vrstic. Prenos...</span>';
-      // prenesi CSV
-      const blob = new Blob([d.csv], { type:'text/csv;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'priprava_seznam_' + new Date().toISOString().slice(0,10) + '.csv';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const dat = new Date().toISOString().slice(0,10);
+      st.innerHTML = '<span style="color:#16a34a">✓ Korak1: ostane '+(d.korak1_ostane||0)+' vrstic · Korak2: odstranjenih '+d.odstranjenih_vrstic+', ostane '+d.ostane_vrstic+'. Prenašam oba...</span>';
+      function prenesi(csv, ime){
+        const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = ime; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+      // prenesi OBA CSV (korak1 očiščen + korak2 očiščen)
+      if (d.korak1_csv) prenesi(d.korak1_csv, 'korak1_odbito_' + dat + '.csv');
+      setTimeout(function(){ prenesi(d.csv, 'korak2_odbito_' + dat + '.csv'); }, 400);
     } else {
       st.innerHTML = '<span style="color:#dc2626">'+(d.error||'napaka')+'</span>';
     }

@@ -6264,13 +6264,33 @@ async def priprava_korak1(request: Request, file: UploadFile = File(...)):
             continue
         if pr < 10:
             shranjeni[sku.upper()] = pr   # zadnja vrednost obvelja
-    # shrani na disk
+    # zgradi OČIŠČEN korak1 CSV (brez vrstic <10) — ostanejo samo vrstice z razliko >=10
+    import csv as _csv
+    from io import StringIO as _SIO
+    buf1 = _SIO()
+    w1 = _csv.writer(buf1, delimiter=";")
+    w1.writerow(["" if c is None else c for c in rows[0]])   # glava
+    ostane1 = 0
+    for row in rows[1:]:
+        if not row or len(row) <= max(i_sku, i_pr):
+            continue
+        try:
+            pv = float(str(row[i_pr]).replace(",", "."))
+        except (ValueError, TypeError):
+            # vrstica brez veljavne razlike — obdrži jo (ni <10)
+            w1.writerow(["" if c is None else c for c in row]); ostane1 += 1; continue
+        if pv < 10:
+            continue   # odbij
+        w1.writerow(["" if c is None else c for c in row]); ostane1 += 1
+    korak1_csv = buf1.getvalue()
+    # shrani na disk: SKU-ji + očiščen korak1 CSV
     import json as _j
     tmp = PRIPRAVA_SEZNAM_FILE.with_suffix(".tmp")
-    tmp.write_text(_j.dumps({"skus": shranjeni, "shranjeno": len(shranjeni)}, ensure_ascii=False), encoding="utf-8")
+    tmp.write_text(_j.dumps({"skus": shranjeni, "shranjeno": len(shranjeni),
+                             "korak1_csv": korak1_csv, "korak1_ostane": ostane1}, ensure_ascii=False), encoding="utf-8")
     os.replace(tmp, PRIPRAVA_SEZNAM_FILE)
     primeri = [{"sku": k, "prodano_razlika": v} for k, v in list(shranjeni.items())[:15]]
-    return {"ok": True, "shranjenih_sku": len(shranjeni), "primeri": primeri}
+    return {"ok": True, "shranjenih_sku": len(shranjeni), "korak1_ostane": ostane1, "primeri": primeri}
 
 
 @app.get("/priprava-korak1-status")
@@ -6302,6 +6322,8 @@ async def priprava_korak2(request: Request, file: UploadFile = File(...)):
     try:
         d = _j.loads(PRIPRAVA_SEZNAM_FILE.read_text(encoding="utf-8"))
         odstrani = set(str(k).strip().upper() for k in (d.get("skus") or {}).keys())
+        korak1_csv = d.get("korak1_csv", "")
+        korak1_ostane = d.get("korak1_ostane", 0)
     except Exception as e:
         return {"ok": False, "error": f"Branje shranjenih SKU: {e}"}
     if not odstrani:
@@ -6348,8 +6370,11 @@ async def priprava_korak2(request: Request, file: UploadFile = File(...)):
     for row in obdrzane:
         w.writerow(["" if c is None else c for c in row])
     csv_text = buf.getvalue()
-    return {"ok": True, "odstranjenih_vrstic": odstranjenih,
-            "ostane_vrstic": len(obdrzane) - 1, "csv": csv_text}
+    return {"ok": True,
+            "odstranjenih_vrstic": odstranjenih, "ostane_vrstic": len(obdrzane) - 1,
+            "csv": csv_text,                              # korak2 očiščen
+            "korak1_csv": korak1_csv,                     # korak1 očiščen (iz diska)
+            "korak1_ostane": korak1_ostane}
 
 
 @app.post("/narocilnice-history")
