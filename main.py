@@ -12551,7 +12551,7 @@ async def skladisce_tloris_page(request: Request):
   :root{--bg:#f7f7f8;--card:#fff;--bd:#e2e2e5;--txt:#1a1a1a;--txt2:#666;--txt3:#999}
   @media(prefers-color-scheme:dark){:root{--bg:#1a1a1c;--card:#242427;--bd:#38383c;--txt:#e8e8ea;--txt2:#a0a0a5;--txt3:#78787e}}
   *{box-sizing:border-box}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:24px;background:var(--bg);color:var(--txt);max-width:1700px;margin:0 auto}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:20px 28px;background:var(--bg);color:var(--txt);width:100%}
   h1{font-size:24px;margin:0 0 4px}
   .sub{font-size:14px;color:var(--txt2);margin-bottom:16px}
   .legenda{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--txt2);margin-bottom:18px;align-items:center}
@@ -12559,28 +12559,28 @@ async def skladisce_tloris_page(request: Request):
   .lg-box{width:18px;height:18px;border-radius:4px;border:1px solid var(--bd)}
   .tloris{display:flex;gap:10px;align-items:stretch}
   .stena{display:flex;flex-direction:column;gap:10px;flex-shrink:0}
-  .stena-box{flex:1;border-radius:10px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;font-size:18px;font-weight:800;letter-spacing:3px;cursor:pointer;min-height:280px;border:1px solid var(--bd)}
+  .stena-box{flex:1;border-radius:10px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;font-size:20px;font-weight:800;letter-spacing:4px;cursor:pointer;min-height:340px;border:1px solid var(--bd)}
   .regali{flex:1;display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
   .regal{border:1px solid var(--bd);border-radius:10px;overflow:hidden;background:var(--card)}
-  .regal-hd{display:flex;font-size:17px;font-weight:800;text-align:center;background:rgba(0,0,0,0.04)}
+  .regal-hd{display:flex;font-size:19px;font-weight:800;text-align:center;background:rgba(0,0,0,0.04)}
   .regal-hd>div{flex:1;padding:9px 0}
   .regal-hd>div:first-child{border-right:1px solid var(--bd)}
   .regal-body{display:flex}
   .regal-col{flex:1}
   .regal-col:first-child{border-right:1px solid var(--bd)}
-  .cell{text-align:center;padding:14px 4px;border-bottom:1px solid var(--bd);cursor:pointer;font-size:14px;line-height:1.4;transition:.1s;min-height:68px;display:flex;flex-direction:column;justify-content:center}
+  .cell{text-align:center;padding:16px 4px;border-bottom:1px solid var(--bd);cursor:pointer;font-size:15px;line-height:1.4;transition:.1s;min-height:80px;display:flex;flex-direction:column;justify-content:center}
   .cell:last-child{border-bottom:none}
   .cell:hover{outline:2px solid #2563eb;outline-offset:-2px}
-  .cell .rn{font-weight:800;font-size:16px}
-  .cell .num{font-size:13px;opacity:.9;margin-top:3px}
+  .cell .rn{font-weight:800;font-size:18px}
+  .cell .num{font-size:14px;opacity:.9;margin-top:4px}
   .c-empty{background:rgba(150,150,150,0.12);color:var(--txt3)}
   .c-low{background:rgba(245,158,11,0.24);color:#8a5a00}
   .c-full{background:rgba(34,197,94,0.22);color:#15803d}
   @media(prefers-color-scheme:dark){.c-low{color:#fbbf24}.c-full{color:#4ade80}}
   .dodatne{margin-top:10px;border:1px solid var(--bd);border-radius:10px;padding:12px;background:var(--card)}
   .dodatne-hd{font-size:14px;font-weight:800;color:var(--txt2);margin-bottom:8px}
-  .spolice{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px}
-  .spol{border:1px solid var(--bd);border-radius:8px;padding:13px 4px;text-align:center;font-size:15px;cursor:pointer;min-height:60px;display:flex;flex-direction:column;justify-content:center}
+  .spolice{display:grid;grid-template-columns:repeat(14,1fr);gap:10px}
+  .spol{border:1px solid var(--bd);border-radius:8px;padding:16px 4px;text-align:center;font-size:16px;cursor:pointer;min-height:70px;display:flex;flex-direction:column;justify-content:center}
   /* MOBILNO: vse v en stolpec, stene kot vodoravni pasovi, regali 2 stolpca */
   @media(max-width:720px){
     body{padding:12px}
@@ -12617,7 +12617,7 @@ async def skladisce_tloris_page(request: Request):
 <input type="text" id="search" placeholder="🔍 Vpiši SKU — pove, na kateri poziciji je" oninput="doSearch(this.value)">
 <div id="searchRes" style="font-size:12px;margin-bottom:10px"></div>
 <div class="tloris">
-  <div class="stena" style="width:44px">
+  <div class="stena" style="width:52px">
     <div class="stena-box" style="background:rgba(37,99,235,0.14);color:#1d4ed8" onclick="openImenska('Omara')">OMARA</div>
     <div class="stena-box" style="background:rgba(0,0,0,0.04);color:var(--txt2)" onclick="openImenska('Pod mizo')">POD MIZO</div>
   </div>
@@ -12628,7 +12628,7 @@ async def skladisce_tloris_page(request: Request):
       <div class="spolice" id="spolice"></div>
     </div>
   </div>
-  <div class="stena" style="width:52px">
+  <div class="stena" style="width:60px">
     <div class="stena-box" style="background:rgba(245,158,11,0.18);color:#8a5a00" onclick="openImenska('Pri Amiotu')">AMIO</div>
     <div class="stena-box" style="background:rgba(245,158,11,0.18);color:#8a5a00" onclick="openImenska('Ikonka')">IKONKA</div>
   </div>
