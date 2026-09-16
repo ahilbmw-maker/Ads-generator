@@ -6214,12 +6214,16 @@ async def get_narocilnice_history():
 PRIPRAVA_SEZNAM_FILE = DATA_DIR / "priprava_seznam_korak1.json"
 
 @app.post("/priprava-korak1")
-async def priprava_korak1(request: Request, file: UploadFile = File(...)):
-    """Korak 1: naloži dokument, poišči postavke kjer je 'Prodano razlika' < 10,
+async def priprava_korak1(request: Request, file: UploadFile = File(...), prag: str = "10"):
+    """Korak 1: naloži dokument, poišči postavke kjer je 'Prodano razlika' < prag (privzeto 10),
     shrani (SKU, prodano razlika) na disk. Vrne koliko jih je našel."""
     if not _owner_authorized(request):
         from fastapi.responses import JSONResponse
         return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    try:
+        _prag = float(str(prag).replace(",", "."))
+    except (ValueError, TypeError):
+        _prag = 10.0
     import io as _io
     raw = await file.read()
     fname = (file.filename or "").lower()
@@ -6262,7 +6266,7 @@ async def priprava_korak1(request: Request, file: UploadFile = File(...)):
             pr = float(str(row[i_pr]).replace(",", "."))
         except (ValueError, TypeError):
             continue
-        if pr < 10:
+        if pr < _prag:
             shranjeni[sku.upper()] = pr   # zadnja vrednost obvelja
     # zgradi OČIŠČEN korak1 CSV (brez vrstic <10) — ostanejo samo vrstice z razliko >=10
     import csv as _csv
@@ -6279,7 +6283,7 @@ async def priprava_korak1(request: Request, file: UploadFile = File(...)):
         except (ValueError, TypeError):
             # vrstica brez veljavne razlike — obdrži jo (ni <10)
             w1.writerow(["" if c is None else c for c in row]); ostane1 += 1; continue
-        if pv < 10:
+        if pv < _prag:
             continue   # odbij
         w1.writerow(["" if c is None else c for c in row]); ostane1 += 1
     korak1_csv = buf1.getvalue()
@@ -6290,7 +6294,7 @@ async def priprava_korak1(request: Request, file: UploadFile = File(...)):
                              "korak1_csv": korak1_csv, "korak1_ostane": ostane1}, ensure_ascii=False), encoding="utf-8")
     os.replace(tmp, PRIPRAVA_SEZNAM_FILE)
     primeri = [{"sku": k, "prodano_razlika": v} for k, v in list(shranjeni.items())[:15]]
-    return {"ok": True, "shranjenih_sku": len(shranjeni), "korak1_ostane": ostane1, "primeri": primeri}
+    return {"ok": True, "shranjenih_sku": len(shranjeni), "korak1_ostane": ostane1, "prag": _prag, "primeri": primeri}
 
 
 @app.get("/priprava-korak1-status")

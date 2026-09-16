@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-16 09:45</div>
+      <div class="sidebar-logo-sub">build 2026-09-16 10:00</div>
     </div>
   </div>
 
@@ -2350,7 +2350,8 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div style="max-width:760px">
         <div class="card" style="margin-bottom:16px">
           <span class="slabel">KORAK 1 — naloži prvi dokument</span>
-          <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.5;margin:6px 0 12px">Sistem poišče postavke, kjer je <b>Prodano razlika &lt; 10</b>, in shrani te SKU-je v ozadje. (.xlsx ali .csv)</div>
+          <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.5;margin:6px 0 12px">Sistem poišče postavke, kjer je <b>Prodano razlika</b> pod pragom (privzeto &lt; 10), in shrani te SKU-je v ozadje. (.xlsx ali .csv)</div>
+          <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:8px;margin-bottom:10px">Prag (Prodano razlika &lt;) <input type="number" id="prip1Prag" value="10" step="1" style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:13px;text-align:center"></label>
           <input type="file" id="prip1File" accept=".xlsx,.xls,.csv" style="font-size:13px;display:block;margin-bottom:10px">
           <button onclick="prip1Upload()" style="padding:10px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Naloži korak 1</button>
           <div id="prip1Status" style="margin-top:10px;font-size:13px"></div>
@@ -9501,13 +9502,14 @@ async function prip1CheckStatus(){
 async function prip1Upload(){
   const f = document.getElementById('prip1File').files[0];
   if (!f){ alert('Izberi dokument za korak 1.'); return; }
+  const prag = document.getElementById('prip1Prag').value || '10';
   const st = document.getElementById('prip1Status'); st.textContent = 'Nalagam...';
-  const fd = new FormData(); fd.append('file', f);
+  const fd = new FormData(); fd.append('file', f); fd.append('prag', prag);
   try{
     const r = await fetch('/priprava-korak1', { method:'POST', body:fd });
     const d = await r.json();
     if (d.ok){
-      st.innerHTML = '<span style="color:#16a34a">✓ Shranjenih '+d.shranjenih_sku+' SKU (Prodano razlika &lt; 10)</span>';
+      st.innerHTML = '<span style="color:#16a34a">✓ Shranjenih '+d.shranjenih_sku+' SKU (Prodano razlika &lt; '+(d.prag!==undefined?d.prag:prag)+')</span>';
       const guard = document.getElementById('prip2Guard'); if (guard) guard.style.display = 'none';
     } else {
       st.innerHTML = '<span style="color:#dc2626">'+(d.error||'napaka')+'</span>';
@@ -9523,8 +9525,10 @@ async function prip2Upload(){
     const r = await fetch('/priprava-korak2', { method:'POST', body:fd });
     const d = await r.json();
     if (d.ok){
-      const dat = new Date().toISOString().slice(0,10);
-      st.innerHTML = '<span style="color:#16a34a">✓ Korak1: ostane '+(d.korak1_ostane||0)+' vrstic · Korak2: odstranjenih '+d.odstranjenih_vrstic+', ostane '+d.ostane_vrstic+'. Prenašam oba...</span>';
+      const now = new Date();
+      const zig = now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2)
+                + '_' + ('0'+now.getHours()).slice(-2) + ('0'+now.getMinutes()).slice(-2);
+      st.innerHTML = '<span style="color:#16a34a">✓ zdruzenoSHEETS: ostane '+(d.korak1_ostane||0)+' vrstic · nezdruzenoDONET: odstranjenih '+d.odstranjenih_vrstic+', ostane '+d.ostane_vrstic+'. Prenašam oba...</span>';
       function prenesi(csv, ime){
         const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
         const url = URL.createObjectURL(blob);
@@ -9532,9 +9536,9 @@ async function prip2Upload(){
         a.href = url; a.download = ime; document.body.appendChild(a); a.click(); document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }
-      // prenesi OBA CSV (korak1 očiščen + korak2 očiščen)
-      if (d.korak1_csv) prenesi(d.korak1_csv, 'korak1_odbito_' + dat + '.csv');
-      setTimeout(function(){ prenesi(d.csv, 'korak2_odbito_' + dat + '.csv'); }, 400);
+      // prenesi OBA CSV — korak1 → zdruzenoSHEETS, korak2 → nezdruzenoDONET
+      if (d.korak1_csv) prenesi(d.korak1_csv, 'zdruzenoSHEETS_' + zig + '.csv');
+      setTimeout(function(){ prenesi(d.csv, 'nezdruzenoDONET_' + zig + '.csv'); }, 400);
     } else {
       st.innerHTML = '<span style="color:#dc2626">'+(d.error||'napaka')+'</span>';
     }
