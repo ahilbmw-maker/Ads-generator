@@ -12308,6 +12308,21 @@ async def skladisce_tloris_page(request: Request):
 
 <button id="tvExitBtn" onclick="tvExit()" style="display:none;position:fixed;top:10px;right:14px;z-index:100;padding:8px 14px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">✕ Zapri TV</button>
 
+<div id="tvStats" style="display:none;margin-bottom:16px">
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:10px">
+    <div style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:var(--txt2)">Naročila 2026</div><div id="tvOrders" style="font-size:32px;font-weight:800">—</div></div>
+    <div style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:var(--txt2)">Promet</div><div id="tvRevenue" style="font-size:32px;font-weight:800;color:#15803d">—</div></div>
+    <div style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:var(--txt2)">Najboljši dan</div><div id="tvBest" style="font-size:32px;font-weight:800">—</div></div>
+    <div style="background:#534AB7;border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:#cec9f5">Napoved 2026</div><div id="tvProj" style="font-size:32px;font-weight:800;color:#fff">—</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+    <div style="background:rgba(34,197,94,0.12);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:#15803d">Vrednost zaloge</div><div id="tvStockVal" style="font-size:30px;font-weight:800;color:#15803d">—</div></div>
+    <div style="background:rgba(34,197,94,0.12);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:#15803d">Kosov skupaj</div><div id="tvStockPcs" style="font-size:30px;font-weight:800;color:#15803d">—</div></div>
+    <div style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:var(--txt2)">Pozicij zasedenih</div><div id="tvPozicij" style="font-size:30px;font-weight:800">—</div></div>
+    <div style="background:rgba(245,158,11,0.15);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:#8a5a00">Nabrano danes</div><div id="tvNabrano" style="font-size:30px;font-weight:800;color:#8a5a00">—</div></div>
+  </div>
+</div>
+
 <div style="display:flex;gap:20px;align-items:stretch">
 
   <div style="flex:1 1 auto;min-width:0">
@@ -12508,15 +12523,54 @@ function doSearch(q){
 function tvMode(){
   document.getElementById('tvHideHeader').style.display = 'none';
   document.getElementById('tvExitBtn').style.display = 'block';
+  document.getElementById('tvStats').style.display = 'block';
   document.body.classList.add('tv-on');
-  // poskusi fullscreen (deluje po kliku uporabnika)
+  loadTvStats();
   try{ if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); }catch(e){}
-  // samodejno osveževanje podatkov vsakih 60s v TV načinu
-  if(!window._tvTimer) window._tvTimer = setInterval(load, 60000);
+  // samodejno osveževanje (tloris + statistike) vsakih 60s
+  if(!window._tvTimer) window._tvTimer = setInterval(function(){ load(); loadTvStats(); }, 60000);
+}
+function fmtN(n){ return (n||0).toLocaleString('sl-SI'); }
+function fmtM(n){ if(!n) return '0 €'; if(n>=1000000) return (n/1000000).toFixed(2).replace('.',',')+' M€'; return Math.round(n).toLocaleString('sl-SI')+' €'; }
+async function loadTvStats(){
+  // prodaja
+  try{
+    const d = await (await fetch('/forecast2-stats?year=2026&_t='+Date.now(),{cache:'no-store'})).json();
+    if(d.ok!==false){
+      if(d.total_orders!==undefined) document.getElementById('tvOrders').textContent = fmtN(d.total_orders);
+      if(d.total_revenue!==undefined) document.getElementById('tvRevenue').textContent = fmtM(d.total_revenue);
+      if(d.projection_revenue!==undefined) document.getElementById('tvProj').textContent = fmtM(d.projection_revenue);
+      if(d.best_day) document.getElementById('tvBest').textContent = fmtM(d.best_day.revenue);
+    }
+  }catch(e){}
+  // skladišče (iz že naloženih DATA ali svež fetch)
+  try{
+    let vsota=0, kosov=0, zasedenih=0;
+    if(DATA && DATA.vrste){
+      Object.keys(DATA.vrste).forEach(v=>Object.keys(DATA.vrste[v]).forEach(r=>{ zasedenih += (DATA.vrste[v][r].zasedenih_polic||0); kosov += (DATA.vrste[v][r].kosov||0); }));
+    }
+    // vrednost zaloge: iz posebnega vira, če obstaja; sicer skrij
+    document.getElementById('tvStockPcs').textContent = fmtN(kosov);
+    document.getElementById('tvPozicij').textContent = zasedenih;
+  }catch(e){}
+  // vrednost zaloge (fiksni vir — pokritost/zaloga)
+  try{
+    const z = await (await fetch('/pozicije-pokritost?_t='+Date.now())).json();
+    if(z && z.odstotek!==undefined) document.getElementById('tvPozicij').textContent = z.pokriti_sku + '/' + z.na_zalogi_sku;
+  }catch(e){}
+  // nabiranje danes
+  try{
+    const n = await (await fetch('/zaloga-current?market=slo&_t='+Date.now())).json();
+    if(n && n.items){
+      const ok = n.items.filter(x=>x.status==='ok').length;
+      document.getElementById('tvNabrano').textContent = ok + ' / ' + n.items.length;
+    }
+  }catch(e){}
 }
 function tvExit(){
   document.getElementById('tvHideHeader').style.display = '';
   document.getElementById('tvExitBtn').style.display = 'none';
+  document.getElementById('tvStats').style.display = 'none';
   document.body.classList.remove('tv-on');
   try{ if(document.exitFullscreen && document.fullscreenElement) document.exitFullscreen(); }catch(e){}
   if(window._tvTimer){ clearInterval(window._tvTimer); window._tvTimer = null; }
