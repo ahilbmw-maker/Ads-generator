@@ -12723,7 +12723,7 @@ function renderIOC(){
   const d = {sku_stevilo: skuSet.size, kosov: kosovSum, izdelki: vsiIzdelki};
   const iocKey = iocKeys[0];
   el.style.cursor = 'pointer';
-  el.setAttribute('onclick', 'openImenska(&apos;'+iocKey+'&apos;)');
+  el.setAttribute('onclick', 'openIOC()');
   el.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:4px">PALETNO SKLADIŠČE</div>'
     + '<div style="font-size:12.5px;color:var(--txt2);line-height:1.5;margin-bottom:18px">Samo zapišeš količino izdelkov. Trenutno še nimamo paletnih regalov — jih bomo kmalu imeli.</div>'
     + '<div style="margin-bottom:16px"><div style="font-size:38px;font-weight:800;color:#8a5a00;line-height:1">'+d.sku_stevilo+'</div><div style="font-size:13px;color:var(--txt2)">različnih izdelkov</div></div>'
@@ -12773,6 +12773,13 @@ function openShelf(vrsta, regal, mesto){
 function openImenska(ime){
   const c = DATA.imenske[ime] || {izdelki:[]};
   showPanel(ime, c.izdelki || []);
+}
+function openIOC(){
+  // združi vse IOC variante v en seznam
+  const iocKeys = Object.keys(DATA.imenske || {}).filter(k => k.toLowerCase().indexOf('ioc') >= 0);
+  let vsi = [];
+  iocKeys.forEach(k => { (DATA.imenske[k].izdelki || []).forEach(it => vsi.push(it)); });
+  showPanel('Skladišče B (IOC) — paletno', vsi);
 }
 function showPanel(naslov, izdelki, jePolica){
   let h = '';
