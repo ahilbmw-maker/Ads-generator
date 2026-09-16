@@ -12539,6 +12539,267 @@ async def silux2_compare_live(request: Request):
     }
 
 
+@app.get("/skladisce-tloris", response_class=HTMLResponse)
+async def skladisce_tloris_page(request: Request):
+    """Stran: tloris skladišča z barvami zasedenosti in klik za seznam izdelkov."""
+    if not _owner_authorized(request):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik.</h3>", status_code=403)
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tloris skladišča</title>
+<style>
+  :root{--bg:#f7f7f8;--card:#fff;--bd:#e2e2e5;--txt:#1a1a1a;--txt2:#666;--txt3:#999}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1c;--card:#242427;--bd:#38383c;--txt:#e8e8ea;--txt2:#a0a0a5;--txt3:#78787e}}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:16px;background:var(--bg);color:var(--txt)}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{font-size:12px;color:var(--txt2);margin-bottom:14px}
+  .legenda{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--txt2);margin-bottom:16px;align-items:center}
+  .lg{display:inline-flex;align-items:center;gap:5px}
+  .lg-box{width:14px;height:14px;border-radius:3px;border:1px solid var(--bd)}
+  .tloris{display:flex;gap:8px;align-items:stretch}
+  .stena{display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+  .stena-box{flex:1;border-radius:8px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;min-height:120px;border:1px solid var(--bd)}
+  .regali{flex:1;display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+  .regal{border:1px solid var(--bd);border-radius:8px;overflow:hidden;background:var(--card)}
+  .regal-hd{display:flex;font-size:10px;font-weight:700;text-align:center;background:rgba(0,0,0,0.03)}
+  .regal-hd>div{flex:1;padding:3px 0}
+  .regal-hd>div:first-child{border-right:1px solid var(--bd)}
+  .regal-body{display:flex}
+  .regal-col{flex:1}
+  .regal-col:first-child{border-right:1px solid var(--bd)}
+  .cell{text-align:center;padding:5px 2px;border-bottom:1px solid var(--bd);cursor:pointer;font-size:9px;line-height:1.25;transition:.1s}
+  .cell:last-child{border-bottom:none}
+  .cell:hover{outline:2px solid #2563eb;outline-offset:-2px}
+  .cell .rn{font-weight:700;font-size:9px}
+  .cell .num{font-size:8.5px;opacity:.85}
+  .c-empty{background:rgba(150,150,150,0.12);color:var(--txt3)}
+  .c-low{background:rgba(245,158,11,0.22);color:#8a5a00}
+  .c-full{background:rgba(34,197,94,0.20);color:#15803d}
+  @media(prefers-color-scheme:dark){.c-low{color:#fbbf24}.c-full{color:#4ade80}}
+  .dodatne{margin-top:8px;border:1px solid var(--bd);border-radius:8px;padding:8px;background:var(--card)}
+  .dodatne-hd{font-size:11px;font-weight:700;color:var(--txt2);margin-bottom:6px}
+  .spolice{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:5px}
+  .spol{border:1px solid var(--bd);border-radius:6px;padding:5px 2px;text-align:center;font-size:9px;cursor:pointer}
+  #search{width:100%;padding:9px 11px;border:1px solid var(--bd);border-radius:8px;font-size:13px;margin-bottom:12px;background:var(--card);color:var(--txt)}
+  #panel{position:fixed;top:0;right:0;width:min(380px,90vw);height:100%;background:var(--card);border-left:1px solid var(--bd);box-shadow:-4px 0 20px rgba(0,0,0,0.15);transform:translateX(100%);transition:.2s;overflow-y:auto;z-index:50;padding:16px}
+  #panel.open{transform:translateX(0)}
+  #panel h3{margin:0 0 2px;font-size:16px}
+  .prow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--bd)}
+  .pill{font-size:9px;padding:1px 6px;border-radius:4px;flex-shrink:0}
+  .pill-g{background:rgba(0,0,0,0.06);color:var(--txt2)}
+  .pill-s{background:rgba(245,158,11,0.2);color:#8a5a00}
+  .closex{position:absolute;top:12px;right:14px;font-size:22px;cursor:pointer;color:var(--txt2);background:none;border:none}
+</style></head><body>
+<h1>🏬 Tloris skladišča</h1>
+<div class="sub">Kaj je na kateri polici · barva = zasedenost · klik za seznam izdelkov</div>
+<div class="legenda">
+  <span class="lg"><span class="lg-box" style="background:rgba(150,150,150,0.12)"></span> prazno (0)</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(245,158,11,0.22)"></span> skoraj prazno (1–4)</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(34,197,94,0.20)"></span> polno (5+)</span>
+  <span class="lg" style="margin-left:auto">R1↓/R1↑ = serpentina</span>
+</div>
+<input type="text" id="search" placeholder="🔍 Vpiši SKU — pove, na kateri poziciji je" oninput="doSearch(this.value)">
+<div id="searchRes" style="font-size:12px;margin-bottom:10px"></div>
+<div class="tloris">
+  <div class="stena" style="width:34px">
+    <div class="stena-box" style="background:rgba(37,99,235,0.14);color:#1d4ed8" onclick="openImenska('Omara')">OMARA</div>
+    <div class="stena-box" style="background:rgba(0,0,0,0.04);color:var(--txt2)" onclick="openImenska('Pod mizo')">POD MIZO</div>
+  </div>
+  <div style="flex:1">
+    <div class="regali" id="regali"></div>
+    <div class="dodatne">
+      <div class="dodatne-hd">DODATNE POZICIJE (S1–S14)</div>
+      <div class="spolice" id="spolice"></div>
+    </div>
+  </div>
+  <div class="stena" style="width:40px">
+    <div class="stena-box" style="background:rgba(245,158,11,0.18);color:#8a5a00" onclick="openImenska('Pri Amiotu')">AMIO</div>
+    <div class="stena-box" style="background:rgba(245,158,11,0.18);color:#8a5a00" onclick="openImenska('Ikonka')">IKONKA</div>
+  </div>
+</div>
+<div id="panel"><button class="closex" onclick="closePanel()">×</button><div id="panelBody"></div></div>
+<script>
+let DATA = null;
+// pari vrst: V1 najbolj DESNO → V11 levo. Vsak par [leva_vrsta, desna_vrsta] a desna je nižja št.
+// V1-V2 skrajno desno: znotraj para leva=V2, desna=V1 (V1 na desni strani para)
+const PARI = [['12','11'],['10','9'],['08','7'],['06','5'],['04','3'],['02','1']];
+// popravek: vrste so 2-mestne; naredimo pravilne oznake
+const PARI2 = [['12','11'],['10','09'],['08','07'],['06','05'],['04','03'],['02','01']];
+
+function cellClass(sku){ if(!sku) return 'c-empty'; if(sku<5) return 'c-low'; return 'c-full'; }
+
+function renderRegal(vLeva, vDesna){
+  // leva vrsta: R1 zgoraj (R1↓), desna vrsta: R1 spodaj (R1↑) — serpentina
+  const dl = DATA.vrste[vLeva] || {};
+  const dd = DATA.vrste[vDesna] || {};
+  let left = '';
+  for(let r=1;r<=5;r++){
+    const c = dl[r] || {sku_stevilo:0,kosov:0};
+    const lbl = r===1 ? 'R1↓' : ('R'+r);
+    left += '<div class="cell '+cellClass(c.sku_stevilo)+'" onclick="openCell(\''+vLeva+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+c.sku_stevilo+' izd · '+c.kosov+'</div></div>';
+  }
+  let right = '';
+  for(let r=5;r>=1;r--){
+    const c = dd[r] || {sku_stevilo:0,kosov:0};
+    const lbl = r===1 ? 'R1↑' : ('R'+r);
+    right += '<div class="cell '+cellClass(c.sku_stevilo)+'" onclick="openCell(\''+vDesna+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+c.sku_stevilo+' izd · '+c.kosov+'</div></div>';
+  }
+  return '<div class="regal"><div class="regal-hd"><div>V'+parseInt(vLeva)+'</div><div>V'+parseInt(vDesna)+'</div></div>'
+    + '<div class="regal-body"><div class="regal-col">'+left+'</div><div class="regal-col">'+right+'</div></div></div>';
+}
+
+function render(){
+  document.getElementById('regali').innerHTML = PARI2.map(p => renderRegal(p[0], p[1])).join('');
+  // S-police
+  let sp = '';
+  for(let i=1;i<=14;i++){
+    const key = 'S'+i;
+    const d = (DATA.imenske[key]) || {sku_stevilo:0,kosov:0};
+    sp += '<div class="spol '+cellClass(d.sku_stevilo)+'" onclick="openImenska(\''+key+'\')"><div style="font-weight:700">'+key+'</div><div style="font-size:8px">'+d.sku_stevilo+'·'+d.kosov+'</div></div>';
+  }
+  document.getElementById('spolice').innerHTML = sp;
+}
+
+function openCell(vrsta, regal){
+  const c = (DATA.vrste[vrsta] && DATA.vrste[vrsta][regal]) || {izdelki:[]};
+  showPanel('Vrsta '+parseInt(vrsta)+' · Regal '+regal, c.izdelki || []);
+}
+function openImenska(ime){
+  const c = DATA.imenske[ime] || {izdelki:[]};
+  showPanel(ime, c.izdelki || []);
+}
+function showPanel(naslov, izdelki){
+  let h = '<h3>'+naslov+'</h3><div style="font-size:12px;color:var(--txt2);margin-bottom:8px">'+izdelki.length+' izdelkov</div>';
+  if(!izdelki.length) h += '<div style="color:var(--txt3);font-size:13px;padding:20px 0;text-align:center">Prazno — ni izdelkov</div>';
+  izdelki.forEach(it => {
+    const pill = it.vir==='sekundarna' ? '<span class="pill pill-s">sek</span>' : '<span class="pill pill-g">gl</span>';
+    h += '<div class="prow">'+pill+'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px">'+it.sku+' <span style="color:#16a34a;font-weight:400">· '+it.zaloga+' kos</span></div><div style="font-size:11px;color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(it.naziv||'')+(it.pozicija?(' · '+it.pozicija):'')+'</div></div></div>';
+  });
+  document.getElementById('panelBody').innerHTML = h;
+  document.getElementById('panel').classList.add('open');
+}
+function closePanel(){ document.getElementById('panel').classList.remove('open'); }
+
+function doSearch(q){
+  q = (q||'').trim().toUpperCase();
+  const el = document.getElementById('searchRes');
+  if(!q){ el.innerHTML=''; return; }
+  const najdeni = [];
+  // preišči vse vrste
+  Object.keys(DATA.vrste).forEach(v => {
+    Object.keys(DATA.vrste[v]).forEach(r => {
+      (DATA.vrste[v][r].izdelki||[]).forEach(it => {
+        if(it.sku.toUpperCase().includes(q)) najdeni.push(it.sku+' → '+it.pozicija+' ('+it.zaloga+' kos'+(it.vir==='sekundarna'?', sek':'')+')');
+      });
+    });
+  });
+  Object.keys(DATA.imenske).forEach(k => {
+    (DATA.imenske[k].izdelki||[]).forEach(it => {
+      if(it.sku.toUpperCase().includes(q)) najdeni.push(it.sku+' → '+k+' ('+it.zaloga+' kos'+(it.vir==='sekundarna'?', sek':'')+')');
+    });
+  });
+  el.innerHTML = najdeni.length ? ('<b>'+najdeni.length+' najdenih:</b><br>'+najdeni.slice(0,20).join('<br>')) : '<span style="color:var(--txt3)">Ni najdeno v skladišču (morda brez pozicije)</span>';
+}
+
+async function load(){
+  try{
+    const r = await fetch('/skladisce-vizualizacija');
+    DATA = await r.json();
+    if(!DATA.ok){ document.body.innerHTML='<p style="padding:40px">Napaka: '+(DATA.error||'')+'</p>'; return; }
+    render();
+  }catch(e){ document.body.innerHTML='<p style="padding:40px">Napaka: '+e.message+'</p>'; }
+}
+load();
+</script></body></html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/skladisce-vizualizacija")
+
+
+@app.get("/skladisce-vizualizacija")
+async def skladisce_vizualizacija(request: Request):
+    """Vrne dejansko stanje skladišča: izdelke grupirane po poziciji (vrsta-regal-mesto),
+    plus imenske pozicije (Amio, Ikonka, S-police, Omara ...). Za tloris vizualizacijo.
+    Bere iz zaloge (glavna position + sekundarne extra_positions)."""
+    if not _owner_authorized(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+    import csv as _csv, re as _re
+    from io import StringIO as _SIO
+
+    # po poziciji: {pozicija: [ {sku, naziv, zaloga, vir(glavna/sekundarna)} ]}
+    po_poziciji = {}
+    def _add(pos, sku, naziv, zaloga, vir):
+        pos = (pos or "").strip()
+        if not pos:
+            return
+        po_poziciji.setdefault(pos, []).append({"sku": sku, "naziv": naziv, "zaloga": zaloga, "vir": vir})
+
+    # skupna zaloga po SKU (vsota) + naziv
+    stock_sum = {}
+    naziv_by = {}
+    glavna_pos_by = {}
+    if STOCK_CSV_FILE.exists():
+        _t = STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")
+        _sep = ";" if _t.split("\n",1)[0].count(";") > _t.split("\n",1)[0].count(",") else ","
+        for row in _csv.DictReader(_SIO(_t), delimiter=_sep):
+            sku = (row.get("product_sku") or row.get("sku") or "").strip()
+            if not sku:
+                continue
+            try: st = int(float(str(row.get("stock") or 0).replace(",",".")))
+            except Exception: st = 0
+            stock_sum[sku.upper()] = stock_sum.get(sku.upper(), 0) + st
+            if row.get("title"): naziv_by[sku.upper()] = row.get("title").strip()
+            pos = (row.get("position") or "").strip()
+            if pos:
+                glavna_pos_by.setdefault(sku.upper(), pos)
+
+    # glavne pozicije (dedup po SKU — vsota zaloge)
+    for sku_u, pos in glavna_pos_by.items():
+        _add(pos, sku_u, naziv_by.get(sku_u, ""), stock_sum.get(sku_u, 0), "glavna")
+
+    # sekundarne pozicije
+    try:
+        extra = _zaloga_load_extra_pos()
+        for sku, poslist in (extra or {}).items():
+            sku_u = sku.upper()
+            for pos in (poslist or []):
+                _add(pos, sku_u, naziv_by.get(sku_u, ""), stock_sum.get(sku_u, 0), "sekundarna")
+    except Exception:
+        pass
+
+    # zgradi tloris: vrste 01-12, regali 1-5 (mesta A-F združimo v regal za pregled)
+    # celica = vrsta+regal → seštej vse izdelke čez mesta A-F
+    def _cell_stats(vrsta, regal):
+        skus = set(); kosov = 0; izdelki = []
+        prefix = f"{vrsta}-{regal}"
+        for pos, items in po_poziciji.items():
+            if pos.startswith(prefix) and _re.match(rf"^{vrsta}-{regal}[A-F]$", pos):
+                for it in items:
+                    skus.add(it["sku"]); kosov += it["zaloga"]
+                    izdelki.append({**it, "pozicija": pos})
+        return {"sku_stevilo": len(skus), "kosov": kosov, "izdelki": izdelki}
+
+    vrste_data = {}
+    for v in range(1, 13):
+        vv = str(v).zfill(2)
+        vrste_data[vv] = {r: _cell_stats(vv, str(r)) for r in range(1, 6)}
+
+    # imenske pozicije (Amio, Ikonka, S1-S14, Omara ...)
+    imenske = {}
+    for pos, items in po_poziciji.items():
+        if _re.match(r"^\d{2}-[1-5][A-F]$", pos):
+            continue  # to je regalna, ne imenska
+        skus = set(it["sku"] for it in items)
+        kosov = sum(it["zaloga"] for it in items)
+        imenske[pos] = {"sku_stevilo": len(skus), "kosov": kosov, "izdelki": items}
+
+    return {"ok": True, "vrste": vrste_data, "imenske": imenske,
+            "skupaj_pozicij": len(po_poziciji)}
+
+
 @app.get("/pozicije-pokritost")
 async def pozicije_pokritost(manjkajoci: int = 0, limit: int = 0, samo_glavna: int = 1):
     """Števec pokritosti pozicij: koliko UNIKATNIH SKU-jev (zaloga >0) ima pozicijo.
