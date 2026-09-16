@@ -12710,13 +12710,18 @@ function render(){
 }
 
 function renderIOC(){
-  // Skladišče B = IOC. Poišči IOC pozicijo v imenskih (ime vsebuje "IOC")
-  let iocKey = null;
-  Object.keys(DATA.imenske || {}).forEach(k => { if(k.toLowerCase().indexOf('ioc') >= 0) iocKey = k; });
+  // Skladišče B = IOC. ZDRUŽI VSE IOC variante (IOC Skladisce, IOC Skladišče, IOC ...) v eno.
+  const iocKeys = Object.keys(DATA.imenske || {}).filter(k => k.toLowerCase().indexOf('ioc') >= 0);
   const el = document.getElementById('iocBlok');
   if(!el) return;
-  if(!iocKey){ el.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:4px">PALETNO SKLADIŠČE</div><div style="font-size:12.5px;color:var(--txt2);line-height:1.5">Trenutno še nimamo paletnih regalov — jih bomo kmalu imeli. Ko bo, se tu izpiše količina izdelkov.</div>'; return; }
-  const d = DATA.imenske[iocKey] || {sku_stevilo:0, kosov:0, izdelki:[]};
+  if(!iocKeys.length){ el.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:4px">PALETNO SKLADIŠČE</div><div style="font-size:12.5px;color:var(--txt2);line-height:1.5">Trenutno še nimamo paletnih regalov — jih bomo kmalu imeli. Ko bo, se tu izpiše količina izdelkov.</div>'; return; }
+  // seštej vse IOC variante — dedup izdelke po SKU
+  let vsiIzdelki = [];
+  iocKeys.forEach(k => { (DATA.imenske[k].izdelki || []).forEach(it => vsiIzdelki.push(it)); });
+  const skuSet = new Set(vsiIzdelki.map(x => x.sku));
+  const kosovSum = vsiIzdelki.reduce((a,x) => a + (x.zaloga||0), 0);
+  const d = {sku_stevilo: skuSet.size, kosov: kosovSum, izdelki: vsiIzdelki};
+  const iocKey = iocKeys[0];
   el.style.cursor = 'pointer';
   el.setAttribute('onclick', 'openImenska(&apos;'+iocKey+'&apos;)');
   el.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:4px">PALETNO SKLADIŠČE</div>'
