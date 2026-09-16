@@ -12235,6 +12235,14 @@ async def skladisce_tloris_page(request: Request):
   body.tv-on .regal-hd{font-size:21px}
   body.tv-on .stena-box{font-size:22px;min-height:400px}
   body.tv-on .spol{min-height:76px;font-size:17px}
+  /* TV statistične kartice — slog kot Domov (hsp-card), mehkejši */
+  .tvc{flex:1;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;min-width:0}
+  .tvc-proj{flex:1.3;background:#534AB7;border-color:#534AB7}
+  .tvc-label{font-size:12px;color:var(--txt2);margin-bottom:8px}
+  .tvc-num{font-size:28px;font-weight:700;color:var(--txt);line-height:1;letter-spacing:-0.5px}
+  .tvc-foot{font-size:12px;color:var(--txt2);margin-top:8px}
+  .tvc-bar{height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:10px}
+  .tvc-bar-fill{height:100%;border-radius:3px}
   h1{font-size:24px;margin:0 0 4px}
   .sub{font-size:14px;color:var(--txt2);margin-bottom:16px}
   .legenda{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--txt2);margin-bottom:18px;align-items:center}
@@ -12308,19 +12316,32 @@ async def skladisce_tloris_page(request: Request):
 
 <button id="tvExitBtn" onclick="tvExit()" style="display:none;position:fixed;top:10px;right:14px;z-index:100;padding:8px 14px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">✕ Zapri TV</button>
 
-<div id="tvStats" style="display:none;margin-bottom:16px">
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:10px">
-    <div style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:var(--txt2)">Naročila 2026</div><div id="tvOrders" style="font-size:32px;font-weight:800">—</div></div>
-    <div style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:var(--txt2)">Promet</div><div id="tvRevenue" style="font-size:32px;font-weight:800;color:#15803d">—</div></div>
-    <div style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:var(--txt2)">Najboljši dan</div><div id="tvBest" style="font-size:32px;font-weight:800">—</div></div>
-    <div style="background:#534AB7;border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:#cec9f5">Napoved 2026</div><div id="tvProj" style="font-size:32px;font-weight:800;color:#fff">—</div></div>
+<div id="tvStats" style="display:none;margin-bottom:18px">
+  <div style="display:flex;gap:12px;margin-bottom:12px">
+    <div class="tvc">
+      <div class="tvc-label">📦 Naročila 2026</div>
+      <div class="tvc-num" id="tvOrders">—</div>
+      <div class="tvc-bar"><div class="tvc-bar-fill" id="tvOrdersBar" style="width:0%;background:#378ADD"></div></div>
+    </div>
+    <div class="tvc">
+      <div class="tvc-label">💰 Promet 2026</div>
+      <div class="tvc-num" id="tvRevenue">—</div>
+      <div class="tvc-bar"><div class="tvc-bar-fill" id="tvRevenueBar" style="width:0%;background:#1D9E75"></div></div>
+    </div>
+    <div class="tvc">
+      <div class="tvc-label">🏆 Najboljši dan</div>
+      <div class="tvc-num" id="tvBest">—</div>
+      <div class="tvc-foot"><span id="tvBestOrders">—</span> <span id="tvBestDate"></span></div>
+    </div>
+    <div class="tvc tvc-proj">
+      <div class="tvc-label" style="color:#CECBF6">📈 Napoved 2026 · projekcija</div>
+      <div style="display:flex;gap:16px">
+        <div><div class="tvc-num" style="color:#fff" id="tvProjOrders">—</div><div style="font-size:11px;color:#AFA9EC">naročil</div></div>
+        <div><div class="tvc-num" style="color:#fff" id="tvProjRevenue">—</div><div style="font-size:11px;color:#AFA9EC">prometa</div></div>
+      </div>
+    </div>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
-    <div style="background:rgba(34,197,94,0.12);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:#15803d">Vrednost zaloge</div><div id="tvStockVal" style="font-size:30px;font-weight:800;color:#15803d">—</div></div>
-    <div style="background:rgba(34,197,94,0.12);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:#15803d">Kosov skupaj</div><div id="tvStockPcs" style="font-size:30px;font-weight:800;color:#15803d">—</div></div>
-    <div style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:var(--txt2)">Pozicij zasedenih</div><div id="tvPozicij" style="font-size:30px;font-weight:800">—</div></div>
-    <div style="background:rgba(245,158,11,0.15);border-radius:12px;padding:14px 18px"><div style="font-size:13px;color:#8a5a00">Nabrano danes</div><div id="tvNabrano" style="font-size:30px;font-weight:800;color:#8a5a00">—</div></div>
-  </div>
+  <div id="tvNabBar"></div>
 </div>
 
 <div style="display:flex;gap:20px;align-items:stretch">
@@ -12533,38 +12554,45 @@ function tvMode(){
 function fmtN(n){ return (n||0).toLocaleString('sl-SI'); }
 function fmtM(n){ if(!n) return '0 €'; if(n>=1000000) return (n/1000000).toFixed(2).replace('.',',')+' M€'; return Math.round(n).toLocaleString('sl-SI')+' €'; }
 async function loadTvStats(){
-  // prodaja
+  // PRODAJA — iz istega vira kot Domov
   try{
     const d = await (await fetch('/forecast2-stats?year=2026&_t='+Date.now(),{cache:'no-store'})).json();
     if(d.ok!==false){
       if(d.total_orders!==undefined) document.getElementById('tvOrders').textContent = fmtN(d.total_orders);
       if(d.total_revenue!==undefined) document.getElementById('tvRevenue').textContent = fmtM(d.total_revenue);
-      if(d.projection_revenue!==undefined) document.getElementById('tvProj').textContent = fmtM(d.projection_revenue);
-      if(d.best_day) document.getElementById('tvBest').textContent = fmtM(d.best_day.revenue);
+      if(d.projection_orders!==undefined) document.getElementById('tvProjOrders').textContent = fmtN(d.projection_orders);
+      if(d.projection_revenue!==undefined) document.getElementById('tvProjRevenue').textContent = fmtM(d.projection_revenue);
+      if(d.best_day){
+        document.getElementById('tvBest').textContent = fmtM(d.best_day.revenue);
+        document.getElementById('tvBestOrders').textContent = fmtN(d.best_day.orders)+' nar.';
+        if(d.best_day.date_fmt) document.getElementById('tvBestDate').textContent = '· '+d.best_day.date_fmt;
+      }
+      // bari doseženo/napoved
+      const pO = (d.projection_orders>0) ? Math.min(100, Math.round(d.total_orders/d.projection_orders*100)) : 0;
+      const pR = (d.projection_revenue>0) ? Math.min(100, Math.round(d.total_revenue/d.projection_revenue*100)) : 0;
+      document.getElementById('tvOrdersBar').style.width = pO+'%';
+      document.getElementById('tvRevenueBar').style.width = pR+'%';
     }
   }catch(e){}
-  // skladišče (iz že naloženih DATA ali svež fetch)
+  // NABIRANJE — bar napredka (SLO + RS)
   try{
-    let vsota=0, kosov=0, zasedenih=0;
-    if(DATA && DATA.vrste){
-      Object.keys(DATA.vrste).forEach(v=>Object.keys(DATA.vrste[v]).forEach(r=>{ zasedenih += (DATA.vrste[v][r].zasedenih_polic||0); kosov += (DATA.vrste[v][r].kosov||0); }));
-    }
-    // vrednost zaloge: iz posebnega vira, če obstaja; sicer skrij
-    document.getElementById('tvStockPcs').textContent = fmtN(kosov);
-    document.getElementById('tvPozicij').textContent = zasedenih;
-  }catch(e){}
-  // vrednost zaloge (fiksni vir — pokritost/zaloga)
-  try{
-    const z = await (await fetch('/pozicije-pokritost?_t='+Date.now())).json();
-    if(z && z.odstotek!==undefined) document.getElementById('tvPozicij').textContent = z.pokriti_sku + '/' + z.na_zalogi_sku;
-  }catch(e){}
-  // nabiranje danes
-  try{
-    const n = await (await fetch('/zaloga-current?market=slo&_t='+Date.now())).json();
-    if(n && n.items){
-      const ok = n.items.filter(x=>x.status==='ok').length;
-      document.getElementById('tvNabrano').textContent = ok + ' / ' + n.items.length;
-    }
+    let slo={items:[]}, rs={items:[]};
+    try{ slo = await (await fetch('/zaloga-current?market=slo&_t='+Date.now())).json(); }catch(e){}
+    try{ rs = await (await fetch('/zaloga-current?market=rs&_t='+Date.now())).json(); }catch(e){}
+    const box = document.getElementById('tvNabBar');
+    function stat(d){ const it=(d&&d.items)||[]; const ok=it.filter(x=>x.status==='ok').length; return {ok, tot:it.length}; }
+    const s = stat(slo), r = stat(rs);
+    const tot = s.tot + r.tot, ok = s.ok + r.ok;
+    if(tot===0){ box.innerHTML=''; return; }
+    const pct = Math.round(ok/tot*100);
+    box.innerHTML = '<div style="background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px 18px">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+      + '<span style="font-size:14px;font-weight:700">📦 Nabiranje zaloge danes</span>'
+      + '<span style="font-size:18px;font-weight:800;color:'+(pct>=100?'#12a35f':'#e0a33a')+'">'+ok+' / '+tot+' <span style="font-size:13px;color:var(--txt2);font-weight:600">('+pct+'%)</span></span>'
+      + '</div>'
+      + '<div style="height:12px;background:var(--bg);border-radius:6px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+(pct>=100?'#12a35f':'#e0a33a')+';transition:.3s"></div></div>'
+      + '<div style="font-size:12px;color:var(--txt2);margin-top:8px">SLO: '+s.ok+'/'+s.tot+' · RS: '+r.ok+'/'+r.tot+'</div>'
+      + '</div>';
   }catch(e){}
 }
 function tvExit(){
@@ -12586,34 +12614,6 @@ async function load(){
 load();
 </script></body></html>"""
     return HTMLResponse(html)
-
-
-@app.get("/ioc-poenoti")
-async def ioc_poenoti(request: Request):
-    """Poenoti vse IOC variante sekundarnih pozicij na eno: "IOC Skladisce".
-    (Trenutno sta "IOC Skladisce" in "IOC skladišče" — ju zlije v eno.)"""
-    if not _owner_authorized(request):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
-    CILJ = "IOC Skladisce"
-    extra = _zaloga_load_extra_pos()
-    spremenjenih = 0
-    for sku, poslist in list(extra.items()):
-        nova = []
-        spremenjeno = False
-        for pos in (poslist or []):
-            if "ioc" in str(pos).lower():
-                if pos != CILJ:
-                    spremenjeno = True
-                nova.append(CILJ)
-            else:
-                nova.append(pos)
-        nova = list(dict.fromkeys(nova))   # dedup (če je bil na obeh variantah)
-        if spremenjeno or len(nova) != len(poslist or []):
-            extra[sku] = nova
-            spremenjenih += 1
-    _zaloga_save_extra_pos(extra)
-    return {"ok": True, "poenotenih_izdelkov": spremenjenih, "cilj": CILJ}
 
 
 @app.get("/skladisce-vizualizacija")
