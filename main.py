@@ -12577,7 +12577,7 @@ async def skladisce_tloris_page(request: Request):
   .c-low{background:rgba(245,158,11,0.24);color:#8a5a00}
   .c-full{background:rgba(34,197,94,0.22);color:#15803d}
   @media(prefers-color-scheme:dark){.c-low{color:#fbbf24}.c-full{color:#4ade80}}
-  .dodatne{margin-top:10px;border:1px solid var(--bd);border-radius:10px;padding:12px;background:var(--card)}
+  .dodatne{border:1px solid var(--bd);border-radius:10px;padding:12px;background:var(--card)}
   .dodatne-hd{font-size:14px;font-weight:800;color:var(--txt2);margin-bottom:8px}
   .spolice{display:grid;grid-template-columns:repeat(14,1fr);gap:10px}
   .spol{border:1px solid var(--bd);border-radius:8px;padding:16px 4px;text-align:center;font-size:16px;cursor:pointer;min-height:70px;display:flex;flex-direction:column;justify-content:center}
@@ -12607,7 +12607,7 @@ async def skladisce_tloris_page(request: Request):
 <h1>🏬 Tloris skladišča</h1>
 <div class="sub">Kaj je na kateri polici · barva = zasedenost · klik za seznam izdelkov</div>
 <div class="legenda">
-  <span style="font-weight:700;color:var(--txt)">Zasedenost regala (polnih polic):</span>
+  <span style="font-weight:700;color:var(--txt)">Zasedenost regala (koliko polic je zasedenih):</span>
   <span class="lg"><span class="lg-box" style="background:rgba(150,150,150,0.13)"></span> prazno</span>
   <span class="lg"><span class="lg-box" style="background:rgba(34,150,80,0.195)"></span> 1</span>
   <span class="lg"><span class="lg-box" style="background:rgba(34,150,80,0.30)"></span> 3</span>
@@ -12622,11 +12622,11 @@ async def skladisce_tloris_page(request: Request):
     <div class="stena-box" style="background:rgba(37,99,235,0.14);color:#1d4ed8" onclick="openImenska('Omara')">OMARA</div>
     <div class="stena-box" style="background:rgba(0,0,0,0.04);color:var(--txt2)" onclick="openImenska('Pod mizo')">POD MIZO</div>
   </div>
-  <div style="flex:1">
+  <div style="flex:1;display:flex;flex-direction:column;gap:10px">
     <div class="regali" id="regali"></div>
-    <div class="dodatne">
+    <div class="dodatne" style="flex:1;display:flex;flex-direction:column">
       <div class="dodatne-hd">DODATNE POZICIJE (S1–S14)</div>
-      <div class="spolice" id="spolice"></div>
+      <div class="spolice" id="spolice" style="flex:1;align-content:start"></div>
     </div>
   </div>
   <div class="stena" style="width:60px">
@@ -12647,21 +12647,19 @@ function cellClass(sku){ if(!sku) return 'c-empty'; if(sku<5) return 'c-low'; re
 
 // Barva REGALA po prostih policah (0-4 izdelkov = prosto). 0 prostih = temno zeleno (poln),
 // več prostih = svetlejše. To pove nabiralcu, kje je še prostor v regalu.
-function regalStyle(prostih){
-  // PROGRESIVNO: barva po ŠTEVILU POLNIH polic (5+ izdelkov). Več polnih = bolj zeleno.
-  // 0 polnih = sivo (prazno), 1 = najsvetlejša zelena, 6 = najtemnejša.
-  if(prostih===undefined || prostih===null) prostih = 6;
-  const polnih = 6 - prostih;   // koliko polic je polnih (5+)
-  if(polnih===0) return 'background:rgba(150,150,150,0.13);color:var(--txt3)';   // res prazno — sivo
-  // progresivna zelena: alpha in temnost rasteta s polnimi policami
-  const alpha = (0.14 + polnih*0.055).toFixed(3);   // 1→0.20 ... 6→0.47
-  const txt = polnih>=5 ? '#0a3d1e' : (polnih>=3 ? '#15803d' : '#3d8a5f');
+function regalStyle(zasedenih){
+  // PROGRESIVNO: barva po ŠTEVILU ZASEDENIH polic (karkoli na njih, >0 izdelkov).
+  // 0 zasedenih = res prazno (sivo). 1+ = zelena, ki raste z zasedenostjo.
+  if(zasedenih===undefined || zasedenih===null) zasedenih = 0;
+  if(zasedenih===0) return 'background:rgba(150,150,150,0.13);color:var(--txt3)';   // RES prazno — sivo
+  // progresivna zelena: alpha raste s številom zasedenih polic (1→svetlo, 6→temno)
+  const alpha = (0.14 + zasedenih*0.055).toFixed(3);   // 1→0.195 ... 6→0.47
+  const txt = zasedenih>=5 ? '#0a3d1e' : (zasedenih>=3 ? '#15803d' : '#3d8a5f');
   return 'background:rgba(34,150,80,'+alpha+');color:'+txt;
 }
-function prostoLabel(prostih, sku){
-  const polnih = 6 - prostih;
-  if(polnih===0) return 'prazno';
-  return polnih + '/6 polnih';
+function prostoLabel(zasedenih, sku){
+  if(zasedenih===0) return 'prazno';
+  return zasedenih + '/6 zased.';
 }
 
 function renderRegal(vLeva, vDesna){
@@ -12670,15 +12668,15 @@ function renderRegal(vLeva, vDesna){
   const dd = DATA.vrste[vDesna] || {};
   let left = '';
   for(let r=1;r<=5;r++){
-    const c = dl[r] || {sku_stevilo:0,kosov:0,prostih_polic:6};
+    const c = dl[r] || {sku_stevilo:0,kosov:0,zasedenih_polic:0};
     const lbl = r===1 ? 'R1↓' : ('R'+r);
-    left += '<div class="cell" style="'+regalStyle(c.prostih_polic)+'" onclick="openCell(\''+vLeva+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.prostih_polic, c.sku_stevilo)+'</div></div>';
+    left += '<div class="cell" style="'+regalStyle(c.zasedenih_polic)+'" onclick="openCell(\''+vLeva+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.zasedenih_polic, c.sku_stevilo)+'</div></div>';
   }
   let right = '';
   for(let r=5;r>=1;r--){
-    const c = dd[r] || {sku_stevilo:0,kosov:0,prostih_polic:6};
+    const c = dd[r] || {sku_stevilo:0,kosov:0,zasedenih_polic:0};
     const lbl = r===1 ? 'R1↑' : ('R'+r);
-    right += '<div class="cell" style="'+regalStyle(c.prostih_polic)+'" onclick="openCell(\''+vDesna+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.prostih_polic, c.sku_stevilo)+'</div></div>';
+    right += '<div class="cell" style="'+regalStyle(c.zasedenih_polic)+'" onclick="openCell(\''+vDesna+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.zasedenih_polic, c.sku_stevilo)+'</div></div>';
   }
   return '<div class="regal"><div class="regal-hd"><div>V'+parseInt(vLeva)+'</div><div>V'+parseInt(vDesna)+'</div></div>'
     + '<div class="regal-body"><div class="regal-col">'+left+'</div><div class="regal-col">'+right+'</div></div></div>';
@@ -12860,11 +12858,12 @@ async def skladisce_vizualizacija(request: Request):
                     police[mesto]["izdelki"].append({**it, "pozicija": pos})
                     _pskus.add(it["sku"])
                 police[mesto]["sku_stevilo"] = len(set(x["sku"] for x in police[mesto]["izdelki"]))
-        # koliko od 6 polic je "prostih" (0-4 izdelkov = prazna ali skoraj prazna)
-        prostih = sum(1 for p in "ABCDEF" if police[p]["sku_stevilo"] < 5)
-        polnih = 6 - prostih
+        # police po zasedenosti
+        prostih = sum(1 for p in "ABCDEF" if police[p]["sku_stevilo"] < 5)   # 0-4 = prosto
+        polnih = 6 - prostih                                                  # 5+ = polno
+        zasedenih = sum(1 for p in "ABCDEF" if police[p]["sku_stevilo"] > 0)  # karkoli na polici
         return {"sku_stevilo": len(skus), "kosov": kosov, "izdelki": izdelki, "police": police,
-                "prostih_polic": prostih, "polnih_polic": polnih}
+                "prostih_polic": prostih, "polnih_polic": polnih, "zasedenih_polic": zasedenih}
 
     vrste_data = {}
     for v in range(1, 13):
