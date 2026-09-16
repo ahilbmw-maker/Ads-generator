@@ -12224,7 +12224,6 @@ async def skladisce_tloris_page(request: Request):
 <title>Tloris skladišča</title>
 <style>
   :root{--bg:#f7f7f8;--card:#fff;--bd:#e2e2e5;--txt:#1a1a1a;--txt2:#666;--txt3:#999}
-  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1c;--card:#242427;--bd:#38383c;--txt:#e8e8ea;--txt2:#a0a0a5;--txt3:#78787e}}
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:20px 28px;background:var(--bg);color:var(--txt);width:100%}
   /* TV način: brez glave, večji tloris, zapolni zaslon */
@@ -12271,7 +12270,6 @@ async def skladisce_tloris_page(request: Request):
   .c-empty{background:rgba(150,150,150,0.12);color:var(--txt3)}
   .c-low{background:rgba(245,158,11,0.24);color:#8a5a00}
   .c-full{background:rgba(34,197,94,0.22);color:#15803d}
-  @media(prefers-color-scheme:dark){.c-low{color:#fbbf24}.c-full{color:#4ade80}}
   .dodatne{border:1px solid var(--bd);border-radius:10px;padding:12px;background:var(--card)}
   .dodatne-hd{font-size:14px;font-weight:800;color:var(--txt2);margin-bottom:8px}
   .spolice{display:grid;grid-template-columns:repeat(14,1fr);gap:10px}
@@ -12305,7 +12303,10 @@ async def skladisce_tloris_page(request: Request):
 </style></head><body>
 <div id="tvHideHeader">
 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-  <h1 style="margin:0">🏬 Tloris skladišča</h1>
+  <div style="display:flex;align-items:center;gap:12px">
+    <button onclick="history.back()" style="padding:8px 14px;background:var(--card);color:var(--txt);border:1px solid var(--bd);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">← Nazaj</button>
+    <h1 style="margin:0">🏬 Tloris skladišča</h1>
+  </div>
   <button onclick="tvMode()" style="padding:9px 18px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📺 Prikaži kot TV tabla</button>
 </div>
 <div class="sub">Kaj je na kateri polici · barva = zasedenost · klik za seznam izdelkov</div>
