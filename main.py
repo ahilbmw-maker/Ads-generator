@@ -12311,13 +12311,14 @@ async def skladisce_tloris_page(request: Request):
 </div>
 <div class="sub">Kaj je na kateri polici · barva = zasedenost · klik za seznam izdelkov</div>
 <div class="legenda">
-  <span style="font-weight:700;color:var(--txt)">Zasedenost regala (koliko polic je zasedenih):</span>
+  <span style="font-weight:700;color:var(--txt)">Zasedenost po kosih (samodejno umerjeno):</span>
   <span class="lg"><span class="lg-box" style="background:rgba(150,150,150,0.13)"></span> prazno</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(34,150,80,0.195)"></span> 1</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(34,150,80,0.30)"></span> 3</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(34,150,80,0.415)"></span> 5</span>
-  <span class="lg"><span class="lg-box" style="background:rgba(34,150,80,0.47)"></span> 6 (poln)</span>
-  <span class="lg" style="margin-left:auto">več zelene = bolj poln · R1↓/R1↑ = serpentina</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(245,180,80,0.42)"></span> malo</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(225,205,55,0.50)"></span> srednje</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(120,200,110,0.58)"></span> dosti</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(40,150,90,0.72)"></span> veliko</span>
+  <span class="lg"><span class="lg-box" style="background:rgba(40,110,170,0.80)"></span> največ</span>
+  <span class="lg" style="margin-left:auto">R1↓/R1↑ = serpentina</span>
 </div>
 <input type="text" id="search" placeholder="🔍 Vpiši SKU — pove, na kateri poziciji je" oninput="doSearch(this.value)">
 <div id="searchRes" style="font-size:12px;margin-bottom:10px"></div>
@@ -12395,19 +12396,32 @@ function cellClass(sku){ if(!sku) return 'c-empty'; if(sku<5) return 'c-low'; re
 
 // Barva REGALA po prostih policah (0-4 izdelkov = prosto). 0 prostih = temno zeleno (poln),
 // več prostih = svetlejše. To pove nabiralcu, kje je še prostor v regalu.
-function regalStyle(zasedenih){
-  // PROGRESIVNO: barva po ŠTEVILU ZASEDENIH polic (karkoli na njih, >0 izdelkov).
-  // 0 zasedenih = res prazno (sivo). 1+ = zelena, ki raste z zasedenostjo.
-  if(zasedenih===undefined || zasedenih===null) zasedenih = 0;
-  if(zasedenih===0) return 'background:rgba(150,150,150,0.13);color:var(--txt3)';   // RES prazno — sivo
-  // progresivna zelena: alpha raste s številom zasedenih polic (1→svetlo, 6→temno)
-  const alpha = (0.14 + zasedenih*0.055).toFixed(3);   // 1→0.195 ... 6→0.47
-  const txt = zasedenih>=5 ? '#0a3d1e' : (zasedenih>=3 ? '#15803d' : '#3d8a5f');
-  return 'background:rgba(34,150,80,'+alpha+');color:'+txt;
+let _maxKosov = 1;   // samodejna umeritev — največ kosov med vsemi regali
+function izracunajMax(){
+  _maxKosov = 1;
+  if(DATA && DATA.vrste){
+    Object.keys(DATA.vrste).forEach(v => Object.keys(DATA.vrste[v]).forEach(r => {
+      const k = DATA.vrste[v][r].kosov || 0;
+      if(k > _maxKosov) _maxKosov = k;
+    }));
+  }
 }
-function prostoLabel(zasedenih, sku){
-  if(zasedenih===0) return 'prazno';
-  return zasedenih + '/6 zased.';
+// TOPLOTNA KARTA: siva (prazno) → rumena → zelena → modra (najbolj poln).
+// Delež = kosov / _maxKosov (samodejna umeritev po največjem regalu).
+function regalStyle(kosov, zasedenih){
+  if(!kosov || kosov===0) return 'background:rgba(150,150,150,0.13);color:var(--txt3)';   // prazno — sivo
+  const d = Math.min(1, kosov / _maxKosov);   // 0..1
+  let bg, txt;
+  if(d < 0.20){ bg='rgba(245,180,80,0.42)'; txt='#8a5a00'; }        // malo — rumena
+  else if(d < 0.45){ bg='rgba(225,205,55,0.50)'; txt='#6b6810'; }   // srednje — rumeno-zelena
+  else if(d < 0.70){ bg='rgba(120,200,110,0.58)'; txt='#2d6b1a'; }  // dosti — zelena
+  else if(d < 0.90){ bg='rgba(40,150,90,0.72)'; txt='#ffffff'; }    // veliko — temno zelena
+  else { bg='rgba(40,110,170,0.80)'; txt='#ffffff'; }               // največ — modra
+  return 'background:'+bg+';color:'+txt;
+}
+function prostoLabel(kosov, zasedenih){
+  if(!kosov || kosov===0) return 'prazno';
+  return kosov + ' kos · ' + (zasedenih||0) + '/6';
 }
 
 function renderRegal(vLeva, vDesna){
@@ -12418,19 +12432,20 @@ function renderRegal(vLeva, vDesna){
   for(let r=1;r<=5;r++){
     const c = dl[r] || {sku_stevilo:0,kosov:0,zasedenih_polic:0};
     const lbl = r===1 ? 'R1↓' : ('R'+r);
-    left += '<div class="cell" style="'+regalStyle(c.zasedenih_polic)+'" onclick="openCell(\''+vLeva+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.zasedenih_polic, c.sku_stevilo)+'</div></div>';
+    left += '<div class="cell" style="'+regalStyle(c.kosov, c.zasedenih_polic)+'" onclick="openCell(\''+vLeva+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.kosov, c.zasedenih_polic)+'</div></div>';
   }
   let right = '';
   for(let r=5;r>=1;r--){
     const c = dd[r] || {sku_stevilo:0,kosov:0,zasedenih_polic:0};
     const lbl = r===1 ? 'R1↑' : ('R'+r);
-    right += '<div class="cell" style="'+regalStyle(c.zasedenih_polic)+'" onclick="openCell(\''+vDesna+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.zasedenih_polic, c.sku_stevilo)+'</div></div>';
+    right += '<div class="cell" style="'+regalStyle(c.kosov, c.zasedenih_polic)+'" onclick="openCell(\''+vDesna+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.kosov, c.zasedenih_polic)+'</div></div>';
   }
   return '<div class="regal"><div class="regal-hd"><div>V'+parseInt(vLeva)+'</div><div>V'+parseInt(vDesna)+'</div></div>'
     + '<div class="regal-body"><div class="regal-col">'+left+'</div><div class="regal-col">'+right+'</div></div></div>';
 }
 
 function render(){
+  izracunajMax();
   document.getElementById('regali').innerHTML = PARI2.map(p => renderRegal(p[0], p[1])).join('');
   // S-police
   let sp = '';
