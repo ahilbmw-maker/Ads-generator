@@ -12227,20 +12227,26 @@ async def skladisce_tloris_page(request: Request):
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:20px 28px;background:var(--bg);color:var(--txt);width:100%}
   /* TV način: brez glave, večji tloris, zapolni zaslon */
-  body.tv-on{padding:14px 18px}
-  /* TV: tloris zapolni razpoložljivo višino — celice zrastejo */
-  body.tv-on .ab-wrap{min-height:calc(100vh - 240px)}
+  body.tv-on{padding:12px 16px;min-height:100vh;display:flex;flex-direction:column}
+  /* TV: tloris zapolni preostalo višino (flex), ne glede na višino statistik/nabiranja */
+  body.tv-on #tvStats{flex:0 0 auto}
+  body.tv-on .ab-wrap{flex:1 1 auto;align-items:stretch;min-height:0}
   body.tv-on .ab-a{display:flex;flex-direction:column}
-  body.tv-on .tloris{flex:1}
+  body.tv-on .ab-a > div:last-child{flex:1;display:flex;flex-direction:column}
+  body.tv-on .tloris{flex:1;align-items:stretch}
+  body.tv-on .tloris > div:nth-child(2){display:flex;flex-direction:column}
+  body.tv-on .regali{flex:1}
   body.tv-on .regal{display:flex;flex-direction:column}
   body.tv-on .regal-body{flex:1}
   body.tv-on .regal-col{display:flex;flex-direction:column}
-  body.tv-on .cell{flex:1;min-height:92px;font-size:17px}
-  body.tv-on .cell .rn{font-size:21px}
-  body.tv-on .cell .num{font-size:15px}
-  body.tv-on .regal-hd{font-size:22px}
-  body.tv-on .stena-box{font-size:22px;min-height:400px}
-  body.tv-on .spol{min-height:84px;font-size:18px}
+  body.tv-on .cell{flex:1;min-height:0;font-size:18px}
+  body.tv-on .cell .rn{font-size:22px}
+  body.tv-on .cell .num{font-size:16px}
+  body.tv-on .regal-hd{font-size:23px}
+  body.tv-on .stena-box{font-size:24px}
+  body.tv-on .dodatne{flex:0 0 auto}
+  body.tv-on .spol{min-height:70px;font-size:18px}
+  body.tv-on #tvStats{margin-bottom:12px}
   /* TV statistične kartice — slog kot Domov (hsp-card), mehkejši */
   .tvc{flex:1;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;min-width:0}
   .tvc-proj{flex:1.3;background:#534AB7;border-color:#534AB7}
@@ -12323,7 +12329,7 @@ async def skladisce_tloris_page(request: Request):
   <span class="lg"><span class="lg-box" style="background:rgba(40,150,80,0.25)"></span> malo</span>
   <span class="lg"><span class="lg-box" style="background:rgba(40,150,80,0.55)"></span> srednje</span>
   <span class="lg"><span class="lg-box" style="background:rgba(40,150,80,0.85)"></span> veliko</span>
-  <span class="lg" style="margin-left:14px"><span class="lg-box" style="background:transparent;outline:2px solid #f59e0b;outline-offset:-2px"></span> rumen rob = niso vse police polne</span>
+  <span class="lg" style="margin-left:14px"><span class="lg-box" style="background:transparent;outline:2px solid #3b82f6;outline-offset:-2px"></span> moder rob = niso vse police polne</span>
   <span class="lg" style="margin-left:auto">R1↓/R1↑ = serpentina</span>
 </div>
 <input type="text" id="search" placeholder="🔍 Vpiši SKU — pove, na kateri poziciji je" oninput="doSearch(this.value)">
@@ -12420,7 +12426,7 @@ function regalStyle(kosov, zasedenih){
   const alpha = (0.16 + d*0.70).toFixed(3);   // svetlo → temno zelena
   const txt = d >= 0.55 ? '#ffffff' : (d >= 0.30 ? '#256025' : '#3d6b15');
   // če NI vseh 6 polic zasedenih → rumen notranji rob (outline), da se vidi "še prostor"
-  const outline = (zasedenih < 6) ? ';outline:2px solid #f59e0b;outline-offset:-2px' : '';
+  const outline = (zasedenih < 6) ? ';outline:2px solid #3b82f6;outline-offset:-2px' : '';
   return 'background:rgba(40,150,80,'+alpha+');color:'+txt+outline;
 }
 function prostoLabel(kosov, zasedenih){
@@ -12428,22 +12434,24 @@ function prostoLabel(kosov, zasedenih){
   return kosov + ' kos · ' + (zasedenih||0) + '/6';
 }
 
+function stolpecVrste(vrsta){
+  // SERPENTINA (kača): LIHA vrsta = R1 zgoraj → R5 spodaj; SODA = R5 zgoraj → R1 spodaj.
+  const liha = (parseInt(vrsta) % 2) === 1;
+  let html = '';
+  const d = DATA.vrste[vrsta] || {};
+  const zap = liha ? [1,2,3,4,5] : [5,4,3,2,1];   // vrstni red od vrha navzdol
+  zap.forEach((r, idx) => {
+    const c = d[r] || {sku_stevilo:0,kosov:0,zasedenih_polic:0};
+    // oznaka: R1 dobi ↓ (če je na vrhu) ali ↑ (če je spodaj)
+    let lbl = 'R'+r;
+    if(r===1) lbl = liha ? 'R1↓' : 'R1↑';
+    html += '<div class="cell" style="'+regalStyle(c.kosov, c.zasedenih_polic)+'" onclick="openCell(\''+vrsta+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.kosov, c.zasedenih_polic)+'</div></div>';
+  });
+  return html;
+}
 function renderRegal(vLeva, vDesna){
-  // leva vrsta: R1 zgoraj (R1↓), desna vrsta: R1 spodaj (R1↑) — serpentina
-  const dl = DATA.vrste[vLeva] || {};
-  const dd = DATA.vrste[vDesna] || {};
-  let left = '';
-  for(let r=1;r<=5;r++){
-    const c = dl[r] || {sku_stevilo:0,kosov:0,zasedenih_polic:0};
-    const lbl = r===1 ? 'R1↓' : ('R'+r);
-    left += '<div class="cell" style="'+regalStyle(c.kosov, c.zasedenih_polic)+'" onclick="openCell(\''+vLeva+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.kosov, c.zasedenih_polic)+'</div></div>';
-  }
-  let right = '';
-  for(let r=5;r>=1;r--){
-    const c = dd[r] || {sku_stevilo:0,kosov:0,zasedenih_polic:0};
-    const lbl = r===1 ? 'R1↑' : ('R'+r);
-    right += '<div class="cell" style="'+regalStyle(c.kosov, c.zasedenih_polic)+'" onclick="openCell(\''+vDesna+'\','+r+')"><div class="rn">'+lbl+'</div><div class="num">'+prostoLabel(c.kosov, c.zasedenih_polic)+'</div></div>';
-  }
+  const left = stolpecVrste(vLeva);
+  const right = stolpecVrste(vDesna);
   return '<div class="regal"><div class="regal-hd"><div>V'+parseInt(vLeva)+'</div><div>V'+parseInt(vDesna)+'</div></div>'
     + '<div class="regal-body"><div class="regal-col">'+left+'</div><div class="regal-col">'+right+'</div></div></div>';
 }
@@ -12477,8 +12485,7 @@ function renderIOC(){
   const iocKey = iocKeys[0];
   el.style.cursor = 'pointer';
   el.setAttribute('onclick', 'openIOC()');
-  el.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:4px">PALETNO SKLADIŠČE</div>'
-    + '<div style="font-size:12.5px;color:var(--txt2);line-height:1.5;margin-bottom:18px">Samo zapišeš količino izdelkov. Trenutno še nimamo paletnih regalov — jih bomo kmalu imeli.</div>'
+  el.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:16px">PALETNO SKLADIŠČE</div>'
     + '<div style="margin-bottom:16px"><div style="font-size:38px;font-weight:800;color:#8a5a00;line-height:1">'+d.sku_stevilo+'</div><div style="font-size:13px;color:var(--txt2)">različnih izdelkov</div></div>'
     + '<div style="margin-bottom:20px"><div style="font-size:38px;font-weight:800;line-height:1">'+d.kosov+'</div><div style="font-size:13px;color:var(--txt2)">kosov skupaj</div></div>'
     + '<div style="color:#2563eb;font-size:14px;font-weight:700">klikni za seznam →</div>';
