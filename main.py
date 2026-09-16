@@ -12243,6 +12243,10 @@ async def skladisce_tloris_page(request: Request):
   .tvc-foot{font-size:12px;color:var(--txt2);margin-top:8px}
   .tvc-bar{height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:10px}
   .tvc-bar-fill{height:100%;border-radius:3px}
+  @keyframes tvlive{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.8)}}
+  @keyframes tvring{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.5)}70%{box-shadow:0 0 0 9px rgba(255,255,255,0)}}
+  .tv-live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e5484d;animation:tvlive 1.1s infinite;vertical-align:middle}
+  .tv-live-badge{display:inline-block;margin-left:10px;background:#fff;color:#12a35f;font-size:12px;font-weight:800;padding:4px 12px;border-radius:14px;animation:tvring 1.6s infinite}
   h1{font-size:24px;margin:0 0 4px}
   .sub{font-size:14px;color:var(--txt2);margin-bottom:16px}
   .legenda{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--txt2);margin-bottom:18px;align-items:center}
@@ -12574,7 +12578,7 @@ async function loadTvStats(){
       document.getElementById('tvRevenueBar').style.width = pR+'%';
     }
   }catch(e){}
-  // NABIRANJE — bar napredka (SLO + RS)
+  // NABIRANJE — polni zeleni pas (VEDNO viden). Aktivno = zelen + LIVE; mirovanje = sivo.
   try{
     let slo={items:[]}, rs={items:[]};
     try{ slo = await (await fetch('/zaloga-current?market=slo&_t='+Date.now())).json(); }catch(e){}
@@ -12583,15 +12587,23 @@ async function loadTvStats(){
     function stat(d){ const it=(d&&d.items)||[]; const ok=it.filter(x=>x.status==='ok').length; return {ok, tot:it.length}; }
     const s = stat(slo), r = stat(rs);
     const tot = s.tot + r.tot, ok = s.ok + r.ok;
-    if(tot===0){ box.innerHTML=''; return; }
+    if(tot===0){
+      // MIROVANJE — sivo, brez LIVE
+      box.innerHTML = '<div style="background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px 20px">'
+        + '<div style="display:flex;align-items:center;gap:10px;color:var(--txt3)">'
+        + '<span style="font-size:16px">📦</span><span style="font-size:15px;font-weight:600">Nabiranje zaloge — trenutno ni seznama</span>'
+        + '</div></div>';
+      return;
+    }
+    // AKTIVNO — polni zelen pas z utripajočim LIVE
     const pct = Math.round(ok/tot*100);
-    box.innerHTML = '<div style="background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px 18px">'
-      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-      + '<span style="font-size:14px;font-weight:700">📦 Nabiranje zaloge danes</span>'
-      + '<span style="font-size:18px;font-weight:800;color:'+(pct>=100?'#12a35f':'#e0a33a')+'">'+ok+' / '+tot+' <span style="font-size:13px;color:var(--txt2);font-weight:600">('+pct+'%)</span></span>'
+    box.innerHTML = '<div style="background:linear-gradient(135deg,#12a35f,#0d8a6f);border-radius:14px;padding:16px 22px;color:#fff">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+      + '<span style="font-size:17px;font-weight:700">📦 Nabiranje zaloge danes <span class="tv-live-badge"><span class="tv-live-dot" style="margin-right:5px"></span>LIVE</span></span>'
+      + '<span style="font-size:26px;font-weight:800">'+ok+' / '+tot+'</span>'
       + '</div>'
-      + '<div style="height:12px;background:var(--bg);border-radius:6px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+(pct>=100?'#12a35f':'#e0a33a')+';transition:.3s"></div></div>'
-      + '<div style="font-size:12px;color:var(--txt2);margin-top:8px">SLO: '+s.ok+'/'+s.tot+' · RS: '+r.ok+'/'+r.tot+'</div>'
+      + '<div style="height:14px;background:rgba(255,255,255,.25);border-radius:7px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:#fff;transition:.3s"></div></div>'
+      + '<div style="font-size:13px;opacity:.92;margin-top:9px">'+pct+'% nabrano · SLO '+s.ok+'/'+s.tot+' · RS '+r.ok+'/'+r.tot+'</div>'
       + '</div>';
   }catch(e){}
 }
