@@ -12288,6 +12288,10 @@ async def skladisce_tloris_page(request: Request):
     .cell .rn{font-size:14px}
     .cell .num{font-size:12px}
     .spolice{grid-template-columns:repeat(auto-fill,minmax(64px,1fr))}
+    /* SKLADIŠČE A in B eno pod drugim na mobilcu */
+    .ab-wrap{flex-direction:column;gap:16px}
+    .ab-b{flex:1 1 auto!important}
+    #tvStats > div{grid-template-columns:1fr!important}
   }
   #search{width:100%;padding:9px 11px;border:1px solid var(--bd);border-radius:8px;font-size:13px;margin-bottom:12px;background:var(--card);color:var(--txt)}
   #panel{position:fixed;top:0;right:0;width:min(480px,95vw);height:100%;background:var(--card);border-left:1px solid var(--bd);box-shadow:-4px 0 20px rgba(0,0,0,0.15);transform:translateX(100%);transition:.2s;overflow-y:auto;z-index:50;padding:16px}
@@ -12348,9 +12352,9 @@ async def skladisce_tloris_page(request: Request):
   <div id="tvNabBar"></div>
 </div>
 
-<div style="display:flex;gap:20px;align-items:stretch">
+<div class="ab-wrap" style="display:flex;gap:20px;align-items:stretch">
 
-  <div style="flex:1 1 auto;min-width:0">
+  <div class="ab-a" style="flex:1 1 auto;min-width:0">
     <div style="display:inline-block;background:rgba(37,99,235,0.12);color:#1d4ed8;font-size:15px;font-weight:800;padding:5px 14px;border-radius:8px;margin-bottom:8px">SKLADIŠČE A</div>
     <div class="tloris">
       <div class="stena" style="width:52px">
@@ -12371,7 +12375,7 @@ async def skladisce_tloris_page(request: Request):
     </div>
   </div>
 
-  <div style="flex:0 0 340px;display:flex;flex-direction:column">
+  <div class="ab-b" style="flex:0 0 340px;display:flex;flex-direction:column">
     <div style="display:inline-block;background:rgba(245,158,11,0.15);color:#8a5a00;font-size:15px;font-weight:800;padding:5px 14px;border-radius:8px;margin-bottom:8px;align-self:flex-start">SKLADIŠČE B (IOC)</div>
     <div id="iocBlok" style="flex:1;border:1px solid var(--bd);border-radius:12px;padding:20px;background:var(--card)"></div>
   </div>
