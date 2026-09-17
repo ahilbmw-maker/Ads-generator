@@ -12647,9 +12647,9 @@ function renderRegal(vLeva, vDesna){
 function render(){
   izracunajMax();
   document.getElementById('regali').innerHTML = PARI2.map(p => renderRegal(p[0], p[1])).join('');
-  // S-police
+  // S-police — vrstni red kot v skladišču: S14 (levo) → S1 (desno)
   let sp = '';
-  for(let i=1;i<=14;i++){
+  for(let i=14;i>=1;i--){
     const key = 'S'+i;
     const d = (DATA.imenske[key]) || {sku_stevilo:0,kosov:0};
     sp += '<div class="spol '+cellClass(d.sku_stevilo)+'" onclick="openImenska(\''+key+'\')"><div style="font-weight:700">'+key+'</div><div style="font-size:8px">'+d.sku_stevilo+'·'+d.kosov+'</div></div>';
