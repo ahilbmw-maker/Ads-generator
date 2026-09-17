@@ -12416,6 +12416,11 @@ async def skladisce_tloris_page(request: Request):
   .odo-d{display:inline-block;overflow:hidden;height:1em;line-height:1}
   .odo-i{display:block;line-height:1;transition:transform .55s cubic-bezier(.22,.61,.36,1)}
   .odo-sep{display:inline-block;line-height:1}
+  @keyframes lfloat{0%{opacity:0;transform:translateY(8px)}25%{opacity:1}100%{opacity:0;transform:translateY(-26px)}}
+  @keyframes lminipulse{0%,100%{opacity:1}50%{opacity:.3}}
+  @keyframes lminiring{0%,100%{box-shadow:0 0 0 0 rgba(229,72,77,.5)}70%{box-shadow:0 0 0 6px rgba(229,72,77,0)}}
+  .tv-live-mini{display:inline-flex;align-items:center;gap:4px;background:#e5484d;color:#fff;font-size:9px;font-weight:800;padding:2px 7px;border-radius:10px;margin-left:6px;letter-spacing:.5px;animation:lminiring 1.5s infinite;vertical-align:middle}
+  .tv-live-mini-dot{width:6px;height:6px;border-radius:50%;background:#fff;animation:lminipulse 1.1s infinite}
   .tvc-foot{font-size:12px;color:var(--txt2);margin-top:8px}
   .tvc-bar{height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:10px}
   .tvc-bar-fill{height:100%;border-radius:3px}
@@ -12505,7 +12510,7 @@ async def skladisce_tloris_page(request: Request):
 <div id="tvStats" style="display:none;margin-bottom:18px">
   <div style="display:flex;gap:12px;margin-bottom:12px">
     <div class="tvc">
-      <div class="tvc-label">📦 Naročila 2026</div>
+      <div class="tvc-label">📦 Naročila 2026 <span class="tv-live-mini"><span class="tv-live-mini-dot"></span>LIVE</span></div>
       <div class="tvc-num" id="tvOrders">—</div>
       <div class="tvc-bar"><div class="tvc-bar-fill" id="tvOrdersBar" style="width:0%;background:#378ADD"></div></div>
     </div>
@@ -12799,15 +12804,42 @@ function renderOdometer(el, textVal){
     setTimeout(()=>{ el.style.transition = 'color .8s'; el.style.color = ''; }, 50);
   }
 }
+// delež dneva "opravljen" glede na delovno okno 7h-16h (540 min).
+// pred 7h = 0, po 16h = 1, vmes linearno. Tako se naročila razporedijo čez delovni čas.
+function _delovniDelez(nowMin){
+  const START = 7*60, END = 16*60;   // 7:00 - 16:00
+  if(nowMin <= START) return 0;
+  if(nowMin >= END) return 1;
+  return (nowMin - START) / (END - START);
+}
+let _lastOrders = null;
 function tickLive(){
   if(!_liveBase) return;
   const nowMin = new Date().getHours()*60 + new Date().getMinutes() + new Date().getSeconds()/60;
-  let dMin = nowMin - _liveBase.syncMin;
-  if(dMin < 0) dMin = 0;
-  const liveOrders = _liveBase.orders + (_liveBase.rateOrders/1440)*dMin;
-  const liveRevenue = _liveBase.revenue + (_liveBase.rateRevenue/1440)*dMin;
-  const elO = document.getElementById('tvOrders'); if(elO) renderOdometer(elO, fmtN(Math.floor(liveOrders)));
+  // koliko dnevnega tempa je "padlo" do zdaj (po delovnem oknu) minus kar je bilo ob osnovi
+  const delezZdaj = _delovniDelez(nowMin);
+  const delezOsnova = _delovniDelez(_liveBase.syncMin);
+  let ddelez = delezZdaj - delezOsnova;
+  if(ddelez < 0) ddelez = 0;
+  const liveOrders = _liveBase.orders + _liveBase.rateOrders * ddelez;
+  const liveRevenue = _liveBase.revenue + _liveBase.rateRevenue * ddelez;
+  const cel = Math.floor(liveOrders);
+  const elO = document.getElementById('tvOrders'); if(elO) renderOdometer(elO, fmtN(cel));
   const elR = document.getElementById('tvRevenue'); if(elR) renderOdometer(elR, fmtM(liveRevenue));
+  // ob POVEČANJU naročil → sproži "+1" float
+  if(_lastOrders !== null && cel > _lastOrders){ floatPlus(elO, cel - _lastOrders); }
+  _lastOrders = cel;
+}
+function floatPlus(anchorEl, n){
+  if(!anchorEl) return;
+  const card = anchorEl.closest('.tvc') || anchorEl.parentElement;
+  if(!card) return;
+  if(getComputedStyle(card).position === 'static') card.style.position = 'relative';
+  const p = document.createElement('span');
+  p.textContent = '+'+n;
+  p.style.cssText = 'position:absolute;right:22px;top:40px;color:#16a34a;font-weight:800;font-size:20px;pointer-events:none;animation:lfloat 1.8s ease-out forwards';
+  card.appendChild(p);
+  setTimeout(()=>{ if(p.parentElement) p.parentElement.removeChild(p); }, 1900);
 }
 async function loadTvStats(){
   // PRODAJA — iz istega vira kot Domov. Shranimo osnovo + dnevni tempo za LIVE števec.
