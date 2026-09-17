@@ -5754,13 +5754,18 @@ async def generate_kreative(data: dict):
             )
             prompts_for_b.append((a, prompt))
 
-        if b_model == "compare4":
-            # PRIMERJAVA: skupno št. slik (kombinacije × count) razdeli CIKLIČNO med 4 modele,
-            # da vsak model dobi enak delež (npr. 10 kombinacij × 2 = 20 slik → 5 na model).
-            _cmp_models = ("image2", "flare", "flash", "pro")
+        if b_model == "compare4" or str(b_model).startswith("multi:"):
+            # VEČ MODELOV: skupno št. slik razdeli CIKLIČNO enakomerno med izbrane modele.
+            if b_model == "compare4":
+                _cmp_models = ("image2", "flare", "flash", "pro")
+            else:
+                _cmp_models = tuple(m.strip() for m in b_model.split(":",1)[1].split(",")
+                                    if m.strip() in ("image2","flare","flash","pro"))
+                if not _cmp_models:
+                    _cmp_models = ("image2",)
             for a, prompt in prompts_for_b:
                 for _i in range(count):
-                    mk = _cmp_models[_compare4_idx[0] % 4]
+                    mk = _cmp_models[_compare4_idx[0] % len(_cmp_models)]
                     _compare4_idx[0] += 1
                     combos.append({"combo": f"{a.get('label','A')} × {b.get('label','B')}", "prompt": prompt, "model": mk, "n_images": 1})
         elif b_model == "image2":
@@ -8369,7 +8374,7 @@ async def _kbatch_process_one(job: dict):
         a_opts = a_all[:KBATCH_A_COUNT]                                    # prva 2 teksta
         # MODEL za cel batch — iz joba (flash|pro|image2|flare), privzeto image2
         _bmodel = str(job.get("model", "") or "image2").lower()
-        if _bmodel not in ("flash", "pro", "image2", "flare", "compare4"):
+        if _bmodel not in ("flash", "pro", "image2", "flare", "compare4") and not str(_bmodel).startswith("multi:"):
             _bmodel = "image2"
         b_opts = [{**b, "model": _bmodel} for b in b_all]                 # vseh 5 ozadij, izbrani model
         # ročni vibe (če vpisan): zamenja ZADNJE (5.) ozadje, prva 4 ostanejo iz analize
@@ -8524,7 +8529,7 @@ async def kreative_batch_add(data: dict):
     count = max(1, min(KBATCH_MAX_COUNT, int(data.get("count") or KBATCH_MAX_COUNT)))
     vibe = str(data.get("vibe", "") or "").strip()[:300]   # ročni vibe — zamenja 5. ozadje pri vseh SKU
     bmodel = str(data.get("model", "") or "image2").lower()   # model za cel batch
-    if bmodel not in ("flash", "pro", "image2", "flare", "compare4"):
+    if bmodel not in ("flash", "pro", "image2", "flare", "compare4") and not str(bmodel).startswith("multi:"):
         bmodel = "image2"
     if entries:
         # potrjeni vnosi — dodaj TOČNO te (brez ponovnega razreševanja)

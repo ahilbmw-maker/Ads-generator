@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-16 10:00</div>
+      <div class="sidebar-logo-sub">build 2026-09-16 11:00</div>
     </div>
   </div>
 
@@ -1744,15 +1744,18 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
           <textarea id="kbSkus" rows="3" placeholder="SKU ali URL na vrstico, npr.&#10;AIRCOLIO&#10;https://www.maaarket.si/izdelek/..." style="width:100%;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;box-sizing:border-box;resize:vertical"></textarea>
           <div style="margin-top:10px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end">
-            <label style="font-size:11px;color:var(--text-tertiary);display:flex;flex-direction:column;gap:4px">Model (procesor)
-              <select id="kbModel" style="width:100%;box-sizing:border-box;padding:8px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">
-                <option value="compare4">🔬 Primerjava vseh 4 (po ~5 slik/model)</option>
-                <option value="image2">🟢 GPT Image 2</option>
-                <option value="flare">🔶 GPT Image 2.5 Flare</option>
-                <option value="flash">⚡ Nano Banana 2</option>
-                <option value="pro">✨ Nano Banana Pro</option>
-              </select>
-            </label>
+            <div style="font-size:11px;color:var(--text-tertiary)">Modeli (klikni enega ali več — slike se razdelijo enakomerno)
+              <style>
+.kbmbtn{padding:6px 11px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:.12s}
+.kbmbtn.on{border-color:var(--accent);background:rgba(59,130,246,0.12);color:var(--text)}
+</style>
+<div id="kbModels" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">
+                <button type="button" class="kbmbtn" data-m="image2" onclick="kbToggleModel('image2')">🟢 Image 2</button>
+                <button type="button" class="kbmbtn" data-m="flare" onclick="kbToggleModel('flare')">🔶 Flare 2.5</button>
+                <button type="button" class="kbmbtn" data-m="flash" onclick="kbToggleModel('flash')">⚡ NB2</button>
+                <button type="button" class="kbmbtn" data-m="pro" onclick="kbToggleModel('pro')">✨ NB Pro</button>
+              </div>
+            </div>
             <label style="font-size:11px;color:var(--text-tertiary);display:flex;flex-direction:column;gap:4px;text-align:center">slik/kombo
               <input id="kbCount" type="number" min="1" max="2" value="2" style="width:56px;box-sizing:border-box;padding:8px 5px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;text-align:center">
             </label>
@@ -7829,6 +7832,37 @@ function vaCopyAll() {
 let _kbLastDone = new Set();   // id-ji done jobov ob zadnjem pollu (za zaznavo novih)
 let _kbPollTimer = null;
 
+let kbSelModels = [];   // izbrani modeli
+function kbToggleModel(m){
+  const i = kbSelModels.indexOf(m);
+  if(i >= 0) kbSelModels.splice(i,1); else kbSelModels.push(m);
+  kbRenderModels();
+  try{ localStorage.setItem('slx_kb_models', JSON.stringify(kbSelModels)); }catch(e){}
+}
+function kbRenderModels(){
+  document.querySelectorAll('#kbModels .kbmbtn').forEach(b=>{
+    b.classList.toggle('on', kbSelModels.indexOf(b.dataset.m) >= 0);
+  });
+}
+function kbGetModel(){
+  // brez izbire → privzeto image2; vsi 4 → compare4; sicer seznam izbranih (comma)
+  if(!kbSelModels.length) return 'image2';
+  const vsi = ['image2','flare','flash','pro'];
+  if(kbSelModels.length === 4 && vsi.every(m=>kbSelModels.indexOf(m)>=0)) return 'compare4';
+  if(kbSelModels.length === 1) return kbSelModels[0];
+  return 'multi:' + kbSelModels.join(',');   // več izbranih → backend razdeli enakomerno
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ try{kbInitModels();}catch(e){} });
+else { try{kbInitModels();}catch(e){} }
+function kbInitModels(){
+  try{
+    const saved = JSON.parse(localStorage.getItem('slx_kb_models') || '[]');
+    if(Array.isArray(saved) && saved.length) kbSelModels = saved;
+  }catch(e){}
+  if(!kbSelModels.length) kbSelModels = ['flare'];   // privzeto flare
+  kbRenderModels();
+}
+
 async function kbAdd() {
   const ta = document.getElementById('kbSkus');
   const skus = (ta.value || '').split(/\n+/).flatMap(line => {
@@ -7912,7 +7946,7 @@ async function kbConfirmAdd() {
   try {
     const vibe = (document.getElementById('kbVibe')?.value || '').trim();
     const r = await fetch('/kreative-batch-add', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ entries: picked, count, vibe, model: (document.getElementById('kbModel')?.value || 'image2') }) });
+      body: JSON.stringify({ entries: picked, count, vibe, model: kbGetModel() }) });
     const d = await r.json();
     if (!d.ok) { alert('Napaka: ' + (d.error||'')); return; }
     ov.remove();
