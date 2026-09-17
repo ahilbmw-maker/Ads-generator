@@ -273,6 +273,8 @@ TEMPLATE_PATH = "static/tiktok_template.xlsx"
 EXPORTS_DIR = Path("exports")
 EXPORTS_DIR.mkdir(exist_ok=True)
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
+import time as _startup_time
+SERVER_START = int(_startup_time.time())   # nov deploy = nov zagon = nova verzija (za TV auto-refresh)
 DATA_DIR.mkdir(exist_ok=True, parents=True)
 TT_HISTORY_FILE = DATA_DIR / "tiktok_history.json"
 META_HISTORY_FILE = DATA_DIR / "meta_history.json"
@@ -12969,8 +12971,39 @@ async function load(){
   }catch(e){ if(!_loadedOnce) document.body.innerHTML='<p style="padding:40px">Napaka: '+e.message+'</p>'; }
 }
 load();
+
+// SAMODEJNA POSODOBITEV: po deployu (nova verzija strežnika) se TV sam osveži, brez ročnega refresha.
+let _mojaVerzija = null;
+async function preveriVerzijo(){
+  try{
+    const d = await (await fetch('/tloris-verzija?_t='+Date.now(),{cache:'no-store'})).json();
+    if(d && d.v){
+      if(_mojaVerzija === null){ _mojaVerzija = d.v; }   // prva zabeležba
+      else if(d.v !== _mojaVerzija){
+        // strežnik ima novo verzijo (nov deploy) → pokaži DISKRETNO opozorilo (ne reload, da ne ubije F11)
+        let n = document.getElementById('verzijaObvestilo');
+        if(!n){
+          n = document.createElement('div');
+          n.id = 'verzijaObvestilo';
+          n.style.cssText = 'position:fixed;bottom:10px;left:14px;z-index:200;background:#2563eb;color:#fff;font-size:13px;font-weight:600;padding:8px 14px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.25);font-family:inherit;cursor:pointer;opacity:0.92';
+          n.innerHTML = '🔄 Na voljo nova verzija — pritisni F5 za osvežitev';
+          n.onclick = function(){ location.reload(); };
+          document.body.appendChild(n);
+        }
+      }
+    }
+  }catch(e){}
+}
+preveriVerzijo();
+setInterval(preveriVerzijo, 120000);   // preveri vsaki 2 minuti
 </script></body></html>"""
     return HTMLResponse(html)
+
+
+@app.get("/tloris-verzija")
+async def tloris_verzija():
+    """Vrne verzijo strežnika (čas zagona). TV to primerja; če se spremeni (nov deploy), se osveži."""
+    return {"v": SERVER_START}
 
 
 @app.get("/skladisce-vizualizacija")
