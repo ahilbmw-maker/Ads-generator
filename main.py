@@ -12418,6 +12418,7 @@ async def skladisce_tloris_page(request: Request):
   body.tv-on .tvc{padding:16px 22px;border-radius:16px}
   body.tv-on .tvc-label{font-size:15px;margin-bottom:8px}
   body.tv-on .tvc-num{font-size:38px}
+  body.tv-on .tvc-rev .tvc-num{font-size:34px}
   body.tv-on .tvc-foot{font-size:14px;margin-top:8px}
   body.tv-on .tv-live-mini{font-size:11px;padding:2px 9px}
   body.tv-on #tvNabBar > div{padding:14px 22px!important}
@@ -12533,7 +12534,7 @@ async def skladisce_tloris_page(request: Request):
       <div class="tvc-label" style="color:#15803d">📦 Naročila 2026 <span class="tv-live-mini"><span class="tv-live-mini-dot"></span>LIVE</span></div>
       <div class="tvc-num" id="tvOrders" style="color:#15803d">—</div>
     </div>
-    <div class="tvc">
+    <div class="tvc tvc-rev">
       <div class="tvc-label">💰 Promet 2026 <span class="tv-live-mini"><span class="tv-live-mini-dot"></span>LIVE</span></div>
       <div class="tvc-num" id="tvRevenue">—</div>
     </div>
@@ -12780,6 +12781,7 @@ function tvMode(){
 }
 function fmtN(n){ return (n||0).toLocaleString('sl-SI'); }
 function fmtM(n){ if(!n) return '0 €'; if(n>=1000000) return (n/1000000).toFixed(2).replace('.',',')+' M€'; return Math.round(n).toLocaleString('sl-SI')+' €'; }
+function fmtEUR(n){ if(!n) return '0 €'; return Math.round(n).toLocaleString('sl-SI')+' €'; }
 let _liveBase = null;
 // ODOMETER (robustna verzija): vsaka števka svoj stolpec 0-9, premik v EM enotah.
 // Ob spremembi zadnje števke se cela številka na hip rahlo obarva (flash), da se gibanje VIDI.
@@ -12881,7 +12883,7 @@ function tickLive(){
   // če je strežnik nazaj (npr. čez polnoč / reset), poravnaj
   if(zaostanek < -2){ _shownOrders = cilj; _shownRevenue = _srvRevenue; }
   const elO = document.getElementById('tvOrders'); if(elO) renderOdometer(elO, fmtN(_shownOrders));
-  const elR = document.getElementById('tvRevenue'); if(elR) renderOdometer(elR, fmtM(_shownRevenue));
+  const elR = document.getElementById('tvRevenue'); if(elR) renderOdometer(elR, fmtEUR(_shownRevenue));
 }
 function floatPlus(anchorEl, n){
   if(!anchorEl) return;
