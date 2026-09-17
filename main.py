@@ -12399,13 +12399,24 @@ async def skladisce_tloris_page(request: Request):
   /* TV način: brez glave, večji tloris, zapolni zaslon */
   body.tv-on{padding:12px 16px}
   /* TV: enostavno večje celice (fiksno), brez agresivnega flex-a — regali večji, brez praznega prostora */
-  body.tv-on .cell{min-height:112px;font-size:18px}
-  body.tv-on .cell .rn{font-size:22px}
-  body.tv-on .cell .num{font-size:16px}
-  body.tv-on .regal-hd{font-size:23px}
-  body.tv-on .stena-box{font-size:24px}
-  body.tv-on .spol{min-height:80px;font-size:18px}
-  body.tv-on #tvStats{margin-bottom:14px}
+  body.tv-on .cell{min-height:150px;font-size:22px}
+  body.tv-on .cell .rn{font-size:28px}
+  body.tv-on .cell .num{font-size:19px}
+  body.tv-on .regal-hd{font-size:28px}
+  body.tv-on .regal-hd>div{padding:12px 0}
+  body.tv-on .stena-box{font-size:30px;letter-spacing:5px}
+  body.tv-on .spol{min-height:100px;font-size:22px}
+  body.tv-on .dodatne-hd{font-size:18px}
+  body.tv-on #tvStats{margin-bottom:18px}
+  /* TV: večje statistične kartice */
+  body.tv-on .tvc{padding:24px 28px;border-radius:18px}
+  body.tv-on .tvc-label{font-size:17px;margin-bottom:12px}
+  body.tv-on .tvc-num{font-size:46px}
+  body.tv-on .tvc-foot{font-size:16px;margin-top:12px}
+  body.tv-on .tv-live-mini{font-size:12px;padding:3px 10px}
+  body.tv-on #tvNabBar > div{padding:22px 28px!important}
+  body.tv-on #tvNabBar span{font-size:20px!important}
+  body.tv-on .ab-a > div:first-child, body.tv-on .ab-b > div:first-child{font-size:19px!important;padding:8px 18px!important}
   /* TV statistične kartice — slog kot Domov (hsp-card), mehkejši */
   .tvc{flex:1;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;min-width:0}
   .tvc-proj{flex:1.3;background:#534AB7;border-color:#534AB7}
