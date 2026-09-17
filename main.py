@@ -12409,8 +12409,9 @@ async def skladisce_tloris_page(request: Request):
   /* TV statistične kartice — slog kot Domov (hsp-card), mehkejši */
   .tvc{flex:1;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;min-width:0}
   .tvc-proj{flex:1.3;background:#534AB7;border-color:#534AB7}
+  .tvc-orders{background:linear-gradient(135deg,rgba(34,197,94,0.14),rgba(34,197,94,0.03));border-color:rgba(34,197,94,0.35)}
   .tvc-label{font-size:12px;color:var(--txt2);margin-bottom:8px}
-  .tvc-num{font-size:28px;font-weight:700;color:var(--txt);line-height:1;letter-spacing:-0.5px}
+  .tvc-num{font-size:28px;font-weight:800;color:var(--txt);line-height:1;letter-spacing:-0.5px;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
   /* ODOMETER: števke, ki se ob spremembi zavrtijo navzgor */
   .odo{display:inline-flex;align-items:flex-start;line-height:1}
   .odo-d{display:inline-block;overflow:hidden;height:1em;line-height:1}
@@ -12509,15 +12510,13 @@ async def skladisce_tloris_page(request: Request):
 
 <div id="tvStats" style="display:none;margin-bottom:18px">
   <div style="display:flex;gap:12px;margin-bottom:12px">
-    <div class="tvc">
-      <div class="tvc-label">📦 Naročila 2026 <span class="tv-live-mini"><span class="tv-live-mini-dot"></span>LIVE</span></div>
-      <div class="tvc-num" id="tvOrders">—</div>
-      <div class="tvc-bar"><div class="tvc-bar-fill" id="tvOrdersBar" style="width:0%;background:#378ADD"></div></div>
+    <div class="tvc tvc-orders">
+      <div class="tvc-label" style="color:#15803d">📦 Naročila 2026 <span class="tv-live-mini"><span class="tv-live-mini-dot"></span>LIVE</span></div>
+      <div class="tvc-num" id="tvOrders" style="color:#15803d">—</div>
     </div>
     <div class="tvc">
-      <div class="tvc-label">💰 Promet 2026</div>
+      <div class="tvc-label">💰 Promet 2026 <span class="tv-live-mini"><span class="tv-live-mini-dot"></span>LIVE</span></div>
       <div class="tvc-num" id="tvRevenue">—</div>
-      <div class="tvc-bar"><div class="tvc-bar-fill" id="tvRevenueBar" style="width:0%;background:#1D9E75"></div></div>
     </div>
     <div class="tvc">
       <div class="tvc-label">🏆 Najboljši dan</div>
@@ -12812,23 +12811,47 @@ function _delovniDelez(nowMin){
   if(nowMin >= END) return 1;
   return (nowMin - START) / (END - START);
 }
-let _lastOrders = null;
+// BURSTY prikaz: cilj je "kje bi moral biti po tempu", a do njega gremo v RAFALIH —
+// nekaj sekund tišine, potem +1,+1,+1, kot dejansko padajo naročila.
+let _shownOrders = null;   // trenutno PRIKAZANO število (dohaja cilj po korakih)
+let _shownRevenue = 0;
+let _aovLive = 0;          // povprečna vrednost naročila (za promet ob +1)
+let _nextBurstAt = 0;      // timestamp naslednjega "naročila"
+function _ciljOrders(){
+  if(!_liveBase) return 0;
+  const nowMin = new Date().getHours()*60 + new Date().getMinutes() + new Date().getSeconds()/60;
+  let dd = _delovniDelez(nowMin) - _delovniDelez(_liveBase.syncMin);
+  if(dd < 0) dd = 0;
+  return _liveBase.orders + _liveBase.rateOrders * dd;
+}
 function tickLive(){
   if(!_liveBase) return;
-  const nowMin = new Date().getHours()*60 + new Date().getMinutes() + new Date().getSeconds()/60;
-  // koliko dnevnega tempa je "padlo" do zdaj (po delovnem oknu) minus kar je bilo ob osnovi
-  const delezZdaj = _delovniDelez(nowMin);
-  const delezOsnova = _delovniDelez(_liveBase.syncMin);
-  let ddelez = delezZdaj - delezOsnova;
-  if(ddelez < 0) ddelez = 0;
-  const liveOrders = _liveBase.orders + _liveBase.rateOrders * ddelez;
-  const liveRevenue = _liveBase.revenue + _liveBase.rateRevenue * ddelez;
-  const cel = Math.floor(liveOrders);
-  const elO = document.getElementById('tvOrders'); if(elO) renderOdometer(elO, fmtN(cel));
-  const elR = document.getElementById('tvRevenue'); if(elR) renderOdometer(elR, fmtM(liveRevenue));
-  // ob POVEČANJU naročil → sproži "+1" float
-  if(_lastOrders !== null && cel > _lastOrders){ floatPlus(elO, cel - _lastOrders); }
-  _lastOrders = cel;
+  const cilj = Math.floor(_ciljOrders());
+  // inicializacija ob prvi osvežitvi
+  if(_shownOrders === null){
+    _shownOrders = Math.floor(_liveBase.orders);
+    _shownRevenue = _liveBase.revenue;
+    _aovLive = (_liveBase.rateOrders > 0) ? (_liveBase.rateRevenue / _liveBase.rateOrders) : 15;
+  }
+  // če osnova skočila naprej (60s sync prinesel novo pravo vrednost), poravnaj brez rafala
+  if(cilj < _shownOrders - 2){ _shownOrders = cilj; }
+  const zaostanek = cilj - _shownOrders;
+  const now = Date.now();
+  // če zaostajamo IN je čas za naslednji "burst" → dodaj eno naročilo
+  if(zaostanek > 0 && now >= _nextBurstAt){
+    _shownOrders += 1;
+    _shownRevenue += _aovLive * (0.6 + Math.random()*0.9);   // realen razpon vrednosti
+    // naslednji burst: če je zaostanek velik, hitro (2-4s); sicer redkeje (nič 20-60s pa rafal)
+    if(zaostanek > 3){
+      _nextBurstAt = now + (1500 + Math.random()*2500);   // rafal: 1.5-4s
+    } else {
+      _nextBurstAt = now + (12000 + Math.random()*40000);  // tišina 12-52s, potem naslednji
+    }
+    const elO = document.getElementById('tvOrders'); floatPlus(elO, 1);
+  }
+  // izriši (odometer)
+  const elO = document.getElementById('tvOrders'); if(elO) renderOdometer(elO, fmtN(_shownOrders));
+  const elR = document.getElementById('tvRevenue'); if(elR) renderOdometer(elR, fmtM(_shownRevenue));
 }
 function floatPlus(anchorEl, n){
   if(!anchorEl) return;
@@ -12854,6 +12877,12 @@ async function loadTvStats(){
         rateRevenue: (d.avg_7d_revenue || 0),    // €/dan
         syncMin: (new Date().getHours()*60 + new Date().getMinutes())  // minuta dneva ob osvežitvi
       };
+      // ob osvežitvi: če je prikazano močno odstopa od prave osnove, poravnaj (dnevni reset / uskladitev)
+      if(_shownOrders === null || Math.abs(_shownOrders - _liveBase.orders) > 30){
+        _shownOrders = Math.floor(_liveBase.orders);
+        _shownRevenue = _liveBase.revenue;
+      }
+      _aovLive = (_liveBase.rateOrders > 0) ? (_liveBase.rateRevenue / _liveBase.rateOrders) : 15;
       if(d.projection_orders!==undefined) document.getElementById('tvProjOrders').textContent = fmtN(d.projection_orders);
       if(d.projection_revenue!==undefined) document.getElementById('tvProjRevenue').textContent = fmtM(d.projection_revenue);
       if(d.best_day){
@@ -12861,10 +12890,6 @@ async function loadTvStats(){
         document.getElementById('tvBestOrders').textContent = fmtN(d.best_day.orders)+' nar.';
         if(d.best_day.date_fmt) document.getElementById('tvBestDate').textContent = '· '+d.best_day.date_fmt;
       }
-      const pO = (d.projection_orders>0) ? Math.min(100, Math.round(d.total_orders/d.projection_orders*100)) : 0;
-      const pR = (d.projection_revenue>0) ? Math.min(100, Math.round(d.total_revenue/d.projection_revenue*100)) : 0;
-      document.getElementById('tvOrdersBar').style.width = pO+'%';
-      document.getElementById('tvRevenueBar').style.width = pR+'%';
       tickLive();   // takoj prikaži
     }
   }catch(e){}
