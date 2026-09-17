@@ -12395,7 +12395,9 @@ async def skladisce_tloris_page(request: Request):
 <style>
   :root{--bg:#f7f7f8;--card:#fff;--bd:#e2e2e5;--txt:#1a1a1a;--txt2:#666;--txt3:#999}
   *{box-sizing:border-box}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:20px 28px;background:var(--bg);color:var(--txt);width:100%}
+  *{box-sizing:border-box}
+  html,body{max-width:100%;overflow-x:hidden}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:20px 28px;background:var(--bg);color:var(--txt);width:100%;box-sizing:border-box}
   /* TV način: brez glave, večji tloris, zapolni zaslon */
   body.tv-on{padding:20px 28px;max-width:100vw;overflow-x:hidden;box-sizing:border-box}
   /* TV safe-zone: majhen dodaten rob, da tudi če TV obreže rob (overscan), nič ne izgubiš */
