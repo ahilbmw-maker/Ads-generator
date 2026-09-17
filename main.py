@@ -12765,7 +12765,10 @@ let _liveBase = null;
 // ODOMETER (robustna verzija): vsaka števka svoj stolpec 0-9, premik v EM enotah.
 // Ob spremembi zadnje števke se cela številka na hip rahlo obarva (flash), da se gibanje VIDI.
 function renderOdometer(el, textVal){
-  const chars = String(textVal).split('');
+  const sv = String(textVal);
+  // če ni nobene števke (npr. '—' ali prazno), izpiši navadno, brez odometra
+  if(!/[0-9]/.test(sv)){ el.classList.remove('odo'); el.textContent = sv; el._odoChars = null; return; }
+  const chars = sv.split('');
   const prev = el._odoChars || [];
   const spremenjeno = (prev.join('') !== chars.join(''));
   if(prev.length !== chars.length){
@@ -12873,24 +12876,10 @@ function floatPlus(anchorEl, n){
   setTimeout(()=>{ if(p.parentElement) p.parentElement.removeChild(p); }, 1900);
 }
 async function loadTvStats(){
-  // PRODAJA — iz istega vira kot Domov. Shranimo osnovo + dnevni tempo za LIVE števec.
+  // PROJEKCIJA + NAJBOLJŠI DAN (live števec dela fetchLive/tickLive posebej!)
   try{
     const d = await (await fetch('/forecast2-stats?year=2026&_t='+Date.now(),{cache:'no-store'})).json();
     if(d.ok!==false){
-      // osnova za live: prava vrednost + tempo/dan (avg zadnjih 7 dni — sledi Q4 pospešku)
-      _liveBase = {
-        orders: d.total_orders || 0,
-        revenue: d.total_revenue || 0,
-        rateOrders: (d.avg_7d_orders || 0),      // naročil/dan
-        rateRevenue: (d.avg_7d_revenue || 0),    // €/dan
-        syncMin: (new Date().getHours()*60 + new Date().getMinutes())  // minuta dneva ob osvežitvi
-      };
-      // ob osvežitvi: če je prikazano močno odstopa od prave osnove, poravnaj (dnevni reset / uskladitev)
-      if(_shownOrders === null || Math.abs(_shownOrders - _liveBase.orders) > 30){
-        _shownOrders = Math.floor(_liveBase.orders);
-        _shownRevenue = _liveBase.revenue;
-      }
-      _aovLive = (_liveBase.rateOrders > 0) ? (_liveBase.rateRevenue / _liveBase.rateOrders) : 15;
       if(d.projection_orders!==undefined) document.getElementById('tvProjOrders').textContent = fmtN(d.projection_orders);
       if(d.projection_revenue!==undefined) document.getElementById('tvProjRevenue').textContent = fmtM(d.projection_revenue);
       if(d.best_day){
@@ -12898,7 +12887,6 @@ async function loadTvStats(){
         document.getElementById('tvBestOrders').textContent = fmtN(d.best_day.orders)+' nar.';
         if(d.best_day.date_fmt) document.getElementById('tvBestDate').textContent = '· '+d.best_day.date_fmt;
       }
-      tickLive();   // takoj prikaži
     }
   }catch(e){}
   // NABIRANJE — polni zeleni pas (VEDNO viden). Aktivno = zelen + LIVE; mirovanje = sivo.
