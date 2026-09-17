@@ -12387,8 +12387,8 @@ async def silux2_compare_live(request: Request):
 @app.get("/skladisce-tloris", response_class=HTMLResponse)
 async def skladisce_tloris_page(request: Request):
     """Stran: tloris skladišča z barvami zasedenosti in klik za seznam izdelkov."""
-    if not _owner_authorized(request):
-        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Samo lastnik.</h3>", status_code=403)
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Prijavi se v suban.ai za dostop.</h3>", status_code=403)
     html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tloris skladišča</title>
@@ -12414,7 +12414,7 @@ async def skladisce_tloris_page(request: Request):
   /* ODOMETER: števke, ki se ob spremembi zavrtijo navzgor */
   .odo{display:inline-flex;align-items:flex-start;line-height:1}
   .odo-d{display:inline-block;overflow:hidden;height:1em;line-height:1}
-  .odo-d > span{display:block;line-height:1;transition:transform .55s cubic-bezier(.22,.61,.36,1)}
+  .odo-i{display:block;line-height:1;transition:transform .55s cubic-bezier(.22,.61,.36,1)}
   .odo-sep{display:inline-block;line-height:1}
   .tvc-foot{font-size:12px;color:var(--txt2);margin-top:8px}
   .tvc-bar{height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:10px}
@@ -12755,42 +12755,49 @@ function tvMode(){
 function fmtN(n){ return (n||0).toLocaleString('sl-SI'); }
 function fmtM(n){ if(!n) return '0 €'; if(n>=1000000) return (n/1000000).toFixed(2).replace('.',',')+' M€'; return Math.round(n).toLocaleString('sl-SI')+' €'; }
 let _liveBase = null;
-// ODOMETER: prikaže niz znakov, vsako ŠTEVKO v svojem okencu; ob spremembi zdrsne navzgor.
+// ODOMETER (robustna verzija): vsaka števka svoj stolpec 0-9, premik v EM enotah.
+// Ob spremembi zadnje števke se cela številka na hip rahlo obarva (flash), da se gibanje VIDI.
 function renderOdometer(el, textVal){
   const chars = String(textVal).split('');
-  // če struktura (dolžina) ni ista, prezgradi
   const prev = el._odoChars || [];
+  const spremenjeno = (prev.join('') !== chars.join(''));
   if(prev.length !== chars.length){
     el.innerHTML = '';
     el.classList.add('odo');
     chars.forEach(ch => {
       if(ch >= '0' && ch <= '9'){
         const d = document.createElement('span'); d.className = 'odo-d';
-        const inner = document.createElement('span');
-        inner.style.transform = 'translateY(-'+(parseInt(ch)*10)+'%)';
-        inner.innerHTML = '0<br>1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9';
+        const inner = document.createElement('span'); inner.className = 'odo-i';
+        // stolpec 0..9, vsaka števka v svoji vrstici visoki 1em
+        let h = '';
+        for(let n=0;n<=9;n++) h += '<span style="display:block;height:1em">'+n+'</span>';
+        inner.innerHTML = h;
+        inner.style.transform = 'translateY(-'+parseInt(ch)+'em)';
         d.appendChild(inner); el.appendChild(d);
       } else {
         const sep = document.createElement('span'); sep.className = 'odo-sep'; sep.textContent = ch;
         el.appendChild(sep);
       }
     });
-    // višina okenca = ena vrstica
-    el.querySelectorAll('.odo-d').forEach(d => { d.style.height = '1em'; });
     el._odoChars = chars;
     return;
   }
-  // ista dolžina — samo posodobi transform tam, kjer se je števka spremenila
   const nodes = el.childNodes;
   for(let i=0;i<chars.length;i++){
     const ch = chars[i]; const node = nodes[i];
-    if(ch >= '0' && ch <= '9' && node && node.classList && node.classList.contains('odo-d')){
-      node.firstChild.style.transform = 'translateY(-'+(parseInt(ch)*10)+'%)';
+    if(ch >= '0' && ch <= '9' && node && node.querySelector){
+      const inner = node.querySelector('.odo-i');
+      if(inner) inner.style.transform = 'translateY(-'+parseInt(ch)+'em)';
     } else if(node && node.classList && node.classList.contains('odo-sep')){
       if(node.textContent !== ch) node.textContent = ch;
     }
   }
   el._odoChars = chars;
+  // flash ob spremembi
+  if(spremenjeno){
+    el.style.transition = 'none'; el.style.color = '#16a34a';
+    setTimeout(()=>{ el.style.transition = 'color .8s'; el.style.color = ''; }, 50);
+  }
 }
 function tickLive(){
   if(!_liveBase) return;
@@ -12887,9 +12894,9 @@ async def skladisce_vizualizacija(request: Request):
     """Vrne dejansko stanje skladišča: izdelke grupirane po poziciji (vrsta-regal-mesto),
     plus imenske pozicije (Amio, Ikonka, S-police, Omara ...). Za tloris vizualizacijo.
     Bere iz zaloge (glavna position + sekundarne extra_positions)."""
-    if not _owner_authorized(request):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+        return JSONResponse({"ok": False, "error": "Prijavi se v suban.ai."}, status_code=403)
     import csv as _csv, re as _re
     from io import StringIO as _SIO
 
