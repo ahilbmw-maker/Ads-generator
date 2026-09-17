@@ -5755,7 +5755,7 @@ async def generate_kreative(data: dict):
             prompts_for_b.append((a, prompt))
 
         if b_model == "compare4" or str(b_model).startswith("multi:"):
-            # VEČ MODELOV: skupno št. slik razdeli CIKLIČNO enakomerno med izbrane modele.
+            # VEČ MODELOV
             if b_model == "compare4":
                 _cmp_models = ("image2", "flare", "flash", "pro")
             else:
@@ -5763,6 +5763,7 @@ async def generate_kreative(data: dict):
                                     if m.strip() in ("image2","flare","flash","pro"))
                 if not _cmp_models:
                     _cmp_models = ("image2",)
+            # razdeli skupno št. slik (kombinacije × count) CIKLIČNO enakomerno med izbrane modele
             for a, prompt in prompts_for_b:
                 for _i in range(count):
                     mk = _cmp_models[_compare4_idx[0] % len(_cmp_models)]

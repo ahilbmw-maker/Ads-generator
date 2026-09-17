@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-16 11:00</div>
+      <div class="sidebar-logo-sub">build 2026-09-16 11:30</div>
     </div>
   </div>
 
@@ -7861,6 +7861,7 @@ function kbInitModels(){
   }catch(e){}
   if(!kbSelModels.length) kbSelModels = ['flare'];   // privzeto flare
   kbRenderModels();
+
 }
 
 async function kbAdd() {
@@ -8492,6 +8493,14 @@ function kRenderResults(results) {
     } else {
       imgs.forEach(url => cards.push({combo: r.combo, model: r.model, url, idx: cards.length}));
     }
+  });
+  // razvrsti po modelu: flare → image2 → nb2(flash) → pro
+  const _mOrder = { flare:0, image2:1, flash:2, pro:3 };
+  cards.sort((a,b) => {
+    const oa = (_mOrder[a.model] !== undefined) ? _mOrder[a.model] : 9;
+    const ob = (_mOrder[b.model] !== undefined) ? _mOrder[b.model] : 9;
+    if (oa !== ob) return oa - ob;
+    return a.idx - b.idx;   // znotraj modela ohrani vrstni red
   });
   window.kCardsData = cards;
 
