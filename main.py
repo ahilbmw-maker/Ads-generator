@@ -19809,9 +19809,9 @@ async def forecast2_day(date_iso: str):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-@app.get("/forecast2-stats")
-async def forecast2_stats():
-    """Statistika — koliko dni imamo final podatke."""
+@app.get("/forecast2-days-stats")
+async def forecast2_days_stats():
+    """Statistika — koliko dni imamo final podatke. (Zastarelo; ohranjeno za združljivost.)"""
     try:
         from datetime import timedelta
         today = _lj_now().date()
