@@ -6217,9 +6217,9 @@ PRIPRAVA_SEZNAM_FILE = DATA_DIR / "priprava_seznam_korak1.json"
 async def priprava_korak1(request: Request, file: UploadFile = File(...), prag: str = "10"):
     """Korak 1: naloži dokument, poišči postavke kjer je 'Prodano razlika' < prag (privzeto 10),
     shrani (SKU, prodano razlika) na disk. Vrne koliko jih je našel."""
-    if not _owner_authorized(request):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+        return JSONResponse({"ok": False, "error": "Prijavi se v suban.ai."}, status_code=403)
     try:
         _prag = float(str(prag).replace(",", "."))
     except (ValueError, TypeError):
@@ -6300,9 +6300,9 @@ async def priprava_korak1(request: Request, file: UploadFile = File(...), prag: 
 @app.get("/priprava-korak1-status")
 async def priprava_korak1_status(request: Request):
     """Vrne, koliko SKU-jev je shranjenih iz koraka 1."""
-    if not _owner_authorized(request):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+        return JSONResponse({"ok": False, "error": "Prijavi se v suban.ai."}, status_code=403)
     import json as _j
     if PRIPRAVA_SEZNAM_FILE.exists():
         try:
@@ -6317,9 +6317,9 @@ async def priprava_korak1_status(request: Request):
 async def priprava_korak2(request: Request, file: UploadFile = File(...)):
     """Korak 2: naloži drugi dokument, odstrani VSE vrstice s SKU-ji shranjenimi v koraku 1
     (Prodano razlika < 10). Vrne preostanek kot CSV."""
-    if not _owner_authorized(request):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Samo lastnik."}, status_code=403)
+        return JSONResponse({"ok": False, "error": "Prijavi se v suban.ai."}, status_code=403)
     import json as _j
     if not PRIPRAVA_SEZNAM_FILE.exists():
         return {"ok": False, "error": "Najprej naloži korak 1 (ni shranjenih SKU-jev)."}
@@ -12397,7 +12397,9 @@ async def skladisce_tloris_page(request: Request):
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:20px 28px;background:var(--bg);color:var(--txt);width:100%}
   /* TV način: brez glave, večji tloris, zapolni zaslon */
-  body.tv-on{padding:12px 16px}
+  body.tv-on{padding:20px 28px;max-width:100vw;overflow-x:hidden;box-sizing:border-box}
+  /* TV safe-zone: majhen dodaten rob, da tudi če TV obreže rob (overscan), nič ne izgubiš */
+  html{overflow-x:hidden}
   /* TV: enostavno večje celice (fiksno), brez agresivnega flex-a — regali večji, brez praznega prostora */
   body.tv-on .cell{min-height:150px;font-size:22px}
   body.tv-on .cell .rn{font-size:28px}
