@@ -12750,10 +12750,13 @@ function tvMode(){
   document.getElementById('tvStats').style.display = 'block';
   document.body.classList.add('tv-on');
   loadTvStats();
+  fetchLive();   // strežniška live vrednost takoj
   try{ if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); }catch(e){}
-  // samodejno osveževanje (tloris + statistike) vsakih 60s — uskladi s pravo številko
-  if(!window._tvTimer) window._tvTimer = setInterval(function(){ load(); loadTvStats(); }, 60000);
-  // LIVE tick — plavno prištevanje vsako sekundo
+  // tloris + nabiranje pas + statistike osveži vsakih 30s (brez ponovnega nalaganja strani!)
+  if(!window._tvTimer) window._tvTimer = setInterval(function(){ load(); loadTvStats(); }, 30000);
+  // strežniška live vrednost vsakih 20s (SINHRONIZIRANO med vsemi brskalniki)
+  if(!window._tvSrvTimer) window._tvSrvTimer = setInterval(fetchLive, 20000);
+  // lokalni tick (bursty animacija dohaja strežniško vrednost) vsako sekundo
   if(!window._tvLiveTimer) window._tvLiveTimer = setInterval(tickLive, 1000);
 }
 function fmtN(n){ return (n||0).toLocaleString('sl-SI'); }
@@ -12817,39 +12820,44 @@ let _shownOrders = null;   // trenutno PRIKAZANO število (dohaja cilj po koraki
 let _shownRevenue = 0;
 let _aovLive = 0;          // povprečna vrednost naročila (za promet ob +1)
 let _nextBurstAt = 0;      // timestamp naslednjega "naročila"
-function _ciljOrders(){
-  if(!_liveBase) return 0;
-  const nowMin = new Date().getHours()*60 + new Date().getMinutes() + new Date().getSeconds()/60;
-  let dd = _delovniDelez(nowMin) - _delovniDelez(_liveBase.syncMin);
-  if(dd < 0) dd = 0;
-  return _liveBase.orders + _liveBase.rateOrders * dd;
+let _srvOrders = null, _srvRevenue = 0;   // ZADNJA strežniška vrednost (skupni vir resnice)
+async function fetchLive(){
+  try{
+    const d = await (await fetch('/narocila-live?year=2026&_t='+Date.now(),{cache:'no-store'})).json();
+    if(d.ok){
+      _srvOrders = d.orders;
+      _srvRevenue = d.revenue;
+      // projekcija/najboljši dan tudi osveži
+      if(d.projection_orders!==undefined){ const e=document.getElementById('tvProjOrders'); if(e) e.textContent=fmtN(d.projection_orders); }
+      if(d.projection_revenue!==undefined){ const e=document.getElementById('tvProjRevenue'); if(e) e.textContent=fmtM(d.projection_revenue); }
+      if(d.best_day){ const eb=document.getElementById('tvBest'); if(eb) eb.textContent=fmtM(d.best_day.revenue);
+        const eo=document.getElementById('tvBestOrders'); if(eo) eo.textContent=fmtN(d.best_day.orders)+' nar.';
+        const ed=document.getElementById('tvBestDate'); if(ed&&d.best_day.date_fmt) ed.textContent='· '+d.best_day.date_fmt; }
+      // init prikaza ob prvem fetchu
+      if(_shownOrders === null){ _shownOrders = _srvOrders; _shownRevenue = _srvRevenue; }
+      // če strežnik močno naprej/nazaj (sync, dnevni reset) → poravnaj takoj
+      if(Math.abs(_shownOrders - _srvOrders) > 30){ _shownOrders = _srvOrders; _shownRevenue = _srvRevenue; }
+    }
+  }catch(e){}
 }
 function tickLive(){
-  if(!_liveBase) return;
-  const cilj = Math.floor(_ciljOrders());
-  // inicializacija ob prvi osvežitvi
-  if(_shownOrders === null){
-    _shownOrders = Math.floor(_liveBase.orders);
-    _shownRevenue = _liveBase.revenue;
-    _aovLive = (_liveBase.rateOrders > 0) ? (_liveBase.rateRevenue / _liveBase.rateOrders) : 15;
-  }
-  // če osnova skočila naprej (60s sync prinesel novo pravo vrednost), poravnaj brez rafala
-  if(cilj < _shownOrders - 2){ _shownOrders = cilj; }
+  if(_srvOrders === null) return;   // še ni strežniške vrednosti
+  const cilj = _srvOrders;
   const zaostanek = cilj - _shownOrders;
   const now = Date.now();
-  // če zaostajamo IN je čas za naslednji "burst" → dodaj eno naročilo
+  // dohajamo strežniško vrednost v RAFALIH (bursty), da izgleda kot resnična naročila
   if(zaostanek > 0 && now >= _nextBurstAt){
     _shownOrders += 1;
-    _shownRevenue += _aovLive * (0.6 + Math.random()*0.9);   // realen razpon vrednosti
-    // naslednji burst: če je zaostanek velik, hitro (2-4s); sicer redkeje (nič 20-60s pa rafal)
-    if(zaostanek > 3){
-      _nextBurstAt = now + (1500 + Math.random()*2500);   // rafal: 1.5-4s
-    } else {
-      _nextBurstAt = now + (12000 + Math.random()*40000);  // tišina 12-52s, potem naslednji
-    }
+    // promet sorazmerno dohaja
+    const preostaloO = cilj - (_shownOrders - 1);
+    const preostaloR = _srvRevenue - _shownRevenue;
+    _shownRevenue += (preostaloO > 0) ? (preostaloR / preostaloO) : 0;
+    if(zaostanek > 3){ _nextBurstAt = now + (1500 + Math.random()*2500); }      // rafal 1.5-4s
+    else { _nextBurstAt = now + (12000 + Math.random()*40000); }               // tišina 12-52s
     const elO = document.getElementById('tvOrders'); floatPlus(elO, 1);
   }
-  // izriši (odometer)
+  // če je strežnik nazaj (npr. čez polnoč / reset), poravnaj
+  if(zaostanek < -2){ _shownOrders = cilj; _shownRevenue = _srvRevenue; }
   const elO = document.getElementById('tvOrders'); if(elO) renderOdometer(elO, fmtN(_shownOrders));
   const elR = document.getElementById('tvRevenue'); if(elR) renderOdometer(elR, fmtM(_shownRevenue));
 }
@@ -12930,16 +12938,26 @@ function tvExit(){
   try{ if(document.exitFullscreen && document.fullscreenElement) document.exitFullscreen(); }catch(e){}
   if(window._tvTimer){ clearInterval(window._tvTimer); window._tvTimer = null; }
   if(window._tvLiveTimer){ clearInterval(window._tvLiveTimer); window._tvLiveTimer = null; }
+  if(window._tvSrvTimer){ clearInterval(window._tvSrvTimer); window._tvSrvTimer = null; }
 }
+let _loadedOnce = false;
 async function load(){
   try{
     const r = await fetch('/skladisce-vizualizacija');
-    DATA = await r.json();
-    if(!DATA.ok){ document.body.innerHTML='<p style="padding:40px">Napaka: '+(DATA.error||'')+'</p>'; return; }
+    const nd = await r.json();
+    if(!nd.ok){
+      // ob PRVEM nalaganju pokaži napako; pri periodičnem osveževanju tiho preskoči (ne razbij TV)
+      if(!_loadedOnce) document.body.innerHTML='<p style="padding:40px">Napaka: '+(nd.error||'')+'</p>';
+      return;
+    }
+    DATA = nd;
     render();
-    // če je ?tv=1 v URL, samodejno aktiviraj TV način (za direkten dostop iz menija)
-    try{ if(new URLSearchParams(location.search).get('tv')==='1') tvMode(); }catch(e){}
-  }catch(e){ document.body.innerHTML='<p style="padding:40px">Napaka: '+e.message+'</p>'; }
+    _loadedOnce = true;
+    // ob PRVEM nalaganju: če je ?tv=1, aktiviraj TV način
+    if(new URLSearchParams(location.search).get('tv')==='1' && !document.body.classList.contains('tv-on')){
+      try{ tvMode(); }catch(e){}
+    }
+  }catch(e){ if(!_loadedOnce) document.body.innerHTML='<p style="padding:40px">Napaka: '+e.message+'</p>'; }
 }
 load();
 </script></body></html>"""
@@ -18879,6 +18897,38 @@ async def forecast2_today():
     today = _lj_today()
     data = _forecast2_load_day(today)
     return {"ok": True, "today": today, **data}
+
+@app.get("/narocila-live")
+async def narocila_live(request: Request, year: int = 2026):
+    """Strežniško izračunan LIVE števec — vsi brskalniki dobijo ISTO številko (sinhronizirano)."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    try:
+        base = await forecast2_stats(year=year)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    if not base.get("ok"):
+        return {"ok": False, "error": "forecast ni na voljo"}
+    total_orders = base.get("total_orders", 0)
+    total_revenue = base.get("total_revenue", 0.0)
+    rate_orders = base.get("avg_7d_orders", 0) or 0
+    rate_revenue = base.get("avg_7d_revenue", 0) or 0
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc) + timedelta(hours=2)   # pribl. slovenski čas
+    now_min = now.hour * 60 + now.minute + now.second/60.0
+    START, END = 7*60, 16*60
+    if now_min <= START: delez = 0.0
+    elif now_min >= END: delez = 1.0
+    else: delez = (now_min - START) / (END - START)
+    live_orders = int(total_orders + rate_orders * delez)
+    live_revenue = total_revenue + rate_revenue * delez
+    return {"ok": True, "orders": live_orders, "revenue": round(live_revenue, 2),
+            "base_orders": total_orders, "base_revenue": total_revenue,
+            "delez_dneva": round(delez, 4),
+            "projection_orders": base.get("projection_orders", 0),
+            "projection_revenue": base.get("projection_revenue", 0),
+            "best_day": base.get("best_day"), "server_min": round(now_min, 1)}
 
 @app.get("/forecast2-stats")
 async def forecast2_stats(year: int = 2026):
