@@ -12403,29 +12403,31 @@ async def skladisce_tloris_page(request: Request):
   /* TV safe-zone: majhen dodaten rob, da tudi če TV obreže rob (overscan), nič ne izgubiš */
   html{overflow-x:hidden}
   /* TV: enostavno večje celice (fiksno), brez agresivnega flex-a — regali večji, brez praznega prostora */
-  body.tv-on .cell{min-height:150px;font-size:22px}
-  body.tv-on .cell .rn{font-size:28px}
-  body.tv-on .cell .num{font-size:19px}
-  body.tv-on .regal-hd{font-size:28px}
-  body.tv-on .regal-hd>div{padding:12px 0}
-  body.tv-on .stena-box{font-size:30px;letter-spacing:5px}
-  body.tv-on .spol{min-height:100px;font-size:22px}
-  body.tv-on .dodatne-hd{font-size:18px}
-  body.tv-on #tvStats{margin-bottom:18px}
-  /* TV: večje statistične kartice */
-  body.tv-on .tvc{padding:24px 28px;border-radius:18px}
-  body.tv-on .tvc-label{font-size:17px;margin-bottom:12px}
-  body.tv-on .tvc-num{font-size:46px}
-  body.tv-on .tvc-foot{font-size:16px;margin-top:12px}
-  body.tv-on .tv-live-mini{font-size:12px;padding:3px 10px}
-  body.tv-on #tvNabBar > div{padding:22px 28px!important}
-  body.tv-on #tvNabBar span{font-size:20px!important}
-  body.tv-on .ab-a > div:first-child, body.tv-on .ab-b > div:first-child{font-size:19px!important;padding:8px 18px!important}
+  body.tv-on{padding:10px 16px}
+  body.tv-on .cell{min-height:104px;font-size:18px}
+  body.tv-on .cell .rn{font-size:23px}
+  body.tv-on .cell .num{font-size:16px}
+  body.tv-on .regal-hd{font-size:22px}
+  body.tv-on .regal-hd>div{padding:7px 0}
+  body.tv-on .stena-box{font-size:24px;letter-spacing:4px}
+  body.tv-on .spol{min-height:66px;font-size:18px}
+  body.tv-on .dodatne{padding:8px}
+  body.tv-on .dodatne-hd{font-size:15px;margin-bottom:5px}
+  body.tv-on #tvStats{margin-bottom:10px}
+  /* TV: statistične kartice — kompaktne a berljive */
+  body.tv-on .tvc{padding:16px 22px;border-radius:16px}
+  body.tv-on .tvc-label{font-size:15px;margin-bottom:8px}
+  body.tv-on .tvc-num{font-size:38px}
+  body.tv-on .tvc-foot{font-size:14px;margin-top:8px}
+  body.tv-on .tv-live-mini{font-size:11px;padding:2px 9px}
+  body.tv-on #tvNabBar > div{padding:14px 22px!important}
+  body.tv-on #tvNabBar span{font-size:17px!important}
+  body.tv-on .ab-a > div:first-child, body.tv-on .ab-b > div:first-child{font-size:17px!important;padding:6px 14px!important;margin-bottom:6px!important}
   /* TV statistične kartice — slog kot Domov (hsp-card), mehkejši */
   .tvc{flex:1;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;min-width:0}
   .tvc-proj{flex:1.5;background:#534AB7;border-color:#534AB7}
   .tvc-proj .tvc-num{font-size:24px}
-  body.tv-on .tvc-proj .tvc-num{font-size:38px}
+  body.tv-on .tvc-proj .tvc-num{font-size:32px}
   .tvc-orders{background:linear-gradient(135deg,rgba(34,197,94,0.14),rgba(34,197,94,0.03));border-color:rgba(34,197,94,0.35)}
   .tvc-label{font-size:12px;color:var(--txt2);margin-bottom:8px}
   .tvc-num{font-size:28px;font-weight:800;color:var(--txt);line-height:1;letter-spacing:-0.5px;white-space:nowrap;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
