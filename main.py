@@ -12411,6 +12411,11 @@ async def skladisce_tloris_page(request: Request):
   .tvc-proj{flex:1.3;background:#534AB7;border-color:#534AB7}
   .tvc-label{font-size:12px;color:var(--txt2);margin-bottom:8px}
   .tvc-num{font-size:28px;font-weight:700;color:var(--txt);line-height:1;letter-spacing:-0.5px}
+  /* ODOMETER: števke, ki se ob spremembi zavrtijo navzgor */
+  .odo{display:inline-flex;align-items:flex-start;line-height:1}
+  .odo-d{display:inline-block;overflow:hidden;height:1em;line-height:1}
+  .odo-d > span{display:block;line-height:1;transition:transform .55s cubic-bezier(.22,.61,.36,1)}
+  .odo-sep{display:inline-block;line-height:1}
   .tvc-foot{font-size:12px;color:var(--txt2);margin-top:8px}
   .tvc-bar{height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:10px}
   .tvc-bar-fill{height:100%;border-radius:3px}
@@ -12742,18 +12747,74 @@ function tvMode(){
   document.body.classList.add('tv-on');
   loadTvStats();
   try{ if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); }catch(e){}
-  // samodejno osveževanje (tloris + statistike) vsakih 60s
+  // samodejno osveževanje (tloris + statistike) vsakih 60s — uskladi s pravo številko
   if(!window._tvTimer) window._tvTimer = setInterval(function(){ load(); loadTvStats(); }, 60000);
+  // LIVE tick — plavno prištevanje vsako sekundo
+  if(!window._tvLiveTimer) window._tvLiveTimer = setInterval(tickLive, 1000);
 }
 function fmtN(n){ return (n||0).toLocaleString('sl-SI'); }
 function fmtM(n){ if(!n) return '0 €'; if(n>=1000000) return (n/1000000).toFixed(2).replace('.',',')+' M€'; return Math.round(n).toLocaleString('sl-SI')+' €'; }
+let _liveBase = null;
+// ODOMETER: prikaže niz znakov, vsako ŠTEVKO v svojem okencu; ob spremembi zdrsne navzgor.
+function renderOdometer(el, textVal){
+  const chars = String(textVal).split('');
+  // če struktura (dolžina) ni ista, prezgradi
+  const prev = el._odoChars || [];
+  if(prev.length !== chars.length){
+    el.innerHTML = '';
+    el.classList.add('odo');
+    chars.forEach(ch => {
+      if(ch >= '0' && ch <= '9'){
+        const d = document.createElement('span'); d.className = 'odo-d';
+        const inner = document.createElement('span');
+        inner.style.transform = 'translateY(-'+(parseInt(ch)*10)+'%)';
+        inner.innerHTML = '0<br>1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9';
+        d.appendChild(inner); el.appendChild(d);
+      } else {
+        const sep = document.createElement('span'); sep.className = 'odo-sep'; sep.textContent = ch;
+        el.appendChild(sep);
+      }
+    });
+    // višina okenca = ena vrstica
+    el.querySelectorAll('.odo-d').forEach(d => { d.style.height = '1em'; });
+    el._odoChars = chars;
+    return;
+  }
+  // ista dolžina — samo posodobi transform tam, kjer se je števka spremenila
+  const nodes = el.childNodes;
+  for(let i=0;i<chars.length;i++){
+    const ch = chars[i]; const node = nodes[i];
+    if(ch >= '0' && ch <= '9' && node && node.classList && node.classList.contains('odo-d')){
+      node.firstChild.style.transform = 'translateY(-'+(parseInt(ch)*10)+'%)';
+    } else if(node && node.classList && node.classList.contains('odo-sep')){
+      if(node.textContent !== ch) node.textContent = ch;
+    }
+  }
+  el._odoChars = chars;
+}
+function tickLive(){
+  if(!_liveBase) return;
+  const nowMin = new Date().getHours()*60 + new Date().getMinutes() + new Date().getSeconds()/60;
+  let dMin = nowMin - _liveBase.syncMin;
+  if(dMin < 0) dMin = 0;
+  const liveOrders = _liveBase.orders + (_liveBase.rateOrders/1440)*dMin;
+  const liveRevenue = _liveBase.revenue + (_liveBase.rateRevenue/1440)*dMin;
+  const elO = document.getElementById('tvOrders'); if(elO) renderOdometer(elO, fmtN(Math.floor(liveOrders)));
+  const elR = document.getElementById('tvRevenue'); if(elR) renderOdometer(elR, fmtM(liveRevenue));
+}
 async function loadTvStats(){
-  // PRODAJA — iz istega vira kot Domov
+  // PRODAJA — iz istega vira kot Domov. Shranimo osnovo + dnevni tempo za LIVE števec.
   try{
     const d = await (await fetch('/forecast2-stats?year=2026&_t='+Date.now(),{cache:'no-store'})).json();
     if(d.ok!==false){
-      if(d.total_orders!==undefined) document.getElementById('tvOrders').textContent = fmtN(d.total_orders);
-      if(d.total_revenue!==undefined) document.getElementById('tvRevenue').textContent = fmtM(d.total_revenue);
+      // osnova za live: prava vrednost + tempo/dan (avg zadnjih 7 dni — sledi Q4 pospešku)
+      _liveBase = {
+        orders: d.total_orders || 0,
+        revenue: d.total_revenue || 0,
+        rateOrders: (d.avg_7d_orders || 0),      // naročil/dan
+        rateRevenue: (d.avg_7d_revenue || 0),    // €/dan
+        syncMin: (new Date().getHours()*60 + new Date().getMinutes())  // minuta dneva ob osvežitvi
+      };
       if(d.projection_orders!==undefined) document.getElementById('tvProjOrders').textContent = fmtN(d.projection_orders);
       if(d.projection_revenue!==undefined) document.getElementById('tvProjRevenue').textContent = fmtM(d.projection_revenue);
       if(d.best_day){
@@ -12761,11 +12822,11 @@ async function loadTvStats(){
         document.getElementById('tvBestOrders').textContent = fmtN(d.best_day.orders)+' nar.';
         if(d.best_day.date_fmt) document.getElementById('tvBestDate').textContent = '· '+d.best_day.date_fmt;
       }
-      // bari doseženo/napoved
       const pO = (d.projection_orders>0) ? Math.min(100, Math.round(d.total_orders/d.projection_orders*100)) : 0;
       const pR = (d.projection_revenue>0) ? Math.min(100, Math.round(d.total_revenue/d.projection_revenue*100)) : 0;
       document.getElementById('tvOrdersBar').style.width = pO+'%';
       document.getElementById('tvRevenueBar').style.width = pR+'%';
+      tickLive();   // takoj prikaži
     }
   }catch(e){}
   // NABIRANJE — polni zeleni pas (VEDNO viden). Aktivno = zelen + LIVE; mirovanje = sivo.
@@ -12804,6 +12865,7 @@ function tvExit(){
   document.body.classList.remove('tv-on');
   try{ if(document.exitFullscreen && document.fullscreenElement) document.exitFullscreen(); }catch(e){}
   if(window._tvTimer){ clearInterval(window._tvTimer); window._tvTimer = null; }
+  if(window._tvLiveTimer){ clearInterval(window._tvLiveTimer); window._tvLiveTimer = null; }
 }
 async function load(){
   try{
