@@ -12423,10 +12423,12 @@ async def skladisce_tloris_page(request: Request):
   body.tv-on .ab-a > div:first-child, body.tv-on .ab-b > div:first-child{font-size:19px!important;padding:8px 18px!important}
   /* TV statistične kartice — slog kot Domov (hsp-card), mehkejši */
   .tvc{flex:1;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;min-width:0}
-  .tvc-proj{flex:1.3;background:#534AB7;border-color:#534AB7}
+  .tvc-proj{flex:1.5;background:#534AB7;border-color:#534AB7}
+  .tvc-proj .tvc-num{font-size:24px}
+  body.tv-on .tvc-proj .tvc-num{font-size:38px}
   .tvc-orders{background:linear-gradient(135deg,rgba(34,197,94,0.14),rgba(34,197,94,0.03));border-color:rgba(34,197,94,0.35)}
   .tvc-label{font-size:12px;color:var(--txt2);margin-bottom:8px}
-  .tvc-num{font-size:28px;font-weight:800;color:var(--txt);line-height:1;letter-spacing:-0.5px;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+  .tvc-num{font-size:28px;font-weight:800;color:var(--txt);line-height:1;letter-spacing:-0.5px;white-space:nowrap;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
   /* ODOMETER: števke, ki se ob spremembi zavrtijo navzgor */
   .odo{display:inline-flex;align-items:flex-start;line-height:1}
   .odo-d{display:inline-block;overflow:hidden;height:1em;line-height:1}
@@ -12540,9 +12542,9 @@ async def skladisce_tloris_page(request: Request):
     </div>
     <div class="tvc tvc-proj">
       <div class="tvc-label" style="color:#CECBF6">📈 Napoved 2026 · projekcija</div>
-      <div style="display:flex;gap:16px">
-        <div><div class="tvc-num" style="color:#fff" id="tvProjOrders">—</div><div style="font-size:11px;color:#AFA9EC">naročil</div></div>
-        <div><div class="tvc-num" style="color:#fff" id="tvProjRevenue">—</div><div style="font-size:11px;color:#AFA9EC">prometa</div></div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap">
+        <div style="min-width:0"><div class="tvc-num" style="color:#fff" id="tvProjOrders">—</div><div style="font-size:11px;color:#AFA9EC">naročil</div></div>
+        <div style="min-width:0"><div class="tvc-num" style="color:#fff" id="tvProjRevenue">—</div><div style="font-size:11px;color:#AFA9EC">prometa</div></div>
       </div>
     </div>
   </div>
