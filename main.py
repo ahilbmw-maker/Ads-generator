@@ -12525,7 +12525,7 @@ async def skladisce_tloris_page(request: Request):
 <div id="searchRes" style="font-size:12px;margin-bottom:10px"></div>
 </div>
 
-<button id="tvExitBtn" onclick="tvExit()" style="display:none;position:fixed;top:10px;right:14px;z-index:100;padding:8px 14px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">✕ Zapri TV</button>
+<button id="tvExitBtn" onclick="tvExit()" style="display:none;position:fixed;bottom:10px;right:14px;z-index:100;padding:7px 12px;background:rgba(0,0,0,0.35);color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit;opacity:0.6">✕ Zapri TV</button>
 
 <div id="tvStats" style="display:none;margin-bottom:18px">
   <div style="display:flex;gap:12px;margin-bottom:12px">
