@@ -1323,12 +1323,20 @@ function renderTable(rows) {
     const tr = document.createElement('tr');
     tr.className = row.isNull ? 'row-null' : `row-${row.status}`;
     tr.style.cursor = 'pointer';
-    // KLIK NA VRSTICO (kjer ni linka/gumba) → toggle checkbox
+    // KLIK NA VRSTICO (kjer ni linka/gumba) → toggle checkbox; SHIFT-klik → obseg
     tr.addEventListener('click', function(ev){
-      // ignoriraj klik na klikabilne elemente (link, gumb, checkbox, 📈, SALE ipd.)
       if (ev.target.closest('a, button, input, .salesbtn, .id-badge, [onclick]')) return;
       const cb = tr.querySelector('input[type=checkbox][data-key]');
-      if (cb){ cb.checked = !cb.checked; bulkToggleRow(cb.dataset.key, cb.checked, tr); }
+      if (!cb) return;
+      if (ev.shiftKey && window._lastClickedRowKey){
+        // izberi vse vrstice med zadnjo kliknjeno in to
+        pcSelectRange(window._lastClickedRowKey, cb.dataset.key);
+        ev.preventDefault();
+      } else {
+        cb.checked = !cb.checked;
+        bulkToggleRow(cb.dataset.key, cb.checked, tr);
+        window._lastClickedRowKey = cb.dataset.key;
+      }
     });
     if (seenCtx) tr.style.opacity = '0.55';   // pregledana, prikazana le za kontekst
     // poudari zalogo: 0/nizka (≤5 rdeča, ≤20 rumena) — leva črtica + rahlo ozadje
@@ -1468,7 +1476,7 @@ function taskFilter(f, card) {
   // Hitro brisanje cele skupine — samo za Vrednost 0 / Količina 2x / Združena
   const qdBar = document.getElementById('quickDeleteBar');
   if (qdBar) {
-    const showQuick = (f === 'null' || f === 'qty' || f === 'multi');
+    const showQuick = (f === 'null' || f === 'qty' || f === 'multi' || f === 'error' || f === 'warn' || f === 'lowval' || f === 'ok');
     if (showQuick) { qdBar.style.display = 'flex'; updateQuickDeleteLabel(f); }
     else { qdBar.style.display = 'none'; if (typeof updateStoreQuickDelete==='function') updateStoreQuickDelete(); }
   }
@@ -1480,6 +1488,10 @@ function updateQuickDeleteLabel(f) {
   let n = 0, what = '';
   if (f === 'null') { n = allRows.filter(r => r.isNull).length; what = 'naročil z vrednostjo 0'; }
   else if (f === 'qty') { n = allRows.filter(r => (r.qty || 1) > 1).length; what = 'naročil s količino 2x+'; }
+  else if (f === 'error') { n = allRows.filter(r => r.status === 'error' && !r.resolved).length; what = 'naročil z napako cene'; }
+  else if (f === 'warn') { n = allRows.filter(r => r.status === 'warn' && !r.resolved).length; what = 'naročil z mejno ceno'; }
+  else if (f === 'lowval') { n = allRows.filter(r => r.razlikaNum != null && Math.abs(r.razlikaNum) < 7 && !r.isNull).length; what = 'naročil z razliko <7€'; }
+  else if (f === 'ok') { n = allRows.filter(r => r.status === 'ok' || !r.resolved).length; what = 'OK naročil'; }
   else if (f === 'multi') {
     const idc = {}; allRows.forEach(r => { idc[r.id] = (idc[r.id]||0)+1; });
     n = allRows.filter(r => idc[r.id] > 1).length; what = 'združenih naročil';
@@ -2091,6 +2103,23 @@ function bulkToggleAll(checked) {
   bulkUpdateBar();
 }
 
+function pcSelectRange(fromKey, toKey){
+  // izberi vse vrstice med dvema (po vrstnem redu v tabeli)
+  const trs = Array.from(document.querySelectorAll('#tableBody tr'));
+  const keys = trs.map(tr => { const cb = tr.querySelector('input[type=checkbox][data-key]'); return cb ? cb.dataset.key : null; });
+  const iFrom = keys.indexOf(fromKey);
+  const iTo = keys.indexOf(toKey);
+  if (iFrom < 0 || iTo < 0) return;
+  const lo = Math.min(iFrom, iTo), hi = Math.max(iFrom, iTo);
+  for (let i = lo; i <= hi; i++){
+    if (!keys[i]) continue;
+    const tr = trs[i];
+    const cb = tr.querySelector('input[type=checkbox][data-key]');
+    if (cb && !cb.checked){ cb.checked = true; bulkToggleRow(cb.dataset.key, true, tr); }
+  }
+  window._lastClickedRowKey = toKey;
+}
+
 function bulkToggleRow(key, checked, tr) {
   if (checked) selectedKeys.add(key);
   else selectedKeys.delete(key);
@@ -2125,12 +2154,20 @@ async function deleteAllInView() {
   else if (currentFilter === 'multi') {
     const idc = {}; allRows.forEach(r => { idc[r.id] = (idc[r.id]||0)+1; });
     targetRows = allRows.filter(r => idc[r.id] > 1);
-  } else if (currentStore && currentStore !== 'all') {
+  } else if (currentFilter === 'error') targetRows = allRows.filter(r => r.status === 'error' && !r.resolved);
+  else if (currentFilter === 'warn') targetRows = allRows.filter(r => r.status === 'warn' && !r.resolved);
+  else if (currentFilter === 'lowval') targetRows = allRows.filter(r => r.razlikaNum != null && Math.abs(r.razlikaNum) < 7 && !r.isNull);
+  else if (currentFilter === 'ok') targetRows = allRows.filter(r => r.status === 'ok' || !r.resolved);
+  else if (currentStore && currentStore !== 'all') {
     targetRows = allRows.filter(r => (r.store || '') === currentStore);
   } else {
     // fallback: vidne v tabeli
     const vk = new Set(getVisibleKeys());
     targetRows = allRows.filter(r => vk.has(r.id + '|' + r.sku));
+  }
+  // če je hkrati izbrana trgovina, zoži na to trgovino
+  if (currentStore && currentStore !== 'all' && currentFilter !== 'all') {
+    targetRows = targetRows.filter(r => (r.store || '') === currentStore);
   }
   if (!targetRows.length) return;
   targetRows.forEach(r => selectedKeys.add(r.id + '|' + r.sku));
@@ -2920,6 +2957,49 @@ function fallbackCopy(text, callback) {
   try { document.execCommand('copy'); if (callback) callback(); } catch(e) {}
   document.body.removeChild(ta);
 }
+
+// ── KLAVIRSKE BLIŽNJICE ──
+let _pcFocusIndex = -1;   // trenutno fokusirana vrstica (za ↑↓)
+function _pcRows(){ return Array.from(document.querySelectorAll('#tableBody tr')).filter(tr => tr.querySelector('input[type=checkbox][data-key]')); }
+function _pcFocusRow(idx){
+  const rows = _pcRows();
+  if(!rows.length) return;
+  _pcFocusIndex = Math.max(0, Math.min(rows.length-1, idx));
+  rows.forEach((tr,i) => { tr.style.outline = (i===_pcFocusIndex) ? '2px solid #4f6ef7' : ''; tr.style.outlineOffset = '-2px'; });
+  rows[_pcFocusIndex].scrollIntoView({block:'nearest', behavior:'smooth'});
+}
+document.addEventListener('keydown', function(ev){
+  // ne sproži, če pišeš v polje (input/textarea/select) ali odprt modal
+  const t = ev.target;
+  if (t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.tagName==='SELECT' || t.isContentEditable)) return;
+  const k = ev.key;
+  // D = izbriši izbrane
+  if ((k==='d' || k==='D') && !ev.ctrlKey && !ev.metaKey){
+    if (typeof selectedKeys!=='undefined' && selectedKeys.size>0){
+      ev.preventDefault();
+      if (confirm('Izbrisati '+selectedKeys.size+' označenih naročil?')) bulkDelete();
+    }
+    return;
+  }
+  // ↓ / ↑ = premik med vrsticami
+  if (k==='ArrowDown'){ ev.preventDefault(); _pcFocusRow(_pcFocusIndex+1); return; }
+  if (k==='ArrowUp'){ ev.preventDefault(); _pcFocusRow(_pcFocusIndex<0 ? 0 : _pcFocusIndex-1); return; }
+  // space = izberi/odznači fokusirano vrstico
+  if (k===' ' && _pcFocusIndex>=0){
+    ev.preventDefault();
+    const rows = _pcRows(); const tr = rows[_pcFocusIndex];
+    if(tr){ const cb = tr.querySelector('input[type=checkbox][data-key]'); if(cb){ cb.checked=!cb.checked; bulkToggleRow(cb.dataset.key, cb.checked, tr); } }
+    return;
+  }
+  // Esc = počisti izbiro + fokus
+  if (k==='Escape'){
+    if (typeof selectedKeys!=='undefined') selectedKeys.clear();
+    _pcFocusIndex = -1;
+    _pcRows().forEach(tr => { tr.style.outline=''; tr.classList.remove('row-selected'); });
+    document.querySelectorAll('#tableBody input[type=checkbox][data-key]').forEach(cb => cb.checked=false);
+    if (typeof bulkUpdateBar==='function') bulkUpdateBar();
+  }
+});
 </script>
 
 
