@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-16 13:00</div>
+      <div class="sidebar-logo-sub">build 2026-09-16 13:30</div>
     </div>
   </div>
 
@@ -29601,16 +29601,21 @@ let skenItems = [];        // [{kod, barcode, name, qty, supplier}]
 let skenBazaReady = false;
 const SKEN_LS_KEY = 'slx_skeniranje_session';
 
-function skenLoadLS() {
-  try { const r = localStorage.getItem(SKEN_LS_KEY); if (r) skenItems = JSON.parse(r) || []; } catch(e) { skenItems = []; }
+async function skenLoadShared() {
+  // naloži SKUPNI seznam s strežnika (vsi vidijo isto)
+  try {
+    const r = await fetch('/skeniranje-skupni?_t='+Date.now(), {cache:'no-store'});
+    const d = await r.json();
+    if (d.ok) { skenItems = d.items || []; skenRender(); }
+  } catch(e) {}
 }
-function skenSaveLS() {
-  try { localStorage.setItem(SKEN_LS_KEY, JSON.stringify(skenItems)); } catch(e) {}
-}
+function skenSaveLS() { /* skupni seznam se shranjuje na strežniku, ne lokalno */ }
 
 async function skeniranjeInit() {
-  skenLoadLS();
+  await skenLoadShared();
   skenRender();
+  // periodično osveževanje skupnega seznama (vsi vidijo sproti)
+  if (!window._skenSharedTimer) window._skenSharedTimer = setInterval(skenLoadShared, 4000);
   // preveri bazo kod (status)
   try {
     const r = await fetch('/skeniranje-status');
@@ -29716,21 +29721,25 @@ async function skenBulkProcess(){
         body: JSON.stringify({ barcodes: del }) });
       const d = await r.json();
       if(!d.ok){ st.innerHTML='<span style="color:#dc2626">Napaka pri bazi kod.</span>'; btn.disabled=false; return; }
+      const dodajServer = [];
       del.forEach(bc => {
         const hit = d.results ? d.results[bc] : null;
         if(hit){
           najdeni++;
-          const ex = skenItems.find(x=>x.kod===hit.kod);
-          if(ex) ex.qty += 1;
-          else skenItems.unshift({ kod:hit.kod, barcode:bc, name:hit.name||'', qty:1, supplier:hit.supplier||'' });
+          dodajServer.push({ kod:hit.kod, name:hit.name||'', qty:1, supplier:hit.supplier||'', barcode:bc });
         } else {
           nenajdeni++;
           if(manjkajoce.length<20) manjkajoce.push(bc);
         }
       });
+      // pošlji ta paket na SKUPNI strežniški seznam
+      if(dodajServer.length){
+        await fetch('/skeniranje-skupni-add', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ items: dodajServer }) });
+      }
       st.innerHTML = 'Obdelano '+Math.min(i+BATCH,kode.length)+' / '+kode.length+'…';
     }
-    skenSaveLS(); skenRender();
+    await skenLoadShared();
     let msg = '<span style="color:#16a34a">✓ Dodano: '+najdeni+' kod</span>';
     if(nenajdeni>0){
       msg += ' · <span style="color:#dc2626">'+nenajdeni+' ni najdenih</span>';
@@ -29760,17 +29769,13 @@ async function skenHandleScan(raw) {
     skenShowAlert(`⚠️ Črtna koda <strong>${skenEsc(barcode)}</strong> ni najdena v bazi`, 'err');
     return;
   }
-  // dvojnik? → povečaj količino
-  const existing = skenItems.find(x => x.kod === hit.kod);
-  if (existing) {
-    existing.qty += 1;
-    skenShowAlert(`+1 <strong>${skenEsc(hit.kod)}</strong> (skupaj ${existing.qty})`, 'ok');
-  } else {
-    skenItems.unshift({ kod: hit.kod, barcode, name: hit.name || '', qty: 1, supplier: hit.supplier || '' });
+  // pošlji na SKUPNI strežniški seznam (sešteje se tam)
+  try {
+    await fetch('/skeniranje-skupni-add', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ items: [{ kod: hit.kod, name: hit.name||'', qty: 1, supplier: hit.supplier||'', barcode }] }) });
     skenShowAlert(`✓ <strong>${skenEsc(hit.kod)}</strong> dodan`, 'ok');
-  }
-  skenSaveLS();
-  skenRender();
+  } catch(e) { skenShowAlert('✗ Napaka pri shranjevanju', 'err'); return; }
+  await skenLoadShared();
 }
 
 function skenEsc(s) {
@@ -29823,19 +29828,25 @@ function skenRender() {
     </tr>`).join('');
 }
 
-function skenQty(i, delta) {
+async function skenQty(i, delta) {
   if (!skenItems[i]) return;
-  skenItems[i].qty += delta;
-  if (skenItems[i].qty <= 0) skenItems.splice(i, 1);
-  skenSaveLS();
-  skenRender();
+  const kod = skenItems[i].kod;
+  const nova = (parseInt(skenItems[i].qty)||0) + delta;
+  try {
+    await fetch('/skeniranje-skupni-set-qty', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ kod, qty: nova }) });
+    await skenLoadShared();
+  } catch(e) {}
 }
 
-function skenRemove(i) {
+async function skenRemove(i) {
   if (!skenItems[i]) return;
-  skenItems.splice(i, 1);
-  skenSaveLS();
-  skenRender();
+  const kod = skenItems[i].kod;
+  try {
+    await fetch('/skeniranje-skupni-remove', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ kod }) });
+    await skenLoadShared();
+  } catch(e) {}
 }
 
 function skenCopyAll() {
@@ -29860,11 +29871,8 @@ function skenCopyFallback(text, done) {
 function skenClearAll() {
   if (skenItems.length === 0) { alert('Tabela je že prazna'); return; }
   const n = skenItems.length;
-  if (!confirm(`Izbrisati vseh ${n} skeniranih vrstic?`)) return;
-  skenItems = [];
-  skenSaveLS();
-  skenRender();
-  skenShowAlert(`✓ Izbrisano`, 'ok');
+  if (!confirm(`Izbrisati vseh ${n} skeniranih vrstic iz SKUPNEGA seznama? (vpliva na vse uporabnike)`)) return;
+  fetch('/skeniranje-skupni-clear', { method:'POST' }).then(()=>{ skenLoadShared(); skenShowAlert('✓ Izbrisano', 'ok'); });
 }
 
 async function skenRefreshBaza() {

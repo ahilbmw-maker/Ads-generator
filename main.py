@@ -6598,6 +6598,116 @@ async def zaloga_refresh_feed():
 
 
 # ── SKENIRANJE / INVENTURA endpointi ──
+SKEN_SHARED_FILE = DATA_DIR / "skeniranje_skupni.json"
+_sken_shared_lock = None
+def _get_sken_lock():
+    global _sken_shared_lock
+    if _sken_shared_lock is None:
+        _sken_shared_lock = asyncio.Lock()
+    return _sken_shared_lock
+
+def _sken_shared_load() -> dict:
+    """Skupni skeniranje seznam: {items: {kod: {kod,name,qty,supplier,barcode}}, updated}."""
+    try:
+        if SKEN_SHARED_FILE.exists():
+            return json.loads(SKEN_SHARED_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {"items": {}, "updated": None}
+
+def _sken_shared_save(d: dict):
+    d["updated"] = datetime.now(timezone.utc).isoformat()
+    tmp = SKEN_SHARED_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, SKEN_SHARED_FILE)
+
+
+@app.get("/skeniranje-skupni")
+async def skeniranje_skupni_get(request: Request):
+    """Vrne SKUPNI skeniranje seznam (vsi uporabniki vidijo isto)."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    d = _sken_shared_load()
+    # vrni kot seznam (najnovejši zgoraj — po vrstnem redu vstavljanja obratno)
+    items = list(d.get("items", {}).values())
+    return {"ok": True, "items": items, "updated": d.get("updated")}
+
+
+@app.post("/skeniranje-skupni-add")
+async def skeniranje_skupni_add(request: Request, data: dict):
+    """Doda skenirane kode v SKUPNI seznam (sešteje količine). Vhod: {items:[{kod,name,qty,supplier,barcode}]}."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    dodaj = data.get("items") or []
+    async with _get_sken_lock():
+        d = _sken_shared_load()
+        items = d.get("items", {})
+        for it in dodaj:
+            kod = str(it.get("kod") or "").strip()
+            if not kod:
+                continue
+            try: q = int(it.get("qty") or 1)
+            except (ValueError, TypeError): q = 1
+            if kod in items:
+                items[kod]["qty"] = int(items[kod].get("qty", 0)) + q
+            else:
+                items[kod] = {"kod": kod, "name": it.get("name", ""), "qty": q,
+                              "supplier": it.get("supplier", ""), "barcode": it.get("barcode", "")}
+        d["items"] = items
+        _sken_shared_save(d)
+    return {"ok": True, "st": len(d["items"])}
+
+
+@app.post("/skeniranje-skupni-set-qty")
+async def skeniranje_skupni_set_qty(request: Request, data: dict):
+    """Nastavi količino enega SKU v skupnem seznamu (ročni popravek). {kod, qty}."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    kod = str(data.get("kod") or "").strip()
+    try: qty = int(data.get("qty"))
+    except (ValueError, TypeError): qty = None
+    if not kod or qty is None:
+        return {"ok": False, "error": "Manjka kod ali qty."}
+    async with _get_sken_lock():
+        d = _sken_shared_load()
+        if kod in d.get("items", {}):
+            if qty <= 0:
+                del d["items"][kod]
+            else:
+                d["items"][kod]["qty"] = qty
+            _sken_shared_save(d)
+    return {"ok": True}
+
+
+@app.post("/skeniranje-skupni-remove")
+async def skeniranje_skupni_remove(request: Request, data: dict):
+    """Odstrani en SKU iz skupnega seznama. {kod}."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    kod = str(data.get("kod") or "").strip()
+    async with _get_sken_lock():
+        d = _sken_shared_load()
+        if kod in d.get("items", {}):
+            del d["items"][kod]
+            _sken_shared_save(d)
+    return {"ok": True}
+
+
+@app.post("/skeniranje-skupni-clear")
+async def skeniranje_skupni_clear(request: Request):
+    """Počisti cel skupni seznam (nova inventura)."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    async with _get_sken_lock():
+        _sken_shared_save({"items": {}})
+    return {"ok": True}
+
+
 @app.post("/skeniranje-lookup")
 async def skeniranje_lookup(data: dict):
     """Preslikaj eno ali več črtnih kod v dobaviteljevo kodo.
