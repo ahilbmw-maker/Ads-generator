@@ -2975,9 +2975,19 @@ document.addEventListener('keydown', function(ev){
   const k = ev.key;
   // D = izbriši izbrane
   if ((k==='d' || k==='D') && !ev.ctrlKey && !ev.metaKey){
-    if (typeof selectedKeys!=='undefined' && selectedKeys.size>0){
-      ev.preventDefault();
-      if (confirm('Izbrisati '+selectedKeys.size+' označenih naročil?')) bulkDelete();
+    ev.preventDefault();
+    // D → izbriši FOKUSIRANO vrstico (kjer si s puščicami) TAKOJ, brez potrditve
+    const rows = _pcRows();
+    if (_pcFocusIndex >= 0 && rows[_pcFocusIndex]){
+      const cb = rows[_pcFocusIndex].querySelector('input[type=checkbox][data-key]');
+      if (cb){
+        const idxToDelete = _pcFocusIndex;
+        selectedKeys.clear();
+        selectedKeys.add(cb.dataset.key);
+        bulkDelete();
+        // po brisanju ostani na isti poziciji (naslednja vrstica se premakne gor)
+        setTimeout(() => { _pcFocusRow(Math.min(idxToDelete, _pcRows().length-1)); }, 100);
+      }
     }
     return;
   }
