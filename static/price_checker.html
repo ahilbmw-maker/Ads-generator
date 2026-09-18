@@ -1463,8 +1463,8 @@ function taskFilter(f, card) {
   const qdBar = document.getElementById('quickDeleteBar');
   if (qdBar) {
     const showQuick = (f === 'null' || f === 'qty' || f === 'multi');
-    qdBar.style.display = showQuick ? 'flex' : 'none';
-    if (showQuick) updateQuickDeleteLabel(f);
+    if (showQuick) { qdBar.style.display = 'flex'; updateQuickDeleteLabel(f); }
+    else { qdBar.style.display = 'none'; if (typeof updateStoreQuickDelete==='function') updateStoreQuickDelete(); }
   }
 }
 
@@ -1494,6 +1494,21 @@ function setStoreFilter(s, btn) {
   if (bar){ const allB = document.getElementById('sf-all'); if (allB) allB.classList.remove('active'); bar.querySelectorAll('.store-btn').forEach(b => b.classList.remove('active')); }
   if (btn) btn.classList.add('active');
   renderTable(allRows);
+  updateStoreQuickDelete();   // pokaži/skrij gumb "Izbriši VSE iz tega pogleda" za trgovino
+}
+function updateStoreQuickDelete(){
+  const qdBar = document.getElementById('quickDeleteBar');
+  if(!qdBar) return;
+  // če je izbrana konkretna trgovina IN nismo v posebnem filtru (null/qty/multi) → pokaži za trgovino
+  const posebni = (currentFilter === 'null' || currentFilter === 'qty' || currentFilter === 'multi');
+  if(currentStore && currentStore !== 'all' && !posebni){
+    const n = allRows.filter(r => (r.store || '') === currentStore).length;
+    const lbl = document.getElementById('quickDeleteLabel');
+    if(lbl) lbl.textContent = 'V tem pogledu je '+n+' naročil ('+currentStore+')';
+    qdBar.style.display = 'flex';
+  } else if(!posebni){
+    qdBar.style.display = 'none';
+  }
 }
 
 // zgradi gumbe trgovin iz dejanskih podatkov (unikatne store vrednosti)
@@ -2105,6 +2120,9 @@ async function deleteAllInView() {
   else if (currentFilter === 'multi') {
     const idc = {}; allRows.forEach(r => { idc[r.id] = (idc[r.id]||0)+1; });
     targetRows = allRows.filter(r => idc[r.id] > 1);
+  } else if (currentStore && currentStore !== 'all') {
+    // izbrana trgovina → izbriši vse iz te trgovine
+    targetRows = allRows.filter(r => (r.store || '') === currentStore);
   } else {
     // fallback: vidne v tabeli
     const vk = new Set(getVisibleKeys());
