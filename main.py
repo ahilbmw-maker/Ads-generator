@@ -10218,6 +10218,40 @@ async def price_checker_cache_set(data: dict):
         return {"ok": False, "error": str(e)}
 
 
+@app.get("/pricecheck-count")
+async def pricecheck_count():
+    """Vrne število naročil za pregled (za bljiznico na uvodni strani). Prešteje postavke iz siluxar apistockalertsexport."""
+    try:
+        key = os.environ.get("SILUXAR_STOCK_KEY", "")
+        if not key:
+            return {"ok": False, "count": 0}
+        import httpx as _httpx, json as _json
+        url = _slx("/apistockalertsexport")
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
+        _auth = None
+        r, _redir = await _slx_get(url, headers=headers, auth=_auth, timeout=60)
+        if r.status_code != 200:
+            return {"ok": False, "count": 0}
+        text = r.text or ""
+        # poskusi JSON
+        n = 0
+        try:
+            data = _json.loads(text)
+            if isinstance(data, list):
+                n = len(data)
+            elif isinstance(data, dict):
+                # morda {orders:[...]} ali {data:[...]}
+                for k in ("orders", "data", "items", "rows"):
+                    if isinstance(data.get(k), list):
+                        n = len(data[k]); break
+        except Exception:
+            # ni JSON — preštej vrstice (fallback, minus glava)
+            n = max(0, text.count("\n"))
+        return {"ok": True, "count": n}
+    except Exception:
+        return {"ok": False, "count": 0}
+
+
 @app.get("/price-stock-fetch")
 async def price_stock_fetch():
     """Potegne podatke o zalogi/cenah s siluxar.si API-ja (za urejevalnik cen).
