@@ -172,7 +172,8 @@
   th:hover { color: var(--text); }
   td { padding: 11px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; font-size: 15px; }
   tr:last-child td { border-bottom: none; }
-  tr:hover td { background: var(--surface2); }
+  tbody tr:hover td { background: #eef2fb; }
+  tbody tr.row-selected td { background: rgba(79,110,247,0.16) !important; }
   .row-error td:first-child { border-left: 3px solid var(--red); }
   .row-warn td:first-child { border-left: 3px solid var(--yellow); }
   .row-ok td:first-child { border-left: 3px solid var(--green); }
@@ -241,7 +242,7 @@
   .group-rows table { width: 100%; border-collapse: collapse; border-radius: 0; border: none; }
   .group-rows td { padding: 9px 16px; border-bottom: 1px solid var(--border); font-size: 12px; }
   .group-rows tr:last-child td { border-bottom: none; }
-  .group-rows tr:hover td { background: var(--surface2); }
+  .group-rows tr:hover td { background: #eef2fb; }
   #multiView { display: none; padding: 16px 24px 32px; }
   .multi-stats { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 16px; font-size: 11px; color: var(--muted); background: var(--surface); border-radius: 10px; margin-bottom: 12px; border: 1px solid var(--border); }
 
@@ -359,12 +360,9 @@
     <option value="gte20">≥ 20€</option>
   </select>
   <span style="color:var(--border);margin:0 4px">|</span>
-  <button class="filter-btn" onclick="taskFilter('resolved',null);this.classList.add('active')" style="color:var(--green)">✓ Urejeni</button>
   <button class="filter-btn" id="groupSkuBtn" onclick="toggleGroupSku()" style="color:#7c3aed;border-color:#ddd6fe;background:#f5f3ff;font-weight:600">🌍 Primerjava po državah</button>
   <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti 2x+ in združena</button>
   <span style="color:var(--border);margin:0 4px">|</span>
-  <button class="filter-btn" id="pcSeenHideBtn" onclick="pcSeenToggleHide()" title="Skrij vrstice, ki si jih danes že pregledal z isto ceno. Spremenjene cene in novi izdelki se vedno pokažejo." style="color:#0369a1;border-color:#bae6fd;background:#f0f9ff">🕐 Skrij pregledane danes</button>
-  <button class="filter-btn" id="pcSeenMarkBtn" onclick="pcSeenMarkVisible()" title="Označi vse trenutno prikazane vrstice kot pregledane za danes (jutri reset)" style="color:var(--green)">✓ Pregledano — skrij prikazane</button>
 </div>
 </div><!-- /sticky -->
 
@@ -406,7 +404,6 @@
 
 <div id="bulkBar" style="display:none;align-items:center;gap:10px;padding:8px 14px;background:var(--accent);border-radius:8px;margin:12px 0 6px;color:#fff;font-size:12px;font-weight:500">
   <span id="bulkCount">0 označenih</span>
-  <button onclick="bulkMarkResolved()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">✓ Označi kot urejeno</button>
   <button onclick="bulkDelete()" style="background:rgba(255,80,80,0.3);border:1px solid rgba(255,100,100,0.5);color:#fff;padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🗑 Zbriši označene</button>
   <button onclick="bulkClear()" style="margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">✕ Počisti izbor</button>
 </div>
@@ -473,7 +470,7 @@ loadSaleSkus();
 
 // ── PREGLEDANO DANES: dnevni reset; vrstica se vrne, če se ji cena spremeni ──
 let _pcSeen = {};          // {key: hash} za današnji dan (strežniško)
-let _pcHideSeen = true;    // privzeto skrivaj pregledane (bistvo funkcije)
+let _pcHideSeen = false;   // ODSTRANJENO: funkcija pregledanih izklopljena
 
 function pcRowKey(r) { return r.id + '|' + r.sku; }
 function pcRowHash(r) {
@@ -1325,6 +1322,14 @@ function renderTable(rows) {
       : '';
     const tr = document.createElement('tr');
     tr.className = row.isNull ? 'row-null' : `row-${row.status}`;
+    tr.style.cursor = 'pointer';
+    tr.addEventListener('click', function(ev){
+      if (ev.target.closest('a, button, input, .salesbtn, .id-badge, [onclick]')) return;
+      const cb = tr.querySelector('input[type=checkbox][data-key]');
+      if (!cb) return;
+      if (ev.shiftKey && window._lastClickedRowKey){ pcSelectRange(window._lastClickedRowKey, cb.dataset.key); ev.preventDefault(); }
+      else { cb.checked = !cb.checked; bulkToggleRow(cb.dataset.key, cb.checked, tr); window._lastClickedRowKey = cb.dataset.key; }
+    });
     if (seenCtx) tr.style.opacity = '0.55';   // pregledana, prikazana le za kontekst
     // poudari zalogo: 0/nizka (≤5 rdeča, ≤20 rumena) — leva črtica + rahlo ozadje
     if (row.stock != null && !isNaN(row.stock)) {
@@ -1365,6 +1370,7 @@ function renderTable(rows) {
 
     const rowKey = row.id + '|' + row.sku;
     const isSelected = selectedKeys.has(rowKey);
+    if (isSelected) tr.classList.add('row-selected');
     const checkboxHtml = `<input type="checkbox" data-key="${rowKey}" onchange="bulkToggleRow('${rowKey}',this.checked,this.closest('tr'))" ${isSelected ? 'checked' : ''} style="cursor:pointer;width:15px;height:15px" title="Označi">`;
 
     tr.innerHTML = `
@@ -1386,6 +1392,7 @@ function renderTable(rows) {
     tbody.appendChild(tr);
   }
   bulkUpdateBar();
+  setTimeout(() => { if (typeof _pcFocusIndex!=='undefined' && _pcFocusIndex < 0 && _pcRows().length) _pcFocusRow(0); }, 30);
 }
 
 function updateStats(rows) {
@@ -1464,10 +1471,11 @@ function taskFilter(f, card) {
   // Hitro brisanje cele skupine — samo za Vrednost 0 / Količina 2x / Združena
   const qdBar = document.getElementById('quickDeleteBar');
   if (qdBar) {
-    const showQuick = (f === 'null' || f === 'qty' || f === 'multi');
-    qdBar.style.display = showQuick ? 'flex' : 'none';
-    if (showQuick) updateQuickDeleteLabel(f);
+    const showQuick = (f === 'null' || f === 'qty' || f === 'multi' || f === 'error' || f === 'warn' || f === 'lowval' || f === 'ok');
+    if (showQuick) { qdBar.style.display = 'flex'; updateQuickDeleteLabel(f); }
+    else { qdBar.style.display = 'none'; if (typeof updateStoreQuickDelete==='function') updateStoreQuickDelete(); }
   }
+  if (typeof _pcFocusIndex !== 'undefined') _pcFocusIndex = -1;
 }
 
 function updateQuickDeleteLabel(f) {
@@ -1480,6 +1488,10 @@ function updateQuickDeleteLabel(f) {
     const idc = {}; allRows.forEach(r => { idc[r.id] = (idc[r.id]||0)+1; });
     n = allRows.filter(r => idc[r.id] > 1).length; what = 'združenih naročil';
   }
+  else if (f === 'error') { n = allRows.filter(r => r.status === 'error').length; what = 'naročil z napako cene'; }
+  else if (f === 'warn') { n = allRows.filter(r => r.status === 'warn').length; what = 'naročil z mejno ceno'; }
+  else if (f === 'lowval') { n = allRows.filter(r => r.razlikaNum != null && Math.abs(r.razlikaNum) < 7 && !r.isNull).length; what = 'naročil z razliko <7€'; }
+  else if (f === 'ok') { n = allRows.filter(r => r.status === 'ok').length; what = 'OK naročil'; }
   lbl.textContent = `V tem pogledu je ${n} ${what}`;
 }
 
@@ -1490,12 +1502,25 @@ function setFilter(f, btn) {
   renderTable(allRows);
 }
 
+function updateStoreQuickDelete(){
+  const qdBar = document.getElementById('quickDeleteBar');
+  if(!qdBar) return;
+  const posebni = (currentFilter === 'null' || currentFilter === 'qty' || currentFilter === 'multi' || currentFilter === 'error' || currentFilter === 'warn' || currentFilter === 'lowval' || currentFilter === 'ok');
+  if(currentStore && currentStore !== 'all' && !posebni){
+    const n = allRows.filter(r => (r.store || '') === currentStore).length;
+    const lbl = document.getElementById('quickDeleteLabel');
+    if(lbl) lbl.textContent = 'V tem pogledu je '+n+' naročil ('+currentStore+')';
+    qdBar.style.display = 'flex';
+  } else if(!posebni){ qdBar.style.display = 'none'; }
+}
 function setStoreFilter(s, btn) {
   currentStore = s;
+  if (typeof _pcFocusIndex !== 'undefined') _pcFocusIndex = -1;
   const bar = document.getElementById('storeFilterBar');
   if (bar){ const allB = document.getElementById('sf-all'); if (allB) allB.classList.remove('active'); bar.querySelectorAll('.store-btn').forEach(b => b.classList.remove('active')); }
   if (btn) btn.classList.add('active');
   renderTable(allRows);
+  updateStoreQuickDelete();
 }
 
 // zgradi gumbe trgovin iz dejanskih podatkov (unikatne store vrednosti)
@@ -2068,15 +2093,25 @@ function bulkToggleAll(checked) {
   });
   document.querySelectorAll('#tableBody input[type=checkbox][data-key]').forEach(cb => {
     cb.checked = checked;
-    cb.closest('tr').style.background = checked ? 'rgba(79,110,247,0.05)' : '';
+    cb.closest('tr').classList.toggle('row-selected', checked);
   });
   bulkUpdateBar();
+}
+
+function pcSelectRange(fromKey, toKey){
+  const trs = Array.from(document.querySelectorAll('#tableBody tr'));
+  const keys = trs.map(tr => { const cb = tr.querySelector('input[type=checkbox][data-key]'); return cb ? cb.dataset.key : null; });
+  const iFrom = keys.indexOf(fromKey), iTo = keys.indexOf(toKey);
+  if (iFrom < 0 || iTo < 0) return;
+  const lo = Math.min(iFrom,iTo), hi = Math.max(iFrom,iTo);
+  for (let i=lo;i<=hi;i++){ if(!keys[i]) continue; const cb=trs[i].querySelector('input[type=checkbox][data-key]'); if(cb && !cb.checked){ cb.checked=true; bulkToggleRow(cb.dataset.key,true,trs[i]); } }
+  window._lastClickedRowKey = toKey;
 }
 
 function bulkToggleRow(key, checked, tr) {
   if (checked) selectedKeys.add(key);
   else selectedKeys.delete(key);
-  if (tr) tr.style.background = checked ? 'rgba(79,110,247,0.05)' : '';
+  if (tr) tr.classList.toggle('row-selected', checked);
   bulkUpdateBar();
 }
 
@@ -2107,8 +2142,12 @@ async function deleteAllInView() {
   else if (currentFilter === 'multi') {
     const idc = {}; allRows.forEach(r => { idc[r.id] = (idc[r.id]||0)+1; });
     targetRows = allRows.filter(r => idc[r.id] > 1);
-  } else {
-    // fallback: vidne v tabeli
+  } else if (currentFilter === 'error') targetRows = allRows.filter(r => r.status === 'error');
+  else if (currentFilter === 'warn') targetRows = allRows.filter(r => r.status === 'warn');
+  else if (currentFilter === 'lowval') targetRows = allRows.filter(r => r.razlikaNum != null && Math.abs(r.razlikaNum) < 7 && !r.isNull);
+  else if (currentFilter === 'ok') targetRows = allRows.filter(r => r.status === 'ok');
+  else if (currentStore && currentStore !== 'all') targetRows = allRows.filter(r => (r.store || '') === currentStore);
+  else {
     const vk = new Set(getVisibleKeys());
     targetRows = allRows.filter(r => vk.has(r.id + '|' + r.sku));
   }
@@ -2900,6 +2939,47 @@ function fallbackCopy(text, callback) {
   try { document.execCommand('copy'); if (callback) callback(); } catch(e) {}
   document.body.removeChild(ta);
 }
+
+// ── KLAVIRSKE BLIŽNJICE ──
+let _pcFocusIndex = -1;
+function _pcRows(){ return Array.from(document.querySelectorAll('#tableBody tr')).filter(tr => tr.querySelector('input[type=checkbox][data-key]')); }
+function _pcFocusRow(idx){
+  const rows = _pcRows();
+  if(!rows.length) return;
+  _pcFocusIndex = Math.max(0, Math.min(rows.length-1, idx));
+  rows.forEach((tr,i) => { tr.style.outline = (i===_pcFocusIndex) ? '2px solid #4f6ef7' : ''; tr.style.outlineOffset = '-2px'; });
+  const r = rows[_pcFocusIndex].getBoundingClientRect();
+  if (r.top < 90 || r.bottom > window.innerHeight - 20) rows[_pcFocusIndex].scrollIntoView({block:'nearest', behavior:'smooth'});
+}
+document.addEventListener('keydown', function(ev){
+  const t = ev.target;
+  if (t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.tagName==='SELECT' || t.isContentEditable)) return;
+  const k = ev.key;
+  if ((k==='d' || k==='D') && !ev.ctrlKey && !ev.metaKey){
+    ev.preventDefault();
+    const rows = _pcRows();
+    if (_pcFocusIndex >= 0 && rows[_pcFocusIndex]){
+      const cb = rows[_pcFocusIndex].querySelector('input[type=checkbox][data-key]');
+      if (cb){ const idxDel=_pcFocusIndex; selectedKeys.clear(); selectedKeys.add(cb.dataset.key); bulkDelete(); setTimeout(()=>{ _pcFocusRow(Math.min(idxDel, _pcRows().length-1)); }, 100); }
+    }
+    return;
+  }
+  if (k==='ArrowDown'){ ev.preventDefault(); _pcFocusRow(_pcFocusIndex+1); return; }
+  if (k==='ArrowUp'){ ev.preventDefault(); _pcFocusRow(_pcFocusIndex<0 ? 0 : _pcFocusIndex-1); return; }
+  if (k===' ' && _pcFocusIndex>=0){
+    ev.preventDefault();
+    const rows=_pcRows(); const tr=rows[_pcFocusIndex];
+    if(tr){ const cb=tr.querySelector('input[type=checkbox][data-key]'); if(cb){ cb.checked=!cb.checked; bulkToggleRow(cb.dataset.key,cb.checked,tr); } }
+    return;
+  }
+  if (k==='Escape'){
+    if (typeof selectedKeys!=='undefined') selectedKeys.clear();
+    _pcFocusIndex=-1;
+    _pcRows().forEach(tr=>{ tr.style.outline=''; tr.classList.remove('row-selected'); });
+    document.querySelectorAll('#tableBody input[type=checkbox][data-key]').forEach(cb=>cb.checked=false);
+    if (typeof bulkUpdateBar==='function') bulkUpdateBar();
+  }
+});
 </script>
 
 
