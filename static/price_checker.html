@@ -1390,6 +1390,8 @@ function renderTable(rows) {
 
 function updateStats(rows) {
   const _rawTotal = rows.length;   // koliko je NALOŽENIH (pred skrivanjem pregledanih)
+  // sporoči število na strežnik za bljiznico na uvodni strani (vsa naročila)
+  try { fetch('/pricecheck-count-report', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ count: rows.length }) }); } catch(e) {}
   // kartice štejejo enako kot tabela: pregledane danes so izvzete
   // (združena naročila: vse-ali-nič — kontekst vrstice se štejejo)
   if (_pcHideSeen) {

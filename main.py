@@ -10218,38 +10218,36 @@ async def price_checker_cache_set(data: dict):
         return {"ok": False, "error": str(e)}
 
 
+PRICECHECK_COUNT_FILE = DATA_DIR / "pricecheck_count.json"
+
+@app.post("/pricecheck-count-report")
+async def pricecheck_count_report(request: Request, data: dict):
+    """Price checker sporoči, koliko naročil je trenutno naloženih (za bljiznico na uvodni strani)."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False}, status_code=403)
+    try:
+        n = int(data.get("count") or 0)
+    except (ValueError, TypeError):
+        n = 0
+    import json as _j
+    tmp = PRICECHECK_COUNT_FILE.with_suffix(".tmp")
+    tmp.write_text(_j.dumps({"count": n, "updated": datetime.now(timezone.utc).isoformat()}, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, PRICECHECK_COUNT_FILE)
+    return {"ok": True, "count": n}
+
+
 @app.get("/pricecheck-count")
 async def pricecheck_count():
-    """Vrne število naročil za pregled (za bljiznico na uvodni strani). Prešteje postavke iz siluxar apistockalertsexport."""
-    try:
-        key = os.environ.get("SILUXAR_STOCK_KEY", "")
-        if not key:
-            return {"ok": False, "count": 0}
-        import httpx as _httpx, json as _json
-        url = _slx("/apistockalertsexport")
-        headers = {"Authorization": f"Bearer {key}"} if key else {}
-        _auth = None
-        r, _redir = await _slx_get(url, headers=headers, auth=_auth, timeout=60)
-        if r.status_code != 200:
-            return {"ok": False, "count": 0}
-        text = r.text or ""
-        # poskusi JSON
-        n = 0
+    """Vrne zadnje sporočeno število naročil za pregled (za bljiznico na uvodni strani)."""
+    import json as _j
+    if PRICECHECK_COUNT_FILE.exists():
         try:
-            data = _json.loads(text)
-            if isinstance(data, list):
-                n = len(data)
-            elif isinstance(data, dict):
-                # morda {orders:[...]} ali {data:[...]}
-                for k in ("orders", "data", "items", "rows"):
-                    if isinstance(data.get(k), list):
-                        n = len(data[k]); break
+            d = _j.loads(PRICECHECK_COUNT_FILE.read_text(encoding="utf-8"))
+            return {"ok": True, "count": d.get("count", 0), "updated": d.get("updated")}
         except Exception:
-            # ni JSON — preštej vrstice (fallback, minus glava)
-            n = max(0, text.count("\n"))
-        return {"ok": True, "count": n}
-    except Exception:
-        return {"ok": False, "count": 0}
+            pass
+    return {"ok": True, "count": 0}
 
 
 @app.get("/price-stock-fetch")
