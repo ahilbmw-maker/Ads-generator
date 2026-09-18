@@ -137,9 +137,9 @@
   }
   .filter-btn {
     background: transparent; border: 1px solid var(--border2);
-    color: var(--muted); font-family: var(--font); font-size: 11px;
-    padding: 4px 10px; border-radius: 6px; cursor: pointer;
-    transition: all 0.15s; font-weight: 500;
+    color: var(--muted); font-family: var(--font); font-size: 13px;
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    transition: all 0.15s; font-weight: 600;
   }
   .filter-btn:hover { border-color: var(--muted); color: var(--text); }
   .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -148,8 +148,8 @@
 
   .search-input {
     background: var(--bg); border: 1px solid var(--border2);
-    color: var(--text); font-family: var(--font); font-size: 12px;
-    padding: 5px 12px; outline: none; width: 210px; border-radius: 6px;
+    color: var(--text); font-family: var(--font); font-size: 14px;
+    padding: 8px 14px; outline: none; width: 280px; border-radius: 8px;
     transition: border-color 0.15s;
   }
   .search-input:focus { border-color: var(--accent); }
@@ -341,12 +341,12 @@
 <div class="filters" id="storeFilterBar">
   <input type="text" class="search-input" placeholder="🔍 Išči SKU ali ID..." oninput="setSearch(this.value)" id="searchInput">
   <span style="color:var(--border);margin:0 4px">|</span>
-  <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans)">Trgovina:</span>
+  <span style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans);font-weight:600">Trgovina:</span>
   <button class="filter-btn active" id="sf-all" onclick="setStoreFilter('all', this)">VSE</button>
   <!-- gumbi trgovin se dodajo dinamično iz podatkov -->
   <span style="color:var(--border);margin:0 4px">|</span>
-  <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans)">Razlika:</span>
-  <select id="razponFilter" onchange="setRazpon(this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);font-size:12px;font-family:var(--sans);cursor:pointer">
+  <span style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans);font-weight:600">Razlika:</span>
+  <select id="razponFilter" onchange="setRazpon(this.value)" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);font-size:13px;font-family:var(--sans);cursor:pointer;font-weight:600">
     <option value="all">Vse</option>
     <option value="lt7">&lt; 7€</option>
     <option value="7-8">7–8€</option>
