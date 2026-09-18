@@ -559,7 +559,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 .k-img-card.selected .k-select-check { background: var(--accent); border-color: white; }
 .k-zoom-btn { position: absolute; bottom: 6px; right: 6px; width: 24px; height: 24px; border-radius: 6px; background: rgba(0,0,0,0.5); cursor: pointer; z-index: 3; display: flex; align-items: center; justify-content: center; transition: background 0.1s; }
 .k-zoom-btn:hover { background: rgba(0,0,0,0.8); }
-.k-bulk-bar { display: none; align-items: center; gap: 8px; padding: 10px 14px; background: var(--accent-dim); border: 1px solid var(--accent-border); border-radius: var(--radius); margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; position: sticky; top: 0; z-index: 50; box-shadow: 0 2px 10px rgba(0,0,0,0.08); backdrop-filter: blur(4px); }
+.k-bulk-bar { display: none; align-items: center; gap: 8px; padding: 11px 14px; background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius); margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; position: sticky; top: 8px; z-index: 50; box-shadow: 0 4px 16px rgba(0,0,0,0.18); }
 .k-bulk-bar.show { display: flex; }
 .k-asana-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
 .k-asana-modal.show { display: flex; }
@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-16 14:30</div>
+      <div class="sidebar-logo-sub">build 2026-09-16 14:45</div>
     </div>
   </div>
 
@@ -1869,7 +1869,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div style="margin-top:8px;font-size:13px;color:var(--text-secondary)" id="kLoadingText">Generiram...</div>
           </div>
           <div id="kBulkBar" class="k-bulk-bar">
-            <span id="kBulkCount" style="font-weight:600;color:var(--accent)">0 izbranih</span>
+            <span id="kBulkCount" style="font-weight:800;color:var(--accent);font-size:13px">0 izbranih</span>
             <button class="k-img-btn primary" style="flex:none;padding:4px 10px;font-size:11px" onclick="kBulkDownload()">⬇ Prenesi izbrane</button>
             <button class="k-img-btn primary" style="flex:none;padding:4px 10px;font-size:11px;background:#7c3aed;border-color:#7c3aed" onclick="kOpenAsanaModal(null)">→ Asana (izbrane)</button>
             <button class="k-img-btn" style="flex:none;padding:4px 8px;font-size:11px;margin-left:auto" onclick="kClearSelection()">✕ Počisti</button>
