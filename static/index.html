@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-16 12:00</div>
+      <div class="sidebar-logo-sub">build 2026-09-16 12:30</div>
     </div>
   </div>
 
@@ -4586,6 +4586,26 @@ input[type="text"].error { border-color: var(--red) !important; }
         <button onclick="skenCopyAll()" style="padding:8px 14px;background:var(--accent);color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" title="Kopira kode + količine (vsako v svojo vrstico)">📋 Kopiraj vse (kod + količina)</button>
         <button onclick="skenClearAll()" style="padding:8px 14px;background:white;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🗑 Briši vse</button>
         <button onclick="skenRefreshBaza()" style="padding:8px 14px;background:white;color:var(--text);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" title="Ponovno potegni bazo kod od dobaviteljev">🔄 Osveži bazo kod</button>
+        <button onclick="skenBulkOpen()" style="padding:8px 14px;background:#7c3aed;color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" title="Prilepi vse kode iz skenerja naenkrat (vsaka v svojo vrstico)">📥 Masovni uvoz</button>
+      </div>
+
+      <!-- MASOVNI UVOZ modal -->
+      <div id="skenBulkModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:16px">
+        <div style="background:var(--surface);border-radius:14px;max-width:560px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+          <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:16px;font-weight:800">📥 Masovni uvoz kod</span>
+            <button onclick="skenBulkClose()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary)">×</button>
+          </div>
+          <div style="padding:16px 20px;overflow-y:auto">
+            <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.5;margin-bottom:10px">Prilepi vse kode iz skenerja — <b>vsaka v svojo vrstico</b> (ali ločene s presledkom/vejico). Sistem jih razčleni, preslika prek baze in prišteje v seznam. Ponovljene kode se seštejejo v količino.</div>
+            <textarea id="skenBulkText" rows="10" placeholder="5903039773509&#10;5903039773516&#10;5903039773509&#10;..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:'DM Mono',monospace;box-sizing:border-box;resize:vertical"></textarea>
+            <div id="skenBulkStatus" style="font-size:13px;margin-top:10px"></div>
+          </div>
+          <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+            <button onclick="skenBulkClose()" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Prekliči</button>
+            <button onclick="skenBulkProcess()" id="skenBulkBtn" style="padding:9px 18px;background:#7c3aed;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Obdelaj vse</button>
+          </div>
+        </div>
       </div>
 
       <!-- Tabela skeniranih -->
@@ -29603,6 +29623,52 @@ async function skeniranjeInit() {
       inp._skenBound = true;
     }
   }
+}
+
+function skenBulkOpen(){ document.getElementById('skenBulkModal').style.display='flex'; document.getElementById('skenBulkText').focus(); }
+function skenBulkClose(){ document.getElementById('skenBulkModal').style.display='none'; document.getElementById('skenBulkStatus').innerHTML=''; }
+async function skenBulkProcess(){
+  const txt = document.getElementById('skenBulkText').value || '';
+  // razčleni: nova vrstica, presledek, vejica, podpičje, tab
+  const kode = txt.split(/[\r\n,;\t ]+/).map(s=>s.trim()).filter(Boolean);
+  if(!kode.length){ document.getElementById('skenBulkStatus').innerHTML='<span style="color:#dc2626">Ni kod za obdelavo.</span>'; return; }
+  const st = document.getElementById('skenBulkStatus');
+  const btn = document.getElementById('skenBulkBtn'); btn.disabled=true;
+  st.innerHTML = 'Obdelujem '+kode.length+' kod…';
+  // pošlji v PAKETIH (po 1000) — strežnik podpira barcodes:[...]
+  let najdeni=0, nenajdeni=0; const manjkajoce=[];
+  const BATCH=1000;
+  try{
+    for(let i=0;i<kode.length;i+=BATCH){
+      const del = kode.slice(i, i+BATCH);
+      const r = await fetch('/skeniranje-lookup', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ barcodes: del }) });
+      const d = await r.json();
+      if(!d.ok){ st.innerHTML='<span style="color:#dc2626">Napaka pri bazi kod.</span>'; btn.disabled=false; return; }
+      del.forEach(bc => {
+        const hit = d.results ? d.results[bc] : null;
+        if(hit){
+          najdeni++;
+          const ex = skenItems.find(x=>x.kod===hit.kod);
+          if(ex) ex.qty += 1;
+          else skenItems.unshift({ kod:hit.kod, barcode:bc, name:hit.name||'', qty:1, supplier:hit.supplier||'' });
+        } else {
+          nenajdeni++;
+          if(manjkajoce.length<20) manjkajoce.push(bc);
+        }
+      });
+      st.innerHTML = 'Obdelano '+Math.min(i+BATCH,kode.length)+' / '+kode.length+'…';
+    }
+    skenSaveLS(); skenRender();
+    let msg = '<span style="color:#16a34a">✓ Dodano: '+najdeni+' kod</span>';
+    if(nenajdeni>0){
+      msg += ' · <span style="color:#dc2626">'+nenajdeni+' ni najdenih</span>';
+      if(manjkajoce.length) msg += '<div style="font-size:11px;color:var(--text-tertiary);margin-top:6px">Primeri nenajdenih: '+manjkajoce.join(', ')+(nenajdeni>manjkajoce.length?' …':'')+'</div>';
+    }
+    st.innerHTML = msg;
+    document.getElementById('skenBulkText').value='';
+  }catch(e){ st.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; }
+  btn.disabled=false;
 }
 
 async function skenHandleScan(raw) {
