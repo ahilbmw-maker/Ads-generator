@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-16 13:30</div>
+      <div class="sidebar-logo-sub">build 2026-09-16 14:00</div>
     </div>
   </div>
 
@@ -8537,15 +8537,30 @@ function kRenderResults(results) {
       imgs.forEach(url => cards.push({combo: r.combo, model: r.model, url, idx: cards.length}));
     }
   });
-  // razvrsti po modelu: flare → image2 → nb2(flash) → pro
+  // PO STOLPCIH: vsak model svoj stolpec (flare | image2 | nb2 | pro)
   const _mOrder = { flare:0, image2:1, flash:2, pro:3 };
-  cards.sort((a,b) => {
-    const oa = (_mOrder[a.model] !== undefined) ? _mOrder[a.model] : 9;
-    const ob = (_mOrder[b.model] !== undefined) ? _mOrder[b.model] : 9;
-    if (oa !== ob) return oa - ob;
-    return a.idx - b.idx;   // znotraj modela ohrani vrstni red
+  // grupiraj kartice po modelu
+  const skupine = {};
+  cards.forEach(c => { (skupine[c.model] = skupine[c.model] || []).push(c); });
+  // stolpci = modeli, urejeni flare→image2→nb2→pro (samo tisti, ki obstajajo)
+  const modeliVrstni = Object.keys(skupine).sort((a,b)=>{
+    const oa=(_mOrder[a]!==undefined)?_mOrder[a]:9, ob=(_mOrder[b]!==undefined)?_mOrder[b]:9; return oa-ob;
   });
+  const stolpcev = modeliVrstni.length || 1;
+  // najdaljši stolpec določa število vrstic
+  const maxVrstic = Math.max(...modeliVrstni.map(m=>skupine[m].length), 0);
+  // prerazporedi PO VRSTICAH: vrstica i = [flare[i], image2[i], nb2[i], pro[i]]
+  const urejene = [];
+  for(let i=0;i<maxVrstic;i++){
+    modeliVrstni.forEach(m=>{
+      if(skupine[m][i]) urejene.push(skupine[m][i]);
+      else urejene.push({ _placeholder:true, model:m });   // prazna celica, da stolpci ostanejo poravnani
+    });
+  }
+  cards = urejene;
   window.kCardsData = cards;
+  // fiksiraj število stolpcev grida na število modelov
+  if(grid) grid.style.gridTemplateColumns = 'repeat('+stolpcev+', minmax(0, 1fr))';
 
   // barvna značka procesorja
   const modelBadge = (m) => {
@@ -8560,6 +8575,7 @@ function kRenderResults(results) {
   };
 
   grid.innerHTML = cards.map(c => {
+    if (c._placeholder) return '<div></div>';   // prazna celica — drži stolpec poravnan
     if (!c.url) return (
       '<div class="k-img-card">' +
       '<div class="k-img-combo">' + esc(c.combo||'?') + modelBadge(c.model) + '</div>' +
