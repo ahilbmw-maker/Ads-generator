@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-16 11:30</div>
+      <div class="sidebar-logo-sub">build 2026-09-16 12:00</div>
     </div>
   </div>
 
@@ -4373,6 +4373,10 @@ input[type="text"].error { border-color: var(--red) !important; }
             <input type="text" id="zalogaSearch" placeholder="Išči SKU, naziv, ID, pozicijo, opombo..." autocomplete="off" oninput="_zalogaPage=1;zalogaRender();" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onfocus="this.style.boxShadow='0 0 0 3px rgba(58,111,255,0.18)';this.style.borderColor='var(--accent)'" onblur="this.style.boxShadow='0 0 0 2px rgba(58,111,255,0.10)';this.style.borderColor='rgba(58,111,255,0.45)'" style="width:100%;padding:10px 12px 10px 34px;background:var(--bg);border:2px solid rgba(58,111,255,0.45);border-radius:var(--radius);font-size:13px;font-weight:500;color:var(--text);font-family:'DM Sans',sans-serif;box-sizing:border-box;box-shadow:0 0 0 2px rgba(58,111,255,0.10)">
             <div id="zalogaSuggest" style="display:none"></div>
           </div>
+          <!-- Izvozi CSV — trenutno filtrirane izdelke -->
+          <button onclick="zalogaExportCSV()" title="Izvozi trenutno filtrirane izdelke v CSV" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:#16a34a;color:#fff;border:none;border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
+            <span>⬇</span><span>Izvozi CSV</span>
+          </button>
           <!-- Sinhronizacija s siluxar (edini stalno vidni akcijski gumb) -->
           <button id="zalogaSyncBtn" onclick="zalogaSyncSiluxar(false)" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600;flex-shrink:0;font-family:inherit">
             <span>🔄</span><span>Sinhroniziraj</span>
@@ -20372,6 +20376,48 @@ document.addEventListener('click', (e) => {
   const w = document.getElementById('zalogaToolsWrap');
   if (m && m.style.display === 'block' && w && !w.contains(e.target)) m.style.display = 'none';
 });
+
+function zalogaExportCSV(){
+  // uporabi ISTI filter kot zalogaRender (niz + skladišče + zaloga + cena + obrat)
+  const search = (document.getElementById('zalogaSearch')?.value || '').toLowerCase().trim();
+  const onlyStock = document.getElementById('zalogaOnlyStock')?.checked;
+  const showExternal = document.getElementById('zalogaShowExternal')?.checked;
+  const pMinRaw = document.getElementById('zalogaPriceMin')?.value;
+  const pMaxRaw = document.getElementById('zalogaPriceMax')?.value;
+  const pMin = (pMinRaw !== '' && pMinRaw != null) ? parseFloat(pMinRaw) : NaN;
+  const pMax = (pMaxRaw !== '' && pMaxRaw != null) ? parseFloat(pMaxRaw) : NaN;
+  const oMinRaw = document.getElementById('zalogaObrMin')?.value;
+  const oMaxRaw = document.getElementById('zalogaObrMax')?.value;
+  const oMin = (oMinRaw !== '' && oMinRaw != null) ? parseFloat(oMinRaw) : NaN;
+  const oMax = (oMaxRaw !== '' && oMaxRaw != null) ? parseFloat(oMaxRaw) : NaN;
+  const items = (_zalogaData || []).filter(it => {
+    if (!showExternal && _zalIsExternal(it)) return false;
+    if (_zalSaleFilter && !_zalSale.has((it.product_sku||'').trim().toUpperCase())) return false;
+    if (onlyStock && (parseInt(it.stock) || 0) <= 0) return false;
+    if (!isNaN(pMin) || !isNaN(pMax)) { const pr = parseFloat(it.price)||0; if(!isNaN(pMin)&&pr<pMin)return false; if(!isNaN(pMax)&&pr>pMax)return false; }
+    if (!isNaN(oMin) || !isNaN(oMax)) { const ob = parseFloat(it.stock30)||0; if(!isNaN(oMin)&&ob<oMin)return false; if(!isNaN(oMax)&&ob>oMax)return false; }
+    if (search) {
+      const hay = [(it.product_sku||''),(it.title||''),(it.position||''),(it.note||''),(it.product_id||'')].join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+  if(!items.length){ alert('Ni izdelkov za izvoz (preveri filter/iskalni niz).'); return; }
+  // CSV: SKU;Naziv;Zaloga;Obrat30;Cena;Pozicija;Skladišče;ID
+  const esc = v => { v = (v==null?'':String(v)); return /[";\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
+  const glava = ['SKU','Naziv','Zaloga','Obrat30','Cena','Pozicija','Skladišče','ID'];
+  const vrstice = items.map(it => [it.product_sku, it.title, it.stock, it.stock30, it.price, it.position, it.warehouse, it.product_id].map(esc).join(';'));
+  const csv = '\ufeff' + glava.join(';') + '\n' + vrstice.join('\n');   // BOM za šumnike v Excelu
+  const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const niz = (search || 'vse').replace(/[^a-z0-9_-]/gi,'') || 'vse';
+  const now = new Date();
+  const zig = now.getFullYear()+('0'+(now.getMonth()+1)).slice(-2)+('0'+now.getDate()).slice(-2)+'_'+('0'+now.getHours()).slice(-2)+('0'+now.getMinutes()).slice(-2);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'zaloga_'+niz+'_'+zig+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 function zalogaRender() {
   if (!_zalogaData.length) return;
