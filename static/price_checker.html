@@ -1411,6 +1411,8 @@ function renderTable(rows) {
     tbody.appendChild(tr);
   }
   bulkUpdateBar();
+  // samodejno fokusiraj PRVO vrstico ob prvem prikazu (da lahko takoj D/↑↓ brez klika)
+  setTimeout(() => { if (_pcFocusIndex < 0 && _pcRows().length) _pcFocusRow(0); }, 30);
 }
 
 function updateStats(rows) {
@@ -2977,7 +2979,9 @@ function _pcFocusRow(idx){
   if(!rows.length) return;
   _pcFocusIndex = Math.max(0, Math.min(rows.length-1, idx));
   rows.forEach((tr,i) => { tr.style.outline = (i===_pcFocusIndex) ? '2px solid #4f6ef7' : ''; tr.style.outlineOffset = '-2px'; });
-  rows[_pcFocusIndex].scrollIntoView({block:'nearest', behavior:'smooth'});
+  // scroll samo če vrstica ni že vidna (ne skači po nepotrebnem)
+  const r = rows[_pcFocusIndex].getBoundingClientRect();
+  if (r.top < 90 || r.bottom > window.innerHeight - 20) rows[_pcFocusIndex].scrollIntoView({block:'nearest', behavior:'smooth'});
 }
 document.addEventListener('keydown', function(ev){
   // ne sproži, če pišeš v polje (input/textarea/select) ali odprt modal
