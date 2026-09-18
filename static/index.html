@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-16 12:30</div>
+      <div class="sidebar-logo-sub">build 2026-09-16 13:00</div>
     </div>
   </div>
 
@@ -4587,6 +4587,25 @@ input[type="text"].error { border-color: var(--red) !important; }
         <button onclick="skenClearAll()" style="padding:8px 14px;background:white;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🗑 Briši vse</button>
         <button onclick="skenRefreshBaza()" style="padding:8px 14px;background:white;color:var(--text);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" title="Ponovno potegni bazo kod od dobaviteljev">🔄 Osveži bazo kod</button>
         <button onclick="skenBulkOpen()" style="padding:8px 14px;background:#7c3aed;color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" title="Prilepi vse kode iz skenerja naenkrat (vsaka v svojo vrstico)">📥 Masovni uvoz</button>
+        <button onclick="skenSiluxarOpen()" style="padding:8px 14px;background:#0ea5e9;color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" title="Združi količine po SKU in pošlji v siluxar (s predogledom)">📤 Pošlji v siluxar</button>
+      </div>
+
+      <!-- POŠLJI V SILUXAR modal (s predogledom) -->
+      <div id="skenSiluxarModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:16px">
+        <div style="background:var(--surface);border-radius:14px;max-width:640px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+          <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:16px;font-weight:800">📤 Pošlji zalogo v siluxar</span>
+            <button onclick="skenSiluxarClose()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary)">×</button>
+          </div>
+          <div style="padding:16px 20px;overflow-y:auto;flex:1">
+            <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.5;margin-bottom:12px">Združim količine po SKU (isti SKU v več postavkah = seštevek), preverim, kateri obstajajo v siluxarju, in pošljem <b>spremenjene količine</b>. Manjkajoči SKU-ji se izpišejo spodaj, ne pošljejo.</div>
+            <div id="skenSiluxarPreview" style="font-size:13px"></div>
+          </div>
+          <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+            <button onclick="skenSiluxarClose()" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Prekliči</button>
+            <button onclick="skenSiluxarSend()" id="skenSiluxarSendBtn" style="padding:9px 18px;background:#0ea5e9;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:none">Pošlji v siluxar</button>
+          </div>
+        </div>
       </div>
 
       <!-- MASOVNI UVOZ modal -->
@@ -29623,6 +29642,58 @@ async function skeniranjeInit() {
       inp._skenBound = true;
     }
   }
+}
+
+let _skenSiluxarNajdeni = [];
+async function skenSiluxarOpen(){
+  if(!skenItems.length){ alert('Ni skeniranih izdelkov.'); return; }
+  document.getElementById('skenSiluxarModal').style.display='flex';
+  const pv = document.getElementById('skenSiluxarPreview');
+  pv.innerHTML = 'Pripravljam predogled…';
+  document.getElementById('skenSiluxarSendBtn').style.display='none';
+  try{
+    const r = await fetch('/inventura-siluxar-preview', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ items: skenItems.map(x=>({kod:x.kod, qty:x.qty})) }) });
+    const d = await r.json();
+    if(!d.ok){ pv.innerHTML='<span style="color:#dc2626">Napaka: '+(d.error||'')+'</span>'; return; }
+    _skenSiluxarNajdeni = d.najdeni || [];
+    let h = '<div style="display:flex;gap:16px;margin-bottom:12px">'
+      + '<div style="background:rgba(34,197,94,0.1);border-radius:8px;padding:10px 14px"><div style="font-size:24px;font-weight:800;color:#15803d">'+d.st_najdenih+'</div><div style="font-size:11px;color:var(--text-secondary)">za poslati</div></div>'
+      + '<div style="background:rgba(220,38,38,0.08);border-radius:8px;padding:10px 14px"><div style="font-size:24px;font-weight:800;color:#dc2626">'+d.st_manjkajocih+'</div><div style="font-size:11px;color:var(--text-secondary)">ni v zalogi</div></div>'
+      + '</div>';
+    if(d.najdeni.length){
+      h += '<div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">';
+      h += '<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:var(--surface2)"><th style="text-align:left;padding:6px 10px">SKU</th><th style="text-align:left;padding:6px 10px">Naziv</th><th style="text-align:right;padding:6px 10px">Količina</th></tr></thead><tbody>';
+      d.najdeni.forEach(x=>{ h += '<tr style="border-top:1px solid var(--border)"><td style="padding:5px 10px;font-weight:700;font-family:monospace">'+skenEsc(x.sku)+'</td><td style="padding:5px 10px;color:var(--text-secondary);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+skenEsc(x.naziv||'')+'</td><td style="padding:5px 10px;text-align:right;font-weight:700">'+x.qty+'</td></tr>'; });
+      h += '</tbody></table></div>';
+      document.getElementById('skenSiluxarSendBtn').style.display='block';
+    }
+    if(d.manjkajoci && d.manjkajoci.length){
+      h += '<div style="margin-top:12px;background:rgba(220,38,38,0.05);border:1px solid #fca5a5;border-radius:8px;padding:10px"><div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:4px">⚠️ Ni najdenih v zalogi ('+d.manjkajoci.length+') — NE bodo poslani:</div><div style="font-size:11px;color:#b91c1c;font-family:monospace;word-break:break-all">'+d.manjkajoci.join(', ')+'</div></div>';
+    }
+    pv.innerHTML = h;
+  }catch(e){ pv.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; }
+}
+function skenSiluxarClose(){ document.getElementById('skenSiluxarModal').style.display='none'; }
+async function skenSiluxarSend(){
+  if(!_skenSiluxarNajdeni.length){ alert('Ni izdelkov za pošiljanje.'); return; }
+  if(!confirm('Poslati '+_skenSiluxarNajdeni.length+' SKU-jev s spremenjenimi količinami v siluxar?')) return;
+  const btn = document.getElementById('skenSiluxarSendBtn'); btn.disabled=true; btn.textContent='Pošiljam…';
+  const pv = document.getElementById('skenSiluxarPreview');
+  try{
+    // pošlji stock (brez position, da ne resetira!) — push endpoint preslika SKU→siluxar_id
+    const items = _skenSiluxarNajdeni.map(x=>({ sku: x.sku, stock: x.qty }));
+    const r = await fetch('/siluxar-push-positions', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ items }) });
+    const d = await r.json();
+    if(d.ok){
+      pv.innerHTML = '<div style="color:#16a34a;font-weight:700;font-size:15px;padding:20px 0;text-align:center">✓ Poslano '+(d.poslano||_skenSiluxarNajdeni.length)+' SKU-jev v siluxar</div>' + (d.napake && d.napake.length ? '<div style="font-size:12px;color:#dc2626">Napake: '+JSON.stringify(d.napake).slice(0,300)+'</div>' : '');
+      btn.style.display='none';
+    } else {
+      pv.innerHTML = '<span style="color:#dc2626">Napaka: '+(d.error||'')+'</span>';
+      btn.disabled=false; btn.textContent='Pošlji v siluxar';
+    }
+  }catch(e){ pv.innerHTML='<span style="color:#dc2626">Napaka: '+e.message+'</span>'; btn.disabled=false; btn.textContent='Pošlji v siluxar'; }
 }
 
 function skenBulkOpen(){ document.getElementById('skenBulkModal').style.display='flex'; document.getElementById('skenBulkText').focus(); }

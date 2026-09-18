@@ -24566,6 +24566,45 @@ async def pozicije_apply():
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
 
 
+@app.post("/inventura-siluxar-preview")
+async def inventura_siluxar_preview(data: dict):
+    """Predogled pred pošiljanjem v siluxar: združi količine po SKU, preveri obstoj v zalogi.
+    Vhod: {items: [{kod, qty}, ...]}. Izhod: {najdeni: [{sku,qty,naziv,wh}], manjkajoci: [sku,...]}."""
+    items = data.get("items") or []
+    # združi količine po SKU (kod = SKU)
+    zdruzeno = {}
+    for it in items:
+        kod = str(it.get("kod") or "").strip().upper()
+        if not kod:
+            continue
+        try: q = int(it.get("qty") or 0)
+        except (ValueError, TypeError): q = 0
+        zdruzeno[kod] = zdruzeno.get(kod, 0) + q
+    # preveri obstoj v zalogi (STOCK_CSV) + vzemi naziv + warehouse (silux prednost)
+    naziv_by = {}; wh_by = {}
+    if STOCK_CSV_FILE.exists():
+        import csv as _csv
+        from io import StringIO as _SIO
+        for row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"))):
+            sku = (row.get("product_sku") or "").strip().upper()
+            if not sku or sku not in zdruzeno:
+                continue
+            wh = (row.get("warehouse") or "").strip().lower()
+            if row.get("title") and sku not in naziv_by:
+                naziv_by[sku] = row.get("title").strip()
+            # warehouse: silux prednost
+            if sku not in wh_by or wh == "silux":
+                wh_by[sku] = wh
+    najdeni = []; manjkajoci = []
+    for sku, q in sorted(zdruzeno.items()):
+        if sku in naziv_by or sku in wh_by:
+            najdeni.append({"sku": sku, "qty": q, "naziv": naziv_by.get(sku, ""), "wh": wh_by.get(sku, "")})
+        else:
+            manjkajoci.append(sku)
+    return {"ok": True, "najdeni": najdeni, "manjkajoci": manjkajoci,
+            "st_najdenih": len(najdeni), "st_manjkajocih": len(manjkajoci)}
+
+
 @app.post("/siluxar-push-positions")
 async def siluxar_push_positions(data: dict):
     """Pošlje pozicije NAZAJ v siluxar (beta zapisovalni endpoint).
