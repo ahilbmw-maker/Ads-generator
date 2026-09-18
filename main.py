@@ -6222,7 +6222,7 @@ async def get_narocilnice_history():
 PRIPRAVA_SEZNAM_FILE = DATA_DIR / "priprava_seznam_korak1.json"
 
 @app.post("/priprava-korak1")
-async def priprava_korak1(request: Request, file: UploadFile = File(...), prag: str = "10"):
+async def priprava_korak1(request: Request, file: UploadFile = File(...), prag: str = Form("10")):
     """Korak 1: naloži dokument, poišči postavke kjer je 'Prodano razlika' < prag (privzeto 10),
     shrani (SKU, prodano razlika) na disk. Vrne koliko jih je našel."""
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
