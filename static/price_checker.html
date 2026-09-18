@@ -321,10 +321,9 @@
   <div style="flex:1"></div>
   <!-- Akcijski gumbi desno -->
   <div style="display:flex;flex-direction:column;justify-content:center;gap:6px">
-    <button class="btn secondary" onclick="copyIssues()" style="font-size:11px;font-family:var(--sans);white-space:nowrap">📋 Kopiraj ID-je z napakami</button>
-    <button class="btn secondary" onclick="removeDuplicates()" style="font-size:11px;font-family:var(--sans);white-space:nowrap">🧹 Pobriši dvojnike</button>
-    <button class="btn secondary" onclick="removeSaleItems()" style="font-size:11px;font-family:var(--sans);white-space:nowrap">🏷 Odstrani SALE</button>
-    <button class="btn secondary" onclick="clearTable()" style="font-size:11px;font-family:var(--sans);background:var(--red-dim);color:var(--red);border-color:var(--red);white-space:nowrap">🗑 Zbriši seznam</button>
+    <button class="btn secondary" onclick="copyIssues()" style="font-size:13px;font-weight:600;padding:8px 14px;font-family:var(--sans);white-space:nowrap">📋 Kopiraj ID-je z napakami</button>
+    <button class="btn secondary" onclick="removeSaleItems()" style="font-size:13px;font-weight:600;padding:8px 14px;font-family:var(--sans);white-space:nowrap">🏷 Odstrani SALE</button>
+    <button class="btn secondary" onclick="clearTable()" style="font-size:13px;font-weight:600;padding:8px 14px;font-family:var(--sans);background:var(--red-dim);color:var(--red);border-color:var(--red);white-space:nowrap">🗑 Zbriši seznam</button>
   </div>
 </div>
 
@@ -362,6 +361,7 @@
   <span style="color:var(--border);margin:0 4px">|</span>
   <button class="filter-btn" id="groupSkuBtn" onclick="toggleGroupSku()" style="color:#7c3aed;border-color:#ddd6fe;background:#f5f3ff;font-weight:600">🌍 Primerjava po državah</button>
   <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti 2x+ in združena</button>
+  <button class="filter-btn" onclick="removeDuplicates()" style="color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Pobriši dvojnike</button>
   <span style="color:var(--border);margin:0 4px">|</span>
 </div>
 </div><!-- /sticky -->
