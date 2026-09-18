@@ -1466,6 +1466,7 @@ function taskFilter(f, card) {
   if (card) card.classList.add('active');
 
   currentFilter = f;
+  if (typeof _pcFocusIndex !== 'undefined') _pcFocusIndex = -1;   // reset → avto-fokus na prvo vrstico
 
   const tableWrap = document.getElementById('tableWrap');
   const multiView = document.getElementById('multiView');
@@ -1521,6 +1522,7 @@ function setFilter(f, btn) {
 
 function setStoreFilter(s, btn) {
   currentStore = s;
+  if (typeof _pcFocusIndex !== "undefined") _pcFocusIndex = -1;
   const bar = document.getElementById('storeFilterBar');
   if (bar){ const allB = document.getElementById('sf-all'); if (allB) allB.classList.remove('active'); bar.querySelectorAll('.store-btn').forEach(b => b.classList.remove('active')); }
   if (btn) btn.classList.add('active');
