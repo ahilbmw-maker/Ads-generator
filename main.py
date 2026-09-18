@@ -275,6 +275,7 @@ EXPORTS_DIR.mkdir(exist_ok=True)
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 import time as _startup_time
 SERVER_START = int(_startup_time.time())   # nov deploy = nov zagon = nova verzija (za TV auto-refresh)
+PRICECHECK_COUNT_FILE = DATA_DIR / "pricecheck_count.json"   # števec naročil za bljiznico
 DATA_DIR.mkdir(exist_ok=True, parents=True)
 TT_HISTORY_FILE = DATA_DIR / "tiktok_history.json"
 META_HISTORY_FILE = DATA_DIR / "meta_history.json"
@@ -1046,6 +1047,47 @@ def find_product_urls(source_url: Optional[str]) -> dict:
 
 # ─── STARTUP ─────────────────────────────────────────────────────────────────
 
+async def _pricecheck_count_loop():
+    """Vsakih 15 min potegne naročila iz siluxarja, prešteje in shrani (za bljiznico na uvodni strani).
+    Tako je števec vedno aktualen, tudi če nihče ne odpre price checkerja."""
+    import json as _j
+    await asyncio.sleep(30)   # počakaj po zagonu
+    while True:
+        try:
+            key = os.environ.get("SILUXAR_STOCK_KEY", "")
+            if key:
+                url = _slx("/apistockalertsexport")
+                headers = {"Authorization": f"Bearer {key}"}
+                r, _redir = await _slx_get(url, headers=headers, auth=None, timeout=60)
+                if r.status_code == 200:
+                    text = r.text or ""
+                    n = 0
+                    try:
+                        data = _j.loads(text)
+                        arr = None
+                        if isinstance(data, list):
+                            arr = data
+                        elif isinstance(data, dict):
+                            for k in ("data", "orders", "items", "rows", "results", "products", "alerts"):
+                                if isinstance(data.get(k), list):
+                                    arr = data[k]; break
+                            if arr is None:
+                                for v in data.values():
+                                    if isinstance(v, list):
+                                        arr = v; break
+                        n = len(arr) if arr is not None else 0
+                    except Exception:
+                        n = 0
+                    # shrani SAMO če je smiselno (>0) — da ne povozi pravega števila z 0 ob napaki
+                    if n > 0:
+                        tmp = PRICECHECK_COUNT_FILE.with_suffix(".tmp")
+                        tmp.write_text(_j.dumps({"count": n, "updated": datetime.now(timezone.utc).isoformat(), "vir": "cron"}, ensure_ascii=False), encoding="utf-8")
+                        os.replace(tmp, PRICECHECK_COUNT_FILE)
+        except Exception:
+            pass
+        await asyncio.sleep(900)   # 15 minut
+
+
 @app.on_event("startup")
 async def startup_event():
     # Startup mora biti HITER, da Render health check (/healthz) takoj uspe.
@@ -1065,6 +1107,7 @@ async def startup_event():
 
     asyncio.create_task(periodic_refresh())
     asyncio.create_task(_daily_cashflow_sync())
+    asyncio.create_task(_pricecheck_count_loop())
     asyncio.create_task(_email_polling_loop())
     asyncio.create_task(_forecast2_scheduler_loop())
     asyncio.create_task(_zaloga_scheduler_loop())
@@ -10217,8 +10260,6 @@ async def price_checker_cache_set(data: dict):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-
-PRICECHECK_COUNT_FILE = DATA_DIR / "pricecheck_count.json"
 
 @app.post("/pricecheck-count-report")
 async def pricecheck_count_report(request: Request, data: dict):
