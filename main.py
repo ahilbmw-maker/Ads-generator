@@ -38,6 +38,26 @@ async def healthz():
         status["ok"] = False
     return status
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# CACHE: statične datoteke (slike, js knjižnice, css, fonti) → brskalnik jih shrani (hitrejši ponovni obiski).
+# HTML (index, price_checker) NE cache-amo, da novi deployi pridejo takoj brez hard refresh.
+@app.middleware("http")
+async def _static_cache_headers(request: Request, call_next):
+    resp = await call_next(request)
+    try:
+        path = request.url.path
+        if path.startswith("/static/"):
+            low = path.lower()
+            if low.endswith((".png",".jpg",".jpeg",".gif",".webp",".svg",".ico",".woff",".woff2",".ttf",".otf")):
+                resp.headers["Cache-Control"] = "public, max-age=3600"      # slike/fonti: 1 ura (spremembe hitro vidne)
+            elif low.endswith(".js") or low.endswith(".css"):
+                resp.headers["Cache-Control"] = "public, max-age=3600"      # js/css: 1 ura
+            elif low.endswith(".html"):
+                resp.headers["Cache-Control"] = "no-cache"                  # HTML: vedno preveri (takojšnji deploy)
+    except Exception:
+        pass
+    return resp
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
