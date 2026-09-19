@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-18 23:00</div>
+      <div class="sidebar-logo-sub">build 2026-09-18 23:30</div>
     </div>
   </div>
 
@@ -5192,66 +5192,6 @@ input[type="text"].error { border-color: var(--red) !important; }
 
   </div>
 
-  <div class="page" id="page-xsell">
-    <div style="max-width:1500px;width:100%;margin:0;padding:14px">
-
-      <!-- Hero -->
-      <div style="background:linear-gradient(135deg,#0891b2 0%,#06b6d4 100%);color:white;border-radius:14px;padding:22px 26px;margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px">
-          <div>
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85;font-weight:600;margin-bottom:4px">🎯 XSELL ASSISTANT</div>
-            <div style="font-size:22px;font-weight:800;letter-spacing:-0.3px">AI predlogi za cross-sell</div>
-            <div style="font-size:12px;opacity:0.85;margin-top:4px">3 raznoliki predlogi: komplementaren · alternativa · cenovno smiseln</div>
-          </div>
-          <div id="xsell-feed-status" style="font-size:11px;opacity:0.9;text-align:right;font-family:'DM Mono',monospace;line-height:1.6"></div>
-        </div>
-      </div>
-
-      <!-- Input -->
-      <div class="card" style="margin-bottom:14px">
-        <span class="slabel">🔍 ISKANJE</span>
-        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <input type="text" id="xsell-input" placeholder="Vnesi SKU (npr. M260) ali URL izdelka"
-            style="flex:1;min-width:240px;padding:11px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:14px;font-family:inherit"
-            onkeydown="if(event.key==='Enter') xsellSuggest()">
-          <select id="xsell-lang" style="padding:11px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
-            <option value="sl">🇸🇮 SL</option>
-            <option value="hr">🇭🇷 HR</option>
-            <option value="rs">🇷🇸 RS</option>
-            <option value="hu">🇭🇺 HU</option>
-            <option value="pl">🇵🇱 PL</option>
-            <option value="cz">🇨🇿 CZ</option>
-            <option value="sk">🇸🇰 SK</option>
-            <option value="gr">🇬🇷 GR</option>
-            <option value="bg">🇧🇬 BG</option>
-            <option value="ro">🇷🇴 RO</option>
-          </select>
-          <button onclick="xsellSuggest()" id="xsell-btn"
-            style="padding:11px 22px;background:#0891b2;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">
-            🎯 Predlagaj 3
-          </button>
-          <button onclick="xsellClearCache()" title="Pobriši cache (forsiraj sveže AI predloge)"
-            style="padding:11px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap">
-            🗑️ Cache
-          </button>
-        </div>
-        <div style="font-size:10px;color:var(--text-tertiary);margin-top:6px">
-          💡 Tip: lahko prilepiš SKU (M260), URL (maaarket.si/product/...) ali ime izdelka.
-        </div>
-      </div>
-
-      <!-- Loading -->
-      <div id="xsell-loading" style="display:none;text-align:center;padding:40px;color:var(--text-secondary)">
-        <div style="font-size:30px;margin-bottom:10px">🤔</div>
-        <div style="font-size:14px;font-weight:600">AI razmišlja o najboljših predlogih...</div>
-        <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">~5-10 sekund</div>
-      </div>
-
-      <!-- Result -->
-      <div id="xsell-result"></div>
-
-    </div>
-  </div><!-- /page-xsell -->
 
   <!-- ═══ ODPREMA PAGE ═══ -->
   <!-- ═══ SPOROČANJE ═══ -->
@@ -5407,84 +5347,8 @@ input[type="text"].error { border-color: var(--red) !important; }
 
     <!-- ── SPAM FILTER SUBPAGE ── -->
     <!-- ── TICKETS SUBPAGE (Kayako vmesnik) ── -->
-    <div id="spSubpage-tickets" style="display:none;padding:16px">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-        <select id="tkBrand" onchange="tkLoadInbox()" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:12px;font-family:inherit">
-          <option value="maaarket">Maaarket</option>
-          <option value="silux">Silux</option>
-        </select>
-        <select id="tkStatus" onchange="tkLoadInbox()" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:12px;font-family:inherit">
-          <option value="1">🔴 Odprto</option>
-          <option value="2">🟡 V teku</option>
-          <option value="3">🟢 Zaprto</option>
-          <option value="4">📦 Naročila</option>
-        </select>
-        <button onclick="tkLoadInbox()" id="tkLoadBtn" style="padding:7px 14px;background:#534AB7;color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🔄 Naloži</button>
-        <span style="flex:1"></span>
-        <span style="font-size:11px;color:var(--text-tertiary)">Odgovarjam kot:</span>
-        <select id="tkStaff" onchange="try{localStorage.setItem('tk_staff',this.value)}catch(e){}" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:12px;font-family:inherit"></select>
-        <span id="tkInboxInfo" style="font-size:11px;color:var(--text-tertiary)"></span>
-      </div>
-      <div style="display:grid;grid-template-columns:360px minmax(0,1fr);gap:12px;align-items:start">
-        <!-- SEZNAM -->
-        <div class="card" style="padding:0;max-height:calc(100vh - 220px);overflow-y:auto">
-          <div id="tkList" style="display:flex;flex-direction:column"><div style="padding:20px;text-align:center;font-size:12px;color:var(--text-tertiary)">Klikni 🔄 Naloži za tickete.</div></div>
-        </div>
-        <!-- DETAJL -->
-        <div class="card" id="tkDetailCard" style="min-height:300px">
-          <div id="tkDetail" style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:40px 0">← Izberi ticket s seznama</div>
-          <div id="tkReplyBox" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-            <textarea id="tkReplyText" placeholder="Napiši odgovor stranki..." style="width:100%;min-height:130px;padding:10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:vertical;line-height:1.5;box-sizing:border-box"></textarea>
-            <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
-              <button onclick="tkReply(true)" id="tkSendCloseBtn" style="padding:9px 16px;background:var(--green);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📨 Pošlji & zapri</button>
-              <button onclick="tkReply(false)" id="tkSendBtn" style="padding:9px 14px;background:transparent;color:var(--text);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📨 Pošlji (pusti odprto)</button>
-              <span id="tkReplyStatus" style="font-size:11px;color:var(--text-secondary)"></span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- ── SPAM SUBPAGE ── -->
-    <div id="spSubpage-spam" style="display:none;padding:16px;display:none">
-      <div class="card" style="margin-bottom:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:8px">
-          <div>
-            <span class="slabel">🛡 SPAM FILTER</span>
-            <p style="font-size:12px;color:var(--text-secondary);margin:4px 0 0">AI pregleda zadnjih 200 odprtih ticketov (samo naslove). Pre-filter izloči vse ne-angleške naslove (lokalni jeziki = pristni). Prikaže samo verjetne spame (>80%). Klik na "🛡 Spam → Trash" → ticket gre v Trash v Kayako.</p>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button onclick="spamLoadTickets()" id="spamLoadBtn" style="padding:9px 16px;background:#534AB7;color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔍 Naloži & analiziraj</button>
-          </div>
-        </div>
-        <div id="spamStatus" style="font-size:11px;color:var(--text-secondary);margin-top:6px"></div>
-      </div>
-
-      <!-- STATS -->
-      <div id="spamStats" style="display:none;grid-template-columns:repeat(3, 1fr);gap:8px;margin-bottom:12px">
-        <div class="card" style="text-align:center;padding:10px">
-          <div style="font-size:20px;font-weight:700;color:var(--text)" id="spamTotal">0</div>
-          <div style="font-size:10px;color:var(--text-secondary);text-transform:uppercase">Najdeno spam</div>
-        </div>
-        <div class="card" style="text-align:center;padding:10px;border-left:3px solid #ef4444">
-          <div style="font-size:20px;font-weight:700;color:#ef4444" id="spamHigh">0</div>
-          <div style="font-size:10px;color:var(--text-secondary);text-transform:uppercase">Pregledano ticketov</div>
-        </div>
-        <div class="card" style="text-align:center;padding:10px;border-left:3px solid #22c55e">
-          <div style="font-size:20px;font-weight:700;color:#22c55e" id="spamConfirmedCount">0</div>
-          <div style="font-size:10px;color:var(--text-secondary);text-transform:uppercase">Potrjenih (v Trash)</div>
-        </div>
-      </div>
-
-      <!-- FILTERS -->
-      <div id="spamFilters" style="display:none;gap:6px;margin-bottom:8px;flex-wrap:wrap">
-        <button class="spam-filter-btn active" data-filter="all" onclick="spamSetFilter('all')" style="padding:5px 12px;background:#534AB7;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Vsi spami (>80%)</button>
-        <button class="spam-filter-btn" data-filter="confirmed" onclick="spamSetFilter('confirmed')" style="padding:5px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">✓ Potrjeni (Trash)</button>
-      </div>
-
-      <!-- TICKETS LIST -->
-      <div id="spamList" style="display:flex;flex-direction:column;gap:8px"></div>
-    </div><!-- /spSubpage-spam -->
 
   </div><!-- /page-sporocanje -->
 
@@ -5940,7 +5804,6 @@ function switchPage(page) {
   if (page === 'zaloga') { zalogaLoad(); zalogaSyncDailyAuto(); }
   if (page === 'selitev') { if(typeof selInit==='function') selInit(); }
   else { if(typeof selStopPolling==='function') selStopPolling(); }
-  if (page === 'xsell') { if(typeof xsellInit==='function') xsellInit(); }
   if (page === 'sporocanje') { if(typeof spLoadCommon==='function') spLoadCommon(); if(typeof spLoadMacros==='function') spLoadMacros(); }
   if (page === 'knjigovodstvo') { if(typeof knjLoadHistory==='function') knjLoadHistory(); }
   if (page === 'zaloga') { if(typeof lokLoadCacheStatus==='function') lokLoadCacheStatus(); }
@@ -19984,144 +19847,13 @@ function zalogaSyncDailyAuto() {
     }
   } catch(e) {}
 }
-async function xsellInit() {
-  try {
-    const r = await fetch('/xsell-feed-status');
-    const d = await r.json();
-    const el = document.getElementById('xsell-feed-status');
-    if (!el) return;
-    const lastFetchStr = d.last_fetch ? new Date(d.last_fetch).toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-    const totalSL = d.total_sl || 0;
-    const stockOk = d.stock_loaded ? '✓ zaloga' : '⚠ ni zaloge';
-    el.innerHTML = `XML feed: ${lastFetchStr}<br>${totalSL} izdelkov · ${stockOk}`;
-  } catch(e) { console.warn('xsell init', e); }
-}
 
-async function xsellClearCache() {
-  if (!confirm('Pobriši Xsell cache? Naslednji klic za vsak SKU bo svež AI klic.')) return;
-  try {
-    const r = await fetch('/xsell-cache-clear', {method: 'POST'});
-    const d = await r.json();
-    if (d.ok) alert('✓ Cache pobrisan');
-    else alert('⚠️ ' + (d.error || 'Napaka'));
-  } catch(e) { alert('Napaka: ' + e.message); }
-}
 
-async function xsellSuggest() {
-  const input = document.getElementById('xsell-input').value.trim();
-  const lang = document.getElementById('xsell-lang').value;
-  if (!input) { alert('Vnesi SKU ali URL'); return; }
 
-  const btn = document.getElementById('xsell-btn');
-  const loading = document.getElementById('xsell-loading');
-  const result = document.getElementById('xsell-result');
-  btn.disabled = true; btn.innerHTML = '⏳';
-  loading.style.display = 'block';
-  result.innerHTML = '';
 
-  try {
-    const res = await fetch('/xsell-suggest', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({input, lang}),
-    });
-    const data = await res.json();
-    loading.style.display = 'none';
 
-    if (!data.ok) {
-      result.innerHTML = `
-        <div style="padding:18px;background:rgba(220,38,38,0.08);border:1px solid #fca5a5;border-radius:10px;color:#dc2626;font-size:13px">
-          ⚠️ ${data.error || 'Napaka pri obdelavi'}
-        </div>`;
-      return;
-    }
 
-    xsellRender(data);
-  } catch(e) {
-    loading.style.display = 'none';
-    result.innerHTML = `<div style="padding:18px;background:rgba(220,38,38,0.08);border:1px solid #fca5a5;border-radius:10px;color:#dc2626">⚠️ Network napaka: ${e.message}</div>`;
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '🎯 Predlagaj 3';
-  }
-}
 
-function xsellRender(data) {
-  const orig = data.original || {};
-  const suggestions = data.suggestions || [];
-  const cached = data.cached;
-
-  const typeStyles = {
-    'maaarket_pick':        {color:'#ec4899', bg:'rgba(236,72,153,0.12)', icon:'⭐', label:'MAAARKET PICK'},
-    'komplementaren':       {color:'#0891b2', bg:'rgba(8,145,178,0.12)',  icon:'🔧', label:'KOMPLEMENTAREN'},
-    'kategorijsko_podoben': {color:'#7c3aed', bg:'rgba(124,58,237,0.12)', icon:'📦', label:'PODOBEN'},
-    'cenovno_smiseln':      {color:'#16a34a', bg:'rgba(22,163,74,0.12)',  icon:'💰', label:'CENOVNO SMISELN'},
-  };
-
-  let html = '';
-
-  // Original card
-  if (orig.sku) {
-    const img = orig.image ? `<img src="${orig.image}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;flex-shrink:0" onerror="this.style.display='none'">` : '';
-    html += `
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:14px">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text-tertiary);font-weight:700;margin-bottom:8px">🛍️ ISKANI IZDELEK ${cached ? '<span style="background:rgba(34,197,94,0.15);color:#16a34a;padding:1px 6px;border-radius:3px;margin-left:6px">cached</span>' : ''}</div>
-        <div style="display:flex;gap:14px;align-items:flex-start">
-          ${img}
-          <div style="flex:1;min-width:0">
-            <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;letter-spacing:-0.3px">${orig.title || '?'}</div>
-            <div style="font-size:11px;color:var(--text-tertiary);font-family:'DM Mono',monospace">SKU: ${orig.sku}</div>
-            <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
-              <span style="font-size:13px;font-weight:700;color:var(--accent)">${(orig.price || 0).toFixed(2)} €</span>
-              ${orig.stock !== undefined ? `<span style="font-size:11px;color:var(--text-secondary)">📦 ${orig.stock} kos</span>` : ''}
-              ${orig.product_type ? `<span style="font-size:10px;color:var(--text-tertiary);background:var(--surface2);padding:2px 7px;border-radius:4px">${orig.product_type.slice(0, 60)}</span>` : ''}
-              ${orig.url ? `<a href="${orig.url}" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none">↗ Odpri</a>` : ''}
-            </div>
-          </div>
-        </div>
-      </div>`;
-  }
-
-  if (!suggestions.length) {
-    html += `<div style="padding:18px;background:var(--surface);border:1px dashed var(--border);border-radius:10px;text-align:center;color:var(--text-tertiary)">Ni predlogov za ta izdelek.</div>`;
-    document.getElementById('xsell-result').innerHTML = html;
-    return;
-  }
-
-  html += `<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-tertiary);font-weight:700;margin-bottom:10px;padding-left:4px">💡 ${suggestions.length} XSELL PREDLOGOV (iz ${data.candidates_total || '?'} kandidatov)</div>`;
-
-  suggestions.forEach((s, idx) => {
-    const style = typeStyles[s.type] || {color:'#64748b', bg:'rgba(100,116,139,0.12)', icon:'•', label: (s.type || '').toUpperCase()};
-    const img = s.image ? `<img src="${s.image}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;flex-shrink:0" onerror="this.style.display='none'">` : '';
-    html += `
-      <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${style.color};border-radius:10px;padding:14px 16px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <span style="font-size:14px;font-weight:800;color:var(--text-tertiary);font-family:'DM Mono',monospace">#${idx+1}</span>
-            <span style="padding:3px 10px;background:${style.bg};color:${style.color};border-radius:5px;font-size:10px;font-weight:800;letter-spacing:0.5px">${style.icon} ${style.label}</span>
-          </div>
-          ${s.url ? `<a href="${s.url}" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none">↗ Odpri stran</a>` : ''}
-        </div>
-        <div style="display:flex;gap:12px;align-items:flex-start">
-          ${img}
-          <div style="flex:1;min-width:0">
-            <div style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:-0.3px;margin-bottom:3px">${s.title || s.sku}</div>
-            <div style="font-size:10px;color:var(--text-tertiary);font-family:'DM Mono',monospace">SKU: ${s.sku}</div>
-            <div style="display:flex;gap:10px;margin-top:7px;flex-wrap:wrap;align-items:center">
-              <span style="font-size:14px;font-weight:700;color:${style.color}">${(s.price || 0).toFixed(2)} €</span>
-              <span style="font-size:11px;color:var(--text-secondary)">📦 ${s.stock} kos</span>
-              ${s.stock30 ? `<span style="font-size:10px;color:var(--text-tertiary)">30d: ${s.stock30}</span>` : ''}
-            </div>
-            <div style="margin-top:9px;padding:7px 10px;background:${style.bg};border-radius:6px;font-size:12px;color:var(--text);line-height:1.4">
-              <span style="font-weight:700;color:${style.color}">⚡ Zakaj:</span> ${s.reason || '—'}
-            </div>
-          </div>
-        </div>
-      </div>`;
-  });
-
-  document.getElementById('xsell-result').innerHTML = html;
-}
 
 async function zalogaLoad() {
   try {
@@ -21719,11 +21451,8 @@ function spSwitchMainTab(tab) {
     btn.style.border = 'none';
     btn.classList.add('active');
   }
-  document.getElementById('spSubpage-help').style.display = (tab === 'help') ? 'block' : 'none';
-  document.getElementById('spSubpage-spam').style.display = (tab === 'spam') ? 'block' : 'none';
-  const tkSub = document.getElementById('spSubpage-tickets');
-  if (tkSub) tkSub.style.display = (tab === 'tickets') ? 'block' : 'none';
-  if (tab === 'tickets') tkInit();
+  const helpSub = document.getElementById('spSubpage-help');
+  if (helpSub) helpSub.style.display = 'block';
 }
 
 // ─── 🎫 TICKETS (Kayako vmesnik) ───
@@ -21840,141 +21569,21 @@ async function tkReply(closeTicket) {
   }
 }
 
-async function spamLoadTickets() {
-  const btn = document.getElementById('spamLoadBtn');
-  const status = document.getElementById('spamStatus');
-  btn.disabled = true; btn.textContent = '⏳ Pregledam naslove...';
-  status.textContent = 'AI pregleduje samo angleške naslove — bo zelo hitro...';
 
-  try {
-    const res = await fetch('/spam-analyze', {method:'POST'});
-    const data = await res.json();
-    if (!data.ok) {
-      status.textContent = '❌ Napaka: ' + (data.error || 'unknown');
-      btn.disabled = false; btn.textContent = '🔍 Naloži & analiziraj';
-      return;
-    }
-    spamTickets = data.tickets || [];
-    spamConfirmed = new Set(data.confirmed || []);
-    const stats = data.stats || {};
-    status.textContent = `✓ Pregledano ${stats.checked||0} ticketov · ${stats.filtered_out||0} ne-angleških preskočenih · najdeno ${spamTickets.length} verjetnih spamov`;
-    spamRender();
-  } catch(e) {
-    status.textContent = '❌ Napaka: ' + e.message;
-  }
-  btn.disabled = false; btn.textContent = '🔍 Naloži & analiziraj';
-}
 
-function spamRender() {
-  const list = document.getElementById('spamList');
-  const stats = document.getElementById('spamStats');
-  const filters = document.getElementById('spamFilters');
 
-  if (!spamTickets.length && !spamConfirmed.size) {
-    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary);font-size:13px">Ni spam-a. Klikni "Naloži & analiziraj".</div>';
-    stats.style.display = 'none'; filters.style.display = 'none';
-    return;
-  }
 
-  // Stats
-  const unconfirmed = spamTickets.filter(t => !spamConfirmed.has(t.id)).length;
-  document.getElementById('spamTotal').textContent = unconfirmed;
-  document.getElementById('spamHigh').textContent = spamTickets.length;
-  document.getElementById('spamConfirmedCount').textContent = spamConfirmed.size;
-  stats.style.display = 'grid';
-  filters.style.display = 'flex';
 
-  // Filter
-  let filtered = spamTickets;
-  if (spamFilter === 'confirmed') filtered = spamTickets.filter(t => spamConfirmed.has(t.id));
-  else filtered = spamTickets.filter(t => !spamConfirmed.has(t.id));
 
-  // Sortiraj po score (najvišji prvi)
-  filtered = [...filtered].sort((a,b) => b.score - a.score);
 
-  if (!filtered.length) {
-    list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-tertiary);font-size:12px">Ni ticketov v tem filtru.</div>';
-    return;
-  }
 
-  list.innerHTML = filtered.map(t => {
-    const isConfirmed = spamConfirmed.has(t.id);
-    const color = isConfirmed ? '#000' : '#ef4444';
-    const bg = isConfirmed ? 'rgba(0,0,0,0.03)' : 'rgba(239,68,68,0.05)';
-    const brandColor = t.brand === 'maaarket' ? '#534AB7' : '#0ea5e9';
-    const brandLabel = t.brand === 'maaarket' ? 'Maaarket' : 'Silux';
 
-    return `<div style="border:1px solid ${color};border-radius:8px;background:${bg};padding:10px 14px;display:flex;flex-direction:column;gap:6px;${isConfirmed?'opacity:0.7':''}">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span style="background:${brandColor};color:white;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">${brandLabel}</span>
-          <span style="font-size:12px;color:var(--text-secondary)">#${t.id}</span>
-          <span style="background:${color};color:white;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">${t.score}% spam</span>
-          ${isConfirmed ? '<span style="background:#000;color:white;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">🗑 V TRASH</span>' : ''}
-        </div>
-        <div style="display:flex;gap:6px">
-          <a href="${t.url}" target="_blank" style="padding:5px 10px;background:transparent;color:#534AB7;border:1px solid #534AB7;border-radius:var(--radius);font-size:11px;font-weight:600;text-decoration:none">↗ Kayako</a>
-          ${!isConfirmed ? `<button onclick="spamConfirm('${t.id}', this)" style="padding:5px 10px;background:#ef4444;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🛡 Spam → Trash</button>` : ''}
-          ${!isConfirmed ? `<button onclick="spamReject('${t.id}')" style="padding:5px 10px;background:#22c55e;color:white;border:none;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">✓ Ni spam</button>` : ''}
-        </div>
-      </div>
-      <div style="font-size:12px;font-weight:600;color:var(--text)">${spamEsc(t.subject||'(brez naslova)')}</div>
-      <div style="font-size:11px;color:var(--text-secondary)">📧 ${spamEsc(t.from||'')}</div>
-      <div style="font-size:11px;color:var(--text-secondary);background:rgba(0,0,0,0.03);padding:6px 8px;border-radius:4px;font-style:italic">💭 ${spamEsc(t.reason||'')}</div>
-    </div>`;
-  }).join('');
-}
 
-function spamEsc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function spamSetFilter(f) {
-  spamFilter = f;
-  document.querySelectorAll('.spam-filter-btn').forEach(b => {
-    const isActive = b.dataset.filter === f;
-    b.style.background = isActive ? '#534AB7' : 'transparent';
-    b.style.color = isActive ? 'white' : 'var(--text-secondary)';
-    b.style.border = isActive ? 'none' : '1px solid var(--border)';
-  });
-  spamRender();
-}
 
-async function spamConfirm(id, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Premikam...'; }
-  try {
-    const r = await fetch('/spam-confirm', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id, action:'confirm'})});
-    const data = await r.json();
-    if (data.ok) {
-      spamConfirmed.add(id);
-      spamRender();
-    } else {
-      alert('Napaka pri premikanju v Trash: ' + (data.error || 'unknown'));
-      if (btn) { btn.disabled = false; btn.textContent = '🛡 Spam → Trash'; }
-    }
-  } catch(e) {
-    alert('Napaka: ' + e.message);
-    if (btn) { btn.disabled = false; btn.textContent = '🛡 Spam → Trash'; }
-  }
-}
 
-async function spamReject(id) {
-  spamTickets = spamTickets.filter(t => t.id !== id);
-  await fetch('/spam-confirm', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id, action:'reject'})});
-  spamRender();
-}
 
-async function spamUnconfirm(id) {
-  spamConfirmed.delete(id);
-  await fetch('/spam-confirm', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id, action:'unconfirm'})});
-  spamRender();
-}
 
-async function spamClearConfirmed() {
-  if (!confirm('Počisti vse potrjene spam-e iz seznama?')) return;
-  spamTickets = spamTickets.filter(t => !spamConfirmed.has(t.id));
-  spamConfirmed.clear();
-  await fetch('/spam-clear-confirmed', {method:'POST'});
-  spamRender();
-}
 // ── /SPAM FILTER ────────────────────────────────────────────
 
 function spSetBrand(brand) {
