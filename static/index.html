@@ -1619,7 +1619,7 @@ input[type="text"].error { border-color: var(--red) !important; }
         💰 Kalkulator
       </button>
     </div>
-    <iframe id="calcFrame-pricecheck" data-src="/static/price_checker.html?v=20260726a" style="width:100%;height:calc(100vh - 7rem);border:none" allow="clipboard-write"></iframe>
+    <iframe id="calcFrame-pricecheck" data-src="/static/price_checker.html?v=20260918b" style="width:100%;height:calc(100vh - 7rem);border:none" allow="clipboard-write"></iframe>
     <iframe id="calcFrame-calc" data-src="/static/price_calculator.html" style="width:100%;height:calc(100vh - 7rem);border:none;display:none" allow="clipboard-write"></iframe>
   </div>
 
@@ -5890,7 +5890,12 @@ function switchCalcTab(tab) {
       if (frame) {
         // lazy: naloži iframe šele ob prvem odprtju (prej sta se oba nalagala ob startu
         // strani → price_checker je procesiral 58k SKU + Econt ZIP → 27s blokada DOM-a)
-        if (frame.dataset.src && !frame.src) frame.src = frame.dataset.src;
+        if (frame.dataset.src && !frame.src) {
+          // price checker: dodaj časovni žig, da se vedno naloži SVEŽA verzija (ne cache)
+          let src = frame.dataset.src;
+          if (frame.id === 'calcFrame-pricecheck') src += (src.includes('?') ? '&' : '?') + 't=' + Date.now();
+          frame.src = src;
+        }
         frame.style.display = 'block';
       }
     } else {
