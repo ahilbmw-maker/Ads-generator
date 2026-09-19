@@ -607,12 +607,34 @@ function skuHtml(sku) {
   }
   // najdi pid: točen SKU → osnovni SKU (brez suffiksa variacije po zadnjem _) → po prvem _
   let pid = _skuToPid[s] || _skuToPid[s.toUpperCase()];
-  if (!pid && s.indexOf('_') >= 0) {
-    const baseLast = s.substring(0, s.lastIndexOf('_'));   // LUXSIT_grey → LUXSIT, M322_45 → M322
-    pid = _skuToPid[baseLast] || _skuToPid[baseLast.toUpperCase()];
+  // VARIACIJE: če točen SKU nima ID-ja, poskusi osnovni SKU
+  if (!pid) {
+    const tryBase = (base) => { if(!base) return null; return _skuToPid[base] || _skuToPid[base.toUpperCase()]; };
+    // 1) ločilo _ : LUXSIT_grey → LUXSIT, GUARDIAN_OWLS → GUARDIAN
+    if (s.indexOf('_') >= 0) {
+      pid = tryBase(s.substring(0, s.lastIndexOf('_'))) || tryBase(s.substring(0, s.indexOf('_')));
+    }
+    // 2) brez ločila — odstrani znano variacijsko pripono (barva/velikost): Maaa94blackL → Maaa94
     if (!pid) {
-      const baseFirst = s.substring(0, s.indexOf('_'));    // GUARDIAN_OWLS → GUARDIAN
-      pid = _skuToPid[baseFirst] || _skuToPid[baseFirst.toUpperCase()];
+      const pripone = ['blackL','blackXL','blackM','blackS','whiteL','whiteXL','whiteM','whiteS',
+        'black','white','red','blue','green','grey','gray','yellow','pink','purple','orange','brown','beige','navy','gold','silver',
+        'XXL','XXXL','XL','XS','L','M','S'];
+      let low = s.toLowerCase();
+      for (const p of pripone) {
+        if (low.endsWith(p.toLowerCase())) {
+          const base = s.substring(0, s.length - p.length);
+          pid = tryBase(base);
+          if (pid) break;
+        }
+      }
+    }
+    // 3) postopno krajšanje z desne (zadnja rešitev) — dokler ne najde ujemanja, min 4 znaki
+    if (!pid) {
+      for (let len = s.length - 1; len >= 4; len--) {
+        const cand = s.substring(0, len);
+        const hit = _skuToPid[cand] || _skuToPid[cand.toUpperCase()];
+        if (hit) { pid = hit; break; }
+      }
     }
   }
   if (!pid) return escHtml(s) + saleBadge + recoBadge;
