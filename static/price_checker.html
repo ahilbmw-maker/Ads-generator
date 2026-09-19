@@ -360,8 +360,7 @@
   </select>
   <span style="color:var(--border);margin:0 4px">|</span>
   <button class="filter-btn" id="groupSkuBtn" onclick="toggleGroupSku()" style="color:#7c3aed;border-color:#ddd6fe;background:#f5f3ff;font-weight:600">🌍 Primerjava po državah</button>
-  <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti 2x+ in združena</button>
-  <button class="filter-btn" onclick="removeDuplicates()" style="color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Pobriši dvojnike</button>
+  <button class="filter-btn" onclick="cleanAllInOne()" title="Počisti 2x+ količine, združena naročila IN dvojnike — vse naenkrat" style="color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti vse (2x+, združena, dvojniki)</button>
   <span style="color:var(--border);margin:0 4px">|</span>
 </div>
 </div><!-- /sticky -->
@@ -2374,6 +2373,52 @@ function multiClearResolved() {
   saveTableToStorage();
   updateStats(allRows);
   renderMultiView(allRows);
+}
+
+async function cleanAllInOne() {
+  if (!allRows.length) return;
+  // 1) preštej ID-je za združena
+  const idCounts = {};
+  allRows.forEach(r => { idCounts[r.id] = (idCounts[r.id] || 0) + 1; });
+  // 2) 2x+ količine ALI združena — SAMO iz filtra "Razlika <7€" (lowval), kot prej (namerno)
+  const lowvalRows = allRows.filter(r => !r.isNull && r.razlikaNum !== null && !isNaN(r.razlikaNum) && Math.abs(r.razlikaNum) < 7);
+  const qtyMerged = lowvalRows.filter(r => (r.qty || 1) > 1 || idCounts[r.id] > 1);
+  // 3) dvojniki (isti SKU+trgovina+cena+valuta) — obdrži prvega
+  const seen = new Map(); const dupes = [];
+  for (const r of allRows) {
+    const key = [(r.sku||'').trim().toUpperCase(),(r.store||'').trim().toLowerCase(),String(r.priceRaw||'').trim(),(r.currency||'').trim().toUpperCase()].join('|');
+    if (seen.has(key)) dupes.push(r); else seen.set(key, r);
+  }
+  // združi vse za brisanje (brez podvajanja)
+  const allKey = r => r.id + '|' + r.sku + '|' + r.currency + '|' + r.priceRaw;
+  const toRemoveMap = new Map();
+  [...qtyMerged, ...dupes].forEach(r => toRemoveMap.set(allKey(r), r));
+  const toRemove = [...toRemoveMap.values()];
+  if (!toRemove.length) { _pccToast('Ni kaj počistiti — ni 2x+, združenih ali dvojnikov.', '#16a34a'); return; }
+
+  const qtyCount = toRemove.filter(r => (r.qty || 1) > 1).length;
+  const mergedCount = toRemove.filter(r => idCounts[r.id] > 1).length;
+  const dupeCount = dupes.length;
+  const psIds = [...new Set(toRemove.map(r => r.siluxar_id).filter(x => x != null && String(x).trim() !== ''))];
+
+  if (!confirm(`Počistim ${toRemove.length} naročil naenkrat?\n\n• ${qtyCount} s količino 2x+\n• ${mergedCount} združenih\n• ${dupeCount} dvojnikov\n\nIzbriše tudi ${psIds.length} postavk v siluxarju.`)) return;
+
+  const removeKeys = new Set(toRemove.map(allKey));
+  if (typeof pcSeenRecordRows === 'function') pcSeenRecordRows(toRemove);
+  allRows = allRows.filter(r => !removeKeys.has(allKey(r)));
+  try { localStorage.setItem('price_checker_table', JSON.stringify(allRows)); } catch(e) {}
+  updateStats(allRows);
+  if (_groupSkuActive) { if (typeof renderGroupSku === 'function') renderGroupSku(); } else renderTable(allRows);
+
+  if (psIds.length) {
+    try {
+      const r = await fetch('/siluxar-delete-alerts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ids: psIds }) });
+      const d = await r.json();
+      _pccToast(`✓ Počiščeno ${toRemove.length} · siluxar: ${(d && d.deleted) || 0} izbrisanih`, '#16a34a');
+    } catch(e) { _pccToast('Počiščeno lokalno, siluxar napaka: '+e.message, '#dc2626'); }
+  } else {
+    _pccToast(`✓ Počiščeno ${toRemove.length} naročil`, '#16a34a');
+  }
 }
 
 async function cleanQtyMerged() {
