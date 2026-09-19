@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-18 22:00</div>
+      <div class="sidebar-logo-sub">build 2026-09-18 23:00</div>
     </div>
   </div>
 
@@ -1024,11 +1024,6 @@ input[type="text"].error { border-color: var(--red) !important; }
     <span class="nav-badge" style="background:#f59e0b;color:#3d2600;margin-left:auto">NOVO</span>
   </div>
 
-  <div class="nav-item nav-xsell" id="nav-xsell" onclick="switchPage('xsell')">
-    <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
-    Xsell
-    <span style="margin-left:auto;font-size:13px">🎯</span>
-  </div>
 
   <div class="nav-item nav-narocilnice" id="nav-narocilnice" onclick="switchPage('narocilnice')">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
@@ -1324,11 +1319,6 @@ input[type="text"].error { border-color: var(--red) !important; }
               <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('dvojniki')">↗ Dvojniki</span>
               <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('karantena')">↗ Karantena</span>
             </div>
-          </div>
-          <div class="home-tile" style="border-left-color:#0891b2" onclick="switchPage('xsell')">
-            <div class="ht-icon">🎯</div>
-            <div class="ht-name">Xsell</div>
-            <div class="ht-desc">AI cross-sell predlogi</div>
           </div>
           <div class="home-tile" style="border-left-color:#06b6d4" onclick="switchPage('odprema')">
             <div class="ht-icon">🚚</div>
@@ -5269,8 +5259,6 @@ input[type="text"].error { border-color: var(--red) !important; }
     <!-- GLAVNI TABI -->
     <div style="display:flex;gap:8px;padding:12px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border)">
       <button class="sp-main-tab active" id="spMainTab-help" onclick="spSwitchMainTab('help')" style="padding:8px 16px;background:#534AB7;color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💬 Pomoč pri odgovorih</button>
-      <button class="sp-main-tab" id="spMainTab-spam" onclick="spSwitchMainTab('spam')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🛡 Spam filter</button>
-      <button class="sp-main-tab" id="spMainTab-tickets" onclick="spSwitchMainTab('tickets')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🎫 Tickets</button>
     </div>
 
     <!-- ── HELP SUBPAGE ── -->
