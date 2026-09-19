@@ -137,9 +137,9 @@
   }
   .filter-btn {
     background: transparent; border: 1px solid var(--border2);
-    color: var(--muted); font-family: var(--font); font-size: 11px;
-    padding: 4px 10px; border-radius: 6px; cursor: pointer;
-    transition: all 0.15s; font-weight: 500;
+    color: var(--muted); font-family: var(--font); font-size: 12px;
+    padding: 6px 11px; border-radius: 7px; cursor: pointer;
+    transition: all 0.15s; font-weight: 600;
   }
   .filter-btn:hover { border-color: var(--muted); color: var(--text); }
   .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -148,8 +148,8 @@
 
   .search-input {
     background: var(--bg); border: 1px solid var(--border2);
-    color: var(--text); font-family: var(--font); font-size: 12px;
-    padding: 5px 12px; outline: none; width: 210px; border-radius: 6px;
+    color: var(--text); font-family: var(--font); font-size: 13px;
+    padding: 7px 12px; outline: none; width: 230px; border-radius: 7px;
     transition: border-color 0.15s;
   }
   .search-input:focus { border-color: var(--accent); }
@@ -321,10 +321,9 @@
   <div style="flex:1"></div>
   <!-- Akcijski gumbi desno -->
   <div style="display:flex;flex-direction:column;justify-content:center;gap:6px">
-    <button class="btn secondary" onclick="copyIssues()" style="font-size:11px;font-family:var(--sans);white-space:nowrap">📋 Kopiraj ID-je z napakami</button>
-    <button class="btn secondary" onclick="removeDuplicates()" style="font-size:11px;font-family:var(--sans);white-space:nowrap">🧹 Pobriši dvojnike</button>
-    <button class="btn secondary" onclick="removeSaleItems()" style="font-size:11px;font-family:var(--sans);white-space:nowrap">🏷 Odstrani SALE</button>
-    <button class="btn secondary" onclick="clearTable()" style="font-size:11px;font-family:var(--sans);background:var(--red-dim);color:var(--red);border-color:var(--red);white-space:nowrap">🗑 Zbriši seznam</button>
+    <button class="btn secondary" onclick="copyIssues()" style="font-size:13px;font-weight:600;padding:8px 14px;font-family:var(--sans);white-space:nowrap">📋 Kopiraj ID-je z napakami</button>
+    <button class="btn secondary" onclick="removeSaleItems()" style="font-size:13px;font-weight:600;padding:8px 14px;font-family:var(--sans);white-space:nowrap">🏷 Odstrani SALE</button>
+    <button class="btn secondary" onclick="clearTable()" style="font-size:13px;font-weight:600;padding:8px 14px;font-family:var(--sans);background:var(--red-dim);color:var(--red);border-color:var(--red);white-space:nowrap">🗑 Zbriši seznam</button>
   </div>
 </div>
 
@@ -342,12 +341,12 @@
 <div class="filters" id="storeFilterBar">
   <input type="text" class="search-input" placeholder="🔍 Išči SKU ali ID..." oninput="setSearch(this.value)" id="searchInput">
   <span style="color:var(--border);margin:0 4px">|</span>
-  <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans)">Trgovina:</span>
+  <span style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans);font-weight:600">Trgovina:</span>
   <button class="filter-btn active" id="sf-all" onclick="setStoreFilter('all', this)">VSE</button>
   <!-- gumbi trgovin se dodajo dinamično iz podatkov -->
   <span style="color:var(--border);margin:0 4px">|</span>
-  <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans)">Razlika:</span>
-  <select id="razponFilter" onchange="setRazpon(this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);font-size:12px;font-family:var(--sans);cursor:pointer">
+  <span style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans);font-weight:600">Razlika:</span>
+  <select id="razponFilter" onchange="setRazpon(this.value)" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text);font-size:12px;font-family:var(--sans);cursor:pointer;font-weight:600">
     <option value="all">Vse</option>
     <option value="lt7">&lt; 7€</option>
     <option value="7-8">7–8€</option>
@@ -362,6 +361,7 @@
   <span style="color:var(--border);margin:0 4px">|</span>
   <button class="filter-btn" id="groupSkuBtn" onclick="toggleGroupSku()" style="color:#7c3aed;border-color:#ddd6fe;background:#f5f3ff;font-weight:600">🌍 Primerjava po državah</button>
   <button class="filter-btn" id="cleanQtyMergedBtn" onclick="cleanQtyMerged()" style="display:none;color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti 2x+ in združena</button>
+  <button class="filter-btn" onclick="removeDuplicates()" style="color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Pobriši dvojnike</button>
   <span style="color:var(--border);margin:0 4px">|</span>
 </div>
 </div><!-- /sticky -->
