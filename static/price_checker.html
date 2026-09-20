@@ -1422,7 +1422,10 @@ function renderTable(rows) {
     tbody.appendChild(tr);
   }
   bulkUpdateBar();
-  setTimeout(() => { if (typeof _pcFocusIndex!=='undefined' && _pcFocusIndex < 0 && _pcRows().length) _pcFocusRow(0); }, 30);
+  // avto-fokus prve vrstice — poskusi večkrat (ob prvem nalaganju tabela pride asinhrono)
+  [50, 250, 600].forEach(ms => setTimeout(() => {
+    if (typeof _pcFocusIndex!=='undefined' && _pcFocusIndex < 0 && _pcRows().length) _pcFocusRow(0);
+  }, ms));
 }
 
 function updateStats(rows) {
@@ -3034,7 +3037,10 @@ document.addEventListener('keydown', function(ev){
   const k = ev.key;
   if ((k==='d' || k==='D') && !ev.ctrlKey && !ev.metaKey){
     ev.preventDefault();
-    const rows = _pcRows();
+    let rows = _pcRows();
+    if (!rows.length) return;
+    // če fokus še ni nastavljen (prvo odprtje), fokusiraj prvo vrstico takoj
+    if (_pcFocusIndex < 0) { _pcFocusRow(0); rows = _pcRows(); }
     if (_pcFocusIndex >= 0 && rows[_pcFocusIndex]){
       const cb = rows[_pcFocusIndex].querySelector('input[type=checkbox][data-key]');
       if (cb){ const idxDel=_pcFocusIndex; selectedKeys.clear(); selectedKeys.add(cb.dataset.key); bulkDelete(); setTimeout(()=>{ _pcFocusRow(Math.min(idxDel, _pcRows().length-1)); }, 100); }
