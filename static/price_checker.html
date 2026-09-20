@@ -2212,6 +2212,7 @@ async function bulkDelete() {
   const toDelete = new Set(selectedKeys);
   // shrani izbrisane vrstice za morebitno razveljavitev
   _lastDeletedRows = allRows.filter(r => toDelete.has(r.id + '|' + r.sku));
+  console.log('[DELETE] keys:', [...toDelete], '| allRows pred:', allRows.length, '| za brisat:', _lastDeletedRows.length, '| group:', _groupSkuActive, '| filter:', currentFilter);
   // zberi ps.id-je (siluxar_id) izbranih vrstic — za sinhronizacijo brisanja v siluxar
   const psIds = allRows
     .filter(r => toDelete.has(r.id + '|' + r.sku))
@@ -2231,8 +2232,13 @@ async function bulkDelete() {
   saveTableToStorage();
   updateStats(allRows);
   // vedno preriši pravi pogled po brisanju (da vrstice dejansko izginejo)
-  if (_groupSkuActive) { if (typeof renderGroupSku === 'function') renderGroupSku(); }
-  else renderTable(allRows);
+  const _doRender = () => {
+    if (_groupSkuActive) { if (typeof renderGroupSku === 'function') renderGroupSku(); }
+    else renderTable(allRows);
+  };
+  _doRender();
+  // varovalka: še enkrat po mikro-zamiku (če je prvi render prehitel DOM/async)
+  setTimeout(_doRender, 0);
 
   // osveži quick-delete bar (skrij če pogled prazen)
   if (['null','qty','multi'].includes(currentFilter)) {
