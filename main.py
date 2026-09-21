@@ -15310,7 +15310,17 @@ async def hsplus_manjkajoci_v_zalogi(refresh: str = "0"):
                     nasi.add(sku.upper())
         except Exception as e:
             return {"ok": False, "error": f"Branje zaloge: {e}"}
-    # 3) HS+ SKU-ji, ki jih NI v naši zalogi
+    # normalizacija: odstrani vodilne predpone kot "(SP) ", "(UP) ", presledke → za ujemanje
+    import re as _re_norm
+    def _norm(sku):
+        s = (sku or "").strip().upper()
+        s = _re_norm.sub(r'^\([A-Z0-9]{1,4}\)\s*', '', s)   # odstrani vodilni "(SP) ", "(UP) " ipd.
+        s = s.replace(" ", "")                                  # odstrani presledke
+        return s
+    # naši normalizirani (za ujemanje) + originali
+    nasi_norm = set(_norm(x) for x in nasi)
+    # 3) HS+ SKU-ji, ki jih NI v naši zalogi (primerjaj tudi normalizirano + EAN)
+    nasi_ean = set()   # če imamo EAN v zalogi — a verjetno ne; pustimo prazno
     manjkajoci = []
     videni = set()
     for p in hs_products:
@@ -15321,8 +15331,11 @@ async def hsplus_manjkajoci_v_zalogi(refresh: str = "0"):
         if key in videni:
             continue
         videni.add(key)
-        if key not in nasi:
-            manjkajoci.append({"sku": sku, "ean": p.get("ean", ""), "name": p.get("name", ""),
+        nkey = _norm(sku)
+        # imamo, če: točen SKU v zalogi ALI normaliziran v zalogi
+        imamo = (key in nasi) or (nkey in nasi_norm) or (nkey in nasi)
+        if not imamo:
+            manjkajoci.append({"sku": sku, "sku_cist": nkey, "ean": p.get("ean", ""), "name": p.get("name", ""),
                                "category": p.get("category", ""), "stock": p.get("stock", 0), "price": p.get("price", 0)})
     manjkajoci.sort(key=lambda x: (x.get("name") or x.get("sku") or "").lower())
     return {"ok": True, "hs_skupaj": len(videni), "nasih_v_zalogi": len(nasi),
