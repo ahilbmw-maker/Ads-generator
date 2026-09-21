@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-20 11:45</div>
+      <div class="sidebar-logo-sub">build 2026-09-20 12:00</div>
     </div>
   </div>
 
@@ -2727,7 +2727,7 @@ input[type="text"].error { border-color: var(--red) !important; }
         <!-- ROČNI UPLOAD XML — zložljiv (privzeto skrit, ne zavzame prostora) -->
         <div id="hsplusUploadBody" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:11px;color:var(--text-secondary);margin:0 0 8px;line-height:1.4">Odpri <a href="https://hsb2b.hs-plus.com/catalog/export?format=xml" target="_blank" style="color:var(--accent)">catalog/export</a> (prijavljen v b2b), shrani XML, naloži sem.</p>
-          <div id="hsplusUploadZone" class="k-dropzone" style="padding:12px" onclick="document.getElementById('hsplusUploadInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="hsplusUploadDrop(event)">
+          <div id="hsplusUploadZone" class="k-dropzone" style="padding:12px" onclick="document.getElementById('hsplusUploadInput').click()" ondragenter="event.preventDefault();event.stopPropagation()" ondragover="event.preventDefault();event.stopPropagation();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="hsplusUploadDrop(event)">
             <span style="font-size:11px">Klikni ali povleci XML sem</span>
           </div>
           <input type="file" id="hsplusUploadInput" accept=".xml,text/xml,application/xml" style="display:none" onchange="hsplusUpload(this.files[0])">
@@ -11110,9 +11110,21 @@ function hsplusCopySku(sku, ev) {
 
 function hsplusUploadDrop(e) {
   e.preventDefault();
-  e.currentTarget.classList.remove('drag-over');
-  const f = e.dataTransfer.files[0];
+  e.stopPropagation();
+  try { e.currentTarget.classList.remove('drag-over'); } catch(_) {}
+  let f = null;
+  const dt = e.dataTransfer;
+  if (dt) {
+    if (dt.files && dt.files.length) f = dt.files[0];
+    else if (dt.items && dt.items.length) {
+      for (const it of dt.items) { if (it.kind === 'file') { f = it.getAsFile(); break; } }
+    }
+  }
   if (f) hsplusUpload(f);
+  else {
+    const st = document.getElementById('hsplusUploadStatus');
+    if (st) { st.style.display='block'; st.style.color='#c53030'; st.textContent='⚠ Datoteke ni bilo mogoče prebrati iz povleka — poskusi s klikom.'; }
+  }
 }
 
 async function hsplusUpload(file) {
