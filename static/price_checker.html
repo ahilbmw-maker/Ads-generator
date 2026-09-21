@@ -2214,6 +2214,7 @@ async function bulkDelete() {
   // shrani izbrisane vrstice za morebitno razveljavitev
   _lastDeletedRows = allRows.filter(r => toDelete.has(r.id + '|' + r.sku));
   console.log('[DELETE] keys:', [...toDelete], '| allRows pred:', allRows.length, '| za brisat:', _lastDeletedRows.length, '| group:', _groupSkuActive, '| filter:', currentFilter);
+  console.log('[DELETE] primeri allRows ključev:', allRows.slice(0,5).map(r => (r.id + '|' + r.sku)), '| iskani:', [...toDelete][0]);
   // zberi ps.id-je (siluxar_id) izbranih vrstic — za sinhronizacijo brisanja v siluxar
   const psIds = allRows
     .filter(r => toDelete.has(r.id + '|' + r.sku))
