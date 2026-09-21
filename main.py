@@ -15288,11 +15288,16 @@ async def hsplus_catalog_upload(file: UploadFile = File(...)):
 async def hsplus_manjkajoci_v_zalogi(refresh: str = "0"):
     """Primerja HS+ katalog z NAŠO zalogo (stock_inventory.csv, aktivni + neaktivni).
     Vrne HS+ SKU-je, ki jih NIMAMO v zalogi (manjkajoči)."""
-    # 1) HS+ katalog (vsi SKU-ji)
-    hs = await _hsplus_fetch_core(force=(refresh == "1"))
-    if not hs.get("ok"):
-        return {"ok": False, "error": hs.get("error", "HS+ ni na voljo")}
+    # 1) HS+ katalog — NAJPREJ iz cache (tja naložiš XML ročno prek /hsplus-catalog-upload)
+    hs = await _hsplus_fetch_core(cache_only=True)
+    if (refresh == "1") or not hs.get("products"):
+        # če je zahtevan refresh ALI ni cache-a, poskusi živ poteg (rabi USER/PASS)
+        hs_live = await _hsplus_fetch_core(force=(refresh == "1"))
+        if hs_live.get("ok") and hs_live.get("products"):
+            hs = hs_live
     hs_products = hs.get("products", [])
+    if not hs_products:
+        return {"ok": False, "error": "HS+ katalog je prazen — naloži HS+ XML v HS+ katalog (upload)."}
     # 2) naša zaloga — vsi product_sku (normalizirani na velike črke)
     nasi = set()
     if STOCK_CSV_FILE.exists():
