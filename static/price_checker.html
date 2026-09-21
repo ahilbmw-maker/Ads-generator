@@ -1425,6 +1425,7 @@ function renderTable(rows) {
   bulkUpdateBar();
   // avto-fokus prve vrstice — poskusi večkrat (ob prvem nalaganju tabela pride asinhrono)
   [50, 250, 600].forEach(ms => setTimeout(() => {
+    if (typeof _groupSkuActive !== 'undefined' && _groupSkuActive) return;   // ne v grupiranem pogledu
     if (typeof _pcFocusIndex!=='undefined' && _pcFocusIndex < 0 && _pcRows().length) _pcFocusRow(0);
   }, ms));
 }
@@ -1584,6 +1585,18 @@ function buildStoreFilters() {
 }
 
 let _groupSkuActive = false;
+function exitGroupSku() {
+  // izklopi grupiran pogled in vrni v navadni (če je aktiven)
+  if (!_groupSkuActive) return;
+  _groupSkuActive = false;
+  const btn = document.getElementById('groupSkuBtn');
+  const gv = document.getElementById('groupSkuView');
+  const tw = document.getElementById('tableWrap');
+  if (btn) { btn.style.background = '#f5f3ff'; btn.style.color = '#7c3aed'; }
+  if (gv) gv.style.display = 'none';
+  if (tw) tw.style.display = 'block';
+  renderTable(allRows);
+}
 function toggleGroupSku() {
   _groupSkuActive = !_groupSkuActive;
   const btn = document.getElementById('groupSkuBtn');
@@ -1698,7 +1711,8 @@ function renderGroupSku() {
   </div>`;
 
   if (!skuList.length) {
-    gv.innerHTML = header + '<div style="text-align:center;padding:50px;color:var(--muted)">Ni izdelkov za primerjavo (vsi obdelani ali samo v 1 državi).</div>';
+    // ni več izdelkov za primerjavo → samodejno izklopi grupiran pogled, vrni v navadni
+    setTimeout(() => { if (typeof exitGroupSku === 'function') exitGroupSku(); }, 50);
     return;
   }
 
@@ -2213,8 +2227,6 @@ async function bulkDelete() {
   const toDelete = new Set(selectedKeys);
   // shrani izbrisane vrstice za morebitno razveljavitev
   _lastDeletedRows = allRows.filter(r => toDelete.has(r.id + '|' + r.sku));
-  console.log('[DELETE] keys:', [...toDelete], '| allRows pred:', allRows.length, '| za brisat:', _lastDeletedRows.length, '| group:', _groupSkuActive, '| filter:', currentFilter);
-  console.log('[DELETE] primeri allRows ključev:', allRows.slice(0,5).map(r => (r.id + '|' + r.sku)), '| iskani:', [...toDelete][0]);
   // zberi ps.id-je (siluxar_id) izbranih vrstic — za sinhronizacijo brisanja v siluxar
   const psIds = allRows
     .filter(r => toDelete.has(r.id + '|' + r.sku))
@@ -3042,6 +3054,8 @@ function _pcFocusRow(idx){
 document.addEventListener('keydown', function(ev){
   const t = ev.target;
   if (t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.tagName==='SELECT' || t.isContentEditable)) return;
+  // bližnjice delujejo SAMO v navadnem pogledu (v grupiranem pogledu po državah je struktura drugačna)
+  if (typeof _groupSkuActive !== 'undefined' && _groupSkuActive) return;
   const k = ev.key;
   if ((k==='d' || k==='D') && !ev.ctrlKey && !ev.metaKey){
     ev.preventDefault();
