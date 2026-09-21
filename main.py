@@ -15284,6 +15284,47 @@ async def hsplus_catalog_upload(file: UploadFile = File(...)):
     except Exception as e:
         return {"ok": False, "error": f"Napaka pri branju XML: {e}"}
 
+@app.get("/hsplus-manjkajoci-v-zalogi")
+async def hsplus_manjkajoci_v_zalogi(refresh: str = "0"):
+    """Primerja HS+ katalog z NAŠO zalogo (stock_inventory.csv, aktivni + neaktivni).
+    Vrne HS+ SKU-je, ki jih NIMAMO v zalogi (manjkajoči)."""
+    # 1) HS+ katalog (vsi SKU-ji)
+    hs = await _hsplus_fetch_core(force=(refresh == "1"))
+    if not hs.get("ok"):
+        return {"ok": False, "error": hs.get("error", "HS+ ni na voljo")}
+    hs_products = hs.get("products", [])
+    # 2) naša zaloga — vsi product_sku (normalizirani na velike črke)
+    nasi = set()
+    if STOCK_CSV_FILE.exists():
+        import csv as _csv
+        from io import StringIO as _SIO
+        try:
+            for row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"))):
+                sku = (row.get("product_sku") or row.get("sku") or "").strip()
+                if sku:
+                    nasi.add(sku.upper())
+        except Exception as e:
+            return {"ok": False, "error": f"Branje zaloge: {e}"}
+    # 3) HS+ SKU-ji, ki jih NI v naši zalogi
+    manjkajoci = []
+    videni = set()
+    for p in hs_products:
+        sku = (p.get("sku") or "").strip()
+        if not sku:
+            continue
+        key = sku.upper()
+        if key in videni:
+            continue
+        videni.add(key)
+        if key not in nasi:
+            manjkajoci.append({"sku": sku, "ean": p.get("ean", ""), "name": p.get("name", ""),
+                               "category": p.get("category", ""), "stock": p.get("stock", 0), "price": p.get("price", 0)})
+    manjkajoci.sort(key=lambda x: (x.get("name") or x.get("sku") or "").lower())
+    return {"ok": True, "hs_skupaj": len(videni), "nasih_v_zalogi": len(nasi),
+            "manjkajocih": len(manjkajoci), "manjkajoci": manjkajoci,
+            "fetched_at": hs.get("fetched_at")}
+
+
 @app.get("/hsplus-stock-diff")
 async def hsplus_stock_diff():
     """Vrne zadnjo spremembo zaloge (winnerji = padec, polnila = porast)."""
