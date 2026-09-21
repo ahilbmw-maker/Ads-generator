@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-20 10:00</div>
+      <div class="sidebar-logo-sub">build 2026-09-20 11:00</div>
     </div>
   </div>
 
@@ -2719,6 +2719,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <span id="hsplusFetchInfo" style="font-size:11px;color:var(--text-tertiary)"></span>
           </div>
           <div style="display:flex;gap:6px">
+            <button onclick="hsplusManjkajoci()" id="hsplusManjkBtn" style="font-size:11px;font-weight:600;color:#c2410c;background:rgba(234,88,12,0.08);border:1px solid rgba(234,88,12,0.25);border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;white-space:nowrap">🔍 Manjkajoči v zalogi</button>
             <button onclick="hsplusShowRemoved()" id="hsplusRemovedBtn" style="font-size:11px;font-weight:600;color:#dc2626;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.25);border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;white-space:nowrap">❌ Odstranjeni</button>
             <button onclick="hsplusToggleUpload()" id="hsplusUploadToggleBtn" style="font-size:11px;font-weight:600;color:var(--accent);background:rgba(58,111,255,0.08);border:1px solid rgba(58,111,255,0.25);border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;white-space:nowrap">📥 Naloži XML</button>
           </div>
@@ -11405,6 +11406,56 @@ function hsplusShowMovement() {
 function hsplusCloseMovement() {
   const modal = document.getElementById('hsplusMovementModal');
   if (modal) modal.style.display = 'none';
+}
+
+async function hsplusManjkajoci() {
+  const btn = document.getElementById('hsplusManjkBtn');
+  const orig = btn.textContent;
+  btn.textContent = '⏳ Preverjam...'; btn.disabled = true;
+  try {
+    const d = await fetch('/hsplus-manjkajoci-v-zalogi').then(r => r.json());
+    if (!d.ok) { alert('Napaka: ' + (d.error || '')); return; }
+    if (!d.manjkajoci || !d.manjkajoci.length) {
+      alert('✓ Vsi HS+ izdelki so v vaši zalogi (nič ne manjka).\n\nHS+ skupaj: ' + d.hs_skupaj + ' · v zalogi: ' + d.nasih_v_zalogi);
+      return;
+    }
+    // sestavi TXT (berljivo) + CSV
+    const now = new Date();
+    const zig = now.getFullYear()+('0'+(now.getMonth()+1)).slice(-2)+('0'+now.getDate()).slice(-2)+'_'+('0'+now.getHours()).slice(-2)+('0'+now.getMinutes()).slice(-2);
+    // TXT: samo SKU-ji, en na vrstico (za hitro preverjanje)
+    let txt = 'MANJKAJOČI HS+ IZDELKI V ZALOGI\n';
+    txt += 'HS+ skupaj: ' + d.hs_skupaj + ' · V zalogi: ' + d.nasih_v_zalogi + ' · Manjka: ' + d.manjkajocih + '\n';
+    txt += '='.repeat(50) + '\n\n';
+    d.manjkajoci.forEach((x, i) => {
+      txt += (i+1) + '. ' + (x.sku||'') + '\n';
+      txt += '   Naziv: ' + (x.name||'') + '\n';
+      txt += '   Kategorija: ' + (x.category||'') + ' · EAN: ' + (x.ean||'') + ' · HS+ zaloga: ' + (x.stock||0) + ' · cena: ' + (x.price||0) + '€\n\n';
+    });
+    // prenesi TXT
+    const blob = new Blob([txt], { type:'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'manjkajoci_HSplus_' + zig + '.txt';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    // + CSV verzija
+    const esc = v => { v=(v==null?'':String(v)); return /[";\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
+    let csv = '\ufeffSKU;Naziv;Kategorija;EAN;HS+ zaloga;Cena\n';
+    d.manjkajoci.forEach(x => { csv += [x.sku,x.name,x.category,x.ean,x.stock,x.price].map(esc).join(';') + '\n'; });
+    setTimeout(() => {
+      const b2 = new Blob([csv], { type:'text/csv;charset=utf-8' });
+      const u2 = URL.createObjectURL(b2);
+      const a2 = document.createElement('a');
+      a2.href = u2; a2.download = 'manjkajoci_HSplus_' + zig + '.csv';
+      document.body.appendChild(a2); a2.click(); document.body.removeChild(a2);
+      URL.revokeObjectURL(u2);
+    }, 400);
+    alert('✓ Prenesenih ' + d.manjkajocih + ' manjkajočih izdelkov (TXT + CSV)\n\nHS+ skupaj: ' + d.hs_skupaj + '\nV zalogi: ' + d.nasih_v_zalogi + '\nManjka: ' + d.manjkajocih);
+  } catch(e) {
+    alert('Napaka: ' + e.message);
+  } finally {
+    btn.textContent = orig; btn.disabled = false;
+  }
 }
 
 async function hsplusShowRemoved() {
