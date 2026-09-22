@@ -24695,6 +24695,26 @@ async def pozicije_pos_suggest(q: str = ""):
         valid = named + [v for v in valid if v not in named]
     except Exception:
         pass
+    # AVTOMATSKO: vključi VSE pozicije, ki so že v uporabi (iz zaloge + extra), da so vedno predlagane
+    try:
+        _seen_norm = set(_poz_norm(v) for v in valid)
+        # glavne pozicije iz zaloge
+        for it in _poz_load_stock():
+            p = (it.get("position") or "").strip()
+            if p and _poz_norm(p) not in _seen_norm:
+                valid.append(p); _seen_norm.add(_poz_norm(p))
+        # sekundarne pozicije (extra_positions)
+        try:
+            _extra = _zaloga_load_extra_pos()
+            for sku, poss in (_extra.items() if isinstance(_extra, dict) else []):
+                for p in (poss if isinstance(poss, list) else [poss]):
+                    p = str(p or "").strip()
+                    if p and _poz_norm(p) not in _seen_norm:
+                        valid.append(p); _seen_norm.add(_poz_norm(p))
+        except Exception:
+            pass
+    except Exception:
+        pass
     # izloči osamele delce imenskih pozicij (stara napaka: "Pri Amiotu" razbito na "Pri"+"Amiotu")
     try:
         named = _sel_named_load()
