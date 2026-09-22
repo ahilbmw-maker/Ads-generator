@@ -24656,6 +24656,53 @@ async def pozicije_valid_cleanup(request: Request):
             "odstranjeni": odstranjeni, "dodani": dodani}
 
 
+@app.post("/pozicije-valid-dopolni")
+async def pozicije_valid_dopolni(data: dict = None):
+    """Samodejno zazna VRZELI v veljavnih pozicijah (manjkajoče vrste/mesta v regalih)
+    in jih doda. Vrne, katere je dodal. Format pozicije: RR-VM (regal-vrsta+mesto), npr. 10-4B."""
+    try:
+        import re as _re
+        valid = list(_poz_valid_load() or [])
+        obstojece = set(valid)
+        # razčleni obstoječe police (samo format RR-VM ali RR-VM-N)
+        regali = {}   # regal -> vrsta -> set(mest)
+        for p in valid:
+            m = _re.fullmatch(r'(\d{2})-(\d)([A-F])', str(p).strip())
+            if m:
+                r, v, mesto = m.group(1), m.group(2), m.group(3)
+                regali.setdefault(r, {}).setdefault(v, set()).add(mesto)
+        dodani = []
+        for r in sorted(regali):
+            vrste = sorted(regali[r].keys())
+            if not vrste:
+                continue
+            maxv = int(max(vrste))
+            # 1) manjkajoče VRSTE (vrzel v zaporedju 1..maxv) → dodaj cele (A-F)
+            for vi in range(1, maxv + 1):
+                v = str(vi)
+                if v not in regali[r]:
+                    for mesto in 'ABCDEF':
+                        poz = f"{r}-{v}{mesto}"
+                        if poz not in obstojece:
+                            valid.append(poz); obstojece.add(poz); dodani.append(poz)
+                else:
+                    # 2) znotraj obstoječe vrste z >=4 mesti — dopolni do F
+                    mesta = regali[r][v]
+                    if len(mesta) >= 4:
+                        for mesto in 'ABCDEF':
+                            poz = f"{r}-{v}{mesto}"
+                            if mesto not in mesta and poz not in obstojece:
+                                valid.append(poz); obstojece.add(poz); dodani.append(poz)
+        if dodani:
+            tmp = PN_POZ_VALID.with_suffix(".tmp")
+            tmp.write_text(json.dumps(valid, ensure_ascii=False, indent=2), encoding="utf-8")
+            import os as _os
+            _os.replace(str(tmp), str(PN_POZ_VALID))
+        return {"ok": True, "dodani": sorted(dodani), "st_dodanih": len(dodani), "skupaj": len(valid)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.post("/pozicije-valid-save")
 async def pozicije_valid_save(data: dict):
     """Nastavi/dopolni seznam veljavnih pozicij.
