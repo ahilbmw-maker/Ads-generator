@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-20 13:15</div>
+      <div class="sidebar-logo-sub">build 2026-09-20 14:00</div>
     </div>
   </div>
 
@@ -20454,12 +20454,9 @@ function zalogaRender() {
           var extras = _zalExtraPos[(it.product_sku||'').trim()] || [];
           var secondRow;
           if (extras.length) {
-            // ima dodatne → svinčnik SPREDAJ + dodatni žetoni (brez +lokacija gumba)
-            var chips = extras.map(function(p){ return '<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:#854F0B;background:#FAEEDA;border:0.5px solid #EF9F27;padding:2px 7px;border-radius:5px">↳ ' + esc(p) + '</span>'; }).join('');
-            secondRow = '<span style="display:flex;align-items:center;justify-content:center;gap:4px;margin-top:3px">' +
-              '<span onclick="event.stopPropagation();zalExtraPosOpen(\'' + skuE + '\',\'' + titE + '\')" title="Uredi dodatne lokacije" style="cursor:pointer;font-size:11px;opacity:0.6;flex-shrink:0" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">✏️</span>' +
-              '<span style="display:flex;flex-direction:column;gap:2px;align-items:center">' + chips + '</span>' +
-              '</span>';
+            // ima dodatne → glavna pozicija zgoraj (badge), spodaj samo "+N" značka (klik odpre vse v modalu)
+            // vrstica ostane ENAKO visoka ne glede na število dodatnih pozicij
+            secondRow = '<span onclick="event.stopPropagation();zalExtraPosOpen(\'' + skuE + '\',\'' + titE + '\')" title="Prikaži/uredi vse dodatne lokacije (' + extras.length + ')" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:700;color:#854F0B;background:#FAEEDA;border:0.5px solid #EF9F27;padding:2px 9px;border-radius:5px;margin-top:3px" onmouseover="this.style.background=\'#F5E0BC\'" onmouseout="this.style.background=\'#FAEEDA\'">＋' + extras.length + ' lokacij ▾</span>';
           } else {
             // nima dodatnih → "＋ lokacija" gumb (enaka višina kot dodatna vrstica)
             secondRow = '<span onclick="event.stopPropagation();zalExtraPosOpen(\'' + skuE + '\',\'' + titE + '\')" title="Dodatne lokacije (backup zaloga)" style="cursor:pointer;font-size:10px;color:var(--text-tertiary);margin-top:3px" onmouseover="this.style.color=\'#EF9F27\'" onmouseout="this.style.color=\'var(--text-tertiary)\'">＋ lokacija</span>';
