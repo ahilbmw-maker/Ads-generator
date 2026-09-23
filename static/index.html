@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-20 14:45</div>
+      <div class="sidebar-logo-sub">build 2026-09-20 15:15</div>
     </div>
   </div>
 
@@ -16914,7 +16914,7 @@ function semStatsRows(){
       const rt = (s.rvc_total != null) ? s.rvc_total : (s.rvc_per_order != null ? o*s.rvc_per_order : 0);
       const gt = (s.rvc_gross_per_order != null) ? o*s.rvc_gross_per_order : 0;
       const fe = fr[s.market] || {};
-      const ff = (fe.fail_rate == null || fe.fail_rate === '') ? null : fe.fail_rate/100;
+      const ff = (fe.fail_rate == null || fe.fail_rate === '') ? null : parseFloat(String(fe.fail_rate).replace(',','.'))/100;
       let rl = rt;
       const bs = semFailBasis(s);
       if (ff != null && s.rvc_per_order != null && bs != null) rl = o*(s.rvc_per_order - ff*bs);
@@ -17056,7 +17056,7 @@ function semRenderProjection(){
     const o = s.orders || 0;
     const rvcT = (s.rvc_total != null) ? s.rvc_total : (s.rvc_per_order != null ? o * s.rvc_per_order : 0);
     const fe = fr[s.market] || {};
-    const f = (fe.fail_rate == null || fe.fail_rate === '') ? null : fe.fail_rate/100;
+    const f = (fe.fail_rate == null || fe.fail_rate === '') ? null : parseFloat(String(fe.fail_rate).replace(',','.'))/100;
     let realT = rvcT;
     const bs = semFailBasis(s);
     if (f != null && s.rvc_per_order != null && bs != null)
@@ -17194,7 +17194,7 @@ function semRenderProfit(){
     const rvcT = s ? ((s.rvc_total != null) ? s.rvc_total : (s.rvc_per_order != null ? orders * s.rvc_per_order : 0)) : 0;
     const grossT = (s && s.rvc_gross_per_order != null) ? orders * s.rvc_gross_per_order : 0;
     const fe = fr[m] || {};
-    const f = (fe.fail_rate == null || fe.fail_rate === '') ? null : fe.fail_rate/100;
+    const f = (fe.fail_rate == null || fe.fail_rate === '') ? null : parseFloat(String(fe.fail_rate).replace(',','.'))/100;
     let realT = rvcT;
     if (s){
       const bs = semFailBasis(s);
@@ -17300,7 +17300,7 @@ function semRenderProfit(){
         + '<td style="padding:5px 8px;text-align:right">' + eur(r.sp) + '</td>'
         + '<td style="padding:5px 8px;text-align:right">' + (rc2==null?'—':eur(rc2)) + '</td>'
         + '<td style="padding:5px 8px;text-align:right;font-weight:700;color:' + (rp==null?'var(--text-tertiary)':(rp>=1?'#12a35f':'#e5484d')) + '">' + (rp==null?'—':nm(rp)+'×') + '</td>'
-        + '<td style="padding:5px 8px;text-align:right;color:var(--text-tertiary)">' + (r.fail==null?'—':pctv(r.fail*100,0)) + '</td>'
+        + '<td style="padding:5px 8px;text-align:right;color:var(--text-tertiary)">' + (r.fail==null?'—':pctv(r.fail*100,2)) + '</td>'
         + '<td style="padding:5px 8px;text-align:right;font-weight:700;color:' + (d1>=0?'#12a35f':'#e5484d') + '">' + sgn(d1) + '</td>'
         + '<td style="padding:5px 8px;text-align:right;color:' + (d2>=0?'#12a35f':'#e5484d') + '">' + sgn(d2) + '</td></tr>'; }).join('')
     + '<tr style="border-top:2px solid var(--border);background:var(--surface2)"><td style="padding:6px 8px;font-weight:800">SKUPAJ</td>'
@@ -17311,7 +17311,7 @@ function semRenderProfit(){
     + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + eur(spendSum) + '</td>'
     + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + (cpa==null?'—':eur(cpa)) + '</td>'
     + '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + (poas==null?'var(--text)':(poas>=1?'#12a35f':'#e5484d')) + '">' + (poas==null?'—':nm(poas)+'×') + '</td>'
-    + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + (failEff==null?'—':pctv(failEff*100,0)) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;font-weight:800">' + (failEff==null?'—':pctv(failEff*100,2)) + '</td>'
     + '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + pc + '">' + sgn(profit) + '</td>'
     + '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + rc + '">' + sgn(real) + '</td></tr></table>';
 
@@ -17364,7 +17364,7 @@ function semCompute(){
     const rvc = wAvg('rvc_per_order');               // UTEŽNO povprečje (utež = orders)
     const rvcB = wAvg('rvc_gross_per_order');
     const fe = (SEMD.fail_rates || {})[m] || {};
-    const fail = (fe.fail_rate===null||fe.fail_rate===undefined||fe.fail_rate==='') ? null : fe.fail_rate/100;
+    const fail = (fe.fail_rate===null||fe.fail_rate===undefined||fe.fail_rate==='') ? null : parseFloat(String(fe.fail_rate).replace(',','.'))/100;
     const fixedC = Number(st.reserve) || 0;      // fiksni stroški na naročilo (faktura, ovojnica, trak, karton)
     let be=null, beGross=null, target=null, down=null;
     if (rvc!=null && fail!=null){

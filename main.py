@@ -28515,7 +28515,9 @@ async def semafor_failrate(data: dict):
             e = d["fail_rates"].setdefault(m, {})
         if "fail_rate" in data:
             try:
-                e["fail_rate"] = float(data["fail_rate"])
+                # robustno: sprejmi tudi vejico (18,24 → 18.24), zaokroži na 2 decimalki
+                _fr = float(str(data["fail_rate"]).replace(",", "."))
+                e["fail_rate"] = round(_fr, 2)
             except Exception:
                 return {"ok": False, "error": "Neveljaven fail rate."}
         if "note" in data:
