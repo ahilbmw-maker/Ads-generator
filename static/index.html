@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-20 16:00</div>
+      <div class="sidebar-logo-sub">build 2026-09-20 16:15</div>
     </div>
   </div>
 
@@ -17380,6 +17380,7 @@ function semCompute(){
   const start = _s.toISOString().slice(0,10);
   const inWin = snaps.filter(x => x.date >= start && x.date <= latest);
   const rows = [];
+  const _effRatesFull = _effectiveFailRates();
   for (const m of SEM_MARKETS){
     const ms = inWin.filter(x => x.market === m && (x.orders||0) > 0);
     if (!ms.length) continue;                        // brez posnetka v oknu → ne prikaži
@@ -17387,7 +17388,7 @@ function semCompute(){
     const wAvg = f => { let n=0,d=0; ms.forEach(x=>{ const v=x[f]; if(v!=null){ n += v*(x.orders||0); d += (x.orders||0);} }); return d? n/d : null; };
     const rvc = wAvg('rvc_per_order');               // UTEŽNO povprečje (utež = orders)
     const rvcB = wAvg('rvc_gross_per_order');
-    const fe = (SEMD.fail_rates || {})[m] || {};
+    const fe = _effRatesFull[m] || {};
     const fail = (fe.fail_rate===null||fe.fail_rate===undefined||fe.fail_rate==='') ? null : parseFloat(String(fe.fail_rate).replace(',','.'))/100;
     const fixedC = Number(st.reserve) || 0;      // fiksni stroški na naročilo (faktura, ovojnica, trak, karton)
     let be=null, beGross=null, target=null, down=null;
