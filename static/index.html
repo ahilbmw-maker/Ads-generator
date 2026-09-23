@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-20 15:15</div>
+      <div class="sidebar-logo-sub">build 2026-09-20 15:45</div>
     </div>
   </div>
 
@@ -16902,7 +16902,31 @@ function semStatsQuick(n){
 function semStatsRows(){
   const f = (document.getElementById('semStatFrom')||{}).value || '0000-01-01';
   const t = (document.getElementById('semStatTo')||{}).value || '9999-12-31';
-  const fr = SEMD.fail_rates || {};
+// vrne EFEKTIVNE fail_rate za vse trge — ista prioriteta kot vnos (ta mesec → podedovano → splošno)
+// tako izračuni uporabljajo PRAVE mesečne decimalke, ne zaokroženih splošnih
+function _effectiveFailRates(){
+  const out = {};
+  const bym = SEMD.fail_rates_by_month || {};
+  const gen = SEMD.fail_rates || {};
+  const curMonth = (typeof _semFailMonth !== 'undefined' && _semFailMonth) ? _semFailMonth : null;
+  const allMarkets = new Set([...Object.keys(gen), ...Object.values(bym).flatMap(mm=>Object.keys(mm||{}))]);
+  allMarkets.forEach(m => {
+    let val = null, note = '';
+    // 1) ta mesec
+    if(curMonth && bym[curMonth] && bym[curMonth][m] && bym[curMonth][m].fail_rate!=null && bym[curMonth][m].fail_rate!==''){
+      val = bym[curMonth][m].fail_rate; note = bym[curMonth][m].note||'';
+    } else {
+      // 2) podedovano iz prejšnjih mesecev
+      const months = Object.keys(bym).filter(k => curMonth ? k < curMonth : true).sort().reverse();
+      for(const mk of months){ const e=(bym[mk]||{})[m]; if(e && e.fail_rate!=null && e.fail_rate!==''){ val=e.fail_rate; note=e.note||''; break; } }
+      // 3) splošno
+      if(val==null){ const g=gen[m]; if(g && g.fail_rate!=null && g.fail_rate!==''){ val=g.fail_rate; note=g.note||''; } }
+    }
+    if(val!=null) out[m] = {fail_rate: val, note};
+  });
+  return out;
+}
+  const fr = _effectiveFailRates();
   const dates = [...new Set([...((SEMD.snapshots||[]).map(x=>x.date)), ...((SEMD.spend||[]).map(x=>x.date))])]
     .filter(d => d >= f && d <= t).sort().reverse();
   return dates.map(date => {
@@ -17049,7 +17073,7 @@ function semRenderProjection(){
       + '<div style="font-size:12.5px;color:var(--text-secondary);margin-top:6px">Za danes še ni vmesnega RVC posnetka — vnesi ga in projekcija se izriše.</div></div>';
     return;
   }
-  const fr = SEMD.fail_rates || {};
+  const fr = _effectiveFailRates();
   let orders=0, rvcSum=0, realSum=0, fb=0, g=0;
   const noFail = [];
   snaps.forEach(s => {
@@ -17184,7 +17208,7 @@ function semRenderProfit(){
       + semDayChips(date) + '</div>';
     return;
   }
-  const fr = SEMD.fail_rates || {};
+  const fr = _effectiveFailRates();
   const seen = new Set([...snaps.map(x=>x.market), ...spend.map(x=>x.market)]);
   let rvcSum=0, realSum=0, fbSum=0, gSum=0, ordSum=0, grossSum=0;
   const noFail = [], noSnap = [], rows = [];
