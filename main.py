@@ -28483,6 +28483,48 @@ async def semafor_snapshot(data: dict):
         return {"ok": True, "saved": len(rows), "overwritten": conflicts if force else []}
 
 
+@app.get("/semafor-fail-debug")
+async def semafor_fail_debug():
+    """Diagnostika: pokaži surove fail_rate vrednosti v bazi (da vidimo, ali so zaokrožene ali z vejico)."""
+    d = _semafor_load()
+    out = {}
+    for m, e in (d.get("fail_rates") or {}).items():
+        out[m] = {"raw": repr(e.get("fail_rate")), "tip": type(e.get("fail_rate")).__name__}
+    # tudi by_month
+    bym = {}
+    for ym, markets in (d.get("fail_rates_by_month") or {}).items():
+        bym[ym] = {m: repr(e.get("fail_rate")) for m, e in (markets or {}).items()}
+    return {"ok": True, "fail_rates": out, "by_month": bym}
+
+
+@app.post("/semafor-fail-normalize")
+async def semafor_fail_normalize():
+    """Popravi VSE fail_rate v bazi: string z vejico → število (18,24 → 18.24), zaokroži na 2 decimalki.
+    OPOMBA: če je vrednost že cela (npr. 19 namesto 18.24), prave decimalke NI mogoče obnoviti — treba znova vpisati."""
+    d = _semafor_load()
+    popravljeni = []
+    def _fix(e, kje):
+        v = e.get("fail_rate")
+        if v is None or v == "":
+            return
+        try:
+            nv = round(float(str(v).replace(",", ".")), 2)
+            if repr(nv) != repr(v):
+                e["fail_rate"] = nv
+                popravljeni.append(f"{kje}: {v!r} → {nv}")
+            else:
+                e["fail_rate"] = nv
+        except Exception:
+            pass
+    for m, e in (d.get("fail_rates") or {}).items():
+        _fix(e, m)
+    for ym, markets in (d.get("fail_rates_by_month") or {}).items():
+        for m, e in (markets or {}).items():
+            _fix(e, f"{ym}/{m}")
+    _semafor_save(d)
+    return {"ok": True, "popravljeni": popravljeni, "st": len(popravljeni)}
+
+
 @app.post("/semafor-failrate")
 async def semafor_failrate(data: dict):
     from datetime import datetime as _dt
