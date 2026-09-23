@@ -12881,13 +12881,66 @@ function renderIOC(){
   const skuSet = new Set(vsiIzdelki.map(x => x.sku));
   const kosovSum = vsiIzdelki.reduce((a,x) => a + (x.zaloga||0), 0);
   const d = {sku_stevilo: skuSet.size, kosov: kosovSum, izdelki: vsiIzdelki};
-  const iocKey = iocKeys[0];
-  el.style.cursor = 'pointer';
-  el.setAttribute('onclick', 'openIOC()');
-  el.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:16px">PALETNO SKLADIŠČE</div>'
-    + '<div style="margin-bottom:16px"><div style="font-size:38px;font-weight:800;color:#8a5a00;line-height:1">'+d.sku_stevilo+'</div><div style="font-size:13px;color:var(--txt2)">različnih izdelkov</div></div>'
-    + '<div style="margin-bottom:20px"><div style="font-size:38px;font-weight:800;line-height:1">'+d.kosov+'</div><div style="font-size:13px;color:var(--txt2)">kosov skupaj</div></div>'
-    + '<div style="color:#2563eb;font-size:14px;font-weight:700">klikni za seznam →</div>';
+  el.style.cursor = 'default';
+  el.removeAttribute('onclick');
+
+  // ZBERI PALETE P1-P30 iz sekundarnih pozicij (P1, P25, P1-A ... → paleta P<n>)
+  const palete = {};
+  Object.keys(DATA.imenske || {}).forEach(k => {
+    const m = k.trim().match(/^P\s*0*(\d{1,2})\b/i);
+    if(m){
+      const n = parseInt(m[1]);
+      if(n>=1 && n<=30){
+        const pn = 'P'+n;
+        if(!palete[pn]) palete[pn] = {sku:new Set(), kosov:0, izdelki:[]};
+        (DATA.imenske[k].izdelki || []).forEach(it => { palete[pn].sku.add(it.sku); palete[pn].kosov += (it.zaloga||0); palete[pn].izdelki.push(it); });
+      }
+    }
+  });
+  window._paleteData = palete;
+
+  // IOC brez palete: izdelki v IOC ključih, ki NISO na paleti P1-P30
+  // (d.izdelki so vsi IOC; palete pobirajo P-je posebej — IOC brez palete je tisto, kar je v "IOC Skladisce" ključu)
+  const iocBrezPalete = {sku: skuSet.size, kosov: kosovSum, izdelki: vsiIzdelki};
+
+  // barvni semafor za palete
+  const _palKosi = Object.values(palete).map(p => p.kosov);
+  const _maxPal = Math.max(1, ..._palKosi.length ? _palKosi : [1]);
+  function palColor(kosov){
+    if(!kosov) return 'background:rgba(150,150,150,0.10);color:#999';
+    const dd = Math.min(1, kosov / _maxPal);
+    const a = (0.16 + dd*0.65).toFixed(3);
+    return 'background:rgba(40,150,80,'+a+');color:'+(dd>=0.5?'#fff':'#256025');
+  }
+
+  let html = '<div style="font-size:15px;font-weight:800;margin-bottom:12px">PALETNO SKLADIŠČE (IOC)</div>';
+  // PALETE P1-P30 mreža
+  html += '<div style="font-size:11px;font-weight:700;color:#8a5a00;letter-spacing:0.5px;margin-bottom:8px">PALETE P1–P30</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:14px">';
+  for(let n=1; n<=30; n++){
+    const pn = 'P'+n;
+    const p = palete[pn];
+    const kosov = p ? p.kosov : 0;
+    const skuSt = p ? p.sku.size : 0;
+    const style = palColor(kosov);
+    const attrs = p ? ('onclick="openPaleta(\''+pn+'\')" style="cursor:pointer;'+style) : ('style="'+style);
+    html += '<div '+attrs+';border-radius:6px;padding:6px 3px;text-align:center;min-height:40px;display:flex;flex-direction:column;justify-content:center">'
+      + '<div style="font-weight:800;font-size:12.5px">'+pn+'</div>'
+      + '<div style="font-size:8px;opacity:0.85">'+(kosov ? (skuSt+'·'+kosov) : '—')+'</div></div>';
+  }
+  html += '</div>';
+  // IOC brez palete — samo če kaj je
+  if(iocBrezPalete.kosov > 0){
+    html += '<div onclick="openIOC()" style="cursor:pointer;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:10px 12px">'
+      + '<div style="font-size:11px;font-weight:700;color:#8a5a00;margin-bottom:2px">IOC — brez palete</div>'
+      + '<div style="font-size:13px"><b>'+iocBrezPalete.sku+'</b> izdelkov · <b>'+iocBrezPalete.kosov+'</b> kos <span style="color:#2563eb;font-weight:600">→</span></div></div>';
+  }
+  el.innerHTML = html;
+}
+function openPaleta(pn){
+  const p = (window._paleteData||{})[pn];
+  if(!p) return;
+  showPanel('Paleta '+pn+' — paletno (IOC)', p.izdelki || []);
 }
 
 function shelfColor(sku){ if(!sku) return {fill:'rgba(150,150,150,0.13)', txt:'#888', side:'rgba(150,150,150,0.08)', lbl:'prazno'}; if(sku<5) return {fill:'rgba(245,158,11,0.26)', txt:'#8a5a00', side:'rgba(245,158,11,0.15)', lbl:'skoraj prazno'}; return {fill:'rgba(34,197,94,0.24)', txt:'#15803d', side:'rgba(34,197,94,0.14)', lbl:'polno'}; }
