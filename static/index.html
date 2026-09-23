@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-20 15:45</div>
+      <div class="sidebar-logo-sub">build 2026-09-20 16:00</div>
     </div>
   </div>
 
@@ -16899,9 +16899,6 @@ function semStatsQuick(n){
   }
   semStatsRender();
 }
-function semStatsRows(){
-  const f = (document.getElementById('semStatFrom')||{}).value || '0000-01-01';
-  const t = (document.getElementById('semStatTo')||{}).value || '9999-12-31';
 // vrne EFEKTIVNE fail_rate za vse trge — ista prioriteta kot vnos (ta mesec → podedovano → splošno)
 // tako izračuni uporabljajo PRAVE mesečne decimalke, ne zaokroženih splošnih
 function _effectiveFailRates(){
@@ -16926,6 +16923,9 @@ function _effectiveFailRates(){
   });
   return out;
 }
+function semStatsRows(){
+  const f = (document.getElementById('semStatFrom')||{}).value || '0000-01-01';
+  const t = (document.getElementById('semStatTo')||{}).value || '9999-12-31';
   const fr = _effectiveFailRates();
   const dates = [...new Set([...((SEMD.snapshots||[]).map(x=>x.date)), ...((SEMD.spend||[]).map(x=>x.date))])]
     .filter(d => d >= f && d <= t).sort().reverse();
