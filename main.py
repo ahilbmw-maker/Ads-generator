@@ -10765,7 +10765,12 @@ async def marza_trgi_stran(request: Request):
     <select id="razpon" onchange="savePref();lim=300;blim=300;render()" style="padding:6px 9px;border:1px solid var(--bd);border-radius:7px;background:#fff;font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer">
       <option value="all">Vse</option><option value="neg">&lt; 0 €</option><option value="lt7">&lt; 7 €</option><option value="7-8">7–8 €</option><option value="8-9">8–9 €</option>
       <option value="9-10">9–10 €</option><option value="10-11">10–11 €</option><option value="11-12">11–12 €</option><option value="12-15">12–15 €</option>
-      <option value="15-20">15–20 €</option><option value="gte20">≥ 20 €</option></select></label>
+      <option value="15-20">15–20 €</option><option value="gte20">≥ 20 €</option></select>
+    <span style="display:flex;align-items:center;gap:4px" title="Lasten razpon razlike zdaj (€). Ko je vpisan, ima prednost pred izbiro na levi. Negativne vrednosti so dovoljene.">
+      od <input type="number" id="rOd" step="0.5" placeholder="—" oninput="razCustom()" style="width:62px;padding:5px 7px;border:1px solid var(--bd);border-radius:7px;font-family:inherit;font-size:13.5px">
+      do <input type="number" id="rDo" step="0.5" placeholder="—" oninput="razCustom()" style="width:62px;padding:5px 7px;border:1px solid var(--bd);border-radius:7px;font-family:inherit;font-size:13.5px"> €
+      <button type="button" id="rClr" onclick="rOd.value='';rDo.value='';razCustom()" title="Počisti razpon" style="display:none;border:0;background:none;cursor:pointer;color:var(--txt3);font-size:15px;padding:0 2px">×</button>
+    </span></label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s ✓ (popravljeno) ali potrjene v novem feedu. Samo odprti v CMS (✎) in opozorila ostanejo vidni."><input type="checkbox" id="skrijUr" onchange="savePref();render()"> Skrij urejene</label>
   <button class="bato-btn" id="batoBtn" onclick="toggleBato()" title="Redne cene, ki se ne končajo na bato (x,99 / x99 / x9)">💲 Bato cene</button>
@@ -10933,7 +10938,16 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-zn]'); if(
   addEventListener('scroll',()=>{z.style.display='none';},true);
 })();
 // ═══ RAZLIKA (cena brez DDV − NC, €) — enak razpon in barve kot v Price Checkerju ═══
-function razMatch(v){const f=(document.getElementById('razpon')||{}).value||'all'; if(f==='all') return true;
+// lasten razpon OD–DO (razlika zdaj v €, s predznakom) ima prednost pred izbiro razpona
+function razOdDo(){const n=id=>{const t=String((document.getElementById(id)||{}).value||'').replace(',','.').trim();return t===''?null:parseFloat(t);};
+  const a=n('rOd'), b=n('rDo'); return (a==null||isNaN(a))&&(b==null||isNaN(b))?null:[isNaN(a)?null:a, isNaN(b)?null:b];}
+function razCustom(){const r=razOdDo(); const s=document.getElementById('razpon');
+  if(r){s.value='all'; s.disabled=true; s.style.opacity='.45';} else {s.disabled=false; s.style.opacity='';}
+  document.getElementById('rClr').style.display=r?'':'none'; lim=300; blim=300; savePref(); render();}
+function razMatch(v){
+  const r=razOdDo();
+  if(r){ if(v==null||isNaN(v)) return false; if(r[0]!=null && v<r[0]) return false; if(r[1]!=null && v>r[1]) return false; return true; }
+  const f=(document.getElementById('razpon')||{}).value||'all'; if(f==='all') return true;
   if(v==null||isNaN(v)) return false; if(f==='neg') return v<0; const d=Math.abs(v);
   switch(f){case 'lt7':return d<7;case '7-8':return d>=7&&d<8;case '8-9':return d>=8&&d<9;case '9-10':return d>=9&&d<10;
     case '10-11':return d>=10&&d<11;case '11-12':return d>=11&&d<12;case '12-15':return d>=12&&d<15;case '15-20':return d>=15&&d<20;case 'gte20':return d>=20;}
@@ -11122,10 +11136,10 @@ function izvoziBato(){
   a.download='bato_'+D.oznaka+'_'+zz+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
 // vse izbire (trg, pogled, filtri, sortiranje) se zapomnijo — po osvežitvi strani ostane isto
-function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,sk:skrijUr.checked,rz:razpon.value,zn:[...ZN],
+function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,sk:skrijUr.checked,rz:razpon.value,ro:rOd.value,rd:rDo.value,zn:[...ZN],
   bm:document.getElementById('bMin').value,bp:document.getElementById('bPrag').value,
   t:trg,b:BATO,f:flt,s1:sk,d1:sd,s2:bsk,d2:bsd}));}catch(e){}}
-try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;skrijUr.checked=!!p.sk;if(p.rz)razpon.value=p.rz;if(Array.isArray(p.zn))ZN=new Set(p.zn);if(p.bm!=null)document.getElementById('bMin').value=p.bm;if(p.bp!=null)document.getElementById('bPrag').value=p.bp;
+try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;skrijUr.checked=!!p.sk;if(p.rz)razpon.value=p.rz;if(p.ro!=null)rOd.value=p.ro;if(p.rd!=null)rDo.value=p.rd;if(razOdDo()){razpon.disabled=true;razpon.style.opacity='.45';rClr.style.display='';}if(Array.isArray(p.zn))ZN=new Set(p.zn);if(p.bm!=null)document.getElementById('bMin').value=p.bm;if(p.bp!=null)document.getElementById('bPrag').value=p.bp;
   if(!new URLSearchParams(location.search).get('trg') && p.t && TRGI.some(t=>t[0]===p.t)) trg=p.t;
   if(p.s1){sk=p.s1;sd=p.d1||1;} if(p.s2){bsk=p.s2;bsd=p.d2||1;}
   if(p.f){const ch=document.querySelector('.chip[data-f="'+p.f+'"]'); if(ch){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));ch.classList.add('on');flt=p.f;}}
