@@ -10266,16 +10266,6 @@ async def marza_trgi(request: Request, trg: str = "sl"):
     # NC iz zaloge: SKU → (nc, zaloga); prednost vrstica z NC > 0
     nc_by, zal_by, pid_to_sku = {}, {}, {}
     nas_sku, ext_sku = set(), set()
-    # SKU-ji v ALARMU = trenutni seznam price checkerja (skupni cache, posodobi se ob vsaki spremembi)
-    alarm_sku = set()
-    try:
-        if PRICE_CHECKER_CACHE.exists():
-            for r0 in (json.loads(PRICE_CHECKER_CACHE.read_text(encoding="utf-8")).get("rows") or []):
-                a = str(r0.get("sku") or "").strip().upper()
-                if a:
-                    alarm_sku.add(a)
-    except Exception:
-        pass
     if STOCK_CSV_FILE.exists():
         import csv as _csv
         from io import StringIO as _SIO
@@ -10393,7 +10383,6 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             "nacin": nacin,
             "parser": _je_parser(nc_sku or sku, nacin, d.get("brand")),
             "znamka": d.get("brand") or "",
-            "alarm": bool(alarm_sku & {str(sku or "").upper(), str(nc_sku or "").upper()} - {""}),
             "na_voljo": (d.get("availability") or ""),
         })
     z_nc = [r for r in rows if r["marza_pct"] is not None]
@@ -10403,7 +10392,6 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             "st": len(rows), "st_z_nc": len(z_nc), "st_brez_nc": len(rows) - len(z_nc),
             "povp_marza": povp, "nacini": nacini,
             "znamke": dict(sorted(znamke.items(), key=lambda kv: -kv[1])), "nase_znamke": list(MARZA_NASE_ZNAMKE),
-            "st_alarm": sum(1 for r in rows if r["alarm"]), "alarm_skupaj": len(alarm_sku),
             "st_parser": sum(1 for r in rows if r["parser"] is True),
             "st_nasi": sum(1 for r in rows if r["parser"] is False), "rows": rows}
 
@@ -10427,6 +10415,8 @@ async def marza_trgi_stran(request: Request):
   .tab{padding:8px 15px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;color:var(--txt2)}
   .tab.on{background:var(--acc);border-color:var(--acc);color:#fff}
   .stats{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  a.ext{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;margin-right:7px;border-radius:5px;background:#eff6ff;color:#2563eb;font-size:12px;font-weight:700;text-decoration:none;vertical-align:middle;border:1px solid #dbeafe}
+  a.ext:hover{background:#2563eb;color:#fff;border-color:#2563eb}
   .st{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;min-width:140px;flex:1}
   .st b{display:block;font-size:24px;font-weight:800;line-height:1.1}
   .st span{font-size:12px;color:var(--txt2)}
@@ -10470,7 +10460,6 @@ async def marza_trgi_stran(request: Request):
   <button class="chip" data-f="ugib" onclick="setF(this)" title="SKU najden z ugibanjem iz imena slike — preveri, ali je pravi">⚠ Ugibanje</button>
   <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
   <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Pokaže samo izdelke z g:brand = Maaarket (vse druge znamke so parserji). Brez znamke odloča zaloga."><input type="checkbox" id="samoNasi" onchange="savePref();render()"> Samo naši (brez parserjev)</label>
-  <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Samo SKU-ji, ki so trenutno v alarmu (seznam v Price Checkerju)"><input type="checkbox" id="samoAlarm" onchange="savePref();render()"> 🚨 Samo v alarmu</label>
   <button class="btn" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
 <div class="wrap"><table><thead><tr>
@@ -10512,7 +10501,6 @@ async function load(){
     (function(){const n=D.nacini||{};let zan=0,ug=0;Object.entries(n).forEach(([k,v])=>{if(k==='ni')return;if(k.startsWith('slika'))ug+=v;else zan+=v;});
       return '<div class="st"><b><span style="color:#15803d">'+zan+'</span> / <span style="color:#a16207">'+ug+'</span></b><span>zanesljivo / ugibanje iz slike</span></div>';})()+
     '<div class="st"><b>'+(D.st_nasi||0)+' / <span style="color:#64748b">'+(D.st_parser||0)+'</span></b><span>naši / parserji (po g:brand)</span></div>'+
-    '<div class="st"><b style="color:#b91c1c">'+(D.st_alarm||0)+'</b><span>v alarmu (od '+(D.alarm_skupaj||0)+' SKU v Price Checkerju)</span></div>'+
     (function(){const z=Object.entries(D.znamke||{});if(!z.length)return '';const nase=(D.nase_znamke||[]);
       const pill=([k,v])=>{const nas=nase.some(n=>k.toLowerCase().includes(n));return '<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 7px;border-radius:10px;font-size:11px;background:'+(nas?'#dcfce7;color:#166534':(k==='(prazno)'?'#fef3c7;color:#92400e':'#f1f5f9;color:#475569'))+'">'+esc(k)+' <b>'+v.toLocaleString('sl-SI')+'</b></span>';};
       return '<div class="st" style="flex-basis:100%;max-width:none;text-align:left"><span style="margin-bottom:4px">g:brand v feedu — zeleno = naše ('+esc(nase.join(', '))+'), sivo = parser, rumeno = brez znamke (odloča zaloga)</span><div>'+z.slice(0,40).map(pill).join('')+(z.length>40?' <span class="dim">+'+(z.length-40)+' drugih</span>':'')+'</div></div>';})();
@@ -10524,7 +10512,6 @@ function filtered(){
     if(q && !((x.sku||'').toLowerCase().includes(q)||(x.naziv||'').toLowerCase().includes(q)||(x.znamka||'').toLowerCase().includes(q))) return false;
     if(z && !(x.zaloga>0)) return false;
     if(document.getElementById('samoNasi').checked && x.parser!==false) return false;
-    if(document.getElementById('samoAlarm').checked && !x.alarm) return false;
     const m=x.marza_pct;
     if(flt==='nonc') return m==null;
     if(flt==='ugib') return (x.nacin||'').startsWith('slika');
@@ -10550,7 +10537,7 @@ function render(){
   const r=filtered(), vis=r.slice(0,lim);
   document.getElementById('tb').innerHTML = vis.length ? vis.map(x=>
     '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'">':'')+'</td>'+
-    '<td class="sku">'+esc(x.sku||'?')+nac(x.nacin)+(x.alarm?' <span title="V alarmu (Price Checker)" style="font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:#fee2e2;color:#b91c1c">ALARM</span>':'')+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:10px;font-weight:400">NC iz '+esc(x.nc_sku)+'</div>':'')+'</td>'+
+    '<td class="sku">'+(x.url?'<a class="ext" href="'+esc(x.url)+'" target="_blank" rel="noopener" title="Odpri izdelek v novem oknu">↗</a>':'')+esc(String(x.sku||'?').toUpperCase())+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:10px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a></td>'+
     '<td class="r">'+f2(x.koncna)+' <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
     '<td class="r">'+f2(x.eur)+'</td><td class="r">'+f2(x.neto)+'</td>'+
@@ -10566,14 +10553,14 @@ function izvozi(){
   if(!D||!D.ok) return;
   const r=filtered(), e=v=>{v=v==null?'':String(v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
   const n=v=>v==null?'':String(v).replace('.',',');
-  let csv='\ufeffSKU;Način;Alarm;Parser;Znamka;NC SKU;Naziv;Cena;Valuta;Akcija;Cena EUR;Brez DDV;NC;Marža EUR;Marža %;Zaloga;URL\n';
-  r.forEach(x=>{csv+=[e(x.sku),e(x.nacin),x.alarm?'da':'',x.parser===true?'da':(x.parser===false?'ne':'?'),e(x.znamka),e(x.nc_sku),e(x.naziv),n(x.koncna),x.valuta,x.akcija?'da':'',n(x.eur),n(x.neto),n(x.nc),n(x.marza_eur),n(x.marza_pct),x.zaloga||0,e(x.url)].join(';')+'\n';});
+  let csv='\ufeffSKU;Način;Parser;Znamka;NC SKU;Naziv;Cena;Valuta;Akcija;Cena EUR;Brez DDV;NC;Marža EUR;Marža %;Zaloga;URL\n';
+  r.forEach(x=>{csv+=[e(String(x.sku||'').toUpperCase()),e(x.nacin),x.parser===true?'da':(x.parser===false?'ne':'?'),e(x.znamka),e(String(x.nc_sku||'').toUpperCase()),e(x.naziv),n(x.koncna),x.valuta,x.akcija?'da':'',n(x.eur),n(x.neto),n(x.nc),n(x.marza_eur),n(x.marza_pct),x.zaloga||0,e(x.url)].join(';')+'\n';});
   const d=new Date(), z=d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)+'_'+('0'+d.getHours()).slice(-2)+('0'+d.getMinutes()).slice(-2);
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   a.download='marza_'+D.oznaka+'_'+z+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
-function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,n:samoNasi.checked,a:samoAlarm.checked}));}catch(e){}}
-try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;samoNasi.checked=!!p.n;samoAlarm.checked=!!p.a;}catch(e){}
+function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,n:samoNasi.checked}));}catch(e){}}
+try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;samoNasi.checked=!!p.n;}catch(e){}
 tabs(); load();
 </script></body></html>"""
     return HTMLResponse(html)
