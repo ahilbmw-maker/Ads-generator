@@ -10730,7 +10730,10 @@ async def marza_trgi_stran(request: Request):
   .wrap{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow-x:auto}
   table{border-collapse:collapse;width:100%;font-size:13px;min-width:900px}
   th{position:sticky;top:0;background:#fafbfc;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--txt2);padding:7px 7px;border-bottom:1px solid var(--bd);cursor:pointer;white-space:nowrap;user-select:none}
-  th.r,td.r{text-align:right}
+  th.r,td.r{text-align:center}
+  th .sa{display:inline-block;width:10px;margin-left:3px;font-size:10px;color:#cbd5e1}
+  th .sa.on{color:var(--acc)}
+  th:hover .sa{color:var(--txt2)}
   td{padding:5px 7px;border-bottom:1px solid #f0f1f4;vertical-align:middle}
   tr:hover td{background:#f7f8fb}
   .img{width:38px;height:38px;border-radius:6px;object-fit:cover;background:#f0f1f4;display:block;cursor:zoom-in}
@@ -10825,7 +10828,7 @@ const f2=n=>n==null?'—':n.toLocaleString('sl-SI',{minimumFractionDigits:2,maxi
 function tabs(){document.getElementById('tabs').innerHTML=TRGI.map(([k,l])=>'<button class="tab'+(k===trg?' on':'')+'" onclick="pick(\''+k+'\')">'+l+'</button>').join('');}
 function pick(k){trg=k;lim=300;history.replaceState(null,'','?trg='+k+(EMBED?'&embed=1':''));savePref();tabs();load();}
 function setF(b){if(BATO)toggleBato();document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));b.classList.add('on');flt=b.dataset.f;lim=300;savePref();render();}
-function srt(k){if(sk===k)sd=-sd;else{sk=k;sd=(k==='sku'||k==='naziv')?-1:1;}savePref();render();}
+function srt(k){if(sk===k)sd=-sd;else{sk=k;sd=1;}savePref();render();}
 async function load(){
   document.getElementById('tb').innerHTML='<tr><td colspan="13" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr>';
   loadFeedInfo();
@@ -10874,7 +10877,21 @@ function nac(n){
   return ' <span title="'+t[3]+(os?' · NC iz osnovnega SKU':'')+'" style="font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+t[1]+';color:'+t[2]+';font-family:inherit">'+t[0]+'</span>';
 }
 function mcls(m){return m<0?'m-neg':m<20?'m-low':m<40?'m-mid':'m-ok';}
-function render(){ if(BATO) return renderBato(); return renderMain(); }
+function render(){ if(BATO) renderBato(); else renderMain(); sortArrows(); }
+// puščice smeri sortiranja v glavi: ▲ = A–Z / min→max, ▼ = Z–A / max→min
+function sortArrows(){
+  document.querySelectorAll('th[onclick]').forEach(th=>{
+    const m=(th.getAttribute('onclick')||'').match(/^(b?srt)\('(\w+)'\)/); if(!m) return;
+    const b=m[1]==='bsrt', k=m[2], act=b?bsk===k:sk===k;
+    const txt=k==='sku'||k==='naziv'||k==='note';
+    const asc=(b&&txt)?bsd===-1:(b?bsd===1:sd===1);
+    let a=th.querySelector('.sa'); if(!a){a=document.createElement('span');a.className='sa';th.appendChild(a);}
+    a.className='sa'+(act?' on':''); a.textContent=act?(asc?'▲':'▼'):'↕';
+    if(th.dataset.t0==null) th.dataset.t0=th.title||'';
+    const smer=act?(txt?(asc?'A–Z':'Z–A'):(asc?'naraščajoče (min → max)':'padajoče (max → min)'))+' — klik obrne':'klik za sortiranje';
+    th.title=(th.dataset.t0?th.dataset.t0+' · ':'')+smer;
+  });
+}
 function renderMain(){
   if(!D||!D.ok) return;
   const r=filtered(), vis=r.slice(0,lim);
