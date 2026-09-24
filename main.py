@@ -10323,6 +10323,34 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             return True
         return None
 
+    # ── CMS (Nova) ID: vedno SLO product ID, ker je admin en sam (api.maaarket.si/nova) ──
+    sl_feed = feed_by_lang.get("sl", {}) or {}
+    def _img_key(u):
+        u = (u or "").split("?")[0].rstrip("/")
+        return u.rsplit("/", 1)[-1].lower()
+    sl_sku_gid = {}
+    if trg != "sl":
+        for _gid, _d in sl_feed.items():
+            _m = (_d.get("mpn") or "").strip().upper()
+            if _m:
+                sl_sku_gid.setdefault(_m, _gid)
+            for _img in (_d.get("all_images") or []):
+                for _sk in _extract_skus_from_image_url(_img):
+                    if _sk:
+                        sl_sku_gid.setdefault(_sk.upper(), _gid)
+    def _cms_id(g_id, d, sku, nc_sku):
+        """SLO feed: g:id je že CMS ID. Drugi trgi: isti g:id v SLO feedu (potrjen z enako sliko) → SKU → SLO g:id."""
+        if trg == "sl":
+            return str(g_id)
+        sd = sl_feed.get(str(g_id))
+        if sd and _img_key(sd.get("image")) and _img_key(sd.get("image")) == _img_key(d.get("image")):
+            return str(g_id)
+        for k in (sku, nc_sku):
+            k = str(k or "").strip().upper()
+            if k and sl_sku_gid.get(k):
+                return str(sl_sku_gid[k])
+        return None
+
     rows = []
     valute = set()
     nacini = {}
@@ -10382,7 +10410,8 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             "zaloga": zal_by.get((nc_sku or sku or "").upper(), 0),
             "nacin": nacin,
             "parser": _je_parser(nc_sku or sku, nacin, d.get("brand")),
-            "znamka": d.get("brand") or "",
+            "znamka": (d.get("brand") or "").strip(),
+            "cms_id": _cms_id(g_id, d, sku, nc_sku),
             "na_voljo": (d.get("availability") or ""),
         })
     z_nc = [r for r in rows if r["marza_pct"] is not None]
@@ -10408,35 +10437,41 @@ async def marza_trgi_stran(request: Request):
   *{box-sizing:border-box}
   :root{--bg:#f4f5f7;--card:#fff;--bd:#e3e6eb;--txt:#16181d;--txt2:#5d6470;--txt3:#9aa1ad;--acc:#4f46e5}
   body{font-family:'DM Sans',-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--txt);padding:18px 22px}
-  h1{font-size:20px;margin:0}
+  h1{font-size:23px;margin:0}
   .top{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
-  .back{padding:7px 12px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:13px}
+  .back{padding:7px 12px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:14.5px}
   .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
-  .tab{padding:8px 15px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;color:var(--txt2)}
+  .tab{padding:8px 15px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:14.5px;font-weight:700;color:var(--txt2)}
   .tab.on{background:var(--acc);border-color:var(--acc);color:#fff}
   .stats{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
-  a.ext{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;margin-right:7px;border-radius:5px;background:#eff6ff;color:#2563eb;font-size:12px;font-weight:700;text-decoration:none;vertical-align:middle;border:1px solid #dbeafe}
+  a.ext{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:7px;border-radius:6px;background:#eff6ff;color:#2563eb;font-size:14px;font-weight:700;text-decoration:none;vertical-align:middle;border:1px solid #dbeafe}
   a.ext:hover{background:#2563eb;color:#fff;border-color:#2563eb}
+  .ext.cms{background:#f5f3ff;color:#7c3aed;border-color:#ede9fe}
+  a.ext.cms:hover{background:#7c3aed;color:#fff;border-color:#7c3aed}
+  .ext.off{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:7px;border-radius:6px;font-size:14px;vertical-align:middle;color:#cbd5e1;border:1px dashed #e2e8f0}
   .st{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;min-width:140px;flex:1}
-  .st b{display:block;font-size:24px;font-weight:800;line-height:1.1}
-  .st span{font-size:12px;color:var(--txt2)}
+  .st b{display:block;font-size:28px;font-weight:800;line-height:1.1}
+  .st span{font-size:13.5px;color:var(--txt2)}
   .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px 12px;margin-bottom:10px}
-  .bar input[type=text]{padding:8px 11px;border:1px solid var(--bd);border-radius:8px;font-family:inherit;font-size:13px;width:240px}
-  .chip{padding:6px 11px;border:1px solid var(--bd);border-radius:7px;background:#fff;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;color:var(--txt2)}
+  .bar input[type=text]{padding:8px 11px;border:1px solid var(--bd);border-radius:8px;font-family:inherit;font-size:14.5px;width:280px}
+  .chip{padding:6px 11px;border:1px solid var(--bd);border-radius:7px;background:#fff;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--txt2)}
   .chip.on{background:#eef2ff;border-color:#a5b4fc;color:#3730a3}
-  .btn{padding:7px 13px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:700;background:#16a34a;color:#fff}
-  .info{font-size:11.5px;color:var(--txt3);margin-left:auto}
+  .btn{padding:7px 13px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:#16a34a;color:#fff}
+  .info{font-size:13px;color:var(--txt3);margin-left:auto}
   .wrap{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow-x:auto}
-  table{border-collapse:collapse;width:100%;font-size:13px;min-width:1000px}
-  th{position:sticky;top:0;background:#fafbfc;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--txt2);padding:9px 10px;border-bottom:1px solid var(--bd);cursor:pointer;white-space:nowrap;user-select:none}
+  table{border-collapse:collapse;width:100%;font-size:15px;min-width:1000px}
+  th{position:sticky;top:0;background:#fafbfc;text-align:left;font-size:12.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--txt2);padding:9px 10px;border-bottom:1px solid var(--bd);cursor:pointer;white-space:nowrap;user-select:none}
   th.r,td.r{text-align:right}
   td{padding:7px 10px;border-bottom:1px solid #f0f1f4;vertical-align:middle}
   tr:hover td{background:#f7f8fb}
-  .img{width:38px;height:38px;border-radius:6px;object-fit:cover;background:#f0f1f4;display:block}
-  .sku{font-weight:700;font-family:ui-monospace,monospace;font-size:12.5px}
+  .img{width:38px;height:38px;border-radius:6px;object-fit:cover;background:#f0f1f4;display:block;cursor:zoom-in}
+  #zoom{position:fixed;z-index:9999;display:none;pointer-events:none;background:#fff;border:1px solid var(--bd);border-radius:12px;padding:8px;box-shadow:0 12px 32px rgba(15,23,42,.18);width:340px}
+  #zoom img{width:100%;height:320px;object-fit:contain;border-radius:8px;background:#f8fafc;display:block}
+  #zoom .zc{font-size:13.5px;margin-top:7px;line-height:1.4}
+  .sku{font-weight:700;font-family:ui-monospace,monospace;font-size:14.5px}
   .naziv{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .naziv a{color:var(--txt);text-decoration:none}.naziv a:hover{color:var(--acc);text-decoration:underline}
-  .akc{font-size:10px;font-weight:700;color:#be185d;background:#fce7f3;padding:1px 6px;border-radius:4px;margin-left:5px}
+  .akc{font-size:11.5px;font-weight:700;color:#be185d;background:#fce7f3;padding:1px 6px;border-radius:4px;margin-left:5px}
   .m{font-weight:800;padding:3px 8px;border-radius:6px;display:inline-block;min-width:58px;text-align:center}
   .m-neg{background:#fee2e2;color:#b91c1c}.m-low{background:#ffedd5;color:#c2410c}.m-mid{background:#fef9c3;color:#854d0e}.m-ok{background:#dcfce7;color:#15803d}
   .dim{color:var(--txt3)}
@@ -10458,8 +10493,7 @@ async def marza_trgi_stran(request: Request):
   <button class="chip" data-f="ok" onclick="setF(this)">&gt; 40 %</button>
   <button class="chip" data-f="nonc" onclick="setF(this)">Brez NC</button>
   <button class="chip" data-f="ugib" onclick="setF(this)" title="SKU najden z ugibanjem iz imena slike — preveri, ali je pravi">⚠ Ugibanje</button>
-  <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
-  <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Pokaže samo izdelke z g:brand = Maaarket (vse druge znamke so parserji). Brez znamke odloča zaloga."><input type="checkbox" id="samoNasi" onchange="savePref();render()"> Samo naši (brez parserjev)</label>
+  <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
   <button class="btn" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
 <div class="wrap"><table><thead><tr>
@@ -10492,6 +10526,7 @@ async function load(){
   if(!D.ok){document.getElementById('tb').innerHTML='<tr><td colspan="10" style="padding:30px;text-align:center;color:#b91c1c">'+esc(D.error||'Napaka')+'</td></tr>';document.getElementById('stats').innerHTML='';return;}
   const fx=Object.entries(D.tecaji||{}).filter(([v])=>v!=='EUR').map(([v,r])=>'1 € = '+(r?r.toLocaleString('sl-SI'):'?')+' '+v).join(' · ');
   document.getElementById('fxInfo').textContent='DDV '+D.ddv+' %'+(fx?' · '+fx:'');
+  D.rows.forEach((r,i)=>r._i=i);
   const neg=D.rows.filter(r=>r.marza_pct!=null&&r.marza_pct<0).length;
   document.getElementById('stats').innerHTML=
     '<div class="st"><b>'+D.st.toLocaleString('sl-SI')+'</b><span>izdelkov v feedu ('+D.oznaka+')</span></div>'+
@@ -10501,9 +10536,8 @@ async function load(){
     (function(){const n=D.nacini||{};let zan=0,ug=0;Object.entries(n).forEach(([k,v])=>{if(k==='ni')return;if(k.startsWith('slika'))ug+=v;else zan+=v;});
       return '<div class="st"><b><span style="color:#15803d">'+zan+'</span> / <span style="color:#a16207">'+ug+'</span></b><span>zanesljivo / ugibanje iz slike</span></div>';})()+
     '<div class="st"><b>'+(D.st_nasi||0)+' / <span style="color:#64748b">'+(D.st_parser||0)+'</span></b><span>naši / parserji (po g:brand)</span></div>'+
-    (function(){const z=Object.entries(D.znamke||{});if(!z.length)return '';const nase=(D.nase_znamke||[]);
-      const pill=([k,v])=>{const nas=nase.some(n=>k.toLowerCase().includes(n));return '<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 7px;border-radius:10px;font-size:11px;background:'+(nas?'#dcfce7;color:#166534':(k==='(prazno)'?'#fef3c7;color:#92400e':'#f1f5f9;color:#475569'))+'">'+esc(k)+' <b>'+v.toLocaleString('sl-SI')+'</b></span>';};
-      return '<div class="st" style="flex-basis:100%;max-width:none;text-align:left"><span style="margin-bottom:4px">g:brand v feedu — zeleno = naše ('+esc(nase.join(', '))+'), sivo = parser, rumeno = brez znamke (odloča zaloga)</span><div>'+z.slice(0,40).map(pill).join('')+(z.length>40?' <span class="dim">+'+(z.length-40)+' drugih</span>':'')+'</div></div>';})();
+    '<div class="st" id="znBox" style="flex-basis:100%;max-width:none;text-align:left"></div>';
+  drawZn();
   render();
 }
 function filtered(){
@@ -10511,7 +10545,7 @@ function filtered(){
   let r=D.rows.filter(x=>{
     if(q && !((x.sku||'').toLowerCase().includes(q)||(x.naziv||'').toLowerCase().includes(q)||(x.znamka||'').toLowerCase().includes(q))) return false;
     if(z && !(x.zaloga>0)) return false;
-    if(document.getElementById('samoNasi').checked && x.parser!==false) return false;
+    if(ZN.size && !ZN.has(x.znamka||'(prazno)')) return false;
     const m=x.marza_pct;
     if(flt==='nonc') return m==null;
     if(flt==='ugib') return (x.nacin||'').startsWith('slika');
@@ -10529,15 +10563,15 @@ function nac(n){
   if(!n) return '';
   const b=n.split('+')[0], os=n.includes('osnova');
   const t={id:['ID','#dcfce7','#15803d','Ujemanje po ID izdelka — zanesljivo'],znamka:['znamka','#dcfce7','#15803d','Ikonka/Amio SKU iz slike — zanesljivo'],mpn:['mpn','#dcfce7','#15803d','SKU iz feeda (mpn) — zanesljivo'],slika:['ugib','#fef3c7','#a16207','Ugibanje iz imena slike — preveri']}[b]||[b,'#eee','#555',''];
-  return ' <span title="'+t[3]+(os?' · NC iz osnovnega SKU':'')+'" style="font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:'+t[1]+';color:'+t[2]+';font-family:inherit">'+t[0]+'</span>';
+  return ' <span title="'+t[3]+(os?' · NC iz osnovnega SKU':'')+'" style="font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+t[1]+';color:'+t[2]+';font-family:inherit">'+t[0]+'</span>';
 }
 function mcls(m){return m<0?'m-neg':m<20?'m-low':m<40?'m-mid':'m-ok';}
 function render(){
   if(!D||!D.ok) return;
   const r=filtered(), vis=r.slice(0,lim);
   document.getElementById('tb').innerHTML = vis.length ? vis.map(x=>
-    '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'">':'')+'</td>'+
-    '<td class="sku">'+(x.url?'<a class="ext" href="'+esc(x.url)+'" target="_blank" rel="noopener" title="Odpri izdelek v novem oknu">↗</a>':'')+esc(String(x.sku||'?').toUpperCase())+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:10px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+'</td>'+
+    '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
+    '<td class="sku">'+(x.url?'<a class="ext" href="'+esc(x.url)+'" target="_blank" rel="noopener" title="Odpri izdelek v trgovini (novo okno)">↗</a>':'')+(x.cms_id?'<a class="ext cms" href="https://api.maaarket.si/nova/resources/products/'+encodeURIComponent(x.cms_id)+'?tab=vsebina" target="_blank" rel="noopener" title="Odpri v CMS Nova (ID '+esc(x.cms_id)+')">✎</a>':'<span class="ext off" title="CMS ID ni najden">✎</span>')+esc(String(x.sku||'?').toUpperCase())+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:11px;padding:1px 6px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:12px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a></td>'+
     '<td class="r">'+f2(x.koncna)+' <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
     '<td class="r">'+f2(x.eur)+'</td><td class="r">'+f2(x.neto)+'</td>'+
@@ -10553,14 +10587,49 @@ function izvozi(){
   if(!D||!D.ok) return;
   const r=filtered(), e=v=>{v=v==null?'':String(v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
   const n=v=>v==null?'':String(v).replace('.',',');
-  let csv='\ufeffSKU;Način;Parser;Znamka;NC SKU;Naziv;Cena;Valuta;Akcija;Cena EUR;Brez DDV;NC;Marža EUR;Marža %;Zaloga;URL\n';
-  r.forEach(x=>{csv+=[e(String(x.sku||'').toUpperCase()),e(x.nacin),x.parser===true?'da':(x.parser===false?'ne':'?'),e(x.znamka),e(String(x.nc_sku||'').toUpperCase()),e(x.naziv),n(x.koncna),x.valuta,x.akcija?'da':'',n(x.eur),n(x.neto),n(x.nc),n(x.marza_eur),n(x.marza_pct),x.zaloga||0,e(x.url)].join(';')+'\n';});
+  let csv='\ufeffSKU;Način;Parser;Znamka;CMS ID;NC SKU;Naziv;Cena;Valuta;Akcija;Cena EUR;Brez DDV;NC;Marža EUR;Marža %;Zaloga;URL\n';
+  r.forEach(x=>{csv+=[e(String(x.sku||'').toUpperCase()),e(x.nacin),x.parser===true?'da':(x.parser===false?'ne':'?'),e(x.znamka),e(x.cms_id),e(String(x.nc_sku||'').toUpperCase()),e(x.naziv),n(x.koncna),x.valuta,x.akcija?'da':'',n(x.eur),n(x.neto),n(x.nc),n(x.marza_eur),n(x.marza_pct),x.zaloga||0,e(x.url)].join(';')+'\n';});
   const d=new Date(), z=d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)+'_'+('0'+d.getHours()).slice(-2)+('0'+d.getMinutes()).slice(-2);
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   a.download='marza_'+D.oznaka+'_'+z+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
-function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,n:samoNasi.checked}));}catch(e){}}
-try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;samoNasi.checked=!!p.n;}catch(e){}
+let ZN=new Set(['Maaarket']);   // izbrane znamke (prazno = vse)
+function drawZn(){
+  const box=document.getElementById('znBox'); if(!box||!D||!D.ok) return;
+  const z=Object.entries(D.znamke||{}), nase=(D.nase_znamke||[]);
+  const pill=([k,v])=>{const on=ZN.has(k), nas=nase.some(n=>k.toLowerCase().includes(n));
+    const bg=on?(nas?'#16a34a;color:#fff':'#2563eb;color:#fff'):(nas?'#dcfce7;color:#166534':(k==='(prazno)'?'#fef3c7;color:#92400e':'#f1f5f9;color:#475569'));
+    return '<button type="button" data-zn="'+esc(k)+'" style="cursor:pointer;border:0;margin:2px 5px 2px 0;padding:5px 12px;border-radius:14px;font:inherit;font-size:13.5px;background:'+bg+'">'+esc(k)+' <b>'+v.toLocaleString('sl-SI')+'</b></button>';};
+  box.innerHTML='<span style="margin-bottom:5px">Znamka (g:brand) — klikni za izbiro, več hkrati; nič izbranega = vse</span><div>'+
+    z.map(pill).join('')+
+    '<button type="button" data-zn="__vse" style="cursor:pointer;border:1px solid var(--bd);background:transparent;margin:2px 0 2px 6px;padding:4px 12px;border-radius:14px;font:inherit;font-size:13.5px">'+(ZN.size?'Pokaži vse':'Vse prikazane')+'</button></div>';
+}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-zn]'); if(!b) return;
+  const k=b.getAttribute('data-zn');
+  if(k==='__vse') ZN.clear(); else if(ZN.has(k)) ZN.delete(k); else ZN.add(k);
+  lim=300; savePref(); drawZn(); render();});
+// ── povečava slike ob prehodu z miško (za preverjanje ugibanja SKU) ──
+(function(){
+  const z=document.createElement('div'); z.id='zoom'; z.innerHTML='<img alt=""><div class="zc"></div>'; document.body.appendChild(z);
+  const zi=z.querySelector('img'), zc=z.querySelector('.zc');
+  const pos=e=>{const w=z.offsetWidth||340,h=z.offsetHeight||380,m=18;
+    let x=e.clientX+m, y=e.clientY-h/2;
+    if(x+w>innerWidth-8) x=e.clientX-w-m;
+    y=Math.max(8,Math.min(y,innerHeight-h-8));
+    z.style.left=x+'px'; z.style.top=y+'px';};
+  document.addEventListener('mouseover',e=>{const im=e.target.closest('img.img'); if(!im) return;
+    const x=D&&D.rows[+im.dataset.i]; zi.src=im.src;
+    zc.innerHTML=x?('<b style="font-family:ui-monospace,monospace">'+esc(String(x.sku||'?').toUpperCase())+'</b>'+nac(x.nacin)+
+      (x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?' <span class="dim">· NC iz '+esc(String(x.nc_sku).toUpperCase())+'</span>':'')+
+      '<div style="color:var(--txt2)">'+esc(x.naziv)+'</div>'+
+      '<div class="dim">'+(x.znamka?esc(x.znamka)+' · ':'')+'NC '+(x.nc==null?'—':f2(x.nc))+' · marža '+(x.marza_pct==null?'—':x.marza_pct.toLocaleString('sl-SI')+' %')+'</div>'):'';
+    z.style.display='block'; pos(e);});
+  document.addEventListener('mousemove',e=>{if(z.style.display==='block'&&e.target.closest('img.img')) pos(e);});
+  document.addEventListener('mouseout',e=>{if(e.target.closest('img.img')) z.style.display='none';});
+  addEventListener('scroll',()=>{z.style.display='none';},true);
+})();
+function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,zn:[...ZN]}));}catch(e){}}
+try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;if(Array.isArray(p.zn))ZN=new Set(p.zn);}catch(e){}
 tabs(); load();
 </script></body></html>"""
     return HTMLResponse(html)
