@@ -632,6 +632,7 @@ function _cmsBadge(pid) {
 // zapiše odprtje v CMS; če je bil izdelek nedavno že odprt/urejen, najprej opozori (da cene ne dvigneš dvakrat)
 function _pcCmsLog(a, ev) {
   const pid = a.dataset.pcCms, trg = a.dataset.pcTrg || '*', L = _cmsRecent(pid);
+  try { const tr = a.closest('tr'); const i = _pcRows().indexOf(tr); if (i >= 0) _pcFocusRow(i); } catch (e) {}
   if (L.length) {
     const msg = 'Ta izdelek je bil nedavno že odprt v CMS:\n\n' + L.map(x => '• ' + (x.done_at ? '✓ označeno ' + _fmtT(x.done_at) : '✎ odprto ' + _fmtT(x.opened_at)) + ' — ' + _cmsVir(x)).join('\n') + '\n\nVseeno odprem CMS?';
     if (!confirm(msg)) { if (ev) ev.preventDefault(); return false; }
@@ -1547,6 +1548,12 @@ function taskFilter(f, card) {
   const multiView = document.getElementById('multiView');
   const filtersBar = document.getElementById('storeFilterBar');
 
+  // vrstica "Izbriši VSE iz tega pogleda" je v tableWrap, ki je pri Združenih skrit → premakni jo nad multiView
+  const _qd = document.getElementById('quickDeleteBar');
+  if (_qd) {
+    if (f === 'multi') { if (_qd.nextElementSibling !== multiView) multiView.parentNode.insertBefore(_qd, multiView); }
+    else if (_qd.parentNode !== tableWrap) tableWrap.insertBefore(_qd, tableWrap.firstChild);
+  }
   if (f === 'multi') {
     tableWrap.style.display = 'none';
     multiView.style.display = 'block';
@@ -3110,6 +3117,23 @@ function _pcFocusRow(idx){
   const r = rows[_pcFocusIndex].getBoundingClientRect();
   if (r.top < 90 || r.bottom > window.innerHeight - 20) rows[_pcFocusIndex].scrollIntoView({block:'nearest', behavior:'smooth'});
 }
+// po vsakem ponovnem izrisu tabele (osvežitev dnevnika, brisanje …) ohrani obrobo fokusirane vrstice
+(function(){
+  const _rt = renderTable;
+  renderTable = function(){ const out = _rt.apply(this, arguments);
+    if (_pcFocusIndex >= 0) setTimeout(() => { if (_pcRows().length) _pcFocusRow(_pcFocusIndex); }, 0);
+    return out; };
+})();
+// ob vrnitvi iz NOVA CMS (drug zavihek) → tipkovnica spet deluje: fokus v to stran + označena vrstica
+function _pcOnReturn(){
+  if (document.hidden) return;
+  try { window.focus(); } catch (e) {}
+  if (typeof _groupSkuActive !== 'undefined' && _groupSkuActive) return;
+  if (!_pcRows().length) return;
+  _pcFocusRow(_pcFocusIndex < 0 ? 0 : _pcFocusIndex);
+}
+document.addEventListener('visibilitychange', _pcOnReturn);
+window.addEventListener('focus', () => { if (_pcFocusIndex < 0 && _pcRows().length && !(typeof _groupSkuActive !== 'undefined' && _groupSkuActive)) _pcFocusRow(0); });
 document.addEventListener('keydown', function(ev){
   const t = ev.target;
   if (t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.tagName==='SELECT' || t.isContentEditable)) return;
