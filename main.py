@@ -1137,7 +1137,7 @@ def _cms_status(trg: str, cms_id, g_id, cena_zdaj, log: dict, changes: dict, met
         else:
             st = "potrjeno"
     return {"st": st, "opened_at": opened, "done_at": e.get("done_at"), "trg": e.get("trg"),
-            "vir": "Price Checker" if e.get("trg") == "*" else (e.get("vir") or "")}
+            "vir": e.get("vir") or ("Price Checker" if e.get("trg") == "*" else "")}
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -11013,13 +11013,14 @@ function drugiHtml(x){const d=x.cms_drugi||[]; if(!d.length) return '';
 // opozorilo pred ponovnim odpiranjem v CMS (da cene ne dvigneš dvakrat)
 function cmsOpozorilo(x){
   const L=[], zdaj=Date.now(), H=48*3600e3;
-  const c=x.cms; if(c&&c.opened_at&&zdaj-new Date(c.opened_at)<H) L.push('• '+(CST[c.st]?CST[c.st][0]:'odprto')+' — '+(c.trg==='*'?'Price Checker':'trg '+String(c.trg||trg).toUpperCase())+', odprto '+fmtT(c.opened_at)+(c.done_at?', označeno '+fmtT(c.done_at):'')+(c.vir?' ('+c.vir+')':''));
+  const c=x.cms; if(c&&c.opened_at&&zdaj-new Date(c.opened_at)<H) L.push('• '+(CST[c.st]?CST[c.st][0]:'odprto')+' — '+(c.trg==='*'?'Price Checker (trg neznan)':'trg '+String(c.trg||trg).toUpperCase()+(c.vir?' ('+c.vir+')':''))+', odprto '+fmtT(c.opened_at)+(c.done_at?', označeno '+fmtT(c.done_at):'')+(c.vir?' ('+c.vir+')':''));
   (x.cms_drugi||[]).forEach(e=>{if(e.opened_at&&zdaj-new Date(e.opened_at)<H) L.push('• odprto pri trgu '+String(e.trg||'').toUpperCase()+' '+fmtT(e.opened_at)+(e.done_at?' (označeno ✓)':''));});
   const s=x.sprememba; if(s&&s.at&&zdaj-new Date(s.at)<H) L.push('• cena v feedu že spremenjena '+fmtT(s.at)+': '+String(s.old_price||'')+' → '+String(s.new_price||''));
   return L.length?'Ta izdelek je bil nedavno že urejan:\n\n'+L.join('\n')+'\n\nVseeno odprem CMS?':'';
 }
 function cmsBadge(x){const c=x.cms;if(!c||!CST[c.st])return drugiHtml(x);
-  const t=CST[c.st][1]+' · trg '+(c.trg==='*'?'— (Price Checker)':String(c.trg||trg).toUpperCase())+' · odprto '+fmtT(c.opened_at)+(c.done_at?' · označeno '+fmtT(c.done_at):'')+(c.vir?' · '+c.vir:'');
+  const kje=c.trg==='*'?'iz Price Checkerja (trg neznan)':('trg '+String(c.trg||trg).toUpperCase()+(c.vir?', iz '+c.vir:''));
+  const t=CST[c.st][1]+'\n'+kje+' · odprto '+fmtT(c.opened_at)+(c.done_at?' · označeno '+fmtT(c.done_at):'');
   const tl=c.trg==='*'?'PC':String(c.trg||trg).toUpperCase();
   return '<div><span class="cst cst-'+c.st+'" title="'+esc(t)+'">'+CST[c.st][0]+' <b style="padding:0 4px;border-radius:3px;background:rgba(0,0,0,.08)">'+esc(tl)+'</b>'+(c.st==='odprto'||c.st==='popravljeno'?' '+fmtT(c.done_at||c.opened_at):'')+'</span>'+
     '<button type="button" data-undo="'+x._i+'" title="Odstrani oznako (npr. samo pogledal, nisem spreminjal)" style="border:0;background:none;cursor:pointer;color:var(--txt3);font-size:14px;padding:0 4px">×</button></div>'+drugiHtml(x);}
