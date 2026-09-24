@@ -4871,6 +4871,7 @@ async def generate_master_xlsx(req: MasterXlsxRequest):
         return {"error": str(e)}
 
 
+class AdRequest(BaseModel):
     input: str
     mode: str
     pt_count: int = 1
@@ -8212,6 +8213,7 @@ async def orodja_import_hs_pdf(file: UploadFile = File(...)):
 
         try:
             try:
+                import pdfplumber
                 with pdfplumber.open(tmp_path) as pdf:
                     for page in pdf.pages:
                         text = page.extract_text() or ""
@@ -11309,6 +11311,7 @@ async def orodja_price_check(file: UploadFile = File(...)):
         try:
             # Najprej poskus pdfplumber
             try:
+                import pdfplumber
                 with pdfplumber.open(tmp_path) as pdf:
                     for page in pdf.pages:
                         text = page.extract_text() or ""
@@ -24235,7 +24238,7 @@ async def pn_save(data: dict):
             "km": km_val,
             "kilometrina": kilometrina,
             "skupaj": skupaj,
-            "updated_at": _dt.now().isoformat(),
+            "updated_at": _lj_iso(),
         }
         # posodobi obstoječega ali dodaj
         idx = next((i for i, n in enumerate(nalogi) if int(n.get("st", -1)) == st), None)
