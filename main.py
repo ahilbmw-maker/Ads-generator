@@ -10501,6 +10501,72 @@ def _marza_parse_price(s):
         return None, None
 
 
+# ═══ BATO POVZETEK ZA DOMOV ═══
+# Najfinejši korak bato cene po valuti (v najmanjših enotah): cena je bato, če (v+1) % S == 0.
+# Mora se ujemati z BATO_CFG v /marza-trgi-stran (EUR x,99 · HUF x499/x999 · CZK/PLN/RON x9 · RSD x99).
+_BATO_S = {"EUR": (100, 100), "HUF": (1, 500), "CZK": (1, 10), "RSD": (1, 100), "PLN": (1, 10), "RON": (1, 10)}
+_bato_cache = {"key": None, "data": None}
+
+
+def _je_bato(cena: float, cur: str) -> bool:
+    m, S = _BATO_S.get(cur or "EUR", _BATO_S["EUR"])
+    v = int(round(cena * m))
+    return (v + 1) % S == 0
+
+
+@app.get("/bato-povzetek")
+async def bato_povzetek(request: Request, min_eur: float = 5.0, znamka: str = "maaarket"):
+    """Za kartico na Domov: po vsakem trgu koliko rednih cen (izbrane znamke, nad min_eur) še ni bato.
+    Rezultat se hrani v pomnilniku, dokler se feed ne osveži."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    if not feed_by_lang:
+        return {"ok": False, "error": "Feed se še nalaga."}
+    zn = (znamka or "").strip().lower()
+    key = (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
+           tuple(sorted((k, len(v or {})) for k, v in feed_by_lang.items())))
+    if _bato_cache["key"] == key and _bato_cache["data"]:
+        return _bato_cache["data"]
+    try:
+        fx = (await fx_rates()).get("rates", {}) or {}
+    except Exception:
+        fx = {}
+    fx.setdefault("EUR", 1.0)
+    trgi = []
+    for trg, (oznaka, _ddv) in MARZA_TRGI.items():
+        feed = feed_by_lang.get(trg) or {}
+        skupaj = ni = 0
+        for d in feed.values():
+            if zn and zn not in str(d.get("brand") or "").lower():
+                continue
+            cena, cur = _marza_parse_price(d.get("price"))
+            if not cena:
+                continue
+            cur = cur or "EUR"
+            rate = fx.get(cur)
+            if rate and cena / rate < min_eur:
+                continue
+            skupaj += 1
+            if not _je_bato(cena, cur):
+                ni += 1
+        m = feed_meta.get(trg) or {}
+        trgi.append({"trg": trg, "oznaka": oznaka, "skupaj": skupaj, "ni_bato": ni,
+                     "bato_pct": round((skupaj - ni) / skupaj * 100, 1) if skupaj else None,
+                     "zgrajen": _iso_from_http_date(m.get("last_modified") or "") or m.get("fetched_at")})
+    znamke = {}
+    for d in (feed_by_lang.get("sl") or {}).values():
+        b = str(d.get("brand") or "").strip() or "(brez)"
+        znamke[b] = znamke.get(b, 0) + 1
+    skupaj = sum(t["skupaj"] for t in trgi)
+    ni = sum(t["ni_bato"] for t in trgi)
+    data = {"ok": True, "min_eur": min_eur, "znamka": znamka, "trgi": trgi,
+            "ni_bato": ni, "skupaj": skupaj, "bato_pct": round((skupaj - ni) / skupaj * 100, 1) if skupaj else None,
+            "znamke": dict(sorted(znamke.items(), key=lambda kv: -kv[1])), "izracunano": _lj_iso()}
+    _bato_cache.update(key=key, data=data)
+    return data
+
+
 @app.get("/marza-trgi")
 async def marza_trgi(request: Request, trg: str = "sl"):
     """Za izbrani trg: vsi izdelki iz feeda → končna cena → EUR → brez DDV → − NC iz zaloge → marža."""
@@ -10822,7 +10888,7 @@ async def marza_trgi_stran(request: Request):
 </tr></thead><tbody id="tb"><tr><td colspan="13" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr></tbody></table></div>
 <button class="more" id="more" style="display:none" onclick="lim+=300;render()">Prikaži več</button>
 <div class="bbar" id="bbar">
-  <b>💲 Bato redne cene</b>
+  <b>💲 Bato redne cene</b> <span class="dim">· samo Maaarket</span>
   <label>Ne preverjaj cen pod <input type="number" id="bMin" min="0" step="0.5" value="5" oninput="savePref();render()"> €</label>
   <label>Prag marže <input type="number" id="bPrag" min="-100" max="100" step="1" value="20" oninput="savePref();render()"> %</label>
   <span id="bInfo" class="dim"></span>
@@ -11107,7 +11173,7 @@ function batoRows(){
     if(!x.cena) return;
     if(q && !((x.sku||'').toLowerCase().includes(q)||(x.naziv||'').toLowerCase().includes(q)||(x.znamka||'').toLowerCase().includes(q))) return;
     if(z && !(x.zaloga>0)) return;
-    if(ZN.size && !ZN.has(x.znamka||'(prazno)')) return;
+    if(!String(x.znamka||'').toLowerCase().includes('maaarket')) return;   // bato cene veljajo SAMO za Maaarket (filter znamk tu ne velja)
     if(skritUrejen(x)) return;
     if(!razMatch(x.marza_eur)) return;
     const cur=x.valuta||'EUR', rate=(D.tecaji||{})[cur]||(cur==='EUR'?1:null);
@@ -11165,7 +11231,9 @@ try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.
   if(!new URLSearchParams(location.search).get('trg') && p.t && TRGI.some(t=>t[0]===p.t)) trg=p.t;
   if(p.s1){sk=p.s1;sd=p.d1||1;} if(p.s2){bsk=p.s2;bsd=p.d2||1;}
   if(p.f){const ch=document.querySelector('.chip[data-f="'+p.f+'"]'); if(ch){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));ch.classList.add('on');flt=p.f;}}
-  if(p.b) toggleBato();
+  const U=new URLSearchParams(location.search);
+  if(U.get('zn')) ZN=new Set(U.get('zn').split(',').filter(Boolean));     // npr. s kartice na Domov
+  if(U.get('bato')!=null ? U.get('bato')==='1' : p.b) toggleBato();
 }catch(e){}
 var _prefReady=true;
 tabs(); load();
