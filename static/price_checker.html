@@ -617,7 +617,8 @@ function _cmsBadge(pid) {
   const tip = L.map(x => (x.done_at ? '✓ označeno ' + _fmtT(x.done_at) : '✎ odprto ' + _fmtT(x.opened_at)) + ' — ' + _cmsVir(x)).join('\n');
   return ' <span title="' + tip.replace(/"/g, '&quot;') + '" style="display:inline-flex;align-items:center;gap:3px;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;vertical-align:middle;cursor:help;'
     + (done ? 'background:#dcfce7;color:#166534;border:1px solid #86efac' : 'background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd') + '">'
-    + (done ? '✓ ' : '✎ ') + _fmtT(e.done_at || e.opened_at) + (L.length > 1 ? ' (' + L.length + '×)' : '') + '</span>';
+    + (done ? '✓ ' : '✎ ') + '<b style="padding:0 4px;border-radius:3px;background:rgba(0,0,0,.08)">' + (e.trg === '*' ? 'PC' : String(e.trg || '').toUpperCase()) + '</b> '
+    + _fmtT(e.done_at || e.opened_at) + (L.length > 1 ? ' (' + L.length + '×)' : '') + '</span>';
 }
 // zapiše odprtje v CMS; če je bil izdelek nedavno že odprt/urejen, najprej opozori (da cene ne dvigneš dvakrat)
 function _pcCmsLog(a, ev) {
