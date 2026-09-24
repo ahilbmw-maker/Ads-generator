@@ -10853,9 +10853,9 @@ let D=null, trg=(new URLSearchParams(location.search).get('trg')||'sl'), flt='al
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const f2=n=>n==null?'—':n.toLocaleString('sl-SI',{minimumFractionDigits:2,maximumFractionDigits:2});
 function tabs(){document.getElementById('tabs').innerHTML=TRGI.map(([k,l])=>'<button class="tab'+(k===trg?' on':'')+'" onclick="pick(\''+k+'\')">'+l+'</button>').join('');}
-function pick(k){trg=k;lim=300;history.replaceState(null,'','?trg='+k+(EMBED?'&embed=1':''));tabs();load();}
-function setF(b){if(BATO)toggleBato();document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));b.classList.add('on');flt=b.dataset.f;lim=300;render();}
-function srt(k){if(sk===k)sd=-sd;else{sk=k;sd=(k==='sku'||k==='naziv')?-1:1;}render();}
+function pick(k){trg=k;lim=300;history.replaceState(null,'','?trg='+k+(EMBED?'&embed=1':''));savePref();tabs();load();}
+function setF(b){if(BATO)toggleBato();document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));b.classList.add('on');flt=b.dataset.f;lim=300;savePref();render();}
+function srt(k){if(sk===k)sd=-sd;else{sk=k;sd=(k==='sku'||k==='naziv')?-1:1;}savePref();render();}
 async function load(){
   document.getElementById('tb').innerHTML='<tr><td colspan="13" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr>';
   loadFeedInfo();
@@ -11075,8 +11075,9 @@ function toggleBato(){BATO=!BATO;blim=300;
   document.querySelector('.wrap:not(#bwrap)').style.display=BATO?'none':'';
   document.getElementById('more').style.display='none'; document.getElementById('bmore').style.display='none';
   document.getElementById('mainCsv').style.display=BATO?'none':'';
+  if(typeof _prefReady!=='undefined') savePref();
   render();}
-function bsrt(k){if(bsk===k)bsd=-bsd;else{bsk=k;bsd=(k==='sku'||k==='naziv'||k==='note')?-1:1;}render();}
+function bsrt(k){if(bsk===k)bsd=-bsd;else{bsk=k;bsd=(k==='sku'||k==='naziv'||k==='note')?-1:1;}savePref();render();}
 // Vrne {v, pick (predlog), up (najbližja bato navzgor, za varovalko marže)} ali null, če je cena že bato.
 // Stopnje (tiers): prva stopnja, ki ima kandidata znotraj max, odloči; zadnja stopnja nima omejitve.
 function batoCands(price,cur){
@@ -11154,8 +11155,17 @@ function izvoziBato(){
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   a.download='bato_'+D.oznaka+'_'+zz+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
-function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,sk:skrijUr.checked,rz:razpon.value,zn:[...ZN],bm:document.getElementById('bMin').value,bp:document.getElementById('bPrag').value}));}catch(e){}}
-try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;skrijUr.checked=!!p.sk;if(p.rz)razpon.value=p.rz;if(Array.isArray(p.zn))ZN=new Set(p.zn);if(p.bm!=null)document.getElementById('bMin').value=p.bm;if(p.bp!=null)document.getElementById('bPrag').value=p.bp;}catch(e){}
+// vse izbire (trg, pogled, filtri, sortiranje) se zapomnijo — po osvežitvi strani ostane isto
+function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,sk:skrijUr.checked,rz:razpon.value,zn:[...ZN],
+  bm:document.getElementById('bMin').value,bp:document.getElementById('bPrag').value,
+  t:trg,b:BATO,f:flt,s1:sk,d1:sd,s2:bsk,d2:bsd}));}catch(e){}}
+try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;skrijUr.checked=!!p.sk;if(p.rz)razpon.value=p.rz;if(Array.isArray(p.zn))ZN=new Set(p.zn);if(p.bm!=null)document.getElementById('bMin').value=p.bm;if(p.bp!=null)document.getElementById('bPrag').value=p.bp;
+  if(!new URLSearchParams(location.search).get('trg') && p.t && TRGI.some(t=>t[0]===p.t)) trg=p.t;
+  if(p.s1){sk=p.s1;sd=p.d1||1;} if(p.s2){bsk=p.s2;bsd=p.d2||1;}
+  if(p.f){const ch=document.querySelector('.chip[data-f="'+p.f+'"]'); if(ch){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));ch.classList.add('on');flt=p.f;}}
+  if(p.b) toggleBato();
+}catch(e){}
+var _prefReady=true;
 tabs(); load();
 </script></body></html>"""
     return HTMLResponse(html)
