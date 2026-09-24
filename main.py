@@ -10718,6 +10718,8 @@ async def marza_trgi_stran(request: Request):
   .cpb:hover{background:#f1f5f9;color:var(--txt)}
   .cpb.ok{background:#16a34a;border-color:#16a34a;color:#fff}
   .okb.on{background:#16a34a;color:#fff;border-color:#16a34a}
+  .okb:not(.on):hover{background:#16a34a;color:#fff;border-color:#16a34a}
+  .okb.on:hover{background:#fee2e2;color:#b91c1c;border-color:#fca5a5}
   .cst{display:inline-block;margin-top:3px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;white-space:nowrap}
   .cst-odprto{background:#eff6ff;color:#1d4ed8}.cst-popravljeno{background:#dcfce7;color:#166534}.cst-potrjeno{background:#16a34a;color:#fff}.cst-nespremenjeno{background:#fef3c7;color:#92400e}
   .spr{font-size:12px;color:var(--txt2);margin-top:2px}
