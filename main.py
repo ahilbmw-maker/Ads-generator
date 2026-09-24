@@ -8213,7 +8213,6 @@ async def orodja_import_hs_pdf(file: UploadFile = File(...)):
 
         try:
             try:
-                import pdfplumber
                 with pdfplumber.open(tmp_path) as pdf:
                     for page in pdf.pages:
                         text = page.extract_text() or ""
@@ -11311,7 +11310,6 @@ async def orodja_price_check(file: UploadFile = File(...)):
         try:
             # Najprej poskus pdfplumber
             try:
-                import pdfplumber
                 with pdfplumber.open(tmp_path) as pdf:
                     for page in pdf.pages:
                         text = page.extract_text() or ""
