@@ -10621,6 +10621,9 @@ async def marza_trgi(request: Request, trg: str = "sl"):
         return None
 
     _cms_log = _jload(CMS_LOG_FILE, {})
+    _log_by_id = {}                     # cms_id → zapisi z DRUGIH trgov (isti izdelek v CMS)
+    for _e in _cms_log.values():
+        _log_by_id.setdefault(str(_e.get("cms_id") or ""), []).append(_e)
     _changes = (_jload(PRICE_CHANGES_FILE, {}) or {}).get(trg) or {}
     _meta = feed_meta.get(trg) or {}
 
@@ -10689,6 +10692,8 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             "cms_id": (_cid := _cms_id(g_id, d, sku, nc_sku)),
             "cms": _cms_status(trg, _cid, g_id, cena, _cms_log, _changes, _meta),
             "sprememba": _changes.get(str(g_id)),
+            "cms_drugi": [{"trg": _e.get("trg"), "opened_at": _e.get("opened_at"), "done_at": _e.get("done_at")}
+                          for _e in _log_by_id.get(str(_cid or ""), []) if _e.get("trg") not in (trg, "*")] if _cid else [],
             "na_voljo": (d.get("availability") or ""),
         })
     z_nc = [r for r in rows if r["marza_pct"] is not None]
@@ -11003,10 +11008,20 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button[dat
     const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select();
     try{ok=document.execCommand('copy');}catch(__){} ta.remove(); }
   b.classList.toggle('ok',ok); b.textContent=ok?'✓':'✗'; setTimeout(()=>{b.classList.remove('ok'); b.textContent='⧉';},1200);});
-function cmsBadge(x){const c=x.cms;if(!c||!CST[c.st])return '';
+function drugiHtml(x){const d=x.cms_drugi||[]; if(!d.length) return '';
+  return '<div class="spr" title="Isti izdelek v CMS je bil odprt pri drugem trgu">'+d.map(e=>(e.done_at?'✓ ':'✎ ')+esc(String(e.trg||'').toUpperCase())+' '+fmtT(e.done_at||e.opened_at)).join(' · ')+'</div>';}
+// opozorilo pred ponovnim odpiranjem v CMS (da cene ne dvigneš dvakrat)
+function cmsOpozorilo(x){
+  const L=[], zdaj=Date.now(), H=48*3600e3;
+  const c=x.cms; if(c&&c.opened_at&&zdaj-new Date(c.opened_at)<H) L.push('• '+(CST[c.st]?CST[c.st][0]:'odprto')+' — odprto '+fmtT(c.opened_at)+(c.done_at?', označeno '+fmtT(c.done_at):'')+(c.vir?' ('+c.vir+')':''));
+  (x.cms_drugi||[]).forEach(e=>{if(e.opened_at&&zdaj-new Date(e.opened_at)<H) L.push('• odprto pri trgu '+String(e.trg||'').toUpperCase()+' '+fmtT(e.opened_at)+(e.done_at?' (označeno ✓)':''));});
+  const s=x.sprememba; if(s&&s.at&&zdaj-new Date(s.at)<H) L.push('• cena v feedu že spremenjena '+fmtT(s.at)+': '+String(s.old_price||'')+' → '+String(s.new_price||''));
+  return L.length?'Ta izdelek je bil nedavno že urejan:\n\n'+L.join('\n')+'\n\nVseeno odprem CMS?':'';
+}
+function cmsBadge(x){const c=x.cms;if(!c||!CST[c.st])return drugiHtml(x);
   const t=CST[c.st][1]+' · odprto '+fmtT(c.opened_at)+(c.done_at?' · označeno '+fmtT(c.done_at):'')+(c.vir?' · '+c.vir:'');
   return '<div><span class="cst cst-'+c.st+'" title="'+esc(t)+'">'+CST[c.st][0]+(c.st==='odprto'||c.st==='popravljeno'?' '+fmtT(c.done_at||c.opened_at):'')+'</span>'+
-    '<button type="button" data-undo="'+x._i+'" title="Odstrani oznako (npr. samo pogledal, nisem spreminjal)" style="border:0;background:none;cursor:pointer;color:var(--txt3);font-size:14px;padding:0 4px">×</button></div>';}
+    '<button type="button" data-undo="'+x._i+'" title="Odstrani oznako (npr. samo pogledal, nisem spreminjal)" style="border:0;background:none;cursor:pointer;color:var(--txt3);font-size:14px;padding:0 4px">×</button></div>'+drugiHtml(x);}
 function sprHtml(x){const s=x.sprememba;if(!s)return '';
   const pp=v=>{const [n,c]=String(v||'').split(' ');return n?n.replace('.',','):'—';};
   const reg=s.old_price!==s.new_price?'redna '+pp(s.old_price)+' → '+pp(s.new_price):'';
@@ -11020,6 +11035,7 @@ async function cmsLog(x,akcija){
 document.addEventListener('click',e=>{
   const a=e.target.closest('a[data-cms]');
   if(a){const x=D&&D.rows[+a.dataset.cms]; if(!x) return;
+    const op=cmsOpozorilo(x); if(op && !confirm(op)){e.preventDefault(); return;}
     cmsLog(x,'open'); x.cms={st:'odprto',opened_at:new Date().toISOString(),vir:BATO?'Bato cene':'Marža po trgih'}; setTimeout(render,300); return;}
   const u=e.target.closest('button[data-undo]');
   if(u){const x=D&&D.rows[+u.dataset.undo]; if(!x) return; cmsLog(x,'undo'); x.cms=null; render(); return;}

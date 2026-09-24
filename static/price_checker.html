@@ -586,12 +586,53 @@ async function loadSkuPidMap() {
 }
 loadSkuPidMap();
 
-// zapiše odprtje v CMS v skupni dnevnik (Marža po trgih / Bato cene pokažejo "odprto v CMS")
-function _pcCmsLog(a) {
+// ── Skupni dnevnik urejanj v CMS (isti kot v Marži po trgih / Bato cenah) ──
+let _cmsLogById = {};   // cms_id → [zapisi]
+function _fmtT(iso) {
+  const d = new Date(iso); if (isNaN(d)) return iso || '';
+  const t = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  return (d.toDateString() === new Date().toDateString() ? 'danes ' : d.getDate() + '. ' + (d.getMonth() + 1) + '. ') + t;
+}
+function _cmsVir(e) { return e.trg === '*' ? 'Price Checker' : ((e.vir || 'Marža po trgih') + ' · ' + String(e.trg || '').toUpperCase()); }
+function _cmsRecent(pid) {   // zapisi zadnjih 48 h
+  const H = 48 * 3600e3, now = Date.now();
+  return (_cmsLogById[String(pid)] || []).filter(e => e.opened_at && now - new Date(e.opened_at) < H)
+    .sort((a, b) => String(b.opened_at).localeCompare(String(a.opened_at)));
+}
+async function loadCmsLog(rerender) {
+  try {
+    const r = await fetch('/cms-log', { cache: 'no-store' }); const d = await r.json();
+    if (!d.ok) return;
+    const m = {}; Object.values(d.log || {}).forEach(e => { const k = String(e.cms_id || ''); if (k) (m[k] = m[k] || []).push(e); });
+    const changed = JSON.stringify(m) !== JSON.stringify(_cmsLogById);
+    _cmsLogById = m;
+    if (rerender && changed && typeof renderTable === 'function' && allRows && allRows.length) renderTable(allRows);
+  } catch (e) { /* tiho */ }
+}
+loadCmsLog(false);
+setInterval(() => loadCmsLog(true), 60000);   // vsako minuto (tudi urejanja drugih uporabnikov)
+function _cmsBadge(pid) {
+  const L = _cmsRecent(pid); if (!L.length) return '';
+  const e = L[0], done = L.some(x => x.done_at);
+  const tip = L.map(x => (x.done_at ? '✓ označeno ' + _fmtT(x.done_at) : '✎ odprto ' + _fmtT(x.opened_at)) + ' — ' + _cmsVir(x)).join('\n');
+  return ' <span title="' + tip.replace(/"/g, '&quot;') + '" style="display:inline-flex;align-items:center;gap:3px;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;vertical-align:middle;cursor:help;'
+    + (done ? 'background:#dcfce7;color:#166534;border:1px solid #86efac' : 'background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd') + '">'
+    + (done ? '✓ ' : '✎ ') + _fmtT(e.done_at || e.opened_at) + (L.length > 1 ? ' (' + L.length + '×)' : '') + '</span>';
+}
+// zapiše odprtje v CMS; če je bil izdelek nedavno že odprt/urejen, najprej opozori (da cene ne dvigneš dvakrat)
+function _pcCmsLog(a, ev) {
+  const pid = a.dataset.pcCms, L = _cmsRecent(pid);
+  if (L.length) {
+    const msg = 'Ta izdelek je bil nedavno že odprt v CMS:\n\n' + L.map(x => '• ' + (x.done_at ? '✓ označeno ' + _fmtT(x.done_at) : '✎ odprto ' + _fmtT(x.opened_at)) + ' — ' + _cmsVir(x)).join('\n') + '\n\nVseeno odprem CMS?';
+    if (!confirm(msg)) { if (ev) ev.preventDefault(); return false; }
+  }
   try {
     fetch('/cms-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
-      body: JSON.stringify({ akcija: 'open', cms_id: a.dataset.pcCms, trg: '*', sku: a.dataset.pcSku, vir: 'Price Checker' }) });
+      body: JSON.stringify({ akcija: 'open', cms_id: pid, trg: '*', sku: a.dataset.pcSku, vir: 'Price Checker' }) });
+    const k = String(pid); (_cmsLogById[k] = _cmsLogById[k] || []).push({ cms_id: k, trg: '*', opened_at: new Date().toISOString(), vir: 'Price Checker' });
+    setTimeout(() => { if (typeof renderTable === 'function' && allRows && allRows.length) renderTable(allRows); }, 400);
   } catch (e) { /* tiho — dnevnik je opcijski */ }
+  return true;
 }
 
 // vrne SKU kot klikabilen link do maaarket admina (če imamo g:id), sicer navaden tekst.
@@ -647,7 +688,7 @@ function skuHtml(sku) {
   }
   if (!pid) return escHtml(s) + saleBadge + recoBadge;
   const url = MAAARKET_BASE + encodeURIComponent(pid) + '?tab=vsebina';
-  return `<a href="${url}" target="_blank" rel="noopener" data-pc-cms="${escHtml(String(pid))}" data-pc-sku="${escHtml(s)}" onclick="event.stopPropagation();_pcCmsLog(this)" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>` + saleBadge + recoBadge;
+  return `<a href="${url}" target="_blank" rel="noopener" data-pc-cms="${escHtml(String(pid))}" data-pc-sku="${escHtml(s)}" onclick="event.stopPropagation();return _pcCmsLog(this,event)" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>` + _cmsBadge(pid) + saleBadge + recoBadge;
 }
 // majhen helper za varen izpis SKU (SKU-ji so interni, a vseeno)
 function escHtml(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
