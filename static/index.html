@@ -889,7 +889,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-20 16:15</div>
+      <div class="sidebar-logo-sub">build 2026-09-20 16:45</div>
     </div>
   </div>
 
@@ -29979,6 +29979,23 @@ async function vracilaHistoryDelete(filename) {
   } else {
     startHomeZaloga();  // DOM že naložen — zaženi takoj
   }
+})();
+
+// ── GLOBALNI DRAG&DROP FIX ──
+// Prepreči, da brskalnik ODPRE datoteko, ko jo spustiš KAMORKOLI v oknu (izven drop cone).
+// Drop cone (z lastnim ondrop) delujejo naprej — ta handler samo prepreči privzeto odpiranje.
+(function(){
+  // dragover na celem oknu → preventDefault (sicer drop ni dovoljen in datoteka se odpre)
+  window.addEventListener('dragover', function(e){
+    const naConi = e.target && e.target.closest && e.target.closest('[ondrop], .k-dropzone');
+    e.preventDefault();   // vedno prepreči default (sicer drop ni dovoljen)
+    if(e.dataTransfer) e.dataTransfer.dropEffect = naConi ? 'copy' : 'none';   // nad cono = dovoljeno (brez križca)
+  }, false);
+  // drop na celem oknu (izven cone) → prepreči odpiranje datoteke
+  window.addEventListener('drop', function(e){
+    if(e.target && e.target.closest && e.target.closest('[ondrop], .k-dropzone')) return;
+    e.preventDefault();
+  }, false);
 })();
 </script>
 
