@@ -11031,7 +11031,8 @@ async function refreshTrg(){
 // ═══ BATO CENE ═══ redna cena → najbližja "lepa" cena, ki se konča na 9.
 // Vrednosti v najmanjših enotah (EUR = centi, ostalo cela števila); bato = k·S − 1.
 //   EUR x,99 (S=100 centov) · HUF x499/x999 (S=500) · CZK/RSD x99 (S=100) · PLN/RON x9 (S=10)
-const BATO_CFG={EUR:{dec:2,S:100},HUF:{dec:0,S:500},CZK:{dec:0,S:100},RSD:{dec:0,S:100},PLN:{dec:0,S:10},RON:{dec:0,S:10}};
+// CZK (1 € ≈ 25 Kč): najprej x49/x99, a samo če je sprememba ≤ 20 Kč; sicer najbližja x9 (največ ±5 Kč).
+const BATO_CFG={EUR:{dec:2,S:100},HUF:{dec:0,S:500},CZK:{dec:0,tiers:[{S:50,max:20},{S:10}]},RSD:{dec:0,S:100},PLN:{dec:0,S:10},RON:{dec:0,S:10}};
 let BATO=false, blim=300, bsk='diff', bsd=1;
 function toggleBato(){BATO=!BATO;blim=300;
   document.getElementById('batoBtn').classList.toggle('on',BATO);
@@ -11042,12 +11043,20 @@ function toggleBato(){BATO=!BATO;blim=300;
   document.getElementById('mainCsv').style.display=BATO?'none':'';
   render();}
 function bsrt(k){if(bsk===k)bsd=-bsd;else{bsk=k;bsd=(k==='sku'||k==='naziv'||k==='note')?-1:1;}render();}
+// Vrne {v, pick (predlog), up (najbližja bato navzgor, za varovalko marže)} ali null, če je cena že bato.
+// Stopnje (tiers): prva stopnja, ki ima kandidata znotraj max, odloči; zadnja stopnja nima omejitve.
 function batoCands(price,cur){
   const c=BATO_CFG[cur]||BATO_CFG.EUR, m=c.dec?100:1, v=Math.round(price*m);
-  const lo=Math.floor((v+1)/c.S)*c.S-1;
-  if(lo===v) return null;                       // že bato
-  const hi=lo+c.S;
-  return {lo:lo>0?lo/m:null, hi:hi/m, v:v/m, cfg:c, dLo:v-lo, dHi:hi-v};   // razdalje v celih enotah (brez napak float)
+  const tiers=c.tiers||[{S:c.S}], fin=tiers[tiers.length-1];
+  if(Math.floor((v+1)/fin.S)*fin.S-1===v) return null;   // že bato (najfinejša stopnja)
+  let pick=null, up=null;
+  for(const t of tiers){
+    const lo=Math.floor((v+1)/t.S)*t.S-1, hi=lo+t.S, mx=(t.max==null?Infinity:t.max);
+    const okLo=lo>0&&v-lo<=mx, okHi=hi-v<=mx;          // razdalje v celih enotah (brez napak float)
+    if(up==null&&okHi) up=hi;
+    if(pick==null&&(okLo||okHi)) pick=(okLo&&okHi)?((v-lo<hi-v)?lo:hi):(okLo?lo:hi);   // bližji; enako → navzgor
+  }
+  return {v:v/m, pick:pick/m, up:up/m, cfg:c};
 }
 function fmtC(v,cur){if(v==null)return '—';const c=BATO_CFG[cur]||BATO_CFG.EUR;
   return v.toLocaleString('sl-SI',{minimumFractionDigits:c.dec,maximumFractionDigits:c.dec});}
@@ -11070,10 +11079,8 @@ function batoRows(){
     const r=(x.akcija&&x.cena)?x.akcija/x.cena:1;   // razmerje akcija/redna — ocena nove akcijske cene
     const mz=p=>{ if(!x.nc||!rate) return null; const n=p*r/rate/(1+D.ddv/100); return n?(n-x.nc)/n*100:null; };
     const rzF=p=>{ if(!x.nc||!rate) return null; return Math.round((p*r/rate/(1+D.ddv/100)-x.nc)*100)/100; };
-    let pred, note='';
-    if(k.lo==null) pred=k.hi;
-    else pred=(k.dLo < k.dHi)?k.lo:k.hi;            // bližji; enaka razdalja → navzgor
-    if(pred===k.lo){ const m=mz(k.lo); if(m!=null && m<P){ pred=k.hi; note='↑ zaradi marže'; } }
+    let pred=k.pick, note='';
+    if(pred<k.v){ const m=mz(pred); if(m!=null && m<P){ pred=k.up; note='↑ zaradi marže'; } }
     const mPo=mz(pred);
     if(mPo!=null && mPo<P) note=(note?note+' · ':'')+'marža pod pragom';
     out.push({x, cur, reg:x.cena, pred, diff:Math.round((pred-x.cena)*100)/100, diffPct:(pred-x.cena)/x.cena*100,
