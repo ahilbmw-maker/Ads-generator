@@ -586,6 +586,14 @@ async function loadSkuPidMap() {
 }
 loadSkuPidMap();
 
+// zapiše odprtje v CMS v skupni dnevnik (Marža po trgih / Bato cene pokažejo "odprto v CMS")
+function _pcCmsLog(a) {
+  try {
+    fetch('/cms-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({ akcija: 'open', cms_id: a.dataset.pcCms, trg: '*', sku: a.dataset.pcSku, vir: 'Price Checker' }) });
+  } catch (e) { /* tiho — dnevnik je opcijski */ }
+}
+
 // vrne SKU kot klikabilen link do maaarket admina (če imamo g:id), sicer navaden tekst.
 // Cel SKU je klikabilen — brez dodatne ikone.
 function skuHtml(sku) {
@@ -639,7 +647,7 @@ function skuHtml(sku) {
   }
   if (!pid) return escHtml(s) + saleBadge + recoBadge;
   const url = MAAARKET_BASE + encodeURIComponent(pid) + '?tab=vsebina';
-  return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>` + saleBadge + recoBadge;
+  return `<a href="${url}" target="_blank" rel="noopener" data-pc-cms="${escHtml(String(pid))}" data-pc-sku="${escHtml(s)}" onclick="event.stopPropagation();_pcCmsLog(this)" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>` + saleBadge + recoBadge;
 }
 // majhen helper za varen izpis SKU (SKU-ji so interni, a vseeno)
 function escHtml(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }

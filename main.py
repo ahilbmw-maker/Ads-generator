@@ -436,6 +436,7 @@ MAAARKET_FEEDS = {
 
 G = "http://base.google.com/ns/1.0"
 feed_by_lang: dict = {}
+feed_meta: dict = {}        # lang → {fetched_at, last_modified (trgovina), status, count, error}
 slug_to_id: dict = {}
 sl_image_index: dict = {}   # SLO slike: { "mpn_upper": img, "slug_lower": img, "title_lower": img } za hitri lookup
 last_fetch: Optional[datetime] = None
@@ -705,21 +706,73 @@ def parse_feed(xml_content: str) -> dict:
     return products
 
 
+async def _fetch_feed_lang(hc, lang: str):
+    """Prenese en feed. Vrne (izdelki | None ob napaki, meta)."""
+    url = MAAARKET_FEEDS[lang]
+    meta = {"fetched_at": _lj_iso()}
+    try:
+        resp = await hc.get(url)
+        meta["status"] = resp.status_code
+        meta["last_modified"] = resp.headers.get("last-modified") or ""
+        if resp.status_code != 200:
+            print(f"  ✗ {lang}: HTTP {resp.status_code}")
+            return None, meta
+        prods = parse_feed(resp.text)
+        meta["count"] = len(prods)
+        print(f"  ✓ {lang}: {len(prods)} products")
+        return (prods or None), meta
+    except Exception as e:
+        meta["error"] = str(e)[:200]
+        print(f"  ✗ {lang}: {e}")
+        return None, meta
+
+
+def _apply_feed_lang(lang: str, prods, meta: dict):
+    """Zamenja feed enega trga, zabeleži spremembe cen, posodobi meta.
+    Ob napaki (prods=None) OBDRŽI star feed — seznam ne sme ostati prazen."""
+    old = feed_by_lang.get(lang) or {}
+    if prods is None:
+        m = dict(feed_meta.get(lang) or {})
+        m.update({k: v for k, v in meta.items() if k in ("error", "status")})
+        m["last_error_at"] = meta.get("fetched_at")
+        feed_meta[lang] = m
+        return
+    if old:
+        try:
+            _record_price_changes(lang, old, prods)
+        except Exception as e:
+            print(f"[cene diff] {lang}: {e}")
+    feed_by_lang[lang] = prods
+    meta.pop("error", None)
+    feed_meta[lang] = meta
+
+
 async def fetch_all_feeds():
     global feed_by_lang, slug_to_id, last_fetch
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Fetching XML feeds...")
-    async with httpx.AsyncClient(timeout=30.0) as hc:
-        tasks = {lang: hc.get(url) for lang, url in MAAARKET_FEEDS.items()}
-        new_cache = {}
-        for lang, task in tasks.items():
-            try:
-                resp = await task
-                new_cache[lang] = parse_feed(resp.text) if resp.status_code == 200 else {}
-                print(f"  ✓ {lang}: {len(new_cache.get(lang,{}))} products")
-            except Exception as e:
-                new_cache[lang] = {}
-                print(f"  ✗ {lang}: {e}")
-    feed_by_lang = new_cache
+    async with httpx.AsyncClient(timeout=60.0) as hc:
+        for lang in MAAARKET_FEEDS:          # zaporedno — manj pomnilnika kot 10 XML-jev hkrati
+            prods, meta = await _fetch_feed_lang(hc, lang)
+            _apply_feed_lang(lang, prods, meta)
+    _rebuild_feed_indexes()
+    last_fetch = datetime.now()
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Done. Slug index: {len(slug_to_id)}, slike: {len(sl_image_index.get('img_corpus',[]))} izdelkov")
+    _save_feed_cache_to_disk()
+
+
+async def fetch_one_feed(lang: str) -> dict:
+    """Osveži SAMO en trg (ročni gumb). Vrne meta."""
+    async with httpx.AsyncClient(timeout=60.0) as hc:
+        prods, meta = await _fetch_feed_lang(hc, lang)
+    _apply_feed_lang(lang, prods, meta)
+    if prods is not None:
+        _rebuild_feed_indexes()
+        _save_feed_cache_to_disk()
+    return feed_meta.get(lang) or meta
+
+
+def _rebuild_feed_indexes():
+    global slug_to_id
     new_slug_to_id = {}
     for lang, lang_feed in feed_by_lang.items():
         for g_id, data in lang_feed.items():
@@ -769,11 +822,6 @@ async def fetch_all_feeds():
                 new_img_idx["sku_url"].setdefault(sk, img)
     sl_image_index = new_img_idx
 
-    last_fetch = datetime.now()
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Done. Slug index: {len(slug_to_id)}, slike: {len(sl_image_index.get('img_corpus',[]))} izdelkov")
-    # shrani na disk, da preživi deploy/restart
-    _save_feed_cache_to_disk()
-
 
 FEED_CACHE_FILE = DATA_DIR / "feed_cache.json"
 # Verzija formata indeksa. Dvigni ob spremembi ekstrakcijske logike (sku_url, kategorije ipd.),
@@ -816,6 +864,7 @@ def _save_feed_cache_to_disk():
             "format_version": CACHE_FORMAT_VERSION,
             "saved_at": (last_fetch or datetime.now()).isoformat(),
             "feed_by_lang": feed_by_lang,
+            "feed_meta": feed_meta,
             "slug_to_id": slug_to_id,
             "sl_image_index": sl_image_index,
         }
@@ -830,7 +879,7 @@ def _save_feed_cache_to_disk():
 def _load_feed_cache_from_disk(allow_stale: bool = False) -> bool:
     """Naloži feed cache z diska, če obstaja, je svež (<TTL) in pravilne format verzije.
     Vrne True ob uspehu."""
-    global feed_by_lang, slug_to_id, sl_image_index, last_fetch
+    global feed_by_lang, slug_to_id, sl_image_index, last_fetch, feed_meta
     try:
         if not FEED_CACHE_FILE.exists():
             return False
@@ -851,6 +900,7 @@ def _load_feed_cache_from_disk(allow_stale: bool = False) -> bool:
         if _star:
             print(f"[feed cache] disk cache je star ({(datetime.now()-saved_at).days} dni) — vseeno naložen (allow_stale), osvežitev sledi")
         feed_by_lang = payload.get("feed_by_lang", {})
+        feed_meta = payload.get("feed_meta", {}) or {}
         slug_to_id = payload.get("slug_to_id", {})
         sl_image_index = payload.get("sl_image_index", {})
         # img_corpus se v JSON serializira kot seznam seznamov [img, joined] → pretvori nazaj v tuple
@@ -879,6 +929,215 @@ async def ensure_cache_fresh():
         if _load_feed_cache_from_disk():
             return
         await fetch_all_feeds()
+
+
+# ════════════════════════════════════════════════════════════════════
+#  SPREMEMBE CEN MED FEEDI + DNEVNIK UREJANJ V CMS
+#  1) ob vsaki osvežitvi trga primerjamo stare/nove cene → PRICE_CHANGES_FILE
+#  2) klik na ✎ (CMS Nova) / ročni "popravljeno" → CMS_LOG_FILE (skupno vsem)
+#  3) /marza-trgi združi oboje v status vrstice (odprto / popravljeno / potrjeno / nespremenjeno)
+# ════════════════════════════════════════════════════════════════════
+PRICE_CHANGES_FILE = DATA_DIR / "feed_price_changes.json"
+CMS_LOG_FILE = DATA_DIR / "cms_edit_log.json"
+PRICE_CHANGES_KEEP_DAYS = 30
+CMS_LOG_KEEP_DAYS = 45
+_cms_log_lock = None
+
+
+def _lj_iso() -> str:
+    """Zdajšnji čas v Ljubljani kot ISO brez časovnega pasu (strežnik na Renderju teče v UTC)."""
+    try:
+        return _lj_now().replace(tzinfo=None).isoformat(timespec="seconds")
+    except Exception:
+        return datetime.now().isoformat(timespec="seconds")
+
+
+def _jload(path, default):
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[json] {path.name}: {e}")
+    return default
+
+
+def _jsave(path, data):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _prune_by_age(d: dict, field: str, days: int) -> dict:
+    meja = (datetime.fromisoformat(_lj_iso()) - timedelta(days=days)).isoformat(timespec="seconds")
+    return {k: v for k, v in d.items() if str((v or {}).get(field) or "") >= meja}
+
+
+def _record_price_changes(lang: str, old: dict, new: dict):
+    """Zabeleži izdelke, ki jim je med staro in novo verzijo feeda spremenjena redna ali akcijska cena."""
+    now = _lj_iso()
+    data = _jload(PRICE_CHANGES_FILE, {})
+    trg = data.get(lang) or {}
+    n = 0
+    for g_id, d in new.items():
+        o = old.get(g_id)
+        if not o:
+            continue
+        op, np_ = (o.get("price") or ""), (d.get("price") or "")
+        os_, ns = (o.get("sale_price") or ""), (d.get("sale_price") or "")
+        if op != np_ or os_ != ns:
+            trg[str(g_id)] = {"at": now, "old_price": op, "new_price": np_, "old_sale": os_, "new_sale": ns}
+            n += 1
+    data[lang] = _prune_by_age(trg, "at", PRICE_CHANGES_KEEP_DAYS)
+    _jsave(PRICE_CHANGES_FILE, data)
+    print(f"[cene diff] {lang}: {n} spremenjenih cen")
+
+
+def _cms_log_get_lock():
+    global _cms_log_lock
+    if _cms_log_lock is None:
+        _cms_log_lock = asyncio.Lock()
+    return _cms_log_lock
+
+
+def _iso_from_http_date(s: str) -> str:
+    """'Wed, 24 Sep 2026 12:05:00 GMT' → lokalni ISO čas (Europe/Ljubljana), '' ob napaki."""
+    try:
+        from email.utils import parsedate_to_datetime
+        dt = parsedate_to_datetime(s)
+        try:
+            from zoneinfo import ZoneInfo
+            dt = dt.astimezone(ZoneInfo("Europe/Ljubljana"))
+        except Exception:
+            dt = dt.astimezone()
+        return dt.replace(tzinfo=None).isoformat(timespec="seconds")
+    except Exception:
+        return ""
+
+
+@app.get("/feed-meta")
+async def feed_meta_get(request: Request, trg: str = "sl", live: int = 1):
+    """Kdaj je trgovina zgradila feed (Last-Modified), kdaj smo ga prebrali, in ali je na voljo novejši."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    trg = (trg or "sl").lower()
+    if trg not in MAAARKET_FEEDS:
+        return {"ok": False, "error": f"Neznan trg: {trg}"}
+    m = dict(feed_meta.get(trg) or {})
+    out = {"ok": True, "trg": trg, "fetched_at": m.get("fetched_at") or (last_fetch.isoformat(timespec="seconds") if last_fetch else None),
+           "built_at": _iso_from_http_date(m.get("last_modified") or ""), "error": m.get("error"),
+           "last_error_at": m.get("last_error_at"), "count": len(feed_by_lang.get(trg) or {})}
+    if live:
+        try:
+            async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as hc:
+                r = await hc.head(MAAARKET_FEEDS[trg])
+            lm = r.headers.get("last-modified") or ""
+            out["live_built_at"] = _iso_from_http_date(lm)
+            out["novejsi"] = bool(lm and out["live_built_at"] and out["built_at"] and out["live_built_at"] > out["built_at"])
+        except Exception as e:
+            out["live_error"] = str(e)[:120]
+    return out
+
+
+@app.post("/feed-refresh-one")
+async def feed_refresh_one(request: Request):
+    """Ročna osvežitev feeda ENEGA trga (gumb v Marži po trgih / Bato cenah)."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    trg = str(body.get("trg") or "sl").lower()
+    if trg not in MAAARKET_FEEDS:
+        return {"ok": False, "error": f"Neznan trg: {trg}"}
+    lock = _get_feed_lock()
+    async with lock:
+        meta = await fetch_one_feed(trg)
+    if meta.get("error") or (meta.get("status") and meta.get("status") != 200):
+        return {"ok": False, "error": "Feed ni dosegljiv: " + str(meta.get("error") or ("HTTP " + str(meta.get("status")))) + " — ostaja prejšnja verzija."}
+    return {"ok": True, "trg": trg, "count": len(feed_by_lang.get(trg) or {}),
+            "fetched_at": meta.get("fetched_at"), "built_at": _iso_from_http_date(meta.get("last_modified") or "")}
+
+
+@app.get("/cms-log")
+async def cms_log_get(request: Request):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    return {"ok": True, "log": _jload(CMS_LOG_FILE, {})}
+
+
+@app.post("/cms-log")
+async def cms_log_post(request: Request):
+    """Body: {akcija:'open'|'done'|'undo', cms_id, trg ('sl'..'ro' ali '*' = Price Checker), sku, cena, vir}
+    Ključ = trg|cms_id. 'open' zapiše čas odprtja, 'done' ročno potrdi, 'undo' izbriše zapis."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    try:
+        b = await request.json()
+    except Exception:
+        return {"ok": False, "error": "Neveljaven JSON"}
+    akcija = str(b.get("akcija") or "open")
+    cms_id = str(b.get("cms_id") or "").strip()
+    trg = str(b.get("trg") or "*").lower()
+    if not cms_id:
+        return {"ok": False, "error": "Manjka cms_id"}
+    key = f"{trg}|{cms_id}"
+    now = _lj_iso()
+    async with _cms_log_get_lock():
+        log = _jload(CMS_LOG_FILE, {})
+        if akcija == "undo":
+            log.pop(key, None)
+            log.pop(f"*|{cms_id}", None)     # tudi zapis iz Price Checkerja (velja za vse trge)
+        else:
+            e = log.get(key) or {}
+            e.update({"cms_id": cms_id, "trg": trg, "sku": str(b.get("sku") or e.get("sku") or "").upper(),
+                      "vir": str(b.get("vir") or e.get("vir") or "")})
+            if akcija == "open":
+                e["opened_at"] = now
+                if b.get("cena") is not None:
+                    e["cena_ob_odprtju"] = b.get("cena")
+                e.pop("done_at", None)
+            elif akcija == "done":
+                e["done_at"] = now
+                e.setdefault("opened_at", now)
+                if b.get("cena") is not None and "cena_ob_odprtju" not in e:
+                    e["cena_ob_odprtju"] = b.get("cena")
+            log[key] = e
+        log = _prune_by_age(log, "opened_at", CMS_LOG_KEEP_DAYS)
+        _jsave(CMS_LOG_FILE, log)
+    return {"ok": True, "key": key, "zapis": log.get(key)}
+
+
+def _cms_status(trg: str, cms_id, g_id, cena_zdaj, log: dict, changes: dict, meta: dict):
+    """Status vrstice iz dnevnika + sprememb cen.
+    potrjeno  = po odprtju je feed pokazal spremenjeno ceno
+    nespremenjeno = feed, zgrajen PO odprtju, ima še vedno isto ceno
+    popravljeno = ročno označeno, feed še ni potrdil
+    odprto = kliknjeno ✎, čakamo nov feed"""
+    if not cms_id:
+        return None
+    e = log.get(f"{trg}|{cms_id}") or log.get(f"*|{cms_id}")
+    if not e:
+        return None
+    opened = e.get("opened_at") or ""
+    ch = changes.get(str(g_id)) or {}
+    built = _iso_from_http_date(meta.get("last_modified") or "") or (meta.get("fetched_at") or "")
+    st = "popravljeno" if e.get("done_at") else "odprto"
+    if ch.get("at") and ch["at"] >= opened:
+        st = "potrjeno"
+    elif built and built > opened and (meta.get("fetched_at") or "") > opened:
+        c0 = e.get("cena_ob_odprtju")
+        if c0 is None or (cena_zdaj is not None and abs(float(c0) - float(cena_zdaj)) < 0.005):
+            st = "nespremenjeno"
+        else:
+            st = "potrjeno"
+    return {"st": st, "opened_at": opened, "done_at": e.get("done_at"),
+            "vir": "Price Checker" if e.get("trg") == "*" else (e.get("vir") or "")}
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -10351,6 +10610,10 @@ async def marza_trgi(request: Request, trg: str = "sl"):
                 return str(sl_sku_gid[k])
         return None
 
+    _cms_log = _jload(CMS_LOG_FILE, {})
+    _changes = (_jload(PRICE_CHANGES_FILE, {}) or {}).get(trg) or {}
+    _meta = feed_meta.get(trg) or {}
+
     rows = []
     valute = set()
     nacini = {}
@@ -10411,7 +10674,9 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             "nacin": nacin,
             "parser": _je_parser(nc_sku or sku, nacin, d.get("brand")),
             "znamka": (d.get("brand") or "").strip(),
-            "cms_id": _cms_id(g_id, d, sku, nc_sku),
+            "cms_id": (_cid := _cms_id(g_id, d, sku, nc_sku)),
+            "cms": _cms_status(trg, _cid, g_id, cena, _cms_log, _changes, _meta),
+            "sprememba": _changes.get(str(g_id)),
             "na_voljo": (d.get("availability") or ""),
         })
     z_nc = [r for r in rows if r["marza_pct"] is not None]
@@ -10461,6 +10726,13 @@ async def marza_trgi_stran(request: Request):
   .bbar{display:none;flex-wrap:wrap;gap:14px;align-items:center;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:10px 14px;margin:0 0 12px;font-size:14px}
   .bbar input[type=number]{width:70px;padding:6px 8px;border:1px solid var(--bd);border-radius:7px;font-family:inherit;font-size:14px}
   .up{color:#15803d;font-weight:700}.dn{color:#b91c1c;font-weight:700}
+  .okb{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:7px;border-radius:6px;font-size:14px;font-weight:700;vertical-align:middle;cursor:pointer;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-family:inherit;padding:0}
+  .okb.on{background:#16a34a;color:#fff;border-color:#16a34a}
+  .cst{display:inline-block;margin-top:3px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;white-space:nowrap}
+  .cst-odprto{background:#eff6ff;color:#1d4ed8}.cst-popravljeno{background:#dcfce7;color:#166534}.cst-potrjeno{background:#16a34a;color:#fff}.cst-nespremenjeno{background:#fef3c7;color:#92400e}
+  .spr{font-size:12px;color:var(--txt2);margin-top:2px}
+  #feedInfo{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13.5px;color:var(--txt2);margin:-4px 0 12px}
+  #feedInfo .novo{color:#b45309;font-weight:700}
   .bnote{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;background:#fef3c7;color:#92400e;white-space:nowrap}
   .btn{padding:7px 13px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:#16a34a;color:#fff}
   .info{font-size:13px;color:var(--txt3);margin-left:auto}
@@ -10489,6 +10761,7 @@ async def marza_trgi_stran(request: Request):
   <span class="info" id="fxInfo"></span>
 </div>
 <div class="tabs" id="tabs"></div>
+<div id="feedInfo"></div>
 <div class="stats" id="stats"></div>
 <div class="bar">
   <input type="text" id="q" placeholder="🔍 Išči SKU ali naziv..." oninput="render()">
@@ -10499,7 +10772,13 @@ async def marza_trgi_stran(request: Request):
   <button class="chip" data-f="ok" onclick="setF(this)">&gt; 40 %</button>
   <button class="chip" data-f="nonc" onclick="setF(this)">Brez NC</button>
   <button class="chip" data-f="ugib" onclick="setF(this)" title="SKU najden z ugibanjem iz imena slike — preveri, ali je pravi">⚠ Ugibanje</button>
+  <label style="font-size:14px;display:flex;gap:6px;align-items:center;margin-left:6px" title="Razlika = cena brez DDV − NC, v €">Razlika
+    <select id="razpon" onchange="savePref();lim=300;blim=300;render()" style="padding:6px 9px;border:1px solid var(--bd);border-radius:7px;background:#fff;font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer">
+      <option value="all">Vse</option><option value="neg">&lt; 0 €</option><option value="lt7">&lt; 7 €</option><option value="7-8">7–8 €</option><option value="8-9">8–9 €</option>
+      <option value="9-10">9–10 €</option><option value="10-11">10–11 €</option><option value="11-12">11–12 €</option><option value="12-15">12–15 €</option>
+      <option value="15-20">15–20 €</option><option value="gte20">≥ 20 €</option></select></label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
+  <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, ki so bili odprti v CMS, ročno popravljeni ali potrjeni v feedu. Opozorila (cena nespremenjena) ostanejo vidna."><input type="checkbox" id="skrijUr" onchange="savePref();render()"> Skrij urejene</label>
   <button class="bato-btn" id="batoBtn" onclick="toggleBato()" title="Redne cene, ki se ne končajo na bato (x,99 / x99 / x9)">💲 Bato cene</button>
   <button class="btn" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
@@ -10511,7 +10790,7 @@ async def marza_trgi_stran(request: Request):
   <th class="r" onclick="srt('eur')">Cena €</th>
   <th class="r" onclick="srt('neto')">Brez DDV</th>
   <th class="r" onclick="srt('nc')">NC</th>
-  <th class="r" onclick="srt('marza_eur')">Marža €</th>
+  <th class="r" onclick="srt('marza_eur')" title="Razlika = cena brez DDV − NC (v €), kot v Price Checkerju">Razlika €</th>
   <th class="r" onclick="srt('marza_pct')">Marža %</th>
   <th class="r" onclick="srt('zaloga')">Zaloga</th>
 </tr></thead><tbody id="tb"><tr><td colspan="10" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr></tbody></table></div>
@@ -10531,6 +10810,9 @@ async def marza_trgi_stran(request: Request):
   <th class="r" onclick="bsrt('pred')">Predlog</th>
   <th class="r" onclick="bsrt('diff')">Razlika</th>
   <th class="r" onclick="bsrt('akc')">Akcija zdaj</th>
+  <th class="r" onclick="bsrt('nc')">NC</th>
+  <th class="r" onclick="bsrt('rz')" title="Cena brez DDV − NC (€), zdaj">Razlika zdaj</th>
+  <th class="r" onclick="bsrt('rp')" title="Cena brez DDV − NC (€), po predlogu">Razlika po</th>
   <th class="r" onclick="bsrt('mz')">Marža zdaj</th>
   <th class="r" onclick="bsrt('mp')">Marža po</th>
   <th onclick="bsrt('note')">Opomba</th>
@@ -10549,6 +10831,7 @@ function setF(b){if(BATO)toggleBato();document.querySelectorAll('.chip').forEach
 function srt(k){if(sk===k)sd=-sd;else{sk=k;sd=(k==='sku'||k==='naziv')?-1:1;}render();}
 async function load(){
   document.getElementById('tb').innerHTML='<tr><td colspan="10" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr>';
+  loadFeedInfo();
   try{ D=await (await fetch('/marza-trgi?trg='+trg)).json(); }catch(e){ D={ok:false,error:e.message}; }
   if(!D.ok){document.getElementById('tb').innerHTML='<tr><td colspan="10" style="padding:30px;text-align:center;color:#b91c1c">'+esc(D.error||'Napaka')+'</td></tr>';document.getElementById('stats').innerHTML='';return;}
   const fx=Object.entries(D.tecaji||{}).filter(([v])=>v!=='EUR').map(([v,r])=>'1 € = '+(r?r.toLocaleString('sl-SI'):'?')+' '+v).join(' · ');
@@ -10573,6 +10856,8 @@ function filtered(){
     if(q && !((x.sku||'').toLowerCase().includes(q)||(x.naziv||'').toLowerCase().includes(q)||(x.znamka||'').toLowerCase().includes(q))) return false;
     if(z && !(x.zaloga>0)) return false;
     if(ZN.size && !ZN.has(x.znamka||'(prazno)')) return false;
+    if(skritUrejen(x)) return false;
+    if(!razMatch(x.marza_eur)) return false;
     const m=x.marza_pct;
     if(flt==='nonc') return m==null;
     if(flt==='ugib') return (x.nacin||'').startsWith('slika');
@@ -10597,14 +10882,15 @@ function render(){ if(BATO) return renderBato(); return renderMain(); }
 function renderMain(){
   if(!D||!D.ok) return;
   const r=filtered(), vis=r.slice(0,lim);
+  const RR=razRange(r.map(o=>o.marza_eur));
   document.getElementById('tb').innerHTML = vis.length ? vis.map(x=>
     '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
-    '<td class="sku">'+(x.url?'<a class="ext" href="'+esc(x.url)+'" target="_blank" rel="noopener" title="Odpri izdelek v trgovini (novo okno)">↗</a>':'')+(x.cms_id?'<a class="ext cms" href="https://api.maaarket.si/nova/resources/products/'+encodeURIComponent(x.cms_id)+'?tab=vsebina" target="_blank" rel="noopener" title="Odpri v CMS Nova (ID '+esc(x.cms_id)+')">✎</a>':'<span class="ext off" title="CMS ID ni najden">✎</span>')+esc(String(x.sku||'?').toUpperCase())+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:11px;padding:1px 6px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:12px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+'</td>'+
-    '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a></td>'+
+    '<td class="sku">'+linksHtml(x)+esc(String(x.sku||'?').toUpperCase())+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:11px;padding:1px 6px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:12px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+cmsBadge(x)+'</td>'+
+    '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
     '<td class="r">'+f2(x.koncna)+' <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
     '<td class="r">'+f2(x.eur)+'</td><td class="r">'+f2(x.neto)+'</td>'+
     '<td class="r">'+(x.nc==null?'<span class="dim">—</span>':f2(x.nc))+'</td>'+
-    '<td class="r" style="font-weight:700">'+(x.marza_eur==null?'<span class="dim">—</span>':f2(x.marza_eur))+'</td>'+
+    razTd(x.marza_eur,RR)+
     '<td class="r">'+(x.marza_pct==null?'<span class="dim">—</span>':'<span class="m '+mcls(x.marza_pct)+'">'+x.marza_pct.toLocaleString('sl-SI')+' %</span>')+'</td>'+
     '<td class="r'+(x.zaloga>0?'':' dim')+'">'+(x.zaloga||0)+'</td></tr>'
   ).join('') : '<tr><td colspan="10" style="padding:30px;text-align:center" class="dim">Ni zadetkov.</td></tr>';
@@ -10615,7 +10901,7 @@ function izvozi(){
   if(!D||!D.ok) return;
   const r=filtered(), e=v=>{v=v==null?'':String(v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
   const n=v=>v==null?'':String(v).replace('.',',');
-  let csv='\ufeffSKU;Način;Parser;Znamka;CMS ID;NC SKU;Naziv;Cena;Valuta;Akcija;Cena EUR;Brez DDV;NC;Marža EUR;Marža %;Zaloga;URL\n';
+  let csv='\ufeffSKU;Način;Parser;Znamka;CMS ID;NC SKU;Naziv;Cena;Valuta;Akcija;Cena EUR;Brez DDV;NC;Razlika €;Marža %;Zaloga;URL\n';
   r.forEach(x=>{csv+=[e(String(x.sku||'').toUpperCase()),e(x.nacin),x.parser===true?'da':(x.parser===false?'ne':'?'),e(x.znamka),e(x.cms_id),e(String(x.nc_sku||'').toUpperCase()),e(x.naziv),n(x.koncna),x.valuta,x.akcija?'da':'',n(x.eur),n(x.neto),n(x.nc),n(x.marza_eur),n(x.marza_pct),x.zaloga||0,e(x.url)].join(';')+'\n';});
   const d=new Date(), z=d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)+'_'+('0'+d.getHours()).slice(-2)+('0'+d.getMinutes()).slice(-2);
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
@@ -10656,6 +10942,77 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-zn]'); if(
   document.addEventListener('mouseout',e=>{if(e.target.closest('img.img')) z.style.display='none';});
   addEventListener('scroll',()=>{z.style.display='none';},true);
 })();
+// ═══ RAZLIKA (cena brez DDV − NC, €) — enak razpon in barve kot v Price Checkerju ═══
+function razMatch(v){const f=(document.getElementById('razpon')||{}).value||'all'; if(f==='all') return true;
+  if(v==null||isNaN(v)) return false; if(f==='neg') return v<0; const d=Math.abs(v);
+  switch(f){case 'lt7':return d<7;case '7-8':return d>=7&&d<8;case '8-9':return d>=8&&d<9;case '9-10':return d>=9&&d<10;
+    case '10-11':return d>=10&&d<11;case '11-12':return d>=11&&d<12;case '12-15':return d>=12&&d<15;case '15-20':return d>=15&&d<20;case 'gte20':return d>=20;}
+  return true;}
+function razRange(vals){const v=vals.filter(a=>a!=null&&!isNaN(a)).map(Math.abs); if(!v.length) return [0,1];
+  let lo=Math.min(...v), hi=Math.max(...v); if(hi===lo) hi=lo+1; return [lo,hi];}
+function razTd(v,RR){
+  if(v==null||isNaN(v)) return '<td class="r"><span class="dim">—</span></td>';
+  let t=(Math.abs(v)-RR[0])/(RR[1]-RR[0]); t=Math.max(0,Math.min(1,t)); if(v<0) t=0;
+  const S=[[0,[229,83,75]],[0.35,[229,140,59]],[0.55,[200,180,45]],[0.75,[140,195,70]],[1,[46,160,60]]];
+  let c=S[S.length-1][1];
+  for(let i=0;i<S.length-1;i++){ if(t>=S[i][0]&&t<=S[i+1][0]){const lt=(t-S[i][0])/(S[i+1][0]-S[i][0]),a=S[i][1],b=S[i+1][1];c=[0,1,2].map(k=>Math.round(a[k]+(b[k]-a[k])*lt));break;} }
+  const rgb=c.join(','), bgA=0.07+t*0.08;
+  return '<td class="r" style="font-weight:700;font-variant-numeric:tabular-nums;box-shadow:inset 4px 0 0 rgb('+rgb+');background:rgba('+rgb+','+bgA.toFixed(3)+')">'+f2(v)+'</td>';}
+
+// ═══ CMS POVEZAVE, DNEVNIK UREJANJ, SPREMEMBE CEN ═══
+const CST={odprto:['✎ odprto','Odprto v CMS — čakam na nov feed'],popravljeno:['✓ popravljeno','Ročno označeno — feed še ni potrdil'],
+  potrjeno:['✓ potrjeno v feedu','Nov feed kaže spremenjeno ceno'],nespremenjeno:['⚠ cena nespremenjena','Feed, zgrajen po odprtju, ima še vedno isto ceno — popravek pozabljen ali ni shranjen?']};
+function fmtT(iso){if(!iso)return '';const d=new Date(iso);if(isNaN(d))return iso;const t=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+  const n=new Date();return (d.toDateString()===n.toDateString()?'danes ':d.getDate()+'. '+(d.getMonth()+1)+'. ')+t;}
+function linksHtml(x){
+  const on=x.cms&&(x.cms.st==='popravljeno'||x.cms.st==='potrjeno');
+  return (x.url?'<a class="ext" href="'+esc(x.url)+'" target="_blank" rel="noopener" title="Odpri izdelek v trgovini (novo okno)">↗</a>':'')+
+    (x.cms_id?'<a class="ext cms" data-cms="'+x._i+'" href="https://api.maaarket.si/nova/resources/products/'+encodeURIComponent(x.cms_id)+'?tab=vsebina" target="_blank" rel="noopener" title="Odpri v CMS Nova (ID '+esc(x.cms_id)+')">✎</a>'+
+      '<button type="button" class="okb'+(on?' on':'')+'" data-done="'+x._i+'" title="'+(on?'Označeno kot popravljeno — klik prekliče':'Označi kot popravljeno')+'">✓</button>'
+     :'<span class="ext off" title="CMS ID ni najden">✎</span>');
+}
+function cmsBadge(x){const c=x.cms;if(!c||!CST[c.st])return '';
+  const t=CST[c.st][1]+' · odprto '+fmtT(c.opened_at)+(c.done_at?' · označeno '+fmtT(c.done_at):'')+(c.vir?' · '+c.vir:'');
+  return '<div><span class="cst cst-'+c.st+'" title="'+esc(t)+'">'+CST[c.st][0]+(c.st==='odprto'||c.st==='popravljeno'?' '+fmtT(c.done_at||c.opened_at):'')+'</span>'+
+    '<button type="button" data-undo="'+x._i+'" title="Odstrani oznako (npr. samo pogledal, nisem spreminjal)" style="border:0;background:none;cursor:pointer;color:var(--txt3);font-size:14px;padding:0 4px">×</button></div>';}
+function sprHtml(x){const s=x.sprememba;if(!s)return '';
+  const pp=v=>{const [n,c]=String(v||'').split(' ');return n?n.replace('.',','):'—';};
+  const reg=s.old_price!==s.new_price?'redna '+pp(s.old_price)+' → '+pp(s.new_price):'';
+  const akc=s.old_sale!==s.new_sale?'akcija '+pp(s.old_sale)+' → '+pp(s.new_sale):'';
+  return '<div class="spr" title="Sprememba med prejšnjim in zadnjim feedom">↻ '+fmtT(s.at)+': '+[reg,akc].filter(Boolean).join(' · ')+'</div>';}
+function skritUrejen(x){if(!document.getElementById('skrijUr').checked||!x.cms)return false;return x.cms.st!=='nespremenjeno';}
+async function cmsLog(x,akcija){
+  try{const r=await fetch('/cms-log',{method:'POST',headers:{'Content-Type':'application/json'},keepalive:true,
+    body:JSON.stringify({akcija,cms_id:x.cms_id,trg,sku:x.sku,cena:x.cena,vir:BATO?'Bato cene':'Marža po trgih'})});return (await r.json()).ok;}catch(e){return false;}}
+document.addEventListener('click',e=>{
+  const a=e.target.closest('a[data-cms]');
+  if(a){const x=D&&D.rows[+a.dataset.cms]; if(!x) return;
+    cmsLog(x,'open'); x.cms={st:'odprto',opened_at:new Date().toISOString(),vir:BATO?'Bato cene':'Marža po trgih'}; setTimeout(render,300); return;}
+  const u=e.target.closest('button[data-undo]');
+  if(u){const x=D&&D.rows[+u.dataset.undo]; if(!x) return; cmsLog(x,'undo'); x.cms=null; render(); return;}
+  const b=e.target.closest('button[data-done]');
+  if(b){const x=D&&D.rows[+b.dataset.done]; if(!x) return;
+    const on=x.cms&&(x.cms.st==='popravljeno'||x.cms.st==='potrjeno');
+    if(on){cmsLog(x,'undo'); x.cms=null;} else {cmsLog(x,'done'); const n=new Date().toISOString(); x.cms={st:'popravljeno',opened_at:(x.cms&&x.cms.opened_at)||n,done_at:n,vir:BATO?'Bato cene':'Marža po trgih'};}
+    render();}
+});
+async function loadFeedInfo(){
+  const el=document.getElementById('feedInfo'); const L=(TRGI.find(t=>t[0]===trg)||[])[1]||trg.toUpperCase();
+  el.innerHTML='Feed '+L+': preverjam …';
+  let m={}; try{m=await (await fetch('/feed-meta?trg='+trg)).json();}catch(e){}
+  if(!m.ok){el.innerHTML='Feed '+L+': podatki niso na voljo';return;}
+  el.innerHTML='<span>Feed <b>'+L+'</b>: '+(m.built_at?'zgrajen v trgovini <b>'+fmtT(m.built_at)+'</b> · ':'')+'prebran <b>'+fmtT(m.fetched_at)+'</b></span>'+
+    (m.novejsi?'<span class="novo">⚠ v trgovini je novejši feed ('+fmtT(m.live_built_at)+')</span>':'')+
+    (m.error?'<span class="novo" title="'+esc(m.error)+'">⚠ zadnji prenos ni uspel ('+fmtT(m.last_error_at)+') — prikazana prejšnja verzija</span>':'')+
+    '<button class="chip" id="refBtn" onclick="refreshTrg()" title="Ponovno prebere feed samo za ta trg">↻ Osveži '+L+'</button>';
+}
+async function refreshTrg(){
+  const b=document.getElementById('refBtn'); if(b){b.disabled=true;b.textContent='Osvežujem …';}
+  let r={}; try{r=await (await fetch('/feed-refresh-one',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trg})})).json();}catch(e){r={ok:false,error:e.message};}
+  if(!r.ok){alert(r.error||'Osvežitev ni uspela'); if(b){b.disabled=false;b.textContent='↻ Osveži';} return;}
+  load();
+}
+
 // ═══ BATO CENE ═══ redna cena → najbližja "lepa" cena, ki se konča na 9.
 // Vrednosti v najmanjših enotah (EUR = centi, ostalo cela števila); bato = k·S − 1.
 //   EUR x,99 (S=100 centov) · HUF x499/x999 (S=500) · CZK/RSD x99 (S=100) · PLN/RON x9 (S=10)
@@ -10689,11 +11046,14 @@ function batoRows(){
     if(q && !((x.sku||'').toLowerCase().includes(q)||(x.naziv||'').toLowerCase().includes(q)||(x.znamka||'').toLowerCase().includes(q))) return;
     if(z && !(x.zaloga>0)) return;
     if(ZN.size && !ZN.has(x.znamka||'(prazno)')) return;
+    if(skritUrejen(x)) return;
+    if(!razMatch(x.marza_eur)) return;
     const cur=x.valuta||'EUR', rate=(D.tecaji||{})[cur]||(cur==='EUR'?1:null);
     if(rate && x.cena/rate < minEur) return;
     const k=batoCands(x.cena,cur); if(!k) return;
     const r=(x.akcija&&x.cena)?x.akcija/x.cena:1;   // razmerje akcija/redna — ocena nove akcijske cene
     const mz=p=>{ if(!x.nc||!rate) return null; const n=p*r/rate/(1+D.ddv/100); return n?(n-x.nc)/n*100:null; };
+    const rzF=p=>{ if(!x.nc||!rate) return null; return Math.round((p*r/rate/(1+D.ddv/100)-x.nc)*100)/100; };
     let pred, note='';
     if(k.lo==null) pred=k.hi;
     else pred=(k.dLo < k.dHi)?k.lo:k.hi;            // bližji; enaka razdalja → navzgor
@@ -10701,41 +11061,44 @@ function batoRows(){
     const mPo=mz(pred);
     if(mPo!=null && mPo<P) note=(note?note+' · ':'')+'marža pod pragom';
     out.push({x, cur, reg:x.cena, pred, diff:Math.round((pred-x.cena)*100)/100, diffPct:(pred-x.cena)/x.cena*100,
-      akc:x.akcija, mz:x.marza_pct, mp:mPo==null?null:Math.round(mPo*10)/10, note});
+      akc:x.akcija, nc:x.nc, rz:x.marza_eur, rp:rzF(pred), mz:x.marza_pct, mp:mPo==null?null:Math.round(mPo*10)/10, note});
   });
-  const key={sku:o=>String(o.x.sku||''),naziv:o=>String(o.x.naziv||''),reg:o=>o.reg,pred:o=>o.pred,diff:o=>o.diffPct,akc:o=>o.akc??-1e9,mz:o=>o.mz??-1e9,mp:o=>o.mp??-1e9,note:o=>o.note}[bsk];
+  const key={sku:o=>String(o.x.sku||''),naziv:o=>String(o.x.naziv||''),reg:o=>o.reg,pred:o=>o.pred,diff:o=>o.diffPct,akc:o=>o.akc??-1e9,nc:o=>o.nc??-1e9,rz:o=>o.rz??-1e9,rp:o=>o.rp??-1e9,mz:o=>o.mz??-1e9,mp:o=>o.mp??-1e9,note:o=>o.note}[bsk];
   out.sort((a,b)=>{const A=key(a),B=key(b);return (A>B?1:A<B?-1:0)*(typeof A==='string'?-bsd:bsd);});
   return out;
 }
 function renderBato(){
   if(!D||!D.ok) return;
   const r=batoRows(), vis=r.slice(0,blim);
+  const RR=razRange(r.map(o=>o.rz).concat(r.map(o=>o.rp)));
   const up=r.filter(o=>o.diff>0).length, dn=r.length-up, marz=r.filter(o=>o.note.includes('zaradi')).length;
   document.getElementById('bInfo').innerHTML='<b style="color:var(--txt)">'+r.length+'</b> cen ni bato · <span class="up">'+up+' ↑</span> · <span class="dn">'+dn+' ↓</span>'+(marz?' · '+marz+' dvignjenih zaradi marže':'');
   const mp=m=>m==null?'<span class="dim">—</span>':'<span class="m '+mcls(m)+'">'+m.toLocaleString('sl-SI')+' %</span>';
   document.getElementById('btb').innerHTML=vis.length?vis.map(o=>{const x=o.x;return '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
-    '<td class="sku">'+(x.url?'<a class="ext" href="'+esc(x.url)+'" target="_blank" rel="noopener" title="Odpri izdelek v trgovini">↗</a>':'')+(x.cms_id?'<a class="ext cms" href="https://api.maaarket.si/nova/resources/products/'+encodeURIComponent(x.cms_id)+'?tab=vsebina" target="_blank" rel="noopener" title="Odpri v CMS Nova (ID '+esc(x.cms_id)+')">✎</a>':'<span class="ext off" title="CMS ID ni najden">✎</span>')+esc(String(x.sku||'?').toUpperCase())+'</td>'+
-    '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a></td>'+
+    '<td class="sku">'+linksHtml(x)+esc(String(x.sku||'?').toUpperCase())+cmsBadge(x)+'</td>'+
+    '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
     '<td class="r">'+fmtC(o.reg,o.cur)+' <span class="dim">'+esc(o.cur)+'</span></td>'+
     '<td class="r" style="font-weight:800;font-size:16px">'+fmtC(o.pred,o.cur)+'</td>'+
     '<td class="r '+(o.diff>0?'up':'dn')+'">'+(o.diff>0?'+':'')+fmtC(o.diff,o.cur)+'</td>'+
     '<td class="r">'+(o.akc?fmtC(o.akc,o.cur):'<span class="dim">—</span>')+'</td>'+
+    '<td class="r">'+(o.nc==null?'<span class="dim">—</span>':f2(o.nc))+'</td>'+
+    razTd(o.rz,RR)+razTd(o.rp,RR)+
     '<td class="r">'+mp(o.mz)+'</td><td class="r">'+mp(o.mp)+'</td>'+
     '<td>'+(o.note?'<span class="bnote">'+esc(o.note)+'</span>':'')+'</td></tr>';}).join('')
-    :'<tr><td colspan="10" style="padding:30px;text-align:center" class="dim">Vse redne cene so bato 👍</td></tr>';
+    :'<tr><td colspan="13" style="padding:30px;text-align:center" class="dim">Vse redne cene so bato 👍</td></tr>';
   const mb=document.getElementById('bmore'); mb.style.display=r.length>blim?'block':'none'; mb.textContent='Prikaži več ('+(r.length-blim)+' preostalih)';
 }
 function izvoziBato(){
   const r=batoRows(), e=v=>{v=v==null?'':String(v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
   const n=v=>v==null?'':String(v).replace('.',',');
-  let csv='\ufeffSKU;CMS ID;Naziv;Znamka;Valuta;Redna zdaj;Predlog;Razlika;Akcija zdaj;Marža zdaj %;Marža po %;Opomba;URL\n';
-  r.forEach(o=>{const x=o.x;csv+=[e(String(x.sku||'').toUpperCase()),e(x.cms_id),e(x.naziv),e(x.znamka),o.cur,n(o.reg),n(o.pred),n(o.diff),n(o.akc),n(o.mz),n(o.mp),e(o.note),e(x.url)].join(';')+'\n';});
+  let csv='\ufeffSKU;CMS ID;Naziv;Znamka;Valuta;Redna zdaj;Predlog;Razlika;Akcija zdaj;NC;Razlika zdaj €;Razlika po €;Marža zdaj %;Marža po %;Opomba;URL\n';
+  r.forEach(o=>{const x=o.x;csv+=[e(String(x.sku||'').toUpperCase()),e(x.cms_id),e(x.naziv),e(x.znamka),o.cur,n(o.reg),n(o.pred),n(o.diff),n(o.akc),n(o.nc),n(o.rz),n(o.rp),n(o.mz),n(o.mp),e(o.note),e(x.url)].join(';')+'\n';});
   const d=new Date(), zz=d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)+'_'+('0'+d.getHours()).slice(-2)+('0'+d.getMinutes()).slice(-2);
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   a.download='bato_'+D.oznaka+'_'+zz+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
-function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,zn:[...ZN],bm:document.getElementById('bMin').value,bp:document.getElementById('bPrag').value}));}catch(e){}}
-try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;if(Array.isArray(p.zn))ZN=new Set(p.zn);if(p.bm!=null)document.getElementById('bMin').value=p.bm;if(p.bp!=null)document.getElementById('bPrag').value=p.bp;}catch(e){}
+function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,sk:skrijUr.checked,rz:razpon.value,zn:[...ZN],bm:document.getElementById('bMin').value,bp:document.getElementById('bPrag').value}));}catch(e){}}
+try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;skrijUr.checked=!!p.sk;if(p.rz)razpon.value=p.rz;if(Array.isArray(p.zn))ZN=new Set(p.zn);if(p.bm!=null)document.getElementById('bMin').value=p.bm;if(p.bp!=null)document.getElementById('bPrag').value=p.bp;}catch(e){}
 tabs(); load();
 </script></body></html>"""
     return HTMLResponse(html)
