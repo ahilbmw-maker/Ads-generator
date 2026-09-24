@@ -10456,6 +10456,12 @@ async def marza_trgi_stran(request: Request):
   .bar input[type=text]{padding:8px 11px;border:1px solid var(--bd);border-radius:8px;font-family:inherit;font-size:14.5px;width:280px}
   .chip{padding:6px 11px;border:1px solid var(--bd);border-radius:7px;background:#fff;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--txt2)}
   .chip.on{background:#eef2ff;border-color:#a5b4fc;color:#3730a3}
+  .bato-btn{padding:6px 13px;border:1px solid #fcd34d;border-radius:7px;background:#fffbeb;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#92400e}
+  .bato-btn.on{background:#f59e0b;border-color:#f59e0b;color:#fff}
+  .bbar{display:none;flex-wrap:wrap;gap:14px;align-items:center;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:10px 14px;margin:0 0 12px;font-size:14px}
+  .bbar input[type=number]{width:70px;padding:6px 8px;border:1px solid var(--bd);border-radius:7px;font-family:inherit;font-size:14px}
+  .up{color:#15803d;font-weight:700}.dn{color:#b91c1c;font-weight:700}
+  .bnote{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;background:#fef3c7;color:#92400e;white-space:nowrap}
   .btn{padding:7px 13px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:#16a34a;color:#fff}
   .info{font-size:13px;color:var(--txt3);margin-left:auto}
   .wrap{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow-x:auto}
@@ -10494,6 +10500,7 @@ async def marza_trgi_stran(request: Request):
   <button class="chip" data-f="nonc" onclick="setF(this)">Brez NC</button>
   <button class="chip" data-f="ugib" onclick="setF(this)" title="SKU najden z ugibanjem iz imena slike — preveri, ali je pravi">⚠ Ugibanje</button>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
+  <button class="bato-btn" id="batoBtn" onclick="toggleBato()" title="Redne cene, ki se ne končajo na bato (x,99 / x99 / x9)">💲 Bato cene</button>
   <button class="btn" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
 <div class="wrap"><table><thead><tr>
@@ -10509,6 +10516,26 @@ async def marza_trgi_stran(request: Request):
   <th class="r" onclick="srt('zaloga')">Zaloga</th>
 </tr></thead><tbody id="tb"><tr><td colspan="10" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr></tbody></table></div>
 <button class="more" id="more" style="display:none" onclick="lim+=300;render()">Prikaži več</button>
+<div class="bbar" id="bbar">
+  <b>💲 Bato redne cene</b>
+  <label>Ne preverjaj cen pod <input type="number" id="bMin" min="0" step="0.5" value="5" oninput="savePref();render()"> €</label>
+  <label>Prag marže <input type="number" id="bPrag" min="-100" max="100" step="1" value="20" oninput="savePref();render()"> %</label>
+  <span id="bInfo" class="dim"></span>
+  <button class="btn" onclick="izvoziBato()" style="margin-left:auto">⬇ Izvozi CSV</button>
+</div>
+<div class="wrap" id="bwrap" style="display:none"><table><thead><tr>
+  <th></th>
+  <th onclick="bsrt('sku')">SKU</th>
+  <th onclick="bsrt('naziv')">Naziv</th>
+  <th class="r" onclick="bsrt('reg')">Redna zdaj</th>
+  <th class="r" onclick="bsrt('pred')">Predlog</th>
+  <th class="r" onclick="bsrt('diff')">Razlika</th>
+  <th class="r" onclick="bsrt('akc')">Akcija zdaj</th>
+  <th class="r" onclick="bsrt('mz')">Marža zdaj</th>
+  <th class="r" onclick="bsrt('mp')">Marža po</th>
+  <th onclick="bsrt('note')">Opomba</th>
+</tr></thead><tbody id="btb"></tbody></table></div>
+<button class="more" id="bmore" style="display:none" onclick="blim+=300;render()">Prikaži več</button>
 <script>
 const EMBED=new URLSearchParams(location.search).get('embed')==='1';
 if(EMBED){document.addEventListener('DOMContentLoaded',()=>{const b=document.querySelector('.back');if(b)b.style.display='none';document.body.style.padding='12px 14px';});}
@@ -10518,7 +10545,7 @@ const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 const f2=n=>n==null?'—':n.toLocaleString('sl-SI',{minimumFractionDigits:2,maximumFractionDigits:2});
 function tabs(){document.getElementById('tabs').innerHTML=TRGI.map(([k,l])=>'<button class="tab'+(k===trg?' on':'')+'" onclick="pick(\''+k+'\')">'+l+'</button>').join('');}
 function pick(k){trg=k;lim=300;history.replaceState(null,'','?trg='+k+(EMBED?'&embed=1':''));tabs();load();}
-function setF(b){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));b.classList.add('on');flt=b.dataset.f;lim=300;render();}
+function setF(b){if(BATO)toggleBato();document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));b.classList.add('on');flt=b.dataset.f;lim=300;render();}
 function srt(k){if(sk===k)sd=-sd;else{sk=k;sd=(k==='sku'||k==='naziv')?-1:1;}render();}
 async function load(){
   document.getElementById('tb').innerHTML='<tr><td colspan="10" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr>';
@@ -10566,7 +10593,8 @@ function nac(n){
   return ' <span title="'+t[3]+(os?' · NC iz osnovnega SKU':'')+'" style="font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+t[1]+';color:'+t[2]+';font-family:inherit">'+t[0]+'</span>';
 }
 function mcls(m){return m<0?'m-neg':m<20?'m-low':m<40?'m-mid':'m-ok';}
-function render(){
+function render(){ if(BATO) return renderBato(); return renderMain(); }
+function renderMain(){
   if(!D||!D.ok) return;
   const r=filtered(), vis=r.slice(0,lim);
   document.getElementById('tb').innerHTML = vis.length ? vis.map(x=>
@@ -10628,8 +10656,86 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-zn]'); if(
   document.addEventListener('mouseout',e=>{if(e.target.closest('img.img')) z.style.display='none';});
   addEventListener('scroll',()=>{z.style.display='none';},true);
 })();
-function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,zn:[...ZN]}));}catch(e){}}
-try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;if(Array.isArray(p.zn))ZN=new Set(p.zn);}catch(e){}
+// ═══ BATO CENE ═══ redna cena → najbližja "lepa" cena, ki se konča na 9.
+// Vrednosti v najmanjših enotah (EUR = centi, ostalo cela števila); bato = k·S − 1.
+//   EUR x,99 (S=100 centov) · HUF x499/x999 (S=500) · CZK/RSD x99 (S=100) · PLN/RON x9 (S=10)
+const BATO_CFG={EUR:{dec:2,S:100},HUF:{dec:0,S:500},CZK:{dec:0,S:100},RSD:{dec:0,S:100},PLN:{dec:0,S:10},RON:{dec:0,S:10}};
+let BATO=false, blim=300, bsk='diff', bsd=1;
+function toggleBato(){BATO=!BATO;blim=300;
+  document.getElementById('batoBtn').classList.toggle('on',BATO);
+  ['bbar'].forEach(i=>document.getElementById(i).style.display=BATO?'flex':'none');
+  document.getElementById('bwrap').style.display=BATO?'':'none';
+  document.querySelector('.wrap:not(#bwrap)').style.display=BATO?'none':'';
+  document.getElementById('more').style.display='none'; document.getElementById('bmore').style.display='none';
+  render();}
+function bsrt(k){if(bsk===k)bsd=-bsd;else{bsk=k;bsd=(k==='sku'||k==='naziv'||k==='note')?-1:1;}render();}
+function batoCands(price,cur){
+  const c=BATO_CFG[cur]||BATO_CFG.EUR, m=c.dec?100:1, v=Math.round(price*m);
+  const lo=Math.floor((v+1)/c.S)*c.S-1;
+  if(lo===v) return null;                       // že bato
+  const hi=lo+c.S;
+  return {lo:lo>0?lo/m:null, hi:hi/m, v:v/m, cfg:c, dLo:v-lo, dHi:hi-v};   // razdalje v celih enotah (brez napak float)
+}
+function fmtC(v,cur){if(v==null)return '—';const c=BATO_CFG[cur]||BATO_CFG.EUR;
+  return v.toLocaleString('sl-SI',{minimumFractionDigits:c.dec,maximumFractionDigits:c.dec});}
+function batoRows(){
+  if(!D||!D.ok) return [];
+  const q=(document.getElementById('q').value||'').toLowerCase().trim(), z=document.getElementById('naZal').checked;
+  const minEur=parseFloat(String(document.getElementById('bMin').value).replace(',','.'))||0;
+  const prag=parseFloat(String(document.getElementById('bPrag').value).replace(',','.')); const P=isNaN(prag)?20:prag;
+  const out=[];
+  D.rows.forEach(x=>{
+    if(!x.cena) return;
+    if(q && !((x.sku||'').toLowerCase().includes(q)||(x.naziv||'').toLowerCase().includes(q)||(x.znamka||'').toLowerCase().includes(q))) return;
+    if(z && !(x.zaloga>0)) return;
+    if(ZN.size && !ZN.has(x.znamka||'(prazno)')) return;
+    const cur=x.valuta||'EUR', rate=(D.tecaji||{})[cur]||(cur==='EUR'?1:null);
+    if(rate && x.cena/rate < minEur) return;
+    const k=batoCands(x.cena,cur); if(!k) return;
+    const r=(x.akcija&&x.cena)?x.akcija/x.cena:1;   // razmerje akcija/redna — ocena nove akcijske cene
+    const mz=p=>{ if(!x.nc||!rate) return null; const n=p*r/rate/(1+D.ddv/100); return n?(n-x.nc)/n*100:null; };
+    let pred, note='';
+    if(k.lo==null) pred=k.hi;
+    else pred=(k.dLo < k.dHi)?k.lo:k.hi;            // bližji; enaka razdalja → navzgor
+    if(pred===k.lo){ const m=mz(k.lo); if(m!=null && m<P){ pred=k.hi; note='↑ zaradi marže'; } }
+    const mPo=mz(pred);
+    if(mPo!=null && mPo<P) note=(note?note+' · ':'')+'marža pod pragom';
+    out.push({x, cur, reg:x.cena, pred, diff:Math.round((pred-x.cena)*100)/100, diffPct:(pred-x.cena)/x.cena*100,
+      akc:x.akcija, mz:x.marza_pct, mp:mPo==null?null:Math.round(mPo*10)/10, note});
+  });
+  const key={sku:o=>String(o.x.sku||''),naziv:o=>String(o.x.naziv||''),reg:o=>o.reg,pred:o=>o.pred,diff:o=>o.diffPct,akc:o=>o.akc??-1e9,mz:o=>o.mz??-1e9,mp:o=>o.mp??-1e9,note:o=>o.note}[bsk];
+  out.sort((a,b)=>{const A=key(a),B=key(b);return (A>B?1:A<B?-1:0)*(typeof A==='string'?-bsd:bsd);});
+  return out;
+}
+function renderBato(){
+  if(!D||!D.ok) return;
+  const r=batoRows(), vis=r.slice(0,blim);
+  const up=r.filter(o=>o.diff>0).length, dn=r.length-up, marz=r.filter(o=>o.note.includes('zaradi')).length;
+  document.getElementById('bInfo').innerHTML='<b style="color:var(--txt)">'+r.length+'</b> cen ni bato · <span class="up">'+up+' ↑</span> · <span class="dn">'+dn+' ↓</span>'+(marz?' · '+marz+' dvignjenih zaradi marže':'');
+  const mp=m=>m==null?'<span class="dim">—</span>':'<span class="m '+mcls(m)+'">'+m.toLocaleString('sl-SI')+' %</span>';
+  document.getElementById('btb').innerHTML=vis.length?vis.map(o=>{const x=o.x;return '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
+    '<td class="sku">'+(x.url?'<a class="ext" href="'+esc(x.url)+'" target="_blank" rel="noopener" title="Odpri izdelek v trgovini">↗</a>':'')+(x.cms_id?'<a class="ext cms" href="https://api.maaarket.si/nova/resources/products/'+encodeURIComponent(x.cms_id)+'?tab=vsebina" target="_blank" rel="noopener" title="Odpri v CMS Nova (ID '+esc(x.cms_id)+')">✎</a>':'<span class="ext off" title="CMS ID ni najden">✎</span>')+esc(String(x.sku||'?').toUpperCase())+'</td>'+
+    '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a></td>'+
+    '<td class="r">'+fmtC(o.reg,o.cur)+' <span class="dim">'+esc(o.cur)+'</span></td>'+
+    '<td class="r" style="font-weight:800;font-size:16px">'+fmtC(o.pred,o.cur)+'</td>'+
+    '<td class="r '+(o.diff>0?'up':'dn')+'">'+(o.diff>0?'+':'')+fmtC(o.diff,o.cur)+'</td>'+
+    '<td class="r">'+(o.akc?fmtC(o.akc,o.cur):'<span class="dim">—</span>')+'</td>'+
+    '<td class="r">'+mp(o.mz)+'</td><td class="r">'+mp(o.mp)+'</td>'+
+    '<td>'+(o.note?'<span class="bnote">'+esc(o.note)+'</span>':'')+'</td></tr>';}).join('')
+    :'<tr><td colspan="10" style="padding:30px;text-align:center" class="dim">Vse redne cene so bato 👍</td></tr>';
+  const mb=document.getElementById('bmore'); mb.style.display=r.length>blim?'block':'none'; mb.textContent='Prikaži več ('+(r.length-blim)+' preostalih)';
+}
+function izvoziBato(){
+  const r=batoRows(), e=v=>{v=v==null?'':String(v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  const n=v=>v==null?'':String(v).replace('.',',');
+  let csv='\ufeffSKU;CMS ID;Naziv;Znamka;Valuta;Redna zdaj;Predlog;Razlika;Akcija zdaj;Marža zdaj %;Marža po %;Opomba;URL\n';
+  r.forEach(o=>{const x=o.x;csv+=[e(String(x.sku||'').toUpperCase()),e(x.cms_id),e(x.naziv),e(x.znamka),o.cur,n(o.reg),n(o.pred),n(o.diff),n(o.akc),n(o.mz),n(o.mp),e(o.note),e(x.url)].join(';')+'\n';});
+  const d=new Date(), zz=d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)+'_'+('0'+d.getHours()).slice(-2)+('0'+d.getMinutes()).slice(-2);
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='bato_'+D.oznaka+'_'+zz+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,zn:[...ZN],bm:document.getElementById('bMin').value,bp:document.getElementById('bPrag').value}));}catch(e){}}
+try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;if(Array.isArray(p.zn))ZN=new Set(p.zn);if(p.bm!=null)document.getElementById('bMin').value=p.bm;if(p.bp!=null)document.getElementById('bPrag').value=p.bp;}catch(e){}
 tabs(); load();
 </script></body></html>"""
     return HTMLResponse(html)
