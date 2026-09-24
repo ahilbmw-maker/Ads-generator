@@ -10724,7 +10724,8 @@ async def marza_trgi_stran(request: Request):
   #feedInfo{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--txt2)}
   #feedInfo .chip{padding:3px 10px;font-size:12.5px}
   #feedInfo .novo{color:#b45309;font-weight:700}
-  .bnote{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;background:#fef3c7;color:#92400e;white-space:nowrap}
+  .bnote{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;background:#fef3c7;color:#92400e;white-space:nowrap;display:inline-block;max-width:110px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;cursor:help}
+  .skut{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
   .btn{padding:7px 13px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:#16a34a;color:#fff}
   .info{font-size:13px;color:var(--txt3);margin-left:auto}
   .wrap{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow-x:auto}
@@ -10898,7 +10899,7 @@ function renderMain(){
   const RR=razRange(r.map(o=>o.marza_eur));
   document.getElementById('tb').innerHTML = vis.length ? vis.map(x=>
     '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
-    '<td class="sku">'+linksHtml(x)+esc(String(x.sku||'?').toUpperCase())+copyBtn(x)+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:11px;padding:1px 6px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:12px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+cmsBadge(x)+'</td>'+
+    '<td class="sku">'+linksHtml(x)+skuTxt(x)+copyBtn(x)+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:11px;padding:1px 6px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:12px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+cmsBadge(x)+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
     '<td class="r">'+f2(x.koncna)+' <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
     '<td class="r">'+f2(x.eur)+'</td><td class="r">'+f2(x.neto)+'</td>'+
@@ -10997,6 +10998,7 @@ function obratTd(x){
   if(x.obrat==null) return '<td class="r"><span class="dim">—</span></td>';
   const o=x.obrat, c=o>=30?'#15803d':(o>=10?'var(--txt)':(o>0?'#a16207':'var(--txt3)'));
   return '<td class="r" style="font-weight:700;color:'+c+'" title="'+(x.trajanje?'Trajanje zaloge: '+esc(x.trajanje):'Obrat 30 dni')+'">'+o.toLocaleString('sl-SI')+'</td>';}
+function skuTxt(x){const s=String(x.sku||'?').toUpperCase();return '<span class="skut" title="'+esc(s)+'">'+esc(s)+'</span>';}
 function copyBtn(x){return x.sku?'<button type="button" class="cpb" data-copy="'+esc(String(x.sku).toUpperCase())+'" title="Kopiraj SKU">⧉</button>':'';}
 document.addEventListener('click',async e=>{const b=e.target.closest('button[data-copy]'); if(!b) return;
   const t=b.dataset.copy; let ok=false;
@@ -11131,7 +11133,7 @@ function renderBato(){
   document.getElementById('bInfo').innerHTML='<b style="color:var(--txt)">'+r.length+'</b> cen ni bato · <span class="up">'+up+' ↑</span> · <span class="dn">'+dn+' ↓</span>'+(marz?' · '+marz+' dvignjenih zaradi marže':'');
   const mp=m=>m==null?'<span class="dim">—</span>':'<span class="m '+mcls(m)+'">'+m.toLocaleString('sl-SI')+' %</span>';
   document.getElementById('btb').innerHTML=vis.length?vis.map(o=>{const x=o.x;return '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
-    '<td class="sku">'+linksHtml(x)+esc(String(x.sku||'?').toUpperCase())+copyBtn(x)+cmsBadge(x)+'</td>'+
+    '<td class="sku">'+linksHtml(x)+skuTxt(x)+copyBtn(x)+cmsBadge(x)+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
     '<td class="r">'+fmtC(o.reg,o.cur)+' <span class="dim">'+esc(o.cur)+'</span></td>'+
     '<td class="r" style="font-weight:800;font-size:16px">'+fmtC(o.pred,o.cur)+'</td>'+
@@ -11140,7 +11142,7 @@ function renderBato(){
     '<td class="r">'+(o.nc==null?'<span class="dim">—</span>':f2(o.nc))+'</td>'+
     razTd(o.rz,RR)+razTd(o.rp,RR)+
     '<td class="r">'+mp(o.mz)+'</td><td class="r">'+mp(o.mp)+'</td>'+
-    '<td>'+(o.note?'<span class="bnote">'+esc(o.note)+'</span>':'')+'</td>'+obratTd(x)+'</tr>';}).join('')
+    '<td>'+(o.note?'<span class="bnote" title="'+esc(o.note)+'">'+esc(o.note)+'</span>':'')+'</td>'+obratTd(x)+'</tr>';}).join('')
     :'<tr><td colspan="14" style="padding:30px;text-align:center" class="dim">Vse redne cene so bato 👍</td></tr>';
   const mb=document.getElementById('bmore'); mb.style.display=r.length>blim?'block':'none'; mb.textContent='Prikaži več ('+(r.length-blim)+' preostalih)';
 }

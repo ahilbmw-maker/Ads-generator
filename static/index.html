@@ -305,7 +305,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   }
   #page-calc > div:first-child::-webkit-scrollbar { display: none !important; }
   #page-calc .calc-tab-btn { flex-shrink: 0 !important; white-space: nowrap !important; }
-  #calcFrame-pricecheck, #calcFrame-calc, #calcFrame-marza { height: calc(100vh - 5rem) !important; }
+  #calcFrame-pricecheck, #calcFrame-marza { height: calc(100vh - 5rem) !important; }
 
   /* ── KREATIVE mobile ── */
   .kr-tabnav {
@@ -369,6 +369,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .main.wide { max-width: 100%; padding: 1.5rem 1.5rem 5rem; }
 .page { display: none; }
 .page.active { display: block; }
+/* Urejevalnik cen: tab vrstica + iframe zapolnita višino okna (brez zunanjega drsnika) */
+#page-calc.active { display: flex; flex-direction: column; height: 100%; }
+#page-calc > iframe { flex: 1 1 auto; min-height: 0; height: auto !important; }
 
 /* ── SHARED COMPONENTS ── */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; }
@@ -903,7 +906,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-24 19:05</div>
+      <div class="sidebar-logo-sub">build 2026-09-24 19:30</div>
     </div>
   </div>
 
@@ -972,7 +975,6 @@ input[type="text"].error { border-color: var(--red) !important; }
   </div>
   <div class="nav-sub" id="navsub-calc">
     <div class="nav-sub-item" onclick="switchPage('calc');switchCalcTab('pricecheck')">Price Checker</div>
-    <div class="nav-sub-item" onclick="switchPage('calc');switchCalcTab('calc')">Kalkulator</div>
     <div class="nav-sub-item" onclick="switchPage('calc');switchCalcTab('marza')">💶 Marža po trgih</div>
   </div>
 
@@ -1499,15 +1501,11 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="calc-tab-btn active" id="calcTab-pricecheck" onclick="switchCalcTab('pricecheck')" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
         📊 Price Checker
       </button>
-      <button class="calc-tab-btn" id="calcTab-calc" onclick="switchCalcTab('calc')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
-        💰 Kalkulator
-      </button>
       <button class="calc-tab-btn" id="calcTab-marza" onclick="switchCalcTab('marza')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
         💶 Marža po trgih
       </button>
     </div>
     <iframe id="calcFrame-pricecheck" data-src="/static/price_checker.html?v=20260918b" style="width:100%;height:calc(100vh - 7rem);border:none" allow="clipboard-write"></iframe>
-    <iframe id="calcFrame-calc" data-src="/static/price_calculator.html" style="width:100%;height:calc(100vh - 7rem);border:none;display:none" allow="clipboard-write"></iframe>
     <iframe id="calcFrame-marza" data-src="/marza-trgi-stran?embed=1" style="width:100%;height:calc(100vh - 7rem);border:none;display:none" allow="clipboard-write"></iframe>
   </div>
 
@@ -5492,7 +5490,8 @@ const PAGES = ['home','meta','tiktok','calc','forecast','kreative','lokalizacija
 let currentIdx = 0;
 
 function switchCalcTab(tab) {
-  ['calc', 'pricecheck', 'marza'].forEach(t => {
+  if (tab !== 'marza') tab = 'pricecheck'; // Kalkulator odstranjen
+  ['pricecheck', 'marza'].forEach(t => {
     const btn = document.getElementById('calcTab-' + t);
     const frame = document.getElementById('calcFrame-' + t);
     if (t === tab) {
@@ -5553,10 +5552,14 @@ function switchPage(page) {
   const mainEl2 = document.querySelector('.main');
   if (page === 'forecast') {
     document.body.style.overflow = 'hidden';
-    if (mainEl2) { mainEl2.style.padding = '0'; mainEl2.style.height = '100vh'; mainEl2.style.overflow = 'hidden'; }
+    if (mainEl2) { mainEl2.style.padding = '0'; mainEl2.style.height = '100vh'; mainEl2.style.overflow = 'hidden'; mainEl2.style.boxSizing = ''; }
+  } else if (page === 'calc' && !window.matchMedia('(max-width: 600px)').matches) {
+    // Urejevalnik cen: drsnik ima samo iframe, zunanja stran se ne premika
+    document.body.style.overflow = 'hidden';
+    if (mainEl2) { mainEl2.style.padding = '1rem 1.5rem'; mainEl2.style.height = '100vh'; mainEl2.style.overflow = 'hidden'; mainEl2.style.boxSizing = 'border-box'; }
   } else {
     document.body.style.overflow = '';
-    if (mainEl2) { mainEl2.style.padding = ''; mainEl2.style.height = ''; mainEl2.style.overflow = ''; }
+    if (mainEl2) { mainEl2.style.padding = ''; mainEl2.style.height = ''; mainEl2.style.overflow = ''; mainEl2.style.boxSizing = ''; }
   }
   if (page === 'tiktok') { ttLoadSkus(); }
   if (page === 'zaloga') { zalogaLoad(); zalogaSyncDailyAuto(); }
