@@ -10259,7 +10259,18 @@ async def marza_trgi(request: Request, trg: str = "sl"):
         fx = {}
     fx.setdefault("EUR", 1.0)
     # NC iz zaloge: SKU → (nc, zaloga); prednost vrstica z NC > 0
-    nc_by, zal_by = {}, {}
+    nc_by, zal_by, pid_to_sku = {}, {}, {}
+    nas_sku, ext_sku = set(), set()
+    # SKU-ji v ALARMU = trenutni seznam price checkerja (skupni cache, posodobi se ob vsaki spremembi)
+    alarm_sku = set()
+    try:
+        if PRICE_CHECKER_CACHE.exists():
+            for r0 in (json.loads(PRICE_CHECKER_CACHE.read_text(encoding="utf-8")).get("rows") or []):
+                a = str(r0.get("sku") or "").strip().upper()
+                if a:
+                    alarm_sku.add(a)
+    except Exception:
+        pass
     if STOCK_CSV_FILE.exists():
         import csv as _csv
         from io import StringIO as _SIO
@@ -10278,6 +10289,15 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             if nc > 0 and not nc_by.get(sku):
                 nc_by[sku] = nc
             zal_by[sku] = zal_by.get(sku, 0) + st
+            pid = (row.get("product_id") or "").strip()
+            if pid:
+                pid_to_sku.setdefault(pid, sku)
+            ext = str(row.get("is_external") or "").strip().lower() in ("1", "true", "yes", "da")
+            # SKU je "naš", če ima vsaj ena vrstica siluxar ID (ni external)
+            if not ext:
+                nas_sku.add(sku)
+            else:
+                ext_sku.add(sku)
 
     def _najdi_nc(sku):
         """točen SKU → brez suffiksa variacije (po zadnjem / prvem _)."""
@@ -10292,8 +10312,20 @@ async def marza_trgi(request: Request, trg: str = "sl"):
                     return base, nc_by[base]
         return None, None
 
+    def _je_parser(sk, how):
+        """True = parser (Ikonka/Amio/external), False = naš izdelek, None = ni v zalogi (neznano)."""
+        if how and how.startswith("znamka"):
+            return True
+        u = str(sk or "").upper()
+        if u in nas_sku:
+            return False
+        if u in ext_sku:
+            return True
+        return None
+
     rows = []
     valute = set()
+    nacini = {}
     for g_id, d in feed.items():
         cena, cur = _marza_parse_price(d.get("price"))
         akc, cur2 = _marza_parse_price(d.get("sale_price"))
@@ -10306,22 +10338,33 @@ async def marza_trgi(request: Request, trg: str = "sl"):
         rate = fx.get(cur)
         eur = (koncna / rate) if rate else None
         neto = (eur / (1 + ddv / 100)) if eur is not None else None
-        # SKU: mpn, sicer iz slik
-        skus = []
+        # SKU po ZANESLJIVOSTI: 1) naš product_id = g:id  2) Ikonka/Amio iz slike  3) mpn  4) ugibanje iz slike
+        kandidati = []   # (sku, način)
+        if str(g_id) in pid_to_sku:
+            kandidati.append((pid_to_sku[str(g_id)], "id"))
+        try:
+            bsku = _extract_brand_sku(d.get("brand", ""), d.get("image", "") or "")
+        except Exception:
+            bsku = None
+        if bsku:
+            kandidati.append((bsku, "znamka"))
         mpn = (d.get("mpn") or "").strip()
         if mpn:
-            skus.append(mpn)
+            kandidati.append((mpn, "mpn"))
+        slike = []
         for img in (d.get("all_images") or []):
             for sk in _extract_skus_from_image_url(img):
-                if sk and sk not in skus:
-                    skus.append(sk)
-        sku = skus[0] if skus else ""
-        nc_sku, nc = None, None
-        for cand in skus:
+                if sk and len(sk) >= 4 and sk not in slike:
+                    slike.append(sk)
+        slike.sort(key=len, reverse=True)   # daljši kandidat = bolj specifičen, manj naključnih zadetkov
+        kandidati += [(x, "slika") for x in slike]
+        sku, nacin, nc_sku, nc = (kandidati[0][0] if kandidati else ""), None, None, None
+        for cand, how in kandidati:
             nc_sku, nc = _najdi_nc(cand)
             if nc:
-                sku = cand
+                sku, nacin = cand, (how if nc_sku == cand.upper() else how + "+osnova")
                 break
+        nacini[nacin or "ni"] = nacini.get(nacin or "ni", 0) + 1
         marza_eur = (neto - nc) if (neto is not None and nc) else None
         marza_pct = (marza_eur / neto * 100) if (marza_eur is not None and neto) else None
         rows.append({
@@ -10334,6 +10377,9 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             "marza_eur": round(marza_eur, 2) if marza_eur is not None else None,
             "marza_pct": round(marza_pct, 1) if marza_pct is not None else None,
             "zaloga": zal_by.get((nc_sku or sku or "").upper(), 0),
+            "nacin": nacin,
+            "parser": _je_parser(nc_sku or sku, nacin),
+            "alarm": bool(alarm_sku & {str(sku or "").upper(), str(nc_sku or "").upper()} - {""}),
             "na_voljo": (d.get("availability") or ""),
         })
     z_nc = [r for r in rows if r["marza_pct"] is not None]
@@ -10341,7 +10387,10 @@ async def marza_trgi(request: Request, trg: str = "sl"):
     return {"ok": True, "trg": trg, "oznaka": oznaka, "ddv": ddv,
             "valute": sorted(valute), "tecaji": {v: fx.get(v) for v in valute},
             "st": len(rows), "st_z_nc": len(z_nc), "st_brez_nc": len(rows) - len(z_nc),
-            "povp_marza": povp, "rows": rows}
+            "povp_marza": povp, "nacini": nacini,
+            "st_alarm": sum(1 for r in rows if r["alarm"]), "alarm_skupaj": len(alarm_sku),
+            "st_parser": sum(1 for r in rows if r["parser"] is True),
+            "st_nasi": sum(1 for r in rows if r["parser"] is False), "rows": rows}
 
 
 @app.get("/marza-trgi-stran", response_class=HTMLResponse)
@@ -10403,7 +10452,10 @@ async def marza_trgi_stran(request: Request):
   <button class="chip" data-f="mid" onclick="setF(this)">20–40 %</button>
   <button class="chip" data-f="ok" onclick="setF(this)">&gt; 40 %</button>
   <button class="chip" data-f="nonc" onclick="setF(this)">Brez NC</button>
-  <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="render()"> Samo na zalogi</label>
+  <button class="chip" data-f="ugib" onclick="setF(this)" title="SKU najden z ugibanjem iz imena slike — preveri, ali je pravi">⚠ Ugibanje</button>
+  <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
+  <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije Ikonka, Amio in ostale parserske (zunanje) izdelke ter izdelke, ki jih ni v zalogi"><input type="checkbox" id="samoNasi" onchange="savePref();render()"> Samo naši (brez parserjev)</label>
+  <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Samo SKU-ji, ki so trenutno v alarmu (seznam v Price Checkerju)"><input type="checkbox" id="samoAlarm" onchange="savePref();render()"> 🚨 Samo v alarmu</label>
   <button class="btn" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
 <div class="wrap"><table><thead><tr>
@@ -10420,12 +10472,14 @@ async def marza_trgi_stran(request: Request):
 </tr></thead><tbody id="tb"><tr><td colspan="10" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr></tbody></table></div>
 <button class="more" id="more" style="display:none" onclick="lim+=300;render()">Prikaži več</button>
 <script>
+const EMBED=new URLSearchParams(location.search).get('embed')==='1';
+if(EMBED){document.addEventListener('DOMContentLoaded',()=>{const b=document.querySelector('.back');if(b)b.style.display='none';document.body.style.padding='12px 14px';});}
 const TRGI=[["sl","SI"],["hr","HR"],["rs","RS"],["hu","HU"],["pl","PL"],["cz","CZ"],["sk","SK"],["gr","GR"],["bg","BG"],["ro","RO"]];
 let D=null, trg=(new URLSearchParams(location.search).get('trg')||'sl'), flt='all', sk='marza_pct', sd=1, lim=300;
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const f2=n=>n==null?'—':n.toLocaleString('sl-SI',{minimumFractionDigits:2,maximumFractionDigits:2});
 function tabs(){document.getElementById('tabs').innerHTML=TRGI.map(([k,l])=>'<button class="tab'+(k===trg?' on':'')+'" onclick="pick(\''+k+'\')">'+l+'</button>').join('');}
-function pick(k){trg=k;lim=300;history.replaceState(null,'','?trg='+k);tabs();load();}
+function pick(k){trg=k;lim=300;history.replaceState(null,'','?trg='+k+(EMBED?'&embed=1':''));tabs();load();}
 function setF(b){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));b.classList.add('on');flt=b.dataset.f;lim=300;render();}
 function srt(k){if(sk===k)sd=-sd;else{sk=k;sd=(k==='sku'||k==='naziv')?-1:1;}render();}
 async function load(){
@@ -10439,7 +10493,11 @@ async function load(){
     '<div class="st"><b>'+D.st.toLocaleString('sl-SI')+'</b><span>izdelkov v feedu ('+D.oznaka+')</span></div>'+
     '<div class="st"><b>'+(D.povp_marza==null?'—':D.povp_marza.toLocaleString('sl-SI')+' %')+'</b><span>povprečna bruto marža</span></div>'+
     '<div class="st"><b style="color:#b91c1c">'+neg+'</b><span>z negativno maržo</span></div>'+
-    '<div class="st"><b style="color:#c2410c">'+D.st_brez_nc+'</b><span>brez NC (ni v zalogi)</span></div>';
+    '<div class="st"><b style="color:#c2410c">'+D.st_brez_nc+'</b><span>brez NC (ni v zalogi)</span></div>'+
+    (function(){const n=D.nacini||{};let zan=0,ug=0;Object.entries(n).forEach(([k,v])=>{if(k==='ni')return;if(k.startsWith('slika'))ug+=v;else zan+=v;});
+      return '<div class="st"><b><span style="color:#15803d">'+zan+'</span> / <span style="color:#a16207">'+ug+'</span></b><span>zanesljivo / ugibanje iz slike</span></div>';})()+
+    '<div class="st"><b>'+(D.st_nasi||0)+' / <span style="color:#64748b">'+(D.st_parser||0)+'</span></b><span>naši / parserji</span></div>'+
+    '<div class="st"><b style="color:#b91c1c">'+(D.st_alarm||0)+'</b><span>v alarmu (od '+(D.alarm_skupaj||0)+' SKU v Price Checkerju)</span></div>';
   render();
 }
 function filtered(){
@@ -10447,8 +10505,11 @@ function filtered(){
   let r=D.rows.filter(x=>{
     if(q && !((x.sku||'').toLowerCase().includes(q)||(x.naziv||'').toLowerCase().includes(q))) return false;
     if(z && !(x.zaloga>0)) return false;
+    if(document.getElementById('samoNasi').checked && x.parser!==false) return false;
+    if(document.getElementById('samoAlarm').checked && !x.alarm) return false;
     const m=x.marza_pct;
     if(flt==='nonc') return m==null;
+    if(flt==='ugib') return (x.nacin||'').startsWith('slika');
     if(flt==='neg') return m!=null&&m<0;
     if(flt==='low') return m!=null&&m>=0&&m<20;
     if(flt==='mid') return m!=null&&m>=20&&m<40;
@@ -10459,13 +10520,19 @@ function filtered(){
     return (typeof av==='number'?av-bv:String(av).localeCompare(String(bv)))*sd;});
   return r;
 }
+function nac(n){
+  if(!n) return '';
+  const b=n.split('+')[0], os=n.includes('osnova');
+  const t={id:['ID','#dcfce7','#15803d','Ujemanje po ID izdelka — zanesljivo'],znamka:['znamka','#dcfce7','#15803d','Ikonka/Amio SKU iz slike — zanesljivo'],mpn:['mpn','#dcfce7','#15803d','SKU iz feeda (mpn) — zanesljivo'],slika:['ugib','#fef3c7','#a16207','Ugibanje iz imena slike — preveri']}[b]||[b,'#eee','#555',''];
+  return ' <span title="'+t[3]+(os?' · NC iz osnovnega SKU':'')+'" style="font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:'+t[1]+';color:'+t[2]+';font-family:inherit">'+t[0]+'</span>';
+}
 function mcls(m){return m<0?'m-neg':m<20?'m-low':m<40?'m-mid':'m-ok';}
 function render(){
   if(!D||!D.ok) return;
   const r=filtered(), vis=r.slice(0,lim);
   document.getElementById('tb').innerHTML = vis.length ? vis.map(x=>
     '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'">':'')+'</td>'+
-    '<td class="sku">'+esc(x.sku||'?')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:10px;font-weight:400">NC iz '+esc(x.nc_sku)+'</div>':'')+'</td>'+
+    '<td class="sku">'+esc(x.sku||'?')+nac(x.nacin)+(x.alarm?' <span title="V alarmu (Price Checker)" style="font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:#fee2e2;color:#b91c1c">ALARM</span>':'')+(x.parser===true?' <span title="Parser (Ikonka/Amio/zunanji)" style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:10px;font-weight:400">NC iz '+esc(x.nc_sku)+'</div>':'')+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a></td>'+
     '<td class="r">'+f2(x.koncna)+' <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
     '<td class="r">'+f2(x.eur)+'</td><td class="r">'+f2(x.neto)+'</td>'+
@@ -10481,12 +10548,14 @@ function izvozi(){
   if(!D||!D.ok) return;
   const r=filtered(), e=v=>{v=v==null?'':String(v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
   const n=v=>v==null?'':String(v).replace('.',',');
-  let csv='\ufeffSKU;NC SKU;Naziv;Cena;Valuta;Akcija;Cena EUR;Brez DDV;NC;Marža EUR;Marža %;Zaloga;URL\n';
-  r.forEach(x=>{csv+=[e(x.sku),e(x.nc_sku),e(x.naziv),n(x.koncna),x.valuta,x.akcija?'da':'',n(x.eur),n(x.neto),n(x.nc),n(x.marza_eur),n(x.marza_pct),x.zaloga||0,e(x.url)].join(';')+'\n';});
+  let csv='\ufeffSKU;Način;Alarm;Parser;NC SKU;Naziv;Cena;Valuta;Akcija;Cena EUR;Brez DDV;NC;Marža EUR;Marža %;Zaloga;URL\n';
+  r.forEach(x=>{csv+=[e(x.sku),e(x.nacin),x.alarm?'da':'',x.parser===true?'da':(x.parser===false?'ne':'?'),e(x.nc_sku),e(x.naziv),n(x.koncna),x.valuta,x.akcija?'da':'',n(x.eur),n(x.neto),n(x.nc),n(x.marza_eur),n(x.marza_pct),x.zaloga||0,e(x.url)].join(';')+'\n';});
   const d=new Date(), z=d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)+'_'+('0'+d.getHours()).slice(-2)+('0'+d.getMinutes()).slice(-2);
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   a.download='marza_'+D.oznaka+'_'+z+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
+function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,n:samoNasi.checked,a:samoAlarm.checked}));}catch(e){}}
+try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;samoNasi.checked=!!p.n;samoAlarm.checked=!!p.a;}catch(e){}
 tabs(); load();
 </script></body></html>"""
     return HTMLResponse(html)
