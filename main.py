@@ -10725,7 +10725,7 @@ async def marza_trgi_stran(request: Request):
   #feedInfo .chip{padding:3px 10px;font-size:12.5px}
   #feedInfo .novo{color:#b45309;font-weight:700}
   .bnote{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;background:#fef3c7;color:#92400e;white-space:nowrap;display:inline-block;max-width:110px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;cursor:help}
-  .skut{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+  .skut{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;font-weight:800;color:#26215c;background:#dedafb;border:1px solid #8f87e0;border-radius:6px;padding:2px 8px;line-height:1.35}
   .btn{padding:7px 13px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:#16a34a;color:#fff}
   .info{font-size:13px;color:var(--txt3);margin-left:auto}
   .wrap{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow-x:auto}
