@@ -10210,6 +10210,288 @@ async def orodja_stock_clear():
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# ═══ MARŽA PO TRGIH ═══════════════════════════════════════════════════════
+# trg → (oznaka, DDV %). Valuta se prebere iz cene v feedu ("12.99 EUR").
+MARZA_TRGI = {
+    "sl": ("SI", 22), "hr": ("HR", 25), "rs": ("RS", 20), "hu": ("HU", 27), "pl": ("PL", 23),
+    "cz": ("CZ", 21), "sk": ("SK", 23), "gr": ("GR", 24), "bg": ("BG", 20), "ro": ("RO", 21),
+}
+
+def _marza_parse_price(s):
+    """'12.99 EUR' → (12.99, 'EUR'); '1 299,00 HUF' → (1299.0, 'HUF'). Neveljavno → (None, None)."""
+    import re as _re
+    s = (s or "").strip()
+    if not s:
+        return None, None
+    m = _re.match(r'^([\d\s.,]+)\s*([A-Za-z]{3})?$', s)
+    if not m:
+        return None, None
+    num, cur = m.group(1).replace(" ", ""), (m.group(2) or "").upper()
+    if "," in num and "." in num:        # 1.299,00 → 1299.00
+        num = num.replace(".", "").replace(",", ".")
+    elif "," in num:
+        num = num.replace(",", ".")
+    try:
+        return float(num), cur or None
+    except ValueError:
+        return None, None
+
+
+@app.get("/marza-trgi")
+async def marza_trgi(request: Request, trg: str = "sl"):
+    """Za izbrani trg: vsi izdelki iz feeda → končna cena → EUR → brez DDV → − NC iz zaloge → marža."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    trg = (trg or "sl").lower()
+    if trg not in MARZA_TRGI:
+        return {"ok": False, "error": f"Neznan trg: {trg}"}
+    oznaka, ddv = MARZA_TRGI[trg]
+    feed = feed_by_lang.get(trg, {})
+    if not feed:
+        if is_cache_stale():
+            asyncio.create_task(ensure_cache_fresh())
+        return {"ok": False, "error": "Feed se še nalaga — poskusi čez minuto (ali Force refresh XML)."}
+    # tečaji (ECB, cache)
+    try:
+        fx = (await fx_rates()).get("rates", {}) or {}
+    except Exception:
+        fx = {}
+    fx.setdefault("EUR", 1.0)
+    # NC iz zaloge: SKU → (nc, zaloga); prednost vrstica z NC > 0
+    nc_by, zal_by = {}, {}
+    if STOCK_CSV_FILE.exists():
+        import csv as _csv
+        from io import StringIO as _SIO
+        for row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"))):
+            sku = (row.get("product_sku") or "").strip().upper()
+            if not sku:
+                continue
+            try:
+                nc = float(str(row.get("price") or 0).replace(",", "."))
+            except ValueError:
+                nc = 0.0
+            try:
+                st = int(float(str(row.get("stock") or 0).replace(",", ".")))
+            except ValueError:
+                st = 0
+            if nc > 0 and not nc_by.get(sku):
+                nc_by[sku] = nc
+            zal_by[sku] = zal_by.get(sku, 0) + st
+
+    def _najdi_nc(sku):
+        """točen SKU → brez suffiksa variacije (po zadnjem / prvem _)."""
+        if not sku:
+            return None, None
+        u = sku.upper()
+        if nc_by.get(u):
+            return u, nc_by[u]
+        if "_" in u:
+            for base in (u.rsplit("_", 1)[0], u.split("_", 1)[0]):
+                if nc_by.get(base):
+                    return base, nc_by[base]
+        return None, None
+
+    rows = []
+    valute = set()
+    for g_id, d in feed.items():
+        cena, cur = _marza_parse_price(d.get("price"))
+        akc, cur2 = _marza_parse_price(d.get("sale_price"))
+        koncna = akc if (akc and cena and akc < cena) else cena
+        cur = cur2 if (koncna == akc and cur2) else cur
+        if not koncna:
+            continue
+        cur = cur or "EUR"
+        valute.add(cur)
+        rate = fx.get(cur)
+        eur = (koncna / rate) if rate else None
+        neto = (eur / (1 + ddv / 100)) if eur is not None else None
+        # SKU: mpn, sicer iz slik
+        skus = []
+        mpn = (d.get("mpn") or "").strip()
+        if mpn:
+            skus.append(mpn)
+        for img in (d.get("all_images") or []):
+            for sk in _extract_skus_from_image_url(img):
+                if sk and sk not in skus:
+                    skus.append(sk)
+        sku = skus[0] if skus else ""
+        nc_sku, nc = None, None
+        for cand in skus:
+            nc_sku, nc = _najdi_nc(cand)
+            if nc:
+                sku = cand
+                break
+        marza_eur = (neto - nc) if (neto is not None and nc) else None
+        marza_pct = (marza_eur / neto * 100) if (marza_eur is not None and neto) else None
+        rows.append({
+            "g_id": g_id, "sku": sku, "nc_sku": nc_sku, "naziv": d.get("title") or "",
+            "url": d.get("url") or "", "slika": d.get("image") or "",
+            "cena": cena, "akcija": akc if (akc and cena and akc < cena) else None, "valuta": cur,
+            "koncna": koncna, "eur": round(eur, 2) if eur is not None else None,
+            "neto": round(neto, 2) if neto is not None else None,
+            "nc": round(nc, 2) if nc else None,
+            "marza_eur": round(marza_eur, 2) if marza_eur is not None else None,
+            "marza_pct": round(marza_pct, 1) if marza_pct is not None else None,
+            "zaloga": zal_by.get((nc_sku or sku or "").upper(), 0),
+            "na_voljo": (d.get("availability") or ""),
+        })
+    z_nc = [r for r in rows if r["marza_pct"] is not None]
+    povp = round(sum(r["marza_pct"] for r in z_nc) / len(z_nc), 1) if z_nc else None
+    return {"ok": True, "trg": trg, "oznaka": oznaka, "ddv": ddv,
+            "valute": sorted(valute), "tecaji": {v: fx.get(v) for v in valute},
+            "st": len(rows), "st_z_nc": len(z_nc), "st_brez_nc": len(rows) - len(z_nc),
+            "povp_marza": povp, "rows": rows}
+
+
+@app.get("/marza-trgi-stran", response_class=HTMLResponse)
+async def marza_trgi_stran(request: Request):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:40px'>Prijavi se v suban.ai za dostop.</h3>", status_code=403)
+    html = r"""<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marža po trgih — Suban AI</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  :root{--bg:#f4f5f7;--card:#fff;--bd:#e3e6eb;--txt:#16181d;--txt2:#5d6470;--txt3:#9aa1ad;--acc:#4f46e5}
+  body{font-family:'DM Sans',-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--txt);padding:18px 22px}
+  h1{font-size:20px;margin:0}
+  .top{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .back{padding:7px 12px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:13px}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .tab{padding:8px 15px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;color:var(--txt2)}
+  .tab.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  .stats{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .st{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;min-width:140px;flex:1}
+  .st b{display:block;font-size:24px;font-weight:800;line-height:1.1}
+  .st span{font-size:12px;color:var(--txt2)}
+  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+  .bar input[type=text]{padding:8px 11px;border:1px solid var(--bd);border-radius:8px;font-family:inherit;font-size:13px;width:240px}
+  .chip{padding:6px 11px;border:1px solid var(--bd);border-radius:7px;background:#fff;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;color:var(--txt2)}
+  .chip.on{background:#eef2ff;border-color:#a5b4fc;color:#3730a3}
+  .btn{padding:7px 13px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:700;background:#16a34a;color:#fff}
+  .info{font-size:11.5px;color:var(--txt3);margin-left:auto}
+  .wrap{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:1000px}
+  th{position:sticky;top:0;background:#fafbfc;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--txt2);padding:9px 10px;border-bottom:1px solid var(--bd);cursor:pointer;white-space:nowrap;user-select:none}
+  th.r,td.r{text-align:right}
+  td{padding:7px 10px;border-bottom:1px solid #f0f1f4;vertical-align:middle}
+  tr:hover td{background:#f7f8fb}
+  .img{width:38px;height:38px;border-radius:6px;object-fit:cover;background:#f0f1f4;display:block}
+  .sku{font-weight:700;font-family:ui-monospace,monospace;font-size:12.5px}
+  .naziv{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .naziv a{color:var(--txt);text-decoration:none}.naziv a:hover{color:var(--acc);text-decoration:underline}
+  .akc{font-size:10px;font-weight:700;color:#be185d;background:#fce7f3;padding:1px 6px;border-radius:4px;margin-left:5px}
+  .m{font-weight:800;padding:3px 8px;border-radius:6px;display:inline-block;min-width:58px;text-align:center}
+  .m-neg{background:#fee2e2;color:#b91c1c}.m-low{background:#ffedd5;color:#c2410c}.m-mid{background:#fef9c3;color:#854d0e}.m-ok{background:#dcfce7;color:#15803d}
+  .dim{color:var(--txt3)}
+  .more{display:block;margin:12px auto;padding:9px 18px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-weight:600}
+</style></head><body>
+<div class="top">
+  <button class="back" onclick="history.back()">← Nazaj</button>
+  <h1>💶 Marža po trgih</h1>
+  <span class="info" id="fxInfo"></span>
+</div>
+<div class="tabs" id="tabs"></div>
+<div class="stats" id="stats"></div>
+<div class="bar">
+  <input type="text" id="q" placeholder="🔍 Išči SKU ali naziv..." oninput="render()">
+  <button class="chip on" data-f="all" onclick="setF(this)">Vse</button>
+  <button class="chip" data-f="neg" onclick="setF(this)">Negativna</button>
+  <button class="chip" data-f="low" onclick="setF(this)">&lt; 20 %</button>
+  <button class="chip" data-f="mid" onclick="setF(this)">20–40 %</button>
+  <button class="chip" data-f="ok" onclick="setF(this)">&gt; 40 %</button>
+  <button class="chip" data-f="nonc" onclick="setF(this)">Brez NC</button>
+  <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="render()"> Samo na zalogi</label>
+  <button class="btn" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
+</div>
+<div class="wrap"><table><thead><tr>
+  <th></th>
+  <th onclick="srt('sku')">SKU</th>
+  <th onclick="srt('naziv')">Naziv</th>
+  <th class="r" onclick="srt('koncna')">Cena</th>
+  <th class="r" onclick="srt('eur')">Cena €</th>
+  <th class="r" onclick="srt('neto')">Brez DDV</th>
+  <th class="r" onclick="srt('nc')">NC</th>
+  <th class="r" onclick="srt('marza_eur')">Marža €</th>
+  <th class="r" onclick="srt('marza_pct')">Marža %</th>
+  <th class="r" onclick="srt('zaloga')">Zaloga</th>
+</tr></thead><tbody id="tb"><tr><td colspan="10" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr></tbody></table></div>
+<button class="more" id="more" style="display:none" onclick="lim+=300;render()">Prikaži več</button>
+<script>
+const TRGI=[["sl","SI"],["hr","HR"],["rs","RS"],["hu","HU"],["pl","PL"],["cz","CZ"],["sk","SK"],["gr","GR"],["bg","BG"],["ro","RO"]];
+let D=null, trg=(new URLSearchParams(location.search).get('trg')||'sl'), flt='all', sk='marza_pct', sd=1, lim=300;
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const f2=n=>n==null?'—':n.toLocaleString('sl-SI',{minimumFractionDigits:2,maximumFractionDigits:2});
+function tabs(){document.getElementById('tabs').innerHTML=TRGI.map(([k,l])=>'<button class="tab'+(k===trg?' on':'')+'" onclick="pick(\''+k+'\')">'+l+'</button>').join('');}
+function pick(k){trg=k;lim=300;history.replaceState(null,'','?trg='+k);tabs();load();}
+function setF(b){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));b.classList.add('on');flt=b.dataset.f;lim=300;render();}
+function srt(k){if(sk===k)sd=-sd;else{sk=k;sd=(k==='sku'||k==='naziv')?-1:1;}render();}
+async function load(){
+  document.getElementById('tb').innerHTML='<tr><td colspan="10" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr>';
+  try{ D=await (await fetch('/marza-trgi?trg='+trg)).json(); }catch(e){ D={ok:false,error:e.message}; }
+  if(!D.ok){document.getElementById('tb').innerHTML='<tr><td colspan="10" style="padding:30px;text-align:center;color:#b91c1c">'+esc(D.error||'Napaka')+'</td></tr>';document.getElementById('stats').innerHTML='';return;}
+  const fx=Object.entries(D.tecaji||{}).filter(([v])=>v!=='EUR').map(([v,r])=>'1 € = '+(r?r.toLocaleString('sl-SI'):'?')+' '+v).join(' · ');
+  document.getElementById('fxInfo').textContent='DDV '+D.ddv+' %'+(fx?' · '+fx:'');
+  const neg=D.rows.filter(r=>r.marza_pct!=null&&r.marza_pct<0).length;
+  document.getElementById('stats').innerHTML=
+    '<div class="st"><b>'+D.st.toLocaleString('sl-SI')+'</b><span>izdelkov v feedu ('+D.oznaka+')</span></div>'+
+    '<div class="st"><b>'+(D.povp_marza==null?'—':D.povp_marza.toLocaleString('sl-SI')+' %')+'</b><span>povprečna bruto marža</span></div>'+
+    '<div class="st"><b style="color:#b91c1c">'+neg+'</b><span>z negativno maržo</span></div>'+
+    '<div class="st"><b style="color:#c2410c">'+D.st_brez_nc+'</b><span>brez NC (ni v zalogi)</span></div>';
+  render();
+}
+function filtered(){
+  const q=(document.getElementById('q').value||'').toLowerCase().trim(), z=document.getElementById('naZal').checked;
+  let r=D.rows.filter(x=>{
+    if(q && !((x.sku||'').toLowerCase().includes(q)||(x.naziv||'').toLowerCase().includes(q))) return false;
+    if(z && !(x.zaloga>0)) return false;
+    const m=x.marza_pct;
+    if(flt==='nonc') return m==null;
+    if(flt==='neg') return m!=null&&m<0;
+    if(flt==='low') return m!=null&&m>=0&&m<20;
+    if(flt==='mid') return m!=null&&m>=20&&m<40;
+    if(flt==='ok') return m!=null&&m>=40;
+    return true;
+  });
+  r.sort((a,b)=>{const av=a[sk],bv=b[sk];if(av==null&&bv==null)return 0;if(av==null)return 1;if(bv==null)return -1;
+    return (typeof av==='number'?av-bv:String(av).localeCompare(String(bv)))*sd;});
+  return r;
+}
+function mcls(m){return m<0?'m-neg':m<20?'m-low':m<40?'m-mid':'m-ok';}
+function render(){
+  if(!D||!D.ok) return;
+  const r=filtered(), vis=r.slice(0,lim);
+  document.getElementById('tb').innerHTML = vis.length ? vis.map(x=>
+    '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'">':'')+'</td>'+
+    '<td class="sku">'+esc(x.sku||'?')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:10px;font-weight:400">NC iz '+esc(x.nc_sku)+'</div>':'')+'</td>'+
+    '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a></td>'+
+    '<td class="r">'+f2(x.koncna)+' <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
+    '<td class="r">'+f2(x.eur)+'</td><td class="r">'+f2(x.neto)+'</td>'+
+    '<td class="r">'+(x.nc==null?'<span class="dim">—</span>':f2(x.nc))+'</td>'+
+    '<td class="r" style="font-weight:700">'+(x.marza_eur==null?'<span class="dim">—</span>':f2(x.marza_eur))+'</td>'+
+    '<td class="r">'+(x.marza_pct==null?'<span class="dim">—</span>':'<span class="m '+mcls(x.marza_pct)+'">'+x.marza_pct.toLocaleString('sl-SI')+' %</span>')+'</td>'+
+    '<td class="r'+(x.zaloga>0?'':' dim')+'">'+(x.zaloga||0)+'</td></tr>'
+  ).join('') : '<tr><td colspan="10" style="padding:30px;text-align:center" class="dim">Ni zadetkov.</td></tr>';
+  const mb=document.getElementById('more'); mb.style.display=r.length>lim?'block':'none';
+  mb.textContent='Prikaži več ('+(r.length-lim)+' preostalih)';
+}
+function izvozi(){
+  if(!D||!D.ok) return;
+  const r=filtered(), e=v=>{v=v==null?'':String(v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  const n=v=>v==null?'':String(v).replace('.',',');
+  let csv='\ufeffSKU;NC SKU;Naziv;Cena;Valuta;Akcija;Cena EUR;Brez DDV;NC;Marža EUR;Marža %;Zaloga;URL\n';
+  r.forEach(x=>{csv+=[e(x.sku),e(x.nc_sku),e(x.naziv),n(x.koncna),x.valuta,x.akcija?'da':'',n(x.eur),n(x.neto),n(x.nc),n(x.marza_eur),n(x.marza_pct),x.zaloga||0,e(x.url)].join(';')+'\n';});
+  const d=new Date(), z=d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)+'_'+('0'+d.getHours()).slice(-2)+('0'+d.getMinutes()).slice(-2);
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='marza_'+D.oznaka+'_'+z+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+tabs(); load();
+</script></body></html>"""
+    return HTMLResponse(html)
+
+
 @app.get("/maaarket-sku-gid")
 async def maaarket_sku_gid(lang: str = "sl"):
     """Vrne mapiranje SKU → Google Shopping g:id iz maaarket feeda.
