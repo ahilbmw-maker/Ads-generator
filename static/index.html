@@ -30,6 +30,14 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .zg-stat { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
 .zg-stat span { color: var(--text-secondary); }
 .zg-stat b { font-weight: 700; }
+/* Domov: kartica Bato cene po trgih */
+.hbato-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; }
+.hbato-t { border:1px solid var(--border); border-radius:10px; padding:8px 10px; cursor:pointer; background:var(--bg-secondary); transition:.12s; }
+.hbato-t:hover { border-color:#f59e0b; background:rgba(245,158,11,0.06); }
+.hbato-h { display:flex; justify-content:space-between; align-items:baseline; }
+.hbato-bar { height:5px; border-radius:3px; background:rgba(0,0,0,0.07); margin:6px 0 3px; overflow:hidden; }
+.hbato-bar > div { height:5px; border-radius:3px; }
+.hbato-zn { display:inline-flex; gap:5px; padding:3px 10px; border-radius:12px; font-size:12px; background:var(--bg-secondary); color:var(--text-secondary); }
 @media(max-width: 700px) {
   .zg-grid { grid-template-columns: 1fr !important; }
   .zg-grid > div:first-child { height: 180px !important; }
@@ -292,13 +300,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   #page-calc > div:first-child::-webkit-scrollbar { display: none !important; }
   #page-calc .calc-tab-btn { flex-shrink: 0 !important; white-space: nowrap !important; }
   #calcFrame-pricecheck, #calcFrame-calc, #calcFrame-marza { height: calc(100vh - 5rem) !important; }
-  .hbato-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; }
-  .hbato-t { border:1px solid var(--border); border-radius:10px; padding:8px 10px; cursor:pointer; background:var(--bg-secondary); transition:.12s; }
-  .hbato-t:hover { border-color:#f59e0b; background:rgba(245,158,11,0.06); }
-  .hbato-h { display:flex; justify-content:space-between; align-items:baseline; }
-  .hbato-bar { height:5px; border-radius:3px; background:rgba(0,0,0,0.07); margin:6px 0 3px; overflow:hidden; }
-  .hbato-bar > div { height:5px; border-radius:3px; }
-  .hbato-zn { display:inline-flex; gap:5px; padding:3px 10px; border-radius:12px; font-size:12px; background:var(--bg-secondary); color:var(--text-secondary); }
 
   /* ── KREATIVE mobile ── */
   .kr-tabnav {
@@ -896,7 +897,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-24 20:50</div>
+      <div class="sidebar-logo-sub">build 2026-09-24 21:00</div>
     </div>
   </div>
 
