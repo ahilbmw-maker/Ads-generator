@@ -301,7 +301,9 @@
   /* Pozicijski stolpec: primarna + druga vrstica (sekundarna / ＋), vedno 2 etaži */
   .item .poz-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; justify-self: start; min-width: 0; max-width: 100%; }
   .item .poz-cell .poz { justify-self: auto; }
-  .poz-extra-row { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+  .poz-extra-row { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; max-width: 100%; }
+  .poz-extra-chip { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .poz-extra-chip.poz-extra-count { background: #FAEEDA; border-color: #EF9F27; color: #854F0B; }
   .poz-extra-edit { font-size: 10px; color: var(--warn); opacity: 0.7; flex-shrink: 0; }
   .poz-extra-row:hover .poz-extra-edit { opacity: 1; }
   .poz-extra-chip {
@@ -1288,6 +1290,6 @@
   </div>
 </div>
 
-<script src="/static/zaloga.js?v=20260714MANKO"></script>
+<script src="/static/zaloga.js?v=20260924LOK"></script>
 </body>
 </html>

@@ -10732,6 +10732,9 @@ async def marza_trgi_stran(request: Request):
   .bbar input[type=number]{width:62px;padding:4px 7px;border:1px solid var(--bd);border-radius:7px;font-family:inherit;font-size:14px}
   .up{color:#15803d;font-weight:700}.dn{color:#b91c1c;font-weight:700}
   .okb{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:7px;border-radius:6px;font-size:14px;font-weight:700;vertical-align:middle;cursor:pointer;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-family:inherit;padding:0}
+  .cpb{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-left:6px;border-radius:5px;border:1px solid var(--bd);background:#fff;color:var(--txt2);cursor:pointer;font-size:12px;vertical-align:middle;padding:0;font-family:inherit}
+  .cpb:hover{background:#f1f5f9;color:var(--txt)}
+  .cpb.ok{background:#16a34a;border-color:#16a34a;color:#fff}
   .okb.on{background:#16a34a;color:#fff;border-color:#16a34a}
   .cst{display:inline-block;margin-top:3px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;white-space:nowrap}
   .cst-odprto{background:#eff6ff;color:#1d4ed8}.cst-popravljeno{background:#dcfce7;color:#166534}.cst-potrjeno{background:#16a34a;color:#fff}.cst-nespremenjeno{background:#fef3c7;color:#92400e}
@@ -10889,7 +10892,7 @@ function renderMain(){
   const RR=razRange(r.map(o=>o.marza_eur));
   document.getElementById('tb').innerHTML = vis.length ? vis.map(x=>
     '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
-    '<td class="sku">'+linksHtml(x)+esc(String(x.sku||'?').toUpperCase())+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:11px;padding:1px 6px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:12px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+cmsBadge(x)+'</td>'+
+    '<td class="sku">'+linksHtml(x)+esc(String(x.sku||'?').toUpperCase())+copyBtn(x)+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:11px;padding:1px 6px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:12px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+cmsBadge(x)+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
     '<td class="r">'+f2(x.koncna)+' <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
     '<td class="r">'+f2(x.eur)+'</td><td class="r">'+f2(x.neto)+'</td>'+
@@ -10975,6 +10978,13 @@ function linksHtml(x){
       '<button type="button" class="okb'+(on?' on':'')+'" data-done="'+x._i+'" title="'+(on?'Označeno kot popravljeno — klik prekliče':'Označi kot popravljeno')+'">✓</button>'
      :'<span class="ext off" title="CMS ID ni najden">✎</span>');
 }
+function copyBtn(x){return x.sku?'<button type="button" class="cpb" data-copy="'+esc(String(x.sku).toUpperCase())+'" title="Kopiraj SKU">⧉</button>':'';}
+document.addEventListener('click',async e=>{const b=e.target.closest('button[data-copy]'); if(!b) return;
+  const t=b.dataset.copy; let ok=false;
+  try{await navigator.clipboard.writeText(t); ok=true;}catch(_){ 
+    const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select();
+    try{ok=document.execCommand('copy');}catch(__){} ta.remove(); }
+  b.classList.toggle('ok',ok); b.textContent=ok?'✓':'✗'; setTimeout(()=>{b.classList.remove('ok'); b.textContent='⧉';},1200);});
 function cmsBadge(x){const c=x.cms;if(!c||!CST[c.st])return '';
   const t=CST[c.st][1]+' · odprto '+fmtT(c.opened_at)+(c.done_at?' · označeno '+fmtT(c.done_at):'')+(c.vir?' · '+c.vir:'');
   return '<div><span class="cst cst-'+c.st+'" title="'+esc(t)+'">'+CST[c.st][0]+(c.st==='odprto'||c.st==='popravljeno'?' '+fmtT(c.done_at||c.opened_at):'')+'</span>'+
@@ -11080,7 +11090,7 @@ function renderBato(){
   document.getElementById('bInfo').innerHTML='<b style="color:var(--txt)">'+r.length+'</b> cen ni bato · <span class="up">'+up+' ↑</span> · <span class="dn">'+dn+' ↓</span>'+(marz?' · '+marz+' dvignjenih zaradi marže':'');
   const mp=m=>m==null?'<span class="dim">—</span>':'<span class="m '+mcls(m)+'">'+m.toLocaleString('sl-SI')+' %</span>';
   document.getElementById('btb').innerHTML=vis.length?vis.map(o=>{const x=o.x;return '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
-    '<td class="sku">'+linksHtml(x)+esc(String(x.sku||'?').toUpperCase())+cmsBadge(x)+'</td>'+
+    '<td class="sku">'+linksHtml(x)+esc(String(x.sku||'?').toUpperCase())+copyBtn(x)+cmsBadge(x)+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
     '<td class="r">'+fmtC(o.reg,o.cur)+' <span class="dim">'+esc(o.cur)+'</span></td>'+
     '<td class="r" style="font-weight:800;font-size:16px">'+fmtC(o.pred,o.cur)+'</td>'+

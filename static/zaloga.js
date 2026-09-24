@@ -2328,9 +2328,11 @@ function _pozCellHtml(it) {
   const primary = '<span class="poz poz-edit" onclick="event.stopPropagation();openPozEdit(\'' + jsStr(sku) + '\',\'' + jsStr(it.poz||'') + '\',\'' + jsStr(it.naziv||'') + '\')" title="Klikni za popravek pozicije">' + esc(it.poz) + '</span>';
   let second;
   if (extras.length) {
-    const chips = extras.map(p =>
-      '<span class="poz-extra-chip ' + _pozTipClass(p) + '">↳ ' + esc(p) + '</span>').join('');
-    second = '<span class="poz-extra-row" onclick="event.stopPropagation();openExtraPos(\'' + jsStr(sku) + '\',\'' + jsStr(it.naziv||'') + '\')" title="Uredi dodatne lokacije"><span class="poz-extra-edit">✎</span>' + chips + '</span>';
+    // 1 lokacija → pokaži jo; 2+ → samo števec "+N lokacij ▾" (klik odpre seznam) — da ne razbije pogleda
+    const chips = extras.length === 1
+      ? '<span class="poz-extra-chip ' + _pozTipClass(extras[0]) + '">↳ ' + esc(extras[0]) + '</span>'
+      : '<span class="poz-extra-chip poz-extra-count">＋' + extras.length + ' lokacij ▾</span>';
+    second = '<span class="poz-extra-row" onclick="event.stopPropagation();openExtraPos(\'' + jsStr(sku) + '\',\'' + jsStr(it.naziv||'') + '\')" title="Dodatne lokacije: ' + esc(extras.join(', ')) + '"><span class="poz-extra-edit">✎</span>' + chips + '</span>';
   } else {
     second = '<span class="poz-add-btn" onclick="event.stopPropagation();openExtraPos(\'' + jsStr(sku) + '\',\'' + jsStr(it.naziv||'') + '\')" title="Dodaj dodatno lokacijo">＋ lokacija</span>';
   }
