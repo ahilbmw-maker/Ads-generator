@@ -10786,7 +10786,7 @@ async def marza_trgi_stran(request: Request):
       <option value="9-10">9–10 €</option><option value="10-11">10–11 €</option><option value="11-12">11–12 €</option><option value="12-15">12–15 €</option>
       <option value="15-20">15–20 €</option><option value="gte20">≥ 20 €</option></select></label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
-  <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, ki so bili odprti v CMS, ročno popravljeni ali potrjeni v feedu. Opozorila (cena nespremenjena) ostanejo vidna."><input type="checkbox" id="skrijUr" onchange="savePref();render()"> Skrij urejene</label>
+  <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s ✓ (popravljeno) ali potrjene v novem feedu. Samo odprti v CMS (✎) in opozorila ostanejo vidni."><input type="checkbox" id="skrijUr" onchange="savePref();render()"> Skrij urejene</label>
   <button class="bato-btn" id="batoBtn" onclick="toggleBato()" title="Redne cene, ki se ne končajo na bato (x,99 / x99 / x9)">💲 Bato cene</button>
   <button class="btn" id="mainCsv" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
@@ -10994,7 +10994,8 @@ function sprHtml(x){const s=x.sprememba;if(!s)return '';
   const reg=s.old_price!==s.new_price?'redna '+pp(s.old_price)+' → '+pp(s.new_price):'';
   const akc=s.old_sale!==s.new_sale?'akcija '+pp(s.old_sale)+' → '+pp(s.new_sale):'';
   return '<div class="spr" title="Sprememba med prejšnjim in zadnjim feedom">↻ '+fmtT(s.at)+': '+[reg,akc].filter(Boolean).join(' · ')+'</div>';}
-function skritUrejen(x){if(!document.getElementById('skrijUr').checked||!x.cms)return false;return x.cms.st!=='nespremenjeno';}
+// skrije SAMO ročno označene (✓ popravljeno) in potrjene v feedu — samo odprtje v CMS (✎) ne skrije izdelka
+function skritUrejen(x){if(!document.getElementById('skrijUr').checked||!x.cms)return false;return x.cms.st==='popravljeno'||x.cms.st==='potrjeno';}
 async function cmsLog(x,akcija){
   try{const r=await fetch('/cms-log',{method:'POST',headers:{'Content-Type':'application/json'},keepalive:true,
     body:JSON.stringify({akcija,cms_id:x.cms_id,trg,sku:x.sku,cena:x.cena,vir:BATO?'Bato cene':'Marža po trgih'})});return (await r.json()).ok;}catch(e){return false;}}
