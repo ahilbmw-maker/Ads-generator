@@ -10703,35 +10703,41 @@ async def marza_trgi_stran(request: Request):
   :root{--bg:#f4f5f7;--card:#fff;--bd:#e3e6eb;--txt:#16181d;--txt2:#5d6470;--txt3:#9aa1ad;--acc:#4f46e5}
   body{font-family:'DM Sans',-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--txt);padding:18px 22px}
   h1{font-size:23px;margin:0}
-  .top{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .top{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}
   .back{padding:7px 12px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:14.5px}
-  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
-  .tab{padding:8px 15px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:14.5px;font-weight:700;color:var(--txt2)}
+  .hrow{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+  .tabs{display:flex;gap:4px;flex-wrap:wrap}
+  .tab{padding:5px 12px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:14.5px;font-weight:700;color:var(--txt2)}
   .tab.on{background:var(--acc);border-color:var(--acc);color:#fff}
-  .stats{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .stats{display:flex;gap:0;margin-bottom:8px;flex-wrap:wrap;align-items:center;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:6px 4px}
   a.ext{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:7px;border-radius:6px;background:#eff6ff;color:#2563eb;font-size:14px;font-weight:700;text-decoration:none;vertical-align:middle;border:1px solid #dbeafe}
   a.ext:hover{background:#2563eb;color:#fff;border-color:#2563eb}
   .ext.cms{background:#f5f3ff;color:#7c3aed;border-color:#ede9fe}
   a.ext.cms:hover{background:#7c3aed;color:#fff;border-color:#7c3aed}
   .ext.off{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:7px;border-radius:6px;font-size:14px;vertical-align:middle;color:#cbd5e1;border:1px dashed #e2e8f0}
-  .st{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;min-width:140px;flex:1}
-  .st b{display:block;font-size:28px;font-weight:800;line-height:1.1}
-  .st span{font-size:13.5px;color:var(--txt2)}
-  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+  .st{padding:2px 14px;border-right:1px solid var(--bd);white-space:nowrap;display:flex;align-items:baseline;gap:6px}
+  .st b{font-size:19px;font-weight:800;line-height:1.2}
+  .st span{font-size:12.5px;color:var(--txt2)}
+  .znb{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:2px 12px}
+  .znb .lbl{font-size:12.5px;color:var(--txt2);margin-right:2px}
+  .znb button{cursor:pointer;border:1px solid transparent;padding:3px 9px;border-radius:14px;font-family:inherit;font-size:13px;line-height:1.3}
+  .znb button b{font-weight:800;margin-left:3px}
+  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:7px 10px;margin-bottom:8px}
   .bar input[type=text]{padding:8px 11px;border:1px solid var(--bd);border-radius:8px;font-family:inherit;font-size:14.5px;width:280px}
   .chip{padding:6px 11px;border:1px solid var(--bd);border-radius:7px;background:#fff;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--txt2)}
   .chip.on{background:#eef2ff;border-color:#a5b4fc;color:#3730a3}
   .bato-btn{padding:6px 13px;border:1px solid #fcd34d;border-radius:7px;background:#fffbeb;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#92400e}
   .bato-btn.on{background:#f59e0b;border-color:#f59e0b;color:#fff}
-  .bbar{display:none;flex-wrap:wrap;gap:14px;align-items:center;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:10px 14px;margin:0 0 12px;font-size:14px}
-  .bbar input[type=number]{width:70px;padding:6px 8px;border:1px solid var(--bd);border-radius:7px;font-family:inherit;font-size:14px}
+  .bbar{display:none;flex-wrap:wrap;gap:14px;align-items:center;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:6px 12px;margin:0 0 8px;font-size:14px}
+  .bbar input[type=number]{width:62px;padding:4px 7px;border:1px solid var(--bd);border-radius:7px;font-family:inherit;font-size:14px}
   .up{color:#15803d;font-weight:700}.dn{color:#b91c1c;font-weight:700}
   .okb{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:7px;border-radius:6px;font-size:14px;font-weight:700;vertical-align:middle;cursor:pointer;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-family:inherit;padding:0}
   .okb.on{background:#16a34a;color:#fff;border-color:#16a34a}
   .cst{display:inline-block;margin-top:3px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;white-space:nowrap}
   .cst-odprto{background:#eff6ff;color:#1d4ed8}.cst-popravljeno{background:#dcfce7;color:#166534}.cst-potrjeno{background:#16a34a;color:#fff}.cst-nespremenjeno{background:#fef3c7;color:#92400e}
   .spr{font-size:12px;color:var(--txt2);margin-top:2px}
-  #feedInfo{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13.5px;color:var(--txt2);margin:-4px 0 12px}
+  #feedInfo{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--txt2)}
+  #feedInfo .chip{padding:3px 10px;font-size:12.5px}
   #feedInfo .novo{color:#b45309;font-weight:700}
   .bnote{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;background:#fef3c7;color:#92400e;white-space:nowrap}
   .btn{padding:7px 13px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:#16a34a;color:#fff}
@@ -10760,8 +10766,7 @@ async def marza_trgi_stran(request: Request):
   <h1>💶 Marža po trgih</h1>
   <span class="info" id="fxInfo"></span>
 </div>
-<div class="tabs" id="tabs"></div>
-<div id="feedInfo"></div>
+<div class="hrow"><div class="tabs" id="tabs"></div><div id="feedInfo"></div></div>
 <div class="stats" id="stats"></div>
 <div class="bar">
   <input type="text" id="q" placeholder="🔍 Išči SKU ali naziv..." oninput="render()">
@@ -10780,7 +10785,7 @@ async def marza_trgi_stran(request: Request):
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, ki so bili odprti v CMS, ročno popravljeni ali potrjeni v feedu. Opozorila (cena nespremenjena) ostanejo vidna."><input type="checkbox" id="skrijUr" onchange="savePref();render()"> Skrij urejene</label>
   <button class="bato-btn" id="batoBtn" onclick="toggleBato()" title="Redne cene, ki se ne končajo na bato (x,99 / x99 / x9)">💲 Bato cene</button>
-  <button class="btn" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
+  <button class="btn" id="mainCsv" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
 <div class="wrap"><table><thead><tr>
   <th></th>
@@ -10839,14 +10844,13 @@ async function load(){
   D.rows.forEach((r,i)=>r._i=i);
   const neg=D.rows.filter(r=>r.marza_pct!=null&&r.marza_pct<0).length;
   document.getElementById('stats').innerHTML=
-    '<div class="st"><b>'+D.st.toLocaleString('sl-SI')+'</b><span>izdelkov v feedu ('+D.oznaka+')</span></div>'+
-    '<div class="st"><b>'+(D.povp_marza==null?'—':D.povp_marza.toLocaleString('sl-SI')+' %')+'</b><span>povprečna bruto marža</span></div>'+
-    '<div class="st"><b style="color:#b91c1c">'+neg+'</b><span>z negativno maržo</span></div>'+
-    '<div class="st"><b style="color:#c2410c">'+D.st_brez_nc+'</b><span>brez NC (ni v zalogi)</span></div>'+
+    '<div class="st"><b>'+D.st.toLocaleString('sl-SI')+'</b><span>izdelkov</span></div>'+
+    '<div class="st"><b>'+(D.povp_marza==null?'—':D.povp_marza.toLocaleString('sl-SI')+' %')+'</b><span>povp. marža</span></div>'+
+    '<div class="st"><b style="color:#b91c1c">'+neg+'</b><span>negativnih</span></div>'+
+    '<div class="st" title="Ni v zalogi"><b style="color:#c2410c">'+D.st_brez_nc+'</b><span>brez NC</span></div>'+
     (function(){const n=D.nacini||{};let zan=0,ug=0;Object.entries(n).forEach(([k,v])=>{if(k==='ni')return;if(k.startsWith('slika'))ug+=v;else zan+=v;});
-      return '<div class="st"><b><span style="color:#15803d">'+zan+'</span> / <span style="color:#a16207">'+ug+'</span></b><span>zanesljivo / ugibanje iz slike</span></div>';})()+
-    '<div class="st"><b>'+(D.st_nasi||0)+' / <span style="color:#64748b">'+(D.st_parser||0)+'</span></b><span>naši / parserji (po g:brand)</span></div>'+
-    '<div class="st" id="znBox" style="flex-basis:100%;max-width:none;text-align:left"></div>';
+      return '<div class="st" title="SKU zanesljivo (ID/znamka/mpn) / ugibanje iz slike"><b><span style="color:#15803d">'+zan+'</span><span style="color:var(--txt3);font-weight:400"> / </span><span style="color:#a16207">'+ug+'</span></b><span>zanesljivo / ugib</span></div>';})()+
+    '<div class="znb" id="znBox"></div>';
   drawZn();
   render();
 }
@@ -10913,10 +10917,10 @@ function drawZn(){
   const z=Object.entries(D.znamke||{}), nase=(D.nase_znamke||[]);
   const pill=([k,v])=>{const on=ZN.has(k), nas=nase.some(n=>k.toLowerCase().includes(n));
     const bg=on?(nas?'#16a34a;color:#fff':'#2563eb;color:#fff'):(nas?'#dcfce7;color:#166534':(k==='(prazno)'?'#fef3c7;color:#92400e':'#f1f5f9;color:#475569'));
-    return '<button type="button" data-zn="'+esc(k)+'" style="cursor:pointer;border:0;margin:2px 5px 2px 0;padding:5px 12px;border-radius:14px;font:inherit;font-size:13.5px;background:'+bg+'">'+esc(k)+' <b>'+v.toLocaleString('sl-SI')+'</b></button>';};
-  box.innerHTML='<span style="margin-bottom:5px">Znamka (g:brand) — klikni za izbiro, več hkrati; nič izbranega = vse</span><div>'+
-    z.map(pill).join('')+
-    '<button type="button" data-zn="__vse" style="cursor:pointer;border:1px solid var(--bd);background:transparent;margin:2px 0 2px 6px;padding:4px 12px;border-radius:14px;font:inherit;font-size:13.5px">'+(ZN.size?'Pokaži vse':'Vse prikazane')+'</button></div>';
+    return '<button type="button" data-zn="'+esc(k)+'" style="background:'+bg+'">'+esc(k)+'<b>'+v.toLocaleString('sl-SI')+'</b></button>';};
+  box.title='Znamka (g:brand) — klikni za izbiro, več hkrati; nič izbranega = vse';
+  box.innerHTML='<span class="lbl">Znamka:</span>'+z.map(pill).join('')+
+    (ZN.size?'<button type="button" data-zn="__vse" style="background:transparent;border-color:var(--bd);color:var(--txt2)">✕ vse</button>':'');
 }
 document.addEventListener('click',e=>{const b=e.target.closest('[data-zn]'); if(!b) return;
   const k=b.getAttribute('data-zn');
@@ -11024,6 +11028,7 @@ function toggleBato(){BATO=!BATO;blim=300;
   document.getElementById('bwrap').style.display=BATO?'':'none';
   document.querySelector('.wrap:not(#bwrap)').style.display=BATO?'none':'';
   document.getElementById('more').style.display='none'; document.getElementById('bmore').style.display='none';
+  document.getElementById('mainCsv').style.display=BATO?'none':'';
   render();}
 function bsrt(k){if(bsk===k)bsd=-bsd;else{bsk=k;bsd=(k==='sku'||k==='naziv'||k==='note')?-1:1;}render();}
 function batoCands(price,cur){
