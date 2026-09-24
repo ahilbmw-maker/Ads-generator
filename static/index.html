@@ -30,6 +30,11 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .zg-stat { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
 .zg-stat span { color: var(--text-secondary); }
 .zg-stat b { font-weight: 700; }
+/* Domov: Hitri dostop */
+.hq-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+.hq-btn { display:flex; align-items:center; gap:9px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--bg-secondary); color:var(--text); font-family:inherit; font-size:13.5px; font-weight:700; cursor:pointer; text-align:left; transition:.12s; }
+.hq-btn:hover { border-color:var(--accent); background:rgba(99,102,241,0.06); }
+.hq-ic { font-size:18px; line-height:1; flex-shrink:0; }
 /* Domov: kartica Bato cene po trgih */
 .hbato-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; }
 .hbato-t { border:1px solid var(--border); border-radius:10px; padding:8px 10px; cursor:pointer; background:var(--bg-secondary); transition:.12s; }
@@ -897,7 +902,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-24 21:00</div>
+      <div class="sidebar-logo-sub">build 2026-09-24 21:20</div>
     </div>
   </div>
 
@@ -1210,157 +1215,24 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div id="homeBatoZn" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>
       </div>
 
-      <div style="margin-bottom:24px">
-        <div class="home-section-label" id="homeFirstSection">Oglaševanje</div>
-        <div class="home-grid">
-          <div class="home-tile" style="border-left-color:#1877F2" onclick="switchPage('meta')">
-            <div class="ht-icon">📣</div>
-            <div class="ht-name">Meta Ads</div>
-            <div class="ht-desc">Generiranje FB / IG oglasov</div>
-          </div>
-          <div class="home-tile" style="border-left-color:#1d9bf0" onclick="switchPage('tiktok')">
-            <div class="ht-icon">🎵</div>
-            <div class="ht-name">TikTok Ads</div>
-            <div class="ht-desc">XLS izvoz za TikTok</div>
-          </div>
-          <div class="home-tile" style="border-left-color:#ec4899" onclick="switchPage('kreative')">
-            <div class="ht-icon">✨</div>
-            <div class="ht-name">Kreative</div>
-            <div class="ht-desc">AI generiranje kreativ</div>
-            <div class="ht-pills">
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('kreative');krSwitchTab('gemini')">↗ Generator</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('kreative');krSwitchTab('higgsfield')">↗ Higgsfield</span>
-            </div>
-          </div>
-          <div class="home-tile" style="border-left-color:#8b5cf6" onclick="switchPage('videoads')">
-            <div class="ht-icon">🎬</div>
-            <div class="ht-name">Video Ads</div>
-            <div class="ht-desc">AI video oglasi</div>
-          </div>
-          <div class="home-tile" style="border-left-color:#06b6d4" onclick="switchPage('lokalizacija')">
-            <div class="ht-icon">🌍</div>
-            <div class="ht-name">Lokalizacija</div>
-            <div class="ht-desc">Prevodi in lokalizacija</div>
-          </div>
-          <div class="home-tile" style="border-left-color:#f59e0b" onclick="switchPage('prodgen')">
-            <div class="ht-icon">✨</div>
-            <div class="ht-name">Generator produkta</div>
-            <div class="ht-desc">Iz linkov v Maaarket besedilo</div>
-          </div>
+      <!-- HITRI DOSTOP (najbolj uporabljane strani; vse ostalo je v levem meniju) -->
+      <div id="homeQuick" style="margin-bottom:24px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="font-size:17px">⚡</span>
+          <span style="font-size:15px;font-weight:800;color:var(--text)">Hitri dostop</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--text-tertiary)">ostalo v levem meniju</span>
         </div>
-      </div>
-
-      <div style="margin-bottom:24px">
-        <div class="home-section-label">Finance & Analiza</div>
-        <div class="home-grid">
-          <div class="home-tile" style="border-left-color:#10b981" onclick="switchPage('calc')">
-            <div class="ht-icon">💱</div>
-            <div class="ht-name">Urejevalnik cen</div>
-            <div class="ht-desc">Cene po državah</div>
-            <div class="ht-pills">
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('calc');switchCalcTab('pricecheck')">↗ Price Checker</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('calc');switchCalcTab('calc')">↗ Kalkulator</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('calc');switchCalcTab('marza')">↗ Marža po trgih</span>
-            </div>
-          </div>
-          <div class="home-tile" style="border-left-color:#f59e0b" onclick="switchPage('analiza')">
-            <div class="ht-icon">📊</div>
-            <div class="ht-name">Analiza</div>
-            <div class="ht-desc">Oglaševanje, finance, pošta</div>
-            <div class="ht-pills">
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('meta')">↗ Meta Ads</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('obrat14')">↗ Obrat 7d (FB)</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('obrat14tt')">↗ Obrat 7d (TT)</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('ttkreative')">↗ TikTok Kreative</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('cashflow')">↗ 💰 Cash Flow</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('shipping')">↗ 🚚 Pošta</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('analiza');switchAnalizaTab('beta')">↗ 🧪 Analiza Beta</span>
-            </div>
-          </div>
-          <div class="home-tile" style="border-left-color:#a855f7" onclick="switchPage('knjigovodstvo')">
-            <div class="ht-icon">📑</div>
-            <div class="ht-name">Knjigovodstvo</div>
-            <div class="ht-desc">Polcar XML → CSV</div>
-            <div class="ht-pills">
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('knjigovodstvo')">↗ Pretvori XML</span>
-            </div>
-          </div>
-          <div class="home-tile" style="border-left-color:#f97316" onclick="switchPage('forecast')">
-            <div class="ht-icon">📈</div>
-            <div class="ht-name">Napoved</div>
-            <div class="ht-desc">Prodajni forecast</div>
-          </div>
-          <div class="home-tile" style="border-left-color:#15803d" onclick="switchPage('prevzemi')">
-            <div class="ht-icon">📥</div>
-            <div class="ht-name">Prevzemi</div>
-            <div class="ht-desc">Računi dobaviteljev → XLS / XML</div>
-            <div class="ht-pills">
-              <span class="home-pill">AMiO · MotoProfil · Ikonka</span>
-              <span class="home-pill">Intercars · Abakus</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <div class="home-section-label">Upravljanje</div>
-        <div class="home-grid">
-          <div class="home-tile" style="border-left-color:#eab308" onclick="switchPage('orodja')">
-            <div class="ht-icon">🔧</div>
-            <div class="ht-name">Orodja</div>
-            <div class="ht-desc">Uvoz, HS+, naročila, kontrola cen</div>
-            <div class="ht-pills">
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('orodja');switchOrodjaTab('hsuvoz')">↗ HS+ naročanje</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('orodja');switchOrodjaTab('apteluvoz')">↗ Aptel naročanje</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('orodja');switchOrodjaTab('zdrnarocila')">↗ Zdru. naročila</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('orodja');switchOrodjaTab('csv')">↗ Ikonka uvoz</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('orodja');switchOrodjaTab('hs')">↗ Uvoz HS+</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('orodja');switchOrodjaTab('pricecheck')">↗ Kontrola cen</span>
-            </div>
-          </div>
-          <div class="home-tile" style="border-left-color:#64748b" onclick="switchPage('zaloga')">
-            <div class="ht-icon">📦</div>
-            <div class="ht-name">Skladišče</div>
-            <div class="ht-desc">Pregled SKU · Skener vračil · Pozicije</div>
-            <div class="ht-pills">
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('zaloga')">↗ Zaloga</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('vracila')">↗ Vračila</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('skeniranje')">↗ Skeniranje</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('pozicije')">↗ Sprememba pozicij</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('sekundarne')">↗ Sekundarne</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('zaloga');switchZalogaTab('inventura')">↗ Inventura</span>
-            </div>
-          </div>
-          <div class="home-tile" style="border-left-color:#64748b" onclick="switchPage('narocilnice')">
-            <div class="ht-icon">📋</div>
-            <div class="ht-name">Naročilnice</div>
-            <div class="ht-desc">Upravljanje naročilnic</div>
-            <div class="ht-pills">
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('razlike')">↗ Negativne razlike</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('vecja')">↗ Večja naročila</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('dvojniki')">↗ Dvojniki</span>
-              <span class="home-pill" onclick="event.stopPropagation();switchPage('narocilnice');narcSwitchTab('karantena')">↗ Karantena</span>
-            </div>
-          </div>
-          <div class="home-tile" style="border-left-color:#06b6d4" onclick="switchPage('odprema')">
-            <div class="ht-icon">🚚</div>
-            <div class="ht-name">Odprema</div>
-            <div class="ht-desc">Geoapify validacija Econt BG</div>
-          </div>
-          <div class="home-tile" style="border-left-color:#0f9d58" onclick="switchPage('storage')">
-            <div class="ht-icon">💾</div>
-            <div class="ht-name">Storage</div>
-            <div class="ht-desc">Video output mape · disk usage</div>
-          </div>
-          <div class="home-tile" style="border-left-color:#534AB7" onclick="switchPage('sporocanje')">
-            <div class="ht-icon">💬</div>
-            <div class="ht-name">Sporočanje</div>
-            <div class="ht-desc">Prevodi · Makri · Iskanje naročil</div>
-            <div class="ht-pills">
-              <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(83,74,183,0.12);color:#534AB7;font-weight:600">🛍 Maaarket</span>
-              <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(83,74,183,0.12);color:#534AB7;font-weight:600">🔧 Silux</span>
-            </div>
-          </div>
+        <div class="hq-grid">
+          <button type="button" class="hq-btn" onclick="switchPage('meta')"><span class="hq-ic">📣</span>Meta Ads</button>
+          <button type="button" class="hq-btn" onclick="switchPage('kreative');krSwitchTab('gemini')"><span class="hq-ic">✨</span>Generator kreativ</button>
+          <button type="button" class="hq-btn" onclick="switchPage('calc');switchCalcTab('pricecheck')"><span class="hq-ic">💰</span>Urejevalnik cen</button>
+          <button type="button" class="hq-btn" onclick="switchPage('analiza')"><span class="hq-ic">📊</span>Analiza</button>
+          <button type="button" class="hq-btn" onclick="switchPage('knjigovodstvo')"><span class="hq-ic">📄</span>Knjigovodstvo</button>
+          <button type="button" class="hq-btn" onclick="switchPage('forecast')"><span class="hq-ic">📈</span>Napoved</button>
+          <button type="button" class="hq-btn" onclick="switchPage('prevzemi')"><span class="hq-ic">📥</span>Prevzemi</button>
+          <button type="button" class="hq-btn" onclick="switchPage('orodja')"><span class="hq-ic">🔧</span>Orodja</button>
+          <button type="button" class="hq-btn" onclick="switchPage('zaloga')"><span class="hq-ic">📦</span>Zaloga</button>
+          <button type="button" class="hq-btn" onclick="switchPage('narocilnice')"><span class="hq-ic">📋</span>Naročilnice</button>
         </div>
       </div>
     </div><!-- /home-wrap -->
