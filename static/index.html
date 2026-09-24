@@ -31,10 +31,11 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .zg-stat span { color: var(--text-secondary); }
 .zg-stat b { font-weight: 700; }
 /* Domov: Hitri dostop */
-.hq-grid { flex:1; min-width:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:6px; }
-.hq-btn { display:flex; align-items:center; gap:7px; padding:7px 10px; border:1px solid var(--border); border-radius:9px; background:var(--bg-secondary); color:var(--text); font-family:inherit; font-size:12.5px; font-weight:700; cursor:pointer; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:.12s; }
+.hq-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+@media(min-width: 1100px) { .hq-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } }
+.hq-btn { display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:var(--bg-secondary); color:var(--text); font-family:inherit; font-size:14px; font-weight:700; cursor:pointer; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:.12s; }
 .hq-btn:hover { border-color:var(--accent); background:rgba(99,102,241,0.06); }
-.hq-ic { font-size:15px; line-height:1; flex-shrink:0; }
+.hq-ic { font-size:19px; line-height:1; flex-shrink:0; }
 /* Domov: kartica Bato cene po trgih */
 .hbato-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; }
 .hbato-t { border:1px solid var(--border); border-radius:10px; padding:8px 10px; cursor:pointer; background:var(--bg-secondary); transition:.12s; }
@@ -902,7 +903,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-24 21:40</div>
+      <div class="sidebar-logo-sub">build 2026-09-24 21:55</div>
     </div>
   </div>
 
@@ -1141,18 +1142,53 @@ input[type="text"].error { border-color: var(--red) !important; }
         </div>
       </a>
 
+      <!-- PREGLED 2026 — vodoravni trak (samo desktop ≥1280px) -->
+      <div id="homeStatsPanel" class="home-stats-panel">
+        <div class="hsp-card">
+          <div class="hsp-card-label">📦 Naročila 2026</div>
+          <div class="hsp-card-num" id="hspOrders">—</div>
+          <div class="hsp-bar"><div class="hsp-bar-fill" id="hspOrdersBar" style="width:0%;background:#378ADD"></div></div>
+        </div>
+        <div class="hsp-card">
+          <div class="hsp-card-label">💰 Promet 2026</div>
+          <div class="hsp-card-num" id="hspRevenue">—</div>
+          <div class="hsp-bar"><div class="hsp-bar-fill" id="hspRevenueBar" style="width:0%;background:#1D9E75"></div></div>
+        </div>
+        <div class="hsp-card">
+          <div class="hsp-card-label">🏆 Najboljši dan</div>
+          <div class="hsp-card-num" id="hspBestDay">—</div>
+          <div class="hsp-card-foot"><span id="hspBestDayOrders">—</span> · <span id="hspBestDate"></span></div>
+        </div>
+        <div class="hsp-card hsp-card-proj">
+          <div class="hsp-card-label" style="color:#CECBF6">📈 Napoved 2026 · projekcija</div>
+          <div class="hsp-proj-row">
+            <div><div class="hsp-proj-num" id="hspProjOrders">—</div><div class="hsp-proj-mlabel">naročil</div></div>
+            <div><div class="hsp-proj-num" id="hspProjRevenue">—</div><div class="hsp-proj-mlabel">prometa</div></div>
+          </div>
+        </div>
+      </div>
+
+
+
       <!-- HITRI DOSTOP (najbolj uporabljane strani; vse ostalo je v levem meniju) -->
-      <div id="homeQuick" title="Hitri dostop — ostale strani so v levem meniju" style="margin-bottom:20px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:14px;display:flex;align-items:center;gap:10px">
-        <span style="font-size:13px;font-weight:800;color:var(--text);white-space:nowrap;padding:0 4px">⚡ Hitro</span>
+      <div id="homeQuick" style="margin-bottom:20px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="font-size:17px">⚡</span>
+          <span style="font-size:15px;font-weight:800;color:var(--text)">Hitri dostop</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--text-tertiary)">ostalo v levem meniju</span>
+        </div>
         <div class="hq-grid">
           <button type="button" class="hq-btn" onclick="switchPage('meta')"><span class="hq-ic">📣</span>Meta Ads</button>
           <button type="button" class="hq-btn" title="Kreative → Generator" onclick="switchPage('kreative');krSwitchTab('gemini')"><span class="hq-ic">✨</span>Generator</button>
+          <button type="button" class="hq-btn" title="Kreative → Čakalna vrsta" onclick="switchPage('kreative');krSwitchTab('queue')"><span class="hq-ic">⏳</span>Vrsta</button>
+          <button type="button" class="hq-btn" title="Kreative → Video Ads" onclick="switchPage('kreative');krSwitchTab('videoads')"><span class="hq-ic">🎬</span>Video Ads</button>
+          <button type="button" class="hq-btn" onclick="switchPage('calc');switchCalcTab('pricecheck')"><span class="hq-ic">💰</span>Urejevalnik cen</button>
           <button type="button" class="hq-btn" onclick="switchPage('analiza')"><span class="hq-ic">📊</span>Analiza</button>
           <button type="button" class="hq-btn" onclick="switchPage('knjigovodstvo')"><span class="hq-ic">📄</span>Knjigovodstvo</button>
           <button type="button" class="hq-btn" onclick="switchPage('forecast')"><span class="hq-ic">📈</span>Napoved</button>
           <button type="button" class="hq-btn" onclick="switchPage('prevzemi')"><span class="hq-ic">📥</span>Prevzemi</button>
           <button type="button" class="hq-btn" onclick="switchPage('orodja')"><span class="hq-ic">🔧</span>Orodja</button>
-          <button type="button" class="hq-btn" onclick="switchPage('zaloga')"><span class="hq-ic">📦</span>Zaloga</button>
+          <button type="button" class="hq-btn" title="Skladišče → Zaloga" onclick="switchPage('zaloga')"><span class="hq-ic">📦</span>Zaloga</button>
           <button type="button" class="hq-btn" onclick="switchPage('narocilnice')"><span class="hq-ic">📋</span>Naročilnice</button>
         </div>
       </div>
@@ -1202,34 +1238,6 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div id="homeBatoGrid" class="hbato-grid"><div style="font-size:12.5px;color:var(--text-tertiary)">Nalagam …</div></div>
         <div id="homeBatoZn" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>
       </div>
-
-      <!-- PREGLED 2026 — vodoravni trak (samo desktop ≥1280px) -->
-      <div id="homeStatsPanel" class="home-stats-panel">
-        <div class="hsp-card">
-          <div class="hsp-card-label">📦 Naročila 2026</div>
-          <div class="hsp-card-num" id="hspOrders">—</div>
-          <div class="hsp-bar"><div class="hsp-bar-fill" id="hspOrdersBar" style="width:0%;background:#378ADD"></div></div>
-        </div>
-        <div class="hsp-card">
-          <div class="hsp-card-label">💰 Promet 2026</div>
-          <div class="hsp-card-num" id="hspRevenue">—</div>
-          <div class="hsp-bar"><div class="hsp-bar-fill" id="hspRevenueBar" style="width:0%;background:#1D9E75"></div></div>
-        </div>
-        <div class="hsp-card">
-          <div class="hsp-card-label">🏆 Najboljši dan</div>
-          <div class="hsp-card-num" id="hspBestDay">—</div>
-          <div class="hsp-card-foot"><span id="hspBestDayOrders">—</span> · <span id="hspBestDate"></span></div>
-        </div>
-        <div class="hsp-card hsp-card-proj">
-          <div class="hsp-card-label" style="color:#CECBF6">📈 Napoved 2026 · projekcija</div>
-          <div class="hsp-proj-row">
-            <div><div class="hsp-proj-num" id="hspProjOrders">—</div><div class="hsp-proj-mlabel">naročil</div></div>
-            <div><div class="hsp-proj-num" id="hspProjRevenue">—</div><div class="hsp-proj-mlabel">prometa</div></div>
-          </div>
-        </div>
-      </div>
-
-
 
     </div><!-- /home-wrap -->
   </div><!-- /page-home -->
