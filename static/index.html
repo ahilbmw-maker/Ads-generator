@@ -906,7 +906,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-25 11:18</div>
+      <div class="sidebar-logo-sub">build 2026-09-25 11:26</div>
     </div>
   </div>
 
@@ -1024,7 +1024,6 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('hsuvoz')">HS+ naročanje</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('apteluvoz')">Aptel naročanje</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('pricecheck')">Kontrola cen</div>
-    <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('zdrnarocila')">Zdru. naročila</div>
     <div class="nav-sub-item" onclick="switchPage('zaloga');switchZalogaTab('inventura')">📋 Inventura</div>
   </div>
 
@@ -2427,7 +2426,6 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="orodja-tab-btn" id="orodjaTab-hsplus" onclick="switchOrodjaTab('hsplus')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📡 HS+ katalog</button>
       <button class="orodja-tab-btn" id="orodjaTab-apteluvoz" onclick="switchOrodjaTab('apteluvoz')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🛒 Aptel naročanje</button>
       <button class="orodja-tab-btn" id="orodjaTab-pricecheck" onclick="switchOrodjaTab('pricecheck')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Kontrola cen</button>
-      <button class="orodja-tab-btn" id="orodjaTab-zdrnarocila" onclick="switchOrodjaTab('zdrnarocila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔗 Združena naročila</button>
       <button class="orodja-tab-btn" id="orodjaTab-inventura" onclick="switchOrodjaTab('inventura')" style="display:none"></button>
     </div>
 
@@ -2838,42 +2836,6 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div id="pcItemsList" style="display:flex;flex-direction:column;gap:8px"></div>
           </div>
           <div id="pcEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži zalogo (1) in PDF predračun (2) za začetek primerjave.</div>
-        </div>
-      </div>
-    </div>
-    <!-- ZDRUŽENA NAROČILA TAB -->
-    <div id="orodjaSubpage-zdrnarocila" style="display:none;padding:14px">
-      <div style="display:grid;grid-template-columns:240px minmax(0,1fr);gap:14px;align-items:start">
-
-        <!-- Levo: upload + filter -->
-        <div>
-          <div class="card">
-            <span class="slabel">NAROČILNICE (CSV)</span>
-            <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 8px;line-height:1.4">Isti format kot HS+ naročanje: ID naročila, SKU, Naziv, Količina.</p>
-            <div id="znDropZone" class="k-dropzone" style="padding:14px;cursor:pointer" onclick="document.getElementById('znInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="znHandleDrop(event)">
-              <span style="font-size:11px">Klikni ali povleci CSV sem</span>
-            </div>
-            <input type="file" id="znInput" accept=".csv" style="display:none" onchange="znUpload(this.files[0])">
-            <div id="znStatus" style="margin-top:8px;font-size:11px;color:var(--text-secondary);text-align:center;display:none"></div>
-            <div id="znInfo" style="margin-top:6px;font-size:10px;color:var(--text-tertiary)"></div>
-          </div>
-          <div class="card" style="margin-top:0">
-            <span class="slabel">FILTER</span>
-            <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
-              <input type="text" id="znSearch" placeholder="🔍 Išči SKU, ID naročila..." oninput="znRender()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:100%;box-sizing:border-box">
-              <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer">
-                <input type="checkbox" id="znOnlyMulti" onchange="znRender()" style="cursor:pointer;accent-color:var(--accent)">
-                <span>Samo naročila z 2+ SKU</span>
-              </label>
-            </div>
-            <div id="znStats" style="margin-top:10px;font-size:11px;color:var(--text-tertiary)"></div>
-          </div>
-        </div>
-
-        <!-- Desno: vizualizacija -->
-        <div>
-          <div id="znEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:3rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">Naloži CSV naročilnic za prikaz združenih naročil.</div>
-          <div id="znResults" style="display:none;flex-direction:column;gap:8px"></div>
         </div>
       </div>
     </div>
@@ -10633,8 +10595,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ─── ORODJA SUB-TABS + HS+ ─────────────────────────────────────────────────
 function switchOrodjaTab(tab) {
-  if (tab === 'urltosku') tab = 'csv';   // URL→SKU odstranjen
-  ['csv', 'hs', 'hsuvoz', 'hsplus', 'apteluvoz', 'pricecheck', 'zdrnarocila'].forEach(t => {
+  if (tab === 'urltosku' || tab === 'zdrnarocila') tab = 'csv';   // odstranjena: URL→SKU, Združena naročila
+  ['csv', 'hs', 'hsuvoz', 'hsplus', 'apteluvoz', 'pricecheck'].forEach(t => {
     const btn = document.getElementById('orodjaTab-' + t);
     const sub = document.getElementById('orodjaSubpage-' + t);
     if (t === tab) {
@@ -10651,7 +10613,6 @@ function switchOrodjaTab(tab) {
   if (tab === 'hsuvoz') { hsuvozLoadStock(); hsuvozLoadHistory(); hsuvozLoadCurrent(); hsuvozLoadOrderPanel(); }
   if (tab === 'hsplus') { if (!_hsplusData.length) hsplusLoad(false, true); }
   if (tab === 'apteluvoz') { aptelLoadStock(); aptelLoadHistory(); aptelLoadCurrent(); aptelLoadOrderPanel(); }
-  if (tab === 'zdrnarocila') znLoad();
   try { localStorage.setItem('slx_active_subtab', tab); } catch(e) {}
 }
 
