@@ -906,7 +906,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-25 09:39</div>
+      <div class="sidebar-logo-sub">build 2026-09-25 09:46</div>
     </div>
   </div>
 
@@ -5506,6 +5506,11 @@ function switchCalcTab(tab) {
           frame.src = src;
         }
         frame.style.display = 'block';
+        // Marža po trgih: fokus v iframe, da tipkovnica (↑↓ O D …) deluje brez klika
+        if (frame.id === 'calcFrame-marza') {
+          const fo = () => { try { frame.focus(); frame.contentWindow.focus(); } catch(e) {} };
+          setTimeout(fo, 50); frame.addEventListener('load', fo, { once: true });
+        }
       }
     } else {
       if (btn) { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; btn.style.border = '1px solid var(--border)'; btn.classList.remove('active'); }

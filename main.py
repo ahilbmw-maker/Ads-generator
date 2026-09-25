@@ -10656,8 +10656,7 @@ async def marza_trgi_stran(request: Request):
   .m{font-weight:800;padding:3px 8px;border-radius:6px;display:inline-block;min-width:58px;text-align:center}
   .m-neg{background:#fee2e2;color:#b91c1c}.m-low{background:#ffedd5;color:#c2410c}.m-mid{background:#fef9c3;color:#854d0e}.m-ok{background:#dcfce7;color:#15803d}
   .dim{color:var(--txt3)}
-  tr.kf td{background:#eef2ff !important}
-  tr.kf td:first-child{box-shadow:inset 4px 0 0 #4f6ef7}
+  tr.kf{outline:2px solid #4f6ef7;outline-offset:-2px}
   .kbh{font-size:12px;color:var(--txt3);margin-left:14px;white-space:nowrap}
   .kbh kbd{font-family:ui-monospace,monospace;font-size:11px;font-weight:700;color:var(--txt2);background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:4px;padding:0 5px;margin:0 2px}
   .more{display:block;margin:12px auto;padding:9px 18px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-weight:600}
@@ -10665,7 +10664,7 @@ async def marza_trgi_stran(request: Request):
 <div class="top">
   <button class="back" onclick="history.back()">← Nazaj</button>
   <h1>💶 Marža po trgih</h1>
-  <span class="kbh" title="Bližnjice delujejo, ko kurzor ni v iskalniku ali drugem polju"><kbd>↑</kbd><kbd>↓</kbd> premik · <kbd>O</kbd> odpri CMS · <kbd>D</kbd> done · <kbd>C</kbd> kopiraj SKU · <kbd>Enter</kbd> trgovina · <kbd>Esc</kbd> počisti</span>
+  <span class="kbh" title="Bližnjice delujejo, ko kurzor ni v iskalniku ali drugem polju"><kbd>↑</kbd><kbd>↓</kbd> premik · <kbd>A</kbd> odpri CMS · <kbd>D</kbd> done · <kbd>C</kbd> kopiraj SKU · <kbd>Enter</kbd> trgovina · <kbd>Esc</kbd> počisti</span>
   <span class="info" id="fxInfo"></span>
 </div>
 <div class="hrow"><div class="tabs" id="tabs"></div><div id="feedInfo"></div></div>
@@ -10744,6 +10743,7 @@ function pick(k){trg=k;lim=300;history.replaceState(null,'','?trg='+k+(EMBED?'&e
 function setF(b){if(BATO)toggleBato();document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));b.classList.add('on');flt=b.dataset.f;lim=300;savePref();render();}
 function srt(k){if(sk===k)sd=-sd;else{sk=k;sd=1;}savePref();render();}
 async function load(){
+  kbIdx=-1; kbKey=null; kbAuto=true;   // nov trg / osvežitev → ob izrisu označi prvo vrstico
   document.getElementById('tb').innerHTML='<tr><td colspan="13" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr>';
   loadFeedInfo();
   try{ D=await (await fetch('/marza-trgi?trg='+trg)).json(); }catch(e){ D={ok:false,error:e.message}; }
@@ -10792,8 +10792,8 @@ function nac(n){
 }
 function mcls(m){return m<0?'m-neg':m<20?'m-low':m<40?'m-mid':'m-ok';}
 function render(){ if(BATO) renderBato(); else renderMain(); sortArrows(); kbRestore(); }
-// ═══ TIPKOVNICA: ↑↓ premik · O odpri CMS · D done · C kopiraj SKU · Enter trgovina · Esc ═══
-let kbIdx=-1, kbKey=null;
+// ═══ TIPKOVNICA: ↑↓ premik · A odpri CMS · D done · C kopiraj SKU · Enter trgovina · Esc ═══
+let kbIdx=-1, kbKey=null, kbAuto=true;
 function kbRows(){return Array.from(document.querySelectorAll((BATO?'#btb':'#tb')+' tr[data-i]'));}
 function kbFocus(idx,scroll){
   let rows=kbRows();
@@ -10808,7 +10808,7 @@ function kbFocus(idx,scroll){
 }
 // po ponovnem izrisu ohrani isto vrstico; če je izginila (Skrij urejene), ostane na istem mestu → naslednja
 function kbRestore(){
-  if(kbIdx<0) return;
+  if(kbIdx<0){ if(kbAuto&&kbRows().length){kbAuto=false; kbFocus(0,false); try{window.focus();}catch(e){}} return; }
   const rows=kbRows(), j=kbKey==null?-1:rows.findIndex(tr=>tr.dataset.i===kbKey);
   kbFocus(j>=0?j:kbIdx,false);
 }
@@ -10823,11 +10823,11 @@ document.addEventListener('keydown',ev=>{
   if(k==='ArrowUp'){ev.preventDefault();kbFocus(kbIdx<0?0:kbIdx-1);return;}
   if(k==='Escape'){kbReset();return;}
   const kl=k.toLowerCase();
-  if(!['o','d','c','enter'].includes(kl)) return;
+  if(!['a','d','c','enter'].includes(kl)) return;
   ev.preventDefault();
   if(kbIdx<0){kbFocus(0);return;}   // prvi pritisk samo označi prvo vrstico
   const tr=kbCur(); if(!tr) return;
-  const sel={o:'a[data-cms]',d:'button[data-done]',c:'button[data-copy]',enter:'td.sku a.ext:not(.cms)'}[kl];
+  const sel={a:'a[data-cms]',d:'button[data-done]',c:'button[data-copy]',enter:'td.sku a.ext:not(.cms)'}[kl];
   const el=tr.querySelector(sel); if(el) el.click();
 });
 // ob vrnitvi iz CMS (drug zavihek) → tipkovnica takoj deluje na isti vrstici
