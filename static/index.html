@@ -906,7 +906,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-25 09:53</div>
+      <div class="sidebar-logo-sub">build 2026-09-25 11:18</div>
     </div>
   </div>
 
@@ -1025,7 +1025,6 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('apteluvoz')">Aptel naročanje</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('pricecheck')">Kontrola cen</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('zdrnarocila')">Zdru. naročila</div>
-    <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('urltosku')">URL→SKU</div>
     <div class="nav-sub-item" onclick="switchPage('zaloga');switchZalogaTab('inventura')">📋 Inventura</div>
   </div>
 
@@ -2429,7 +2428,6 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="orodja-tab-btn" id="orodjaTab-apteluvoz" onclick="switchOrodjaTab('apteluvoz')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🛒 Aptel naročanje</button>
       <button class="orodja-tab-btn" id="orodjaTab-pricecheck" onclick="switchOrodjaTab('pricecheck')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Kontrola cen</button>
       <button class="orodja-tab-btn" id="orodjaTab-zdrnarocila" onclick="switchOrodjaTab('zdrnarocila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔗 Združena naročila</button>
-      <button class="orodja-tab-btn" id="orodjaTab-urltosku" onclick="switchOrodjaTab('urltosku')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔑 URL→SKU</button>
       <button class="orodja-tab-btn" id="orodjaTab-inventura" onclick="switchOrodjaTab('inventura')" style="display:none"></button>
     </div>
 
@@ -2844,23 +2842,6 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
     </div>
     <!-- ZDRUŽENA NAROČILA TAB -->
-    <!-- 🔑 URL→SKU: prilepi URL-je (katerekoli znamke/jezika) → izpiše SKU-je -->
-    <div id="orodjaSubpage-urltosku" style="display:none;padding:14px">
-      <div class="card" style="padding:16px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <span class="slabel" style="margin:0">🔑 URL → SKU</span>
-          <span style="font-size:11px;color:var(--text-tertiary)">prilepi URL-je (easyzo, maaarket, zipply … katerikoli jezik) → izlušči SKU po slugu iz feeda</span>
-        </div>
-        <textarea id="u2sInput" rows="7" placeholder="En URL na vrstico, npr.&#10;https://www.easyzo.si/izdelek/ucinkovita-cistilna-metla-sweephero-4-pralne-krpe&#10;https://www.easyzo.ro/produs/banda-elastica-pentru-antrenament-elastband" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;box-sizing:border-box;resize:vertical"></textarea>
-        <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
-          <button onclick="u2sRun()" id="u2sBtn" style="padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔍 Pretvori v SKU</button>
-          <button onclick="u2sCopyAll()" id="u2sCopyBtn" style="display:none;padding:9px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📋 Kopiraj vse SKU-je</button>
-          <span id="u2sSummary" style="font-size:12px;color:var(--text-tertiary)"></span>
-        </div>
-        <div id="u2sResults" style="margin-top:14px"></div>
-      </div>
-    </div>
-
     <div id="orodjaSubpage-zdrnarocila" style="display:none;padding:14px">
       <div style="display:grid;grid-template-columns:240px minmax(0,1fr);gap:14px;align-items:start">
 
@@ -4203,7 +4184,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="zaloga-tab-btn" id="zalogaTab-pozicije" onclick="switchZalogaTab('pozicije')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📍 Sprememba pozicij</button>
       <button class="zaloga-tab-btn" id="zalogaTab-sekundarne" onclick="switchZalogaTab('sekundarne')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🗂️ Sekundarne pozicije</button>
       <button class="zaloga-tab-btn" id="zalogaTab-inventura" onclick="switchZalogaTab('inventura')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Inventura</button>
-      <button class="zaloga-tab-btn" id="zalogaTab-medskl" onclick="switchZalogaTab('medskl')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Medskladiščnica</button>
+      <button class="zaloga-tab-btn" id="zalogaTab-medskl" onclick="switchZalogaTab('medskl')" style="display:none;padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Medskladiščnica</button>
       <button onclick="window.location.href='/skladisce-tloris'" style="padding:8px 16px;background:rgba(245,158,11,0.12);color:#8a5a00;border:1px solid rgba(245,158,11,0.4);border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🏬 Vizualizacija skladišča</button>
       <button class="zaloga-tab-btn" id="zalogaTab-siluxlog" onclick="switchZalogaTab('siluxlog')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">↗ Siluxar sync</button>
     </div>
@@ -4225,7 +4206,7 @@ input[type="text"].error { border-color: var(--red) !important; }
         <button class="zmt-chip" id="zmtChip-pozicije" onclick="switchZalogaTab('pozicije')">📍 Pozicije</button>
         <button class="zmt-chip" id="zmtChip-sekundarne" onclick="switchZalogaTab('sekundarne')">🗂️ Sekundarne</button>
         <button class="zmt-chip" id="zmtChip-inventura" onclick="switchZalogaTab('inventura')">📋 Inventura</button>
-        <button class="zmt-chip" id="zmtChip-medskl" onclick="switchZalogaTab('medskl')">🔄 Medskl.</button>
+        <button class="zmt-chip" id="zmtChip-medskl" onclick="switchZalogaTab('medskl')" style="display:none">🔄 Medskl.</button>
         <button class="zmt-chip" id="zmtChip-siluxlog" onclick="switchZalogaTab('siluxlog')">↗ Siluxar</button>
       </div>
     </div>
@@ -10651,59 +10632,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // ─── ORODJA SUB-TABS + HS+ ─────────────────────────────────────────────────
-// ── 🔑 URL → SKU pretvornik ──
-let _u2sSkus = [];
-async function u2sRun() {
-  const txt = (document.getElementById('u2sInput').value || '').trim();
-  if (!txt) return;
-  const btn = document.getElementById('u2sBtn');
-  btn.disabled = true; const orig = btn.textContent; btn.textContent = '⏳ Iščem…';
-  const wrap = document.getElementById('u2sResults');
-  wrap.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-tertiary);font-size:12px">⏳ Iščem SKU-je v feedu…</div>';
-  try {
-    const r = await fetch('/url-to-sku', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text: txt }) });
-    const d = await r.json();
-    if (!d.ok) { wrap.innerHTML = '<div style="padding:1rem;color:var(--red);font-size:12px">✗ ' + esc(d.error||'napaka') + '</div>'; return; }
-    _u2sSkus = (d.skus || []).map(x => String(x).toUpperCase());
-    document.getElementById('u2sSummary').textContent = '✓ ' + d.n_found + ' / ' + d.n + ' najdenih';
-    document.getElementById('u2sCopyBtn').style.display = _u2sSkus.length ? 'inline-block' : 'none';
-    let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">'
-      + '<colgroup><col style="width:170px"><col style="width:38%"><col></colgroup>'
-      + '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:7px 10px;font-weight:700">SKU</th><th style="text-align:left;padding:7px 10px;font-weight:600;color:var(--text-secondary)">Izdelek</th><th style="text-align:left;padding:7px 10px;font-weight:600;color:var(--text-tertiary)">URL</th></tr>';
-    (d.results || []).forEach(row => {
-      const ok = row.found;
-      const skuU = ok ? String(row.sku).toUpperCase() : '';
-      html += '<tr style="border-bottom:1px solid var(--border)">'
-        + '<td style="padding:7px 10px">'
-        +   (ok
-            ? '<span onclick="u2sCopyOne(this,\'' + esc(skuU).replace(/'/g, "\\'") + '\')" title="Klik za kopiranje (vir: ' + esc(row.src||'?') + ')" style="display:inline-block;font-family:\'DM Mono\',monospace;font-weight:700;font-size:13px;color:var(--accent);background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.25);border-radius:6px;padding:3px 10px;cursor:pointer;white-space:nowrap">' + esc(skuU) + ' ⎘</span>'
-            : '<span style="color:var(--red);font-weight:700;font-size:12px">✗ ni najden</span>')
-        + '</td>'
-        + '<td style="padding:7px 10px;color:var(--text-secondary);word-break:break-word">' + esc(row.title || '') + '</td>'
-        + '<td style="padding:7px 10px;color:var(--text-tertiary);font-size:11px;word-break:break-all">' + esc((row.input||'').replace(/^https?:\/\//, '')) + '</td>'
-        + '</tr>';
-    });
-    html += '</table>';
-    wrap.innerHTML = html;
-  } catch(e) { wrap.innerHTML = '<div style="padding:1rem;color:var(--red);font-size:12px">✗ ' + esc(e.message) + '</div>'; }
-  finally { btn.disabled = false; btn.textContent = orig; }
-}
-function u2sCopyOne(el, sku) {
-  navigator.clipboard.writeText(sku).then(() => {
-    const o = el.innerHTML; el.innerHTML = '✓ kopirano';
-    setTimeout(() => { el.innerHTML = o; }, 1000);
-  }).catch(()=>{});
-}
-function u2sCopyAll() {
-  if (!_u2sSkus.length) return;
-  const btn = document.getElementById('u2sCopyBtn');
-  navigator.clipboard.writeText(_u2sSkus.join('\n')).then(() => {
-    const o = btn.textContent; btn.textContent = '✓ Kopirano (' + _u2sSkus.length + ')'; setTimeout(() => { btn.textContent = o; }, 1400);
-  }).catch(()=>{});
-}
-
 function switchOrodjaTab(tab) {
-  ['csv', 'hs', 'hsuvoz', 'hsplus', 'apteluvoz', 'pricecheck', 'zdrnarocila', 'urltosku'].forEach(t => {
+  if (tab === 'urltosku') tab = 'csv';   // URL→SKU odstranjen
+  ['csv', 'hs', 'hsuvoz', 'hsplus', 'apteluvoz', 'pricecheck', 'zdrnarocila'].forEach(t => {
     const btn = document.getElementById('orodjaTab-' + t);
     const sub = document.getElementById('orodjaSubpage-' + t);
     if (t === tab) {
@@ -12124,6 +12055,713 @@ async function invHistoryLoad(filename) {
   }
 }
 // ── /INVENTURA ────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════
+// STORAGE PAGE — Video output mape management
+// ═══════════════════════════════════════════════
+let storageData = null;
+let storageSelected = new Set();
+
+async function storageLoad() {
+  const listEl = document.getElementById('storage-list');
+  listEl.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--text-tertiary);font-size:13px">⏳ Nalagam...</div>';
+  try {
+    const r = await fetch('/storage-list');
+    const d = await r.json();
+    if (!d.ok) {
+      listEl.innerHTML = '<div style="text-align:center;padding:3rem;color:#dc2626;font-size:13px">❌ ' + (d.error || 'Napaka') + '</div>';
+      return;
+    }
+    storageData = d;
+    storageSelected.clear();
+    storageRender();
+  } catch(e) {
+    listEl.innerHTML = '<div style="text-align:center;padding:3rem;color:#dc2626;font-size:13px">❌ ' + e.message + '</div>';
+  }
+}
+
+function storageRender() {
+  if (!storageData) return;
+  const stats = storageData.stats;
+  const skus = storageData.skus;
+
+  // Render stats
+  const fmtMb = (mb) => mb >= 1024 ? (mb/1024).toFixed(2) + ' GB' : mb.toFixed(1) + ' MB';
+  const diskPct = stats.disk_total_mb > 0 ? Math.round((stats.disk_used_mb / stats.disk_total_mb) * 100) : 0;
+  const statHtml = `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px">
+      <div style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">SKU mape</div>
+      <div style="font-size:20px;font-weight:700;margin-top:2px">${stats.sku_count}</div>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px">
+      <div style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Videov skupaj</div>
+      <div style="font-size:20px;font-weight:700;margin-top:2px">${stats.total_videos}</div>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px">
+      <div style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Velikost (videi)</div>
+      <div style="font-size:20px;font-weight:700;margin-top:2px;color:var(--accent)">${fmtMb(stats.total_size_mb)}</div>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px">
+      <div style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Render disk</div>
+      <div style="font-size:14px;font-weight:700;margin-top:2px">${fmtMb(stats.disk_used_mb)} / ${fmtMb(stats.disk_total_mb)}</div>
+      <div style="height:4px;background:var(--border);border-radius:2px;margin-top:4px;overflow:hidden"><div style="height:100%;background:${diskPct>80?'#dc2626':diskPct>60?'#f59e0b':'#22c55e'};width:${diskPct}%"></div></div>
+    </div>
+  `;
+  document.getElementById('storage-stats').innerHTML = statHtml;
+
+  // Filter
+  const q = (document.getElementById('storageSearch')?.value || '').toLowerCase().trim();
+  const filtered = q ? skus.filter(s => s.sku.toLowerCase().includes(q)) : skus;
+
+  if (!filtered.length) {
+    document.getElementById('storage-list').innerHTML = `<div style="text-align:center;padding:3rem;color:var(--text-tertiary);font-size:13px">${skus.length === 0 ? '📭 Ni shranjenih SKU map. Naredi video preko Video Ads → ads.slx Download link.' : '🔍 Ni rezultatov za "' + q + '"'}</div>`;
+    return;
+  }
+
+  // Country code emoji
+  const flagMap = {si:'🇸🇮',hr:'🇭🇷',rs:'🇷🇸',hu:'🇭🇺',pl:'🇵🇱',cz:'🇨🇿',sk:'🇸🇰',gr:'🇬🇷',bg:'🇧🇬',ro:'🇷🇴',it:'🇮🇹',de:'🇩🇪',at:'🇦🇹',ba:'🇧🇦',mk:'🇲🇰'};
+  const fmtDate = (ts) => {
+    const d = new Date(ts * 1000);
+    return d.toLocaleString('sl-SI', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  };
+
+  let html = '';
+  for (const s of filtered) {
+    const isSel = storageSelected.has(s.sku);
+    // Country breakdown
+    const langs = new Set();
+    for (const v of s.videos) {
+      const m = v.filename.match(/_([a-z]{2})_v\d+\.mp4$/);
+      if (m) langs.add(m[1]);
+    }
+    const flagsHtml = [...langs].sort().map(l => `<span title="${l}" style="font-size:14px">${flagMap[l] || l}</span>`).join(' ');
+
+    html += `
+      <div class="storage-row" data-sku="${s.sku}" style="background:var(--surface);border:1px solid ${isSel ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius);transition:all 0.15s;overflow:hidden">
+        <div style="display:grid;grid-template-columns:30px 1fr auto auto auto;gap:14px;align-items:center;padding:12px 16px;cursor:pointer" onclick="storageToggleExpand('${s.sku}')">
+          <input type="checkbox" ${isSel ? 'checked' : ''} onclick="event.stopPropagation();storageToggleSelect('${s.sku}')" style="cursor:pointer;width:16px;height:16px;accent-color:var(--accent)">
+          <div>
+            <div style="font-size:14px;font-weight:700;font-family:monospace;color:var(--text)">${s.sku}</div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">${flagsHtml} · ${s.video_count} videov · ${fmtDate(s.modified)}</div>
+          </div>
+          <div style="font-size:13px;font-weight:600;color:var(--accent);font-family:monospace">${s.size_mb} MB</div>
+          <a href="/d/${s.sku}" target="_blank" onclick="event.stopPropagation()" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:600;color:var(--text);text-decoration:none">🔗 Download stran</a>
+          <button onclick="event.stopPropagation();storageDeleteSku('${s.sku}')" style="padding:6px 10px;background:transparent;border:1px solid #fca5a5;border-radius:6px;font-size:11px;font-weight:600;color:#dc2626;cursor:pointer;font-family:inherit">🗑</button>
+        </div>
+        <div class="storage-files" id="storage-files-${s.sku}" style="display:none;border-top:1px solid var(--border);background:var(--surface2);padding:10px 16px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px">
+            ${s.videos.map(v => `
+              <a href="/video-batch/${s.sku}/${v.filename}" download="${v.filename}" style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;text-decoration:none;color:var(--text);font-size:11px;font-family:monospace;transition:all 0.1s">
+                <span>${v.filename}</span><span style="color:var(--text-tertiary)">${v.size_mb} MB</span>
+              </a>
+            `).join('')}
+          </div>
+        </div>
+      </div>`;
+  }
+  document.getElementById('storage-list').innerHTML = html;
+  storageUpdateBulkBar();
+}
+
+function storageFilter() {
+  storageRender();
+}
+
+function storageToggleExpand(sku) {
+  const el = document.getElementById('storage-files-' + sku);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function storageToggleSelect(sku) {
+  if (storageSelected.has(sku)) storageSelected.delete(sku);
+  else storageSelected.add(sku);
+  storageUpdateBulkBar();
+  // Update row border without full re-render
+  const row = document.querySelector(`.storage-row[data-sku="${sku}"]`);
+  if (row) row.style.borderColor = storageSelected.has(sku) ? 'var(--accent)' : 'var(--border)';
+}
+
+function storageUpdateBulkBar() {
+  const count = storageSelected.size;
+  const bar = document.getElementById('storage-bulkbar');
+  document.getElementById('storage-selcount').textContent = count;
+  bar.style.display = count > 0 ? 'flex' : 'none';
+}
+
+function storageClearSelection() {
+  storageSelected.clear();
+  storageRender();
+}
+
+async function storageDeleteSku(sku) {
+  if (!confirm(`Zbriši SKU mapo "${sku}" in vse videote v njej?`)) return;
+  try {
+    const r = await fetch('/video-batch/' + encodeURIComponent(sku), {method: 'DELETE'});
+    const d = await r.json();
+    if (d.ok) {
+      storageSelected.delete(sku);
+      storageLoad();
+    } else {
+      alert('Napaka: ' + (d.error || 'unknown'));
+    }
+  } catch(e) {
+    alert('Napaka: ' + e.message);
+  }
+}
+
+async function storageBulkDelete() {
+  const skus = [...storageSelected];
+  if (!skus.length) return;
+  if (!confirm(`Zbriši ${skus.length} SKU mape (${skus.join(', ')})?\n\nTo dejanje je trajno.`)) return;
+  try {
+    const r = await fetch('/storage-bulk-delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({skus})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      storageSelected.clear();
+      storageLoad();
+      if (d.errors && d.errors.length) {
+        alert('Nekateri SKU niso bili izbrisani:\n' + d.errors.join('\n'));
+      }
+    } else {
+      alert('Napaka pri brisanju.');
+    }
+  } catch(e) {
+    alert('Napaka: ' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════
+// PREVZEMI — PDF parser + XLS export
+// ═══════════════════════════════════════════════
+let prevzemiData = null;
+let prevzemiRecordId = null;
+let prevzemiSelected = new Set();
+
+function prevzemiHandleDrop(e) {
+  e.preventDefault();
+  e.target.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) prevzemiUploadFile(f);
+}
+
+async function prevzemiUploadFile(file) {
+  if (!file) return;
+  const status = document.getElementById('prevzemiStatus');
+  status.style.display = 'block';
+  const isPdf = (file.name || '').toLowerCase().endsWith('.pdf');
+  status.textContent = isPdf
+    ? '⏳ Razdelujem PDF (Claude AI)... lahko traja 30-60s'
+    : '⏳ Razdelujem ' + file.name + '...';
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    // Najprej poskusi multi-supplier endpoint (auto-detect)
+    let r = await fetch('/prevzemi-parse-supplier', {method: 'POST', body: fd});
+    let d = await r.json();
+
+    // Če auto-detect kaže "amio" → uporabi obstoječi PDF endpoint
+    if (!d.ok && d.redirect === 'amio') {
+      const fd2 = new FormData();
+      fd2.append('file', file);
+      r = await fetch('/prevzemi-parse-pdf', {method: 'POST', body: fd2});
+      d = await r.json();
+    }
+    // Če pa noben dobavitelj ni prepoznan ampak je PDF → fallback na obstoječi PDF parser (Claude)
+    else if (!d.ok && isPdf && (d.error || '').includes('ni prepoznan')) {
+      status.textContent = '⏳ Avto-detect failed, poskušam s Claude PDF parserjem...';
+      const fd2 = new FormData();
+      fd2.append('file', file);
+      r = await fetch('/prevzemi-parse-pdf', {method: 'POST', body: fd2});
+      d = await r.json();
+    }
+
+    if (!d.ok) {
+      status.textContent = '❌ ' + (d.error || 'Napaka');
+      return;
+    }
+
+    const supplierLabel = d.supplier_name ? ` (${d.supplier_name})` : '';
+    status.textContent = `✓ ${d.parsed.items.length} postavk najdenih${supplierLabel}`;
+    prevzemiRecordId = d.record_id;
+    prevzemiData = d.parsed;
+    prevzemiSelected = new Set(d.parsed.items.map((_, i) => i));
+
+    // Če Intercars (ali drug supplier z _missing_names flag) → prikaz prompt za vpis imen
+    if (d.missing_names || d.parsed._missing_names) {
+      prevzemiPromptMissingNames();
+    } else {
+      prevzemiRender();
+    }
+    prevzemiLoadHistory();
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+  }
+}
+
+// Compat: če ostane stari klic, ga preusmerimo
+async function prevzemiUploadPdf(file) {
+  return prevzemiUploadFile(file);
+}
+
+function prevzemiPromptMissingNames() {
+  // Naredimo banner z opozorilom: imena izdelkov manjkajo, treba vpisati ročno
+  prevzemiRender();
+  const items = prevzemiData.items || [];
+  const missingCount = items.filter(it => !it.product_name || it.product_name.trim() === '').length;
+  if (missingCount === 0) return;
+
+  // Vrini opozorilo + gumb za save na vrh preview-ja
+  const wrap = document.getElementById('prevzemiPreviewWrap');
+  if (!wrap) return;
+  // Odstrani staro opozorilo če obstaja
+  const oldBanner = document.getElementById('prevzemiMissingBanner');
+  if (oldBanner) oldBanner.remove();
+
+  const banner = document.createElement('div');
+  banner.id = 'prevzemiMissingBanner';
+  banner.style.cssText = 'background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:#78350f;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px';
+  banner.innerHTML = `
+    <div>
+      ⚠️ <strong>Manjkajo imena izdelkov</strong> (${missingCount} od ${items.length}). Vpiši jih v tabeli spodaj v stolpcu "Ime izdelka", nato klikni <strong>Shrani imena</strong>.
+    </div>
+    <button onclick="prevzemiSaveItemNames()" style="padding:8px 14px;background:#f59e0b;color:white;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">💾 Shrani imena</button>
+  `;
+  wrap.insertBefore(banner, wrap.firstChild);
+
+  // Zagotovi da so imena editabilna — to je že tako z prevzemiRender editabilnim renderjem (preveri spodaj če rabim spremembe v render funkciji)
+}
+
+async function prevzemiSaveItemNames() {
+  if (!prevzemiRecordId || !prevzemiData) return;
+  const status = document.getElementById('prevzemiStatus');
+  status.style.display = 'block';
+  status.textContent = '⏳ Shranjujem imena...';
+
+  // Vzami trenutne values iz inputov v tabeli
+  const items = (prevzemiData.items || []).map((it, i) => {
+    const nameInput = document.querySelector(`[data-prev-item-name="${i}"]`);
+    return {
+      ...it,
+      product_name: nameInput ? nameInput.value.trim() : (it.product_name || '')
+    };
+  });
+
+  // Preveri če vsa imena vpisana
+  const empty = items.filter(it => !it.product_name).length;
+  if (empty > 0) {
+    if (!confirm(`Še vedno manjka ${empty} imen. Vseeno shranim?`)) {
+      status.textContent = '';
+      return;
+    }
+  }
+
+  try {
+    const r = await fetch('/prevzemi-update-items', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({record_id: prevzemiRecordId, items: items})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      status.textContent = '✓ Imena shranjena (' + d.item_count + ' postavk)';
+      // Update local + remove banner
+      prevzemiData.items = items;
+      delete prevzemiData._missing_names;
+      const banner = document.getElementById('prevzemiMissingBanner');
+      if (banner) banner.remove();
+      prevzemiRender();
+    } else {
+      status.textContent = '❌ ' + (d.error || 'napaka');
+    }
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+  }
+}
+
+function prevzemiRender() {
+  if (!prevzemiData) return;
+  document.getElementById('prevzemiEmptyState').style.display = 'none';
+  document.getElementById('prevzemiPreviewWrap').style.display = 'block';
+
+  document.getElementById('prevzemiInvoiceNumber').textContent = prevzemiData.invoice_number || '—';
+  document.getElementById('prevzemiInvoiceDate').textContent = prevzemiData.invoice_date || '—';
+  document.getElementById('prevzemiVendor').textContent = prevzemiData.vendor_name || '—';
+  document.getElementById('prevzemiTotal').textContent = prevzemiData.total_value || '—';
+
+  // Vendor ID info (iz meta.json — naložimo z record-om)
+  const vendorIdEl = document.getElementById('prevzemiVendorId');
+  if (vendorIdEl) {
+    const supKey = prevzemiData._supplier_key || '?';
+    const supName = prevzemiData._supplier_name || '';
+    const vid = prevzemiData._vendor_id || '';
+    if (vid) {
+      vendorIdEl.innerHTML = `<span style="color:var(--accent);font-weight:600">${supName}</span> · ID: <strong>${vid}</strong>`;
+    } else {
+      vendorIdEl.innerHTML = `<span style="color:#dc2626;font-weight:600">${supName || 'Neznano'}</span> · ID: <span style="color:#dc2626">PRAZEN</span>`;
+    }
+  }
+
+  const items = prevzemiData.items || [];
+
+  // ─── VALIDATION: sum items vs invoice total ───
+  const sumItems = items.reduce((sum, it) => {
+    const v = parseFloat(String(it.value || '').replace(/,/g, '.').replace(/[^\d.\-]/g, '')) || 0;
+    return sum + v;
+  }, 0);
+  const invoiceTotal = parseFloat(String(prevzemiData.total_value || '').replace(/,/g, '.').replace(/[^\d.\-]/g, '')) || 0;
+  const diff = Math.abs(sumItems - invoiceTotal);
+  const diffPct = invoiceTotal > 0 ? (diff / invoiceTotal) * 100 : 0;
+  const isValid = diff < 0.05; // tolerance 5 cents
+  const isWarn = !isValid && diffPct < 1;
+
+  let validHtml = '';
+  if (isValid) {
+    validHtml = `<div style="background:#dcfce7;border:1px solid #86efac;color:#166534;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px">✓ Vrednost postavk se ujema z fakturo: ${sumItems.toFixed(2)} ${prevzemiData.currency || 'EUR'}</div>`;
+  } else if (isWarn) {
+    validHtml = `<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px">⚠ Manjša razlika: postavke ${sumItems.toFixed(2)} vs faktura ${invoiceTotal.toFixed(2)} (razlika ${diff.toFixed(2)} ${prevzemiData.currency || 'EUR'} = ${diffPct.toFixed(2)}%)</div>`;
+  } else {
+    validHtml = `<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px">✗ Vrednost se NE ujema: postavke ${sumItems.toFixed(2)} vs faktura ${invoiceTotal.toFixed(2)} (razlika ${diff.toFixed(2)} ${prevzemiData.currency || 'EUR'} = ${diffPct.toFixed(1)}%)</div>`;
+  }
+
+  let html = validHtml;
+  html += `<div style="display:grid;grid-template-columns:40px 50px 110px minmax(280px, 700px) 90px 70px 110px 110px;gap:0;background:var(--surface2);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.4px;padding:9px 14px;border-bottom:1px solid var(--border)">
+    <div></div>
+    <div>Lp.</div>
+    <div>P/N</div>
+    <div>Naziv</div>
+    <div style="text-align:right">Qty</div>
+    <div style="text-align:center">Unit</div>
+    <div style="text-align:right">Cena</div>
+    <div style="text-align:right">Vrednost</div>
+  </div>`;
+
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const isSel = prevzemiSelected.has(i);
+    const missingNames = prevzemiData._missing_names === true;
+    const nameCell = missingNames
+      ? `<div style="line-height:1.35">
+          <input type="text" data-prev-item-name="${i}" value="${(it.product_name || '').replace(/"/g, '&quot;')}" placeholder="vpiši ime izdelka..." style="width:100%;padding:5px 8px;border:1px solid ${(!it.product_name || it.product_name.trim() === '') ? '#f59e0b' : 'var(--border)'};border-radius:5px;font-size:13px;font-family:inherit;background:${(!it.product_name || it.product_name.trim() === '') ? '#fffbeb' : 'var(--surface2)'}">
+          <div style="font-size:10px;color:var(--text-tertiary);font-family:monospace;margin-top:3px">EAN: ${it.ean || '—'}</div>
+        </div>`
+      : `<div style="color:var(--text);line-height:1.35"><div>${(it.product_name || '').replace(/</g,'&lt;')}</div><div style="font-size:10px;color:var(--text-tertiary);font-family:monospace;margin-top:3px">EAN: ${it.ean || '—'}</div></div>`;
+
+    html += `<div style="display:grid;grid-template-columns:40px 50px 110px minmax(280px, 700px) 90px 70px 110px 110px;gap:0;font-size:13px;padding:10px 14px;border-bottom:1px solid var(--border);background:${isSel ? 'rgba(83,74,183,0.04)' : 'transparent'};align-items:center">
+      <input type="checkbox" ${isSel ? 'checked' : ''} onchange="prevzemiToggleItem(${i}, this.checked)" style="cursor:pointer;width:16px;height:16px;accent-color:var(--accent)">
+      <div style="font-family:monospace;color:var(--text-tertiary);font-size:12px">${it.lp || ''}</div>
+      <div style="font-family:monospace;font-weight:700;color:var(--text);font-size:13px">${it.product_number || ''}</div>
+      ${nameCell}
+      <div style="text-align:right;font-family:monospace;color:var(--text);font-size:13px">${it.qty || ''} ${it.unit || ''}</div>
+      <div style="text-align:center;color:var(--text-tertiary);font-size:12px">${it.vat || ''}</div>
+      <div style="text-align:right;font-family:monospace;color:var(--text);font-size:13px">${it.unit_price || ''}</div>
+      <div style="text-align:right;font-family:monospace;font-weight:700;color:var(--accent);font-size:13px">${it.value || ''}</div>
+    </div>`;
+  }
+  document.getElementById('prevzemiTable').innerHTML = html;
+  prevzemiUpdateCount();
+}
+
+function prevzemiToggleItem(idx, checked) {
+  if (checked) prevzemiSelected.add(idx);
+  else prevzemiSelected.delete(idx);
+  prevzemiUpdateCount();
+  // Update row bg
+  const rows = document.querySelectorAll('#prevzemiTable > div:not(:first-child)');
+  if (rows[idx]) rows[idx].style.background = checked ? 'rgba(83,74,183,0.04)' : 'transparent';
+}
+
+function prevzemiToggleAll(checked) {
+  if (!prevzemiData) return;
+  prevzemiSelected = checked ? new Set(prevzemiData.items.map((_, i) => i)) : new Set();
+  prevzemiRender();
+}
+
+function prevzemiUpdateCount() {
+  const el = document.getElementById('prevzemiSelCount');
+  if (el) el.textContent = prevzemiSelected.size;
+}
+
+async function prevzemiGenerateXls() {
+  if (!prevzemiRecordId || !prevzemiSelected.size) {
+    alert('Izberi vsaj eno postavko.');
+    return;
+  }
+  const btn = document.getElementById('prevzemiExportBtn');
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Generiram...';
+  try {
+    const r = await fetch('/prevzemi-generate-xls', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({record_id: prevzemiRecordId, selected_indices: [...prevzemiSelected]})
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || 'Napaka pri generiranju');
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const invNum = (prevzemiData?.invoice_number || 'prevzem').replace(/[^A-Za-z0-9_-]/g, '_');
+    a.download = invNum + '.xls';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    btn.textContent = '✓ Prenešeno!';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+  } catch(e) {
+    btn.textContent = '❌ ' + e.message;
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000);
+  }
+}
+
+async function prevzemiGenerateXml() {
+  if (!prevzemiRecordId || !prevzemiSelected.size) {
+    alert('Izberi vsaj eno postavko.');
+    return;
+  }
+  const btn = document.getElementById('prevzemiExportXmlBtn');
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Generiram...';
+  try {
+    const r = await fetch('/prevzemi-generate-xml', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({record_id: prevzemiRecordId, selected_indices: [...prevzemiSelected]})
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || 'Napaka pri generiranju');
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const invNum = (prevzemiData?.invoice_number || 'prevzem').replace(/[^A-Za-z0-9_-]/g, '_');
+    a.download = invNum + '.xml';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    btn.textContent = '✓ Prenešeno!';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+  } catch(e) {
+    btn.textContent = '❌ ' + e.message;
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000);
+  }
+}
+
+// ═══ VENDOR ID-JI EDITOR ═══════════════════════════════════════════════════
+let _vendorIdsOriginal = {};
+
+async function vendorIdsLoad() {
+  try {
+    const res = await fetch('/prevzemi-vendor-ids');
+    const data = await res.json();
+    if (!data.ok) return;
+    _vendorIdsOriginal = {};
+    const wrap = document.getElementById('vendorIdsList');
+    if (!wrap) return;
+
+    const suppliers = Object.values(data.suppliers || {});
+    if (!suppliers.length) {
+      wrap.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:8px">Ni dobaviteljev</div>';
+      return;
+    }
+
+    wrap.innerHTML = suppliers.map(s => {
+      _vendorIdsOriginal[s.supplier_key] = s.vendor_id || '';
+      const isDefault = s.vendor_id === (data.defaults[s.supplier_key] || '');
+      const defaultBadge = isDefault && s.vendor_id ? '<span style="font-size:9px;color:#16a34a;font-weight:600;margin-left:6px">DEFAULT</span>' : '';
+      const customBadge = !isDefault && s.vendor_id ? '<span style="font-size:9px;color:var(--accent);font-weight:600;margin-left:6px">CUSTOM</span>' : '';
+      const emptyBadge = !s.vendor_id ? '<span style="font-size:9px;color:#dc2626;font-weight:600;margin-left:6px">PRAZEN</span>' : '';
+      return `
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;font-weight:700;color:var(--text);display:flex;align-items:center">${s.supplier_name}${defaultBadge}${customBadge}${emptyBadge}</div>
+            <div style="font-size:9px;color:var(--text-tertiary);font-family:monospace">${s.supplier_key}</div>
+          </div>
+          <input type="text" id="vid-${s.supplier_key}" value="${s.vendor_id || ''}" placeholder="ID"
+            oninput="vendorIdsCheckDirty()"
+            style="width:90px;padding:5px 7px;border:1px solid var(--border);border-radius:4px;font-size:11px;font-family:monospace;font-weight:600;background:var(--surface);color:var(--text)">
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    console.error('vendorIdsLoad error', e);
+  }
+}
+
+function vendorIdsCheckDirty() {
+  const btn = document.getElementById('vendorIdsSaveBtn');
+  if (!btn) return;
+  let dirty = false;
+  for (const key in _vendorIdsOriginal) {
+    const inp = document.getElementById('vid-' + key);
+    if (!inp) continue;
+    if (inp.value.trim() !== (_vendorIdsOriginal[key] || '').trim()) {
+      dirty = true;
+      break;
+    }
+  }
+  btn.style.display = dirty ? 'block' : 'none';
+}
+
+async function vendorIdsSave() {
+  const btn = document.getElementById('vendorIdsSaveBtn');
+  const status = document.getElementById('vendorIdsStatus');
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Shranjujem...'; }
+
+  const mapping = {};
+  for (const key in _vendorIdsOriginal) {
+    const inp = document.getElementById('vid-' + key);
+    if (inp) mapping[key] = inp.value.trim();
+  }
+  try {
+    const res = await fetch('/prevzemi-vendor-ids', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mapping})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (status) {
+        status.innerHTML = '<span style="color:#16a34a;font-weight:600">✓ Shranjeno</span>';
+        setTimeout(() => status.innerHTML = '', 3000);
+      }
+      await vendorIdsLoad();  // refresh prikaza
+    } else {
+      if (status) status.innerHTML = `<span style="color:#dc2626">⚠️ ${data.error || 'Napaka'}</span>`;
+    }
+  } catch (e) {
+    if (status) status.innerHTML = `<span style="color:#dc2626">⚠️ ${e.message}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '💾 Shrani spremembe'; }
+  }
+}
+
+async function prevzemiLoadHistory() {
+  const el = document.getElementById('prevzemiHistory');
+  if (!el) return;
+  try {
+    const r = await fetch('/prevzemi-list');
+    const d = await r.json();
+    if (!d.ok || !d.records.length) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:1rem">Brez zgodovine</div>';
+      return;
+    }
+    let html = '';
+    for (const rec of d.records) {
+      const ts = rec.created_ts || '';
+      const tsDate = ts.length === 15 ? `${ts.slice(6,8)}.${ts.slice(4,6)}.${ts.slice(0,4)} ${ts.slice(9,11)}:${ts.slice(11,13)}` : ts;
+      html += `<div style="display:grid;grid-template-columns:1fr auto;gap:6px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;transition:all 0.1s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'" onclick="prevzemiLoadRecord('${rec.record_id}')">
+        <div style="min-width:0">
+          <div style="font-size:11px;font-weight:700;font-family:monospace;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rec.invoice_number || rec.record_id}</div>
+          <div style="font-size:9px;color:var(--text-tertiary);margin-top:2px">${tsDate} · ${rec.item_count || 0} postavk</div>
+          <div style="font-size:9px;color:var(--text-tertiary);display:flex;align-items:center;gap:5px;margin-top:2px">
+            <span>${(rec.vendor_name || rec.supplier_name || '').slice(0, 24)}</span>
+            ${rec.vendor_id ? `<span style="font-family:monospace;background:rgba(58,111,255,0.12);color:var(--accent);padding:1px 5px;border-radius:3px;font-weight:700;font-size:9px">ID:${rec.vendor_id}</span>` : ''}
+          </div>
+        </div>
+        <button onclick="event.stopPropagation();prevzemiDeleteRecord('${rec.record_id}')" style="background:transparent;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:10px;padding:0;line-height:1">✕</button>
+      </div>`;
+    }
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = '<div style="font-size:11px;color:#dc2626;text-align:center;padding:1rem">Napaka</div>';
+  }
+}
+
+async function prevzemiOpenSupplierEditor() {
+  if (!prevzemiRecordId) {
+    alert('Najprej naloži prevzem iz zgodovine');
+    return;
+  }
+  // Naloži trenutni mapping da vidimo opcije
+  let suppliers = {};
+  try {
+    const r = await fetch('/prevzemi-vendor-ids');
+    const d = await r.json();
+    if (d.ok) suppliers = d.suppliers || {};
+  } catch(e) {}
+
+  const currentSupplier = prevzemiData?._supplier_key || '';
+  const options = Object.values(suppliers).map(s => {
+    const isCurrent = s.supplier_key === currentSupplier;
+    return `${isCurrent ? '→ ' : '  '}${s.supplier_key} (${s.supplier_name}) → ID: ${s.vendor_id || 'PRAZEN'}`;
+  }).join('\n');
+
+  const inputMsg = `Trenutni dobavitelj: ${prevzemiData?._supplier_name || '?'} (ID: ${prevzemiData?._vendor_id || 'PRAZEN'})\n\nVnesi nov supplier_key:\n\n${options}`;
+  const newSupplier = prompt(inputMsg, currentSupplier);
+  if (!newSupplier || newSupplier.trim() === currentSupplier) return;
+
+  try {
+    const res = await fetch('/prevzemi-update-supplier', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({record_id: prevzemiRecordId, supplier: newSupplier.trim().toLowerCase()})
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert('⚠️ Napaka: ' + (data.error || 'unknown'));
+      return;
+    }
+    // Posodobi UI in pokaži potrditev
+    if (prevzemiData) {
+      prevzemiData._supplier_key = data.supplier;
+      prevzemiData._supplier_name = data.supplier_name;
+      prevzemiData._vendor_id = data.vendor_id;
+    }
+    prevzemiRender();
+    prevzemiLoadHistory();  // refresh history list
+
+    alert(`✓ Dobavitelj posodobljen: ${data.supplier_name}\nNov vendor ID: ${data.vendor_id}\n\n💡 Zdaj lahko ponovno generiraš XML — bo imel pravi SupplierID.`);
+  } catch(e) {
+    alert('Napaka: ' + e.message);
+  }
+}
+
+async function prevzemiLoadRecord(recordId) {
+  try {
+    const r = await fetch('/prevzemi-record/' + encodeURIComponent(recordId));
+    const d = await r.json();
+    if (!d.ok) {
+      alert('Napaka: ' + (d.error || 'unknown'));
+      return;
+    }
+    prevzemiRecordId = d.record_id;
+    prevzemiData = d.parsed;
+    prevzemiSelected = new Set(d.parsed.items.map((_, i) => i));
+    prevzemiRender();
+    document.getElementById('prevzemiStatus').style.display = 'block';
+    document.getElementById('prevzemiStatus').textContent = `✓ Naložen iz zgodovine: ${d.parsed.items.length} postavk`;
+  } catch(e) {
+    alert('Napaka: ' + e.message);
+  }
+}
+
+async function prevzemiDeleteRecord(recordId) {
+  if (!recordId || recordId === 'undefined') { alert('Zapis nima veljavnega ID — osveži stran (backend popravek doda ID iz imena mape).'); return; }
+  if (!confirm('Zbriši ta prevzem iz zgodovine?')) return;
+  try {
+    const r = await fetch('/prevzemi-record/' + encodeURIComponent(recordId), {method: 'DELETE'});
+    const d = await r.json();
+    if (!d.ok) { alert('Brisanje ni uspelo: ' + (d.error || 'neznana napaka')); }
+    prevzemiLoadHistory();
+  } catch(e) {
+    alert('Napaka: ' + e.message);
+  }
+}
 
 function krSwitchTab(tab) {
   document.getElementById('kr-panel-gemini').style.display = tab === 'gemini' ? 'block' : 'none';
@@ -26299,6 +26937,7 @@ async function mskAdd(){
 }
 
 function switchZalogaTab(tab) {
+  if (tab === 'medskl') tab = 'zaloga';   // Medskladiščnica začasno skrita — za vrnitev odstrani to vrstico in display:none na gumbih
   // medskladiščnica: naloži/ustavi osveževanje
   if (tab === 'medskl') { mskLoad(); if (!window._mskPoll) window._mskPoll = setInterval(mskLoad, 20000); }
   else if (window._mskPoll) { clearInterval(window._mskPoll); window._mskPoll = null; }
