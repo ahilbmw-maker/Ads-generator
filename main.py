@@ -10814,6 +10814,11 @@ function kbRestore(){
 }
 function kbCur(){const rows=kbRows();return kbIdx>=0?rows[kbIdx]:null;}
 function kbReset(){kbIdx=-1;kbKey=null;document.querySelectorAll('tr.kf').forEach(tr=>tr.classList.remove('kf'));}
+// klik z miško kjerkoli v vrstici (tudi ✎, ↗, srednji klik) premakne modri okvir nanjo → po vrnitvi iz CMS samo D
+function kbFromMouse(e){const tr=e.target.closest('#tb tr[data-i], #btb tr[data-i]'); if(!tr) return;
+  const i=kbRows().indexOf(tr); if(i>=0){kbAuto=false; kbFocus(i,false);}}
+document.addEventListener('click',kbFromMouse,true);
+document.addEventListener('auxclick',kbFromMouse,true);
 document.addEventListener('keydown',ev=>{
   const t=ev.target;
   if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable)) return;
