@@ -10656,11 +10656,16 @@ async def marza_trgi_stran(request: Request):
   .m{font-weight:800;padding:3px 8px;border-radius:6px;display:inline-block;min-width:58px;text-align:center}
   .m-neg{background:#fee2e2;color:#b91c1c}.m-low{background:#ffedd5;color:#c2410c}.m-mid{background:#fef9c3;color:#854d0e}.m-ok{background:#dcfce7;color:#15803d}
   .dim{color:var(--txt3)}
+  tr.kf td{background:#eef2ff !important}
+  tr.kf td:first-child{box-shadow:inset 4px 0 0 #4f6ef7}
+  .kbh{font-size:12px;color:var(--txt3);margin-left:14px;white-space:nowrap}
+  .kbh kbd{font-family:ui-monospace,monospace;font-size:11px;font-weight:700;color:var(--txt2);background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:4px;padding:0 5px;margin:0 2px}
   .more{display:block;margin:12px auto;padding:9px 18px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-weight:600}
 </style></head><body>
 <div class="top">
   <button class="back" onclick="history.back()">← Nazaj</button>
   <h1>💶 Marža po trgih</h1>
+  <span class="kbh" title="Bližnjice delujejo, ko kurzor ni v iskalniku ali drugem polju"><kbd>↑</kbd><kbd>↓</kbd> premik · <kbd>O</kbd> odpri CMS · <kbd>D</kbd> done · <kbd>C</kbd> kopiraj SKU · <kbd>Enter</kbd> trgovina · <kbd>Esc</kbd> počisti</span>
   <span class="info" id="fxInfo"></span>
 </div>
 <div class="hrow"><div class="tabs" id="tabs"></div><div id="feedInfo"></div></div>
@@ -10786,7 +10791,49 @@ function nac(n){
   return ' <span title="'+t[3]+(os?' · NC iz osnovnega SKU':'')+'" style="font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+t[1]+';color:'+t[2]+';font-family:inherit">'+t[0]+'</span>';
 }
 function mcls(m){return m<0?'m-neg':m<20?'m-low':m<40?'m-mid':'m-ok';}
-function render(){ if(BATO) renderBato(); else renderMain(); sortArrows(); }
+function render(){ if(BATO) renderBato(); else renderMain(); sortArrows(); kbRestore(); }
+// ═══ TIPKOVNICA: ↑↓ premik · O odpri CMS · D done · C kopiraj SKU · Enter trgovina · Esc ═══
+let kbIdx=-1, kbKey=null;
+function kbRows(){return Array.from(document.querySelectorAll((BATO?'#btb':'#tb')+' tr[data-i]'));}
+function kbFocus(idx,scroll){
+  let rows=kbRows();
+  // na koncu prikazanih vrstic naloži naslednjih 300 (kot "Prikaži več")
+  if(idx>=rows.length){const mb=document.getElementById(BATO?'bmore':'more');
+    if(mb&&mb.style.display!=='none'){if(BATO)blim+=300;else lim+=300;kbIdx=idx;kbKey=null;render();return;}}
+  if(!rows.length){kbIdx=-1;kbKey=null;return;}
+  kbIdx=Math.max(0,Math.min(rows.length-1,idx));
+  rows.forEach((tr,i)=>tr.classList.toggle('kf',i===kbIdx));
+  const tr=rows[kbIdx]; kbKey=tr.dataset.i;
+  if(scroll!==false){const r=tr.getBoundingClientRect(); if(r.top<60||r.bottom>window.innerHeight-10) tr.scrollIntoView({block:'nearest'});}
+}
+// po ponovnem izrisu ohrani isto vrstico; če je izginila (Skrij urejene), ostane na istem mestu → naslednja
+function kbRestore(){
+  if(kbIdx<0) return;
+  const rows=kbRows(), j=kbKey==null?-1:rows.findIndex(tr=>tr.dataset.i===kbKey);
+  kbFocus(j>=0?j:kbIdx,false);
+}
+function kbCur(){const rows=kbRows();return kbIdx>=0?rows[kbIdx]:null;}
+function kbReset(){kbIdx=-1;kbKey=null;document.querySelectorAll('tr.kf').forEach(tr=>tr.classList.remove('kf'));}
+document.addEventListener('keydown',ev=>{
+  const t=ev.target;
+  if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable)) return;
+  if(ev.ctrlKey||ev.metaKey||ev.altKey) return;
+  const k=ev.key;
+  if(k==='ArrowDown'){ev.preventDefault();kbFocus(kbIdx+1);return;}
+  if(k==='ArrowUp'){ev.preventDefault();kbFocus(kbIdx<0?0:kbIdx-1);return;}
+  if(k==='Escape'){kbReset();return;}
+  const kl=k.toLowerCase();
+  if(!['o','d','c','enter'].includes(kl)) return;
+  ev.preventDefault();
+  if(kbIdx<0){kbFocus(0);return;}   // prvi pritisk samo označi prvo vrstico
+  const tr=kbCur(); if(!tr) return;
+  const sel={o:'a[data-cms]',d:'button[data-done]',c:'button[data-copy]',enter:'td.sku a.ext:not(.cms)'}[kl];
+  const el=tr.querySelector(sel); if(el) el.click();
+});
+// ob vrnitvi iz CMS (drug zavihek) → tipkovnica takoj deluje na isti vrstici
+function kbOnReturn(){if(document.hidden)return; try{window.focus();}catch(e){} if(kbIdx>=0) kbRestore();}
+document.addEventListener('visibilitychange',kbOnReturn);
+window.addEventListener('focus',()=>{if(kbIdx>=0) kbRestore();});
 // puščice smeri sortiranja v glavi: ▲ = A–Z / min→max, ▼ = Z–A / max→min
 function sortArrows(){
   document.querySelectorAll('th[onclick]').forEach(th=>{
@@ -10806,7 +10853,7 @@ function renderMain(){
   const r=filtered(), vis=r.slice(0,lim);
   const RR=razRange(r.map(o=>o.marza_eur));
   document.getElementById('tb').innerHTML = vis.length ? vis.map(x=>
-    '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
+    '<tr data-i="'+x._i+'"><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
     '<td class="sku">'+linksHtml(x)+skuTxt(x)+copyBtn(x)+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:11px;padding:1px 6px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:12px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+cmsBadge(x)+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
     '<td class="r">'+f2(x.koncna)+' <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
@@ -11038,7 +11085,7 @@ function renderBato(){
   const up=r.filter(o=>o.diff>0).length, dn=r.length-up, marz=r.filter(o=>o.note.includes('zaradi')).length;
   document.getElementById('bInfo').innerHTML='<b style="color:var(--txt)">'+r.length+'</b> cen ni bato · <span class="up">'+up+' ↑</span> · <span class="dn">'+dn+' ↓</span>'+(marz?' · '+marz+' dvignjenih zaradi marže':'');
   const mp=m=>m==null?'<span class="dim">—</span>':'<span class="m '+mcls(m)+'">'+m.toLocaleString('sl-SI')+' %</span>';
-  document.getElementById('btb').innerHTML=vis.length?vis.map(o=>{const x=o.x;return '<tr><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
+  document.getElementById('btb').innerHTML=vis.length?vis.map(o=>{const x=o.x;return '<tr data-i="'+x._i+'"><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
     '<td class="sku">'+linksHtml(x)+skuTxt(x)+copyBtn(x)+cmsBadge(x)+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
     '<td class="r">'+fmtC(o.reg,o.cur)+' <span class="dim">'+esc(o.cur)+'</span></td>'+
