@@ -27292,6 +27292,8 @@ async def regen_push(req: RegenPushReq):
             "sent": payload,
         })
         await _set_job_push_status(ok, None if ok else f"maaarket status {r.status_code}: {body[:200]}")
+        if ok:
+            _regen_done_mark([req.sku])
         if not ok:
             return JSONResponse({"ok": False, "error": f"maaarket status {r.status_code}", "body": body, "sent": payload}, status_code=200)
         return JSONResponse({"ok": True, "status": r.status_code, "response": resp_json if resp_json is not None else body, "sent": payload})
@@ -27303,6 +27305,111 @@ async def regen_push(req: RegenPushReq):
         })
         await _set_job_push_status(False, f"{type(e).__name__}: {e}")
         return JSONResponse({"ok": False, "error": str(e), "type": type(e).__name__, "sent": payload}, status_code=200)
+
+
+# ── Trajen seznam optimiziranih SKU (čakalnico lahko počistiš, ta seznam ostane) ──
+REGEN_DONE_FILE = DATA_DIR / "regen_done.json"   # {SKU: zadnji pushed_at (UTC ISO)}
+
+
+def _regen_done_load() -> dict:
+    try:
+        if REGEN_DONE_FILE.exists():
+            return json.loads(REGEN_DONE_FILE.read_text(encoding="utf-8")) or {}
+    except Exception:
+        pass
+    return {}
+
+
+def _regen_done_mark(skus):
+    try:
+        d = _regen_done_load()
+        now = datetime.now(timezone.utc).isoformat()
+        for sk in skus or []:
+            sk = str(sk or "").strip().upper()
+            if sk:
+                d[sk] = now
+        REGEN_DONE_FILE.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Exception as e:
+        print(f"[regen-done] zapis napaka: {e}")
+
+
+def _regen_done_all() -> dict:
+    """Optimizirani SKU: trajen seznam + (za nazaj) čakalnica s pushed + uspešni vnosi v push logu."""
+    d = {}
+    try:
+        logf = DATA_DIR / "regen_push_log.json"
+        for e in (json.loads(logf.read_text(encoding="utf-8")) if logf.exists() else []):
+            sk = str(e.get("sku") or "").strip().upper()
+            if sk and e.get("ok") and (e.get("ts") or "") > d.get(sk, ""):
+                d[sk] = e.get("ts") or ""
+    except Exception:
+        pass
+    for j in _regen_queue_load():
+        sk = str(j.get("sku") or "").strip().upper()
+        if sk and j.get("pushed") and (j.get("pushed_at") or "") > d.get(sk, ""):
+            d[sk] = j.get("pushed_at") or ""
+    for sk, ts in _regen_done_load().items():
+        if (ts or "") >= d.get(sk, ""):
+            d[sk] = ts
+    return d
+
+
+class RegenStatusReq(BaseModel):
+    skus: List[str]
+
+
+@app.post("/regen-status")
+async def regen_status(req: RegenStatusReq):
+    """Seznam SKU → status optimizacije slik (done / queue / todo) + sličica iz maaarket
+    (samo za še neoptimizirane, da ne kličemo API-ja po nepotrebnem)."""
+    seen, skus = set(), []
+    for x in req.skus or []:
+        sk = str(x or "").strip().upper()
+        if sk and sk not in seen:
+            seen.add(sk); skus.append(sk)
+    skus = skus[:300]
+    done = _regen_done_all()
+    by_sku = {}
+    for j in _regen_queue_load():
+        sk = str(j.get("sku") or "").strip().upper()
+        if sk in seen:
+            by_sku.setdefault(sk, []).append(j)
+    out = []
+    for sk in skus:
+        js = by_sku.get(sk, [])
+        if sk in done:
+            st = "done"
+        elif any(not j.get("pushed") for j in js):
+            st = "queue"
+        else:
+            st = "todo"
+        out.append({"sku": sk, "status": st, "pushed_at": done.get(sk),
+                    "q_gen": sum(1 for j in js if j.get("status") == "done" and not j.get("pushed")),
+                    "q_wait": sum(1 for j in js if j.get("status") in ("pending", "processing")),
+                    "q_err": sum(1 for j in js if j.get("status") == "error")})
+    sem = asyncio.Semaphore(6)
+
+    async def _peek(cli, o):
+        async with sem:
+            try:
+                r = await cli.get(MAAARKET_IMAGES_URL, params={"sku": o["sku"]})
+                if r.status_code != 200:
+                    o["found"] = False
+                    return
+                d = r.json() or {}
+                if not (d.get("id") or d.get("picture")):
+                    o["found"] = False
+                    return
+                o["found"] = True
+                o["picture"] = d.get("picture") or ""
+                o["n_images"] = (1 if d.get("picture") else 0) + len(d.get("gallery") or [])
+            except Exception:
+                o["found"] = None   # neznano (napaka povezave)
+    todo = [o for o in out if o["status"] != "done"]
+    if todo:
+        async with httpx.AsyncClient(timeout=20) as cli:
+            await asyncio.gather(*[_peek(cli, o) for o in todo])
+    return JSONResponse({"ok": True, "items": out})
 
 
 @app.get("/regen-push-log")
@@ -27440,6 +27547,8 @@ async def regen_queue_mark_pushed(req: RegenPushedReq):
                     j["pushed_at"] = datetime.now(timezone.utc).isoformat()
                 n += 1
         _regen_queue_save(jobs)
+        if req.pushed:
+            _regen_done_mark([j.get("sku") for j in jobs if j.get("id") in target_ids])
     return JSONResponse({"ok": True, "marked": n})
 
 

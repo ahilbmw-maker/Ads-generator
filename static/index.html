@@ -368,6 +368,17 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .main { flex: 1; padding: 2rem 2rem 5rem; max-width: 1500px; }
 .main.wide { max-width: 100%; padding: 1.5rem 1.5rem 5rem; }
 .page { display: none; }
+/* Optimizacija slik — seznam SKU */
+.rl-tile{border:1.5px solid var(--border);border-radius:10px;padding:8px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:border-color .12s,box-shadow .12s}
+.rl-tile:hover{border-color:var(--accent)}
+.rl-tile.on{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,110,247,.18)}
+.rl-tile.st-done{opacity:.6}
+.rl-img{width:100%;height:110px;object-fit:contain;background:#f8fafc;border-radius:6px}
+.rl-noimg{width:100%;height:110px;border-radius:6px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-tertiary)}
+.rl-sku{font-family:ui-monospace,monospace;font-weight:800;font-size:12px;color:#26215c;background:#dedafb;border:1px solid #8f87e0;border-radius:6px;padding:1px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;align-self:flex-start;max-width:100%}
+.rl-st{font-size:11px;font-weight:700;border-radius:5px;padding:2px 7px;align-self:flex-start}
+.rl-chip{padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);background:#fff;color:var(--text-secondary)}
+.rl-chip.on{background:var(--text-primary);border-color:var(--text-primary);color:#fff}
 .page.active { display: block; }
 /* Urejevalnik cen: tab vrstica + iframe zapolnita višino okna (brez zunanjega drsnika) */
 #page-calc.active { display: flex; flex-direction: column; height: 100%; }
@@ -906,7 +917,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-27 13:12</div>
+      <div class="sidebar-logo-sub">build 2026-09-27 13:23</div>
     </div>
   </div>
 
@@ -1545,6 +1556,34 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div style="font-size:12px;color:var(--text-tertiary);margin-top:3px">Preberi slike izdelka po SKU, regeneriraj z OpenAI gpt-image-2, prenesi rezultat. Zapis nazaj na maaarket še ni aktiven (ročni download).</div>
       </div>
 
+      <!-- 📋 SEZNAM SKU: prilepi seznam → status (optimiziran / v čakalnici / ni narejen) → klik naloži izdelek spodaj -->
+      <div id="regenListCard" style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;background:var(--surface)">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <span class="slabel" style="margin:0">📋 SEZNAM SKU</span>
+          <span id="regenListInfo" style="font-size:12px;color:var(--text-tertiary)">Prilepi SKU-je (en na vrstico ali ločene z vejico) — preverim, kateri so že optimizirani.</span>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            <button id="regenListEditBtn" onclick="regenListEdit(true)" style="display:none;padding:6px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">✎ Uredi seznam</button>
+            <button id="regenListRecheckBtn" onclick="regenListCheck()" style="display:none;padding:6px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">↻ Osveži statuse</button>
+          </div>
+        </div>
+        <div id="regenListEditor">
+          <textarea id="regenListInput" rows="4" placeholder="MINIMOJSTER&#10;SILUX38&#10;HEADRUB, PETSTEAM …" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:ui-monospace,monospace;background:var(--bg);color:var(--text-primary);box-sizing:border-box;resize:vertical"></textarea>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+            <button onclick="regenListCheck()" style="padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Preveri seznam</button>
+            <span id="regenListStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
+          </div>
+        </div>
+        <div id="regenListResult" style="display:none">
+          <div id="regenListChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
+          <div id="regenListGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;max-height:460px;overflow-y:auto;padding:2px"></div>
+        </div>
+      </div>
+
+      <div id="regenDetailHead" style="display:flex;align-items:center;gap:10px;margin:4px 0 8px">
+        <span class="slabel" style="margin:0">🔍 IZDELEK</span>
+        <span style="font-size:12px;color:var(--text-tertiary)">klikni SKU v seznamu zgoraj ali ga vpiši ročno</span>
+        <button id="regenListNextBtn" onclick="regenListNext()" style="display:none;margin-left:auto;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">Naslednji neoptimiziran ›</button>
+      </div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
         <input id="regenSku" type="text" placeholder="SKU (npr. MINIMOJSTER)" style="flex:1;min-width:200px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text-primary)">
         <button onclick="regenLoad()" style="padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Preberi slike</button>
@@ -12776,6 +12815,9 @@ async function regenLoad() {
       const qd = await qr.json();
       const skuL = sku.toLowerCase();
       const prior = (qd.jobs || []).filter(j => (j.sku||'').toLowerCase() === skuL);
+      // čakalnica je lahko počiščena → upoštevaj še trajen seznam optimiziranih (iz Seznama SKU)
+      const rlDone = (typeof _rl !== 'undefined') && (_rl.items || []).find(o => o.sku.toLowerCase() === skuL && o.status === 'done');
+      if (!prior.some(j => j.pushed) && rlDone) prior.push({ sku, pushed: true, pushed_at: rlDone.pushed_at || '' });
       if (prior.length){
         const pushed = prior.filter(j => j.pushed);
         let note, color;
@@ -12802,6 +12844,112 @@ async function regenLoad() {
     st.innerHTML = '<span style="color:#ef4444">✗ ' + e + '</span>';
   }
 }
+
+// ── 📋 SEZNAM SKU (status optimizacije + hiter preklop med izdelki) ──
+const RL_KEY = 'slx_regen_list';
+const RL_ST = {
+  todo:  { t: 'Za optimizacijo', bg: '#fef3c7', fg: '#92400e' },
+  queue: { t: 'V čakalnici',     bg: '#dbeafe', fg: '#1e40af' },
+  done:  { t: 'Že optimiziran',  bg: '#dcfce7', fg: '#166534' },
+  nf:    { t: 'Ni najden',       bg: '#fee2e2', fg: '#991b1b' },
+};
+let _rl = { text: '', items: [], filter: 'todo', active: null };
+function _rlKind(o) { return (o.status !== 'done' && o.found === false) ? 'nf' : o.status; }
+function _rlSave() { try { localStorage.setItem(RL_KEY, JSON.stringify(_rl)); } catch (e) {} }
+function regenListEdit(on) {
+  document.getElementById('regenListEditor').style.display = on ? '' : 'none';
+  document.getElementById('regenListEditBtn').style.display = on ? 'none' : '';
+}
+async function regenListCheck() {
+  const inp = document.getElementById('regenListInput');
+  const text = (inp.value || _rl.text || '').trim();
+  const skus = [...new Set(text.split(/[\s,;|]+/).map(x => x.trim().toUpperCase()).filter(Boolean))];
+  const st = document.getElementById('regenListStatus');
+  const info = document.getElementById('regenListInfo');
+  if (!skus.length) { st.textContent = 'Prilepi vsaj en SKU.'; return; }
+  st.textContent = info.textContent = '⏳ Preverjam ' + skus.length + ' SKU…';
+  try {
+    const r = await fetch('/regen-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ skus }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    _rl.text = text; _rl.items = d.items || [];
+    if (_rl.filter !== 'all' && !_rl.items.some(o => _rlKind(o) === _rl.filter)) _rl.filter = 'all';
+    _rlSave();
+    st.textContent = '';
+    regenListEdit(false);
+    regenListRender();
+  } catch (e) { st.textContent = info.textContent = '✗ ' + e.message; }
+}
+function regenListSetFilter(f) { _rl.filter = f; _rlSave(); regenListRender(); }
+function regenListRender() {
+  const it = _rl.items || [];
+  const res = document.getElementById('regenListResult');
+  const recheck = document.getElementById('regenListRecheckBtn'), nextB = document.getElementById('regenListNextBtn');
+  if (!it.length) { res.style.display = 'none'; recheck.style.display = 'none'; nextB.style.display = 'none'; regenListEdit(true); return; }
+  res.style.display = ''; recheck.style.display = '';
+  const n = { todo: 0, queue: 0, done: 0, nf: 0 };
+  it.forEach(o => n[_rlKind(o)]++);
+  document.getElementById('regenListInfo').innerHTML = '<b style="color:var(--text-primary)">' + it.length + '</b> SKU · <b style="color:#92400e">' + n.todo + '</b> za optimizacijo';
+  const chip = (f, label, c) => '<button class="rl-chip' + (_rl.filter === f ? ' on' : '') + '" onclick="regenListSetFilter(\'' + f + '\')">' + label + ' <span style="opacity:.7">' + c + '</span></button>';
+  document.getElementById('regenListChips').innerHTML =
+    chip('todo', '🟡 Za optimizacijo', n.todo) + chip('queue', '🔵 V čakalnici', n.queue) + chip('done', '✅ Že optimizirani', n.done) +
+    (n.nf ? chip('nf', '⚠ Ni najden', n.nf) : '') + chip('all', 'Vse', it.length);
+  const vis = it.filter(o => _rl.filter === 'all' || _rlKind(o) === _rl.filter);
+  document.getElementById('regenListGrid').innerHTML = vis.length ? vis.map(o => {
+    const k = _rlKind(o), S = RL_ST[k];
+    const sub = k === 'done' ? (o.pushed_at ? 'poslano ' + String(o.pushed_at).slice(0, 10) : '')
+      : k === 'queue' ? [o.q_gen ? o.q_gen + ' generiranih' : '', o.q_wait ? o.q_wait + ' čaka' : '', o.q_err ? o.q_err + ' napak' : ''].filter(Boolean).join(' · ')
+      : (o.n_images ? o.n_images + ' slik' : '');
+    const img = o.picture ? '<img class="rl-img" loading="lazy" src="' + esc(o.picture) + '">' : '<div class="rl-noimg">' + (k === 'done' ? '✓ optimiziran' : 'ni slike') + '</div>';
+    return '<div class="rl-tile st-' + k + (_rl.active === o.sku ? ' on' : '') + '" data-sku="' + esc(o.sku) + '" title="' + esc(o.sku) + ' — klik naloži slike spodaj">' +
+      img + '<span class="rl-sku">' + esc(o.sku) + '</span>' +
+      '<span class="rl-st" style="background:' + S.bg + ';color:' + S.fg + '">' + S.t + '</span>' +
+      (sub ? '<span style="font-size:11px;color:var(--text-tertiary)">' + esc(sub) + '</span>' : '') + '</div>';
+  }).join('') : '<div style="grid-column:1/-1;padding:18px;text-align:center;color:var(--text-tertiary);font-size:12px">V tem filtru ni SKU-jev.</div>';
+  nextB.style.display = n.todo ? '' : 'none';
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('#regenListGrid .rl-tile[data-sku]');
+  if (t) regenListOpen(t.dataset.sku);
+});
+function regenListOpen(sku) {
+  _rl.active = sku; _rlSave(); regenListRender();
+  document.getElementById('regenSku').value = sku;
+  regenLoad();
+  const h = document.getElementById('regenDetailHead');
+  if (h) h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function regenListNext() {
+  const todo = (_rl.items || []).filter(o => _rlKind(o) === 'todo');
+  if (!todo.length) return;
+  const i = todo.findIndex(o => o.sku === _rl.active);
+  regenListOpen(todo[(i + 1) % todo.length].sku);
+}
+// po dodajanju v čakalnico / pošiljanju nazaj osveži status tega SKU v seznamu
+async function regenListRefreshSku(sku) {
+  if (!sku || !(_rl.items || []).some(o => o.sku === sku)) return;
+  try {
+    const r = await fetch('/regen-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ skus: [sku] }) });
+    const d = await r.json();
+    const nu = (d.items || [])[0]; if (!nu) return;
+    _rl.items = _rl.items.map(o => o.sku === sku ? Object.assign({}, o, nu) : o);
+    _rlSave(); regenListRender();
+  } catch (e) {}
+}
+document.addEventListener('DOMContentLoaded', () => {
+  try { const v = JSON.parse(localStorage.getItem(RL_KEY) || 'null'); if (v && Array.isArray(v.items)) _rl = Object.assign(_rl, v); } catch (e) {}
+  const inp = document.getElementById('regenListInput'); if (inp) inp.value = _rl.text || '';
+  if (document.getElementById('regenListGrid')) regenListRender();
+  ['regenPushSelected', 'regenEnqueueSelected'].forEach(fn => {
+    const orig = window[fn]; if (typeof orig !== 'function') return;
+    window[fn] = async function () {
+      const sk = (document.getElementById('regenSku').value || '').trim().toUpperCase();
+      const out = await orig.apply(this, arguments);
+      setTimeout(() => regenListRefreshSku(sk), 800);
+      return out;
+    };
+  });
+});
 
 // ── shranjeni prompti (localStorage) ──
 const REGEN_PROMPTS_KEY = 'slx_regen_prompts';
