@@ -919,7 +919,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-27 14:04</div>
+      <div class="sidebar-logo-sub">build 2026-09-27 14:09</div>
     </div>
   </div>
 
@@ -1630,9 +1630,11 @@ input[type="text"].error { border-color: var(--red) !important; }
           <button id="regenHidePushedBtn" onclick="regenToggleHidePushed()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">🙈 Skrij pregledane</button>
           <button onclick="regenShowPushLog()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">🔎 Push log</button>
           <button onclick="regenQueueRefresh()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">↻ Osveži</button>
+          <button onclick="regenShowArchive()" id="regenArchiveBtn" title="Joby, odstranjeni iz čakalnice (Počisti gotove / ✕) — ostanejo za referenco" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">📦 Arhiv</button>
           <button onclick="regenQueueClearDone()" style="font-size:12px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-secondary)">Počisti gotove</button>
         </div>
       </div>
+      <div id="regenArchiveBox" style="display:none;margin-bottom:14px;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--surface2);max-height:520px;overflow:auto"></div>
       <div id="regenPushLogBox" style="display:none;margin-bottom:14px;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--surface2)"></div>
       <div id="regenQueueList" style="display:flex;flex-direction:column;gap:14px"></div>
       <div id="regenQueueEmpty" style="font-size:13px;color:var(--text-tertiary);padding:12px 0">Čakalnica je prazna. V zavihku <b>Optimizacija slik</b> izberi slike in klikni <b>Dodaj izbrane v čakalnico</b>. Generiranje teče na strežniku — lahko greš na drug SKU ali zapreš tab.</div>
@@ -13460,7 +13462,37 @@ async function regenQueueDelete(id) {
   try { await fetch('/regen-queue/' + id, { method:'DELETE' }); regenQueueRefresh(); } catch(e) {}
 }
 async function regenQueueClearDone() {
-  try { await fetch('/regen-queue-clear-done', { method:'POST' }); regenQueueRefresh(); } catch(e) {}
+  if (!confirm('Premaknem vse gotove joby (in napake) iz čakalnice v 📦 Arhiv?\n\nNič se ne izbriše — v Arhivu ostanejo za referenco.')) return;
+  try {
+    const r = await fetch('/regen-queue-clear-done', { method:'POST' });
+    const d = await r.json();
+    regenQueueRefresh();
+    if (d && d.archived != null) alert('📦 V arhiv premaknjenih: ' + d.archived);
+  } catch(e) {}
+}
+// 📦 Arhiv odstranjenih jobov (brez nalaganja slik — samo seznam s povezavami)
+async function regenShowArchive() {
+  const box = document.getElementById('regenArchiveBox');
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary)">⏳ Nalagam arhiv…</div>';
+  try {
+    const d = await (await fetch('/regen-archive?limit=2000')).json();
+    const jobs = d.jobs || [];
+    const dt = v => v ? String(v).slice(0, 16).replace('T', ' ') : '—';
+    let h = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><b style="font-size:13px">📦 Arhiv</b><span style="font-size:12px;color:var(--text-tertiary)">' + (d.total || 0) + ' jobov (najnovejši zgoraj) · arhiv se začne z danes — prej počiščeni joby niso ohranjeni</span></div>';
+    if (!jobs.length) { box.innerHTML = h + '<div style="font-size:12px;color:var(--text-tertiary)">Arhiv je prazen.</div>'; return; }
+    h += '<table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="text-align:left;color:var(--text-tertiary)"><th style="padding:5px 8px">SKU</th><th style="padding:5px 8px">Slike</th><th style="padding:5px 8px">Status</th><th style="padding:5px 8px">Ustvarjen</th><th style="padding:5px 8px">Arhiviran</th></tr>';
+    jobs.forEach(j => {
+      const imgs = j.images || [];
+      const links = imgs.filter(im => im.result_url).map((im, i) => '<a href="' + esc(im.result_url) + '" target="_blank" rel="noopener" style="color:var(--accent)">' + (i + 1) + '</a>').join(' ');
+      const st = j.pushed ? '<span style="color:#15803d;font-weight:700">✓ poslano ' + dt(j.pushed_at).slice(0, 10) + '</span>' : (j.status === 'error' ? '<span style="color:#b91c1c">napaka</span>' : (j.reviewed ? '👁 pregledano' : esc(j.status || '')));
+      h += '<tr style="border-top:1px solid var(--border)"><td style="padding:5px 8px;font-family:ui-monospace,monospace;font-weight:700">' + esc(j.sku || '—') + '</td>' +
+        '<td style="padding:5px 8px">' + imgs.length + (links ? ' · ' + links : '') + '</td><td style="padding:5px 8px">' + st + '</td>' +
+        '<td style="padding:5px 8px;color:var(--text-tertiary)">' + dt(j.created_at || j.created) + '</td><td style="padding:5px 8px;color:var(--text-tertiary)">' + dt(j.archived_at) + '</td></tr>';
+    });
+    box.innerHTML = h + '</table>';
+  } catch (e) { box.innerHTML = '<div style="color:#b91c1c;font-size:12px">✗ ' + esc(e.message) + '</div>'; }
 }
 // ob preklopu na regen tab osveži čakalnico
 // OPOMBA: regen queue se NE nalaga več avtomatsko ob startu (prej je potegnil VSE

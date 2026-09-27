@@ -27444,18 +27444,55 @@ REGEN_QUEUE_FILE = DATA_DIR / "regen_queue.json"
 _regen_queue_lock = asyncio.Lock()
 
 
+REGEN_ARCHIVE_FILE = DATA_DIR / "regen_archive.json"   # joby, odstranjeni iz čakalnice (za referenco, nikoli se ne brišejo)
+
+
 def _regen_queue_load():
-    try:
-        if REGEN_QUEUE_FILE.exists():
-            return json.loads(REGEN_QUEUE_FILE.read_text(encoding="utf-8")) or []
-    except Exception:
-        pass
+    # pokvarjena/nedokončana datoteka NE sme vrniti [] (naslednji zapis bi izbrisal vso čakalnico) → poskusi .bak
+    for f in (REGEN_QUEUE_FILE, REGEN_QUEUE_FILE.with_suffix(".json.bak")):
+        try:
+            if f.exists():
+                return json.loads(f.read_text(encoding="utf-8")) or []
+        except Exception as e:
+            print(f"[regen-queue] branje {f.name} napaka: {e}")
     return []
 
 
 def _regen_queue_save(jobs):
+    # atomično: zapiši v .tmp in zamenjaj; prejšnja verzija ostane kot .bak
     try:
-        REGEN_QUEUE_FILE.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp = REGEN_QUEUE_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8")
+        if REGEN_QUEUE_FILE.exists():
+            try:
+                shutil.copyfile(REGEN_QUEUE_FILE, REGEN_QUEUE_FILE.with_suffix(".json.bak"))
+            except Exception:
+                pass
+        os.replace(tmp, REGEN_QUEUE_FILE)
+    except Exception as e:
+        print(f"[regen-queue] zapis napaka: {e}")
+
+
+def _regen_archive_add(removed):
+    """Odstranjene joby doda v arhiv (namesto brisanja) + poslane zabeleži med optimizirane SKU."""
+    if not removed:
+        return
+    try:
+        arr = json.loads(REGEN_ARCHIVE_FILE.read_text(encoding="utf-8")) if REGEN_ARCHIVE_FILE.exists() else []
+    except Exception:
+        arr = []
+    now = datetime.now(timezone.utc).isoformat()
+    for j in removed:
+        jj = dict(j); jj["archived_at"] = now
+        arr.append(jj)
+    try:
+        tmp = REGEN_ARCHIVE_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(arr, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, REGEN_ARCHIVE_FILE)
+    except Exception as e:
+        print(f"[regen-archive] zapis napaka: {e}")
+    try:
+        _regen_done_mark([j.get("sku") for j in removed if j.get("pushed")])
     except Exception:
         pass
 
@@ -27517,6 +27554,7 @@ async def regen_queue_get():
 async def regen_queue_delete(job_id: str):
     async with _regen_queue_lock:
         jobs = _regen_queue_load()
+        _regen_archive_add([j for j in jobs if j.get("id") == job_id])
         jobs = [j for j in jobs if j.get("id") != job_id]
         _regen_queue_save(jobs)
     return JSONResponse({"ok": True})
@@ -27524,12 +27562,24 @@ async def regen_queue_delete(job_id: str):
 
 @app.post("/regen-queue-clear-done")
 async def regen_queue_clear_done():
-    """Počisti dokončane/napake jobe iz vrste."""
+    """Premakne dokončane/napake jobe iz vrste v ARHIV (nič se ne izbriše)."""
     async with _regen_queue_lock:
         jobs = _regen_queue_load()
+        gone = [j for j in jobs if j.get("status") in ("done", "error")]
+        _regen_archive_add(gone)
         jobs = [j for j in jobs if j.get("status") not in ("done", "error")]
         _regen_queue_save(jobs)
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "archived": len(gone)})
+
+
+@app.get("/regen-archive")
+async def regen_archive(limit: int = 500):
+    """Arhiv odstranjenih jobov (najnovejši prvi) — za referenco."""
+    try:
+        arr = json.loads(REGEN_ARCHIVE_FILE.read_text(encoding="utf-8")) if REGEN_ARCHIVE_FILE.exists() else []
+    except Exception:
+        arr = []
+    return JSONResponse({"ok": True, "total": len(arr), "jobs": arr[-limit:][::-1]})
 
 
 class RegenPushedReq(BaseModel):
