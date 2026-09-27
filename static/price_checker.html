@@ -3168,7 +3168,30 @@ function _pcFocusRow(idx){
   rows.forEach((tr,i) => { tr.style.outline = (i===_pcFocusIndex) ? '2px solid #4f6ef7' : ''; tr.style.outlineOffset = '-2px'; });
   const r = rows[_pcFocusIndex].getBoundingClientRect();
   if (r.top < 90 || r.bottom > window.innerHeight - 20) rows[_pcFocusIndex].scrollIntoView({block:'nearest', behavior:'smooth'});
+  _pcSendExt(rows[_pcFocusIndex]);
 }
+// izbrana vrstica → Chrome vtičnik "Kalkulator cen" (suban_bridge.js): SAMO označi trg (cena ostane, popust bere iz CMS)
+let _pcExtLast = '';
+function _pcSendExt(tr, force){
+  try {
+    const cb = tr && tr.querySelector('input[type=checkbox][data-key]'); if (!cb) return;
+    const row = allRows.find(x => (x.id + '|' + x.sku) === cb.dataset.key); if (!row) return;
+    const trg = _pcTrg(row); if (trg === '*') return;
+    const key = cb.dataset.key;
+    if (!force && key === _pcExtLast) return;
+    _pcExtLast = key;
+    const a = tr.querySelector('a[data-pc-cms]');
+    window.postMessage({ type:'suban-kalk', trg, sku:String(row.sku||'').toUpperCase(), cms_id: a ? String(a.dataset.pcCms||'') : '',
+      samo_trg:true, cena:0, valuta:row.currency||'', vir:'Price Checker', naziv:String(row.product||'').slice(0,120) }, '*');
+  } catch (e) {}
+}
+// klik z miško v vrstico (tudi na povezavo CMS) → modri okvir nanjo + cena v vtičnik
+document.addEventListener('click', function(e){
+  const tr = e.target.closest && e.target.closest('#tableBody tr');
+  if (!tr || (typeof _groupSkuActive !== 'undefined' && _groupSkuActive)) return;
+  const i = _pcRows().indexOf(tr);
+  if (i >= 0) { _pcFocusRow(i); _pcSendExt(tr, true); }
+}, true);
 // po vsakem ponovnem izrisu tabele (osvežitev dnevnika, brisanje …) ohrani obrobo fokusirane vrstice
 (function(){
   const _rt = renderTable;
