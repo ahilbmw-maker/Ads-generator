@@ -27361,7 +27361,8 @@ class RegenStatusReq(BaseModel):
 @app.post("/regen-status")
 async def regen_status(req: RegenStatusReq):
     """Seznam SKU → status optimizacije slik (done / queue / todo) + sličica iz maaarket
-    (samo za še neoptimizirane, da ne kličemo API-ja po nepotrebnem)."""
+    + aktivnost: SL feed vsebuje SAMO aktivne izdelke (g:status=active) → ID iz maaarket
+    API-ja v feedu = aktiven (+ zaloga), sicer offline. active=None, če feed ni naložen."""
     seen, skus = set(), []
     for x in req.skus or []:
         sk = str(x or "").strip().upper()
@@ -27403,13 +27404,24 @@ async def regen_status(req: RegenStatusReq):
                 o["found"] = True
                 o["picture"] = d.get("picture") or ""
                 o["n_images"] = (1 if d.get("picture") else 0) + len(d.get("gallery") or [])
+                pid = str(d.get("id") or "")
+                o["product_id"] = pid
+                if feed_sl and pid:
+                    fi = feed_sl.get(pid)
+                    o["active"] = fi is not None
+                    o["availability"] = (fi or {}).get("availability") or ""
             except Exception:
                 o["found"] = None   # neznano (napaka povezave)
-    todo = [o for o in out if o["status"] != "done"]
-    if todo:
+    try:
+        await ensure_cache_fresh()
+    except Exception:
+        pass
+    feed_sl = feed_by_lang.get("sl") or {}
+    # vsi SKU (tudi že optimizirani) → za vsakega vemo, ali je aktiven
+    if out:
         async with httpx.AsyncClient(timeout=20) as cli:
-            await asyncio.gather(*[_peek(cli, o) for o in todo])
-    return JSONResponse({"ok": True, "items": out})
+            await asyncio.gather(*[_peek(cli, o) for o in out])
+    return JSONResponse({"ok": True, "items": out, "feed_ok": bool(feed_sl)})
 
 
 @app.get("/regen-push-log")
