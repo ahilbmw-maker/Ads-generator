@@ -380,7 +380,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .rl-sku{font-family:ui-monospace,monospace;font-weight:800;font-size:12px;color:#26215c;background:#dedafb;border:1px solid #8f87e0;border-radius:6px;padding:1px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;align-self:flex-start;max-width:100%}
 .rl-st{font-size:11px;font-weight:700;border-radius:5px;padding:2px 7px;align-self:flex-start}
 .rl-chip{padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);background:#fff;color:var(--text-secondary)}
-.rl-chip.on{background:var(--text-primary);border-color:var(--text-primary);color:#fff}
+.rl-chip.on{background:var(--text);border-color:var(--text);color:#fff}
 .rl-cb{position:absolute;top:6px;left:6px;width:18px;height:18px;cursor:pointer;accent-color:#4f6ef7;z-index:2}
 .rl-tile.sel{border-color:#4f6ef7;background:#eef2ff}
 #rlSelBar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;display:none;align-items:center;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,.3);font-size:14px;white-space:nowrap}
@@ -923,7 +923,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-27 16:48</div>
+      <div class="sidebar-logo-sub">build 2026-09-27 16:54</div>
     </div>
   </div>
 
@@ -12928,7 +12928,7 @@ function regenListRender() {
   it.filter(_rlShown).forEach(o => n[_rlKind(o)]++);
   const hb = document.getElementById('regenListHideOff'); if (hb) hb.checked = !!_rl.hideOff;
   document.getElementById('regenListOffCnt').textContent = nOff ? '(' + nOff + ')' : '';
-  document.getElementById('regenListInfo').innerHTML = '<b style="color:var(--text-primary)">' + it.length + '</b> SKU · <b style="color:#92400e">' + n.todo + '</b> za optimizacijo' + (nOff ? ' · <b style="color:#475569">' + nOff + '</b> offline' : '');
+  document.getElementById('regenListInfo').innerHTML = '<b style="color:var(--text)">' + it.length + '</b> SKU · <b style="color:#92400e">' + n.todo + '</b> za optimizacijo' + (nOff ? ' · <b style="color:#475569">' + nOff + '</b> offline' : '');
   const chip = (f, label, c) => '<button class="rl-chip' + (_rl.filter === f ? ' on' : '') + '" onclick="regenListSetFilter(\'' + f + '\')">' + label + ' <span style="opacity:.7">' + c + '</span></button>';
   document.getElementById('regenListChips').innerHTML =
     chip('todo', '🟡 Za optimizacijo', n.todo) + chip('queue', '🔵 V čakalnici', n.queue) + chip('done', '✅ Že optimizirani', n.done) +
