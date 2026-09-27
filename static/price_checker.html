@@ -1782,9 +1782,19 @@ function renderGroupSku() {
     return;
   }
 
+  // ohrani položaj drsnika: ob ponovnem izrisu se višina za trenutek skrči (slike še niso naložene)
+  // in brskalnik vrže stran na vrh → zakleni višino, izriši, vrni drsnik, nato sprosti višino
+  const _sc = [document.scrollingElement || document.documentElement];
+  for (let el = gv.parentElement; el; el = el.parentElement) if (el.scrollHeight > el.clientHeight && el.scrollTop > 0) _sc.push(el);
+  const _pos = _sc.map(el => el.scrollTop);
+  gv.style.minHeight = gv.offsetHeight + 'px';
   if (_groupViewMode === 'table') gv.innerHTML = header + _renderGroupTable(skuList);
   else if (_groupViewMode === 'heat') gv.innerHTML = header + _renderGroupHeat(skuList);
   else gv.innerHTML = header + _renderGroupCards(skuList);
+  const _back = () => _sc.forEach((el, i) => { if (el.scrollTop !== _pos[i]) el.scrollTop = _pos[i]; });
+  _back(); requestAnimationFrame(_back);
+  clearTimeout(window._gvMinT);
+  window._gvMinT = setTimeout(() => { gv.style.minHeight = ''; }, 600);
 }
 
 // ── POGLED 1: KARTICE (izboljšane z NC + razliko) ──
