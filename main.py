@@ -837,6 +837,13 @@ async def ensure_cache_fresh():
 # ════════════════════════════════════════════════════════════════════
 PRICE_CHANGES_FILE = DATA_DIR / "feed_price_changes.json"
 CMS_LOG_FILE = DATA_DIR / "cms_edit_log.json"
+# 🚫 Ne uvažamo (npr. RS — carina): ročno označeni izdelki po trgu, ključ = feed g:id tega trga.
+# Skriti v Marži po trgih (stikalo) in izključeni iz Bato cen + povzetka na Domov.
+NEUVOZ_FILE = DATA_DIR / "marza_ne_uvazamo.json"   # {trg: {g_id: {sku, naziv, at}}}
+
+
+def _neuvoz_load() -> dict:
+    return _jload(NEUVOZ_FILE, {}) or {}
 PRICE_CHANGES_KEEP_DAYS = 30
 CMS_LOG_KEEP_DAYS = 45
 _cms_log_lock = None
@@ -966,6 +973,36 @@ async def cms_log_get(request: Request):
         from fastapi.responses import JSONResponse
         return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
     return {"ok": True, "log": _jload(CMS_LOG_FILE, {})}
+
+
+@app.post("/marza-neuvoz")
+async def marza_neuvoz_post(request: Request):
+    """Body: {trg, g_id, on: true/false, sku, naziv} — označi/odznači izdelek kot 'ne uvažamo' na trgu."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    try:
+        b = await request.json()
+    except Exception:
+        return {"ok": False, "error": "Neveljaven JSON"}
+    trg = str(b.get("trg") or "").strip().lower()
+    g_id = str(b.get("g_id") or "").strip()
+    if trg not in MARZA_TRGI or not g_id:
+        return {"ok": False, "error": "Manjka trg ali g_id"}
+    d = _neuvoz_load()
+    t = d.setdefault(trg, {})
+    if b.get("on"):
+        t[g_id] = {"sku": str(b.get("sku") or ""), "naziv": str(b.get("naziv") or "")[:200], "at": _lj_iso()}
+    else:
+        t.pop(g_id, None)
+    try:
+        tmp = NEUVOZ_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, NEUVOZ_FILE)
+    except Exception as e:
+        return {"ok": False, "error": f"Zapis ni uspel: {e}"}
+    _bato_cache.update(key=None, data=None)   # povzetek bato cen na Domov se preračuna
+    return {"ok": True, "n": len(t)}
 
 
 @app.post("/cms-log")
@@ -10344,11 +10381,15 @@ async def bato_povzetek(request: Request, min_eur: float = 5.0, znamka: str = "m
         fx = {}
     fx.setdefault("EUR", 1.0)
     trgi = []
+    _nu = _neuvoz_load()
     for trg, (oznaka, _ddv) in MARZA_TRGI.items():
         feed = feed_by_lang.get(trg) or {}
+        _nu_t = _nu.get(trg) or {}
         skupaj = ni = 0
-        for d in feed.values():
+        for _gid, d in feed.items():
             if zn and zn not in str(d.get("brand") or "").lower():
+                continue
+            if str(_gid) in _nu_t:        # 🚫 ne uvažamo → ni v bato povzetku
                 continue
             cena, cur = _marza_parse_price(d.get("price"))
             if not cena:
@@ -10497,6 +10538,7 @@ async def marza_trgi(request: Request, trg: str = "sl"):
         return None
 
     _cms_log = _jload(CMS_LOG_FILE, {})
+    _nu_t = _neuvoz_load().get(trg) or {}
     _changes = (_jload(PRICE_CHANGES_FILE, {}) or {}).get(trg) or {}
     _meta = feed_meta.get(trg) or {}
 
@@ -10566,6 +10608,7 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             "cms": _cms_status(trg, _cid, g_id, cena, _cms_log, _changes, _meta),
             "sprememba": _changes.get(str(g_id)),
             "na_voljo": (d.get("availability") or ""),
+            "neuvoz": str(g_id) in _nu_t,
         })
     z_nc = [r for r in rows if r["marza_pct"] is not None]
     povp = round(sum(r["marza_pct"] for r in z_nc) / len(z_nc), 1) if z_nc else None
@@ -10624,6 +10667,12 @@ async def marza_trgi_stran(request: Request):
   .cpb:hover{background:#f1f5f9;color:var(--txt)}
   .cpb.ok{background:#16a34a;border-color:#16a34a;color:#fff}
   .okb.on{background:#16a34a;color:#fff;border-color:#16a34a}
+  .nub{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:7px;border-radius:6px;font-size:12px;vertical-align:middle;cursor:pointer;background:#fff;color:#94a3b8;border:1px solid #e2e8f0;font-family:inherit;padding:0;filter:grayscale(1)}
+  .nub:hover{filter:none;border-color:#fca5a5;background:#fef2f2}
+  .nub.on{filter:none;background:#fee2e2;border-color:#f87171}
+  .nub.on:hover{background:#fff;border-color:#e2e8f0}
+  tr.nu td{opacity:.45}
+  tr.nu td.sku{opacity:1}
   .okb:not(.on):hover{background:#16a34a;color:#fff;border-color:#16a34a}
   .okb.on:hover{background:#fee2e2;color:#b91c1c;border-color:#fca5a5}
   .cst{display:inline-block;margin-top:3px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;white-space:nowrap}
@@ -10664,7 +10713,7 @@ async def marza_trgi_stran(request: Request):
 <div class="top">
   <button class="back" onclick="history.back()">← Nazaj</button>
   <h1>💶 Marža po trgih</h1>
-  <span class="kbh" title="Bližnjice delujejo, ko kurzor ni v iskalniku ali drugem polju"><kbd>↑</kbd><kbd>↓</kbd> premik · <kbd>A</kbd> odpri CMS · <kbd>D</kbd> done · <kbd>C</kbd> kopiraj SKU · <kbd>Enter</kbd> trgovina · <kbd>Esc</kbd> počisti</span>
+  <span class="kbh" title="Bližnjice delujejo, ko kurzor ni v iskalniku ali drugem polju"><kbd>↑</kbd><kbd>↓</kbd> premik · <kbd>A</kbd> odpri CMS · <kbd>D</kbd> done · <kbd>C</kbd> kopiraj SKU · <kbd>X</kbd> ne uvažamo · <kbd>Enter</kbd> trgovina · <kbd>Esc</kbd> počisti</span>
   <span class="info" id="fxInfo"></span>
 </div>
 <div class="hrow"><div class="tabs" id="tabs"></div><div id="feedInfo"></div></div>
@@ -10690,6 +10739,7 @@ async def marza_trgi_stran(request: Request):
     </span></label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s ✓ (popravljeno) ali potrjene v novem feedu. Samo odprti v CMS (✎) in opozorila ostanejo vidni."><input type="checkbox" id="skrijUr" onchange="savePref();render()"> Skrij urejene</label>
+  <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s 🚫 (ne uvažamo na ta trg — npr. carina v RS). Izključeni so tudi iz Bato cen."><input type="checkbox" id="skrijNu" checked onchange="savePref();render()"> Skrij neuvozne <span id="nuCnt" class="dim"></span></label>
   <button class="bato-btn" id="batoBtn" onclick="toggleBato()" title="Redne cene, ki se ne končajo na bato (x,99 / x99 / x9)">💲 Bato cene</button>
   <button class="btn" id="mainCsv" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
@@ -10770,6 +10820,7 @@ function filtered(){
     if(z && !(x.zaloga>0)) return false;
     if(ZN.size && !ZN.has(x.znamka||'(prazno)')) return false;
     if(skritUrejen(x)) return false;
+    if(skritNeuvoz(x)) return false;
     if(!razMatch(x.marza_eur)) return false;
     const m=x.marza_pct;
     if(flt==='nonc') return m==null;
@@ -10791,7 +10842,8 @@ function nac(n){
   return ' <span title="'+t[3]+(os?' · NC iz osnovnega SKU':'')+'" style="font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+t[1]+';color:'+t[2]+';font-family:inherit">'+t[0]+'</span>';
 }
 function mcls(m){return m<0?'m-neg':m<20?'m-low':m<40?'m-mid':'m-ok';}
-function render(){ if(BATO) renderBato(); else renderMain(); sortArrows(); kbRestore(); }
+function render(){ if(BATO) renderBato(); else renderMain(); sortArrows(); kbRestore();
+  const nc=document.getElementById('nuCnt'); if(nc&&D&&D.rows) {const n=D.rows.filter(r=>r.neuvoz).length; nc.textContent=n?'('+n+')':'';} }
 // ═══ TIPKOVNICA: ↑↓ premik · A odpri CMS · D done · C kopiraj SKU · Enter trgovina · Esc ═══
 let kbIdx=-1, kbKey=null, kbAuto=true;
 function kbRows(){return Array.from(document.querySelectorAll((BATO?'#btb':'#tb')+' tr[data-i]'));}
@@ -10828,11 +10880,11 @@ document.addEventListener('keydown',ev=>{
   if(k==='ArrowUp'){ev.preventDefault();kbFocus(kbIdx<0?0:kbIdx-1);return;}
   if(k==='Escape'){kbReset();return;}
   const kl=k.toLowerCase();
-  if(!['a','d','c','enter'].includes(kl)) return;
+  if(!['a','d','c','x','enter'].includes(kl)) return;
   ev.preventDefault();
   if(kbIdx<0){kbFocus(0);return;}   // prvi pritisk samo označi prvo vrstico
   const tr=kbCur(); if(!tr) return;
-  const sel={a:'a[data-cms]',d:'button[data-done]',c:'button[data-copy]',enter:'td.sku a.ext:not(.cms)'}[kl];
+  const sel={a:'a[data-cms]',d:'button[data-done]',c:'button[data-copy]',x:'button[data-nu]',enter:'td.sku a.ext:not(.cms)'}[kl];
   const el=tr.querySelector(sel); if(el) el.click();
 });
 // ob vrnitvi iz CMS (drug zavihek) → tipkovnica takoj deluje na isti vrstici
@@ -10858,7 +10910,7 @@ function renderMain(){
   const r=filtered(), vis=r.slice(0,lim);
   const RR=razRange(r.map(o=>o.marza_eur));
   document.getElementById('tb').innerHTML = vis.length ? vis.map(x=>
-    '<tr data-i="'+x._i+'"><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
+    '<tr data-i="'+x._i+'"'+(x.neuvoz?' class="nu"':'')+'><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
     '<td class="sku">'+linksHtml(x)+skuTxt(x)+copyBtn(x)+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:11px;padding:1px 6px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:12px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+cmsBadge(x)+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
     '<td class="r">'+f2(x.koncna)+' <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
@@ -10952,7 +11004,8 @@ function linksHtml(x){
   return (x.url?'<a class="ext" href="'+esc(x.url)+'" target="_blank" rel="noopener" title="Odpri izdelek v trgovini (novo okno)">↗</a>':'')+
     (x.cms_id?'<a class="ext cms" data-cms="'+x._i+'" href="https://api.maaarket.si/nova/resources/products/'+encodeURIComponent(x.cms_id)+'?tab=vsebina" target="_blank" rel="noopener" title="Odpri v CMS Nova (ID '+esc(x.cms_id)+')">✎</a>'+
       '<button type="button" class="okb'+(on?' on':'')+'" data-done="'+x._i+'" title="'+(on?'Označeno kot popravljeno — klik prekliče':'Označi kot popravljeno')+'">✓</button>'
-     :'<span class="ext off" title="CMS ID ni najden">✎</span>');
+     :'<span class="ext off" title="CMS ID ni najden">✎</span>')+
+    '<button type="button" class="nub'+(x.neuvoz?' on':'')+'" data-nu="'+x._i+'" title="'+(x.neuvoz?'Označeno: ne uvažamo na ta trg — klik prekliče':'Ne uvažamo na ta trg (npr. carina) — skrij in izključi iz Bato cen')+'">🚫</button>';
 }
 function obratTd(x){
   if(x.obrat==null) return '<td class="r"><span class="dim">—</span></td>';
@@ -10986,6 +11039,15 @@ function sprHtml(x){const s=x.sprememba;if(!s)return '';
   const akc=s.old_sale!==s.new_sale?'akcija '+pp(s.old_sale)+' → '+pp(s.new_sale):'';
   return '<div class="spr" title="Sprememba med prejšnjim in zadnjim feedom">↻ '+fmtT(s.at)+': '+[reg,akc].filter(Boolean).join(' · ')+'</div>';}
 // skrije SAMO ročno označene (✓ popravljeno) in potrjene v feedu — samo odprtje v CMS (✎) ne skrije izdelka
+function skritNeuvoz(x){return !!x.neuvoz && document.getElementById('skrijNu').checked;}
+async function neuvozToggle(x){
+  const on=!x.neuvoz;
+  if(on && !confirm('🚫 Ne uvažamo na '+String(trg).toUpperCase()+'?\n\n'+String(x.sku||'?').toUpperCase()+' — '+(x.naziv||'')+'\n\nIzdelek se skrije (stikalo "Skrij neuvozne") in izključi iz Bato cen.')) return;
+  x.neuvoz=on; render();
+  try{const r=await fetch('/marza-neuvoz',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({trg,g_id:x.g_id,on,sku:x.sku,naziv:x.naziv})});const d=await r.json(); if(!d.ok) throw new Error(d.error||'napaka');}
+  catch(e){x.neuvoz=!on; render(); alert('Shranjevanje ni uspelo: '+e.message);}
+}
 function skritUrejen(x){if(!document.getElementById('skrijUr').checked||!x.cms)return false;return x.cms.st==='popravljeno'||x.cms.st==='potrjeno';}
 async function cmsLog(x,akcija){
   try{const r=await fetch('/cms-log',{method:'POST',headers:{'Content-Type':'application/json'},keepalive:true,
@@ -10995,6 +11057,8 @@ document.addEventListener('click',e=>{
   if(a){const x=D&&D.rows[+a.dataset.cms]; if(!x) return;
     const op=cmsOpozorilo(x); if(op && !confirm(op)){e.preventDefault(); return;}
     cmsLog(x,'open'); x.cms={st:'odprto',trg,opened_at:new Date().toISOString(),vir:BATO?'Bato cene':'Marža po trgih'}; setTimeout(render,300); return;}
+  const nb=e.target.closest('button[data-nu]');
+  if(nb){const x=D&&D.rows[+nb.dataset.nu]; if(x) neuvozToggle(x); return;}
   const u=e.target.closest('button[data-undo]');
   if(u){const x=D&&D.rows[+u.dataset.undo]; if(!x) return; cmsLog(x,'undo'); x.cms=null; render(); return;}
   const b=e.target.closest('button[data-done]');
@@ -11065,6 +11129,7 @@ function batoRows(){
     if(z && !(x.zaloga>0)) return;
     if(!String(x.znamka||'').toLowerCase().includes('maaarket')) return;   // bato cene veljajo SAMO za Maaarket (filter znamk tu ne velja)
     if(skritUrejen(x)) return;
+    if(x.neuvoz) return;   // 🚫 ne uvažamo → nikoli v Bato cenah
     if(!razMatch(x.marza_eur)) return;
     const cur=x.valuta||'EUR', rate=(D.tecaji||{})[cur]||(cur==='EUR'?1:null);
     if(rate && x.cena/rate < minEur) return;
@@ -11090,7 +11155,7 @@ function renderBato(){
   const up=r.filter(o=>o.diff>0).length, dn=r.length-up, marz=r.filter(o=>o.note.includes('zaradi')).length;
   document.getElementById('bInfo').innerHTML='<b style="color:var(--txt)">'+r.length+'</b> cen ni bato · <span class="up">'+up+' ↑</span> · <span class="dn">'+dn+' ↓</span>'+(marz?' · '+marz+' dvignjenih zaradi marže':'');
   const mp=m=>m==null?'<span class="dim">—</span>':'<span class="m '+mcls(m)+'">'+m.toLocaleString('sl-SI')+' %</span>';
-  document.getElementById('btb').innerHTML=vis.length?vis.map(o=>{const x=o.x;return '<tr data-i="'+x._i+'"><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
+  document.getElementById('btb').innerHTML=vis.length?vis.map(o=>{const x=o.x;return '<tr data-i="'+x._i+'"'+(x.neuvoz?' class="nu"':'')+'><td>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</td>'+
     '<td class="sku">'+linksHtml(x)+skuTxt(x)+copyBtn(x)+cmsBadge(x)+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
     '<td class="r">'+fmtC(o.reg,o.cur)+' <span class="dim">'+esc(o.cur)+'</span></td>'+
@@ -11114,10 +11179,10 @@ function izvoziBato(){
   a.download='bato_'+D.oznaka+'_'+zz+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
 // vse izbire (trg, pogled, filtri, sortiranje) se zapomnijo — po osvežitvi strani ostane isto
-function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,sk:skrijUr.checked,rz:razpon.value,ro:rOd.value,rd:rDo.value,zn:[...ZN],
+function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.checked,sk:skrijUr.checked,nu:document.getElementById('skrijNu').checked,rz:razpon.value,ro:rOd.value,rd:rDo.value,zn:[...ZN],
   bm:document.getElementById('bMin').value,bp:document.getElementById('bPrag').value,
   t:trg,b:BATO,f:flt,s1:sk,d1:sd,s2:bsk,d2:bsd}));}catch(e){}}
-try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;skrijUr.checked=!!p.sk;if(p.rz)razpon.value=p.rz;if(p.ro!=null)rOd.value=p.ro;if(p.rd!=null)rDo.value=p.rd;if(razOdDo()){razpon.disabled=true;razpon.style.opacity='.45';rClr.style.display='';}if(Array.isArray(p.zn))ZN=new Set(p.zn);if(p.bm!=null)document.getElementById('bMin').value=p.bm;if(p.bp!=null)document.getElementById('bPrag').value=p.bp;
+try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;skrijUr.checked=!!p.sk;if(p.nu!=null)document.getElementById('skrijNu').checked=!!p.nu;if(p.rz)razpon.value=p.rz;if(p.ro!=null)rOd.value=p.ro;if(p.rd!=null)rDo.value=p.rd;if(razOdDo()){razpon.disabled=true;razpon.style.opacity='.45';rClr.style.display='';}if(Array.isArray(p.zn))ZN=new Set(p.zn);if(p.bm!=null)document.getElementById('bMin').value=p.bm;if(p.bp!=null)document.getElementById('bPrag').value=p.bp;
   if(!new URLSearchParams(location.search).get('trg') && p.t && TRGI.some(t=>t[0]===p.t)) trg=p.t;
   if(p.s1){sk=p.s1;sd=p.d1||1;} if(p.s2){bsk=p.s2;bsd=p.d2||1;}
   if(p.f){const ch=document.querySelector('.chip[data-f="'+p.f+'"]'); if(ch){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));ch.classList.add('on');flt=p.f;}}
