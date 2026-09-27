@@ -27435,14 +27435,15 @@ def _regen_done_load() -> dict:
     return {}
 
 
-def _regen_done_mark(skus):
+def _regen_done_mark(skus, on=True):
+    """on=True → SKU je optimiziran (čas zdaj); on=False → ročno 'ni optimiziran' (None prepiše push log/čakalnico)."""
     try:
         d = _regen_done_load()
         now = datetime.now(timezone.utc).isoformat()
         for sk in skus or []:
             sk = str(sk or "").strip().upper()
             if sk:
-                d[sk] = now
+                d[sk] = now if on else None
         REGEN_DONE_FILE.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
     except Exception as e:
         print(f"[regen-done] zapis napaka: {e}")
@@ -27464,7 +27465,9 @@ def _regen_done_all() -> dict:
         if sk and j.get("pushed") and (j.get("pushed_at") or "") > d.get(sk, ""):
             d[sk] = j.get("pushed_at") or ""
     for sk, ts in _regen_done_load().items():
-        if (ts or "") >= d.get(sk, ""):
+        if ts is None:                      # ročno odznačeno → ni optimiziran
+            d.pop(sk, None)
+        elif ts >= d.get(sk, ""):
             d[sk] = ts
     return d
 
@@ -27473,17 +27476,9 @@ class RegenStatusReq(BaseModel):
     skus: List[str]
 
 
-@app.post("/regen-status")
-async def regen_status(req: RegenStatusReq):
-    """Seznam SKU → status optimizacije slik (done / queue / todo) + sličica iz maaarket
-    + aktivnost: SL feed vsebuje SAMO aktivne izdelke (g:status=active) → ID iz maaarket
-    API-ja v feedu = aktiven (+ zaloga), sicer offline. active=None, če feed ni naložen."""
-    seen, skus = set(), []
-    for x in req.skus or []:
-        sk = str(x or "").strip().upper()
-        if sk and sk not in seen:
-            seen.add(sk); skus.append(sk)
-    skus = skus[:300]
+def _regen_status_base(skus):
+    """SKU (upper, brez dvojnikov) → [{sku, status done/queue/todo, pushed_at, q_*}] iz trajnega seznama + čakalnice."""
+    seen = set(skus)
     done = _regen_done_all()
     by_sku = {}
     for j in _regen_queue_load():
@@ -27503,6 +27498,58 @@ async def regen_status(req: RegenStatusReq):
                     "q_gen": sum(1 for j in js if j.get("status") == "done" and not j.get("pushed")),
                     "q_wait": sum(1 for j in js if j.get("status") in ("pending", "processing")),
                     "q_err": sum(1 for j in js if j.get("status") == "error")})
+    return out
+
+
+@app.get("/regen-status-feed")
+async def regen_status_feed(request: Request, znamka: str = "maaarket"):
+    """Vsi izdelki izbrane znamke iz SL feeda (= aktivni) s SKU iz zaloge (ista logika kot Marža po trgih)
+    + status optimizacije. Brez klicev maaarket API — sličica je iz feeda."""
+    res = await marza_trgi(request, "sl")
+    if not isinstance(res, dict) or not res.get("ok"):
+        return JSONResponse({"ok": False, "error": (res.get("error") if isinstance(res, dict) else None) or "Feed ni na voljo / prijava"})
+    zn = (znamka or "").strip().lower()
+    info, skus = {}, []
+    for r in res.get("rows") or []:
+        sk = str(r.get("sku") or "").strip().upper()
+        if not sk or (zn and zn not in str(r.get("znamka") or "").lower()) or sk in info:
+            continue
+        info[sk] = r
+        skus.append(sk)
+    out = _regen_status_base(skus)
+    for o in out:
+        r = info[o["sku"]]
+        o.update({"found": True, "active": True, "availability": r.get("na_voljo") or "",
+                  "picture": r.get("slika") or "", "naziv": r.get("naziv") or "",
+                  "ugib": str(r.get("nacin") or "").startswith("slika")})
+    return JSONResponse({"ok": True, "items": out, "n": len(out)})
+
+
+class RegenDoneReq(BaseModel):
+    skus: List[str]
+    on: bool = True
+
+
+@app.post("/regen-done-mark")
+async def regen_done_mark_ep(req: RegenDoneReq):
+    """Ročno: označi SKU-je kot že optimizirane (on=true) ali ne (on=false) — za obnovo zgodovine."""
+    skus = [str(x or "").strip().upper() for x in (req.skus or []) if str(x or "").strip()][:5000]
+    _regen_done_mark(skus, on=req.on)
+    return JSONResponse({"ok": True, "items": _regen_status_base(skus)})
+
+
+@app.post("/regen-status")
+async def regen_status(req: RegenStatusReq):
+    """Seznam SKU → status optimizacije slik (done / queue / todo) + sličica iz maaarket
+    + aktivnost: SL feed vsebuje SAMO aktivne izdelke (g:status=active) → ID iz maaarket
+    API-ja v feedu = aktiven (+ zaloga), sicer offline. active=None, če feed ni naložen."""
+    seen, skus = set(), []
+    for x in req.skus or []:
+        sk = str(x or "").strip().upper()
+        if sk and sk not in seen:
+            seen.add(sk); skus.append(sk)
+    skus = skus[:300]
+    out = _regen_status_base(skus)
     sem = asyncio.Semaphore(6)
 
     async def _peek(cli, o):
