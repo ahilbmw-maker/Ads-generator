@@ -10871,7 +10871,7 @@ function kbFocus(idx,scroll){
   if(!rows.length){kbIdx=-1;kbKey=null;return;}
   kbIdx=Math.max(0,Math.min(rows.length-1,idx));
   rows.forEach((tr,i)=>tr.classList.toggle('kf',i===kbIdx));
-  const tr=rows[kbIdx]; kbKey=tr.dataset.i;
+  const tr=rows[kbIdx]; if(kbKey!==tr.dataset.i) setTimeout(kbSendExt,0); kbKey=tr.dataset.i;
   if(scroll!==false){const r=tr.getBoundingClientRect(); if(r.top<60||r.bottom>window.innerHeight-10) tr.scrollIntoView({block:'nearest'});}
 }
 // po ponovnem izrisu ohrani isto vrstico; če je izginila (Skrij urejene), ostane na istem mestu → naslednja
@@ -10880,11 +10880,19 @@ function kbRestore(){
   const rows=kbRows(), j=kbKey==null?-1:rows.findIndex(tr=>tr.dataset.i===kbKey);
   kbFocus(j>=0?j:kbIdx,false);
 }
+// izbrana vrstica → Chrome vtičnik "Kalkulator cen" (posrednik suban_bridge.js vpiše ceno v polje trga)
+// Bato pogled: Predlog · navadni pogled: trenutna končna cena (z akcijo, če je aktivna)
+function kbSendExt(){
+  const tr=kbCur(); const x=tr&&D&&D.rows[+tr.dataset.i]; if(!x) return;
+  const cena=BATO?(x._pred??x.koncna):x.koncna; if(cena==null) return;
+  try{ window.postMessage({type:'suban-kalk',trg,sku:String(x.sku||'').toUpperCase(),cena:+cena,valuta:x.valuta||'',
+    vir:BATO?'Bato predlog':'končna cena',naziv:String(x.naziv||'').slice(0,120)},'*'); }catch(e){}
+}
 function kbCur(){const rows=kbRows();return kbIdx>=0?rows[kbIdx]:null;}
 function kbReset(){kbIdx=-1;kbKey=null;document.querySelectorAll('tr.kf').forEach(tr=>tr.classList.remove('kf'));}
 // klik z miško kjerkoli v vrstici (tudi ✎, ↗, srednji klik) premakne modri okvir nanjo → po vrnitvi iz CMS samo D
 function kbFromMouse(e){const tr=e.target.closest('#tb tr[data-i], #btb tr[data-i]'); if(!tr) return;
-  const i=kbRows().indexOf(tr); if(i>=0){kbAuto=false; kbFocus(i,false);}}
+  const i=kbRows().indexOf(tr); if(i>=0){kbAuto=false; kbFocus(i,false); setTimeout(kbSendExt,0);}}
 document.addEventListener('click',kbFromMouse,true);
 document.addEventListener('auxclick',kbFromMouse,true);
 document.addEventListener('keydown',ev=>{
@@ -11191,6 +11199,7 @@ function batoRows(){
     if(pred<k.v){ const m=mz(pred); if(m!=null && m<P){ pred=k.up; note='↑ zaradi marže'; } }
     const mPo=mz(pred);
     if(mPo!=null && mPo<P) note=(note?note+' · ':'')+'marža pod pragom';
+    x._pred=pred;
     out.push({x, cur, reg:x.cena, pred, diff:Math.round((pred-x.cena)*100)/100, diffPct:(pred-x.cena)/x.cena*100,
       akc:x.akcija, nc:x.nc, rz:x.marza_eur, rp:rzF(pred), mz:x.marza_pct, mp:mPo==null?null:Math.round(mPo*10)/10, note});
   });
