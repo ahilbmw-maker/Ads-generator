@@ -28283,6 +28283,125 @@ def _dup_analyze():
     }
 
 
+# ════════════════════════════════════════════════════════════════════
+#  ZALOGA PRI DOBAVITELJU (Orodja) — seznam SKU → zaloga v XML feedu Amio / Ikonka
+#  Amio: <product><PN>, <EAN>, <availability>=kosi, <price> EUR · Ikonka: <produkt><kod>, <stan>, <najblizsza_dostawa>
+#  Brez AI. Feeda se predpomnita v pomnilniku (SUP_STOCK_TTL_MIN).
+# ════════════════════════════════════════════════════════════════════
+SUP_STOCK_TTL_MIN = 120
+_sup_stock = {"at": None, "amio": {}, "ikonka": {}, "err": {}}
+_sup_stock_lock = asyncio.Lock()
+
+
+def _sup_parse_amio(content: bytes) -> dict:
+    import xml.etree.ElementTree as _ET
+    out = {}
+    root = _ET.fromstring(content)
+    for p in root.iter("product"):
+        g = lambda t: (p.findtext(t) or "").strip()
+        pn = g("PN").upper()
+        if not pn:
+            continue
+        mi = p.find("imgs/main")
+        try:
+            qty = int(float(g("availability") or 0))
+        except Exception:
+            qty = 0
+        rec = {"sup": "amio", "kod": pn, "ean": g("EAN"), "name": g("name"), "qty": qty,
+               "price": g("price"), "cur": g("currency") or "EUR", "url": g("url"),
+               "img": mi.get("url") if mi is not None else "", "next": ""}
+        out[pn] = rec
+    return out
+
+
+def _sup_parse_ikonka(content: bytes) -> dict:
+    import xml.etree.ElementTree as _ET
+    out = {}
+    root = _ET.fromstring(content)
+    for p in root.iter("produkt"):
+        g = lambda t: (p.findtext(t) or "").strip()
+        kod = g("kod").upper()
+        if not kod:
+            continue
+        try:
+            qty = int(float(g("stan") or 0))
+        except Exception:
+            qty = 0
+        img = (p.findtext("zdjecia/zdjecie") or "").strip()
+        out[kod] = {"sup": "ikonka", "kod": kod, "ean": g("kod_kreskowy"), "name": g("nazwa"), "qty": qty,
+                    "price": g("cena"), "cur": "PLN", "url": "", "img": img, "next": g("najblizsza_dostawa")}
+    return out
+
+
+async def _sup_stock_get(force: bool = False):
+    async with _sup_stock_lock:
+        at = _sup_stock["at"]
+        if not force and at and (datetime.now(timezone.utc) - at).total_seconds() < SUP_STOCK_TTL_MIN * 60 \
+                and (_sup_stock["amio"] or _sup_stock["ikonka"]):
+            return _sup_stock
+        async with httpx.AsyncClient(timeout=180, follow_redirects=True) as cli:
+            for sup, parser in (("amio", _sup_parse_amio), ("ikonka", _sup_parse_ikonka)):
+                try:
+                    r = await cli.get(BARCODE_FEEDS[sup])
+                    r.raise_for_status()
+                    data = await asyncio.to_thread(parser, r.content)
+                    if data:
+                        _sup_stock[sup] = data
+                        _sup_stock["err"].pop(sup, None)
+                except Exception as e:
+                    _sup_stock["err"][sup] = f"{type(e).__name__}: {e}"[:200]   # ostane prejšnja verzija
+        _sup_stock["at"] = datetime.now(timezone.utc)
+        return _sup_stock
+
+
+def _sup_lookup(q: str, st: dict) -> list:
+    """SKU / PN / AMIO-PN / EAN / KX koda → seznam zadetkov (Ikonka brez _N vrne vse variante)."""
+    import re as _re
+    k = _re.sub(r"\s+", "", str(q or "")).upper()
+    if not k:
+        return []
+    am, ik = st.get("amio") or {}, st.get("ikonka") or {}
+    for cand in (k, _re.sub(r"^AMIO[-_]?", "", k)):
+        if cand in am:
+            return [am[cand]]
+    if k in ik:
+        return [ik[k]]
+    if k.isdigit() and len(k) >= 8:                      # EAN
+        hits = [r for r in list(am.values()) + list(ik.values()) if r.get("ean") == k]
+        if hits:
+            return hits[:1]
+    base = [r for kk, r in ik.items() if kk.split("_")[0] == k]   # KX2408 → KX2408_1, KX2408_2 …
+    return sorted(base, key=lambda r: r["kod"])
+
+
+class SupStockReq(BaseModel):
+    skus: List[str]
+    force: bool = False
+
+
+@app.post("/dobavitelj-zaloga")
+async def dobavitelj_zaloga(req: SupStockReq):
+    st = await _sup_stock_get(force=req.force)
+    seen, out = set(), []
+    for raw in req.skus or []:
+        q = str(raw or "").strip()
+        if not q or q.upper() in seen:
+            continue
+        seen.add(q.upper())
+        hits = _sup_lookup(q, st)
+        if not hits:
+            out.append({"q": q.upper(), "found": False})
+            continue
+        for h in hits:
+            out.append(dict(h, q=q.upper(), found=True, var=len(hits) > 1))
+        if len(out) > 3000:
+            break
+    return JSONResponse({"ok": True, "items": out,
+                         "fetched_at": _sup_stock["at"].isoformat() if _sup_stock["at"] else None,
+                         "n_amio": len(_sup_stock["amio"]), "n_ikonka": len(_sup_stock["ikonka"]),
+                         "errors": _sup_stock["err"]})
+
+
 @app.get("/analiza-meta-duplicates")
 async def analiza_meta_duplicates():
     """Detekcija podvojenih kampanj po SKU na accountu (isti CSV kot Meta Ads tab)."""

@@ -368,6 +368,21 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .main { flex: 1; padding: 2rem 2rem 5rem; max-width: 1500px; }
 .main.wide { max-width: 100%; padding: 1.5rem 1.5rem 5rem; }
 .page { display: none; }
+/* Zaloga dobavitelja */
+.ss-kpi{border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;background:#fff;cursor:pointer;transition:border-color .12s,box-shadow .12s}
+.ss-kpi:hover{border-color:var(--accent)}
+.ss-kpi.on{box-shadow:0 0 0 3px rgba(79,110,247,.18);border-color:var(--accent)}
+.ss-kpi .n{font-size:26px;font-weight:800;line-height:1.1}
+.ss-kpi .l{font-size:12px;font-weight:700;margin-top:2px}
+.ss-row{display:grid;grid-template-columns:48px minmax(120px,170px) minmax(0,1fr) 90px 170px 110px;gap:12px;align-items:center;padding:8px 12px;background:#fff;border:1px solid var(--border);border-radius:10px}
+.ss-row img{width:48px;height:48px;object-fit:contain;border-radius:7px;background:#f8fafc}
+.ss-noimg{width:48px;height:48px;border-radius:7px;background:#f1f5f9}
+.ss-sku{font-family:ui-monospace,monospace;font-weight:800;font-size:12px;color:#26215c;background:#dedafb;border:1px solid #8f87e0;border-radius:6px;padding:1px 7px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.ss-sup{font-size:10px;font-weight:800;letter-spacing:.4px;border-radius:4px;padding:1px 6px;margin-left:4px}
+.ss-bar{height:6px;border-radius:4px;background:#f1f5f9;overflow:hidden;margin-top:5px}
+.ss-bar i{display:block;height:100%;border-radius:4px}
+.ss-pill{font-size:11px;font-weight:800;border-radius:6px;padding:3px 9px;display:inline-block;white-space:nowrap}
+@media(max-width:800px){.ss-row{grid-template-columns:40px minmax(0,1fr) 90px}.ss-row .ss-c-name,.ss-row .ss-c-price,.ss-row .ss-c-bar{display:none}}
 /* Optimizacija slik — seznam SKU */
 .rl-tile{position:relative;border:1.5px solid var(--border);border-radius:10px;padding:8px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:border-color .12s,box-shadow .12s}
 .rl-tile:hover{border-color:var(--accent)}
@@ -923,7 +938,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-27 16:54</div>
+      <div class="sidebar-logo-sub">build 2026-09-27 17:02</div>
     </div>
   </div>
 
@@ -1041,6 +1056,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('hsuvoz')">HS+ naročanje</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('apteluvoz')">Aptel naročanje</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('pricecheck')">Kontrola cen</div>
+    <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('supstock')">Zaloga dobavitelja</div>
     <div class="nav-sub-item" onclick="switchPage('zaloga');switchZalogaTab('inventura')">📋 Inventura</div>
   </div>
 
@@ -2486,6 +2502,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="orodja-tab-btn" id="orodjaTab-hsplus" onclick="switchOrodjaTab('hsplus')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📡 HS+ katalog</button>
       <button class="orodja-tab-btn" id="orodjaTab-apteluvoz" onclick="switchOrodjaTab('apteluvoz')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🛒 Aptel naročanje</button>
       <button class="orodja-tab-btn" id="orodjaTab-pricecheck" onclick="switchOrodjaTab('pricecheck')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Kontrola cen</button>
+      <button class="orodja-tab-btn" id="orodjaTab-supstock" onclick="switchOrodjaTab('supstock')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📦 Zaloga dobavitelja</button>
       <button class="orodja-tab-btn" id="orodjaTab-inventura" onclick="switchOrodjaTab('inventura')" style="display:none"></button>
     </div>
 
@@ -2897,6 +2914,33 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
           <div id="pcEmpty" style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:2rem">Naloži zalogo (1) in PDF predračun (2) za začetek primerjave.</div>
         </div>
+      </div>
+    </div>
+
+    <!-- 📦 ZALOGA DOBAVITELJA: seznam SKU → zaloga pri Amio / Ikonka (XML feed) -->
+    <div id="orodjaSubpage-supstock" style="display:none;padding:14px">
+      <div class="card" style="padding:16px 18px">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <span class="slabel" style="margin:0">📦 ZALOGA PRI DOBAVITELJU</span>
+          <span style="font-size:12px;color:var(--text-tertiary)">Prilepi SKU-je → preverim zalogo v feedu <b>Amio</b> in <b>Ikonka</b> (PN, AMIO-PN, KX koda ali EAN)</span>
+        </div>
+        <textarea id="ssInput" rows="5" placeholder="01119&#10;AMIO-01549&#10;KX2408&#10;5903293011195 …" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:ui-monospace,monospace;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+          <button onclick="ssRun()" id="ssBtn" style="padding:9px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Preveri zalogo</button>
+          <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px">Malo zaloge pod
+            <input id="ssLow" type="number" min="1" value="10" oninput="ssRender()" style="width:60px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px"> kos</label>
+          <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="ssForce" style="accent-color:var(--accent)"> Na novo prenesi feed</label>
+          <span id="ssMeta" style="font-size:11px;color:var(--text-tertiary);margin-left:auto"></span>
+        </div>
+      </div>
+      <div id="ssResult" style="display:none;margin-top:14px">
+        <div id="ssKpi" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <input id="ssSearch" type="text" placeholder="🔍 Filtriraj po SKU ali imenu…" oninput="ssRender()" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:var(--bg);color:var(--text)">
+          <button onclick="ssCopy()" id="ssCopyBtn" style="padding:8px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">📋 Kopiraj SKU (prikazane)</button>
+          <button onclick="ssCsv()" style="padding:8px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">⬇ CSV</button>
+        </div>
+        <div id="ssList" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
     </div>
 
@@ -10654,9 +10698,96 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // ─── ORODJA SUB-TABS + HS+ ─────────────────────────────────────────────────
+// ═══ 📦 ZALOGA DOBAVITELJA ═══
+let _ss = { items: [], filter: 'all', meta: null };
+const SS_ST = {
+  ok:   { l: '✅ Na zalogi',  bg: '#dcfce7', fg: '#166534', bar: '#22c55e' },
+  low:  { l: '⚠ Malo',        bg: '#fef3c7', fg: '#92400e', bar: '#f59e0b' },
+  out:  { l: '❌ Ni več',      bg: '#fee2e2', fg: '#991b1b', bar: '#ef4444' },
+  nf:   { l: '❓ Ni v feedu',  bg: '#f1f5f9', fg: '#475569', bar: '#94a3b8' },
+};
+function _ssKind(o) {
+  if (!o.found) return 'nf';
+  const low = parseInt(document.getElementById('ssLow').value, 10) || 10;
+  return o.qty <= 0 ? 'out' : (o.qty < low ? 'low' : 'ok');
+}
+async function ssRun() {
+  const skus = [...new Set((document.getElementById('ssInput').value || '').split(/[\s,;|]+/).map(x => x.trim()).filter(Boolean))];
+  const meta = document.getElementById('ssMeta'), btn = document.getElementById('ssBtn');
+  if (!skus.length) { meta.textContent = 'Prilepi vsaj en SKU.'; return; }
+  btn.disabled = true; const o = btn.textContent; btn.textContent = '⏳ Preverjam…';
+  meta.textContent = 'Prenašam feed Amio + Ikonka (prvič lahko traja do pol minute)…';
+  try {
+    const r = await fetch('/dobavitelj-zaloga', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skus, force: document.getElementById('ssForce').checked }) });
+    const d = await r.json(); if (!d.ok) throw new Error(d.error || 'napaka');
+    _ss.items = d.items || []; _ss.filter = 'all'; _ss.meta = d;
+    document.getElementById('ssForce').checked = false;
+    const t = d.fetched_at ? new Date(d.fetched_at) : null;
+    const err = Object.entries(d.errors || {}).map(([k, v]) => '⚠ ' + k + ': ' + v).join(' · ');
+    meta.innerHTML = 'Feed: Amio ' + (d.n_amio || 0).toLocaleString('sl-SI') + ' · Ikonka ' + (d.n_ikonka || 0).toLocaleString('sl-SI') + ' izdelkov' +
+      (t ? ' · prenesen ' + t.toLocaleString('sl-SI', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '') +
+      (err ? ' <span style="color:#b91c1c">' + esc(err) + '</span>' : '');
+    try { localStorage.setItem('slx_ss_input', document.getElementById('ssInput').value); } catch (e) {}
+    ssRender();
+  } catch (e) { meta.innerHTML = '<span style="color:#b91c1c">✗ ' + esc(e.message) + '</span>'; }
+  finally { btn.disabled = false; btn.textContent = o; }
+}
+function ssSetFilter(f) { _ss.filter = (_ss.filter === f ? 'all' : f); ssRender(); }
+function _ssVis() {
+  const q = (document.getElementById('ssSearch').value || '').toLowerCase().trim();
+  return _ss.items.filter(o => (_ss.filter === 'all' || _ssKind(o) === _ss.filter) &&
+    (!q || (o.q + ' ' + (o.kod || '') + ' ' + (o.name || '')).toLowerCase().includes(q)));
+}
+function ssRender() {
+  const res = document.getElementById('ssResult');
+  if (!_ss.items.length) { res.style.display = 'none'; return; }
+  res.style.display = '';
+  const n = { ok: 0, low: 0, out: 0, nf: 0 }; _ss.items.forEach(o => n[_ssKind(o)]++);
+  document.getElementById('ssKpi').innerHTML = ['ok', 'low', 'out', 'nf'].map(k => {
+    const S = SS_ST[k];
+    return '<div class="ss-kpi' + (_ss.filter === k ? ' on' : '') + '" onclick="ssSetFilter(\'' + k + '\')" style="border-left:5px solid ' + S.bar + '">' +
+      '<div class="n" style="color:' + S.fg + '">' + n[k] + '</div><div class="l" style="color:' + S.fg + '">' + S.l + '</div></div>';
+  }).join('');
+  const vis = _ssVis();
+  const maxQ = Math.max(1, ...vis.filter(o => o.found).map(o => o.qty));
+  const order = { out: 0, low: 1, nf: 2, ok: 3 };
+  vis.sort((a, b) => order[_ssKind(a)] - order[_ssKind(b)] || (a.qty || 0) - (b.qty || 0));
+  document.getElementById('ssList').innerHTML = vis.length ? vis.map(o => {
+    const k = _ssKind(o), S = SS_ST[k];
+    const supC = o.sup === 'amio' ? ['#e0f2fe', '#075985', 'AMIO'] : ['#fce7f3', '#9d174d', 'IKONKA'];
+    const img = o.img ? '<img loading="lazy" src="' + esc(o.img) + '" onerror="this.outerHTML=\'<div class=ss-noimg></div>\'">' : '<div class="ss-noimg"></div>';
+    const name = o.found ? '<div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(o.name) + '">' + (o.url ? '<a href="' + esc(o.url) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">' + esc(o.name) + '</a>' : esc(o.name)) + '</div>' +
+      '<div style="font-size:11px;color:var(--text-tertiary)">' + esc(o.kod) + (o.var ? ' · varianta' : '') + (o.ean ? ' · EAN ' + esc(o.ean) : '') + '</div>'
+      : '<div style="font-size:12px;color:var(--text-tertiary)">Ni v feedu Amio / Ikonka — izdelek je lahko ukinjen ali ima drugo kodo.</div>';
+    const qty = o.found ? '<div style="font-size:18px;font-weight:800;color:' + S.fg + ';text-align:right">' + o.qty.toLocaleString('sl-SI') + '<span style="font-size:11px;font-weight:600;color:var(--text-tertiary)"> kos</span></div>' : '<div style="text-align:right;color:var(--text-tertiary)">—</div>';
+    const bar = o.found ? '<div class="ss-c-bar"><span class="ss-pill" style="background:' + S.bg + ';color:' + S.fg + '">' + S.l + '</span><div class="ss-bar"><i style="width:' + Math.max(3, Math.round(o.qty / maxQ * 100)) + '%;background:' + S.bar + '"></i></div>' +
+      (o.next && o.qty <= 0 ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">📅 dobava ' + esc(o.next) + '</div>' : '') + '</div>'
+      : '<div class="ss-c-bar"><span class="ss-pill" style="background:' + S.bg + ';color:' + S.fg + '">' + S.l + '</span></div>';
+    const price = o.found && o.price ? '<div class="ss-c-price" style="text-align:right;font-size:12px;color:var(--text-secondary)">' + esc(String(o.price).replace('.', ',')) + ' ' + esc(o.cur) + '<div style="font-size:10px;color:var(--text-tertiary)">nabavna</div></div>' : '<div class="ss-c-price"></div>';
+    return '<div class="ss-row" style="border-left:4px solid ' + S.bar + '">' + img +
+      '<div><span class="ss-sku" onclick="ssCopyOne(this,\'' + esc(o.q).replace(/'/g, "\\'") + '\')" title="Klik = kopiraj">' + esc(o.q) + '</span>' + (o.found ? '<span class="ss-sup" style="background:' + supC[0] + ';color:' + supC[1] + '">' + supC[2] + '</span>' : '') + '</div>' +
+      '<div class="ss-c-name" style="min-width:0">' + name + '</div>' + qty + bar + price + '</div>';
+  }).join('') : '<div style="padding:24px;text-align:center;color:var(--text-tertiary);font-size:12px;background:#fff;border:1px dashed var(--border);border-radius:10px">V tem filtru ni izdelkov.</div>';
+}
+function ssCopyOne(el, sku) { navigator.clipboard.writeText(sku).then(() => { const o = el.textContent; el.textContent = '✓ kopirano'; setTimeout(() => el.textContent = o, 900); }).catch(() => {}); }
+function ssCopy() {
+  const skus = [...new Set(_ssVis().map(o => o.q))]; if (!skus.length) return;
+  const b = document.getElementById('ssCopyBtn');
+  navigator.clipboard.writeText(skus.join('\n')).then(() => { const o = b.textContent; b.textContent = '✓ Kopirano (' + skus.length + ')'; setTimeout(() => b.textContent = o, 1400); }).catch(() => {});
+}
+function ssCsv() {
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const rows = [['SKU', 'Status', 'Dobavitelj', 'Koda', 'Naziv', 'Zaloga', 'Cena', 'Valuta', 'Naslednja dobava', 'EAN']]
+    .concat(_ssVis().map(o => [o.q, SS_ST[_ssKind(o)].l.replace(/^\S+\s/, ''), o.sup || '', o.kod || '', o.name || '', o.found ? o.qty : '', o.price || '', o.cur || '', o.next || '', o.ean || '']));
+  const blob = new Blob(['﻿' + rows.map(r => r.map(q).join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'zaloga-dobavitelj-' + new Date().toISOString().slice(0, 10) + '.csv'; a.click();
+}
+document.addEventListener('DOMContentLoaded', () => { try { const v = localStorage.getItem('slx_ss_input'); const t = document.getElementById('ssInput'); if (v && t) t.value = v; } catch (e) {} });
+
 function switchOrodjaTab(tab) {
   if (tab === 'urltosku' || tab === 'zdrnarocila') tab = 'csv';   // odstranjena: URL→SKU, Združena naročila
-  ['csv', 'hs', 'hsuvoz', 'hsplus', 'apteluvoz', 'pricecheck'].forEach(t => {
+  ['csv', 'hs', 'hsuvoz', 'hsplus', 'apteluvoz', 'pricecheck', 'supstock'].forEach(t => {
     const btn = document.getElementById('orodjaTab-' + t);
     const sub = document.getElementById('orodjaSubpage-' + t);
     if (t === tab) {
