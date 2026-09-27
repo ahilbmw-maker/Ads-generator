@@ -2781,9 +2781,51 @@ async function loadTableFromStorage() {
 
 // Ob nalaganju strani — naloži skupni cache s strežnika (fallback localStorage)
 window.addEventListener('DOMContentLoaded', () => {
-  loadTableFromStorage();
+  loadTableFromStorage().then(pcRestoreView);
   loadFxRates();
 });
+
+// ── Osvežitev strani (gumb 🔄 ali F5) → ostani na istem pogledu in mestu ──
+// filter (npr. Razlika <7€), trgovina, razpon, iskanje, primerjava po državah, označena vrstica, drsnik
+function pcSaveView() {
+  try {
+    const q = document.getElementById('searchInput');
+    sessionStorage.setItem('pc_view', JSON.stringify({
+      f: currentFilter, store: currentStore, razpon: currentRazpon, q: q ? q.value : '',
+      group: _groupSkuActive, gmode: _groupViewMode, fi: _pcFocusIndex,
+      y: (document.scrollingElement || document.documentElement).scrollTop }));
+  } catch (e) {}
+}
+window.addEventListener('pagehide', pcSaveView);
+window.addEventListener('beforeunload', pcSaveView);
+function pcRestoreView() {
+  let v = null;
+  try { v = JSON.parse(sessionStorage.getItem('pc_view') || 'null'); sessionStorage.removeItem('pc_view'); } catch (e) {}
+  if (!v || !allRows.length) return;
+  try {
+    if (v.razpon && v.razpon !== 'all') { const s = document.getElementById('razponFilter'); if (s) s.value = v.razpon; currentRazpon = v.razpon; }
+    if (v.q) { const q = document.getElementById('searchInput'); if (q) q.value = v.q; currentSearch = v.q; }
+    if (v.store && v.store !== 'all') {
+      const b = Array.from(document.querySelectorAll('#storeFilterBar .store-btn')).find(x => x.textContent === v.store);
+      if (b) setStoreFilter(v.store, b);
+    }
+    if (v.f && v.f !== 'all') taskFilter(v.f, document.getElementById('tc-' + v.f));
+    else renderTable(allRows);
+    if (v.group) { if (v.gmode) _groupViewMode = v.gmode; toggleGroupSku(); }
+    const sc = document.scrollingElement || document.documentElement;
+    const go = () => { sc.scrollTop = v.y || 0; };
+    if (!v.group && v.fi >= 0) _pcFocusRow(v.fi);
+    go(); requestAnimationFrame(go);
+    setTimeout(() => {   // slike se nalagajo → ponovi
+      go();
+      // brez označene vrstice bi fokus okna (_pcOnReturn) označil 1. vrstico in skočil na vrh → označi prvo vidno
+      if (!v.group && _pcFocusIndex < 0) {
+        const i = _pcRows().findIndex(tr => tr.getBoundingClientRect().bottom > 90);
+        if (i >= 0) _pcFocusRow(i);
+      }
+    }, 300);
+  } catch (e) { console.warn('pcRestoreView', e); }
+}
 
 document.getElementById('fileInput').addEventListener('change', function(e) {
   const file = e.target.files[0];
