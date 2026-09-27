@@ -3192,6 +3192,16 @@ document.addEventListener('keydown', function(ev){
   // bližnjice delujejo SAMO v navadnem pogledu (v grupiranem pogledu po državah je struktura drugačna)
   if (typeof _groupSkuActive !== 'undefined' && _groupSkuActive) return;
   const k = ev.key;
+  // A = odpri izdelek v CMS Nova (kot klik na povezavo; enako kot v Marži po trgih)
+  if ((k==='a' || k==='A') && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
+    ev.preventDefault();
+    const rows = _pcRows();
+    if (!rows.length) return;
+    if (_pcFocusIndex < 0) { _pcFocusRow(0); return; }   // prvi pritisk samo označi 1. vrstico
+    const a = rows[_pcFocusIndex] && rows[_pcFocusIndex].querySelector('a[data-pc-cms]');
+    if (a) a.click();
+    return;
+  }
   if ((k==='d' || k==='D') && !ev.ctrlKey && !ev.metaKey){
     ev.preventDefault();
     let rows = _pcRows();
