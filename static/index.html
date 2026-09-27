@@ -919,7 +919,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-27 13:26</div>
+      <div class="sidebar-logo-sub">build 2026-09-27 14:04</div>
     </div>
   </div>
 
@@ -1566,6 +1566,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div style="margin-left:auto;display:flex;gap:6px">
             <button id="regenListEditBtn" onclick="regenListEdit(true)" style="display:none;padding:6px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">✎ Uredi seznam</button>
             <button id="regenListRecheckBtn" onclick="regenListCheck()" style="display:none;padding:6px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">↻ Osveži statuse</button>
+            <button id="regenListClearBtn" onclick="regenListClear()" style="display:none;padding:6px 12px;background:transparent;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;font-size:12px;cursor:pointer">🗑 Počisti seznam</button>
           </div>
         </div>
         <div id="regenListEditor">
@@ -12891,13 +12892,24 @@ async function regenListCheck() {
     regenListRender();
   } catch (e) { st.textContent = info.textContent = '✗ ' + e.message; }
 }
+// počisti naložen seznam (samo seznam v brskalniku — statusi optimizacije na strežniku ostanejo)
+function regenListClear() {
+  if (!confirm('Počistim naložen seznam SKU?\n\nStatusi optimizacije ostanejo shranjeni — ob ponovnem preverjanju se spet pokažejo.')) return;
+  _rl.text = ''; _rl.items = []; _rl.active = null; _rl.filter = 'todo';
+  _rlSave();
+  document.getElementById('regenListInput').value = '';
+  document.getElementById('regenListStatus').textContent = '';
+  document.getElementById('regenListInfo').textContent = 'Prilepi SKU-je (en na vrstico ali ločene z vejico) — preverim, kateri so že optimizirani.';
+  regenListRender();
+}
 function regenListSetFilter(f) { _rl.filter = f; _rlSave(); regenListRender(); }
 function regenListRender() {
   const it = _rl.items || [];
   const res = document.getElementById('regenListResult');
   const recheck = document.getElementById('regenListRecheckBtn'), nextB = document.getElementById('regenListNextBtn');
-  if (!it.length) { res.style.display = 'none'; recheck.style.display = 'none'; nextB.style.display = 'none'; regenListEdit(true); return; }
-  res.style.display = ''; recheck.style.display = '';
+  const clr = document.getElementById('regenListClearBtn');
+  if (!it.length) { res.style.display = 'none'; recheck.style.display = 'none'; clr.style.display = 'none'; nextB.style.display = 'none'; regenListEdit(true); return; }
+  res.style.display = ''; recheck.style.display = ''; clr.style.display = '';
   const n = { todo: 0, queue: 0, done: 0, nf: 0 };
   const nOff = it.filter(_rlOff).length;
   it.filter(_rlShown).forEach(o => n[_rlKind(o)]++);
