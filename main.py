@@ -844,6 +844,74 @@ NEUVOZ_FILE = DATA_DIR / "marza_ne_uvazamo.json"   # {trg: {g_id: {sku, naziv, a
 
 def _neuvoz_load() -> dict:
     return _jload(NEUVOZ_FILE, {}) or {}
+
+
+# ✎ Ročni SKU (Marža po trgih): ključ = CMS ID (SLO g:id, skupen vsem trgom) in/ali "trg|g_id" (če CMS ID ni znan)
+MARZA_SKU_FILE = DATA_DIR / "marza_sku_rocno.json"   # {kljuc: {sku, at}}
+
+
+def _stock_nc_lookup(sku: str):
+    """SKU → (nc_sku, nc, zaloga) iz zaloge CSV (točen SKU, sicer osnova brez _N) — za takojšen odziv ob ročnem SKU."""
+    u = str(sku or "").strip().upper()
+    if not u or not STOCK_CSV_FILE.exists():
+        return None, None, 0
+    import csv as _csv
+    from io import StringIO as _SIO
+    cands = [u] + ([u.rsplit("_", 1)[0], u.split("_", 1)[0]] if "_" in u else [])
+    nc_by, zal_by = {}, {}
+    for row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"))):
+        sk = (row.get("product_sku") or "").strip().upper()
+        if sk not in cands:
+            continue
+        try:
+            nc = float(str(row.get("price") or 0).replace(",", "."))
+        except ValueError:
+            nc = 0.0
+        try:
+            zal_by[sk] = zal_by.get(sk, 0) + int(float(str(row.get("stock") or 0).replace(",", ".")))
+        except ValueError:
+            pass
+        if nc > 0 and not nc_by.get(sk):
+            nc_by[sk] = nc
+    for c in cands:
+        if nc_by.get(c):
+            return c, nc_by[c], zal_by.get(c, 0)
+    return None, None, zal_by.get(u, 0)
+
+
+@app.post("/marza-sku")
+async def marza_sku_post(request: Request):
+    """Body: {cms_id, trg, g_id, sku} — ročni SKU za izdelek (prazen sku = odstrani). Vrne NC iz zaloge."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    try:
+        b = await request.json()
+    except Exception:
+        return {"ok": False, "error": "Neveljaven JSON"}
+    sku = str(b.get("sku") or "").strip().upper()
+    keys = []
+    if str(b.get("cms_id") or "").strip():
+        keys.append(str(b.get("cms_id")).strip())
+    trg = str(b.get("trg") or "").strip().lower()
+    if trg in MARZA_TRGI and str(b.get("g_id") or "").strip():
+        keys.append(f"{trg}|{str(b.get('g_id')).strip()}")
+    if not keys:
+        return {"ok": False, "error": "Manjka CMS ID ali trg+g_id"}
+    d = _jload(MARZA_SKU_FILE, {}) or {}
+    for k in keys:
+        if sku:
+            d[k] = {"sku": sku, "at": _lj_iso()}
+        else:
+            d.pop(k, None)
+    try:
+        tmp = MARZA_SKU_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, MARZA_SKU_FILE)
+    except Exception as e:
+        return {"ok": False, "error": f"Zapis ni uspel: {e}"}
+    nc_sku, nc, zal = _stock_nc_lookup(sku) if sku else (None, None, 0)
+    return {"ok": True, "sku": sku, "nc_sku": nc_sku, "nc": round(nc, 2) if nc else None, "zaloga": zal}
 PRICE_CHANGES_KEEP_DAYS = 30
 CMS_LOG_KEEP_DAYS = 45
 _cms_log_lock = None
@@ -10543,6 +10611,7 @@ async def marza_trgi(request: Request, trg: str = "sl"):
 
     _cms_log = _jload(CMS_LOG_FILE, {})
     _nu_t = _neuvoz_load().get(trg) or {}
+    _sku_ro = _jload(MARZA_SKU_FILE, {}) or {}
     _changes = (_jload(PRICE_CHANGES_FILE, {}) or {}).get(trg) or {}
     _meta = feed_meta.get(trg) or {}
 
@@ -10585,6 +10654,12 @@ async def marza_trgi(request: Request, trg: str = "sl"):
         slike.sort(key=len, reverse=True)   # daljši kandidat = bolj specifičen, manj naključnih zadetkov
         kandidati += [(x, "slika") for x in slike]
         sku, nacin, nc_sku, nc = (kandidati[0][0] if kandidati else ""), None, None, None
+        # ✎ ročni SKU ima prednost (ključ CMS ID = velja za vse trge, sicer samo ta trg)
+        _ro = _sku_ro.get(_cms_id(g_id, d, None, None) or "-") or _sku_ro.get(f"{trg}|{g_id}")
+        if _ro and _ro.get("sku"):
+            sku, nacin = _ro["sku"], "rocno"
+            nc_sku, nc = _najdi_nc(sku)
+            kandidati = []
         for cand, how in kandidati:
             nc_sku, nc = _najdi_nc(cand)
             if nc:
@@ -10675,6 +10750,9 @@ async def marza_trgi_stran(request: Request):
   .nub:hover{filter:none;border-color:#fca5a5;background:#fef2f2}
   .nub.on{filter:none;background:#fee2e2;border-color:#f87171}
   .nub.on:hover{background:#fff;border-color:#e2e8f0}
+  .skub{font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px;border:1px dashed #93a5f5;background:#eef2ff;color:#3730a3;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .skub:hover{background:#4f6ef7;color:#fff;border-style:solid}
+  .skut{cursor:text}
   .selcb{width:16px;height:16px;cursor:pointer;accent-color:#4f6ef7;vertical-align:middle}
   .imgc{display:flex;align-items:center;gap:7px}
   tr.sel td{background:#eef2ff}
@@ -10853,7 +10931,7 @@ function filtered(){
 function nac(n){
   if(!n) return '';
   const b=n.split('+')[0], os=n.includes('osnova');
-  const t={id:['ID','#dcfce7','#15803d','Ujemanje po ID izdelka — zanesljivo'],znamka:['znamka','#dcfce7','#15803d','Ikonka/Amio SKU iz slike — zanesljivo'],mpn:['mpn','#dcfce7','#15803d','SKU iz feeda (mpn) — zanesljivo'],slika:['ugib','#fef3c7','#a16207','Ugibanje iz imena slike — preveri']}[b]||[b,'#eee','#555',''];
+  const t={id:['ID','#dcfce7','#15803d','Ujemanje po ID izdelka — zanesljivo'],znamka:['znamka','#dcfce7','#15803d','Ikonka/Amio SKU iz slike — zanesljivo'],mpn:['mpn','#dcfce7','#15803d','SKU iz feeda (mpn) — zanesljivo'],slika:['ugib','#fef3c7','#a16207','Ugibanje iz imena slike — preveri'],rocno:['ročno','#dbeafe','#1e40af','Ročno določen SKU (velja za vse trge) — dvoklik na SKU za spremembo']}[b]||[b,'#eee','#555',''];
   return ' <span title="'+t[3]+(os?' · NC iz osnovnega SKU':'')+'" style="font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+t[1]+';color:'+t[2]+';font-family:inherit">'+t[0]+'</span>';
 }
 function mcls(m){return m<0?'m-neg':m<20?'m-low':m<40?'m-mid':'m-ok';}
@@ -10940,7 +11018,7 @@ function renderMain(){
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
     '<td class="r">'+f2(x.koncna)+' <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
     '<td class="r">'+f2(x.eur)+'</td><td class="r">'+f2(x.neto)+'</td>'+
-    '<td class="r">'+(x.nc==null?'<span class="dim">—</span>':f2(x.nc))+'</td>'+
+    '<td class="r">'+(x.nc==null?'<button type="button" class="skub" data-skubtn="'+x._i+'" title="Ni NC — popravi SKU (velja za vse trge)">✎ SKU</button>':f2(x.nc))+'</td>'+
     razTd(x.marza_eur,RR)+
     '<td class="r">'+(x.marza_pct==null?'<span class="dim">—</span>':'<span class="m '+mcls(x.marza_pct)+'">'+x.marza_pct.toLocaleString('sl-SI')+' %</span>')+'</td>'+
     '<td class="r'+(x.zaloga>0?'':' dim')+'">'+(x.zaloga||0)+'</td>'+obratTd(x)+'</tr>'
@@ -11036,7 +11114,25 @@ function obratTd(x){
   if(x.obrat==null) return '<td class="r"><span class="dim">—</span></td>';
   const o=x.obrat, c=o>=30?'#15803d':(o>=10?'var(--txt)':(o>0?'#a16207':'var(--txt3)'));
   return '<td class="r" style="font-weight:700;color:'+c+'" title="'+(x.trajanje?'Trajanje zaloge: '+esc(x.trajanje):'Obrat 30 dni')+'">'+o.toLocaleString('sl-SI')+'</td>';}
-function skuTxt(x){const s=String(x.sku||'?').toUpperCase();return '<span class="skut" title="'+esc(s)+'">'+esc(s)+'</span>';}
+function skuTxt(x){const s=String(x.sku||'?').toUpperCase();return '<span class="skut" data-skued="'+x._i+'" title="'+esc(s)+' — dvoklik = popravi SKU (velja za vse trge)">'+esc(s)+'</span>';}
+// ✎ ročni SKU: dvoklik na SKU ali "✎ SKU" v stolpcu NC → shrani na strežnik (ključ CMS ID → vsi trgi), NC iz zaloge takoj
+async function skuEdit(x){
+  const cur=String(x.sku||'').toUpperCase();
+  const v=prompt('SKU za ta izdelek (velja za VSE trge).\n\n'+(x.naziv||'')+'\n\nPrazno = odstrani ročni SKU.',x.nacin==='rocno'?cur:cur);
+  if(v===null) return;
+  const sku=v.trim().toUpperCase();
+  try{
+    const r=await fetch('/marza-sku',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cms_id:x.cms_id||'',trg,g_id:x.g_id,sku})});
+    const d=await r.json(); if(!d.ok) throw new Error(d.error||'napaka');
+    if(!sku){ load(); return; }   // odstranjen ročni SKU → ponovno izračunaj samodejno
+    x.sku=sku; x.nacin='rocno'; x.nc_sku=d.nc_sku; x.nc=d.nc; x.zaloga=d.zaloga||0;
+    x.marza_eur=(x.neto!=null&&x.nc)?Math.round((x.neto-x.nc)*100)/100:null;
+    x.marza_pct=(x.marza_eur!=null&&x.neto)?Math.round(x.marza_eur/x.neto*1000)/10:null;
+    render();
+    if(!d.nc) alert('SKU '+sku+' shranjen, a v zalogi zanj ni nabavne cene (NC).');
+  }catch(e){alert('Shranjevanje ni uspelo: '+e.message);}
+}
+document.addEventListener('dblclick',e=>{const s=e.target.closest('[data-skued]'); if(!s) return; const x=D&&D.rows[+s.dataset.skued]; if(x){e.preventDefault(); skuEdit(x);}});
 function copyBtn(x){return x.sku?'<button type="button" class="cpb" data-copy="'+esc(String(x.sku).toUpperCase())+'" title="Kopiraj SKU">⧉</button>':'';}
 document.addEventListener('click',async e=>{const b=e.target.closest('button[data-copy]'); if(!b) return;
   const t=b.dataset.copy; let ok=false;
@@ -11115,6 +11211,8 @@ document.addEventListener('click',e=>{
     cmsLog(x,'open'); x.cms={st:'odprto',trg,opened_at:new Date().toISOString(),vir:BATO?'Bato cene':'Marža po trgih'}; setTimeout(render,300); return;}
   const cb=e.target.closest('input.selcb');
   if(cb){ selClick(cb,e); return; }
+  const sb=e.target.closest('button[data-skubtn]');
+  if(sb){const x=D&&D.rows[+sb.dataset.skubtn]; if(x) skuEdit(x); return;}
   const nb=e.target.closest('button[data-nu]');
   if(nb){const x=D&&D.rows[+nb.dataset.nu]; if(x) neuvozToggle(x); return;}
   const u=e.target.closest('button[data-undo]');
@@ -11220,7 +11318,7 @@ function renderBato(){
     '<td class="r" style="font-weight:800;font-size:16px">'+fmtC(o.pred,o.cur)+'</td>'+
     '<td class="r '+(o.diff>0?'up':'dn')+'">'+(o.diff>0?'+':'')+fmtC(o.diff,o.cur)+'</td>'+
     '<td class="r">'+(o.akc?fmtC(o.akc,o.cur):'<span class="dim">—</span>')+'</td>'+
-    '<td class="r">'+(o.nc==null?'<span class="dim">—</span>':f2(o.nc))+'</td>'+
+    '<td class="r">'+(o.nc==null?'<button type="button" class="skub" data-skubtn="'+x._i+'" title="Ni NC — popravi SKU (velja za vse trge)">✎ SKU</button>':f2(o.nc))+'</td>'+
     razTd(o.rz,RR)+razTd(o.rp,RR)+
     '<td class="r">'+mp(o.mz)+'</td><td class="r">'+mp(o.mp)+'</td>'+
     '<td>'+(o.note?'<span class="bnote" title="'+esc(o.note)+'">'+esc(o.note)+'</span>':'')+'</td>'+obratTd(x)+'</tr>';}).join('')
