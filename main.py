@@ -29264,6 +29264,7 @@ def _xsell_shop(d: dict) -> dict:
     sk.setdefault("izbrani", {})
     sk.setdefault("popust", {})        # {kategorija: % popusta na redno ceno} — kot "Popust na ceno" v CMS
     sk.setdefault("popust_izd", {})    # {kategorija: {sku: %}} — izjeme za posamezen dodatek
+    sk.setdefault("zakljuceno", {})    # {kategorija: čas} — Xsell določen, kategorija zaprta
     return sk
 
 
@@ -29292,7 +29293,8 @@ async def xsell_shop_kat(request: Request):
         out.append({"ime": ime,
                     "predlogi": [dict(_xsell_view(by[p["sku"]]), razlog=p.get("razlog", "")) for p in (sk["predlogi"].get(ime) or []) if p.get("sku") in by],
                     "izbrani": [s for s in (sk["izbrani"].get(ime) or []) if s in by],
-                    "popust": sk["popust"].get(ime), "popust_izd": sk["popust_izd"].get(ime) or {}})
+                    "popust": sk["popust"].get(ime), "popust_izd": sk["popust_izd"].get(ime) or {},
+                    "zakljuceno": sk["zakljuceno"].get(ime)})
     return {"ok": True, "kategorije": out, "at": sk.get("predlogi_at")}
 
 
@@ -29437,6 +29439,150 @@ async def xsell_shop_kat_iz_slike(data: dict):
         if x and x.lower() not in seen:
             seen.add(x.lower()); out.append(x[:120])
     return {"ok": True, "kategorije": out}
+
+
+class XsellShopStatusReq(BaseModel):
+    ime: str
+    zakljuceno: bool
+
+
+@app.post("/xsell-shop-kat-status")
+async def xsell_shop_kat_status(req: XsellShopStatusReq):
+    """Zaključi (Xsell določen) ali znova odpri kategorijo trgovine."""
+    d = _xsell_load()
+    sk = _xsell_shop(d)
+    if req.zakljuceno:
+        sk["zakljuceno"][req.ime] = _lj_iso()
+    else:
+        sk["zakljuceno"].pop(req.ime, None)
+    _xsell_save(d)
+    return {"ok": True, "zakljuceno": sk["zakljuceno"].get(req.ime)}
+
+
+# ── 📦 Izdelki: moj delovni seznam (iz slike / SKU-jev) ──
+class XsellMojReq(BaseModel):
+    dodaj: Optional[List[str]] = None
+    odstrani: Optional[List[str]] = None
+    pocisti: bool = False
+
+
+@app.get("/xsell-moj-seznam")
+async def xsell_moj_seznam_get():
+    return {"ok": True, "g_ids": _xsell_load().get("moj_seznam") or []}
+
+
+@app.post("/xsell-moj-seznam")
+async def xsell_moj_seznam(req: XsellMojReq):
+    """Delovni seznam izdelkov za Xsell (g_id SL feeda), vrstni red = kot dodani."""
+    d = _xsell_load()
+    cur = [] if req.pocisti else list(d.get("moj_seznam") or [])
+    ven = {str(x) for x in (req.odstrani or [])}
+    cur = [g for g in cur if g not in ven]
+    for g in req.dodaj or []:
+        g = str(g)
+        if g and g not in cur:
+            cur.append(g)
+    d["moj_seznam"] = cur[:2000]
+    _xsell_save(d)
+    return {"ok": True, "g_ids": d["moj_seznam"]}
+
+
+def _xsell_norm(t: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(t or "").lower())
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", " ", t).strip()
+
+
+def _xsell_match(rows: list, vrstice: list) -> dict:
+    """Vrstice (SKU / povezava / naziv) → Maaarket izdelki. SKU in povezava natančno, naziv po podobnosti."""
+    from difflib import SequenceMatcher
+    by_sku = {}
+    for r in rows:
+        for k in (r["sku"], r["nc_sku"]):
+            if k:
+                by_sku.setdefault(k.upper(), r)
+    norm = [(r, _xsell_norm(r["naziv"])) for r in rows]
+    najdeni, nenajdeni, seen = [], [], set()
+    for v in vrstice:
+        v = str(v or "").strip()
+        if not v:
+            continue
+        r, how = None, ""
+        if "://" in v or "/izdelek/" in v:
+            r, how = _xsell_find(rows, v), "povezava"
+        if not r:
+            for tok in re.findall(r"[A-Za-z0-9][A-Za-z0-9._-]{2,}", v):
+                if tok.upper() in by_sku:
+                    r, how = by_sku[tok.upper()], "SKU"
+                    break
+        if not r:
+            q = _xsell_norm(v)
+            qt = set(q.split())
+            best, bs = None, 0.0
+            for rr, rn in norm:
+                if not rn:
+                    continue
+                sc = SequenceMatcher(None, q, rn).ratio()
+                if qt:
+                    sc = max(sc, len(qt & set(rn.split())) / len(qt) * 0.95)
+                if sc > bs:
+                    best, bs = rr, sc
+            if best is not None and bs >= 0.6:
+                r, how = best, f"naziv {round(bs * 100)} %"
+        if r and r["g_id"] not in seen:
+            seen.add(r["g_id"])
+            najdeni.append({"g_id": r["g_id"], "sku": r["sku"], "naziv": r["naziv"], "vhod": v[:120], "kako": how})
+        elif not r:
+            nenajdeni.append(v[:120])
+    return {"najdeni": najdeni, "nenajdeni": nenajdeni}
+
+
+@app.post("/xsell-izdelki-najdi")
+async def xsell_izdelki_najdi(request: Request, data: dict):
+    """Prilepljeno besedilo (SKU / povezave / nazivi, eno na vrstico) → Maaarket izdelki. NE shranjuje."""
+    try:
+        rows = await _xsell_rows(request)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, **_xsell_match(rows, [x for x in str((data or {}).get("besedilo") or "").splitlines()])}
+
+
+@app.post("/xsell-izdelki-iz-slike")
+async def xsell_izdelki_iz_slike(request: Request, data: dict):
+    """Screenshoti seznama izdelkov → SKU/nazivi (Claude vision) → Maaarket izdelki. NE shranjuje."""
+    content = []
+    for im in ((data or {}).get("images") or [])[:8]:
+        b64 = str((im or {}).get("data") or "")
+        if b64.startswith("data:") and "," in b64:
+            b64 = b64.split(",", 1)[1]
+        mt = str((im or {}).get("media_type") or "image/png")
+        if mt not in ("image/png", "image/jpeg", "image/gif", "image/webp"):
+            mt = "image/png"
+        if b64.strip():
+            content.append({"type": "image", "source": {"type": "base64", "media_type": mt, "data": b64.strip()}})
+    if not content:
+        return {"ok": False, "error": "Ni slik."}
+    content.append({"type": "text", "text": (
+        "Na slikah je seznam izdelkov spletne trgovine (trgovina, admin CMS, tabela ali Excel). "
+        "Za VSAK izdelek, ki ga vidiš, izpiši SKU (šifro), če je viden, in naziv izdelka točno tako, kot je zapisan. "
+        "Vrstni red od zgoraj navzdol. Ne dodajaj cen, gumbov ali drugih besedil vmesnika. "
+        'Vrni SAMO JSON: {"izdelki": [{"sku": "…ali prazno", "naziv": "…"}]}')})
+    loop = asyncio.get_event_loop()
+    try:
+        msg = await loop.run_in_executor(None, lambda: client.messages.create(
+            model="claude-sonnet-4-6", max_tokens=6000, messages=[{"role": "user", "content": content}]))
+        rows = await _xsell_rows(request)
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+    raw = "".join(getattr(b, "text", "") for b in msg.content).strip()
+    m = re.search(r"\{.*\}", raw, re.S)
+    try:
+        izd = json.loads(m.group(0) if m else raw).get("izdelki") or []
+    except Exception:
+        return {"ok": False, "error": "Neberljiv odgovor modela.", "raw": raw[:300]}
+    vrstice = [(" ".join(x for x in (str(i.get("sku") or "").strip(), str(i.get("naziv") or "").strip()) if x)) for i in izd if isinstance(i, dict)]
+    return {"ok": True, "prebrano": len(vrstice), **_xsell_match(rows, vrstice)}
 
 
 class XsellShopPopustReq(BaseModel):

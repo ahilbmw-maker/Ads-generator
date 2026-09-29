@@ -391,29 +391,62 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .hai-fr b{color:var(--text);font-weight:700}
 .hai-fr small{color:var(--text-tertiary);text-align:right}
 @media(max-width:900px){.hai-wrap{grid-template-columns:1fr}}
-/* 🎯 Xsell */
-.xs-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;align-items:start}
-@media(max-width:900px){.xs-grid{grid-template-columns:1fr}}
-.xs-main{display:flex;gap:12px;align-items:center;padding:12px 14px}
-.xs-main img,.xs-it img{width:52px;height:52px;border-radius:8px;object-fit:contain;background:#f8fafc;flex-shrink:0}
+/* 🎯 Xsell — seznam levo, podrobnosti desno (izdelki in kategorije trgovine) */
+.xsA{display:grid;grid-template-columns:330px minmax(0,1fr);gap:12px;align-items:start}
+@media(max-width:1000px){.xsA{grid-template-columns:1fr}}
+.xsA-l{padding:10px 12px;position:sticky;top:10px}
+.xsA-chips{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.xsA-bar{display:flex;align-items:center;gap:8px;font-size:11.5px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.xsA-list{max-height:64vh;overflow-y:auto;margin-top:6px;display:flex;flex-direction:column;gap:1px}
+.xsA-row{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 6px;border-radius:7px;cursor:pointer;font-size:12.5px}
+.xsA-prow{grid-template-columns:16px 30px minmax(0,1fr) auto auto}
+.xsA-row:hover{background:var(--bg-secondary)}
+.xsA-row.on{background:#eef2ff;box-shadow:inset 3px 0 0 var(--accent)}
+.xsA-row img{width:30px;height:30px;border-radius:5px;object-fit:contain;background:#f8fafc}
+.xsA-row input{margin:0}
+.xsA-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.xsA-s{font-size:10.5px;color:var(--text-tertiary)}
+.xsA-x{color:var(--text-tertiary);font-size:14px;padding:0 3px;border-radius:4px}
+.xsA-x:hover{background:#fee2e2;color:#991b1b}
+.xsA-empty{padding:16px;text-align:center;color:var(--text-tertiary);font-size:12px}
+.xs-tabs{display:inline-flex;gap:2px;background:var(--bg-secondary);border-radius:9px;padding:3px}
+.xs-tabs b{font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:7px;color:var(--text-secondary);cursor:pointer}
+.xs-tabs b.on{background:#fff;color:var(--accent);box-shadow:0 0 0 1px var(--border)}
+.xs-head{display:flex;gap:12px;align-items:center;padding:12px 14px;flex-wrap:wrap}
+.xs-head img{width:52px;height:52px;border-radius:8px;object-fit:contain;background:#f8fafc;flex-shrink:0}
 .xs-sku{font-family:ui-monospace,monospace;font-size:11px;font-weight:800;color:#26215c;background:#dedafb;border:1px solid #8f87e0;border-radius:5px;padding:0 6px;white-space:nowrap}
+.xs-cp{cursor:pointer}
+.xs-cp:hover{background:#c9c3f7}
 .xs-pill{font-size:10.5px;font-weight:800;border-radius:5px;padding:1px 6px;white-space:nowrap}
-.xs-it{display:grid;grid-template-columns:24px 52px minmax(0,1fr) auto;gap:10px;align-items:center;background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-top:6px;cursor:pointer}
-.xs-it:hover{border-color:var(--accent)}
-.xs-it.sel{border:2px solid #16a34a;background:#f0fdf4}
-.xs-rk{font-size:13px;font-weight:800;color:var(--text-tertiary);text-align:center}
-.xs-pick{font-size:11.5px;font-weight:800;border-radius:7px;padding:5px 10px;border:1.5px solid #16a34a;color:#166534;background:#fff;white-space:nowrap}
-.xs-it.sel .xs-pick{background:#16a34a;color:#fff}
-.xs-mrow{display:grid;grid-template-columns:34px minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:4px 8px;border-radius:7px;cursor:pointer;font-size:12px}
-.xs-mrow:hover{background:var(--bg-secondary)}
-.xs-mrow.on{background:#eef2ff;outline:1.5px solid var(--accent)}
-.xs-mrow img{width:34px;height:34px;border-radius:6px;object-fit:contain;background:#f8fafc}
-.xs-kat{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--bg-secondary)}
-.xs-kat-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.xs-st{font-size:10.5px;font-weight:700;border-radius:5px;padding:1px 7px;white-space:nowrap}
+.st-ok{background:#dcfce7;color:#166534}
+.st-pr{background:#ede9fe;color:#4c1d95}
+.st-no{background:#f1f5f9;color:#64748b}
+.st-run{background:#fef3c7;color:#92400e}
+.xs-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.xs-tbl th{font-size:10.5px;font-weight:700;color:var(--text-tertiary);text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);white-space:nowrap}
+.xs-tbl td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:middle}
+.xs-tbl .r{text-align:right;white-space:nowrap}
+.xs-tbl tbody tr{cursor:pointer}
+.xs-tbl tbody tr:hover{background:var(--bg-secondary)}
+.xs-tbl tr.sel{background:#f0fdf4}
+.xs-rk{font-weight:800;color:#16a34a;text-align:center}
+.xs-nm{display:flex;align-items:center;gap:7px;min-width:0}
+.xs-nm span:first-of-type{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
+.xs-nm img{width:28px;height:28px;border-radius:5px;object-fit:contain;background:#f8fafc;flex-shrink:0}
+.xs-why{cursor:help;font-size:12px;flex-shrink:0}
+.xs-izj{cursor:pointer}
+.xs-izj:hover{background:#f5f3ff}
+.xs-b{padding:4px 9px;border:1px solid var(--border);background:#fff;color:var(--text-secondary);border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+.xs-b:hover{border-color:var(--accent);color:var(--accent)}
+.xs-bp{background:var(--accent);color:#fff;border-color:var(--accent)}
+.xs-bp:hover{color:#fff;opacity:.9}
+.xs-bok{background:#16a34a;color:#fff;border-color:#16a34a}
+.xs-bok:hover{color:#fff;opacity:.9}
+.xs-paste{border:1.5px dashed var(--border);border-radius:10px;padding:9px 11px;cursor:pointer;background:var(--surface);outline:none}
+.xs-thx{position:absolute;top:-6px;right:-6px;width:18px;height:18px;line-height:1;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:11px;padding:0}
 .xs-pk{margin-left:12px;display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#4c1d95;background:#ede9fe;border-radius:7px;padding:2px 4px 2px 9px}
 .xs-pk input{width:52px;padding:3px 6px;border:1px solid #c4b5fd;border-radius:5px;font-size:12px;font-weight:700;background:#fff;color:#4c1d95}
-.xs-pi{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--text-tertiary);cursor:default}
-.xs-pi input{width:44px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;font-size:11px;background:#fff}
 .xs-chip{padding:4px 10px;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);background:#fff;color:var(--text-secondary)}
 .xs-chip.on{background:var(--text);border-color:var(--text);color:#fff}
 /* Zaloga dobavitelja */
@@ -986,7 +1019,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-29 16:57</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 17:16</div>
     </div>
   </div>
 
@@ -2997,31 +3030,63 @@ input[type="text"].error { border-color: var(--red) !important; }
 
     <!-- 🎯 XSELL: najboljši poceni dodatek k Maaarket izdelku (Claude Opus 5.5) · izdelek = primarno, kategorija = rezerva -->
     <div id="orodjaSubpage-xsell" style="display:none;padding:14px">
-      <div class="card" style="padding:14px 16px">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input id="xsQ" type="text" placeholder="SKU ali povezava izdelka (maaarket.si/izdelek/…)" onkeydown="if(event.key==='Enter')xsLoad(this.value)" style="flex:1;min-width:240px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text)">
-          <button onclick="xsLoad(document.getElementById('xsQ').value)" style="padding:9px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">🎯 Predlagaj Xsell</button>
-          <button id="xsMassBtn" onclick="xsToggleMass()" style="padding:9px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Masovni način</button>
-          <button id="xsShopBtn" onclick="xsShopToggle()" style="padding:9px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🏷 Kategorije trgovine</button>
-          <a href="/xsell-csv" style="padding:9px 14px;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;text-decoration:none">⬇ CSV</a>
+      <div class="card" style="padding:12px 16px">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <span class="xs-tabs"><b id="xsTab-izd" onclick="xsTab('izd')">📦 Izdelki</b><b id="xsTab-kat" onclick="xsTab('kat')">🏷 Kategorije trgovine</b></span>
+          <input id="xsQ" type="text" placeholder="Odpri izdelek: SKU ali povezava (maaarket.si/izdelek/…) + Enter" onkeydown="if(event.key==='Enter')xsOpen(this.value)" style="flex:1;min-width:240px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text)">
+          <a href="/xsell-csv" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap">⬇ CSV izdelkov</a>
         </div>
-        <div id="xsInfo" style="font-size:11.5px;color:var(--text-tertiary);margin-top:8px">Samo Maaarket izdelki na zalogi (SL — velja za vse trge) · šteje samo NC dodatka: idealno 0–2 €, največ 3 € (Xsell cena 4,99–5,99 € se nastavi posebej)</div>
-        <div id="xsPoraba" title="Informativno: ocenjena cena klicev Opus 5.5 ($4 / $20 na 1M žetonov), iz /data/xsell_usage.json" style="font-size:11px;color:var(--text-tertiary);margin-top:4px"></div>
+        <div id="xsInfo" style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px">Samo Maaarket izdelki na zalogi (SL — velja za vse trge) · šteje samo NC dodatka: idealno 0–2 €, največ 3 €</div>
+        <div id="xsPoraba" title="Informativno: ocenjena cena klicev Opus 5.5 ($4 / $20 na 1M žetonov)" style="font-size:11px;color:var(--text-tertiary);margin-top:2px"></div>
       </div>
 
-      <!-- 🏷 Kategorije iz trgovine (CMS): kategorija → predlogi → izbrani → CSV -->
-      <div id="xsShop" class="card" style="display:none;margin-top:12px;padding:12px 14px">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-          <span class="slabel" style="margin:0">🏷 KATEGORIJE IZ TRGOVINE</span>
-          <span id="xsShopInfo" style="font-size:11.5px;color:var(--text-tertiary)"></span>
-          <div style="margin-left:auto;display:flex;gap:6px">
-            <button onclick="xsShopEdit()" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">✎ Uredi seznam</button>
-            <button id="xsShopRun" onclick="xsShopPredlagaj()" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">✨ Predlagaj za vse (Opus)</button>
-            <a href="/xsell-shop-kat-csv" style="padding:6px 11px;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;text-decoration:none">⬇ CSV kategorij</a>
+      <!-- 📦 IZDELKI: seznam levo (moj seznam iz slike/SKU ali vsi po obratu) · podrobnosti desno -->
+      <div id="xsIzd" class="xsA" style="margin-top:12px">
+        <div class="card xsA-l">
+          <div id="xsPSrc" class="xsA-chips"></div>
+          <div id="xsPFil" class="xsA-chips" style="margin-top:5px"></div>
+          <div style="display:flex;gap:6px;margin-top:7px">
+            <input id="xsPQ" type="text" placeholder="🔍 išči SKU ali naziv" oninput="xsPRender()" style="flex:1;min-width:0;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text)">
+            <button onclick="xsPAddToggle()" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap">＋ Dodaj</button>
+          </div>
+          <div id="xsPAdd" style="display:none;margin-top:7px">
+            <div id="xsPPaste" tabindex="0" onclick="this.focus()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="xsPImgDrop(event)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" class="xs-paste">
+              <div style="font-size:12px;font-weight:700">🖼 Izdelki iz slike</div>
+              <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">klikni sem in prilepi (Ctrl+V) · več slik · ali <span onclick="event.stopPropagation();xsPImgPick()" style="text-decoration:underline">izberi datoteke</span></div>
+              <div id="xsPThumbs" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+            </div>
+            <textarea id="xsPTa" rows="3" placeholder="ali prilepi SKU-je / povezave / nazive — eno na vrstico" style="width:100%;margin-top:6px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
+            <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">
+              <button id="xsPAddBtn" onclick="xsPAddRun()" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">🤖 Dodaj v moj seznam</button>
+              <button onclick="xsPClear()" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap">Počisti moj seznam</button>
+            </div>
+            <div id="xsPAddMsg" style="font-size:11.5px;color:var(--text-tertiary);margin-top:5px"></div>
+          </div>
+          <div class="xsA-bar">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="xsPAll" onchange="xsPSelAll(this.checked)"> vsi prikazani</label>
+            <span id="xsPSelN" style="color:var(--text-tertiary)"></span>
+            <button id="xsPRun" onclick="xsPRunSel()" style="margin-left:auto;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">🧠 Predlagaj izbrane</button>
+          </div>
+          <div id="xsPList" class="xsA-list"></div>
+        </div>
+        <div>
+          <div id="xsPEmpty" class="card" style="padding:28px;text-align:center;color:var(--text-tertiary);font-size:12.5px">Izberi izdelek na levi ali vpiši SKU zgoraj.<br><span style="font-size:11.5px">Tipke: ↑↓ izdelek · 1–6 izberi dodatek · C kopiraj izbrani SKU · Space označi</span></div>
+          <div id="xsWork" style="display:none">
+            <div id="xsMain" class="card xs-head"></div>
+            <div class="card" style="padding:10px 12px;margin-top:10px">
+              <div id="xsChosen" style="font-size:12.5px;margin-bottom:8px"></div>
+              <div id="xsList"></div>
+              <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px">klik na vrstico = izberi · klik na SKU = kopiraj · razlog AI ob prehodu z miško (💡) · <span id="xsPredMeta"></span></div>
+            </div>
+            <details class="card" style="padding:10px 12px;margin-top:10px"><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text-secondary)">Rezerva · Xsell Google kategorije</summary><div id="xsKat" style="margin-top:8px"></div></details>
           </div>
         </div>
-        <div id="xsShopEditBox" style="display:none;margin-bottom:10px">
-          <div id="xsShopPaste" tabindex="0" onclick="this.focus()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="xsShopImgDrop(event)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" style="border:1.5px dashed var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;background:var(--surface);outline:none">
+      </div>
+
+      <!-- 🏷 KATEGORIJE TRGOVINE: seznam levo (status, množični izbor) · podrobnosti desno -->
+      <div id="xsShop" style="display:none;margin-top:12px">
+        <div id="xsShopEditBox" class="card" style="display:none;padding:12px 14px;margin-bottom:12px">
+          <div id="xsShopPaste" tabindex="0" onclick="this.focus()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="xsShopImgDrop(event)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" class="xs-paste" style="margin-bottom:8px">
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <div style="min-width:0;flex:1"><div style="font-size:12.5px;font-weight:700">🖼 Kategorije iz slike</div>
                 <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">klikni sem in prilepi screenshot (Ctrl+V) · lahko več slik · ali <span onclick="event.stopPropagation();xsShopImgPick()" style="text-decoration:underline">izberi datoteke</span> → AI doda kategorije v seznam spodaj</div></div>
@@ -3031,44 +3096,26 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div id="xsShopImgMsg" style="font-size:11.5px;color:var(--text-tertiary);margin-top:4px"></div>
           </div>
           <textarea id="xsShopTa" rows="8" placeholder="Ena kategorija na vrstico" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
-          <button onclick="xsShopSaveList()" style="margin-top:6px;padding:6px 14px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">💾 Shrani seznam</button>
+          <div style="display:flex;gap:6px;margin-top:6px"><button onclick="xsShopSaveList()" style="padding:6px 14px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">💾 Shrani seznam</button><button onclick="xsShopEdit()" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap">Zapri</button></div>
         </div>
-        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px">Klik na predlog ga označi / odznači (vrstni red klikov = mesto 1, 2, 3 …). Shrani se sproti. CSV vneseš v CMS pri kategoriji.</div>
-        <div id="xsShopList" style="display:flex;flex-direction:column;gap:8px"></div>
-      </div>
-
-      <div id="xsMass" class="card" style="display:none;margin-top:12px;padding:12px 14px">
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-          <span class="slabel" style="margin:0">📋 MASOVNI NAČIN</span>
-          <span id="xsMassChips" style="display:flex;gap:5px;flex-wrap:wrap"></span>
-          <input id="xsMassQ" type="text" placeholder="🔍 išči…" oninput="xsMassRender()" style="margin-left:auto;width:180px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text)">
-        </div>
-        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px">Razvrščeno po obratu (najbolj prodajani najprej). Klik = odpri · "Naslednji ›" skoči na naslednjega brez Xsell, predloge zanj Opus pripravi že v ozadju.</div>
-        <div id="xsMassList" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:3px"></div>
-      </div>
-
-      <div id="xsWork" style="display:none;margin-top:12px">
-        <div class="xs-grid">
-          <div>
-            <div id="xsMain" class="card xs-main"></div>
-            <div style="display:flex;align-items:center;gap:8px;margin:12px 0 4px">
-              <span class="slabel" style="margin:0">PREDLOGI · izberi 1</span>
-              <span id="xsPredMeta" style="font-size:11px;color:var(--text-tertiary)"></span>
-              <button onclick="xsPredlagaj(true)" style="margin-left:auto;padding:5px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-weight:600;cursor:pointer">↻ Ponovno predlagaj</button>
-              <button id="xsNextBtn" onclick="xsNext()" style="display:none;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">Naslednji brez Xsell ›</button>
+        <div class="xsA">
+          <div class="card xsA-l">
+            <div id="xsShopInfo" style="font-size:11px;color:var(--text-tertiary)"></div>
+            <div id="xsKFil" class="xsA-chips" style="margin-top:5px"></div>
+            <input id="xsKQ" type="text" placeholder="🔍 išči kategorijo" oninput="xsShopRender()" style="width:100%;box-sizing:border-box;margin-top:7px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text)">
+            <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
+              <button onclick="xsShopEdit()" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap">✎ Uredi seznam</button>
+              <button id="xsKCopyAll" onclick="xsKCopyAll()" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap">⧉ Izbrani SKU</button>
+              <a href="/xsell-shop-kat-csv" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap">⬇ CSV</a>
             </div>
-            <div id="xsList"></div>
+            <div class="xsA-bar">
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="xsKAll" onchange="xsKSelAll(this.checked)"> vse prikazane</label>
+              <span id="xsKSelN" style="color:var(--text-tertiary)"></span>
+              <button id="xsShopRun" onclick="xsShopPredlagaj()" style="margin-left:auto;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">🧠 Predlagaj izbrane</button>
+            </div>
+            <div id="xsKList" class="xsA-list"></div>
           </div>
-          <div>
-            <div class="card" style="padding:12px;background:#f0fdf4;border-color:#bbf7d0">
-              <div class="slabel" style="margin:0;color:#166534">IZBRANO ZA TA IZDELEK</div>
-              <div id="xsChosen" style="font-size:12.5px;font-weight:700;margin-top:6px"></div>
-            </div>
-            <div class="card" style="padding:12px;margin-top:10px">
-              <div class="slabel" style="margin:0">REZERVA · XSELL KATEGORIJE</div>
-              <div id="xsKat" style="margin-top:6px"></div>
-            </div>
-          </div>
+          <div id="xsKD" class="card" style="padding:12px 14px"></div>
         </div>
       </div>
     </div>
@@ -11000,23 +11047,183 @@ function ssCsv() {
 document.addEventListener('DOMContentLoaded', () => { try { const v = localStorage.getItem('slx_ss_input'); const t = document.getElementById('ssInput'); if (v && t) t.value = v; } catch (e) {} });
 
 // ═══ 🎯 XSELL (Opus 5.5) ═══
-let _xs = { item: null, predlogi: [], izbran: null, kat: null, list: [], filter: 'ni', mass: false, prefetch: {} };
+// Dva zavihka v istem vzorcu: seznam levo (status, množični izbor, Opus za izbrane) · podrobnosti desno.
+let _xs = { item: null, predlogi: [], izbran: null, kat: null, list: [], moj: [], src: 'moj', pf: 'vse', sel: new Set(), run: new Set(), prefetch: {} };
 const xsE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const xsEu = v => v == null ? '—' : Number(v).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
-function xsInit() { try { if (localStorage.getItem('slx_xs_mass') === '1' && !_xs.mass) xsToggleMass(); } catch (e) {} xsPoraba(); }
+const xsN2 = v => v == null ? '—' : Number(v).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const xsUsd = v => (Number(v) || 0).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 3 }) + ' $';
+const xsPct = v => String(Math.round(Number(v) * 100) / 100).replace('.', ',');
+const xsLS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
+const XS_ST = { ok: ['st-ok', '✓'], pr: ['st-pr', ''], no: ['st-no', '—'], run: ['st-run', '⏳'] };
+function xsInit() {
+  _xs.src = xsLS('slx_xs_src') === 'vsi' ? 'vsi' : 'moj';
+  xsTab(xsLS('slx_xs_tab') === 'kat' ? 'kat' : 'izd');
+  xsPoraba();
+}
+function xsTab(t) {
+  xsLS('slx_xs_tab', t);
+  document.getElementById('xsIzd').style.display = t === 'izd' ? '' : 'none';
+  document.getElementById('xsShop').style.display = t === 'kat' ? '' : 'none';
+  ['izd', 'kat'].forEach(x => document.getElementById('xsTab-' + x).classList.toggle('on', x === t));
+  if (t === 'izd' && !_xs.list.length) xsPLoad();
+  if (t === 'kat' && !_xsShop.kat.length) xsShopLoad();
+}
+function xsOpen(q) { xsTab('izd'); xsLoad(q); }
+function xsCopy(el, txt) {
+  navigator.clipboard.writeText(txt).then(() => { if (!el) return; const o = el.innerHTML; el.innerHTML = '✓ kopirano'; setTimeout(() => { el.innerHTML = o; }, 800); }).catch(() => {});
+}
+const xsSkuChip = sku => '<span class="xs-sku xs-cp" data-cp="' + xsE(sku) + '" title="Klik = kopiraj SKU">' + xsE(sku) + ' ⧉</span>';
+document.addEventListener('click', e => {
+  const c = e.target.closest('#orodjaSubpage-xsell .xs-cp[data-cp]'); if (!c) return;
+  e.stopPropagation(); xsCopy(c, c.dataset.cp);
+}, true);
 async function xsPoraba() {
   const el = document.getElementById('xsPoraba'); if (!el) return;
   try {
     const d = await (await fetch('/xsell-poraba')).json(); if (!d.ok) return;
     const pv = d.po_vrsti || {}, iz = pv.izdelek;
-    el.textContent = '💰 Poraba Opus: danes ' + xsUsd(d.danes.usd) + ' (' + d.danes.n + ' klicev) · 7 dni ' + xsUsd(d.d7.usd) + ' · 30 dni ' + xsUsd(d.d30.usd) + ' · skupaj ' + xsUsd(d.skupaj.usd) +
+    el.textContent = '💰 Poraba Opus (Xsell): danes ' + xsUsd(d.danes.usd) + ' (' + d.danes.n + ' klicev) · 7 dni ' + xsUsd(d.d7.usd) + ' · 30 dni ' + xsUsd(d.d30.usd) +
       (iz ? ' · Ø na izdelek ' + xsUsd(iz.povp) : '') + (pv.shop_kat ? ' · Ø paket kategorij ' + xsUsd(pv.shop_kat.povp) : '');
   } catch (e) {}
 }
 function xsNcPill(nc) {
   const c = nc == null ? ['#f1f5f9', '#475569'] : (nc <= 2 ? ['#dcfce7', '#166534'] : (nc <= 3 ? ['#fef3c7', '#92400e'] : ['#fee2e2', '#991b1b']));
   return '<span class="xs-pill" style="background:' + c[0] + ';color:' + c[1] + '">NC ' + xsEu(nc) + '</span>';
+}
+const xsNcTxt = nc => '<span style="color:' + (nc == null ? '#64748b' : (nc <= 2 ? '#166534' : (nc <= 3 ? '#92400e' : '#991b1b'))) + ';font-weight:700">' + xsN2(nc) + '</span>';
+const xsMz = m => m == null ? '—' : '<span style="color:' + (m >= 50 ? '#166534' : (m >= 30 ? '#92400e' : '#991b1b')) + ';font-weight:700">' + Math.round(m) + ' %</span>';
+
+// ── 📦 IZDELKI ──
+async function xsPLoad() {
+  document.getElementById('xsPList').innerHTML = '<div class="xsA-empty">Nalagam Maaarket izdelke …</div>';
+  try {
+    const [a, b] = await Promise.all([fetch('/xsell-seznam').then(r => r.json()), fetch('/xsell-moj-seznam').then(r => r.json())]);
+    if (!a.ok) throw new Error(a.error || 'napaka');
+    _xs.list = a.izdelki || []; _xs.moj = (b && b.g_ids) || [];
+    if (_xs.src === 'moj' && !_xs.moj.length) _xs.src = 'vsi';
+    xsPRender();
+  } catch (e) { document.getElementById('xsPList').innerHTML = '<div class="xsA-empty" style="color:#b91c1c">✗ ' + xsE(e.message) + '</div>'; }
+}
+const xsPSt = x => _xs.run.has(x.g_id) ? 'run' : (x.izbran ? 'ok' : (x.ima_predloge ? 'pr' : 'no'));
+function xsPBase() {
+  if (_xs.src === 'vsi') return _xs.list;
+  const by = {}; _xs.list.forEach(x => { by[x.g_id] = x; });
+  return _xs.moj.map(g => by[g]).filter(Boolean);
+}
+function xsPVis() {
+  const q = (document.getElementById('xsPQ').value || '').toLowerCase().trim();
+  return xsPBase().filter(x => (_xs.pf === 'vse' || xsPSt(x) === _xs.pf) && (!q || (x.sku + ' ' + x.naziv).toLowerCase().includes(q)));
+}
+function xsSetSrc(s) { _xs.src = s; xsLS('slx_xs_src', s); _xs.sel.clear(); xsPRender(); }
+function xsSetPF(f) { _xs.pf = f; xsPRender(); }
+function xsMassRender() { xsPRender(); }   // stari klici (xsLoad, xsIzberi …)
+function xsPRender() {
+  const base = xsPBase(), cnt = { no: 0, pr: 0, ok: 0, run: 0 };
+  base.forEach(x => cnt[xsPSt(x)]++);
+  document.getElementById('xsPSrc').innerHTML =
+    '<span class="xs-chip' + (_xs.src === 'moj' ? ' on' : '') + '" onclick="xsSetSrc(\'moj\')">📌 Moj seznam ' + _xs.moj.length + '</span>' +
+    '<span class="xs-chip' + (_xs.src === 'vsi' ? ' on' : '') + '" onclick="xsSetSrc(\'vsi\')">Vsi po obratu ' + _xs.list.length + '</span>';
+  document.getElementById('xsPFil').innerHTML = [['vse', 'Vse ' + base.length], ['no', 'Brez predlogov ' + cnt.no], ['pr', 'Za izbrati ' + cnt.pr], ['ok', '✓ Izbran ' + cnt.ok]]
+    .map(f => '<span class="xs-chip' + (_xs.pf === f[0] ? ' on' : '') + '" onclick="xsSetPF(\'' + f[0] + '\')">' + f[1] + '</span>').join('');
+  const vis = xsPVis();
+  document.getElementById('xsPList').innerHTML = vis.length ? vis.slice(0, 400).map(x => {
+    const st = xsPSt(x), on = _xs.item && _xs.item.g_id === x.g_id;
+    return '<div class="xsA-row xsA-prow' + (on ? ' on' : '') + '" data-g="' + xsE(x.g_id) + '">' +
+      '<input type="checkbox" data-pg="' + xsE(x.g_id) + '"' + (_xs.sel.has(x.g_id) ? ' checked' : '') + '>' +
+      (x.slika ? '<img loading="lazy" src="' + xsE(x.slika) + '">' : '<span></span>') +
+      '<div style="min-width:0"><div class="xsA-t" title="' + xsE(x.naziv) + '">' + xsE(x.naziv) + '</div><div class="xsA-s">' + xsE(x.sku) + ' · obrat ' + (x.obrat || 0) + '</div></div>' +
+      '<span class="xs-st ' + XS_ST[st][0] + '" title="' + (st === 'ok' ? 'izbran: ' + xsE(x.izbran) : '') + '">' + (st === 'pr' ? 'predlogi' : XS_ST[st][1]) + '</span>' +
+      (_xs.src === 'moj' ? '<span class="xsA-x" data-px="' + xsE(x.g_id) + '" title="odstrani iz mojega seznama">×</span>' : '') + '</div>';
+  }).join('') + (vis.length > 400 ? '<div class="xsA-empty">… prikazanih prvih 400 od ' + vis.length + ' — zoži z iskanjem</div>' : '')
+    : '<div class="xsA-empty">' + (_xs.src === 'moj' && !_xs.moj.length ? 'Moj seznam je prazen — klikni »＋ Dodaj« in prilepi sliko ali SKU-je.' : 'Ni izdelkov v tem filtru.') + '</div>';
+  document.getElementById('xsPSelN').textContent = _xs.sel.size ? _xs.sel.size + ' izbranih' : '';
+  document.getElementById('xsPAll').checked = vis.length > 0 && vis.every(x => _xs.sel.has(x.g_id));
+}
+document.addEventListener('click', e => {
+  const x = e.target.closest('#xsPList .xsA-x[data-px]');
+  if (x) { e.stopPropagation(); xsPMoj([], [x.dataset.px]); return; }
+  if (e.target.closest('#xsPList input[type=checkbox]')) return;
+  const r = e.target.closest('#xsPList .xsA-row[data-g]'); if (r) xsLoad(r.dataset.g);
+});
+document.addEventListener('change', e => {
+  const c = e.target.closest('#xsPList input[data-pg]'); if (!c) return;
+  if (c.checked) _xs.sel.add(c.dataset.pg); else _xs.sel.delete(c.dataset.pg);
+  xsPRender();
+});
+function xsPSelAll(on) { xsPVis().forEach(x => on ? _xs.sel.add(x.g_id) : _xs.sel.delete(x.g_id)); xsPRender(); }
+async function xsPMoj(dodaj, odstrani, pocisti) {
+  try {
+    const d = await (await fetch('/xsell-moj-seznam', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dodaj, odstrani, pocisti: !!pocisti }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    _xs.moj = d.g_ids || []; xsPRender(); if (_xs.item) xsRender();
+  } catch (e) { alert('Moj seznam ni shranjen: ' + e.message); }
+}
+function xsPClear() { if (_xs.moj.length && confirm('Počistim moj seznam (' + _xs.moj.length + ' izdelkov)? Predlogi in izbrani Xsell ostanejo.')) xsPMoj([], [], true); }
+function xsPAddToggle() { const b = document.getElementById('xsPAdd'); b.style.display = b.style.display === 'none' ? '' : 'none'; }
+let _xsPImgs = [];
+async function xsPImgAdd(file) {
+  if (!file || !(file.type || '').startsWith('image/')) return;
+  if (_xsPImgs.length >= 8) { document.getElementById('xsPAddMsg').textContent = 'Največ 8 slik.'; return; }
+  _xsPImgs.push(await semImgPrepare(file)); xsPThumbs();
+}
+function xsPThumbs() {
+  document.getElementById('xsPThumbs').innerHTML = _xsPImgs.map((x, i) =>
+    '<span style="position:relative;display:inline-block"><img src="' + x.url + '" style="height:44px;border-radius:6px;border:1px solid var(--border);display:block">' +
+    '<button onclick="event.stopPropagation();_xsPImgs.splice(' + i + ',1);xsPThumbs()" title="odstrani" class="xs-thx">×</button></span>').join('');
+}
+function xsPImgDrop(e) { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--border)'; [...(e.dataTransfer.files || [])].forEach(xsPImgAdd); }
+function xsPImgPick() { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.multiple = true; i.onchange = () => [...i.files].forEach(xsPImgAdd); i.click(); }
+async function xsPAddRun() {
+  const msg = document.getElementById('xsPAddMsg'), btn = document.getElementById('xsPAddBtn'), ta = document.getElementById('xsPTa');
+  const txt = ta.value.trim();
+  if (!_xsPImgs.length && !txt) { msg.textContent = 'Prilepi sliko (Ctrl+V) ali vpiši SKU-je.'; return; }
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Iščem izdelke…';
+  try {
+    const najdeni = [], nenajdeni = []; let prebrano = 0;
+    if (_xsPImgs.length) {
+      const d = await (await fetch('/xsell-izdelki-iz-slike', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images: _xsPImgs.map(x => ({ data: x.data, media_type: x.media_type })) }) })).json();
+      if (!d.ok) throw new Error(d.error || 'napaka');
+      najdeni.push(...d.najdeni); nenajdeni.push(...d.nenajdeni); prebrano += d.prebrano || 0;
+    }
+    if (txt) {
+      const d = await (await fetch('/xsell-izdelki-najdi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ besedilo: txt }) })).json();
+      if (!d.ok) throw new Error(d.error || 'napaka');
+      najdeni.push(...d.najdeni); nenajdeni.push(...d.nenajdeni);
+    }
+    const nov = najdeni.map(x => x.g_id).filter(g => !_xs.moj.includes(g));
+    await xsPMoj(najdeni.map(x => x.g_id), []);
+    _xsPImgs = []; xsPThumbs(); ta.value = nenajdeni.join('\n');
+    _xs.src = 'moj'; xsLS('slx_xs_src', 'moj'); xsPRender();
+    msg.innerHTML = '✓ Najdenih ' + najdeni.length + (prebrano ? ' (s slike prebranih ' + prebrano + ')' : '') + ', <b>' + nov.length + ' novih</b> v mojem seznamu.' +
+      (nenajdeni.length ? ' <span style="color:#b45309">Nenajdenih ' + nenajdeni.length + ' — ostali so v polju zgoraj (popravi in klikni znova).</span>' : '') +
+      (najdeni.some(x => String(x.kako).startsWith('naziv')) ? ' <span title="' + xsE(najdeni.filter(x => String(x.kako).startsWith('naziv')).map(x => x.vhod + ' → ' + x.sku + ' (' + x.kako + ')').join('\n')) + '" style="text-decoration:underline dotted">po nazivu: ' + najdeni.filter(x => String(x.kako).startsWith('naziv')).length + '</span>' : '');
+  } catch (e) { msg.textContent = '✗ ' + e.message; }
+  finally { btn.disabled = false; btn.textContent = o; }
+}
+async function xsPRunSel() {
+  const ids = [..._xs.sel].filter(g => !_xs.run.has(g));
+  if (!ids.length) { alert('Najprej označi izdelke (kljukica na levi).'); return; }
+  const already = ids.filter(g => { const x = _xs.list.find(y => y.g_id === g); return x && (x.ima_predloge || x.izbran); }).length;
+  if (!confirm('Opus 5.5 pripravi predloge za ' + ids.length + ' izdelkov (~' + xsUsd(ids.length * 0.11) + ')' + (already ? '\n' + already + ' jih že ima predloge — bodo zamenjani.' : '') + '\nNadaljujem?')) return;
+  ids.forEach(g => _xs.run.add(g)); _xs.sel.clear(); xsPRender();
+  let napake = 0; const q = ids.slice();
+  const worker = async () => {
+    while (q.length) {
+      const g = q.shift();
+      try {
+        const d = await (await fetch('/xsell-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ g_id: g }) })).json();
+        if (!d.ok) throw new Error(d.error);
+        const x = _xs.list.find(y => y.g_id === g); if (x) x.ima_predloge = true;
+        if (_xs.item && _xs.item.g_id === g) { _xs.predlogi = d.predlogi || []; xsRender(); }
+      } catch (e) { napake++; }
+      _xs.run.delete(g); xsPRender();
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  xsPoraba();
+  if (napake) alert(napake + ' izdelkov ni uspelo — poskusi jih znova.');
 }
 async function xsLoad(q) {
   q = String(q || '').trim(); if (!q) return;
@@ -11028,63 +11235,66 @@ async function xsLoad(q) {
     _xs.item = d.izdelek; _xs.predlogi = d.predlogi || []; _xs.izbran = d.izbran || null; _xs.kat = d.kategorija;
     document.getElementById('xsQ').value = d.izdelek.sku;
     info.textContent = 'Model: ' + (d.model || 'Opus 5.5') + ' · samo Maaarket na zalogi · šteje samo NC dodatka (idealno 0–2 €, največ 3 €)';
-    document.getElementById('xsWork').style.display = '';
+    document.getElementById('xsWork').style.display = ''; document.getElementById('xsPEmpty').style.display = 'none';
     xsRender();
-    if (!_xs.predlogi.length) xsPredlagaj(false);
-    xsMassRender();
+    if (!_xs.predlogi.length && !_xs.run.has(d.izdelek.g_id)) xsPredlagaj(false);
+    xsPRender();
   } catch (e) { info.innerHTML = '<span style="color:#b91c1c">✗ ' + xsE(e.message) + '</span>'; }
 }
 async function xsPredlagaj(force) {
   if (!_xs.item) return;
   const gid = _xs.item.g_id;
-  document.getElementById('xsList').innerHTML = '<div class="card" style="padding:22px;text-align:center;color:var(--text-tertiary);font-size:12.5px">🧠 Opus 5.5 izbira najboljše dodatke … (10–40 s)</div>';
+  document.getElementById('xsList').innerHTML = '<div class="xsA-empty">🧠 Opus 5.5 izbira najboljše dodatke … (10–40 s)</div>';
   document.getElementById('xsPredMeta').textContent = '';
+  _xs.run.add(gid); xsPRender();
   try {
-    let d = (!force && _xs.prefetch[gid]) ? await _xs.prefetch[gid] : null;
-    if (!d || !d.ok) d = await (await fetch('/xsell-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ g_id: gid }) })).json();
-    delete _xs.prefetch[gid];
+    const d = await (await fetch('/xsell-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ g_id: gid }) })).json();
     if (!d.ok) throw new Error(d.error || 'napaka');
+    const li = _xs.list.find(x => x.g_id === gid); if (li) li.ima_predloge = true;
     if (!_xs.item || _xs.item.g_id !== gid) return;           // vmes odprt drug izdelek
     _xs.predlogi = d.predlogi || [];
-    const li = _xs.list.find(x => x.g_id === gid); if (li) li.ima_predloge = true;
     xsRender();
-    document.getElementById('xsPredMeta').textContent = (d.n_a != null ? d.n_a + ' kandidatov po pravilih · ' + d.n_b + ' dražjih' : '') + (d.usd ? ' · klic ~' + xsUsd(d.usd) : '');
+    document.getElementById('xsPredMeta').textContent = (d.n_a != null ? d.n_a + ' kandidatov · ' + d.n_b + ' dražjih' : '') + (d.usd ? ' · klic ~' + xsUsd(d.usd) : '');
     xsPoraba();
-  } catch (e) { document.getElementById('xsList').innerHTML = '<div class="card" style="padding:14px;color:#b91c1c;font-size:12.5px">✗ ' + xsE(e.message) + '</div>'; }
+  } catch (e) { if (_xs.item && _xs.item.g_id === gid) document.getElementById('xsList').innerHTML = '<div class="xsA-empty" style="color:#b91c1c">✗ ' + xsE(e.message) + '</div>'; }
+  finally { _xs.run.delete(gid); xsPRender(); }
+}
+function xsNextOpen() {
+  const vis = xsPVis(), i = _xs.item ? vis.findIndex(x => x.g_id === _xs.item.g_id) : -1;
+  const n = vis.find((x, j) => j > i && xsPSt(x) !== 'ok');
+  if (n) xsLoad(n.g_id); else alert('V tem seznamu ni več izdelkov brez izbranega Xsell 🎉');
 }
 function xsRender() {
   const it = _xs.item; if (!it) return;
+  const inMoj = _xs.moj.includes(it.g_id);
   document.getElementById('xsMain').innerHTML = (it.slika ? '<img src="' + xsE(it.slika) + '">' : '') +
     '<div style="min-width:0;flex:1"><div style="font-weight:700;font-size:14px">' + xsE(it.naziv) + '</div>' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;align-items:center"><span class="xs-sku">' + xsE(it.sku) + '</span>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;align-items:center">' + xsSkuChip(it.sku) +
     '<span class="xs-pill" style="background:#eef2ff;color:#3730a3">' + xsEu(it.cena) + '</span>' + xsNcPill(it.nc) +
     '<span class="xs-pill" style="background:#f1f5f9;color:#334155">zaloga ' + (it.zaloga || 0) + '</span>' +
-    '<span class="xs-pill" style="background:#f1f5f9;color:#334155">' + xsE(it.kat_ime) + '</span></div></div>';
-  document.getElementById('xsList').innerHTML = _xs.predlogi.length ? _xs.predlogi.map((p, i) => {
-    const m = p.nc != null ? Math.round((4.99 / 1.22 - p.nc) / (4.99 / 1.22) * 100) : null;   // marža pri Xsell ceni 4,99 €
-    return '<div class="xs-it' + (_xs.izbran === p.sku ? ' sel' : '') + '" data-xs="' + xsE(p.sku) + '"><div class="xs-rk">' + (i === 0 ? '⭐' : (i + 1)) + '</div>' +
-      (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '<div style="width:52px;height:52px;border-radius:8px;background:#f1f5f9"></div>') +
-      '<div style="min-width:0"><div style="font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + xsE(p.naziv) + '">' + xsE(p.naziv) + '</div>' +
-      '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;align-items:center"><span class="xs-sku">' + xsE(p.sku) + '</span>' +
-      xsNcPill(p.nc) +
-      (m != null ? '<span class="xs-pill" style="background:#f1f5f9;color:#334155" title="Marža, če se dodatek prodaja po Xsell ceni 4,99 €">marža pri 4,99 € ' + m + ' %</span>' : '') +
-      '<span class="xs-pill" style="background:#f1f5f9;color:#334155">zaloga ' + (p.zaloga || 0) + '</span>' +
-      (p.drazji ? '<span class="xs-pill" style="background:#fee2e2;color:#991b1b">NC nad 3 €</span>' : '') + '</div>' +
-      '<div style="font-size:11.5px;color:var(--text-secondary);margin-top:3px">💡 ' + xsE(p.razlog) + '</div></div>' +
-      '<div class="xs-pick">' + (_xs.izbran === p.sku ? '✓ izbrano' : 'izberi') + '</div></div>';
-  }).join('') : '';
+    '<span class="xs-pill" style="background:#f1f5f9;color:#334155">' + xsE(it.kat_ime) + '</span></div></div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">' +
+    '<button class="xs-b" onclick="xsPMoj(' + (inMoj ? '[],[\'' + xsE(it.g_id) + '\']' : '[\'' + xsE(it.g_id) + '\'],[]') + ')">' + (inMoj ? '📌 v mojem seznamu ✕' : '📌 dodaj v moj seznam') + '</button>' +
+    '<button class="xs-b" onclick="xsPredlagaj(true)">↻ Ponovno predlagaj</button>' +
+    '<button class="xs-b xs-bp" onclick="xsNextOpen()">Naslednji brez Xsell ›</button></div>';
   const ch = _xs.predlogi.find(p => p.sku === _xs.izbran);
   document.getElementById('xsChosen').innerHTML = _xs.izbran
-    ? xsE(ch ? ch.naziv : _xs.izbran) + ' <span class="xs-sku">' + xsE(_xs.izbran) + '</span>' +
-      '<div style="display:flex;gap:6px;margin-top:8px"><button onclick="navigator.clipboard.writeText(\'' + xsE(_xs.izbran) + '\')" style="padding:5px 10px;border:1.5px solid var(--accent);color:var(--accent);background:#fff;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">⧉ Kopiraj SKU</button>' +
-      '<button onclick="xsIzberi(null)" style="padding:5px 10px;border:1px solid var(--border);color:var(--text-secondary);background:#fff;border-radius:7px;font-size:11.5px;cursor:pointer">✕ Odstrani</button></div>'
-    : '<span style="font-weight:500;color:var(--text-tertiary)">Še nič — klikni predlog na levi.' + (_xs.kat && _xs.kat.items && _xs.kat.items.length ? ' Do takrat velja Xsell kategorije.' : '') + '</span>';
+    ? '<span class="xs-st st-ok">✓ Izbran Xsell</span> <b>' + xsE(ch ? ch.naziv : _xs.izbran) + '</b> ' + xsSkuChip(_xs.izbran) + ' <button class="xs-b" onclick="xsIzberi(null)">✕ odstrani</button>'
+    : '<span class="xs-st st-no">še ni izbran</span> <span style="color:var(--text-tertiary)">izberi dodatek v tabeli (tipka 1–6)' + (_xs.kat && _xs.kat.items && _xs.kat.items.length ? ' · do takrat velja Xsell Google kategorije' : '') + '</span>';
+  document.getElementById('xsList').innerHTML = _xs.predlogi.length
+    ? '<table class="xs-tbl"><thead><tr><th style="width:26px">#</th><th>dodatek</th><th>SKU</th><th class="r">NC</th><th class="r" title="Marža, če se dodatek prodaja po Xsell ceni 4,99 €">marža 4,99</th><th class="r">zaloga</th><th></th></tr></thead><tbody>' +
+      _xs.predlogi.map((p, i) => {
+        const m = p.nc != null ? (4.99 / 1.22 - p.nc) / (4.99 / 1.22) * 100 : null, sel = _xs.izbran === p.sku;
+        return '<tr class="' + (sel ? 'sel' : '') + '" data-xs="' + xsE(p.sku) + '"><td class="xs-rk">' + (sel ? '✓' : (i + 1)) + '</td>' +
+          '<td><div class="xs-nm">' + (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '') + '<span title="' + xsE(p.naziv) + '">' + xsE(p.naziv) + '</span>' + (p.razlog ? '<span class="xs-why" title="💡 ' + xsE(p.razlog) + '">💡</span>' : '') + (p.drazji ? '<span class="xs-st st-run" title="NC nad 3 €">NC&gt;3</span>' : '') + '</div></td>' +
+          '<td>' + xsSkuChip(p.sku) + '</td><td class="r">' + xsNcTxt(p.nc) + '</td><td class="r">' + xsMz(m) + '</td><td class="r">' + (p.zaloga || 0) + '</td>' +
+          '<td class="r"><button class="xs-b' + (sel ? ' xs-bok' : '') + '">' + (sel ? '✓ izbran' : 'izberi') + '</button></td></tr>';
+      }).join('') + '</tbody></table>'
+    : (_xs.run.has(it.g_id) ? '<div class="xsA-empty">🧠 Opus 5.5 izbira najboljše dodatke …</div>' : '<div class="xsA-empty">Še ni predlogov — klikni »↻ Ponovno predlagaj«.</div>');
   xsKatRender();
-  document.getElementById('xsNextBtn').style.display = _xs.mass ? '' : 'none';
 }
 document.addEventListener('click', e => {
-  const r = e.target.closest('#xsList .xs-it[data-xs]'); if (r) { xsIzberi(r.dataset.xs); return; }
-  const m = e.target.closest('#xsMassList .xs-mrow[data-g]'); if (m) { xsLoad(m.dataset.g); return; }
+  const r = e.target.closest('#xsList tr[data-xs]'); if (r) { const s = r.dataset.xs; xsIzberi(_xs.izbran === s ? null : s); return; }
   const k = e.target.closest('#xsKat input[data-kx]'); if (k) { xsKatCount(); }
 });
 async function xsIzberi(sku) {
@@ -11095,24 +11305,24 @@ async function xsIzberi(sku) {
     _xs.izbran = sku || null;
     const li = _xs.list.find(x => x.g_id === _xs.item.g_id);
     if (li) { li.izbran = _xs.izbran; li.vir = _xs.izbran ? 'izdelek' : (_xs.kat && _xs.kat.items && _xs.kat.items.length ? 'kategorija' : 'ni'); }
-    xsRender(); xsMassRender();
+    xsRender(); xsPRender();
   } catch (e) { alert('Shranjevanje ni uspelo: ' + e.message); }
 }
-// ── rezerva: Xsell kategorije ──
+// ── rezerva: Xsell Google kategorije ──
 let _xsKatPred = null;
 function xsKatRender() {
   const k = _xs.kat, box = document.getElementById('xsKat'); if (!k) { box.innerHTML = ''; return; }
   let h = '<div style="font-size:12.5px;font-weight:700">' + xsE(k.ime) + '</div>';
   h += (k.items && k.items.length)
-    ? '<div style="font-size:12px;line-height:1.7;margin-top:4px">' + k.items.map((x, i) => (i + 1) + '. ' + xsE(x.naziv).slice(0, 48) + ' · ' + xsNcPill(x.nc)).join('<br>') + '</div>'
+    ? '<div style="font-size:12px;line-height:1.8;margin-top:4px">' + k.items.map((x, i) => (i + 1) + '. ' + xsE(x.naziv).slice(0, 60) + ' ' + xsSkuChip(x.sku) + ' ' + xsNcPill(x.nc)).join('<br>') + '</div>'
     : '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:3px">Kategorija še nima Xsell.</div>';
   if (_xsKatPred && _xsKatPred.kat === k.kat) {
     h += '<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;font-size:11px;color:var(--text-tertiary)">Označi do 5 (vrstni red = prednost):</div>' +
       _xsKatPred.items.map(p => '<label style="display:flex;gap:6px;align-items:flex-start;font-size:11.5px;margin-top:5px;cursor:pointer"><input type="checkbox" data-kx="' + xsE(p.sku) + '"' + ((k.items || []).some(x => x.sku === p.sku) ? ' checked' : '') + '>' +
-        '<span><b>' + xsE(p.naziv).slice(0, 44) + '</b> · ' + xsNcPill(p.nc) + '<br><span style="color:var(--text-tertiary)">💡 ' + xsE(p.razlog) + '</span></span></label>').join('') +
-      '<button onclick="xsKatShrani()" id="xsKatSave" style="margin-top:8px;width:100%;padding:6px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">💾 Shrani za kategorijo</button>';
+        '<span><b>' + xsE(p.naziv).slice(0, 60) + '</b> · ' + xsNcPill(p.nc) + '<br><span style="color:var(--text-tertiary)">💡 ' + xsE(p.razlog) + '</span></span></label>').join('') +
+      '<button onclick="xsKatShrani()" id="xsKatSave" class="xs-b xs-bp" style="margin-top:8px">💾 Shrani za kategorijo</button>';
   } else {
-    h += '<button onclick="xsKatPredlagaj()" style="margin-top:8px;width:100%;padding:6px;background:transparent;color:var(--accent);border:1.5px solid var(--accent);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">✨ ' + ((k.items && k.items.length) ? 'Uredi' : 'Predlagaj') + ' za kategorijo</button>';
+    h += '<button onclick="xsKatPredlagaj()" class="xs-b" style="margin-top:8px">✨ ' + ((k.items && k.items.length) ? 'Uredi' : 'Predlagaj') + ' za kategorijo</button>';
   }
   box.innerHTML = h;
 }
@@ -11136,134 +11346,159 @@ async function xsKatShrani() {
     k.items = sel.map(s => _xsKatPred.items.find(p => p.sku === s)).filter(Boolean);
     _xsKatPred = null;
     _xs.list.forEach(x => { if (x.kat_ime === k.ime && !x.izbran) x.vir = k.items.length ? 'kategorija' : 'ni'; });
-    xsRender(); xsMassRender();
+    xsRender(); xsPRender();
   } catch (e) { alert('Shranjevanje ni uspelo: ' + e.message); }
 }
-// ── masovni način ──
-async function xsToggleMass() {
-  _xs.mass = !_xs.mass;
-  try { localStorage.setItem('slx_xs_mass', _xs.mass ? '1' : '0'); } catch (e) {}
-  document.getElementById('xsMass').style.display = _xs.mass ? '' : 'none';
-  document.getElementById('xsMassBtn').style.cssText += _xs.mass ? ';background:var(--accent);color:#fff;border-color:var(--accent)' : ';background:transparent;color:var(--text-secondary);border-color:var(--border)';
-  if (_xs.mass && !_xs.list.length) {
-    document.getElementById('xsMassList').innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);padding:10px">Nalagam Maaarket izdelke …</div>';
-    try { const d = await (await fetch('/xsell-seznam')).json(); if (!d.ok) throw new Error(d.error || 'napaka'); _xs.list = d.izdelki || []; }
-    catch (e) { document.getElementById('xsMassList').innerHTML = '<div style="color:#b91c1c;font-size:12px;padding:10px">✗ ' + xsE(e.message) + '</div>'; return; }
-  }
-  xsMassRender(); if (_xs.item) xsRender();
-}
-function xsSetFilter(f) { _xs.filter = f; xsMassRender(); }
-function _xsMassVis() {
-  const q = (document.getElementById('xsMassQ').value || '').toLowerCase().trim();
-  return _xs.list.filter(x => (_xs.filter === 'vsi' || (_xs.filter === 'ni' ? x.vir !== 'izdelek' : x.vir === 'izdelek')) &&
-    (!q || (x.sku + ' ' + x.naziv).toLowerCase().includes(q)));
-}
-function xsMassRender() {
-  if (!_xs.mass) return;
-  const n = { ni: _xs.list.filter(x => x.vir !== 'izdelek').length, z: _xs.list.filter(x => x.vir === 'izdelek').length };
-  document.getElementById('xsMassChips').innerHTML =
-    '<span class="xs-chip' + (_xs.filter === 'ni' ? ' on' : '') + '" onclick="xsSetFilter(\'ni\')">Brez Xsell ' + n.ni + '</span>' +
-    '<span class="xs-chip' + (_xs.filter === 'z' ? ' on' : '') + '" onclick="xsSetFilter(\'z\')">Z Xsell ' + n.z + '</span>' +
-    '<span class="xs-chip' + (_xs.filter === 'vsi' ? ' on' : '') + '" onclick="xsSetFilter(\'vsi\')">Vsi ' + _xs.list.length + '</span>';
-  const vis = _xsMassVis();
-  document.getElementById('xsMassList').innerHTML = vis.length ? vis.map(x => {
-    const v = x.vir === 'izdelek' ? ['✓ ' + xsE(x.izbran), '#dcfce7', '#166534'] : (x.vir === 'kategorija' ? ['kategorija', '#e0e7ff', '#3730a3'] : ['brez', '#fef3c7', '#92400e']);
-    return '<div class="xs-mrow' + (_xs.item && _xs.item.g_id === x.g_id ? ' on' : '') + '" data-g="' + xsE(x.g_id) + '">' + (x.slika ? '<img loading="lazy" src="' + xsE(x.slika) + '">' : '<span></span>') +
-      '<div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span class="xs-sku">' + xsE(x.sku) + '</span> ' + xsE(x.naziv) + '</div>' +
-      '<div style="font-size:10.5px;color:var(--text-tertiary)">' + xsEu(x.cena) + ' · obrat ' + (x.obrat || 0) + ' · ' + xsE(x.kat_ime) + (x.ima_predloge ? ' · predlogi pripravljeni' : '') + '</div></div>' +
-      '<span class="xs-pill" style="background:' + v[1] + ';color:' + v[2] + '">' + v[0] + '</span><span></span></div>';
-  }).join('') : '<div style="font-size:12px;color:var(--text-tertiary);padding:10px">Ni izdelkov v tem filtru.</div>';
-  xsPrefetchNext();
-}
-function _xsNextItem() {
-  const brez = _xs.list.filter(x => x.vir !== 'izdelek');
-  const i = _xs.item ? brez.findIndex(x => x.g_id === _xs.item.g_id) : -1;
-  return brez.find((x, j) => j > i && (!_xs.item || x.g_id !== _xs.item.g_id)) || null;
-}
-function xsNext() { const n = _xsNextItem(); if (n) xsLoad(n.g_id); else alert('Vsi izdelki imajo Xsell 🎉'); }
-// predloge za naslednji izdelek Opus pripravi v ozadju → ob "Naslednji ›" so takoj tu
-function xsPrefetchNext() {
-  if (!_xs.mass || !_xs.item) return;
-  const n = _xsNextItem(); if (!n || n.ima_predloge || _xs.prefetch[n.g_id]) return;
-  _xs.prefetch[n.g_id] = fetch('/xsell-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ g_id: n.g_id }) })
-    .then(r => r.json()).then(d => { if (d.ok) n.ima_predloge = true; return d; }).catch(() => null);
-}
 
-// ── 🏷 Kategorije iz trgovine ──
-let _xsShop = { kat: [], open: false };
-async function xsShopToggle() {
-  _xsShop.open = !_xsShop.open;
-  document.getElementById('xsShop').style.display = _xsShop.open ? '' : 'none';
-  const b = document.getElementById('xsShopBtn');
-  b.style.background = _xsShop.open ? 'var(--accent)' : 'transparent'; b.style.color = _xsShop.open ? '#fff' : 'var(--text-secondary)';
-  if (_xsShop.open) xsShopLoad();
-}
+// ── 🏷 KATEGORIJE TRGOVINE ──
+let _xsShop = { kat: [], cur: null, f: 'vse', sel: new Set(), run: new Set() };
+const xsKSt = k => _xsShop.run.has(k.ime) ? 'run' : (k.zakljuceno ? 'ok' : (k.predlogi.length ? 'pr' : 'no'));
 async function xsShopLoad() {
-  document.getElementById('xsShopList').innerHTML = '<div style="font-size:12px;color:var(--text-tertiary)">Nalagam …</div>';
+  document.getElementById('xsKList').innerHTML = '<div class="xsA-empty">Nalagam …</div>';
   try {
     const d = await (await fetch('/xsell-shop-kat')).json(); if (!d.ok) throw new Error(d.error || 'napaka');
     _xsShop.kat = d.kategorije || [];
-    const nP = _xsShop.kat.filter(k => k.predlogi.length).length, nI = _xsShop.kat.filter(k => k.izbrani.length).length;
-    document.getElementById('xsShopInfo').textContent = _xsShop.kat.length + ' kategorij · ' + nP + ' s predlogi · ' + nI + ' urejenih' + (d.at ? ' · predlogi ' + String(d.at).slice(0, 16).replace('T', ' ') : '');
+    if (!_xsShop.kat.some(k => k.ime === _xsShop.cur)) _xsShop.cur = _xsShop.kat.length ? _xsShop.kat[0].ime : null;
+    document.getElementById('xsShopInfo').textContent = _xsShop.kat.length + ' kategorij' + (d.at ? ' · zadnji predlogi ' + String(d.at).slice(0, 16).replace('T', ' ') : '');
     xsShopRender();
-  } catch (e) { document.getElementById('xsShopList').innerHTML = '<div style="color:#b91c1c;font-size:12px">✗ ' + xsE(e.message) + '</div>'; }
+  } catch (e) { document.getElementById('xsKList').innerHTML = '<div class="xsA-empty" style="color:#b91c1c">✗ ' + xsE(e.message) + '</div>'; }
 }
+function xsKVis() {
+  const q = (document.getElementById('xsKQ').value || '').toLowerCase().trim();
+  return _xsShop.kat.filter(k => (_xsShop.f === 'vse' || xsKSt(k) === _xsShop.f) && (!q || k.ime.toLowerCase().includes(q)));
+}
+function xsKSetF(f) { _xsShop.f = f; xsShopRender(); }
+function xsKSelAll(on) { xsKVis().forEach(k => on ? _xsShop.sel.add(k.ime) : _xsShop.sel.delete(k.ime)); xsShopRender(); }
+function xsKOpen(ime) { _xsShop.cur = ime; xsShopRender(); }
 function xsShopRender() {
-  document.getElementById('xsShopList').innerHTML = _xsShop.kat.map((k, ki) => {
-    const pl = k.predlogi.length ? k.predlogi.map((p, pi) => {
-      const i = k.izbrani.indexOf(p.sku);
-      const m = p.nc != null ? Math.round((4.99 / 1.22 - p.nc) / (4.99 / 1.22) * 100) : null;   // marža pri Xsell ceni 4,99 €
-      const izj = (k.popust_izd || {})[p.sku], pct = izj != null ? izj : k.popust, xp = xsPopCena(p, pct);
-      return '<div class="xs-it' + (i >= 0 ? ' sel' : '') + '" data-kk="' + ki + '" data-ks="' + xsE(p.sku) + '"><div class="xs-rk">' + (pi === 0 ? '⭐' : (pi + 1)) + '</div>' +
-        (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '<div style="width:52px;height:52px;border-radius:8px;background:#f1f5f9"></div>') +
-        '<div style="min-width:0"><div style="font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + xsE(p.naziv) + '">' + xsE(p.naziv) + '</div>' +
-        '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;align-items:center"><span class="xs-sku">' + xsE(p.sku) + '</span>' +
-        xsNcPill(p.nc) +
-        (xp ? '<span class="xs-pill" style="background:#ede9fe;color:#4c1d95" title="Redna (prodajna) cena ' + xsEu(xp.redna) + ' − ' + xsPct(pct) + ' % (' + (izj != null ? 'izjema za ta dodatek' : 'popust kategorije') + ')">Xsell SLO ' + xsEu(xp.cena) + ' <span style="font-weight:600;opacity:.75">(−' + xsPct(pct) + ' % od ' + xsEu(xp.redna) + ')</span></span>' +
-              (xp.marza != null ? '<span class="xs-pill" style="background:' + (xp.marza >= 50 ? '#dcfce7;color:#166534' : (xp.marza >= 30 ? '#fef3c7;color:#92400e' : '#fee2e2;color:#991b1b')) + '">marža ' + Math.round(xp.marza) + ' %</span>' : '')
-            : (m != null ? '<span class="xs-pill" style="background:#f1f5f9;color:#334155" title="Marža, če se dodatek prodaja po Xsell ceni 4,99 €">marža pri 4,99 € ' + m + ' %</span>' : '')) +
-        '<span class="xs-pill" style="background:#f1f5f9;color:#334155">zaloga ' + (p.zaloga || 0) + '</span>' +
-        (p.akcija && xp ? '<span class="xs-pill" style="background:#fff7ed;color:#9a3412" title="Popust v CMS gre na redno ceno, ne na akcijsko">zdaj v akciji ' + xsEu(p.akcija) + '</span>' : '') +
-        (p.nc != null && p.nc > 3 ? '<span class="xs-pill" style="background:#fee2e2;color:#991b1b">NC nad 3 €</span>' : '') + '</div>' +
-        (p.razlog ? '<div style="font-size:11.5px;color:var(--text-secondary);margin-top:3px">💡 ' + xsE(p.razlog) + '</div>' : '') + '</div>' +
-        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">' +
-        '<div class="xs-pick">' + (i >= 0 ? '✓ mesto ' + (i + 1) : 'izberi') + '</div>' +
-        '<label class="xs-pi" title="Izjema: drug popust samo za ta dodatek (prazno = popust kategorije)">popust <input type="number" min="0" max="99" step="1" data-pk="' + ki + '" data-ps="' + xsE(p.sku) + '" value="' + (izj != null ? izj : '') + '" placeholder="' + (k.popust != null ? xsPct(k.popust) : '–') + '"> %</label></div></div>';
-    }).join('') : '<span style="font-size:11.5px;color:var(--text-tertiary)">Še brez predlogov — klikni "Predlagaj za vse".</span>';
-    return '<div class="xs-kat"><div class="xs-kat-h"><b style="font-size:13px">' + xsE(k.ime) + '</b>' +
-      (k.izbrani.length ? '<span class="xs-pill" style="background:#dcfce7;color:#166534">✓ ' + k.izbrani.length + ' izbranih</span>' : '') +
-      '<label class="xs-pk" title="Popust na redno (prodajno) ceno — enako kot »Popust na ceno« v CMS pri Xsell kategorije">Popust na ceno <input type="number" min="0" max="99" step="1" data-pk="' + ki + '" value="' + (k.popust != null ? k.popust : '') + '" placeholder="npr. 45"> %</label>' +
-      '<button onclick="xsShopPredlagaj([' + ki + '])" style="margin-left:auto;padding:3px 9px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer">↻</button></div>' + pl + '</div>';
-  }).join('');
+  const cnt = { no: 0, pr: 0, ok: 0, run: 0 }; _xsShop.kat.forEach(k => cnt[xsKSt(k)]++);
+  document.getElementById('xsKFil').innerHTML = [['vse', 'Vse ' + _xsShop.kat.length], ['no', 'Brez predlogov ' + cnt.no], ['pr', 'Za izbrati ' + cnt.pr], ['ok', '✓ Zaključene ' + cnt.ok]]
+    .map(f => '<span class="xs-chip' + (_xsShop.f === f[0] ? ' on' : '') + '" onclick="xsKSetF(\'' + f[0] + '\')">' + f[1] + '</span>').join('') +
+    (cnt.run ? '<span class="xs-st st-run">⏳ ' + cnt.run + '</span>' : '');
+  const vis = xsKVis();
+  document.getElementById('xsKList').innerHTML = vis.length ? vis.map(k => {
+    const st = xsKSt(k);
+    const lbl = st === 'ok' ? '✓ ' + k.izbrani.length : (st === 'pr' ? k.izbrani.length + '/' + k.predlogi.length : XS_ST[st][1]);
+    return '<div class="xsA-row' + (k.ime === _xsShop.cur ? ' on' : '') + '" data-ki="' + xsE(k.ime) + '">' +
+      '<input type="checkbox" data-kc="' + xsE(k.ime) + '"' + (_xsShop.sel.has(k.ime) ? ' checked' : '') + '>' +
+      '<div class="xsA-t">' + xsE(k.ime) + (k.popust != null ? ' <span class="xsA-s">−' + xsPct(k.popust) + ' %</span>' : '') + '</div>' +
+      '<span class="xs-st ' + XS_ST[st][0] + '">' + lbl + '</span></div>';
+  }).join('') : '<div class="xsA-empty">Ni kategorij v tem filtru.</div>';
+  document.getElementById('xsKSelN').textContent = _xsShop.sel.size ? _xsShop.sel.size + ' izbranih' : '';
+  document.getElementById('xsKAll').checked = vis.length > 0 && vis.every(k => _xsShop.sel.has(k.ime));
+  xsKDRender();
+}
+function xsKDRender() {
+  const box = document.getElementById('xsKD'), k = _xsShop.kat.find(x => x.ime === _xsShop.cur);
+  if (!k) { box.innerHTML = '<div class="xsA-empty">Izberi kategorijo na levi.</div>'; return; }
+  const st = xsKSt(k), ki = _xsShop.kat.indexOf(k);
+  const stLbl = { ok: '✓ Zaključeno · ' + k.izbrani.length + ' izbranih', pr: 'Za izbrati · ' + k.izbrani.length + ' izbranih', no: 'Brez predlogov', run: '⏳ Opus dela …' }[st];
+  let h = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
+    '<b style="font-size:15px">' + xsE(k.ime) + '</b><span class="xs-st ' + XS_ST[st][0] + '">' + stLbl + '</span>' +
+    '<label class="xs-pk" title="Popust na redno (prodajno) ceno — enako kot »Popust na ceno« v CMS pri Xsell kategorije">Popust na ceno <input type="number" min="0" max="99" step="1" data-pk="' + ki + '" value="' + (k.popust != null ? k.popust : '') + '" placeholder="npr. 45"> %</label>' +
+    '<span style="flex:1"></span>' +
+    (k.izbrani.length ? '<button class="xs-b" onclick="xsCopy(this, ' + xsE(JSON.stringify(k.izbrani.join('\n'))).replace(/&quot;/g, '&quot;') + ')">⧉ Kopiraj izbrane SKU</button>' : '') +
+    '<button class="xs-b" onclick="xsShopPredlagaj([\'' + xsE(k.ime).replace(/'/g, "\\'") + '\'])">↻ Predlagaj</button>' +
+    (st === 'ok' ? '<button class="xs-b" onclick="xsKZakljuci(false)">↺ Znova odpri</button>' : '<button class="xs-b xs-bok" onclick="xsKZakljuci(true)">✓ Zaključi</button>') + '</div>';
+  if (!k.predlogi.length) {
+    h += '<div class="xsA-empty">' + (st === 'run' ? '🧠 Opus 5.5 pripravlja predloge …' : 'Še ni predlogov — klikni »↻ Predlagaj« ali označi več kategorij na levi in »🧠 Predlagaj izbrane«.') + '</div>';
+  } else {
+    h += '<table class="xs-tbl"><thead><tr><th style="width:34px" title="mesto v Xsell (vrstni red klikov)">mesto</th><th>dodatek</th><th>SKU</th><th class="r">NC</th><th class="r" title="Redna cena − popust (klik = izjema samo za ta dodatek)">Xsell SLO</th><th class="r">marža</th><th class="r">zaloga</th><th></th></tr></thead><tbody>' +
+      k.predlogi.map(p => {
+        const i = k.izbrani.indexOf(p.sku), izj = (k.popust_izd || {})[p.sku], pct = izj != null ? izj : k.popust, xp = xsPopCena(p, pct);
+        const m = xp ? xp.marza : (p.nc != null ? (4.99 / 1.22 - p.nc) / (4.99 / 1.22) * 100 : null);
+        return '<tr class="' + (i >= 0 ? 'sel' : '') + '" data-ks="' + xsE(p.sku) + '"><td class="xs-rk">' + (i >= 0 ? (i + 1) : '') + '</td>' +
+          '<td><div class="xs-nm">' + (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '') + '<span title="' + xsE(p.naziv) + '">' + xsE(p.naziv) + '</span>' + (p.razlog ? '<span class="xs-why" title="💡 ' + xsE(p.razlog) + '">💡</span>' : '') + '</div></td>' +
+          '<td>' + xsSkuChip(p.sku) + '</td><td class="r">' + xsNcTxt(p.nc) + '</td>' +
+          '<td class="r xs-izj" data-iz="' + xsE(p.sku) + '" title="' + (xp ? xsEu(xp.redna) + ' − ' + xsPct(pct) + ' %' + (izj != null ? ' (izjema)' : '') : 'vpiši popust kategorije') + (p.akcija ? ' · zdaj v akciji ' + xsEu(p.akcija) + ' (popust gre na redno ceno)' : '') + ' · klik = izjema">' +
+            (xp ? '<b>' + xsEu(xp.cena) + '</b>' + (izj != null ? '<sup style="color:#7c3aed">*</sup>' : '') + (p.akcija ? ' <span style="color:#c2410c">!</span>' : '') : '<span style="color:var(--text-tertiary)">—</span>') + '</td>' +
+          '<td class="r" title="' + (xp ? 'marža pri Xsell SLO ceni' : 'marža pri 4,99 € (ni popusta)') + '">' + xsMz(m) + (xp ? '' : '<span style="color:var(--text-tertiary);font-size:10px"> @4,99</span>') + '</td>' +
+          '<td class="r">' + (p.zaloga || 0) + '</td>' +
+          '<td class="r"><button class="xs-b' + (i >= 0 ? ' xs-bok' : '') + '">' + (i >= 0 ? '✓ mesto ' + (i + 1) : 'izberi') + '</button></td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+  h += '<div style="font-size:11px;color:var(--text-tertiary);margin-top:8px">klik na vrstico = izberi / odstrani (vrstni red = mesto) · klik na SKU = kopiraj · klik na Xsell SLO = izjema popusta · tipke: ↑↓ kategorija · 1–6 izberi · C kopiraj izbrane · Enter zaključi · Space označi</div>';
+  box.innerHTML = h;
 }
 document.addEventListener('click', e => {
-  if (e.target.closest('#xsShopList label')) return;   // polje za popust
-  const c = e.target.closest('#xsShopList .xs-it[data-ks]'); if (!c) return;
-  const k = _xsShop.kat[+c.dataset.kk]; if (!k) return;
-  const s = c.dataset.ks, i = k.izbrani.indexOf(s);
-  if (i >= 0) k.izbrani.splice(i, 1); else k.izbrani.push(s);
-  xsShopRender();
-  fetch('/xsell-shop-kat-shrani', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ime: k.ime, items: k.izbrani }) }).catch(() => {});
+  if (e.target.closest('#xsKList input[type=checkbox]')) return;
+  const r = e.target.closest('#xsKList .xsA-row[data-ki]'); if (r) { xsKOpen(r.dataset.ki); return; }
+  if (e.target.closest('#xsKD label')) return;
+  const iz = e.target.closest('#xsKD td.xs-izj[data-iz]'); if (iz) { e.stopPropagation(); xsKIzjema(iz.dataset.iz); return; }
+  const t = e.target.closest('#xsKD tr[data-ks]'); if (t) xsKToggle(t.dataset.ks);
 });
-const xsPct = v => String(Math.round(Number(v) * 100) / 100).replace('.', ',');
-function xsPopCena(p, pct) {   // Xsell cena SLO po popustu na redno ceno (z DDV 22 %) + marža
+document.addEventListener('change', e => {
+  const c = e.target.closest('#xsKList input[data-kc]');
+  if (c) { if (c.checked) _xsShop.sel.add(c.dataset.kc); else _xsShop.sel.delete(c.dataset.kc); xsShopRender(); return; }
+  const inp = e.target.closest('#xsKD input[data-pk]'); if (!inp) return;
+  const k = _xsShop.kat[+inp.dataset.pk]; if (!k) return;
+  const raw = String(inp.value).trim().replace(',', '.'), v = raw === '' ? null : Number(raw);
+  if (v != null && !(v >= 0 && v < 100)) { alert('Popust mora biti med 0 in 99 %.'); inp.value = ''; return; }
+  k.popust = v; xsShopRender(); xsKPopustSave(k, null, v);
+});
+function xsKPopustSave(k, sku, v) {
+  fetch('/xsell-shop-kat-popust', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ime: k.ime, sku, popust: v }) })
+    .then(r => r.json()).then(d => { if (!d.ok) alert('Popust ni shranjen: ' + (d.error || 'napaka')); }).catch(() => alert('Popust ni shranjen (povezava).'));
+}
+function xsKIzjema(sku) {
+  const k = _xsShop.kat.find(x => x.ime === _xsShop.cur); if (!k) return;
+  const cur = (k.popust_izd || {})[sku];
+  const a = prompt('Izjema popusta samo za ' + sku + ' (%). Prazno = popust kategorije' + (k.popust != null ? ' (' + xsPct(k.popust) + ' %)' : '') + '.', cur != null ? String(cur) : '');
+  if (a === null) return;
+  const raw = a.trim().replace(',', '.'), v = raw === '' ? null : Number(raw);
+  if (v != null && !(v >= 0 && v < 100)) { alert('Popust mora biti med 0 in 99 %.'); return; }
+  k.popust_izd = k.popust_izd || {}; if (v == null) delete k.popust_izd[sku]; else k.popust_izd[sku] = v;
+  xsKDRender(); xsKPopustSave(k, sku, v);
+}
+function xsKToggle(sku) {
+  const k = _xsShop.kat.find(x => x.ime === _xsShop.cur); if (!k) return;
+  const i = k.izbrani.indexOf(sku);
+  if (i >= 0) k.izbrani.splice(i, 1); else if (k.izbrani.length < 6) k.izbrani.push(sku); else { alert('Največ 6 dodatkov na kategorijo.'); return; }
+  xsShopRender();
+  fetch('/xsell-shop-kat-shrani', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ime: k.ime, items: k.izbrani }) }).catch(() => alert('Izbor ni shranjen (povezava).'));
+}
+async function xsKZakljuci(on) {
+  const k = _xsShop.kat.find(x => x.ime === _xsShop.cur); if (!k) return;
+  if (on && !k.izbrani.length && !confirm('Kategorija nima izbranega dodatka. Vseeno zaključim?')) return;
+  try {
+    const d = await (await fetch('/xsell-shop-kat-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ime: k.ime, zakljuceno: on }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    k.zakljuceno = d.zakljuceno || null;
+    if (on) {   // naprej na naslednjo nezaključeno v prikazu
+      const vis = xsKVis(), i = vis.findIndex(x => x.ime === k.ime), n = vis.find((x, j) => j > i && xsKSt(x) !== 'ok');
+      if (n) _xsShop.cur = n.ime;
+    }
+    xsShopRender();
+  } catch (e) { alert('Status ni shranjen: ' + e.message); }
+}
+function xsKCopyAll() {
+  const skus = [...new Set(_xsShop.kat.flatMap(k => k.izbrani))];
+  if (!skus.length) { alert('Nobena kategorija še nima izbranih dodatkov.'); return; }
+  xsCopy(document.getElementById('xsKCopyAll'), skus.join('\n'));
+}
+const xsPopCena = (p, pct) => {   // Xsell cena SLO po popustu na redno ceno (z DDV 22 %) + marža
   const redna = p.redna != null ? p.redna : p.cena;
   if (pct == null || pct === '' || redna == null) return null;
   const cena = Math.round(redna * (1 - pct / 100) * 100) / 100, neto = cena / 1.22;
   return { redna, cena, marza: (p.nc != null && neto > 0) ? (neto - p.nc) / neto * 100 : null };
+};
+async function xsShopPredlagaj(imena) {
+  imena = Array.isArray(imena) ? imena : [..._xsShop.sel];
+  imena = imena.filter(x => !_xsShop.run.has(x));
+  if (!imena.length) { alert('Najprej označi kategorije (kljukica na levi).'); return; }
+  const imajo = imena.filter(x => { const k = _xsShop.kat.find(y => y.ime === x); return k && k.predlogi.length; }).length;
+  if (imena.length > 1 || imajo) {
+    if (!confirm('Opus 5.5 pripravi predloge za ' + imena.length + ' kategorij (paketi po 8)' + (imajo ? '\n' + imajo + ' jih že ima predloge — bodo zamenjani (izbrani ostanejo).' : '') + '\nNadaljujem?')) return;
+  }
+  imena.forEach(x => { _xsShop.run.add(x); _xsShop.sel.delete(x); }); xsShopRender();
+  try {
+    const d = await (await fetch('/xsell-shop-kat-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imena }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    if (d.napake && d.napake.length) alert('Del kategorij ni uspel (' + d.napake.length + ') — poskusi jih znova.');
+  } catch (e) { alert('Predlogi niso uspeli: ' + e.message); }
+  imena.forEach(x => _xsShop.run.delete(x));
+  xsPoraba(); await xsShopLoad();
 }
-document.addEventListener('change', e => {
-  const inp = e.target.closest('#xsShopList input[data-pk]'); if (!inp) return;
-  const k = _xsShop.kat[+inp.dataset.pk]; if (!k) return;
-  const raw = String(inp.value).trim().replace(',', '.'), v = raw === '' ? null : Number(raw);
-  if (v != null && !(v >= 0 && v < 100)) { alert('Popust mora biti med 0 in 99 %.'); inp.value = ''; return; }
-  const sku = inp.dataset.ps || null;
-  if (sku) { k.popust_izd = k.popust_izd || {}; if (v == null) delete k.popust_izd[sku]; else k.popust_izd[sku] = v; }
-  else k.popust = v;
-  xsShopRender();
-  fetch('/xsell-shop-kat-popust', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ime: k.ime, sku, popust: v }) })
-    .then(r => r.json()).then(d => { if (!d.ok) alert('Popust ni shranjen: ' + (d.error || 'napaka')); }).catch(() => alert('Popust ni shranjen (povezava).'));
-});
 function xsShopEdit() {
   const b = document.getElementById('xsShopEditBox'); const on = b.style.display === 'none';
   b.style.display = on ? '' : 'none';
@@ -11280,27 +11515,21 @@ async function xsShopImgAdd(file) {
 function xsShopThumbs() {
   document.getElementById('xsShopThumbs').innerHTML = _xsShopImgs.map((x, i) =>
     '<span style="position:relative;display:inline-block"><img src="' + x.url + '" style="height:52px;border-radius:7px;border:1px solid var(--border);display:block">' +
-    '<button onclick="event.stopPropagation();_xsShopImgs.splice(' + i + ',1);xsShopThumbs()" title="odstrani" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;line-height:1;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:11px;padding:0">×</button></span>').join('');
+    '<button onclick="event.stopPropagation();_xsShopImgs.splice(' + i + ',1);xsShopThumbs()" title="odstrani" class="xs-thx">×</button></span>').join('');
   document.getElementById('xsShopImgMsg').textContent = _xsShopImgs.length ? _xsShopImgs.length + ' slik pripravljenih — klikni »Preberi slike«' : '';
 }
-function xsShopImgDrop(e) {
-  e.preventDefault(); e.currentTarget.style.borderColor = 'var(--border)';
-  [...(e.dataTransfer.files || [])].forEach(xsShopImgAdd);
-}
-function xsShopImgPick() {
-  const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.multiple = true;
-  i.onchange = () => [...i.files].forEach(xsShopImgAdd); i.click();
-}
+function xsShopImgDrop(e) { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--border)'; [...(e.dataTransfer.files || [])].forEach(xsShopImgAdd); }
+function xsShopImgPick() { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.multiple = true; i.onchange = () => [...i.files].forEach(xsShopImgAdd); i.click(); }
+// Ctrl+V slike: v odprtem "✎ Uredi seznam" (kategorije) ali "＋ Dodaj" (izdelki); besedilo v textarea se prilepi normalno
 document.addEventListener('paste', e => {
-  const box = document.getElementById('xsShopEditBox');
-  if (!box || box.style.display === 'none' || box.offsetParent === null) return;
-  if (e.target && e.target.id === 'xsShopTa') {   // v textarea prilepi besedilo normalno, sliko pa ujame
-    if (![...((e.clipboardData || {}).items || [])].some(i => (i.type || '').startsWith('image/'))) return;
-  } else if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  const kat = document.getElementById('xsShopEditBox'), izd = document.getElementById('xsPAdd');
+  const add = (kat && kat.style.display !== 'none' && kat.offsetParent !== null) ? xsShopImgAdd
+    : ((izd && izd.style.display !== 'none' && izd.offsetParent !== null) ? xsPImgAdd : null);
+  if (!add) return;
   const items = [...((e.clipboardData || {}).items || [])].filter(i => (i.type || '').startsWith('image/'));
   if (!items.length) return;
   e.preventDefault();
-  items.forEach(i => xsShopImgAdd(i.getAsFile()));
+  items.forEach(i => add(i.getAsFile()));
 });
 async function xsShopImgRun() {
   const msg = document.getElementById('xsShopImgMsg'), btn = document.getElementById('xsShopImgBtn');
@@ -11327,19 +11556,28 @@ async function xsShopSaveList() {
     document.getElementById('xsShopEditBox').style.display = 'none'; xsShopLoad();
   } catch (e) { alert('Shranjevanje ni uspelo: ' + e.message); }
 }
-async function xsShopPredlagaj(idx) {
-  const imena = Array.isArray(idx) ? idx.map(i => _xsShop.kat[i].ime) : null;
-  const b = document.getElementById('xsShopRun'), o = b.textContent;
-  b.disabled = true; b.textContent = '🧠 Opus 5.5 razmišlja … (' + (imena ? imena.length : _xsShop.kat.length) + ' kat.)';
-  try {
-    const d = await (await fetch('/xsell-shop-kat-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imena }) })).json();
-    if (!d.ok) throw new Error(d.error || 'napaka');
-    if (d.napake && d.napake.length) alert('Del kategorij ni uspel (' + d.napake.length + ') — klikni ↻ pri njih.');
-    xsPoraba();
-    await xsShopLoad();
-  } catch (e) { alert('Predlogi niso uspeli: ' + e.message); }
-  finally { b.disabled = false; b.textContent = o; }
-}
+// ── tipkovnica (samo ko je Xsell odprt in ne tipkaš v polje) ──
+document.addEventListener('keydown', e => {
+  const sub = document.getElementById('orodjaSubpage-xsell');
+  if (!sub || sub.style.display === 'none' || sub.offsetParent === null) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+  const kat = document.getElementById('xsShop').style.display !== 'none', key = e.key;
+  if (kat) {
+    const vis = xsKVis(), i = vis.findIndex(k => k.ime === _xsShop.cur), k = _xsShop.kat.find(x => x.ime === _xsShop.cur);
+    if (key === 'ArrowDown' || key === 'ArrowUp') { e.preventDefault(); const n = vis[Math.max(0, Math.min(vis.length - 1, i + (key === 'ArrowDown' ? 1 : -1)))]; if (n) xsKOpen(n.ime); }
+    else if (/^[1-6]$/.test(key) && k && k.predlogi[+key - 1]) xsKToggle(k.predlogi[+key - 1].sku);
+    else if ((key === 'c' || key === 'C') && k && k.izbrani.length) xsCopy(null, k.izbrani.join('\n'));
+    else if (key === 'Enter' && k) { e.preventDefault(); xsKZakljuci(!k.zakljuceno); }
+    else if (key === ' ' && k) { e.preventDefault(); if (_xsShop.sel.has(k.ime)) _xsShop.sel.delete(k.ime); else _xsShop.sel.add(k.ime); xsShopRender(); }
+  } else {
+    const vis = xsPVis(), i = _xs.item ? vis.findIndex(x => x.g_id === _xs.item.g_id) : -1;
+    if (key === 'ArrowDown' || key === 'ArrowUp') { e.preventDefault(); const n = vis[Math.max(0, Math.min(vis.length - 1, i + (key === 'ArrowDown' ? 1 : -1)))]; if (n) xsLoad(n.g_id); }
+    else if (/^[1-6]$/.test(key) && _xs.predlogi[+key - 1]) { const s = _xs.predlogi[+key - 1].sku; xsIzberi(_xs.izbran === s ? null : s); }
+    else if ((key === 'c' || key === 'C') && _xs.izbran) xsCopy(null, _xs.izbran);
+    else if (key === ' ' && _xs.item) { e.preventDefault(); const g = _xs.item.g_id; if (_xs.sel.has(g)) _xs.sel.delete(g); else _xs.sel.add(g); xsPRender(); }
+  }
+});
 
 function switchOrodjaTab(tab) {
   if (tab === 'urltosku' || tab === 'zdrnarocila') tab = 'csv';   // odstranjena: URL→SKU, Združena naročila
