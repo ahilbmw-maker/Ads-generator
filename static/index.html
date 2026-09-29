@@ -373,13 +373,15 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .main.wide { max-width: 100%; padding: 1.5rem 1.5rem 5rem; }
 .page { display: none; }
 /* 🤖 AI stroški v kartici semaforja (Domov) */
-.hai-card{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.hai{width:330px;max-width:100%;border-left:1px solid var(--border);padding-left:18px;cursor:default}
-.hai-solo .hai{border-left:none;padding-left:0;width:100%}
+.hai-wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;margin-bottom:18px;align-items:stretch}
+.hai-wrap > .card{margin-bottom:0}
+.hai-box{background:var(--bg-secondary);border-top:3px solid #7F77DD;padding:14px 16px;display:flex;align-items:center}
+.hai-solo{grid-template-columns:minmax(0,340px)}
+.hai{width:100%;cursor:default}
 .hai-lb{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary)}
-.hai-tg{display:inline-flex;gap:2px;background:var(--bg-secondary);border-radius:7px;padding:2px}
+.hai-tg{display:inline-flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:2px}
 .hai-tg b{font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;color:var(--text-secondary);cursor:pointer}
-.hai-tg b.on{background:#fff;color:var(--text);box-shadow:0 0 0 1px var(--border)}
+.hai-tg b.on{background:#EEEDFE;color:#3C3489}
 .hai-bars{display:flex;align-items:flex-end;gap:2px;height:46px;margin-top:6px}
 .hai-bar{flex:1;display:flex;flex-direction:column-reverse;border-radius:3px 3px 0 0;overflow:hidden;min-width:2px}
 .hai-lg{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--text-secondary);margin-top:6px;align-items:center}
@@ -388,7 +390,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .hai-fr{display:grid;grid-template-columns:12px minmax(0,1fr) auto 34px;gap:6px;align-items:center;font-size:11.5px;padding:2px 0;color:var(--text-secondary)}
 .hai-fr b{color:var(--text);font-weight:700}
 .hai-fr small{color:var(--text-tertiary);text-align:right}
-@media(max-width:900px){.hai{width:100%;border-left:none;padding-left:0;border-top:1px solid var(--border);padding-top:10px}}
+@media(max-width:900px){.hai-wrap{grid-template-columns:1fr}}
 /* 🎯 Xsell */
 .xs-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;align-items:start}
 @media(max-width:900px){.xs-grid{grid-template-columns:1fr}}
@@ -980,7 +982,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-29 13:46</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 16:42</div>
     </div>
   </div>
 
@@ -5863,7 +5865,7 @@ function homeSemRender(){
   const d = HOMESEM;
   if (!d || !d.ok){
     box.style.display = '';
-    box.innerHTML = '<div class="card" style="margin-bottom:18px"><div id="homeAiBox" class="hai-solo"></div></div>';
+    box.innerHTML = '<div class="hai-wrap hai-solo"><div class="card hai-box" id="homeAiBox"></div></div>';
     homeAiRender(); return;
   }
   box.style.display = '';
@@ -5872,12 +5874,12 @@ function homeSemRender(){
   const col = {green:'#12a35f', amber:'#e0a33a', red:'#e5484d', grey:'var(--border)'};
 
   if (!d.has_data){
-    box.innerHTML = '<div class="card hai-card" style="margin-bottom:18px;border-left:4px solid var(--border)">'
-      + '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex:1;min-width:0' + (d.owner ? ';cursor:pointer" onclick="homeSemOpen()"' : '"') + '>'
+    box.innerHTML = '<div class="hai-wrap"><div class="card" style="border-left:4px solid var(--border);display:flex;align-items:center' + (d.owner ? ';cursor:pointer" onclick="homeSemOpen()"' : '"') + '>'
+      + '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex:1;min-width:0">'
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary)">🚦 Semafor CPA</div>'
       + '<div style="font-size:13px;color:var(--text-secondary)">še ni nobenega dnevnega vnosa</div>'
       + (d.owner ? '<div style="margin-left:auto;font-size:12.5px;color:var(--accent);font-weight:700">odpri →</div>' : '')
-      + '</div><div id="homeAiBox"></div></div>';
+      + '</div></div><div class="card hai-box" id="homeAiBox"></div></div>';
     homeAiRender(); return;
   }
 
@@ -5906,15 +5908,15 @@ function homeSemRender(){
   const openBtn = d.owner
     ? '<span style="font-size:12.5px;color:var(--accent);font-weight:700;white-space:nowrap">odpri →</span>' : '';
 
-  box.innerHTML = '<div class="card hai-card" style="margin-bottom:18px;border-left:4px solid ' + accent + '">'
-    + '<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;flex:1;min-width:0' + (d.owner ? ';cursor:pointer" onclick="homeSemOpen()"' : '"') + '>'
+  box.innerHTML = '<div class="hai-wrap"><div class="card" style="border-left:4px solid ' + accent + ';display:flex;align-items:center' + (d.owner ? ';cursor:pointer" onclick="homeSemOpen()"' : '"') + '>'
+    + '<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;flex:1;min-width:0">'
     + '<div style="min-width:180px">' + left + '</div>'
     + '<div style="display:flex;gap:5px;align-items:center">' + bars
     + '<span style="font-size:12px;color:var(--text-secondary);margin-left:8px">' + d.green + ' 🟢'
     + (d.amber ? ' · ' + d.amber + ' 🟠' : '') + (d.red ? ' · ' + d.red + ' 🔴' : '') + '</span></div>'
     + '<div style="margin-left:auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end">'
     + right + openBtn
-    + '</div></div><div id="homeAiBox"></div></div>';
+    + '</div></div></div><div class="card hai-box" id="homeAiBox"></div></div>';
   homeAiRender();
 }
 
@@ -5925,12 +5927,12 @@ const HAI_VIR = { claude: ['Claude', '#7c6fe0'], openai: ['OpenAI slike', '#1D9E
 const HAI_OBD = [['dan', 'Dan'], ['teden', 'Teden'], ['mesec', 'Mesec'], ['vse', 'Vse']];
 const HAI_USD_EUR = 0.86;   // samo za prikaz "≈ €"
 const HAI_FN = { generator: 'Generator slik', prevod_slik: 'Prevod slik', optimizacija_slik: 'Optimizacija slik', generate_audio: 'Glas (ElevenLabs)', xsell: '🎯 Xsell', znacke_batch: 'Značke (Batches)' };
-function haiObd() { try { const v = localStorage.getItem('slx_ai_obd'); if (HAI_OBD.some(o => o[0] === v)) return v; } catch (e) {} return 'teden'; }
+function haiObd() { try { const v = localStorage.getItem('slx_ai_obd2'); if (HAI_OBD.some(o => o[0] === v)) return v; } catch (e) {} return 'dan'; }
 async function homeAiLoad() {
   try { const r = await fetch('/ai-poraba'); HOMEAI = await r.json(); } catch (e) { HOMEAI = null; }
   homeAiRender();
 }
-function homeAiSet(o, ev) { if (ev) ev.stopPropagation(); try { localStorage.setItem('slx_ai_obd', o); } catch (e) {} homeAiRender(); }
+function homeAiSet(o, ev) { if (ev) ev.stopPropagation(); try { localStorage.setItem('slx_ai_obd2', o); } catch (e) {} homeAiRender(); }
 function homeAiFn(ev) { if (ev) ev.stopPropagation(); const el = document.getElementById('haiFn'); if (el) el.style.display = el.style.display === 'none' ? '' : 'none'; }
 function homeAiRender() {
   const box = document.getElementById('homeAiBox'); if (!box) return;
