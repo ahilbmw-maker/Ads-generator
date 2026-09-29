@@ -61,6 +61,62 @@ async def _static_cache_headers(request: Request, call_next):
 app.mount("/static", StaticFiles(directory="static"), name="static")
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
+# ═══ SONNET: centralni preklop modela (vsi klici na claude-sonnet-4-6 / 4-5 → SONNET_MODEL) ═══
+# Privzeto Claude Sonnet 5.5. Nazaj za VSE: na Renderju env SONNET_MODEL=claude-sonnet-4-6 (brez nove verzije).
+# Posamezen klic pusti pri miru z _keep_model=True (npr. Uvoz HS+, ki ima svojo nastavitev HS_PDF_MODEL).
+# Sonnet 5.5: razmišljanje izklopljeno (between_tools = obnašanje kot Sonnet 4.6, brez dodatnih tokenov);
+# ob napaki 400/404/403, zavrnitvi (refusal) ali praznem odgovoru se isti klic ponovi s Sonnet 4.6.
+SONNET_MODEL = (os.environ.get("SONNET_MODEL") or "claude-sonnet-5-5").strip()
+SONNET_FALLBACK = "claude-sonnet-4-6"
+_SONNET_OLD = {"claude-sonnet-4-6", "claude-sonnet-4-5"}
+
+
+def _sonnet_extra(model: str) -> dict:
+    """Dodatni parametri za model (Sonnet 5.5: brez razmišljanja)."""
+    return {"thinking": {"type": "between_tools"}} if model == "claude-sonnet-5-5" else {}
+
+
+class _SonnetFallback(Exception):
+    pass
+
+
+try:
+    from anthropic.resources.messages import Messages as _AMessages
+    _orig_messages_create = _AMessages.create
+
+    def _messages_create_sonnet(self, *args, **kw):
+        keep = kw.pop("_keep_model", False)
+        m = kw.get("model", "")
+        if keep or m not in _SONNET_OLD or kw.get("stream"):
+            return _orig_messages_create(self, *args, **kw)
+
+        def _kw(model):
+            k = dict(kw)
+            k["model"] = model
+            if model == "claude-sonnet-5-5":
+                k.update({x: v for x, v in _sonnet_extra(model).items() if x not in k})
+            elif isinstance(k.get("thinking"), dict) and k["thinking"].get("type") == "between_tools":
+                k.pop("thinking")
+            return k
+
+        if SONNET_MODEL == SONNET_FALLBACK:
+            return _orig_messages_create(self, *args, **_kw(SONNET_FALLBACK))
+        try:
+            r = _orig_messages_create(self, *args, **_kw(SONNET_MODEL))
+            has_text = any(getattr(b, "type", "") == "text" and (getattr(b, "text", "") or "").strip() for b in (r.content or []))
+            if getattr(r, "stop_reason", "") == "refusal" or (not kw.get("tools") and not has_text):
+                raise _SonnetFallback(f"stop_reason={getattr(r, 'stop_reason', '')}")
+            if not kw.get("tools"):   # stara koda bere content[0].text → brez blokov razmišljanja
+                r.content = [b for b in r.content if getattr(b, "type", "") == "text"]
+            return r
+        except (anthropic.BadRequestError, anthropic.NotFoundError, anthropic.PermissionDeniedError, _SonnetFallback) as e:
+            print(f"[sonnet] {SONNET_MODEL} → varovalka {SONNET_FALLBACK}: {type(e).__name__}: {str(e)[:200]}")
+            return _orig_messages_create(self, *args, **_kw(SONNET_FALLBACK))
+
+    _AMessages.create = _messages_create_sonnet
+except Exception as _e:
+    print(f"[sonnet] centralni preklop ni aktiven: {_e}")
+
 # ═══ DOSTOPNI GATE (eno skupno geslo) ═══════════════════════════════════════
 # Geslo se nastavi prek okoljske spr. APP_PASSWORD na Renderju.
 # Piškotek je podpisan s HMAC (skrivnost APP_SECRET ali fallback) — ne da se ponarediti.
@@ -8280,6 +8336,7 @@ Brez dodatnih komentarjev, samo JSON."""
                 def _beri(model, opomba=""):
                     r = client.messages.create(
                         model=model,
+                        _keep_model=True,     # ima svojo nastavitev HS_PDF_MODEL + svojo varovalko
                         max_tokens=16000,     # Sonnet 5.5 privzeto razmišlja — razmišljanje šteje v max_tokens
                         messages=[{"role": "user", "content": [doc, {"type": "text", "text": prompt + opomba}]}],
                     )
@@ -22021,26 +22078,35 @@ VRNI EXACT JSON v tej obliki, brez dodatnega teksta:
         if not api_key:
             return {"ok": False, "error": "ANTHROPIC_API_KEY ni nastavljen."}
 
+        ai_text, resp = "", None
         async with httpx.AsyncClient(timeout=120.0) as hc:
-            resp = await hc.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
-                },
-                json={
-                    "model": "claude-sonnet-4-6",
-                    "max_tokens": 6000,
-                    "messages": [{"role": "user", "content": prompt}],
-                }
-            )
+            for _mdl in dict.fromkeys([SONNET_MODEL, SONNET_FALLBACK]):   # varovalka: Sonnet 4.6
+                resp = await hc.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json"
+                    },
+                    json={
+                        "model": _mdl,
+                        "max_tokens": 6000,
+                        "messages": [{"role": "user", "content": prompt}],
+                        **_sonnet_extra(_mdl),
+                    }
+                )
+                if resp.status_code == 200:
+                    _res = resp.json()
+                    ai_text = "".join(b.get("text", "") for b in (_res.get("content") or []) if b.get("type") == "text").strip()
+                    if ai_text and _res.get("stop_reason") != "refusal":
+                        break
+                elif resp.status_code not in (400, 403, 404):
+                    break
 
-        if resp.status_code != 200:
-            return {"ok": False, "error": f"Claude API: {resp.status_code} {resp.text[:300]}"}
-
-        result = resp.json()
-        ai_text = result["content"][0]["text"].strip()
+        if resp is None or resp.status_code != 200:
+            return {"ok": False, "error": f"Claude API: {resp.status_code if resp is not None else '?'} {resp.text[:300] if resp is not None else ''}"}
+        if not ai_text:
+            return {"ok": False, "error": "Claude API: prazen odgovor"}
 
         import re as _re
         ai_text = _re.sub(r'^```(?:json)?\s*', '', ai_text)
@@ -26497,7 +26563,7 @@ import csv      # csv ni globalno importiran v tem projektu (json in re sta — 
 BADGE_DIR = DATA_DIR / "badge_generator"
 BADGE_DIR.mkdir(exist_ok=True, parents=True)
 BADGE_STATE = BADGE_DIR / "state.json"
-BADGE_MODEL = "claude-sonnet-4-6"
+BADGE_MODEL = SONNET_MODEL   # Batches API: brez varovalke — ob težavi env SONNET_MODEL=claude-sonnet-4-6
 BADGE_TR_LOCALES = ["bg", "bs", "cs", "el", "hr", "hu", "it", "pl", "ro", "sk", "sr"]
 BADGE_EXCLUDE = {"de", "de-AT"}
 BADGE_DESC_MAX = 900
@@ -26680,7 +26746,7 @@ async def badge_submit(data: dict):
                 kat = _badge_kategorija(r.get("product_code", ""))
                 requests.append({
                     "custom_id": f"sl-{i}",
-                    "params": {"model": BADGE_MODEL, "max_tokens": 60,
+                    "params": {"model": BADGE_MODEL, "max_tokens": 60, **_sonnet_extra(BADGE_MODEL),
                                "messages": [{"role": "user", "content": _badge_prompt_sl(r.get("title",""), desc, kat)}]},
                 })
         else:
@@ -26709,7 +26775,7 @@ async def badge_submit(data: dict):
                 kat = _badge_kategorija(sl_codes[i]) if i < len(sl_codes) else ""
                 requests.append({
                     "custom_id": f"tr-{i}",
-                    "params": {"model": BADGE_MODEL, "max_tokens": 300,
+                    "params": {"model": BADGE_MODEL, "max_tokens": 300, **_sonnet_extra(BADGE_MODEL),
                                "messages": [{"role": "user", "content": _badge_prompt_tr(per, kat)}]},
                 })
 
@@ -26769,7 +26835,7 @@ async def badge_build(data: dict):
         errors = 0
         for r in client.messages.batches.results(b["id"]):
             if r.result.type == "succeeded":
-                results[r.custom_id] = r.result.message.content[0].text
+                results[r.custom_id] = "".join(b.text for b in r.result.message.content if getattr(b, "type", "") == "text")
             elif r.result.type == "errored":
                 errors += 1
 
