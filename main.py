@@ -28763,8 +28763,64 @@ def _xsell_pools(rows: list, main: dict):
     return A[:320], B[:80]
 
 
-def _xsell_opus(prompt: str, schema: dict) -> dict:
-    """Klic Claude Opus 5.5 s strukturiranim izhodom (JSON). Varovalka ob zavrnitvi: fallbacks "default"."""
+XSELL_USAGE_FILE = DATA_DIR / "xsell_usage.json"
+_XSELL_CENE = {"claude-opus-5-5": (4.0, 20.0), "claude-opus-5": (5.0, 25.0), "claude-opus-4-8": (5.0, 25.0)}   # $ / 1M (vhod, izhod)
+import threading as _xs_threading
+_xsell_usage_lock = _xs_threading.Lock()
+
+
+def _xsell_log_usage(r, vrsta: str) -> float:
+    """Informativno: zapiše žetone in ocenjeno ceno klica ($) v /data/xsell_usage.json (zadnjih 5000)."""
+    try:
+        u = r.usage
+        vh = (getattr(u, "input_tokens", 0) or 0)
+        cw = (getattr(u, "cache_creation_input_tokens", 0) or 0)
+        cr = (getattr(u, "cache_read_input_tokens", 0) or 0)
+        iz = (getattr(u, "output_tokens", 0) or 0)
+        model = str(getattr(r, "model", "") or XSELL_MODEL)
+        ci, co = _XSELL_CENE.get(model, _XSELL_CENE["claude-opus-5-5"])
+        usd = round((vh * ci + cw * ci * 1.25 + cr * ci * 0.1 + iz * co) / 1e6, 4)
+        print(f"[xsell] {vrsta}: {model} vhod {vh + cw + cr} · izhod {iz} žetonov · ~{usd:.3f} $")
+        with _xsell_usage_lock:
+            log = _jload(XSELL_USAGE_FILE, []) or []
+            log.append({"at": _lj_iso(), "vrsta": vrsta, "model": model, "in": vh + cw + cr, "out": iz, "usd": usd})
+            tmp = XSELL_USAGE_FILE.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(log[-5000:], ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, XSELL_USAGE_FILE)
+        return usd
+    except Exception as e:
+        print(f"[xsell] usage log napaka: {e}")
+        return 0.0
+
+
+@app.get("/xsell-poraba")
+async def xsell_poraba(request: Request):
+    """Povzetek porabe Opus za Xsell (danes / 7 dni / 30 dni / skupaj, po vrsti klica)."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
+    log = _jload(XSELL_USAGE_FILE, []) or []
+    danes = _lj_iso()[:10]
+    d7 = (datetime.fromisoformat(danes) - timedelta(days=6)).date().isoformat()
+    d30 = (datetime.fromisoformat(danes) - timedelta(days=29)).date().isoformat()
+
+    def _sum(xs):
+        return {"n": len(xs), "usd": round(sum(x.get("usd") or 0 for x in xs), 3)}
+    po_vrsti = {}
+    for x in log:
+        v = po_vrsti.setdefault(x.get("vrsta") or "?", [])
+        v.append(x)
+    return {"ok": True,
+            "danes": _sum([x for x in log if str(x.get("at", ""))[:10] == danes]),
+            "d7": _sum([x for x in log if str(x.get("at", ""))[:10] >= d7]),
+            "d30": _sum([x for x in log if str(x.get("at", ""))[:10] >= d30]),
+            "skupaj": _sum(log),
+            "po_vrsti": {k: dict(_sum(v), povp=round(sum(x.get("usd") or 0 for x in v) / len(v), 4)) for k, v in po_vrsti.items()},
+            "zadnji": log[-20:][::-1]}
+
+
+def _xsell_opus(prompt: str, schema: dict, vrsta: str = "") -> dict:
+    """Klic Claude Opus 5.5 s strukturiranim izhodom (JSON). Varovalka ob zavrnitvi: fallbacks "default".
+    Ocenjena cena klica ($) se zapiše v log in vrne v ključu "_usd"."""
     kw = dict(model=XSELL_MODEL, max_tokens=16000,
               messages=[{"role": "user", "content": prompt}],
               output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}})
@@ -28773,10 +28829,14 @@ def _xsell_opus(prompt: str, schema: dict) -> dict:
     except (TypeError, anthropic.BadRequestError) as e:
         print(f"[xsell] brez fallbacks: {str(e)[:160]}")
         r = client.messages.create(**kw)
+    usd = _xsell_log_usage(r, vrsta or "?")
     if getattr(r, "stop_reason", "") == "refusal":
         raise RuntimeError("Model je zavrnil zahtevo.")
     txt = next((b.text for b in r.content if getattr(b, "type", "") == "text"), "")
-    return json.loads(txt)
+    out = json.loads(txt)
+    if isinstance(out, dict):
+        out["_usd"] = usd
+    return out
 
 
 def _xsell_cand_line(r: dict) -> str:
@@ -28862,7 +28922,7 @@ SEZNAM B — dražja nabava (NC 3–5 €):
                   "properties": {"sku": {"type": "string"}, "razlog": {"type": "string"}, "drazji": {"type": "boolean"}}}}}}
     loop = asyncio.get_event_loop()
     try:
-        out = await loop.run_in_executor(None, lambda: _xsell_opus(prompt, schema))
+        out = await loop.run_in_executor(None, lambda: _xsell_opus(prompt, schema, "izdelek"))
     except Exception as e:
         return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
     by = {r["sku"]: r for r in A + B}
@@ -28877,7 +28937,7 @@ SEZNAM B — dražja nabava (NC 3–5 €):
     iz.update({"sku": main["sku"], "naziv": main["naziv"], "predlogi": predlogi, "predlogi_at": _lj_iso()})
     _xsell_save(d)
     return {"ok": True, "predlogi": [dict(_xsell_view(by[p["sku"]]), razlog=p["razlog"], drazji=p["drazji"]) for p in predlogi],
-            "predlogi_at": iz["predlogi_at"], "n_a": len(A), "n_b": len(B), "model": XSELL_MODEL}
+            "predlogi_at": iz["predlogi_at"], "n_a": len(A), "n_b": len(B), "model": XSELL_MODEL, "usd": out.get("_usd")}
 
 
 class XsellShraniReq(BaseModel):
@@ -28974,7 +29034,7 @@ Vrni 6 predlogov, razvrščenih od najboljšega, s kratkim razlogom v slovenšč
                   "properties": {"sku": {"type": "string"}, "razlog": {"type": "string"}}}}}}
     loop = asyncio.get_event_loop()
     try:
-        out = await loop.run_in_executor(None, lambda: _xsell_opus(prompt, schema))
+        out = await loop.run_in_executor(None, lambda: _xsell_opus(prompt, schema, "kategorija"))
     except Exception as e:
         return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
     by = {r["sku"]: r for r in A}
@@ -29090,7 +29150,7 @@ KATEGORIJE:
 
 KANDIDATI (SKU | naziv | nabavna cena | zaloga | Google kategorija):
 {cand}"""
-        return _xsell_opus(prompt, schema)
+        return _xsell_opus(prompt, schema, "shop_kat")
 
     loop = asyncio.get_event_loop()
     paketi = [imena[i:i + 8] for i in range(0, len(imena), 8)]
@@ -29117,7 +29177,8 @@ KANDIDATI (SKU | naziv | nabavna cena | zaloga | Google kategorija):
     _xsell_save(d)
     if not n:
         return {"ok": False, "error": "AI ni vrnil predlogov. " + "; ".join(napake)}
-    return {"ok": True, "n": n, "napake": napake}
+    return {"ok": True, "n": n, "napake": napake,
+            "usd": round(sum((res.get("_usd") or 0) for res in rezultati if isinstance(res, dict)), 4)}
 
 
 class XsellShopShraniReq(BaseModel):

@@ -963,7 +963,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-29 13:00</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 13:10</div>
     </div>
   </div>
 
@@ -2983,6 +2983,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <a href="/xsell-csv" style="padding:9px 14px;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;text-decoration:none">⬇ CSV</a>
         </div>
         <div id="xsInfo" style="font-size:11.5px;color:var(--text-tertiary);margin-top:8px">Samo Maaarket izdelki na zalogi (SL — velja za vse trge) · šteje samo NC dodatka: idealno 0–2 €, največ 3 € (Xsell cena 4,99–5,99 € se nastavi posebej)</div>
+        <div id="xsPoraba" title="Informativno: ocenjena cena klicev Opus 5.5 ($4 / $20 na 1M žetonov), iz /data/xsell_usage.json" style="font-size:11px;color:var(--text-tertiary);margin-top:4px"></div>
       </div>
 
       <!-- 🏷 Kategorije iz trgovine (CMS): kategorija → predlogi → izbrani → CSV -->
@@ -10921,7 +10922,17 @@ document.addEventListener('DOMContentLoaded', () => { try { const v = localStora
 let _xs = { item: null, predlogi: [], izbran: null, kat: null, list: [], filter: 'ni', mass: false, prefetch: {} };
 const xsE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const xsEu = v => v == null ? '—' : Number(v).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
-function xsInit() { try { if (localStorage.getItem('slx_xs_mass') === '1' && !_xs.mass) xsToggleMass(); } catch (e) {} }
+function xsInit() { try { if (localStorage.getItem('slx_xs_mass') === '1' && !_xs.mass) xsToggleMass(); } catch (e) {} xsPoraba(); }
+const xsUsd = v => (Number(v) || 0).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 3 }) + ' $';
+async function xsPoraba() {
+  const el = document.getElementById('xsPoraba'); if (!el) return;
+  try {
+    const d = await (await fetch('/xsell-poraba')).json(); if (!d.ok) return;
+    const pv = d.po_vrsti || {}, iz = pv.izdelek;
+    el.textContent = '💰 Poraba Opus: danes ' + xsUsd(d.danes.usd) + ' (' + d.danes.n + ' klicev) · 7 dni ' + xsUsd(d.d7.usd) + ' · 30 dni ' + xsUsd(d.d30.usd) + ' · skupaj ' + xsUsd(d.skupaj.usd) +
+      (iz ? ' · Ø na izdelek ' + xsUsd(iz.povp) : '') + (pv.shop_kat ? ' · Ø paket kategorij ' + xsUsd(pv.shop_kat.povp) : '');
+  } catch (e) {}
+}
 function xsNcPill(nc) {
   const c = nc == null ? ['#f1f5f9', '#475569'] : (nc <= 2 ? ['#dcfce7', '#166534'] : (nc <= 3 ? ['#fef3c7', '#92400e'] : ['#fee2e2', '#991b1b']));
   return '<span class="xs-pill" style="background:' + c[0] + ';color:' + c[1] + '">NC ' + xsEu(nc) + '</span>';
@@ -10956,7 +10967,8 @@ async function xsPredlagaj(force) {
     _xs.predlogi = d.predlogi || [];
     const li = _xs.list.find(x => x.g_id === gid); if (li) li.ima_predloge = true;
     xsRender();
-    document.getElementById('xsPredMeta').textContent = (d.n_a != null ? d.n_a + ' kandidatov po pravilih · ' + d.n_b + ' dražjih' : '');
+    document.getElementById('xsPredMeta').textContent = (d.n_a != null ? d.n_a + ' kandidatov po pravilih · ' + d.n_b + ' dražjih' : '') + (d.usd ? ' · klic ~' + xsUsd(d.usd) : '');
+    xsPoraba();
   } catch (e) { document.getElementById('xsList').innerHTML = '<div class="card" style="padding:14px;color:#b91c1c;font-size:12.5px">✗ ' + xsE(e.message) + '</div>'; }
 }
 function xsRender() {
@@ -11031,7 +11043,7 @@ async function xsKatPredlagaj() {
     const d = await (await fetch('/xsell-kategorija-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kat: k.kat }) })).json();
     if (!d.ok) throw new Error(d.error || 'napaka');
     _xsKatPred = { kat: k.kat, items: d.predlogi || [] };
-    xsKatRender();
+    xsKatRender(); xsPoraba();
   } catch (e) { alert('Predlog kategorije ni uspel: ' + e.message); xsKatRender(); }
 }
 async function xsKatShrani() {
@@ -11165,6 +11177,7 @@ async function xsShopPredlagaj(idx) {
     const d = await (await fetch('/xsell-shop-kat-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imena }) })).json();
     if (!d.ok) throw new Error(d.error || 'napaka');
     if (d.napake && d.napake.length) alert('Del kategorij ni uspel (' + d.napake.length + ') — klikni ↻ pri njih.');
+    xsPoraba();
     await xsShopLoad();
   } catch (e) { alert('Predlogi niso uspeli: ' + e.message); }
   finally { b.disabled = false; b.textContent = o; }
