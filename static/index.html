@@ -1021,7 +1021,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-29 17:44</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 17:51</div>
     </div>
   </div>
 
@@ -3039,7 +3039,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <span class="xs-tabs" title="Model za vse Xsell predloge (izdelki, kategorije). Sonnet 5.5 = približno pol cene, effort high; Opus 5.5 = effort medium."><b id="xsM-sonnet" onclick="xsSetModel('sonnet')">Sonnet 5.5</b><b id="xsM-opus" onclick="xsSetModel('opus')">Opus 5.5</b></span>
           <a href="/xsell-csv" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap">⬇ CSV izdelkov</a>
         </div>
-        <div id="xsInfo" style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px">Samo Maaarket izdelki na zalogi (SL — velja za vse trge) · šteje samo NC dodatka: idealno 0–2 €, največ 3 €</div>
+        <div id="xsInfo" style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px">Dodatki: samo Maaarket z zalogo vsaj 20 kosov (SL — velja za vse trge) · šteje samo NC dodatka: idealno 0–2 €, največ 3 €</div>
         <div id="xsPoraba" title="Informativno: ocenjena cena Xsell klicev po ceniku (Sonnet 5.5 $2/$10, Opus 5.5 $4/$20 na 1M žetonov)" style="font-size:11px;color:var(--text-tertiary);margin-top:2px"></div>
       </div>
 
@@ -11258,7 +11258,7 @@ async function xsLoad(q) {
     if (!d.ok) throw new Error(d.error || 'napaka');
     _xs.item = d.izdelek; _xs.predlogi = d.predlogi || []; _xs.izbran = d.izbran || null; _xs.kat = d.kategorija; _xs.popust = d.popust != null ? d.popust : null;
     document.getElementById('xsQ').value = d.izdelek.sku;
-    info.textContent = 'Model: ' + (d.model || _xsModel.ime) + ' · samo Maaarket na zalogi · šteje samo NC dodatka (idealno 0–2 €, največ 3 €)';
+    info.textContent = 'Model: ' + (d.model || _xsModel.ime) + ' · dodatki z zalogo ≥ 20 · šteje samo NC dodatka (idealno 0–2 €, največ 3 €)';
     document.getElementById('xsWork').style.display = ''; document.getElementById('xsPEmpty').style.display = 'none';
     xsRender();
     if (!_xs.predlogi.length && !_xs.run.has(d.izdelek.g_id)) xsPredlagaj(false);

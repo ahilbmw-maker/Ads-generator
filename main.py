@@ -28889,7 +28889,7 @@ def _xsell_pools(rows: list, main: dict):
     for r in rows:
         if r["g_id"] == main["g_id"] or r["sku"] in base or (r["nc_sku"] and r["nc_sku"] in base):
             continue
-        if (r["zaloga"] or 0) <= 0 or r["nc"] is None:
+        if (r["zaloga"] or 0) < XSELL_MIN_ZALOGA or r["nc"] is None:
             continue
         if r["nc"] <= 3.0:
             A.append(r)
@@ -29004,6 +29004,7 @@ async def ai_poraba(request: Request):
             "vse": _obdobje(log, meseci, lambda a: a[:7], lambda k: k[5:7] + "/" + k[2:4])}
 
 
+XSELL_MIN_ZALOGA = 20   # dodatek mora imeti vsaj toliko kosov na zalogi (sicer ni kandidat)
 XSELL_MODELI = {   # izbira v UI (xsell.json["nastavitve"]["model"]); Sonnet 5.5 = pol cene, višji effort
     "sonnet": ("claude-sonnet-5-5", "high", "Sonnet 5.5"),
     "opus": ("claude-opus-5-5", "medium", "Opus 5.5"),
@@ -29125,6 +29126,7 @@ Za GLAVNI IZDELEK (opisan na koncu) izberi najboljši CROSS-SELL dodatek, ki ga 
 PRAVILA:
 - Dodatek mora biti smiseln k glavnemu izdelku (dopolnilo, potrošni material, zaščita, logičen par) ali splošno privlačen impulzni nakup za istega kupca.
 - Ne predlagaj istega izdelka ali njegove variante.
+- Vrstni red: najprej kako dobro dodatek paše, pri podobnem ujemanju višje tisti z nižjo NC. Ne predlagaj dveh skoraj enakih dodatkov (ista vrsta izdelka).
 - Dodatek se prodaja po posebni Xsell ceni 4,99–5,99 € (ne po svoji redni ceni), zato njegova redna cena ni pomembna.
   Pomembna je samo NABAVNA CENA (NC): nižja kot je, boljša je marža — idealno NC 0–2 €, največ 3 €.
 - Prednost imajo kandidati iz SEZNAMA A (NC ≤ 3 €). Iz SEZNAMA B (NC 3–5 €) izberi največ 2 in samo, če v A res ni dobrega ujemanja — označi jih "drazji": true.
@@ -29261,7 +29263,7 @@ async def xsell_kategorija_predlagaj(request: Request, req: XsellKatReq):
     v_kat = [r for r in rows if r["kat"] == str(req.kat)]
     if not v_kat:
         return {"ok": False, "error": "Kategorija nima izdelkov."}
-    A = [r for r in rows if (r["zaloga"] or 0) > 0 and r["nc"] is not None and r["nc"] <= 3.0]
+    A = [r for r in rows if (r["zaloga"] or 0) >= XSELL_MIN_ZALOGA and r["nc"] is not None and r["nc"] <= 3.0]
     A.sort(key=lambda r: (r["nc"], -(r["zaloga"] or 0)))
     A = A[:320]
     vzorec = "\n".join(f'- {r["naziv"][:90]} ({(r["cena"] or 0):.2f} €)' for r in sorted(v_kat, key=lambda r: -(r["obrat"] or 0))[:40])
@@ -29270,6 +29272,7 @@ Za KATEGORIJO (opisana na koncu) izberi UNIVERZALNE poceni cross-sell dodatke, k
 pri izdelkih te kategorije, ki nimajo svojega dodatka. Dodatek naj bo smiseln za večino izdelkov v kategoriji (ali splošen impulzni nakup).
 Dodatek se prodaja po posebni Xsell ceni (4,99–5,99 €), zato njegova redna cena ni pomembna — šteje samo NIZKA NABAVNA CENA (idealno NC 0–2 €).
 Vrni 6 predlogov, razvrščenih od najboljšega, s kratkim razlogom v slovenščini. Uporabi SAMO SKU-je s seznama.
+Vrstni red: najprej kako dobro dodatek paše, pri podobnem ujemanju višje tisti z nižjo NC. Ne predlagaj dveh skoraj enakih dodatkov (ista vrsta izdelka).
 
 Kandidati (SKU | naziv | nabavna cena | zaloga | kategorija):
 {chr(10).join(_xsell_cand_line(r) for r in A)}"""
@@ -29393,7 +29396,7 @@ async def xsell_shop_kat_predlagaj(request: Request, req: XsellShopPredReq):
     imena = [x for x in (req.imena or sk["seznam"]) if x]
     if not imena:
         return {"ok": False, "error": "Seznam kategorij je prazen."}
-    A = [r for r in rows if (r["zaloga"] or 0) > 0 and r["nc"] is not None and r["nc"] <= 3.0]
+    A = [r for r in rows if (r["zaloga"] or 0) >= XSELL_MIN_ZALOGA and r["nc"] is not None and r["nc"] <= 3.0]
     A.sort(key=lambda r: (r["nc"], -(r["zaloga"] or 0)))
     A = A[:320]
     if not A:
@@ -29411,6 +29414,7 @@ Za vsako KATEGORIJO trgovine (seznam na koncu) izberi UNIVERZALNE poceni cross-s
 Dodatek naj bo smiseln za kupca izdelkov iz te kategorije (dopolnilo, uporaben dodatek) ali splošen impulzni nakup za istega kupca.
 Dodatek se prodaja po posebni Xsell ceni 4,99–5,99 €, zato njegova redna cena ni pomembna — šteje samo NIZKA NABAVNA CENA (idealno NC 0–2 €, največ 3 €).
 Za vsako kategorijo vrni 6 predlogov, razvrščenih od najboljšega, s kratkim razlogom v slovenščini (1 stavek).
+Vrstni red: najprej kako dobro dodatek paše, pri podobnem ujemanju višje tisti z nižjo NC. Ne predlagaj dveh skoraj enakih dodatkov (ista vrsta izdelka).
 Isti dodatek lahko uporabiš pri več kategorijah, če res paše. Uporabi SAMO SKU-je s seznama, točno tako kot so zapisani.
 Ime kategorije v odgovoru zapiši točno tako kot na seznamu.
 
