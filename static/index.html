@@ -372,6 +372,25 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .main { flex: 1; padding: 2rem 2rem 5rem; max-width: 1500px; }
 .main.wide { max-width: 100%; padding: 1.5rem 1.5rem 5rem; }
 .page { display: none; }
+/* 🎯 Xsell */
+.xs-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;align-items:start}
+@media(max-width:900px){.xs-grid{grid-template-columns:1fr}}
+.xs-main{display:flex;gap:12px;align-items:center;padding:12px 14px}
+.xs-main img,.xs-it img{width:52px;height:52px;border-radius:8px;object-fit:contain;background:#f8fafc;flex-shrink:0}
+.xs-sku{font-family:ui-monospace,monospace;font-size:11px;font-weight:800;color:#26215c;background:#dedafb;border:1px solid #8f87e0;border-radius:5px;padding:0 6px;white-space:nowrap}
+.xs-pill{font-size:10.5px;font-weight:800;border-radius:5px;padding:1px 6px;white-space:nowrap}
+.xs-it{display:grid;grid-template-columns:24px 52px minmax(0,1fr) auto;gap:10px;align-items:center;background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-top:6px;cursor:pointer}
+.xs-it:hover{border-color:var(--accent)}
+.xs-it.sel{border:2px solid #16a34a;background:#f0fdf4}
+.xs-rk{font-size:13px;font-weight:800;color:var(--text-tertiary);text-align:center}
+.xs-pick{font-size:11.5px;font-weight:800;border-radius:7px;padding:5px 10px;border:1.5px solid #16a34a;color:#166534;background:#fff;white-space:nowrap}
+.xs-it.sel .xs-pick{background:#16a34a;color:#fff}
+.xs-mrow{display:grid;grid-template-columns:34px minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:4px 8px;border-radius:7px;cursor:pointer;font-size:12px}
+.xs-mrow:hover{background:var(--bg-secondary)}
+.xs-mrow.on{background:#eef2ff;outline:1.5px solid var(--accent)}
+.xs-mrow img{width:34px;height:34px;border-radius:6px;object-fit:contain;background:#f8fafc}
+.xs-chip{padding:4px 10px;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);background:#fff;color:var(--text-secondary)}
+.xs-chip.on{background:var(--text);border-color:var(--text);color:#fff}
 /* Zaloga dobavitelja */
 .ss-kpi{border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;background:#fff;cursor:pointer;transition:border-color .12s,box-shadow .12s}
 .ss-kpi:hover{border-color:var(--accent)}
@@ -942,7 +961,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-29 11:30</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 12:34</div>
     </div>
   </div>
 
@@ -1061,6 +1080,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('apteluvoz')">Aptel naročanje</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('pricecheck')">Kontrola cen</div>
     <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('supstock')">Zaloga dobavitelja</div>
+    <div class="nav-sub-item" onclick="switchPage('orodja');switchOrodjaTab('xsell')">🎯 Xsell</div>
     <div class="nav-sub-item" onclick="switchPage('zaloga');switchZalogaTab('inventura')">📋 Inventura</div>
   </div>
 
@@ -2508,6 +2528,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="orodja-tab-btn" id="orodjaTab-apteluvoz" onclick="switchOrodjaTab('apteluvoz')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🛒 Aptel naročanje</button>
       <button class="orodja-tab-btn" id="orodjaTab-pricecheck" onclick="switchOrodjaTab('pricecheck')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Kontrola cen</button>
       <button class="orodja-tab-btn" id="orodjaTab-supstock" onclick="switchOrodjaTab('supstock')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📦 Zaloga dobavitelja</button>
+      <button class="orodja-tab-btn" id="orodjaTab-xsell" onclick="switchOrodjaTab('xsell')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🎯 Xsell</button>
       <button class="orodja-tab-btn" id="orodjaTab-inventura" onclick="switchOrodjaTab('inventura')" style="display:none"></button>
     </div>
 
@@ -2946,6 +2967,54 @@ input[type="text"].error { border-color: var(--red) !important; }
           <button onclick="ssCsv()" style="padding:8px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">⬇ CSV</button>
         </div>
         <div id="ssList" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+
+    <!-- 🎯 XSELL: najboljši poceni dodatek k Maaarket izdelku (Claude Opus 5.5) · izdelek = primarno, kategorija = rezerva -->
+    <div id="orodjaSubpage-xsell" style="display:none;padding:14px">
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="xsQ" type="text" placeholder="SKU ali povezava izdelka (maaarket.si/izdelek/…)" onkeydown="if(event.key==='Enter')xsLoad(this.value)" style="flex:1;min-width:240px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text)">
+          <button onclick="xsLoad(document.getElementById('xsQ').value)" style="padding:9px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">🎯 Predlagaj Xsell</button>
+          <button id="xsMassBtn" onclick="xsToggleMass()" style="padding:9px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Masovni način</button>
+          <a href="/xsell-csv" style="padding:9px 14px;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;text-decoration:none">⬇ CSV</a>
+        </div>
+        <div id="xsInfo" style="font-size:11.5px;color:var(--text-tertiary);margin-top:8px">Samo Maaarket izdelki na zalogi (SL — velja za vse trge) · NC dodatka idealno 0–2 €, največ 3 € · prodajna ~4,99–5,99 €</div>
+      </div>
+
+      <div id="xsMass" class="card" style="display:none;margin-top:12px;padding:12px 14px">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+          <span class="slabel" style="margin:0">📋 MASOVNI NAČIN</span>
+          <span id="xsMassChips" style="display:flex;gap:5px;flex-wrap:wrap"></span>
+          <input id="xsMassQ" type="text" placeholder="🔍 išči…" oninput="xsMassRender()" style="margin-left:auto;width:180px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text)">
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px">Razvrščeno po obratu (najbolj prodajani najprej). Klik = odpri · "Naslednji ›" skoči na naslednjega brez Xsell, predloge zanj Opus pripravi že v ozadju.</div>
+        <div id="xsMassList" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:3px"></div>
+      </div>
+
+      <div id="xsWork" style="display:none;margin-top:12px">
+        <div class="xs-grid">
+          <div>
+            <div id="xsMain" class="card xs-main"></div>
+            <div style="display:flex;align-items:center;gap:8px;margin:12px 0 4px">
+              <span class="slabel" style="margin:0">PREDLOGI · izberi 1</span>
+              <span id="xsPredMeta" style="font-size:11px;color:var(--text-tertiary)"></span>
+              <button onclick="xsPredlagaj(true)" style="margin-left:auto;padding:5px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-weight:600;cursor:pointer">↻ Ponovno predlagaj</button>
+              <button id="xsNextBtn" onclick="xsNext()" style="display:none;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">Naslednji brez Xsell ›</button>
+            </div>
+            <div id="xsList"></div>
+          </div>
+          <div>
+            <div class="card" style="padding:12px;background:#f0fdf4;border-color:#bbf7d0">
+              <div class="slabel" style="margin:0;color:#166534">IZBRANO ZA TA IZDELEK</div>
+              <div id="xsChosen" style="font-size:12.5px;font-weight:700;margin-top:6px"></div>
+            </div>
+            <div class="card" style="padding:12px;margin-top:10px">
+              <div class="slabel" style="margin:0">REZERVA · XSELL KATEGORIJE</div>
+              <div id="xsKat" style="margin-top:6px"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -10826,9 +10895,188 @@ function ssCsv() {
 }
 document.addEventListener('DOMContentLoaded', () => { try { const v = localStorage.getItem('slx_ss_input'); const t = document.getElementById('ssInput'); if (v && t) t.value = v; } catch (e) {} });
 
+// ═══ 🎯 XSELL (Opus 5.5) ═══
+let _xs = { item: null, predlogi: [], izbran: null, kat: null, list: [], filter: 'ni', mass: false, prefetch: {} };
+const xsE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const xsEu = v => v == null ? '—' : Number(v).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+function xsInit() { try { if (localStorage.getItem('slx_xs_mass') === '1' && !_xs.mass) xsToggleMass(); } catch (e) {} }
+function xsNcPill(nc) {
+  const c = nc == null ? ['#f1f5f9', '#475569'] : (nc <= 2 ? ['#dcfce7', '#166534'] : (nc <= 3 ? ['#fef3c7', '#92400e'] : ['#fee2e2', '#991b1b']));
+  return '<span class="xs-pill" style="background:' + c[0] + ';color:' + c[1] + '">NC ' + xsEu(nc) + '</span>';
+}
+async function xsLoad(q) {
+  q = String(q || '').trim(); if (!q) return;
+  const info = document.getElementById('xsInfo');
+  info.textContent = '⏳ Iščem izdelek…';
+  try {
+    const d = await (await fetch('/xsell-izdelek?q=' + encodeURIComponent(q))).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    _xs.item = d.izdelek; _xs.predlogi = d.predlogi || []; _xs.izbran = d.izbran || null; _xs.kat = d.kategorija;
+    document.getElementById('xsQ').value = d.izdelek.sku;
+    info.textContent = 'Model: ' + (d.model || 'Opus 5.5') + ' · samo Maaarket na zalogi · NC dodatka idealno 0–2 €, največ 3 €';
+    document.getElementById('xsWork').style.display = '';
+    xsRender();
+    if (!_xs.predlogi.length) xsPredlagaj(false);
+    xsMassRender();
+  } catch (e) { info.innerHTML = '<span style="color:#b91c1c">✗ ' + xsE(e.message) + '</span>'; }
+}
+async function xsPredlagaj(force) {
+  if (!_xs.item) return;
+  const gid = _xs.item.g_id;
+  document.getElementById('xsList').innerHTML = '<div class="card" style="padding:22px;text-align:center;color:var(--text-tertiary);font-size:12.5px">🧠 Opus 5.5 izbira najboljše dodatke … (10–40 s)</div>';
+  document.getElementById('xsPredMeta').textContent = '';
+  try {
+    let d = (!force && _xs.prefetch[gid]) ? await _xs.prefetch[gid] : null;
+    if (!d || !d.ok) d = await (await fetch('/xsell-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ g_id: gid }) })).json();
+    delete _xs.prefetch[gid];
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    if (!_xs.item || _xs.item.g_id !== gid) return;           // vmes odprt drug izdelek
+    _xs.predlogi = d.predlogi || [];
+    const li = _xs.list.find(x => x.g_id === gid); if (li) li.ima_predloge = true;
+    xsRender();
+    document.getElementById('xsPredMeta').textContent = (d.n_a != null ? d.n_a + ' kandidatov po pravilih · ' + d.n_b + ' dražjih' : '');
+  } catch (e) { document.getElementById('xsList').innerHTML = '<div class="card" style="padding:14px;color:#b91c1c;font-size:12.5px">✗ ' + xsE(e.message) + '</div>'; }
+}
+function xsRender() {
+  const it = _xs.item; if (!it) return;
+  document.getElementById('xsMain').innerHTML = (it.slika ? '<img src="' + xsE(it.slika) + '">' : '') +
+    '<div style="min-width:0;flex:1"><div style="font-weight:700;font-size:14px">' + xsE(it.naziv) + '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;align-items:center"><span class="xs-sku">' + xsE(it.sku) + '</span>' +
+    '<span class="xs-pill" style="background:#eef2ff;color:#3730a3">' + xsEu(it.cena) + '</span>' + xsNcPill(it.nc) +
+    '<span class="xs-pill" style="background:#f1f5f9;color:#334155">zaloga ' + (it.zaloga || 0) + '</span>' +
+    '<span class="xs-pill" style="background:#f1f5f9;color:#334155">' + xsE(it.kat_ime) + '</span></div></div>';
+  document.getElementById('xsList').innerHTML = _xs.predlogi.length ? _xs.predlogi.map((p, i) => {
+    const m = p.cena && p.nc != null ? Math.round((p.cena / 1.22 - p.nc) / (p.cena / 1.22) * 100) : null;
+    return '<div class="xs-it' + (_xs.izbran === p.sku ? ' sel' : '') + '" data-xs="' + xsE(p.sku) + '"><div class="xs-rk">' + (i === 0 ? '⭐' : (i + 1)) + '</div>' +
+      (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '<div style="width:52px;height:52px;border-radius:8px;background:#f1f5f9"></div>') +
+      '<div style="min-width:0"><div style="font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + xsE(p.naziv) + '">' + xsE(p.naziv) + '</div>' +
+      '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;align-items:center"><span class="xs-sku">' + xsE(p.sku) + '</span>' +
+      '<span class="xs-pill" style="background:#eef2ff;color:#3730a3">' + xsEu(p.cena) + '</span>' + xsNcPill(p.nc) +
+      (m != null ? '<span class="xs-pill" style="background:#f1f5f9;color:#334155">marža ' + m + ' %</span>' : '') +
+      '<span class="xs-pill" style="background:#f1f5f9;color:#334155">zaloga ' + (p.zaloga || 0) + '</span>' +
+      (p.drazji ? '<span class="xs-pill" style="background:#fee2e2;color:#991b1b">dražji — slabša konverzija</span>' : '') + '</div>' +
+      '<div style="font-size:11.5px;color:var(--text-secondary);margin-top:3px">💡 ' + xsE(p.razlog) + '</div></div>' +
+      '<div class="xs-pick">' + (_xs.izbran === p.sku ? '✓ izbrano' : 'izberi') + '</div></div>';
+  }).join('') : '';
+  const ch = _xs.predlogi.find(p => p.sku === _xs.izbran);
+  document.getElementById('xsChosen').innerHTML = _xs.izbran
+    ? xsE(ch ? ch.naziv : _xs.izbran) + ' <span class="xs-sku">' + xsE(_xs.izbran) + '</span>' +
+      '<div style="display:flex;gap:6px;margin-top:8px"><button onclick="navigator.clipboard.writeText(\'' + xsE(_xs.izbran) + '\')" style="padding:5px 10px;border:1.5px solid var(--accent);color:var(--accent);background:#fff;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">⧉ Kopiraj SKU</button>' +
+      '<button onclick="xsIzberi(null)" style="padding:5px 10px;border:1px solid var(--border);color:var(--text-secondary);background:#fff;border-radius:7px;font-size:11.5px;cursor:pointer">✕ Odstrani</button></div>'
+    : '<span style="font-weight:500;color:var(--text-tertiary)">Še nič — klikni predlog na levi.' + (_xs.kat && _xs.kat.items && _xs.kat.items.length ? ' Do takrat velja Xsell kategorije.' : '') + '</span>';
+  xsKatRender();
+  document.getElementById('xsNextBtn').style.display = _xs.mass ? '' : 'none';
+}
+document.addEventListener('click', e => {
+  const r = e.target.closest('#xsList .xs-it[data-xs]'); if (r) { xsIzberi(r.dataset.xs); return; }
+  const m = e.target.closest('#xsMassList .xs-mrow[data-g]'); if (m) { xsLoad(m.dataset.g); return; }
+  const k = e.target.closest('#xsKat input[data-kx]'); if (k) { xsKatCount(); }
+});
+async function xsIzberi(sku) {
+  if (!_xs.item) return;
+  try {
+    const d = await (await fetch('/xsell-shrani', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ g_id: _xs.item.g_id, sku: sku || '' }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    _xs.izbran = sku || null;
+    const li = _xs.list.find(x => x.g_id === _xs.item.g_id);
+    if (li) { li.izbran = _xs.izbran; li.vir = _xs.izbran ? 'izdelek' : (_xs.kat && _xs.kat.items && _xs.kat.items.length ? 'kategorija' : 'ni'); }
+    xsRender(); xsMassRender();
+  } catch (e) { alert('Shranjevanje ni uspelo: ' + e.message); }
+}
+// ── rezerva: Xsell kategorije ──
+let _xsKatPred = null;
+function xsKatRender() {
+  const k = _xs.kat, box = document.getElementById('xsKat'); if (!k) { box.innerHTML = ''; return; }
+  let h = '<div style="font-size:12.5px;font-weight:700">' + xsE(k.ime) + '</div>';
+  h += (k.items && k.items.length)
+    ? '<div style="font-size:12px;line-height:1.7;margin-top:4px">' + k.items.map((x, i) => (i + 1) + '. ' + xsE(x.naziv).slice(0, 48) + ' · <b>' + xsEu(x.cena) + '</b>').join('<br>') + '</div>'
+    : '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:3px">Kategorija še nima Xsell.</div>';
+  if (_xsKatPred && _xsKatPred.kat === k.kat) {
+    h += '<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;font-size:11px;color:var(--text-tertiary)">Označi do 5 (vrstni red = prednost):</div>' +
+      _xsKatPred.items.map(p => '<label style="display:flex;gap:6px;align-items:flex-start;font-size:11.5px;margin-top:5px;cursor:pointer"><input type="checkbox" data-kx="' + xsE(p.sku) + '"' + ((k.items || []).some(x => x.sku === p.sku) ? ' checked' : '') + '>' +
+        '<span><b>' + xsE(p.naziv).slice(0, 44) + '</b> · ' + xsEu(p.cena) + ' · ' + xsNcPill(p.nc) + '<br><span style="color:var(--text-tertiary)">💡 ' + xsE(p.razlog) + '</span></span></label>').join('') +
+      '<button onclick="xsKatShrani()" id="xsKatSave" style="margin-top:8px;width:100%;padding:6px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">💾 Shrani za kategorijo</button>';
+  } else {
+    h += '<button onclick="xsKatPredlagaj()" style="margin-top:8px;width:100%;padding:6px;background:transparent;color:var(--accent);border:1.5px solid var(--accent);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">✨ ' + ((k.items && k.items.length) ? 'Uredi' : 'Predlagaj') + ' za kategorijo</button>';
+  }
+  box.innerHTML = h;
+}
+function xsKatCount() { const n = document.querySelectorAll('#xsKat input[data-kx]:checked').length; const b = document.getElementById('xsKatSave'); if (b) b.textContent = '💾 Shrani za kategorijo (' + n + ')'; }
+async function xsKatPredlagaj() {
+  const k = _xs.kat; if (!k) return;
+  document.getElementById('xsKat').insertAdjacentHTML('beforeend', '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px">🧠 Opus 5.5 izbira za kategorijo …</div>');
+  try {
+    const d = await (await fetch('/xsell-kategorija-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kat: k.kat }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    _xsKatPred = { kat: k.kat, items: d.predlogi || [] };
+    xsKatRender();
+  } catch (e) { alert('Predlog kategorije ni uspel: ' + e.message); xsKatRender(); }
+}
+async function xsKatShrani() {
+  const k = _xs.kat; if (!k || !_xsKatPred) return;
+  const sel = Array.from(document.querySelectorAll('#xsKat input[data-kx]:checked')).map(c => c.dataset.kx).slice(0, 5);
+  try {
+    const d = await (await fetch('/xsell-kategorija-shrani', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kat: k.kat, items: sel }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    k.items = sel.map(s => _xsKatPred.items.find(p => p.sku === s)).filter(Boolean);
+    _xsKatPred = null;
+    _xs.list.forEach(x => { if (x.kat_ime === k.ime && !x.izbran) x.vir = k.items.length ? 'kategorija' : 'ni'; });
+    xsRender(); xsMassRender();
+  } catch (e) { alert('Shranjevanje ni uspelo: ' + e.message); }
+}
+// ── masovni način ──
+async function xsToggleMass() {
+  _xs.mass = !_xs.mass;
+  try { localStorage.setItem('slx_xs_mass', _xs.mass ? '1' : '0'); } catch (e) {}
+  document.getElementById('xsMass').style.display = _xs.mass ? '' : 'none';
+  document.getElementById('xsMassBtn').style.cssText += _xs.mass ? ';background:var(--accent);color:#fff;border-color:var(--accent)' : ';background:transparent;color:var(--text-secondary);border-color:var(--border)';
+  if (_xs.mass && !_xs.list.length) {
+    document.getElementById('xsMassList').innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);padding:10px">Nalagam Maaarket izdelke …</div>';
+    try { const d = await (await fetch('/xsell-seznam')).json(); if (!d.ok) throw new Error(d.error || 'napaka'); _xs.list = d.izdelki || []; }
+    catch (e) { document.getElementById('xsMassList').innerHTML = '<div style="color:#b91c1c;font-size:12px;padding:10px">✗ ' + xsE(e.message) + '</div>'; return; }
+  }
+  xsMassRender(); if (_xs.item) xsRender();
+}
+function xsSetFilter(f) { _xs.filter = f; xsMassRender(); }
+function _xsMassVis() {
+  const q = (document.getElementById('xsMassQ').value || '').toLowerCase().trim();
+  return _xs.list.filter(x => (_xs.filter === 'vsi' || (_xs.filter === 'ni' ? x.vir !== 'izdelek' : x.vir === 'izdelek')) &&
+    (!q || (x.sku + ' ' + x.naziv).toLowerCase().includes(q)));
+}
+function xsMassRender() {
+  if (!_xs.mass) return;
+  const n = { ni: _xs.list.filter(x => x.vir !== 'izdelek').length, z: _xs.list.filter(x => x.vir === 'izdelek').length };
+  document.getElementById('xsMassChips').innerHTML =
+    '<span class="xs-chip' + (_xs.filter === 'ni' ? ' on' : '') + '" onclick="xsSetFilter(\'ni\')">Brez Xsell ' + n.ni + '</span>' +
+    '<span class="xs-chip' + (_xs.filter === 'z' ? ' on' : '') + '" onclick="xsSetFilter(\'z\')">Z Xsell ' + n.z + '</span>' +
+    '<span class="xs-chip' + (_xs.filter === 'vsi' ? ' on' : '') + '" onclick="xsSetFilter(\'vsi\')">Vsi ' + _xs.list.length + '</span>';
+  const vis = _xsMassVis();
+  document.getElementById('xsMassList').innerHTML = vis.length ? vis.map(x => {
+    const v = x.vir === 'izdelek' ? ['✓ ' + xsE(x.izbran), '#dcfce7', '#166534'] : (x.vir === 'kategorija' ? ['kategorija', '#e0e7ff', '#3730a3'] : ['brez', '#fef3c7', '#92400e']);
+    return '<div class="xs-mrow' + (_xs.item && _xs.item.g_id === x.g_id ? ' on' : '') + '" data-g="' + xsE(x.g_id) + '">' + (x.slika ? '<img loading="lazy" src="' + xsE(x.slika) + '">' : '<span></span>') +
+      '<div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span class="xs-sku">' + xsE(x.sku) + '</span> ' + xsE(x.naziv) + '</div>' +
+      '<div style="font-size:10.5px;color:var(--text-tertiary)">' + xsEu(x.cena) + ' · obrat ' + (x.obrat || 0) + ' · ' + xsE(x.kat_ime) + (x.ima_predloge ? ' · predlogi pripravljeni' : '') + '</div></div>' +
+      '<span class="xs-pill" style="background:' + v[1] + ';color:' + v[2] + '">' + v[0] + '</span><span></span></div>';
+  }).join('') : '<div style="font-size:12px;color:var(--text-tertiary);padding:10px">Ni izdelkov v tem filtru.</div>';
+  xsPrefetchNext();
+}
+function _xsNextItem() {
+  const brez = _xs.list.filter(x => x.vir !== 'izdelek');
+  const i = _xs.item ? brez.findIndex(x => x.g_id === _xs.item.g_id) : -1;
+  return brez.find((x, j) => j > i && (!_xs.item || x.g_id !== _xs.item.g_id)) || null;
+}
+function xsNext() { const n = _xsNextItem(); if (n) xsLoad(n.g_id); else alert('Vsi izdelki imajo Xsell 🎉'); }
+// predloge za naslednji izdelek Opus pripravi v ozadju → ob "Naslednji ›" so takoj tu
+function xsPrefetchNext() {
+  if (!_xs.mass || !_xs.item) return;
+  const n = _xsNextItem(); if (!n || n.ima_predloge || _xs.prefetch[n.g_id]) return;
+  _xs.prefetch[n.g_id] = fetch('/xsell-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ g_id: n.g_id }) })
+    .then(r => r.json()).then(d => { if (d.ok) n.ima_predloge = true; return d; }).catch(() => null);
+}
+
 function switchOrodjaTab(tab) {
   if (tab === 'urltosku' || tab === 'zdrnarocila') tab = 'csv';   // odstranjena: URL→SKU, Združena naročila
-  ['csv', 'hs', 'hsuvoz', 'hsplus', 'apteluvoz', 'pricecheck', 'supstock'].forEach(t => {
+  ['csv', 'hs', 'hsuvoz', 'hsplus', 'apteluvoz', 'pricecheck', 'supstock', 'xsell'].forEach(t => {
     const btn = document.getElementById('orodjaTab-' + t);
     const sub = document.getElementById('orodjaSubpage-' + t);
     if (t === tab) {
@@ -10840,6 +11088,7 @@ function switchOrodjaTab(tab) {
     }
   });
   if (tab === 'hs') hsLoadHistory();
+  if (tab === 'xsell') xsInit();
   if (tab === 'pricecheck') pcLoadStockStatus();
   if (tab === 'csv') orodjaLoadHistory();
   if (tab === 'hsuvoz') { hsuvozLoadStock(); hsuvozLoadHistory(); hsuvozLoadCurrent(); hsuvozLoadOrderPanel(); }

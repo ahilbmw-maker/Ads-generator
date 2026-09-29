@@ -28655,6 +28655,363 @@ async def dobavitelj_zaloga(req: SupStockReq):
                          "errors": _sup_stock["err"]})
 
 
+# ════════════════════════════════════════════════════════════════════
+#  🎯 XSELL (Orodja) — za Maaarket izdelek predlaga najboljši poceni dodatek (Claude Opus 5.5)
+#  Primarno: Xsell na izdelku · rezerva: Xsell kategorije (google_product_category iz SL feeda).
+#  Samo Maaarket izdelki na zalogi (SL = matica, velja za vse trge). Pravila (uporabnik):
+#  NC dodatka idealno 0–2 €, največ 3 € · prodajna ~4,99–5,99 € (izjemoma do 6,99/7,99) · dražji samo v sili (označeni).
+#  Shramba: /data/xsell.json {"izdelki": {g_id: {...}}, "kategorije": {cat_id: {...}}}
+# ════════════════════════════════════════════════════════════════════
+XSELL_FILE = DATA_DIR / "xsell.json"
+XSELL_MODEL = (os.environ.get("XSELL_MODEL") or "claude-opus-5-5").strip()
+GOOGLE_TAX_FILE = DATA_DIR / "google_taxonomy.json"
+_xsell_rows_cache = {"key": None, "rows": None}
+_google_tax = {}
+
+
+def _xsell_load() -> dict:
+    d = _jload(XSELL_FILE, {}) or {}
+    d.setdefault("izdelki", {})
+    d.setdefault("kategorije", {})
+    return d
+
+
+def _xsell_save(d: dict):
+    tmp = XSELL_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, XSELL_FILE)
+
+
+async def _google_tax_names() -> dict:
+    """Google product taxonomy {id: 'Pot > do > kategorije'} — prenese se enkrat in shrani na /data."""
+    global _google_tax
+    if _google_tax:
+        return _google_tax
+    t = _jload(GOOGLE_TAX_FILE, {}) or {}
+    if not t:
+        try:
+            async with httpx.AsyncClient(timeout=30) as cli:
+                r = await cli.get("https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt")
+            for line in r.text.splitlines():
+                if " - " in line and line[:1].isdigit():
+                    i, name = line.split(" - ", 1)
+                    t[i.strip()] = name.strip()
+            if t:
+                GOOGLE_TAX_FILE.write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+        except Exception as e:
+            print(f"[xsell] google taxonomy: {e}")
+    _google_tax = t
+    return t
+
+
+async def _xsell_rows(request: Request) -> list:
+    """Maaarket izdelki SL (iz Marže po trgih) + kategorija in opis iz feeda."""
+    key = ((feed_meta.get("sl") or {}).get("fetched_at"), _mtime(STOCK_CSV_FILE), _mtime(MARZA_SKU_FILE))
+    if _xsell_rows_cache["key"] == key and _xsell_rows_cache["rows"] is not None:
+        return _xsell_rows_cache["rows"]
+    res = await marza_trgi(request, "sl")
+    if not isinstance(res, dict) or not res.get("ok"):
+        raise RuntimeError((res.get("error") if isinstance(res, dict) else None) or "Feed ni na voljo")
+    tax = await _google_tax_names()
+    feed = feed_by_lang.get("sl") or {}
+    rows = []
+    for r in res.get("rows") or []:
+        if not any(n in str(r.get("znamka") or "").lower() for n in MARZA_NASE_ZNAMKE):
+            continue
+        fd = feed.get(str(r.get("g_id"))) or {}
+        cat = str(fd.get("google_category") or "").strip()
+        rows.append({
+            "g_id": str(r.get("g_id")), "sku": str(r.get("sku") or "").upper(), "nc_sku": str(r.get("nc_sku") or "").upper(),
+            "naziv": r.get("naziv") or "", "url": r.get("url") or "", "slika": r.get("slika") or "",
+            "cena": r.get("eur") if r.get("eur") is not None else r.get("koncna"), "nc": r.get("nc"),
+            "zaloga": r.get("zaloga") or 0, "obrat": r.get("obrat"), "marza_pct": r.get("marza_pct"),
+            "cms_id": r.get("cms_id"), "kat": cat,
+            "kat_ime": (tax.get(cat, "").split(" > ")[-1] if tax.get(cat) else (f"Kategorija {cat}" if cat else "Brez kategorije")),
+            "kat_pot": tax.get(cat, ""), "opis": re.sub(r"<[^>]+>", " ", str(fd.get("description") or ""))[:700],
+        })
+    _xsell_rows_cache.update(key=key, rows=rows)
+    return rows
+
+
+def _xsell_find(rows: list, q: str):
+    q = str(q or "").strip()
+    if not q:
+        return None
+    if "://" in q or "/izdelek/" in q:
+        slug = q.split("?")[0].rstrip("/").rsplit("/", 1)[-1].lower()
+        return next((r for r in rows if r["url"].split("?")[0].rstrip("/").lower().endswith(slug)), None)
+    u = q.upper()
+    return next((r for r in rows if u in (r["sku"], r["nc_sku"])), None) or next((r for r in rows if r["g_id"] == q), None)
+
+
+def _xsell_pools(rows: list, main: dict):
+    """A = pravila (NC ≤ 3 €, cena ≤ 7,99 €) · B = dražji (NC ≤ 5 €, cena ≤ 12,99 €) — samo na zalogi, brez glavnega."""
+    base = {main["sku"], main["nc_sku"]} - {""}
+    A, B = [], []
+    for r in rows:
+        if r["g_id"] == main["g_id"] or r["sku"] in base or (r["nc_sku"] and r["nc_sku"] in base):
+            continue
+        if not r["zaloga"] or r["nc"] is None or r["cena"] is None:
+            continue
+        if r["nc"] <= 3.0 and r["cena"] <= 7.99:
+            A.append(r)
+        elif r["nc"] <= 5.0 and r["cena"] <= 12.99:
+            B.append(r)
+    A.sort(key=lambda r: (-(r["zaloga"] or 0)))
+    B.sort(key=lambda r: (r["nc"], -(r["zaloga"] or 0)))
+    return A[:320], B[:80]
+
+
+def _xsell_opus(prompt: str, schema: dict) -> dict:
+    """Klic Claude Opus 5.5 s strukturiranim izhodom (JSON). Varovalka ob zavrnitvi: fallbacks "default"."""
+    kw = dict(model=XSELL_MODEL, max_tokens=16000,
+              messages=[{"role": "user", "content": prompt}],
+              output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}})
+    try:
+        r = client.beta.messages.create(**kw, betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    except (TypeError, anthropic.BadRequestError) as e:
+        print(f"[xsell] brez fallbacks: {str(e)[:160]}")
+        r = client.messages.create(**kw)
+    if getattr(r, "stop_reason", "") == "refusal":
+        raise RuntimeError("Model je zavrnil zahtevo.")
+    txt = next((b.text for b in r.content if getattr(b, "type", "") == "text"), "")
+    return json.loads(txt)
+
+
+def _xsell_cand_line(r: dict) -> str:
+    return f'{r["sku"]} | {r["naziv"][:90]} | {r["cena"]:.2f} € | NC {r["nc"]:.2f} € | zaloga {r["zaloga"]} | {r["kat_ime"]}'
+
+
+def _xsell_view(r: dict) -> dict:
+    return {k: r.get(k) for k in ("g_id", "sku", "naziv", "url", "slika", "cena", "nc", "zaloga", "obrat", "marza_pct", "kat", "kat_ime", "cms_id")}
+
+
+def _xsell_status(d: dict, r: dict) -> dict:
+    iz = d["izdelki"].get(r["g_id"]) or {}
+    kat = d["kategorije"].get(r["kat"]) or {}
+    return {"izbran": iz.get("izbran"), "izbran_naziv": iz.get("izbran_naziv"),
+            "kat_items": kat.get("items") or [], "vir": "izdelek" if iz.get("izbran") else ("kategorija" if kat.get("items") else "ni")}
+
+
+@app.get("/xsell-izdelek")
+async def xsell_izdelek(request: Request, q: str = ""):
+    try:
+        rows = await _xsell_rows(request)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    main = _xsell_find(rows, q)
+    if not main:
+        return {"ok": False, "error": "Izdelka ni med Maaarket izdelki v SL feedu (preveri SKU ali povezavo)."}
+    d = _xsell_load()
+    iz = d["izdelki"].get(main["g_id"]) or {}
+    by = {r["sku"]: r for r in rows}
+    predlogi = [dict(_xsell_view(by[p["sku"]]), razlog=p.get("razlog", ""), drazji=p.get("drazji", False))
+                for p in (iz.get("predlogi") or []) if p.get("sku") in by]
+    kat = d["kategorije"].get(main["kat"]) or {}
+    return {"ok": True, "izdelek": dict(_xsell_view(main), kat_pot=main["kat_pot"]), "predlogi": predlogi,
+            "predlogi_at": iz.get("predlogi_at"), "izbran": iz.get("izbran"),
+            "kategorija": {"kat": main["kat"], "ime": main["kat_ime"],
+                           "items": [_xsell_view(by[s]) for s in (kat.get("items") or []) if s in by]},
+            "model": XSELL_MODEL}
+
+
+class XsellPredReq(BaseModel):
+    g_id: str
+
+
+@app.post("/xsell-predlagaj")
+async def xsell_predlagaj(request: Request, req: XsellPredReq):
+    try:
+        rows = await _xsell_rows(request)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    main = next((r for r in rows if r["g_id"] == str(req.g_id)), None)
+    if not main:
+        return {"ok": False, "error": "Izdelek ni najden."}
+    A, B = _xsell_pools(rows, main)
+    if not A and not B:
+        return {"ok": False, "error": "Ni kandidatov (Maaarket na zalogi z NC ≤ 5 €)."}
+    prompt = f"""Si izkušen e-commerce trgovec za spletno trgovino Maaarket (impulzni nakupi, Slovenija).
+Za GLAVNI IZDELEK izberi najboljši CROSS-SELL dodatek, ki ga prikažemo ob nakupu (prikaže se samo 1, zato razvrsti).
+
+GLAVNI IZDELEK:
+- naziv: {main["naziv"]}
+- cena: {main["cena"]:.2f} €
+- kategorija: {main["kat_pot"] or main["kat_ime"]}
+- opis: {main["opis"]}
+
+PRAVILA:
+- Dodatek mora biti smiseln k glavnemu izdelku (dopolnilo, potrošni material, zaščita, logičen par) ali splošno privlačen impulzni nakup za istega kupca.
+- Ne predlagaj istega izdelka ali njegove variante.
+- Kupec je že odločen za glavni izdelek: poceni dodatek (~4,99–5,99 €) prepriča lažje kot dražji.
+- Prednost imajo kandidati iz SEZNAMA A. Iz SEZNAMA B izberi največ 2 in samo, če v A res ni dobrega ujemanja — označi jih "drazji": true.
+- Vrni 6 predlogov, razvrščenih od najboljšega. Za vsakega kratek razlog v slovenščini (1 stavek, zakaj paše kupcu).
+- Uporabi SAMO SKU-je iz seznamov, točno tako kot so zapisani.
+
+SEZNAM A (SKU | naziv | prodajna cena | nabavna cena | zaloga | kategorija):
+{chr(10).join(_xsell_cand_line(r) for r in A) or "(prazno)"}
+
+SEZNAM B — dražji:
+{chr(10).join(_xsell_cand_line(r) for r in B) or "(prazno)"}"""
+    schema = {"type": "object", "additionalProperties": False, "required": ["predlogi"],
+              "properties": {"predlogi": {"type": "array", "items": {
+                  "type": "object", "additionalProperties": False, "required": ["sku", "razlog", "drazji"],
+                  "properties": {"sku": {"type": "string"}, "razlog": {"type": "string"}, "drazji": {"type": "boolean"}}}}}}
+    loop = asyncio.get_event_loop()
+    try:
+        out = await loop.run_in_executor(None, lambda: _xsell_opus(prompt, schema))
+    except Exception as e:
+        return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
+    by = {r["sku"]: r for r in A + B}
+    seen, predlogi = set(), []
+    for p in out.get("predlogi") or []:
+        s = str(p.get("sku") or "").strip().upper()
+        if s in by and s not in seen:
+            seen.add(s)
+            predlogi.append({"sku": s, "razlog": str(p.get("razlog") or "")[:300], "drazji": bool(p.get("drazji")) or by[s] in B})
+    d = _xsell_load()
+    iz = d["izdelki"].setdefault(main["g_id"], {})
+    iz.update({"sku": main["sku"], "naziv": main["naziv"], "predlogi": predlogi, "predlogi_at": _lj_iso()})
+    _xsell_save(d)
+    return {"ok": True, "predlogi": [dict(_xsell_view(by[p["sku"]]), razlog=p["razlog"], drazji=p["drazji"]) for p in predlogi],
+            "predlogi_at": iz["predlogi_at"], "n_a": len(A), "n_b": len(B), "model": XSELL_MODEL}
+
+
+class XsellShraniReq(BaseModel):
+    g_id: str
+    sku: Optional[str] = None      # prazno = odstrani izbiro
+
+
+@app.post("/xsell-shrani")
+async def xsell_shrani(request: Request, req: XsellShraniReq):
+    rows = await _xsell_rows(request)
+    main = next((r for r in rows if r["g_id"] == str(req.g_id)), None)
+    if not main:
+        return {"ok": False, "error": "Izdelek ni najden."}
+    d = _xsell_load()
+    iz = d["izdelki"].setdefault(main["g_id"], {"sku": main["sku"], "naziv": main["naziv"]})
+    s = str(req.sku or "").strip().upper()
+    if s:
+        x = next((r for r in rows if r["sku"] == s), None)
+        iz.update({"izbran": s, "izbran_naziv": (x or {}).get("naziv", ""), "izbran_at": _lj_iso()})
+    else:
+        for k in ("izbran", "izbran_naziv", "izbran_at"):
+            iz.pop(k, None)
+    _xsell_save(d)
+    return {"ok": True}
+
+
+@app.get("/xsell-seznam")
+async def xsell_seznam(request: Request):
+    """Vsi Maaarket izdelki (SL) s statusom Xsell — za masovni način (najbolj prodajani najprej)."""
+    try:
+        rows = await _xsell_rows(request)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    d = _xsell_load()
+    out = []
+    for r in rows:
+        st = _xsell_status(d, r)
+        out.append({"g_id": r["g_id"], "sku": r["sku"], "naziv": r["naziv"], "slika": r["slika"], "cena": r["cena"],
+                    "zaloga": r["zaloga"], "obrat": r["obrat"], "kat_ime": r["kat_ime"], "vir": st["vir"], "izbran": st["izbran"],
+                    "ima_predloge": bool((d["izdelki"].get(r["g_id"]) or {}).get("predlogi"))})
+    out.sort(key=lambda x: (-(x["obrat"] or 0), -(x["zaloga"] or 0)))
+    return {"ok": True, "izdelki": out}
+
+
+@app.get("/xsell-kategorije")
+async def xsell_kategorije(request: Request):
+    rows = await _xsell_rows(request)
+    d = _xsell_load()
+    by = {r["sku"]: r for r in rows}
+    kats = {}
+    for r in rows:
+        k = kats.setdefault(r["kat"], {"kat": r["kat"], "ime": r["kat_ime"], "pot": r["kat_pot"], "n": 0})
+        k["n"] += 1
+    out = []
+    for k in sorted(kats.values(), key=lambda x: -x["n"]):
+        sv = d["kategorije"].get(k["kat"]) or {}
+        k["items"] = [_xsell_view(by[s]) for s in (sv.get("items") or []) if s in by]
+        k["predlogi"] = [dict(_xsell_view(by[p["sku"]]), razlog=p.get("razlog", "")) for p in (sv.get("predlogi") or []) if p.get("sku") in by]
+        out.append(k)
+    return {"ok": True, "kategorije": out}
+
+
+class XsellKatReq(BaseModel):
+    kat: str
+    items: Optional[List[str]] = None
+
+
+@app.post("/xsell-kategorija-predlagaj")
+async def xsell_kategorija_predlagaj(request: Request, req: XsellKatReq):
+    rows = await _xsell_rows(request)
+    v_kat = [r for r in rows if r["kat"] == str(req.kat)]
+    if not v_kat:
+        return {"ok": False, "error": "Kategorija nima izdelkov."}
+    A = [r for r in rows if r["zaloga"] and r["nc"] is not None and r["cena"] is not None and r["nc"] <= 3.0 and r["cena"] <= 7.99]
+    A.sort(key=lambda r: -(r["zaloga"] or 0))
+    A = A[:320]
+    vzorec = "\n".join(f'- {r["naziv"][:90]} ({r["cena"]:.2f} €)' for r in sorted(v_kat, key=lambda r: -(r["obrat"] or 0))[:40])
+    prompt = f"""Si izkušen e-commerce trgovec za spletno trgovino Maaarket (impulzni nakupi, Slovenija).
+Za KATEGORIJO "{v_kat[0]["kat_pot"] or v_kat[0]["kat_ime"]}" izberi UNIVERZALNE poceni cross-sell dodatke, ki se prikažejo
+pri izdelkih te kategorije, ki nimajo svojega dodatka. Dodatek naj bo smiseln za večino izdelkov v kategoriji (ali splošen impulzni nakup).
+
+Primeri izdelkov v kategoriji (najbolj prodajani):
+{vzorec}
+
+Kandidati (SKU | naziv | prodajna cena | nabavna cena | zaloga | kategorija):
+{chr(10).join(_xsell_cand_line(r) for r in A)}
+
+Vrni 6 predlogov, razvrščenih od najboljšega, s kratkim razlogom v slovenščini. Uporabi SAMO SKU-je s seznama."""
+    schema = {"type": "object", "additionalProperties": False, "required": ["predlogi"],
+              "properties": {"predlogi": {"type": "array", "items": {
+                  "type": "object", "additionalProperties": False, "required": ["sku", "razlog"],
+                  "properties": {"sku": {"type": "string"}, "razlog": {"type": "string"}}}}}}
+    loop = asyncio.get_event_loop()
+    try:
+        out = await loop.run_in_executor(None, lambda: _xsell_opus(prompt, schema))
+    except Exception as e:
+        return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
+    by = {r["sku"]: r for r in A}
+    seen, predlogi = set(), []
+    for p in out.get("predlogi") or []:
+        s = str(p.get("sku") or "").strip().upper()
+        if s in by and s not in seen:
+            seen.add(s)
+            predlogi.append({"sku": s, "razlog": str(p.get("razlog") or "")[:300]})
+    d = _xsell_load()
+    k = d["kategorije"].setdefault(str(req.kat), {})
+    k.update({"ime": v_kat[0]["kat_ime"], "predlogi": predlogi, "predlogi_at": _lj_iso()})
+    _xsell_save(d)
+    return {"ok": True, "predlogi": [dict(_xsell_view(by[p["sku"]]), razlog=p["razlog"]) for p in predlogi]}
+
+
+@app.post("/xsell-kategorija-shrani")
+async def xsell_kategorija_shrani(request: Request, req: XsellKatReq):
+    d = _xsell_load()
+    k = d["kategorije"].setdefault(str(req.kat), {})
+    k.update({"items": [str(s).strip().upper() for s in (req.items or []) if str(s).strip()][:5], "items_at": _lj_iso()})
+    _xsell_save(d)
+    return {"ok": True}
+
+
+@app.get("/xsell-csv")
+async def xsell_csv(request: Request):
+    """Izvoz: SKU izdelka → izbrani Xsell (izdelek ali 1. iz kategorije)."""
+    from fastapi.responses import Response
+    rows = await _xsell_rows(request)
+    d = _xsell_load()
+    by = {r["sku"]: r for r in rows}
+    out = ["SKU;Naziv;CMS ID;Xsell SKU;Xsell naziv;Vir;Kategorija"]
+    q = lambda v: '"' + str(v or "").replace('"', '""') + '"'
+    for r in rows:
+        st = _xsell_status(d, r)
+        xs = st["izbran"] or (st["kat_items"][0] if st["kat_items"] else "")
+        out.append(";".join(q(v) for v in (r["sku"], r["naziv"], r["cms_id"], xs, (by.get(xs) or {}).get("naziv", ""), st["vir"], r["kat_ime"])))
+    return Response("﻿" + "\n".join(out), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="xsell-{_lj_today()}.csv"'})
+
+
 @app.get("/analiza-meta-duplicates")
 async def analiza_meta_duplicates():
     """Detekcija podvojenih kampanj po SKU na accountu (isti CSV kot Meta Ads tab)."""
