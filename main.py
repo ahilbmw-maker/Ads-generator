@@ -28659,7 +28659,8 @@ async def dobavitelj_zaloga(req: SupStockReq):
 #  🎯 XSELL (Orodja) — za Maaarket izdelek predlaga najboljši poceni dodatek (Claude Opus 5.5)
 #  Primarno: Xsell na izdelku · rezerva: Xsell kategorije (google_product_category iz SL feeda).
 #  Samo Maaarket izdelki na zalogi (SL = matica, velja za vse trge). Pravila (uporabnik):
-#  NC dodatka idealno 0–2 €, največ 3 € · prodajna ~4,99–5,99 € (izjemoma do 6,99/7,99) · dražji samo v sili (označeni).
+#  Šteje SAMO nabavna cena (NC) dodatka: idealno 0–2 €, največ 3 € (dražji = NC 3–5 €, samo v sili, označeni).
+#  Prodajna cena dodatka NI pomembna — Xsell se prodaja po svoji ceni (4,99–5,99 €), ki jo nastavimo posebej.
 #  Shramba: /data/xsell.json {"izdelki": {g_id: {...}}, "kategorije": {cat_id: {...}}}
 # ════════════════════════════════════════════════════════════════════
 XSELL_FILE = DATA_DIR / "xsell.json"
@@ -28745,19 +28746,19 @@ def _xsell_find(rows: list, q: str):
 
 
 def _xsell_pools(rows: list, main: dict):
-    """A = pravila (NC ≤ 3 €, cena ≤ 7,99 €) · B = dražji (NC ≤ 5 €, cena ≤ 12,99 €) — samo na zalogi, brez glavnega."""
+    """A = NC ≤ 3 € · B = dražji (NC 3–5 €) — samo na zalogi, brez glavnega. Prodajna cena dodatka se ne upošteva."""
     base = {main["sku"], main["nc_sku"]} - {""}
     A, B = [], []
     for r in rows:
         if r["g_id"] == main["g_id"] or r["sku"] in base or (r["nc_sku"] and r["nc_sku"] in base):
             continue
-        if (r["zaloga"] or 0) <= 0 or r["nc"] is None or r["cena"] is None:
+        if (r["zaloga"] or 0) <= 0 or r["nc"] is None:
             continue
-        if r["nc"] <= 3.0 and r["cena"] <= 7.99:
+        if r["nc"] <= 3.0:
             A.append(r)
-        elif r["nc"] <= 5.0 and r["cena"] <= 12.99:
+        elif r["nc"] <= 5.0:
             B.append(r)
-    A.sort(key=lambda r: (-(r["zaloga"] or 0)))
+    A.sort(key=lambda r: (r["nc"], -(r["zaloga"] or 0)))   # nižja NC najprej
     B.sort(key=lambda r: (r["nc"], -(r["zaloga"] or 0)))
     return A[:320], B[:80]
 
@@ -28779,7 +28780,8 @@ def _xsell_opus(prompt: str, schema: dict) -> dict:
 
 
 def _xsell_cand_line(r: dict) -> str:
-    return f'{r["sku"]} | {r["naziv"][:90]} | {r["cena"]:.2f} € | NC {r["nc"]:.2f} € | zaloga {r["zaloga"]} | {r["kat_ime"]}'
+    # brez prodajne cene dodatka — ni pomembna (Xsell ima svojo ceno 4,99–5,99 €)
+    return f'{r["sku"]} | {r["naziv"][:90]} | NC {r["nc"]:.2f} € | zaloga {r["zaloga"]} | {r["kat_ime"]}'
 
 
 def _xsell_view(r: dict) -> dict:
@@ -28805,7 +28807,7 @@ async def xsell_izdelek(request: Request, q: str = ""):
     d = _xsell_load()
     iz = d["izdelki"].get(main["g_id"]) or {}
     by = {r["sku"]: r for r in rows}
-    predlogi = [dict(_xsell_view(by[p["sku"]]), razlog=p.get("razlog", ""), drazji=p.get("drazji", False))
+    predlogi = [dict(_xsell_view(by[p["sku"]]), razlog=p.get("razlog", ""), drazji=(by[p["sku"]]["nc"] or 0) > 3.0)
                 for p in (iz.get("predlogi") or []) if p.get("sku") in by]
     kat = d["kategorije"].get(main["kat"]) or {}
     return {"ok": True, "izdelek": dict(_xsell_view(main), kat_pot=main["kat_pot"]), "predlogi": predlogi,
@@ -28836,22 +28838,23 @@ Za GLAVNI IZDELEK izberi najboljši CROSS-SELL dodatek, ki ga prikažemo ob naku
 
 GLAVNI IZDELEK:
 - naziv: {main["naziv"]}
-- cena: {main["cena"]:.2f} €
+- cena: {(main["cena"] or 0):.2f} €
 - kategorija: {main["kat_pot"] or main["kat_ime"]}
 - opis: {main["opis"]}
 
 PRAVILA:
 - Dodatek mora biti smiseln k glavnemu izdelku (dopolnilo, potrošni material, zaščita, logičen par) ali splošno privlačen impulzni nakup za istega kupca.
 - Ne predlagaj istega izdelka ali njegove variante.
-- Kupec je že odločen za glavni izdelek: poceni dodatek (~4,99–5,99 €) prepriča lažje kot dražji.
-- Prednost imajo kandidati iz SEZNAMA A. Iz SEZNAMA B izberi največ 2 in samo, če v A res ni dobrega ujemanja — označi jih "drazji": true.
+- Dodatek se prodaja po posebni Xsell ceni 4,99–5,99 € (ne po svoji redni ceni), zato njegova redna cena ni pomembna.
+  Pomembna je samo NABAVNA CENA (NC): nižja kot je, boljša je marža — idealno NC 0–2 €, največ 3 €.
+- Prednost imajo kandidati iz SEZNAMA A (NC ≤ 3 €). Iz SEZNAMA B (NC 3–5 €) izberi največ 2 in samo, če v A res ni dobrega ujemanja — označi jih "drazji": true.
 - Vrni 6 predlogov, razvrščenih od najboljšega. Za vsakega kratek razlog v slovenščini (1 stavek, zakaj paše kupcu).
 - Uporabi SAMO SKU-je iz seznamov, točno tako kot so zapisani.
 
-SEZNAM A (SKU | naziv | prodajna cena | nabavna cena | zaloga | kategorija):
+SEZNAM A (SKU | naziv | nabavna cena | zaloga | kategorija):
 {chr(10).join(_xsell_cand_line(r) for r in A) or "(prazno)"}
 
-SEZNAM B — dražji:
+SEZNAM B — dražja nabava (NC 3–5 €):
 {chr(10).join(_xsell_cand_line(r) for r in B) or "(prazno)"}"""
     schema = {"type": "object", "additionalProperties": False, "required": ["predlogi"],
               "properties": {"predlogi": {"type": "array", "items": {
@@ -28868,7 +28871,7 @@ SEZNAM B — dražji:
         s = str(p.get("sku") or "").strip().upper()
         if s in by and s not in seen:
             seen.add(s)
-            predlogi.append({"sku": s, "razlog": str(p.get("razlog") or "")[:300], "drazji": bool(p.get("drazji")) or by[s] in B})
+            predlogi.append({"sku": s, "razlog": str(p.get("razlog") or "")[:300], "drazji": (by[s]["nc"] or 0) > 3.0})
     d = _xsell_load()
     iz = d["izdelki"].setdefault(main["g_id"], {})
     iz.update({"sku": main["sku"], "naziv": main["naziv"], "predlogi": predlogi, "predlogi_at": _lj_iso()})
@@ -28948,10 +28951,10 @@ async def xsell_kategorija_predlagaj(request: Request, req: XsellKatReq):
     v_kat = [r for r in rows if r["kat"] == str(req.kat)]
     if not v_kat:
         return {"ok": False, "error": "Kategorija nima izdelkov."}
-    A = [r for r in rows if (r["zaloga"] or 0) > 0 and r["nc"] is not None and r["cena"] is not None and r["nc"] <= 3.0 and r["cena"] <= 7.99]
-    A.sort(key=lambda r: -(r["zaloga"] or 0))
+    A = [r for r in rows if (r["zaloga"] or 0) > 0 and r["nc"] is not None and r["nc"] <= 3.0]
+    A.sort(key=lambda r: (r["nc"], -(r["zaloga"] or 0)))
     A = A[:320]
-    vzorec = "\n".join(f'- {r["naziv"][:90]} ({r["cena"]:.2f} €)' for r in sorted(v_kat, key=lambda r: -(r["obrat"] or 0))[:40])
+    vzorec = "\n".join(f'- {r["naziv"][:90]} ({(r["cena"] or 0):.2f} €)' for r in sorted(v_kat, key=lambda r: -(r["obrat"] or 0))[:40])
     prompt = f"""Si izkušen e-commerce trgovec za spletno trgovino Maaarket (impulzni nakupi, Slovenija).
 Za KATEGORIJO "{v_kat[0]["kat_pot"] or v_kat[0]["kat_ime"]}" izberi UNIVERZALNE poceni cross-sell dodatke, ki se prikažejo
 pri izdelkih te kategorije, ki nimajo svojega dodatka. Dodatek naj bo smiseln za večino izdelkov v kategoriji (ali splošen impulzni nakup).
@@ -28959,7 +28962,9 @@ pri izdelkih te kategorije, ki nimajo svojega dodatka. Dodatek naj bo smiseln za
 Primeri izdelkov v kategoriji (najbolj prodajani):
 {vzorec}
 
-Kandidati (SKU | naziv | prodajna cena | nabavna cena | zaloga | kategorija):
+Dodatek se prodaja po posebni Xsell ceni (4,99–5,99 €), zato njegova redna cena ni pomembna — šteje samo NIZKA NABAVNA CENA (idealno NC 0–2 €).
+
+Kandidati (SKU | naziv | nabavna cena | zaloga | kategorija):
 {chr(10).join(_xsell_cand_line(r) for r in A)}
 
 Vrni 6 predlogov, razvrščenih od najboljšega, s kratkim razlogom v slovenščini. Uporabi SAMO SKU-je s seznama."""
@@ -29058,8 +29063,8 @@ async def xsell_shop_kat_predlagaj(request: Request, req: XsellShopPredReq):
     imena = [x for x in (req.imena or sk["seznam"]) if x]
     if not imena:
         return {"ok": False, "error": "Seznam kategorij je prazen."}
-    A = [r for r in rows if (r["zaloga"] or 0) > 0 and r["nc"] is not None and r["cena"] is not None and r["nc"] <= 3.0 and r["cena"] <= 7.99]
-    A.sort(key=lambda r: -(r["zaloga"] or 0))
+    A = [r for r in rows if (r["zaloga"] or 0) > 0 and r["nc"] is not None and r["nc"] <= 3.0]
+    A.sort(key=lambda r: (r["nc"], -(r["zaloga"] or 0)))
     A = A[:320]
     if not A:
         return {"ok": False, "error": "Ni kandidatov (Maaarket na zalogi z NC ≤ 3 €)."}
@@ -29075,7 +29080,7 @@ async def xsell_shop_kat_predlagaj(request: Request, req: XsellShopPredReq):
         prompt = f"""Si izkušen e-commerce trgovec za spletno trgovino Maaarket (impulzni nakupi, Slovenija).
 Za vsako spodnjo KATEGORIJO trgovine izberi UNIVERZALNE poceni cross-sell dodatke, ki se prikažejo pri izdelkih te kategorije.
 Dodatek naj bo smiseln za kupca izdelkov iz te kategorije (dopolnilo, uporaben dodatek) ali splošen impulzni nakup za istega kupca.
-Kupec je že odločen za glavni izdelek: poceni dodatek (~4,99–5,99 €) prepriča lažje kot dražji. Prednost imajo nizke nabavne cene (NC 0–2 €).
+Dodatek se prodaja po posebni Xsell ceni 4,99–5,99 €, zato njegova redna cena ni pomembna — šteje samo NIZKA NABAVNA CENA (idealno NC 0–2 €, največ 3 €).
 Za vsako kategorijo vrni 6 predlogov, razvrščenih od najboljšega, s kratkim razlogom v slovenščini (1 stavek).
 Isti dodatek lahko uporabiš pri več kategorijah, če res paše. Uporabi SAMO SKU-je s seznama, točno tako kot so zapisani.
 Ime kategorije v odgovoru zapiši točno tako kot spodaj.
@@ -29083,7 +29088,7 @@ Ime kategorije v odgovoru zapiši točno tako kot spodaj.
 KATEGORIJE:
 {chr(10).join("- " + k for k in kos)}
 
-KANDIDATI (SKU | naziv | prodajna cena | nabavna cena | zaloga | Google kategorija):
+KANDIDATI (SKU | naziv | nabavna cena | zaloga | Google kategorija):
 {cand}"""
         return _xsell_opus(prompt, schema)
 

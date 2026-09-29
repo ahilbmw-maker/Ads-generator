@@ -968,7 +968,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-29 12:44</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 12:49</div>
     </div>
   </div>
 
@@ -2987,7 +2987,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <button id="xsShopBtn" onclick="xsShopToggle()" style="padding:9px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🏷 Kategorije trgovine</button>
           <a href="/xsell-csv" style="padding:9px 14px;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;text-decoration:none">⬇ CSV</a>
         </div>
-        <div id="xsInfo" style="font-size:11.5px;color:var(--text-tertiary);margin-top:8px">Samo Maaarket izdelki na zalogi (SL — velja za vse trge) · NC dodatka idealno 0–2 €, največ 3 € · prodajna ~4,99–5,99 €</div>
+        <div id="xsInfo" style="font-size:11.5px;color:var(--text-tertiary);margin-top:8px">Samo Maaarket izdelki na zalogi (SL — velja za vse trge) · šteje samo NC dodatka: idealno 0–2 €, največ 3 € (Xsell cena 4,99–5,99 € se nastavi posebej)</div>
       </div>
 
       <!-- 🏷 Kategorije iz trgovine (CMS): kategorija → predlogi → izbrani → CSV -->
@@ -10940,7 +10940,7 @@ async function xsLoad(q) {
     if (!d.ok) throw new Error(d.error || 'napaka');
     _xs.item = d.izdelek; _xs.predlogi = d.predlogi || []; _xs.izbran = d.izbran || null; _xs.kat = d.kategorija;
     document.getElementById('xsQ').value = d.izdelek.sku;
-    info.textContent = 'Model: ' + (d.model || 'Opus 5.5') + ' · samo Maaarket na zalogi · NC dodatka idealno 0–2 €, največ 3 €';
+    info.textContent = 'Model: ' + (d.model || 'Opus 5.5') + ' · samo Maaarket na zalogi · šteje samo NC dodatka (idealno 0–2 €, največ 3 €)';
     document.getElementById('xsWork').style.display = '';
     xsRender();
     if (!_xs.predlogi.length) xsPredlagaj(false);
@@ -10973,15 +10973,15 @@ function xsRender() {
     '<span class="xs-pill" style="background:#f1f5f9;color:#334155">zaloga ' + (it.zaloga || 0) + '</span>' +
     '<span class="xs-pill" style="background:#f1f5f9;color:#334155">' + xsE(it.kat_ime) + '</span></div></div>';
   document.getElementById('xsList').innerHTML = _xs.predlogi.length ? _xs.predlogi.map((p, i) => {
-    const m = p.cena && p.nc != null ? Math.round((p.cena / 1.22 - p.nc) / (p.cena / 1.22) * 100) : null;
+    const m = p.nc != null ? Math.round((4.99 / 1.22 - p.nc) / (4.99 / 1.22) * 100) : null;   // marža pri Xsell ceni 4,99 €
     return '<div class="xs-it' + (_xs.izbran === p.sku ? ' sel' : '') + '" data-xs="' + xsE(p.sku) + '"><div class="xs-rk">' + (i === 0 ? '⭐' : (i + 1)) + '</div>' +
       (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '<div style="width:52px;height:52px;border-radius:8px;background:#f1f5f9"></div>') +
       '<div style="min-width:0"><div style="font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + xsE(p.naziv) + '">' + xsE(p.naziv) + '</div>' +
       '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;align-items:center"><span class="xs-sku">' + xsE(p.sku) + '</span>' +
-      '<span class="xs-pill" style="background:#eef2ff;color:#3730a3">' + xsEu(p.cena) + '</span>' + xsNcPill(p.nc) +
-      (m != null ? '<span class="xs-pill" style="background:#f1f5f9;color:#334155">marža ' + m + ' %</span>' : '') +
+      xsNcPill(p.nc) +
+      (m != null ? '<span class="xs-pill" style="background:#f1f5f9;color:#334155" title="Marža, če se dodatek prodaja po Xsell ceni 4,99 €">marža pri 4,99 € ' + m + ' %</span>' : '') +
       '<span class="xs-pill" style="background:#f1f5f9;color:#334155">zaloga ' + (p.zaloga || 0) + '</span>' +
-      (p.drazji ? '<span class="xs-pill" style="background:#fee2e2;color:#991b1b">dražji — slabša konverzija</span>' : '') + '</div>' +
+      (p.drazji ? '<span class="xs-pill" style="background:#fee2e2;color:#991b1b">NC nad 3 €</span>' : '') + '</div>' +
       '<div style="font-size:11.5px;color:var(--text-secondary);margin-top:3px">💡 ' + xsE(p.razlog) + '</div></div>' +
       '<div class="xs-pick">' + (_xs.izbran === p.sku ? '✓ izbrano' : 'izberi') + '</div></div>';
   }).join('') : '';
@@ -11016,12 +11016,12 @@ function xsKatRender() {
   const k = _xs.kat, box = document.getElementById('xsKat'); if (!k) { box.innerHTML = ''; return; }
   let h = '<div style="font-size:12.5px;font-weight:700">' + xsE(k.ime) + '</div>';
   h += (k.items && k.items.length)
-    ? '<div style="font-size:12px;line-height:1.7;margin-top:4px">' + k.items.map((x, i) => (i + 1) + '. ' + xsE(x.naziv).slice(0, 48) + ' · <b>' + xsEu(x.cena) + '</b>').join('<br>') + '</div>'
+    ? '<div style="font-size:12px;line-height:1.7;margin-top:4px">' + k.items.map((x, i) => (i + 1) + '. ' + xsE(x.naziv).slice(0, 48) + ' · ' + xsNcPill(x.nc)).join('<br>') + '</div>'
     : '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:3px">Kategorija še nima Xsell.</div>';
   if (_xsKatPred && _xsKatPred.kat === k.kat) {
     h += '<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;font-size:11px;color:var(--text-tertiary)">Označi do 5 (vrstni red = prednost):</div>' +
       _xsKatPred.items.map(p => '<label style="display:flex;gap:6px;align-items:flex-start;font-size:11.5px;margin-top:5px;cursor:pointer"><input type="checkbox" data-kx="' + xsE(p.sku) + '"' + ((k.items || []).some(x => x.sku === p.sku) ? ' checked' : '') + '>' +
-        '<span><b>' + xsE(p.naziv).slice(0, 44) + '</b> · ' + xsEu(p.cena) + ' · ' + xsNcPill(p.nc) + '<br><span style="color:var(--text-tertiary)">💡 ' + xsE(p.razlog) + '</span></span></label>').join('') +
+        '<span><b>' + xsE(p.naziv).slice(0, 44) + '</b> · ' + xsNcPill(p.nc) + '<br><span style="color:var(--text-tertiary)">💡 ' + xsE(p.razlog) + '</span></span></label>').join('') +
       '<button onclick="xsKatShrani()" id="xsKatSave" style="margin-top:8px;width:100%;padding:6px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">💾 Shrani za kategorijo</button>';
   } else {
     h += '<button onclick="xsKatPredlagaj()" style="margin-top:8px;width:100%;padding:6px;background:transparent;color:var(--accent);border:1.5px solid var(--accent);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">✨ ' + ((k.items && k.items.length) ? 'Uredi' : 'Predlagaj') + ' za kategorijo</button>';
@@ -11127,7 +11127,7 @@ function xsShopRender() {
       return '<span class="xs-kp' + (i >= 0 ? ' on' : '') + '" data-kk="' + ki + '" data-ks="' + xsE(p.sku) + '" title="💡 ' + xsE(p.razlog) + '">' +
         '<span class="n">' + (i >= 0 ? (i + 1) : '') + '</span>' + (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '') +
         '<span style="min-width:0"><span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;font-weight:700">' + xsE(p.naziv) + '</span>' +
-        '<span style="color:var(--text-tertiary)">' + xsEu(p.cena) + '</span> ' + xsNcPill(p.nc) + '</span></span>';
+        xsNcPill(p.nc) + '</span></span>';
     }).join('') : '<span style="font-size:11.5px;color:var(--text-tertiary)">Še brez predlogov — klikni "Predlagaj za vse".</span>';
     return '<div class="xs-kat"><div class="xs-kat-h"><b style="font-size:13px">' + xsE(k.ime) + '</b>' +
       (k.izbrani.length ? '<span class="xs-pill" style="background:#dcfce7;color:#166534">✓ ' + k.izbrani.length + ' izbranih</span>' : '') +
