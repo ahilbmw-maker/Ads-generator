@@ -29011,6 +29011,32 @@ XSELL_MODELI = {   # izbira v UI (xsell.json["nastavitve"]["model"]); Sonnet 5.5
 }
 
 
+XSELL_SEZONE = {   # samo za kategorije: spodbujamo PRIHAJAJOČO sezono (predhodnik), ne trenutne
+    "jesen_zima": ("jesen/zima", "Zdaj spodbujamo JESEN/ZIMO (kupci se pripravljajo na hladne mesece in praznike): prednost imajo zimski in "
+                   "jesenski dodatki — npr. zimska oprema za avto (strgala za led, pokrivala), grelni in topli izdelki, rokavice, lučke, "
+                   "praznični in darilni drobni izdelki, notranja ureditev doma. Izrazito poletnih dodatkov (plaža, bazen, hlajenje) ne predlagaj."),
+    "pomlad_poletje": ("pomlad/poletje", "Zdaj spodbujamo POMLAD/POLETJE (kupci se pripravljajo na toplejše mesece): prednost imajo pomladni in "
+                       "poletni dodatki — npr. vrt in balkon, žar in piknik, kolo in izleti, zaščita pred komarji in soncem, pomladno čiščenje. "
+                       "Izrazito zimskih dodatkov (led, sneg, gretje) ne predlagaj."),
+    "poletje": ("poletje", "Zdaj je POLETJE, ki ima svoj spekter: prednost imajo čisto poletni dodatki — npr. plaža, bazen, hlajenje in ventilatorji, "
+                "komarji, zaščita pred soncem, potovanja, piknik in žar. Zimskih in jesenskih dodatkov ne predlagaj."),
+}
+
+
+def _xsell_sezona_auto() -> str:
+    m = int(_lj_iso()[5:7])
+    return "jesen_zima" if m >= 9 or m == 1 else ("pomlad_poletje" if m <= 4 else "poletje")
+
+
+def _xsell_sezona() -> tuple:
+    """(ključ, nastavitev, besedilo za prompt) — nastavitev "auto" po mesecu (sep–jan jesen/zima, feb–apr pomlad/poletje, maj–avg poletje)."""
+    nast = ((_xsell_load().get("nastavitve") or {}).get("sezona")) or "auto"
+    k = _xsell_sezona_auto() if nast == "auto" else nast
+    if k not in XSELL_SEZONE:
+        return "brez", nast, ""
+    return k, nast, "SEZONA: " + XSELL_SEZONE[k][1] + " Splošni celoletni dodatki so vedno dovoljeni, a sezonski, ki res pašejo, naj bodo višje."
+
+
 def _xsell_model() -> tuple:
     """(model, effort, ime) za Xsell — nastavitev iz UI, privzeto Sonnet 5.5 (env XSELL_MODEL=claude-opus-5-5 → Opus)."""
     k = ((_xsell_load().get("nastavitve") or {}).get("model")) or ("opus" if "opus" in XSELL_MODEL else "sonnet")
@@ -29078,6 +29104,22 @@ async def xsell_model_set(req: XsellModelReq):
     d.setdefault("nastavitve", {})["model"] = req.model
     _xsell_save(d)
     return {"ok": True, "model": req.model, "ime": XSELL_MODELI[req.model][2]}
+
+
+class XsellSezonaReq(BaseModel):
+    sezona: str     # auto / jesen_zima / pomlad_poletje / poletje / brez
+
+
+@app.post("/xsell-sezona")
+async def xsell_sezona_set(req: XsellSezonaReq):
+    """Sezona za predloge kategorij (izdelki je ne upoštevajo)."""
+    if req.sezona not in ("auto", "brez", *XSELL_SEZONE):
+        return {"ok": False, "error": "Neznana sezona."}
+    d = _xsell_load()
+    d.setdefault("nastavitve", {})["sezona"] = req.sezona
+    _xsell_save(d)
+    k, nast, _ = _xsell_sezona()
+    return {"ok": True, "sezona": nast, "velja": k}
 
 
 @app.get("/xsell-izdelek")
@@ -29276,7 +29318,8 @@ Vrstni red: najprej kako dobro dodatek paše, pri podobnem ujemanju višje tisti
 
 Kandidati (SKU | naziv | nabavna cena | zaloga | kategorija):
 {chr(10).join(_xsell_cand_line(r) for r in A)}"""
-    prompt = f"""KATEGORIJA: "{v_kat[0]["kat_pot"] or v_kat[0]["kat_ime"]}"
+    sez = _xsell_sezona()[2]
+    prompt = (sez + "\n\n" if sez else "") + f"""KATEGORIJA: "{v_kat[0]["kat_pot"] or v_kat[0]["kat_ime"]}"
 
 Primeri izdelkov v kategoriji (najbolj prodajani):
 {vzorec}"""
@@ -29361,7 +29404,9 @@ async def xsell_shop_kat(request: Request):
                     "izbrani": [s for s in (sk["izbrani"].get(ime) or []) if s in by],
                     "popust": sk["popust"].get(ime), "popust_izd": sk["popust_izd"].get(ime) or {},
                     "zakljuceno": sk["zakljuceno"].get(ime)})
-    return {"ok": True, "kategorije": out, "at": sk.get("predlogi_at")}
+    sk_k, sk_nast, _ = _xsell_sezona()
+    return {"ok": True, "kategorije": out, "at": sk.get("predlogi_at"), "sezona": sk_nast, "sezona_velja": sk_k,
+            "sezona_auto": _xsell_sezona_auto(), "sezone": {k: v[0] for k, v in XSELL_SEZONE.items()}}
 
 
 class XsellShopSeznamReq(BaseModel):
@@ -29421,8 +29466,10 @@ Ime kategorije v odgovoru zapiši točno tako kot na seznamu.
 KANDIDATI (SKU | naziv | nabavna cena | zaloga | Google kategorija):
 {cand}"""
 
+    sez = _xsell_sezona()[2]
+
     def _paket(kos):
-        prompt = "KATEGORIJE:\n" + "\n".join("- " + k for k in kos)
+        prompt = (sez + "\n\n" if sez else "") + "KATEGORIJE:\n" + "\n".join("- " + k for k in kos)
         return _xsell_opus(prompt, schema, "shop_kat", stalno)
 
     loop = asyncio.get_event_loop()

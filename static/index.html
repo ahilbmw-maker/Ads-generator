@@ -1021,7 +1021,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-29 17:51</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 18:03</div>
     </div>
   </div>
 
@@ -3105,6 +3105,8 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div class="xsA">
           <div class="card xsA-l">
             <div id="xsShopInfo" style="font-size:11px;color:var(--text-tertiary)"></div>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;font-weight:600;color:var(--text-secondary)" title="Predlogi kategorij spodbujajo prihajajočo sezono (izdelki je ne upoštevajo). Samodejno: sep–jan jesen/zima, feb–apr pomlad/poletje, maj–avg poletje.">🍂 Sezona
+              <select id="xsSezona" onchange="xsSetSezona(this.value)" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;background:var(--bg);color:var(--text)"></select></label>
             <div id="xsKFil" class="xsA-chips" style="margin-top:5px"></div>
             <input id="xsKQ" type="text" placeholder="🔍 išči kategorijo" oninput="xsShopRender()" style="width:100%;box-sizing:border-box;margin-top:7px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text)">
             <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
@@ -11408,10 +11410,24 @@ async function xsShopLoad() {
   try {
     const d = await (await fetch('/xsell-shop-kat')).json(); if (!d.ok) throw new Error(d.error || 'napaka');
     _xsShop.kat = d.kategorije || [];
+    xsSezonaUI(d);
     if (!_xsShop.kat.some(k => k.ime === _xsShop.cur)) _xsShop.cur = _xsShop.kat.length ? _xsShop.kat[0].ime : null;
     document.getElementById('xsShopInfo').textContent = _xsShop.kat.length + ' kategorij' + (d.at ? ' · zadnji predlogi ' + String(d.at).slice(0, 16).replace('T', ' ') : '');
     xsShopRender();
   } catch (e) { document.getElementById('xsKList').innerHTML = '<div class="xsA-empty" style="color:#b91c1c">✗ ' + xsE(e.message) + '</div>'; }
+}
+function xsSezonaUI(d) {
+  const sel = document.getElementById('xsSezona'); if (!sel || !d.sezone) return;
+  const ime = k => d.sezone[k] || k;
+  sel.innerHTML = '<option value="auto">Samodejno (' + ime(d.sezona_auto) + ')</option>' +
+    Object.keys(d.sezone).map(k => '<option value="' + k + '">' + ime(k) + '</option>').join('') + '<option value="brez">Brez sezone</option>';
+  sel.value = d.sezona || 'auto';
+}
+async function xsSetSezona(v) {
+  try {
+    const d = await (await fetch('/xsell-sezona', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sezona: v }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+  } catch (e) { alert('Sezona ni shranjena: ' + e.message); }
 }
 function xsKVis() {
   const q = (document.getElementById('xsKQ').value || '').toLowerCase().trim();
