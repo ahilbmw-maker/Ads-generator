@@ -8265,33 +8265,48 @@ Za vsako postavko izloci:
 - sku: zadnja SVE-VELIKA-ČRKA beseda v opisu (npr. "HYDRASPRINK HYDRASPRINK" → SKU = "HYDRASPRINK"; "WHEELPLAY yellow WHEELPLAY" → SKU = "WHEELPLAY"; "TOPKNER 180x200 TOPKNER" → SKU = "TOPKNER")
 - kolicina: število pred "KOS" oznako
 
+Pojdi po tabeli vrstico za vrstico od vrha do dna in ne izpusti nobene vrstice — tudi če se EAN začne z drugačnimi
+števkami (npr. 28…, 48… namesto 383…) ali se ista beseda pojavi večkrat (npr. HOODZIE Blue in HOODZIE Red sta 2 vrstici).
+Posebej preštej vrstice postavk v tabeli in število zapiši v "stevilo_vrstic".
+
 Vrni IZKLJUČNO valid JSON v formatu:
-{"items": [{"ean": "...", "opis": "...", "sku": "...", "kolicina": 350}, ...]}
+{"stevilo_vrstic": 25, "items": [{"ean": "...", "opis": "...", "sku": "...", "kolicina": 350}, ...]}
 
 Brez dodatnih komentarjev, samo JSON."""
 
-                try:
-                    client = anthropic.Anthropic()
-                    response = client.messages.create(
-                        model="claude-sonnet-4-6",
-                        max_tokens=8000,
-                        messages=[{
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "document",
-                                    "source": {
-                                        "type": "base64",
-                                        "media_type": "application/pdf",
-                                        "data": pdf_b64
-                                    }
-                                },
-                                {"type": "text", "text": prompt}
-                            ]
-                        }]
+                doc = {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64}}
+                client = anthropic.Anthropic()
+
+                def _beri(model, opomba=""):
+                    r = client.messages.create(
+                        model=model,
+                        max_tokens=16000,     # Sonnet 5.5 privzeto razmišlja — razmišljanje šteje v max_tokens
+                        messages=[{"role": "user", "content": [doc, {"type": "text", "text": prompt + opomba}]}],
                     )
-                    text = "".join([b.text for b in response.content if hasattr(b, 'text')])
-                    parsed = parse_json_response(text)
+                    if getattr(r, "stop_reason", "") == "refusal":
+                        raise RuntimeError("model je zavrnil zahtevo")
+                    return parse_json_response("".join(b.text for b in r.content if getattr(b, "type", "") == "text"))
+
+                # Sonnet 5.5 (preklop brez nove verzije: env HS_PDF_MODEL); ob napaki Sonnet 4.6
+                parsed, hs_model = None, os.environ.get("HS_PDF_MODEL", "claude-sonnet-5-5")
+                for mdl in dict.fromkeys([hs_model, "claude-sonnet-4-6"]):
+                    try:
+                        parsed = _beri(mdl)
+                        hs_model = mdl
+                        break
+                    except Exception as e:
+                        print(f"[hs-pdf] {mdl} napaka: {e}")
+                # kontrola: model sam prešteje vrstice; če jih je vrnil manj, še enkrat z opozorilom
+                try:
+                    n_rows = int((parsed or {}).get("stevilo_vrstic") or 0)
+                    if parsed and n_rows > len(parsed.get("items") or []):
+                        p2 = _beri(hs_model, f"\n\nPOZOR: na računu je {n_rows} vrstic, prejšnjič si vrnil samo {len(parsed.get('items') or [])}. Preveri vsako vrstico še enkrat.")
+                        if p2 and len(p2.get("items") or []) > len(parsed.get("items") or []):
+                            parsed = p2
+                except Exception as e:
+                    print(f"[hs-pdf] kontrola vrstic napaka: {e}")
+                hs_rows = int((parsed or {}).get("stevilo_vrstic") or 0) or None
+                try:
                     if parsed and 'items' in parsed:
                         for it in parsed['items']:
                             try:
@@ -8317,7 +8332,9 @@ Brez dodatnih komentarjev, samo JSON."""
 
         # Skupna količina iz PDF-ja
         pdf_total = sum(int(it.get('kolicina', 0) or 0) for it in items)
-        return {"items": items, "total": len(items), "pdf_total": pdf_total}
+        _hs_rows = locals().get("hs_rows")
+        return {"items": items, "total": len(items), "pdf_total": pdf_total,
+                "pdf_vrstic": _hs_rows, "model": locals().get("hs_model")}
     except Exception as e:
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": str(e)}, status_code=500)

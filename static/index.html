@@ -938,7 +938,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-28 11:16</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 08:05</div>
     </div>
   </div>
 
@@ -14169,8 +14169,15 @@ async function hsProcess(file) {
     hsItems = data.items || [];
     window._hsPdfTotal = data.pdf_total || hsItems.reduce((s, it) => s + (parseInt(it.kolicina)||0), 0);
     hsRenderItems();
-    status.textContent = '✓ Prebrano ' + hsItems.length + ' postavk';
-    status.style.color = 'var(--green)';
+    // kontrola: model posebej prešteje vrstice na računu
+    if (data.pdf_vrstic && data.pdf_vrstic !== hsItems.length) {
+      status.textContent = '⚠ Prebrano ' + hsItems.length + ' od ' + data.pdf_vrstic + ' postavk na računu — preveri!';
+      status.style.color = '#b45309';
+    } else {
+      status.textContent = '✓ Prebrano ' + hsItems.length + ' postavk' + (data.pdf_vrstic ? ' (preverjeno)' : '');
+      status.style.color = 'var(--green)';
+    }
+    if (data.model) status.title = 'Model: ' + data.model;
     document.getElementById('hsResultsCard').style.display = 'block';
     document.getElementById('hsEmpty').style.display = 'none';
     document.getElementById('hsResultsCount').textContent = 'PREBRANE POSTAVKE (' + hsItems.length + ')';
