@@ -61,6 +61,111 @@ async def _static_cache_headers(request: Request, call_next):
 app.mount("/static", StaticFiles(directory="static"), name="static")
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
+# ═══ AI STROŠKI: skupni dnevnik vseh AI klicev (/data/ai_usage.jsonl) — informativno ═══
+# Žetoni/znaki so iz odgovora API-ja (natančni), cena $ je izračunana po ceniku (približek, ne račun).
+# Claude: vsi client.messages.create gredo skozi centralni ovoj spodaj (funkcija se določi samodejno).
+# Ostali (OpenAI slike, Gemini slike, ElevenLabs glas, Claude HTTP/Batches/Xsell) kličejo _ai_log ročno.
+import threading as _ai_threading
+import sys as _ai_sys
+_ai_lock = _ai_threading.Lock()
+_AI_CLAUDE_CENE = [   # (predpona modela, $ vhod / 1M, $ izhod / 1M) — vrstni red: najbolj specifično najprej
+    ("claude-opus-5-5", 4.0, 20.0), ("claude-opus-5", 5.0, 25.0), ("claude-opus-4", 5.0, 25.0),
+    ("claude-fable", 10.0, 50.0), ("claude-mythos", 10.0, 50.0),
+    ("claude-sonnet-5", 2.0, 10.0), ("claude-sonnet-4", 3.0, 15.0),
+    ("claude-haiku-4", 1.0, 5.0), ("claude-haiku-3", 0.8, 4.0),
+]
+_AI_OPENAI_CENE = {"gpt-image-2": (5.0, 8.0, 30.0), "gpt-image-2.5-flare": (5.0, 8.0, 30.0)}   # $ / 1M: tekst vhod, slika vhod, izhod
+_AI_GEMINI_CENE = {"gemini-3.1-flash-image-preview": (0.25, 1.5, 60.0), "gemini-3-pro-image": (2.0, 12.0, 120.0)}   # $ / 1M: vhod, tekst izhod, slika izhod
+ELEVEN_USD_PER_1K = float(os.environ.get("ELEVEN_USD_PER_1K") or 0.18)   # Creator: $22 / 121.000 kreditov (1 znak = 1 kredit)
+_AI_SKIP_FN = {"_messages_create_sonnet", "_messages_create_logged", "_kw", "_ai_log", "_ai_log_claude", "_ai_funkcija",
+               "_xsell_opus", "_xsell_log_usage", "_sonnet_call", "run", "_run", "_worker"}
+
+
+def _ai_funkcija() -> str:
+    """Ime funkcije v main.py, ki je sprožila AI klic (za razčlenitev po funkcijah)."""
+    f = _ai_sys._getframe(1)
+    while f is not None:
+        if f.f_globals.get("__name__") == __name__:
+            c = f.f_code
+            q = getattr(c, "co_qualname", c.co_name)
+            if "<locals>" in q:
+                q = q.split(".<locals>")[0]
+            if c.co_name not in _AI_SKIP_FN and not q.startswith("_ai_") and q != "<lambda>":
+                return q
+        f = f.f_back
+    return "?"
+
+
+def _ai_log(vir: str, model: str, funkcija: str = "", inp: int = 0, out: int = 0, usd: float = 0.0, enota: str = "žetoni"):
+    """Doda en zapis v /data/ai_usage.jsonl (append; ob > 8 MB obdrži zadnjo polovico)."""
+    try:
+        rec = {"at": _lj_iso(), "vir": vir, "model": model, "fn": funkcija or _ai_funkcija(),
+               "in": int(inp or 0), "out": int(out or 0), "enota": enota, "usd": round(float(usd or 0), 5)}
+        f = DATA_DIR / "ai_usage.jsonl"
+        with _ai_lock:
+            with open(f, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            if f.stat().st_size > 8_000_000:
+                lines = f.read_text(encoding="utf-8").splitlines()
+                tmp = f.with_suffix(".jsonl.tmp")
+                tmp.write_text("\n".join(lines[len(lines) // 2:]) + "\n", encoding="utf-8")
+                os.replace(tmp, f)
+    except Exception as e:
+        print(f"[ai-usage] napaka zapisa: {e}")
+
+
+def _ai_claude_usd(model: str, u, popust: float = 1.0):
+    """(vhod, izhod, $) iz Claude usage (objekt ali dict). popust 0.5 = Batches."""
+    g = (lambda k: (u.get(k) if isinstance(u, dict) else getattr(u, k, 0)) or 0)
+    vh, cw, cr, iz = g("input_tokens"), g("cache_creation_input_tokens"), g("cache_read_input_tokens"), g("output_tokens")
+    ci, co = next(((a, b) for p, a, b in _AI_CLAUDE_CENE if str(model).startswith(p)), (3.0, 15.0))
+    usd = (vh * ci + cw * ci * 1.25 + cr * ci * 0.1 + iz * co) / 1e6 * popust
+    return vh + cw + cr, iz, usd
+
+
+def _ai_log_claude(r, funkcija: str = "", popust: float = 1.0) -> float:
+    """Zapiše Claude odgovor (SDK objekt ali JSON dict) v dnevnik; vrne ocenjeno ceno $."""
+    try:
+        u = r.get("usage") if isinstance(r, dict) else getattr(r, "usage", None)
+        if not u:
+            return 0.0
+        model = (r.get("model") if isinstance(r, dict) else getattr(r, "model", "")) or "claude"
+        vh, iz, usd = _ai_claude_usd(model, u, popust)
+        _ai_log("claude", model, funkcija or _ai_funkcija(), vh, iz, usd)
+        return usd
+    except Exception as e:
+        print(f"[ai-usage] claude: {e}")
+        return 0.0
+
+
+def _ai_log_openai_img(model: str, result: dict, funkcija: str = ""):
+    """OpenAI images: usage {input_tokens, output_tokens, input_tokens_details{text_tokens, image_tokens}}."""
+    try:
+        u = (result or {}).get("usage") or {}
+        d = u.get("input_tokens_details") or {}
+        ct, ci, co = _AI_OPENAI_CENE.get(model, (5.0, 8.0, 30.0))
+        vin, vout = int(u.get("input_tokens") or 0), int(u.get("output_tokens") or 0)
+        txt, img = int(d.get("text_tokens") or 0), int(d.get("image_tokens") or 0)
+        if not (txt or img):
+            img = vin
+        _ai_log("openai", model, funkcija or _ai_funkcija(), vin, vout, (txt * ct + img * ci + vout * co) / 1e6)
+    except Exception as e:
+        print(f"[ai-usage] openai: {e}")
+
+
+def _ai_log_gemini(model: str, result: dict, funkcija: str = ""):
+    """Gemini: usageMetadata {promptTokenCount, candidatesTokenCount, candidatesTokensDetails[{modality, tokenCount}]}."""
+    try:
+        m = (result or {}).get("usageMetadata") or {}
+        ci, ct, cimg = _AI_GEMINI_CENE.get(model, (0.25, 1.5, 60.0))
+        vin, vout = int(m.get("promptTokenCount") or 0), int(m.get("candidatesTokenCount") or 0)
+        img = sum(int(x.get("tokenCount") or 0) for x in (m.get("candidatesTokensDetails") or []) if str(x.get("modality", "")).upper() == "IMAGE")
+        if not img and vout:
+            img = vout
+        _ai_log("gemini", model, funkcija or _ai_funkcija(), vin, vout, (vin * ci + max(0, vout - img) * ct + img * cimg) / 1e6)
+    except Exception as e:
+        print(f"[ai-usage] gemini: {e}")
+
 # ═══ SONNET: centralni preklop modela (vsi klici na claude-sonnet-4-6 / 4-5 → SONNET_MODEL) ═══
 # Privzeto Claude Sonnet 5.5. Nazaj za VSE: na Renderju env SONNET_MODEL=claude-sonnet-4-6 (brez nove verzije).
 # Posamezen klic pusti pri miru z _keep_model=True (npr. Uvoz HS+, ki ima svojo nastavitev HS_PDF_MODEL).
@@ -113,7 +218,14 @@ try:
             print(f"[sonnet] {SONNET_MODEL} → varovalka {SONNET_FALLBACK}: {type(e).__name__}: {str(e)[:200]}")
             return _orig_messages_create(self, *args, **_kw(SONNET_FALLBACK))
 
-    _AMessages.create = _messages_create_sonnet
+    def _messages_create_logged(self, *args, **kw):
+        skip = kw.pop("_ai_skip", False)   # klicatelj zapiše porabo sam (npr. Xsell)
+        r = _messages_create_sonnet(self, *args, **kw)
+        if not skip and not kw.get("stream"):
+            _ai_log_claude(r)
+        return r
+
+    _AMessages.create = _messages_create_logged
 except Exception as _e:
     print(f"[sonnet] centralni preklop ni aktiven: {_e}")
 
@@ -6171,6 +6283,7 @@ async def generate_kreative(data: dict):
                 result = resp.json()
             if resp.status_code != 200:
                 return None, result.get("error", {}).get("message", str(result))
+            _ai_log_gemini(model_id, result, "generator")
             for candidate in result.get("candidates", []):
                 for part in candidate.get("content", {}).get("parts", []):
                     if "inlineData" in part:
@@ -6198,6 +6311,7 @@ async def generate_kreative(data: dict):
                 result = resp.json()
             if resp.status_code != 200:
                 return None, result.get("error", {}).get("message", str(result))[:200]
+            _ai_log_openai_img("gpt-image-2", result, "generator")
             data_arr = result.get("data", [])
             if data_arr and data_arr[0].get("b64_json"):
                 return f"data:image/jpeg;base64,{data_arr[0]['b64_json']}", None
@@ -6224,6 +6338,7 @@ async def generate_kreative(data: dict):
                 result = resp.json()
             if resp.status_code != 200:
                 return None, result.get("error", {}).get("message", str(result))[:250]
+            _ai_log_openai_img("gpt-image-2.5-flare", result, "generator")
             data_arr = result.get("data", [])
             if data_arr and data_arr[0].get("b64_json"):
                 return f"data:image/jpeg;base64,{data_arr[0]['b64_json']}", None
@@ -6462,6 +6577,7 @@ async def localize_kreativa(data: dict):
             if resp.status_code != 200:
                 return {"lang": lang_code, "lang_name": lang_name, "url": None,
                         "error": result.get("error", {}).get("message", str(result))[:200]}
+            _ai_log_gemini("gemini-3.1-flash-image-preview", result, "prevod_slik")
             for candidate in result.get("candidates", []):
                 for part in candidate.get("content", {}).get("parts", []):
                     if "inlineData" in part:
@@ -7607,11 +7723,18 @@ async def generate_audio(data: dict):
         if model != "eleven_v3" and abs(speed - 1.0) > 0.001:
             vs["speed"] = round(max(0.7, min(1.2, speed)), 3)
         async with httpx.AsyncClient(timeout=60.0) as hc:
-            return await hc.post(
+            r = await hc.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps",
                 headers={"xi-api-key": api_key, "Content-Type": "application/json"},
                 json={"text": txt, "model_id": model, "voice_settings": vs}
             )
+        if r.status_code == 200:
+            try:
+                kred = int(r.headers.get("character-cost") or len(txt))
+            except Exception:
+                kred = len(txt)
+            _ai_log("elevenlabs", model, "generate_audio", kred, 0, kred / 1000 * ELEVEN_USD_PER_1K, "krediti")
+        return r
 
     try:
         cur_text = text
@@ -22161,6 +22284,7 @@ VRNI EXACT JSON v tej obliki, brez dodatnega teksta:
                 )
                 if resp.status_code == 200:
                     _res = resp.json()
+                    _ai_log_claude(_res)
                     ai_text = "".join(b.get("text", "") for b in (_res.get("content") or []) if b.get("type") == "text").strip()
                     if ai_text and _res.get("stop_reason") != "refusal":
                         break
@@ -26897,11 +27021,22 @@ async def badge_build(data: dict):
         # prevzemi rezultate prek custom_id
         results = {}
         errors = 0
+        _log_usage = not b.get("usage_logged")   # Batches = 50 % cene; zapiše se samo ob prvem prevzemu
+        _bv, _bi, _bu, _bm = 0, 0, 0.0, ""
         for r in client.messages.batches.results(b["id"]):
             if r.result.type == "succeeded":
                 results[r.custom_id] = "".join(b.text for b in r.result.message.content if getattr(b, "type", "") == "text")
+                if _log_usage:
+                    _m = r.result.message
+                    _vh, _iz, _usd = _ai_claude_usd(getattr(_m, "model", ""), getattr(_m, "usage", None) or {}, 0.5)
+                    _bv += _vh; _bi += _iz; _bu += _usd; _bm = getattr(_m, "model", "") or _bm
             elif r.result.type == "errored":
                 errors += 1
+        if _log_usage and _bm:
+            _ai_log("claude", _bm, "znacke_batch", _bv, _bi, _bu)
+            b["usage_logged"] = True
+            st[f"batch_{kind}"] = b
+            _badge_save_state(st)
 
         src = BADGE_DIR / f"input_{kind}.csv"
         rows = list(csv.DictReader(src.open(encoding="utf-8")))
@@ -27484,6 +27619,7 @@ async def _regen_generate_one(src_url: str, prompt: str):
             return None, {}, f"OpenAI rate limit (429) — preveč poskusov."
         if last_status != 200:
             return None, {}, result.get("error", {}).get("message", str(result))[:300]
+        _ai_log_openai_img(REGEN_MODEL, result, "optimizacija_slik")
         data_arr = result.get("data", [])
         if not (data_arr and data_arr[0].get("b64_json")):
             return None, {}, "OpenAI ni vrnil slike: " + str(result)[:200]
@@ -28763,59 +28899,108 @@ def _xsell_pools(rows: list, main: dict):
     return A[:320], B[:80]
 
 
-XSELL_USAGE_FILE = DATA_DIR / "xsell_usage.json"
-_XSELL_CENE = {"claude-opus-5-5": (4.0, 20.0), "claude-opus-5": (5.0, 25.0), "claude-opus-4-8": (5.0, 25.0)}   # $ / 1M (vhod, izhod)
-import threading as _xs_threading
-_xsell_usage_lock = _xs_threading.Lock()
+XSELL_USAGE_FILE = DATA_DIR / "xsell_usage.json"   # star ločen dnevnik (2026-09-29) → enkrat preseljen v ai_usage.jsonl
+AI_USAGE_FILE = DATA_DIR / "ai_usage.jsonl"
 
 
 def _xsell_log_usage(r, vrsta: str) -> float:
-    """Informativno: zapiše žetone in ocenjeno ceno klica ($) v /data/xsell_usage.json (zadnjih 5000)."""
+    """Xsell klic Opus → skupni AI dnevnik (funkcija "xsell:<vrsta>"); vrne ocenjeno ceno $."""
+    usd = _ai_log_claude(r, "xsell:" + (vrsta or "?"))
+    print(f"[xsell] {vrsta}: {getattr(r, 'model', XSELL_MODEL)} · ~{usd:.3f} $")
+    return usd
+
+
+def _ai_read() -> list:
+    """Vsi zapisi iz /data/ai_usage.jsonl (+ enkratna preselitev starega xsell_usage.json)."""
     try:
-        u = r.usage
-        vh = (getattr(u, "input_tokens", 0) or 0)
-        cw = (getattr(u, "cache_creation_input_tokens", 0) or 0)
-        cr = (getattr(u, "cache_read_input_tokens", 0) or 0)
-        iz = (getattr(u, "output_tokens", 0) or 0)
-        model = str(getattr(r, "model", "") or XSELL_MODEL)
-        ci, co = _XSELL_CENE.get(model, _XSELL_CENE["claude-opus-5-5"])
-        usd = round((vh * ci + cw * ci * 1.25 + cr * ci * 0.1 + iz * co) / 1e6, 4)
-        print(f"[xsell] {vrsta}: {model} vhod {vh + cw + cr} · izhod {iz} žetonov · ~{usd:.3f} $")
-        with _xsell_usage_lock:
-            log = _jload(XSELL_USAGE_FILE, []) or []
-            log.append({"at": _lj_iso(), "vrsta": vrsta, "model": model, "in": vh + cw + cr, "out": iz, "usd": usd})
-            tmp = XSELL_USAGE_FILE.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(log[-5000:], ensure_ascii=False), encoding="utf-8")
-            os.replace(tmp, XSELL_USAGE_FILE)
-        return usd
+        if XSELL_USAGE_FILE.exists():
+            with _ai_lock:
+                old = _jload(XSELL_USAGE_FILE, []) or []
+                with open(AI_USAGE_FILE, "a", encoding="utf-8") as fh:
+                    for x in old:
+                        fh.write(json.dumps({"at": x.get("at"), "vir": "claude", "model": x.get("model"), "fn": "xsell:" + (x.get("vrsta") or "?"),
+                                             "in": x.get("in") or 0, "out": x.get("out") or 0, "enota": "žetoni", "usd": x.get("usd") or 0}, ensure_ascii=False) + "\n")
+                os.replace(XSELL_USAGE_FILE, XSELL_USAGE_FILE.with_suffix(".json.preseljeno"))
     except Exception as e:
-        print(f"[xsell] usage log napaka: {e}")
-        return 0.0
+        print(f"[ai-usage] preselitev xsell: {e}")
+    out = []
+    try:
+        with open(AI_USAGE_FILE, encoding="utf-8") as fh:
+            for ln in fh:
+                try:
+                    out.append(json.loads(ln))
+                except Exception:
+                    pass
+    except FileNotFoundError:
+        pass
+    return out
+
+
+def _ai_sum(xs: list) -> dict:
+    return {"n": len(xs), "usd": round(sum(x.get("usd") or 0 for x in xs), 3)}
 
 
 @app.get("/xsell-poraba")
 async def xsell_poraba(request: Request):
-    """Povzetek porabe Opus za Xsell (danes / 7 dni / 30 dni / skupaj, po vrsti klica)."""
+    """Povzetek porabe Opus za Xsell (danes / 7 dni / 30 dni / skupaj, po vrsti klica) — iz skupnega AI dnevnika."""
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
-    log = _jload(XSELL_USAGE_FILE, []) or []
+    log = [dict(x, vrsta=str(x.get("fn", ""))[6:]) for x in _ai_read() if str(x.get("fn", "")).startswith("xsell:")]
     danes = _lj_iso()[:10]
     d7 = (datetime.fromisoformat(danes) - timedelta(days=6)).date().isoformat()
     d30 = (datetime.fromisoformat(danes) - timedelta(days=29)).date().isoformat()
-
-    def _sum(xs):
-        return {"n": len(xs), "usd": round(sum(x.get("usd") or 0 for x in xs), 3)}
     po_vrsti = {}
     for x in log:
-        v = po_vrsti.setdefault(x.get("vrsta") or "?", [])
-        v.append(x)
+        po_vrsti.setdefault(x["vrsta"] or "?", []).append(x)
     return {"ok": True,
-            "danes": _sum([x for x in log if str(x.get("at", ""))[:10] == danes]),
-            "d7": _sum([x for x in log if str(x.get("at", ""))[:10] >= d7]),
-            "d30": _sum([x for x in log if str(x.get("at", ""))[:10] >= d30]),
-            "skupaj": _sum(log),
-            "po_vrsti": {k: dict(_sum(v), povp=round(sum(x.get("usd") or 0 for x in v) / len(v), 4)) for k, v in po_vrsti.items()},
+            "danes": _ai_sum([x for x in log if str(x.get("at", ""))[:10] == danes]),
+            "d7": _ai_sum([x for x in log if str(x.get("at", ""))[:10] >= d7]),
+            "d30": _ai_sum([x for x in log if str(x.get("at", ""))[:10] >= d30]),
+            "skupaj": _ai_sum(log),
+            "po_vrsti": {k: dict(_ai_sum(v), povp=round(sum(x.get("usd") or 0 for x in v) / len(v), 4)) for k, v in po_vrsti.items()},
             "zadnji": log[-20:][::-1]}
+
+
+@app.get("/ai-poraba")
+async def ai_poraba(request: Request):
+    """Stroški vseh AI klicev (Claude, OpenAI, Gemini, ElevenLabs) za kartico na Domov.
+    Za vsako obdobje (dan = po urah, teden = 7 dni, mesec = 30 dni, vse = po mesecih): skupaj, po viru, po funkciji, stolpci."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
+    log = _ai_read()
+    now = datetime.fromisoformat(_lj_iso()[:19])
+    danes = now.date()
+
+    def _obdobje(xs, kljuci, kljuc_fn, oznaka_fn):
+        by = {k: {} for k in kljuci}
+        for x in xs:
+            k = kljuc_fn(str(x.get("at", "")))
+            if k in by:
+                v = x.get("vir") or "?"
+                by[k][v] = by[k].get(v, 0) + (x.get("usd") or 0)
+        vir, fn = {}, {}
+        for x in xs:
+            v, f = x.get("vir") or "?", x.get("fn") or "?"
+            vir.setdefault(v, []).append(x)
+            fn.setdefault((v, f.split(":")[0]), []).append(x)
+        top = sorted(({"vir": k[0], "fn": k[1], **_ai_sum(v)} for k, v in fn.items()), key=lambda r: -r["usd"])[:12]
+        return {**_ai_sum(xs), "po_viru": {k: _ai_sum(v) for k, v in vir.items()}, "po_funkciji": top,
+                "stolpci": [{"k": oznaka_fn(k), "v": {a: round(b, 4) for a, b in by[k].items()}} for k in kljuci]}
+
+    dan_od = danes.isoformat()
+    t_od = (danes - timedelta(days=6)).isoformat()
+    m_od = (danes - timedelta(days=29)).isoformat()
+    x_dan = [x for x in log if str(x.get("at", ""))[:10] == dan_od]
+    x_t = [x for x in log if str(x.get("at", ""))[:10] >= t_od]
+    x_m = [x for x in log if str(x.get("at", ""))[:10] >= m_od]
+    meseci = sorted({str(x.get("at", ""))[:7] for x in log if x.get("at")}) or [dan_od[:7]]
+    dnevi7 = [(danes - timedelta(days=i)).isoformat() for i in range(6, -1, -1)]
+    dnevi30 = [(danes - timedelta(days=i)).isoformat() for i in range(29, -1, -1)]
+    return {"ok": True, "at": _lj_iso(), "eleven_usd_per_1k": ELEVEN_USD_PER_1K,
+            "dan": _obdobje(x_dan, [f"{h:02d}" for h in range(24)], lambda a: a[11:13], lambda k: k + "h"),
+            "teden": _obdobje(x_t, dnevi7, lambda a: a[:10], lambda k: k[8:10] + "." + k[5:7] + "."),
+            "mesec": _obdobje(x_m, dnevi30, lambda a: a[:10], lambda k: k[8:10] + "." + k[5:7] + "."),
+            "vse": _obdobje(log, meseci, lambda a: a[:7], lambda k: k[5:7] + "/" + k[2:4])}
 
 
 def _xsell_opus(prompt: str, schema: dict, vrsta: str = "") -> dict:
@@ -28828,7 +29013,7 @@ def _xsell_opus(prompt: str, schema: dict, vrsta: str = "") -> dict:
         r = client.beta.messages.create(**kw, betas=["server-side-fallback-2026-07-01"], fallbacks="default")
     except (TypeError, anthropic.BadRequestError) as e:
         print(f"[xsell] brez fallbacks: {str(e)[:160]}")
-        r = client.messages.create(**kw)
+        r = client.messages.create(**kw, _ai_skip=True)
     usd = _xsell_log_usage(r, vrsta or "?")
     if getattr(r, "stop_reason", "") == "refusal":
         raise RuntimeError("Model je zavrnil zahtevo.")

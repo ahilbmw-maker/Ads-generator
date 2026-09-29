@@ -372,6 +372,23 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .main { flex: 1; padding: 2rem 2rem 5rem; max-width: 1500px; }
 .main.wide { max-width: 100%; padding: 1.5rem 1.5rem 5rem; }
 .page { display: none; }
+/* 🤖 AI stroški v kartici semaforja (Domov) */
+.hai-card{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.hai{width:330px;max-width:100%;border-left:1px solid var(--border);padding-left:18px;cursor:default}
+.hai-solo .hai{border-left:none;padding-left:0;width:100%}
+.hai-lb{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary)}
+.hai-tg{display:inline-flex;gap:2px;background:var(--bg-secondary);border-radius:7px;padding:2px}
+.hai-tg b{font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;color:var(--text-secondary);cursor:pointer}
+.hai-tg b.on{background:#fff;color:var(--text);box-shadow:0 0 0 1px var(--border)}
+.hai-bars{display:flex;align-items:flex-end;gap:2px;height:46px;margin-top:6px}
+.hai-bar{flex:1;display:flex;flex-direction:column-reverse;border-radius:3px 3px 0 0;overflow:hidden;min-width:2px}
+.hai-lg{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--text-secondary);margin-top:6px;align-items:center}
+.hai-lg i,.hai-fr i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+.hai-lg a{margin-left:auto;color:var(--accent);cursor:pointer;font-weight:600}
+.hai-fr{display:grid;grid-template-columns:12px minmax(0,1fr) auto 34px;gap:6px;align-items:center;font-size:11.5px;padding:2px 0;color:var(--text-secondary)}
+.hai-fr b{color:var(--text);font-weight:700}
+.hai-fr small{color:var(--text-tertiary);text-align:right}
+@media(max-width:900px){.hai{width:100%;border-left:none;padding-left:0;border-top:1px solid var(--border);padding-top:10px}}
 /* 🎯 Xsell */
 .xs-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;align-items:start}
 @media(max-width:900px){.xs-grid{grid-template-columns:1fr}}
@@ -963,7 +980,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-29 13:10</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 13:46</div>
     </div>
   </div>
 
@@ -5746,7 +5763,7 @@ function homeUpdateDate() {
   const months = ['januarja','februarja','marca','aprila','maja','junija','julija','avgusta','septembra','oktobra','novembra','decembra'];
   el.textContent = days[d.getDay()] + ', ' + d.getDate() + '. ' + months[d.getMonth()] + ' ' + d.getFullYear();
   homeLoadStats();
-  homeSemLoad();
+  homeSemLoad(); homeAiLoad();
   homePriceCountLoad();
   homeBatoLoad();
 }
@@ -5844,20 +5861,24 @@ async function homeSemLoad(){
 function homeSemRender(){
   const box = document.getElementById('homeSemBar'); if (!box) return;
   const d = HOMESEM;
-  if (!d || !d.ok){ box.style.display = 'none'; return; }
+  if (!d || !d.ok){
+    box.style.display = '';
+    box.innerHTML = '<div class="card" style="margin-bottom:18px"><div id="homeAiBox" class="hai-solo"></div></div>';
+    homeAiRender(); return;
+  }
   box.style.display = '';
   const eur0 = v => Math.round(Number(v||0)).toLocaleString('sl-SI') + ' €';
   const sgn0 = v => (v > 0 ? '+' : '') + eur0(v);
   const col = {green:'#12a35f', amber:'#e0a33a', red:'#e5484d', grey:'var(--border)'};
 
   if (!d.has_data){
-    box.innerHTML = '<div class="card" style="margin-bottom:18px;border-left:4px solid var(--border)' + (d.owner ? ';cursor:pointer" onclick="homeSemOpen()"' : '"') + '>'
-      + '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
+    box.innerHTML = '<div class="card hai-card" style="margin-bottom:18px;border-left:4px solid var(--border)">'
+      + '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex:1;min-width:0' + (d.owner ? ';cursor:pointer" onclick="homeSemOpen()"' : '"') + '>'
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-tertiary)">🚦 Semafor CPA</div>'
       + '<div style="font-size:13px;color:var(--text-secondary)">še ni nobenega dnevnega vnosa</div>'
       + (d.owner ? '<div style="margin-left:auto;font-size:12.5px;color:var(--accent);font-weight:700">odpri →</div>' : '')
-      + '</div></div>';
-    return;
+      + '</div><div id="homeAiBox"></div></div>';
+    homeAiRender(); return;
   }
 
   const bars = (d.markets||[]).map(m => '<span title="' + m.market + '" style="width:11px;height:26px;border-radius:3px;background:' + (col[m.status]||col.grey) + '"></span>').join('');
@@ -5885,15 +5906,60 @@ function homeSemRender(){
   const openBtn = d.owner
     ? '<span style="font-size:12.5px;color:var(--accent);font-weight:700;white-space:nowrap">odpri →</span>' : '';
 
-  box.innerHTML = '<div class="card" style="margin-bottom:18px;border-left:4px solid ' + accent + (d.owner ? ';cursor:pointer" onclick="homeSemOpen()"' : '"') + '>'
-    + '<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap">'
+  box.innerHTML = '<div class="card hai-card" style="margin-bottom:18px;border-left:4px solid ' + accent + '">'
+    + '<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;flex:1;min-width:0' + (d.owner ? ';cursor:pointer" onclick="homeSemOpen()"' : '"') + '>'
     + '<div style="min-width:180px">' + left + '</div>'
     + '<div style="display:flex;gap:5px;align-items:center">' + bars
     + '<span style="font-size:12px;color:var(--text-secondary);margin-left:8px">' + d.green + ' 🟢'
     + (d.amber ? ' · ' + d.amber + ' 🟠' : '') + (d.red ? ' · ' + d.red + ' 🔴' : '') + '</span></div>'
     + '<div style="margin-left:auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end">'
     + right + openBtn
-    + '</div></div></div>';
+    + '</div></div><div id="homeAiBox"></div></div>';
+  homeAiRender();
+}
+
+// ═══ AI STROŠKI (Domov, v kartici semaforja) — /ai-poraba, informativno ═══
+// Žetoni/znaki iz odgovora API-ja, cena $ po ceniku (približek). Obdobje se zapomni v brskalniku.
+let HOMEAI = null;
+const HAI_VIR = { claude: ['Claude', '#7c6fe0'], openai: ['OpenAI slike', '#1D9E75'], gemini: ['Gemini', '#D85A30'], elevenlabs: ['ElevenLabs', '#D4537E'] };
+const HAI_OBD = [['dan', 'Dan'], ['teden', 'Teden'], ['mesec', 'Mesec'], ['vse', 'Vse']];
+const HAI_USD_EUR = 0.86;   // samo za prikaz "≈ €"
+const HAI_FN = { generator: 'Generator slik', prevod_slik: 'Prevod slik', optimizacija_slik: 'Optimizacija slik', generate_audio: 'Glas (ElevenLabs)', xsell: '🎯 Xsell', znacke_batch: 'Značke (Batches)' };
+function haiObd() { try { const v = localStorage.getItem('slx_ai_obd'); if (HAI_OBD.some(o => o[0] === v)) return v; } catch (e) {} return 'teden'; }
+async function homeAiLoad() {
+  try { const r = await fetch('/ai-poraba'); HOMEAI = await r.json(); } catch (e) { HOMEAI = null; }
+  homeAiRender();
+}
+function homeAiSet(o, ev) { if (ev) ev.stopPropagation(); try { localStorage.setItem('slx_ai_obd', o); } catch (e) {} homeAiRender(); }
+function homeAiFn(ev) { if (ev) ev.stopPropagation(); const el = document.getElementById('haiFn'); if (el) el.style.display = el.style.display === 'none' ? '' : 'none'; }
+function homeAiRender() {
+  const box = document.getElementById('homeAiBox'); if (!box) return;
+  const d = HOMEAI;
+  if (!d || !d.ok) { box.innerHTML = '<div class="hai"><div class="hai-lb">🤖 AI stroški</div><div style="font-size:12px;color:var(--text-tertiary);margin-top:6px">' + (d ? 'ni podatkov' : 'nalagam …') + '</div></div>'; return; }
+  const obd = haiObd(), p = d[obd] || { n: 0, usd: 0, po_viru: {}, po_funkciji: [], stolpci: [] };
+  const num2 = v => (Number(v) || 0).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const usd = v => num2(v) + ' $';
+  const max = Math.max(0.0001, ...p.stolpci.map(c => Object.values(c.v).reduce((a, b) => a + b, 0)));
+  const bars = p.stolpci.map(c => {
+    const tot = Object.values(c.v).reduce((a, b) => a + b, 0);
+    const seg = Object.keys(HAI_VIR).filter(k => c.v[k]).map(k => '<i style="flex:' + c.v[k] + ';background:' + HAI_VIR[k][1] + '"></i>').join('');
+    const tip = c.k + ': ' + usd(tot) + Object.keys(c.v).map(k => '&#10;' + (HAI_VIR[k] ? HAI_VIR[k][0] : k) + ' ' + usd(c.v[k])).join('');
+    return '<div class="hai-bar" title="' + tip + '" style="height:' + (tot ? Math.max(6, Math.round(tot / max * 100)) : 3) + '%' + (tot ? '' : ';background:var(--border)') + '">' + seg + '</div>';
+  }).join('');
+  const leg = Object.keys(HAI_VIR).filter(k => p.po_viru[k]).map(k => '<span><i style="background:' + HAI_VIR[k][1] + '"></i>' + HAI_VIR[k][0] + ' ' + usd(p.po_viru[k].usd) + '</span>').join('')
+    || '<span style="color:var(--text-tertiary)">v tem obdobju ni AI klicev</span>';
+  const fn = p.po_funkciji.map(f => '<div class="hai-fr"><i style="background:' + (HAI_VIR[f.vir] ? HAI_VIR[f.vir][1] : '#999') + '"></i><span>' + (HAI_FN[f.fn] || f.fn.replace(/_/g, ' ')) + '</span><b>' + usd(f.usd) + '</b><small>' + f.n + '×</small></div>').join('');
+  const first = p.stolpci.length ? p.stolpci[0].k : '', last = p.stolpci.length ? p.stolpci[p.stolpci.length - 1].k : '';
+  box.innerHTML = '<div class="hai" onclick="event.stopPropagation()">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="hai-lb" title="Informativno: žetoni/znaki iz odgovora API-ja, cena po ceniku (približek, ne račun). Zbira se od 29. 9. 2026.">🤖 AI stroški</span>'
+    + '<span class="hai-tg">' + HAI_OBD.map(o => '<b class="' + (o[0] === obd ? 'on' : '') + '" onclick="homeAiSet(\'' + o[0] + '\', event)">' + o[1] + '</b>').join('') + '</span></div>'
+    + '<div style="display:flex;align-items:baseline;gap:7px;margin-top:3px"><span style="font-size:22px;font-weight:800;color:var(--text)">' + usd(p.usd) + '</span>'
+    + '<span style="font-size:11.5px;color:var(--text-tertiary)">≈ ' + num2(p.usd * HAI_USD_EUR) + ' € · ' + p.n + ' klicev</span></div>'
+    + '<div class="hai-bars">' + bars + '</div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-tertiary);margin-top:2px"><span>' + first + '</span><span>' + last + '</span></div>'
+    + '<div class="hai-lg">' + leg + (fn ? '<a onclick="homeAiFn(event)">po funkcijah ▾</a>' : '') + '</div>'
+    + '<div id="haiFn" style="display:none;margin-top:6px">' + fn + '</div>'
+    + '</div>';
 }
 function homeSemOpen(){
   switchPage('analiza');
