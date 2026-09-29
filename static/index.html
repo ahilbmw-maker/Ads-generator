@@ -410,6 +410,10 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .xs-mrow img{width:34px;height:34px;border-radius:6px;object-fit:contain;background:#f8fafc}
 .xs-kat{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--bg-secondary)}
 .xs-kat-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.xs-pk{margin-left:12px;display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#4c1d95;background:#ede9fe;border-radius:7px;padding:2px 4px 2px 9px}
+.xs-pk input{width:52px;padding:3px 6px;border:1px solid #c4b5fd;border-radius:5px;font-size:12px;font-weight:700;background:#fff;color:#4c1d95}
+.xs-pi{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--text-tertiary);cursor:default}
+.xs-pi input{width:44px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;font-size:11px;background:#fff}
 .xs-chip{padding:4px 10px;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);background:#fff;color:var(--text-secondary)}
 .xs-chip.on{background:var(--text);border-color:var(--text);color:#fff}
 /* Zaloga dobavitelja */
@@ -982,7 +986,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-29 16:42</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 16:57</div>
     </div>
   </div>
 
@@ -3017,6 +3021,15 @@ input[type="text"].error { border-color: var(--red) !important; }
           </div>
         </div>
         <div id="xsShopEditBox" style="display:none;margin-bottom:10px">
+          <div id="xsShopPaste" tabindex="0" onclick="this.focus()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="xsShopImgDrop(event)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" style="border:1.5px dashed var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;background:var(--surface);outline:none">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <div style="min-width:0;flex:1"><div style="font-size:12.5px;font-weight:700">🖼 Kategorije iz slike</div>
+                <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">klikni sem in prilepi screenshot (Ctrl+V) · lahko več slik · ali <span onclick="event.stopPropagation();xsShopImgPick()" style="text-decoration:underline">izberi datoteke</span> → AI doda kategorije v seznam spodaj</div></div>
+              <button id="xsShopImgBtn" onclick="event.stopPropagation();xsShopImgRun()" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">🤖 Preberi slike</button>
+            </div>
+            <div id="xsShopThumbs" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+            <div id="xsShopImgMsg" style="font-size:11.5px;color:var(--text-tertiary);margin-top:4px"></div>
+          </div>
           <textarea id="xsShopTa" rows="8" placeholder="Ena kategorija na vrstico" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
           <button onclick="xsShopSaveList()" style="margin-top:6px;padding:6px 14px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">💾 Shrani seznam</button>
         </div>
@@ -11200,23 +11213,31 @@ function xsShopRender() {
     const pl = k.predlogi.length ? k.predlogi.map((p, pi) => {
       const i = k.izbrani.indexOf(p.sku);
       const m = p.nc != null ? Math.round((4.99 / 1.22 - p.nc) / (4.99 / 1.22) * 100) : null;   // marža pri Xsell ceni 4,99 €
+      const izj = (k.popust_izd || {})[p.sku], pct = izj != null ? izj : k.popust, xp = xsPopCena(p, pct);
       return '<div class="xs-it' + (i >= 0 ? ' sel' : '') + '" data-kk="' + ki + '" data-ks="' + xsE(p.sku) + '"><div class="xs-rk">' + (pi === 0 ? '⭐' : (pi + 1)) + '</div>' +
         (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '<div style="width:52px;height:52px;border-radius:8px;background:#f1f5f9"></div>') +
         '<div style="min-width:0"><div style="font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + xsE(p.naziv) + '">' + xsE(p.naziv) + '</div>' +
         '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;align-items:center"><span class="xs-sku">' + xsE(p.sku) + '</span>' +
         xsNcPill(p.nc) +
-        (m != null ? '<span class="xs-pill" style="background:#f1f5f9;color:#334155" title="Marža, če se dodatek prodaja po Xsell ceni 4,99 €">marža pri 4,99 € ' + m + ' %</span>' : '') +
+        (xp ? '<span class="xs-pill" style="background:#ede9fe;color:#4c1d95" title="Redna (prodajna) cena ' + xsEu(xp.redna) + ' − ' + xsPct(pct) + ' % (' + (izj != null ? 'izjema za ta dodatek' : 'popust kategorije') + ')">Xsell SLO ' + xsEu(xp.cena) + ' <span style="font-weight:600;opacity:.75">(−' + xsPct(pct) + ' % od ' + xsEu(xp.redna) + ')</span></span>' +
+              (xp.marza != null ? '<span class="xs-pill" style="background:' + (xp.marza >= 50 ? '#dcfce7;color:#166534' : (xp.marza >= 30 ? '#fef3c7;color:#92400e' : '#fee2e2;color:#991b1b')) + '">marža ' + Math.round(xp.marza) + ' %</span>' : '')
+            : (m != null ? '<span class="xs-pill" style="background:#f1f5f9;color:#334155" title="Marža, če se dodatek prodaja po Xsell ceni 4,99 €">marža pri 4,99 € ' + m + ' %</span>' : '')) +
         '<span class="xs-pill" style="background:#f1f5f9;color:#334155">zaloga ' + (p.zaloga || 0) + '</span>' +
+        (p.akcija && xp ? '<span class="xs-pill" style="background:#fff7ed;color:#9a3412" title="Popust v CMS gre na redno ceno, ne na akcijsko">zdaj v akciji ' + xsEu(p.akcija) + '</span>' : '') +
         (p.nc != null && p.nc > 3 ? '<span class="xs-pill" style="background:#fee2e2;color:#991b1b">NC nad 3 €</span>' : '') + '</div>' +
         (p.razlog ? '<div style="font-size:11.5px;color:var(--text-secondary);margin-top:3px">💡 ' + xsE(p.razlog) + '</div>' : '') + '</div>' +
-        '<div class="xs-pick">' + (i >= 0 ? '✓ mesto ' + (i + 1) : 'izberi') + '</div></div>';
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">' +
+        '<div class="xs-pick">' + (i >= 0 ? '✓ mesto ' + (i + 1) : 'izberi') + '</div>' +
+        '<label class="xs-pi" title="Izjema: drug popust samo za ta dodatek (prazno = popust kategorije)">popust <input type="number" min="0" max="99" step="1" data-pk="' + ki + '" data-ps="' + xsE(p.sku) + '" value="' + (izj != null ? izj : '') + '" placeholder="' + (k.popust != null ? xsPct(k.popust) : '–') + '"> %</label></div></div>';
     }).join('') : '<span style="font-size:11.5px;color:var(--text-tertiary)">Še brez predlogov — klikni "Predlagaj za vse".</span>';
     return '<div class="xs-kat"><div class="xs-kat-h"><b style="font-size:13px">' + xsE(k.ime) + '</b>' +
       (k.izbrani.length ? '<span class="xs-pill" style="background:#dcfce7;color:#166534">✓ ' + k.izbrani.length + ' izbranih</span>' : '') +
+      '<label class="xs-pk" title="Popust na redno (prodajno) ceno — enako kot »Popust na ceno« v CMS pri Xsell kategorije">Popust na ceno <input type="number" min="0" max="99" step="1" data-pk="' + ki + '" value="' + (k.popust != null ? k.popust : '') + '" placeholder="npr. 45"> %</label>' +
       '<button onclick="xsShopPredlagaj([' + ki + '])" style="margin-left:auto;padding:3px 9px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer">↻</button></div>' + pl + '</div>';
   }).join('');
 }
 document.addEventListener('click', e => {
+  if (e.target.closest('#xsShopList label')) return;   // polje za popust
   const c = e.target.closest('#xsShopList .xs-it[data-ks]'); if (!c) return;
   const k = _xsShop.kat[+c.dataset.kk]; if (!k) return;
   const s = c.dataset.ks, i = k.izbrani.indexOf(s);
@@ -11224,10 +11245,79 @@ document.addEventListener('click', e => {
   xsShopRender();
   fetch('/xsell-shop-kat-shrani', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ime: k.ime, items: k.izbrani }) }).catch(() => {});
 });
+const xsPct = v => String(Math.round(Number(v) * 100) / 100).replace('.', ',');
+function xsPopCena(p, pct) {   // Xsell cena SLO po popustu na redno ceno (z DDV 22 %) + marža
+  const redna = p.redna != null ? p.redna : p.cena;
+  if (pct == null || pct === '' || redna == null) return null;
+  const cena = Math.round(redna * (1 - pct / 100) * 100) / 100, neto = cena / 1.22;
+  return { redna, cena, marza: (p.nc != null && neto > 0) ? (neto - p.nc) / neto * 100 : null };
+}
+document.addEventListener('change', e => {
+  const inp = e.target.closest('#xsShopList input[data-pk]'); if (!inp) return;
+  const k = _xsShop.kat[+inp.dataset.pk]; if (!k) return;
+  const raw = String(inp.value).trim().replace(',', '.'), v = raw === '' ? null : Number(raw);
+  if (v != null && !(v >= 0 && v < 100)) { alert('Popust mora biti med 0 in 99 %.'); inp.value = ''; return; }
+  const sku = inp.dataset.ps || null;
+  if (sku) { k.popust_izd = k.popust_izd || {}; if (v == null) delete k.popust_izd[sku]; else k.popust_izd[sku] = v; }
+  else k.popust = v;
+  xsShopRender();
+  fetch('/xsell-shop-kat-popust', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ime: k.ime, sku, popust: v }) })
+    .then(r => r.json()).then(d => { if (!d.ok) alert('Popust ni shranjen: ' + (d.error || 'napaka')); }).catch(() => alert('Popust ni shranjen (povezava).'));
+});
 function xsShopEdit() {
   const b = document.getElementById('xsShopEditBox'); const on = b.style.display === 'none';
   b.style.display = on ? '' : 'none';
   if (on) document.getElementById('xsShopTa').value = _xsShop.kat.map(k => k.ime).join('\n');
+}
+// 🖼 kategorije iz slike (kot uvoz porabe v semaforju): Ctrl+V / spusti / izberi → /xsell-shop-kat-iz-slike
+let _xsShopImgs = [];
+async function xsShopImgAdd(file) {
+  if (!file || !(file.type || '').startsWith('image/')) return;
+  if (_xsShopImgs.length >= 8) { document.getElementById('xsShopImgMsg').textContent = 'Največ 8 slik.'; return; }
+  _xsShopImgs.push(await semImgPrepare(file));
+  xsShopThumbs();
+}
+function xsShopThumbs() {
+  document.getElementById('xsShopThumbs').innerHTML = _xsShopImgs.map((x, i) =>
+    '<span style="position:relative;display:inline-block"><img src="' + x.url + '" style="height:52px;border-radius:7px;border:1px solid var(--border);display:block">' +
+    '<button onclick="event.stopPropagation();_xsShopImgs.splice(' + i + ',1);xsShopThumbs()" title="odstrani" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;line-height:1;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:11px;padding:0">×</button></span>').join('');
+  document.getElementById('xsShopImgMsg').textContent = _xsShopImgs.length ? _xsShopImgs.length + ' slik pripravljenih — klikni »Preberi slike«' : '';
+}
+function xsShopImgDrop(e) {
+  e.preventDefault(); e.currentTarget.style.borderColor = 'var(--border)';
+  [...(e.dataTransfer.files || [])].forEach(xsShopImgAdd);
+}
+function xsShopImgPick() {
+  const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.multiple = true;
+  i.onchange = () => [...i.files].forEach(xsShopImgAdd); i.click();
+}
+document.addEventListener('paste', e => {
+  const box = document.getElementById('xsShopEditBox');
+  if (!box || box.style.display === 'none' || box.offsetParent === null) return;
+  if (e.target && e.target.id === 'xsShopTa') {   // v textarea prilepi besedilo normalno, sliko pa ujame
+    if (![...((e.clipboardData || {}).items || [])].some(i => (i.type || '').startsWith('image/'))) return;
+  } else if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  const items = [...((e.clipboardData || {}).items || [])].filter(i => (i.type || '').startsWith('image/'));
+  if (!items.length) return;
+  e.preventDefault();
+  items.forEach(i => xsShopImgAdd(i.getAsFile()));
+});
+async function xsShopImgRun() {
+  const msg = document.getElementById('xsShopImgMsg'), btn = document.getElementById('xsShopImgBtn');
+  if (!_xsShopImgs.length) { msg.textContent = 'Najprej prilepi vsaj eno sliko (Ctrl+V).'; return; }
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Berem slike…';
+  try {
+    const d = await (await fetch('/xsell-shop-kat-iz-slike', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ images: _xsShopImgs.map(x => ({ data: x.data, media_type: x.media_type })) }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    const ta = document.getElementById('xsShopTa');
+    const cur = ta.value.split('\n').map(x => x.trim()).filter(Boolean), low = new Set(cur.map(x => x.toLowerCase()));
+    const nove = (d.kategorije || []).filter(x => !low.has(x.toLowerCase()));
+    ta.value = cur.concat(nove).join('\n');
+    _xsShopImgs = []; xsShopThumbs();
+    msg.innerHTML = '✓ Prebranih ' + (d.kategorije || []).length + ' kategorij, <b>' + nove.length + ' novih</b> dodanih v seznam. Preglej in klikni »💾 Shrani seznam«.';
+  } catch (e) { msg.textContent = '✗ ' + e.message; }
+  finally { btn.disabled = false; btn.textContent = o; }
 }
 async function xsShopSaveList() {
   const imena = document.getElementById('xsShopTa').value.split('\n').map(x => x.trim()).filter(Boolean);

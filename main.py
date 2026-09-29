@@ -28861,6 +28861,7 @@ async def _xsell_rows(request: Request) -> list:
             "g_id": str(r.get("g_id")), "sku": str(r.get("sku") or "").upper(), "nc_sku": str(r.get("nc_sku") or "").upper(),
             "naziv": r.get("naziv") or "", "url": r.get("url") or "", "slika": r.get("slika") or "",
             "cena": r.get("eur") if r.get("eur") is not None else r.get("koncna"), "nc": r.get("nc"),
+            "redna": r.get("cena"), "akcija": r.get("akcija"),
             "zaloga": r.get("zaloga") or 0, "obrat": r.get("obrat"), "marza_pct": r.get("marza_pct"),
             "cms_id": r.get("cms_id"), "kat": cat,
             "kat_ime": (tax.get(cat, "").split(" > ")[-1] if tax.get(cat) else (f"Kategorija {cat}" if cat else "Brez kategorije")),
@@ -29030,7 +29031,7 @@ def _xsell_cand_line(r: dict) -> str:
 
 
 def _xsell_view(r: dict) -> dict:
-    return {k: r.get(k) for k in ("g_id", "sku", "naziv", "url", "slika", "cena", "nc", "zaloga", "obrat", "marza_pct", "kat", "kat_ime", "cms_id")}
+    return {k: r.get(k) for k in ("g_id", "sku", "naziv", "url", "slika", "cena", "redna", "akcija", "nc", "zaloga", "obrat", "marza_pct", "kat", "kat_ime", "cms_id")}
 
 
 def _xsell_status(d: dict, r: dict) -> dict:
@@ -29261,7 +29262,23 @@ def _xsell_shop(d: dict) -> dict:
     sk.setdefault("seznam", list(XSELL_SHOP_KAT_DEFAULT))
     sk.setdefault("predlogi", {})
     sk.setdefault("izbrani", {})
+    sk.setdefault("popust", {})        # {kategorija: % popusta na redno ceno} — kot "Popust na ceno" v CMS
+    sk.setdefault("popust_izd", {})    # {kategorija: {sku: %}} — izjeme za posamezen dodatek
     return sk
+
+
+def _xsell_popust_cena(r: dict, pct):
+    """Xsell cena SLO po popustu na redno (prodajno) ceno + marža; (cena, marža %) ali (None, None)."""
+    try:
+        redna = r.get("redna") if r.get("redna") is not None else r.get("cena")
+        if pct is None or redna is None:
+            return None, None
+        c = round(float(redna) * (1 - float(pct) / 100), 2)
+        nc = r.get("nc")
+        neto = c / 1.22
+        return c, (round((neto - nc) / neto * 100, 1) if (nc is not None and neto > 0) else None)
+    except Exception:
+        return None, None
 
 
 @app.get("/xsell-shop-kat")
@@ -29274,7 +29291,8 @@ async def xsell_shop_kat(request: Request):
     for ime in sk["seznam"]:
         out.append({"ime": ime,
                     "predlogi": [dict(_xsell_view(by[p["sku"]]), razlog=p.get("razlog", "")) for p in (sk["predlogi"].get(ime) or []) if p.get("sku") in by],
-                    "izbrani": [s for s in (sk["izbrani"].get(ime) or []) if s in by]})
+                    "izbrani": [s for s in (sk["izbrani"].get(ime) or []) if s in by],
+                    "popust": sk["popust"].get(ime), "popust_izd": sk["popust_izd"].get(ime) or {}})
     return {"ok": True, "kategorije": out, "at": sk.get("predlogi_at")}
 
 
@@ -29380,6 +29398,77 @@ async def xsell_shop_kat_shrani(req: XsellShopShraniReq):
     return {"ok": True}
 
 
+@app.post("/xsell-shop-kat-iz-slike")
+async def xsell_shop_kat_iz_slike(data: dict):
+    """Prilepljeni screenshoti menija trgovine → seznam imen kategorij (Claude vision). NE shranjuje."""
+    content = []
+    for im in ((data or {}).get("images") or [])[:8]:
+        b64 = str((im or {}).get("data") or "")
+        if b64.startswith("data:") and "," in b64:
+            b64 = b64.split(",", 1)[1]
+        mt = str((im or {}).get("media_type") or "image/png")
+        if mt not in ("image/png", "image/jpeg", "image/gif", "image/webp"):
+            mt = "image/png"
+        if b64.strip():
+            content.append({"type": "image", "source": {"type": "base64", "media_type": mt, "data": b64.strip()}})
+    if not content:
+        return {"ok": False, "error": "Ni slik."}
+    content.append({"type": "text", "text": (
+        "Na slikah je seznam kategorij spletne trgovine (meni ali admin CMS). Izpiši VSA imena kategorij, "
+        "ki jih vidiš, v vrstnem redu od zgoraj navzdol (in od leve proti desni, če je več stolpcev). "
+        "Ime prepiši točno tako, kot je zapisano (velike/male črke, šumniki). "
+        "Ne dodajaj števil izdelkov, ikon, gumbov, puščic ali drugih besedil vmesnika. Podvojenih imen ne ponavljaj. "
+        'Vrni SAMO JSON: {"kategorije": ["…", "…"]}')})
+    loop = asyncio.get_event_loop()
+    try:
+        msg = await loop.run_in_executor(None, lambda: client.messages.create(
+            model="claude-sonnet-4-6", max_tokens=4000, messages=[{"role": "user", "content": content}]))
+    except Exception as e:
+        return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
+    raw = "".join(getattr(b, "text", "") for b in msg.content).strip()
+    m = re.search(r"\{.*\}", raw, re.S)
+    try:
+        imena = json.loads(m.group(0) if m else raw).get("kategorije") or []
+    except Exception:
+        return {"ok": False, "error": "Neberljiv odgovor modela.", "raw": raw[:300]}
+    seen, out = set(), []
+    for x in imena:
+        x = re.sub(r"\s+", " ", str(x or "")).strip()
+        if x and x.lower() not in seen:
+            seen.add(x.lower()); out.append(x[:120])
+    return {"ok": True, "kategorije": out}
+
+
+class XsellShopPopustReq(BaseModel):
+    ime: str
+    sku: Optional[str] = None          # prazno = popust za celo kategorijo
+    popust: Optional[float] = None     # None = počisti
+
+
+@app.post("/xsell-shop-kat-popust")
+async def xsell_shop_kat_popust(req: XsellShopPopustReq):
+    """Shrani popust (%) za Xsell kategorije trgovine — za kategorijo ali izjemo pri enem dodatku."""
+    if req.popust is not None and not (0 <= req.popust < 100):
+        return {"ok": False, "error": "Popust mora biti med 0 in 99 %."}
+    d = _xsell_load()
+    sk = _xsell_shop(d)
+    pct = round(req.popust, 2) if req.popust is not None else None
+    if req.sku:
+        m = sk["popust_izd"].setdefault(req.ime, {})
+        if pct is None:
+            m.pop(req.sku.strip().upper(), None)
+        else:
+            m[req.sku.strip().upper()] = pct
+        if not m:
+            sk["popust_izd"].pop(req.ime, None)
+    elif pct is None:
+        sk["popust"].pop(req.ime, None)
+    else:
+        sk["popust"][req.ime] = pct
+    _xsell_save(d)
+    return {"ok": True}
+
+
 @app.get("/xsell-shop-kat-csv")
 async def xsell_shop_kat_csv(request: Request):
     from fastapi.responses import Response
@@ -29388,11 +29477,13 @@ async def xsell_shop_kat_csv(request: Request):
     d = _xsell_load()
     sk = _xsell_shop(d)
     q = lambda v: '"' + str(v if v is not None else "").replace('"', '""') + '"'
-    out = ["Kategorija;Mesto;SKU;Naziv;Cena;NC;Zaloga"]
+    out = ["Kategorija;Mesto;SKU;Naziv;Cena;Redna cena;Popust %;Xsell cena SLO;Marža %;NC;Zaloga"]
     for ime in sk["seznam"]:
         for i, s in enumerate(sk["izbrani"].get(ime) or [], 1):
             r = by.get(s) or {}
-            out.append(";".join(q(v) for v in (ime, i, s, r.get("naziv", ""), r.get("cena"), r.get("nc"), r.get("zaloga"))))
+            pct = (sk["popust_izd"].get(ime) or {}).get(s, sk["popust"].get(ime))
+            xc, xm = _xsell_popust_cena(r, pct)
+            out.append(";".join(q(v) for v in (ime, i, s, r.get("naziv", ""), r.get("cena"), r.get("redna"), pct, xc, xm, r.get("nc"), r.get("zaloga"))))
     return Response("\ufeff" + "\n".join(out), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="xsell-kategorije-{_lj_today()}.csv"'})
 
