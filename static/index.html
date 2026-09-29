@@ -1021,7 +1021,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-29 17:27</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 17:44</div>
     </div>
   </div>
 
@@ -3030,16 +3030,17 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
     </div>
 
-    <!-- 🎯 XSELL: najboljši poceni dodatek k Maaarket izdelku (Claude Opus 5.5) · izdelek = primarno, kategorija = rezerva -->
+    <!-- 🎯 XSELL: najboljši poceni dodatek k Maaarket izdelku (Claude Sonnet 5.5 / Opus 5.5 po izbiri) · izdelek = primarno, kategorija = rezerva -->
     <div id="orodjaSubpage-xsell" style="display:none;padding:14px">
       <div class="card" style="padding:12px 16px">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <span class="xs-tabs"><b id="xsTab-izd" onclick="xsTab('izd')">📦 Izdelki</b><b id="xsTab-kat" onclick="xsTab('kat')">🏷 Kategorije trgovine</b></span>
           <input id="xsQ" type="text" placeholder="Odpri izdelek: SKU ali povezava (maaarket.si/izdelek/…) + Enter" onkeydown="if(event.key==='Enter')xsOpen(this.value)" style="flex:1;min-width:240px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text)">
+          <span class="xs-tabs" title="Model za vse Xsell predloge (izdelki, kategorije). Sonnet 5.5 = približno pol cene, effort high; Opus 5.5 = effort medium."><b id="xsM-sonnet" onclick="xsSetModel('sonnet')">Sonnet 5.5</b><b id="xsM-opus" onclick="xsSetModel('opus')">Opus 5.5</b></span>
           <a href="/xsell-csv" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap">⬇ CSV izdelkov</a>
         </div>
         <div id="xsInfo" style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px">Samo Maaarket izdelki na zalogi (SL — velja za vse trge) · šteje samo NC dodatka: idealno 0–2 €, največ 3 €</div>
-        <div id="xsPoraba" title="Informativno: ocenjena cena klicev Opus 5.5 ($4 / $20 na 1M žetonov)" style="font-size:11px;color:var(--text-tertiary);margin-top:2px"></div>
+        <div id="xsPoraba" title="Informativno: ocenjena cena Xsell klicev po ceniku (Sonnet 5.5 $2/$10, Opus 5.5 $4/$20 na 1M žetonov)" style="font-size:11px;color:var(--text-tertiary);margin-top:2px"></div>
       </div>
 
       <!-- 📦 IZDELKI: seznam levo (moj seznam iz slike/SKU ali vsi po obratu) · podrobnosti desno -->
@@ -3060,6 +3061,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <textarea id="xsPTa" rows="3" placeholder="ali prilepi SKU-je / povezave / nazive — eno na vrstico" style="width:100%;margin-top:6px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
             <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">
               <button id="xsPAddBtn" onclick="xsPAddRun()" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">🤖 Dodaj v moj seznam</button>
+              <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer" title="Moj seznam = samo najdeni izdelki; tisti z že izbranim Xsell ostanejo"><input type="checkbox" id="xsPReplace" checked> zamenjaj moj seznam</label>
               <button onclick="xsPClear()" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap">Počisti moj seznam</button>
             </div>
             <div id="xsPAddMsg" style="font-size:11.5px;color:var(--text-tertiary);margin-top:5px"></div>
@@ -3095,7 +3097,7 @@ input[type="text"].error { border-color: var(--red) !important; }
               <button id="xsShopImgBtn" onclick="event.stopPropagation();xsShopImgRun()" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">🤖 Preberi slike</button>
             </div>
             <div id="xsShopThumbs" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
-            <div id="xsShopImgMsg" style="font-size:11.5px;color:var(--text-tertiary);margin-top:4px"></div>
+            <div id="xsShopImgMsg" style="font-size:11.5px;color:var(--text-tertiary);margin-top:4px">Slika zamenja seznam spodaj · zaključene kategorije vedno ostanejo</div>
           </div>
           <textarea id="xsShopTa" rows="8" placeholder="Ena kategorija na vrstico" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
           <div style="display:flex;gap:6px;margin-top:6px"><button onclick="xsShopSaveList()" style="padding:6px 14px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">💾 Shrani seznam</button><button onclick="xsShopEdit()" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap">Zapri</button></div>
@@ -11048,7 +11050,7 @@ function ssCsv() {
 }
 document.addEventListener('DOMContentLoaded', () => { try { const v = localStorage.getItem('slx_ss_input'); const t = document.getElementById('ssInput'); if (v && t) t.value = v; } catch (e) {} });
 
-// ═══ 🎯 XSELL (Opus 5.5) ═══
+// ═══ 🎯 XSELL (Sonnet 5.5 / Opus 5.5 — izbira v glavi) ═══
 // Dva zavihka v istem vzorcu: seznam levo (status, množični izbor, Opus za izbrane) · podrobnosti desno.
 let _xs = { item: null, predlogi: [], izbran: null, kat: null, list: [], moj: [], src: 'moj', pf: 'vse', sel: new Set(), run: new Set(), prefetch: {} };
 const xsE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -11058,7 +11060,23 @@ const xsUsd = v => (Number(v) || 0).toLocaleString('sl-SI', { minimumFractionDig
 const xsPct = v => String(Math.round(Number(v) * 100) / 100).replace('.', ',');
 const xsLS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
 const XS_ST = { ok: ['st-ok', '✓'], pr: ['st-pr', ''], no: ['st-no', '—'], run: ['st-run', '⏳'] };
+let _xsModel = { k: 'sonnet', ime: 'Sonnet 5.5' };
+const XS_CENA = { sonnet: 0.06, opus: 0.11 };   // ocena $ na izdelek (za potrditev pred množičnim predlaganjem)
+async function xsModelLoad() {
+  try { const d = await (await fetch('/xsell-model')).json(); if (d.ok) _xsModel = { k: d.model, ime: d.ime }; } catch (e) {}
+  xsModelUI();
+}
+function xsModelUI() { ['sonnet', 'opus'].forEach(k => { const b = document.getElementById('xsM-' + k); if (b) b.classList.toggle('on', k === _xsModel.k); }); }
+async function xsSetModel(k) {
+  if (k === _xsModel.k) return;
+  try {
+    const d = await (await fetch('/xsell-model', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: k }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    _xsModel = { k: d.model, ime: d.ime }; xsModelUI();
+  } catch (e) { alert('Model ni shranjen: ' + e.message); }
+}
 function xsInit() {
+  xsModelLoad();
   _xs.src = xsLS('slx_xs_src') === 'vsi' ? 'vsi' : 'moj';
   xsTab(xsLS('slx_xs_tab') === 'kat' ? 'kat' : 'izd');
   xsPoraba();
@@ -11085,7 +11103,7 @@ async function xsPoraba() {
   try {
     const d = await (await fetch('/xsell-poraba')).json(); if (!d.ok) return;
     const pv = d.po_vrsti || {}, iz = pv.izdelek;
-    el.textContent = '💰 Poraba Opus (Xsell): danes ' + xsUsd(d.danes.usd) + ' (' + d.danes.n + ' klicev) · 7 dni ' + xsUsd(d.d7.usd) + ' · 30 dni ' + xsUsd(d.d30.usd) +
+    el.textContent = '💰 Poraba AI (Xsell): danes ' + xsUsd(d.danes.usd) + ' (' + d.danes.n + ' klicev) · 7 dni ' + xsUsd(d.d7.usd) + ' · 30 dni ' + xsUsd(d.d30.usd) +
       (iz ? ' · Ø na izdelek ' + xsUsd(iz.povp) : '') + (pv.shop_kat ? ' · Ø paket kategorij ' + xsUsd(pv.shop_kat.povp) : '');
   } catch (e) {}
 }
@@ -11194,11 +11212,15 @@ async function xsPAddRun() {
       if (!d.ok) throw new Error(d.error || 'napaka');
       najdeni.push(...d.najdeni); nenajdeni.push(...d.nenajdeni);
     }
-    const nov = najdeni.map(x => x.g_id).filter(g => !_xs.moj.includes(g));
-    await xsPMoj(najdeni.map(x => x.g_id), []);
+    const repl = document.getElementById('xsPReplace').checked;
+    const ids = najdeni.map(x => x.g_id), set = new Set(ids);
+    const obdrzi = repl ? _xs.moj.filter(g => !set.has(g) && (_xs.list.find(x => x.g_id === g) || {}).izbran) : [];
+    const nov = ids.filter(g => !_xs.moj.includes(g));
+    if (repl) await xsPMoj(ids.concat(obdrzi), [], true); else await xsPMoj(ids, []);
+    _xs.pf = 'vse'; document.getElementById('xsPQ').value = '';
     _xsPImgs = []; xsPThumbs(); ta.value = nenajdeni.join('\n');
     _xs.src = 'moj'; xsLS('slx_xs_src', 'moj'); xsPRender();
-    msg.innerHTML = '✓ Najdenih ' + najdeni.length + (prebrano ? ' (s slike prebranih ' + prebrano + ')' : '') + ', <b>' + nov.length + ' novih</b> v mojem seznamu.' +
+    msg.innerHTML = '✓ Najdenih ' + najdeni.length + (prebrano ? ' (s slike prebranih ' + prebrano + ')' : '') + (repl ? ' — 📌 Moj seznam je zamenjan s temi' + (obdrzi.length ? ' (+ ' + obdrzi.length + ' z že izbranim Xsell ostane)' : '') + '.' : ', <b>' + nov.length + ' novih</b> dodanih v moj seznam.') +
       (nenajdeni.length ? ' <span style="color:#b45309">Nenajdenih ' + nenajdeni.length + ' — ostali so v polju zgoraj (popravi in klikni znova).</span>' : '') +
       (najdeni.some(x => String(x.kako).startsWith('naziv')) ? ' <span title="' + xsE(najdeni.filter(x => String(x.kako).startsWith('naziv')).map(x => x.vhod + ' → ' + x.sku + ' (' + x.kako + ')').join('\n')) + '" style="text-decoration:underline dotted">po nazivu: ' + najdeni.filter(x => String(x.kako).startsWith('naziv')).length + '</span>' : '');
   } catch (e) { msg.textContent = '✗ ' + e.message; }
@@ -11208,7 +11230,7 @@ async function xsPRunSel() {
   const ids = [..._xs.sel].filter(g => !_xs.run.has(g));
   if (!ids.length) { alert('Najprej označi izdelke (kljukica na levi).'); return; }
   const already = ids.filter(g => { const x = _xs.list.find(y => y.g_id === g); return x && (x.ima_predloge || x.izbran); }).length;
-  if (!confirm('Opus 5.5 pripravi predloge za ' + ids.length + ' izdelkov (~' + xsUsd(ids.length * 0.11) + ')' + (already ? '\n' + already + ' jih že ima predloge — bodo zamenjani.' : '') + '\nNadaljujem?')) return;
+  if (!confirm(_xsModel.ime + ' pripravi predloge za ' + ids.length + ' izdelkov (~' + xsUsd(ids.length * (XS_CENA[_xsModel.k] || 0.11)) + ')' + (already ? '\n' + already + ' jih že ima predloge — bodo zamenjani.' : '') + '\nNadaljujem?')) return;
   ids.forEach(g => _xs.run.add(g)); _xs.sel.clear(); xsPRender();
   let napake = 0; const q = ids.slice();
   const worker = async () => {
@@ -11234,9 +11256,9 @@ async function xsLoad(q) {
   try {
     const d = await (await fetch('/xsell-izdelek?q=' + encodeURIComponent(q))).json();
     if (!d.ok) throw new Error(d.error || 'napaka');
-    _xs.item = d.izdelek; _xs.predlogi = d.predlogi || []; _xs.izbran = d.izbran || null; _xs.kat = d.kategorija;
+    _xs.item = d.izdelek; _xs.predlogi = d.predlogi || []; _xs.izbran = d.izbran || null; _xs.kat = d.kategorija; _xs.popust = d.popust != null ? d.popust : null;
     document.getElementById('xsQ').value = d.izdelek.sku;
-    info.textContent = 'Model: ' + (d.model || 'Opus 5.5') + ' · samo Maaarket na zalogi · šteje samo NC dodatka (idealno 0–2 €, največ 3 €)';
+    info.textContent = 'Model: ' + (d.model || _xsModel.ime) + ' · samo Maaarket na zalogi · šteje samo NC dodatka (idealno 0–2 €, največ 3 €)';
     document.getElementById('xsWork').style.display = ''; document.getElementById('xsPEmpty').style.display = 'none';
     xsRender();
     if (!_xs.predlogi.length && !_xs.run.has(d.izdelek.g_id)) xsPredlagaj(false);
@@ -11246,7 +11268,7 @@ async function xsLoad(q) {
 async function xsPredlagaj(force) {
   if (!_xs.item) return;
   const gid = _xs.item.g_id;
-  document.getElementById('xsList').innerHTML = '<div class="xsA-empty">🧠 Opus 5.5 izbira najboljše dodatke … (10–40 s)</div>';
+  document.getElementById('xsList').innerHTML = '<div class="xsA-empty">🧠 ' + _xsModel.ime + ' izbira najboljše dodatke … (10–40 s)</div>';
   document.getElementById('xsPredMeta').textContent = '';
   _xs.run.add(gid); xsPRender();
   try {
@@ -11279,25 +11301,51 @@ function xsRender() {
     '<button class="xs-b" onclick="xsPMoj(' + (inMoj ? '[],[\'' + xsE(it.g_id) + '\']' : '[\'' + xsE(it.g_id) + '\'],[]') + ')">' + (inMoj ? '📌 v mojem seznamu ✕' : '📌 dodaj v moj seznam') + '</button>' +
     '<button class="xs-b" onclick="xsPredlagaj(true)">↻ Ponovno predlagaj</button>' +
     '<button class="xs-b xs-bp" onclick="xsNextOpen()">Naslednji brez Xsell ›</button></div>';
-  const ch = _xs.predlogi.find(p => p.sku === _xs.izbran);
-  document.getElementById('xsChosen').innerHTML = _xs.izbran
-    ? '<span class="xs-st st-ok">✓ Izbran Xsell</span> <b>' + xsE(ch ? ch.naziv : _xs.izbran) + '</b> ' + xsSkuChip(_xs.izbran) + ' <button class="xs-b" onclick="xsIzberi(null)">✕ odstrani</button>'
-    : '<span class="xs-st st-no">še ni izbran</span> <span style="color:var(--text-tertiary)">izberi dodatek v tabeli (tipka 1–6)' + (_xs.kat && _xs.kat.items && _xs.kat.items.length ? ' · do takrat velja Xsell Google kategorije' : '') + '</span>';
+  const ch = _xs.predlogi.find(p => p.sku === _xs.izbran), pop = _xs.popust, xpc = ch ? xsPopCena(ch, pop) : null;
+  const popBox = '<label class="xs-pk" style="margin-left:0" title="Popust na redno (prodajno) ceno Xsell dodatka — enako kot »Popust na ceno« v CMS">Popust na ceno ' +
+    [45, 50].map(v => '<button type="button" class="xs-pq' + (pop === v ? ' on' : '') + '" onclick="xsSetPop(' + v + ')">' + v + ' %</button>').join('') +
+    '<input type="number" min="0" max="99" step="1" id="xsPopIn" value="' + (pop != null && pop !== 45 && pop !== 50 ? pop : '') + '" placeholder="drugo"> %</label>';
+  document.getElementById('xsChosen').innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' + (_xs.izbran
+    ? '<span class="xs-st st-ok">✓ Izbran Xsell</span> <b>' + xsE(ch ? ch.naziv : _xs.izbran) + '</b> ' + xsSkuChip(_xs.izbran) +
+      (xpc ? ' <span class="xs-pill" style="background:#ede9fe;color:#4c1d95">Xsell SLO ' + xsEu(xpc.cena) + ' · marža ' + (xpc.marza != null ? Math.round(xpc.marza) + ' %' : '—') + '</span>' : '') +
+      ' <button class="xs-b" onclick="xsIzberi(null)">✕ odstrani</button>'
+    : '<span class="xs-st st-no">še ni izbran</span> <span style="color:var(--text-tertiary)">izberi dodatek v tabeli (tipka 1–6)' + (_xs.kat && _xs.kat.items && _xs.kat.items.length ? ' · do takrat velja Xsell Google kategorije' : '') + '</span>') +
+    '<span style="flex:1"></span>' + popBox + '</div>';
   document.getElementById('xsList').innerHTML = _xs.predlogi.length
-    ? '<table class="xs-tbl"><thead><tr><th style="width:26px">#</th><th>dodatek</th><th>SKU</th><th class="r">NC</th><th class="r" title="Marža, če se dodatek prodaja po Xsell ceni 4,99 €">marža 4,99</th><th class="r">zaloga</th><th></th></tr></thead><tbody>' +
+    ? '<table class="xs-tbl"><thead><tr><th style="width:26px">#</th><th>dodatek</th><th>SKU</th><th class="r">NC</th><th class="r" title="Redna cena dodatka − popust">Xsell SLO</th><th class="r" title="Marža pri Xsell SLO ceni (brez popusta: pri 4,99 €)">marža</th><th class="r">zaloga</th><th></th></tr></thead><tbody>' +
       _xs.predlogi.map((p, i) => {
-        const m = p.nc != null ? (4.99 / 1.22 - p.nc) / (4.99 / 1.22) * 100 : null, sel = _xs.izbran === p.sku;
+        const xp = xsPopCena(p, pop), sel = _xs.izbran === p.sku;
+        const m = xp ? xp.marza : (p.nc != null ? (4.99 / 1.22 - p.nc) / (4.99 / 1.22) * 100 : null);
         return '<tr class="' + (sel ? 'sel' : '') + '" data-xs="' + xsE(p.sku) + '"><td class="xs-rk">' + (sel ? '✓' : (i + 1)) + '</td>' +
           '<td><div class="xs-nm">' + (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '') + '<span title="' + xsE(p.naziv) + '">' + xsE(p.naziv) + '</span>' + (p.razlog ? '<span class="xs-why" title="💡 ' + xsE(p.razlog) + '">💡</span>' : '') + (p.drazji ? '<span class="xs-st st-run" title="NC nad 3 €">NC&gt;3</span>' : '') + '</div></td>' +
-          '<td>' + xsSkuChip(p.sku) + '</td><td class="r">' + xsNcTxt(p.nc) + '</td><td class="r">' + xsMz(m) + '</td><td class="r">' + (p.zaloga || 0) + '</td>' +
+          '<td>' + xsSkuChip(p.sku) + '</td><td class="r">' + xsNcTxt(p.nc) + '</td>' +
+          '<td class="r" title="' + (xp ? xsEu(xp.redna) + ' − ' + xsPct(pop) + ' %' : 'vpiši popust zgoraj') + (p.akcija ? ' · zdaj v akciji ' + xsEu(p.akcija) + ' (popust gre na redno ceno)' : '') + '">' + (xp ? '<b>' + xsEu(xp.cena) + '</b>' + (p.akcija ? ' <span style="color:#c2410c">!</span>' : '') : '<span style="color:var(--text-tertiary)">—</span>') + '</td>' +
+          '<td class="r">' + xsMz(m) + (xp ? '' : '<span style="color:var(--text-tertiary);font-size:10px"> @4,99</span>') + '</td><td class="r">' + (p.zaloga || 0) + '</td>' +
           '<td class="r"><button class="xs-b' + (sel ? ' xs-bok' : '') + '">' + (sel ? '✓ izbran' : 'izberi') + '</button></td></tr>';
       }).join('') + '</tbody></table>'
-    : (_xs.run.has(it.g_id) ? '<div class="xsA-empty">🧠 Opus 5.5 izbira najboljše dodatke …</div>' : '<div class="xsA-empty">Še ni predlogov — klikni »↻ Ponovno predlagaj«.</div>');
+    : (_xs.run.has(it.g_id) ? '<div class="xsA-empty">🧠 ' + _xsModel.ime + ' izbira najboljše dodatke …</div>' : '<div class="xsA-empty">Še ni predlogov — klikni »↻ Ponovno predlagaj«.</div>');
   xsKatRender();
 }
 document.addEventListener('click', e => {
+  if (e.target.closest('#xsChosen label')) return;
   const r = e.target.closest('#xsList tr[data-xs]'); if (r) { const s = r.dataset.xs; xsIzberi(_xs.izbran === s ? null : s); return; }
   const k = e.target.closest('#xsKat input[data-kx]'); if (k) { xsKatCount(); }
+});
+function xsSetPop(v) { xsSavePop(_xs.popust === v ? null : v); }   // 45 / 50 % (ponoven klik = počisti)
+async function xsSavePop(v) {
+  if (!_xs.item) return;
+  const gid = _xs.item.g_id, prej = _xs.popust;
+  _xs.popust = v; xsRender();
+  try {
+    const d = await (await fetch('/xsell-popust', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ g_id: gid, popust: v }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+  } catch (e) { if (_xs.item && _xs.item.g_id === gid) { _xs.popust = prej; xsRender(); } alert('Popust ni shranjen: ' + e.message); }
+}
+document.addEventListener('change', e => {
+  if (e.target.id !== 'xsPopIn') return;
+  const raw = String(e.target.value).trim().replace(',', '.'), v = raw === '' ? null : Number(raw);
+  if (v != null && !(v >= 0 && v < 100)) { alert('Popust mora biti med 0 in 99 %.'); e.target.value = ''; return; }
+  xsSavePop(v);
 });
 async function xsIzberi(sku) {
   if (!_xs.item) return;
@@ -11331,7 +11379,7 @@ function xsKatRender() {
 function xsKatCount() { const n = document.querySelectorAll('#xsKat input[data-kx]:checked').length; const b = document.getElementById('xsKatSave'); if (b) b.textContent = '💾 Shrani za kategorijo (' + n + ')'; }
 async function xsKatPredlagaj() {
   const k = _xs.kat; if (!k) return;
-  document.getElementById('xsKat').insertAdjacentHTML('beforeend', '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px">🧠 Opus 5.5 izbira za kategorijo …</div>');
+  document.getElementById('xsKat').insertAdjacentHTML('beforeend', '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px">🧠 ' + _xsModel.ime + ' izbira za kategorijo …</div>');
   try {
     const d = await (await fetch('/xsell-kategorija-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kat: k.kat }) })).json();
     if (!d.ok) throw new Error(d.error || 'napaka');
@@ -11405,7 +11453,7 @@ function xsKDRender() {
     '<button class="xs-b" onclick="xsShopPredlagaj([\'' + xsE(k.ime).replace(/'/g, "\\'") + '\'])">↻ Predlagaj</button>' +
     (st === 'ok' ? '<button class="xs-b" onclick="xsKZakljuci(false)">↺ Znova odpri</button>' : '<button class="xs-b xs-bok" onclick="xsKZakljuci(true)">✓ Zaključi</button>') + '</div>';
   if (!k.predlogi.length) {
-    h += '<div class="xsA-empty">' + (st === 'run' ? '🧠 Opus 5.5 pripravlja predloge …' : 'Še ni predlogov — klikni »↻ Predlagaj« ali označi več kategorij na levi in »🧠 Predlagaj izbrane«.') + '</div>';
+    h += '<div class="xsA-empty">' + (st === 'run' ? '🧠 ' + _xsModel.ime + ' pripravlja predloge …' : 'Še ni predlogov — klikni »↻ Predlagaj« ali označi več kategorij na levi in »🧠 Predlagaj izbrane«.') + '</div>';
   } else {
     h += '<table class="xs-tbl"><thead><tr><th style="width:34px" title="mesto v Xsell (vrstni red klikov)">mesto</th><th>dodatek</th><th>SKU</th><th class="r">NC</th><th class="r" title="Redna cena − popust (klik = izjema samo za ta dodatek)">Xsell SLO</th><th class="r">marža</th><th class="r">zaloga</th><th></th></tr></thead><tbody>' +
       k.predlogi.map(p => {
@@ -11496,7 +11544,7 @@ async function xsShopPredlagaj(imena) {
   if (!imena.length) { alert('Najprej označi kategorije (kljukica na levi).'); return; }
   const imajo = imena.filter(x => { const k = _xsShop.kat.find(y => y.ime === x); return k && k.predlogi.length; }).length;
   if (imena.length > 1 || imajo) {
-    if (!confirm('Opus 5.5 pripravi predloge za ' + imena.length + ' kategorij (paketi po 8)' + (imajo ? '\n' + imajo + ' jih že ima predloge — bodo zamenjani (izbrani ostanejo).' : '') + '\nNadaljujem?')) return;
+    if (!confirm(_xsModel.ime + ' pripravi predloge za ' + imena.length + ' kategorij (paketi po 8)' + (imajo ? '\n' + imajo + ' jih že ima predloge — bodo zamenjani (izbrani ostanejo).' : '') + '\nNadaljujem?')) return;
   }
   imena.forEach(x => { _xsShop.run.add(x); _xsShop.sel.delete(x); }); xsShopRender();
   try {
@@ -11547,12 +11595,12 @@ async function xsShopImgRun() {
     const d = await (await fetch('/xsell-shop-kat-iz-slike', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ images: _xsShopImgs.map(x => ({ data: x.data, media_type: x.media_type })) }) })).json();
     if (!d.ok) throw new Error(d.error || 'napaka');
-    const ta = document.getElementById('xsShopTa');
-    const cur = ta.value.split('\n').map(x => x.trim()).filter(Boolean), low = new Set(cur.map(x => x.toLowerCase()));
-    const nove = (d.kategorije || []).filter(x => !low.has(x.toLowerCase()));
-    ta.value = cur.concat(nove).join('\n');
+    const ta = document.getElementById('xsShopTa'), kat = d.kategorije || [];
+    ta.value = kat.join('\n');   // seznam = samo kategorije s slike
+    const low = new Set(kat.map(x => x.toLowerCase()));
+    const ohr = _xsShop.kat.filter(k => k.zakljuceno && !low.has(k.ime.toLowerCase())).length;
     _xsShopImgs = []; xsShopThumbs();
-    msg.innerHTML = '✓ Prebranih ' + (d.kategorije || []).length + ' kategorij, <b>' + nove.length + ' novih</b> dodanih v seznam. Preglej in klikni »💾 Shrani seznam«.';
+    msg.innerHTML = '✓ Prebranih <b>' + kat.length + ' kategorij</b> — seznam spodaj je zamenjan s temi s slike.' + (ohr ? ' ' + ohr + ' zaključenih, ki jih ni na sliki, ostane (dodane na konec).' : '') + ' Preglej in klikni »💾 Shrani seznam«.';
   } catch (e) { msg.textContent = '✗ ' + e.message; }
   finally { btn.disabled = false; btn.textContent = o; }
 }
@@ -11561,6 +11609,7 @@ async function xsShopSaveList() {
   try {
     const d = await (await fetch('/xsell-shop-kat-seznam', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imena }) })).json();
     if (!d.ok) throw new Error(d.error || 'napaka');
+    if (d.ohranjene && d.ohranjene.length) alert('Shranjeno. ' + d.ohranjene.length + ' zaključenih kategorij ni bilo na novem seznamu — ostanejo (na koncu):\n' + d.ohranjene.join('\n'));
     document.getElementById('xsShopEditBox').style.display = 'none'; xsShopLoad();
   } catch (e) { alert('Shranjevanje ni uspelo: ' + e.message); }
 }
