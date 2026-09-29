@@ -28751,7 +28751,7 @@ def _xsell_pools(rows: list, main: dict):
     for r in rows:
         if r["g_id"] == main["g_id"] or r["sku"] in base or (r["nc_sku"] and r["nc_sku"] in base):
             continue
-        if not r["zaloga"] or r["nc"] is None or r["cena"] is None:
+        if (r["zaloga"] or 0) <= 0 or r["nc"] is None or r["cena"] is None:
             continue
         if r["nc"] <= 3.0 and r["cena"] <= 7.99:
             A.append(r)
@@ -28948,7 +28948,7 @@ async def xsell_kategorija_predlagaj(request: Request, req: XsellKatReq):
     v_kat = [r for r in rows if r["kat"] == str(req.kat)]
     if not v_kat:
         return {"ok": False, "error": "Kategorija nima izdelkov."}
-    A = [r for r in rows if r["zaloga"] and r["nc"] is not None and r["cena"] is not None and r["nc"] <= 3.0 and r["cena"] <= 7.99]
+    A = [r for r in rows if (r["zaloga"] or 0) > 0 and r["nc"] is not None and r["cena"] is not None and r["nc"] <= 3.0 and r["cena"] <= 7.99]
     A.sort(key=lambda r: -(r["zaloga"] or 0))
     A = A[:320]
     vzorec = "\n".join(f'- {r["naziv"][:90]} ({r["cena"]:.2f} €)' for r in sorted(v_kat, key=lambda r: -(r["obrat"] or 0))[:40])
