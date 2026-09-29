@@ -29363,6 +29363,10 @@ KANDIDATI (SKU | naziv | nabavna cena | zaloga | Google kategorija):
     by = {r["sku"]: r for r in A}
     lower = {k.lower(): k for k in imena}
     napake, n = [], 0
+    # xsell.json znova preberi PO klicu Opus: vmes so lahko končale druge zahteve (druge kategorije,
+    # izbor, popust, zaključi) — z datoteko z začetka bi jih prepisali (ostala bi samo zadnja kategorija)
+    d = _xsell_load()
+    sk = _xsell_shop(d)
     for res in rezultati:
         if isinstance(res, Exception):
             napake.append(f"{type(res).__name__}: {str(res)[:120]}")
