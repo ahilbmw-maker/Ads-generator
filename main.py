@@ -10564,6 +10564,70 @@ async def bato_povzetek(request: Request, min_eur: float = 5.0, znamka: str = "m
     return data
 
 
+# ═══ POVPREČNA RAZLIKA PO TRGIH (kartica Bato cene na Domov) + dnevna zgodovina ═══
+# Razlika € = cena brez DDV − NC (kot v Marži po trgih). Obseg = kot kartica: znamka (privzeto Maaarket), cena ≥ min_eur,
+# brez 🚫 Ne uvažamo; izdelki brez NC (razlika null) se ne štejejo. Zgodovina: /data/razlika_history.json {datum: {trg: {avg, n}}}.
+RAZLIKA_HIST_FILE = DATA_DIR / "razlika_history.json"
+_razlika_cache = {"key": None, "data": None}
+
+
+def _mtime(p):
+    try:
+        return p.stat().st_mtime if p.exists() else 0
+    except Exception:
+        return 0
+
+
+@app.get("/razlika-povzetek")
+async def razlika_povzetek(request: Request, min_eur: float = 5.0, znamka: str = "maaarket"):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    if not feed_by_lang:
+        return {"ok": False, "error": "Feed se še nalaga."}
+    zn = (znamka or "").strip().lower()
+    key = (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
+           _mtime(STOCK_CSV_FILE), _mtime(NEUVOZ_FILE), _mtime(MARZA_SKU_FILE), _lj_today())
+    if _razlika_cache["key"] == key and _razlika_cache["data"]:
+        return _razlika_cache["data"]
+    danes = _lj_today()
+    zdaj = {}
+    for trg in MARZA_TRGI:
+        try:
+            res = await marza_trgi(request, trg)
+        except Exception as e:
+            print(f"[razlika] {trg}: {e}")
+            continue
+        if not isinstance(res, dict) or not res.get("ok"):
+            continue
+        vals = [r["marza_eur"] for r in (res.get("rows") or [])
+                if r.get("marza_eur") is not None and not r.get("neuvoz")
+                and (not zn or zn in str(r.get("znamka") or "").lower())
+                and (r.get("eur") is None or r.get("eur") >= min_eur)]
+        if vals:
+            zdaj[trg] = {"avg": round(sum(vals) / len(vals), 2), "n": len(vals)}
+    # dnevna zgodovina (današnji vnos se prepiše z zadnjim izračunom)
+    hist = _jload(RAZLIKA_HIST_FILE, {}) or {}
+    if zdaj:
+        hist[danes] = zdaj
+        hist = dict(sorted(hist.items())[-120:])
+        try:
+            tmp = RAZLIKA_HIST_FILE.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(hist, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, RAZLIKA_HIST_FILE)
+        except Exception as e:
+            print(f"[razlika] zapis zgodovine: {e}")
+    dni = sorted(hist.keys())[-14:]
+    trgi = []
+    for trg, (oznaka, _ddv) in MARZA_TRGI.items():
+        z = zdaj.get(trg) or {}
+        trgi.append({"trg": trg, "oznaka": oznaka, "avg": z.get("avg"), "n": z.get("n", 0),
+                     "hist": [{"d": d, "avg": (hist[d].get(trg) or {}).get("avg")} for d in dni]})
+    data = {"ok": True, "min_eur": min_eur, "znamka": znamka, "trgi": trgi, "izracunano": _lj_iso()}
+    _razlika_cache.update(key=key, data=data)
+    return data
+
+
 @app.get("/marza-trgi")
 async def marza_trgi(request: Request, trg: str = "sl"):
     """Za izbrani trg: vsi izdelki iz feeda → končna cena → EUR → brez DDV → − NC iz zaloge → marža."""
