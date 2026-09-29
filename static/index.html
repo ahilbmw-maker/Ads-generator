@@ -389,6 +389,13 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .xs-mrow:hover{background:var(--bg-secondary)}
 .xs-mrow.on{background:#eef2ff;outline:1.5px solid var(--accent)}
 .xs-mrow img{width:34px;height:34px;border-radius:6px;object-fit:contain;background:#f8fafc}
+.xs-kat{border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fff}
+.xs-kat-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.xs-kp{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--border);border-radius:8px;padding:4px 8px 4px 4px;margin:0 6px 6px 0;cursor:pointer;background:#fff;font-size:11.5px;max-width:320px;vertical-align:top}
+.xs-kp:hover{border-color:var(--accent)}
+.xs-kp.on{border-color:#16a34a;background:#f0fdf4}
+.xs-kp img{width:30px;height:30px;border-radius:6px;object-fit:contain;background:#f8fafc;flex-shrink:0}
+.xs-kp .n{font-weight:800;color:#16a34a;min-width:12px}
 .xs-chip{padding:4px 10px;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);background:#fff;color:var(--text-secondary)}
 .xs-chip.on{background:var(--text);border-color:var(--text);color:#fff}
 /* Zaloga dobavitelja */
@@ -961,7 +968,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-29 12:39</div>
+      <div class="sidebar-logo-sub">build 2026-09-29 12:44</div>
     </div>
   </div>
 
@@ -2977,9 +2984,29 @@ input[type="text"].error { border-color: var(--red) !important; }
           <input id="xsQ" type="text" placeholder="SKU ali povezava izdelka (maaarket.si/izdelek/…)" onkeydown="if(event.key==='Enter')xsLoad(this.value)" style="flex:1;min-width:240px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text)">
           <button onclick="xsLoad(document.getElementById('xsQ').value)" style="padding:9px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">🎯 Predlagaj Xsell</button>
           <button id="xsMassBtn" onclick="xsToggleMass()" style="padding:9px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 Masovni način</button>
+          <button id="xsShopBtn" onclick="xsShopToggle()" style="padding:9px 14px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🏷 Kategorije trgovine</button>
           <a href="/xsell-csv" style="padding:9px 14px;color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;text-decoration:none">⬇ CSV</a>
         </div>
         <div id="xsInfo" style="font-size:11.5px;color:var(--text-tertiary);margin-top:8px">Samo Maaarket izdelki na zalogi (SL — velja za vse trge) · NC dodatka idealno 0–2 €, največ 3 € · prodajna ~4,99–5,99 €</div>
+      </div>
+
+      <!-- 🏷 Kategorije iz trgovine (CMS): kategorija → predlogi → izbrani → CSV -->
+      <div id="xsShop" class="card" style="display:none;margin-top:12px;padding:12px 14px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+          <span class="slabel" style="margin:0">🏷 KATEGORIJE IZ TRGOVINE</span>
+          <span id="xsShopInfo" style="font-size:11.5px;color:var(--text-tertiary)"></span>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            <button onclick="xsShopEdit()" style="padding:6px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">✎ Uredi seznam</button>
+            <button id="xsShopRun" onclick="xsShopPredlagaj()" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">✨ Predlagaj za vse (Opus)</button>
+            <a href="/xsell-shop-kat-csv" style="padding:6px 11px;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;text-decoration:none">⬇ CSV kategorij</a>
+          </div>
+        </div>
+        <div id="xsShopEditBox" style="display:none;margin-bottom:10px">
+          <textarea id="xsShopTa" rows="8" placeholder="Ena kategorija na vrstico" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
+          <button onclick="xsShopSaveList()" style="margin-top:6px;padding:6px 14px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">💾 Shrani seznam</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px">Klik na predlog ga označi / odznači (vrstni red klikov = mesto 1, 2, 3 …). Shrani se sproti. CSV vneseš v CMS pri kategoriji.</div>
+        <div id="xsShopList" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
 
       <div id="xsMass" class="card" style="display:none;margin-top:12px;padding:12px 14px">
@@ -11072,6 +11099,73 @@ function xsPrefetchNext() {
   const n = _xsNextItem(); if (!n || n.ima_predloge || _xs.prefetch[n.g_id]) return;
   _xs.prefetch[n.g_id] = fetch('/xsell-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ g_id: n.g_id }) })
     .then(r => r.json()).then(d => { if (d.ok) n.ima_predloge = true; return d; }).catch(() => null);
+}
+
+// ── 🏷 Kategorije iz trgovine ──
+let _xsShop = { kat: [], open: false };
+async function xsShopToggle() {
+  _xsShop.open = !_xsShop.open;
+  document.getElementById('xsShop').style.display = _xsShop.open ? '' : 'none';
+  const b = document.getElementById('xsShopBtn');
+  b.style.background = _xsShop.open ? 'var(--accent)' : 'transparent'; b.style.color = _xsShop.open ? '#fff' : 'var(--text-secondary)';
+  if (_xsShop.open) xsShopLoad();
+}
+async function xsShopLoad() {
+  document.getElementById('xsShopList').innerHTML = '<div style="font-size:12px;color:var(--text-tertiary)">Nalagam …</div>';
+  try {
+    const d = await (await fetch('/xsell-shop-kat')).json(); if (!d.ok) throw new Error(d.error || 'napaka');
+    _xsShop.kat = d.kategorije || [];
+    const nP = _xsShop.kat.filter(k => k.predlogi.length).length, nI = _xsShop.kat.filter(k => k.izbrani.length).length;
+    document.getElementById('xsShopInfo').textContent = _xsShop.kat.length + ' kategorij · ' + nP + ' s predlogi · ' + nI + ' urejenih' + (d.at ? ' · predlogi ' + String(d.at).slice(0, 16).replace('T', ' ') : '');
+    xsShopRender();
+  } catch (e) { document.getElementById('xsShopList').innerHTML = '<div style="color:#b91c1c;font-size:12px">✗ ' + xsE(e.message) + '</div>'; }
+}
+function xsShopRender() {
+  document.getElementById('xsShopList').innerHTML = _xsShop.kat.map((k, ki) => {
+    const pl = k.predlogi.length ? k.predlogi.map(p => {
+      const i = k.izbrani.indexOf(p.sku);
+      return '<span class="xs-kp' + (i >= 0 ? ' on' : '') + '" data-kk="' + ki + '" data-ks="' + xsE(p.sku) + '" title="💡 ' + xsE(p.razlog) + '">' +
+        '<span class="n">' + (i >= 0 ? (i + 1) : '') + '</span>' + (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '') +
+        '<span style="min-width:0"><span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;font-weight:700">' + xsE(p.naziv) + '</span>' +
+        '<span style="color:var(--text-tertiary)">' + xsEu(p.cena) + '</span> ' + xsNcPill(p.nc) + '</span></span>';
+    }).join('') : '<span style="font-size:11.5px;color:var(--text-tertiary)">Še brez predlogov — klikni "Predlagaj za vse".</span>';
+    return '<div class="xs-kat"><div class="xs-kat-h"><b style="font-size:13px">' + xsE(k.ime) + '</b>' +
+      (k.izbrani.length ? '<span class="xs-pill" style="background:#dcfce7;color:#166534">✓ ' + k.izbrani.length + ' izbranih</span>' : '') +
+      '<button onclick="xsShopPredlagaj([' + ki + '])" style="margin-left:auto;padding:3px 9px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer">↻</button></div>' + pl + '</div>';
+  }).join('');
+}
+document.addEventListener('click', e => {
+  const c = e.target.closest('#xsShopList .xs-kp[data-ks]'); if (!c) return;
+  const k = _xsShop.kat[+c.dataset.kk]; if (!k) return;
+  const s = c.dataset.ks, i = k.izbrani.indexOf(s);
+  if (i >= 0) k.izbrani.splice(i, 1); else k.izbrani.push(s);
+  xsShopRender();
+  fetch('/xsell-shop-kat-shrani', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ime: k.ime, items: k.izbrani }) }).catch(() => {});
+});
+function xsShopEdit() {
+  const b = document.getElementById('xsShopEditBox'); const on = b.style.display === 'none';
+  b.style.display = on ? '' : 'none';
+  if (on) document.getElementById('xsShopTa').value = _xsShop.kat.map(k => k.ime).join('\n');
+}
+async function xsShopSaveList() {
+  const imena = document.getElementById('xsShopTa').value.split('\n').map(x => x.trim()).filter(Boolean);
+  try {
+    const d = await (await fetch('/xsell-shop-kat-seznam', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imena }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    document.getElementById('xsShopEditBox').style.display = 'none'; xsShopLoad();
+  } catch (e) { alert('Shranjevanje ni uspelo: ' + e.message); }
+}
+async function xsShopPredlagaj(idx) {
+  const imena = Array.isArray(idx) ? idx.map(i => _xsShop.kat[i].ime) : null;
+  const b = document.getElementById('xsShopRun'), o = b.textContent;
+  b.disabled = true; b.textContent = '🧠 Opus 5.5 razmišlja … (' + (imena ? imena.length : _xsShop.kat.length) + ' kat.)';
+  try {
+    const d = await (await fetch('/xsell-shop-kat-predlagaj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imena }) })).json();
+    if (!d.ok) throw new Error(d.error || 'napaka');
+    if (d.napake && d.napake.length) alert('Del kategorij ni uspel (' + d.napake.length + ') — klikni ↻ pri njih.');
+    await xsShopLoad();
+  } catch (e) { alert('Predlogi niso uspeli: ' + e.message); }
+  finally { b.disabled = false; b.textContent = o; }
 }
 
 function switchOrodjaTab(tab) {

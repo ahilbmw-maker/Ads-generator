@@ -28995,6 +28995,157 @@ async def xsell_kategorija_shrani(request: Request, req: XsellKatReq):
     return {"ok": True}
 
 
+# ── 🏷 Kategorije iz trgovine (CMS imena, vnese uporabnik): kategorija → predlogi Opus → izbrani → CSV za vnos v CMS ──
+XSELL_SHOP_KAT_DEFAULT = [
+    "Dodatki za avto", "FM oddajniki", "Žarnice za avto", "Prestavne ročice", "Pokrivala za avto", "Polnilci za akumulatorje",
+    "Prevleke sedežev in otroški sedeži", "Transportni trakovi in elastične vrvi", "Cevi in črpalke", "Avto antene",
+    "Centralno zaklepanje", "Xenon kiti", "Opozorilne luči / oprema", "Adapterji za žarnice", "Osvežilci zraka za avto",
+    "Čiščenje vozila", "Držala telefona", "USB avto polnilci", "Prevleke volana", "Avto ventilatorji", "Parkirni senzorji",
+    "Orodja in aparati", "Dušilci", "Vtičnice in varovalke", "Organizatorji za avto", "Dvigalke", "Dnevne luči",
+    "Svetilke in luči", "Okrasni pokrovi koles",
+]
+
+
+def _xsell_shop(d: dict) -> dict:
+    sk = d.setdefault("shop_kat", {})
+    sk.setdefault("seznam", list(XSELL_SHOP_KAT_DEFAULT))
+    sk.setdefault("predlogi", {})
+    sk.setdefault("izbrani", {})
+    return sk
+
+
+@app.get("/xsell-shop-kat")
+async def xsell_shop_kat(request: Request):
+    rows = await _xsell_rows(request)
+    by = {r["sku"]: r for r in rows}
+    d = _xsell_load()
+    sk = _xsell_shop(d)
+    out = []
+    for ime in sk["seznam"]:
+        out.append({"ime": ime,
+                    "predlogi": [dict(_xsell_view(by[p["sku"]]), razlog=p.get("razlog", "")) for p in (sk["predlogi"].get(ime) or []) if p.get("sku") in by],
+                    "izbrani": [s for s in (sk["izbrani"].get(ime) or []) if s in by]})
+    return {"ok": True, "kategorije": out, "at": sk.get("predlogi_at")}
+
+
+class XsellShopSeznamReq(BaseModel):
+    imena: List[str]
+
+
+@app.post("/xsell-shop-kat-seznam")
+async def xsell_shop_kat_seznam(req: XsellShopSeznamReq):
+    d = _xsell_load()
+    sk = _xsell_shop(d)
+    seen, imena = set(), []
+    for x in req.imena or []:
+        x = re.sub(r"\s+", " ", str(x or "")).strip()
+        if x and x.lower() not in seen:
+            seen.add(x.lower()); imena.append(x[:120])
+    sk["seznam"] = imena[:200]
+    _xsell_save(d)
+    return {"ok": True, "n": len(sk["seznam"])}
+
+
+class XsellShopPredReq(BaseModel):
+    imena: Optional[List[str]] = None      # prazno = vse kategorije s seznama
+
+
+@app.post("/xsell-shop-kat-predlagaj")
+async def xsell_shop_kat_predlagaj(request: Request, req: XsellShopPredReq):
+    rows = await _xsell_rows(request)
+    d = _xsell_load()
+    sk = _xsell_shop(d)
+    imena = [x for x in (req.imena or sk["seznam"]) if x]
+    if not imena:
+        return {"ok": False, "error": "Seznam kategorij je prazen."}
+    A = [r for r in rows if (r["zaloga"] or 0) > 0 and r["nc"] is not None and r["cena"] is not None and r["nc"] <= 3.0 and r["cena"] <= 7.99]
+    A.sort(key=lambda r: -(r["zaloga"] or 0))
+    A = A[:320]
+    if not A:
+        return {"ok": False, "error": "Ni kandidatov (Maaarket na zalogi z NC ≤ 3 €)."}
+    cand = "\n".join(_xsell_cand_line(r) for r in A)
+    schema = {"type": "object", "additionalProperties": False, "required": ["kategorije"],
+              "properties": {"kategorije": {"type": "array", "items": {
+                  "type": "object", "additionalProperties": False, "required": ["ime", "predlogi"],
+                  "properties": {"ime": {"type": "string"}, "predlogi": {"type": "array", "items": {
+                      "type": "object", "additionalProperties": False, "required": ["sku", "razlog"],
+                      "properties": {"sku": {"type": "string"}, "razlog": {"type": "string"}}}}}}}}}
+
+    def _paket(kos):
+        prompt = f"""Si izkušen e-commerce trgovec za spletno trgovino Maaarket (impulzni nakupi, Slovenija).
+Za vsako spodnjo KATEGORIJO trgovine izberi UNIVERZALNE poceni cross-sell dodatke, ki se prikažejo pri izdelkih te kategorije.
+Dodatek naj bo smiseln za kupca izdelkov iz te kategorije (dopolnilo, uporaben dodatek) ali splošen impulzni nakup za istega kupca.
+Kupec je že odločen za glavni izdelek: poceni dodatek (~4,99–5,99 €) prepriča lažje kot dražji. Prednost imajo nizke nabavne cene (NC 0–2 €).
+Za vsako kategorijo vrni 6 predlogov, razvrščenih od najboljšega, s kratkim razlogom v slovenščini (1 stavek).
+Isti dodatek lahko uporabiš pri več kategorijah, če res paše. Uporabi SAMO SKU-je s seznama, točno tako kot so zapisani.
+Ime kategorije v odgovoru zapiši točno tako kot spodaj.
+
+KATEGORIJE:
+{chr(10).join("- " + k for k in kos)}
+
+KANDIDATI (SKU | naziv | prodajna cena | nabavna cena | zaloga | Google kategorija):
+{cand}"""
+        return _xsell_opus(prompt, schema)
+
+    loop = asyncio.get_event_loop()
+    paketi = [imena[i:i + 8] for i in range(0, len(imena), 8)]
+    rezultati = await asyncio.gather(*[loop.run_in_executor(None, _paket, p) for p in paketi], return_exceptions=True)
+    by = {r["sku"]: r for r in A}
+    lower = {k.lower(): k for k in imena}
+    napake, n = [], 0
+    for res in rezultati:
+        if isinstance(res, Exception):
+            napake.append(f"{type(res).__name__}: {str(res)[:120]}")
+            continue
+        for k in res.get("kategorije") or []:
+            ime = lower.get(str(k.get("ime") or "").strip().lower())
+            if not ime:
+                continue
+            seen, pl = set(), []
+            for p in k.get("predlogi") or []:
+                s = str(p.get("sku") or "").strip().upper()
+                if s in by and s not in seen:
+                    seen.add(s); pl.append({"sku": s, "razlog": str(p.get("razlog") or "")[:300]})
+            sk["predlogi"][ime] = pl
+            n += 1
+    sk["predlogi_at"] = _lj_iso()
+    _xsell_save(d)
+    if not n:
+        return {"ok": False, "error": "AI ni vrnil predlogov. " + "; ".join(napake)}
+    return {"ok": True, "n": n, "napake": napake}
+
+
+class XsellShopShraniReq(BaseModel):
+    ime: str
+    items: List[str]
+
+
+@app.post("/xsell-shop-kat-shrani")
+async def xsell_shop_kat_shrani(req: XsellShopShraniReq):
+    d = _xsell_load()
+    sk = _xsell_shop(d)
+    sk["izbrani"][req.ime] = [str(s).strip().upper() for s in (req.items or []) if str(s).strip()][:6]
+    _xsell_save(d)
+    return {"ok": True}
+
+
+@app.get("/xsell-shop-kat-csv")
+async def xsell_shop_kat_csv(request: Request):
+    from fastapi.responses import Response
+    rows = await _xsell_rows(request)
+    by = {r["sku"]: r for r in rows}
+    d = _xsell_load()
+    sk = _xsell_shop(d)
+    q = lambda v: '"' + str(v if v is not None else "").replace('"', '""') + '"'
+    out = ["Kategorija;Mesto;SKU;Naziv;Cena;NC;Zaloga"]
+    for ime in sk["seznam"]:
+        for i, s in enumerate(sk["izbrani"].get(ime) or [], 1):
+            r = by.get(s) or {}
+            out.append(";".join(q(v) for v in (ime, i, s, r.get("naziv", ""), r.get("cena"), r.get("nc"), r.get("zaloga"))))
+    return Response("\ufeff" + "\n".join(out), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="xsell-kategorije-{_lj_today()}.csv"'})
+
+
 @app.get("/xsell-csv")
 async def xsell_csv(request: Request):
     """Izvoz: SKU izdelka → izbrani Xsell (izdelek ali 1. iz kategorije)."""
