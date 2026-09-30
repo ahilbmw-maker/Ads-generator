@@ -1035,7 +1035,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-30 12:53</div>
+      <div class="sidebar-logo-sub">build 2026-09-30 14:46</div>
     </div>
   </div>
 
@@ -3766,6 +3766,12 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div class="card" style="margin-bottom:14px">
         <span class="slabel">💰 CASH FLOW TREND</span>
         <canvas id="cfChartMain" style="margin-top:10px;width:100%;max-height:380px"></canvas>
+      </div>
+
+      <!-- Mesečna rast CF (zeleno/rdeče) -->
+      <div class="card" style="margin-bottom:14px">
+        <span class="slabel">📊 MESEČNA RAST CF (konec − začetek meseca)</span>
+        <canvas id="cfChartGrowth" style="margin-top:10px;width:100%;max-height:240px"></canvas>
       </div>
 
       <!-- Grid: zaloga + računi -->
@@ -24725,6 +24731,25 @@ function cfFmtEur(v, decimals = 0) {
   return new Intl.NumberFormat('sl-SI', {style: 'currency', currency: 'EUR', maximumFractionDigits: decimals, minimumFractionDigits: 0}).format(v);
 }
 
+// osi in namigi v milijonih: 0,25 M € · 1,2 M €
+function cfM(v, dec) {
+  if (v == null || isNaN(v)) return '—';
+  const m = v / 1e6, a = Math.abs(m);
+  const d = dec != null ? dec : (a >= 10 ? 1 : (a >= 1 ? 2 : (a >= 0.1 ? 2 : 3)));
+  return (Math.round(m * Math.pow(10, d)) / Math.pow(10, d)).toLocaleString('sl-SI', {maximumFractionDigits: d}) + ' M €';
+}
+const cfAxisM = v => cfM(v);
+const cfTipM = (lbl, v) => lbl + ': ' + cfM(v) + ' (' + cfFmtEur(v) + ')';
+function cfMonthLbl(iso) {   // "2025-01-29" → "jan 25"
+  const M = ['jan','feb','mar','apr','maj','jun','jul','avg','sep','okt','nov','dec'];
+  return M[+String(iso).slice(5, 7) - 1] + ' ' + String(iso).slice(2, 4);
+}
+function cfMovAvg(vals, n) {
+  const out = []; let sum = 0, cnt = 0; const q = [];
+  vals.forEach(v => { q.push(v); if (v != null) { sum += v; cnt++; } if (q.length > n) { const o = q.shift(); if (o != null) { sum -= o; cnt--; } } out.push(q.length >= Math.min(n, 7) && cnt ? sum / cnt : null); });
+  return out;
+}
+
 function cfFmtNum(v, decimals = 0) {
   if (v == null || isNaN(v)) return '—';
   return new Intl.NumberFormat('sl-SI', {maximumFractionDigits: decimals}).format(v);
@@ -24746,6 +24771,7 @@ function cfRender() {
   if (!rows.length) return;
   cfRenderKpis(rows);
   cfRenderMainChart(rows);
+  cfRenderGrowthChart(rows);
   cfRenderStockChart(rows);
   cfRenderAccountsChart(rows);
   cfRenderAccountsTimeChart(rows);
@@ -24840,6 +24866,18 @@ function cfRenderMainChart(rows) {
           pointHoverRadius: 4,
         },
         {
+          label: 'Trend (30-dnevno povprečje)',
+          data: cfMovAvg(rows.map(r => r.cf_all), 30),
+          borderColor: '#0f172a',
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.4,
+          yAxisID: 'y',
+          borderWidth: 2.5,
+          pointRadius: 0,
+          spanGaps: true,
+        },
+        {
           label: 'CF + posojila (€)',
           data: rows.map(r => r.cf_w_loan),
           borderColor: '#8b5cf6',
@@ -24858,12 +24896,44 @@ function cfRenderMainChart(rows) {
       maintainAspectRatio: false,
       interaction: {mode: 'index', intersect: false},
       scales: {
-        x: {ticks: {maxTicksLimit: 12, font: {size: 10}}},
-        y: {ticks: {callback: v => (v/1000).toFixed(0) + 'k €', font: {size: 10}}}
+        x: {ticks: {maxTicksLimit: 14, font: {size: 10}, callback: function(v) { return cfMonthLbl(this.getLabelForValue(v)); }}},
+        y: {ticks: {callback: cfAxisM, font: {size: 10}}}
       },
       plugins: {
         legend: {position: 'top', labels: {font: {size: 11}, usePointStyle: true}},
-        tooltip: {callbacks: {label: c => c.dataset.label + ': ' + cfFmtEur(c.parsed.y)}}
+        tooltip: {filter: i => i.parsed.y != null, callbacks: {label: c => cfTipM(c.dataset.label.replace(' (€)', ''), c.parsed.y)}}
+      }
+    }
+  });
+}
+
+function cfRenderGrowthChart(rows) {
+  cfDestroyChart('growth');
+  const monthly = cfAggregateMonthly(rows);
+  const ctx = document.getElementById('cfChartGrowth').getContext('2d');
+  cfCharts.growth = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: monthly.map(m => cfMonthLbl(m.label + '-01')),
+      datasets: [{
+        label: 'Rast CF',
+        data: monthly.map(m => m.cfGrowth),
+        backgroundColor: monthly.map(m => m.cfGrowth >= 0 ? 'rgba(34,197,94,.75)' : 'rgba(239,68,68,.75)'),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: {grid: {display: false}, ticks: {font: {size: 10}, maxRotation: 0, autoSkip: true}},
+        y: {ticks: {callback: cfAxisM, font: {size: 10}}}
+      },
+      plugins: {
+        legend: {display: false},
+        tooltip: {callbacks: {label: c => {
+          const m = monthly[c.dataIndex];
+          return ['Rast: ' + (m.cfGrowth >= 0 ? '+' : '') + cfM(m.cfGrowth) + ' (' + (m.cfGrowth >= 0 ? '+' : '') + cfFmtEur(m.cfGrowth) + ')', 'Konec meseca: ' + cfM(m.cf)];
+        }}}
       }
     }
   });
@@ -24894,27 +24964,32 @@ function cfRenderAccountsTimeChart(rows) {
     .filter(a => last[a.key] != null && last[a.key] > 0)
     .map(a => ({
       label: a.name,
-      data: rows.map(r => r[a.key]),
+      data: rows.map(r => r[a.key] != null && r[a.key] > 0 ? r[a.key] : 0),
       borderColor: a.color,
-      backgroundColor: a.color + '20',
-      borderWidth: 1.5,
+      backgroundColor: a.color + '99',
+      fill: true,
+      borderWidth: 1,
       tension: 0.3,
       pointRadius: 0,
-      spanGaps: true,
     }));
 
+  // zložena površina: vidi se sestava in skupni znesek na računih
   cfCharts.accountsTime = new Chart(ctx, {
     type: 'line',
     data: {labels: rows.map(r => r.date), datasets},
     options: {
       responsive: true, maintainAspectRatio: false,
+      interaction: {mode: 'index', intersect: false},
       scales: {
-        x: {ticks: {maxTicksLimit: 8, font: {size: 10}}},
-        y: {ticks: {callback: v => (v/1000).toFixed(0) + 'k €', font: {size: 10}}}
+        x: {ticks: {maxTicksLimit: 8, font: {size: 10}, callback: function(v) { return cfMonthLbl(this.getLabelForValue(v)); }}},
+        y: {stacked: true, ticks: {callback: cfAxisM, font: {size: 10}}}
       },
       plugins: {
         legend: {position: 'top', labels: {font: {size: 10}, usePointStyle: true, boxWidth: 8}},
-        tooltip: {callbacks: {label: c => c.dataset.label + ': ' + cfFmtEur(c.parsed.y)}}
+        tooltip: {itemSort: (a, b) => b.parsed.y - a.parsed.y, filter: i => i.parsed.y > 0, callbacks: {
+          label: c => c.dataset.label + ': ' + cfM(c.parsed.y),
+          footer: items => 'Skupaj: ' + cfM(items.reduce((s, i) => s + (i.parsed.y || 0), 0))
+        }}
       }
     }
   });
@@ -24934,12 +25009,12 @@ function cfRenderLoansChart(rows) {
     options: {
       responsive: true, maintainAspectRatio: false,
       scales: {
-        x: {ticks: {maxTicksLimit: 8, font: {size: 10}}},
-        y: {ticks: {callback: v => (v/1000).toFixed(0) + 'k €', font: {size: 10}}}
+        x: {ticks: {maxTicksLimit: 8, font: {size: 10}, callback: function(v) { return cfMonthLbl(this.getLabelForValue(v)); }}},
+        y: {ticks: {callback: cfAxisM, font: {size: 10}}}
       },
       plugins: {
         legend: {display: false},
-        tooltip: {callbacks: {label: c => 'Posojila: ' + cfFmtEur(c.parsed.y)}}
+        tooltip: {callbacks: {label: c => cfTipM('Posojila', c.parsed.y)}}
       }
     }
   });
@@ -24960,11 +25035,13 @@ function cfRenderStockChart(rows) {
     options: {
       responsive: true, maintainAspectRatio: false,
       scales: {
-        x: {ticks: {maxTicksLimit: 8, font: {size: 10}}},
-        y: {position: 'left', ticks: {callback: v => (v/1000).toFixed(0) + 'k €', font: {size: 10}}},
-        y1: {position: 'right', grid: {display: false}, ticks: {font: {size: 10}}}
+        x: {ticks: {maxTicksLimit: 8, font: {size: 10}, callback: function(v) { return cfMonthLbl(this.getLabelForValue(v)); }}},
+        y: {position: 'left', ticks: {callback: cfAxisM, font: {size: 10}}},
+        y1: {position: 'right', grid: {display: false}, ticks: {font: {size: 10}, callback: v => cfFmtNum(v)}}
       },
-      plugins: {legend: {position: 'top', labels: {font: {size: 11}, usePointStyle: true}}}
+      interaction: {mode: 'index', intersect: false},
+      plugins: {legend: {position: 'top', labels: {font: {size: 11}, usePointStyle: true}},
+        tooltip: {callbacks: {label: c => c.datasetIndex === 0 ? cfTipM('Zaloga', c.parsed.y) : 'Št. kosov: ' + cfFmtNum(c.parsed.y)}}}
     }
   });
 }
@@ -24989,20 +25066,30 @@ function cfRenderAccountsChart(rows) {
     {name: 'Silux B', val: last.silux_b, color: '#ec4899'},
   ].filter(a => a.val != null && a.val > 0);
 
+  accounts.sort((a, b) => b.val - a.val);
+  const total = accounts.reduce((s, a) => s + a.val, 0);
+  const pct = v => total ? Math.round(v / total * 100) : 0;
   const ctx = document.getElementById('cfChartAccounts').getContext('2d');
   cfCharts.accounts = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels: accounts.map(a => a.name),
+      labels: accounts.map(a => a.name + ' · ' + cfM(a.val) + ' · ' + pct(a.val) + ' %'),
       datasets: [{data: accounts.map(a => a.val), backgroundColor: accounts.map(a => a.color), borderWidth: 2, borderColor: '#fff'}]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false, cutout: '62%',
       plugins: {
-        legend: {position: 'right', labels: {font: {size: 10}, usePointStyle: true}},
-        tooltip: {callbacks: {label: c => c.label + ': ' + cfFmtEur(c.parsed)}}
+        legend: {position: 'right', labels: {font: {size: 11}, usePointStyle: true}},
+        tooltip: {callbacks: {label: c => accounts[c.dataIndex].name + ': ' + cfFmtEur(c.parsed) + ' (' + pct(c.parsed) + ' %)'}}
       }
-    }
+    },
+    plugins: [{id: 'cfCenter', afterDraw(ch) {   // skupna vsota v sredini kolobarja
+      const m = ch.getDatasetMeta(0).data[0]; if (!m) return;
+      const c = ch.ctx; c.save(); c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillStyle = '#64748b'; c.font = '600 11px DM Sans, sans-serif'; c.fillText('skupaj', m.x, m.y - 11);
+      c.fillStyle = '#0f172a'; c.font = '800 16px DM Sans, sans-serif'; c.fillText(cfM(total), m.x, m.y + 8);
+      c.restore();
+    }}]
   });
 }
 
@@ -25161,8 +25248,11 @@ function cfRenderYearlyChart() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      scales: {y: {ticks: {callback: v => (v/1000).toFixed(0) + 'k €', font: {size: 10}}}},
-      plugins: {legend: {display: false}, tooltip: {callbacks: {label: c => 'CF: ' + cfFmtEur(c.parsed.y)}}}
+      scales: {y: {ticks: {callback: cfAxisM, font: {size: 10}}}},
+      plugins: {legend: {display: false}, tooltip: {callbacks: {label: c => {
+        const prev = c.dataIndex > 0 ? yearly[c.dataIndex - 1].cf : null;
+        return [cfTipM('CF', c.parsed.y)].concat(prev ? ['glede na prejšnje leto: ' + ((c.parsed.y - prev) / Math.abs(prev) * 100 >= 0 ? '+' : '') + ((c.parsed.y - prev) / Math.abs(prev) * 100).toFixed(1) + ' %'] : []);
+      }}}}
     }
   });
 }
