@@ -46,6 +46,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .hraz-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; margin-top:8px; }
 .hraz-t { border:1px dashed var(--border); border-radius:10px; padding:6px 10px; background:var(--surface); }
 .hraz-v { font-size:15px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
+.hraz-ten{display:inline-block;font-size:11px;font-weight:700;background:rgba(255,255,255,.75);border-radius:5px;padding:1px 7px;margin-top:4px}
+.hraz-r{display:flex;justify-content:space-between;gap:6px;font-size:11.5px;margin-top:3px;color:var(--text-tertiary)}
+.hraz-r b{font-weight:700}
 .hraz-d { font-size:11px; font-weight:700; }
 .hbato-zn { display:inline-flex; gap:5px; padding:3px 10px; border-radius:12px; font-size:12px; background:var(--bg-secondary); color:var(--text-secondary); }
 @media(max-width: 700px) {
@@ -1021,7 +1024,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-30 07:32</div>
+      <div class="sidebar-logo-sub">build 2026-09-30 12:20</div>
     </div>
   </div>
 
@@ -5875,24 +5878,29 @@ async function homeRazLoad(){
     for(let i=0;i<2;i++){ if(x<=S[i+1][0]){ const a=S[i][1], b=S[i+1][1], u=(x-S[i][0])/(S[i+1][0]-S[i][0]); return a.map((c,j)=>Math.round(c+(b[j]-c)*u)); } }
     return S[2][1]; };
   g.innerHTML = (d.trgi||[]).map(t => {
-    const h = (t.hist||[]).filter(x => x.avg!=null);
-    const prev = h.length>1 ? h[Math.max(0, h.length-8)].avg : null;          // pred ~7 dnevi (ali najstarejši)
-    const dd = (t.avg!=null && prev!=null) ? Math.round((t.avg-prev)*100)/100 : null;
-    const dcol = dd==null||dd===0 ? 'var(--text-tertiary)' : (dd>0 ? '#16a34a' : '#dc2626');
-    const dtxt = dd==null ? 'zgodovina od danes' : (dd===0 ? '→ 0,00 €' : (dd>0?'▲ +':'▼ ')+eu(dd)) + (dd==null?'':' <span style="font-weight:500;color:var(--text-tertiary)">('+(h.length-1<7?h.length-1:7)+' d)</span>');
-    // mini graf zadnjih 14 dni
-    let sp = '';
-    if(h.length>1){
-      const vs = h.map(x=>x.avg), mn = Math.min(...vs), mx = Math.max(...vs), W=90, H=18;
-      const pts = vs.map((v,i)=> (i/(vs.length-1)*W).toFixed(1)+','+(H-2-(mx===mn?0.5:(v-mn)/(mx-mn))*(H-4)).toFixed(1)).join(' ');
-      sp = '<svg width="100%" height="'+H+'" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="display:block;margin-top:3px"><polyline points="'+pts+'" fill="none" stroke="'+(dd!=null&&dd<0?'#dc2626':'#16a34a')+'" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
-    }
+    // tendenca z besedilom (brez grafa): 1 dan = glede na prejšnji vnos, 7 dni = glede na zadnji vnos star ≥ 7 dni
+    const h = (t.hist||[]).filter(x => x.avg!=null && x.d);
+    const cur = h.length ? h[h.length-1] : null;
+    const dni = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
+    const pr1 = h.length>1 ? h[h.length-2] : null;
+    const d1 = (cur && pr1) ? Math.round((cur.avg-pr1.avg)*100)/100 : null;
+    const b7 = cur ? [...h].reverse().find(x => dni(x.d, cur.d) >= 7) : null;
+    const d7 = (cur && b7) ? Math.round((cur.avg-b7.avg)*100)/100 : null;
+    const dCol = v => v==null||v===0 ? 'var(--text-tertiary)' : (v>0 ? '#16a34a' : '#dc2626');
+    const dTxt = v => v===0 ? '→ 0,00 €' : (v>0 ? '▲ +' : '▼ −') + eu(Math.abs(v));
+    const osn = d7!=null ? d7 : d1, ao = Math.abs(osn||0);
+    const ten = osn==null ? null : (ao < 0.10 ? ['→ stabilno', 'var(--text-secondary)'] : (osn>0 ? [(ao<=0.30?'▲ rahlo gor':'▲ gor'), '#166534'] : [(ao<=0.30?'▼ rahlo dol':'▼ dol'), '#991b1b']));
+    const vrst = (lbl, v, fb) => '<div class="hraz-r"><span>'+lbl+'</span>'+(v==null ? '<span style="color:var(--text-tertiary);font-weight:500">'+fb+'</span>' : '<b style="color:'+dCol(v)+'">'+dTxt(v)+'</b>')+'</div>';
+    const zbiram = cur && h.length ? dni(h[0].d, cur.d) : 0;
+    const sp = (ten ? '<div class="hraz-ten" style="color:'+ten[1]+'" title="'+(d7!=null?'po spremembi v 7 dneh':'po spremembi v 1 dnevu (7 dni še ni)')+' · stabilno < 0,10 € · rahlo ≤ 0,30 €">'+ten[0]+'</div>' : '')
+      + vrst('1 dan', d1, 'zgodovina od danes')
+      + vrst('7 dni', d7, 'še zbiram ('+zbiram+' d)');
     const hc = heat(t.avg);
     const hst = hc ? ' style="background:rgba('+hc.join(',')+',.16);border:1px solid rgba('+hc.join(',')+',.55)"' : '';
     return '<div class="hraz-t"'+hst+' title="'+t.oznaka+': Ø razlika '+eu(t.avg)+' · '+(t.n||0)+' izdelkov z NC">'
       + '<div style="font-size:10px;color:var(--text-tertiary);font-weight:600">Ø razlika</div>'
       + '<div class="hraz-v"'+(hc?' style="color:rgb('+hc.map(c=>Math.round(c*.7)).join(',')+')"':'')+'>'+eu(t.avg)+'</div>'
-      + '<div class="hraz-d" style="color:'+dcol+'">'+dtxt+'</div>' + sp + '</div>';
+      + sp + '</div>';
   }).join('');
 }
 // odpre Urejevalnik cen → Marža po trgih na izbranem trgu, v pogledu Bato cene (samo Maaarket)
