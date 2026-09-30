@@ -386,13 +386,13 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .cf-tbl td{padding:7px 10px;border-bottom:1px solid var(--border)}
 .cf-tbl .r{text-align:right;white-space:nowrap}
 .hsem-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
-@media(max-width:700px){.hsem-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.hsem-m{display:grid;grid-template-columns:30px minmax(0,1fr);column-gap:9px;row-gap:1px;align-items:center;border:1px solid var(--border);border-left:4px solid;border-radius:8px;padding:7px 10px;background:var(--surface)}
+.hsem-m{min-width:0;overflow:hidden;display:grid;grid-template-columns:30px minmax(0,1fr);column-gap:9px;row-gap:1px;align-items:center;border:1px solid var(--border);border-left:4px solid;border-radius:8px;padding:7px 10px;background:var(--surface)}
 .hsem-m img{width:30px;height:22px;border-radius:3px;object-fit:cover;grid-row:span 2;box-shadow:0 0 0 1px rgba(0,0,0,.12)}
 .hsem-t{display:flex;justify-content:space-between;align-items:center;font-size:13.5px;font-weight:800;color:var(--text)}
 .hsem-t i{width:9px;height:9px;border-radius:50%;display:inline-block}
 .hsem-s{display:flex;justify-content:space-between;gap:6px;font-size:11.5px;color:var(--text-secondary);white-space:nowrap}
 .hsem-s b{font-weight:800}
+@media(max-width:700px){.hsem-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.hsem-m{grid-template-columns:24px minmax(0,1fr);column-gap:8px;padding:6px 8px}.hsem-m img{width:24px;height:17px}.hsem-s{flex-direction:column;gap:0;font-size:11px}.hsem-s.hsem-c{flex-direction:row;justify-content:space-between;margin-top:2px}}
 .hai-wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;margin-bottom:18px;align-items:stretch}
 .hai-wrap > .card{margin-bottom:0}
 .hai-box{background:var(--bg-secondary);border-top:3px solid #7F77DD;padding:14px 16px;display:flex;align-items:center}
@@ -1044,7 +1044,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-30 15:08</div>
+      <div class="sidebar-logo-sub">build 2026-09-30 21:11</div>
     </div>
   </div>
 
@@ -5978,7 +5978,7 @@ function homeSemRender(){
       + '<img src="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/flags/4x3/' + fl + '.svg" alt="' + m.market + '">'
       + '<div class="hsem-t"><span>' + m.market + '</span><i style="background:' + c + '"></i></div>'
       + '<div class="hsem-s"><span>' + (m.orders||0) + ' nar.</span><span>CPA ' + eur2(m.cpa) + '</span></div>'
-      + (m.contrib!=null ? '<div class="hsem-s" style="grid-column:2"><span>prispevek</span><b style="color:' + (m.contrib>=0?'#16a34a':'#dc2626') + '">' + (m.contrib>0?'+':'') + eur2(m.contrib) + '</b></div>' : '')
+      + (m.contrib!=null ? '<div class="hsem-s hsem-c" style="grid-column:2"><span>prispevek</span><b style="color:' + (m.contrib>=0?'#16a34a':'#dc2626') + '">' + (m.contrib>0?'+':'') + eur2(m.contrib) + '</b></div>' : '')
       + '</div>';
   }).join('') + '</div>';
   const accent = d.stale ? 'var(--text-tertiary)' : (d.red ? '#e5484d' : (d.amber ? '#e0a33a' : '#12a35f'));
