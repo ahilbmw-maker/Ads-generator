@@ -4671,14 +4671,34 @@ def parse_json_response(text: str) -> Optional[dict]:
 
 async def call_claude(prompt: str, model: str, tools=None, max_tokens: int = 4000) -> str:
     loop = asyncio.get_event_loop()
+    # Sonnet 5.5 (centralni preklop s 4.6): nov tokenizer (~30 % več žetonov) + besedilo med spletnimi iskanji se šteje
+    # kot razmišljanje → stari limiti (800–1500) odrežejo JSON. Limit je samo zgornja meja — plača se dejanska poraba.
+    if model in _SONNET_OLD and SONNET_MODEL != SONNET_FALLBACK:
+        max_tokens = max(max_tokens, 8000 if tools else 4000)
     kwargs = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}
     if tools:
         kwargs["tools"] = tools
 
+    def _run():
+        msg = client.messages.create(**kwargs)
+        # pause_turn (dolg obrat s spletnim iskanjem) → nadaljuj isti odgovor (do 3×)
+        for _ in range(3):
+            if getattr(msg, "stop_reason", "") != "pause_turn":
+                break
+            msgs = kwargs["messages"] + [{"role": "assistant", "content": [b.model_dump(exclude_none=True) for b in msg.content]}]
+            msg = client.messages.create(**dict(kwargs, messages=msgs))
+        # odrezan odgovor na Sonnet 5.5 → enkrat ponovi s Sonnet 4.6 (staro, preizkušeno obnašanje)
+        if getattr(msg, "stop_reason", "") == "max_tokens" and model in _SONNET_OLD and SONNET_MODEL != SONNET_FALLBACK:
+            print(f"[call_claude] {getattr(msg, 'model', model)} max_tokens ({max_tokens}) → varovalka {SONNET_FALLBACK}")
+            msg = client.messages.create(**dict(kwargs, model=SONNET_FALLBACK, max_tokens=max(max_tokens, 4000), _keep_model=True))
+        if getattr(msg, "stop_reason", "") not in ("end_turn", "tool_use", "stop_sequence"):
+            print(f"[call_claude] stop_reason={getattr(msg, 'stop_reason', '')} model={getattr(msg, 'model', model)} max_tokens={max_tokens}")
+        return msg
+
     for attempt in range(4):
         try:
-            msg = await loop.run_in_executor(None, lambda: client.messages.create(**kwargs))
-            return "".join(b.text for b in msg.content if hasattr(b, "text"))
+            msg = await loop.run_in_executor(None, _run)
+            return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
         except anthropic.RateLimitError:
             if attempt < 3:
                 wait = (attempt + 1) * 20
