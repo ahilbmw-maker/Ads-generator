@@ -30268,7 +30268,10 @@ async def semafor_home(request: Request):
             amber += 1
         elif status == "red":
             red += 1
-        markets.append({"market": m, "status": status})
+        mk = {"market": m, "status": status, "orders": o, "cpa": round(cpa, 2) if cpa is not None else None}
+        if owner and be is not None and cpa is not None:
+            mk["contrib"] = round(be - cpa, 2)      # prispevek na naročilo (meja − CPA) — samo lastnik
+        markets.append(mk)
 
     markets.sort(key=lambda x: ({"green": 0, "amber": 1, "red": 2, "grey": 3}[x["status"]], x["market"]))
     spend_sum = fb_sum + g_sum
