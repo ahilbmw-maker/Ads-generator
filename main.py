@@ -4669,6 +4669,61 @@ def parse_json_response(text: str) -> Optional[dict]:
             return None
 
 
+async def _page_text(url: str, limit: int = 4000) -> str:
+    """Stran izdelka prebere strežnik sam (naslov, meta opis, JSON-LD izdelek, vidno besedilo).
+    Spletno iskanje nove / slabo indeksirane strani pogosto ne najde (npr. zipply.si) — to je glavni vir, iskanje je rezerva.
+    Vrne "" ob napaki ali premalo vsebine."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True,
+                                     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128 Safari/537.36",
+                                              "Accept-Language": "sl,en;q=0.8"}) as hc:
+            r = await hc.get(url)
+        if r.status_code != 200 or "html" not in r.headers.get("content-type", "html"):
+            return ""
+        h = r.text
+    except Exception as e:
+        print(f"[page_text] {url}: {type(e).__name__}: {str(e)[:120]}")
+        return ""
+    import html as _html
+    deli = []
+    m = re.search(r"<title[^>]*>(.*?)</title>", h, re.S | re.I)
+    if m:
+        deli.append("Naslov: " + _html.unescape(re.sub(r"\s+", " ", m.group(1))).strip())
+    for prop in ("og:title", "og:description", "description", "product:price:amount"):
+        m = re.search(r'<meta[^>]+(?:property|name)=["\']' + re.escape(prop) + r'["\'][^>]*content=["\']([^"\']*)', h, re.I)
+        if m and m.group(1).strip():
+            deli.append(prop + ": " + _html.unescape(m.group(1)).strip())
+    for blk in re.findall(r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>', h, re.S | re.I)[:5]:
+        try:
+            js = json.loads(blk.strip())
+        except Exception:
+            continue
+        for o in (js if isinstance(js, list) else js.get("@graph", [js]) if isinstance(js, dict) else []):
+            if isinstance(o, dict) and "Product" in str(o.get("@type", "")):
+                deli.append("Izdelek (JSON-LD): " + json.dumps({k: o.get(k) for k in ("name", "description", "brand", "offers") if o.get(k)}, ensure_ascii=False)[:1500])
+    body = re.sub(r"<(script|style|noscript|svg|header|footer|nav)[^>]*>.*?</\1>", " ", h, flags=re.S | re.I)
+    body = _html.unescape(re.sub(r"<[^>]+>", " ", body))
+    body = re.sub(r"\s+", " ", body).strip()
+    if body:
+        deli.append("Besedilo strani: " + body[:limit])
+    out = "\n".join(deli)
+    return out if len(out) > 200 else ""
+
+
+async def _url_vsebina(user_msg: str, mode: str, source_url: Optional[str]):
+    """(sporočilo, orodja): če strežnik prebere stran, doda vsebino in ne rabi spletnega iskanja; sicer rezerva web_search."""
+    if mode != "url" or not source_url:
+        return user_msg, []
+    txt = await _page_text(source_url)
+    if txt:
+        # skopa vsebina (stran se izriše z JS — samo naslov/opis/cena) → spletno iskanje ostane kot dopolnilo
+        bogato = "Besedilo strani:" in txt and len(txt) > 1500
+        return (user_msg + "\n\nVSEBINA STRANI (prebral strežnik — uporabi te podatke" + ("" if bogato else "; spletno iskanje le za dopolnitev") + "):\n" + txt), \
+            ([] if bogato else [{"type": "web_search_20250305", "name": "web_search"}])
+    print(f"[page_text] ni vsebine → rezerva web_search: {source_url}")
+    return user_msg, [{"type": "web_search_20250305", "name": "web_search"}]
+
+
 async def call_claude(prompt: str, model: str, tools=None, max_tokens: int = 4000) -> str:
     loop = asyncio.get_event_loop()
     # Sonnet 5.5 (centralni preklop s 4.6): nov tokenizer (~30 % več žetonov) + besedilo med spletnimi iskanji se šteje
@@ -4722,7 +4777,7 @@ async def generate_meta_sl_only(user_msg: str, mode: str, source_url: Optional[s
                                 pt_count: int, hl_count: int) -> dict:
     """Generira samo SL tekste brez prevajanja — za streaming mode."""
     product_urls = find_product_urls(source_url)
-    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
+    user_msg, tools = await _url_vsebina(user_msg, mode, source_url)
     pt_ph = ", ".join([f'"PT {i+1}"' for i in range(pt_count)])
     hl_ph = ", ".join([f'"HL {i+1}"' for i in range(hl_count)])
     sl_prompt = f"""{user_msg}
@@ -4749,7 +4804,7 @@ Vrni SAMO JSON: {{"product": "ime", "pt": [{pt_ph}], "hl": [{hl_ph}]}}"""
 async def generate_meta_one(user_msg: str, mode: str, source_url: Optional[str],
                             pt_count: int, hl_count: int, qmode: str) -> dict:
     product_urls = find_product_urls(source_url)
-    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
+    user_msg, tools = await _url_vsebina(user_msg, mode, source_url)
 
     if qmode == "fast":
         pt_ph = ", ".join([f'"PT {i+1}"' for i in range(pt_count)])
@@ -4827,7 +4882,7 @@ Vrni SAMO JSON:
 
 async def generate_tiktok_one(user_msg: str, mode: str, source_url: Optional[str]) -> dict:
     product_urls = find_product_urls(source_url)
-    tools = [{"type": "web_search_20250305", "name": "web_search"}] if mode == "url" else []
+    user_msg, tools = await _url_vsebina(user_msg, mode, source_url)
     prompt = build_tiktok_prompt(user_msg)
     text = await call_claude(prompt, "claude-sonnet-4-6", tools if tools else None)
     data = parse_json_response(text)
