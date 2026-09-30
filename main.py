@@ -22578,8 +22578,8 @@ async def cashflow_data():
             d = ws.cell(row=r, column=1).value
             if not hasattr(d, 'year'):
                 continue
-            # Skip rows where everything is None/empty
-            cf_all = ws.cell(row=r, column=15).value
+            # Skip rows where everything is None/empty — CF (denarna sredstva) je stolpec N (14)
+            cf_all = ws.cell(row=r, column=14).value
             suma_promet = ws.cell(row=r, column=21).value
             if cf_all is None and suma_promet is None:
                 continue
@@ -22606,14 +22606,17 @@ async def cashflow_data():
                 "srbija_rsd": num(11),
                 "intesa_rs": num(12),
                 "silux_b": num(13),
-                "cf_all": num(15),
+                "cf_all": num(14),           # N = denarna sredstva (brez posojil)
+                "cf_o": num(15),             # O = prejšnji vir CF (za primerjavo)
                 "cf_w_loan": num(25),
                 "zaloga": num(27),
                 "st_kosov": num(28),
                 "posojila": num(29),
             })
 
-        return {"ok": True, "rows": rows, "count": len(rows)}
+        glave = {k: str(ws.cell(row=1, column=c).value or "").strip() for k, c in
+                 (("N", 14), ("O", 15), ("Y", 25), ("AA", 27), ("AB", 28), ("AC", 29))}
+        return {"ok": True, "rows": rows, "count": len(rows), "glave": glave}
     except Exception as e:
         import traceback
         traceback.print_exc()

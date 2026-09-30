@@ -376,6 +376,15 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .main.wide { max-width: 100%; padding: 1.5rem 1.5rem 5rem; }
 .page { display: none; }
 /* 🤖 AI stroški v kartici semaforja (Domov) */
+.cf-tabs{display:flex;gap:4px;flex-wrap:wrap;background:var(--bg-secondary);border-radius:10px;padding:4px;margin-bottom:14px}
+.cf-tabs b{font-size:13.5px;font-weight:700;padding:8px 16px;border-radius:8px;color:var(--text-secondary);cursor:pointer}
+.cf-tabs b.on{background:#fff;color:var(--accent);box-shadow:0 0 0 1px var(--border)}
+.cf-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:14px}
+.cf-mgrid{margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.cf-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.cf-tbl th{padding:8px 10px;text-align:left;border-bottom:2px solid var(--border);font-size:11.5px;color:var(--text-secondary)}
+.cf-tbl td{padding:7px 10px;border-bottom:1px solid var(--border)}
+.cf-tbl .r{text-align:right;white-space:nowrap}
 .hsem-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
 @media(max-width:700px){.hsem-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .hsem-m{display:grid;grid-template-columns:30px minmax(0,1fr);column-gap:9px;row-gap:1px;align-items:center;border:1px solid var(--border);border-left:4px solid;border-radius:8px;padding:7px 10px;background:var(--surface)}
@@ -1035,7 +1044,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-30 14:46</div>
+      <div class="sidebar-logo-sub">build 2026-09-30 14:58</div>
     </div>
   </div>
 
@@ -3759,90 +3768,77 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div>
 
     <div id="cfDashboard" style="display:none">
-      <!-- KPI cards (vidni) -->
-      <div id="cfKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:14px"></div>
+      <div class="cf-tabs"><b id="cfTab-cf" onclick="cfTab('cf')">💶 Denarna sredstva</b><b id="cfTab-pos" onclick="cfTab('pos')">💳 Posojila</b><b id="cfTab-zal" onclick="cfTab('zal')">📦 Zaloga</b>
+        <span id="cfGlave" style="margin-left:auto;font-size:11px;color:var(--text-tertiary);align-self:center"></span></div>
 
-      <!-- Main chart: Cash Flow trend -->
-      <div class="card" style="margin-bottom:14px">
-        <span class="slabel">💰 CASH FLOW TREND</span>
-        <canvas id="cfChartMain" style="margin-top:10px;width:100%;max-height:380px"></canvas>
-      </div>
-
-      <!-- Mesečna rast CF (zeleno/rdeče) -->
-      <div class="card" style="margin-bottom:14px">
-        <span class="slabel">📊 MESEČNA RAST CF (konec − začetek meseca)</span>
-        <canvas id="cfChartGrowth" style="margin-top:10px;width:100%;max-height:240px"></canvas>
-      </div>
-
-      <!-- Grid: zaloga + računi -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;margin-bottom:14px">
-        <div class="card">
-          <span class="slabel">📦 ZALOGA & ŠT. KOSOV</span>
-          <canvas id="cfChartStock" style="margin-top:10px;width:100%;max-height:280px"></canvas>
-        </div>
-        <div class="card">
-          <span class="slabel">💵 PORAZDELITEV PO RAČUNIH (zadnji dan)</span>
-          <canvas id="cfChartAccounts" style="margin-top:10px;width:100%;max-height:280px"></canvas>
-        </div>
-        <div class="card">
-          <span class="slabel">🏦 RAČUNI SKOZI ČAS</span>
-          <canvas id="cfChartAccountsTime" style="margin-top:10px;width:100%;max-height:280px"></canvas>
-        </div>
-      </div>
-
-      <!-- Insights row -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:14px">
-        <div class="card">
-          <span class="slabel">🏆 NAJBOLJŠI MESEC (CF rast)</span>
-          <div id="cfBestMonth" style="margin-top:10px;font-size:13px;line-height:1.7"></div>
-        </div>
-        <div class="card">
-          <span class="slabel">📉 NAJSLABŠI MESEC</span>
-          <div id="cfWorstMonth" style="margin-top:10px;font-size:13px;line-height:1.7"></div>
-        </div>
-        <div class="card">
-          <span class="slabel">⚡ TRENUTNI STATUS</span>
-          <div id="cfStatusBox" style="margin-top:10px;font-size:13px;line-height:1.7"></div>
-        </div>
-        <div class="card">
-          <span class="slabel">🎯 PROJEKCIJA 30 DNI</span>
-          <div id="cfProjection" style="margin-top:10px;font-size:13px;line-height:1.7"></div>
-        </div>
-      </div>
-
-      <!-- Monthly table -->
-      <div class="card" style="margin-bottom:14px">
-        <span class="slabel">📅 MESEČNI PREGLED (snapshot ob koncu meseca)</span>
-        <div id="cfMonthlyTable" style="margin-top:12px;overflow-x:auto"></div>
-      </div>
-
-      <!-- Yearly comparison -->
-      <div class="card" style="margin-bottom:14px">
-        <span class="slabel">📈 PRIMERJAVA PO LETIH (CF na koncu leta)</span>
-        <canvas id="cfChartYearly" style="margin-top:10px;width:100%;max-height:260px"></canvas>
-      </div>
-
-      <!-- Stats panel -->
-      <div class="card" style="margin-bottom:14px">
-        <span class="slabel">📊 STATISTIKA OBDOBJA</span>
-        <div id="cfMetrics" style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px"></div>
-      </div>
-
-      <!-- TOGGLE GUMB za skrite podatke -->
-      <div style="text-align:center;margin:20px 0">
-        <button id="cfToggleBtn" onclick="cfToggleHidden()" style="padding:10px 20px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">👁 Pokaži več (posojila, leverage)</button>
-      </div>
-
-      <!-- SKRITI BLOCK -->
-      <div class="cf-hidden-block" style="display:none">
-        <div id="cfKpisHidden" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:14px"></div>
+      <!-- 1 · DENARNA SREDSTVA (stolpec N) -->
+      <div id="cfPane-cf">
+        <div id="cfKpis" class="cf-kpis"></div>
         <div class="card" style="margin-bottom:14px">
-          <span class="slabel">💳 POSOJILA SKOZI ČAS</span>
-          <canvas id="cfChartLoans" style="margin-top:10px;width:100%;max-height:280px"></canvas>
+          <span class="slabel">💶 DENARNA SREDSTVA — TREND</span>
+          <canvas id="cfChartMain" style="margin-top:10px;width:100%;max-height:380px"></canvas>
         </div>
-        <div class="card">
-          <span class="slabel">📊 LEVERAGE & DEBT METRIKE</span>
-          <div id="cfDebtMetrics" style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px"></div>
+        <div class="card" style="margin-bottom:14px">
+          <span class="slabel">📊 MESEČNA RAST (konec − začetek meseca)</span>
+          <canvas id="cfChartGrowth" style="margin-top:10px;width:100%;max-height:240px"></canvas>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;margin-bottom:14px">
+          <div class="card">
+            <span class="slabel">💵 PORAZDELITEV PO RAČUNIH (zadnji dan)</span>
+            <canvas id="cfChartAccounts" style="margin-top:10px;width:100%;max-height:280px"></canvas>
+          </div>
+          <div class="card">
+            <span class="slabel">🏦 RAČUNI SKOZI ČAS</span>
+            <canvas id="cfChartAccountsTime" style="margin-top:10px;width:100%;max-height:280px"></canvas>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:14px">
+          <div class="card"><span class="slabel">🏆 NAJBOLJŠI MESEC</span><div id="cfBestMonth" style="margin-top:10px;font-size:13px;line-height:1.7"></div></div>
+          <div class="card"><span class="slabel">📉 NAJSLABŠI MESEC</span><div id="cfWorstMonth" style="margin-top:10px;font-size:13px;line-height:1.7"></div></div>
+          <div class="card"><span class="slabel">⚡ ZADNJIH 7 DNI</span><div id="cfStatusBox" style="margin-top:10px;font-size:13px;line-height:1.7"></div></div>
+          <div class="card"><span class="slabel">🎯 PROJEKCIJA 30 DNI</span><div id="cfProjection" style="margin-top:10px;font-size:13px;line-height:1.7"></div></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <span class="slabel">📈 PRIMERJAVA PO LETIH (konec leta)</span>
+          <canvas id="cfChartYearly" style="margin-top:10px;width:100%;max-height:260px"></canvas>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <span class="slabel">📊 STATISTIKA OBDOBJA</span>
+          <div id="cfMetrics" class="cf-mgrid"></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <span class="slabel">📅 MESEČNI PREGLED — DENARNA SREDSTVA</span>
+          <div id="cfMonthlyTable" style="margin-top:12px;overflow-x:auto"></div>
+        </div>
+      </div>
+
+      <!-- 2 · POSOJILA -->
+      <div id="cfPane-pos" style="display:none">
+        <div id="cfKpisPos" class="cf-kpis"></div>
+        <div class="card" style="margin-bottom:14px">
+          <span class="slabel">💳 POSOJILA IN NETO POLOŽAJ</span>
+          <canvas id="cfChartLoans" style="margin-top:10px;width:100%;max-height:340px"></canvas>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <span class="slabel">📊 ZADOLŽENOST</span>
+          <div id="cfDebtMetrics" class="cf-mgrid"></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <span class="slabel">📅 MESEČNI PREGLED — POSOJILA</span>
+          <div id="cfMonthlyTablePos" style="margin-top:12px;overflow-x:auto"></div>
+        </div>
+      </div>
+
+      <!-- 3 · ZALOGA -->
+      <div id="cfPane-zal" style="display:none">
+        <div id="cfKpisZal" class="cf-kpis"></div>
+        <div class="card" style="margin-bottom:14px">
+          <span class="slabel">📦 ZALOGA (€) IN ŠT. KOSOV</span>
+          <canvas id="cfChartStock" style="margin-top:10px;width:100%;max-height:340px"></canvas>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <span class="slabel">📅 MESEČNI PREGLED — ZALOGA</span>
+          <div id="cfMonthlyTableZal" style="margin-top:12px;overflow-x:auto"></div>
         </div>
       </div>
     </div>
@@ -24712,6 +24708,10 @@ async function cfLoadData() {
     }
     document.getElementById('cfEmpty').style.display = 'none';
     document.getElementById('cfDashboard').style.display = 'block';
+    const g = d.glave || {};
+    document.getElementById('cfGlave').textContent = 'Denarna sredstva = stolpec N' + (g.N ? ' (»' + g.N + '«)' : '') + ' · posojila AC · zaloga AA';
+    let t = 'cf'; try { t = localStorage.getItem('cf_tab') || 'cf'; } catch (e) {}
+    cfTab(['cf', 'pos', 'zal'].includes(t) ? t : 'cf');
     cfRender();
   } catch (e) {
     console.error('cfLoadData:', e);
@@ -24782,67 +24782,51 @@ function cfRender() {
   cfRenderMetrics(rows);
 }
 
+function cfKpiCard(k) {
+  return '<div class="card" style="border-left:4px solid ' + k.color + ';padding:14px">'
+    + '<div style="font-size:10px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">' + k.label + '</div>'
+    + '<div style="font-size:22px;font-weight:700;color:var(--text);margin-top:6px">' + k.value + '</div>'
+    + '<div style="font-size:11px;color:var(--text-secondary);margin-top:3px">' + k.sub + '</div></div>';
+}
+const cfSgn = (v, f) => (v >= 0 ? '+' : '') + f(v);
 function cfRenderKpis(rows) {
-  const last = rows[rows.length - 1];
-  const first = rows[0];
-
-  const lastCf = last.cf_all || 0;
-  const firstCf = first.cf_all || 0;
-  const cfChange = lastCf - firstCf;
-  const cfChangePct = firstCf ? (cfChange / firstCf * 100) : 0;
-
-  const lastCfLoan = last.cf_w_loan || 0;
-  const firstCfLoan = first.cf_w_loan || 0;
-  const cfLoanChange = lastCfLoan - firstCfLoan;
-
-  const lastStock = last.zaloga || 0;
-  const firstStock = first.zaloga || 0;
-  const stockChange = lastStock - firstStock;
-
-  const lastKosov = last.st_kosov || 0;
-  const firstKosov = first.st_kosov || 0;
-  const kosovChange = lastKosov - firstKosov;
-
-  const lastPosojila = last.posojila || 0;
-  const firstPosojila = first.posojila || 0;
-  const posojilaChange = lastPosojila - firstPosojila;
-
-  const lastNet = lastCf - lastPosojila;
-  const firstNet = firstCf - firstPosojila;
-  const netChange = lastNet - firstNet;
-
-  // Vidne KPI (vedno)
-  const kpisVisible = [
-    {label: 'CF (trenutni)', value: cfFmtEur(lastCf), sub: cfPct(cfChangePct), color: '#3b82f6'},
-    {label: 'CF + posojila', value: cfFmtEur(lastCfLoan), sub: 'sprem: ' + (cfLoanChange >= 0 ? '+' : '') + cfFmtEur(cfLoanChange), color: '#8b5cf6'},
-    {label: 'Zaloga (€)', value: cfFmtEur(lastStock), sub: 'sprem: ' + (stockChange >= 0 ? '+' : '') + cfFmtEur(stockChange), color: '#06b6d4'},
-    {label: 'Št. kosov v zalogi', value: cfFmtNum(lastKosov), sub: 'sprem: ' + (kosovChange >= 0 ? '+' : '') + cfFmtNum(kosovChange), color: '#10b981'},
-  ];
-
-  // Skrita KPI (toggle)
-  const kpisHidden = [
-    {label: 'Net (CF − posojila)', value: cfFmtEur(lastNet), sub: 'sprem: ' + (netChange >= 0 ? '+' : '') + cfFmtEur(netChange), color: netChange >= 0 ? '#22c55e' : '#ef4444'},
-    {label: 'Posojila', value: cfFmtEur(lastPosojila), sub: 'sprem: ' + (posojilaChange >= 0 ? '+' : '') + cfFmtEur(posojilaChange), color: '#f59e0b'},
-  ];
-
-  const renderKpi = (k) => `
-    <div class="card" style="border-left:4px solid ${k.color};padding:14px">
-      <div style="font-size:10px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">${k.label}</div>
-      <div style="font-size:22px;font-weight:700;color:var(--text);margin-top:6px">${k.value}</div>
-      <div style="font-size:11px;color:var(--text-secondary);margin-top:3px">${k.sub}</div>
-    </div>
-  `;
-
-  document.getElementById('cfKpis').innerHTML = kpisVisible.map(renderKpi).join('');
-  document.getElementById('cfKpisHidden').innerHTML = kpisHidden.map(renderKpi).join('');
+  const last = rows[rows.length - 1], first = rows[0];
+  const v = k => last[k] || 0, v0 = k => first[k] || 0;
+  // 1 · denarna sredstva (N)
+  const cf = v('cf_all'), dcf = cf - v0('cf_all'), dcfp = v0('cf_all') ? dcf / v0('cf_all') * 100 : 0;
+  const mon = cfAggregateMonthly(rows), avgM = mon.length ? mon.reduce((s, m) => s + m.cfGrowth, 0) / mon.length : 0;
+  const l30 = rows.slice(-30), proj = l30.length >= 5 ? cf + ((l30[l30.length - 1].cf_all || 0) - (l30[0].cf_all || 0)) / l30.length * 30 : null;
+  document.getElementById('cfKpis').innerHTML = [
+    {label: 'Denarna sredstva (danes)', value: cfFmtEur(cf), sub: cfPct(dcfp) + ' v obdobju', color: '#3b82f6'},
+    {label: 'Sprememba v obdobju', value: cfSgn(dcf, cfFmtEur), sub: rows.length + ' dni', color: dcf >= 0 ? '#22c55e' : '#ef4444'},
+    {label: 'Povprečna mesečna rast', value: cfSgn(avgM, cfFmtEur), sub: mon.length + ' mesecev', color: '#6366f1'},
+    {label: 'Projekcija 30 dni', value: proj == null ? '—' : cfFmtEur(proj), sub: 'pri tempu zadnjih 30 dni', color: '#0ea5e9'},
+  ].map(cfKpiCard).join('');
+  // 2 · posojila
+  const pos = v('posojila'), dpos = pos - v0('posojila'), net = cf - pos, dnet = net - (v0('cf_all') - v0('posojila'));
+  document.getElementById('cfKpisPos').innerHTML = [
+    {label: 'Posojila (danes)', value: cfFmtEur(pos), sub: 'sprem: ' + cfSgn(dpos, cfFmtEur), color: '#f59e0b'},
+    {label: 'Neto (sredstva − posojila)', value: cfFmtEur(net), sub: 'sprem: ' + cfSgn(dnet, cfFmtEur), color: net >= 0 ? '#22c55e' : '#ef4444'},
+    {label: 'Sredstva + posojila', value: cfFmtEur(v('cf_w_loan')), sub: 'stolpec Y', color: '#8b5cf6'},
+    {label: 'Pokritost', value: pos ? Math.round(cf / pos * 100) + ' %' : '—', sub: 'sredstva / posojila (> 100 % varno)', color: '#64748b'},
+  ].map(cfKpiCard).join('');
+  // 3 · zaloga
+  const z = v('zaloga'), dz = z - v0('zaloga'), k = v('st_kosov'), dk = k - v0('st_kosov');
+  document.getElementById('cfKpisZal').innerHTML = [
+    {label: 'Zaloga (€)', value: cfFmtEur(z), sub: 'sprem: ' + cfSgn(dz, cfFmtEur), color: '#06b6d4'},
+    {label: 'Št. kosov', value: cfFmtNum(k), sub: 'sprem: ' + cfSgn(dk, cfFmtNum), color: '#10b981'},
+    {label: 'Povp. vrednost kosa', value: k ? cfFmtEur(z / k, 2) : '—', sub: 'zaloga € / kosov', color: '#14b8a6'},
+    {label: 'Zaloga / sredstva', value: cf > 0 ? (z / cf * 100).toFixed(1) + ' %' : '—', sub: 'koliko je vezano v zalogi', color: '#64748b'},
+  ].map(cfKpiCard).join('');
 }
 
-function cfToggleHidden() {
-  const blocks = document.querySelectorAll('.cf-hidden-block');
-  const btn = document.getElementById('cfToggleBtn');
-  const isHidden = blocks[0].style.display === 'none' || blocks[0].style.display === '';
-  blocks.forEach(b => { b.style.display = isHidden ? '' : 'none'; });
-  btn.textContent = isHidden ? '🙈 Skrij dodatne podatke' : '👁 Pokaži več (posojila, leverage)';
+function cfTab(t) {
+  ['cf', 'pos', 'zal'].forEach(x => {
+    document.getElementById('cfPane-' + x).style.display = x === t ? '' : 'none';
+    document.getElementById('cfTab-' + x).classList.toggle('on', x === t);
+  });
+  try { localStorage.setItem('cf_tab', t); } catch (e) {}
+  Object.values(cfCharts).forEach(c => { try { c.resize(); } catch (e) {} });   // grafi v prej skritem zavihku
 }
 
 function cfRenderMainChart(rows) {
@@ -24854,7 +24838,7 @@ function cfRenderMainChart(rows) {
       labels: rows.map(r => r.date),
       datasets: [
         {
-          label: 'Cash Flow (€)',
+          label: 'Denarna sredstva (€)',
           data: rows.map(r => r.cf_all),
           borderColor: '#3b82f6',
           backgroundColor: 'rgba(59,130,246,0.1)',
@@ -24877,18 +24861,6 @@ function cfRenderMainChart(rows) {
           pointRadius: 0,
           spanGaps: true,
         },
-        {
-          label: 'CF + posojila (€)',
-          data: rows.map(r => r.cf_w_loan),
-          borderColor: '#8b5cf6',
-          backgroundColor: 'transparent',
-          borderDash: [5, 5],
-          fill: false,
-          tension: 0.3,
-          yAxisID: 'y',
-          borderWidth: 1.5,
-          pointRadius: 0,
-        }
       ]
     },
     options: {
@@ -25003,7 +24975,9 @@ function cfRenderLoansChart(rows) {
     data: {
       labels: rows.map(r => r.date),
       datasets: [
-        {label: 'Posojila (€)', data: rows.map(r => r.posojila), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.15)', fill: true, tension: 0.3, borderWidth: 2, pointRadius: 0}
+        {label: 'Posojila (€)', data: rows.map(r => r.posojila), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.15)', fill: true, tension: 0.3, borderWidth: 2, pointRadius: 0},
+        {label: 'Neto (sredstva − posojila)', data: rows.map(r => r.cf_all != null ? r.cf_all - (r.posojila || 0) : null), borderColor: '#16a34a', fill: false, tension: 0.3, borderWidth: 2, pointRadius: 0},
+        {label: 'Sredstva + posojila', data: rows.map(r => r.cf_w_loan), borderColor: '#8b5cf6', borderDash: [5, 5], fill: false, tension: 0.3, borderWidth: 1.5, pointRadius: 0}
       ]
     },
     options: {
@@ -25012,9 +24986,10 @@ function cfRenderLoansChart(rows) {
         x: {ticks: {maxTicksLimit: 8, font: {size: 10}, callback: function(v) { return cfMonthLbl(this.getLabelForValue(v)); }}},
         y: {ticks: {callback: cfAxisM, font: {size: 10}}}
       },
+      interaction: {mode: 'index', intersect: false},
       plugins: {
-        legend: {display: false},
-        tooltip: {callbacks: {label: c => cfTipM('Posojila', c.parsed.y)}}
+        legend: {position: 'top', labels: {font: {size: 11}, usePointStyle: true}},
+        tooltip: {filter: i => i.parsed.y != null, callbacks: {label: c => cfTipM(c.dataset.label.replace(' (€)', ''), c.parsed.y)}}
       }
     }
   });
@@ -25187,39 +25162,17 @@ function cfRenderInsights(rows) {
 function cfRenderMonthly(rows) {
   const monthly = cfAggregateMonthly(rows);
   if (monthly.length === 0) return;
-
   const display = monthly.slice(-24).reverse();
-  const html = `
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead>
-        <tr style="text-align:left;border-bottom:2px solid var(--border)">
-          <th style="padding:8px 10px">Mesec</th>
-          <th style="padding:8px 10px;text-align:right">CF konec</th>
-          <th style="padding:8px 10px;text-align:right">CF + posojila</th>
-          <th style="padding:8px 10px;text-align:right">CF rast</th>
-          <th style="padding:8px 10px;text-align:right">Zaloga €</th>
-          <th style="padding:8px 10px;text-align:right">Št. kosov</th>
-          <th style="padding:8px 10px;text-align:right">Posojila</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${display.map(m => {
-          const growthColor = m.cfGrowth > 0 ? '#22c55e' : (m.cfGrowth < 0 ? '#ef4444' : 'var(--text-tertiary)');
-          return `
-          <tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:8px 10px;font-weight:600">${m.label}</td>
-            <td style="padding:8px 10px;text-align:right">${cfFmtEur(m.cf)}</td>
-            <td style="padding:8px 10px;text-align:right">${cfFmtEur(m.cf_w_loan)}</td>
-            <td style="padding:8px 10px;text-align:right;color:${growthColor};font-weight:600">${m.cfGrowth >= 0 ? '+' : ''}${cfFmtEur(m.cfGrowth)}</td>
-            <td style="padding:8px 10px;text-align:right">${cfFmtEur(m.zaloga)}</td>
-            <td style="padding:8px 10px;text-align:right">${cfFmtNum(m.st_kosov)}</td>
-            <td style="padding:8px 10px;text-align:right">${cfFmtEur(m.posojila)}</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-  `;
-  document.getElementById('cfMonthlyTable').innerHTML = html;
+  const col = v => v > 0 ? '#22c55e' : (v < 0 ? '#ef4444' : 'var(--text-tertiary)');
+  const tbl = (heads, rowFn) => '<table class="cf-tbl"><thead><tr>' + heads.map((h, i) => '<th' + (i ? ' class="r"' : '') + '>' + h + '</th>').join('') + '</tr></thead><tbody>'
+    + display.map(m => '<tr>' + rowFn(m).map((c, i) => '<td' + (i ? ' class="r"' : '') + '>' + c + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+  const g = (v, f) => '<b style="color:' + col(v) + '">' + (v >= 0 ? '+' : '') + f(v) + '</b>';
+  document.getElementById('cfMonthlyTable').innerHTML = tbl(['Mesec', 'Sredstva konec', 'Rast v mesecu', 'Konec (M)'],
+    m => ['<b>' + m.label + '</b>', cfFmtEur(m.cf), g(m.cfGrowth, cfFmtEur), cfM(m.cf)]);
+  document.getElementById('cfMonthlyTablePos').innerHTML = tbl(['Mesec', 'Posojila', 'Sprememba', 'Neto (sredstva − posojila)', 'Sredstva + posojila'],
+    m => ['<b>' + m.label + '</b>', cfFmtEur(m.posojila), '<b style="color:' + col(-(m.posojilaGrowth || 0)) + '">' + ((m.posojilaGrowth || 0) >= 0 ? '+' : '') + cfFmtEur(m.posojilaGrowth || 0) + '</b>', cfFmtEur((m.cf || 0) - (m.posojila || 0)), cfFmtEur(m.cf_w_loan)]);
+  document.getElementById('cfMonthlyTableZal').innerHTML = tbl(['Mesec', 'Zaloga €', 'Sprememba', 'Št. kosov', 'Povp. vrednost kosa'],
+    m => ['<b>' + m.label + '</b>', cfFmtEur(m.zaloga), g(m.zalogaGrowth, cfFmtEur), cfFmtNum(m.st_kosov), m.st_kosov ? cfFmtEur(m.zaloga / m.st_kosov, 2) : '—']);
 }
 
 function cfRenderYearlyChart() {
@@ -25286,7 +25239,6 @@ function cfRenderMetrics(rows) {
   const upDays = deltas.filter(d => d > 0).length;
   const downDays = deltas.filter(d => d < 0).length;
 
-  const stockRatio = (last.cf_all || 0) > 0 ? ((last.zaloga || 0) / last.cf_all * 100) : 0;
 
   const metrics = [
     {label: 'Max CF', value: cfFmtEur(maxCf), sub: maxCfRow ? maxCfRow.date : '—'},
@@ -25295,7 +25247,6 @@ function cfRenderMetrics(rows) {
     {label: 'Volatilnost (σ)', value: cfFmtEur(stdDev), sub: 'std dev dnevnih sprememb'},
     {label: 'Dni rasti', value: upDays, sub: deltas.length ? `${(upDays / deltas.length * 100).toFixed(0)}% obdobja` : '—'},
     {label: 'Dni padca', value: downDays, sub: deltas.length ? `${(downDays / deltas.length * 100).toFixed(0)}% obdobja` : '—'},
-    {label: 'Zaloga / CF', value: stockRatio.toFixed(1) + '%', sub: 'delež CF v zalogi'},
   ];
 
   document.getElementById('cfMetrics').innerHTML = metrics.map(m => `
@@ -25306,17 +25257,17 @@ function cfRenderMetrics(rows) {
     </div>
   `).join('');
 
-  // Debt metrics (skrito)
+  // Zadolženost (zavihek Posojila)
   const leverage = (last.cf_all || 0) > 0 ? ((last.posojila || 0) / last.cf_all * 100) : 0;
   const netDebt = (last.posojila || 0) - (last.cf_all || 0);
   const debtToStock = (last.zaloga || 0) > 0 ? ((last.posojila || 0) / last.zaloga * 100) : 0;
   const cashCoverage = (last.posojila || 0) > 0 ? ((last.cf_all || 0) / last.posojila * 100) : 0;
 
   const debtMetrics = [
-    {label: 'Leverage', value: leverage.toFixed(1) + '%', sub: 'posojila / CF'},
+    {label: 'Leverage', value: leverage.toFixed(1) + '%', sub: 'posojila / sredstva'},
     {label: 'Net dolg', value: cfFmtEur(netDebt), sub: netDebt > 0 ? '⚠️ pozit. dolg' : '✓ neto pozitiven'},
     {label: 'Posojila / Zaloga', value: debtToStock.toFixed(1) + '%', sub: 'lahko poplačaš zalogo z dolgom?'},
-    {label: 'Cash Coverage', value: cashCoverage.toFixed(0) + '%', sub: 'CF / posojila (>100% varno)'},
+    {label: 'Cash Coverage', value: cashCoverage.toFixed(0) + '%', sub: 'sredstva / posojila (>100% varno)'},
   ];
 
   const debtBox = document.getElementById('cfDebtMetrics');
