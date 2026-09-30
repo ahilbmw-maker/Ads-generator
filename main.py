@@ -29817,13 +29817,14 @@ async def xsell_shop_kat_csv(request: Request):
     d = _xsell_load()
     sk = _xsell_shop(d)
     q = lambda v: '"' + str(v if v is not None else "").replace('"', '""') + '"'
-    out = ["Kategorija;Mesto;SKU;Naziv;Cena;Redna cena;Popust %;Xsell cena SLO;Marža %;NC;Zaloga"]
+    out = ["Kategorija;Mesto;Vrsta;SKU;Naziv;Cena;Redna cena;Popust %;Xsell cena SLO;Marža %;NC;Zaloga"]
     for ime in sk["seznam"]:
         for i, s in enumerate(sk["izbrani"].get(ime) or [], 1):
             r = by.get(s) or {}
             pct = (sk["popust_izd"].get(ime) or {}).get(s, sk["popust"].get(ime))
             xc, xm = _xsell_popust_cena(r, pct)
-            out.append(";".join(q(v) for v in (ime, i, s, r.get("naziv", ""), r.get("cena"), r.get("redna"), pct, xc, xm, r.get("nc"), r.get("zaloga"))))
+            vrsta = "Xsell" if i == 1 else ("1+1 Bundle" if i == 2 else "")   # 2. izbrani = 1+1 Bundle na kategoriji
+            out.append(";".join(q(v) for v in (ime, i, vrsta, s, r.get("naziv", ""), r.get("cena"), r.get("redna"), pct, xc, xm, r.get("nc"), r.get("zaloga"))))
     return Response("\ufeff" + "\n".join(out), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="xsell-kategorije-{_lj_today()}.csv"'})
 

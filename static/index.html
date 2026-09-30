@@ -446,6 +446,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .xs-bp:hover{color:#fff;opacity:.9}
 .xs-bok{background:#16a34a;color:#fff;border-color:#16a34a}
 .xs-bok:hover{color:#fff;opacity:.9}
+.xs-bbnd{background:#7c3aed;color:#fff;border-color:#7c3aed}
+.xs-bbnd:hover{color:#fff;opacity:.9}
+.xs-tbl tr.bnd{background:#f5f3ff}
 .xs-paste{border:1.5px dashed var(--border);border-radius:10px;padding:9px 11px;cursor:pointer;background:var(--surface);outline:none}
 .xs-thx{position:absolute;top:-6px;right:-6px;width:18px;height:18px;line-height:1;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:11px;padding:0}
 .xs-pk{margin-left:12px;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#4c1d95;background:#ede9fe;border-radius:7px;padding:2px 4px 2px 9px}
@@ -1024,7 +1027,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-30 12:20</div>
+      <div class="sidebar-logo-sub">build 2026-09-30 12:31</div>
     </div>
   </div>
 
@@ -11483,17 +11486,18 @@ function xsKDRender() {
       k.predlogi.map(p => {
         const i = k.izbrani.indexOf(p.sku), izj = (k.popust_izd || {})[p.sku], pct = izj != null ? izj : k.popust, xp = xsPopCena(p, pct);
         const m = xp ? xp.marza : (p.nc != null ? (4.99 / 1.22 - p.nc) / (4.99 / 1.22) * 100 : null);
-        return '<tr class="' + (i >= 0 ? 'sel' : '') + '" data-ks="' + xsE(p.sku) + '"><td class="xs-rk">' + (i >= 0 ? (i + 1) : '') + '</td>' +
+        const bnd = i === 1;   // 2. izbrani = 1+1 Bundle na kategoriji
+        return '<tr class="' + (bnd ? 'bnd' : (i >= 0 ? 'sel' : '')) + '" data-ks="' + xsE(p.sku) + '"><td class="xs-rk"' + (bnd ? ' style="color:#7c3aed"' : '') + '>' + (bnd ? '1+1' : (i >= 0 ? (i + 1) : '')) + '</td>' +
           '<td><div class="xs-nm">' + (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '') + '<span title="' + xsE(p.naziv) + '">' + xsE(p.naziv) + '</span>' + (p.razlog ? '<span class="xs-why" title="💡 ' + xsE(p.razlog) + '">💡</span>' : '') + '</div></td>' +
           '<td>' + xsSkuChip(p.sku) + '</td><td class="r">' + xsNcTxt(p.nc) + '</td>' +
           '<td class="r xs-izj" data-iz="' + xsE(p.sku) + '" title="' + (xp ? xsEu(xp.redna) + ' − ' + xsPct(pct) + ' %' + (izj != null ? ' (izjema)' : '') : 'vpiši popust kategorije') + (p.akcija ? ' · zdaj v akciji ' + xsEu(p.akcija) + ' (popust gre na redno ceno)' : '') + ' · klik = izjema">' +
             (xp ? '<b>' + xsEu(xp.cena) + '</b>' + (izj != null ? '<sup style="color:#7c3aed">*</sup>' : '') + (p.akcija ? ' <span style="color:#c2410c">!</span>' : '') : '<span style="color:var(--text-tertiary)">—</span>') + '</td>' +
           '<td class="r" title="' + (xp ? 'marža pri Xsell SLO ceni' : 'marža pri 4,99 € (ni popusta)') + '">' + xsMz(m) + (xp ? '' : '<span style="color:var(--text-tertiary);font-size:10px"> @4,99</span>') + '</td>' +
           '<td class="r">' + (p.zaloga || 0) + '</td>' +
-          '<td class="r"><button class="xs-b' + (i >= 0 ? ' xs-bok' : '') + '">' + (i >= 0 ? '✓ mesto ' + (i + 1) : 'izberi') + '</button></td></tr>';
+          '<td class="r"><button class="xs-b' + (bnd ? ' xs-bbnd' : (i >= 0 ? ' xs-bok' : '')) + '">' + (i === 0 ? '✓ Xsell' : (bnd ? '🎁 1+1 Bundle' : (i >= 0 ? '✓ mesto ' + (i + 1) : 'izberi'))) + '</button></td></tr>';
       }).join('') + '</tbody></table>';
   }
-  h += '<div style="font-size:12.5px;color:var(--text-tertiary);margin-top:10px">klik na vrstico = izberi / odstrani (vrstni red = mesto) · klik na SKU = kopiraj · klik na Xsell SLO = izjema popusta · tipke: ↑↓ kategorija · 1–6 izberi · C kopiraj izbrane · Enter zaključi · Space označi</div>';
+  h += '<div style="font-size:12.5px;color:var(--text-tertiary);margin-top:10px">klik na vrstico = izberi / odstrani (1. = Xsell, 2. = 🎁 1+1 Bundle, nato mesto 3 …) · klik na SKU = kopiraj · klik na Xsell SLO = izjema popusta · tipke: ↑↓ kategorija · 1–6 izberi · C kopiraj izbrane · Enter zaključi · Space označi</div>';
   box.innerHTML = h;
 }
 document.addEventListener('click', e => {
