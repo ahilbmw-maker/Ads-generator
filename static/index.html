@@ -1044,7 +1044,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-09-30 14:58</div>
+      <div class="sidebar-logo-sub">build 2026-09-30 15:08</div>
     </div>
   </div>
 
@@ -24916,7 +24916,7 @@ function cfRenderAccountsTimeChart(rows) {
   const ctx = document.getElementById('cfChartAccountsTime').getContext('2d');
   // Top 5 računov po zadnji vrednosti
   const last = [...rows].reverse().find(r =>
-    [r.paypal, r.wise, r.intesa_hr, r.unicredit, r.intesa_slo, r.intesa_rs, r.suban].filter(v => v != null && v > 0).length > 2
+    [r.paypal, r.wise, r.intesa_hr, r.unicredit, r.intesa_slo, r.intesa_rs].filter(v => v != null && v > 0).length > 2
   ) || rows[rows.length - 1];
 
   const accountsConfig = [
@@ -24926,7 +24926,7 @@ function cfRenderAccountsTimeChart(rows) {
     {key: 'unicredit', name: 'Unicredit', color: '#ed1c24'},
     {key: 'intesa_slo', name: 'Intesa SLO', color: '#2563eb'},
     {key: 'racun_dh', name: 'Račun DH', color: '#7c3aed'},
-    {key: 'suban', name: 'Suban', color: '#f59e0b'},
+    // 'suban' (stolpec J) je vsota drugih računov (Paypal+Stripe + Intesa …) — ne prikazuj, sicer se šteje dvakrat
     {key: 'intesa_rs', name: 'Intesa RS', color: '#10b981'},
     {key: 'silux_b', name: 'Silux B', color: '#ec4899'},
     {key: 'ibkr', name: 'IBKR', color: '#d10000'},
@@ -25036,7 +25036,6 @@ function cfRenderAccountsChart(rows) {
     {name: 'IBKR', val: last.ibkr, color: '#d10000'},
     {name: 'Intesa SLO', val: last.intesa_slo, color: '#2563eb'},
     {name: 'Račun DH', val: last.racun_dh, color: '#7c3aed'},
-    {name: 'Suban', val: last.suban, color: '#f59e0b'},
     {name: 'Intesa RS', val: last.intesa_rs, color: '#10b981'},
     {name: 'Silux B', val: last.silux_b, color: '#ec4899'},
   ].filter(a => a.val != null && a.val > 0);
