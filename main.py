@@ -10911,9 +10911,10 @@ async def marza_trgi(request: Request, trg: str = "sl"):
         k = (k or "").upper()
         return obrat_by[k] if k in obrat_by else var_obrat.get(k)
 
-    def _najdi_nc(sku):
-        """točen SKU → brez suffiksa variacije (po zadnjem / prvem _) → osnova variant →
-        deli SKU-ja iz feeda (npr. LEPOTAM322-WARMSTEP1-M322 → M322)."""
+    def _najdi_nc(sku, deli=False):
+        """točen SKU → brez suffiksa variacije (po zadnjem / prvem _) → osnova variant.
+        deli=True (samo zadnja možnost, ko noben kandidat nima NC): del SKU-ja iz feeda, ki je osnova variant
+        (npr. LEPOTAM322-WARMSTEP1-M322 → M322)."""
         if not sku:
             return None, None
         u = sku.upper()
@@ -10925,11 +10926,9 @@ async def marza_trgi(request: Request, trg: str = "sl"):
                     return base, nc_by[base]
         if var_nc.get(u):
             return u, var_nc[u]
-        for t in re.split(r"[-/\s]+", u):
-            if len(t) >= 3 and t != u:
-                if nc_by.get(t):
-                    return t, nc_by[t]
-                if var_nc.get(t):
+        if deli:
+            for t in re.split(r"[-/\s]+", u):
+                if len(t) >= 3 and t != u and var_nc.get(t):
                     return t, var_nc[t]
         return None, None
 
@@ -11026,13 +11025,19 @@ async def marza_trgi(request: Request, trg: str = "sl"):
         _ro = _sku_ro.get(_cms_id(g_id, d, None, None) or "-") or _sku_ro.get(f"{trg}|{g_id}")
         if _ro and _ro.get("sku"):
             sku, nacin = _ro["sku"], "rocno"
-            nc_sku, nc = _najdi_nc(sku)
+            nc_sku, nc = _najdi_nc(sku, deli=True)
             kandidati = []
         for cand, how in kandidati:
             nc_sku, nc = _najdi_nc(cand)
             if nc:
                 sku, nacin = cand, (how if nc_sku == cand.upper() else how + "+osnova")
                 break
+        else:
+            for cand, how in kandidati:   # zadnja možnost: del SKU-ja = osnova variant (M322 iz LEPOTAM322-WARMSTEP1-M322)
+                nc_sku, nc = _najdi_nc(cand, deli=True)
+                if nc:
+                    sku, nacin = nc_sku, how + "+variante"
+                    break
         nacini[nacin or "ni"] = nacini.get(nacin or "ni", 0) + 1
         marza_eur = (neto - nc) if (neto is not None and nc) else None
         marza_pct = (marza_eur / neto * 100) if (marza_eur is not None and neto) else None
@@ -29223,6 +29228,66 @@ def _xsell_view(r: dict) -> dict:
     return {k: r.get(k) for k in ("g_id", "sku", "naziv", "url", "slika", "cena", "redna", "akcija", "nc", "zaloga", "obrat", "marza_pct", "kat", "kat_ime", "cms_id")}
 
 
+class _XsBy(dict):
+    """SKU → vrstica, ki najde tudi drugačen zapis istega SKU-ja (npr. shranjen "FUNPICROLL" ↔ trenutni
+    "1-FUNPICROLL" ali obratno). Shranjeni izbori/predlogi se tako NIKOLI ne izgubijo, če se zapis SKU-ja
+    v feedu ali prepoznavi spremeni. Dvoumni deli (isti del pri več izdelkih) se ne uporabijo."""
+
+    def __init__(self, rows):
+        super().__init__((r["sku"], r) for r in rows if r.get("sku"))
+        self._up = {k.upper(): v for k, v in self.items()}
+        self._del, dvoum = {}, set()
+        for r in rows:
+            for t in {r.get("sku") or "", r.get("nc_sku") or ""} | set(re.split(r"[-/\s]+", (r.get("sku") or "").upper())):
+                t = t.upper()
+                if len(t) < 4 or t in self._up and self._up[t] is not r:
+                    continue
+                if t in self._del and self._del[t] is not r:
+                    dvoum.add(t)
+                self._del.setdefault(t, r)
+        for t in dvoum:
+            self._del.pop(t, None)
+
+    def najdi(self, k):
+        if not k:
+            return None
+        if dict.__contains__(self, k):
+            return dict.__getitem__(self, k)
+        u = str(k).strip().upper()
+        if u in self._up:
+            return self._up[u]
+        if u in self._del:
+            return self._del[u]
+        for t in re.split(r"[-/\s]+", u):
+            if len(t) >= 4 and t != u:
+                r = self._up.get(t) or self._del.get(t)
+                if r is not None:
+                    return r
+        return None
+
+    def __contains__(self, k):
+        return self.najdi(k) is not None
+
+    def __getitem__(self, k):
+        r = self.najdi(k)
+        if r is None:
+            raise KeyError(k)
+        return r
+
+    def get(self, k, default=None):
+        r = self.najdi(k)
+        return default if r is None else r
+
+    def trenutni(self, k):
+        """Shranjeni SKU → trenutni SKU (za primerjavo v UI); neznan ostane, kot je."""
+        r = self.najdi(k)
+        return r["sku"] if r is not None else k
+
+
+def _xsell_by(rows: list) -> "_XsBy":
+    return _XsBy(rows)
+
+
 def _xsell_status(d: dict, r: dict) -> dict:
     iz = d["izdelki"].get(r["g_id"]) or {}
     kat = d["kategorije"].get(r["kat"]) or {}
@@ -29279,12 +29344,12 @@ async def xsell_izdelek(request: Request, q: str = ""):
         return {"ok": False, "error": "Izdelka ni med Maaarket izdelki v SL feedu (preveri SKU ali povezavo)."}
     d = _xsell_load()
     iz = d["izdelki"].get(main["g_id"]) or {}
-    by = {r["sku"]: r for r in rows}
+    by = _xsell_by(rows)
     predlogi = [dict(_xsell_view(by[p["sku"]]), razlog=p.get("razlog", ""), drazji=(by[p["sku"]]["nc"] or 0) > 3.0)
                 for p in (iz.get("predlogi") or []) if p.get("sku") in by]
     kat = d["kategorije"].get(main["kat"]) or {}
     return {"ok": True, "izdelek": dict(_xsell_view(main), kat_pot=main["kat_pot"]), "predlogi": predlogi,
-            "predlogi_at": iz.get("predlogi_at"), "izbran": iz.get("izbran"), "popust": iz.get("popust"),
+            "predlogi_at": iz.get("predlogi_at"), "izbran": by.trenutni(iz.get("izbran")) if iz.get("izbran") else None, "popust": iz.get("popust"),
             "kategorija": {"kat": main["kat"], "ime": main["kat_ime"],
                            "items": [_xsell_view(by[s]) for s in (kat.get("items") or []) if s in by]},
             "model": _xsell_model()[2]}
@@ -29412,9 +29477,12 @@ async def xsell_seznam(request: Request):
     except Exception as e:
         return {"ok": False, "error": str(e)}
     d = _xsell_load()
+    by = _xsell_by(rows)
     out = []
     for r in rows:
         st = _xsell_status(d, r)
+        if st["izbran"]:
+            st["izbran"] = by.trenutni(st["izbran"])
         out.append({"g_id": r["g_id"], "sku": r["sku"], "naziv": r["naziv"], "slika": r["slika"], "cena": r["cena"],
                     "zaloga": r["zaloga"], "obrat": r["obrat"], "kat_ime": r["kat_ime"], "vir": st["vir"], "izbran": st["izbran"],
                     "ima_predloge": bool((d["izdelki"].get(r["g_id"]) or {}).get("predlogi"))})
@@ -29426,7 +29494,7 @@ async def xsell_seznam(request: Request):
 async def xsell_kategorije(request: Request):
     rows = await _xsell_rows(request)
     d = _xsell_load()
-    by = {r["sku"]: r for r in rows}
+    by = _xsell_by(rows)
     kats = {}
     for r in rows:
         k = kats.setdefault(r["kat"], {"kat": r["kat"], "ime": r["kat_ime"], "pot": r["kat_pot"], "n": 0})
@@ -29434,7 +29502,7 @@ async def xsell_kategorije(request: Request):
     out = []
     for k in sorted(kats.values(), key=lambda x: -x["n"]):
         sv = d["kategorije"].get(k["kat"]) or {}
-        k["items"] = [_xsell_view(by[s]) for s in (sv.get("items") or []) if s in by]
+        k["items"] = [_xsell_view(by[s]) for s in (sv.get("items") or []) if s in by]   # by = _XsBy (tolerantno)
         k["predlogi"] = [dict(_xsell_view(by[p["sku"]]), razlog=p.get("razlog", "")) for p in (sv.get("predlogi") or []) if p.get("sku") in by]
         out.append(k)
     return {"ok": True, "kategorije": out}
@@ -29540,15 +29608,15 @@ def _xsell_popust_cena(r: dict, pct):
 @app.get("/xsell-shop-kat")
 async def xsell_shop_kat(request: Request):
     rows = await _xsell_rows(request)
-    by = {r["sku"]: r for r in rows}
+    by = _xsell_by(rows)
     d = _xsell_load()
     sk = _xsell_shop(d)
     out = []
     for ime in sk["seznam"]:
         out.append({"ime": ime,
                     "predlogi": [dict(_xsell_view(by[p["sku"]]), razlog=p.get("razlog", "")) for p in (sk["predlogi"].get(ime) or []) if p.get("sku") in by],
-                    "izbrani": [s for s in (sk["izbrani"].get(ime) or []) if s in by],
-                    "popust": sk["popust"].get(ime), "popust_izd": sk["popust_izd"].get(ime) or {},
+                    "izbrani": list(dict.fromkeys(by.trenutni(s) for s in (sk["izbrani"].get(ime) or []) if s in by)),
+                    "popust": sk["popust"].get(ime), "popust_izd": {by.trenutni(k2): v2 for k2, v2 in (sk["popust_izd"].get(ime) or {}).items()},
                     "zakljuceno": sk["zakljuceno"].get(ime)})
     sk_k, sk_nast, _ = _xsell_sezona()
     return {"ok": True, "kategorije": out, "at": sk.get("predlogi_at"), "sezona": sk_nast, "sezona_velja": sk_k,
@@ -29884,7 +29952,7 @@ async def xsell_shop_kat_popust(req: XsellShopPopustReq):
 async def xsell_shop_kat_csv(request: Request):
     from fastapi.responses import Response
     rows = await _xsell_rows(request)
-    by = {r["sku"]: r for r in rows}
+    by = _xsell_by(rows)
     d = _xsell_load()
     sk = _xsell_shop(d)
     q = lambda v: '"' + str(v if v is not None else "").replace('"', '""') + '"'
@@ -29892,10 +29960,11 @@ async def xsell_shop_kat_csv(request: Request):
     for ime in sk["seznam"]:
         for i, s in enumerate(sk["izbrani"].get(ime) or [], 1):
             r = by.get(s) or {}
-            pct = (sk["popust_izd"].get(ime) or {}).get(s, sk["popust"].get(ime))
+            _izj = {by.trenutni(k2): v2 for k2, v2 in (sk["popust_izd"].get(ime) or {}).items()}
+            pct = _izj.get(by.trenutni(s), sk["popust"].get(ime))
             xc, xm = _xsell_popust_cena(r, pct)
             vrsta = "Xsell" if i == 1 else ("1+1 Bundle" if i == 2 else "")   # 2. izbrani = 1+1 Bundle na kategoriji
-            out.append(";".join(q(v) for v in (ime, i, vrsta, s, r.get("naziv", ""), r.get("cena"), r.get("redna"), pct, xc, xm, r.get("nc"), r.get("zaloga"))))
+            out.append(";".join(q(v) for v in (ime, i, vrsta, by.trenutni(s), r.get("naziv", ""), r.get("cena"), r.get("redna"), pct, xc, xm, r.get("nc"), r.get("zaloga"))))
     return Response("\ufeff" + "\n".join(out), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="xsell-kategorije-{_lj_today()}.csv"'})
 
@@ -29906,12 +29975,12 @@ async def xsell_csv(request: Request):
     from fastapi.responses import Response
     rows = await _xsell_rows(request)
     d = _xsell_load()
-    by = {r["sku"]: r for r in rows}
+    by = _xsell_by(rows)
     out = ["SKU;Naziv;CMS ID;Xsell SKU;Xsell naziv;Vir;Kategorija;Popust %;Xsell cena SLO"]
     q = lambda v: '"' + str(v or "").replace('"', '""') + '"'
     for r in rows:
         st = _xsell_status(d, r)
-        xs = st["izbran"] or (st["kat_items"][0] if st["kat_items"] else "")
+        xs = by.trenutni(st["izbran"] or (st["kat_items"][0] if st["kat_items"] else ""))
         pct = (d["izdelki"].get(r["g_id"]) or {}).get("popust") if st["izbran"] else None
         xc = _xsell_popust_cena(by.get(xs) or {}, pct)[0] if (xs and pct is not None) else None
         out.append(";".join(q(v) for v in (r["sku"], r["naziv"], r["cms_id"], xs, (by.get(xs) or {}).get("naziv", ""), st["vir"], r["kat_ime"], pct, xc)))
