@@ -5262,6 +5262,25 @@ async def ai_proxy(data: dict):
     return {"content": [{"type": "text", "text": msg.content[0].text}]}
 
 SUPPORT_PREVOD_MODEL = "claude-sonnet-5-5"   # SLX Support Helper (vtičnik): prepoznava jezika + prevod
+_SUPPORT_BREZ_NOGE = ("BREZ zaključnega pozdrava (npr. Lep pozdrav, S spoštovanjem, Best Regards, Lijepi pozdravi, S pozdravem), "
+                      "BREZ podpisa in noge podjetja (ime agenta, »Silux podpora«, »SUBAN d.o.o.«, splet, telefon, »--«) — "
+                      "to je že samodejno v nogi e-maila. Pozdrav na začetku (npr. Dober dan) ostane. Konča se z zadnjim stavkom vsebine.")
+_PODPIS_RE = re.compile(r"(?im)^\s*(--+\s*$|lep pozdrav|lp\b|s spoštovanjem|best regards|kind regards|regards\b|lijep[ie] pozdrav|"
+                        r"srdačan pozdrav|s pozdravem|s pozdravom|s pozdrowieniami|pozdrawiam|üdvözlettel|cu stimă|с уважение|"
+                        r"με εκτίμηση|mit freundlichen grüßen|cordiali saluti|silux podpora|suban d\.o\.o)")
+
+
+def _brez_noge(t: str) -> str:
+    """Varovalka: odreže zaključni pozdrav/podpis/nogo s konca odgovora (samo v zadnji tretjini besedila)."""
+    t = (t or "").rstrip()
+    m = None
+    for m in _PODPIS_RE.finditer(t):
+        pass
+    if m and m.start() > len(t) * 0.5:
+        # poišči PRVO ujemanje v zadnjem delu (pozdrav pred podpisom) in odreži od tam
+        prvo = next((x for x in _PODPIS_RE.finditer(t) if x.start() > len(t) * 0.5), m)
+        t = t[:prvo.start()].rstrip()
+    return t
 
 
 @app.post("/support-prevod")
@@ -5279,17 +5298,27 @@ async def support_prevod(data: dict):
         prompt = (f"Prevedi spodnji odgovor podpore strankam iz slovenščine v jezik z oznako/imenom »{jezik}«. "
                   "Naravno in vljudno, kot domač govorec v podpori spletne trgovine; ohrani pomen, ton, odstavke, številke naročil, "
                   "zneske in povezave. Uporabi latinico, razen če jezik piše v cirilici/grški pisavi (bg → cirilica, el → grščina, "
-                  "sr → latinica). Vrni SAMO prevod, brez uvoda.\n\nODGOVOR:\n" + text)
+                  "sr → latinica). " + _SUPPORT_BREZ_NOGE + " Če je v besedilu zaključni pozdrav ali podpis, ga izpusti. "
+                  "Vrni SAMO prevod, brez uvoda.\n\nODGOVOR:\n" + text)
         schema = {"type": "object", "additionalProperties": False, "required": ["prevod"],
                   "properties": {"prevod": {"type": "string"}}}
     else:
         prompt = ("Spodaj je sporočilo stranke spletne trgovine (lahko vsebuje citirano prejšnjo korespondenco in podpise). "
-                  "Prepoznaj jezik, v katerem piše STRANKA, in celotno sporočilo natančno prevedi v slovenščino "
-                  "(ohrani številke naročil, imena izdelkov, zneske in strukturo). "
+                  "Prepoznaj jezik, v katerem piše STRANKA, in sporočilo prevedi v slovenščino kot PREČIŠČENO besedilo (kot v oblačku klepeta):\n"
+                  "- samo to, kar je stranka napisala: BREZ glav e-pošte (Od/Za/Datum/Zadeva/Original message), podpisov, pozdravnih "
+                  "formul na koncu, citatov prejšnjih sporočil in ponovitev (če je isto besedilo citirano večkrat, ga prevedi enkrat);\n"
+                  "- razdeli v kratke, berljive odstavke (prazna vrstica med njimi); pomen in vsa dejstva ohrani natančno;\n"
+                  "- povzetek = en kratek stavek, kaj stranka hoče;\n"
+                  "- podatki = ključni podatki iz sporočila za kopiranje (npr. številka naročila, šifra kupca, izdelek, znesek, "
+                  "IBAN/številka računa, datum nakupa/vračila, sledilna številka, ime stranke) — vrednosti dobesedno, brez izmišljanja; "
+                  "če jih ni, prazen seznam.\n"
                   "lang = ISO 639-1 (npr. hr, sr, cs, sk, hu, pl, ro, bg, el, de, it, en, sl); ime = ime jezika v slovenščini.\n\n"
                   "SPOROČILO:\n" + text)
-        schema = {"type": "object", "additionalProperties": False, "required": ["lang", "ime", "prevod"],
-                  "properties": {"lang": {"type": "string"}, "ime": {"type": "string"}, "prevod": {"type": "string"}}}
+        schema = {"type": "object", "additionalProperties": False, "required": ["lang", "ime", "povzetek", "prevod", "podatki"],
+                  "properties": {"lang": {"type": "string"}, "ime": {"type": "string"}, "povzetek": {"type": "string"},
+                                 "prevod": {"type": "string"},
+                                 "podatki": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                                             "required": ["k", "v"], "properties": {"k": {"type": "string"}, "v": {"type": "string"}}}}}}
     loop = asyncio.get_event_loop()
     try:
         msg = await loop.run_in_executor(None, lambda: client.messages.create(
@@ -5301,6 +5330,8 @@ async def support_prevod(data: dict):
         out = json.loads(next((b.text for b in msg.content if getattr(b, "type", "") == "text"), "{}"))
     except Exception as e:
         return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
+    if smer == "iz_slo" and out.get("prevod"):
+        out["prevod"] = _brez_noge(out["prevod"])
     return {"ok": True, **out}
 
 
@@ -5337,8 +5368,8 @@ async def support_odgovor(data: dict):
               "sr v latinici). Dodaj še natančno slovensko različico istega odgovora, da jo agent preveri.\n"
               "PRAVILA: vsebinsko se drži SAMO navodila agenta — ničesar ne dodajaj, česar ni naročil (brez obljub povračila, "
               "kompenzacije, rokov, sledilnih številk ali pravil, ki jih ni v navodilu); vljuden, topel, jasen in kratek ton "
-              "(pozdrav, 2–5 stavkov vsebine, zahvala/pozdrav na koncu); naslovi stranko po imenu, če je ime v sporočilu; "
-              "odgovori na njeno konkretno situacijo; brez podpisa z imenom agenta.\n"
+              "(pozdrav na začetku, 2–5 stavkov vsebine, po potrebi kratka zahvala za razumevanje kot zadnji stavek); naslovi stranko po imenu, če je ime v sporočilu; "
+              "odgovori na njeno konkretno situacijo; " + _SUPPORT_BREZ_NOGE + "\n"
               + (f"\nNAVODILO AGENTA:\n{navodilo}\n" if navodilo else "")
               + (f"\nPRIMERI PODOBNIH ODGOVOROV IZ NAŠE PODPORE (za ton, ne kopiraj dobesedno):\n{prim_txt}\n" if prim_txt else "")
               + (f"\nSPOROČILO STRANKE (izvirnik):\n{orig}\n" if orig else "")
@@ -5358,7 +5389,7 @@ async def support_odgovor(data: dict):
         out = json.loads(next((b.text for b in msg.content if getattr(b, "type", "") == "text"), "{}"))
     except Exception as e:
         return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
-    return {"ok": True, "odgovor": out.get("odgovor", ""), "odgovor_sl": out.get("odgovor_sl", ""), "primeri": len(primeri)}
+    return {"ok": True, "odgovor": _brez_noge(out.get("odgovor", "")), "odgovor_sl": _brez_noge(out.get("odgovor_sl", "")), "primeri": len(primeri)}
 
 
 @app.post("/kayako-kb-search")
