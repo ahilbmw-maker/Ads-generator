@@ -11267,17 +11267,24 @@ async function load(){
   const fx=Object.entries(D.tecaji||{}).filter(([v])=>v!=='EUR').map(([v,r])=>'1 € = '+(r?r.toLocaleString('sl-SI'):'?')+' '+v).join(' · ');
   document.getElementById('fxInfo').textContent='DDV '+D.ddv+' %'+(fx?' · '+fx:'');
   D.rows.forEach((r,i)=>r._i=i);
-  const neg=D.rows.filter(r=>r.marza_pct!=null&&r.marza_pct<0).length;
+  drawStats();
+  render();
+}
+// kazalniki v glavi: samo izbrane znamke (npr. Maaarket) — nič izbranega = vse
+function drawStats(){
+  const R=D.rows.filter(x=>!ZN.size||ZN.has(x.znamka||'(prazno)'));
+  const zNc=R.filter(r=>r.marza_pct!=null), neg=zNc.filter(r=>r.marza_pct<0).length;
+  const povp=zNc.length?Math.round(zNc.reduce((a,r)=>a+r.marza_pct,0)/zNc.length*10)/10:null;
+  let zan=0,ug=0; R.forEach(r=>{const k=r.nacin||'ni'; if(k==='ni')return; if(k.startsWith('slika'))ug++; else zan++;});
+  const zn=ZN.size?' title="Samo izbrane znamke: '+esc([...ZN].join(', '))+'"':'';
   document.getElementById('stats').innerHTML=
-    '<div class="st"><b>'+D.st.toLocaleString('sl-SI')+'</b><span>izdelkov</span></div>'+
-    '<div class="st"><b>'+(D.povp_marza==null?'—':D.povp_marza.toLocaleString('sl-SI')+' %')+'</b><span>povp. marža</span></div>'+
-    '<div class="st"><b style="color:#b91c1c">'+neg+'</b><span>negativnih</span></div>'+
-    '<div class="st" title="Ni v zalogi"><b style="color:#c2410c">'+D.st_brez_nc+'</b><span>brez NC</span></div>'+
-    (function(){const n=D.nacini||{};let zan=0,ug=0;Object.entries(n).forEach(([k,v])=>{if(k==='ni')return;if(k.startsWith('slika'))ug+=v;else zan+=v;});
-      return '<div class="st" title="SKU zanesljivo (ID/znamka/mpn) / ugibanje iz slike"><b><span style="color:#15803d">'+zan+'</span><span style="color:var(--txt3);font-weight:400"> / </span><span style="color:#a16207">'+ug+'</span></b><span>zanesljivo / ugib</span></div>';})()+
+    '<div class="st"'+zn+'><b>'+R.length.toLocaleString('sl-SI')+'</b><span>izdelkov'+(ZN.size?' ('+esc([...ZN].join(', '))+')':'')+'</span></div>'+
+    '<div class="st"'+zn+'><b>'+(povp==null?'—':povp.toLocaleString('sl-SI')+' %')+'</b><span>povp. marža</span></div>'+
+    '<div class="st"'+zn+'><b style="color:#b91c1c">'+neg+'</b><span>negativnih</span></div>'+
+    '<div class="st" title="Ni v zalogi"><b style="color:#c2410c">'+(R.length-zNc.length)+'</b><span>brez NC</span></div>'+
+    '<div class="st" title="SKU zanesljivo (ID/znamka/mpn) / ugibanje iz slike"><b><span style="color:#15803d">'+zan+'</span><span style="color:var(--txt3);font-weight:400"> / </span><span style="color:#a16207">'+ug+'</span></b><span>zanesljivo / ugib</span></div>'+
     '<div class="znb" id="znBox"></div>';
   drawZn();
-  render();
 }
 function filtered(){
   const q=(document.getElementById('q').value||'').toLowerCase().trim(), z=document.getElementById('naZal').checked;
@@ -11423,7 +11430,7 @@ function drawZn(){
 document.addEventListener('click',e=>{const b=e.target.closest('[data-zn]'); if(!b) return;
   const k=b.getAttribute('data-zn');
   if(k==='__vse') ZN.clear(); else if(ZN.has(k)) ZN.delete(k); else ZN.add(k);
-  lim=300; savePref(); drawZn(); render();});
+  lim=300; savePref(); drawStats(); render();});
 // ── povečava slike ob prehodu z miško (za preverjanje ugibanja SKU) ──
 (function(){
   const z=document.createElement('div'); z.id='zoom'; z.innerHTML='<img alt=""><div class="zc"></div>'; document.body.appendChild(z);
