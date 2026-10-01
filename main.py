@@ -5290,9 +5290,10 @@ async def support_prevod(data: dict):
     Vtičnik kliče s piškotkom prijave v suban.ai (credentials: include)."""
     text = str((data or {}).get("text") or "").strip()
     smer = (data or {}).get("smer") or "v_slo"
+    stran = bool((data or {}).get("stran"))   # cela stran zahtevka (Kayako …) → poišči zadnje sporočilo stranke
     if not text:
         return {"ok": False, "error": "Ni besedila."}
-    text = text[:12000]
+    text = re.sub(r"\n\s*\n\s*(\n\s*)+", "\n\n", text)[:24000 if stran else 12000]   # stisni prazne vrstice
     if smer == "iz_slo":
         jezik = str((data or {}).get("jezik") or "").strip() or "hr"
         prompt = (f"Prevedi spodnji odgovor podpore strankam iz slovenščine v jezik z oznako/imenom »{jezik}«. "
@@ -5313,7 +5314,11 @@ async def support_prevod(data: dict):
                   "IBAN/številka računa, datum nakupa/vračila, sledilna številka, ime stranke) — vrednosti dobesedno, brez izmišljanja; "
                   "če jih ni, prazen seznam.\n"
                   "lang = ISO 639-1 (npr. hr, sr, cs, sk, hu, pl, ro, bg, el, de, it, en, sl); ime = ime jezika v slovenščini.\n\n"
-                  "SPOROČILO:\n" + text)
+                  + ("POZOR: spodaj je CELOTNO besedilo strani zahtevka v sistemu podpore (meniji, gumbi, glave, več sporočil, "
+                     "odgovori naše podpore, obrazci »povpraševanje«, noge, priponke). Najdi ZADNJE (najnovejše po datumu) sporočilo "
+                     "STRANKE — ne odgovorov naše podpore/agentov — določi njegov začetek in konec ter prevedi samo njega. "
+                     "Podatke iz obrazca (ime, e-mail, model, izdelek) daj v podatki. Vse ostalo ignoriraj.\n\nCELA STRAN:\n"
+                     if stran else "SPOROČILO:\n") + text)
         schema = {"type": "object", "additionalProperties": False, "required": ["lang", "ime", "povzetek", "prevod", "podatki"],
                   "properties": {"lang": {"type": "string"}, "ime": {"type": "string"}, "povzetek": {"type": "string"},
                                  "prevod": {"type": "string"},
