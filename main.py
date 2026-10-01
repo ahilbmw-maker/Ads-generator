@@ -5261,6 +5261,106 @@ async def ai_proxy(data: dict):
     )
     return {"content": [{"type": "text", "text": msg.content[0].text}]}
 
+SUPPORT_PREVOD_MODEL = "claude-sonnet-5-5"   # SLX Support Helper (vtičnik): prepoznava jezika + prevod
+
+
+@app.post("/support-prevod")
+async def support_prevod(data: dict):
+    """SLX Support Helper: smer "v_slo" = prepoznaj jezik + prevedi v slovenščino;
+    smer "iz_slo" = prevedi slovenski odgovor v jezik stranke (jezik = ISO2 ali ime).
+    Vtičnik kliče s piškotkom prijave v suban.ai (credentials: include)."""
+    text = str((data or {}).get("text") or "").strip()
+    smer = (data or {}).get("smer") or "v_slo"
+    if not text:
+        return {"ok": False, "error": "Ni besedila."}
+    text = text[:12000]
+    if smer == "iz_slo":
+        jezik = str((data or {}).get("jezik") or "").strip() or "hr"
+        prompt = (f"Prevedi spodnji odgovor podpore strankam iz slovenščine v jezik z oznako/imenom »{jezik}«. "
+                  "Naravno in vljudno, kot domač govorec v podpori spletne trgovine; ohrani pomen, ton, odstavke, številke naročil, "
+                  "zneske in povezave. Uporabi latinico, razen če jezik piše v cirilici/grški pisavi (bg → cirilica, el → grščina, "
+                  "sr → latinica). Vrni SAMO prevod, brez uvoda.\n\nODGOVOR:\n" + text)
+        schema = {"type": "object", "additionalProperties": False, "required": ["prevod"],
+                  "properties": {"prevod": {"type": "string"}}}
+    else:
+        prompt = ("Spodaj je sporočilo stranke spletne trgovine (lahko vsebuje citirano prejšnjo korespondenco in podpise). "
+                  "Prepoznaj jezik, v katerem piše STRANKA, in celotno sporočilo natančno prevedi v slovenščino "
+                  "(ohrani številke naročil, imena izdelkov, zneske in strukturo). "
+                  "lang = ISO 639-1 (npr. hr, sr, cs, sk, hu, pl, ro, bg, el, de, it, en, sl); ime = ime jezika v slovenščini.\n\n"
+                  "SPOROČILO:\n" + text)
+        schema = {"type": "object", "additionalProperties": False, "required": ["lang", "ime", "prevod"],
+                  "properties": {"lang": {"type": "string"}, "ime": {"type": "string"}, "prevod": {"type": "string"}}}
+    loop = asyncio.get_event_loop()
+    try:
+        msg = await loop.run_in_executor(None, lambda: client.messages.create(
+            model=SUPPORT_PREVOD_MODEL, max_tokens=8000,
+            output_config={"effort": "low", "format": {"type": "json_schema", "schema": schema}},
+            messages=[{"role": "user", "content": prompt}]))
+        if getattr(msg, "stop_reason", "") == "refusal":
+            return {"ok": False, "error": "Model je zavrnil zahtevo."}
+        out = json.loads(next((b.text for b in msg.content if getattr(b, "type", "") == "text"), "{}"))
+    except Exception as e:
+        return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
+    return {"ok": True, **out}
+
+
+@app.post("/support-odgovor")
+async def support_odgovor(data: dict):
+    """SLX Support Helper: agent napiše kratko NAVODILO (npr. "ok odgovori stranki da lahko vrne") →
+    Sonnet 5.5 spesni popoln odgovor v JEZIKU STRANKE + slovensko različico za preverjanje.
+    popravek = agentov popravek prejšnjega odgovora (kot v klepetu: "bolj kratko", "dodaj da je brezplačno").
+    Kontekst: izvirno sporočilo + SLO prevod, kot primeri najbolj podobni pari iz baze znanja Kayako."""
+    navodilo = str((data or {}).get("navodilo") or "").strip()[:3000]
+    orig = str((data or {}).get("sporocilo") or "").strip()[:8000]
+    sl = str((data or {}).get("sporocilo_sl") or "").strip()[:8000]
+    jezik = str((data or {}).get("jezik") or "").strip() or "hr"
+    prejsnji = str((data or {}).get("prejsnji") or "").strip()[:6000]
+    popravek = str((data or {}).get("popravek") or "").strip()[:2000]
+    if not navodilo and not popravek:
+        return {"ok": False, "error": "Napiši, kaj naj odgovorim."}
+    primeri = []
+    besede = [w for w in re.findall(r"\w{4,}", (sl or orig or navodilo).lower())][:60]
+    for f in KB_FILES.values():
+        try:
+            for p in (json.loads(f.read_text(encoding="utf-8")).get("qa_pairs") or []) if f.exists() else []:
+                hay = (str(p.get("subject", "")) + " " + str(p.get("question", "")) + " " + str(p.get("answer", ""))).lower()
+                sc = sum(1 for w in besede if w in hay)
+                if sc >= 3:
+                    primeri.append((sc, p))
+        except Exception:
+            pass
+    primeri = [p for _, p in sorted(primeri, key=lambda x: -x[0])[:4]]
+    prim_txt = "\n\n".join(f"VPRAŠANJE: {str(p.get('question', ''))[:500]}\nODGOVOR: {str(p.get('answer', ''))[:700]}" for p in primeri)
+    prompt = ("Si izkušen agent podpore strankam spletne trgovine (Maaarket / Silux). Agent ti je v kratkem napisal, KAJ naj "
+              "odgovoriš stranki. Iz tega napiši popoln, lep odgovor stranki.\n"
+              f"JEZIK ODGOVORA: {jezik} — piši kot domač govorec (pravilni sklici, vikanje, ločila; bg v cirilici, el v grščini, "
+              "sr v latinici). Dodaj še natančno slovensko različico istega odgovora, da jo agent preveri.\n"
+              "PRAVILA: vsebinsko se drži SAMO navodila agenta — ničesar ne dodajaj, česar ni naročil (brez obljub povračila, "
+              "kompenzacije, rokov, sledilnih številk ali pravil, ki jih ni v navodilu); vljuden, topel, jasen in kratek ton "
+              "(pozdrav, 2–5 stavkov vsebine, zahvala/pozdrav na koncu); naslovi stranko po imenu, če je ime v sporočilu; "
+              "odgovori na njeno konkretno situacijo; brez podpisa z imenom agenta.\n"
+              + (f"\nNAVODILO AGENTA:\n{navodilo}\n" if navodilo else "")
+              + (f"\nPRIMERI PODOBNIH ODGOVOROV IZ NAŠE PODPORE (za ton, ne kopiraj dobesedno):\n{prim_txt}\n" if prim_txt else "")
+              + (f"\nSPOROČILO STRANKE (izvirnik):\n{orig}\n" if orig else "")
+              + (f"\nSPOROČILO STRANKE (slovenski prevod):\n{sl}\n" if sl else "")
+              + (f"\nTVOJ PREJŠNJI ODGOVOR:\n{prejsnji}\n\nAGENTOV POPRAVEK (upoštevaj ga in napiši izboljšan celoten odgovor; "
+                 f"ostalo ohrani):\n{popravek}\n" if (prejsnji and popravek) else ""))
+    schema = {"type": "object", "additionalProperties": False, "required": ["odgovor", "odgovor_sl"],
+              "properties": {"odgovor": {"type": "string"}, "odgovor_sl": {"type": "string"}}}
+    loop = asyncio.get_event_loop()
+    try:
+        msg = await loop.run_in_executor(None, lambda: client.messages.create(
+            model=SUPPORT_PREVOD_MODEL, max_tokens=8000,
+            output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
+            messages=[{"role": "user", "content": prompt}]))
+        if getattr(msg, "stop_reason", "") == "refusal":
+            return {"ok": False, "error": "Model je zavrnil zahtevo."}
+        out = json.loads(next((b.text for b in msg.content if getattr(b, "type", "") == "text"), "{}"))
+    except Exception as e:
+        return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
+    return {"ok": True, "odgovor": out.get("odgovor", ""), "odgovor_sl": out.get("odgovor_sl", ""), "primeri": len(primeri)}
+
+
 @app.post("/kayako-kb-search")
 async def kayako_kb_search(data: dict):
     """Poišče top N relevantnih Q&A parov iz KB za dano vprašanje."""
