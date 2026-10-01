@@ -29155,6 +29155,7 @@ async def ai_poraba(request: Request):
             "vse": _obdobje(log, meseci, lambda a: a[:7], lambda k: k[5:7] + "/" + k[2:4])}
 
 
+XSELL_POPUST_PRIVZETO = 50   # popust na redno ceno, ko ni nastavljen (UI: XS_POP_DEF) — v CSV in prikazu
 XSELL_MIN_ZALOGA = 20   # dodatek mora imeti vsaj toliko kosov na zalogi (sicer ni kandidat)
 XSELL_MODELI = {   # izbira v UI (xsell.json["nastavitve"]["model"]); Sonnet 5.5 = pol cene, višji effort
     "sonnet": ("claude-sonnet-5-5", "high", "Sonnet 5.5"),
@@ -29350,6 +29351,7 @@ async def xsell_izdelek(request: Request, q: str = ""):
     kat = d["kategorije"].get(main["kat"]) or {}
     return {"ok": True, "izdelek": dict(_xsell_view(main), kat_pot=main["kat_pot"]), "predlogi": predlogi,
             "predlogi_at": iz.get("predlogi_at"), "izbran": by.trenutni(iz.get("izbran")) if iz.get("izbran") else None, "popust": iz.get("popust"),
+            "n_zavrnjeni": len(iz.get("zavrnjeni") or []),
             "kategorija": {"kat": main["kat"], "ime": main["kat_ime"],
                            "items": [_xsell_view(by[s]) for s in (kat.get("items") or []) if s in by]},
             "model": _xsell_model()[2]}
@@ -29391,12 +29393,16 @@ SEZNAM A (SKU | naziv | nabavna cena | zaloga | kategorija):
 
 SEZNAM B — dražja nabava (NC 3–5 €):
 {chr(10).join(_xsell_cand_line(r) for r in B) or "(prazno)"}"""
+    # ponovni predlog: prejšnji predlogi, ki niso izbrani, so "zavrnjeni" → ne predlagaj jih več (zbira se, dokler ne ponastaviš)
+    _iz0 = _xsell_load()["izdelki"].get(main["g_id"]) or {}
+    _izb = str(_iz0.get("izbran") or "").upper()
+    zavr = ({str(x).upper() for x in (_iz0.get("zavrnjeni") or [])} | {str(p.get("sku") or "").upper() for p in (_iz0.get("predlogi") or [])}) - {_izb, ""}
     prompt = f"""GLAVNI IZDELEK:
 - SKU: {main["sku"]}
 - naziv: {main["naziv"]}
 - cena: {(main["cena"] or 0):.2f} €
 - kategorija: {main["kat_pot"] or main["kat_ime"]}
-- opis: {main["opis"]}"""
+- opis: {main["opis"]}""" + (("\n\nŽE PREDLAGANI IN ZAVRNJENI — teh NE predlagaj več, poišči druge: " + ", ".join(sorted(zavr))) if zavr else "")
     schema = {"type": "object", "additionalProperties": False, "required": ["predlogi"],
               "properties": {"predlogi": {"type": "array", "items": {
                   "type": "object", "additionalProperties": False, "required": ["sku", "razlog", "drazji"],
@@ -29406,7 +29412,7 @@ SEZNAM B — dražja nabava (NC 3–5 €):
         out = await loop.run_in_executor(None, lambda: _xsell_opus(prompt, schema, "izdelek", stalno))
     except Exception as e:
         return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
-    by = {r["sku"]: r for r in A + B if r["g_id"] != main["g_id"] and r["sku"] not in base}
+    by = {r["sku"]: r for r in A + B if r["g_id"] != main["g_id"] and r["sku"] not in base and r["sku"].upper() not in zavr}
     seen, predlogi = set(), []
     for p in out.get("predlogi") or []:
         s = str(p.get("sku") or "").strip().upper()
@@ -29415,10 +29421,28 @@ SEZNAM B — dražja nabava (NC 3–5 €):
             predlogi.append({"sku": s, "razlog": str(p.get("razlog") or "")[:300], "drazji": (by[s]["nc"] or 0) > 3.0})
     d = _xsell_load()
     iz = d["izdelki"].setdefault(main["g_id"], {})
-    iz.update({"sku": main["sku"], "naziv": main["naziv"], "predlogi": predlogi, "predlogi_at": _lj_iso()})
+    iz.update({"sku": main["sku"], "naziv": main["naziv"], "predlogi": predlogi, "predlogi_at": _lj_iso(), "zavrnjeni": sorted(zavr)})
     _xsell_save(d)
     return {"ok": True, "predlogi": [dict(_xsell_view(by[p["sku"]]), razlog=p["razlog"], drazji=p["drazji"]) for p in predlogi],
-            "predlogi_at": iz["predlogi_at"], "n_a": len(A), "n_b": len(B), "model": _xsell_model()[2], "usd": out.get("_usd")}
+            "predlogi_at": iz["predlogi_at"], "n_a": len(A), "n_b": len(B), "model": _xsell_model()[2], "usd": out.get("_usd"),
+            "n_zavrnjeni": len(zavr)}
+
+
+class XsellZavrReq(BaseModel):
+    g_id: Optional[str] = None     # izdelek
+    ime: Optional[str] = None      # ali kategorija trgovine
+
+
+@app.post("/xsell-zavrnjeni-reset")
+async def xsell_zavrnjeni_reset(req: XsellZavrReq):
+    """Pozabi zavrnjene predloge (izdelek ali kategorija) — naslednji predlog lahko spet izbere iz vseh."""
+    d = _xsell_load()
+    if req.g_id:
+        (d["izdelki"].get(str(req.g_id)) or {}).pop("zavrnjeni", None)
+    elif req.ime:
+        _xsell_shop(d).get("zavrnjeni", {}).pop(req.ime, None)
+    _xsell_save(d)
+    return {"ok": True}
 
 
 class XsellShraniReq(BaseModel):
@@ -29588,6 +29612,7 @@ def _xsell_shop(d: dict) -> dict:
     sk.setdefault("popust", {})        # {kategorija: % popusta na redno ceno} — kot "Popust na ceno" v CMS
     sk.setdefault("popust_izd", {})    # {kategorija: {sku: %}} — izjeme za posamezen dodatek
     sk.setdefault("zakljuceno", {})    # {kategorija: čas} — Xsell določen, kategorija zaprta
+    sk.setdefault("zavrnjeni", {})     # {kategorija: [sku]} — prej predlagani, ne izbrani → ponovni predlog jih ne ponudi
     return sk
 
 
@@ -29617,7 +29642,7 @@ async def xsell_shop_kat(request: Request):
                     "predlogi": [dict(_xsell_view(by[p["sku"]]), razlog=p.get("razlog", "")) for p in (sk["predlogi"].get(ime) or []) if p.get("sku") in by],
                     "izbrani": list(dict.fromkeys(by.trenutni(s) for s in (sk["izbrani"].get(ime) or []) if s in by)),
                     "popust": sk["popust"].get(ime), "popust_izd": {by.trenutni(k2): v2 for k2, v2 in (sk["popust_izd"].get(ime) or {}).items()},
-                    "zakljuceno": sk["zakljuceno"].get(ime)})
+                    "zakljuceno": sk["zakljuceno"].get(ime), "zavrnjeni": len(sk["zavrnjeni"].get(ime) or [])})
     sk_k, sk_nast, _ = _xsell_sezona()
     return {"ok": True, "kategorije": out, "at": sk.get("predlogi_at"), "sezona": sk_nast, "sezona_velja": sk_k,
             "sezona_auto": _xsell_sezona_auto(), "sezone": {k: v[0] for k, v in XSELL_SEZONE.items()}}
@@ -29682,8 +29707,16 @@ KANDIDATI (SKU | naziv | nabavna cena | zaloga | Google kategorija):
 
     sez = _xsell_sezona()[2]
 
+    # ponovni predlog: prejšnji predlogi kategorije, ki niso izbrani → ne predlagaj jih več
+    zav = {}
+    for ime in imena:
+        _izb = {str(x).upper() for x in (sk["izbrani"].get(ime) or [])}
+        zav[ime] = ({str(x).upper() for x in (sk["zavrnjeni"].get(ime) or [])}
+                    | {str(p.get("sku") or "").upper() for p in (sk["predlogi"].get(ime) or [])}) - _izb - {""}
+
     def _paket(kos):
-        prompt = (sez + "\n\n" if sez else "") + "KATEGORIJE:\n" + "\n".join("- " + k for k in kos)
+        prompt = (sez + "\n\n" if sez else "") + "KATEGORIJE:\n" + "\n".join(
+            "- " + k + ((" (že zavrnjeni — NE predlagaj: " + ", ".join(sorted(zav.get(k) or [])) + ")") if zav.get(k) else "") for k in kos)
         return _xsell_opus(prompt, schema, "shop_kat", stalno)
 
     loop = asyncio.get_event_loop()
@@ -29707,9 +29740,11 @@ KANDIDATI (SKU | naziv | nabavna cena | zaloga | Google kategorija):
             seen, pl = set(), []
             for p in k.get("predlogi") or []:
                 s = str(p.get("sku") or "").strip().upper()
-                if s in by and s not in seen:
+                if s in by and s not in seen and s not in zav.get(ime, set()):
                     seen.add(s); pl.append({"sku": s, "razlog": str(p.get("razlog") or "")[:300]})
             sk["predlogi"][ime] = pl
+            if zav.get(ime):
+                sk["zavrnjeni"][ime] = sorted(zav[ime])
             n += 1
     sk["predlogi_at"] = _lj_iso()
     _xsell_save(d)
@@ -29961,7 +29996,7 @@ async def xsell_shop_kat_csv(request: Request):
         for i, s in enumerate(sk["izbrani"].get(ime) or [], 1):
             r = by.get(s) or {}
             _izj = {by.trenutni(k2): v2 for k2, v2 in (sk["popust_izd"].get(ime) or {}).items()}
-            pct = _izj.get(by.trenutni(s), sk["popust"].get(ime))
+            pct = _izj.get(by.trenutni(s), sk["popust"].get(ime, XSELL_POPUST_PRIVZETO))
             xc, xm = _xsell_popust_cena(r, pct)
             vrsta = "Xsell" if i == 1 else ("1+1 Bundle" if i == 2 else "")   # 2. izbrani = 1+1 Bundle na kategoriji
             out.append(";".join(q(v) for v in (ime, i, vrsta, by.trenutni(s), r.get("naziv", ""), r.get("cena"), r.get("redna"), pct, xc, xm, r.get("nc"), r.get("zaloga"))))
@@ -29981,7 +30016,7 @@ async def xsell_csv(request: Request):
     for r in rows:
         st = _xsell_status(d, r)
         xs = by.trenutni(st["izbran"] or (st["kat_items"][0] if st["kat_items"] else ""))
-        pct = (d["izdelki"].get(r["g_id"]) or {}).get("popust") if st["izbran"] else None
+        pct = (d["izdelki"].get(r["g_id"]) or {}).get("popust", XSELL_POPUST_PRIVZETO) if st["izbran"] else None
         xc = _xsell_popust_cena(by.get(xs) or {}, pct)[0] if (xs and pct is not None) else None
         out.append(";".join(q(v) for v in (r["sku"], r["naziv"], r["cms_id"], xs, (by.get(xs) or {}).get("naziv", ""), st["vir"], r["kat_ime"], pct, xc)))
     return Response("﻿" + "\n".join(out), media_type="text/csv; charset=utf-8",
