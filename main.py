@@ -15797,6 +15797,27 @@ def extract_skus_from_text(text: str, known_skus: set = None) -> list[str]:
     return tokens
 
 
+# Ime ad accounta iz CSV / vpisnega polja → pravo ime iz TARGET_ACCOUNTS (Obrat 7 dni, stolpci v tabeli).
+# Brez tega npr. Colibri BM izvoz ("Colibrishop", "ColibriShop EU") ustvari nov account, ki ga Obrat 7 dni ne vidi.
+META_ACC_VZDEVKI = {"colibrishop": "Colibrishop_EU", "colibri": "Colibrishop_EU", "colibrishopeu": "Colibrishop_EU"}
+
+
+def _meta_acc_key(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+
+
+def _meta_canon_account(name: str) -> str:
+    """Natančno ujemanje brez velikih/malih črk, presledkov, _ . - ; nato vzdevki. Neznano ime ostane, kot je."""
+    n = (name or "").strip()
+    k = _meta_acc_key(n)
+    if not k:
+        return n
+    for t in TARGET_ACCOUNTS:
+        if _meta_acc_key(t) == k:
+            return t
+    return META_ACC_VZDEVKI.get(k, n)
+
+
 @app.post("/analiza-meta-upload")
 async def analiza_meta_upload(file: UploadFile = File(...), account_name: str = Form("")):
     """Sprejme CSV iz FB Ads Manager export, DODA k obstoječim (accumulate po Campaign name unikatnosti).
@@ -15817,11 +15838,14 @@ async def analiza_meta_upload(file: UploadFile = File(...), account_name: str = 
             return JSONResponse({"error": "CSV nima veljavnih vrstic."}, status_code=400)
 
         # Če CSV nima Account name (ali je prazen) IN je podan account_name → napolni
-        acc_override = (account_name or "").strip()
+        acc_override = _meta_canon_account(account_name)
         if acc_override:
             for r in new_rows:
                 if not (r.get('Account name') or '').strip():
                     r['Account name'] = acc_override
+        for r in new_rows:   # poenoti ime accounta (Colibrishop → Colibrishop_EU …)
+            if (r.get('Account name') or '').strip():
+                r['Account name'] = _meta_canon_account(r['Account name'])
 
         headers = list(new_rows[0].keys())
         if 'Account name' not in headers:
@@ -15836,6 +15860,16 @@ async def analiza_meta_upload(file: UploadFile = File(...), account_name: str = 
                 ex_reader = _csv.DictReader(_SIO(ex_text), delimiter=ex_sep)
                 existing_rows = [r for r in ex_reader if r.get('Campaign name', '').strip()]
             except: pass
+        for r in existing_rows:   # popravi tudi že naložene (združi podvojene accounte)
+            if (r.get('Account name') or '').strip():
+                r['Account name'] = _meta_canon_account(r['Account name'])
+        # po poenotenju odstrani podvojene obstoječe vrstice
+        _seen, _ex = set(), []
+        for r in existing_rows:
+            _k = (r.get('Campaign name','').strip(), r.get('Account name','').strip(), r.get('Reporting starts','').strip())
+            if _k not in _seen:
+                _seen.add(_k); _ex.append(r)
+        existing_rows = _ex
 
         # Deduplikacija: ključ = Campaign name + Account name + Reporting starts
         def row_key(r):
@@ -15877,9 +15911,11 @@ async def analiza_meta_upload(file: UploadFile = File(...), account_name: str = 
 
         # Zberi accounte iz merged podatkov
         accounts = sorted(set(r.get('Account name','').strip() for r in merged if r.get('Account name','').strip()))
+        nov_acc = sorted({(r.get('Account name') or '').strip() for r in new_rows} - set(TARGET_ACCOUNTS) - {""})
 
         return {
             "status": "ok",
+            "neznani_accounti": nov_acc,   # niso v TARGET_ACCOUNTS → Obrat 7 dni jih ne prikaže
             "rows_added": len(added),
             "rows_total": len(merged),
             "uploaded_at": meta["uploaded_at"],
