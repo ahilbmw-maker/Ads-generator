@@ -10888,8 +10888,32 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             else:
                 ext_sku.add(sku)
 
+    # Variante: v zalogi so samo SKU_xx (npr. M322_39 … M322_45), osnovnega M322 ni → seštevek po osnovi
+    # (obrat in zaloga = vsota variant, NC = povprečje variant z NC). Uporabi se, ko točnega SKU-ja ni.
+    var_obrat, var_zal, _var_nc = {}, {}, {}
+    for _sk in set(zal_by) | set(obrat_by):
+        if "_" not in _sk:
+            continue
+        _b = _sk.rsplit("_", 1)[0]
+        if not _b or _b in zal_by or _b in obrat_by:
+            continue
+        var_zal[_b] = var_zal.get(_b, 0) + (zal_by.get(_sk) or 0)
+        var_obrat[_b] = var_obrat.get(_b, 0) + (obrat_by.get(_sk) or 0)
+        if nc_by.get(_sk):
+            _var_nc.setdefault(_b, []).append(nc_by[_sk])
+    var_nc = {b: round(sum(v) / len(v), 2) for b, v in _var_nc.items()}
+
+    def _zal(k):
+        k = (k or "").upper()
+        return zal_by[k] if k in zal_by else var_zal.get(k, 0)
+
+    def _obr(k):
+        k = (k or "").upper()
+        return obrat_by[k] if k in obrat_by else var_obrat.get(k)
+
     def _najdi_nc(sku):
-        """točen SKU → brez suffiksa variacije (po zadnjem / prvem _)."""
+        """točen SKU → brez suffiksa variacije (po zadnjem / prvem _) → osnova variant →
+        deli SKU-ja iz feeda (npr. LEPOTAM322-WARMSTEP1-M322 → M322)."""
         if not sku:
             return None, None
         u = sku.upper()
@@ -10899,6 +10923,14 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             for base in (u.rsplit("_", 1)[0], u.split("_", 1)[0]):
                 if nc_by.get(base):
                     return base, nc_by[base]
+        if var_nc.get(u):
+            return u, var_nc[u]
+        for t in re.split(r"[-/\s]+", u):
+            if len(t) >= 3 and t != u:
+                if nc_by.get(t):
+                    return t, nc_by[t]
+                if var_nc.get(t):
+                    return t, var_nc[t]
         return None, None
 
     def _je_parser(sk, how, brand=""):
@@ -11013,8 +11045,8 @@ async def marza_trgi(request: Request, trg: str = "sl"):
             "nc": round(nc, 2) if nc else None,
             "marza_eur": round(marza_eur, 2) if marza_eur is not None else None,
             "marza_pct": round(marza_pct, 1) if marza_pct is not None else None,
-            "zaloga": zal_by.get((nc_sku or sku or "").upper(), 0),
-            "obrat": obrat_by.get((nc_sku or sku or "").upper()),
+            "zaloga": _zal(nc_sku or sku),
+            "obrat": _obr(nc_sku or sku),
             "trajanje": traj_by.get((nc_sku or sku or "").upper()),
             "nacin": nacin,
             "parser": _je_parser(nc_sku or sku, nacin, d.get("brand")),
