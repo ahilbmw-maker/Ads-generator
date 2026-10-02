@@ -96,11 +96,12 @@ def _ai_funkcija() -> str:
     return "?"
 
 
-def _ai_log(vir: str, model: str, funkcija: str = "", inp: int = 0, out: int = 0, usd: float = 0.0, enota: str = "žetoni"):
-    """Doda en zapis v /data/ai_usage.jsonl (append; ob > 8 MB obdrži zadnjo polovico)."""
+def _ai_log(vir: str, model: str, funkcija: str = "", inp: int = 0, out: int = 0, usd: float = 0.0, enota: str = "žetoni", **extra):
+    """Doda en zapis v /data/ai_usage.jsonl (append; ob > 8 MB obdrži zadnjo polovico). extra = npr. cr/cw (predpomnilnik)."""
     try:
         rec = {"at": _lj_iso(), "vir": vir, "model": model, "fn": funkcija or _ai_funkcija(),
                "in": int(inp or 0), "out": int(out or 0), "enota": enota, "usd": round(float(usd or 0), 5)}
+        rec.update({k: v for k, v in extra.items() if v})
         f = DATA_DIR / "ai_usage.jsonl"
         with _ai_lock:
             with open(f, "a", encoding="utf-8") as fh:
@@ -119,7 +120,11 @@ def _ai_claude_usd(model: str, u, popust: float = 1.0):
     g = (lambda k: (u.get(k) if isinstance(u, dict) else getattr(u, k, 0)) or 0)
     vh, cw, cr, iz = g("input_tokens"), g("cache_creation_input_tokens"), g("cache_read_input_tokens"), g("output_tokens")
     ci, co = next(((a, b) for p, a, b in _AI_CLAUDE_CENE if str(model).startswith(p)), (3.0, 15.0))
-    usd = (vh * ci + cw * ci * 1.25 + cr * ci * 0.1 + iz * co) / 1e6 * popust
+    # zapis v predpomnilnik: 5 min = 1,25× · 1 h = 2× cena vhoda (razčlenitev v usage.cache_creation)
+    cc = g("cache_creation")
+    cw1h = int((cc.get("ephemeral_1h_input_tokens") if isinstance(cc, dict) else getattr(cc, "ephemeral_1h_input_tokens", 0)) or 0) if cc else 0
+    cw1h = min(cw1h, cw)
+    usd = (vh * ci + (cw - cw1h) * ci * 1.25 + cw1h * ci * 2.0 + cr * ci * 0.1 + iz * co) / 1e6 * popust
     return vh + cw + cr, iz, usd
 
 
@@ -131,7 +136,9 @@ def _ai_log_claude(r, funkcija: str = "", popust: float = 1.0) -> float:
             return 0.0
         model = (r.get("model") if isinstance(r, dict) else getattr(r, "model", "")) or "claude"
         vh, iz, usd = _ai_claude_usd(model, u, popust)
-        _ai_log("claude", model, funkcija or _ai_funkcija(), vh, iz, usd)
+        g = (lambda k: int((u.get(k) if isinstance(u, dict) else getattr(u, k, 0)) or 0))
+        _ai_log("claude", model, funkcija or _ai_funkcija(), vh, iz, usd,
+                cr=g("cache_read_input_tokens"), cw=g("cache_creation_input_tokens"))   # zadetki / zapisi predpomnilnika
         return usd
     except Exception as e:
         print(f"[ai-usage] claude: {e}")
@@ -29189,9 +29196,21 @@ def _xsell_pools(rows: list, main: dict):
             A.append(r)
         elif r["nc"] <= 5.0:
             B.append(r)
-    A.sort(key=lambda r: (r["nc"], -(r["zaloga"] or 0)))   # nižja NC najprej
-    B.sort(key=lambda r: (r["nc"], -(r["zaloga"] or 0)))
+    A.sort(key=_xsell_cand_key)   # nižja NC najprej
+    B.sort(key=_xsell_cand_key)
     return A[:320], B[:80]
+
+
+def _xsell_cand_key(r: dict):
+    """Stabilen vrstni red kandidatov (NC, SKU) — NE po točni zalogi, ki se spremeni ob vsaki sinhronizaciji
+    zaloge (vsako uro) in bi prestavila vrstice → predpomnjeni del prompta bi bil vsakič drugačen."""
+    return (r["nc"], r["sku"])
+
+
+def _xsell_zal(z) -> str:
+    """Zaloga v razredih (20+/50+/100+/500+) namesto točnega števila — za predpomnjenje (glej _xsell_cand_key)."""
+    z = int(z or 0)
+    return next((f"{m}+" for m in (500, 100, 50) if z >= m), f"{XSELL_MIN_ZALOGA}+")
 
 
 XSELL_USAGE_FILE = DATA_DIR / "xsell_usage.json"   # star ločen dnevnik (2026-09-29) → enkrat preseljen v ai_usage.jsonl
@@ -29201,7 +29220,9 @@ AI_USAGE_FILE = DATA_DIR / "ai_usage.jsonl"
 def _xsell_log_usage(r, vrsta: str) -> float:
     """Xsell klic Opus → skupni AI dnevnik (funkcija "xsell:<vrsta>"); vrne ocenjeno ceno $."""
     usd = _ai_log_claude(r, "xsell:" + (vrsta or "?"))
-    print(f"[xsell] {vrsta}: {getattr(r, 'model', XSELL_MODEL)} · ~{usd:.3f} $")
+    u = getattr(r, "usage", None)
+    print(f"[xsell] {vrsta}: {getattr(r, 'model', XSELL_MODEL)} · ~{usd:.3f} $ · predpomnilnik bran "
+          f"{getattr(u, 'cache_read_input_tokens', 0) or 0} / zapisan {getattr(u, 'cache_creation_input_tokens', 0) or 0}")
     return usd
 
 
@@ -29343,7 +29364,8 @@ def _xsell_opus(prompt: str, schema: dict, vrsta: str = "", stalno: str = "") ->
     stalno = del prompta, ki je enak pri vseh klicih (navodila + kandidati) → predpomnjenje (cache read = 10 % cene vhoda).
     Ocenjena cena klica ($) se zapiše v log in vrne v ključu "_usd"."""
     model, effort, _ = _xsell_model()
-    content = ([{"type": "text", "text": stalno, "cache_control": {"type": "ephemeral"}}, {"type": "text", "text": prompt}]
+    # TTL 1 h (zapis 2× cena vhoda, branje 0,1×): Xsell se dela v serijah z odmori > 5 min — privzetih 5 min bi pogosto poteklo
+    content = ([{"type": "text", "text": stalno, "cache_control": {"type": "ephemeral", "ttl": "1h"}}, {"type": "text", "text": prompt}]
                if stalno else prompt)
     kw = dict(model=model, max_tokens=16000,
               messages=[{"role": "user", "content": content}],
@@ -29365,7 +29387,7 @@ def _xsell_opus(prompt: str, schema: dict, vrsta: str = "", stalno: str = "") ->
 
 def _xsell_cand_line(r: dict) -> str:
     # brez prodajne cene dodatka — ni pomembna (Xsell ima svojo ceno 4,99–5,99 €)
-    return f'{r["sku"]} | {r["naziv"][:90]} | NC {r["nc"]:.2f} € | zaloga {r["zaloga"]} | {r["kat_ime"]}'
+    return f'{r["sku"]} | {r["naziv"][:90]} | NC {r["nc"]:.2f} € | zaloga {_xsell_zal(r["zaloga"])} | {r["kat_ime"]}'
 
 
 def _xsell_view(r: dict) -> dict:
@@ -29687,7 +29709,7 @@ async def xsell_kategorija_predlagaj(request: Request, req: XsellKatReq):
     if not v_kat:
         return {"ok": False, "error": "Kategorija nima izdelkov."}
     A = [r for r in rows if (r["zaloga"] or 0) >= XSELL_MIN_ZALOGA and r["nc"] is not None and r["nc"] <= 3.0]
-    A.sort(key=lambda r: (r["nc"], -(r["zaloga"] or 0)))
+    A.sort(key=_xsell_cand_key)
     A = A[:320]
     vzorec = "\n".join(f'- {r["naziv"][:90]} ({(r["cena"] or 0):.2f} €)' for r in sorted(v_kat, key=lambda r: -(r["obrat"] or 0))[:40])
     stalno = f"""Si izkušen e-commerce trgovec za spletno trgovino Maaarket (impulzni nakupi, Slovenija).
@@ -29824,7 +29846,7 @@ async def xsell_shop_kat_predlagaj(request: Request, req: XsellShopPredReq):
     if not imena:
         return {"ok": False, "error": "Seznam kategorij je prazen."}
     A = [r for r in rows if (r["zaloga"] or 0) >= XSELL_MIN_ZALOGA and r["nc"] is not None and r["nc"] <= 3.0]
-    A.sort(key=lambda r: (r["nc"], -(r["zaloga"] or 0)))
+    A.sort(key=_xsell_cand_key)
     A = A[:320]
     if not A:
         return {"ok": False, "error": "Ni kandidatov (Maaarket na zalogi z NC ≤ 3 €)."}
@@ -29864,7 +29886,12 @@ KANDIDATI (SKU | naziv | nabavna cena | zaloga | Google kategorija):
 
     loop = asyncio.get_event_loop()
     paketi = [imena[i:i + 8] for i in range(0, len(imena), 8)]
-    rezultati = await asyncio.gather(*[loop.run_in_executor(None, _paket, p) for p in paketi], return_exceptions=True)
+    # prvi paket sam (zapiše predpomnilnik), ostali vzporedno ga nato berejo — sicer vsak vzporedni klic plača svoj zapis
+    try:
+        prvi = [await loop.run_in_executor(None, _paket, paketi[0])]
+    except Exception as e:
+        prvi = [e]
+    rezultati = prvi + list(await asyncio.gather(*[loop.run_in_executor(None, _paket, p) for p in paketi[1:]], return_exceptions=True))
     by = {r["sku"]: r for r in A}
     lower = {k.lower(): k for k in imena}
     napake, n = [], 0

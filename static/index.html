@@ -1047,7 +1047,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-02 14:04</div>
+      <div class="sidebar-logo-sub">build 2026-10-02 21:39</div>
     </div>
   </div>
 
@@ -11307,6 +11307,8 @@ async function xsPRunSel() {
       _xs.run.delete(g); xsPRender();
     }
   };
+  // prvi sam (zapiše predpomnilnik kandidatov na strežniku), nato 3 vzporedno, ki ga berejo (10 % cene vhoda)
+  if (q.length > 1) { const prvi = q.splice(1); await worker(); q.push(...prvi); }
   await Promise.all([worker(), worker(), worker()]);
   xsPoraba();
   if (napake) alert(napake + ' izdelkov ni uspelo — poskusi jih znova.');
