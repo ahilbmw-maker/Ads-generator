@@ -335,7 +335,7 @@
     <button class="btn secondary" onclick="location.reload()" title="Osveži stran (kot F5)" style="font-size:13px;font-weight:600;padding:8px 14px;font-family:var(--sans);white-space:nowrap;background:#eef2ff;color:#4f46e5;border-color:#c7d2fe">↻ Osveži stran</button>
     <button class="btn secondary" onclick="copyIssues()" style="font-size:13px;font-weight:600;padding:8px 14px;font-family:var(--sans);white-space:nowrap">📋 Kopiraj ID-je z napakami</button>
     <button class="btn secondary" onclick="removeSaleItems()" style="font-size:13px;font-weight:600;padding:8px 14px;font-family:var(--sans);white-space:nowrap">🏷 Odstrani SALE</button>
-    <button class="btn secondary" onclick="clearTable()" style="font-size:13px;font-weight:600;padding:8px 14px;font-family:var(--sans);background:var(--red-dim);color:var(--red);border-color:var(--red);white-space:nowrap">🗑 Zbriši seznam</button>
+    <button class="btn secondary" onclick="cleanAllInOne()" title="Počisti 2x+ količine, združena naročila IN dvojnike — vse naenkrat" style="font-size:13px;font-weight:600;padding:8px 14px;font-family:var(--sans);background:#fff7ed;color:#c2410c;border-color:#fdba74;white-space:nowrap">🧹 Počisti vse (2x+, združena, dvojniki)</button>
   </div>
 </div>
 
@@ -352,9 +352,6 @@
 
 <div class="filters" id="storeFilterBar">
   <input type="text" class="search-input" placeholder="🔍 Išči SKU ali ID..." oninput="setSearch(this.value)" id="searchInput">
-  <span style="color:var(--border);margin:0 4px">|</span>
-  <!-- pred trgovinami: gumbi trgovin se dodajo dinamično, zato bi se gumb sicer premikal -->
-  <button class="filter-btn" onclick="cleanAllInOne()" title="Počisti 2x+ količine, združena naročila IN dvojnike — vse naenkrat" style="color:#c2410c;border-color:#fdba74;background:#fff7ed">🧹 Počisti vse (2x+, združena, dvojniki)</button>
   <span style="color:var(--border);margin:0 4px">|</span>
   <span style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans);font-weight:600">Trgovina:</span>
   <button class="filter-btn active" id="sf-all" onclick="setStoreFilter('all', this)">VSE</button>
