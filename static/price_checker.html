@@ -795,7 +795,7 @@ async function siluxarFetch(silent) {
     _pcLoad('err', '⚠ siluxar.si nedosegljiv');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = origLabel || '🔄 Uvozi s siluxar.si'; }
-    if (_pcLoading) { _pcLoading = false; _pcEmptyTxt(); }
+    _pcLoading = false; _pcEmptyTxt();  // vedno: pasteAreaProcess ob praznem odgovoru tabele ne izriše znova
   }
 }
 
