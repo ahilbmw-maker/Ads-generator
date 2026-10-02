@@ -188,6 +188,7 @@
   .price-old { color: #6b7280; margin-right: 4px; font-size: 15px; text-decoration: none; }
   .price-new { color: var(--green); font-weight: 700; }
   .price-ok { color: var(--text); }
+  .pc-cena { font-weight: 800; font-size: 16px; }
 
   .id-badge {
     font-family: var(--mono); font-size: 11px;
@@ -771,6 +772,7 @@ async function siluxarFetch(silent) {
   _pcEmptyTxt();
   try {
     const r = await fetch('/price-stock-fetch');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     if (!d.ok) {
       // pri samodejnem (silent) ne moti v polju za lepljenje — samo oznaka na vrhu
@@ -788,11 +790,12 @@ async function siluxarFetch(silent) {
     const ta = document.getElementById('pasteArea');
     if (ta) ta.value = raw;
     _pcLoading = false;
-    pasteAreaProcess();
+    try { pasteAreaProcess(); }
+    catch (e) { console.error('Price Checker obdelava:', e); _pcLoad('err', '⚠ Napaka pri obdelavi podatkov: ' + e.message); return; }
     _pcLoad('ok', allRows.length ? `✓ Naloženo s siluxar.si · ${allRows.length} naročil` : '✓ siluxar.si · ni novih naročil');
   } catch(e) {
     if (st && !silent) { st.style.display='block'; st.style.color='var(--red)'; st.textContent='⚠ Napaka pri povezavi.'; }
-    _pcLoad('err', '⚠ siluxar.si nedosegljiv');
+    _pcLoad('err', '⚠ siluxar.si nedosegljiv' + (e && e.message ? ' (' + e.message + ')' : ''));
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = origLabel || '🔄 Uvozi s siluxar.si'; }
     _pcLoading = false; _pcEmptyTxt();  // vedno: pasteAreaProcess ob praznem odgovoru tabele ne izriše znova
@@ -886,7 +889,7 @@ function pasteAreaProcess() {
   renderTable(allRows);
   document.getElementById('dropZone').style.display = 'none';
   const st = document.getElementById('pasteStatus');
-  if (st) { st.style.display='block'; st.style.color='var(--green)'; st.textContent=`✓ ${rows.length} vrstic naloženih${added < rows.length ? ', '+( rows.length-added)+' podvojenih preskočenih' : ''}`; }
+  if (st) { st.style.display='block'; st.style.color='var(--green)'; st.textContent=`✓ ${rows.length} vrstic naloženih`; }
 }
 
 function pasteAreaAutoProcess(ta) {
@@ -1481,10 +1484,10 @@ function renderTable(rows) {
       ? ' <span title="Cena se je spremenila, odkar si to vrstico danes pregledal" style="display:inline-block;background:#0369a1;color:#fff;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;vertical-align:middle">⟳ NOVA CENA</span>'
       : '';
     const priceDisplay = (row.isOk
-      ? `<span class="price-ok">${row.priceRaw}${curSuffix}</span>${qtyBadge}`
+      ? `<span class="price-ok"><b class="pc-cena">${row.priceRaw}</b>${curSuffix}</span>${qtyBadge}`
       : row.suggested
-        ? `<span class="price-old">${row.priceRaw}${curSuffix}</span>${qtyBadge}`
-        : `<span style="color:var(--red)">${row.priceRaw}${curSuffix}</span>${qtyBadge}`) + changedBadge + seenBadge;
+        ? `<span class="price-old"><b class="pc-cena">${row.priceRaw}</b>${curSuffix}</span>${qtyBadge}`
+        : `<span style="color:var(--red)"><b class="pc-cena">${row.priceRaw}</b>${curSuffix}</span>${qtyBadge}`) + changedBadge + seenBadge;
 
     const suggestedDisplay = row.suggested
       ? `<span class="price-new">${formatSuggested(row.suggested, row.currency)}</span>`
@@ -3217,7 +3220,8 @@ function _pcSendExt(tr, force){
     _pcExtLast = key;
     const a = tr.querySelector('a[data-pc-cms]');
     window.postMessage({ type:'suban-kalk', trg, sku:String(row.sku||'').toUpperCase(), cms_id: a ? String(a.dataset.pcCms||'') : '',
-      samo_trg:true, cena:0, valuta:row.currency||'', vir:'Price Checker', naziv:String(row.product||'').slice(0,120) }, '*');
+      samo_trg:true, cena:(parseFloat(String(row.priceRaw||'').replace(/\s/g,'').replace(',','.')) || 0),   // cena samo za prikaz v vtičniku (polja ne spremeni)
+      valuta:row.currency||'', vir:'Price Checker', naziv:String(row.product||'').slice(0,120) }, '*');
   } catch (e) {}
 }
 // klik z miško v vrstico (tudi na povezavo CMS) → modri okvir nanjo + cena v vtičnik
