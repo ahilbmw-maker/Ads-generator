@@ -1047,7 +1047,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-02 11:10</div>
+      <div class="sidebar-logo-sub">build 2026-10-02 11:59</div>
     </div>
   </div>
 
@@ -11123,6 +11123,7 @@ function xsTab(t) {
   document.getElementById('xsShop').style.display = t === 'kat' ? '' : 'none';
   ['izd', 'kat'].forEach(x => document.getElementById('xsTab-' + x).classList.toggle('on', x === t));
   if (t === 'izd' && !_xs.list.length) xsPLoad();
+  else if (t === 'izd' && Date.now() - _xsPAt > XS_STARO_MS) xsPLoad(true);
   if (t === 'kat' && !_xsShop.kat.length) xsShopLoad();
 }
 function xsOpen(q) { xsTab('izd'); xsLoad(q); }
@@ -11152,16 +11153,38 @@ const xsNcTxt = nc => '<span style="color:' + (nc == null ? '#64748b' : (nc <= 2
 const xsMz = m => m == null ? '—' : '<span style="color:' + (m >= 50 ? '#166534' : (m >= 30 ? '#92400e' : '#991b1b')) + ';font-weight:700">' + Math.round(m) + ' %</span>';
 
 // ── 📦 IZDELKI ──
-async function xsPLoad() {
-  document.getElementById('xsPList').innerHTML = '<div class="xsA-empty">Nalagam Maaarket izdelke …</div>';
+// soft = osvežitev obstoječega seznama: ohrani prikaz, filter, izbiro in drsnik (brez "Nalagam …")
+const XS_STARO_MS = 30 * 60 * 1000;   // samodejna osvežitev, ko je seznam starejši od 30 min
+let _xsPAt = 0, _xsPBusy = false;
+async function xsPLoad(soft) {
+  if (_xsPBusy) return;
+  _xsPBusy = true;
+  const box = document.getElementById('xsPList'), top = box.scrollTop;
+  if (!soft || !_xs.list.length) box.innerHTML = '<div class="xsA-empty">Nalagam Maaarket izdelke …</div>';
+  else xsPAtUI('⏳ osvežujem …');
   try {
     const [a, b] = await Promise.all([fetch('/xsell-seznam').then(r => r.json()), fetch('/xsell-moj-seznam').then(r => r.json())]);
     if (!a.ok) throw new Error(a.error || 'napaka');
     _xs.list = a.izdelki || []; _xs.moj = (b && b.g_ids) || [];
     if (_xs.src === 'moj' && !_xs.moj.length) _xs.src = 'vsi';
+    _xsPAt = Date.now();
     xsPRender();
-  } catch (e) { document.getElementById('xsPList').innerHTML = '<div class="xsA-empty" style="color:#b91c1c">✗ ' + xsE(e.message) + '</div>'; }
+    if (soft) box.scrollTop = top;
+  } catch (e) {
+    if (soft && _xs.list.length) { xsPRender(); xsPAtUI('✗ osvežitev ni uspela'); }
+    else box.innerHTML = '<div class="xsA-empty" style="color:#b91c1c">✗ ' + xsE(e.message) + '</div>';
+  } finally { _xsPBusy = false; }
 }
+function xsPAtUI(txt) {
+  const el = document.getElementById('xsPAt'); if (!el) return;
+  el.textContent = txt || ('↻ ' + (_xsPAt ? new Date(_xsPAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' }) : ''));
+}
+// ob vrnitvi na zavihek brskalnika: če je Xsell → Izdelki odprt in seznam star > 30 min, ga tiho osveži
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !_xs.list.length || Date.now() - _xsPAt < XS_STARO_MS) return;
+  const izd = document.getElementById('xsIzd');
+  if (izd && izd.offsetParent !== null) xsPLoad(true);
+});
 const xsPSt = x => _xs.run.has(x.g_id) ? 'run' : (x.izbran ? 'ok' : (x.ima_predloge ? 'pr' : 'no'));
 function xsPBase() {
   if (_xs.src === 'vsi') return _xs.list;
@@ -11180,7 +11203,9 @@ function xsPRender() {
   base.forEach(x => cnt[xsPSt(x)]++);
   document.getElementById('xsPSrc').innerHTML =
     '<span class="xs-chip' + (_xs.src === 'moj' ? ' on' : '') + '" onclick="xsSetSrc(\'moj\')">📌 Moj seznam ' + _xs.moj.length + '</span>' +
-    '<span class="xs-chip' + (_xs.src === 'vsi' ? ' on' : '') + '" onclick="xsSetSrc(\'vsi\')">Vsi po obratu ' + _xs.list.length + '</span>';
+    '<span class="xs-chip' + (_xs.src === 'vsi' ? ' on' : '') + '" onclick="xsSetSrc(\'vsi\')">Vsi po obratu ' + _xs.list.length + '</span>' +
+    '<span class="xs-chip" id="xsPAt" onclick="xsPLoad(true)" title="Osveži seznam (obrat, zaloga, novi izdelki) — samodejno ob odprtju, če je starejši od 30 min" style="margin-left:auto;color:#64748b"></span>';
+  xsPAtUI();
   document.getElementById('xsPFil').innerHTML = [['vse', 'Vse ' + base.length], ['no', 'Brez predlogov ' + cnt.no], ['pr', 'Za izbrati ' + cnt.pr], ['ok', '✓ Izbran ' + cnt.ok]]
     .map(f => '<span class="xs-chip' + (_xs.pf === f[0] ? ' on' : '') + '" onclick="xsSetPF(\'' + f[0] + '\')">' + f[1] + '</span>').join('');
   const vis = xsPVis();
