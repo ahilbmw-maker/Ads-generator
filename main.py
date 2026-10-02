@@ -11532,7 +11532,7 @@ function renderMain(){
     '<tr data-i="'+x._i+'"'+((x.neuvoz||SEL.has(x.g_id))?' class="'+[x.neuvoz?'nu':'',SEL.has(x.g_id)?'sel':''].join(' ').trim()+'"':'')+'><td><div class="imgc"><input type="checkbox" class="selcb" data-sel="'+x._i+'"'+(SEL.has(x.g_id)?' checked':'')+'>'+(x.slika?'<img class="img" loading="lazy" src="'+esc(x.slika)+'" data-i="'+x._i+'">':'')+'</div></td>'+
     '<td class="sku">'+linksHtml(x)+skuTxt(x)+copyBtn(x)+nac(x.nacin)+(x.parser===true?' <span title="Parser — znamka: '+esc(x.znamka||'?')+'" style="font-size:11px;padding:1px 6px;border-radius:4px;background:#f1f5f9;color:#64748b">parser</span>':'')+(x.nc_sku&&x.nc_sku!==String(x.sku).toUpperCase()?'<div class="dim" style="font-size:12px;font-weight:400">NC iz '+esc(String(x.nc_sku).toUpperCase())+'</div>':'')+cmsBadge(x)+'</td>'+
     '<td class="naziv"><a href="'+esc(x.url)+'" target="_blank" title="'+esc(x.naziv)+'">'+esc(x.naziv)+'</a>'+sprHtml(x)+'</td>'+
-    '<td class="r">'+f2(x.koncna)+' <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
+    '<td class="r"><b style="font-size:15px;font-weight:800;color:#0f172a">'+f2(x.koncna)+'</b> <span class="dim">'+esc(x.valuta)+'</span>'+(x.akcija?'<span class="akc">AKCIJA</span>':'')+'</td>'+
     '<td class="r">'+f2(x.eur)+'</td><td class="r">'+f2(x.neto)+'</td>'+
     '<td class="r">'+(x.nc==null?'<button type="button" class="skub" data-skubtn="'+x._i+'" title="Ni NC — popravi SKU (velja za vse trge)">✎ SKU</button>':f2(x.nc))+'</td>'+
     razTd(x.marza_eur,RR)+
