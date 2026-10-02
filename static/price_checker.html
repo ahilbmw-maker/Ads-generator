@@ -258,10 +258,20 @@
   #pcSalesModal .stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:#8a94a6;font-weight:700;}
   #pcSalesModal .stat .v{font-size:18px;font-weight:800;margin-top:2px;}
   #pcSalesLoad{padding:40px;text-align:center;color:#6b7280;font-size:14px;}
+  /* nalaganje s siluxar.si — trak na vrhu + oznaka */
+  #pcLoadBar{position:fixed;top:0;left:0;right:0;height:3px;z-index:9999;overflow:hidden;background:rgba(79,70,229,.12);display:none;}
+  #pcLoadBar.on{display:block;}
+  #pcLoadBar::after{content:'';position:absolute;top:0;bottom:0;width:35%;background:linear-gradient(90deg,#6366f1,#4f46e5);border-radius:3px;animation:pcLoadMove 1.1s ease-in-out infinite;}
+  @keyframes pcLoadMove{0%{left:-35%}100%{left:100%}}
+  #pcLoadMsg{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9999;background:#eef2ff;color:#4f46e5;border:1px solid #c7d2fe;border-radius:999px;padding:5px 14px;font-size:12px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.08);display:none;transition:opacity .4s;}
+  #pcLoadMsg.on{display:block;}
+  #pcLoadMsg.ok{background:#ecfdf5;color:#15803d;border-color:#bbf7d0;}
+  #pcLoadMsg.err{background:#fef2f2;color:#dc2626;border-color:#fecaca;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
+<div id="pcLoadBar"></div><div id="pcLoadMsg"></div>
 
 <div class="pricechecker-content">
 <div style="position:sticky;top:0;z-index:50;background:var(--bg)">
@@ -736,33 +746,56 @@ let sortCol = 'razlikaNum';   // privzeto sortiraj po RAZLIKI
 let sortDir = 1;              // naraščajoče (najmanjša → največja)
 let selectedKeys = new Set();
 
+// trak + oznaka med branjem s siluxar.si (tudi pri samodejnem potegu)
+let _pcLoadHide = null;
+function _pcLoad(stanje, txt) {
+  const bar = document.getElementById('pcLoadBar'), msg = document.getElementById('pcLoadMsg');
+  if (!bar || !msg) return;
+  clearTimeout(_pcLoadHide);
+  bar.classList.toggle('on', stanje === 'busy');
+  msg.className = 'on' + (stanje === 'ok' ? ' ok' : stanje === 'err' ? ' err' : '');
+  msg.style.opacity = '1'; msg.textContent = txt;
+  if (stanje !== 'busy') _pcLoadHide = setTimeout(() => { msg.style.opacity = '0'; _pcLoadHide = setTimeout(() => msg.className = '', 400); }, stanje === 'err' ? 6000 : 2500);
+}
+var _pcLoading = false;  // var: renderTable ga lahko bere pred to vrstico
+function _pcEmptyTxt() { const e = document.getElementById('pcEmpty'); if (e) e.textContent = _pcLoading ? '⏳ Nalagam naročila s siluxar.si …' : 'Ni zadetkov'; }
+
 async function siluxarFetch(silent) {
   const btn = document.getElementById('siluxarFetchBtn');
   const st = document.getElementById('pasteStatus');
   const origLabel = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Berem...'; }
   if (st && !silent) { st.style.display='block'; st.style.color='var(--muted)'; st.textContent='⏳ Potegujem podatke s siluxar.si...'; }
+  _pcLoading = true;
+  _pcLoad('busy', '⏳ Berem naročila s siluxar.si …');
+  _pcEmptyTxt();
   try {
     const r = await fetch('/price-stock-fetch');
     const d = await r.json();
     if (!d.ok) {
-      // pri samodejnem (silent) ne moti, če ni ključa / napaka
+      // pri samodejnem (silent) ne moti v polju za lepljenje — samo oznaka na vrhu
       if (st && !silent) { st.style.display='block'; st.style.color='var(--red)'; st.textContent='⚠ ' + (d.error || 'Napaka pri branju.'); }
+      _pcLoad('err', '⚠ siluxar.si: ' + (d.error || 'napaka pri branju'));
       return;
     }
     const raw = (d.raw || '').trim();
     if (!raw) {
       if (st && !silent) { st.style.display='block'; st.style.color='var(--red)'; st.textContent='⚠ siluxar.si ni vrnil podatkov.'; }
+      _pcLoad('err', '⚠ siluxar.si ni vrnil podatkov');
       return;
     }
     // vstavi v paste area in spusti skozi obstoječi parser
     const ta = document.getElementById('pasteArea');
     if (ta) ta.value = raw;
+    _pcLoading = false;
     pasteAreaProcess();
+    _pcLoad('ok', allRows.length ? `✓ Naloženo s siluxar.si · ${allRows.length} naročil` : '✓ siluxar.si · ni novih naročil');
   } catch(e) {
     if (st && !silent) { st.style.display='block'; st.style.color='var(--red)'; st.textContent='⚠ Napaka pri povezavi.'; }
+    _pcLoad('err', '⚠ siluxar.si nedosegljiv');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = origLabel || '🔄 Uvozi s siluxar.si'; }
+    if (_pcLoading) { _pcLoading = false; _pcEmptyTxt(); }
   }
 }
 
@@ -1404,7 +1437,7 @@ function renderTable(rows) {
   tbody.innerHTML = '';
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">Ni zadetkov</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" id="pcEmpty" style="text-align:center;padding:40px;color:var(--muted)">${_pcLoading ? '⏳ Nalagam naročila s siluxar.si …' : 'Ni zadetkov'}</td></tr>`;
     return;
   }
 
