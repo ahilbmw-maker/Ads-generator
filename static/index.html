@@ -437,6 +437,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .xs-sku{font-family:ui-monospace,monospace;font-size:13px;font-weight:800;color:#26215c;background:#dedafb;border:1px solid #8f87e0;border-radius:6px;padding:2px 8px;white-space:nowrap}
 .xs-cp{cursor:pointer}
 .xs-cp:hover{background:#c9c3f7}
+.xs-tbl .xs-cp{display:inline-block;font-size:15px;padding:8px 14px;border-radius:8px;border-width:1.5px}
+.xs-tbl td.xs-cpc{cursor:copy}
+.xs-tbl td.xs-cpc:hover .xs-cp{background:#c9c3f7}
 .xs-pill{font-size:12px;font-weight:800;border-radius:6px;padding:2px 8px;white-space:nowrap}
 .xs-st{font-size:12px;font-weight:700;border-radius:6px;padding:2px 8px;white-space:nowrap}
 .st-ok{background:#dcfce7;color:#166534}
@@ -1044,7 +1047,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-01 19:20</div>
+      <div class="sidebar-logo-sub">build 2026-10-02 08:07</div>
     </div>
   </div>
 
@@ -11128,7 +11131,8 @@ function xsCopy(el, txt) {
 }
 const xsSkuChip = sku => '<span class="xs-sku xs-cp" data-cp="' + xsE(sku) + '" title="Klik = kopiraj SKU">' + xsE(sku) + ' ⧉</span>';
 document.addEventListener('click', e => {
-  const c = e.target.closest('#orodjaSubpage-xsell .xs-cp[data-cp]'); if (!c) return;
+  const c = e.target.closest('#orodjaSubpage-xsell .xs-cp[data-cp]') ||
+    (e.target.closest('#orodjaSubpage-xsell td.xs-cpc') || { querySelector: () => null }).querySelector('.xs-cp[data-cp]'); if (!c) return;
   e.stopPropagation(); xsCopy(c, c.dataset.cp);
 }, true);
 async function xsPoraba() {
@@ -11363,7 +11367,7 @@ function xsRender() {
         const m = xp ? xp.marza : (p.nc != null ? (4.99 / 1.22 - p.nc) / (4.99 / 1.22) * 100 : null);
         return '<tr class="' + (sel ? 'sel' : '') + '" data-xs="' + xsE(p.sku) + '"><td class="xs-rk">' + (sel ? '✓' : (i + 1)) + '</td>' +
           '<td><div class="xs-nm">' + (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '') + '<span title="' + xsE(p.naziv) + '">' + xsE(p.naziv) + '</span>' + (p.razlog ? '<span class="xs-why" title="💡 ' + xsE(p.razlog) + '">💡</span>' : '') + (p.drazji ? '<span class="xs-st st-run" title="NC nad 3 €">NC&gt;3</span>' : '') + '</div></td>' +
-          '<td>' + xsSkuChip(p.sku) + '</td><td class="r">' + xsNcTxt(p.nc) + '</td>' +
+          '<td class="xs-cpc" title="Klik = kopiraj SKU">' + xsSkuChip(p.sku) + '</td><td class="r">' + xsNcTxt(p.nc) + '</td>' +
           '<td class="r" title="' + (xp ? xsEu(xp.redna) + ' − ' + xsPct(pop) + ' %' : 'vpiši popust zgoraj') + (p.akcija ? ' · zdaj v akciji ' + xsEu(p.akcija) + ' (popust gre na redno ceno)' : '') + '">' + (xp ? '<b>' + xsEu(xp.cena) + '</b>' + (p.akcija ? ' <span style="color:#c2410c">!</span>' : '') : '<span style="color:var(--text-tertiary)">—</span>') + '</td>' +
           '<td class="r">' + xsMz(m) + (xp ? '' : '<span style="color:var(--text-tertiary);font-size:10px"> @4,99</span>') + '</td><td class="r">' + (p.zaloga || 0) + '</td>' +
           '<td class="r"><button class="xs-b' + (sel ? ' xs-bok' : '') + '">' + (sel ? '✓ izbran' : 'izberi') + '</button></td></tr>';
@@ -11523,7 +11527,7 @@ function xsKDRender() {
         const bnd = i === 1;   // 2. izbrani = 1+1 Bundle na kategoriji
         return '<tr class="' + (bnd ? 'bnd' : (i >= 0 ? 'sel' : '')) + '" data-ks="' + xsE(p.sku) + '"><td class="xs-rk"' + (bnd ? ' style="color:#7c3aed"' : '') + '>' + (bnd ? '1+1' : (i >= 0 ? (i + 1) : '')) + '</td>' +
           '<td><div class="xs-nm">' + (p.slika ? '<img loading="lazy" src="' + xsE(p.slika) + '">' : '') + '<span title="' + xsE(p.naziv) + '">' + xsE(p.naziv) + '</span>' + (p.razlog ? '<span class="xs-why" title="💡 ' + xsE(p.razlog) + '">💡</span>' : '') + '</div></td>' +
-          '<td>' + xsSkuChip(p.sku) + '</td><td class="r">' + xsNcTxt(p.nc) + '</td>' +
+          '<td class="xs-cpc" title="Klik = kopiraj SKU">' + xsSkuChip(p.sku) + '</td><td class="r">' + xsNcTxt(p.nc) + '</td>' +
           '<td class="r xs-izj" data-iz="' + xsE(p.sku) + '" title="' + (xp ? xsEu(xp.redna) + ' − ' + xsPct(pct) + ' %' + (izj != null ? ' (izjema)' : '') : 'vpiši popust kategorije') + (p.akcija ? ' · zdaj v akciji ' + xsEu(p.akcija) + ' (popust gre na redno ceno)' : '') + ' · klik = izjema">' +
             (xp ? '<b>' + xsEu(xp.cena) + '</b>' + (izj != null ? '<sup style="color:#7c3aed">*</sup>' : '') + (p.akcija ? ' <span style="color:#c2410c">!</span>' : '') : '<span style="color:var(--text-tertiary)">—</span>') + '</td>' +
           '<td class="r" title="' + (xp ? 'marža pri Xsell SLO ceni' : 'marža pri 4,99 € (ni popusta)') + '">' + xsMz(m) + (xp ? '' : '<span style="color:var(--text-tertiary);font-size:10px"> @4,99</span>') + '</td>' +
