@@ -400,9 +400,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 #analizaSubpage-trend .tr-levo{position:sticky;top:8px}
 #analizaSubpage-trend.tr-dark .card{padding:10px 12px}
 /* višina grafov se prilagodi zaslonu (na velikem zaslonu višji), nikoli nižji od osnove */
-#analizaSubpage-trend .tr-h3{height:max(210px,27vh)}
-#analizaSubpage-trend .tr-h6{height:max(150px,19vh)}
-#analizaSubpage-trend .tr-h7{height:max(160px,20vh)}
+#analizaSubpage-trend .tr-h3{height:max(200px,25vh)}
+#analizaSubpage-trend .tr-h6{height:max(140px,17vh)}
+#analizaSubpage-trend .tr-h7{height:max(150px,18vh)}
 .hsem-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
 .hsem-m{min-width:0;overflow:hidden;display:flex;flex-direction:column;row-gap:1px;border:1px solid var(--border);border-left:4px solid;border-radius:8px;padding:7px 10px;background:var(--surface)}
 /* risana (poenostavljena) zastavica pred oznako trga */
@@ -1067,7 +1067,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 16:57</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 17:01</div>
     </div>
   </div>
 
@@ -6139,17 +6139,12 @@ function homeSemRender(){
     homeAiRender(); return;
   }
 
-  // ploščice po trgih: risana zastavica (semZastava), status (barvni rob), naročila, CPA (+ prispevek/naročilo za lastnika)
-  const eur2 = v => v==null ? '—' : Number(v).toLocaleString('sl-SI',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
-  const tiles = '<div class="hsem-grid">' + (d.markets||[]).map(m => {
-    const c = col[m.status]||col.grey;
-    return '<div class="hsem-m" style="border-left-color:' + c + '" title="' + m.market + ': ' + (m.orders||0) + ' naročil · CPA ' + eur2(m.cpa) + (m.contrib!=null ? ' · prispevek ' + eur2(m.contrib) + '/nar.' : '') + '">'
-      + '<div class="hsem-t">' + semZastava(m.market) + '<span>' + m.market + '</span></div>'
-      + '<div class="hsem-s"><span>' + (m.orders||0) + ' nar.</span><span>CPA ' + eur2(m.cpa) + '</span></div>'
-      + (m.contrib!=null ? '<div class="hsem-s hsem-c"><span>prispevek</span><b style="color:' + (m.contrib>=0?'#16a34a':'#dc2626') + '">' + (m.contrib>0?'+':'') + eur2(m.contrib) + '</b></div>' : '')
-      + '</div>';
-  }).join('') + '</div>';
-  const accent = d.stale ? 'var(--text-tertiary)' : (d.red ? '#e5484d' : (d.amber ? '#e0a33a' : '#12a35f'));
+  // namesto ploščic po trgih: graf rasti RVC/nar. vs CPA od začetka leta (po dnevih, 7-dnevno drseče povprečje) — klik = zavihek Trend
+  const tiles = '<div onclick="event.stopPropagation();homeTrendOpen()" title="Klik = odpri 📈 Trend" style="cursor:pointer">'
+    + '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:12px;font-weight:700;color:var(--text)">📈 Rast od začetka leta: RVC/nar. vs CPA</span>'
+    + '<span style="font-size:11px;color:var(--text-tertiary)"><b style="color:#16a34a">━</b> RVC · <b style="color:#dc2626">┅</b> CPA · stolpci = razlika (zeleno = varno)</span>'
+    + '<span id="homeSemGrafSum" style="margin-left:auto;font-size:12px"></span></div>'
+    + '<div style="position:relative;height:150px"><canvas id="homeSemGraf"></canvas></div></div>';  const accent = d.stale ? 'var(--text-tertiary)' : (d.red ? '#e5484d' : (d.amber ? '#e0a33a' : '#12a35f'));
   const dayLbl = !d.stale ? 'danes'
     : (d.days_ago === 1 ? 'včeraj' : d.date + (d.days_ago > 1 ? ' · pred ' + d.days_ago + ' dnevi' : ''));
   const dayPill = d.stale
@@ -6182,6 +6177,38 @@ function homeSemRender(){
     + right + openBtn
     + '</div></div>' + tiles + '</div><div class="card hai-box" id="homeAiBox"></div></div>';
   homeAiRender();
+  homeSemGraf();
+}
+function homeTrendOpen(){
+  switchPage('analiza');
+  setTimeout(() => { try{ switchAnalizaTab('trend'); }catch(e){} }, 60);
+}
+let _homeSemGrafD = null, _homeSemGrafCh = null;
+async function homeSemGraf(){
+  const el = document.getElementById('homeSemGraf'); if (!el) return;
+  if (!_homeSemGrafD) { try { _homeSemGrafD = await (await fetch('/semafor-trend?obdobje=dan&trg=VSI')).json(); } catch(e) { _homeSemGrafD = null; } }
+  const d = _homeSemGrafD, sum = document.getElementById('homeSemGrafSum');
+  if (!d || !d.ok || !(d.vedra||[]).length) { if (sum) sum.textContent = 'ni podatkov — uvozi Excel v 📈 Trend'; return; }
+  if (typeof Chart === 'undefined') { setTimeout(homeSemGraf, 400); return; }
+  let real = false; try { real = localStorage.getItem('tr_real') === '1'; } catch(e) {}
+  const leto = String(new Date().getFullYear()), V = d.vedra.filter(b => b.k.slice(0,4) === leto);
+  if (!V.length) return;
+  const R = b => real ? b.rvc_nar*(1-(b.fail||0)/100) : b.rvc_nar;
+  const ma = f => V.map((w, i) => { const o = V.slice(Math.max(0, i-6), i+1), n = o.reduce((a,b)=>a+b.orders,0); return n ? o.reduce((a,b)=>a+f(b)*b.orders,0)/n : f(w); });
+  const rv = ma(R), cp = ma(b=>b.cpa), i0 = Math.max(0, V.findIndex(b=>!b.delno));
+  const dR = rv.map(v=>v-rv[i0]), dC = cp.map(v=>v-cp[i0]), df = dR.map((v,i)=>v-dC[i]);
+  let zi = V.length-1; while (zi > 0 && V[zi].delno) zi--;
+  const f2 = v => (v<0?'−':'+') + Math.abs(v).toFixed(2).replace('.',',');
+  if (sum) sum.innerHTML = 'RVC <b style="color:'+(dR[zi]>=0?'#16a34a':'#dc2626')+'">'+f2(dR[zi])+' €</b> · CPA <b style="color:'+(dC[zi]<=0?'#16a34a':'#dc2626')+'">'+f2(dC[zi])+' €</b> → <b style="color:'+(df[zi]>=0?'#16a34a':'#dc2626')+'">'+(df[zi]>=0?'RVC raste hitreje za ':'CPA raste hitreje za ')+Math.abs(df[zi]).toFixed(2).replace('.',',')+' €</b>';
+  const lab = V.map(b => { const x = new Date(b.k); return x.getDate() + '. ' + (x.getMonth()+1) + '.'; });
+  if (_homeSemGrafCh) _homeSemGrafCh.destroy();
+  _homeSemGrafCh = new Chart(el, { type:'bar', data:{ labels: lab, datasets:[
+      { type:'line', data: dR, borderColor:'#16a34a', borderWidth:2, pointRadius:0 },
+      { type:'line', data: dC, borderColor:'#dc2626', borderWidth:2, borderDash:[5,4], pointRadius:0 },
+      { data: df, backgroundColor: df.map((v,i) => (v>=0 ? 'rgba(22,163,74,' : 'rgba(220,38,38,') + (V[i].delno ? '.15)' : '.35)')), barPercentage:1, categoryPercentage:1 } ] },
+    options:{ responsive:true, maintainAspectRatio:false, animation:false, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: c => ['rast RVC/nar.','rast CPA','razlika'][c.datasetIndex] + ': ' + f2(c.raw) + ' €' } } },
+      scales:{ x:{ grid:{display:false}, ticks:{ color:'#94a3b8', font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:14 } }, y:{ grid:{color:'rgba(148,163,184,.2)'}, ticks:{ color:'#94a3b8', font:{size:10}, callback: v => f2(v) } } } } });
 }
 
 // ═══ AI STROŠKI (Domov, v kartici semaforja) — /ai-poraba, informativno ═══
