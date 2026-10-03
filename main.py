@@ -10957,7 +10957,46 @@ async def bato_povzetek(request: Request, min_eur: float = 5.0, znamka: str = "m
 # ═══ UREJENE CENE PO TRGIH (kartica na Domov) ═══
 # Urejen = v Marži po trgih označen kot urejen (CMS status popravljeno / potrjeno — isto kot "Skrij urejene")
 # ALI 🚫 ne uvažamo (zaenkrat rešeno). Obseg: znamka (privzeto Maaarket), cena ≥ min_eur.
-_urejeno_cache = {"key": None, "data": None}
+# Hitri odgovor za kartice na Domov (stale-while-revalidate): vedno takoj vrne zadnji izračun (tudi po ponovnem
+# zagonu — shranjen na disku), nov izračun pa teče v OZADJU, ko se viri spremenijo (zaloga vsako uro, urejanje
+# pozicij, nov dan …). Prvič (brez kakršnegakoli izračuna) se počaka. Odgovor iz ozadja ima "star": true.
+_swr_stanje = {}
+
+
+async def _swr(ime: str, key, izracun):
+    k = repr(key)
+    st = _swr_stanje.setdefault(ime, {"key": None, "data": None, "task": None})
+    f = DATA_DIR / f"domov_{ime}.json"
+    if st["data"] is None and f.exists():
+        try:
+            o = json.loads(f.read_text(encoding="utf-8"))
+            st["key"], st["data"] = o.get("key"), o.get("data")
+        except Exception:
+            pass
+
+    async def _run():
+        try:
+            data = await izracun()
+            if isinstance(data, dict) and data.get("ok"):
+                st["key"], st["data"] = k, data
+                try:
+                    tmp = f.with_suffix(".json.tmp")
+                    tmp.write_text(json.dumps({"key": k, "data": data}, ensure_ascii=False), encoding="utf-8")
+                    os.replace(tmp, f)
+                except Exception as e:
+                    print(f"[swr] {ime} zapis: {e}")
+            return data
+        except Exception as e:
+            print(f"[swr] {ime}: {type(e).__name__}: {e}")
+            return {"ok": False, "error": str(e)}
+
+    if st["data"] and st["key"] == k:
+        return st["data"]
+    if st["task"] is None or st["task"].done():
+        st["task"] = asyncio.create_task(_run())
+    if st["data"]:
+        return dict(st["data"], star=True)
+    return await asyncio.shield(st["task"])
 
 
 @app.get("/urejeno-povzetek")
@@ -10970,8 +11009,10 @@ async def urejeno_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
     zn = (znamka or "").strip().lower()
     key = (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
            _mtime(CMS_LOG_FILE), _mtime(NEUVOZ_FILE), _mtime(PRICE_CHANGES_FILE), _mtime(STOCK_CSV_FILE), _mtime(MARZA_SKU_FILE))
-    if _urejeno_cache["key"] == key and _urejeno_cache["data"]:
-        return _urejeno_cache["data"]
+    return await _swr("urejeno", key, lambda: _urejeno_izracun(request, min_eur, znamka, zn))
+
+
+async def _urejeno_izracun(request: Request, min_eur: float, znamka: str, zn: str):
     trgi = []
     for trg, (oznaka, _ddv) in MARZA_TRGI.items():
         try:
@@ -11003,7 +11044,6 @@ async def urejeno_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
     odprto = sum(t["odprto"] for t in trgi)
     data = {"ok": True, "min_eur": min_eur, "znamka": znamka, "trgi": trgi, "skupaj": skupaj, "odprto": odprto,
             "pct": round((skupaj - odprto) / skupaj * 100, 1) if skupaj else None, "izracunano": _lj_iso()}
-    _urejeno_cache.update(key=key, data=data)
     return data
 
 
@@ -11012,7 +11052,6 @@ async def urejeno_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
 # brez 🚫 Ne uvažamo; izdelki brez NC (razlika null) se ne štejejo. Zgodovina: /data/razlika_history.json {datum: {trg: {avg, n}}}.
 RAZLIKA_HIST_FILE = DATA_DIR / "razlika_history.json"
 RAZLIKA_ITEMS_FILE = DATA_DIR / "razlika_po_izdelku.json"   # {datum: {trg: {g_id: razlika €}}}, zadnjih 9 dni
-_razlika_cache = {"key": None, "data": None}
 
 
 def _mtime(p):
@@ -11032,8 +11071,10 @@ async def razlika_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
     zn = (znamka or "").strip().lower()
     key = (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
            _mtime(STOCK_CSV_FILE), _mtime(NEUVOZ_FILE), _mtime(MARZA_SKU_FILE), _lj_today())
-    if _razlika_cache["key"] == key and _razlika_cache["data"]:
-        return _razlika_cache["data"]
+    return await _swr("razlika", key, lambda: _razlika_izracun(request, min_eur, znamka, zn))
+
+
+async def _razlika_izracun(request: Request, min_eur: float, znamka: str, zn: str):
     danes = _lj_today()
     zdaj, izd_zdaj = {}, {}
     for trg in MARZA_TRGI:
@@ -11102,7 +11143,6 @@ async def razlika_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
                      "hist": [{"d": d, "avg": (hist[d].get(trg) or {}).get("avg"), "n": (hist[d].get(trg) or {}).get("n")} for d in dni],
                      "d1": _primerjava(trg, d_1), "d7": _primerjava(trg, d_7)})
     data = {"ok": True, "min_eur": min_eur, "znamka": znamka, "trgi": trgi, "izracunano": _lj_iso()}
-    _razlika_cache.update(key=key, data=data)
     return data
 
 
@@ -11110,6 +11150,7 @@ async def razlika_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
 # dnevnik CMS, spremembe cen, dan za tečaje). Domov (urejeno + Ø razlika) in Xsell kličejo vseh 10 trgov → brez
 # predpomnilnika se je vse računalo znova ob vsakem osveženju.
 _marza_trgi_cache = {}
+_marza_trgi_locks = {}
 
 
 def _marza_trgi_key(trg: str):
@@ -11137,9 +11178,15 @@ async def marza_trgi(request: Request, trg: str = "sl"):
                 r["cms"] = _cms_status(trg, r.get("cms_id"), r.get("g_id"), r.get("cena"), log, changes, meta)
             c["log"] = log_m
         return c["res"]
-    res = await _marza_trgi_izracun(request, trg)
-    if isinstance(res, dict) and res.get("ok"):
-        _marza_trgi_cache[trg] = {"key": key, "log": log_m, "res": res}
+    # zapora po trgu: Domov (urejeno + Ø razlika) kliče iste trge vzporedno → drugi počaka na prvi izračun
+    lock = _marza_trgi_locks.setdefault(trg, asyncio.Lock())
+    async with lock:
+        c = _marza_trgi_cache.get(trg)
+        if c and c["key"] == key:
+            return await marza_trgi(request, trg)   # vmes izračunal drug klic (osveži le statuse CMS, če treba)
+        res = await _marza_trgi_izracun(request, trg)
+        if isinstance(res, dict) and res.get("ok"):
+            _marza_trgi_cache[trg] = {"key": key, "log": log_m, "res": res}
     return res
 
 
