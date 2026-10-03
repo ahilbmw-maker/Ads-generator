@@ -1297,7 +1297,6 @@ async def marza_neuvoz_post(request: Request):
         os.replace(tmp, NEUVOZ_FILE)
     except Exception as e:
         return {"ok": False, "error": f"Zapis ni uspel: {e}"}
-    _bato_cache.update(key=None, data=None)   # povzetek bato cen na Domov se preračuna
     return {"ok": True, "n": len(t)}
 
 
@@ -5677,7 +5676,8 @@ async def save_forecast_history(data: dict):
 
 @app.get("/")
 def root():
-    return FileResponse("static/index.html")
+    # izrecno no-cache: brskalnik vedno preveri (ETag → 304, če se ni spremenilo), nikoli ne prikaže stare verzije
+    return FileResponse("static/index.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/cache-status")
@@ -10888,7 +10888,6 @@ def _marza_parse_price(s):
 # Najfinejši korak bato cene po valuti (v najmanjših enotah): cena je bato, če (v+1) % S == 0.
 # Mora se ujemati z BATO_CFG v /marza-trgi-stran (EUR x,99 · HUF x499/x999 · CZK/PLN/RON x9 · RSD x99).
 _BATO_S = {"EUR": (100, 100), "HUF": (1, 500), "CZK": (1, 10), "RSD": (1, 100), "PLN": (1, 10), "RON": (1, 10)}
-_bato_cache = {"key": None, "data": None}
 
 
 def _je_bato(cena: float, cur: str) -> bool:
@@ -10908,9 +10907,11 @@ async def bato_povzetek(request: Request, min_eur: float = 5.0, znamka: str = "m
         return {"ok": False, "error": "Feed se še nalaga."}
     zn = (znamka or "").strip().lower()
     key = (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
-           tuple(sorted((k, len(v or {})) for k, v in feed_by_lang.items())))
-    if _bato_cache["key"] == key and _bato_cache["data"]:
-        return _bato_cache["data"]
+           tuple(sorted((k, len(v or {})) for k, v in feed_by_lang.items())), _mtime(NEUVOZ_FILE))   # 🚫 sprememba → nov izračun
+    return await _swr("bato", key, lambda: _bato_izracun(min_eur, znamka, zn))
+
+
+async def _bato_izracun(min_eur: float, znamka: str, zn: str):
     try:
         fx = (await fx_rates()).get("rates", {}) or {}
     except Exception:
@@ -10950,7 +10951,6 @@ async def bato_povzetek(request: Request, min_eur: float = 5.0, znamka: str = "m
     data = {"ok": True, "min_eur": min_eur, "znamka": znamka, "trgi": trgi,
             "ni_bato": ni, "skupaj": skupaj, "bato_pct": round((skupaj - ni) / skupaj * 100, 1) if skupaj else None,
             "znamke": dict(sorted(znamke.items(), key=lambda kv: -kv[1])), "izracunano": _lj_iso()}
-    _bato_cache.update(key=key, data=data)
     return data
 
 
@@ -20516,6 +20516,30 @@ async def narocila_live(request: Request, year: int = 2026):
             "projection_revenue": base.get("projection_revenue", 0),
             "best_day": base.get("best_day"), "server_min": round(now_min, 1)}
 
+_F2_DAN_CACHE = {}   # pot → (mtime, (naročila, promet) ali None)
+
+
+def _f2_dan_final(f):
+    try:
+        m = f.stat().st_mtime
+    except Exception:
+        return None
+    c = _F2_DAN_CACHE.get(str(f))
+    if c and c[0] == m:
+        return c[1]
+    v = None
+    try:
+        final = json.loads(f.read_text(encoding="utf-8")).get("final")
+        if final and isinstance(final, dict):
+            o = int(final.get("orders", 0) or 0)
+            rv = float(final.get("revenue", 0) or 0)
+            v = (o, rv) if o > 0 else None
+    except Exception:
+        v = None
+    _F2_DAN_CACHE[str(f)] = (m, v)
+    return v
+
+
 @app.get("/forecast2-stats")
 async def forecast2_stats(year: int = 2026):
     """Seštevek naročil + prometa za celo leto + PROJEKCIJA leta (za domači števec).
@@ -20530,16 +20554,9 @@ async def forecast2_stats(year: int = 2026):
         day_rows = []  # (date_iso, orders, revenue)
         prefix = f"{year}-"
         for f in FORECAST2_DIR.glob(f"{prefix}*.json"):
-            try:
-                day = json.loads(f.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            final = day.get("final")
-            if final and isinstance(final, dict):
-                o = int(final.get("orders", 0) or 0)
-                rv = float(final.get("revenue", 0) or 0)
-                if o > 0:
-                    day_rows.append((f.stem, o, rv))
+            v = _f2_dan_final(f)   # predpomnjeno po datoteki (mtime) — prej json.loads ~275 datotek ob vsakem obisku Domov
+            if v:
+                day_rows.append((f.stem, v[0], v[1]))
         day_rows.sort(key=lambda x: x[0])
 
         total_orders = sum(r[1] for r in day_rows)
@@ -29812,13 +29829,31 @@ async def xsell_poraba(request: Request):
             "zadnji": log[-20:][::-1]}
 
 
+_AI_READ_CACHE = {"k": None, "log": None}
+
+
+def _ai_read_cached() -> list:
+    """_ai_read() le ob spremembi dnevnika (mtime + velikost) — prej ves ai_usage.jsonl ob vsakem obisku Domov."""
+    try:
+        s = AI_USAGE_FILE.stat()
+        k = (s.st_mtime, s.st_size)
+    except Exception:
+        k = None
+    if k is not None and _AI_READ_CACHE["k"] == k and _AI_READ_CACHE["log"] is not None:
+        return _AI_READ_CACHE["log"]
+    log = _ai_read()
+    if k is not None:
+        _AI_READ_CACHE.update(k=k, log=log)
+    return log
+
+
 @app.get("/ai-poraba")
 async def ai_poraba(request: Request):
     """Stroški vseh AI klicev (Claude, OpenAI, Gemini, ElevenLabs) za kartico na Domov.
     Za vsako obdobje (dan = po urah, teden = 7 dni, mesec = 30 dni, vse = po mesecih): skupaj, po viru, po funkciji, stolpci."""
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
-    log = _ai_read()
+    log = _ai_read_cached()
     now = datetime.fromisoformat(_lj_iso()[:19])
     danes = now.date()
 

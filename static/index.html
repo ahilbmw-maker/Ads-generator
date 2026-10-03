@@ -1054,7 +1054,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 13:34</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 13:51</div>
     </div>
   </div>
 
@@ -5894,6 +5894,7 @@ function switchPage(page) {
     document.body.style.overflow = '';
     if (mainEl2) { mainEl2.style.padding = ''; mainEl2.style.height = ''; mainEl2.style.overflow = ''; mainEl2.style.boxSizing = ''; }
   }
+  if (page === 'home' && typeof window._homeZalogaPoll === 'function') window._homeZalogaPoll();
   if (page === 'tiktok') { ttLoadSkus(); }
   if (page === 'zaloga') { zalogaLoad(); zalogaSyncDailyAuto(); }
   if (page === 'selitev') { if(typeof selInit==='function') selInit(); }
@@ -30276,7 +30277,11 @@ async function vracilaHistoryDelete(filename) {
 
   function startHomeZaloga() {
     poll();
-    setInterval(poll, 15000);          // osveži podatke (oba trga) vsakih 15s
+    // osveži podatke (oba trga) vsakih 15 s — samo ko je Domov odprt in zavihek viden (prej na vseh straneh, brez konca)
+    const _domovViden = () => !document.hidden && document.getElementById('page-home')?.classList.contains('active');
+    window._homeZalogaPoll = poll;   // switchPage('home') → takoj sveže
+    setInterval(() => { if (_domovViden()) poll(); }, 15000);
+    document.addEventListener('visibilitychange', () => { if (_domovViden()) poll(); });
     _homeTimerInt = setInterval(tickHomeTimers, 1000);  // živ tick časovnic
   }
   if (document.readyState === 'loading') {
