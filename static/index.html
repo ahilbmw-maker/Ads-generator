@@ -1047,7 +1047,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 11:42</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 11:52</div>
     </div>
   </div>
 
@@ -1323,7 +1323,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <button type="button" class="hq-btn" title="Kreative → Čakalna vrsta" onclick="switchPage('kreative');krSwitchTab('queue')"><span class="hq-ic">⏳</span>Vrsta</button>
           <button type="button" class="hq-btn" title="Kreative → Video Ads" onclick="switchPage('kreative');krSwitchTab('videoads')"><span class="hq-ic">🎬</span>Video Ads</button>
           <button type="button" class="hq-btn" onclick="switchPage('calc');switchCalcTab('pricecheck')"><span class="hq-ic">💰</span>Urejevalnik cen</button>
-          <button type="button" class="hq-btn" onclick="switchPage('analiza')"><span class="hq-ic">📊</span>Analiza</button>
+          <button type="button" class="hq-btn" title="Analiza → IBKR" onclick="switchPage('analiza');switchAnalizaTab('ibkr')"><span class="hq-ic">💼</span>IBKR</button>
           <button type="button" class="hq-btn" onclick="switchPage('knjigovodstvo')"><span class="hq-ic">📄</span>Knjigovodstvo</button>
           <button type="button" class="hq-btn" onclick="switchPage('forecast')"><span class="hq-ic">📈</span>Napoved</button>
           <button type="button" class="hq-btn" onclick="switchPage('prevzemi')"><span class="hq-ic">📥</span>Prevzemi</button>
@@ -3871,9 +3871,14 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div id="ibkrDash" style="display:none">
       <div id="ibkrKpis" class="cf-kpis"></div>
       <div class="card" id="ibkrAiCard" style="display:none;margin-bottom:14px;border-left:4px solid #8b5cf6">
-        <span class="slabel">🧠 AI ANALIZA PORTFELJA</span> <span id="ibkrAiMeta" style="font-size:11px;color:var(--text-tertiary)"></span>
-        <div id="ibkrAiTxt" style="margin-top:8px;font-size:13px;line-height:1.6"></div>
-        <div style="margin-top:8px;font-size:10.5px;color:var(--text-tertiary)">Opis stanja in tveganj, ne investicijsko svetovanje.</div>
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="ibkrAiToggle()">
+          <span class="slabel">🧠 AI ANALIZA PORTFELJA</span> <span id="ibkrAiMeta" style="font-size:11px;color:var(--text-tertiary)"></span>
+          <button type="button" id="ibkrAiTgl" style="margin-left:auto;padding:4px 10px;background:var(--surface2);color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">▴ Skrij</button>
+        </div>
+        <div id="ibkrAiBody">
+          <div id="ibkrAiTxt" style="margin-top:8px;font-size:13px;line-height:1.6"></div>
+          <div style="margin-top:8px;font-size:10.5px;color:var(--text-tertiary)">Opis stanja in tveganj, ne investicijsko svetovanje.</div>
+        </div>
       </div>
       <div class="card" style="margin-bottom:14px">
         <span class="slabel">📈 VREDNOST RAČUNA (NAV) — ZGODOVINA</span>
@@ -24869,6 +24874,15 @@ function ibkrAiShow(a) {
   document.getElementById('ibkrAiCard').style.display = 'block';
   document.getElementById('ibkrAiMeta').textContent = '· ' + String(a.at || '').replace('T', ' ').slice(0, 16) + (a.podatki_do ? ' · podatki do ' + a.podatki_do : '');
   document.getElementById('ibkrAiTxt').innerHTML = ibkrMd(a.besedilo || '');
+  let skrij = false; try { skrij = localStorage.getItem('ibkr_ai_skrij') === '1'; } catch (e) {}
+  ibkrAiToggle(!skrij);
+}
+function ibkrAiToggle(prikazi) {   // brez argumenta = preklop; stanje ostane v localStorage
+  const body = document.getElementById('ibkrAiBody');
+  if (prikazi == null) prikazi = body.style.display === 'none';
+  body.style.display = prikazi ? '' : 'none';
+  document.getElementById('ibkrAiTgl').textContent = prikazi ? '▴ Skrij' : '▾ Prikaži';
+  try { localStorage.setItem('ibkr_ai_skrij', prikazi ? '0' : '1'); } catch (e) {}
 }
 async function ibkrAnaliza() {
   const btn = document.getElementById('ibkrAiBtn'), st = document.getElementById('ibkrStatus');
@@ -24877,7 +24891,7 @@ async function ibkrAnaliza() {
     const r = await fetch('/ibkr-analiza', {method: 'POST'});
     const d = await r.json();
     if (!d.ok) { st.innerHTML = '<span style="color:var(--red)">❌ ' + ibkrEsc(d.error === 'owner' ? 'Samo za lastnika.' : (d.error || 'napaka')) + '</span>'; return; }
-    ibkrAiShow(d);
+    ibkrAiShow(d); ibkrAiToggle(true);   // nova analiza se vedno odpre
     document.getElementById('ibkrAiCard').scrollIntoView({behavior: 'smooth', block: 'start'});
   } catch (e) {
     st.innerHTML = '<span style="color:var(--red)">❌ ' + ibkrEsc(e.message) + '</span>';
