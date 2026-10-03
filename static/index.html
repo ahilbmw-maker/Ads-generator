@@ -393,13 +393,14 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .cf-tbl td{padding:7px 10px;border-bottom:1px solid var(--border)}
 .cf-tbl .r{text-align:right;white-space:nowrap}
 .hsem-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
-.hsem-m{min-width:0;overflow:hidden;position:relative;display:flex;flex-direction:column;row-gap:1px;border:1px solid var(--border);border-left:4px solid;border-radius:8px;padding:7px 10px 7px 30px;background:var(--surface)}
-/* zastava zapolni levi zgornji kot (trikotnik) — manj šuma kot cela zastava */
-.hsem-m img{position:absolute;top:0;left:0;width:30px;height:30px;object-fit:cover;clip-path:polygon(0 0,100% 0,0 100%);pointer-events:none}
-.hsem-t{display:flex;justify-content:space-between;align-items:center;font-size:13.5px;font-weight:800;color:var(--text)}
+.hsem-m{min-width:0;overflow:hidden;display:flex;flex-direction:column;row-gap:1px;border:1px solid var(--border);border-left:4px solid;border-radius:8px;padding:7px 10px;background:var(--surface)}
+/* risana (poenostavljena) zastavica pred oznako trga */
+.hsem-f{display:inline-block;width:20px;height:14px;border-radius:3px;overflow:hidden;box-shadow:0 0 0 1px rgba(0,0,0,.15);flex:none}
+.hsem-f svg{display:block}
+.hsem-t{display:flex;justify-content:flex-start;gap:7px;align-items:center;font-size:13.5px;font-weight:800;color:var(--text)}
 .hsem-s{display:flex;justify-content:space-between;gap:6px;font-size:11.5px;color:var(--text-secondary);white-space:nowrap}
 .hsem-s b{font-weight:800}
-@media(max-width:700px){.hsem-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.hsem-m{padding:6px 8px 6px 26px}.hsem-s{flex-direction:column;gap:0;font-size:11px}.hsem-s.hsem-c{flex-direction:row;justify-content:space-between;margin-top:2px}}
+@media(max-width:700px){.hsem-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.hsem-m{padding:6px 8px}.hsem-s{flex-direction:column;gap:0;font-size:11px}.hsem-s.hsem-c{flex-direction:row;justify-content:space-between;margin-top:2px}}
 .hai-wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;margin-bottom:18px;align-items:stretch}
 .hai-wrap > .card{margin-bottom:0}
 .hai-box{background:var(--bg-secondary);border-top:3px solid #7F77DD;padding:14px 16px;display:flex;align-items:center}
@@ -1054,7 +1055,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 13:51</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 14:00</div>
     </div>
   </div>
 
@@ -6013,6 +6014,20 @@ async function homePriceCountLoad(){
   }catch(e){ el.textContent = '—'; }
 }
 
+// risane (poenostavljene) zastavice za Semafor — ploskovne barve brez grbov, SVG v strani (brez zunanjega CDN)
+const SEM_ZAST = {SI:{h:['#fff','#0b4ea2','#e1251b']},SLO:{h:['#fff','#0b4ea2','#e1251b']},HR:{h:['#e1251b','#fff','#1f3c88']},RS:{h:['#c6363c','#0c4076','#fff']},
+  HU:{h:['#cd2a3e','#fff','#436f4d']},PL:{h:['#fff','#dc143c']},CZ:{h:['#fff','#d7141a'],tri:'#11457e'},SK:{h:['#fff','#0b4ea2','#ee1c25']},
+  GR:{gr:1},BG:{h:['#fff','#00966e','#d62612']},RO:{v:['#002b7f','#fcd116','#ce1126']},IT:{v:['#009246','#fff','#ce2b37']}};
+function semZastava(k){
+  const f = SEM_ZAST[String(k||'').toUpperCase()]; if(!f) return '';
+  const w = 20, h = 14; let s = '';
+  if(f.h) f.h.forEach((c,i,a) => s += '<rect x="0" y="'+(i*h/a.length)+'" width="'+w+'" height="'+(h/a.length+0.5)+'" fill="'+c+'"/>');
+  if(f.v) f.v.forEach((c,i,a) => s += '<rect x="'+(i*w/a.length)+'" y="0" width="'+(w/a.length+0.5)+'" height="'+h+'" fill="'+c+'"/>');
+  if(f.tri) s += '<path d="M0 0 L'+(w/2)+' '+(h/2)+' L0 '+h+'Z" fill="'+f.tri+'"/>';
+  if(f.gr){ for(let i=0;i<5;i++) s += '<rect x="0" y="'+(i*h/5)+'" width="'+w+'" height="'+(h/5+0.5)+'" fill="'+(i%2?'#fff':'#0d5eaf')+'"/>';
+    s += '<rect x="0" y="0" width="8" height="8.4" fill="#0d5eaf"/><rect x="3.2" y="0" width="1.6" height="8.4" fill="#fff"/><rect x="0" y="3.6" width="8" height="1.2" fill="#fff"/>'; }
+  return '<span class="hsem-f" title="'+k+'"><svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'">'+s+'</svg></span>';
+}
 // ═══ TRAK SEMAFOR NA UVODNI STRANI ═══
 // Nevtralni podatki so za vse; zneske pošlje strežnik samo z lastniškim piškotkom.
 let HOMESEM = null;
@@ -6049,13 +6064,12 @@ function homeSemRender(){
     homeAiRender(); return;
   }
 
-  // ploščice po trgih: prava zastava (flag-icons prek jsDelivr), status, naročila, CPA (+ prispevek/naročilo za lastnika)
+  // ploščice po trgih: risana zastavica (semZastava), status (barvni rob), naročila, CPA (+ prispevek/naročilo za lastnika)
   const eur2 = v => v==null ? '—' : Number(v).toLocaleString('sl-SI',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const tiles = '<div class="hsem-grid">' + (d.markets||[]).map(m => {
-    const c = col[m.status]||col.grey, fl = String(m.market||'').toLowerCase();
+    const c = col[m.status]||col.grey;
     return '<div class="hsem-m" style="border-left-color:' + c + '" title="' + m.market + ': ' + (m.orders||0) + ' naročil · CPA ' + eur2(m.cpa) + (m.contrib!=null ? ' · prispevek ' + eur2(m.contrib) + '/nar.' : '') + '">'
-      + '<img src="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/flags/4x3/' + fl + '.svg" alt="' + m.market + '">'
-      + '<div class="hsem-t"><span>' + m.market + '</span></div>'
+      + '<div class="hsem-t">' + semZastava(m.market) + '<span>' + m.market + '</span></div>'
       + '<div class="hsem-s"><span>' + (m.orders||0) + ' nar.</span><span>CPA ' + eur2(m.cpa) + '</span></div>'
       + (m.contrib!=null ? '<div class="hsem-s hsem-c"><span>prispevek</span><b style="color:' + (m.contrib>=0?'#16a34a':'#dc2626') + '">' + (m.contrib>0?'+':'') + eur2(m.contrib) + '</b></div>' : '')
       + '</div>';
