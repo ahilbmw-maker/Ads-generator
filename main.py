@@ -1153,20 +1153,32 @@ def _lj_iso() -> str:
         return datetime.now().isoformat(timespec="seconds")
 
 
-def _jload(path, default):
-    try:
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-    except Exception as e:
-        print(f"[json] {path.name}: {e}")
+def _jload(path, default, strict=False):
+    """Prebere JSON; ob okvarjeni datoteki poskusi rezervo .bak (zadnji uspešen zapis).
+    strict=True: če obstoječe datoteke ni mogoče prebrati, sproži napako (klicatelj ne sme zapisati prazne čez staro)."""
+    if not path.exists():
+        return default
+    for p in (path, path.with_name(path.name + ".bak")):
+        try:
+            if p.exists():
+                return json.loads(p.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"[json] {p.name}: {e}")
+    if strict:
+        raise RuntimeError(f"{path.name} ni berljiv")
     return default
 
 
 def _jsave(path, data):
+    # enolično ime .tmp (ob deployu na Renderju lahko stari in novi proces pišeta hkrati) + rezerva .bak zadnjega zapisa
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex[:6]}.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(path)
+    os.replace(tmp, path)
+    try:
+        shutil.copyfile(path, path.with_name(path.name + ".bak"))
+    except Exception as e:
+        print(f"[json] {path.name}.bak: {e}")
 
 
 def _prune_by_age(d: dict, field: str, days: int) -> dict:
@@ -1323,7 +1335,10 @@ async def cms_log_post(request: Request):
     key = f"{trg}|{cms_id}"
     now = _lj_iso()
     async with _cms_log_get_lock():
-        log = _jload(CMS_LOG_FILE, {})
+        try:
+            log = _jload(CMS_LOG_FILE, {}, strict=True)   # neberljiv dnevnik → ne zapiši praznega čez starega
+        except Exception as e:
+            return {"ok": False, "error": f"Dnevnik CMS trenutno ni berljiv ({e}) — poskusi znova čez nekaj sekund."}
         if akcija == "undo":
             log.pop(key, None)
             log.pop(f"*|{cms_id}", None)     # tudi zapis iz Price Checkerja (velja za vse trge)
@@ -1342,16 +1357,46 @@ async def cms_log_post(request: Request):
                 if b.get("cena") is not None and "cena_ob_odprtju" not in e:
                     e["cena_ob_odprtju"] = b.get("cena")
             log[key] = e
-        log = _prune_by_age(log, "opened_at", CMS_LOG_KEEP_DAYS)
+        # ročno označeni (done_at) ostanejo trajno, dokler jih uporabnik ne odznači; po starosti se brišejo samo odprti
+        stari = _prune_by_age(log, "opened_at", CMS_LOG_KEEP_DAYS)
+        log = {k: v for k, v in log.items() if k in stari or (v or {}).get("done_at")}
         _jsave(CMS_LOG_FILE, log)
     return {"ok": True, "key": key, "zapis": log.get(key)}
+
+
+@app.post("/cms-log-uvoz")
+async def cms_log_uvoz(request: Request):
+    """Body: {log: {trg|cms_id: zapis}} (npr. izvoz iz GET /cms-log) — ZDRUŽI z obstoječim dnevnikom
+    (obnova po izgubi); pri istem ključu ostane novejši zapis. Nič se ne briše."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    try:
+        b = await request.json()
+        uvoz = b.get("log") if isinstance(b.get("log"), dict) else b
+        assert isinstance(uvoz, dict)
+    except Exception:
+        return {"ok": False, "error": "Neveljaven JSON (pričakujem {log: {...}})"}
+    cas = lambda e: str((e or {}).get("done_at") or (e or {}).get("opened_at") or "")
+    async with _cms_log_get_lock():
+        try:
+            log = _jload(CMS_LOG_FILE, {}, strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Dnevnik CMS ni berljiv ({e})"}
+        n = 0
+        for k, e in uvoz.items():
+            if not isinstance(e, dict) or "|" not in str(k):
+                continue
+            if k not in log or cas(e) > cas(log[k]):
+                log[k] = e; n += 1
+        _jsave(CMS_LOG_FILE, log)
+    return {"ok": True, "uvozeno": n, "skupaj": len(log)}
 
 
 def _cms_status(trg: str, cms_id, g_id, cena_zdaj, log: dict, changes: dict, meta: dict):
     """Status vrstice iz dnevnika + sprememb cen.
     potrjeno  = po odprtju je feed pokazal spremenjeno ceno
     nespremenjeno = feed, zgrajen PO odprtju, ima še vedno isto ceno
-    popravljeno = ročno označeno, feed še ni potrdil
+    popravljeno = ročno označeno, feed še ni potrdil (ostane urejeno trajno — tudi če feed pokaže isto ceno)
     odprto = kliknjeno ✎, čakamo nov feed"""
     if not cms_id:
         return None
@@ -1367,7 +1412,7 @@ def _cms_status(trg: str, cms_id, g_id, cena_zdaj, log: dict, changes: dict, met
     elif built and built > opened and (meta.get("fetched_at") or "") > opened:
         c0 = e.get("cena_ob_odprtju")
         if c0 is None or (cena_zdaj is not None and abs(float(c0) - float(cena_zdaj)) < 0.005):
-            st = "nespremenjeno"
+            st = "popravljeno" if e.get("done_at") else "nespremenjeno"
         else:
             st = "potrjeno"
     return {"st": st, "opened_at": opened, "done_at": e.get("done_at"), "trg": e.get("trg"),
