@@ -12072,7 +12072,9 @@ function paketCms(){
   const v=prompt('▶ CMS: '+items.length+' izdelkov na '+String(trg).toUpperCase()+(brez?' ('+brez+' brez CMS ID bo izpuščenih)':'')+'.\n\nKoliko korakov navzgor? 1 korak = '+KOR+' (kot veliki gumb + v vtičniku)\nVpiši 1, 2 ali 3:','1');
   if(v===null) return;
   const koraki=Math.max(1,Math.min(5,parseInt(v,10)||1));
-  window.postMessage({type:'suban-kalk-paket',trg,koraki,items:items.map(x=>({sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
+  // vzporedno (privzeto): vsi se pripravijo hkrati (do 10 zavihkov), v panelu seznam + »💾 Shrani izbrane«; OK = vzporedno, Prekliči = eden po eden
+  const mode=items.length>1&&!confirm('Pripravim vse hkrati v ozadju (seznam za pregled v panelu, »💾 Shrani izbrane«)?\n\nOK = vse hkrati · Prekliči = eden po eden')?'zaporedno':'vzporedno';
+  window.postMessage({type:'suban-kalk-paket',trg,koraki,mode,items:items.map(x=>({sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
     cena:+x.cena||0,valuta:x.valuta||'',naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc}))},'*');
 }
 window.addEventListener('message',e=>{
