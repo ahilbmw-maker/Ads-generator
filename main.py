@@ -11624,6 +11624,7 @@ async def marza_trgi_stran(request: Request):
 <div id="selBar"><b id="selN">0</b> izbranih
   <button onclick="neuvozBulk(true)" style="background:#fee2e2;color:#991b1b">🚫 Ne uvažamo</button>
   <button onclick="neuvozBulk(false)" style="background:#e2e8f0;color:#0f172a">↩ Odznači 🚫</button>
+<button onclick="paketCms()" title="Vtičnik Kalkulator cen: po vrsti odpre izbrane v CMS, doda +1 korak in vpiše Redna — ti samo klikneš Update" style="background:#16a34a;color:#fff">▶ +1 v CMS</button>
 <button onclick="cmsUndoBulk()" title="Odstrani oznako urejeno (popravljeno / potrjeno / odprto) za izbrane na tem trgu" style="background:#dcfce7;color:#166534">↩ Odznači urejeno</button>
   <button onclick="selClear()" style="background:transparent;color:#cbd5e1">✕ Počisti izbor</button>
 </div>
@@ -12061,7 +12062,24 @@ async function cmsUndoBulk(){
   const nap=ok.filter(v=>!v).length;
   SEL.clear(); selLast=-1; render();
   if(nap) alert(nap+' izdelkov ni bilo mogoče odznačiti — poskusi znova.');
-}function skritUrejen(x){if(!document.getElementById('skrijUr').checked||!x.cms)return false;return x.cms.st==='popravljeno'||x.cms.st==='potrjeno';}
+}// ▶ PAKET: izbrane pošlje vtičniku Kalkulator cen (suban_bridge → kalk_paket); vtičnik jih po vrsti uredi v CMS (+1 korak),
+// uporabnik klikne Update. Urejene vtičnik vrne (kalk-paket-urejeno) → tukaj se označijo kot urejeno (kot D).
+function paketCms(){
+  const items=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&x.cms_id);
+  const brez=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&!x.cms_id).length;
+  if(!items.length){alert('Med izbranimi ni izdelkov s CMS ID.');return;}
+  if(!confirm('▶ +1 v CMS: '+items.length+' izdelkov na '+String(trg).toUpperCase()+(brez?' ('+brez+' brez CMS ID bo izpuščenih)':'')+'.\n\nVtičnik jih odpre po vrsti, doda +1 korak in vpiše Redna — ti klikneš Update.')) return;
+  window.postMessage({type:'suban-kalk-paket',trg,koraki:1,items:items.map(x=>({sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
+    cena:+x.cena||0,valuta:x.valuta||'',naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc}))},'*');
+}
+window.addEventListener('message',e=>{
+  const d=e.data; if(!d||d.type!=='kalk-paket-urejeno'||String(d.trg||'')!==String(trg)) return;
+  const ids=new Set((d.cms_ids||[]).map(String)); let n=0;
+  (D&&D.rows||[]).forEach(x=>{ if(!x.cms_id||!ids.has(String(x.cms_id))) return;
+    if(x.cms&&(x.cms.st==='popravljeno'||x.cms.st==='potrjeno')) return;
+    cmsLog(x,'done'); const t=new Date().toISOString(); x.cms={st:'popravljeno',trg,opened_at:t,done_at:t,vir:'Paket CMS'}; n++; });
+  if(n){ SEL.clear(); selLast=-1; render(); }
+});function skritUrejen(x){if(!document.getElementById('skrijUr').checked||!x.cms)return false;return x.cms.st==='popravljeno'||x.cms.st==='potrjeno';}
 async function cmsLog(x,akcija){
   try{const r=await fetch('/cms-log',{method:'POST',headers:{'Content-Type':'application/json'},keepalive:true,
     body:JSON.stringify({akcija,cms_id:x.cms_id,trg,sku:x.sku,cena:x.cena,vir:BATO?'Bato cene':'Marža po trgih'})});return (await r.json()).ok;}catch(e){return false;}}
