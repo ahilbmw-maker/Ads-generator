@@ -31175,6 +31175,68 @@ async def semafor_trend(obdobje: str = "teden", trg: str = "VSI"):
             "semafor_od": min(sem) if sem else None}
 
 
+# 🧠 AI analiza trenda (Sonnet 5.5, ~par centov): ali dvig cen (RVC/nar.) vleče tudi CPA, kje je prag, kaj se splača.
+# Številke izračuna Python, model jih samo razloži. Zadnja analiza po trgu: /data/semafor_trend_ai.json {trg: {...}}
+SEMAFOR_TREND_AI_FILE = DATA_DIR / "semafor_trend_ai.json"
+
+
+@app.get("/semafor-trend-ai")
+async def semafor_trend_ai_get(trg: str = "VSI"):
+    return {"ok": True, "analiza": (_jload(SEMAFOR_TREND_AI_FILE, {}) or {}).get((trg or "VSI").upper())}
+
+
+@app.post("/semafor-trend-ai")
+async def semafor_trend_ai(data: dict):
+    trg = str((data or {}).get("trg") or "VSI").upper()
+    mes = (await semafor_trend("mesec", trg)).get("vedra") or []
+    ted = (await semafor_trend("teden", trg)).get("vedra") or []
+    if len(mes) < 2:
+        return {"ok": False, "error": "Premalo podatkov (vsaj 2 meseca)."}
+    dog = [x for x in (_jload(SEMAFOR_DOGODKI_FILE, []) or []) if trg == "VSI" or x.get("trg") in (trg, "VSI")]
+    vr = lambda b: (f"{b['k']}{' (v teku)' if b['delno'] else ''}: {b['orders']} nar. ({b['nar_na_dan']}/dan), RVC/nar. {b['rvc_nar']}, "
+                    f"CPA {b['cpa']}, prispevek/nar. bruto {b['prisp_nar']} / realno {b['prisp_nar_real']} (fail {b['fail']} %), "
+                    f"dobiček bruto {b['dobicek']:.0f} € / realno {b['dobicek_real']:.0f} €, POAS {b['poas']}")
+    polni = [b for b in mes if not b["delno"]]
+    el = []
+    for a, b in zip(polni, polni[1:]):
+        drv = b["rvc_nar"] - a["rvc_nar"]
+        if abs(drv) >= 0.05:
+            el.append(f"{a['k']}→{b['k']}: RVC {drv:+.2f} €, CPA {b['cpa'] - a['cpa']:+.2f} € (CPA na +1 € RVC: {(b['cpa'] - a['cpa']) / drv:+.2f})")
+    podatki = ("PO MESECIH:\n" + "\n".join("- " + vr(b) for b in mes)
+               + "\n\nZADNJIH 12 TEDNOV (ponedeljek tedna):\n" + "\n".join("- " + vr(b) for b in ted[-12:])
+               + "\n\nODZIV CPA NA SPREMEMBO RVC (polni meseci):\n" + ("\n".join("- " + x for x in el) or "- premalo sprememb RVC")
+               + "\n\nDOGODKI:\n" + ("\n".join(f"- {x['datum']} ({x['trg']}): {x['besedilo']}" for x in dog) or "- ni vpisanih"))
+    prompt = ("Si analitik e-commerce oglaševanja (Maaarket, impulzni nakupi, 10 trgov EU). Lastniku v slovenščini (s šumniki) "
+              f"jedrnato razloži trend za {'vse trge skupaj' if trg == 'VSI' else 'trg ' + trg}. Spodnje številke so že izračunane — "
+              "uporabljaj samo njih, nič ne izmišljuj. RVC = bruto marža na naročilo brez poštnine; prispevek = RVC − CPA; "
+              "realno = z odbitkom neprevzetih (fail %). Lastnik dviguje cene in uporablja bid cap pri Meta oglasih; "
+              "GLAVNO VPRAŠANJE: ali dvig cen (višji RVC/nar.) vleče tudi višji CPA, in ali skupni dobiček kljub manj naročilom raste.\n\n"
+              "Struktura (markdown, naslovi ##, alineje -, ključne številke **krepko**, skupaj največ ~350 besed):\n"
+              "## Povzetek — 2–3 stavki: kaj se dogaja z RVC, CPA in dobičkom.\n"
+              "## Ali dvig cen vleče CPA — koliko centov CPA na +1 € RVC, ali je razmerje zdravo (pod 1 = ostane več), v katerih obdobjih ne.\n"
+              "## Volumen proti marži — ali manj naročil z višjo maržo prinese več dobička na dan.\n"
+              "## Zadnji tedni — opazni premiki, povezava z dogodki, če obstaja.\n"
+              "## Na kaj paziti — 2–4 konkretne točke (npr. prag CPA, trgi/obdobja z zapiranjem škarij).\n\n"
+              "Če je zadnji mesec/teden v teku, to upoštevaj. Ne dajaj gotovih napovedi; pri sklepih navedi negotovost.\n\nPODATKI:\n" + podatki)
+    loop = asyncio.get_event_loop()
+    try:
+        msg = await loop.run_in_executor(None, lambda: client.messages.create(
+            model=SONNET_MODEL, max_tokens=8000, output_config={"effort": "medium"},
+            messages=[{"role": "user", "content": prompt}]))
+        if getattr(msg, "stop_reason", "") == "refusal":
+            return {"ok": False, "error": "Model je zavrnil zahtevo."}
+        besedilo = "\n".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
+    except Exception as e:
+        return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
+    if not besedilo:
+        return {"ok": False, "error": "Prazen odgovor modela."}
+    out = {"besedilo": besedilo, "at": _lj_iso(), "trg": trg, "podatki_do": mes[-1]["k"]}
+    vse = _jload(SEMAFOR_TREND_AI_FILE, {}) or {}
+    vse[trg] = out
+    SEMAFOR_TREND_AI_FILE.write_text(json.dumps(vse, ensure_ascii=False), "utf-8")
+    return {"ok": True, **out}
+
+
 # 📌 Dogodki na trendu (npr. »dvig cen RO«, »bid cap HU«) — ročni vnos: /data/semafor_dogodki.json [{id, datum, trg, besedilo, at}]
 SEMAFOR_DOGODKI_FILE = DATA_DIR / "semafor_dogodki.json"
 
