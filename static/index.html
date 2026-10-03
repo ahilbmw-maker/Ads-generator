@@ -396,6 +396,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 #analizaSubpage-trend.tr-dark{--surface:#121a2b;--bg-secondary:#0f1626;--border:#26324a;--text:#e5e7eb;--text-secondary:#cbd5e1;--text-tertiary:#94a3b8;background:#0b1220;color:#e5e7eb;border-radius:14px;padding:16px!important;margin-top:12px}
 #analizaSubpage-trend.tr-dark .card{background:#121a2b;border-color:#26324a;color:#e5e7eb}
 #analizaSubpage-trend.tr-dark select,#analizaSubpage-trend.tr-dark input{color-scheme:dark}
+/* stran ima spodaj 5rem prostora (za mobilni meni) — na računalniku ga pri odprtem Trendu ne rabimo (sicer odvečen drsnik) */
+@media(min-width:801px){.main:has(#page-analiza.active #analizaSubpage-trend[style*="display: block"]){padding-bottom:.75rem}}
+#analizaSubpage-trend.tr-dark{margin-bottom:0}
 #analizaSubpage-trend .tr-grid{display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px;align-items:start}
 #analizaSubpage-trend .tr-levo{position:sticky;top:8px}
 #analizaSubpage-trend.tr-dark .card{padding:10px 12px}
@@ -1067,7 +1070,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 17:07</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 17:12</div>
     </div>
   </div>
 
