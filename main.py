@@ -1392,6 +1392,57 @@ async def cms_log_uvoz(request: Request):
     return {"ok": True, "uvozeno": n, "skupaj": len(log)}
 
 
+@app.get("/cms-log-iz-feeda")
+async def cms_log_iz_feeda(request: Request, od: str = "", znamka: str = "maaarket", potrdi: int = 0):
+    """Obnova oznak »urejeno« iz zabeleženih sprememb cen v feedu (feed_price_changes.json, 30 dni):
+    vsak izdelek, ki mu je feed od datuma `od` pokazal spremenjeno ceno, dobi zapis done (vir »Obnova iz feeda«).
+    Brez potrdi=1 samo predogled (štetje po trgih). Obstoječih zapisov ne spreminja."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    if not feed_by_lang:
+        return {"ok": False, "error": "Feed se še nalaga."}
+    od = (od or (datetime.fromisoformat(_lj_iso()) - timedelta(days=14)).date().isoformat())[:10]
+    zn = (znamka or "").strip().lower()
+    novi, po_trgu = {}, {}
+    try:
+        log = _jload(CMS_LOG_FILE, {}, strict=True)
+    except Exception as e:
+        return {"ok": False, "error": f"Dnevnik CMS ni berljiv ({e})"}
+    for trg in MARZA_TRGI:
+        try:
+            res = await _marza_trgi_get(trg)
+        except Exception:
+            continue
+        t = {"gor": 0, "dol": 0, "ze": 0}
+        for r in (res or {}).get("rows") or []:
+            ch, cid = r.get("sprememba") or {}, r.get("cms_id")
+            if not cid or str(ch.get("at") or "")[:10] < od or (zn and zn not in str(r.get("znamka") or "").lower()):
+                continue
+            k = f"{trg}|{cid}"
+            if k in log or k in novi:
+                t["ze"] += 1
+                continue
+            f = lambda s: float(re.sub(r"[^\d.]", "", str(s or "").replace(",", ".")) or 0)
+            t["gor" if f(ch.get("new_price")) >= f(ch.get("old_price")) else "dol"] += 1
+            novi[k] = {"cms_id": str(cid), "trg": trg, "sku": str(r.get("sku") or "").upper(), "vir": "Obnova iz feeda",
+                       "opened_at": ch["at"], "done_at": ch["at"], "cena_ob_odprtju": None}
+        po_trgu[trg] = t
+    if not potrdi:
+        return {"ok": True, "predogled": True, "od": od, "novih": len(novi), "po_trgu": po_trgu,
+                "namig": "Za zapis dodaj &potrdi=1"}
+    async with _cms_log_get_lock():
+        try:
+            log = _jload(CMS_LOG_FILE, {}, strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Dnevnik CMS ni berljiv ({e})"}
+        n = 0
+        for k, e in novi.items():
+            if k not in log:
+                log[k] = e; n += 1
+        _jsave(CMS_LOG_FILE, log)
+    return {"ok": True, "od": od, "zapisanih": n, "po_trgu": po_trgu, "skupaj": len(log)}
+
+
 def _cms_status(trg: str, cms_id, g_id, cena_zdaj, log: dict, changes: dict, meta: dict):
     """Status vrstice iz dnevnika + sprememb cen.
     potrjeno  = po odprtju je feed pokazal spremenjeno ceno
