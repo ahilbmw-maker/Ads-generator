@@ -351,6 +351,10 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
                 if (path.startswith("/semafor") and path != "/semafor-home"
                         and OWNER_PASSWORD and not _owner_check_token(request.cookies.get(OWNER_COOKIE, ""))):
                     return PlainTextResponse("403 — samo za lastnika", status_code=403)
+                # Cash Flow je lastniški (vsi /cashflow-* endpointi; nočna sinhronizacija teče interno)
+                if (path.startswith("/cashflow")
+                        and OWNER_PASSWORD and not _owner_check_token(request.cookies.get(OWNER_COOKIE, ""))):
+                    return JSONResponse({"ok": False, "error": "owner", "message": "Samo za lastnika."}, status_code=403)
                 return await call_next(request)
             if wants_html:
                 return RedirectResponse(url="/login", status_code=302)

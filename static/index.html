@@ -1047,7 +1047,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 11:52</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 11:55</div>
     </div>
   </div>
 
@@ -24779,7 +24779,7 @@ async function cfSyncSheets(sheetId = '', tabName = 'Cash Flow') {
     });
     const d = await r.json();
     if (!d.ok) {
-      status.innerHTML = '<span style="color:#ef4444">❌ ' + (d.error || 'napaka') + '</span>';
+      status.innerHTML = '<span style="color:#ef4444">❌ ' + (d.message || d.error || 'napaka') + '</span>';
       // če je auth napaka, predlagaj sharing
       if (d.error && d.error.toLowerCase().includes('permission')) {
         status.innerHTML += '<br><span style="font-size:11px">Verjetno Sheet ni deljen s service accountom. Odpri ⚙️ Sheet ID gumb.</span>';
@@ -24806,7 +24806,7 @@ async function cfUploadFile(file) {
     const r = await fetch('/cashflow-upload', {method: 'POST', body: fd});
     const d = await r.json();
     if (!d.ok) {
-      status.innerHTML = '<span style="color:var(--red)">❌ ' + (d.error || 'napaka') + '</span>';
+      status.innerHTML = '<span style="color:var(--red)">❌ ' + (d.message || d.error || 'napaka') + '</span>';
       return;
     }
     status.innerHTML = '<span style="color:var(--green)">✓ Naloženo: ' + d.rows + ' vrstic (' + d.size_kb + ' KB)</span>';
@@ -24948,7 +24948,12 @@ async function cfLoadData() {
     const r = await fetch('/cashflow-data');
     const d = await r.json();
     if (!d.ok) {
-      if (d.error === 'no_file') {
+      if (d.error === 'owner') {   // Cash Flow je samo za lastnika (403 iz AuthGate)
+        const em = document.getElementById('cfEmpty');
+        em.innerHTML = '<div style="font-size:48px;margin-bottom:12px">🔒</div>Cash Flow je viden samo lastniku.<br>Prijavi se z lastniškim geslom.';
+        em.style.display = 'block';
+        document.getElementById('cfDashboard').style.display = 'none';
+      } else if (d.error === 'no_file') {
         document.getElementById('cfEmpty').style.display = 'block';
         document.getElementById('cfDashboard').style.display = 'none';
       } else {
