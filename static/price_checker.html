@@ -1728,13 +1728,29 @@ try { _dismissedSkus = new Set(JSON.parse(localStorage.getItem('pcc_dismissed_sk
 function _saveDismissed() {
   try { localStorage.setItem('pcc_dismissed_skus', JSON.stringify([..._dismissedSkus])); } catch(e) {}
 }
-async function dismissGroupSku(sku) {
+async function dismissGroupSku(sku, btn) {
   // zberi VSA naročila tega SKU-ja (čez vse države) in jih izbriši (+ siluxar sync + undo)
+  // mesto kartice/vrstice si zapomni → po izbrisu naslednji izdelek pomakni na vrh (vedno urejaš prvega)
+  const gv = document.getElementById('groupSkuView');
+  const el = btn && btn.closest('[data-gs]');
+  const idx = el && gv ? Array.from(gv.querySelectorAll('[data-gs]')).indexOf(el) : -1;
   const rows = allRows.filter(r => r.sku === sku && !r.isNull);
-  if (!rows.length) { _dismissedSkus.add(sku); _saveDismissed(); renderGroupSku(); return; }
+  if (!rows.length) { _dismissedSkus.add(sku); _saveDismissed(); renderGroupSku(); _gsNaVrh(idx); return; }
   rows.forEach(r => selectedKeys.add(r.id + '|' + r.sku));
   await bulkDelete();
   renderGroupSku();
+  _gsNaVrh(idx);
+}
+function _gsNaVrh(idx) {
+  if (idx < 0) return;
+  // po izrisu (renderGroupSku vrne drsnik v naslednji sličici) → šele nato poravnaj naslednji izdelek na vrh
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const gv = document.getElementById('groupSkuView'); if (!gv) return;
+    const els = gv.querySelectorAll('[data-gs]');
+    const t = els[Math.min(idx, els.length - 1)]; if (!t) return;
+    const y = t.getBoundingClientRect().top + window.scrollY - 8;
+    window.scrollTo({ top: Math.max(0, y), behavior: 'auto' });
+  }));
 }
 function resetDismissedSkus() {
   if (!confirm('Ponastavim seznam — pokaži vse skrite izdelke nazaj?')) return;
@@ -1838,12 +1854,12 @@ function _renderGroupCards(skuList) {
   for (const item of skuList) {
     const marze = item.stores.map(s => s.avgMarza).filter(m => m != null);
     const minM = Math.min(...marze), maxM = Math.max(...marze);
-    html += `<div style="background:#fff;border:1px solid var(--border2);border-radius:10px;padding:14px 16px;margin-bottom:10px">
+    html += `<div data-gs="1" style="background:#fff;border:1px solid var(--border2);border-radius:10px;padding:14px 16px;margin-bottom:10px">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;gap:10px">
         <div style="font-weight:700;color:var(--text);font-size:14px">${skuHtml(item.sku)} ${item.product ? '<span style="font-weight:400;color:var(--muted);font-size:12px">· '+item.product+'</span>' : ''}</div>
         <div style="display:flex;align-items:center;gap:10px;white-space:nowrap">
           <span style="font-size:11px;color:#7c3aed;font-weight:600">${item.eurSpread ? 'Δ '+item.eurSpread.toFixed(2)+'€' : ''}${item.marzaSpread ? ' · marža '+item.marzaSpread.toFixed(0)+'%' : ''}</span>
-          <button onclick="dismissGroupSku('${item.sku}')" title="Uredil sem cene — izbriši ta naročila (tudi v siluxar)" style="font-size:11px;color:#fff;background:#16a34a;border:1px solid #15803d;border-radius:6px;padding:3px 11px;cursor:pointer;font-weight:600">✓ Urejeno — izbriši</button>
+          <button onclick="dismissGroupSku('${item.sku}', this)" title="Uredil sem cene — izbriši ta naročila (tudi v siluxar)" style="font-size:11px;color:#fff;background:#16a34a;border:1px solid #15803d;border-radius:6px;padding:3px 11px;cursor:pointer;font-weight:600">✓ Urejeno — izbriši</button>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px">`;
@@ -1918,11 +1934,11 @@ function _renderGroupTable(skuList) {
       const ncTxt = s.avgNc != null ? ' · NC '+s.avgNc.toFixed(2) : '';
       return `<span style="display:inline-block;background:${bg};color:${c};border:1px solid ${c}33;border-radius:6px;padding:3px 8px;margin:2px;font-weight:600;font-size:11px">${s.store}: ${m!=null?m.toFixed(0)+'%':'—'} · ${s.avgPrice.toFixed(0)} ${s.currency!=='EUR'&&s.currency!=='—'?s.currency:'€'}${eurTxt}${ncTxt}</span>`;
     }).join('');
-    html += `<tr style="border-top:1px solid var(--border)">
+    html += `<tr data-gs="1" style="border-top:1px solid var(--border)">
       <td style="padding:9px 12px;font-weight:700;vertical-align:top;white-space:nowrap">${skuHtml(item.sku)}${item.product?'<div style="font-weight:400;color:var(--muted);font-size:10px;max-width:160px;overflow:hidden;text-overflow:ellipsis">'+item.product+'</div>':''}</td>
       <td style="padding:7px 12px">${chips}</td>
       <td style="padding:9px 12px;text-align:right;font-weight:700;color:#7c3aed;white-space:nowrap">${item.marzaSpread.toFixed(0)}%</td>
-      <td style="padding:9px 12px;text-align:right"><button onclick="dismissGroupSku('${item.sku}')" title="Urejeno — izbriši ta naročila" style="font-size:12px;color:#fff;background:#16a34a;border:1px solid #15803d;border-radius:6px;padding:3px 10px;cursor:pointer;font-weight:600">✓</button></td>
+      <td style="padding:9px 12px;text-align:right"><button onclick="dismissGroupSku('${item.sku}', this)" title="Urejeno — izbriši ta naročila" style="font-size:12px;color:#fff;background:#16a34a;border:1px solid #15803d;border-radius:6px;padding:3px 10px;cursor:pointer;font-weight:600">✓</button></td>
     </tr>`;
   }
   html += `</tbody></table></div>`;
@@ -1942,7 +1958,7 @@ function _renderGroupHeat(skuList) {
     html += `<div style="background:#fff;border:1px solid var(--border2);border-radius:10px;padding:12px 14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="font-weight:700;font-size:13px">${skuHtml(item.sku)} <span style="font-weight:400;color:var(--muted);font-size:11px">${item.product?'· '+item.product:''}</span></div>
-        <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#7c3aed;font-weight:600">Δ ${item.marzaSpread.toFixed(0)}%</span><button onclick="dismissGroupSku('${item.sku}')" title="Urejeno — izbriši ta naročila" style="font-size:12px;color:#fff;background:#16a34a;border:1px solid #15803d;border-radius:6px;padding:2px 9px;cursor:pointer;font-weight:600">✓</button></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#7c3aed;font-weight:600">Δ ${item.marzaSpread.toFixed(0)}%</span><button onclick="dismissGroupSku('${item.sku}', this)" title="Urejeno — izbriši ta naročila" style="font-size:12px;color:#fff;background:#16a34a;border:1px solid #15803d;border-radius:6px;padding:2px 9px;cursor:pointer;font-weight:600">✓</button></div>
       </div>`;
     for (const s of sortedStores) {
       const m = s.avgMarza;
