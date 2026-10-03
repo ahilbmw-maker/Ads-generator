@@ -1047,7 +1047,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 10:39</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 11:42</div>
     </div>
   </div>
 
@@ -1131,6 +1131,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="nav-sub-item" onclick="switchPage('analiza');switchAnalizaTab('ttkreative')">TikTok Kreative</div>
     <div class="nav-sub-item" onclick="switchPage('analiza');switchAnalizaTab('beta')">🧪 Analiza Beta</div>
     <div class="nav-sub-item" onclick="switchPage('analiza');switchAnalizaTab('cashflow')">💰 Cash Flow</div>
+    <div class="nav-sub-item" onclick="switchPage('analiza');switchAnalizaTab('ibkr')">📈 IBKR</div>
     <div class="nav-sub-item" onclick="switchPage('analiza');switchAnalizaTab('shipping')">🚚 Stroški pošte</div>
   </div>
 
@@ -3164,6 +3165,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="analiza-tab-btn" id="analizaTab-ttkreative" onclick="switchAnalizaTab('ttkreative')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🎬 TikTok Kreative</button>
       <button class="analiza-tab-btn" id="analizaTab-beta" onclick="switchAnalizaTab('beta')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🧪 Analiza Beta</button>
       <button class="analiza-tab-btn" id="analizaTab-cashflow" onclick="switchAnalizaTab('cashflow')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Cash Flow</button>
+      <button class="analiza-tab-btn" id="analizaTab-ibkr" onclick="switchAnalizaTab('ibkr')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📈 IBKR</button>
       <button class="analiza-tab-btn" id="analizaTab-shipping" onclick="switchAnalizaTab('shipping')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🚚 Stroški pošte</button>
       <button class="analiza-tab-btn" id="analizaTab-priporocila" onclick="switchAnalizaTab('priporocila')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🎯 Priporočila</button>
       <button class="analiza-tab-btn" id="analizaTab-dvojniki" onclick="switchAnalizaTab('dvojniki')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🧬 Dvojniki</button>
@@ -3851,6 +3853,42 @@ input[type="text"].error { border-color: var(--red) !important; }
       Naloži <strong>CashFlow.xlsx</strong> da začnemo z analizo.<br>
       <span style="font-size:11px">Bere se samo tab "Cash Flow"</span>
     </div>
+  </div>
+
+
+  <!-- TAB: IBKR (Flex Web Service, samo branje, samo lastnik) -->
+  <div id="analizaSubpage-ibkr" style="display:none;padding:14px">
+    <div style="margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button onclick="ibkrLoad(1)" id="ibkrRefBtn" style="padding:8px 14px;background:var(--accent);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">↻ Osveži iz IBKR</button>
+      <button onclick="ibkrAnaliza()" id="ibkrAiBtn" style="padding:8px 14px;background:#8b5cf6;color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🧠 Analiziraj portfelj</button>
+      <div id="ibkrStatus" style="font-size:12px;color:var(--text-secondary);flex:1"></div>
+      <label style="font-size:11px;color:var(--text-secondary)">Obdobje:</label>
+      <select id="ibkrRange" onchange="ibkrRender()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit">
+        <option value="30">30 dni</option><option value="90">90 dni</option><option value="180">180 dni</option>
+        <option value="365" selected>1 leto</option><option value="all">Vse</option>
+      </select>
+    </div>
+    <div id="ibkrDash" style="display:none">
+      <div id="ibkrKpis" class="cf-kpis"></div>
+      <div class="card" id="ibkrAiCard" style="display:none;margin-bottom:14px;border-left:4px solid #8b5cf6">
+        <span class="slabel">🧠 AI ANALIZA PORTFELJA</span> <span id="ibkrAiMeta" style="font-size:11px;color:var(--text-tertiary)"></span>
+        <div id="ibkrAiTxt" style="margin-top:8px;font-size:13px;line-height:1.6"></div>
+        <div style="margin-top:8px;font-size:10.5px;color:var(--text-tertiary)">Opis stanja in tveganj, ne investicijsko svetovanje.</div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <span class="slabel">📈 VREDNOST RAČUNA (NAV) — ZGODOVINA</span>
+        <canvas id="ibkrChartNav" style="margin-top:10px;width:100%;max-height:340px"></canvas>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <span class="slabel">📋 POZICIJE</span>
+        <div id="ibkrPos" style="margin-top:10px;overflow-x:auto"></div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <span class="slabel">💶 GOTOVINA PO VALUTAH</span>
+        <div id="ibkrCash" style="margin-top:10px;overflow-x:auto"></div>
+      </div>
+    </div>
+    <div id="ibkrEmpty" style="display:none;text-align:center;padding:50px 20px;color:var(--text-tertiary);font-size:13px;line-height:1.7"></div>
   </div>
 
 
@@ -17638,7 +17676,7 @@ function semRenderTable(){
 
 function switchAnalizaTab(tab) {
   if (tab === 'semafor') setTimeout(semLoad, 50);
-  const _valid = ['meta', 'priporocila', 'dvojniki', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'shipping', 'semafor'];
+  const _valid = ['meta', 'priporocila', 'dvojniki', 'obrat14', 'obrat14tt', 'ttkreative', 'beta', 'cashflow', 'ibkr', 'shipping', 'semafor'];
   if (!_valid.includes(tab)) tab = 'priporocila';   // odstranjen 'izdelki' → padec na Priporočila
   _valid.forEach(t => {
     const btn = document.getElementById('analizaTab-' + t);
@@ -17659,6 +17697,7 @@ function switchAnalizaTab(tab) {
   if (tab === 'ttkreative') { ttKrLoadData(); }
   if (tab === 'beta') { betaLoadHistory(true); betaRestoreState(); }
   if (tab === 'cashflow') { cfLoadData(); }
+  if (tab === 'ibkr') { ibkrLoad(0); }
   if (tab === 'shipping') { shipLoadData(); }
   try { localStorage.setItem('slx_active_subtab', tab); } catch(e) {}
 }
@@ -24770,6 +24809,124 @@ async function cfUploadFile(file) {
   } catch (e) {
     status.innerHTML = '<span style="color:var(--red)">❌ ' + e.message + '</span>';
   }
+}
+
+// ─── IBKR (Analiza → 📈 IBKR): /ibkr-data, samo lastnik, samo branje ───
+let ibkrD = null, ibkrChart = null;
+function ibkrEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function ibkrFmt(v, cur, dec) {
+  if (v == null || isNaN(v)) return '—';
+  try { return new Intl.NumberFormat('sl-SI', {style: 'currency', currency: cur || 'EUR', maximumFractionDigits: dec == null ? 0 : dec}).format(v); }
+  catch (e) { return cfFmtNum(v, dec || 0) + ' ' + (cur || ''); }
+}
+function ibkrEmpty(html) {
+  document.getElementById('ibkrDash').style.display = 'none';
+  const el = document.getElementById('ibkrEmpty'); el.style.display = 'block'; el.innerHTML = html;
+}
+async function ibkrLoad(refresh) {
+  const st = document.getElementById('ibkrStatus'), btn = document.getElementById('ibkrRefBtn');
+  st.textContent = refresh ? '⏳ Prenašam poročilo iz IBKR (do ~30 s)…' : '⏳ Nalagam…';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/ibkr-data' + (refresh ? '?refresh=1' : ''));
+    const d = await r.json();
+    if (!d.ok) {
+      st.textContent = '';
+      if (d.error === 'owner') return ibkrEmpty('<div style="font-size:40px">🔒</div>IBKR je viden samo lastniku.<br>Prijavi se z lastniškim geslom.');
+      if (d.error === 'no_config') return ibkrEmpty('<div style="font-size:40px">📈</div><b>IBKR še ni povezan.</b><br>'
+        + 'Client Portal → Performance &amp; Reports → Flex Queries:<br>'
+        + '1) Activity Flex Query (format XML, obdobje Last 365 Calendar Days) s sekcijami <i>Account Information</i>, <i>Net Asset Value (NAV) in Base</i>, <i>Open Positions</i>, <i>Cash Report</i> → zapiši Query ID.<br>'
+        + '2) Flex Web Service Configuration → vklopi in ustvari token.<br>'
+        + '3) Na Renderju nastavi env <code>IBKR_FLEX_TOKEN</code> in <code>IBKR_FLEX_QUERY_ID</code>.');
+      return ibkrEmpty('<div style="font-size:40px">⚠️</div>' + ibkrEsc(d.error || 'napaka'));
+    }
+    ibkrD = d;
+    document.getElementById('ibkrEmpty').style.display = 'none';
+    document.getElementById('ibkrDash').style.display = 'block';
+    const acc = (d.accounts || []).map(a => a.id).join(', ');
+    st.innerHTML = 'Račun ' + ibkrEsc(acc) + ' · podatki do ' + ibkrEsc((d.accounts[0] || {}).do || '?')
+      + ' · prenos ' + ibkrEsc(String(d.fetched_at || '').replace('T', ' ').slice(0, 16))
+      + (d.napaka ? ' · <span style="color:var(--red)">⚠ osvežitev ni uspela: ' + ibkrEsc(d.napaka) + '</span>' : '');
+    ibkrRender();
+    if (d.analiza) ibkrAiShow(d.analiza);
+  } catch (e) {
+    st.innerHTML = '<span style="color:var(--red)">❌ ' + ibkrEsc(e.message) + '</span>';
+  } finally { btn.disabled = false; }
+}
+function ibkrMd(t) {   // preprost markdown: ## naslovi, - alineje, **krepko**
+  let html = '', ul = false;
+  ibkrEsc(t).split('\n').forEach(line => {
+    let l = line.trim().replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    const li = /^[-*] /.test(l);
+    if (ul && !li) { html += '</ul>'; ul = false; }
+    if (/^#{1,4} /.test(l)) html += '<div style="font-weight:700;font-size:13.5px;margin:12px 0 4px">' + l.replace(/^#+ /, '') + '</div>';
+    else if (li) { if (!ul) { html += '<ul style="margin:2px 0 6px 18px;padding:0">'; ul = true; } html += '<li>' + l.slice(2) + '</li>'; }
+    else if (l) html += '<div style="margin:3px 0">' + l + '</div>';
+  });
+  return html + (ul ? '</ul>' : '');
+}
+function ibkrAiShow(a) {
+  document.getElementById('ibkrAiCard').style.display = 'block';
+  document.getElementById('ibkrAiMeta').textContent = '· ' + String(a.at || '').replace('T', ' ').slice(0, 16) + (a.podatki_do ? ' · podatki do ' + a.podatki_do : '');
+  document.getElementById('ibkrAiTxt').innerHTML = ibkrMd(a.besedilo || '');
+}
+async function ibkrAnaliza() {
+  const btn = document.getElementById('ibkrAiBtn'), st = document.getElementById('ibkrStatus');
+  btn.disabled = true; btn.textContent = '⏳ Analiziram…';
+  try {
+    const r = await fetch('/ibkr-analiza', {method: 'POST'});
+    const d = await r.json();
+    if (!d.ok) { st.innerHTML = '<span style="color:var(--red)">❌ ' + ibkrEsc(d.error === 'owner' ? 'Samo za lastnika.' : (d.error || 'napaka')) + '</span>'; return; }
+    ibkrAiShow(d);
+    document.getElementById('ibkrAiCard').scrollIntoView({behavior: 'smooth', block: 'start'});
+  } catch (e) {
+    st.innerHTML = '<span style="color:var(--red)">❌ ' + ibkrEsc(e.message) + '</span>';
+  } finally { btn.disabled = false; btn.textContent = '🧠 Analiziraj portfelj'; }
+}
+function ibkrRender() {
+  const d = ibkrD; if (!d) return;
+  const base = (d.accounts[0] || {}).base || 'EUR';
+  const rng = document.getElementById('ibkrRange').value;
+  const all = d.nav || [], rows = rng === 'all' ? all : all.slice(-parseInt(rng, 10));
+  const last = all[all.length - 1] || {}, prev = all[all.length - 2] || {}, first = rows[0] || {};
+  const pnl = (d.positions || []).reduce((s, p) => s + (p.pnl_base || 0), 0);
+  const dd = last.total != null && prev.total != null ? last.total - prev.total : null;
+  const dp = last.total != null && first.total ? (last.total - first.total) / first.total * 100 : null;
+  document.getElementById('ibkrKpis').innerHTML = [
+    {label: 'Vrednost računa (NAV)', value: ibkrFmt(last.total, base), sub: last.date ? 'na ' + last.date : '', color: '#3b82f6'},
+    {label: 'Dnevna sprememba', value: dd == null ? '—' : cfSgn(dd, v => ibkrFmt(v, base)), sub: prev.date ? 'od ' + prev.date : '', color: (dd || 0) >= 0 ? '#22c55e' : '#ef4444'},
+    {label: 'Sprememba v obdobju', value: last.total != null && first.total != null ? cfSgn(last.total - first.total, v => ibkrFmt(v, base)) : '—', sub: dp == null ? '' : cfPct(dp), color: '#6366f1'},
+    {label: 'Gotovina', value: ibkrFmt(last.cash, base), sub: 'nerealiziran P/L pozicij: ' + cfSgn(pnl, v => ibkrFmt(v, base)), color: '#0ea5e9'},
+  ].map(cfKpiCard).join('');
+  if (ibkrChart) { ibkrChart.destroy(); ibkrChart = null; }
+  ibkrChart = new Chart(document.getElementById('ibkrChartNav').getContext('2d'), {
+    type: 'line',
+    data: {labels: rows.map(r => r.date), datasets: [
+      {label: 'NAV', data: rows.map(r => r.total), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.25, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4},
+      {label: 'Gotovina', data: rows.map(r => r.cash), borderColor: '#94a3b8', borderDash: [4, 3], fill: false, tension: 0.25, borderWidth: 1.5, pointRadius: 0},
+    ]},
+    options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
+      scales: {x: {ticks: {maxTicksLimit: 12, font: {size: 10}, callback: function(v) { return cfMonthLbl(this.getLabelForValue(v)); }}},
+               y: {ticks: {font: {size: 10}, callback: v => ibkrFmt(v, base)}}},
+      plugins: {legend: {position: 'top', labels: {font: {size: 11}, usePointStyle: true}},
+                tooltip: {callbacks: {label: c => c.dataset.label + ': ' + ibkrFmt(c.parsed.y, base)}}}}
+  });
+  const pos = (d.positions || []).slice().sort((a, b) => (b.vrednost_base || 0) - (a.vrednost_base || 0));
+  const th = 'style="text-align:right;padding:6px 8px"', td = 'style="text-align:right;padding:5px 8px;white-space:nowrap"';
+  document.getElementById('ibkrPos').innerHTML = pos.length ? '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+    + '<tr style="color:var(--text-tertiary);font-size:11px;text-align:left"><th style="padding:6px 8px">Simbol</th><th style="padding:6px 8px">Opis</th><th style="padding:6px 8px">Vrsta</th>'
+    + '<th ' + th + '>Količina</th><th ' + th + '>Cena</th><th ' + th + '>Vrednost</th><th ' + th + '>Vrednost (' + ibkrEsc(base) + ')</th><th ' + th + '>Nerealiziran P/L</th><th ' + th + '>% NAV</th></tr>'
+    + pos.map(p => '<tr style="border-top:1px solid var(--border)"><td style="padding:5px 8px;font-weight:600">' + ibkrEsc(p.symbol) + '</td>'
+      + '<td style="padding:5px 8px;color:var(--text-secondary)">' + ibkrEsc(p.opis) + '</td><td style="padding:5px 8px">' + ibkrEsc(p.vrsta) + '</td>'
+      + '<td ' + td + '>' + cfFmtNum(p.kolicina, 4) + '</td><td ' + td + '>' + ibkrFmt(p.cena, p.valuta, 2) + '</td>'
+      + '<td ' + td + '>' + ibkrFmt(p.vrednost, p.valuta) + '</td><td ' + td + '>' + ibkrFmt(p.vrednost_base, base) + '</td>'
+      + '<td ' + td + '><span style="color:' + ((p.pnl || 0) >= 0 ? '#22c55e' : '#ef4444') + ';font-weight:600">' + (p.pnl == null ? '—' : cfSgn(p.pnl, v => ibkrFmt(v, p.valuta))) + '</span></td>'
+      + '<td ' + td + '>' + (p.delez == null ? '—' : cfFmtNum(p.delez, 1) + ' %') + '</td></tr>').join('')
+    + '</table>' : '<div style="color:var(--text-tertiary);font-size:12px">Ni odprtih pozicij (ali sekcija Open Positions ni v Flex Query).</div>';
+  const cash = d.cash || [];
+  document.getElementById('ibkrCash').innerHTML = cash.length ? '<table style="border-collapse:collapse;font-size:12px">'
+    + cash.map(c => '<tr style="border-top:1px solid var(--border)"><td style="padding:5px 12px 5px 0;font-weight:600">' + ibkrEsc(c.valuta) + '</td><td ' + td + '>' + ibkrFmt(c.znesek, c.valuta, 2) + '</td></tr>').join('')
+    + '</table>' : '<div style="color:var(--text-tertiary);font-size:12px">Ni podatkov (sekcija Cash Report).</div>';
 }
 
 async function cfLoadData() {

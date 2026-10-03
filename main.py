@@ -23116,6 +23116,257 @@ async def cashflow_sheets_status():
     }
 
 
+# ═══ IBKR (Interactive Brokers) — Flex Web Service, SAMO BRANJE, samo lastnik ═══
+# Env na Renderju: IBKR_FLEX_TOKEN (Flex Web Service token), IBKR_FLEX_QUERY_ID (Activity Flex Query,
+# format XML, obdobje "Last 365 Calendar Days", sekcije: Account Information, Net Asset Value (NAV) in Base,
+# Open Positions, Cash Report). Trgovanje NI mogoče — Flex vrača samo poročila.
+IBKR_FLEX_URL = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/SendRequest"
+IBKR_CACHE_FILE = DATA_DIR / "ibkr_cache.json"
+IBKR_NAV_FILE = DATA_DIR / "ibkr_nav_history.json"
+IBKR_CACHE_H = 6          # Flex podatki se pri IBKR osvežijo 1× dnevno (po zaprtju)
+_ibkr_lock = asyncio.Lock()
+
+
+def _ibkr_num(v):
+    try:
+        return float(str(v).replace(",", "")) if v not in (None, "", "--") else None
+    except Exception:
+        return None
+
+
+def _ibkr_date(v):
+    """IBKR datumi so lahko 20261001, 2026-10-01, 10/01/2026 ali z ;časom → 'YYYY-MM-DD'."""
+    s = str(v or "").split(";")[0].split(" ")[0].strip()
+    m = re.match(r"^(\d{4})-?(\d{2})-?(\d{2})", s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})", s)
+    if m:
+        return f"{m.group(3)}-{m.group(1)}-{m.group(2)}"
+    return ""
+
+
+def _ibkr_parse(xml_text: str) -> dict:
+    root = ET.fromstring(xml_text)
+    accounts, positions, cash, nav = [], [], [], {}
+    for st in root.iter("FlexStatement"):
+        acc = st.get("accountId", "")
+        ai = st.find("AccountInformation")
+        base = (ai.get("currency") if ai is not None else "") or ""
+        accounts.append({"id": acc, "base": base, "name": (ai.get("name") if ai is not None else "") or "",
+                         "od": _ibkr_date(st.get("fromDate")), "do": _ibkr_date(st.get("toDate")),
+                         "generated": st.get("whenGenerated", "")})
+        for e in st.iter("EquitySummaryByReportDateInBase"):
+            d = _ibkr_date(e.get("reportDate"))
+            tot = _ibkr_num(e.get("total"))
+            if not d or tot is None:
+                continue
+            n = nav.setdefault(d, {"total": 0.0, "cash": 0.0, "stock": 0.0})
+            n["total"] += tot
+            n["cash"] += _ibkr_num(e.get("cash")) or 0.0
+            n["stock"] += (_ibkr_num(e.get("stock")) or 0.0) + (_ibkr_num(e.get("funds")) or 0.0)
+        for p in st.iter("OpenPosition"):
+            if (p.get("levelOfDetail") or "SUMMARY").upper() not in ("SUMMARY", ""):
+                continue
+            fx = _ibkr_num(p.get("fxRateToBase")) or 1.0
+            val = _ibkr_num(p.get("positionValue"))
+            positions.append({
+                "acc": acc, "symbol": p.get("symbol", ""), "opis": p.get("description", ""),
+                "vrsta": p.get("assetCategory", ""), "valuta": p.get("currency", ""),
+                "kolicina": _ibkr_num(p.get("position")), "cena": _ibkr_num(p.get("markPrice")),
+                "vrednost": val, "vrednost_base": (val * fx) if val is not None else None,
+                "nabavna": _ibkr_num(p.get("costBasisMoney")),
+                "pnl": _ibkr_num(p.get("fifoPnlUnrealized")),
+                "pnl_base": ((_ibkr_num(p.get("fifoPnlUnrealized")) or 0.0) * fx),
+                "delez": _ibkr_num(p.get("percentOfNAV")),
+            })
+        for c in st.iter("CashReportCurrency"):
+            cur = c.get("currency", "")
+            if cur == "BASE_SUMMARY":
+                continue
+            v = _ibkr_num(c.get("endingCash"))
+            if v:
+                cash.append({"acc": acc, "valuta": cur, "znesek": v})
+    if not accounts:
+        raise ValueError("V odgovoru IBKR ni FlexStatement (preveri sekcije Flex Query).")
+    return {"accounts": accounts, "positions": positions, "cash": cash,
+            "nav": [{"date": d, **{k: round(v, 2) for k, v in nav[d].items()}} for d in sorted(nav)]}
+
+
+async def _ibkr_fetch() -> str:
+    token = os.environ.get("IBKR_FLEX_TOKEN", "").strip()
+    qid = os.environ.get("IBKR_FLEX_QUERY_ID", "").strip()
+    if not token or not qid:
+        raise RuntimeError("no_config")
+    hdr = {"User-Agent": "suban.ai/1.0"}
+    async with httpx.AsyncClient(timeout=60, headers=hdr) as cl:
+        r = await cl.get(IBKR_FLEX_URL, params={"t": token, "q": qid, "v": "3"})
+        x = ET.fromstring(r.text)
+        if (x.findtext("Status") or "") != "Success":
+            raise RuntimeError(f"IBKR SendRequest: {x.findtext('ErrorCode')} {x.findtext('ErrorMessage')}")
+        ref, url = x.findtext("ReferenceCode"), x.findtext("Url")
+        # poročilo se generira nekaj sekund — 1019 = "Statement generation in progress"
+        for i in range(12):
+            await asyncio.sleep(3 if i else 2)
+            r = await cl.get(url, params={"t": token, "q": ref, "v": "3"})
+            txt = r.text
+            if "<FlexQueryResponse" in txt:
+                return txt
+            x = ET.fromstring(txt)
+            code = x.findtext("ErrorCode") or ""
+            if code not in ("1019", "1018", "1021"):
+                raise RuntimeError(f"IBKR GetStatement: {code} {x.findtext('ErrorMessage')}")
+    raise RuntimeError("IBKR poročilo ni pripravljeno (časovna omejitev) — poskusi čez minuto.")
+
+
+def _ibkr_nav_merge(nav: list) -> list:
+    """Zgodovina NAV se hrani na /data in dopolnjuje (tudi starejša od obdobja Flex Query)."""
+    hist = {}
+    try:
+        if IBKR_NAV_FILE.exists():
+            hist = {r["date"]: r for r in json.loads(IBKR_NAV_FILE.read_text("utf-8"))}
+    except Exception as e:
+        print("[ibkr] nav history read:", e)
+    for r in nav:
+        hist[r["date"]] = r
+    out = [hist[d] for d in sorted(hist)]
+    tmp = IBKR_NAV_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(out, ensure_ascii=False), "utf-8")
+    tmp.replace(IBKR_NAV_FILE)
+    return out
+
+
+@app.get("/ibkr-data")
+async def ibkr_data(request: Request, refresh: int = 0):
+    if not _owner_authorized(request):
+        return JSONResponse({"ok": False, "error": "owner", "message": "Samo za lastnika."}, status_code=403)
+    async with _ibkr_lock:
+        cache = None
+        try:
+            if IBKR_CACHE_FILE.exists():
+                cache = json.loads(IBKR_CACHE_FILE.read_text("utf-8"))
+        except Exception:
+            cache = None
+        fresh = False
+        if cache and not refresh:
+            try:
+                age_h = (datetime.fromisoformat(_lj_iso()) - datetime.fromisoformat(cache["fetched_at"])).total_seconds() / 3600
+                fresh = age_h < IBKR_CACHE_H
+            except Exception:
+                fresh = False
+        napaka = None
+        if not fresh:
+            try:
+                data = _ibkr_parse(await _ibkr_fetch())
+                data["fetched_at"] = _lj_iso()
+                tmp = IBKR_CACHE_FILE.with_suffix(".tmp")
+                tmp.write_text(json.dumps(data, ensure_ascii=False), "utf-8")
+                tmp.replace(IBKR_CACHE_FILE)
+                cache = data
+            except Exception as e:
+                if str(e) == "no_config":
+                    return {"ok": False, "error": "no_config",
+                            "message": "Na Renderju nastavi IBKR_FLEX_TOKEN in IBKR_FLEX_QUERY_ID."}
+                print("[ibkr] fetch:", e)
+                napaka = str(e)
+                if not cache:
+                    return {"ok": False, "error": napaka}
+        nav = _ibkr_nav_merge(cache.get("nav") or [])
+        analiza = None
+        try:
+            if IBKR_ANALIZA_FILE.exists():
+                analiza = json.loads(IBKR_ANALIZA_FILE.read_text("utf-8"))
+        except Exception:
+            analiza = None
+        return {"ok": True, **cache, "nav": nav, "napaka": napaka, "analiza": analiza}
+
+
+IBKR_ANALIZA_FILE = DATA_DIR / "ibkr_analiza.json"
+
+
+def _ibkr_povzetek(cache: dict, nav: list) -> str:
+    """Strnjen opis portfelja za AI (številke izračuna Python, model jih samo komentira)."""
+    base = ((cache.get("accounts") or [{}])[0].get("base")) or "EUR"
+    L = [f"Osnovna valuta: {base}. Računi: {', '.join(a['id'] for a in cache.get('accounts') or [])}."]
+    if nav:
+        last = nav[-1]
+        L.append(f"NAV {last['date']}: {last['total']:.0f} {base} (gotovina {last['cash']:.0f}, vrednostni papirji {last['stock']:.0f}).")
+        idx = {r["date"]: r for r in nav}
+        dates = sorted(idx)
+        from datetime import date as _d
+        for dni in (1, 7, 30, 90, 180, 365):
+            meja = (_d.fromisoformat(last["date"]) - timedelta(days=dni)).isoformat()
+            prej = [d for d in dates if d <= meja]
+            if prej and idx[prej[-1]]["total"]:
+                p = idx[prej[-1]]["total"]
+                L.append(f"Sprememba {dni} dni: {last['total'] - p:+.0f} {base} ({(last['total'] / p - 1) * 100:+.1f} %).")
+        vrh, mdd, mdd_d = 0.0, 0.0, ""
+        for r in nav[-365:]:
+            vrh = max(vrh, r["total"])
+            if vrh and (r["total"] / vrh - 1) < mdd:
+                mdd, mdd_d = r["total"] / vrh - 1, r["date"]
+        L.append(f"Največji padec od vrha (zadnje leto): {mdd * 100:.1f} % ({mdd_d or '—'}).")
+        mes = {}
+        for r in nav:
+            mes[r["date"][:7]] = r["total"]
+        mk = sorted(mes)[-13:]
+        L.append("NAV konec meseca: " + ", ".join(f"{m}: {mes[m]:.0f}" for m in mk) + ".")
+    pos = sorted(cache.get("positions") or [], key=lambda p: -(p.get("vrednost_base") or 0))
+    if pos:
+        L.append("POZICIJE (simbol | opis | vrsta | valuta | vrednost v osnovni valuti | % NAV | nerealiziran P/L v valuti | nabavna vrednost):")
+        for p in pos[:60]:
+            L.append(f"- {p['symbol']} | {p['opis']} | {p['vrsta']} | {p['valuta']} | {p.get('vrednost_base') or 0:.0f} | "
+                     f"{p.get('delez') if p.get('delez') is not None else '?'} | {p.get('pnl') or 0:.0f} | {p.get('nabavna') or 0:.0f}")
+        izp, vrs = {}, {}
+        for p in pos:
+            izp[p["valuta"]] = izp.get(p["valuta"], 0) + (p.get("vrednost_base") or 0)
+            vrs[p["vrsta"]] = vrs.get(p["vrsta"], 0) + (p.get("vrednost_base") or 0)
+        L.append("Izpostavljenost pozicij po valutah: " + ", ".join(f"{k} {v:.0f}" for k, v in sorted(izp.items(), key=lambda x: -x[1])) + ".")
+        L.append("Po vrsti naložbe: " + ", ".join(f"{k} {v:.0f}" for k, v in sorted(vrs.items(), key=lambda x: -x[1])) + ".")
+    cash = cache.get("cash") or []
+    if cash:
+        L.append("Gotovina po valutah: " + ", ".join(f"{c['valuta']} {c['znesek']:.0f}" for c in cash) + ".")
+    return "\n".join(L)
+
+
+@app.post("/ibkr-analiza")
+async def ibkr_analiza(request: Request):
+    """🧠 AI komentar portfelja (Sonnet 5.5). Opis stanja in tveganj — NE investicijska priporočila."""
+    if not _owner_authorized(request):
+        return JSONResponse({"ok": False, "error": "owner"}, status_code=403)
+    try:
+        cache = json.loads(IBKR_CACHE_FILE.read_text("utf-8"))
+        nav = json.loads(IBKR_NAV_FILE.read_text("utf-8")) if IBKR_NAV_FILE.exists() else (cache.get("nav") or [])
+    except Exception:
+        return {"ok": False, "error": "Najprej naloži podatke iz IBKR."}
+    povzetek = _ibkr_povzetek(cache, nav)
+    prompt = ("Si analitik, ki lastniku podjetja v slovenščini (s šumniki) jedrnato razloži stanje njegovega "
+              "IBKR investicijskega računa. Spodnje številke so že izračunane — uporabljaj samo njih, nič ne izmišljuj.\n\n"
+              "Struktura (markdown, naslovi z ##, alineje z -, ključne številke **krepko**, skupaj največ ~350 besed):\n"
+              "## Povzetek — 2–3 stavki: vrednost, gibanje, glavna sprememba.\n"
+              "## Gibanje NAV — kratkoročno vs. dolgoročno, največji padec, mesečni vzorec.\n"
+              "## Sestava in razpršenost — koncentracija (največje pozicije, delež top 3), vrste naložb.\n"
+              "## Valutno tveganje — izpostavljenost glede na osnovno valuto.\n"
+              "## Na kaj biti pozoren — 2–4 točke (dejstva in tveganja).\n\n"
+              "NE dajaj investicijskih priporočil (kupi/prodaj/drži, ciljne cene, napovedi tečajev). "
+              "Opiši dejstva in tveganja; odločitve so lastnikove.\n\nPODATKI:\n" + povzetek)
+    loop = asyncio.get_event_loop()
+    try:
+        msg = await loop.run_in_executor(None, lambda: client.messages.create(
+            model=SONNET_MODEL, max_tokens=8000, output_config={"effort": "medium"},
+            messages=[{"role": "user", "content": prompt}]))
+        if getattr(msg, "stop_reason", "") == "refusal":
+            return {"ok": False, "error": "Model je zavrnil zahtevo."}
+        besedilo = "\n".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
+    except Exception as e:
+        return {"ok": False, "error": f"AI: {type(e).__name__}: {str(e)[:200]}"}
+    if not besedilo:
+        return {"ok": False, "error": "Prazen odgovor modela."}
+    out = {"besedilo": besedilo, "at": _lj_iso(), "podatki_do": (nav[-1]["date"] if nav else "")}
+    IBKR_ANALIZA_FILE.write_text(json.dumps(out, ensure_ascii=False), "utf-8")
+    return {"ok": True, **out}
+
+
 # Auto-refresh ob 6:00 zjutraj
 async def _hsplus_daily_scheduler():
     """Poteg HS+ kataloga 1× na dan ob 5:00 (Render UTC; prilagodi po potrebi).
