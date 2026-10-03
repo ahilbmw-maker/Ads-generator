@@ -31040,6 +31040,120 @@ def _semafor_merge_spend_rows(rows: list) -> list:
     return [by[m] for m in order]
 
 
+# ═══ 📈 TREND: bruto marža (RVC/naročilo) vs CPA po tednih/mesecih ═══
+# Zgodovina (uvoz Excela, vsi trgi skupaj): /data/semafor_zgodovina.json {datum: {orders, rvc, spend, fb, g, tt}}.
+# Dnevi, ki so v zgodovini, se vzamejo iz nje (vključuje TikTok); kasnejši dnevi iz Semaforja (vsota trgov, FB + Google).
+# Po posameznem trgu je na voljo samo obdobje Semaforja. RVC = brez poštnine (kot v Semaforju), pred odbitkom neprevzetih.
+SEMAFOR_ZGOD_FILE = DATA_DIR / "semafor_zgodovina.json"
+
+
+@app.post("/semafor-zgodovina-uvoz")
+async def semafor_zgodovina_uvoz(file: UploadFile = File(...)):
+    """Excel (npr. Podatki2026.xlsx): stolpci Datum, Skupaj Ogl., Ogl. Google, Ogl. FB, Ogl. TikTok,
+    RVC - (poštnine fee), Naročila. Isti datumi se prepišejo, ostali ostanejo."""
+    import openpyxl, io as _io
+    try:
+        wb = openpyxl.load_workbook(_io.BytesIO(await file.read()), data_only=True, read_only=True)
+    except Exception as e:
+        return {"ok": False, "error": f"Datoteke ni mogoče prebrati: {e}"}
+    norm = lambda s: re.sub(r"[^a-z0-9čšž]", "", str(s or "").lower())
+    iskani = {"datum": ["datum"], "spend": ["skupajogl"], "g": ["oglgoogle"], "fb": ["oglfb"], "tt": ["ogltiktok"],
+              "rvc": ["rvcpostninefee", "rvc"], "orders": ["narocila", "naročila"]}
+    zgod = _jload(SEMAFOR_ZGOD_FILE, {}) or {}
+    n, datumi = 0, []
+    for ws in wb.worksheets:
+        rows = list(ws.iter_rows(values_only=True))
+        for hi, head in enumerate(rows[:10]):
+            h = [norm(c) for c in head]
+            col = {}
+            for k, imena in iskani.items():
+                for ime in imena:
+                    if ime in h and k not in col:
+                        col[k] = h.index(ime)
+                if k == "rvc" and k not in col:   # npr. »RVC - (poštnine fee)«
+                    col[k] = next((i for i, x in enumerate(h) if x.startswith("rvc")), None)
+                    if col[k] is None:
+                        col.pop(k)
+            if "datum" in col and "rvc" in col and "orders" in col and ("spend" in col or "fb" in col):
+                break
+        else:
+            continue
+        num = lambda v: float(v) if isinstance(v, (int, float)) else (float(str(v).replace(".", "").replace(",", ".")) if str(v or "").strip() not in ("", "None") else 0.0)
+        for row in rows[hi + 1:]:
+            d = row[col["datum"]] if col["datum"] < len(row) else None
+            if hasattr(d, "strftime"):
+                ds = d.strftime("%Y-%m-%d")
+            else:
+                m = re.match(r"(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})", str(d or ""))
+                ds = f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}" if m else None
+            if not ds:
+                continue
+            try:
+                g = lambda k: num(row[col[k]]) if k in col and col[k] < len(row) else 0.0
+                o = int(g("orders"))
+                if o <= 0:
+                    continue
+                fb, gg, tt = g("fb"), g("g"), g("tt")
+                spend = g("spend") or (fb + gg + tt)
+                zgod[ds] = {"orders": o, "rvc": round(g("rvc"), 2), "spend": round(spend, 2), "fb": round(fb, 2), "g": round(gg, 2), "tt": round(tt, 2)}
+                n += 1
+                datumi.append(ds)
+            except Exception:
+                continue
+    if not n:
+        return {"ok": False, "error": "Ne najdem stolpcev Datum, RVC, Naročila in Ogl. (glava v prvih 10 vrsticah)."}
+    zgod = dict(sorted(zgod.items()))
+    tmp = SEMAFOR_ZGOD_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(zgod, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, SEMAFOR_ZGOD_FILE)
+    return {"ok": True, "n": n, "od": min(datumi), "do": max(datumi), "skupaj_dni": len(zgod)}
+
+
+@app.get("/semafor-trend")
+async def semafor_trend(obdobje: str = "teden", trg: str = "VSI"):
+    trg = (trg or "VSI").upper()
+    zgod = (_jload(SEMAFOR_ZGOD_FILE, {}) or {}) if trg == "VSI" else {}
+    d = _semafor_load()
+    dni = {ds: dict(v, vir="excel") for ds, v in zgod.items()}
+    sem = {}
+    for s in d.get("snapshots") or []:
+        if trg != "VSI" and s.get("market") != trg:
+            continue
+        e = sem.setdefault(s.get("date"), {"orders": 0, "rvc": 0.0, "spend": 0.0, "vir": "semafor"})
+        e["orders"] += int(s.get("orders") or 0)
+        e["rvc"] += float(s.get("rvc_total") or 0)
+    for s in d.get("spend") or []:
+        if s.get("date") in sem and (trg == "VSI" or s.get("market") == trg):
+            sem[s["date"]]["spend"] += float(s.get("fb") or 0) + float(s.get("google") or 0)
+    for ds, v in sem.items():
+        if ds and ds not in dni and v["orders"] > 0 and v["spend"] > 0:
+            dni[ds] = v
+    danes = _lj_today()
+    vedra = {}
+    for ds in sorted(dni):
+        if ds > danes:
+            continue
+        dt = datetime.strptime(ds, "%Y-%m-%d")
+        k = (dt - timedelta(days=dt.weekday())).strftime("%Y-%m-%d") if obdobje == "teden" else ds[:7]
+        b = vedra.setdefault(k, {"k": k, "orders": 0, "rvc": 0.0, "spend": 0.0, "dni": 0, "viri": set()})
+        v = dni[ds]
+        b["orders"] += v["orders"]; b["rvc"] += v["rvc"]; b["spend"] += v["spend"]; b["dni"] += 1; b["viri"].add(v["vir"])
+    out = []
+    for k in sorted(vedra):
+        b = vedra[k]
+        o = b["orders"]
+        rn, cpa = b["rvc"] / o, b["spend"] / o
+        polno = 7 if obdobje == "teden" else __import__("calendar").monthrange(int(k[:4]), int(k[5:7]))[1]
+        out.append({"k": k, "orders": o, "rvc": round(b["rvc"], 2), "spend": round(b["spend"], 2), "dni": b["dni"],
+                    "delno": b["dni"] < polno, "vir": "+".join(sorted(b["viri"])),
+                    "rvc_nar": round(rn, 2), "cpa": round(cpa, 2), "prisp_nar": round(rn - cpa, 2),
+                    "dobicek": round(b["rvc"] - b["spend"], 2), "poas": round((b["rvc"] - b["spend"]) / b["spend"], 3) if b["spend"] else None,
+                    "nar_na_dan": round(o / b["dni"], 1)})
+    return {"ok": True, "obdobje": obdobje, "trg": trg, "vedra": out,
+            "zgodovina": {"od": min(zgod) if zgod else None, "do": max(zgod) if zgod else None},
+            "semafor_od": min(sem) if sem else None}
+
+
 def _curve_interp(points, h):
     """Kumulativni delež ob uri h (0–24) iz točk [(ura_float, delež)], urejenih naraščajoče.
     Pred prvo točko linearno od 0 ob 00:00, za zadnjo linearno do 1,0 ob 24:00."""
