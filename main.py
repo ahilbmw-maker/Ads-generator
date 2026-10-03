@@ -11384,6 +11384,7 @@ async def marza_trgi_stran(request: Request):
 <div id="selBar"><b id="selN">0</b> izbranih
   <button onclick="neuvozBulk(true)" style="background:#fee2e2;color:#991b1b">🚫 Ne uvažamo</button>
   <button onclick="neuvozBulk(false)" style="background:#e2e8f0;color:#0f172a">↩ Odznači 🚫</button>
+<button onclick="cmsUndoBulk()" title="Odstrani oznako urejeno (popravljeno / potrjeno / odprto) za izbrane na tem trgu" style="background:#dcfce7;color:#166534">↩ Odznači urejeno</button>
   <button onclick="selClear()" style="background:transparent;color:#cbd5e1">✕ Počisti izbor</button>
 </div>
 <div class="wrap"><table><thead><tr>
@@ -11799,7 +11800,16 @@ async function neuvozToggle(x){
     body:JSON.stringify({trg,g_id:x.g_id,on,sku:x.sku,naziv:x.naziv})});const d=await r.json(); if(!d.ok) throw new Error(d.error||'napaka');}
   catch(e){x.neuvoz=!on; render(); alert('Shranjevanje ni uspelo: '+e.message);}
 }
-function skritUrejen(x){if(!document.getElementById('skrijUr').checked||!x.cms)return false;return x.cms.st==='popravljeno'||x.cms.st==='potrjeno';}
+async function cmsUndoBulk(){
+  const items=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&x.cms&&x.cms_id);
+  if(!items.length){alert('Med izbranimi ni označenih kot urejeno.');return;}
+  if(!confirm('↩ Odznačim urejeno na '+String(trg).toUpperCase()+': '+items.length+' izdelkov?')) return;
+  const ok=await Promise.all(items.map(x=>cmsLog(x,'undo')));
+  items.forEach((x,i)=>{ if(ok[i]) x.cms=null; });
+  const nap=ok.filter(v=>!v).length;
+  SEL.clear(); selLast=-1; render();
+  if(nap) alert(nap+' izdelkov ni bilo mogoče odznačiti — poskusi znova.');
+}function skritUrejen(x){if(!document.getElementById('skrijUr').checked||!x.cms)return false;return x.cms.st==='popravljeno'||x.cms.st==='potrjeno';}
 async function cmsLog(x,akcija){
   try{const r=await fetch('/cms-log',{method:'POST',headers:{'Content-Type':'application/json'},keepalive:true,
     body:JSON.stringify({akcija,cms_id:x.cms_id,trg,sku:x.sku,cena:x.cena,vir:BATO?'Bato cene':'Marža po trgih'})});return (await r.json()).ok;}catch(e){return false;}}
