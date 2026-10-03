@@ -1047,7 +1047,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 10:20</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 10:39</div>
     </div>
   </div>
 
@@ -5737,6 +5737,36 @@ function closeMenu(){
 const PAGES = ['home','meta','tiktok','calc','forecast','kreative','lokalizacija','prodgen','narocilnice','videoads','orodja','analiza','knjigovodstvo','zaloga','selitev','xsell','sporocanje','storage','prevzemi'];
 let currentIdx = 0;
 
+// Price Checker / Marža po trgih (iframe): ob vrnitvi na zavihek (npr. po zaprtju CMS) fokus nazaj v iframe,
+// da tipke (↑↓ A D C X …) delujejo brez klika. Tipka, ki vseeno pristane na glavni strani, se posreduje v iframe.
+function _calcFrameVidni() {
+  for (const id of ['calcFrame-pricecheck', 'calcFrame-marza']) {
+    const f = document.getElementById(id);
+    if (f && f.src && f.style.display !== 'none' && f.offsetParent !== null) return f;
+  }
+  return null;
+}
+function _calcFocusFrame() {
+  const f = _calcFrameVidni(); if (!f) return;
+  const a = document.activeElement;
+  if (a && a !== document.body && a !== f && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;   // ne kradi fokusa iz polja
+  try { f.focus(); f.contentWindow.focus(); } catch (e) {}
+}
+window.addEventListener('focus', () => setTimeout(_calcFocusFrame, 30));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(_calcFocusFrame, 60); });
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+  const t = e.target;
+  if (t && t !== document.body && t !== document.documentElement) return;   // samo tipke "v prazno" (fokus na glavni strani)
+  const f = _calcFrameVidni(); if (!f) return;
+  try {
+    const d = f.contentDocument; if (!d) return;
+    f.contentWindow.focus();
+    const ev = new f.contentWindow.KeyboardEvent('keydown', { key: e.key, code: e.code, shiftKey: e.shiftKey, bubbles: true, cancelable: true });
+    (d.activeElement || d.body || d).dispatchEvent(ev);
+    e.preventDefault();
+  } catch (err) {}
+});
 function switchCalcTab(tab) {
   if (tab !== 'marza') tab = 'pricecheck'; // Kalkulator odstranjen
   ['pricecheck', 'marza'].forEach(t => {

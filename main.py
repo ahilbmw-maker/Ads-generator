@@ -1090,15 +1090,17 @@ async def marza_sku_post(request: Request):
 
 
 @app.get("/marza-sku-variante")
-async def marza_sku_variante(request: Request, sku: str = ""):
+async def marza_sku_variante(request: Request, sku: str = "", q: str = ""):
     """Variante iz zaloge za izbiro ročnega SKU: osnova (del pred prvim "_" ali "-") in vsi SKU-ji osnova_* / osnova-*.
-    Npr. ugibanje "M335" → M335_paper2, M335_StickyRolls, M335_MultiRolls (naziv, zaloga, NC)."""
+    Npr. ugibanje "M335" → M335_paper2, M335_StickyRolls, M335_MultiRolls (naziv, zaloga, NC).
+    q = iskanje med tipkanjem (del SKU-ja ali naziva, vse besede) — namesto variant osnove."""
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         from fastapi.responses import JSONResponse
         return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
     u = str(sku or "").strip().upper()
     base = re.split(r"[_-]", u, 1)[0] if u else ""
-    if len(base) < 2 or not STOCK_CSV_FILE.exists():
+    besede = [w for w in str(q or "").upper().split() if w][:6]
+    if (not besede and len(base) < 2) or not STOCK_CSV_FILE.exists():
         return {"ok": True, "osnova": base, "variante": []}
     import csv as _csv
     from io import StringIO as _SIO
@@ -1106,7 +1108,11 @@ async def marza_sku_variante(request: Request, sku: str = ""):
     for row in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"))):
         raw = (row.get("product_sku") or "").strip()
         k = raw.upper()
-        if not (k == base or k.startswith(base + "_") or k.startswith(base + "-")):
+        if besede:
+            hay = k + " " + (row.get("title") or "").upper()
+            if not all(w in hay for w in besede):
+                continue
+        elif not (k == base or k.startswith(base + "_") or k.startswith(base + "-")):
             continue
         v = by.setdefault(k, {"sku": raw, "naziv": (row.get("title") or "").strip(), "zaloga": 0, "nc": None})
         try:
@@ -1121,6 +1127,10 @@ async def marza_sku_variante(request: Request, sku: str = ""):
             pass
         if not v["naziv"]:
             v["naziv"] = (row.get("title") or "").strip()
+    if besede:   # iskanje: najprej SKU, ki se začne z vpisanim, nato SKU, ki ga vsebuje, nato zadetki v nazivu
+        p = besede[0]
+        rang = lambda v: (0 if v["sku"].upper().startswith(p) else (1 if p in v["sku"].upper() else 2), -v["zaloga"], v["sku"].upper())
+        return {"ok": True, "osnova": base, "q": q, "variante": sorted(by.values(), key=rang)[:40]}
     return {"ok": True, "osnova": base, "variante": sorted(by.values(), key=lambda v: (v["sku"].upper() != base, -v["zaloga"], v["sku"].upper()))[:60]}
 PRICE_CHANGES_KEEP_DAYS = 30
 CMS_LOG_KEEP_DAYS = 45
@@ -11704,18 +11714,29 @@ async function skuEdit(x){
     skuSave(x,a==='in'?document.getElementById('skuPickIn').value:a.slice(2));
   });
   box.addEventListener('keydown',e=>{ if(e.key==='Escape') zapri(); if(e.key==='Enter'&&e.target.id==='skuPickIn'){ zapri(); skuSave(x,e.target.value); } });
-  document.getElementById('skuPickIn').focus();
+  const inp=document.getElementById('skuPickIn'); inp.focus(); inp.select();
+  // med tipkanjem: iskanje po zalogi (SKU ali naziv); prazno / nespremenjeno = variante osnove
+  let _spT=null, _spN=0;
+  inp.addEventListener('input',()=>{ clearTimeout(_spT); _spT=setTimeout(()=>{
+    const q=inp.value.trim(); skuPickLoad(x,cur,(q.length>=2&&q.toUpperCase()!==cur)?q:'',++_spN,()=>_spN); },250); });
+  skuPickLoad(x,cur,'',++_spN,()=>_spN);
+}
+async function skuPickLoad(x,cur,q,n,zadnji){
   try{
-    const d=await (await fetch('/marza-sku-variante?sku='+encodeURIComponent(x.nc_sku||cur))).json();
-    const L=document.getElementById('skuPickList'); if(!L) return;
+    const d=await (await fetch('/marza-sku-variante?sku='+encodeURIComponent(x.nc_sku||cur)+(q?'&q='+encodeURIComponent(q):''))).json();
+    const L=document.getElementById('skuPickList'); if(!L||n!==zadnji()) return;   // vmes nov vnos → zavrzi star odgovor
     const v=(d&&d.variante)||[];
-    L.innerHTML=v.length?'<div style="color:#64748b;font-size:12px;padding:2px 6px 6px">Variante v zalogi za <b>'+esc(d.osnova)+'</b> — klik = izberi:</div>'+v.map(o=>{
+    if(q){ L.innerHTML=v.length?'<div style="color:#64748b;font-size:12px;padding:2px 6px 6px">Zadetki v zalogi za »'+esc(q)+'« — klik = izberi:</div>'+v.map(o=>skuPickBtn(o,cur)).join('')
+      :'<div style="color:#94a3b8;padding:8px">Ni zadetkov za »'+esc(q)+'« — Enter shrani vpisano.</div>'; return; }
+    L.innerHTML=v.length?'<div style="color:#64748b;font-size:12px;padding:2px 6px 6px">Variante v zalogi za <b>'+esc(d.osnova)+'</b> — klik = izberi, ali tipkaj za iskanje:</div>'+v.map(o=>skuPickBtn(o,cur)).join('')
+      :'<div style="color:#94a3b8;padding:8px">V zalogi ni variant za '+esc(d&&d.osnova||cur)+' — tipkaj del SKU-ja ali naziva za iskanje.</div>';
+  }catch(e){ const L=document.getElementById('skuPickList'); if(L) L.innerHTML='<div style="color:#b91c1c;padding:8px">Zaloge ni bilo mogoče prebrati.</div>'; }
+}
+function skuPickBtn(o,cur){
       const on=o.sku.toUpperCase()===cur;
       return '<button type="button" data-sp="v:'+esc(o.sku)+'" style="display:flex;width:100%;align-items:center;gap:10px;text-align:left;padding:8px 10px;margin:2px 0;border-radius:8px;cursor:pointer;border:1px solid '+(on?'#4f46e5':'#e2e8f0')+';background:'+(on?'#eef2ff':'#fff')+'">'+
         '<b style="font-family:ui-monospace,monospace;min-width:150px">'+esc(o.sku)+'</b><span style="flex:1;color:#475569;font-size:12.5px">'+esc(o.naziv||'')+'</span>'+
-        '<span style="font-size:12px;color:#64748b;white-space:nowrap">zal. '+(o.zaloga||0)+' · NC '+(o.nc!=null?o.nc.toFixed(2):'—')+'</span></button>';}).join('')
-      :'<div style="color:#94a3b8;padding:8px">V zalogi ni variant za '+esc(d&&d.osnova||cur)+' — vpiši SKU spodaj.</div>';
-  }catch(e){ const L=document.getElementById('skuPickList'); if(L) L.innerHTML='<div style="color:#b91c1c;padding:8px">Variant ni bilo mogoče prebrati.</div>'; }
+        '<span style="font-size:12px;color:#64748b;white-space:nowrap">zal. '+(o.zaloga||0)+' · NC '+(o.nc!=null?o.nc.toFixed(2):'—')+'</span></button>';
 }
 async function skuSave(x,v){
   const sku=String(v||'').trim().toUpperCase();
@@ -11732,7 +11753,8 @@ async function skuSave(x,v){
   }catch(e){alert('Shranjevanje ni uspelo: '+e.message);}
 }
 document.addEventListener('click',e=>{const s=e.target.closest('[data-skupick]'); if(!s) return; const x=D&&D.rows[+s.dataset.skupick]; if(x){e.preventDefault(); e.stopPropagation(); skuEdit(x);}},true);
-document.addEventListener('dblclick',e=>{const s=e.target.closest('[data-skued]'); if(!s) return; const x=D&&D.rows[+s.dataset.skued]; if(x){e.preventDefault(); skuEdit(x);}});
+document.addEventListener('click',e=>{const s=e.target.closest('[data-skued]');   // klik na SKU = izbira SKU (iskanje po zalogi)
+  if(!s) return; const x=D&&D.rows[+s.dataset.skued]; if(x){e.preventDefault(); skuEdit(x);}});
 function copyBtn(x){return x.sku?'<button type="button" class="cpb" data-copy="'+esc(String(x.sku).toUpperCase())+'" title="Kopiraj SKU">⧉</button>':'';}
 document.addEventListener('click',async e=>{const b=e.target.closest('button[data-copy]'); if(!b) return;
   const t=b.dataset.copy; let ok=false;
