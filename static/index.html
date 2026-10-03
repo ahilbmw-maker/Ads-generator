@@ -43,6 +43,13 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .hbato-h { display:flex; justify-content:space-between; align-items:baseline; }
 .hbato-bar { height:5px; border-radius:3px; background:rgba(0,0,0,0.07); margin:6px 0 3px; overflow:hidden; }
 .hbato-bar > div { height:5px; border-radius:3px; }
+.hur-t { border:1px solid var(--border); border-radius:10px; cursor:pointer; background:var(--bg-secondary); overflow:hidden; display:flex; flex-direction:column; transition:.12s; }
+.hur-t:hover { border-color:#f59e0b; }
+.hur-in { padding:7px 9px 5px; flex:1; }
+.hur-v { font-size:15px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; margin:1px 0 2px; }
+.hur-sp { display:block; width:100%; height:18px; }
+.hur-bar { height:4px; background:rgba(0,0,0,0.07); }
+.hur-bar > div { height:4px; }
 .hraz-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; margin-top:8px; }
 .hraz-t { border:1px dashed var(--border); border-radius:10px; padding:6px 10px; background:var(--surface); }
 .hraz-v { font-size:15px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
@@ -1047,7 +1054,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 13:09</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 13:25</div>
     </div>
   </div>
 
@@ -1376,7 +1383,7 @@ input[type="text"].error { border-color: var(--red) !important; }
           <span id="homeBatoMeta" style="margin-left:auto;font-size:11px;color:var(--text-tertiary)"></span>
         </div>
         <div id="homeBatoGrid" class="hbato-grid"><div style="font-size:12.5px;color:var(--text-tertiary)">Nalagam …</div></div>
-        <div id="homeRazGrid" class="hraz-grid" title="Povprečna razlika = cena brez DDV − NC (€), isti izdelki kot zgoraj; izdelki brez NC se ne štejejo"></div>
+        
         <div id="homeBatoZn" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>
       </div>
 
@@ -5927,73 +5934,62 @@ function homeUpdateDate() {
   homePriceCountLoad();
   homeBatoLoad();
 }
-// ═══ BATO CENE PO TRGIH (kartica na Domov) ═══
+// ═══ UREJENE CENE PO TRGIH (kartica na Domov) — združene ploščice: Ø razlika + trend 14 dni + urejenost ═══
+// Ø razlika = povprečje (cena brez DDV − NC) Maaarket nad 5 €; sprememba 1 dan = na ISTIH izdelkih (strežnik d1),
+// sicer iz dnevne zgodovine. Črta na dnu = % urejeno (popravljeno/potrjeno ali 🚫), besedilo = št. odprtih.
+let _homeUr = null, _homeRaz = null;
 async function homeBatoLoad(){
   const g = document.getElementById('homeBatoGrid'); if(!g) return;
-  let d = null;
-  let zb = null;   // urejeno = popravljeno/potrjeno ali 🚫 ne uvažamo (/urejeno-povzetek); znamke v feedu še iz /bato-povzetek
+  _homeRaz = null;
+  const rz = fetch('/razlika-povzetek?_t='+Date.now(), {cache:'no-store'}).then(r=>r.json()).catch(()=>null);
+  let d = null, zb = null;
   try{ const [r1, r2] = await Promise.all([fetch('/urejeno-povzetek?_t='+Date.now(), {cache:'no-store'}), fetch('/bato-povzetek?_t='+Date.now(), {cache:'no-store'})]); d = await r1.json(); zb = await r2.json(); }catch(e){}
   if(!d || !d.ok){ g.innerHTML = '<div style="font-size:12.5px;color:var(--text-tertiary)">'+((d&&d.error)||'Podatki niso na voljo')+'</div>'; return; }
+  _homeUr = d;
   const f = n => Number(n||0).toLocaleString('sl-SI');
   const ft = iso => { if(!iso) return ''; const x = new Date(iso); if(isNaN(x)) return ''; const t=('0'+x.getHours()).slice(-2)+':'+('0'+x.getMinutes()).slice(-2);
     return (x.toDateString()===new Date().toDateString()?'danes ':x.getDate()+'. '+(x.getMonth()+1)+'. ')+t; };
   document.getElementById('homeBatoSum').innerHTML = '<b style="color:var(--text);font-size:14px">'+f(d.odprto)+'</b> cen še ni urejenih · <b style="color:var(--text)">'+(d.pct==null?'—':String(d.pct).replace('.',','))+' %</b> urejenih';
   const sl = (d.trgi||[]).find(t=>t.trg==='sl');
   document.getElementById('homeBatoMeta').textContent = 'Maaarket · nad '+String(d.min_eur).replace('.',',')+' €'+(sl&&sl.zgrajen?' · feed '+ft(sl.zgrajen):'');
-  g.innerHTML = (d.trgi||[]).map(t => {
-    const p = t.pct, col = p==null ? '#94a3b8' : (p>=95 ? '#16a34a' : (p>=80 ? '#d97706' : '#dc2626'));
-    return '<div class="hbato-t" onclick="homeOpenBato(\''+t.trg+'\')" title="Odpri Maržo po trgih za '+t.oznaka+' (skrite urejene in neuvozne) — '+f(t.skupaj)+' cen, od tega '+f(t.neuvoz)+' 🚫 ne uvažamo">'
-      + '<div class="hbato-h"><span style="font-size:13.5px;font-weight:800;color:var(--text)">'+t.oznaka+'</span>'
-      + '<span style="font-size:19px;font-weight:800;color:'+col+'">'+f(t.odprto)+'</span></div>'
-      + '<div class="hbato-bar"><div style="width:'+(p||0)+'%;background:'+col+'"></div></div>'
-      + '<div style="font-size:11px;color:var(--text-tertiary)">'+(p==null?'ni podatkov':String(p).replace('.',',')+' % urejeno')+'</div></div>';
-  }).join('');
   const zn = Object.entries((zb&&zb.znamke)||{});
   document.getElementById('homeBatoZn').innerHTML = '<span style="font-size:11px;color:var(--text-tertiary);margin-right:2px">Izdelkov v feedu:</span>'
     + zn.map(([k,v]) => '<span class="hbato-zn"'+(k.toLowerCase().includes('maaarket')?' style="background:rgba(22,163,74,0.12);color:#166534"':'')+'>'+k+' <b>'+f(v)+'</b></span>').join('');
-  homeRazLoad();
+  homeUrRender();
+  const r = await rz;
+  if(r && r.ok){ _homeRaz = r; homeUrRender(); }
+  else { _homeRaz = {napaka: (r&&r.error)||'ni podatkov'}; homeUrRender(); }
 }
-// ── povprečna razlika (cena brez DDV − NC) po trgih + gibanje (dnevna zgodovina na strežniku) ──
-async function homeRazLoad(){
-  const g = document.getElementById('homeRazGrid'); if(!g) return;
-  g.innerHTML = '<div style="font-size:11.5px;color:var(--text-tertiary);grid-column:1/-1">Ø razlika: računam …</div>';
-  let d = null;
-  try{ const r = await fetch('/razlika-povzetek?_t='+Date.now(), {cache:'no-store'}); d = await r.json(); }catch(e){}
-  if(!d || !d.ok){ g.innerHTML = '<div style="font-size:11.5px;color:var(--text-tertiary);grid-column:1/-1">Ø razlika: '+((d&&d.error)||'ni podatkov')+'</div>'; return; }
+function homeUrRender(){
+  const g = document.getElementById('homeBatoGrid'); if(!g || !_homeUr) return;
+  const f = n => Number(n||0).toLocaleString('sl-SI');
   const eu = v => v==null ? '—' : v.toLocaleString('sl-SI',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
-  // toplotna karta: najnižja Ø razlika rdeča → sredina oranžna → najvišja zelena (relativno med trgi)
-  const avgs = (d.trgi||[]).map(t=>t.avg).filter(v=>v!=null), mnA = Math.min(...avgs), mxA = Math.max(...avgs);
-  const heat = v => { if(v==null||!avgs.length) return null; const x = mxA===mnA ? 1 : (v-mnA)/(mxA-mnA);
-    const S=[[0,[220,38,38]],[0.5,[245,158,11]],[1,[22,163,74]]];
-    for(let i=0;i<2;i++){ if(x<=S[i+1][0]){ const a=S[i][1], b=S[i+1][1], u=(x-S[i][0])/(S[i+1][0]-S[i][0]); return a.map((c,j)=>Math.round(c+(b[j]-c)*u)); } }
-    return S[2][1]; };
-  g.innerHTML = (d.trgi||[]).map(t => {
-    // tendenca z besedilom (brez grafa): 1 dan = glede na prejšnji vnos, 7 dni = glede na zadnji vnos star ≥ 7 dni
-    const h = (t.hist||[]).filter(x => x.avg!=null && x.d);
-    const cur = h.length ? h[h.length-1] : null;
-    const dni = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
-    const pr1 = h.length>1 ? h[h.length-2] : null;
-    const d1 = (cur && pr1) ? Math.round((cur.avg-pr1.avg)*100)/100 : null;
-    const b7 = cur ? [...h].reverse().find(x => dni(x.d, cur.d) >= 7) : null;
-    const d7 = (cur && b7) ? Math.round((cur.avg-b7.avg)*100)/100 : null;
-    const dCol = v => v==null||v===0 ? 'var(--text-tertiary)' : (v>0 ? '#16a34a' : '#dc2626');
-    const dTxt = v => v===0 ? '→ 0,00 €' : (v>0 ? '▲ +' : '▼ −') + eu(Math.abs(v));
-    const osn = d7!=null ? d7 : d1, ao = Math.abs(osn||0);
-    const ten = osn==null ? null : (ao < 0.10 ? ['→ stabilno', 'var(--text-secondary)'] : (osn>0 ? [(ao<=0.30?'▲ rahlo gor':'▲ gor'), '#166534'] : [(ao<=0.30?'▼ rahlo dol':'▼ dol'), '#991b1b']));
-    const zbiram = cur && h.length ? dni(h[0].d, cur.d) : 0;
-    const vrst = (lbl, v, tip) => '<div class="hraz-r"><span>'+lbl+'</span>'+(v==null ? '<span title="'+tip+'">—</span>' : '<b style="color:'+dCol(v)+'">'+dTxt(v)+'</b>')+'</div>';
-    const sp = (ten ? '<div class="hraz-ten" style="color:'+ten[1]+'" title="'+(d7!=null?'po spremembi v 7 dneh':'po spremembi v 1 dnevu (7 dni še ni)')+' · stabilno < 0,10 € · rahlo ≤ 0,30 €">'+ten[0]+'</div>' : '')
-      + vrst('1 dan', d1, 'zgodovina od danes')
-      + vrst('7 dni', d7, 'še zbiram zgodovino ('+zbiram+' d od 7)');
-    const hc = heat(t.avg);
-    const hst = hc ? ' style="background:rgba('+hc.join(',')+',.16);border:1px solid rgba('+hc.join(',')+',.55)"' : '';
-    return '<div class="hraz-t"'+hst+' title="'+t.oznaka+': Ø razlika '+eu(t.avg)+' · '+(t.n||0)+' izdelkov z NC">'
-      + '<div style="font-size:10px;color:var(--text-tertiary);font-weight:600">Ø razlika</div>'
-      + '<div class="hraz-v"'+(hc?' style="color:rgb('+hc.map(c=>Math.round(c*.7)).join(',')+')"':'')+'>'+eu(t.avg)+'</div>'
-      + sp + '</div>';
+  const n2 = v => Math.abs(v).toLocaleString('sl-SI',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const rz = {}; ((_homeRaz&&_homeRaz.trgi)||[]).forEach(t => rz[t.trg] = t);
+  const chg = (v, tip) => v==null ? '' : '<span title="'+tip+'" style="font-size:11px;font-weight:700;color:'+(Math.abs(v)<0.1?'var(--text-tertiary)':(v>0?'#16a34a':'#dc2626'))+'">'
+    + (Math.abs(v)<0.1 ? '→ ' : (v>0?'▲ +':'▼ −')) + (Math.abs(v)<0.1 ? (v>=0?'+':'−') : '') + n2(v) + '</span>';
+  const spark = hist => {
+    const p = (hist||[]).map(x=>x.avg).filter(v=>v!=null);
+    if(p.length < 2) return '<div class="hur-sp" style="font-size:10.5px;color:var(--text-tertiary);display:flex;align-items:center">zbiram zgodovino …</div>';
+    const lo = Math.min(...p), hi = Math.max(...p), H = 18;
+    return '<svg class="hur-sp" viewBox="0 0 100 '+H+'" preserveAspectRatio="none"><polyline fill="none" stroke="#94a3b8" stroke-width="1.4" vector-effect="non-scaling-stroke" points="'
+      + p.map((y,i)=>(i/(p.length-1)*100).toFixed(1)+','+((H-2)-(y-lo)/((hi-lo)||1)*(H-4)).toFixed(1)).join(' ')+'"/></svg>';
+  };
+  g.innerHTML = (_homeUr.trgi||[]).map(t => {
+    const r = rz[t.trg] || {}, p = t.pct, col = p==null ? '#94a3b8' : (p>=95 ? '#16a34a' : (p>=50 ? '#d97706' : '#dc2626'));
+    // 1 dan: na istih izdelkih (d1), sicer razlika dveh zadnjih dnevnih povprečij
+    let v1 = r.d1 ? r.d1.sprememba : null, tip = '';
+    if(r.d1) tip = '1 dan na istih izdelkih ('+r.d1.n+'): '+r.d1.dvig+' gor, '+r.d1.padec+' dol'+(r.d1.novi||r.d1.izpadli ? ' · v povprečje +'+r.d1.novi+' / −'+r.d1.izpadli+' izdelkov (vpliv '+(r.d1.vpliv_sestave>=0?'+':'')+String(r.d1.vpliv_sestave).replace('.',',')+' €)' : '');
+    else { const h = (r.hist||[]).filter(x=>x.avg!=null); if(h.length>1){ v1 = Math.round((h[h.length-1].avg-h[h.length-2].avg)*100)/100; tip = '1 dan (vsi izdelki — primerjava na istih izdelkih bo na voljo od jutri)'; } }
+    if(r.d7) tip += '\n7 dni na istih izdelkih: '+(r.d7.sprememba>=0?'+':'')+String(r.d7.sprememba).replace('.',',')+' €';
+    const raz = _homeRaz ? (_homeRaz.napaka ? '<div style="font-size:11px;color:var(--text-tertiary)">Ø razlika: '+_homeRaz.napaka+'</div>' : eu(r.avg)) : '…';
+    return '<div class="hur-t" onclick="homeOpenBato(\''+t.trg+'\')" title="'+t.oznaka+': Ø razlika '+eu(r.avg)+' ('+(r.n||0)+' izdelkov z NC) · '+(p==null?'—':String(p).replace('.',','))+' % urejeno — klik = odpri neurejene">'
+      + '<div class="hur-in"><div class="hbato-h"><span style="font-size:13px;font-weight:800;color:var(--text)">'+t.oznaka+'</span>'+chg(v1, tip)+'</div>'
+      + '<div class="hur-v">'+raz+'</div>'+spark(r.hist)
+      + '<div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">'+(t.skupaj ? (t.odprto ? f(t.odprto)+' odprtih' : 'vse urejeno') : 'ni podatkov')+'</div></div>'
+      + '<div class="hur-bar"><div style="width:'+(p||0)+'%;background:'+col+'"></div></div></div>';
   }).join('');
-}
-// odpre Urejevalnik cen → Marža po trgih na izbranem trgu, v pogledu Bato cene (samo Maaarket)
+}// odpre Urejevalnik cen → Marža po trgih na izbranem trgu, v pogledu Bato cene (samo Maaarket)
 function homeOpenBato(trg){
   switchPage('calc');
   const fr = document.getElementById('calcFrame-marza');

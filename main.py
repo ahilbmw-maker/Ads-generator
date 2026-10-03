@@ -11011,6 +11011,7 @@ async def urejeno_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
 # Razlika € = cena brez DDV − NC (kot v Marži po trgih). Obseg = kot kartica: znamka (privzeto Maaarket), cena ≥ min_eur,
 # brez 🚫 Ne uvažamo; izdelki brez NC (razlika null) se ne štejejo. Zgodovina: /data/razlika_history.json {datum: {trg: {avg, n}}}.
 RAZLIKA_HIST_FILE = DATA_DIR / "razlika_history.json"
+RAZLIKA_ITEMS_FILE = DATA_DIR / "razlika_po_izdelku.json"   # {datum: {trg: {g_id: razlika €}}}, zadnjih 9 dni
 _razlika_cache = {"key": None, "data": None}
 
 
@@ -11034,7 +11035,7 @@ async def razlika_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
     if _razlika_cache["key"] == key and _razlika_cache["data"]:
         return _razlika_cache["data"]
     danes = _lj_today()
-    zdaj = {}
+    zdaj, izd_zdaj = {}, {}
     for trg in MARZA_TRGI:
         try:
             res = await marza_trgi(request, trg)
@@ -11043,12 +11044,45 @@ async def razlika_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
             continue
         if not isinstance(res, dict) or not res.get("ok"):
             continue
-        vals = [r["marza_eur"] for r in (res.get("rows") or [])
-                if r.get("marza_eur") is not None and not r.get("neuvoz")
-                and (not zn or zn in str(r.get("znamka") or "").lower())
-                and (r.get("eur") is None or r.get("eur") >= min_eur)]
+        po_izd = {str(r.get("g_id")): r["marza_eur"] for r in (res.get("rows") or [])
+                  if r.get("marza_eur") is not None and not r.get("neuvoz")
+                  and (not zn or zn in str(r.get("znamka") or "").lower())
+                  and (r.get("eur") is None or r.get("eur") >= min_eur)}
+        vals = list(po_izd.values())
         if vals:
             zdaj[trg] = {"avg": round(sum(vals) / len(vals), 2), "n": len(vals)}
+            izd_zdaj[trg] = po_izd
+    # razlika po izdelku (zadnjih 9 dni) → sprememba na ISTIH izdelkih (brez vpliva novih/izpadlih iz povprečja)
+    izd_hist = _jload(RAZLIKA_ITEMS_FILE, {}) or {}
+    if izd_zdaj:
+        izd_hist[danes] = izd_zdaj
+        izd_hist = dict(sorted(izd_hist.items())[-9:])
+        try:
+            tmp = RAZLIKA_ITEMS_FILE.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(izd_hist, separators=(",", ":")), encoding="utf-8")
+            os.replace(tmp, RAZLIKA_ITEMS_FILE)
+        except Exception as e:
+            print(f"[razlika] zapis po izdelkih: {e}")
+    pretekli = sorted(d for d in izd_hist if d < danes)
+    d_1 = pretekli[-1] if pretekli else None
+    d_7 = next((d for d in reversed(pretekli) if (datetime.strptime(danes, "%Y-%m-%d") - datetime.strptime(d, "%Y-%m-%d")).days >= 7), None)
+
+    def _primerjava(trg, d):
+        """Sprememba Ø razlike na izdelkih, ki so v izračunu danes IN na dan d; novi/izpadli posebej."""
+        if not d:
+            return None
+        a, b = (izd_hist.get(d) or {}).get(trg) or {}, izd_zdaj.get(trg) or {}
+        if not a or not b:
+            return None
+        skupni = [g for g in b if g in a]
+        if not skupni:
+            return None
+        sp = sum(b[g] - a[g] for g in skupni) / len(skupni)
+        novi = [g for g in b if g not in a]
+        return {"od": d, "sprememba": round(sp, 2), "n": len(skupni), "novi": len(novi), "izpadli": len([g for g in a if g not in b]),
+                "dvig": sum(1 for g in skupni if b[g] - a[g] > 0.005), "padec": sum(1 for g in skupni if b[g] - a[g] < -0.005),
+                # vpliv sestave: koliko se je Ø premaknilo zaradi novih/izpadlih izdelkov (ne zaradi cen)
+                "vpliv_sestave": round((sum(b.values()) / len(b)) - (sum(a.values()) / len(a)) - sp, 2)}
     # dnevna zgodovina (današnji vnos se prepiše z zadnjim izračunom)
     hist = _jload(RAZLIKA_HIST_FILE, {}) or {}
     if zdaj:
@@ -11065,14 +11099,51 @@ async def razlika_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
     for trg, (oznaka, _ddv) in MARZA_TRGI.items():
         z = zdaj.get(trg) or {}
         trgi.append({"trg": trg, "oznaka": oznaka, "avg": z.get("avg"), "n": z.get("n", 0),
-                     "hist": [{"d": d, "avg": (hist[d].get(trg) or {}).get("avg")} for d in dni]})
+                     "hist": [{"d": d, "avg": (hist[d].get(trg) or {}).get("avg"), "n": (hist[d].get(trg) or {}).get("n")} for d in dni],
+                     "d1": _primerjava(trg, d_1), "d7": _primerjava(trg, d_7)})
     data = {"ok": True, "min_eur": min_eur, "znamka": znamka, "trgi": trgi, "izracunano": _lj_iso()}
     _razlika_cache.update(key=key, data=data)
     return data
 
 
+# Predpomnilnik izračuna po trgu: velja, dokler se ne spremeni noben vir (feed trga/SL, zaloga, 🚫, ročni SKU,
+# dnevnik CMS, spremembe cen, dan za tečaje). Domov (urejeno + Ø razlika) in Xsell kličejo vseh 10 trgov → brez
+# predpomnilnika se je vse računalo znova ob vsakem osveženju.
+_marza_trgi_cache = {}
+
+
+def _marza_trgi_key(trg: str):
+    """Ključ BREZ dnevnika CMS — ta se pogosto spreminja (vsak klik »urejeno«), zato ob njegovi spremembi
+    samo osvežimo statuse CMS v shranjenem rezultatu (hitro), namesto da računamo vse znova."""
+    f = lambda t: ((feed_meta.get(t) or {}).get("fetched_at"), len(feed_by_lang.get(t) or {}))
+    return (f(trg), f("sl"), _mtime(STOCK_CSV_FILE), _mtime(NEUVOZ_FILE), _mtime(MARZA_SKU_FILE),
+            _mtime(PRICE_CHANGES_FILE), _lj_today())
+
+
 @app.get("/marza-trgi")
 async def marza_trgi(request: Request, trg: str = "sl"):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    trg = (trg or "sl").lower()
+    key, log_m = _marza_trgi_key(trg), _mtime(CMS_LOG_FILE)
+    c = _marza_trgi_cache.get(trg)
+    if c and c["key"] == key:
+        if c["log"] != log_m:   # samo dnevnik CMS spremenjen → osveži statuse
+            log = _jload(CMS_LOG_FILE, {})
+            changes = (_jload(PRICE_CHANGES_FILE, {}) or {}).get(trg) or {}
+            meta = feed_meta.get(trg) or {}
+            for r in c["res"].get("rows") or []:
+                r["cms"] = _cms_status(trg, r.get("cms_id"), r.get("g_id"), r.get("cena"), log, changes, meta)
+            c["log"] = log_m
+        return c["res"]
+    res = await _marza_trgi_izracun(request, trg)
+    if isinstance(res, dict) and res.get("ok"):
+        _marza_trgi_cache[trg] = {"key": key, "log": log_m, "res": res}
+    return res
+
+
+async def _marza_trgi_izracun(request: Request, trg: str = "sl"):
     """Za izbrani trg: vsi izdelki iz feeda → končna cena → EUR → brez DDV → − NC iz zaloge → marža."""
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         from fastapi.responses import JSONResponse
