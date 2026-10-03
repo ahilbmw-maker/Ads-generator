@@ -31134,7 +31134,7 @@ async def semafor_trend(obdobje: str = "teden", trg: str = "VSI"):
         if ds > danes:
             continue
         dt = datetime.strptime(ds, "%Y-%m-%d")
-        k = (dt - timedelta(days=dt.weekday())).strftime("%Y-%m-%d") if obdobje == "teden" else ds[:7]
+        k = ds if obdobje == "dan" else ((dt - timedelta(days=dt.weekday())).strftime("%Y-%m-%d") if obdobje == "teden" else ds[:7])
         b = vedra.setdefault(k, {"k": k, "orders": 0, "rvc": 0.0, "spend": 0.0, "dni": 0, "viri": set()})
         v = dni[ds]
         b["orders"] += v["orders"]; b["rvc"] += v["rvc"]; b["spend"] += v["spend"]; b["dni"] += 1; b["viri"].add(v["vir"])
@@ -31160,11 +31160,12 @@ async def semafor_trend(obdobje: str = "teden", trg: str = "VSI"):
         b = vedra[k]
         o = b["orders"]
         rn, cpa = b["rvc"] / o, b["spend"] / o
-        polno = 7 if obdobje == "teden" else __import__("calendar").monthrange(int(k[:4]), int(k[5:7]))[1]
-        ym = (datetime.strptime(k, "%Y-%m-%d") + timedelta(days=3)).strftime("%Y-%m") if obdobje == "teden" else k   # teden → mesec četrtka
+        polno = 1 if obdobje == "dan" else (7 if obdobje == "teden" else __import__("calendar").monthrange(int(k[:4]), int(k[5:7]))[1])
+        ym = (datetime.strptime(k, "%Y-%m-%d") + timedelta(days=3)).strftime("%Y-%m") if obdobje == "teden" else k[:7]   # teden → mesec četrtka; dan → svoj mesec
         fl = _fail(ym)
         out.append({"k": k, "ym": ym, "orders": o, "rvc": round(b["rvc"], 2), "spend": round(b["spend"], 2), "dni": b["dni"],
-                    "delno": b["dni"] < polno, "vir": "+".join(sorted(b["viri"])),
+                    "delno": b["dni"] < polno or k == danes,   # današnji dan je vedno v teku
+                    "vir": "+".join(sorted(b["viri"])),
                     "rvc_nar": round(rn, 2), "cpa": round(cpa, 2), "prisp_nar": round(rn - cpa, 2),
                     "dobicek": round(b["rvc"] - b["spend"], 2), "poas": round((b["rvc"] - b["spend"]) / b["spend"], 3) if b["spend"] else None,
                     "nar_na_dan": round(o / b["dni"], 1), "fail": round(fl * 100, 1),

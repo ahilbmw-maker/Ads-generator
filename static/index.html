@@ -1055,7 +1055,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 16:11</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 16:22</div>
     </div>
   </div>
 
@@ -3186,7 +3186,8 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div id="analizaSubpage-trend" style="display:none;padding:14px 0 0 0">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <select id="trTrg" onchange="trLoad()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:12px"></select>
-        <span id="trPrim" style="display:flex;gap:4px"></span>
+        <span id="trGran" style="display:flex;gap:4px"></span>
+        <span id="trPrim" style="display:flex;gap:4px;flex-wrap:wrap"></span>
         <button id="trReal" onclick="trSetReal()" title="Realno = RVC z odbitkom neprevzetih (fail % po mesecih iz Semaforja)" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">Bruto</button>
         <button onclick="document.getElementById('trAdd').style.display=document.getElementById('trAdd').style.display==='none'?'flex':'none'" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">📌 + Dogodek</button>
         <label style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit" title="Excel z dnevnimi podatki (Datum, Skupaj Ogl., Ogl. Google/FB/TikTok, RVC - (poštnine fee), Naročila) — isti datumi se prepišejo">⬆ Uvozi Excel<input type="file" accept=".xlsx" style="display:none" onchange="trUvoz(this)"></label>
@@ -3203,7 +3204,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
       <div id="trAiBox" class="card" style="margin-bottom:12px;display:none"></div>
       <div class="card" style="margin-bottom:12px">
-        <div style="font-weight:700;font-size:13px;margin-bottom:6px">Dobiček na dan po mesecih <span style="font-weight:400;font-size:11.5px;color:var(--text-tertiary)">· klik na stolpec = tedni spodaj</span></div>
+        <div id="trC1Tit" style="font-weight:700;font-size:13px;margin-bottom:6px">Dobiček na dan</div>
         <div style="position:relative;height:190px"><canvas id="trC1"></canvas></div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;color:var(--text-secondary)">
           <button onclick="trPom(-1)" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">◀</button><button onclick="trPom(1)" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">▶</button><span id="trTedLab"></span>
@@ -3213,7 +3214,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div>
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-          <div style="font-weight:700;font-size:13px">✂️ Škarje: RVC/nar. vs CPA po tednih</div>
+          <div id="trC3Tit" style="font-weight:700;font-size:13px">✂️ Škarje: RVC/nar. vs CPA</div>
           <span style="font-size:11.5px;color:var(--text-tertiary)">razmik = prispevek · navpične črte = dogodki</span>
           <span id="trRaz" style="margin-left:auto;display:flex;gap:4px"></span>
         </div>
@@ -16562,8 +16563,14 @@ function semSgn(v){ return (v===null||v===undefined||isNaN(v)) ? '—' : (v>0?'+
 function semEur(v, dec){ return (v===null||v===undefined||isNaN(v)) ? '—' : Number(v).toFixed(dec===undefined?2:dec).replace('.',',') + ' €'; }
 // ═══ 📈 TREND (Analiza) — ali dvig cen (RVC/nar.) vleče tudi CPA ═══
 // Podatki: /semafor-trend (mesec + teden; Excel zgodovina + Semafor), dogodki /semafor-dogodki, AI /semafor-trend-ai.
-const TR = { M: [], W: [], dog: [], real: false, prim: 'mesec', mes: null, off: null, raz: 0, ch: {}, meta: {} };
-try { TR.real = localStorage.getItem('tr_real') === '1'; TR.prim = localStorage.getItem('tr_prim') || 'mesec'; } catch(e) {}
+const TR = { M: [], W: [], D: [], dog: [], real: false, prim: 'mesec', gran: 'mesec', sel: null, off: null, raz: 0, ch: {}, meta: {} };
+try { TR.real = localStorage.getItem('tr_real') === '1'; TR.prim = localStorage.getItem('tr_prim') || 'mesec'; TR.gran = localStorage.getItem('tr_gran') || 'mesec'; } catch(e) {}
+// razdrobljenost (dan/teden/mesec): vrsta obdobij za glavni graf in škarje; podrobnosti = otroci izbranega obdobja
+const trSer = g => g==='dan' ? TR.D : (g==='teden' ? TR.W : TR.M);
+const trDan = k => { const d = new Date(k); return d.getDate() + '. ' + (d.getMonth()+1) + '.'; };
+const trLab = (g, k) => g==='mesec' ? trMes(k) : (g==='teden' ? trTed(k) : trDan(k));
+const trPlus = (k, n) => { const d = new Date(k); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+function trSetGran(g){ TR.gran = g; TR.sel = null; TR.off = null; TR.raz = 0; ['trWa','trWb'].forEach(id => { const s = document.getElementById(id); if (s) s.value = ''; }); try { localStorage.setItem('tr_gran', g); } catch(e) {} trRender(); }
 const TR_MN = ['jan','feb','mar','apr','maj','jun','jul','avg','sep','okt','nov','dec'];
 const trEu = v => v==null||isNaN(v) ? '—' : v.toLocaleString('sl-SI',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
 const trE0 = v => v==null||isNaN(v) ? '—' : (v<0?'−':'') + Math.round(Math.abs(v)).toLocaleString('sl-SI') + ' €';
@@ -16587,25 +16594,30 @@ async function trLoad(){
   const dt = document.getElementById('trDogTrg'); if (dt && !dt.options.length) dt.innerHTML = '<option value="VSI">vsi trgi</option>' + TRGI.map(m => '<option value="'+m+'">'+m+'</option>').join('');
   const dd = document.getElementById('trDogDat'); if (dd && !dd.value) dd.value = new Date().toISOString().slice(0,10);
   const q = '&trg=' + encodeURIComponent(sel.value);
-  let m = null, w = null, g = null, ai = null;
-  try { [m, w, g, ai] = await Promise.all([fetch('/semafor-trend?obdobje=mesec'+q).then(r=>r.json()), fetch('/semafor-trend?obdobje=teden'+q).then(r=>r.json()),
-    fetch('/semafor-dogodki').then(r=>r.json()), fetch('/semafor-trend-ai?trg='+encodeURIComponent(sel.value)).then(r=>r.json())]); } catch(e) {}
-  TR.M = (m && m.ok && m.vedra) || []; TR.W = (w && w.ok && w.vedra) || []; TR.dog = (g && g.dogodki) || []; TR.meta = m || {};
-  TR.mes = null; TR.off = null;
+  let m = null, w = null, g = null, ai = null, dn = null;
+  try { [m, w, g, ai, dn] = await Promise.all([fetch('/semafor-trend?obdobje=mesec'+q).then(r=>r.json()), fetch('/semafor-trend?obdobje=teden'+q).then(r=>r.json()),
+    fetch('/semafor-dogodki').then(r=>r.json()), fetch('/semafor-trend-ai?trg='+encodeURIComponent(sel.value)).then(r=>r.json()), fetch('/semafor-trend?obdobje=dan'+q).then(r=>r.json())]); } catch(e) {}
+  TR.M = (m && m.ok && m.vedra) || []; TR.W = (w && w.ok && w.vedra) || []; TR.D = (dn && dn.ok && dn.vedra) || []; TR.dog = (g && g.dogodki) || []; TR.meta = m || {};
+  TR.sel = null; TR.off = null;
   trAiShow(ai && ai.analiza);
   trRender();
 }
 function trRender(){
   const rb = document.getElementById('trReal'); if (rb) { rb.textContent = TR.real ? 'Realno' : 'Bruto'; rb.style.background = TR.real ? 'var(--accent)' : 'transparent'; rb.style.color = TR.real ? '#fff' : 'var(--text-secondary)'; }
   const pb = (k, t) => '<button onclick="trSetPrim(\''+k+'\')" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit;background:'+(TR.prim===k?'var(--accent)':'transparent')+';color:'+(TR.prim===k?'#fff':'var(--text-secondary)')+'">'+t+'</button>';
-  document.getElementById('trPrim').innerHTML = pb('mesec','Mesec vs prejšnji') + pb('4t','4 tedni vs prejšnji 4') + pb('zacetek','Od začetka');
+  const gb = (k, t) => '<button onclick="trSetGran(\''+k+'\')" style="padding:5px 10px;border:1px solid '+(TR.gran===k?'#4f46e5':'var(--border)')+';border-radius:var(--radius);font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;background:'+(TR.gran===k?'rgba(79,70,229,.1)':'transparent')+';color:'+(TR.gran===k?'#4f46e5':'var(--text-secondary)')+'">'+t+'</button>';
+  document.getElementById('trGran').innerHTML = '<span style="font-size:11px;color:var(--text-tertiary);align-self:center">Grafi:</span>' + gb('dan','Dan') + gb('teden','Teden') + gb('mesec','Mesec');
+  document.getElementById('trPrim').innerHTML = '<span style="font-size:11px;color:var(--text-tertiary);align-self:center;margin-left:6px">Primerjava:</span>' + pb('dan','Dan') + pb('7d','7 dni') + pb('4t','4 tedni') + pb('mesec','Mesec') + pb('zacetek','Od začetka');
   const kpi = document.getElementById('trKpi'), ver = document.getElementById('trVerdikt');
   const trg = document.getElementById('trTrg').value;
   if (!TR.M.length) { kpi.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary)">Ni podatkov' + (trg==='VSI' ? ' — uvozi Excel z zgodovino (⬆ Uvozi Excel).' : ' za ta trg (po trgih samo obdobje Semaforja).') + '</div>'; ver.innerHTML = ''; trCharts(); trDogRender(); return; }
   // izbrani obdobji za primerjavo (samo polna obdobja)
   const pm = TR.M.filter(b=>!b.delno), pw = TR.W.filter(b=>!b.delno);
   let A = null, B = null, opis = '';
-  if (TR.prim === '4t' && pw.length >= 8) { A = trAgg(pw.slice(-8,-4)); B = trAgg(pw.slice(-4)); opis = 'zadnji 4 tedni (od ' + trTed(pw[pw.length-4].k) + ') proti prejšnjim 4'; }
+  const pd = TR.D.filter(b=>!b.delno);
+  if (TR.prim === 'dan' && pd.length >= 2) { A = trAgg([pd[pd.length-2]]); B = trAgg([pd[pd.length-1]]); opis = trDan(pd[pd.length-1].k) + ' proti ' + trDan(pd[pd.length-2].k); }
+  else if (TR.prim === '7d' && pd.length >= 14) { A = trAgg(pd.slice(-14,-7)); B = trAgg(pd.slice(-7)); opis = 'zadnjih 7 dni (' + trDan(pd[pd.length-7].k) + ' – ' + trDan(pd[pd.length-1].k) + ') proti prejšnjim 7'; }
+  else if (TR.prim === '4t' && pw.length >= 8) { A = trAgg(pw.slice(-8,-4)); B = trAgg(pw.slice(-4)); opis = 'zadnji 4 tedni (od ' + trTed(pw[pw.length-4].k) + ') proti prejšnjim 4'; }
   else if (TR.prim === 'zacetek' && pm.length >= 2) { A = trAgg([pm[0]]); B = trAgg([pm[pm.length-1]]); opis = trMes(pm[pm.length-1].k) + ' proti ' + trMes(pm[0].k) + ' (začetek)'; }
   else if (pm.length >= 2) { A = trAgg([pm[pm.length-2]]); B = trAgg([pm[pm.length-1]]); opis = trMes(pm[pm.length-1].k) + ' proti ' + trMes(pm[pm.length-2].k); }
   if (!A || !B) { kpi.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary)">Premalo polnih obdobij za primerjavo.</div>'; ver.innerHTML = ''; trCharts(); trDogRender(); return; }
@@ -16641,59 +16653,76 @@ function trCharts(){
   const M = TR.M, W = TR.W; if (!M.length) { Object.values(TR.ch).forEach(c=>c.destroy()); TR.ch = {}; return; }
   const GR = 'rgba(148,163,184,.25)', TX = '#94a3b8', base = { responsive:true, maintainAspectRatio:false, animation:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:false}},
     scales:{ x:{grid:{display:false},ticks:{color:TX,font:{size:11},maxRotation:0,autoSkip:true}}, y:{grid:{color:GR},ticks:{color:TX,font:{size:11}}} } };
-  if (!TR.mes) { const pm = M.filter(b=>!b.delno); TR.mes = (pm[pm.length-1] || M[M.length-1]).k; }
-  // 1) dobiček na dan po mesecih (klik → tedni)
-  trMk('trC1', { type:'bar', data:{ labels: M.map(b=>trMes(b.k)), datasets:[{ data: M.map(b=>Math.round(DOBd(b))), backgroundColor: M.map(b=>b.k===TR.mes ? '#4f46e5' : (b.delno ? 'rgba(79,70,229,.15)' : 'rgba(79,70,229,.35)')), borderRadius:4, maxBarThickness:34 }] },
-    options:{ ...base, onClick:(e,el)=>{ if (el.length) { TR.mes = M[el[0].index].k; TR.off = null; trCharts(); } },
-      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: c => 'dobiček/dan ' + trE0(c.raw), afterBody: it => { const b = M[it[0].dataIndex]; return ['prispevek/nar. ' + trEu(P(b)), 'RVC ' + trEu(b.rvc_nar) + ' · CPA ' + trEu(b.cpa), Math.round(b.nar_na_dan).toLocaleString('sl-SI') + ' nar./dan' + (b.delno ? ' · v teku' : '')]; } } } },
+  const G = TR.gran, S = trSer(G); if (!S.length) return;
+  const IME = { dan: ['dnevih','dan','dnevi'], teden: ['tednih','teden','dnevi'], mesec: ['mesecih','mesec','tedni'] }[G];
+  if (!TR.sel || !S.some(b=>b.k===TR.sel)) { const pp = S.filter(b=>!b.delno); TR.sel = (pp[pp.length-1] || S[S.length-1]).k; }
+  // 1) dobiček na dan po izbranih obdobjih (dnevi: zadnjih 60) — klik = podrobnosti spodaj
+  const S1 = G === 'dan' ? S.slice(-60) : S;
+  document.getElementById('trC1Tit').innerHTML = 'Dobiček na dan po ' + IME[0] + ' <span style="font-weight:400;font-size:11.5px;color:var(--text-tertiary)">· klik na stolpec = ' + IME[2] + ' spodaj' + (G==='dan' ? ' · zadnjih 60 dni' : '') + '</span>';
+  trMk('trC1', { type:'bar', data:{ labels: S1.map(b=>trLab(G,b.k)), datasets:[{ data: S1.map(b=>Math.round(DOBd(b))), backgroundColor: S1.map(b=>b.k===TR.sel ? '#4f46e5' : (b.delno ? 'rgba(79,70,229,.15)' : 'rgba(79,70,229,.35)')), borderRadius:4, maxBarThickness:34 }] },
+    options:{ ...base, onClick:(e,el)=>{ if (el.length) { TR.sel = S1[el[0].index].k; TR.off = null; trCharts(); } },
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: c => 'dobiček/dan ' + trE0(c.raw), afterBody: it => { const b = S1[it[0].dataIndex]; return ['prispevek/nar. ' + trEu(P(b)), 'RVC ' + trEu(b.rvc_nar) + ' · CPA ' + trEu(b.cpa), Math.round(b.nar_na_dan).toLocaleString('sl-SI') + ' nar./dan' + (b.delno ? ' · v teku' : '')]; } } } },
       scales:{ ...base.scales, y:{ ...base.scales.y, ticks:{ ...base.scales.y.ticks, callback: v => Math.round(v).toLocaleString('sl-SI') + ' €' } } } } });
-  // 2) tedni izbranega meseca (okno 8 tednov, ◀ ▶ čez meje mesecev)
-  const i0 = TR.off != null ? TR.off : Math.max(0, W.findIndex(w=>w.ym===TR.mes) - 2);
-  TR.off = Math.max(0, Math.min(Math.max(0, W.length-8), i0));
-  const ws = W.slice(TR.off, TR.off+8);
-  document.getElementById('trTedLab').textContent = ws.length ? 'tedni ' + trTed(ws[0].k) + ' – ' + trTed(ws[ws.length-1].k) + ' · ' + trMes(TR.mes) + ' obarvan' : '';
-  trMk('trC2', { type:'bar', data:{ labels: ws.map(w=>trTed(w.k)), datasets:[
+  // 2) podrobnosti: mesec → tedni (okno 8), teden/dan → dnevi (okno 14); ◀ ▶ čez meje obdobij
+  const C = G === 'mesec' ? W : TR.D, N = G === 'mesec' ? 8 : 14;
+  const jeOtrok = x => G === 'mesec' ? x.ym === TR.sel : (G === 'teden' ? (x.k >= TR.sel && x.k < trPlus(TR.sel, 7)) : x.k === TR.sel);
+  const i0 = TR.off != null ? TR.off : Math.max(0, C.findIndex(jeOtrok) - (G === 'mesec' ? 2 : 3));
+  TR.off = Math.max(0, Math.min(Math.max(0, C.length-N), i0));
+  const ws = C.slice(TR.off, TR.off+N), cg = G === 'mesec' ? 'teden' : 'dan';
+  document.getElementById('trTedLab').textContent = ws.length ? IME[2] + ' ' + trLab(cg, ws[0].k) + ' – ' + trLab(cg, ws[ws.length-1].k) + ' · ' + trLab(G, TR.sel) + ' obarvan' : '';
+  trMk('trC2', { type:'bar', data:{ labels: ws.map(w=>trLab(cg, w.k)), datasets:[
       { type:'line', data: ws.map(w=>w.rvc_nar), borderColor:'#16a34a', borderWidth:2, pointRadius:3, pointBackgroundColor:'#16a34a' },
       { type:'line', data: ws.map(w=>w.cpa), borderColor:'#dc2626', borderWidth:2, borderDash:[5,4], pointRadius:3, pointStyle:'rect', pointBackgroundColor:'#dc2626' },
-      { data: ws.map(w=>P(w)), backgroundColor: ws.map(w=>w.ym===TR.mes ? (w.delno ? 'rgba(98,80,214,.45)' : '#6250d6') : 'rgba(98,80,214,.25)'), borderRadius:4, maxBarThickness:30 } ] },
+      { data: ws.map(w=>P(w)), backgroundColor: ws.map(w=>jeOtrok(w) ? (w.delno ? 'rgba(98,80,214,.45)' : '#6250d6') : 'rgba(98,80,214,.25)'), borderRadius:4, maxBarThickness:30 } ] },
     options:{ ...base, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: c => ['RVC/nar.','CPA','prispevek/nar.'][c.datasetIndex] + ': ' + trEu(c.raw), afterBody: it => { const w = ws[it[0].dataIndex]; return 'dobiček/dan ' + trE0(DOBd(w)) + ' · ' + Math.round(w.nar_na_dan).toLocaleString('sl-SI') + ' nar./dan' + (w.delno ? ' · v teku' : ''); } } } },
       scales:{ ...base.scales, y:{ ...base.scales.y, min:0, ticks:{ ...base.scales.y.ticks, callback: v => v + ' €' } } } } });
-  // 3) škarje čez celo obdobje + dogodki
+  // 3) škarje po izbranih obdobjih + dogodki (razpon 3 / 6 mesecev ali vse)
+  const RZ = { dan: [90, 180], teden: [13, 26], mesec: [3, 6] }[G];
   const rb = (n, t) => '<button onclick="trSetRaz('+n+')" style="padding:4px 9px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;cursor:pointer;font-family:inherit;background:'+(TR.raz===n?'var(--accent)':'transparent')+';color:'+(TR.raz===n?'#fff':'var(--text-secondary)')+'">'+t+'</button>';
-  document.getElementById('trRaz').innerHTML = rb(13,'3 mes.') + rb(26,'6 mes.') + rb(0,'vse');
-  const wz = TR.raz ? W.slice(-TR.raz) : W, trg = document.getElementById('trTrg').value;
+  document.getElementById('trRaz').innerHTML = rb(RZ[0],'3 mes.') + rb(RZ[1],'6 mes.') + rb(0,'vse');
+  document.getElementById('trC3Tit').textContent = '✂️ Škarje: RVC/nar. vs CPA po ' + IME[0];
+  const wz = TR.raz ? S.slice(-TR.raz) : S, trg = document.getElementById('trTrg').value;
+  const dolz = G === 'dan' ? 1 : (G === 'teden' ? 7 : 31);
   const dg = TR.dog.filter(x => trg==='VSI' || x.trg===trg || x.trg==='VSI');
-  const evPl = { id:'trEv', afterDraw(ch){ const c = ch.ctx; c.save(); c.font = '11px sans-serif'; dg.forEach((e, j) => { const i = wz.findIndex(w => e.datum >= w.k && e.datum < new Date(new Date(w.k).getTime()+7*864e5).toISOString().slice(0,10)); if (i < 0) return;
+  const vObd = (e, w) => G === 'mesec' ? e.datum.slice(0,7) === w.k : (e.datum >= w.k && e.datum < trPlus(w.k, dolz));
+  const evPl = { id:'trEv', afterDraw(ch){ const c = ch.ctx; c.save(); c.font = '11px sans-serif'; dg.forEach((e, j) => { const i = wz.findIndex(w => vObd(e, w)); if (i < 0) return;
     const x = ch.scales.x.getPixelForValue(i); c.strokeStyle = '#94a3b8'; c.setLineDash([3,3]); c.beginPath(); c.moveTo(x, ch.chartArea.top); c.lineTo(x, ch.chartArea.bottom); c.stroke(); c.fillStyle = '#64748b'; c.fillText('📌 ' + e.besedilo.slice(0,28), x+4, ch.chartArea.top + 12 + (j%3)*13); }); c.restore(); } };
-  trMk('trC3', { type:'line', data:{ labels: wz.map(w=>trTed(w.k)), datasets:[
-      { data: wz.map(w=>w.rvc_nar), borderColor:'#16a34a', borderWidth:2, pointRadius:0, fill:false },
-      { data: wz.map(w=>w.cpa), borderColor:'#dc2626', borderWidth:2, borderDash:[5,4], pointRadius:0, fill:{ target:0, above:'rgba(98,80,214,.08)', below:'rgba(98,80,214,.16)' } } ] },
+  trMk('trC3', { type:'line', data:{ labels: wz.map(w=>trLab(G, w.k)), datasets:[
+      { data: wz.map(w=>w.rvc_nar), borderColor:'#16a34a', borderWidth:2, pointRadius: G==='mesec' ? 3 : 0, fill:false },
+      { data: wz.map(w=>w.cpa), borderColor:'#dc2626', borderWidth:2, borderDash:[5,4], pointRadius: G==='mesec' ? 3 : 0, fill:{ target:0, above:'rgba(98,80,214,.08)', below:'rgba(98,80,214,.16)' } } ] },
     options:{ ...base, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: c => ['RVC/nar.','CPA'][c.datasetIndex] + ': ' + trEu(c.raw), afterBody: it => 'prispevek/nar. ' + trEu(P(wz[it[0].dataIndex])) } } },
       scales:{ ...base.scales, y:{ ...base.scales.y, ticks:{ ...base.scales.y.ticks, callback: v => v + ' €' } } } }, plugins:[evPl] });
-  trMk('trC4', { type:'bar', data:{ labels: wz.map(w=>trTed(w.k)), datasets:[{ data: wz.map(w=>Math.round(w.nar_na_dan)), backgroundColor:'rgba(148,163,184,.55)', borderRadius:3, maxBarThickness:16 }] },
+  trMk('trC4', { type:'bar', data:{ labels: wz.map(w=>trLab(G, w.k)), datasets:[{ data: wz.map(w=>Math.round(w.nar_na_dan)), backgroundColor:'rgba(148,163,184,.55)', borderRadius:3, maxBarThickness:16 }] },
     options:{ ...base, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: c => c.raw.toLocaleString('sl-SI') + ' nar./dan' } } }, scales:{ x:{display:false}, y:{ ...base.scales.y, ticks:{ ...base.scales.y.ticks, maxTicksLimit:3 } } } } });
-  // 4) razčlenitev spremembe dobička na dan
+  // 4) razčlenitev spremembe dobička na dan: izbira obdobij po izbrani razdrobljenosti (dnevi: zadnjih 60)
   const sa = document.getElementById('trWa'), sb = document.getElementById('trWb');
-  const opts = M.map(b => '<option value="'+b.k+'">'+trMes(b.k)+(b.delno?' (v teku)':'')+'</option>').join('');
-  const pm = M.filter(b=>!b.delno), va = sa.value, vb = sb.value;
+  const SW = G === 'dan' ? S.slice(-60) : S;
+  const opts = SW.map(b => '<option value="'+b.k+'">'+trLab(G, b.k)+(G==='teden'?' (teden)':'')+(b.delno?' · v teku':'')+'</option>').join('');
+  const pm = SW.filter(b=>!b.delno), va = sa.value, vb = sb.value;
   sa.innerHTML = opts; sb.innerHTML = opts;
-  sa.value = M.some(b=>b.k===va) ? va : (pm.length>1 ? pm[pm.length-2].k : M[0].k);
-  sb.value = M.some(b=>b.k===vb) ? vb : (pm[pm.length-1]||M[M.length-1]).k;
+  sa.value = SW.some(b=>b.k===va) ? va : (pm.length>1 ? pm[pm.length-2].k : SW[0].k);
+  sb.value = SW.some(b=>b.k===vb) ? vb : (pm[pm.length-1]||SW[SW.length-1]).k;
   trWater();
-}
-function trWater(){
-  const a = TR.M.find(b=>b.k===document.getElementById('trWa').value), b = TR.M.find(b=>b.k===document.getElementById('trWb').value);
+}function trWater(){
+  const S = trSer(TR.gran), a = S.find(b=>b.k===document.getElementById('trWa').value), b = S.find(b=>b.k===document.getElementById('trWb').value);
   if (!a || !b) return;
   const R = x => TR.real ? x.rvc_nar*(1-(x.fail||0)/100) : x.rvc_nar, pA = R(a)-a.cpa, ddA = a.nar_na_dan*pA, ddB = b.nar_na_dan*(R(b)-b.cpa);
   const vol = (b.nar_na_dan-a.nar_na_dan)*pA, rv = b.nar_na_dan*(R(b)-R(a)), cp = -b.nar_na_dan*(b.cpa-a.cpa);
-  let acc = ddA; const st = [['dobiček/dan '+trMes(a.k),0,ddA,1],['volumen (naročila)',acc,acc+=vol],['RVC/nar. (cene)',acc,acc+=rv],['CPA',acc,acc+=cp],['dobiček/dan '+trMes(b.k),0,ddB,1]];
+  let acc = ddA; const st = [['dobiček/dan '+trLab(TR.gran,a.k),0,ddA,1],['volumen (naročila)',acc,acc+=vol],['RVC/nar. (cene)',acc,acc+=rv],['CPA',acc,acc+=cp],['dobiček/dan '+trLab(TR.gran,b.k),0,ddB,1]];
   document.getElementById('trWsum').innerHTML = ' · ' + trDl(ddB-ddA,'gor',1) + ' €/dan';
   const lo = Math.min(...st.map(s=>Math.min(s[3]?s[2]:s[1], s[2])));
   trMk('trC5', { type:'bar', data:{ labels: st.map(s=>s[0]), datasets:[{ data: st.map(s=>[Math.min(s[1],s[2]),Math.max(s[1],s[2])]), backgroundColor: st.map(s=>s[3] ? 'rgba(148,163,184,.6)' : (s[2]>=s[1] ? '#16a34a' : '#dc2626')), borderRadius:4, maxBarThickness:60 }] },
     options:{ responsive:true, maintainAspectRatio:false, animation:false, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: c => { const s = st[c.dataIndex]; return s[3] ? trE0(s[2]) : (s[2]>=s[1]?'+':'−') + Math.round(Math.abs(s[2]-s[1])).toLocaleString('sl-SI') + ' €/dan'; } } } },
       scales:{ x:{grid:{display:false},ticks:{color:'#94a3b8',font:{size:11}}}, y:{ min: Math.max(0, Math.floor(lo*0.85/500)*500), grid:{color:'rgba(148,163,184,.25)'}, ticks:{color:'#94a3b8',font:{size:11},callback: v => Math.round(v).toLocaleString('sl-SI') + ' €'} } } } });
 }
-function trPom(d){ TR.off = Math.max(0, Math.min(Math.max(0, TR.W.length-8), (TR.off||0) + d)); const c = TR.W[Math.min(TR.W.length-1, TR.off+3)]; if (c) TR.mes = c.ym; const o = TR.off; trCharts(); TR.off = o; }
+function trPom(d){
+  // premik okna podrobnosti; izbrano obdobje sledi sredini okna (čez meje mesecev/tednov)
+  const G = TR.gran, C = G === 'mesec' ? TR.W : TR.D, N = G === 'mesec' ? 8 : 14;
+  TR.off = Math.max(0, Math.min(Math.max(0, C.length-N), (TR.off||0) + d));
+  const c = C[Math.min(C.length-1, TR.off + Math.floor(N/2))];
+  if (c) TR.sel = G === 'mesec' ? c.ym : (G === 'teden' ? trPlus(c.k, -((new Date(c.k).getDay()+6)%7)) : c.k);
+  const o = TR.off; trCharts(); TR.off = o; trCharts();
+}
 function trDogRender(){
   const trg = document.getElementById('trTrg').value;
   const ds = TR.dog.filter(x => trg==='VSI' || x.trg===trg || x.trg==='VSI');
