@@ -11624,7 +11624,7 @@ async def marza_trgi_stran(request: Request):
 <div id="selBar"><b id="selN">0</b> izbranih
   <button onclick="neuvozBulk(true)" style="background:#fee2e2;color:#991b1b">🚫 Ne uvažamo</button>
   <button onclick="neuvozBulk(false)" style="background:#e2e8f0;color:#0f172a">↩ Odznači 🚫</button>
-<button onclick="paketCms()" title="Vtičnik Kalkulator cen: po vrsti odpre izbrane v CMS, doda +1 korak in vpiše Redna — ti samo klikneš Update" style="background:#16a34a;color:#fff">▶ +1 v CMS</button>
+<button onclick="paketCms()" title="Vtičnik Kalkulator cen: po vrsti odpre izbrane v CMS, doda izbrano število korakov (EUR +1 · CZK/PLN/RON +5 · HUF/RSD +100) in vpiše Redna — ti samo klikneš Update" style="background:#16a34a;color:#fff">▶ Dvigni v CMS</button>
 <button onclick="cmsUndoBulk()" title="Odstrani oznako urejeno (popravljeno / potrjeno / odprto) za izbrane na tem trgu" style="background:#dcfce7;color:#166534">↩ Odznači urejeno</button>
   <button onclick="selClear()" style="background:transparent;color:#cbd5e1">✕ Počisti izbor</button>
 </div>
@@ -12068,8 +12068,11 @@ function paketCms(){
   const items=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&x.cms_id);
   const brez=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&!x.cms_id).length;
   if(!items.length){alert('Med izbranimi ni izdelkov s CMS ID.');return;}
-  if(!confirm('▶ +1 v CMS: '+items.length+' izdelkov na '+String(trg).toUpperCase()+(brez?' ('+brez+' brez CMS ID bo izpuščenih)':'')+'.\n\nVtičnik jih odpre po vrsti, doda +1 korak in vpiše Redna — ti klikneš Update.')) return;
-  window.postMessage({type:'suban-kalk-paket',trg,koraki:1,items:items.map(x=>({sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
+  const KOR={EUR:'+1 €',CZK:'+5 Kč',PLN:'+5 zł',RON:'+5 lei',HUF:'+100 Ft',RSD:'+100 din'}[String(items[0].valuta||'EUR').toUpperCase()]||'+1';
+  const v=prompt('▶ CMS: '+items.length+' izdelkov na '+String(trg).toUpperCase()+(brez?' ('+brez+' brez CMS ID bo izpuščenih)':'')+'.\n\nKoliko korakov navzgor? 1 korak = '+KOR+' (kot veliki gumb + v vtičniku)\nVpiši 1, 2 ali 3:','1');
+  if(v===null) return;
+  const koraki=Math.max(1,Math.min(5,parseInt(v,10)||1));
+  window.postMessage({type:'suban-kalk-paket',trg,koraki,items:items.map(x=>({sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
     cena:+x.cena||0,valuta:x.valuta||'',naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc}))},'*');
 }
 window.addEventListener('message',e=>{
