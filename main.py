@@ -11525,7 +11525,7 @@ function kbSendExt(){
   const tr=kbCur(); const x=tr&&D&&D.rows[+tr.dataset.i]; if(!x) return;
   const cena=x.cena; if(cena==null) return;
   try{ window.postMessage({type:'suban-kalk',trg,sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id||''),cena:+cena,valuta:x.valuta||'',
-    vir:'redna zdaj',naziv:String(x.naziv||'').slice(0,120)},'*'); }catch(e){}
+    vir:'redna zdaj',naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc},'*'); }catch(e){}
 }
 function kbCur(){const rows=kbRows();return kbIdx>=0?rows[kbIdx]:null;}
 function kbReset(){kbIdx=-1;kbKey=null;document.querySelectorAll('tr.kf').forEach(tr=>tr.classList.remove('kf'));}
