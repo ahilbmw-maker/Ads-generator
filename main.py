@@ -1622,6 +1622,7 @@ async def startup_event():
     asyncio.create_task(_email_polling_loop())
     asyncio.create_task(_forecast2_scheduler_loop())
     asyncio.create_task(_zaloga_scheduler_loop())
+    asyncio.create_task(_domov_predizracun_loop())   # Domov + Marža po trgih vnaprej izračunani
     asyncio.create_task(_hsplus_daily_scheduler())
     asyncio.create_task(_hsplus_daily_scheduler())
     asyncio.create_task(_regen_worker_loop())
@@ -10906,9 +10907,12 @@ async def bato_povzetek(request: Request, min_eur: float = 5.0, znamka: str = "m
     if not feed_by_lang:
         return {"ok": False, "error": "Feed se še nalaga."}
     zn = (znamka or "").strip().lower()
-    key = (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
-           tuple(sorted((k, len(v or {})) for k, v in feed_by_lang.items())), _mtime(NEUVOZ_FILE))   # 🚫 sprememba → nov izračun
-    return await _swr("bato", key, lambda: _bato_izracun(min_eur, znamka, zn))
+    return await _swr("bato", _bato_key(min_eur, zn), lambda: _bato_izracun(min_eur, znamka, zn))
+
+
+def _bato_key(min_eur, zn):
+    return (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
+            tuple(sorted((k, len(v or {})) for k, v in feed_by_lang.items())), _mtime(NEUVOZ_FILE))   # 🚫 sprememba → nov izračun
 
 
 async def _bato_izracun(min_eur: float, znamka: str, zn: str):
@@ -11007,16 +11011,19 @@ async def urejeno_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
     if not feed_by_lang:
         return {"ok": False, "error": "Feed se še nalaga."}
     zn = (znamka or "").strip().lower()
-    key = (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
-           _mtime(CMS_LOG_FILE), _mtime(NEUVOZ_FILE), _mtime(PRICE_CHANGES_FILE), _mtime(STOCK_CSV_FILE), _mtime(MARZA_SKU_FILE))
-    return await _swr("urejeno", key, lambda: _urejeno_izracun(request, min_eur, znamka, zn))
+    return await _swr("urejeno", _urejeno_key(min_eur, zn), lambda: _urejeno_izracun(None, min_eur, znamka, zn))
+
+
+def _urejeno_key(min_eur, zn):
+    return (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
+            _mtime(CMS_LOG_FILE), _mtime(NEUVOZ_FILE), _mtime(PRICE_CHANGES_FILE), _mtime(STOCK_CSV_FILE), _mtime(MARZA_SKU_FILE))
 
 
 async def _urejeno_izracun(request: Request, min_eur: float, znamka: str, zn: str):
     trgi = []
     for trg, (oznaka, _ddv) in MARZA_TRGI.items():
         try:
-            res = await marza_trgi(request, trg)
+            res = await _marza_trgi_get(trg)
         except Exception as e:
             print(f"[urejeno] {trg}: {e}")
             res = None
@@ -11069,9 +11076,12 @@ async def razlika_povzetek(request: Request, min_eur: float = 5.0, znamka: str =
     if not feed_by_lang:
         return {"ok": False, "error": "Feed se še nalaga."}
     zn = (znamka or "").strip().lower()
-    key = (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
-           _mtime(STOCK_CSV_FILE), _mtime(NEUVOZ_FILE), _mtime(MARZA_SKU_FILE), _lj_today())
-    return await _swr("razlika", key, lambda: _razlika_izracun(request, min_eur, znamka, zn))
+    return await _swr("razlika", _razlika_key(min_eur, zn), lambda: _razlika_izracun(None, min_eur, znamka, zn))
+
+
+def _razlika_key(min_eur, zn):
+    return (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
+            _mtime(STOCK_CSV_FILE), _mtime(NEUVOZ_FILE), _mtime(MARZA_SKU_FILE), _lj_today())
 
 
 async def _razlika_izracun(request: Request, min_eur: float, znamka: str, zn: str):
@@ -11079,7 +11089,7 @@ async def _razlika_izracun(request: Request, min_eur: float, znamka: str, zn: st
     zdaj, izd_zdaj = {}, {}
     for trg in MARZA_TRGI:
         try:
-            res = await marza_trgi(request, trg)
+            res = await _marza_trgi_get(trg)
         except Exception as e:
             print(f"[razlika] {trg}: {e}")
             continue
@@ -11161,11 +11171,51 @@ def _marza_trgi_key(trg: str):
             _mtime(PRICE_CHANGES_FILE), _lj_today())
 
 
+# ═══ VNAPREJŠNJI IZRAČUN (Domov + Marža po trgih) ═══
+# Teče v ozadju: ob zagonu (ko je feed naložen) in nato vsake 3 min preveri, ali so se viri spremenili
+# (zaloga, feed, 🚫, ročni SKU, dnevnik CMS, nov dan) in izračuna VNAPREJ — nihče ne čaka ob odprtju strani.
+# Ko je vse sveže, je preverba hitra (samo primerjava ključev). Težko računanje teče v ločeni niti.
+async def _domov_predizracun():
+    if not feed_by_lang:
+        return
+    for trg in MARZA_TRGI:
+        try:
+            await _marza_trgi_get(trg)
+        except Exception as e:
+            print(f"[predizracun] {trg}: {type(e).__name__}: {e}")
+    z = "maaarket"
+    for ime, kljuc, izr in (("urejeno", _urejeno_key(5.0, z), lambda: _urejeno_izracun(None, 5.0, z, z)),
+                            ("razlika", _razlika_key(5.0, z), lambda: _razlika_izracun(None, 5.0, z, z)),
+                            ("bato", _bato_key(5.0, z), lambda: _bato_izracun(5.0, z, z))):
+        try:
+            await _swr(ime, kljuc, izr)
+            t = (_swr_stanje.get(ime) or {}).get("task")
+            if t is not None and not t.done():
+                await asyncio.shield(t)   # počakaj, da se konča (ne zaženi naslednjega vzporedno)
+        except Exception as e:
+            print(f"[predizracun] {ime}: {type(e).__name__}: {e}")
+
+
+async def _domov_predizracun_loop():
+    await asyncio.sleep(90)   # po zagonu: počakaj, da se feed in zaloga naložita (health check mora biti hiter)
+    while True:
+        try:
+            await _domov_predizracun()
+        except Exception as e:
+            print(f"[predizracun] {type(e).__name__}: {e}")
+        await asyncio.sleep(180)
+
 @app.get("/marza-trgi")
 async def marza_trgi(request: Request, trg: str = "sl"):
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         from fastapi.responses import JSONResponse
         return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    return await _marza_trgi_get(trg)
+
+
+async def _marza_trgi_get(trg: str = "sl"):
+    """Izračun Marže po trgih s predpomnilnikom (brez preverjanja prijave — kliče ga prijavljena pot ali
+    strežnik sam za vnaprejšnji izračun). Težak izračun teče v LOČENI NITI, da ne blokira drugih zahtev."""
     trg = (trg or "sl").lower()
     key, log_m = _marza_trgi_key(trg), _mtime(CMS_LOG_FILE)
     c = _marza_trgi_cache.get(trg)
@@ -11183,18 +11233,19 @@ async def marza_trgi(request: Request, trg: str = "sl"):
     async with lock:
         c = _marza_trgi_cache.get(trg)
         if c and c["key"] == key:
-            return await marza_trgi(request, trg)   # vmes izračunal drug klic (osveži le statuse CMS, če treba)
-        res = await _marza_trgi_izracun(request, trg)
+            return await _marza_trgi_get(trg)   # vmes izračunal drug klic (osveži le statuse CMS, če treba)
+        if feed_by_lang.get(trg) and trg in MARZA_TRGI:
+            res = await asyncio.to_thread(asyncio.run, _marza_trgi_izracun(None, trg))   # svoja zanka v niti
+        else:
+            res = await _marza_trgi_izracun(None, trg)   # feed se še nalaga → hiter odgovor (sproži nalaganje)
         if isinstance(res, dict) and res.get("ok"):
             _marza_trgi_cache[trg] = {"key": key, "log": log_m, "res": res}
     return res
 
 
-async def _marza_trgi_izracun(request: Request, trg: str = "sl"):
-    """Za izbrani trg: vsi izdelki iz feeda → končna cena → EUR → brez DDV → − NC iz zaloge → marža."""
-    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+async def _marza_trgi_izracun(request, trg: str = "sl"):
+    """Za izbrani trg: vsi izdelki iz feeda → končna cena → EUR → brez DDV → − NC iz zaloge → marža.
+    Prijavo preveri klicatelj (pot /marza-trgi); request se ne uporablja."""
     trg = (trg or "sl").lower()
     if trg not in MARZA_TRGI:
         return {"ok": False, "error": f"Neznan trg: {trg}"}
@@ -28747,7 +28798,7 @@ def _regen_status_base(skus):
 async def regen_status_feed(request: Request, znamka: str = "maaarket"):
     """Vsi izdelki izbrane znamke iz SL feeda (= aktivni) s SKU iz zaloge (ista logika kot Marža po trgih)
     + status optimizacije. Brez klicev maaarket API — sličica je iz feeda."""
-    res = await marza_trgi(request, "sl")
+    res = await _marza_trgi_get("sl")
     if not isinstance(res, dict) or not res.get("ok"):
         return JSONResponse({"ok": False, "error": (res.get("error") if isinstance(res, dict) else None) or "Feed ni na voljo / prijava"})
     zn = (znamka or "").strip().lower()
@@ -29699,7 +29750,7 @@ async def _xsell_rows(request: Request) -> list:
     key = ((feed_meta.get("sl") or {}).get("fetched_at"), _mtime(STOCK_CSV_FILE), _mtime(MARZA_SKU_FILE))
     if _xsell_rows_cache["key"] == key and _xsell_rows_cache["rows"] is not None:
         return _xsell_rows_cache["rows"]
-    res = await marza_trgi(request, "sl")
+    res = await _marza_trgi_get("sl")
     if not isinstance(res, dict) or not res.get("ok"):
         raise RuntimeError((res.get("error") if isinstance(res, dict) else None) or "Feed ni na voljo")
     tax = await _google_tax_names()
