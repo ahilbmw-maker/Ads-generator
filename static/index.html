@@ -1047,7 +1047,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 11:55</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 13:09</div>
     </div>
   </div>
 
@@ -1367,11 +1367,11 @@ input[type="text"].error { border-color: var(--red) !important; }
       </div><!-- /flex vizualizacija+urejevalnik -->
 
       <div id="homeSemBar" style="display:none"></div>
-      <!-- BATO CENE PO TRGIH (klik na državo → Marža po trgih, pogled Bato cene) -->
+      <!-- UREJENE CENE PO TRGIH (klik na državo → Marža po trgih, skrite urejene in neuvozne) -->
       <div id="homeBato" style="margin:-6px 0 20px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:14px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
           <span style="font-size:18px">💲</span>
-          <span style="font-size:15px;font-weight:800;color:var(--text)">Bato cene po trgih</span>
+          <span style="font-size:15px;font-weight:800;color:var(--text)">Urejene cene po trgih</span>
           <span id="homeBatoSum" style="font-size:12.5px;color:var(--text-secondary)"></span>
           <span id="homeBatoMeta" style="margin-left:auto;font-size:11px;color:var(--text-tertiary)"></span>
         </div>
@@ -5931,23 +5931,24 @@ function homeUpdateDate() {
 async function homeBatoLoad(){
   const g = document.getElementById('homeBatoGrid'); if(!g) return;
   let d = null;
-  try{ const r = await fetch('/bato-povzetek?_t='+Date.now(), {cache:'no-store'}); d = await r.json(); }catch(e){}
+  let zb = null;   // urejeno = popravljeno/potrjeno ali 🚫 ne uvažamo (/urejeno-povzetek); znamke v feedu še iz /bato-povzetek
+  try{ const [r1, r2] = await Promise.all([fetch('/urejeno-povzetek?_t='+Date.now(), {cache:'no-store'}), fetch('/bato-povzetek?_t='+Date.now(), {cache:'no-store'})]); d = await r1.json(); zb = await r2.json(); }catch(e){}
   if(!d || !d.ok){ g.innerHTML = '<div style="font-size:12.5px;color:var(--text-tertiary)">'+((d&&d.error)||'Podatki niso na voljo')+'</div>'; return; }
   const f = n => Number(n||0).toLocaleString('sl-SI');
   const ft = iso => { if(!iso) return ''; const x = new Date(iso); if(isNaN(x)) return ''; const t=('0'+x.getHours()).slice(-2)+':'+('0'+x.getMinutes()).slice(-2);
     return (x.toDateString()===new Date().toDateString()?'danes ':x.getDate()+'. '+(x.getMonth()+1)+'. ')+t; };
-  document.getElementById('homeBatoSum').innerHTML = '<b style="color:var(--text);font-size:14px">'+f(d.ni_bato)+'</b> cen še ni bato · <b style="color:var(--text)">'+(d.bato_pct==null?'—':String(d.bato_pct).replace('.',','))+' %</b> urejenih';
+  document.getElementById('homeBatoSum').innerHTML = '<b style="color:var(--text);font-size:14px">'+f(d.odprto)+'</b> cen še ni urejenih · <b style="color:var(--text)">'+(d.pct==null?'—':String(d.pct).replace('.',','))+' %</b> urejenih';
   const sl = (d.trgi||[]).find(t=>t.trg==='sl');
   document.getElementById('homeBatoMeta').textContent = 'Maaarket · nad '+String(d.min_eur).replace('.',',')+' €'+(sl&&sl.zgrajen?' · feed '+ft(sl.zgrajen):'');
   g.innerHTML = (d.trgi||[]).map(t => {
-    const p = t.bato_pct, col = p==null ? '#94a3b8' : (p>=95 ? '#16a34a' : (p>=80 ? '#d97706' : '#dc2626'));
-    return '<div class="hbato-t" onclick="homeOpenBato(\''+t.trg+'\')" title="Odpri Bato cene za '+t.oznaka+' ('+f(t.skupaj)+' cen preverjenih)">'
+    const p = t.pct, col = p==null ? '#94a3b8' : (p>=95 ? '#16a34a' : (p>=80 ? '#d97706' : '#dc2626'));
+    return '<div class="hbato-t" onclick="homeOpenBato(\''+t.trg+'\')" title="Odpri Maržo po trgih za '+t.oznaka+' (skrite urejene in neuvozne) — '+f(t.skupaj)+' cen, od tega '+f(t.neuvoz)+' 🚫 ne uvažamo">'
       + '<div class="hbato-h"><span style="font-size:13.5px;font-weight:800;color:var(--text)">'+t.oznaka+'</span>'
-      + '<span style="font-size:19px;font-weight:800;color:'+col+'">'+f(t.ni_bato)+'</span></div>'
+      + '<span style="font-size:19px;font-weight:800;color:'+col+'">'+f(t.odprto)+'</span></div>'
       + '<div class="hbato-bar"><div style="width:'+(p||0)+'%;background:'+col+'"></div></div>'
-      + '<div style="font-size:11px;color:var(--text-tertiary)">'+(p==null?'ni podatkov':String(p).replace('.',',')+' % bato')+'</div></div>';
+      + '<div style="font-size:11px;color:var(--text-tertiary)">'+(p==null?'ni podatkov':String(p).replace('.',',')+' % urejeno')+'</div></div>';
   }).join('');
-  const zn = Object.entries(d.znamke||{});
+  const zn = Object.entries((zb&&zb.znamke)||{});
   document.getElementById('homeBatoZn').innerHTML = '<span style="font-size:11px;color:var(--text-tertiary);margin-right:2px">Izdelkov v feedu:</span>'
     + zn.map(([k,v]) => '<span class="hbato-zn"'+(k.toLowerCase().includes('maaarket')?' style="background:rgba(22,163,74,0.12);color:#166534"':'')+'>'+k+' <b>'+f(v)+'</b></span>').join('');
   homeRazLoad();
@@ -5996,7 +5997,7 @@ async function homeRazLoad(){
 function homeOpenBato(trg){
   switchPage('calc');
   const fr = document.getElementById('calcFrame-marza');
-  if(fr){ fr.src = fr.dataset.src + '&trg=' + encodeURIComponent(trg) + '&bato=1&zn=Maaarket&t=' + Date.now(); }
+  if(fr){ fr.src = fr.dataset.src + '&trg=' + encodeURIComponent(trg) + '&bato=0&ur=1&zn=Maaarket&t=' + Date.now(); }
   switchCalcTab('marza');
 }
 async function homePriceCountLoad(){

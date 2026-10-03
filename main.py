@@ -10954,6 +10954,59 @@ async def bato_povzetek(request: Request, min_eur: float = 5.0, znamka: str = "m
     return data
 
 
+# ═══ UREJENE CENE PO TRGIH (kartica na Domov) ═══
+# Urejen = v Marži po trgih označen kot urejen (CMS status popravljeno / potrjeno — isto kot "Skrij urejene")
+# ALI 🚫 ne uvažamo (zaenkrat rešeno). Obseg: znamka (privzeto Maaarket), cena ≥ min_eur.
+_urejeno_cache = {"key": None, "data": None}
+
+
+@app.get("/urejeno-povzetek")
+async def urejeno_povzetek(request: Request, min_eur: float = 5.0, znamka: str = "maaarket"):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    if not feed_by_lang:
+        return {"ok": False, "error": "Feed se še nalaga."}
+    zn = (znamka or "").strip().lower()
+    key = (round(min_eur, 2), zn, tuple(sorted((k, (v or {}).get("fetched_at")) for k, v in feed_meta.items())),
+           _mtime(CMS_LOG_FILE), _mtime(NEUVOZ_FILE), _mtime(PRICE_CHANGES_FILE), _mtime(STOCK_CSV_FILE), _mtime(MARZA_SKU_FILE))
+    if _urejeno_cache["key"] == key and _urejeno_cache["data"]:
+        return _urejeno_cache["data"]
+    trgi = []
+    for trg, (oznaka, _ddv) in MARZA_TRGI.items():
+        try:
+            res = await marza_trgi(request, trg)
+        except Exception as e:
+            print(f"[urejeno] {trg}: {e}")
+            res = None
+        if not isinstance(res, dict) or not res.get("ok"):
+            trgi.append({"trg": trg, "oznaka": oznaka, "skupaj": 0, "odprto": 0, "pct": None, "neuvoz": 0, "zgrajen": None})
+            continue
+        skupaj = urejeno = nu = 0
+        for r in res.get("rows") or []:
+            if zn and zn not in str(r.get("znamka") or "").lower():
+                continue
+            if r.get("eur") is None or r["eur"] < min_eur:
+                continue
+            skupaj += 1
+            st = (r.get("cms") or {}).get("st")
+            if r.get("neuvoz"):
+                nu += 1
+                urejeno += 1
+            elif st in ("popravljeno", "potrjeno"):
+                urejeno += 1
+        m = feed_meta.get(trg) or {}
+        trgi.append({"trg": trg, "oznaka": oznaka, "skupaj": skupaj, "odprto": skupaj - urejeno, "neuvoz": nu,
+                     "pct": round(urejeno / skupaj * 100, 1) if skupaj else None,
+                     "zgrajen": _iso_from_http_date(m.get("last_modified") or "") or m.get("fetched_at")})
+    skupaj = sum(t["skupaj"] for t in trgi)
+    odprto = sum(t["odprto"] for t in trgi)
+    data = {"ok": True, "min_eur": min_eur, "znamka": znamka, "trgi": trgi, "skupaj": skupaj, "odprto": odprto,
+            "pct": round((skupaj - odprto) / skupaj * 100, 1) if skupaj else None, "izracunano": _lj_iso()}
+    _urejeno_cache.update(key=key, data=data)
+    return data
+
+
 # ═══ POVPREČNA RAZLIKA PO TRGIH (kartica Bato cene na Domov) + dnevna zgodovina ═══
 # Razlika € = cena brez DDV − NC (kot v Marži po trgih). Obseg = kot kartica: znamka (privzeto Maaarket), cena ≥ min_eur,
 # brez 🚫 Ne uvažamo; izdelki brez NC (razlika null) se ne štejejo. Zgodovina: /data/razlika_history.json {datum: {trg: {avg, n}}}.
@@ -11979,6 +12032,7 @@ try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.
   if(p.f){const ch=document.querySelector('.chip[data-f="'+p.f+'"]'); if(ch){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));ch.classList.add('on');flt=p.f;}}
   const U=new URLSearchParams(location.search);
   if(U.get('zn')) ZN=new Set(U.get('zn').split(',').filter(Boolean));     // npr. s kartice na Domov
+  if(U.get('ur')==='1'){skrijUr.checked=true;document.getElementById('skrijNu').checked=true;}   // s kartice Urejene cene na Domov
   if(U.get('bato')!=null ? U.get('bato')==='1' : p.b) toggleBato();
 }catch(e){}
 var _prefReady=true;
