@@ -329,6 +329,10 @@ def _owner_authorized(request) -> bool:
     return _owner_check_token(request.cookies.get(OWNER_COOKIE, ""))
 
 
+# 📈 Trend (Analiza) je za vse prijavljene, ne samo za lastnika (ostali /semafor* ostanejo lastniški)
+_SEMAFOR_ZA_VSE = {"/semafor-trend", "/semafor-trend-ai", "/semafor-dogodki", "/semafor-zgodovina-uvoz"}
+
+
 class AuthGateMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         try:
@@ -348,7 +352,7 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
                 # Semafor CPA je lastniški: brez lastniškega piškotka strežnik
                 # zneskov sploh ne postreže. /semafor-home je namenoma odprt —
                 # vrača le nevtralen povzetek (stanje trgov, naročila, CPA).
-                if (path.startswith("/semafor") and path != "/semafor-home"
+                if (path.startswith("/semafor") and path != "/semafor-home" and path not in _SEMAFOR_ZA_VSE
                         and OWNER_PASSWORD and not _owner_check_token(request.cookies.get(OWNER_COOKIE, ""))):
                     return PlainTextResponse("403 — samo za lastnika", status_code=403)
                 # Cash Flow je lastniški (vsi /cashflow-* endpointi; nočna sinhronizacija teče interno)
