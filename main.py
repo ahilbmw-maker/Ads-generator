@@ -31138,21 +31138,71 @@ async def semafor_trend(obdobje: str = "teden", trg: str = "VSI"):
         b = vedra.setdefault(k, {"k": k, "orders": 0, "rvc": 0.0, "spend": 0.0, "dni": 0, "viri": set()})
         v = dni[ds]
         b["orders"] += v["orders"]; b["rvc"] += v["rvc"]; b["spend"] += v["spend"]; b["dni"] += 1; b["viri"].add(v["vir"])
+    # fail % (neprevzeti) po mesecu: posamezen trg = njegov fail; vsi trgi = povprečje, uteženo z naročili trgov
+    # v tem mesecu iz Semaforja (sicer z deleži vseh zapisov Semaforja, sicer navadno povprečje)
+    po_mes, vse_ut = {}, {}
+    for s in d.get("snapshots") or []:
+        mk, o_ = s.get("market"), int(s.get("orders") or 0)
+        if mk in SEMAFOR_MARKETS and o_ > 0 and s.get("date"):
+            po_mes.setdefault(s["date"][:7], {}).setdefault(mk, 0)
+            po_mes[s["date"][:7]][mk] += o_
+            vse_ut[mk] = vse_ut.get(mk, 0) + o_
+
+    def _fail(ym):
+        if trg != "VSI":
+            return (_failrate_for_month(d, trg, ym) or 0) / 100
+        ut = po_mes.get(ym) or vse_ut or {m: 1 for m in SEMAFOR_MARKETS}
+        s_ = sum(ut.values())
+        return sum((_failrate_for_month(d, m, ym) or 0) * w for m, w in ut.items()) / s_ / 100 if s_ else 0
+
     out = []
     for k in sorted(vedra):
         b = vedra[k]
         o = b["orders"]
         rn, cpa = b["rvc"] / o, b["spend"] / o
         polno = 7 if obdobje == "teden" else __import__("calendar").monthrange(int(k[:4]), int(k[5:7]))[1]
-        out.append({"k": k, "orders": o, "rvc": round(b["rvc"], 2), "spend": round(b["spend"], 2), "dni": b["dni"],
+        ym = (datetime.strptime(k, "%Y-%m-%d") + timedelta(days=3)).strftime("%Y-%m") if obdobje == "teden" else k   # teden → mesec četrtka
+        fl = _fail(ym)
+        out.append({"k": k, "ym": ym, "orders": o, "rvc": round(b["rvc"], 2), "spend": round(b["spend"], 2), "dni": b["dni"],
                     "delno": b["dni"] < polno, "vir": "+".join(sorted(b["viri"])),
                     "rvc_nar": round(rn, 2), "cpa": round(cpa, 2), "prisp_nar": round(rn - cpa, 2),
                     "dobicek": round(b["rvc"] - b["spend"], 2), "poas": round((b["rvc"] - b["spend"]) / b["spend"], 3) if b["spend"] else None,
-                    "nar_na_dan": round(o / b["dni"], 1)})
+                    "nar_na_dan": round(o / b["dni"], 1), "fail": round(fl * 100, 1),
+                    # realno: fail se odbije samo od RVC (kot v Semaforju)
+                    "prisp_nar_real": round(rn * (1 - fl) - cpa, 2), "dobicek_real": round(b["rvc"] * (1 - fl) - b["spend"], 2)})
     return {"ok": True, "obdobje": obdobje, "trg": trg, "vedra": out,
             "zgodovina": {"od": min(zgod) if zgod else None, "do": max(zgod) if zgod else None},
             "semafor_od": min(sem) if sem else None}
 
+
+# 📌 Dogodki na trendu (npr. »dvig cen RO«, »bid cap HU«) — ročni vnos: /data/semafor_dogodki.json [{id, datum, trg, besedilo, at}]
+SEMAFOR_DOGODKI_FILE = DATA_DIR / "semafor_dogodki.json"
+
+
+@app.get("/semafor-dogodki")
+async def semafor_dogodki():
+    return {"ok": True, "dogodki": sorted(_jload(SEMAFOR_DOGODKI_FILE, []) or [], key=lambda x: x.get("datum") or "")}
+
+
+@app.post("/semafor-dogodki")
+async def semafor_dogodki_post(data: dict):
+    """{akcija: 'dodaj', datum: 'YYYY-MM-DD', trg: 'VSI'|'SI'…, besedilo} ali {akcija: 'izbrisi', id}."""
+    lst = _jload(SEMAFOR_DOGODKI_FILE, []) or []
+    ak = (data or {}).get("akcija")
+    if ak == "dodaj":
+        ds, bes = str(data.get("datum") or "")[:10], str(data.get("besedilo") or "").strip()[:120]
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", ds) or not bes:
+            return {"ok": False, "error": "Manjka datum ali besedilo."}
+        trg = str(data.get("trg") or "VSI").upper()
+        lst.append({"id": uuid.uuid4().hex[:10], "datum": ds, "trg": trg if trg in SEMAFOR_MARKETS else "VSI", "besedilo": bes, "at": _lj_iso()})
+    elif ak == "izbrisi":
+        lst = [x for x in lst if x.get("id") != data.get("id")]
+    else:
+        return {"ok": False, "error": "Neznana akcija."}
+    tmp = SEMAFOR_DOGODKI_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(lst, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, SEMAFOR_DOGODKI_FILE)
+    return {"ok": True, "dogodki": sorted(lst, key=lambda x: x.get("datum") or "")}
 
 def _curve_interp(points, h):
     """Kumulativni delež ob uri h (0–24) iz točk [(ura_float, delež)], urejenih naraščajoče.
