@@ -396,6 +396,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 #analizaSubpage-trend.tr-dark{--surface:#121a2b;--bg-secondary:#0f1626;--border:#26324a;--text:#e5e7eb;--text-secondary:#cbd5e1;--text-tertiary:#94a3b8;background:#0b1220;color:#e5e7eb;border-radius:14px;padding:16px!important;margin-top:12px}
 #analizaSubpage-trend.tr-dark .card{background:#121a2b;border-color:#26324a;color:#e5e7eb}
 #analizaSubpage-trend.tr-dark select,#analizaSubpage-trend.tr-dark input{color-scheme:dark}
+#analizaSubpage-trend .tr-grid{display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px;align-items:start}
+#analizaSubpage-trend .tr-levo{position:sticky;top:8px}
+#analizaSubpage-trend.tr-dark .card{padding:10px 12px}
 .hsem-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
 .hsem-m{min-width:0;overflow:hidden;display:flex;flex-direction:column;row-gap:1px;border:1px solid var(--border);border-left:4px solid;border-radius:8px;padding:7px 10px;background:var(--surface)}
 /* risana (poenostavljena) zastavica pred oznako trga */
@@ -404,6 +407,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .hsem-t{display:flex;justify-content:flex-start;gap:7px;align-items:center;font-size:13.5px;font-weight:800;color:var(--text)}
 .hsem-s{display:flex;justify-content:space-between;gap:6px;font-size:11.5px;color:var(--text-secondary);white-space:nowrap}
 .hsem-s b{font-weight:800}
+@media(max-width:800px){#analizaSubpage-trend .tr-grid{grid-template-columns:1fr}#analizaSubpage-trend .tr-levo{position:static}#analizaSubpage-trend #trKpi{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}}
 @media(max-width:700px){.hsem-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.hsem-m{padding:6px 8px}.hsem-s{flex-direction:column;gap:0;font-size:11px}.hsem-s.hsem-c{flex-direction:row;justify-content:space-between;margin-top:2px}}
 .hai-wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;margin-bottom:18px;align-items:stretch}
 .hai-wrap > .card{margin-bottom:0}
@@ -1059,7 +1063,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-03 16:38</div>
+      <div class="sidebar-logo-sub">build 2026-10-03 16:46</div>
     </div>
   </div>
 
@@ -3195,47 +3199,52 @@ input[type="text"].error { border-color: var(--red) !important; }
         <button id="trReal" onclick="trSetReal()" title="Realno = RVC z odbitkom neprevzetih (fail % po mesecih iz Semaforja)" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">Bruto</button>
         <button onclick="document.getElementById('trAdd').style.display=document.getElementById('trAdd').style.display==='none'?'flex':'none'" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit">📌 + Dogodek</button>
         <label style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit" title="Excel z dnevnimi podatki (Datum, Skupaj Ogl., Ogl. Google/FB/TikTok, RVC - (poštnine fee), Naročila) — isti datumi se prepišejo">⬆ Uvozi Excel<input type="file" accept=".xlsx" style="display:none" onchange="trUvoz(this)"></label>
-        <button id="trAiBtn" onclick="trAi()" title="Sonnet 5.5 analizira trend (nekaj centov)" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit;margin-left:auto;background:#4f46e5;color:#fff;border-color:#4f46e5">🧠 AI analiza</button>
+        <button id="trAiBtn" onclick="trAi()" title="Odpre zadnjo AI analizo (brez stroška); v njej »↻ Nova analiza« = Sonnet 5.5, nekaj centov" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit;margin-left:auto;background:#4f46e5;color:#fff;border-color:#4f46e5">🧠 AI analiza</button>
       </div>
       <div id="trAdd" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:12px">
         <input id="trDogDat" type="date" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:12px"><select id="trDogTrg" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:12px"></select>
         <input id="trDogTxt" placeholder="npr. dvig cen RO, bid cap HU 6 €" maxlength="120" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:12px;flex:1;min-width:220px" onkeydown="if(event.key==='Enter')trDogDodaj()">
         <button onclick="trDogDodaj()" style="padding:5px 11px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:11.5px;cursor:pointer;font-family:inherit;background:var(--accent);color:#fff;border-color:var(--accent)">Dodaj</button>
       </div>
-      <div class="card" style="margin-bottom:12px">
-        <div id="trKpi" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px"></div>
-        <div id="trVerdikt" style="margin-top:10px;font-size:13px"></div>
-      </div>
       <div id="trAiBox" class="card" style="margin-bottom:12px;display:none"></div>
-      <div class="card" style="margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-          <div id="trC3Tit" style="font-weight:700;font-size:13px">✂️ Škarje: RVC/nar. vs CPA</div>
-          <span style="font-size:11.5px;color:var(--text-tertiary)">razmik = prispevek · navpične črte = dogodki</span>
-          <span id="trRaz" style="margin-left:auto;display:flex;gap:4px"></span>
+      <!-- postavitev C: ozek stolpec metrik levo, grafi desno (poglavitni) -->
+      <div class="tr-grid">
+        <div class="tr-levo">
+          <div id="trKpi" style="display:flex;flex-direction:column;gap:5px"></div>
+          <div id="trVerdikt" style="margin-top:8px;font-size:11.5px;line-height:1.45"></div>
         </div>
-        <div style="display:flex;gap:14px;font-size:11.5px;color:var(--text-secondary);margin-bottom:4px"><span><b style="color:#22c55e">━</b> RVC/nar.</span><span><b style="color:#f87171">┅</b> CPA</span><span><b style="color:#a78bfa">▒</b> prispevek</span><span id="trSmooth" style="color:var(--text-tertiary)"></span></div>
-        <div style="position:relative;height:260px"><canvas id="trC3"></canvas></div>
-        <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:4px">Naročila na dan</div>
-        <div style="position:relative;height:70px"><canvas id="trC4"></canvas></div>
-      </div>
-      <div class="card" style="margin-bottom:12px">
-        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-          <div style="font-weight:700;font-size:13px">📐 Razmerje CPA / RVC</div>
-          <span style="font-size:11.5px;color:var(--text-tertiary)">koliko % marže na naročilo poje oglas · nižje = bolje · črtkano = tendenca</span>
-          <span id="trRatioSum" style="margin-left:auto;font-size:12.5px"></span>
+        <div style="min-width:0">
+          <div class="card" style="margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+              <div id="trC3Tit" style="font-weight:700;font-size:13px">✂️ Škarje: RVC/nar. vs CPA</div>
+              <span style="font-size:11.5px;color:var(--text-tertiary)">razmik = prispevek · navpične črte = dogodki</span>
+              <span id="trRaz" style="margin-left:auto;display:flex;gap:4px"></span>
+            </div>
+            <div style="display:flex;gap:14px;font-size:11.5px;color:var(--text-secondary);margin-bottom:4px"><span><b style="color:#22c55e">━</b> RVC/nar.</span><span><b style="color:#f87171">┅</b> CPA</span><span><b style="color:#a78bfa">▒</b> prispevek</span><span id="trSmooth" style="color:var(--text-tertiary)"></span></div>
+            <div style="position:relative;height:210px"><canvas id="trC3"></canvas></div>
+            <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:4px">Naročila na dan</div>
+            <div style="position:relative;height:50px"><canvas id="trC4"></canvas></div>
+          </div>
+          <div class="card" style="margin-bottom:8px">
+            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+              <div style="font-weight:700;font-size:13px">📐 Razmerje CPA / RVC</div>
+              <span style="font-size:11.5px;color:var(--text-tertiary)">koliko % marže na naročilo poje oglas · nižje = bolje · črtkano = tendenca</span>
+              <span id="trRatioSum" style="margin-left:auto;font-size:12.5px"></span>
+            </div>
+            <div style="position:relative;height:150px"><canvas id="trC6"></canvas></div>
+            <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px;line-height:1.5">ℹ️ Krivulja <b style="color:#22c55e">pada</b> = od naročila ostane več (dvig cen deluje) · <b style="color:#f87171">raste</b> = CPA raste hitreje kot cene · črtkano = smer v izbranem razponu.</div>
+          </div>
+          <div class="card" style="margin-bottom:8px">
+            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+              <div style="font-weight:700;font-size:13px">📈 Rast od začetka razpona: RVC/nar. vs CPA</div>
+              <span style="font-size:11.5px;color:var(--text-tertiary)">obe črti začneta pri 0 · stolpci = RVC rast − CPA rast (zeleno = RVC raste hitreje)</span>
+              <span id="trRastSum" style="margin-left:auto;font-size:12.5px"></span>
+            </div>
+            <div style="display:flex;gap:14px;font-size:11.5px;color:var(--text-secondary);margin-bottom:4px"><span><b style="color:#22c55e">━</b> rast RVC/nar.</span><span><b style="color:#f87171">┅</b> rast CPA</span><span><b style="color:#94a3b8">▮</b> razlika</span></div>
+            <div style="position:relative;height:160px"><canvas id="trC7"></canvas></div>
+            <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px;line-height:1.5">ℹ️ Gledaj barvo stolpca: <b style="color:#22c55e">zelen</b> = RVC zrasel bolj kot CPA (varno) · <b style="color:#f87171">rdeč</b> = CPA zrasel bolj (dvig cen se ne izplača) · višji stolpec = večja prednost. Merjeno od začetka razpona — za zadnje dvige cen izberi 3 mes.</div>
+          </div>
         </div>
-        <div style="position:relative;height:200px"><canvas id="trC6"></canvas></div>
-        <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px;line-height:1.5">ℹ️ Krivulja <b style="color:#22c55e">pada</b> = od naročila ostane več (dvig cen deluje) · <b style="color:#f87171">raste</b> = CPA raste hitreje kot cene · črtkano = smer v izbranem razponu.</div>
-      </div>
-      <div class="card" style="margin-bottom:12px">
-        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-          <div style="font-weight:700;font-size:13px">📈 Rast od začetka razpona: RVC/nar. vs CPA</div>
-          <span style="font-size:11.5px;color:var(--text-tertiary)">obe črti začneta pri 0 · stolpci = RVC rast − CPA rast (zeleno = RVC raste hitreje)</span>
-          <span id="trRastSum" style="margin-left:auto;font-size:12.5px"></span>
-        </div>
-        <div style="display:flex;gap:14px;font-size:11.5px;color:var(--text-secondary);margin-bottom:4px"><span><b style="color:#22c55e">━</b> rast RVC/nar.</span><span><b style="color:#f87171">┅</b> rast CPA</span><span><b style="color:#94a3b8">▮</b> razlika</span></div>
-        <div style="position:relative;height:220px"><canvas id="trC7"></canvas></div>
-        <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px;line-height:1.5">ℹ️ Gledaj barvo stolpca: <b style="color:#22c55e">zelen</b> = RVC zrasel bolj kot CPA (varno) · <b style="color:#f87171">rdeč</b> = CPA zrasel bolj (dvig cen se ne izplača) · višji stolpec = večja prednost. Merjeno od začetka razpona — za zadnje dvige cen izberi 3 mes.</div>
       </div>
       <div class="card" style="margin-bottom:12px">
         <div style="font-weight:700;font-size:13px;margin-bottom:6px">📌 Dogodki</div>
@@ -16606,7 +16615,8 @@ async function trLoad(){
     fetch('/semafor-dogodki').then(r=>r.json()), fetch('/semafor-trend-ai?trg='+encodeURIComponent(sel.value)).then(r=>r.json()), fetch('/semafor-trend?obdobje=dan'+q).then(r=>r.json())]); } catch(e) {}
   TR.M = (m && m.ok && m.vedra) || []; TR.W = (w && w.ok && w.vedra) || []; TR.D = (dn && dn.ok && dn.vedra) || []; TR.dog = (g && g.dogodki) || []; TR.meta = m || {};
   TR.sel = null; TR.off = null;
-  trAiShow(ai && ai.analiza);
+  TR.ai = (ai && ai.analiza) || null;   // zadnja analiza se NE prikaže sama — samo ob kliku »🧠 AI analiza«
+  document.getElementById('trAiBox').style.display = 'none';
   trRender();
 }
 function trRender(){
@@ -16630,8 +16640,8 @@ function trRender(){
   if (!A || !B) { kpi.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary)">Premalo polnih obdobij za primerjavo.</div>'; ver.innerHTML = ''; trCharts(); trDogRender(); return; }
   const P = x => TR.real ? x.pr : x.p, DD = x => TR.real ? x.ddr : x.dd, PO = x => TR.real ? x.poasr : x.poas;
   const dR = B.rvc - A.rvc, dC = B.cpa - A.cpa, el = Math.abs(dR) >= 0.05 ? dC / dR : null;
-  const tile = (lbl, v, d, poud, tip) => '<div title="'+(tip||'')+'" style="background:'+(poud?'rgba(79,70,229,.07)':'var(--bg-secondary)')+';border:1px solid '+(poud?'rgba(79,70,229,.35)':'var(--border)')+';border-radius:10px;padding:8px 11px">'
-    + '<div style="font-size:11px;color:var(--text-tertiary)">'+lbl+'</div><div style="font-size:19px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums">'+v+'</div><div style="font-size:11.5px">'+d+'</div></div>';
+  const tile = (lbl, v, d, poud, tip) => '<div title="'+(tip||'')+'" style="background:'+(poud?'rgba(79,70,229,.10)':'var(--bg-secondary)')+';border:1px solid '+(poud?'rgba(129,140,248,.55)':'var(--border)')+';border-radius:8px;padding:5px 9px">'
+    + '<div style="font-size:10.5px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+lbl+'</div><div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap"><span style="font-size:15px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums">'+v+'</span><span style="font-size:11px">'+d+'</span></div></div>';
   kpi.innerHTML =
     tile('RVC / naročilo', trEu(B.rvc), trDl(dR,'gor') + ' €', false, 'bruto marža na naročilo (brez poštnine)')
     + tile('CPA', trEu(B.cpa), trDl(dC,'dol') + ' €', false, 'poraba za oglase / naročila')
@@ -16721,7 +16731,8 @@ function trCharts(){
 }function trDogRender(){
   const trg = document.getElementById('trTrg').value;
   const ds = TR.dog.filter(x => trg==='VSI' || x.trg===trg || x.trg==='VSI');
-  document.getElementById('trDog').innerHTML = ds.length ? ds.map(x => '<span style="font-size:11.5px;padding:3px 9px;border-radius:12px;background:var(--bg-secondary);color:var(--text-secondary)">📌 ' + x.datum.slice(8) + '. ' + x.datum.slice(5,7) + '. ' + x.datum.slice(0,4) + ' ' + (x.trg!=='VSI' ? '<b>'+x.trg+'</b> ' : '') + x.besedilo.replace(/</g,'&lt;') + ' <span onclick="trDogBrisi(\'' + x.id + '\')" title="Izbriši" style="cursor:pointer;opacity:.6">✕</span></span>').join('') : '<span style="font-size:12px;color:var(--text-tertiary)">Ni dogodkov — dodaj jih z »📌 + Dogodek« (npr. dvig cen, bid cap), da so na grafu škarij.</span>';
+  document.getElementById('trDog').innerHTML = ds.length ? ds.map(x => '<span style="font-size:11.5px;padding:3px 9px;border-radius:12px;background:var(--bg-secondary);color:var(--text-secondary)">📌 ' + x.datum.slice(8) + '. ' + x.datum.slice(5,7) + '. ' + x.datum.slice(0,4) + ' ' + (x.trg!=='VSI' ? '<b>'+x.trg+'</b> ' : '') + x.besedilo.replace(/</g,'&lt;') + ' <span onclick="trDogBrisi(\'' + x.id + '\')" title="Izbriši" style="cursor:pointer;opacity:.6">✕</span></span>').join('') : '';
+  const kar = document.getElementById('trDog').closest('.card'); if (kar) kar.style.display = ds.length ? '' : 'none';   // brez dogodkov kartica skrita
 }
 async function trDogDodaj(){
   const datum = document.getElementById('trDogDat').value, besedilo = document.getElementById('trDogTxt').value.trim();
@@ -16749,14 +16760,21 @@ function trAiShow(a){
   if (!a) { box.style.display = 'none'; return; }
   box.style.display = 'block';
   const t = new Date(a.at);
-  box.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:13px">🧠 AI analiza</b><span style="font-size:11px;color:var(--text-tertiary)">' + (a.trg==='VSI'?'vsi trgi':a.trg) + ' · ' + t.toLocaleDateString('sl-SI') + ' ' + t.toLocaleTimeString('sl-SI',{hour:'2-digit',minute:'2-digit'}) + ' · Sonnet 5.5 · podatki do ' + a.podatki_do + '</span><span onclick="document.getElementById(\'trAiBox\').style.display=\'none\'" title="Skrij" style="margin-left:auto;cursor:pointer;color:var(--text-tertiary)">✕</span></div>'
+  box.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:13px">🧠 AI analiza</b><span style="font-size:11px;color:var(--text-tertiary)">' + (a.trg==='VSI'?'vsi trgi':a.trg) + ' · ' + t.toLocaleDateString('sl-SI') + ' ' + t.toLocaleTimeString('sl-SI',{hour:'2-digit',minute:'2-digit'}) + ' · Sonnet 5.5 · podatki do ' + a.podatki_do + '</span><button onclick="trAiNova()" title="Nova analiza s Sonnet 5.5 (nekaj centov)" style="margin-left:auto;padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius);background:transparent;color:var(--text-secondary);font-size:11.5px;cursor:pointer;font-family:inherit">↻ Nova analiza</button><span onclick="document.getElementById(\'trAiBox\').style.display=\'none\'" title="Skrij" style="cursor:pointer;color:var(--text-tertiary);padding:0 4px">✕</span></div>'
     + '<div style="font-size:13px;line-height:1.6">' + (typeof ibkrMd === 'function' ? ibkrMd(a.besedilo) : a.besedilo.replace(/</g,'&lt;').replace(/\n/g,'<br>')) + '</div>';
 }
-async function trAi(){
+// gumb »🧠 AI analiza«: odpre/zapre zadnjo shranjeno analizo (brez stroška); če je ni, naredi novo
+function trAi(){
+  const box = document.getElementById('trAiBox');
+  if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+  if (TR.ai) { trAiShow(TR.ai); box.scrollIntoView({ behavior:'smooth', block:'nearest' }); return; }
+  trAiNova();
+}
+async function trAiNova(){
   const b = document.getElementById('trAiBtn'), trg = document.getElementById('trTrg').value;
   b.disabled = true; const o = b.textContent; b.textContent = '⏳ Analiziram … (10–30 s)';
   try { const d = await (await fetch('/semafor-trend-ai', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ trg }) })).json();
-    if (!d.ok) throw new Error(d.error || 'napaka'); trAiShow(d); document.getElementById('trAiBox').scrollIntoView({ behavior:'smooth', block:'nearest' });
+    if (!d.ok) throw new Error(d.error || 'napaka'); TR.ai = d; trAiShow(d); document.getElementById('trAiBox').scrollIntoView({ behavior:'smooth', block:'nearest' });
   } catch(e) { alert('AI analiza ni uspela: ' + e.message); }
   b.disabled = false; b.textContent = o;
 }
