@@ -1403,6 +1403,32 @@ async def cms_log_iz_feeda(request: Request, od: str = "", znamka: str = "maaark
         return {"ok": False, "error": "Feed se še nalaga."}
     od = (od or (datetime.fromisoformat(_lj_iso()) - timedelta(days=14)).date().isoformat())[:10]
     zn = (znamka or "").strip().lower()
+    # izračun 10 trgov po novem feedu traja dlje, kot čaka Cloudflare (~100 s) → teče v ozadju, osvežitev strani pokaže rezultat
+    kljuc = (od, zn, bool(potrdi))
+    st = _iz_feeda_stanje
+    if st.get("task") and not st["task"].done():
+        return {"ok": True, "tece": True, "od": od, "sporocilo": "Izračun teče (vseh 10 trgov) — osveži to stran čez 1–2 minuti."}
+    if st.get("kljuc") == kljuc and st.get("rezultat") and _time.time() - st.get("ts", 0) < 600:
+        return st["rezultat"]
+
+    async def _tek():
+        try:
+            st["rezultat"] = await _cms_log_iz_feeda_izracun(od, zn, potrdi)
+        except Exception as e:
+            st["rezultat"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        st["kljuc"], st["ts"] = kljuc, _time.time()
+    st["task"] = asyncio.create_task(_tek())
+    try:
+        await asyncio.wait_for(asyncio.shield(st["task"]), timeout=60)   # hiter primer (topel predpomnilnik): rezultat takoj
+        return st["rezultat"]
+    except asyncio.TimeoutError:
+        return {"ok": True, "tece": True, "od": od, "sporocilo": "Izračun teče (vseh 10 trgov) — osveži to stran čez 1–2 minuti."}
+
+
+_iz_feeda_stanje: dict = {}
+
+
+async def _cms_log_iz_feeda_izracun(od: str, zn: str, potrdi):
     novi, po_trgu = {}, {}
     try:
         log = _jload(CMS_LOG_FILE, {}, strict=True)
@@ -1429,7 +1455,7 @@ async def cms_log_iz_feeda(request: Request, od: str = "", znamka: str = "maaark
         po_trgu[trg] = t
     if not potrdi:
         return {"ok": True, "predogled": True, "od": od, "novih": len(novi), "po_trgu": po_trgu,
-                "namig": "Za zapis dodaj &potrdi=1"}
+                "namig": "Za zapis odpri /cms-log-iz-feeda?potrdi=1"}
     async with _cms_log_get_lock():
         try:
             log = _jload(CMS_LOG_FILE, {}, strict=True)
