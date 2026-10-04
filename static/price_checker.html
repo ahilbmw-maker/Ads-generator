@@ -415,6 +415,7 @@
 <div id="bulkBar" style="display:none;align-items:center;gap:10px;padding:8px 14px;background:var(--accent);border-radius:8px;margin:12px 0 6px;color:#fff;font-size:12px;font-weight:500">
   <span id="bulkCount">0 označenih</span>
   <button onclick="bulkDelete()" style="background:rgba(255,80,80,0.3);border:1px solid rgba(255,100,100,0.5);color:#fff;padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🗑 Zbriši označene</button>
+  <button onclick="pcDvigniCms()" title="Izbrane pošlje v vtičnik Kalkulator cen: v CMS dvigne prodajno ceno za izbrano število korakov (Update potrdiš ti)" style="background:#16a34a;border:1px solid rgba(255,255,255,0.4);color:#fff;padding:4px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">▶ Dvigni v CMS</button>
   <button onclick="bulkClear()" style="margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">✕ Počisti izbor</button>
 </div>
 <table id="resultsTable">
@@ -3237,6 +3238,55 @@ function _pcSendExt(tr, force){
       valuta:row.currency||'', vir:'Price Checker', naziv:String(row.product||'').slice(0,120) }, '*');
   } catch (e) {}
 }
+// ▶ DVIGNI V CMS (masovno, kot v Marži po trgih): izbrane vrstice → vtičnik (suban-kalk-paket); en paket = en trg
+// (vtičnik ima en jezik na paket). Urejene vtičnik vrne (kalk-paket-urejeno) → zapis »done« v dnevnik CMS.
+let _pcPaketTrg = '';
+function pcDvigniCms(){
+  const po = {};   // trg → {cms_id: item}
+  let brez = 0;
+  _pcRows().forEach(tr => {
+    const cb = tr.querySelector('input[type=checkbox][data-key]'); if (!cb || !selectedKeys.has(cb.dataset.key)) return;
+    const row = allRows.find(x => (x.id + '|' + x.sku) === cb.dataset.key), a = tr.querySelector('a[data-pc-cms]');
+    const trg = row ? _pcTrg(row) : '*';
+    if (!row || !a || trg === '*') { brez++; return; }
+    const cid = String(a.dataset.pcCms || ''); if (!cid) { brez++; return; }
+    (po[trg] = po[trg] || {})[cid] = { sku: String(row.sku || '').toUpperCase(), cms_id: cid, g_id: String(row.id || ''),
+      cena: parseFloat(String(row.priceRaw || '').replace(/\s/g, '').replace(',', '.')) || 0, valuta: row.currency || '', naziv: String(row.product || '').slice(0, 120) };
+  });
+  const trgi = Object.keys(po);
+  if (!trgi.length) { alert('Med izbranimi (vidnimi) ni izdelkov s CMS ID in znanim trgom.'); return; }
+  let trg = trgi[0];
+  if (trgi.length > 1) {
+    const v = prompt('Izbrani so z več trgov — en paket je za en trg:\n' + trgi.map(t => t.toUpperCase() + ': ' + Object.keys(po[t]).length).join(' · ') + '\n\nVpiši trg:', trgi.sort((a, b) => Object.keys(po[b]).length - Object.keys(po[a]).length)[0].toUpperCase());
+    if (v === null) return;
+    trg = String(v).trim().toLowerCase(); if (!po[trg]) { alert('Trg ' + v + ' ni med izbranimi.'); return; }
+  }
+  const items = Object.values(po[trg]);
+  const KOR = { EUR:'+1 €', CZK:'+5 Kč', PLN:'+5 zł', RON:'+5 lei', HUF:'+100 Ft', RSD:'+100 din' }[String(items[0].valuta || 'EUR').toUpperCase()] || '+1';
+  const k = prompt('▶ CMS: ' + items.length + ' izdelkov na ' + trg.toUpperCase() + (brez ? ' (' + brez + ' brez CMS ID / trga bo izpuščenih)' : '') + '.\n\nKoliko korakov navzgor? 1 korak = ' + KOR + ' (kot veliki gumb + v vtičniku)\nVpiši 1, 2 ali 3:', '1');
+  if (k === null) return;
+  const koraki = Math.max(1, Math.min(5, parseInt(k, 10) || 1));
+  let mode = 'vzporedno';
+  if (items.length > 1) {
+    const m = prompt('Način:\n1 = vse hkrati v ozadju (seznam v panelu vtičnika, »💾 Shrani izbrane«)\n2 = eden po eden v CMS (»💾 Shrani → naprej« v zelenem pasu)\n\nVpiši 1 ali 2:', '1');
+    if (m === null) return;
+    mode = String(m).trim() === '2' ? 'zaporedno' : 'vzporedno';
+  }
+  _pcPaketTrg = trg;
+  window.postMessage({ type: 'suban-kalk-paket', trg, koraki, mode, items }, '*');
+}
+window.addEventListener('message', e => {
+  const d = e.data; if (!d || d.type !== 'kalk-paket-urejeno' || !d.trg || String(d.trg) !== _pcPaketTrg) return;   // samo paket, poslan iz te strani
+  let n = 0;
+  (d.cms_ids || []).map(String).forEach(cid => {
+    const L = _cmsLogById[cid] || [];
+    if (L.some(x => x.trg === d.trg && x.done_at)) return;   // že označen (sporočilo pride tudi ob vsakem nalaganju)
+    fetch('/cms-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({ akcija: 'done', cms_id: cid, trg: d.trg, vir: 'Price Checker' }) }).catch(() => {});
+    const t = new Date().toISOString(); (_cmsLogById[cid] = L).push({ cms_id: cid, trg: d.trg, opened_at: t, done_at: t, vir: 'Price Checker' }); n++;
+  });
+  if (n && typeof renderTable === 'function' && allRows && allRows.length) renderTable(allRows);
+});
 // klik z miško v vrstico (tudi na povezavo CMS) → modri okvir nanjo + cena v vtičnik
 document.addEventListener('click', function(e){
   const tr = e.target.closest && e.target.closest('#tableBody tr');
