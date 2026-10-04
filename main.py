@@ -1186,12 +1186,72 @@ def _prune_by_age(d: dict, field: str, days: int) -> dict:
     return {k: v for k, v in d.items() if str((v or {}).get(field) or "") >= meja}
 
 
+# ═══ TRAJNA ZGODOVINA CEN: vsaka sprememba cene med feedi se DODA (jsonl, nič se ne prepisuje/briše) ═══
+CENA_ZGODOVINA_FILE = DATA_DIR / "cena_zgodovina.jsonl"
+
+
+def _cena_zgodovina_dodaj(zapisi: list):
+    if not zapisi:
+        return
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with open(CENA_ZGODOVINA_FILE, "a", encoding="utf-8") as f:
+            f.write("".join(json.dumps(z, ensure_ascii=False) + "\n" for z in zapisi))
+    except Exception as e:
+        print(f"[cena zgodovina] zapis: {e}")
+
+
+def _cena_zgodovina_zacetek():
+    """Ob prvem zagonu: začetek zgodovine iz zadnjih sprememb (feed_price_changes.json, 30 dni)."""
+    if CENA_ZGODOVINA_FILE.exists():
+        return
+    zapisi = []
+    for lang, t in (_jload(PRICE_CHANGES_FILE, {}) or {}).items():
+        for g_id, ch in (t or {}).items():
+            zapisi.append({"trg": lang, "g_id": str(g_id), "mpn": "", "at": ch.get("at"), "vir": "feed (uvoz 30 dni)",
+                           **{k: ch.get(k) for k in ("old_price", "new_price", "old_sale", "new_sale")}})
+    zapisi.sort(key=lambda z: str(z.get("at") or ""))
+    _cena_zgodovina_dodaj(zapisi or [])
+    if not zapisi:
+        CENA_ZGODOVINA_FILE.touch()
+    print(f"[cena zgodovina] začetek: {len(zapisi)} zapisov")
+
+
+@app.get("/cena-zgodovina")
+async def cena_zgodovina(request: Request, trg: str, g_id: str, cms_id: str = ""):
+    """Časovnica cen enega izdelka na trgu (iz feeda) + zapis v dnevniku CMS (urejeno)."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    trg, g_id = (trg or "").lower(), str(g_id or "")
+    _cena_zgodovina_zacetek()
+    out = []
+    try:
+        with open(CENA_ZGODOVINA_FILE, encoding="utf-8") as f:
+            for line in f:
+                if f'"g_id": "{g_id}"' not in line:
+                    continue
+                try:
+                    z = json.loads(line)
+                except Exception:
+                    continue
+                if z.get("trg") == trg and z.get("g_id") == g_id:
+                    out.append(z)
+    except FileNotFoundError:
+        pass
+    log = _jload(CMS_LOG_FILE, {}) if cms_id else {}
+    cms = log.get(f"{trg}|{cms_id}") or log.get(f"*|{cms_id}")
+    d = (feed_by_lang.get(trg) or {}).get(g_id) or {}
+    return {"ok": True, "trg": trg, "g_id": g_id, "zgodovina": out, "cms": cms,
+            "zdaj": {"price": d.get("price"), "sale_price": d.get("sale_price")}}
+
+
 def _record_price_changes(lang: str, old: dict, new: dict):
     """Zabeleži izdelke, ki jim je med staro in novo verzijo feeda spremenjena redna ali akcijska cena."""
+    _cena_zgodovina_zacetek()   # najprej začetek zgodovine (če je še ni), šele nato nove spremembe
     now = _lj_iso()
     data = _jload(PRICE_CHANGES_FILE, {})
     trg = data.get(lang) or {}
-    n = 0
+    n, zgod = 0, []
     for g_id, d in new.items():
         o = old.get(g_id)
         if not o:
@@ -1200,9 +1260,12 @@ def _record_price_changes(lang: str, old: dict, new: dict):
         os_, ns = (o.get("sale_price") or ""), (d.get("sale_price") or "")
         if op != np_ or os_ != ns:
             trg[str(g_id)] = {"at": now, "old_price": op, "new_price": np_, "old_sale": os_, "new_sale": ns}
+            zgod.append({"trg": lang, "g_id": str(g_id), "mpn": str(d.get("mpn") or ""), "at": now, "vir": "feed",
+                         "old_price": op, "new_price": np_, "old_sale": os_, "new_sale": ns})
             n += 1
     data[lang] = _prune_by_age(trg, "at", PRICE_CHANGES_KEEP_DAYS)
     _jsave(PRICE_CHANGES_FILE, data)
+    _cena_zgodovina_dodaj(zgod)
     print(f"[cene diff] {lang}: {n} spremenjenih cen")
 
 
@@ -11678,6 +11741,11 @@ async def marza_trgi_stran(request: Request):
   .cst{display:inline-block;margin-top:3px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;white-space:nowrap}
   .cst-odprto{background:#eff6ff;color:#1d4ed8}.cst-popravljeno{background:#dcfce7;color:#166534}.cst-potrjeno{background:#16a34a;color:#fff}.cst-nespremenjeno{background:#fef3c7;color:#92400e}
   .spr{font-size:12px;color:var(--txt2);margin-top:2px}
+  button.hist{border:0;background:none;cursor:pointer;font-size:12px;padding:0 3px;opacity:.45;vertical-align:middle}
+  button.hist:hover{opacity:1}
+  #histOkno{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding-top:8vh}
+  .hist-box{background:var(--card,#fff);color:var(--txt,#0f172a);border-radius:14px;padding:16px 18px;width:min(640px,92vw);max-height:76vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3);font-size:13px}
+  .hist-t{width:100%;border-collapse:collapse}.hist-t td{padding:6px 8px;border-top:1px solid rgba(148,163,184,.25);white-space:nowrap}.hist-t td:nth-child(2){white-space:normal}
   #feedInfo{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--txt2)}
   #feedInfo .chip{padding:3px 10px;font-size:12.5px}
   #feedInfo .novo{color:#b45309;font-weight:700}
@@ -11908,11 +11976,11 @@ document.addEventListener('keydown',ev=>{
   if(k==='Escape'){kbReset();if(SEL.size)selClear();return;}
   if(k===' '){ev.preventDefault(); const tr=kbCur(); if(tr){const c=tr.querySelector('input.selcb[data-sel]'); if(c){c.checked=!c.checked; selClick(c,ev);}} return;}
   const kl=k.toLowerCase();
-  if(!['a','d','c','x','enter'].includes(kl)) return;
+  if(!['a','d','c','x','h','enter'].includes(kl)) return;
   ev.preventDefault();
   if(kbIdx<0){kbFocus(0);return;}   // prvi pritisk samo označi prvo vrstico
   const tr=kbCur(); if(!tr) return;
-  const sel={a:'a[data-cms]',d:'button[data-done]',c:'button[data-copy]',x:'button[data-nu]',enter:'td.sku a.ext:not(.cms)'}[kl];
+  const sel={a:'a[data-cms]',d:'button[data-done]',c:'button[data-copy]',x:'button[data-nu]',h:'button[data-hist]',enter:'td.sku a.ext:not(.cms)'}[kl];
   const el=tr.querySelector(sel); if(el) el.click();
 });
 // ob vrnitvi iz CMS (drug zavihek) → tipkovnica takoj deluje na isti vrstici
@@ -12130,11 +12198,47 @@ function cmsBadge(x){const c=x.cms;if(!c||!CST[c.st])return '';
   const tl=c.trg==='*'?'PC':String(c.trg||trg).toUpperCase();
   return '<div><span class="cst cst-'+c.st+'" title="'+esc(t)+'">'+CST[c.st][0]+' <b style="padding:0 4px;border-radius:3px;background:rgba(0,0,0,.08)">'+esc(tl)+'</b>'+(c.st==='odprto'||c.st==='popravljeno'?' '+fmtT(c.done_at||c.opened_at):'')+'</span>'+
     '<button type="button" data-undo="'+x._i+'" title="Odstrani oznako (npr. samo pogledal, nisem spreminjal)" style="border:0;background:none;cursor:pointer;color:var(--txt3);font-size:14px;padding:0 4px">×</button></div>';}
-function sprHtml(x){const s=x.sprememba;if(!s)return '';
+function sprHtml(x){const h=' <button type="button" class="hist" data-hist="'+x._i+'" title="Zgodovina cen tega izdelka na trgu (tipka H)">🕘</button>';
+  const s=x.sprememba;if(!s)return h;
   const pp=v=>{const [n,c]=String(v||'').split(' ');return n?n.replace('.',','):'—';};
   const reg=s.old_price!==s.new_price?'redna '+pp(s.old_price)+' → '+pp(s.new_price):'';
   const akc=s.old_sale!==s.new_sale?'akcija '+pp(s.old_sale)+' → '+pp(s.new_sale):'';
-  return '<div class="spr" title="Sprememba med prejšnjim in zadnjim feedom">↻ '+fmtT(s.at)+': '+[reg,akc].filter(Boolean).join(' · ')+'</div>';}
+  return '<div class="spr"><span title="Sprememba med prejšnjim in zadnjim feedom">↻ '+fmtT(s.at)+': '+[reg,akc].filter(Boolean).join(' · ')+'</span>'+h+'</div>';}
+// 🕘 ZGODOVINA CEN (trajna, iz feeda: /cena-zgodovina) + zapis urejeno iz dnevnika CMS
+async function histOdpri(x){
+  let o=document.getElementById('histOkno');
+  if(!o){o=document.createElement('div');o.id='histOkno';document.body.appendChild(o);
+    o.addEventListener('click',e=>{if(e.target===o||e.target.closest('[data-hist-zapri]'))o.style.display='none';});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&o.style.display!=='none')o.style.display='none';},true);}
+  o.style.display='flex';
+  o.innerHTML='<div class="hist-box"><b>🕘 '+esc(x.sku||'')+'</b> · nalagam …</div>';
+  let d={};try{d=await (await fetch('/cena-zgodovina?trg='+encodeURIComponent(trg)+'&g_id='+encodeURIComponent(x.g_id)+'&cms_id='+encodeURIComponent(x.cms_id||''))).json();}catch(e){d={ok:false,error:e.message};}
+  const pp=v=>{const n=String(v||'').split(' ')[0];return n?n.replace('.',','):'—';};
+  const vrst=[];
+  (d.zgodovina||[]).forEach(z=>{
+    const reg=z.old_price!==z.new_price?'redna '+pp(z.old_price)+' → <b>'+pp(z.new_price)+'</b>':'';
+    const akc=z.old_sale!==z.new_sale?'akcija '+pp(z.old_sale)+' → <b>'+pp(z.new_sale)+'</b>':'';
+    const a=parseFloat(String(z.old_price||'').replace(',','.')),b=parseFloat(String(z.new_price||'').replace(',','.'));
+    const sm=a>0&&b>0&&a!==b?(b>a?'<span style="color:#16a34a">▲ +'+(b-a).toFixed(2).replace('.',',')+'</span>':'<span style="color:#dc2626">▼ '+(b-a).toFixed(2).replace('.',',')+'</span>'):'';
+    vrst.push({at:z.at,html:'<td>'+fmtT(z.at)+'</td><td>'+[reg,akc].filter(Boolean).join(' · ')+'</td><td>'+sm+'</td><td style="color:var(--txt3)">'+esc(z.vir||'feed')+'</td>'});
+  });
+  const c=d.cms; if(c){
+    if(c.done_at) vrst.push({at:c.done_at,html:'<td>'+fmtT(c.done_at)+'</td><td>✓ označeno urejeno</td><td></td><td style="color:var(--txt3)">'+esc(c.vir||'')+'</td>'});
+    else if(c.opened_at) vrst.push({at:c.opened_at,html:'<td>'+fmtT(c.opened_at)+'</td><td>✎ odprto v CMS</td><td></td><td style="color:var(--txt3)">'+esc(c.vir||'')+'</td>'});
+  }
+  vrst.sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
+  const zd=d.zdaj||{};
+  o.innerHTML='<div class="hist-box"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b style="font-size:15px">🕘 '+esc(x.sku||'')+' · '+esc(String(trg).toUpperCase())+'</b>'
+    +'<span style="color:var(--txt2)">zdaj: redna '+pp(zd.price)+(zd.sale_price?' · akcija '+pp(zd.sale_price):'')+'</span>'
+    +'<button type="button" data-hist-zapri style="margin-left:auto;border:0;background:none;font-size:18px;cursor:pointer;color:var(--txt2)">✕</button></div>'
+    +'<div style="color:var(--txt2);margin-bottom:8px;font-size:12px">'+esc(x.naziv||'')+'</div>'
+    +(d.ok===false?'<div style="color:#dc2626">'+esc(d.error||'Napaka')+'</div>'
+      :vrst.length?'<table class="hist-t">'+vrst.map(v=>'<tr>'+v.html+'</tr>').join('')+'</table>'
+      :'<div style="color:var(--txt3)">Ni zabeleženih sprememb cene (zgodovina se zbira od 4. 10. 2026, prej samo zadnja sprememba v 30 dneh).</div>')
+    +'</div>';
+}
+document.addEventListener('click',e=>{const b=e.target.closest('button[data-hist]');if(!b)return;e.preventDefault();e.stopPropagation();
+  const x=D&&D.rows[+b.dataset.hist];if(x)histOdpri(x);},true);
 // skrije SAMO ročno označene (✓ popravljeno) in potrjene v feedu — samo odprtje v CMS (✎) ne skrije izdelka
 // ═══ MNOŽIČNI IZBOR (za 🚫 Ne uvažamo) — ključ g_id, izbor ostane ob filtriranju/sortiranju ═══
 let SEL=new Set(), selLast=-1;
