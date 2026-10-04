@@ -3240,7 +3240,7 @@ function _pcSendExt(tr, force){
 }
 // ▶ DVIGNI V CMS (masovno, kot v Marži po trgih): izbrane vrstice → vtičnik (suban-kalk-paket); en paket = en trg
 // (vtičnik ima en jezik na paket). Urejene vtičnik vrne (kalk-paket-urejeno) → zapis »done« v dnevnik CMS.
-let _pcPaketTrg = '';
+let _pcPaketTrg = '', _pcPaketKeys = {};   // cms_id → ključi vrstic paketa (po shranjevanju se izbrišejo, kot D)
 function pcDvigniCms(){
   const po = {};   // trg → {cms_id: item}
   let brez = 0;
@@ -3250,17 +3250,20 @@ function pcDvigniCms(){
     const trg = row ? _pcTrg(row) : '*';
     if (!row || !a || trg === '*') { brez++; return; }
     const cid = String(a.dataset.pcCms || ''); if (!cid) { brez++; return; }
-    (po[trg] = po[trg] || {})[cid] = { sku: String(row.sku || '').toUpperCase(), cms_id: cid, g_id: String(row.id || ''),
+    ((po[trg] = po[trg] || {}).__keys = po[trg].__keys || {});
+    (po[trg].__keys[cid] = po[trg].__keys[cid] || []).push(cb.dataset.key);
+    po[trg][cid] = { sku: String(row.sku || '').toUpperCase(), cms_id: cid, g_id: String(row.id || ''),
       cena: parseFloat(String(row.priceRaw || '').replace(/\s/g, '').replace(',', '.')) || 0, valuta: row.currency || '', naziv: String(row.product || '').slice(0, 120) };
   });
-  const trgi = Object.keys(po);
+  const trgi = Object.keys(po), nIzd = t => Object.keys(po[t]).filter(x => x !== '__keys').length;
   if (!trgi.length) { alert('Med izbranimi (vidnimi) ni izdelkov s CMS ID in znanim trgom.'); return; }
   let trg = trgi[0];
   if (trgi.length > 1) {
-    const v = prompt('Izbrani so z več trgov — en paket je za en trg:\n' + trgi.map(t => t.toUpperCase() + ': ' + Object.keys(po[t]).length).join(' · ') + '\n\nVpiši trg:', trgi.sort((a, b) => Object.keys(po[b]).length - Object.keys(po[a]).length)[0].toUpperCase());
+    const v = prompt('Izbrani so z več trgov — en paket je za en trg:\n' + trgi.map(t => t.toUpperCase() + ': ' + nIzd(t)).join(' · ') + '\n\nVpiši trg:', trgi.sort((a, b) => nIzd(b) - nIzd(a))[0].toUpperCase());
     if (v === null) return;
     trg = String(v).trim().toLowerCase(); if (!po[trg]) { alert('Trg ' + v + ' ni med izbranimi.'); return; }
   }
+  const keys = po[trg].__keys; delete po[trg].__keys;
   const items = Object.values(po[trg]);
   const KOR = { EUR:'+1 €', CZK:'+5 Kč', PLN:'+5 zł', RON:'+5 lei', HUF:'+100 Ft', RSD:'+100 din' }[String(items[0].valuta || 'EUR').toUpperCase()] || '+1';
   const k = prompt('▶ CMS: ' + items.length + ' izdelkov na ' + trg.toUpperCase() + (brez ? ' (' + brez + ' brez CMS ID / trga bo izpuščenih)' : '') + '.\n\nKoliko korakov navzgor? 1 korak = ' + KOR + ' (kot veliki gumb + v vtičniku)\nVpiši 1, 2 ali 3:', '1');
@@ -3272,7 +3275,7 @@ function pcDvigniCms(){
     if (m === null) return;
     mode = String(m).trim() === '2' ? 'zaporedno' : 'vzporedno';
   }
-  _pcPaketTrg = trg;
+  _pcPaketTrg = trg; _pcPaketKeys = keys;
   window.postMessage({ type: 'suban-kalk-paket', trg, koraki, mode, items }, '*');
 }
 window.addEventListener('message', e => {
@@ -3285,7 +3288,15 @@ window.addEventListener('message', e => {
       body: JSON.stringify({ akcija: 'done', cms_id: cid, trg: d.trg, vir: 'Price Checker' }) }).catch(() => {});
     const t = new Date().toISOString(); (_cmsLogById[cid] = L).push({ cms_id: cid, trg: d.trg, opened_at: t, done_at: t, vir: 'Price Checker' }); n++;
   });
-  if (n && typeof renderTable === 'function' && allRows && allRows.length) renderTable(allRows);
+  // shranjene vrstice paketa izbriši iz seznama (kot D); izbor ostalih vrstic ostane
+  const del = [];
+  (d.cms_ids || []).map(String).forEach(cid => { (_pcPaketKeys[cid] || []).forEach(k => del.push(k)); delete _pcPaketKeys[cid]; });
+  const zivi = new Set(allRows.map(r => r.id + '|' + r.sku)), brisi = del.filter(k => zivi.has(k));
+  if (brisi.length) {
+    const ostali = [...selectedKeys].filter(k => !brisi.includes(k));
+    selectedKeys.clear(); brisi.forEach(k => selectedKeys.add(k));
+    Promise.resolve(bulkDelete()).then(() => { ostali.forEach(k => selectedKeys.add(k)); if (typeof bulkUpdateBar === 'function') bulkUpdateBar(); if (typeof renderTable === 'function' && !_groupSkuActive) renderTable(allRows); });
+  } else if (n && typeof renderTable === 'function' && allRows && allRows.length) renderTable(allRows);
 });
 // klik z miško v vrstico (tudi na povezavo CMS) → modri okvir nanjo + cena v vtičnik
 document.addEventListener('click', function(e){
