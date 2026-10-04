@@ -917,7 +917,12 @@ input[type="text"].error { border-color: var(--red) !important; }
   .home-stats-panel .hsp-proj-row { display:flex; gap:14px; }
   .home-stats-panel .hsp-proj-num { font-size:26px; font-weight:800; color:#fff; line-height:1; letter-spacing:-0.5px; font-family:'DM Sans',sans-serif; }
   .home-stats-panel .hsp-proj-mlabel { font-size:10px; color:#AFA9EC; }
-  .home-greeting { margin-bottom:28px; }
+  .home-greeting { margin-bottom:16px; display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .home-greeting h1 { margin-bottom:0 !important; }
+  @media(min-width:769px) {   /* Domov brez drsnika: manj praznega prostora zgoraj in spodaj */
+    #page-home .home-wrap { padding-top:4px; padding-bottom:0; }
+    .main.wide:has(#page-home.active) { padding-top:1rem; padding-bottom:1rem; }
+  }
   .home-greeting h1 { font-size:22px; font-weight:600; color:var(--text); margin-bottom:4px; }
   .home-greeting p { font-size:13px; color:var(--text-secondary); }
   .home-section-label {
@@ -1070,7 +1075,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-04 14:15</div>
+      <div class="sidebar-logo-sub">build 2026-10-04 15:16</div>
     </div>
   </div>
 
@@ -1396,11 +1401,10 @@ input[type="text"].error { border-color: var(--red) !important; }
           <span style="font-size:18px">💲</span>
           <span style="font-size:15px;font-weight:800;color:var(--text)">Urejene cene po trgih</span>
           <span id="homeBatoSum" style="font-size:12.5px;color:var(--text-secondary)"></span>
+          <span id="homeBatoZn" style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;margin-left:8px"></span>
           <span id="homeBatoMeta" style="margin-left:auto;font-size:11px;color:var(--text-tertiary)"></span>
         </div>
         <div id="homeBatoGrid" class="hbato-grid"><div style="font-size:12.5px;color:var(--text-tertiary)">Nalagam …</div></div>
-        
-        <div id="homeBatoZn" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>
       </div>
 
     </div><!-- /home-wrap -->
