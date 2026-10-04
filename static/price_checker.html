@@ -3239,11 +3239,12 @@ function _pcSendExt(tr, force){
       valuta:row.currency||'', vir:'Price Checker', naziv:String(row.product||'').slice(0,120) }, '*');
   } catch (e) {}
 }
-// ▶ DVIGNI V CMS (masovno, kot v Marži po trgih): izbrane vrstice → vtičnik (suban-kalk-paket); en paket = en trg
-// (vtičnik ima en jezik na paket). Urejene vtičnik vrne (kalk-paket-urejeno) → zapis »done« v dnevnik CMS.
-let _pcPaketTrg = '', _pcPaketKeys = {};   // cms_id → ključi vrstic paketa (po shranjevanju se izbrišejo, kot D)
+// ▶ DVIGNI V CMS (masovno, kot v Marži po trgih): izbrane vrstice → vtičnik (suban-kalk-paket). Paket je lahko MEŠAN
+// (več trgov): vsak izdelek nosi svoj trg, vtičnik uporabi pravi jezik, valuto in korak (SLO: /products/{id}/edit).
+// Urejene vtičnik vrne (kalk-paket-urejeno, eno sporočilo na trg) → zapis »done« v dnevnik CMS + izbris vrstice (kot D).
+let _pcPaketTrgi = new Set(), _pcPaketKeys = {};   // trg|cms_id → ključi vrstic paketa
 function pcDvigniCms(){
-  const po = {};   // trg → {cms_id: item}
+  const po = {}, keys = {};   // trg|cms_id → item / ključi vrstic
   let brez = 0;
   _pcRows().forEach(tr => {
     const cb = tr.querySelector('input[type=checkbox][data-key]'); if (!cb || !selectedKeys.has(cb.dataset.key)) return;
@@ -3251,23 +3252,18 @@ function pcDvigniCms(){
     const trg = row ? _pcTrg(row) : '*';
     if (!row || !a || trg === '*') { brez++; return; }
     const cid = String(a.dataset.pcCms || ''); if (!cid) { brez++; return; }
-    ((po[trg] = po[trg] || {}).__keys = po[trg].__keys || {});
-    (po[trg].__keys[cid] = po[trg].__keys[cid] || []).push(cb.dataset.key);
-    po[trg][cid] = { sku: String(row.sku || '').toUpperCase(), cms_id: cid, g_id: String(row.id || ''),
+    const k = trg + '|' + cid;
+    (keys[k] = keys[k] || []).push(cb.dataset.key);
+    po[k] = { trg, sku: String(row.sku || '').toUpperCase(), cms_id: cid, g_id: String(row.id || ''),
       cena: parseFloat(String(row.priceRaw || '').replace(/\s/g, '').replace(',', '.')) || 0, valuta: row.currency || '', naziv: String(row.product || '').slice(0, 120) };
   });
-  const trgi = Object.keys(po), nIzd = t => Object.keys(po[t]).filter(x => x !== '__keys').length;
-  if (!trgi.length) { alert('Med izbranimi (vidnimi) ni izdelkov s CMS ID in znanim trgom.'); return; }
-  let trg = trgi[0];
-  if (trgi.length > 1) {
-    const v = prompt('Izbrani so z več trgov — en paket je za en trg:\n' + trgi.map(t => t.toUpperCase() + ': ' + nIzd(t)).join(' · ') + '\n\nVpiši trg:', trgi.sort((a, b) => nIzd(b) - nIzd(a))[0].toUpperCase());
-    if (v === null) return;
-    trg = String(v).trim().toLowerCase(); if (!po[trg]) { alert('Trg ' + v + ' ni med izbranimi.'); return; }
-  }
-  const keys = po[trg].__keys; delete po[trg].__keys;
-  const items = Object.values(po[trg]);
-  const KOR = { EUR:'+1 €', CZK:'+5 Kč', PLN:'+5 zł', RON:'+5 lei', HUF:'+100 Ft', RSD:'+100 din' }[String(items[0].valuta || 'EUR').toUpperCase()] || '+1';
-  const k = prompt('▶ CMS: ' + items.length + ' izdelkov na ' + trg.toUpperCase() + (brez ? ' (' + brez + ' brez CMS ID / trga bo izpuščenih)' : '') + '.\n\nKoliko korakov navzgor? 1 korak = ' + KOR + ' (kot veliki gumb + v vtičniku)\nVpiši 1, 2 ali 3:', '1');
+  const items = Object.values(po);
+  if (!items.length) { alert('Med izbranimi (vidnimi) ni izdelkov s CMS ID in znanim trgom.'); return; }
+  const trgi = [...new Set(items.map(x => x.trg))];
+  const STEP = { EUR:'+1 €', CZK:'+5 Kč', PLN:'+5 zł', RON:'+5 lei', HUF:'+100 Ft', RSD:'+100 din' };
+  const kor = [...new Set(items.map(x => STEP[String(x.valuta || 'EUR').toUpperCase()] || '+1'))].join(' · ');
+  const povz = trgi.map(t => t.toUpperCase() + ' ' + items.filter(x => x.trg === t).length).join(' · ');
+  const k = prompt('▶ CMS: ' + items.length + ' izdelkov (' + povz + ')' + (brez ? '\n(' + brez + ' brez CMS ID / trga bo izpuščenih)' : '') + '.\n\nKoliko korakov navzgor? 1 korak v valuti trga = ' + kor + ' (kot veliki gumb + v vtičniku; SLO prek /edit)\nVpiši 1, 2 ali 3:', '1');
   if (k === null) return;
   const koraki = Math.max(1, Math.min(5, parseInt(k, 10) || 1));
   let mode = 'vzporedno';
@@ -3276,11 +3272,11 @@ function pcDvigniCms(){
     if (m === null) return;
     mode = String(m).trim() === '2' ? 'zaporedno' : 'vzporedno';
   }
-  _pcPaketTrg = trg; _pcPaketKeys = keys;
-  window.postMessage({ type: 'suban-kalk-paket', trg, koraki, mode, items }, '*');
+  _pcPaketTrgi = new Set(trgi); _pcPaketKeys = keys;
+  window.postMessage({ type: 'suban-kalk-paket', trg: trgi.length > 1 ? 'mix' : trgi[0], koraki, mode, items }, '*');
 }
 window.addEventListener('message', e => {
-  const d = e.data; if (!d || d.type !== 'kalk-paket-urejeno' || !d.trg || String(d.trg) !== _pcPaketTrg) return;   // samo paket, poslan iz te strani
+  const d = e.data; if (!d || d.type !== 'kalk-paket-urejeno' || !d.trg || !_pcPaketTrgi.has(String(d.trg))) return;   // samo paket, poslan iz te strani
   let n = 0;
   (d.cms_ids || []).map(String).forEach(cid => {
     const L = _cmsLogById[cid] || [];
@@ -3291,7 +3287,7 @@ window.addEventListener('message', e => {
   });
   // shranjene vrstice paketa izbriši iz seznama (kot D); izbor ostalih vrstic ostane
   const del = [];
-  (d.cms_ids || []).map(String).forEach(cid => { (_pcPaketKeys[cid] || []).forEach(k => del.push(k)); delete _pcPaketKeys[cid]; });
+  (d.cms_ids || []).map(String).forEach(cid => { const k = d.trg + '|' + cid; (_pcPaketKeys[k] || []).forEach(x => del.push(x)); delete _pcPaketKeys[k]; });
   const zivi = new Set(allRows.map(r => r.id + '|' + r.sku)), brisi = del.filter(k => zivi.has(k));
   if (brisi.length) {
     const ostali = [...selectedKeys].filter(k => !brisi.includes(k));
