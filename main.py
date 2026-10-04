@@ -12098,7 +12098,7 @@ function fmtT(iso){if(!iso)return '';const d=new Date(iso);if(isNaN(d))return is
 function linksHtml(x){
   const on=x.cms&&(x.cms.st==='popravljeno'||x.cms.st==='potrjeno');
   return (x.url?'<a class="ext" href="'+esc(x.url)+'" target="_blank" rel="noopener" title="Odpri izdelek v trgovini (novo okno)">↗</a>':'')+
-    (x.cms_id?'<a class="ext cms" data-cms="'+x._i+'" href="https://api.maaarket.si/nova/resources/products/'+encodeURIComponent(x.cms_id)+'?tab=vsebina" target="_blank" rel="noopener" title="Odpri v CMS Nova (ID '+esc(x.cms_id)+')">✎</a>'+
+    (x.cms_id?'<a class="ext cms" data-cms="'+x._i+'" href="https://api.maaarket.si/nova/resources/products/'+encodeURIComponent(x.cms_id)+(trg==='sl'?'/edit':'?tab=vsebina')+'" target="_blank" rel="noopener" title="Odpri v CMS Nova (ID '+esc(x.cms_id)+')">✎</a>'+
       '<button type="button" class="okb'+(on?' on':'')+'" data-done="'+x._i+'" title="'+(on?'Označeno kot popravljeno — klik prekliče':'Označi kot popravljeno')+'">✓</button>'
      :'<span class="ext off" title="CMS ID ni najden">✎</span>')+
     '<button type="button" class="nub'+(x.neuvoz?' on':'')+'" data-nu="'+x._i+'" title="'+(x.neuvoz?'Označeno: ne uvažamo na ta trg — klik prekliče':'Ne uvažamo na ta trg (npr. carina) — skrij in izključi iz Bato cen')+'">🚫</button>';
