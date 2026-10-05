@@ -12323,18 +12323,21 @@ function paketCms(){
   window.postMessage({type:'suban-kalk-paket',trg,koraki,mode,items:items.map(x=>({sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
     cena:+x.cena||0,valuta:x.valuta||'',naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc}))},'*');
 }
-// 🎯 BATO → CMS: izbrani iz Bato pogleda dobijo ciljno REDNO ceno z DDV = »Predlog« (cilj); vtičnik vpiše Redna = cilj / DDV
-// (varovalka v vtičniku: sedanja Redna × DDV mora biti enaka redni ceni v feedu, sicer ⚠ in nič ne vpiše). Vedno vzporedno.
+// ± ZNESEK → CMS (Bato pogled): uporabnik vpiše znesek v valuti trga (lahko negativen, npr. -1 lei: 70 → 69); vtičnik vsem
+// izbranim spremeni PRODAJNO ceno točno za ta znesek (brez zaokroževanja) in vpiše Redna = prodajna / DDV / (1 − popust). Vedno vzporedno.
 function paketBato(){
   const rows=batoRows().filter(o=>SEL.has(o.x.g_id));
-  const items=rows.filter(o=>o.x.cms_id&&o.pred>0), brez=rows.length-items.length;
-  if(!items.length){alert('Med izbranimi (v Bato pogledu) ni izdelkov s CMS ID in predlogom.');return;}
-  const up=items.filter(o=>o.diff>0).length, dn=items.length-up;
-  if(!confirm('🎯 Bato cene → CMS: '+items.length+' izdelkov na '+String(trg).toUpperCase()+' ('+up+' ↑ · '+dn+' ↓)'+(brez?'\n('+brez+' brez CMS ID bo izpuščenih)':'')
-    +'\n\nVsak dobi svoj »Predlog« kot redno ceno (npr. '+fmtC(items[0].reg,items[0].cur)+' → '+fmtC(items[0].pred,items[0].cur)+' '+items[0].cur+').'
-    +'\nVtičnik pripravi vse hkrati v ozadju (seznam v panelu, »💾 Shrani izbrane« ali 🚀 samodejno).\nČe se cena v CMS ne ujema s feedom, izdelek preskoči (⚠).\n\nNadaljujem?')) return;
-  window.postMessage({type:'suban-kalk-paket',trg,koraki:1,mode:'vzporedno',items:items.map(o=>{const x=o.x;return {sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
-    cena:+o.reg||0,cilj:+o.pred,valuta:o.cur||'',naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc};})},'*');
+  const items=rows.filter(o=>o.x.cms_id), brez=rows.length-items.length;
+  if(!items.length){alert('Med izbranimi (v Bato pogledu) ni izdelkov s CMS ID.');return;}
+  const cur=items[0].cur||'EUR';
+  const v=prompt('± CMS: '+items.length+' izdelkov na '+String(trg).toUpperCase()+(brez?' ('+brez+' brez CMS ID bo izpuščenih)':'')
+    +'.\n\nZa koliko '+cur+' spremenim PRODAJNO ceno? (npr. 1 = +1 '+cur+', -1 = −1 '+cur+'; brez zaokroževanja)\nVpiši znesek:','1');
+  if(v===null) return;
+  const delta=parseFloat(String(v).replace(/\s/g,'').replace(',','.'));
+  if(!isFinite(delta)||delta===0){alert('Neveljaven znesek.');return;}
+  if(!confirm('± Spremenim prodajno ceno za '+(delta>0?'+':'')+String(delta).replace('.',',')+' '+cur+' pri '+items.length+' izdelkih na '+String(trg).toUpperCase()+'?\n\nVtičnik pripravi vse hkrati v ozadju (seznam v panelu, »💾 Shrani izbrane« ali 🚀 samodejno).')) return;
+  window.postMessage({type:'suban-kalk-paket',trg,koraki:1,delta,mode:'vzporedno',items:items.map(o=>{const x=o.x;return {sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
+    cena:+x.cena||0,valuta:cur,naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc};})},'*');
 }
 window.addEventListener('message',e=>{
   const d=e.data; if(!d||d.type!=='kalk-paket-urejeno'||String(d.trg||'')!==String(trg)) return;
