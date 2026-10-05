@@ -11837,6 +11837,7 @@ async def marza_trgi_stran(request: Request):
   <b>💲 Bato redne cene</b> <span class="dim">· samo Maaarket</span>
   <label>Ne preverjaj cen pod <input type="number" id="bMin" min="0" step="0.5" value="5" oninput="savePref();render()"> €</label>
   <label>Prag marže <input type="number" id="bPrag" min="-100" max="100" step="1" value="20" oninput="savePref();render()"> %</label>
+  <label title="Prikaži samo izdelke s to redno ceno zdaj (v valuti trga), npr. 54">Redna zdaj = <input type="text" id="bRed" inputmode="decimal" placeholder="vse" style="width:70px" oninput="blim=300;render()"></label><button type="button" class="btn" id="bRedX" title="Počisti filter cene" onclick="document.getElementById('bRed').value='';render()" style="padding:2px 8px">✕</button>
   <span id="bInfo" class="dim"></span>
   <button class="btn" onclick="izvoziBato()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
@@ -12424,6 +12425,7 @@ function batoRows(){
   const q=(document.getElementById('q').value||'').toLowerCase().trim(), z=document.getElementById('naZal').checked;
   const minEur=parseFloat(String(document.getElementById('bMin').value).replace(',','.'))||0;
   const prag=parseFloat(String(document.getElementById('bPrag').value).replace(',','.')); const P=isNaN(prag)?20:prag;
+  const redF=parseFloat(String(document.getElementById('bRed').value||'').replace(/\s/g,'').replace(',','.'));   // filter »Redna zdaj = …«
   const out=[];
   D.rows.forEach(x=>{
     if(!x.cena) return;
@@ -12435,6 +12437,7 @@ function batoRows(){
     if(!razMatch(x.marza_eur)) return;
     const cur=x.valuta||'EUR', rate=(D.tecaji||{})[cur]||(cur==='EUR'?1:null);
     if(rate && x.cena/rate < minEur) return;
+    if(!isNaN(redF) && Math.abs(x.cena-redF)>0.005) return;
     const k=batoCands(x.cena,cur); if(!k) return;
     const r=(x.akcija&&x.cena)?x.akcija/x.cena:1;   // razmerje akcija/redna — ocena nove akcijske cene
     const mz=p=>{ if(!x.nc||!rate) return null; const n=p*r/rate/(1+D.ddv/100); return n?(n-x.nc)/n*100:null; };
