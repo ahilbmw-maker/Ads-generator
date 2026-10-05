@@ -12305,6 +12305,7 @@ async function cmsUndoBulk(){
 }// ▶ PAKET: izbrane pošlje vtičniku Kalkulator cen (suban_bridge → kalk_paket); vtičnik jih po vrsti uredi v CMS (+1 korak),
 // uporabnik klikne Update. Urejene vtičnik vrne (kalk-paket-urejeno) → tukaj se označijo kot urejeno (kot D).
 function paketCms(){
+  if(BATO) return paketBato();
   const items=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&x.cms_id);
   const brez=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&!x.cms_id).length;
   if(!items.length){alert('Med izbranimi ni izdelkov s CMS ID.');return;}
@@ -12321,6 +12322,19 @@ function paketCms(){
   }
   window.postMessage({type:'suban-kalk-paket',trg,koraki,mode,items:items.map(x=>({sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
     cena:+x.cena||0,valuta:x.valuta||'',naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc}))},'*');
+}
+// 🎯 BATO → CMS: izbrani iz Bato pogleda dobijo ciljno REDNO ceno z DDV = »Predlog« (cilj); vtičnik vpiše Redna = cilj / DDV
+// (varovalka v vtičniku: sedanja Redna × DDV mora biti enaka redni ceni v feedu, sicer ⚠ in nič ne vpiše). Vedno vzporedno.
+function paketBato(){
+  const rows=batoRows().filter(o=>SEL.has(o.x.g_id));
+  const items=rows.filter(o=>o.x.cms_id&&o.pred>0), brez=rows.length-items.length;
+  if(!items.length){alert('Med izbranimi (v Bato pogledu) ni izdelkov s CMS ID in predlogom.');return;}
+  const up=items.filter(o=>o.diff>0).length, dn=items.length-up;
+  if(!confirm('🎯 Bato cene → CMS: '+items.length+' izdelkov na '+String(trg).toUpperCase()+' ('+up+' ↑ · '+dn+' ↓)'+(brez?'\n('+brez+' brez CMS ID bo izpuščenih)':'')
+    +'\n\nVsak dobi svoj »Predlog« kot redno ceno (npr. '+fmtC(items[0].reg,items[0].cur)+' → '+fmtC(items[0].pred,items[0].cur)+' '+items[0].cur+').'
+    +'\nVtičnik pripravi vse hkrati v ozadju (seznam v panelu, »💾 Shrani izbrane« ali 🚀 samodejno).\nČe se cena v CMS ne ujema s feedom, izdelek preskoči (⚠).\n\nNadaljujem?')) return;
+  window.postMessage({type:'suban-kalk-paket',trg,koraki:1,mode:'vzporedno',items:items.map(o=>{const x=o.x;return {sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
+    cena:+o.reg||0,cilj:+o.pred,valuta:o.cur||'',naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc};})},'*');
 }
 window.addEventListener('message',e=>{
   const d=e.data; if(!d||d.type!=='kalk-paket-urejeno'||String(d.trg||'')!==String(trg)) return;
