@@ -11814,7 +11814,7 @@ async def marza_trgi_stran(request: Request):
 <div id="selBar"><b id="selN">0</b> izbranih
   <button onclick="neuvozBulk(true)" style="background:#fee2e2;color:#991b1b">🚫 Ne uvažamo</button>
   <button onclick="neuvozBulk(false)" style="background:#e2e8f0;color:#0f172a">↩ Odznači 🚫</button>
-<button onclick="paketCms()" title="Vtičnik Kalkulator cen: po vrsti odpre izbrane v CMS, doda izbrano število korakov (EUR +1 · CZK/PLN/RON +5 · HUF/RSD +100) in vpiše Redna — ti samo klikneš Update" style="background:#16a34a;color:#fff">▶ Dvigni v CMS</button>
+<button onclick="paketCmsVarno()" title="Vtičnik Kalkulator cen: po vrsti odpre izbrane v CMS, doda izbrano število korakov (EUR +1 · CZK/PLN/RON +5 · HUF/RSD +100) in vpiše Redna — ti samo klikneš Update. Izdelki, ki so bili na tem trgu danes že odprti/urejeni v CMS (tudi iz Price Checkerja), se preskočijo." style="background:#16a34a;color:#fff">▶ Dvigni v CMS</button>
 <button onclick="cmsDoneBulk()" title="Označi izbrane kot urejeno na tem trgu (kot D) — ostanejo urejeni, dokler jih ne odznačiš" style="background:#16a34a;color:#fff">✓ Označi urejeno</button>
 <button onclick="cmsUndoBulk()" title="Odstrani oznako urejeno (popravljeno / potrjeno / odprto) za izbrane na tem trgu" style="background:#dcfce7;color:#166534">↩ Odznači urejeno</button>
   <button onclick="selClear()" style="background:transparent;color:#cbd5e1">✕ Počisti izbor</button>
@@ -12305,6 +12305,23 @@ async function cmsUndoBulk(){
   if(nap) alert(nap+' izdelkov ni bilo mogoče odznačiti — poskusi znova.');
 }// ▶ PAKET: izbrane pošlje vtičniku Kalkulator cen (suban_bridge → kalk_paket); vtičnik jih po vrsti uredi v CMS (+1 korak),
 // uporabnik klikne Update. Urejene vtičnik vrne (kalk-paket-urejeno) → tukaj se označijo kot urejeno (kot D).
+// VAROVALKA pred masovnim urejanjem: izdelki, ki so bili na TEM trgu DANES že odprti/urejeni v CMS (tudi iz Price Checkerja),
+// se preskočijo in odznačijo — feed ima še staro ceno, zato bi jih sicer dvignili dvakrat. Dnevnik se prebere svež (drugi zavihki).
+async function paketCmsVarno(){
+  let log=null;
+  try{const r=await fetch('/cms-log',{cache:'no-store'}); const d=await r.json(); if(d.ok) log=d.log||{};}catch(e){}
+  if(!log && !confirm('Dnevnika CMS ni bilo mogoče prebrati — ne morem preveriti, kaj je bilo danes že urejeno.\n\nVseeno nadaljujem?')) return;
+  const danes=new Date().toDateString(), jeDanes=t=>!!t&&new Date(t).toDateString()===danes;
+  const skip=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&x.cms_id&&[log&&log[trg+'|'+x.cms_id],log&&log['*|'+x.cms_id],x.cms].some(e=>e&&(!e.trg||e.trg===trg||e.trg==='*')&&(jeDanes(e.done_at)||jeDanes(e.opened_at))));
+  if(skip.length){
+    skip.forEach(x=>SEL.delete(x.g_id)); selLast=-1; render();
+    alert('⏭ Preskočenih '+skip.length+' — na '+String(trg).toUpperCase()+' so bili danes že odprti/urejeni v CMS (feed ima še staro ceno):\n\n'
+      +skip.slice(0,20).map(x=>'• '+String(x.sku||'').toUpperCase()).join('\n')+(skip.length>20?'\n… in še '+(skip.length-20):'')
+      +(SEL.size?'\n\nNadaljujem z ostalimi ('+SEL.size+').':'\n\nNi ostalih izbranih.'));
+    if(!SEL.size) return;
+  }
+  paketCms();
+}
 function paketCms(){
   if(BATO) return paketBato();
   const items=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&x.cms_id);
