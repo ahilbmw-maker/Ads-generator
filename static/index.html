@@ -1075,7 +1075,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-06 07:52</div>
+      <div class="sidebar-logo-sub">build 2026-10-06 09:24</div>
     </div>
   </div>
 
@@ -8242,6 +8242,10 @@ function kbRenderStatus(jobs, headMsg) {
     if (j.status === 'running' && j.step) line += ' — ' + j.step;
     if (j.status === 'done') line += ' — ' + (j.n_results||0) + ' kreativ';
     if (j.status === 'error') line += ' — ' + (j.error||'napaka');
+    // ⏱ trajanje korakov (analiza · slike · generiranje), da se vidi, kje gre čas
+    const ca = j.casi || {}, mm = s => Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+    const ct = [['analiza','analiza'],['slike','slike'],['generiranje','gen.']].filter(([k]) => ca[k] != null).map(([k, l]) => l + ' ' + mm(ca[k]));
+    if (ct.length) line += ' <span style="color:var(--text-tertiary);font-size:11px">⏱ ' + ct.join(' · ') + '</span>';
     html += '<div style="color:' + c + '">' + line + '</div>';
   });
   el.innerHTML = html;

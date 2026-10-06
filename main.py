@@ -6481,7 +6481,9 @@ bOptions: "before/after planting" | "planting demo" | "grid effect"
 
 Sedaj generiraj za izdelek na tej strani po ISTEM vzorcu:"""
 
-    text = await call_claude(analysis_prompt, "claude-sonnet-4-6", tools, 800)
+    # stran prebere strežnik (_page_text); spletno iskanje samo, če je stran skopa/prazna — prej je Claude vedno iskal po spletu (počasno)
+    analysis_prompt, tools = await _url_vsebina(analysis_prompt, "url", url)
+    text = await call_claude(analysis_prompt, "claude-sonnet-4-6", tools or None, 800)
     result = parse_json_response(text)
 
     if not result:
@@ -9371,8 +9373,10 @@ async def _kbatch_process_one(job: dict):
     url = job["url"]
     try:
         # 1) analiza izdelka (isti endpoint kot ročni "Analiziraj izdelek")
-        await _kbatch_set(jid, status="running", step="analiza")
+        await _kbatch_set(jid, status="running", step="analiza", casi={})
+        casi, _t = {}, _time.time()   # ⏱ trajanje korakov (s) — prikaz v seznamu Batch SKU
         ana = await analyze_product_kreative({"url": url})
+        casi["analiza"] = round(_time.time() - _t); _t = _time.time()
         if ana.get("error"):
             raise RuntimeError(f"analiza: {ana['error']}")
         a_all = ana.get("aOptions") or []
@@ -9393,7 +9397,7 @@ async def _kbatch_process_one(job: dict):
 
         # 2) referenčne slike PO SKU iz maaarket feeda (isti vir kot Optimizacija slik —
         #    glavna + galerija, brez Xsell/1+1 slik). Scraper strani samo kot fallback.
-        await _kbatch_set(jid, step="slike", name=name)
+        await _kbatch_set(jid, step="slike", name=name, casi=casi)
         img_urls = await _kbatch_images_by_sku(sku, KBATCH_REF_IMAGES)
         if not img_urls:
             imgs = await fetch_product_images({"url": url})
@@ -9403,13 +9407,15 @@ async def _kbatch_process_one(job: dict):
             raise RuntimeError("ni referenčnih slik")
 
         # 3) generiranje (isti endpoint kot ročna vrsta)
-        await _kbatch_set(jid, step=f"generiranje ({len(a_opts)}×{len(b_opts)})")
+        casi["slike"] = round(_time.time() - _t); _t = _time.time()
+        await _kbatch_set(jid, step=f"generiranje ({len(a_opts)}×{len(b_opts)})", casi=casi)
         gen = await generate_kreative({
             "productName": name, "aOptions": a_opts, "bOptions": b_opts,
             "count": min(int(job.get("count") or KBATCH_MAX_COUNT), KBATCH_MAX_COUNT), "images": refs, "model": _bmodel,
         })
         if gen.get("error"):
             raise RuntimeError(f"generiranje: {gen['error']}")
+        casi["generiranje"] = round(_time.time() - _t)
         results = gen.get("results") or []
         n_imgs = sum(len(r.get("images") or []) for r in results)
         thumb = next((im for r in results for im in (r.get("images") or []) if im), "")
@@ -9438,7 +9444,7 @@ async def _kbatch_process_one(job: dict):
             tmp.write_text(json.dumps(lst, ensure_ascii=False, indent=2), encoding="utf-8")
             os.replace(tmp, KREATIVE_QUEUE_FILE)
 
-        await _kbatch_set(jid, status="done", step="", n_results=n_imgs,
+        await _kbatch_set(jid, status="done", step="", n_results=n_imgs, casi=casi,
                           finished=datetime.now(timezone.utc).isoformat())
         print(f"[kbatch] ✓ {sku}: {n_imgs} kreativ")
     except Exception as e:
