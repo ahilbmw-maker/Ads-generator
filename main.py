@@ -12296,6 +12296,15 @@ async def marza_trgi_stran(request: Request):
   .cst{display:inline-block;margin-top:3px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;white-space:nowrap}
   .cst-odprto{background:#eff6ff;color:#1d4ed8}.cst-popravljeno{background:#dcfce7;color:#166534}.cst-potrjeno{background:#16a34a;color:#fff}.cst-nespremenjeno{background:#fef3c7;color:#92400e}
   .spr{font-size:12px;color:var(--txt2);margin-top:2px}
+  #planOkno{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding-top:4vh}
+  .plan-box{background:var(--card,#fff);color:var(--txt);border-radius:14px;padding:16px 18px;width:min(1200px,96vw);max-height:90vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3);font-size:13px}
+  .plan-nast{margin:10px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:var(--txt2)}
+  .plan-nast input,.plan-nast select{border:1px solid var(--bd);border-radius:6px;padding:3px 6px;font:inherit}
+  .plan-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:10px}
+  .plan-kpi>div{background:var(--bg);border-radius:10px;padding:8px 10px}.plan-kpi b{font-size:16px}.plan-kpi span{display:block;color:var(--txt2);font-size:11.5px}
+  .plan-tab table{width:100%;border-collapse:collapse}.plan-tab th{text-align:left;font-size:11px;color:var(--txt3);text-transform:uppercase;padding:6px;border-bottom:1px solid var(--bd);position:sticky;top:0;background:var(--card,#fff)}
+  .plan-tab td{padding:6px;border-bottom:1px solid var(--bd);vertical-align:middle}.plan-tab .r{text-align:right;white-space:nowrap}
+  tr.plan-flag td{background:rgba(245,158,11,.08)}
   button.hist{border:0;background:none;cursor:pointer;font-size:12px;padding:0 3px;opacity:.45;vertical-align:middle}
   button.hist:hover{opacity:1}
   #histOkno{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding-top:8vh}
@@ -12370,6 +12379,7 @@ async def marza_trgi_stran(request: Request):
   <button onclick="neuvozBulk(true)" style="background:#fee2e2;color:#991b1b">🚫 Ne uvažamo</button>
   <button onclick="neuvozBulk(false)" style="background:#e2e8f0;color:#0f172a">↩ Odznači 🚫</button>
 <button onclick="paketCmsVarno()" title="Vtičnik Kalkulator cen: po vrsti odpre izbrane v CMS, doda izbrano število korakov (EUR +1 · CZK/PLN/RON +5 · HUF/RSD +100) in vpiše Redna — ti samo klikneš Update. Izdelki, ki so bili na tem trgu danes že odprti/urejeni v CMS (tudi iz Price Checkerja), se preskočijo." style="background:#16a34a;color:#fff">▶ Dvigni v CMS</button>
+<button onclick="planOdpri()" title="Predlog novih cen (Bato, varovalka marže, največja sprememba) za izbrane — samo pregled, v CMS se nič ne spremeni" style="background:#7c3aed;color:#fff">🧮 Plan cen</button>
 <button onclick="paketSamoBato()" title="Kot »▶ Dvigni v CMS«, a IZPUSTI izdelke, katerih končna cena že ima Bato končnico (HUF x499/x999 · EUR x,99 · CZK x49/x99/x9 · PLN/RON x9 · RSD x99) — te odznači; uredi samo ostale." style="background:#0f766e;color:#fff">▶ Preskoči Bato cene</button>
 <button onclick="cmsDoneBulk()" title="Označi izbrane kot urejeno na tem trgu (kot D) — ostanejo urejeni, dokler jih ne odznačiš" style="background:#16a34a;color:#fff">✓ Označi urejeno</button>
 <button onclick="cmsUndoBulk()" title="Odstrani oznako urejeno (popravljeno / potrjeno / odprto) za izbrane na tem trgu" style="background:#dcfce7;color:#166534">↩ Odznači urejeno</button>
@@ -12863,6 +12873,104 @@ async function cmsUndoBulk(){
 // uporabnik klikne Update. Urejene vtičnik vrne (kalk-paket-urejeno) → tukaj se označijo kot urejeno (kot D).
 // VAROVALKA pred masovnim urejanjem: izdelki, ki so bili na TEM trgu DANES že odprti/urejeni v CMS (tudi iz Price Checkerja),
 // se preskočijo in odznačijo — feed ima še staro ceno, zato bi jih sicer dvignili dvakrat. Dnevnik se prebere svež (drugi zavihki).
+// ═══ 🧮 PLAN CEN (korak 1: samo predlog in pregled — NIČ se ne spremeni v CMS) ═══
+// Za izbrane izdelke: cilj = najbližja Bato KONČNA cena (enaka razdalja → navzgor), varovalka marže (cena gre na Bato navzgor),
+// največja sprememba ±% (večje so označene ⚠ in niso samodejno potrjene). Preskoči: že Bato, danes urejene, 🚫, brez NC / CMS ID.
+let PLAN = null;
+function planNastavitve() {
+  try { return Object.assign({ prag: 20, maxPct: 15, smer: 'najblizja' }, JSON.parse(localStorage.getItem('mz_plan') || '{}')); } catch (e) { return { prag: 20, maxPct: 15, smer: 'najblizja' }; }
+}
+function planIzracun() {
+  const N = planNastavitve(), danes = new Date().toDateString();
+  const izb = (D && D.rows || []).filter(x => SEL.has(x.g_id));
+  const predlogi = [], preskok = [];
+  izb.forEach(x => {
+    const cur = x.valuta || 'EUR', c = +(x.koncna || x.cena) || 0, sku = String(x.sku || '').toUpperCase();
+    const ze = r => preskok.push({ x, sku, c, cur, r });
+    if (!c) return ze('ni cene');
+    if (!x.cms_id) return ze('ni CMS ID');
+    if (x.neuvoz) return ze('🚫 ne uvažamo');
+    if (x.cms && (!x.cms.trg || x.cms.trg === trg || x.cms.trg === '*') && [x.cms.done_at, x.cms.opened_at].some(t => t && new Date(t).toDateString() === danes)) return ze('danes že urejeno');
+    const k = batoCands(c, cur);
+    if (!k) return ze('že Bato');
+    if (!x.nc || !x.neto) return ze('brez NC');
+    const neto = p => x.neto * p / c, mz = p => (neto(p) - x.nc) / neto(p) * 100;
+    let pred = N.smer === 'gor' ? k.up : k.pick, opomba = [];
+    if (pred < c && mz(pred) < N.prag) { pred = k.up; opomba.push('↑ zaradi marže'); }
+    const pct = (pred - c) / c * 100, mPo = mz(pred);
+    if (mPo < N.prag) opomba.push('marža pod ' + N.prag + ' %');
+    const velika = Math.abs(pct) > N.maxPct;
+    if (velika) opomba.push('sprememba nad ' + N.maxPct + ' %');
+    predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct, mZdaj: mz(c), mPo, rZdaj: neto(c) - x.nc, rPo: neto(pred) - x.nc,
+      opomba: opomba.join(' · '), ok: !velika && mPo >= N.prag });
+  });
+  predlogi.sort((a, b) => (b.ok - a.ok) || Math.abs(b.pct) - Math.abs(a.pct));
+  return { predlogi, preskok, N };
+}
+function planOdpri() {
+  if (!SEL.size) { alert('Najprej izberi izdelke (kljukice, Shift za razpon).'); return; }
+  PLAN = planIzracun();
+  PLAN.izbrani = new Set(PLAN.predlogi.filter(p => p.ok).map(p => p.x.g_id));
+  let o = document.getElementById('planOkno');
+  if (!o) { o = document.createElement('div'); o.id = 'planOkno'; document.body.appendChild(o);
+    o.addEventListener('click', e => { if (e.target === o) o.style.display = 'none'; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && o.style.display !== 'none') o.style.display = 'none'; }, true); }
+  o.style.display = 'flex'; planRisi();
+}
+function planNastavi(k, v) {
+  const N = planNastavitve(); N[k] = k === 'smer' ? v : (parseFloat(String(v).replace(',', '.')) || 0);
+  try { localStorage.setItem('mz_plan', JSON.stringify(N)); } catch (e) {}
+  const prej = PLAN ? PLAN.izbrani : null; PLAN = planIzracun();
+  PLAN.izbrani = new Set(PLAN.predlogi.filter(p => p.ok).map(p => p.x.g_id)); planRisi();
+}
+function planKljukica(g, on) { on ? PLAN.izbrani.add(g) : PLAN.izbrani.delete(g); planRisi(); }
+function planVse(on) { PLAN.predlogi.forEach(p => on ? PLAN.izbrani.add(p.x.g_id) : PLAN.izbrani.delete(p.x.g_id)); planRisi(); }
+function planRisi() {
+  const o = document.getElementById('planOkno'), P2 = PLAN, N = P2.N;
+  const iz = P2.predlogi.filter(p => P2.izbrani.has(p.x.g_id));
+  const up = iz.filter(p => p.diff > 0).length, dn = iz.length - up;
+  const avg = (a, f) => a.length ? a.reduce((s, p) => s + f(p), 0) / a.length : 0;
+  const f2n = v => (Math.round(v * 100) / 100).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const mc = m => '<span class="m ' + mcls(Math.round(m * 10) / 10) + '">' + (Math.round(m * 10) / 10).toLocaleString('sl-SI') + ' %</span>';
+  const vrst = P2.predlogi.map(p => {
+    const on = P2.izbrani.has(p.x.g_id);
+    return '<tr' + (p.ok ? '' : ' class="plan-flag"') + '><td><input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="planKljukica(\'' + esc(p.x.g_id) + '\',this.checked)"></td>' +
+      '<td><b style="font-family:ui-monospace,monospace">' + esc(p.sku) + '</b><div class="dim" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.x.naziv || '') + '</div></td>' +
+      '<td class="r">' + fmtC(p.c, p.cur) + '</td><td class="r" style="font-weight:800;font-size:15px">' + fmtC(p.pred, p.cur) + ' <span class="dim">' + esc(p.cur) + '</span></td>' +
+      '<td class="r ' + (p.diff > 0 ? 'up' : 'dn') + '">' + (p.diff > 0 ? '+' : '') + fmtC(p.diff, p.cur) + '<div class="dim">' + (p.pct > 0 ? '+' : '') + p.pct.toFixed(1).replace('.', ',') + ' %</div></td>' +
+      '<td class="r">' + mc(p.mZdaj) + ' → ' + mc(p.mPo) + '</td><td class="r">' + f2n(p.rZdaj) + ' → <b>' + f2n(p.rPo) + '</b> €</td>' +
+      '<td>' + (p.opomba ? '<span class="bnote">' + (p.ok ? '' : '⚠ ') + esc(p.opomba) + '</span>' : '') + '</td></tr>';
+  }).join('');
+  const poRazlogu = {}; P2.preskok.forEach(s => (poRazlogu[s.r] = poRazlogu[s.r] || []).push(s.sku));
+  o.innerHTML = '<div class="plan-box">' +
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:17px">🧮 Plan cen · ' + esc(String(trg).toUpperCase()) + '</b>' +
+      '<span class="dim">predlog — v CMS se še nič ne spremeni</span><button class="btn" style="margin-left:auto" onclick="document.getElementById(\'planOkno\').style.display=\'none\'">✕</button></div>' +
+    '<div class="plan-nast">Cilj: <select onchange="planNastavi(\'smer\',this.value)"><option value="najblizja"' + (N.smer === 'najblizja' ? ' selected' : '') + '>najbližja Bato (enako → navzgor)</option><option value="gor"' + (N.smer === 'gor' ? ' selected' : '') + '>samo navzgor na Bato</option></select>' +
+      ' · Prag marže <input type="number" value="' + N.prag + '" onchange="planNastavi(\'prag\',this.value)" style="width:60px"> %' +
+      ' · Največja sprememba ± <input type="number" value="' + N.maxPct + '" onchange="planNastavi(\'maxPct\',this.value)" style="width:60px"> %</div>' +
+    '<div class="plan-kpi">' +
+      '<div><b>' + iz.length + '</b> / ' + P2.predlogi.length + '<span>potrjenih predlogov</span></div>' +
+      '<div><b class="up">' + up + ' ↑</b> · <b class="dn">' + dn + ' ↓</b><span>smer</span></div>' +
+      '<div><b>' + f2n(avg(iz, p => p.rZdaj)) + ' → ' + f2n(avg(iz, p => p.rPo)) + ' €</b><span>Ø razlika na izdelek</span></div>' +
+      '<div><b>' + (Math.round(avg(iz, p => p.mZdaj) * 10) / 10).toLocaleString('sl-SI') + ' → ' + (Math.round(avg(iz, p => p.mPo) * 10) / 10).toLocaleString('sl-SI') + ' %</b><span>Ø marža</span></div>' +
+      '<div><b>' + P2.preskok.length + '</b><span>preskočenih</span></div></div>' +
+    (P2.predlogi.length ? '<div class="plan-tab"><table><thead><tr><th><input type="checkbox" ' + (iz.length === P2.predlogi.length ? 'checked' : '') + ' onchange="planVse(this.checked)"></th><th>SKU</th><th class="r">Zdaj</th><th class="r">Predlog</th><th class="r">Sprememba</th><th class="r">Marža</th><th class="r">Razlika €</th><th>Opomba</th></tr></thead><tbody>' + vrst + '</tbody></table></div>'
+      : '<div class="dim" style="padding:20px;text-align:center">Med izbranimi ni izdelkov za spremembo.</div>') +
+    (P2.preskok.length ? '<details style="margin-top:8px"><summary class="dim" style="cursor:pointer">Preskočeni (' + P2.preskok.length + ')</summary><div class="dim" style="margin-top:6px">' +
+      Object.entries(poRazlogu).map(([r, a]) => '<div><b>' + esc(r) + '</b> (' + a.length + '): ' + a.slice(0, 40).map(esc).join(', ') + (a.length > 40 ? ' …' : '') + '</div>').join('') + '</div></details>' : '') +
+    '<div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap"><span class="dim">⚠ = marža pod pragom ali sprememba nad mejo — ni samodejno potrjeno, lahko ga označiš sama.</span>' +
+      '<button class="btn" style="margin-left:auto" onclick="planCsv()">⬇ Izvozi CSV</button>' +
+      '<button class="btn" style="background:#16a34a;color:#fff;border-color:#16a34a" onclick="alert(\'Korak 2 (vrsta na strežniku in izvajanje prek vtičnika) še ni narejen — za zdaj je plan samo za pregled in CSV.\')">✓ Pošlji ' + iz.length + ' v vrsto</button></div>' +
+  '</div>';
+}
+function planCsv() {
+  const e = v => { v = v == null ? '' : String(v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }, n = v => v == null ? '' : String(Math.round(v * 100) / 100).replace('.', ',');
+  let csv = '﻿Potrjeno;SKU;CMS ID;Naziv;Valuta;Zdaj;Predlog;Sprememba;Sprememba %;Marža zdaj %;Marža po %;Razlika zdaj €;Razlika po €;Opomba\n';
+  PLAN.predlogi.forEach(p => { csv += [PLAN.izbrani.has(p.x.g_id) ? 'da' : 'ne', e(p.sku), e(p.x.cms_id), e(p.x.naziv), p.cur, n(p.c), n(p.pred), n(p.diff), n(p.pct), n(p.mZdaj), n(p.mPo), n(p.rZdaj), n(p.rPo), e(p.opomba)].join(';') + '\n'; });
+  PLAN.preskok.forEach(s => { csv += ['preskočeno', e(s.sku), e(s.x.cms_id), e(s.x.naziv), s.cur, n(s.c), '', '', '', '', '', '', '', e(s.r)].join(';') + '\n'; });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'plan_cen_' + String(trg).toUpperCase() + '_' + new Date().toISOString().slice(0, 10) + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
 // ▶ PRESKOČI BATO CENE: iz izbora IZPUSTI (odznači) izdelke, katerih KONČNA cena že ima Bato končnico (batoCands → null);
 // uredijo se samo ostali; nato običajen tok z varovalko »danes že urejeno«.
 async function paketSamoBato(){
