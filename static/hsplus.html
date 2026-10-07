@@ -83,6 +83,10 @@
   input.in::placeholder { color:var(--txt3); }
   #selBar { position:sticky; bottom:10px; display:none; gap:8px; align-items:center; flex-wrap:wrap; background:var(--txt); color:var(--bg); padding:10px 14px; border-radius:12px; margin-top:10px; z-index:3; }
   #selBar .btn { padding:5px 10px; }
+  #selBar .btn[class*="lb-"] { border-bottom-width:4px; }   /* barvna ločnica spodaj = barva skladišča/statusa */
+  .lb-brn { border-bottom-color:var(--c-brn) !important; } .lb-gro { border-bottom-color:var(--c-gro) !important; }
+  .lb-nar { border-bottom-color:var(--c-nar) !important; } .lb-cak { border-bottom-color:var(--c-cak) !important; }
+  .lb-prv { border-bottom-color:var(--c-prv) !important; } .lb-pre { border-bottom-color:var(--c-pre) !important; }
   .drop { border:2px dashed var(--acc); border-radius:12px; padding:14px; text-align:center; color:var(--acc); margin-bottom:12px; display:none; background:var(--card); }
   .msg { padding:10px 12px; border-radius:10px; margin-bottom:12px; display:none; }
   .msg.ok { background:var(--b-prv); color:var(--c-prv); } .msg.er { background:var(--b-man); color:var(--c-man); } .msg.in { background:var(--b-nar); color:var(--c-nar); }
@@ -99,7 +103,7 @@
   .sklad h3 { margin:0 0 8px; font-size:16px; }
   .sklad .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--bd); font-size:13px; }
   .empty { padding:40px; text-align:center; color:var(--txt3); }
-  @media (max-width:800px) { .hide-m { display:none; } .wrap { padding:12px; } }
+  @media (max-width:800px) { .hide-m { display:none; } .wrap { padding:12px; } #pNova .grid { grid-template-columns:1fr 1fr !important; } }
 </style>
 </head>
 <body>
@@ -115,8 +119,9 @@
   <div class="msg" id="msg"></div>
 
   <div class="tabs">
-    <div class="tab on" data-t="izdelki" onclick="tab('izdelki')">Izdelki</div>
-    <div class="tab" data-t="skladisce" onclick="tab('skladisce')">Skladišče</div>
+    <div class="tab on" data-t="izdelki" onclick="tab('izdelki')">📦 Naročila</div>
+    <div class="tab" data-t="skladisce" onclick="tab('skladisce')">🏬 Skladišče</div>
+    <div class="tab" data-t="poizvedbe" onclick="tab('poizvedbe')">❓ Poizvedbe <span id="pBadge"></span></div>
   </div>
 
   <div id="pg-izdelki">
@@ -153,19 +158,58 @@
     <div id="selBar">
       <b id="selN">0</b> izbranih
       <span style="margin-left:8px">Skladišče:</span>
-      <button class="btn" onclick="masovno({skladisce:'Brnik'})">Brnik</button>
-      <button class="btn" onclick="masovno({skladisce:'Grosuplje'})">Grosuplje</button>
+      <button class="btn lb-brn" onclick="masovno({skladisce:'Brnik'})">Brnik</button>
+      <button class="btn lb-gro" onclick="masovno({skladisce:'Grosuplje'})">Grosuplje</button>
       <span style="margin-left:8px">Status:</span>
-      <button class="btn" onclick="masovno({status:'naroceno'})">Naročeno</button>
-      <button class="btn" onclick="masovno({status:'cakajoce'})">Čakajoče</button>
-      <button class="btn" onclick="masovno({status:'prevzeto'})">Prevzeto</button>
-      <button class="btn" onclick="masovno({status:'preklicano'})">Preklicano</button>
+      <button class="btn lb-nar" onclick="masovno({status:'naroceno'})">Naročeno</button>
+      <button class="btn lb-cak" onclick="masovno({status:'cakajoce'})">Čakajoče</button>
+      <button class="btn lb-prv" onclick="masovno({status:'prevzeto'})">Prevzeto</button>
+      <button class="btn lb-pre" onclick="masovno({status:'preklicano'})">Preklicano</button>
       <button class="btn" onclick="izbrisi()" style="margin-left:auto">🗑 Odstrani</button>
       <button class="btn" onclick="SEL.clear();render()">✕</button>
     </div>
   </div>
 
   <div id="pg-skladisce" style="display:none"><div class="sklad" id="skl"></div></div>
+
+  <!-- ❓ POIZVEDBE: ali ima HS+ zalogo / kdaj bo / ukinjeno — ni naročilo; »→ V naročila«, ko HS+ potrdi zalogo -->
+  <div id="pg-poizvedbe" style="display:none">
+    <div class="kpi" id="pKpi"></div>
+    <div id="pNova" style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px">
+      <div class="grid" style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1fr 1fr 2.2fr auto;gap:8px;align-items:end">
+        <label class="sug" style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">Izdelek (SKU / ime / EAN)
+          <input class="f" id="pq" autocomplete="off" placeholder="npr. GIRADANCE" oninput="predlogi('p')" onkeydown="sugTipka(event,'p')">
+          <div class="sug-list" id="psug"></div></label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">Naša šifra <input class="f" id="pNs" placeholder="neobvezno"></label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">Kol. (ctn) <input class="f" id="pKart" inputmode="numeric" placeholder="—"></label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">Pričakujemo od <input class="f" type="date" id="pOd"></label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">do <input class="f" type="date" id="pDo"></label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">Komentar <input class="f" id="pKom" placeholder="npr. konec oktobra" onkeydown="if(event.key==='Enter')poizDodaj()"></label>
+        <button class="btn pri" onclick="poizDodaj()">＋ Dodaj</button>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span class="sub">Hitri roki:</span>
+        <span class="chip" onclick="hitriRok(7)">čez 1 teden</span><span class="chip" onclick="hitriRok(14)">čez 2 tedna</span>
+        <span class="chip" onclick="hitriRok('mesec')">konec meseca</span><span class="chip" onclick="hitriRok('naslednji')">naslednji mesec</span>
+        <span id="pIzbran" class="sub"></span>
+        <button class="btn" style="margin-left:auto" onclick="document.getElementById('pExcel').style.display=document.getElementById('pExcel').style.display==='block'?'none':'block'">📋 Prilepi iz Excela</button>
+      </div>
+      <div id="pExcel" style="display:none;margin-top:10px">
+        <textarea class="f" id="pExcelTxt" rows="5" style="width:100%" placeholder="Kopiraj stolpce SKU · Kol. (ctn) · Komentar iz Excela in prilepi sem (vsaka vrstica = ena poizvedba)"></textarea>
+        <button class="btn pri" style="margin-top:6px" onclick="poizExcel()">Uvozi vrstice</button>
+      </div>
+    </div>
+    <div class="bar">
+      <input type="search" class="f" id="pqs" placeholder="Išči SKU, ime, šifro ali komentar" oninput="render()" style="width:260px">
+      <label class="sub" style="cursor:pointer"><input type="checkbox" id="pZaprte" onchange="render()"> Pokaži ukinjene in prestavljene v naročila</label>
+      <span class="sub" style="margin-left:auto" id="pKatInfo"></span>
+    </div>
+    <div class="card"><table>
+      <thead><tr><th style="width:34px"></th><th style="width:54px"></th><th>Izdelek</th><th>Naša šifra</th><th class="r">Kol. (ctn)</th><th>HS+ zaloga</th>
+        <th>Pričakujemo (od – do)</th><th>Status</th><th style="min-width:200px">Komentar</th><th class="hide-m">Preverjeno</th><th></th></tr></thead>
+      <tbody id="ptb"></tbody>
+    </table></div>
+  </div>
 </div>
 
 <script>
@@ -185,14 +229,18 @@ function sporocilo(t, cls, ms) {
   const m = document.getElementById('msg'); m.className = 'msg ' + cls; m.innerHTML = t; m.style.display = 'block';
   clearTimeout(m._t); if (ms) m._t = setTimeout(() => m.style.display = 'none', ms);
 }
+let P = [], KAT_OSV = '';
 async function nalozi() {
-  try { const d = await (await fetch('/hsplus/api/seznam', { cache: 'no-store' })).json(); if (d.ok) { D = d.items || []; render(); } }
-  catch (e) { sporocilo('Seznama ni bilo mogoče naložiti.', 'er'); }
+  try {
+    const r = await fetch('/hsplus/api/seznam', { cache: 'no-store' });
+    if (r.status === 401) { location.href = '/hsplus/login'; return; }   // prijava potekla
+    const d = await r.json(); if (d.ok) { D = d.items || []; P = d.poizvedbe || []; KAT_OSV = d.katalog_osvezen || ''; render(); }
+  } catch (e) { sporocilo('Seznama ni bilo mogoče naložiti.', 'er'); }
 }
 function tab(t) {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.dataset.t === t));
-  document.getElementById('pg-izdelki').style.display = t === 'izdelki' ? '' : 'none';
-  document.getElementById('pg-skladisce').style.display = t === 'skladisce' ? '' : 'none';
+  ['izdelki', 'skladisce', 'poizvedbe'].forEach(x => document.getElementById('pg-' + x).style.display = t === x ? '' : 'none');
+  try { localStorage.setItem('hsb_tab', t); } catch (e) {}
   render();
 }
 // vrstni red: novejši uvozi zgoraj; znotraj uvoza po statusu (odprti najprej), nato po vrstnem redu v PDF-ju
@@ -242,6 +290,7 @@ function render() {
   const vis = rows.map(it => it.id), sa = document.getElementById('selAll');
   sa.checked = vis.length > 0 && vis.every(id => SEL.has(id)); sa.indeterminate = !sa.checked && vis.some(id => SEL.has(id));
   renderSklad();
+  renderPoiz();
 }
 let zadnji = -1;
 function izberi(id, on, ev) {
@@ -296,17 +345,19 @@ async function uvozi(f, znova) {
   } catch (e) { sporocilo('✗ Uvoz ni uspel — preveri povezavo.', 'er'); }
 }
 // ── ROČNA POSTAVKA s predlogi iz HS+ kataloga ──
-let IZBRAN = null, SUG = [], sugI = -1, sugT = null;
+let IZBRAN = null, SUG = [], sugI = -1, sugT = null, SPX = '', PIZBRAN = null;   // SPX: '' = ročna postavka naročila, 'p' = poizvedba
+const sugEl = px => document.getElementById(px ? 'psug' : 'sug');
 function rocnoOdpri() { document.getElementById('rocno').style.display = 'block'; document.getElementById('rq').focus(); }
 function rocnoZapri() { document.getElementById('rocno').style.display = 'none'; }
 function rocnoKosov() {
   const a = parseInt(document.getElementById('rKart').value, 10), b = parseInt(document.getElementById('rKk').value, 10);
   if (a > 0 && b > 0) document.getElementById('rKos').value = a * b;
 }
-function predlogi() {
-  IZBRAN = null; document.getElementById('rIzbran').textContent = '';
-  clearTimeout(sugT); const q = document.getElementById('rq').value.trim();
-  if (q.length < 2) { document.getElementById('sug').style.display = 'none'; return; }
+function predlogi(px) {
+  SPX = px || '';
+  if (SPX) { PIZBRAN = null; document.getElementById('pIzbran').textContent = ''; } else { IZBRAN = null; document.getElementById('rIzbran').textContent = ''; }
+  clearTimeout(sugT); const q = document.getElementById(SPX ? 'pq' : 'rq').value.trim();
+  if (q.length < 2) { sugEl(SPX).style.display = 'none'; return; }
   sugT = setTimeout(async () => {
     try {
       const d = await (await fetch('/hsplus/api/katalog?q=' + encodeURIComponent(q))).json();
@@ -315,25 +366,35 @@ function predlogi() {
   }, 200);
 }
 function risiSug(brezKataloga) {
-  const el = document.getElementById('sug');
+  const el = sugEl(SPX);
   el.innerHTML = SUG.length ? SUG.map((p, i) => '<div class="sug-it' + (i === sugI ? ' on' : '') + '" onmousedown="izberiSug(' + i + ')">' + imgHtml(p.slika, '') +
     '<div><b>' + esc(p.sku) + '</b> <span class="mut">' + esc(p.ean) + '</span><div>' + esc(p.naziv) + '</div></div><span style="margin-left:auto;white-space:nowrap;text-align:right">' + (p.cena ? eur(p.cena) : '') +
-    (p.kos_karton ? '<br><span class="mut">' + p.kos_karton + ' kos/karton</span>' : '') + '</span></div>').join('')
+    (p.kos_karton ? '<br><span class="mut">' + p.kos_karton + ' kos/karton</span>' : '') +
+    '<br><span class="mut" style="color:' + (p.zaloga > 0 ? 'var(--c-prv)' : 'var(--c-man)') + '">HS+ zaloga ' + (p.zaloga || 0) + '</span></span></div>').join('')
     : '<div class="sug-it mut">' + (brezKataloga ? 'HS+ katalog ni naložen (Orodja → HS+ katalog) — vpiši ročno.' : 'Ni zadetkov v HS+ katalogu — lahko vpišeš ročno.') + '</div>';
   el.style.display = 'block';
 }
-function sugTipka(e) {
-  const el = document.getElementById('sug'); if (el.style.display !== 'block' || !SUG.length) return;
+function sugTipka(e, px) {
+  SPX = px || '';
+  const el = sugEl(SPX); if (el.style.display !== 'block' || !SUG.length) return;
   if (e.key === 'ArrowDown') { sugI = Math.min(SUG.length - 1, sugI + 1); risiSug(); e.preventDefault(); }
   else if (e.key === 'ArrowUp') { sugI = Math.max(0, sugI - 1); risiSug(); e.preventDefault(); }
   else if (e.key === 'Enter' && sugI >= 0) { izberiSug(sugI); e.preventDefault(); }
   else if (e.key === 'Escape') el.style.display = 'none';
 }
 function izberiSug(i) {
-  const p = SUG[i]; if (!p) return; IZBRAN = p;
+  const p = SUG[i]; if (!p) return;
+  sugEl(SPX).style.display = 'none';
+  if (SPX) {   // poizvedba
+    PIZBRAN = p; document.getElementById('pq').value = p.sku || p.naziv;
+    document.getElementById('pIzbran').innerHTML = '✓ <b>' + esc(p.sku) + '</b> · ' + esc(p.naziv) + ' · HS+ zaloga <b style="color:' + (p.zaloga > 0 ? 'var(--c-prv)' : 'var(--c-man)') + '">' + (p.zaloga || 0) + '</b>' +
+      (p.zaloga > 0 ? ' — HS+ ima zalogo, morda je bolje kar naročiti' : '');
+    document.getElementById('pKom').focus();
+    return;
+  }
+  IZBRAN = p;
   document.getElementById('rq').value = p.sku || p.naziv;
   if (p.cena) document.getElementById('rCena').value = String(p.cena).replace('.', ',');
-  document.getElementById('sug').style.display = 'none';
   pakiranjeVpisi(p.kos_karton, p.pak_vir);
   document.getElementById('rIzbran').innerHTML = '✓ Iz kataloga: <b>' + esc(p.sku) + '</b> · ' + esc(p.naziv) + (p.ean ? ' · EAN ' + esc(p.ean) : '') +
     (p.kos_karton ? ' · 📦 <b>' + p.kos_karton + ' kos/karton</b> (' + esc(p.pak_vir || '') + ') — vpiši samo število kartonov' : ' — pakiranje še ni znano: vpiši kose v kartonu, zapomnim si jih za naslednjič.');
@@ -352,7 +413,113 @@ async function pakiranjeIsci() {
     if (d.kos_karton) { pakiranjeVpisi(d.kos_karton, d.vir); document.getElementById('rIzbran').innerHTML = '📦 Znano pakiranje: <b>' + d.kos_karton + ' kos/karton</b> (' + esc(d.vir || '') + ')'; }
   } catch (e) {}
 }
-document.addEventListener('click', e => { if (!e.target.closest('.sug')) document.getElementById('sug').style.display = 'none'; });
+document.addEventListener('click', e => { if (!e.target.closest('.sug')) { sugEl('').style.display = 'none'; sugEl('p').style.display = 'none'; } });
+
+// ── ❓ POIZVEDBE ──
+const PST = { vprasano: 'Vprašano', pricakujemo: 'Pričakujemo', na_zalogi: 'Na zalogi (HS+)', ukinjeno: 'Ukinjeno', v_narocilih: 'V naročilih' };
+const PCLS = { vprasano: 'st-naroceno', pricakujemo: 'st-cakajoce', na_zalogi: 'st-prevzeto', ukinjeno: 'st-preklicano', v_narocilih: 'st-preklicano' };
+const danes0 = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const isoD = d => d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+const kratD = s => { if (!s) return ''; const [y, m, d] = s.split('-'); return +d + '. ' + +m + '.'; };
+let pFlt = 'odprte';
+// rok: zamuja (do < danes) · ta teden · čez N dni — samo za odprte (vprašano / pričakujemo)
+function rokInfo(p) {
+  if (!['vprasano', 'pricakujemo'].includes(p.status) || !(p.do || p.od)) return { cls: '', txt: '', dni: 9999 };
+  const do_ = new Date((p.do || p.od) + 'T00:00:00'), dni = Math.round((do_ - danes0()) / 864e5);
+  if (dni < 0) return { cls: 'st-manjka', txt: 'zamuja ' + (-dni) + ' dni', dni };
+  if (dni <= 7) return { cls: 'st-cakajoce', txt: dni === 0 ? 'danes' : 'še ' + dni + ' dni', dni };
+  return { cls: '', txt: 'čez ' + dni + ' dni', dni };
+}
+function pVidne() {
+  const q = (document.getElementById('pqs').value || '').trim().toLowerCase(), zap = document.getElementById('pZaprte').checked;
+  return P.filter(p => {
+    const odprta = p.status === 'vprasano' || p.status === 'pricakujemo';
+    if (pFlt === 'odprte' && !(odprta || p.status === 'na_zalogi' || (zap && !odprta))) return false;
+    if (pFlt === 'zamuja' && rokInfo(p).dni >= 0) return false;
+    if (pFlt === 'hs_ima' && !(odprta && p.zaloga_hs > 0)) return false;
+    if (!['odprte', 'zamuja', 'hs_ima'].includes(pFlt) && p.status !== pFlt) return false;
+    if (q && ![p.sku, p.naziv, p.nasa_sifra, p.komentar, p.ean].join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a, b) => {
+    const r = s => ({ na_zalogi: 0, vprasano: 1, pricakujemo: 1, ukinjeno: 3, v_narocilih: 4 }[s] ?? 2);
+    return r(a.status) - r(b.status) || rokInfo(a).dni - rokInfo(b).dni || String(b.dodano).localeCompare(String(a.dodano));
+  });
+}
+function renderPoiz() {
+  const odp = P.filter(p => p.status === 'vprasano' || p.status === 'pricakujemo');
+  const zam = odp.filter(p => rokInfo(p).dni < 0), hs = odp.filter(p => p.zaloga_hs > 0);
+  document.getElementById('pBadge').innerHTML = zam.length ? '<span class="pill st-manjka" style="font-size:11px">' + zam.length + '</span>' : (odp.length ? '<span class="mut">' + odp.length + '</span>' : '');
+  const k = (f, n, l, cls, small) => '<div class="' + cls + (pFlt === f ? ' on' : '') + '" onclick="pFlt=pFlt===\'' + f + '\'?\'odprte\':\'' + f + '\';render()"><b>' + n + '</b><span>' + l + '</span>' + (small ? '<small>' + small + '</small>' : '') + '</div>';
+  document.getElementById('pKpi').innerHTML = k('odprte', odp.length, 'Odprte poizvedbe', '', '') +
+    k('vprasano', P.filter(p => p.status === 'vprasano').length, 'Vprašano', 'k-naroceno', 'brez roka') +
+    k('pricakujemo', P.filter(p => p.status === 'pricakujemo').length, 'Pričakujemo', 'k-cakajoce', 'z rokom') +
+    k('zamuja', zam.length, 'Zamuja', 'k-manjka', 'rok potekel') +
+    k('hs_ima', hs.length, 'HS+ ima zalogo', 'k-prevzeto', 'po katalogu') +
+    k('ukinjeno', P.filter(p => p.status === 'ukinjeno').length, 'Ukinjeno', 'k-preklicano', '');
+  document.getElementById('pKatInfo').textContent = KAT_OSV ? 'HS+ zaloga iz kataloga: ' + KAT_OSV : 'HS+ katalog ni naložen';
+  const rows = pVidne();
+  document.getElementById('ptb').innerHTML = rows.length ? rows.map(p => {
+    const ri = rokInfo(p), odprta = p.status === 'vprasano' || p.status === 'pricakujemo';
+    const hs = !p.v_katalogu ? '<span class="mut">ni v katalogu</span>' : (p.zaloga_hs > 0 ? '<span class="pill st-prevzeto">✓ ' + p.zaloga_hs + ' kos</span>' : '<span class="pill st-manjka">0</span>');
+    const st = '<select class="s ' + PCLS[p.status] + '" onchange="pUredi([\'' + p.id + '\'],{status:this.value})">' + Object.entries(PST).map(([k, l]) => '<option value="' + k + '"' + (p.status === k ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>';
+    const zg = (p.zgodovina || []).slice(-8).reverse().map(z => dat(z.at) + ' ' + z.polje + ': ' + (z.prej || '—') + ' → ' + z.potem + (z.kdo ? ' (' + z.kdo + ')' : '')).join('\n');
+    return '<tr class="r-' + ({ vprasano: 'naroceno', pricakujemo: 'cakajoce', na_zalogi: 'prevzeto', ukinjeno: 'preklicano', v_narocilih: 'preklicano' }[p.status]) + (ri.dni < 0 ? ' r-manjka' : '') + '" title="' + esc(zg) + '">' +
+      '<td></td><td>' + imgHtml(p.slika) + '</td>' +
+      '<td><div class="naz">' + esc(p.sku) + '</div><div class="mut">' + (p.naziv && p.naziv !== p.sku ? esc(p.naziv) : '') + (p.ean ? ' · ' + esc(p.ean) : '') + '</div></td>' +
+      '<td><input class="in" value="' + esc(p.nasa_sifra || '') + '" placeholder="+ šifra" onchange="pUredi([\'' + p.id + '\'],{nasa_sifra:this.value})" style="width:100px"></td>' +
+      '<td class="r"><input class="in" value="' + (p.kartoni || '') + '" placeholder="—" inputmode="numeric" onchange="pUredi([\'' + p.id + '\'],{kartoni:this.value})" style="width:50px;text-align:right;min-width:0"></td>' +
+      '<td>' + hs + '</td>' +
+      '<td style="white-space:nowrap"><input type="date" class="in" value="' + esc(p.od || '') + '" onchange="pUredi([\'' + p.id + '\'],{od:this.value})" style="width:128px;min-width:0"> – ' +
+        '<input type="date" class="in" value="' + esc(p.do || '') + '" onchange="pUredi([\'' + p.id + '\'],{do:this.value})" style="width:128px;min-width:0">' +
+        (ri.txt ? '<br><span class="pill ' + ri.cls + '" style="font-size:11px">' + ri.txt + '</span>' : '') + '</td>' +
+      '<td>' + st + '</td>' +
+      '<td><input class="in" value="' + esc(p.komentar || '') + '" placeholder="💬 + komentar" onchange="pUredi([\'' + p.id + '\'],{komentar:this.value})"></td>' +
+      '<td class="hide-m mut" title="zadnji vnos / preverjanje pri HS+">' + dat(p.preverjeno) + '</td>' +
+      '<td style="white-space:nowrap">' + (odprta || p.status === 'na_zalogi' ? '<button class="btn" style="padding:4px 8px;background:var(--b-prv);color:var(--c-prv);border-color:var(--c-prv)" onclick="pVNarocilo(\'' + p.id + '\')" title="HS+ ima zalogo → ustvari postavko med naročili">→ V naročila</button> ' : '') +
+        '<button class="btn" style="padding:4px 7px" onclick="pIzbrisi(\'' + p.id + '\')" title="Odstrani poizvedbo">🗑</button></td></tr>';
+  }).join('') : '<tr><td colspan="11" class="empty">' + (P.length ? 'Ni poizvedb za izbrane filtre.' : 'Še ni poizvedb. Dodaj izdelek zgoraj ali prilepi tabelo iz Excela.') + '</td></tr>';
+}
+function hitriRok(n) {
+  const d = danes0(); let od = new Date(d), do_;
+  if (n === 'mesec') { do_ = new Date(d.getFullYear(), d.getMonth() + 1, 0); od = new Date(do_); od.setDate(do_.getDate() - 7); }
+  else if (n === 'naslednji') { od = new Date(d.getFullYear(), d.getMonth() + 1, 1); do_ = new Date(d.getFullYear(), d.getMonth() + 2, 0); }
+  else { od.setDate(d.getDate() + n - 3); do_ = new Date(d); do_.setDate(d.getDate() + n + 3); }
+  document.getElementById('pOd').value = isoD(od); document.getElementById('pDo').value = isoD(do_);
+}
+async function pPost(url, body) {
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ kdo: kdo() }, body)) });
+    if (r.status === 401) { location.href = '/hsplus/login'; return {}; }
+    const d = await r.json(); if (!d.ok) sporocilo('✗ ' + esc(d.error || 'Napaka'), 'er', 5000); return d;
+  } catch (e) { sporocilo('✗ Shranjevanje ni uspelo — preveri povezavo.', 'er', 5000); return {}; }
+}
+async function poizDodaj() {
+  const v = id => document.getElementById(id).value.trim(), q = v('pq');
+  if (!q) { sporocilo('Vpiši SKU ali ime izdelka.', 'er', 4000); return; }
+  const p = PIZBRAN && (PIZBRAN.sku === q || PIZBRAN.naziv === q) ? PIZBRAN : null;
+  const r = await pPost('/hsplus/api/poizvedba-dodaj', { sku: p ? p.sku : q, naziv: p ? p.naziv : '', ean: p ? p.ean : '', nasa_sifra: v('pNs'), kartoni: v('pKart'), od: v('pOd'), do: v('pDo'), komentar: v('pKom') });
+  if (r.ok) {
+    ['pq', 'pNs', 'pKart', 'pOd', 'pDo', 'pKom'].forEach(id => document.getElementById(id).value = '');
+    PIZBRAN = null; document.getElementById('pIzbran').textContent = ''; document.getElementById('pq').focus();
+    sporocilo('✓ Poizvedba dodana', 'ok', 2500); nalozi();
+  }
+}
+async function poizExcel() {
+  const t = document.getElementById('pExcelTxt').value; if (!t.trim()) return;
+  const r = await pPost('/hsplus/api/poizvedba-dodaj', { besedilo: t });
+  if (r.ok) { document.getElementById('pExcelTxt').value = ''; document.getElementById('pExcel').style.display = 'none'; sporocilo('✓ Uvoženih ' + r.n + ' poizvedb iz Excela — roke (od–do) nastavi s koledarjem v vrstici.', 'ok', 6000); nalozi(); }
+}
+async function pUredi(ids, spr) { await pPost('/hsplus/api/poizvedba-uredi', Object.assign({ ids }, spr)); nalozi(); }
+async function pIzbrisi(id) { if (!confirm('Odstranim to poizvedbo? (ostane v arhivu)')) return; await pPost('/hsplus/api/poizvedba-izbrisi', { ids: [id] }); nalozi(); }
+async function pVNarocilo(id) {
+  const p = P.find(x => x.id === id) || {};
+  const k = prompt('→ V naročila: ' + p.sku + '\n\nKoliko KARTONOV naročimo?', p.kartoni || '1');
+  if (k === null) return;
+  if (!(parseInt(k, 10) > 0)) { sporocilo('Vpiši število kartonov.', 'er', 4000); return; }
+  const sk = confirm('Skladišče: OK = Brnik · Prekliči = Grosuplje') ? 'Brnik' : 'Grosuplje';
+  const r = await pPost('/hsplus/api/poizvedba-v-narocilo', { id, kartoni: k, skladisce: sk });
+  if (r.ok) { sporocilo('✓ ' + esc(p.sku) + ' je med naročili (' + k + ' krt, ' + sk + ') — pakiranje se je izpolnilo, če je znano.', 'ok', 6000); nalozi(); }
+}
 async function rocnoShrani() {
   const v = id => document.getElementById(id).value.trim(), q = v('rq');
   if (!q) { sporocilo('Vpiši SKU ali ime izdelka.', 'er', 4000); return; }
@@ -387,6 +554,7 @@ const drop = document.getElementById('drop');
 document.addEventListener('dragover', e => { e.preventDefault(); drop.style.display = 'block'; });
 document.addEventListener('dragleave', e => { if (!e.relatedTarget) drop.style.display = 'none'; });
 document.addEventListener('drop', e => { e.preventDefault(); drop.style.display = 'none'; const f = e.dataTransfer.files[0]; if (f) uvozi(f); });
+try { const t = localStorage.getItem('hsb_tab'); if (t && document.getElementById('pg-' + t)) tab(t); } catch (e) {}
 nalozi();
 // drugi uporabniki — osveži vsako minuto (ne med izbiranjem ali tipkanjem)
 setInterval(() => { const a = document.activeElement; if (!document.hidden && !SEL.size && !(a && /INPUT|SELECT|TEXTAREA/.test(a.tagName))) nalozi(); }, 60000);

@@ -329,6 +329,36 @@ def _owner_authorized(request) -> bool:
     return _owner_check_token(request.cookies.get(OWNER_COOKIE, ""))
 
 
+# 📦 HS+ prevzemi (/hsplus): skupno geslo za skladišče/ekipo. V kodi je samo zgoščena vrednost (repo je na GitHubu);
+# env HSPLUS_GESLO (navadno besedilo) jo nadomesti. Piškotek podpisan z APP_SECRET, velja AUTH_TTL.
+HSB_GESLO_HASH = "24c81083cee63b3da656aa6f602b79a53e8398da4e77b9464170c27ecefb7e52"   # sha256("hsplus_v1:" + geslo)
+HSB_COOKIE = "slx_hsplus_auth"
+
+
+def _hsb_geslo_ok(geslo: str) -> bool:
+    env = os.environ.get("HSPLUS_GESLO", "")
+    if env:
+        return _hmac.compare_digest(geslo or "", env)
+    return _hmac.compare_digest(_hashlib.sha256(("hsplus_v1:" + (geslo or "")).encode()).hexdigest(), HSB_GESLO_HASH)
+
+
+def _hsb_make_token():
+    exp = str(int(_time.time()) + AUTH_TTL)
+    sig = _hmac.new((APP_SECRET + ":hsplus").encode(), exp.encode(), _hashlib.sha256).hexdigest()
+    return _b64.urlsafe_b64encode(f"{exp}:{sig}".encode()).decode()
+
+
+def _hsb_authorized(request) -> bool:
+    if _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return True
+    try:
+        exp_str, sig = _b64.urlsafe_b64decode(request.cookies.get(HSB_COOKIE, "").encode()).decode().split(":", 1)
+        ok = _hmac.compare_digest(sig, _hmac.new((APP_SECRET + ":hsplus").encode(), exp_str.encode(), _hashlib.sha256).hexdigest())
+        return ok and int(exp_str) > int(_time.time())
+    except Exception:
+        return False
+
+
 # 📈 Trend (Analiza) je za vse prijavljene, ne samo za lastnika (ostali /semafor* ostanejo lastniški)
 _SEMAFOR_ZA_VSE = {"/semafor-trend", "/semafor-trend-ai", "/semafor-dogodki", "/semafor-zgodovina-uvoz"}
 
@@ -339,10 +369,14 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
             path = request.url.path
             if path in _AUTH_EXEMPT_EXACT or path.startswith(_AUTH_EXEMPT_PREFIX):
                 return await call_next(request)
-            # HS+ B2B prevzemi (/hsplus): ZAČASNO odprto brez gesla (dogovor 2026-10-07 — zaklenemo, ko je stran končana).
-            # /hsplus-catalog* ipd. (drug prefiks) ostanejo zaklenjeni.
+            # HS+ prevzemi (/hsplus): svoje skupno geslo (HSPLUS_GESLO) ALI glavna prijava suban.ai.
+            # /hsplus-catalog* ipd. (drug prefiks) ostanejo samo za glavno prijavo.
             if path == "/hsplus" or path.startswith("/hsplus/"):
-                return await call_next(request)
+                if path == "/hsplus/login" or _hsb_authorized(request):
+                    return await call_next(request)
+                if path == "/hsplus" or "text/html" in request.headers.get("accept", ""):
+                    return RedirectResponse(url="/hsplus/login", status_code=302)
+                return JSONResponse({"ok": False, "error": "Prijava potekla — osveži stran in vpiši geslo."}, status_code=401)
             wants_html = "text/html" in request.headers.get("accept", "")
             if path == "/nabava" or path == "/nabava-login" or path.startswith("/nabava-"):
                 if path == "/nabava-login":          # VEDNO dostopen — sicer redirect zanka
@@ -438,6 +472,24 @@ async def nabava_login_page(err: str = ""):
                       .replace('action="/login"', 'action="/nabava-login"') \
                       .replace("__ERR__", msg)
     return HTMLResponse(html)
+
+
+@app.get("/hsplus/login", response_class=HTMLResponse)
+async def hsplus_login_page(err: str = ""):
+    html = _LOGIN_HTML.replace("Vpiši geslo za dostop", "📦 HS+ prevzemi · vpiši geslo") \
+                      .replace('action="/login"', 'action="/hsplus/login"') \
+                      .replace("__ERR__", "Napačno geslo." if err else "")
+    return HTMLResponse(html)
+
+
+@app.post("/hsplus/login")
+async def hsplus_login_submit(password: str = Form("")):
+    if _hsb_geslo_ok(password):
+        resp = RedirectResponse(url="/hsplus", status_code=302)
+        resp.set_cookie(HSB_COOKIE, _hsb_make_token(), max_age=AUTH_TTL, httponly=True, samesite="lax", secure=True, path="/")
+        return resp
+    await asyncio.sleep(1.0)   # počasneje ugibanje gesla
+    return RedirectResponse(url="/hsplus/login?err=1", status_code=302)
 
 
 @app.post("/nabava-login")
@@ -8995,7 +9047,7 @@ _hsb_lock = asyncio.Lock()
 
 def _hsb_load(strict=False) -> dict:
     d = _jload(HSB_FILE, {}, strict=strict) or {}
-    d.setdefault("items", []); d.setdefault("narocila", {}); d.setdefault("izbrisani", [])
+    d.setdefault("items", []); d.setdefault("narocila", {}); d.setdefault("izbrisani", []); d.setdefault("poizvedbe", [])
     return d
 
 
@@ -9016,7 +9068,8 @@ def _hsb_katalog():
     if mt != _hsb_kat["mtime"]:
         prods = ((_jload(HSPLUS_CATALOG_CACHE, {}) or {}).get("products") or []) if mt else []
         vsi = [{"sku": str(p.get("sku") or "").strip(), "ean": str(p.get("ean") or "").strip(), "naziv": str(p.get("name") or "").strip(),
-                "cena": p.get("price"), "slika": p.get("image") or "", "kos_karton": int(p.get("kos_karton") or 0)}
+                "cena": p.get("price"), "slika": p.get("image") or "", "kos_karton": int(p.get("kos_karton") or 0),
+                "zaloga": int(p.get("stock") or 0)}
                for p in prods if p.get("sku") or p.get("name")]
         _hsb_kat.update(mtime=mt, vsi=vsi, ean={p["ean"]: p for p in vsi if p["ean"]}, sku={p["sku"].upper(): p for p in vsi if p["sku"]})
     return _hsb_kat
@@ -9036,7 +9089,14 @@ async def hsplus_seznam():
     for it in d["items"]:
         k = _hsb_iz_kataloga(it) or {}
         items.append(dict(it, slika=it.get("slika") or k.get("slika") or "", sku=it.get("sku") or k.get("sku") or ""))
-    return {"ok": True, "items": items, "skladisca": HSB_SKLADISCA, "statusi": HSB_STATUSI}
+    poiz = []
+    for p in d["poizvedbe"]:
+        k = _hsb_iz_kataloga(p)
+        poiz.append(dict(p, slika=(k or {}).get("slika") or "", ean=p.get("ean") or (k or {}).get("ean") or "",
+                         v_katalogu=bool(k), zaloga_hs=(k or {}).get("zaloga", 0), cena_kos=(k or {}).get("cena")))
+    kat = _hsb_katalog()
+    return {"ok": True, "items": items, "poizvedbe": poiz, "skladisca": HSB_SKLADISCA, "statusi": HSB_STATUSI,
+            "katalog_osvezen": kat["mtime"] and datetime.fromtimestamp(kat["mtime"]).strftime("%d. %m. %Y %H:%M")}
 
 
 def _hsb_pakiranja(d: dict = None) -> dict:
@@ -9095,28 +9155,37 @@ async def hsplus_api_pakiranje(q: str = ""):
     return {"ok": True, "kos_karton": pz["kos_karton"] if pz else 0, "vir": pz["vir"] if pz else ""}
 
 
+def _hsb_num(data: dict, k: str) -> float:
+    try:
+        return float(str(data.get(k)).replace(",", ".")) if data.get(k) not in (None, "") else 0
+    except Exception:
+        return 0
+
+
+def _hsb_nova_postavka(data: dict, vir: str = "ročno dodano"):
+    """Ročna postavka naročila (tudi iz poizvedbe) → (postavka, None) ali (None, napaka). Kartoni so obvezni."""
+    naziv = str(data.get("naziv") or data.get("sku") or "").strip()[:150]
+    if not naziv:
+        return None, "Vpiši ime ali SKU izdelka."
+    kart, kosk = int(_hsb_num(data, "kartoni")), int(_hsb_num(data, "kos_karton"))
+    if kart <= 0:
+        return None, "Vpiši število kartonov (naročamo samo po kartonih)."
+    kosov = int(_hsb_num(data, "kosov")) or kart * kosk   # 0 = pakiranje ni znano
+    sk = data.get("skladisce") if data.get("skladisce") in HSB_SKLADISCA else "Brnik"
+    cena = round(_hsb_num(data, "cena_kos"), 2)
+    return {"id": uuid.uuid4().hex[:10], "ean": str(data.get("ean") or "").strip(), "naziv": naziv, "sku": str(data.get("sku") or "").strip()[:60],
+            "barva": "", "cena_kos": cena, "kos_karton": kosk, "kartoni": kart, "kosov": kosov, "vsota": round(cena * kosov, 2),
+            "narocilo": "", "rocno": True, "dodano": _lj_iso(), "idx": 0, "skladisce": sk, "status": "naroceno", "manjka": 0, "manjka_kartoni": 0,
+            "nasa_sifra": str(data.get("nasa_sifra") or "").strip()[:40], "opomba": str(data.get("opomba") or "")[:300],
+            "zgodovina": [{"at": _lj_iso(), "polje": vir, "prej": "", "potem": naziv, "kdo": str(data.get("kdo") or "")[:40]}]}, None
+
+
 @app.post("/hsplus/api/dodaj")
 async def hsplus_dodaj(data: dict):
     """Ročna postavka: {naziv, sku?, ean?, cena_kos?, kos_karton?, kartoni?, kosov?, nasa_sifra?, skladisce?, opomba?, kdo?}."""
-    naziv = str(data.get("naziv") or data.get("sku") or "").strip()[:150]
-    if not naziv:
-        return {"ok": False, "error": "Vpiši ime ali SKU izdelka."}
-    def num(k, t=float):
-        try:
-            return t(str(data.get(k)).replace(",", ".")) if data.get(k) not in (None, "") else 0
-        except Exception:
-            return 0
-    kart, kosk = int(num("kartoni")), int(num("kos_karton"))
-    if kart <= 0:
-        return {"ok": False, "error": "Vpiši število kartonov (naročamo samo po kartonih)."}
-    kosov = int(num("kosov")) or kart * kosk   # 0 = pakiranje ni znano
-    sk = data.get("skladisce") if data.get("skladisce") in HSB_SKLADISCA else "Brnik"
-    cena = round(num("cena_kos"), 2)
-    it = {"id": uuid.uuid4().hex[:10], "ean": str(data.get("ean") or "").strip(), "naziv": naziv, "sku": str(data.get("sku") or "").strip()[:60],
-          "barva": "", "cena_kos": cena, "kos_karton": kosk, "kartoni": kart, "kosov": kosov, "vsota": round(cena * kosov, 2),
-          "narocilo": "", "rocno": True, "dodano": _lj_iso(), "idx": 0, "skladisce": sk, "status": "naroceno", "manjka": 0, "manjka_kartoni": 0,
-          "nasa_sifra": str(data.get("nasa_sifra") or "").strip()[:40], "opomba": str(data.get("opomba") or "")[:300],
-          "zgodovina": [{"at": _lj_iso(), "polje": "ročno dodano", "prej": "", "potem": naziv, "kdo": str(data.get("kdo") or "")[:40]}]}
+    it, err = _hsb_nova_postavka(data)
+    if err:
+        return {"ok": False, "error": err}
     async with _hsb_lock:
         try:
             d = _hsb_load(strict=True)
@@ -9125,6 +9194,148 @@ async def hsplus_dodaj(data: dict):
         d["items"] = [it] + d["items"]
         _jsave(HSB_FILE, d)
     return {"ok": True, "id": it["id"]}
+
+
+# ── POIZVEDBE: ali ima HS+ zalogo / kdaj bo / ali je ukinjeno — NI naročilo; ko HS+ potrdi zalogo → »V naročila» ──
+HSB_P_STATUSI = ("vprasano", "pricakujemo", "na_zalogi", "ukinjeno", "v_narocilih")
+
+
+def _hsb_datum(v):
+    """'2026-10-05' ali '' (vnos iz koledarja)."""
+    v = str(v or "").strip()[:10]
+    return v if re.fullmatch(r"\d{4}-\d{2}-\d{2}", v) else ""
+
+
+def _hsb_nova_poizvedba(data: dict):
+    sku = str(data.get("sku") or data.get("naziv") or "").strip()[:60]
+    if not sku:
+        return None
+    k = _hsb_iz_kataloga({"sku": sku, "ean": data.get("ean"), "naziv": sku}) or {}
+    od, do = _hsb_datum(data.get("od")), _hsb_datum(data.get("do"))
+    st = data.get("status") if data.get("status") in HSB_P_STATUSI else ("pricakujemo" if (od or do) else "vprasano")
+    return {"id": uuid.uuid4().hex[:10], "sku": k.get("sku") or sku, "naziv": str(data.get("naziv") or k.get("naziv") or sku)[:150],
+            "ean": str(data.get("ean") or k.get("ean") or ""), "kartoni": int(_hsb_num(data, "kartoni")), "nasa_sifra": str(data.get("nasa_sifra") or "")[:40],
+            "od": od, "do": do, "status": st, "komentar": str(data.get("komentar") or "")[:400], "dodano": _lj_iso(), "preverjeno": _lj_iso(),
+            "zgodovina": [{"at": _lj_iso(), "polje": "dodano", "prej": "", "potem": sku, "kdo": str(data.get("kdo") or "")[:40]}]}
+
+
+@app.post("/hsplus/api/poizvedba-dodaj")
+async def hsplus_poizvedba_dodaj(data: dict):
+    """Ena poizvedba {sku, naziv?, ean?, kartoni?, od?, do?, komentar?, nasa_sifra?, kdo?} ali prilepljeno iz Excela {besedilo}:
+    vrstice »SKU <tab> Kol. <tab> Komentar« (Kol. »X« ali število kartonov; komentar = zadnji stolpec)."""
+    nove = []
+    if data.get("besedilo"):
+        for vr in str(data["besedilo"]).splitlines()[:500]:
+            deli = [x.strip() for x in re.split(r"\t|;", vr) if x.strip()]
+            if not deli or deli[0].upper() in ("SKU", "IZDELEK"):
+                continue
+            kol = next((x for x in deli[1:2] if re.fullmatch(r"\d+", x)), "")
+            kom = deli[-1] if len(deli) > 1 and not re.fullmatch(r"[xX\d]+", deli[-1]) else ""
+            p = _hsb_nova_poizvedba({"sku": deli[0], "kartoni": kol, "komentar": kom, "kdo": data.get("kdo")})
+            if p:
+                nove.append(p)
+    else:
+        p = _hsb_nova_poizvedba(data)
+        if not p:
+            return {"ok": False, "error": "Vpiši SKU ali ime izdelka."}
+        nove.append(p)
+    if not nove:
+        return {"ok": False, "error": "V prilepljenem besedilu ni vrstic s SKU."}
+    async with _hsb_lock:
+        try:
+            d = _hsb_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Shramba ni berljiva ({e}) — poskusi znova."}
+        d["poizvedbe"] = nove + d["poizvedbe"]
+        _jsave(HSB_FILE, d)
+    return {"ok": True, "n": len(nove)}
+
+
+@app.post("/hsplus/api/poizvedba-uredi")
+async def hsplus_poizvedba_uredi(data: dict):
+    """{ids, status?, od?, do?, komentar?, kartoni?, nasa_sifra?, preverjeno?, kdo?} — spremembe gredo v zgodovino."""
+    ids = set(str(x) for x in (data.get("ids") or []))
+    spr = {}
+    if "status" in data:
+        if data["status"] not in HSB_P_STATUSI:
+            return {"ok": False, "error": "Neznan status."}
+        spr["status"] = data["status"]
+    for k in ("od", "do"):
+        if k in data:
+            spr[k] = _hsb_datum(data[k])
+    if "komentar" in data:
+        spr["komentar"] = str(data.get("komentar") or "")[:400]
+    if "nasa_sifra" in data:
+        spr["nasa_sifra"] = str(data.get("nasa_sifra") or "").strip()[:40]
+    if "kartoni" in data:
+        spr["kartoni"] = int(_hsb_num(data, "kartoni"))
+    if not ids or (not spr and not data.get("preverjeno")):
+        return {"ok": False, "error": "Ni sprememb."}
+    kdo = str(data.get("kdo") or "")[:40]
+    async with _hsb_lock:
+        try:
+            d = _hsb_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Shramba ni berljiva ({e}) — poskusi znova."}
+        zdaj = _lj_iso()
+        for p in d["poizvedbe"]:
+            if p.get("id") not in ids:
+                continue
+            for k, v in spr.items():
+                if p.get(k) != v:
+                    p.setdefault("zgodovina", []).append({"at": zdaj, "polje": k, "prej": p.get(k), "potem": v, "kdo": kdo})
+                    p[k] = v
+            if spr.get("od") or spr.get("do"):
+                if p.get("status") == "vprasano":
+                    p["status"] = "pricakujemo"
+            p["preverjeno"] = zdaj   # vsak vnos = danes preverjeno pri HS+
+        _jsave(HSB_FILE, d)
+    return {"ok": True}
+
+
+@app.post("/hsplus/api/poizvedba-v-narocilo")
+async def hsplus_poizvedba_v_narocilo(data: dict):
+    """{id, kartoni, kos_karton?, skladisce?, kdo?} → nova postavka med naročili, poizvedba dobi status »v_narocilih«."""
+    pid = str(data.get("id") or "")
+    async with _hsb_lock:
+        try:
+            d = _hsb_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Shramba ni berljiva ({e}) — poskusi znova."}
+        p = next((x for x in d["poizvedbe"] if x.get("id") == pid), None)
+        if not p:
+            return {"ok": False, "error": "Poizvedba ne obstaja več."}
+        k = _hsb_iz_kataloga(p) or {}
+        pz = _hsb_pakiranje_za(_hsb_pakiranja(d), p.get("ean"), p.get("sku"), p.get("naziv"), k)
+        it, err = _hsb_nova_postavka({"naziv": k.get("naziv") or p.get("naziv"), "sku": p.get("sku"), "ean": p.get("ean") or k.get("ean"),
+                                      "cena_kos": k.get("cena"), "kartoni": data.get("kartoni") or p.get("kartoni"),
+                                      "kos_karton": data.get("kos_karton") or (pz or {}).get("kos_karton"), "skladisce": data.get("skladisce"),
+                                      "nasa_sifra": p.get("nasa_sifra"), "opomba": p.get("komentar"), "kdo": data.get("kdo")}, vir="iz poizvedbe")
+        if err:
+            return {"ok": False, "error": err}
+        d["items"] = [it] + d["items"]
+        p.setdefault("zgodovina", []).append({"at": _lj_iso(), "polje": "status", "prej": p.get("status"), "potem": "v_narocilih",
+                                              "kdo": str(data.get("kdo") or "")[:40]})
+        p["status"], p["narocilo_id"] = "v_narocilih", it["id"]
+        _jsave(HSB_FILE, d)
+    return {"ok": True, "id": it["id"]}
+
+
+@app.post("/hsplus/api/poizvedba-izbrisi")
+async def hsplus_poizvedba_izbrisi(data: dict):
+    ids = set(str(x) for x in (data.get("ids") or []))
+    async with _hsb_lock:
+        try:
+            d = _hsb_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Shramba ni berljiva ({e})"}
+        ven = [p for p in d["poizvedbe"] if p.get("id") in ids]
+        d["poizvedbe"] = [p for p in d["poizvedbe"] if p.get("id") not in ids]
+        for p in ven:
+            p["izbrisano"], p["vrsta"] = _lj_iso(), "poizvedba"
+        d["izbrisani"] = (ven + d["izbrisani"])[:5000]
+        _jsave(HSB_FILE, d)
+    return {"ok": True, "n": len(ven)}
 
 
 def _hsb_beri_pdf(content_bytes: bytes) -> dict:
