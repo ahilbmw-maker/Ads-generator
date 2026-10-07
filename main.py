@@ -12520,9 +12520,10 @@ async def marza_trgi_stran(request: Request):
   <input type="text" id="q" placeholder="🔍 Išči SKU ali naziv..." oninput="render()">
   <button class="chip on" data-f="all" onclick="setF(this)">Vse</button>
   <button class="chip" data-f="neg" onclick="setF(this)">Negativna</button>
-  <button class="chip" data-f="low" onclick="setF(this)">&lt; 20 %</button>
-  <button class="chip" data-f="mid" onclick="setF(this)">20–40 %</button>
-  <button class="chip" data-f="ok" onclick="setF(this)">&gt; 40 %</button>
+  <!-- filtri marže < 20 / 20–40 / > 40 % skriti (2026-10-07, ne uporabljamo več; koda ostane) -->
+  <button class="chip" data-f="low" onclick="setF(this)" style="display:none">&lt; 20 %</button>
+  <button class="chip" data-f="mid" onclick="setF(this)" style="display:none">20–40 %</button>
+  <button class="chip" data-f="ok" onclick="setF(this)" style="display:none">&gt; 40 %</button>
   <button class="chip" data-f="nonc" onclick="setF(this)">Brez NC</button>
   <button class="chip" data-f="ugib" onclick="setF(this)" title="SKU najden z ugibanjem iz imena slike — preveri, ali je pravi">⚠ Ugibanje</button>
   <label style="font-size:14px;display:flex;gap:6px;align-items:center;margin-left:6px" title="Razlika = cena brez DDV − NC, v €">Razlika
@@ -13435,7 +13436,7 @@ function savePref(){try{localStorage.setItem('mz_pref',JSON.stringify({z:naZal.c
 try{const p=JSON.parse(localStorage.getItem('mz_pref')||'{}');naZal.checked=!!p.z;skrijUr.checked=!!p.sk;if(p.nu!=null)document.getElementById('skrijNu').checked=!!p.nu;if(p.rz)razpon.value=p.rz;if(p.ro!=null)rOd.value=p.ro;if(p.rd!=null)rDo.value=p.rd;if(razOdDo()){razpon.disabled=true;razpon.style.opacity='.45';rClr.style.display='';}if(Array.isArray(p.zn))ZN=new Set(p.zn);if(p.bm!=null)document.getElementById('bMin').value=p.bm;if(p.bp!=null)document.getElementById('bPrag').value=p.bp;
   if(!new URLSearchParams(location.search).get('trg') && p.t && TRGI.some(t=>t[0]===p.t)) trg=p.t;
   if(p.s1){sk=p.s1;sd=p.d1||1;} if(p.s2){bsk=p.s2;bsd=p.d2||1;}
-  if(p.f){const ch=document.querySelector('.chip[data-f="'+p.f+'"]'); if(ch){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));ch.classList.add('on');flt=p.f;}}
+  if(p.f && !['low','mid','ok'].includes(p.f)){const ch=document.querySelector('.chip[data-f="'+p.f+'"]'); if(ch){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));ch.classList.add('on');flt=p.f;}}
   const U=new URLSearchParams(location.search);
   if(U.get('zn')) ZN=new Set(U.get('zn').split(',').filter(Boolean));     // npr. s kartice na Domov
   if(U.get('ur')==='1'){skrijUr.checked=true;document.getElementById('skrijNu').checked=true;}   // s kartice Urejene cene na Domov
