@@ -12370,6 +12370,7 @@ async def marza_trgi_stran(request: Request):
   <button onclick="neuvozBulk(true)" style="background:#fee2e2;color:#991b1b">🚫 Ne uvažamo</button>
   <button onclick="neuvozBulk(false)" style="background:#e2e8f0;color:#0f172a">↩ Odznači 🚫</button>
 <button onclick="paketCmsVarno()" title="Vtičnik Kalkulator cen: po vrsti odpre izbrane v CMS, doda izbrano število korakov (EUR +1 · CZK/PLN/RON +5 · HUF/RSD +100) in vpiše Redna — ti samo klikneš Update. Izdelki, ki so bili na tem trgu danes že odprti/urejeni v CMS (tudi iz Price Checkerja), se preskočijo." style="background:#16a34a;color:#fff">▶ Dvigni v CMS</button>
+<button onclick="paketSamoBato()" title="Kot »▶ Dvigni v CMS«, a samo izdelki, katerih končna cena ŽE ima Bato končnico (HUF x499/x999 · EUR x,99 · CZK x49/x99/x9 · PLN/RON x9 · RSD x99). Ostale odznači in jih pusti za ročno urejanje." style="background:#0f766e;color:#fff">▶ Samo Bato cene</button>
 <button onclick="cmsDoneBulk()" title="Označi izbrane kot urejeno na tem trgu (kot D) — ostanejo urejeni, dokler jih ne odznačiš" style="background:#16a34a;color:#fff">✓ Označi urejeno</button>
 <button onclick="cmsUndoBulk()" title="Odstrani oznako urejeno (popravljeno / potrjeno / odprto) za izbrane na tem trgu" style="background:#dcfce7;color:#166534">↩ Odznači urejeno</button>
   <button onclick="selClear()" style="background:transparent;color:#cbd5e1">✕ Počisti izbor</button>
@@ -12862,6 +12863,22 @@ async function cmsUndoBulk(){
 // uporabnik klikne Update. Urejene vtičnik vrne (kalk-paket-urejeno) → tukaj se označijo kot urejeno (kot D).
 // VAROVALKA pred masovnim urejanjem: izdelki, ki so bili na TEM trgu DANES že odprti/urejeni v CMS (tudi iz Price Checkerja),
 // se preskočijo in odznačijo — feed ima še staro ceno, zato bi jih sicer dvignili dvakrat. Dnevnik se prebere svež (drugi zavihki).
+// ▶ SAMO BATO CENE: iz izbora obdrži samo izdelke, katerih KONČNA cena že ima Bato končnico (batoCands → null),
+// ostale odznači (uporabnik jih uredi drugače); nato običajen tok z varovalko »danes že urejeno«.
+async function paketSamoBato(){
+  const izb=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id));
+  if(!izb.length) return;
+  const jeBato=x=>{const c=+(x.koncna||x.cena)||0; return c>0 && batoCands(c,x.valuta||'EUR')===null;};
+  const ne=izb.filter(x=>!jeBato(x));
+  if(ne.length){
+    ne.forEach(x=>SEL.delete(x.g_id)); selLast=-1; render();
+    alert('⏭ Odznačenih '+ne.length+' — končna cena še NI Bato (te uredi posebej):\n\n'
+      +ne.slice(0,20).map(x=>'• '+String(x.sku||'').toUpperCase()+'  '+fmtC(+(x.koncna||x.cena)||0,x.valuta||'EUR')+' '+(x.valuta||'')).join('\n')+(ne.length>20?'\n… in še '+(ne.length-20):'')
+      +(SEL.size?'\n\nNadaljujem z '+SEL.size+' izdelki z Bato ceno.':'\n\nMed izbranimi ni izdelkov z Bato ceno.'));
+    if(!SEL.size) return;
+  }
+  return paketCmsVarno();
+}
 async function paketCmsVarno(){
   let log=null;
   try{const r=await fetch('/cms-log',{cache:'no-store'}); const d=await r.json(); if(d.ok) log=d.log||{};}catch(e){}
