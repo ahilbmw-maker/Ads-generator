@@ -9082,6 +9082,20 @@ def _hsb_iz_kataloga(it: dict):
             or k["sku"].get(str(it.get("naziv") or "").split(" ")[0].upper()))
 
 
+def _hsb_datum_pdf(v) -> str:
+    """»Order submitted: 10/07/2026« (HS+ B2B, mesec/dan/leto) → '2026-10-07'; '' če ni prepoznan."""
+    m = re.match(r"\s*(\d{1,2})[/.](\d{1,2})[/.](\d{4})", str(v or ""))
+    if not m:
+        return _hsb_datum(v)
+    mes, dan, leto = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if mes > 12:   # očitno dan/mesec
+        mes, dan = dan, mes
+    try:
+        return datetime(leto, mes, dan).strftime("%Y-%m-%d")
+    except ValueError:
+        return ""
+
+
 def _hsb_prevzeto_iz_zgod(it: dict) -> str:
     """Čas zadnje spremembe statusa v »prevzeto« iz zgodovine (za postavke pred poljem prevzeto_at)."""
     if it.get("status") != "prevzeto":
@@ -9096,7 +9110,9 @@ async def hsplus_seznam():
     for it in d["items"]:
         k = _hsb_iz_kataloga(it) or {}
         items.append(dict(it, slika=it.get("slika") or k.get("slika") or "", sku=it.get("sku") or k.get("sku") or "",
-                          datum_narocila=it.get("datum_narocila") or str(it.get("dodano") or "")[:10],   # privzeto = dan uvoza/vnosa
+                          # datum naročila: ročno vpisan > datum na PDF naročilu > dan uvoza PDF; ročne postavke brez datuma ostanejo prazne
+                          datum_narocila=it.get("datum_narocila") or ("" if it.get("rocno") else
+                                         (_hsb_datum_pdf((d["narocila"].get(str(it.get("narocilo") or "")) or {}).get("datum")) or str(it.get("dodano") or "")[:10])),
                           prevzeto_at=it.get("prevzeto_at") or _hsb_prevzeto_iz_zgod(it)))
     poiz = []
     for p in d["poizvedbe"]:
