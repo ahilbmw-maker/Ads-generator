@@ -103,7 +103,8 @@
   .sug-it { display:flex; gap:8px; align-items:center; padding:6px 8px; cursor:pointer; border-bottom:1px solid var(--bd); font-size:12.5px; }
   .sug-it:hover, .sug-it.on { background:rgba(58,111,255,.08); }
   .sug-it img, .sug-it .noimg { width:34px; height:34px; flex-shrink:0; }
-  .sklad { display:grid; grid-template-columns:repeat(auto-fit,minmax(580px,1fr)); gap:12px; }
+  .sklad { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr)); gap:12px; }
+  .srow.brez-cas { grid-template-columns:46px minmax(140px,1fr) auto; }
   .srow { display:grid; grid-template-columns:46px minmax(140px,1fr) 240px auto; gap:12px; align-items:center; padding:8px 0; border-bottom:1px solid var(--bd); font-size:13px; }
   .sname { min-width:0; overflow-wrap:anywhere; }
   .cas-prazno input { border:1px dashed var(--c-cak) !important; }
@@ -195,7 +196,7 @@
     </div>
   </div>
 
-  <div id="pg-skladisce" style="display:none"><div class="sklad" id="skl"></div></div>
+  <div id="pg-skladisce" style="display:none"><div class="sub" id="sklHead" style="margin-bottom:10px"></div><div class="sklad" id="skl"></div></div>
 
   <!-- ❓ POIZVEDBE: ali ima HS+ zalogo / kdaj bo / ukinjeno — ni naročilo; »→ V naročila«, ko HS+ potrdi zalogo -->
   <div id="pg-poizvedbe" style="display:none">
@@ -612,23 +613,25 @@ function casovnica(it) {
 }
 function renderSklad() {
   const el = document.getElementById('skl'); if (!el) return;
-  el.innerHTML = '<div style="grid-column:1/-1;display:flex;gap:10px;align-items:center" class="sub">Pričakovan dobavni čas (cilj): <input class="f" type="number" min="1" value="' + CILJ + '" onchange="nastaviCilj(this.value)" style="width:70px;padding:4px 8px"> dni · čakanje se šteje od datuma naročila (📅 v vrstici lahko popraviš)</div>' +
-  SK.concat(['']).map(s => {
+  // nastavitev cilja NAD mrežo (ne kot celica mreže — sicer kartici ne zapolnita širine)
+  document.getElementById('sklHead').innerHTML = 'Grosuplje (oddaljeno skladišče) — pričakovan dobavni čas (cilj): <input class="f" type="number" min="1" value="' + CILJ + '" onchange="nastaviCilj(this.value)" style="width:70px;padding:4px 8px"> dni · čakanje se šteje od datuma naročila (📅 v vrstici lahko popraviš). Brnik je zaloga — brez časovnice.';
+  el.innerHTML = SK.concat(['']).map(s => {
     const its = D.filter(it => it.skladisce === s && it.status !== 'preklicano');
     if (!s && !its.length) return '';
-    const odp = its.filter(it => it.status !== 'prevzeto').sort((a, b) => String(a.datum_narocila).localeCompare(String(b.datum_narocila)));
+    const cas = s === 'Grosuplje';   // časovnica samo za oddaljeno skladišče; Brnik = zaloga, pripravljeno
+    const odp = its.filter(it => it.status !== 'prevzeto').sort((a, b) => cas ? String(a.datum_narocila || '9').localeCompare(String(b.datum_narocila || '9')) : 0);
     const prv = its.filter(it => it.status === 'prevzeto');
     const dob = prv.map(it => it.prevzeto_at && dDat(it.datum_narocila) ? dniMed(dDat(it.datum_narocila), dDat(it.prevzeto_at)) : null).filter(x => x != null);
-    const zam = odp.filter(it => dDat(it.datum_narocila) && dniMed(dDat(it.datum_narocila), danes0()) > CILJ).length;
+    const zam = cas ? odp.filter(it => dDat(it.datum_narocila) && dniMed(dDat(it.datum_narocila), danes0()) > CILJ).length : 0;
     // vrstica = mreža: slika · ime (+ količina, komentar) · časovnica · status
-    const vr = it => '<div class="srow">' + imgHtml(it.slika) +
+    const vr = it => '<div class="srow' + (cas ? '' : ' brez-cas') + '">' + imgHtml(it.slika) +
       '<div class="sname"><b>' + esc(it.naziv) + '</b>' + (it.nasa_sifra ? ' <span class="tag">' + esc(it.nasa_sifra) + '</span>' : '') +
       '<div class="mut">' + kolTxt(it) + '</div>' + (it.opomba ? '<div class="mut">💬 ' + esc(it.opomba) + '</div>' : '') + '</div>' +
-      casovnica(it) + '<span class="pill st-' + it.status + '" style="justify-self:end">' + ST[it.status] + manjkaTxt(it) + '</span></div>';
+      (cas ? casovnica(it) : '') + '<span class="pill st-' + it.status + '" style="justify-self:end">' + ST[it.status] + manjkaTxt(it) + '</span></div>';
     return '<div class="card sk-' + (s || 'brez') + '"><h3>' + (s ? '<span class="skp sk-' + s + '" style="font-size:15px">' + s + '</span>' : 'Ni določeno') + '</h3>' +
       '<div class="mut" style="margin-bottom:8px">Odprto ' + odp.length + ' (' + odp.reduce((a, it) => a + (it.kartoni || 0), 0) + ' krt)' +
         (zam ? ' · <b style="color:var(--c-man)">' + zam + ' čez cilj</b>' : '') + ' · prevzeto ' + prv.length +
-        (dob.length ? ' · Ø dobava <b>' + Math.round(dob.reduce((a, x) => a + x, 0) / dob.length) + ' dni</b> (' + dob.length + ')' : '') + '</div>' +
+        (cas && dob.length ? ' · Ø dobava <b>' + Math.round(dob.reduce((a, x) => a + x, 0) / dob.length) + ' dni</b> (' + dob.length + ')' : '') + '</div>' +
       (odp.map(vr).join('') || '<div class="mut">Ni odprtih postavk.</div>') +
       (prv.length ? '<details style="margin-top:8px"><summary class="mut" style="cursor:pointer">Prevzeto (' + prv.length + ')</summary>' + prv.map(vr).join('') + '</details>' : '') + '</div>';
   }).join('');
