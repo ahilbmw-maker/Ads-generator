@@ -9004,10 +9004,82 @@ def hsplus_page():
     return FileResponse("static/hsplus.html", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
 
 
+_hsb_kat = {"mtime": None, "ean": {}, "sku": {}, "vsi": []}
+
+
+def _hsb_katalog():
+    """HS+ katalog (Orodja → HS+ katalog, predpomnilnik na disku) → indeks po EAN in SKU; osveži ob spremembi datoteke."""
+    try:
+        mt = HSPLUS_CATALOG_CACHE.stat().st_mtime if HSPLUS_CATALOG_CACHE.exists() else None
+    except Exception:
+        mt = None
+    if mt != _hsb_kat["mtime"]:
+        prods = ((_jload(HSPLUS_CATALOG_CACHE, {}) or {}).get("products") or []) if mt else []
+        vsi = [{"sku": str(p.get("sku") or "").strip(), "ean": str(p.get("ean") or "").strip(), "naziv": str(p.get("name") or "").strip(),
+                "cena": p.get("price"), "slika": p.get("image") or ""} for p in prods if p.get("sku") or p.get("name")]
+        _hsb_kat.update(mtime=mt, vsi=vsi, ean={p["ean"]: p for p in vsi if p["ean"]}, sku={p["sku"].upper(): p for p in vsi if p["sku"]})
+    return _hsb_kat
+
+
+def _hsb_iz_kataloga(it: dict):
+    """Postavka → zapis v HS+ katalogu (po EAN, sicer SKU, sicer ime pred prvim presledkom = SKU na B2B naročilu)."""
+    k = _hsb_katalog()
+    return (k["ean"].get(str(it.get("ean") or "")) or k["sku"].get(str(it.get("sku") or "").upper())
+            or k["sku"].get(str(it.get("naziv") or "").split(" ")[0].upper()))
+
+
 @app.get("/hsplus/api/seznam")
 async def hsplus_seznam():
     d = _hsb_load()
-    return {"ok": True, "items": d["items"], "skladisca": HSB_SKLADISCA, "statusi": HSB_STATUSI}
+    items = []
+    for it in d["items"]:
+        k = _hsb_iz_kataloga(it) or {}
+        items.append(dict(it, slika=it.get("slika") or k.get("slika") or "", sku=it.get("sku") or k.get("sku") or ""))
+    return {"ok": True, "items": items, "skladisca": HSB_SKLADISCA, "statusi": HSB_STATUSI}
+
+
+@app.get("/hsplus/api/katalog")
+async def hsplus_api_katalog(q: str = ""):
+    """Predlogi za ročno postavko iz HS+ kataloga: SKU / ime / EAN vsebuje q (najprej začetek SKU-ja)."""
+    q = (q or "").strip().upper()
+    if len(q) < 2:
+        return {"ok": True, "predlogi": []}
+    vsi = _hsb_katalog()["vsi"]
+    zad = [p for p in vsi if q in p["sku"].upper() or q in p["naziv"].upper() or (q.isdigit() and q in p["ean"])]
+    zad.sort(key=lambda p: (not p["sku"].upper().startswith(q), p["sku"]))
+    return {"ok": True, "predlogi": zad[:12], "katalog": len(vsi)}
+
+
+@app.post("/hsplus/api/dodaj")
+async def hsplus_dodaj(data: dict):
+    """Ročna postavka: {naziv, sku?, ean?, cena_kos?, kos_karton?, kartoni?, kosov?, nasa_sifra?, skladisce?, opomba?, kdo?}."""
+    naziv = str(data.get("naziv") or data.get("sku") or "").strip()[:150]
+    if not naziv:
+        return {"ok": False, "error": "Vpiši ime ali SKU izdelka."}
+    def num(k, t=float):
+        try:
+            return t(str(data.get(k)).replace(",", ".")) if data.get(k) not in (None, "") else 0
+        except Exception:
+            return 0
+    kart, kosk = int(num("kartoni")), int(num("kos_karton"))
+    kosov = int(num("kosov")) or kart * kosk
+    if kosov <= 0:
+        return {"ok": False, "error": "Vpiši količino (kosov ali kartoni × kosov v kartonu)."}
+    sk = data.get("skladisce") if data.get("skladisce") in HSB_SKLADISCA else "Brnik"
+    cena = round(num("cena_kos"), 2)
+    it = {"id": uuid.uuid4().hex[:10], "ean": str(data.get("ean") or "").strip(), "naziv": naziv, "sku": str(data.get("sku") or "").strip()[:60],
+          "barva": "", "cena_kos": cena, "kos_karton": kosk, "kartoni": kart, "kosov": kosov, "vsota": round(cena * kosov, 2),
+          "narocilo": "", "rocno": True, "dodano": _lj_iso(), "idx": 0, "skladisce": sk, "status": "naroceno", "manjka": 0, "manjka_kartoni": 0,
+          "nasa_sifra": str(data.get("nasa_sifra") or "").strip()[:40], "opomba": str(data.get("opomba") or "")[:300],
+          "zgodovina": [{"at": _lj_iso(), "polje": "ročno dodano", "prej": "", "potem": naziv, "kdo": str(data.get("kdo") or "")[:40]}]}
+    async with _hsb_lock:
+        try:
+            d = _hsb_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Shramba ni berljiva ({e}) — poskusi znova."}
+        d["items"] = [it] + d["items"]
+        _jsave(HSB_FILE, d)
+    return {"ok": True, "id": it["id"]}
 
 
 def _hsb_beri_pdf(content_bytes: bytes) -> dict:
@@ -9086,7 +9158,11 @@ async def hsplus_uvoz(file: UploadFile = File(...), znova: int = 0):
             novi.append({"id": uuid.uuid4().hex[:10], "ean": str(i.get("ean") or "").strip("() "), "naziv": str(i.get("naziv") or "").strip(),
                          "barva": str(i.get("barva") or "").strip(), "cena_kos": round(f(i.get("cena_kos")), 2), "kos_karton": kos,
                          "kartoni": kart, "kosov": kart * kos, "vsota": round(f(i.get("vsota")), 2), "narocilo": nar,
-                         "dodano": zdaj, "idx": idx, "skladisce": "", "status": "naroceno", "manjka": 0, "opomba": "", "zgodovina": []})
+                         "dodano": zdaj, "idx": idx, "skladisce": "Brnik", "status": "naroceno", "manjka": 0, "manjka_kartoni": 0,
+                         "nasa_sifra": "", "opomba": "", "zgodovina": []})   # privzeto skladišče Brnik
+            k = _hsb_iz_kataloga(novi[-1])
+            if k and k.get("sku"):
+                novi[-1]["sku"] = k["sku"]
         d["items"] = novi + d["items"]
         if nar:
             d["narocila"][nar] = {"uvoz": zdaj, "datum": p.get("datum"), "skupaj": p.get("skupaj"), "n": len(novi), "ime": file.filename}
@@ -9110,13 +9186,16 @@ async def hsplus_uredi(data: dict):
         if data["status"] not in HSB_STATUSI:
             return {"ok": False, "error": "Neznan status."}
         spr["status"] = data["status"]
-    if "manjka" in data:
-        try:
-            spr["manjka"] = max(0, int(data.get("manjka") or 0))
-        except Exception:
-            return {"ok": False, "error": "Manjka mora biti število."}
+    for k in ("manjka", "manjka_kartoni"):   # manjka v kartonih (UI) + preračunano v kose
+        if k in data:
+            try:
+                spr[k] = max(0, int(data.get(k) or 0))
+            except Exception:
+                return {"ok": False, "error": "Manjka mora biti število."}
     if "opomba" in data:
         spr["opomba"] = str(data.get("opomba") or "")[:300]
+    if "nasa_sifra" in data:
+        spr["nasa_sifra"] = str(data.get("nasa_sifra") or "").strip()[:40]
     if not spr:
         return {"ok": False, "error": "Ni sprememb."}
     kdo = str(data.get("kdo") or "")[:40]
