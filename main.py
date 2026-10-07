@@ -1588,6 +1588,147 @@ async def _cms_log_iz_feeda_izracun(od: str, zn: str, potrdi):
     return {"ok": True, "od": od, "zapisanih": n, "po_trgu": po_trgu, "skupaj": len(log)}
 
 
+# ═══ 🧮 VRSTA CEN (korak 2+3): potrjeni predlogi iz »Plan cen« → vrsta; vtičnik jih jemlje po 5 in nastavi TOČNO planirano
+# prodajno ceno (p_nova), če je cena v CMS še enaka planirani (p_stara) — sicer ⚠ (brez dvojnega dviga). Razveljavitev = obratna postavka.
+VRSTA_FILE = DATA_DIR / "cene_vrsta.json"
+_vrsta_lock = asyncio.Lock()
+VRSTA_STATUSI = ("caka", "v_delu", "ok", "napaka", "preklicano")
+
+
+def _vrsta_load(strict=False) -> dict:
+    d = _jload(VRSTA_FILE, {}, strict=strict) or {}
+    d.setdefault("postavke", []); d.setdefault("ustavljeno", False)
+    return d
+
+
+@app.get("/cene-vrsta")
+async def cene_vrsta_get():
+    d = _vrsta_load()
+    zdaj = datetime.fromisoformat(_lj_iso())
+    for p in d["postavke"]:   # zataknjene (v delu > 15 min, npr. zaprt Chrome) prikaži kot čakajoče — naslednji jih spet vzame
+        if p.get("status") == "v_delu" and p.get("zacetek") and (zdaj - datetime.fromisoformat(p["zacetek"])).total_seconds() > 900:
+            p["status"] = "caka"
+    st = {s: sum(1 for p in d["postavke"] if p.get("status") == s) for s in VRSTA_STATUSI}
+    return {"ok": True, "postavke": d["postavke"][-2000:], "stevci": st, "ustavljeno": d["ustavljeno"]}
+
+
+@app.post("/cene-vrsta/dodaj")
+async def cene_vrsta_dodaj(data: dict):
+    """{items: [{trg, cms_id, g_id, sku, naziv, cur, stara, nova}]} — stara = končna cena ob planu, nova = cilj (prodajna)."""
+    items = [i for i in (data.get("items") or []) if isinstance(i, dict) and i.get("cms_id") and i.get("trg")][:1000]
+    if not items:
+        return {"ok": False, "error": "Ni postavk."}
+    async with _vrsta_lock:
+        try:
+            d = _vrsta_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Vrsta ni berljiva ({e})"}
+        odprte = {(p["trg"], str(p["cms_id"])) for p in d["postavke"] if p.get("status") in ("caka", "v_delu")}
+        zdaj, n, ze = _lj_iso(), 0, 0
+        for i in items:
+            k = (str(i["trg"]).lower(), str(i["cms_id"]))
+            try:
+                stara, nova = float(i.get("stara")), float(i.get("nova"))
+            except Exception:
+                continue
+            if k in odprte:
+                ze += 1
+                continue
+            d["postavke"].append({"id": uuid.uuid4().hex[:10], "trg": k[0], "cms_id": k[1], "g_id": str(i.get("g_id") or ""),
+                                  "sku": str(i.get("sku") or "")[:60], "naziv": str(i.get("naziv") or "")[:120], "cur": str(i.get("cur") or "")[:4],
+                                  "stara": stara, "nova": nova, "status": "caka", "dodano": zdaj, "razveljavi_za": i.get("razveljavi_za") or ""})
+            odprte.add(k); n += 1
+        d["postavke"] = d["postavke"][-5000:]
+        _jsave(VRSTA_FILE, d)
+    return {"ok": True, "dodanih": n, "ze_v_vrsti": ze}
+
+
+@app.post("/cene-vrsta/naslednji")
+async def cene_vrsta_naslednji(data: dict):
+    """Vtičnik: zasede naslednjih n (privzeto 5) čakajočih, najstarejše najprej. Ustavljena vrsta → prazno."""
+    n = max(1, min(10, int(data.get("n") or 5)))
+    async with _vrsta_lock:
+        try:
+            d = _vrsta_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Vrsta ni berljiva ({e})"}
+        if d["ustavljeno"]:
+            return {"ok": True, "postavke": [], "ustavljeno": True}
+        zdaj = _lj_iso(); zd = datetime.fromisoformat(zdaj)
+        for p in d["postavke"]:
+            if p.get("status") == "v_delu" and p.get("zacetek") and (zd - datetime.fromisoformat(p["zacetek"])).total_seconds() > 900:
+                p["status"] = "caka"
+        vzeti = [p for p in d["postavke"] if p.get("status") == "caka"][:n]
+        for p in vzeti:
+            p["status"], p["zacetek"] = "v_delu", zdaj
+        _jsave(VRSTA_FILE, d)
+    return {"ok": True, "postavke": vzeti}
+
+
+@app.post("/cene-vrsta/rezultat")
+async def cene_vrsta_rezultat(data: dict):
+    """Vtičnik: {id, ok: bool, napaka?, rezultat: {prodajna_stara, prodajna, redna_stara, redna, curr}} → ob uspehu tudi zapis v dnevnik CMS."""
+    pid = str(data.get("id") or "")
+    async with _vrsta_lock:
+        try:
+            d = _vrsta_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Vrsta ni berljiva ({e})"}
+        p = next((x for x in d["postavke"] if x.get("id") == pid), None)
+        if not p:
+            return {"ok": False, "error": "Postavke ni v vrsti."}
+        p["status"] = "ok" if data.get("ok") else "napaka"
+        p["napaka"] = "" if data.get("ok") else str(data.get("napaka") or "napaka")[:200]
+        p["rezultat"] = data.get("rezultat") if isinstance(data.get("rezultat"), dict) else {}
+        p["konec"] = _lj_iso()
+        _jsave(VRSTA_FILE, d)
+    if data.get("ok"):   # urejeno → dnevnik CMS (Marža to prikaže kot ✓ in varovalka »danes že urejeno« ga upošteva)
+        async with _cms_log_get_lock():
+            try:
+                log = _jload(CMS_LOG_FILE, {}, strict=True)
+                k = f"{p['trg']}|{p['cms_id']}"
+                e = log.get(k) or {}
+                e.update({"cms_id": p["cms_id"], "trg": p["trg"], "sku": p["sku"].upper(), "vir": "Vrsta cen", "done_at": _lj_iso(),
+                          "opened_at": e.get("opened_at") or _lj_iso(), "cena_ob_odprtju": p["stara"]})
+                log[k] = e
+                _jsave(CMS_LOG_FILE, log)
+            except Exception as ex:
+                print(f"[vrsta] dnevnik CMS: {ex}")
+    return {"ok": True}
+
+
+@app.post("/cene-vrsta/akcija")
+async def cene_vrsta_akcija(data: dict):
+    """{ids, akcija: preklici|znova|razveljavi} ali {ustavljeno: bool}. Razveljavi = nova čakajoča postavka z obratno ceno (nova → stara)."""
+    async with _vrsta_lock:
+        try:
+            d = _vrsta_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Vrsta ni berljiva ({e})"}
+        if "ustavljeno" in data:
+            d["ustavljeno"] = bool(data["ustavljeno"])
+            _jsave(VRSTA_FILE, d)
+            return {"ok": True, "ustavljeno": d["ustavljeno"]}
+        ids, ak, n = set(str(x) for x in (data.get("ids") or [])), data.get("akcija"), 0
+        nove = []
+        for p in d["postavke"]:
+            if p.get("id") not in ids:
+                continue
+            if ak == "preklici" and p.get("status") in ("caka", "napaka"):
+                p["status"] = "preklicano"; n += 1
+            elif ak == "znova" and p.get("status") in ("napaka", "preklicano", "v_delu"):
+                p["status"], p["napaka"] = "caka", ""; n += 1
+            elif ak == "razveljavi" and p.get("status") == "ok":
+                r = p.get("rezultat") or {}
+                nove.append({"id": uuid.uuid4().hex[:10], "trg": p["trg"], "cms_id": p["cms_id"], "g_id": p.get("g_id", ""), "sku": p["sku"],
+                             "naziv": p.get("naziv", ""), "cur": p.get("cur", ""), "stara": float(r.get("prodajna") or p["nova"]),
+                             "nova": float(r.get("prodajna_stara") or p["stara"]), "status": "caka", "dodano": _lj_iso(), "razveljavi_za": p["id"]})
+                p["razveljavljeno"] = _lj_iso(); n += 1
+        d["postavke"].extend(nove)
+        _jsave(VRSTA_FILE, d)
+    return {"ok": True, "n": n}
+
+
 def _cms_status(trg: str, cms_id, g_id, cena_zdaj, log: dict, changes: dict, meta: dict):
     """Status vrstice iz dnevnika + sprememb cen.
     potrjeno  = po odprtju je feed pokazal spremenjeno ceno
@@ -12305,6 +12446,7 @@ async def marza_trgi_stran(request: Request):
   .plan-tab table{width:100%;border-collapse:collapse}.plan-tab th{text-align:left;font-size:11px;color:var(--txt3);text-transform:uppercase;padding:6px;border-bottom:1px solid var(--bd);position:sticky;top:0;background:var(--card,#fff)}
   .plan-tab td{padding:6px;border-bottom:1px solid var(--bd);vertical-align:middle}.plan-tab .r{text-align:right;white-space:nowrap}
   tr.plan-flag td{background:rgba(245,158,11,.08)}
+  .vrsta-ov{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding-top:4vh}
   button.hist{border:0;background:none;cursor:pointer;font-size:12px;padding:0 3px;opacity:.45;vertical-align:middle}
   button.hist:hover{opacity:1}
   #histOkno{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding-top:8vh}
@@ -12372,6 +12514,7 @@ async def marza_trgi_stran(request: Request):
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s ✓ (popravljeno) ali potrjene v novem feedu. Samo odprti v CMS (✎) in opozorila ostanejo vidni."><input type="checkbox" id="skrijUr" onchange="savePref();render()"> Skrij urejene</label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s 🚫 (ne uvažamo na ta trg — npr. carina v RS). Izključeni so tudi iz Bato cen."><input type="checkbox" id="skrijNu" checked onchange="savePref();render()"> Skrij neuvozne <span id="nuCnt" class="dim"></span></label>
+  <button class="bato-btn" id="vrstaBtn" onclick="vrstaOdpri()" title="Vrsta potrjenih cen iz »🧮 Plan cen« — izvaja jo vtičnik po 5">📋 Vrsta cen</button>
   <button class="bato-btn" id="batoBtn" onclick="toggleBato()" title="Redne cene, ki se ne končajo na bato (x,99 / x99 / x9)">💲 Bato cene</button>
   <button class="btn" id="mainCsv" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
@@ -12960,7 +13103,7 @@ function planRisi() {
       Object.entries(poRazlogu).map(([r, a]) => '<div><b>' + esc(r) + '</b> (' + a.length + '): ' + a.slice(0, 40).map(esc).join(', ') + (a.length > 40 ? ' …' : '') + '</div>').join('') + '</div></details>' : '') +
     '<div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap"><span class="dim">⚠ = marža pod pragom ali sprememba nad mejo — ni samodejno potrjeno, lahko ga označiš sama.</span>' +
       '<button class="btn" style="margin-left:auto" onclick="planCsv()">⬇ Izvozi CSV</button>' +
-      '<button class="btn" style="background:#16a34a;color:#fff;border-color:#16a34a" onclick="alert(\'Korak 2 (vrsta na strežniku in izvajanje prek vtičnika) še ni narejen — za zdaj je plan samo za pregled in CSV.\')">✓ Pošlji ' + iz.length + ' v vrsto</button></div>' +
+      '<button class="btn" style="background:#16a34a;color:#fff;border-color:#16a34a" onclick="planVVrsto()">✓ Pošlji ' + iz.length + ' v vrsto</button></div>' +
   '</div>';
 }
 function planCsv() {
@@ -12971,6 +13114,71 @@ function planCsv() {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = 'plan_cen_' + String(trg).toUpperCase() + '_' + new Date().toISOString().slice(0, 10) + '.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
+// ═══ 📋 VRSTA CEN: potrjeni predlogi iz plana → strežnik; vtičnik (»▶ Izvajaj vrsto« v panelu) jih jemlje po 5 ═══
+async function planVVrsto() {
+  const iz = PLAN.predlogi.filter(p => PLAN.izbrani.has(p.x.g_id));
+  if (!iz.length) { alert('Ni potrjenih predlogov.'); return; }
+  if (!confirm('✓ Pošljem ' + iz.length + ' cen (' + String(trg).toUpperCase() + ') v vrsto?\n\nVtičnik jih bo nastavil po 5 hkrati, ko je v panelu vklopljeno »▶ Izvajaj vrsto« (Chrome mora biti odprt in prijavljen v CMS).\nVsak izdelek dobi TOČNO planirano ceno — če je cena v CMS medtem drugačna, ga preskoči (⚠).')) return;
+  try {
+    const r = await (await fetch('/cene-vrsta/dodaj', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: iz.map(p => ({ trg, cms_id: p.x.cms_id, g_id: p.x.g_id, sku: p.sku, naziv: String(p.x.naziv || '').slice(0, 120), cur: p.cur, stara: p.c, nova: p.pred })) }) })).json();
+    if (!r.ok) { alert(r.error || 'Napaka'); return; }
+    document.getElementById('planOkno').style.display = 'none';
+    SEL.clear(); selLast = -1; render();
+    vrstaOdpri('✓ V vrsto dodanih ' + r.dodanih + (r.ze_v_vrsti ? ' · ' + r.ze_v_vrsti + ' je že čakalo v vrsti' : '') + '. V panelu vtičnika vklopi »▶ Izvajaj vrsto«.');
+  } catch (e) { alert('Pošiljanje ni uspelo — preveri povezavo.'); }
+}
+let VRSTA = null, vrstaTimer = null, vrstaFlt = 'odprte';
+async function vrstaNalozi() {
+  try { const d = await (await fetch('/cene-vrsta', { cache: 'no-store' })).json(); if (d.ok) VRSTA = d; } catch (e) {}
+  const b = document.getElementById('vrstaBtn');
+  if (b && VRSTA) { const s = VRSTA.stevci, odp = (s.caka || 0) + (s.v_delu || 0); b.textContent = '📋 Vrsta cen' + (odp ? ' · ' + odp : '') + (s.napaka ? ' · ⚠' + s.napaka : ''); }
+  if (document.getElementById('vrstaOkno') && document.getElementById('vrstaOkno').style.display !== 'none') vrstaRisi();
+}
+function vrstaOdpri(sporocilo) {
+  let o = document.getElementById('vrstaOkno');
+  if (!o) { o = document.createElement('div'); o.id = 'vrstaOkno'; o.className = 'vrsta-ov'; document.body.appendChild(o);
+    o.addEventListener('click', e => { if (e.target === o) vrstaZapri(); }); }
+  o.style.display = 'flex'; o.dataset.msg = sporocilo || '';
+  vrstaNalozi(); clearInterval(vrstaTimer); vrstaTimer = setInterval(vrstaNalozi, 10000);   // v živo, dokler je okno odprto
+}
+function vrstaZapri() { const o = document.getElementById('vrstaOkno'); if (o) o.style.display = 'none'; clearInterval(vrstaTimer); vrstaTimer = null; }
+async function vrstaAkcija(body) {
+  try { const r = await (await fetch('/cene-vrsta/akcija', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json(); if (!r.ok) alert(r.error || 'Napaka'); } catch (e) {}
+  vrstaNalozi();
+}
+function vrstaRisi() {
+  const o = document.getElementById('vrstaOkno'); if (!o || !VRSTA) return;
+  const S = { caka: ['⏳ čaka', '#64748b'], v_delu: ['⚙️ v delu', '#2563eb'], ok: ['✅ urejeno', '#15803d'], napaka: ['⚠ napaka', '#dc2626'], preklicano: ['✕ preklicano', '#94a3b8'] };
+  const s = VRSTA.stevci, vse = VRSTA.postavke.slice().reverse();
+  const vid = vse.filter(p => vrstaFlt === 'vse' || (vrstaFlt === 'odprte' ? ['caka', 'v_delu', 'napaka'].includes(p.status) : p.status === vrstaFlt));
+  const f = v => v == null || v === '' ? '—' : (Math.round(v * 100) / 100).toLocaleString('sl-SI');
+  const ch = (k, l) => '<span class="chip' + (vrstaFlt === k ? ' on' : '') + '" onclick="vrstaFlt=\'' + k + '\';vrstaRisi()">' + l + '</span>';
+  o.innerHTML = '<div class="plan-box">' +
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:17px">📋 Vrsta cen</b>' +
+      '<span class="dim">' + (s.caka || 0) + ' čaka · ' + (s.v_delu || 0) + ' v delu · ' + (s.ok || 0) + ' urejeno · ' + (s.napaka || 0) + ' napak</span>' +
+      (VRSTA.ustavljeno ? '<b style="color:#dc2626">⏸ ustavljeno</b>' : '') +
+      '<button class="btn" style="margin-left:auto" onclick="vrstaAkcija({ustavljeno:' + (!VRSTA.ustavljeno) + '})">' + (VRSTA.ustavljeno ? '▶ Nadaljuj vrsto' : '⏸ Ustavi vrsto') + '</button>' +
+      '<button class="btn" onclick="vrstaZapri()">✕</button></div>' +
+    (o.dataset.msg ? '<div style="margin:8px 0;padding:8px 10px;border-radius:8px;background:#dcfce7;color:#166534">' + esc(o.dataset.msg) + '</div>' : '') +
+    '<div class="dim" style="margin:6px 0 8px">Izvaja jo vtičnik: v panelu vklopi »▶ Izvajaj vrsto« (Chrome odprt, prijavljen v CMS). Vsak izdelek dobi točno ceno »Novo«; če je cena v CMS drugačna od »Prej«, ga preskoči (⚠).</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + ch('odprte', 'Odprte') + ch('ok', 'Urejene') + ch('napaka', 'Napake') + ch('preklicano', 'Preklicane') + ch('vse', 'Vse') + '</div>' +
+    (vid.length ? '<div class="plan-tab"><table><thead><tr><th>Trg</th><th>SKU</th><th class="r">Prej</th><th class="r">Novo</th><th>Stanje</th><th>Dodano</th><th></th></tr></thead><tbody>' +
+      vid.slice(0, 500).map(p => '<tr><td><b>' + esc(String(p.trg).toUpperCase()) + '</b></td><td><b style="font-family:ui-monospace,monospace">' + esc(p.sku) + '</b>' + (p.razveljavi_za ? ' <span class="dim">↩ razveljavitev</span>' : '') +
+        '<div class="dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.naziv || '') + '</div></td>' +
+        '<td class="r">' + f(p.stara) + '</td><td class="r"><b>' + f(p.nova) + '</b> <span class="dim">' + esc(p.cur || '') + '</span></td>' +
+        '<td><b style="color:' + (S[p.status] || ['', ''])[1] + '">' + (S[p.status] || [p.status])[0] + '</b>' + (p.napaka ? '<div class="dim" style="color:#dc2626">' + esc(p.napaka) + '</div>' : '') +
+          (p.razveljavljeno ? '<div class="dim">razveljavljeno ' + fmtT(p.razveljavljeno) + '</div>' : '') + '</td>' +
+        '<td class="dim">' + fmtT(p.konec || p.dodano) + '</td><td style="white-space:nowrap">' +
+          (['caka', 'napaka'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'preklici\'})">✕ Prekliči</button> ' : '') +
+          (['napaka', 'preklicano'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'znova\'})">↻ Znova</button> ' : '') +
+          (p.status === 'ok' && !p.razveljavljeno ? '<button class="btn" title="Doda obratno spremembo v vrsto (nazaj na prejšnjo ceno)" onclick="if(confirm(\'Vrnem ' + esc(p.sku) + ' na ' + f(p.stara) + '?\'))vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'razveljavi\'})">↩ Razveljavi</button>' : '') +
+        '</td></tr>').join('') + '</tbody></table></div>'
+      : '<div class="dim" style="padding:20px;text-align:center">Ni postavk.</div>') +
+    ((s.caka || 0) + (s.napaka || 0) ? '<div style="margin-top:10px;display:flex;gap:8px"><button class="btn" onclick="if(confirm(\'Prekličem vse čakajoče in napake?\'))vrstaAkcija({ids:VRSTA.postavke.filter(p=>[\'caka\',\'napaka\'].includes(p.status)).map(p=>p.id),akcija:\'preklici\'})">✕ Prekliči vse odprte</button></div>' : '') +
+  '</div>';
+}
+setTimeout(vrstaNalozi, 1500);
 // ▶ PRESKOČI BATO CENE: iz izbora IZPUSTI (odznači) izdelke, katerih KONČNA cena že ima Bato končnico (batoCands → null);
 // uredijo se samo ostali; nato običajen tok z varovalko »danes že urejeno«.
 async function paketSamoBato(){
