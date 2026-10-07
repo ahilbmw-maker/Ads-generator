@@ -1629,6 +1629,7 @@ async def cene_vrsta_dodaj(data: dict):
             k = (str(i["trg"]).lower(), str(i["cms_id"]))
             try:
                 stara, nova = float(i.get("stara")), float(i.get("nova"))
+                ref = float(i.get("ref") or stara)   # redna cena iz feeda = pričakovana »Prodajna« v CMS
             except Exception:
                 continue
             if k in odprte:
@@ -1636,7 +1637,7 @@ async def cene_vrsta_dodaj(data: dict):
                 continue
             d["postavke"].append({"id": uuid.uuid4().hex[:10], "trg": k[0], "cms_id": k[1], "g_id": str(i.get("g_id") or ""),
                                   "sku": str(i.get("sku") or "")[:60], "naziv": str(i.get("naziv") or "")[:120], "cur": str(i.get("cur") or "")[:4],
-                                  "stara": stara, "nova": nova, "status": "caka", "dodano": zdaj, "razveljavi_za": i.get("razveljavi_za") or ""})
+                                  "stara": stara, "nova": nova, "ref": ref, "status": "caka", "dodano": zdaj, "razveljavi_za": i.get("razveljavi_za") or ""})
             odprte.add(k); n += 1
         d["postavke"] = d["postavke"][-5000:]
         _jsave(VRSTA_FILE, d)
@@ -1720,9 +1721,10 @@ async def cene_vrsta_akcija(data: dict):
                 p["status"], p["napaka"] = "caka", ""; n += 1
             elif ak == "razveljavi" and p.get("status") == "ok":
                 r = p.get("rezultat") or {}
+                # obratno: končna nova → končna stara; pričakovana »Prodajna« v CMS = tista, ki jo je nastavil vtičnik
                 nove.append({"id": uuid.uuid4().hex[:10], "trg": p["trg"], "cms_id": p["cms_id"], "g_id": p.get("g_id", ""), "sku": p["sku"],
-                             "naziv": p.get("naziv", ""), "cur": p.get("cur", ""), "stara": float(r.get("prodajna") or p["nova"]),
-                             "nova": float(r.get("prodajna_stara") or p["stara"]), "status": "caka", "dodano": _lj_iso(), "razveljavi_za": p["id"]})
+                             "naziv": p.get("naziv", ""), "cur": p.get("cur", ""), "stara": float(p["nova"]), "nova": float(p["stara"]),
+                             "ref": float(r.get("prodajna") or p["nova"]), "status": "caka", "dodano": _lj_iso(), "razveljavi_za": p["id"]})
                 p["razveljavljeno"] = _lj_iso(); n += 1
         d["postavke"].extend(nove)
         _jsave(VRSTA_FILE, d)
@@ -13028,6 +13030,8 @@ function planIzracun() {
   const izb = (D && D.rows || []).filter(x => SEL.has(x.g_id));
   const predlogi = [], preskok = [];
   izb.forEach(x => {
+    // izhodišče = KONČNA cena za stranko (akcijska, če je); vtičnik v CMS spremeni »Prodajna« SORAZMERNO (Prodajna × nova / stara),
+    // da se končna cena premakne točno na cilj — tudi pri popustu/akciji (ref = redna cena iz feeda za preverbo »Prodajna« v CMS)
     const cur = x.valuta || 'EUR', c = +(x.koncna || x.cena) || 0, sku = String(x.sku || '').toUpperCase();
     const ze = r => preskok.push({ x, sku, c, cur, r });
     if (!c) return ze('ni cene');
@@ -13121,7 +13125,7 @@ async function planVVrsto() {
   if (!confirm('✓ Pošljem ' + iz.length + ' cen (' + String(trg).toUpperCase() + ') v vrsto?\n\nVtičnik jih bo nastavil po 5 hkrati, ko je v panelu vklopljeno »▶ Izvajaj vrsto« (Chrome mora biti odprt in prijavljen v CMS).\nVsak izdelek dobi TOČNO planirano ceno — če je cena v CMS medtem drugačna, ga preskoči (⚠).')) return;
   try {
     const r = await (await fetch('/cene-vrsta/dodaj', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: iz.map(p => ({ trg, cms_id: p.x.cms_id, g_id: p.x.g_id, sku: p.sku, naziv: String(p.x.naziv || '').slice(0, 120), cur: p.cur, stara: p.c, nova: p.pred })) }) })).json();
+      body: JSON.stringify({ items: iz.map(p => ({ trg, cms_id: p.x.cms_id, g_id: p.x.g_id, sku: p.sku, naziv: String(p.x.naziv || '').slice(0, 120), cur: p.cur, stara: p.c, nova: p.pred, ref: +p.x.cena || p.c })) }) })).json();
     if (!r.ok) { alert(r.error || 'Napaka'); return; }
     document.getElementById('planOkno').style.display = 'none';
     SEL.clear(); selLast = -1; render();
