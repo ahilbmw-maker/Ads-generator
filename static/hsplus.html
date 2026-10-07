@@ -114,6 +114,19 @@
   .sklad .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--bd); font-size:13px; }
   .empty { padding:40px; text-align:center; color:var(--txt3); }
   .btn.ed { padding:4px 8px; }
+  #kol { position:fixed; z-index:60; display:none; background:var(--card); border:1px solid var(--bd); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,.18); padding:10px; user-select:none; touch-action:none; }
+  .kol-top, .kol-bot { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .kol-bot { margin-top:8px; } .kol-bot .sub { margin-right:auto; font-weight:700; color:var(--txt); }
+  .kol-mm { display:flex; gap:16px; margin-top:6px; }
+  .kol-mt { text-align:center; font-weight:700; margin-bottom:4px; text-transform:capitalize; }
+  .kol-g { display:grid; grid-template-columns:repeat(7, 32px); gap:2px; }
+  .kol-h { text-align:center; font-size:11px; color:var(--txt3); }
+  .kol-d { height:30px; display:flex; align-items:center; justify-content:center; border-radius:7px; cursor:pointer; font-size:13px; }
+  .kol-d:hover { background:var(--b-nar); }
+  .kol-danes { outline:1px solid var(--acc); }
+  .kol-v { background:var(--b-cak); color:var(--c-cak); font-weight:700; }
+  .kol-rob { background:var(--c-cak) !important; color:#fff !important; }
+  @media (max-width:600px) { .kol-mm { flex-direction:column; } }
   .novo { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:6px; background:#f97316; color:#fff; font-size:10.5px; font-weight:800; letter-spacing:.5px; vertical-align:middle; }
   .cas { width:240px; } .cas-d { font-size:12px; color:var(--txt2); white-space:nowrap; } .cas-d input { width:135px; min-width:0; }
   input.in { border-bottom:1px dashed var(--bd); border-radius:6px 6px 0 0; }   /* vidno, da je polje urejljivo */
@@ -203,14 +216,15 @@
   <div id="pg-poizvedbe" style="display:none">
     <div class="kpi" id="pKpi"></div>
     <div id="pNova" style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px">
-      <div class="grid" style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1fr 1fr 2.2fr auto;gap:8px;align-items:end">
+      <div class="grid" style="display:grid;grid-template-columns:2fr 1fr 0.7fr 1.4fr 2.2fr auto;gap:8px;align-items:end">
         <label class="sug" style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">Izdelek (SKU / ime / EAN)
           <input class="f" id="pq" autocomplete="off" placeholder="npr. GIRADANCE" oninput="predlogi('p')" onkeydown="sugTipka(event,'p')">
           <div class="sug-list" id="psug"></div></label>
         <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">Naša šifra <input class="f" id="pNs" placeholder="neobvezno"></label>
         <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">Kol. (ctn) <input class="f" id="pKart" inputmode="numeric" placeholder="—"></label>
-        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">Pričakujemo od <input class="f" type="date" id="pOd"></label>
-        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">do <input class="f" type="date" id="pDo"></label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">Pričakujemo (od – do)
+          <button type="button" class="f" id="pRokBtn" data-kol-odpri onclick="kolPolje(this,'pOd','pDo')" style="text-align:left;cursor:pointer">📅 izberi rok</button>
+          <input type="hidden" id="pOd"><input type="hidden" id="pDo"></label>
         <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2);font-weight:600">Komentar <input class="f" id="pKom" placeholder="npr. konec oktobra" onkeydown="if(event.key==='Enter')poizDodaj()"></label>
         <button class="btn pri" onclick="poizDodaj()">＋ Dodaj</button>
       </div>
@@ -459,14 +473,11 @@ let pFlt = 'odprte';
 // ROK kot časovni trak: »5.–10. okt« + trak okna od–do z oznako »danes« + barvni napis; klik → urejanje datumov
 const MES = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec'];
 const DNI = ['ned', 'pon', 'tor', 'sre', 'čet', 'pet', 'sob'];
-const ROK_EDIT = new Set();
 function rokHtml(p) {
   const id = p.id;
-  if (ROK_EDIT.has(id) || !(p.od || p.do)) {
-    if (!ROK_EDIT.has(id) && !['vprasano', 'pricakujemo'].includes(p.status)) return '<span class="mut">—</span>';
-    return '<div class="rok-ed"><input type="date" class="in" value="' + esc(p.od || '') + '" onchange="pUredi([\'' + id + '\'],{od:this.value})"> – ' +
-      '<input type="date" class="in" value="' + esc(p.do || '') + '" onchange="pUredi([\'' + id + '\'],{do:this.value})">' +
-      (ROK_EDIT.has(id) ? ' <button class="btn" style="padding:2px 8px" onclick="ROK_EDIT.delete(\'' + id + '\');render()">✓</button>' : '') + '</div>';
+  if (!(p.od || p.do)) {
+    if (!['vprasano', 'pricakujemo'].includes(p.status)) return '<span class="mut">—</span>';
+    return '<button class="btn" data-kol-odpri onclick="kolVrstica(this,\'' + id + '\')" style="padding:4px 10px;border-style:dashed">📅 izberi rok</button>';
   }
   const d = s => new Date(s + 'T00:00:00'), od = d(p.od || p.do), do_ = d(p.do || p.od), t = danes0();
   const fm = x => x.getDate() + '.', mes = x => MES[x.getMonth()];
@@ -479,11 +490,84 @@ function rokHtml(p) {
   else if (dni < 0) { barva = 'var(--c-man)'; polno = 100; napis = 'zamuja ' + (-dni) + (dni === -1 ? ' dan' : ' dni'); }
   else if (doZac > 0) { barva = doZac <= 7 ? 'var(--c-cak)' : 'var(--c-nar)'; polno = 0; napis = 'začne čez ' + doZac + (doZac === 1 ? ' dan' : ' dni'); }
   else { const vse = Math.max(1, (do_ - od) / 864e5); polno = Math.min(100, Math.max(4, (t - od) / 864e5 / vse * 100)); barva = 'var(--c-cak)'; napis = dni === 0 ? 'danes zadnji dan' : 'v oknu · še ' + dni + (dni === 1 ? ' dan' : ' dni'); }
-  return '<div class="rok" onclick="ROK_EDIT.add(\'' + id + '\');render()" title="Klikni za spremembo datumov">' +
+  return '<div class="rok" data-kol-odpri onclick="kolVrstica(this,\'' + id + '\')" title="Klikni za spremembo roka">' +
     '<div class="rok-d" style="color:' + (odprta ? barva : 'var(--txt2)') + '">📅 ' + razpon + '</div>' +
     '<div class="rok-t"><div class="rok-f" style="width:' + polno + '%;background:' + barva + '"></div></div>' +
     (napis ? '<div class="rok-n" style="color:' + barva + '">' + napis + '</div>' : '') + '</div>';
 }
+// ── 📅 KOLEDAR OD–DO: dva meseca; potegni z miško (ali prstom) čez dni = obdobje, klik na en dan = samo ta datum ──
+let KOL = null;   // { a, b, drag, mesec: Date (1. dan levega meseca), cb }
+function kolOdpri(anchor, od, do_, cb) {
+  const z = od ? new Date(od + 'T00:00:00') : danes0();
+  KOL = { a: od || '', b: do_ || od || '', drag: false, mesec: new Date(z.getFullYear(), z.getMonth(), 1), cb };
+  let el = document.getElementById('kol');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'kol'; document.body.appendChild(el);
+    el.addEventListener('pointerdown', e => {
+      const c = e.target.closest('[data-d]'); if (!c) return;
+      e.preventDefault(); KOL.drag = true; KOL.a = KOL.b = c.dataset.d; kolOznaci();
+      try { el.releasePointerCapture && el.releasePointerCapture(e.pointerId); } catch (er) {}
+    });
+    el.addEventListener('pointermove', e => {   // tudi za prst: element pod točko
+      if (!KOL || !KOL.drag) return;
+      const t = document.elementFromPoint(e.clientX, e.clientY), c = t && t.closest('#kol [data-d]');
+      if (c && c.dataset.d !== KOL.b) { KOL.b = c.dataset.d; kolOznaci(); }
+    });
+    document.addEventListener('pointerup', () => { if (KOL && KOL.drag) { KOL.drag = false; kolPotrdi(); } });
+    document.addEventListener('pointerdown', e => { if (KOL && !e.target.closest('#kol') && !e.target.closest('[data-kol-odpri]')) kolZapri(); }, true);
+    document.addEventListener('keydown', e => { if (KOL && e.key === 'Escape') kolZapri(); });
+  }
+  kolRisi();
+  el.style.display = 'block';
+  const r = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left)) + 'px';
+  el.style.top = (r.bottom + h + 8 < window.innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
+}
+function kolZapri() { const el = document.getElementById('kol'); if (el) el.style.display = 'none'; KOL = null; }
+function kolMesec(n) { KOL.mesec = new Date(KOL.mesec.getFullYear(), KOL.mesec.getMonth() + n, 1); kolRisi(); }
+function kolRisi() {
+  const el = document.getElementById('kol'), dan = isoD(danes0());
+  const mesec = m => {
+    const prvi = new Date(m.getFullYear(), m.getMonth(), 1), zamik = (prvi.getDay() + 6) % 7, dni = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+    let h = '<div class="kol-m"><div class="kol-mt">' + ['januar', 'februar', 'marec', 'april', 'maj', 'junij', 'julij', 'avgust', 'september', 'oktober', 'november', 'december'][m.getMonth()] + ' ' + m.getFullYear() + '</div><div class="kol-g">' +
+      ['po', 'to', 'sr', 'če', 'pe', 'so', 'ne'].map(x => '<span class="kol-h">' + x + '</span>').join('') + '<span></span>'.repeat(zamik);
+    for (let i = 1; i <= dni; i++) { const d = isoD(new Date(m.getFullYear(), m.getMonth(), i)); h += '<span class="kol-d' + (d === dan ? ' kol-danes' : '') + '" data-d="' + d + '">' + i + '</span>'; }
+    return h + '</div></div>';
+  };
+  el.innerHTML = '<div class="kol-top"><button class="btn" onclick="kolMesec(-1)">‹</button><span class="sub">Potegni čez dni za obdobje · klik = en dan</span><button class="btn" onclick="kolMesec(1)">›</button></div>' +
+    '<div class="kol-mm">' + mesec(KOL.mesec) + mesec(new Date(KOL.mesec.getFullYear(), KOL.mesec.getMonth() + 1, 1)) + '</div>' +
+    '<div class="kol-bot"><span id="kolIzbor" class="sub"></span><button class="btn" onclick="KOL.cb(\'\',\'\');kolZapri()">Počisti</button><button class="btn" onclick="kolZapri()">Zapri</button></div>';
+  kolOznaci();
+}
+function kolOznaci() {
+  const [a, b] = [KOL.a, KOL.b].sort();
+  document.querySelectorAll('#kol [data-d]').forEach(c => {
+    const d = c.dataset.d;
+    c.classList.toggle('kol-v', !!a && d >= a && d <= b);
+    c.classList.toggle('kol-rob', !!a && (d === a || d === b));
+  });
+  const iz = document.getElementById('kolIzbor');
+  if (iz) iz.textContent = a ? (a === b ? kratD(a) : kratD(a) + ' – ' + kratD(b)) : '';
+}
+function kolPotrdi() { const [a, b] = [KOL.a, KOL.b].sort(); const cb = KOL.cb; kolZapri(); cb(a, b); }
+// »5. – 10. okt« / »pet 9. okt« / prazno
+function rokTxt(od, do_) {
+  if (!od && !do_) return '';
+  const d = s => new Date(s + 'T00:00:00'), a = d(od || do_), b = d(do_ || od), fm = x => x.getDate() + '.';
+  return +a === +b ? DNI[a.getDay()] + ' ' + fm(a) + ' ' + MES[a.getMonth()] : fm(a) + (a.getMonth() !== b.getMonth() ? ' ' + MES[a.getMonth()] : '') + ' – ' + fm(b) + ' ' + MES[b.getMonth()];
+}
+// vrstica poizvedbe → koledar, shrani takoj
+function kolVrstica(el, id) {
+  const p = P.find(x => x.id === id) || {};
+  kolOdpri(el, p.od || '', p.do || '', (a, b) => pUredi([id], { od: a, do: b }));
+}
+// obrazec nove poizvedbe in okno ✏️: skriti polji + gumb z besedilom
+function kolPolje(btn, idOd, idDo) {
+  kolOdpri(btn, document.getElementById(idOd).value, document.getElementById(idDo).value, (a, b) => {
+    document.getElementById(idOd).value = a; document.getElementById(idDo).value = b; kolGumbTxt(btn, a, b);
+  });
+}
+function kolGumbTxt(btn, a, b) { if (btn) btn.textContent = a ? '📅 ' + rokTxt(a, b) : '📅 izberi rok'; }
 function rokInfo(p) {
   if (!['vprasano', 'pricakujemo'].includes(p.status) || !(p.do || p.od)) return { cls: '', txt: '', dni: 9999 };
   const do_ = new Date((p.do || p.od) + 'T00:00:00'), dni = Math.round((do_ - danes0()) / 864e5);
@@ -544,6 +628,7 @@ function hitriRok(n) {
   else if (n === 'naslednji') { od = new Date(d.getFullYear(), d.getMonth() + 1, 1); do_ = new Date(d.getFullYear(), d.getMonth() + 2, 0); }
   else { od.setDate(d.getDate() + n - 3); do_ = new Date(d); do_.setDate(d.getDate() + n + 3); }
   document.getElementById('pOd').value = isoD(od); document.getElementById('pDo').value = isoD(do_);
+  kolGumbTxt(document.getElementById('pRokBtn'), isoD(od), isoD(do_));
 }
 async function pPost(url, body) {
   try {
@@ -559,6 +644,7 @@ async function poizDodaj() {
   const r = await pPost('/hsplus/api/poizvedba-dodaj', { sku: p ? p.sku : q, naziv: p ? p.naziv : '', ean: p ? p.ean : '', nasa_sifra: v('pNs'), kartoni: v('pKart'), od: v('pOd'), do: v('pDo'), komentar: v('pKom') });
   if (r.ok) {
     ['pq', 'pNs', 'pKart', 'pOd', 'pDo', 'pKom'].forEach(id => document.getElementById(id).value = '');
+    kolGumbTxt(document.getElementById('pRokBtn'), '', '');
     PIZBRAN = null; document.getElementById('pIzbran').textContent = ''; document.getElementById('pq').focus();
     sporocilo('✓ Poizvedba dodana', 'ok', 2500); nalozi();
   }
@@ -659,7 +745,9 @@ function edOdpri(tip, id) {
       f('Datum naročila', 'datum_narocila', x.datum_narocila, 'type="date"') + f('Komentar', 'opomba', x.opomba, '', 'full');
   } else {
     h += f('SKU', 'sku', x.sku) + f('Ime izdelka', 'naziv', x.naziv) + f('Naša šifra', 'nasa_sifra', x.nasa_sifra) + f('Kol. (ctn)', 'kartoni', x.kartoni || '', 'inputmode="numeric" placeholder="—"') +
-      f('Pričakujemo od', 'od', x.od, 'type="date"') + f('do', 'do', x.do, 'type="date"') +
+      '<label class="full">Pričakujemo (od – do)<button type="button" class="f" data-kol-odpri onclick="kolPolje(this,\'edOd\',\'edDo\')" style="text-align:left;cursor:pointer">' +
+        (x.od || x.do ? '📅 ' + rokTxt(x.od, x.do) : '📅 izberi rok') + '</button>' +
+        '<input type="hidden" id="edOd" data-k="od" value="' + esc(x.od || '') + '"><input type="hidden" id="edDo" data-k="do" value="' + esc(x.do || '') + '"></label>' +
       '<label class="full">Status<select class="f" data-k="status">' + Object.entries(PST).map(([k, l]) => '<option value="' + k + '"' + (x.status === k ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>' +
       f('Komentar', 'komentar', x.komentar, '', 'full');
   }
