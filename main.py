@@ -1608,7 +1608,29 @@ async def cene_vrsta_get():
     for p in d["postavke"]:   # zataknjene (v delu > 15 min, npr. zaprt Chrome) prikaži kot čakajoče — naslednji jih spet vzame
         if p.get("status") == "v_delu" and p.get("zacetek") and (zdaj - datetime.fromisoformat(p["zacetek"])).total_seconds() > 900:
             p["status"] = "caka"
+    # ✓/⚠ PREVERBA S FEEDOM: pri urejenih primerjaj ceno za stranko v feedu (zgrajen PO spremembi) s planirano »nova»
+    for p in d["postavke"]:
+        p.pop("feed", None)
+        if p.get("status") != "ok" or not p.get("konec"):
+            continue
+        meta = feed_meta.get(p["trg"]) or {}
+        zgrajen = _iso_from_http_date(meta.get("last_modified") or "") or meta.get("fetched_at") or ""
+        if not zgrajen or zgrajen <= p["konec"]:
+            p["feed"] = {"stanje": "caka"}   # feed še ni zgrajen po spremembi
+            continue
+        it = (feed_by_lang.get(p["trg"]) or {}).get(str(p.get("g_id") or ""))
+        if not it:
+            p["feed"] = {"stanje": "ni_v_feedu"}
+            continue
+        cena, _c = _marza_parse_price(it.get("price"))
+        akc, _c2 = _marza_parse_price(it.get("sale_price"))
+        konc = akc if (akc and cena and akc < cena) else cena
+        tol = 0.02 if str(p.get("cur") or "").upper() == "EUR" else 1
+        p["feed"] = {"stanje": "potrjeno" if konc is not None and abs(konc - float(p["nova"])) <= tol else "odstopa",
+                     "cena": konc, "zgrajen": zgrajen}
     st = {s: sum(1 for p in d["postavke"] if p.get("status") == s) for s in VRSTA_STATUSI}
+    st["odstopa"] = sum(1 for p in d["postavke"] if (p.get("feed") or {}).get("stanje") == "odstopa" and not p.get("razveljavljeno"))
+    st["potrjeno"] = sum(1 for p in d["postavke"] if (p.get("feed") or {}).get("stanje") == "potrjeno")
     return {"ok": True, "postavke": d["postavke"][-2000:], "stevci": st, "ustavljeno": d["ustavljeno"]}
 
 
@@ -13136,7 +13158,7 @@ let VRSTA = null, vrstaTimer = null, vrstaFlt = 'odprte';
 async function vrstaNalozi() {
   try { const d = await (await fetch('/cene-vrsta', { cache: 'no-store' })).json(); if (d.ok) VRSTA = d; } catch (e) {}
   const b = document.getElementById('vrstaBtn');
-  if (b && VRSTA) { const s = VRSTA.stevci, odp = (s.caka || 0) + (s.v_delu || 0); b.textContent = '📋 Vrsta cen' + (odp ? ' · ' + odp : '') + (s.napaka ? ' · ⚠' + s.napaka : ''); }
+  if (b && VRSTA) { const s = VRSTA.stevci, odp = (s.caka || 0) + (s.v_delu || 0); b.textContent = '📋 Vrsta cen' + (odp ? ' · ' + odp : '') + ((s.napaka || 0) + (s.odstopa || 0) ? ' · ⚠' + ((s.napaka || 0) + (s.odstopa || 0)) : ''); }
   if (document.getElementById('vrstaOkno') && document.getElementById('vrstaOkno').style.display !== 'none') vrstaRisi();
 }
 function vrstaOdpri(sporocilo) {
@@ -13155,24 +13177,28 @@ function vrstaRisi() {
   const o = document.getElementById('vrstaOkno'); if (!o || !VRSTA) return;
   const S = { caka: ['⏳ čaka', '#64748b'], v_delu: ['⚙️ v delu', '#2563eb'], ok: ['✅ urejeno', '#15803d'], napaka: ['⚠ napaka', '#dc2626'], preklicano: ['✕ preklicano', '#94a3b8'] };
   const s = VRSTA.stevci, vse = VRSTA.postavke.slice().reverse();
-  const vid = vse.filter(p => vrstaFlt === 'vse' || (vrstaFlt === 'odprte' ? ['caka', 'v_delu', 'napaka'].includes(p.status) : p.status === vrstaFlt));
+  const vid = vse.filter(p => vrstaFlt === 'vse' || (vrstaFlt === 'odprte' ? ['caka', 'v_delu', 'napaka'].includes(p.status)
+    : vrstaFlt === 'odstopa' ? (p.feed && p.feed.stanje === 'odstopa' && !p.razveljavljeno) : p.status === vrstaFlt));
   const f = v => v == null || v === '' ? '—' : (Math.round(v * 100) / 100).toLocaleString('sl-SI');
   const ch = (k, l) => '<span class="chip' + (vrstaFlt === k ? ' on' : '') + '" onclick="vrstaFlt=\'' + k + '\';vrstaRisi()">' + l + '</span>';
   o.innerHTML = '<div class="plan-box">' +
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:17px">📋 Vrsta cen</b>' +
-      '<span class="dim">' + (s.caka || 0) + ' čaka · ' + (s.v_delu || 0) + ' v delu · ' + (s.ok || 0) + ' urejeno · ' + (s.napaka || 0) + ' napak</span>' +
+      '<span class="dim">' + (s.caka || 0) + ' čaka · ' + (s.v_delu || 0) + ' v delu · ' + (s.ok || 0) + ' urejeno · ' + (s.napaka || 0) + ' napak' +
+        ' · <b style="color:#15803d">' + (s.potrjeno || 0) + ' ✓ v feedu</b>' + (s.odstopa ? ' · <b style="color:#dc2626">' + s.odstopa + ' ⚠ odstopa</b>' : '') + '</span>' +
       (VRSTA.ustavljeno ? '<b style="color:#dc2626">⏸ ustavljeno</b>' : '') +
       '<button class="btn" style="margin-left:auto" onclick="vrstaAkcija({ustavljeno:' + (!VRSTA.ustavljeno) + '})">' + (VRSTA.ustavljeno ? '▶ Nadaljuj vrsto' : '⏸ Ustavi vrsto') + '</button>' +
       '<button class="btn" onclick="vrstaZapri()">✕</button></div>' +
     (o.dataset.msg ? '<div style="margin:8px 0;padding:8px 10px;border-radius:8px;background:#dcfce7;color:#166534">' + esc(o.dataset.msg) + '</div>' : '') +
     '<div class="dim" style="margin:6px 0 8px">Izvaja jo vtičnik: v panelu vklopi »▶ Izvajaj vrsto« (Chrome odprt, prijavljen v CMS). Vsak izdelek dobi točno ceno »Novo«; če je cena v CMS drugačna od »Prej«, ga preskoči (⚠).</div>' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + ch('odprte', 'Odprte') + ch('ok', 'Urejene') + ch('napaka', 'Napake') + ch('preklicano', 'Preklicane') + ch('vse', 'Vse') + '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + ch('odprte', 'Odprte') + ch('ok', 'Urejene') + ch('napaka', 'Napake') + ch('odstopa', '⚠ Odstopa v feedu') + ch('preklicano', 'Preklicane') + ch('vse', 'Vse') + '</div>' +
     (vid.length ? '<div class="plan-tab"><table><thead><tr><th>Trg</th><th>SKU</th><th class="r">Prej</th><th class="r">Novo</th><th>Stanje</th><th>Dodano</th><th></th></tr></thead><tbody>' +
       vid.slice(0, 500).map(p => '<tr><td><b>' + esc(String(p.trg).toUpperCase()) + '</b></td><td><b style="font-family:ui-monospace,monospace">' + esc(p.sku) + '</b>' + (p.razveljavi_za ? ' <span class="dim">↩ razveljavitev</span>' : '') +
         '<div class="dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.naziv || '') + '</div></td>' +
         '<td class="r">' + f(p.stara) + '</td><td class="r"><b>' + f(p.nova) + '</b> <span class="dim">' + esc(p.cur || '') + '</span></td>' +
         '<td><b style="color:' + (S[p.status] || ['', ''])[1] + '">' + (S[p.status] || [p.status])[0] + '</b>' + (p.napaka ? '<div class="dim" style="color:#dc2626">' + esc(p.napaka) + '</div>' : '') +
-          (p.razveljavljeno ? '<div class="dim">razveljavljeno ' + fmtT(p.razveljavljeno) + '</div>' : '') + '</td>' +
+          (p.razveljavljeno ? '<div class="dim">razveljavljeno ' + fmtT(p.razveljavljeno) + '</div>' : '') +
+          (p.feed ? '<div style="font-size:12px;font-weight:700;color:' + ({ potrjeno: '#15803d', odstopa: '#dc2626', caka: '#64748b', ni_v_feedu: '#b45309' }[p.feed.stanje] || '#64748b') + '">' +
+            ({ potrjeno: '✓ potrjeno v feedu (' + f(p.feed.cena) + ')', odstopa: '⚠ feed ' + f(p.feed.cena) + ' ≠ plan ' + f(p.nova), caka: '⏳ čaka nov feed', ni_v_feedu: 'ni v feedu' }[p.feed.stanje] || '') + '</div>' : '') + '</td>' +
         '<td class="dim">' + fmtT(p.konec || p.dodano) + '</td><td style="white-space:nowrap">' +
           (['caka', 'napaka'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'preklici\'})">✕ Prekliči</button> ' : '') +
           (['napaka', 'preklicano'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'znova\'})">↻ Znova</button> ' : '') +
