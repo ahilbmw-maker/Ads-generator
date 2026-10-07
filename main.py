@@ -9082,13 +9082,22 @@ def _hsb_iz_kataloga(it: dict):
             or k["sku"].get(str(it.get("naziv") or "").split(" ")[0].upper()))
 
 
+def _hsb_prevzeto_iz_zgod(it: dict) -> str:
+    """Čas zadnje spremembe statusa v »prevzeto« iz zgodovine (za postavke pred poljem prevzeto_at)."""
+    if it.get("status") != "prevzeto":
+        return ""
+    return next((z.get("at") for z in reversed(it.get("zgodovina") or []) if z.get("polje") == "status" and z.get("potem") == "prevzeto"), "")
+
+
 @app.get("/hsplus/api/seznam")
 async def hsplus_seznam():
     d = _hsb_load()
     items = []
     for it in d["items"]:
         k = _hsb_iz_kataloga(it) or {}
-        items.append(dict(it, slika=it.get("slika") or k.get("slika") or "", sku=it.get("sku") or k.get("sku") or ""))
+        items.append(dict(it, slika=it.get("slika") or k.get("slika") or "", sku=it.get("sku") or k.get("sku") or "",
+                          datum_narocila=it.get("datum_narocila") or str(it.get("dodano") or "")[:10],   # privzeto = dan uvoza/vnosa
+                          prevzeto_at=it.get("prevzeto_at") or _hsb_prevzeto_iz_zgod(it)))
     poiz = []
     for p in d["poizvedbe"]:
         k = _hsb_iz_kataloga(p)
@@ -9221,26 +9230,11 @@ def _hsb_nova_poizvedba(data: dict):
 
 @app.post("/hsplus/api/poizvedba-dodaj")
 async def hsplus_poizvedba_dodaj(data: dict):
-    """Ena poizvedba {sku, naziv?, ean?, kartoni?, od?, do?, komentar?, nasa_sifra?, kdo?} ali prilepljeno iz Excela {besedilo}:
-    vrstice »SKU <tab> Kol. <tab> Komentar« (Kol. »X« ali število kartonov; komentar = zadnji stolpec)."""
-    nove = []
-    if data.get("besedilo"):
-        for vr in str(data["besedilo"]).splitlines()[:500]:
-            deli = [x.strip() for x in re.split(r"\t|;", vr) if x.strip()]
-            if not deli or deli[0].upper() in ("SKU", "IZDELEK"):
-                continue
-            kol = next((x for x in deli[1:2] if re.fullmatch(r"\d+", x)), "")
-            kom = deli[-1] if len(deli) > 1 and not re.fullmatch(r"[xX\d]+", deli[-1]) else ""
-            p = _hsb_nova_poizvedba({"sku": deli[0], "kartoni": kol, "komentar": kom, "kdo": data.get("kdo")})
-            if p:
-                nove.append(p)
-    else:
-        p = _hsb_nova_poizvedba(data)
-        if not p:
-            return {"ok": False, "error": "Vpiši SKU ali ime izdelka."}
-        nove.append(p)
-    if not nove:
-        return {"ok": False, "error": "V prilepljenem besedilu ni vrstic s SKU."}
+    """Ena poizvedba {sku, naziv?, ean?, kartoni?, od?, do?, komentar?, nasa_sifra?, kdo?} (ročni vnos)."""
+    p = _hsb_nova_poizvedba(data)
+    if not p:
+        return {"ok": False, "error": "Vpiši SKU ali ime izdelka."}
+    nove = [p]
     async with _hsb_lock:
         try:
             d = _hsb_load(strict=True)
@@ -9269,6 +9263,9 @@ async def hsplus_poizvedba_uredi(data: dict):
         spr["nasa_sifra"] = str(data.get("nasa_sifra") or "").strip()[:40]
     if "kartoni" in data:
         spr["kartoni"] = int(_hsb_num(data, "kartoni"))
+    for k, n in (("sku", 60), ("naziv", 150)):   # ✏️ urejanje postavke
+        if str(data.get(k) or "").strip():
+            spr[k] = str(data[k]).strip()[:n]
     if not ids or (not spr and not data.get("preverjeno")):
         return {"ok": False, "error": "Ni sprememb."}
     kdo = str(data.get("kdo") or "")[:40]
@@ -9452,6 +9449,22 @@ async def hsplus_uredi(data: dict):
         spr["opomba"] = str(data.get("opomba") or "")[:300]
     if "nasa_sifra" in data:
         spr["nasa_sifra"] = str(data.get("nasa_sifra") or "").strip()[:40]
+    # ✏️ urejanje postavke: ime, SKU, kartoni, kosov v kartonu, cena (kosov in vsota se preračunata)
+    for k, n in (("naziv", 150), ("sku", 60)):
+        if str(data.get(k) or "").strip():
+            spr[k] = str(data[k]).strip()[:n]
+    for k in ("kartoni", "kos_karton"):
+        if k in data:
+            spr[k] = max(0, int(_hsb_num(data, k)))
+    if "kartoni" in spr and spr["kartoni"] <= 0:
+        return {"ok": False, "error": "Kartonov mora biti vsaj 1."}
+    if "cena_kos" in data:
+        spr["cena_kos"] = round(_hsb_num(data, "cena_kos"), 2)
+    if "datum_narocila" in data:   # ročno popravljen datum naročila (stara naročila) — od njega se šteje čakanje/zamuda
+        dn = _hsb_datum(data.get("datum_narocila"))
+        if not dn:
+            return {"ok": False, "error": "Neveljaven datum naročila."}
+        spr["datum_narocila"] = dn
     if not spr:
         return {"ok": False, "error": "Ni sprememb."}
     kdo = str(data.get("kdo") or "")[:40]
@@ -9468,6 +9481,14 @@ async def hsplus_uredi(data: dict):
                 if it.get(k) != v:
                     it.setdefault("zgodovina", []).append({"at": zdaj, "polje": k, "prej": it.get(k), "potem": v, "kdo": kdo})
                     it[k] = v
+            if spr.get("status") == "prevzeto" and not it.get("prevzeto_at"):
+                it["prevzeto_at"] = zdaj   # konec časovnice (dobavni čas = prevzeto − datum naročila)
+            elif "status" in spr and spr["status"] != "prevzeto":
+                it.pop("prevzeto_at", None)
+            if any(k in spr for k in ("kartoni", "kos_karton", "cena_kos")):   # preračun kosov in vrednosti
+                if int(it.get("kos_karton") or 0) > 0:
+                    it["kosov"] = int(it.get("kartoni") or 0) * int(it["kos_karton"])
+                it["vsota"] = round(float(it.get("cena_kos") or 0) * int(it.get("kosov") or 0), 2)
             n += 1
         _jsave(HSB_FILE, d)
     return {"ok": True, "n": n}

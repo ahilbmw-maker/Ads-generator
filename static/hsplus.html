@@ -103,6 +103,22 @@
   .sklad h3 { margin:0 0 8px; font-size:16px; }
   .sklad .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--bd); font-size:13px; }
   .empty { padding:40px; text-align:center; color:var(--txt3); }
+  .btn.ed { padding:4px 8px; }
+  .cas { width:220px; } .cas-d { font-size:12px; color:var(--txt2); white-space:nowrap; } .cas-d input { width:135px; min-width:0; }
+  input.in { border-bottom:1px dashed var(--bd); border-radius:6px 6px 0 0; }   /* vidno, da je polje urejljivo */
+  #edOkno { position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:50; display:none; align-items:flex-start; justify-content:center; padding-top:8vh; }
+  #edOkno .box { background:var(--card); color:var(--txt); border-radius:14px; padding:18px; width:min(560px,94vw); box-shadow:0 20px 50px rgba(0,0,0,.3); }
+  #edOkno .g { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:12px 0; }
+  #edOkno label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--txt2); font-weight:600; }
+  #edOkno .full { grid-column:1 / -1; }
+  /* rok poizvedbe: datum + časovni trak + napis */
+  .rok { cursor:pointer; min-width:170px; padding:4px 6px; border-radius:8px; }
+  .rok:hover { background:var(--bg); }
+  .rok-d { font-weight:700; font-size:14px; white-space:nowrap; }
+  .rok-t { height:6px; background:var(--bd); border-radius:3px; margin:5px 0 3px; overflow:hidden; }
+  .rok-f { height:100%; border-radius:3px; }
+  .rok-n { font-size:11.5px; font-weight:700; }
+  .rok-ed { white-space:nowrap; } .rok-ed input { width:128px; min-width:0; }
   @media (max-width:800px) { .hide-m { display:none; } .wrap { padding:12px; } #pNova .grid { grid-template-columns:1fr 1fr !important; } }
 </style>
 </head>
@@ -152,7 +168,7 @@
     </div>
     <div class="card"><table>
       <thead><tr><th style="width:34px"><input type="checkbox" id="selAll" onchange="izberiVse(this.checked)"></th><th style="width:54px"></th><th>Izdelek</th><th>Naša šifra</th>
-        <th class="r">Kartoni</th><th class="r">Kosov</th><th class="r hide-m">Cena/kos</th><th>Skladišče</th><th>Status</th><th class="hide-m" style="min-width:180px">Komentar</th><th class="hide-m">Dodano</th></tr></thead>
+        <th class="r">Kartoni</th><th class="r">Kosov</th><th class="r hide-m">Cena/kos</th><th>Skladišče</th><th>Status</th><th class="hide-m" style="min-width:180px">Komentar</th><th class="hide-m" title="datum naročila (popraviš v ✏️)">Naročeno</th><th></th></tr></thead>
       <tbody id="tb"></tbody>
     </table></div>
     <div id="selBar">
@@ -192,11 +208,6 @@
         <span class="chip" onclick="hitriRok(7)">čez 1 teden</span><span class="chip" onclick="hitriRok(14)">čez 2 tedna</span>
         <span class="chip" onclick="hitriRok('mesec')">konec meseca</span><span class="chip" onclick="hitriRok('naslednji')">naslednji mesec</span>
         <span id="pIzbran" class="sub"></span>
-        <button class="btn" style="margin-left:auto" onclick="document.getElementById('pExcel').style.display=document.getElementById('pExcel').style.display==='block'?'none':'block'">📋 Prilepi iz Excela</button>
-      </div>
-      <div id="pExcel" style="display:none;margin-top:10px">
-        <textarea class="f" id="pExcelTxt" rows="5" style="width:100%" placeholder="Kopiraj stolpce SKU · Kol. (ctn) · Komentar iz Excela in prilepi sem (vsaka vrstica = ena poizvedba)"></textarea>
-        <button class="btn pri" style="margin-top:6px" onclick="poizExcel()">Uvozi vrstice</button>
       </div>
     </div>
     <div class="bar">
@@ -211,6 +222,7 @@
     </table></div>
   </div>
 </div>
+<div id="edOkno" onclick="if(event.target===this)edZapri()"><div class="box" id="edBox"></div></div>
 
 <script>
 const ST = { naroceno: 'Naročeno', cakajoce: 'Čakajoče', manjka: 'Manjka', prevzeto: 'Prevzeto', preklicano: 'Preklicano' };
@@ -283,8 +295,8 @@ function render() {
       '<td class="r">' + kart + '</td><td class="r"><b>' + (it.kosov || '<span class="mut">—</span>') + '</b></td>' +
       '<td class="r hide-m">' + (it.cena_kos ? eur(it.cena_kos) : '<span class="mut">—</span>') + '</td><td>' + skl + '</td><td>' + st + '</td>' +
       '<td class="hide-m"><input class="in" value="' + esc(it.opomba || '') + '" placeholder="💬 + komentar" onchange="uredi([\'' + it.id + '\'],{opomba:this.value})"></td>' +
-      '<td class="hide-m mut">' + dat(it.dodano) + '</td></tr>';
-  }).join('') : '<tr><td colspan="11" class="empty">' + (D.length ? 'Ni postavk za izbrane filtre.' : 'Še ni postavk. Uvozi PDF B2B naročila HS+ ali dodaj ročno postavko.') + '</td></tr>';
+      '<td class="hide-m mut">' + dat(it.datum_narocila || it.dodano) + '</td><td><button class="btn ed" onclick="edOdpri(\'n\',\'' + it.id + '\')" title="Uredi postavko">✏️</button></td></tr>';
+  }).join('') : '<tr><td colspan="12" class="empty">' + (D.length ? 'Ni postavk za izbrane filtre.' : 'Še ni postavk. Uvozi PDF B2B naročila HS+ ali dodaj ročno postavko.') + '</td></tr>';
   document.getElementById('selN').textContent = SEL.size;
   document.getElementById('selBar').style.display = SEL.size ? 'flex' : 'none';
   const vis = rows.map(it => it.id), sa = document.getElementById('selAll');
@@ -423,6 +435,34 @@ const isoD = d => d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) +
 const kratD = s => { if (!s) return ''; const [y, m, d] = s.split('-'); return +d + '. ' + +m + '.'; };
 let pFlt = 'odprte';
 // rok: zamuja (do < danes) · ta teden · čez N dni — samo za odprte (vprašano / pričakujemo)
+// ROK kot časovni trak: »5.–10. okt« + trak okna od–do z oznako »danes« + barvni napis; klik → urejanje datumov
+const MES = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec'];
+const DNI = ['ned', 'pon', 'tor', 'sre', 'čet', 'pet', 'sob'];
+const ROK_EDIT = new Set();
+function rokHtml(p) {
+  const id = p.id;
+  if (ROK_EDIT.has(id) || !(p.od || p.do)) {
+    if (!ROK_EDIT.has(id) && !['vprasano', 'pricakujemo'].includes(p.status)) return '<span class="mut">—</span>';
+    return '<div class="rok-ed"><input type="date" class="in" value="' + esc(p.od || '') + '" onchange="pUredi([\'' + id + '\'],{od:this.value})"> – ' +
+      '<input type="date" class="in" value="' + esc(p.do || '') + '" onchange="pUredi([\'' + id + '\'],{do:this.value})">' +
+      (ROK_EDIT.has(id) ? ' <button class="btn" style="padding:2px 8px" onclick="ROK_EDIT.delete(\'' + id + '\');render()">✓</button>' : '') + '</div>';
+  }
+  const d = s => new Date(s + 'T00:00:00'), od = d(p.od || p.do), do_ = d(p.do || p.od), t = danes0();
+  const fm = x => x.getDate() + '.', mes = x => MES[x.getMonth()];
+  const razpon = +od === +do_ ? DNI[od.getDay()] + ' ' + fm(od) + ' ' + mes(od)
+    : fm(od) + (od.getMonth() !== do_.getMonth() ? ' ' + mes(od) : '') + ' – ' + fm(do_) + ' ' + mes(do_);
+  const odprta = ['vprasano', 'pricakujemo'].includes(p.status);
+  const dni = Math.round((do_ - t) / 864e5), doZac = Math.round((od - t) / 864e5);
+  let barva = 'var(--c-pre)', polno = 0, napis = '';
+  if (!odprta) { barva = 'var(--c-pre)'; polno = 100; napis = ''; }
+  else if (dni < 0) { barva = 'var(--c-man)'; polno = 100; napis = 'zamuja ' + (-dni) + (dni === -1 ? ' dan' : ' dni'); }
+  else if (doZac > 0) { barva = doZac <= 7 ? 'var(--c-cak)' : 'var(--c-nar)'; polno = 0; napis = 'začne čez ' + doZac + (doZac === 1 ? ' dan' : ' dni'); }
+  else { const vse = Math.max(1, (do_ - od) / 864e5); polno = Math.min(100, Math.max(4, (t - od) / 864e5 / vse * 100)); barva = 'var(--c-cak)'; napis = dni === 0 ? 'danes zadnji dan' : 'v oknu · še ' + dni + (dni === 1 ? ' dan' : ' dni'); }
+  return '<div class="rok" onclick="ROK_EDIT.add(\'' + id + '\');render()" title="Klikni za spremembo datumov">' +
+    '<div class="rok-d" style="color:' + (odprta ? barva : 'var(--txt2)') + '">📅 ' + razpon + '</div>' +
+    '<div class="rok-t"><div class="rok-f" style="width:' + polno + '%;background:' + barva + '"></div></div>' +
+    (napis ? '<div class="rok-n" style="color:' + barva + '">' + napis + '</div>' : '') + '</div>';
+}
 function rokInfo(p) {
   if (!['vprasano', 'pricakujemo'].includes(p.status) || !(p.do || p.od)) return { cls: '', txt: '', dni: 9999 };
   const do_ = new Date((p.do || p.od) + 'T00:00:00'), dni = Math.round((do_ - danes0()) / 864e5);
@@ -469,15 +509,13 @@ function renderPoiz() {
       '<td><input class="in" value="' + esc(p.nasa_sifra || '') + '" placeholder="+ šifra" onchange="pUredi([\'' + p.id + '\'],{nasa_sifra:this.value})" style="width:100px"></td>' +
       '<td class="r"><input class="in" value="' + (p.kartoni || '') + '" placeholder="—" inputmode="numeric" onchange="pUredi([\'' + p.id + '\'],{kartoni:this.value})" style="width:50px;text-align:right;min-width:0"></td>' +
       '<td>' + hs + '</td>' +
-      '<td style="white-space:nowrap"><input type="date" class="in" value="' + esc(p.od || '') + '" onchange="pUredi([\'' + p.id + '\'],{od:this.value})" style="width:128px;min-width:0"> – ' +
-        '<input type="date" class="in" value="' + esc(p.do || '') + '" onchange="pUredi([\'' + p.id + '\'],{do:this.value})" style="width:128px;min-width:0">' +
-        (ri.txt ? '<br><span class="pill ' + ri.cls + '" style="font-size:11px">' + ri.txt + '</span>' : '') + '</td>' +
+      '<td>' + rokHtml(p) + '</td>' +
       '<td>' + st + '</td>' +
       '<td><input class="in" value="' + esc(p.komentar || '') + '" placeholder="💬 + komentar" onchange="pUredi([\'' + p.id + '\'],{komentar:this.value})"></td>' +
       '<td class="hide-m mut" title="zadnji vnos / preverjanje pri HS+">' + dat(p.preverjeno) + '</td>' +
       '<td style="white-space:nowrap">' + (odprta || p.status === 'na_zalogi' ? '<button class="btn" style="padding:4px 8px;background:var(--b-prv);color:var(--c-prv);border-color:var(--c-prv)" onclick="pVNarocilo(\'' + p.id + '\')" title="HS+ ima zalogo → ustvari postavko med naročili">→ V naročila</button> ' : '') +
-        '<button class="btn" style="padding:4px 7px" onclick="pIzbrisi(\'' + p.id + '\')" title="Odstrani poizvedbo">🗑</button></td></tr>';
-  }).join('') : '<tr><td colspan="11" class="empty">' + (P.length ? 'Ni poizvedb za izbrane filtre.' : 'Še ni poizvedb. Dodaj izdelek zgoraj ali prilepi tabelo iz Excela.') + '</td></tr>';
+        '<button class="btn ed" onclick="edOdpri(\'p\',\'' + p.id + '\')" title="Uredi poizvedbo">✏️</button> <button class="btn" style="padding:4px 7px" onclick="pIzbrisi(\'' + p.id + '\')" title="Odstrani poizvedbo">🗑</button></td></tr>';
+  }).join('') : '<tr><td colspan="11" class="empty">' + (P.length ? 'Ni poizvedb za izbrane filtre.' : 'Še ni poizvedb. Dodaj izdelek zgoraj.') + '</td></tr>';
 }
 function hitriRok(n) {
   const d = danes0(); let od = new Date(d), do_;
@@ -503,11 +541,6 @@ async function poizDodaj() {
     PIZBRAN = null; document.getElementById('pIzbran').textContent = ''; document.getElementById('pq').focus();
     sporocilo('✓ Poizvedba dodana', 'ok', 2500); nalozi();
   }
-}
-async function poizExcel() {
-  const t = document.getElementById('pExcelTxt').value; if (!t.trim()) return;
-  const r = await pPost('/hsplus/api/poizvedba-dodaj', { besedilo: t });
-  if (r.ok) { document.getElementById('pExcelTxt').value = ''; document.getElementById('pExcel').style.display = 'none'; sporocilo('✓ Uvoženih ' + r.n + ' poizvedb iz Excela — roke (od–do) nastavi s koledarjem v vrstici.', 'ok', 6000); nalozi(); }
 }
 async function pUredi(ids, spr) { await pPost('/hsplus/api/poizvedba-uredi', Object.assign({ ids }, spr)); nalozi(); }
 async function pIzbrisi(id) { if (!confirm('Odstranim to poizvedbo? (ostane v arhivu)')) return; await pPost('/hsplus/api/poizvedba-izbrisi', { ids: [id] }); nalozi(); }
@@ -537,14 +570,44 @@ async function rocnoShrani() {
     fSt = 'vse'; nalozi();
   } catch (e) { sporocilo('✗ Shranjevanje ni uspelo — preveri povezavo.', 'er', 5000); }
 }
+// ── 🏬 SKLADIŠČE s časovnico: od datuma naročila (ročno popravljiv) do prevzema; cilj dobave (dni) nastaviš zgoraj ──
+let CILJ = 14;
+try { CILJ = parseInt(localStorage.getItem('hsb_cilj'), 10) || 14; } catch (e) {}
+function nastaviCilj(v) { CILJ = Math.max(1, parseInt(v, 10) || 14); try { localStorage.setItem('hsb_cilj', CILJ); } catch (e) {} render(); }
+const dniMed = (a, b) => Math.round((b - a) / 864e5);
+const dDat = s => { const d = new Date(String(s).slice(0, 10) + 'T00:00:00'); return isNaN(d) ? null : d; };
+function kolTxt(it) { return (it.kartoni ? it.kartoni + ' krt' : '') + (it.kosov ? (it.kartoni ? ' · ' : '') + '<b>' + it.kosov + '</b> kos' : ''); }
+function casovnica(it) {
+  const od = dDat(it.datum_narocila), prv = it.status === 'prevzeto' && it.prevzeto_at ? dDat(it.prevzeto_at) : null;
+  if (!od) return '';
+  const dni = dniMed(od, prv || danes0());
+  let barva, napis;
+  if (prv) { barva = dni <= CILJ ? 'var(--c-prv)' : 'var(--c-cak)'; napis = '✓ prispelo v ' + dni + ' dneh'; }
+  else if (dni <= CILJ) { barva = 'var(--c-nar)'; napis = 'čaka ' + dni + (dni === 1 ? ' dan' : ' dni') + ' · še ' + (CILJ - dni) + ' do cilja'; }
+  else if (dni <= CILJ * 1.5) { barva = 'var(--c-cak)'; napis = 'čaka ' + dni + ' dni · ' + (dni - CILJ) + ' čez cilj'; }
+  else { barva = 'var(--c-man)'; napis = 'zamuja ' + (dni - CILJ) + ' dni (čaka ' + dni + ')'; }
+  const pct = Math.min(100, Math.max(3, dni / CILJ * 100));
+  return '<div class="cas"><label class="cas-d" title="Datum naročila — klikni za popravek (od njega se šteje čakanje)">📅 <input type="date" class="in" value="' + esc(it.datum_narocila) + '" onchange="uredi([\'' + it.id + '\'],{datum_narocila:this.value})"></label>' +
+    '<div class="rok-t" style="margin:4px 0 2px"><div class="rok-f" style="width:' + pct + '%;background:' + barva + '"></div></div>' +
+    '<div class="rok-n" style="color:' + barva + '">' + napis + '</div></div>';
+}
 function renderSklad() {
   const el = document.getElementById('skl'); if (!el) return;
-  el.innerHTML = SK.concat(['']).map(s => {
+  el.innerHTML = '<div style="grid-column:1/-1;display:flex;gap:10px;align-items:center" class="sub">Pričakovan dobavni čas (cilj): <input class="f" type="number" min="1" value="' + CILJ + '" onchange="nastaviCilj(this.value)" style="width:70px;padding:4px 8px"> dni · čakanje se šteje od datuma naročila (📅 v vrstici lahko popraviš)</div>' +
+  SK.concat(['']).map(s => {
     const its = D.filter(it => it.skladisce === s && it.status !== 'preklicano');
     if (!s && !its.length) return '';
-    const odp = its.filter(it => it.status !== 'prevzeto'), prv = its.filter(it => it.status === 'prevzeto');
-    const vr = it => '<div class="row"><span style="display:flex;gap:8px;align-items:center">' + imgHtml(it.slika) + '<span>' + esc(it.naziv) + (it.nasa_sifra ? ' <span class="tag">' + esc(it.nasa_sifra) + '</span>' : '') + (it.opomba ? '<br><span class="mut">💬 ' + esc(it.opomba) + '</span>' : '') + '</span></span><span style="white-space:nowrap"><b>' + it.kosov + '</b> kos · <span class="pill st-' + it.status + '">' + ST[it.status] + manjkaTxt(it) + '</span></span></div>';
-    return '<div class="card sk-' + (s || 'brez') + '"><h3>' + (s ? '<span class="skp sk-' + s + '" style="font-size:15px">' + s + '</span>' : 'Ni določeno') + '</h3><div class="mut" style="margin-bottom:8px">Odprto ' + odp.length + ' (' + odp.reduce((a, it) => a + it.kosov, 0) + ' kos) · prevzeto ' + prv.length + '</div>' +
+    const odp = its.filter(it => it.status !== 'prevzeto').sort((a, b) => String(a.datum_narocila).localeCompare(String(b.datum_narocila)));
+    const prv = its.filter(it => it.status === 'prevzeto');
+    const dob = prv.map(it => it.prevzeto_at && dDat(it.datum_narocila) ? dniMed(dDat(it.datum_narocila), dDat(it.prevzeto_at)) : null).filter(x => x != null);
+    const zam = odp.filter(it => dDat(it.datum_narocila) && dniMed(dDat(it.datum_narocila), danes0()) > CILJ).length;
+    const vr = it => '<div class="row"><span style="display:flex;gap:8px;align-items:center;min-width:0">' + imgHtml(it.slika) + '<span>' + esc(it.naziv) + (it.nasa_sifra ? ' <span class="tag">' + esc(it.nasa_sifra) + '</span>' : '') +
+      '<br><span class="mut">' + kolTxt(it) + '</span>' + (it.opomba ? '<br><span class="mut">💬 ' + esc(it.opomba) + '</span>' : '') + '</span></span>' +
+      '<span style="display:flex;gap:10px;align-items:center">' + casovnica(it) + '<span class="pill st-' + it.status + '">' + ST[it.status] + manjkaTxt(it) + '</span></span></div>';
+    return '<div class="card sk-' + (s || 'brez') + '"><h3>' + (s ? '<span class="skp sk-' + s + '" style="font-size:15px">' + s + '</span>' : 'Ni določeno') + '</h3>' +
+      '<div class="mut" style="margin-bottom:8px">Odprto ' + odp.length + ' (' + odp.reduce((a, it) => a + (it.kartoni || 0), 0) + ' krt)' +
+        (zam ? ' · <b style="color:var(--c-man)">' + zam + ' čez cilj</b>' : '') + ' · prevzeto ' + prv.length +
+        (dob.length ? ' · Ø dobava <b>' + Math.round(dob.reduce((a, x) => a + x, 0) / dob.length) + ' dni</b> (' + dob.length + ')' : '') + '</div>' +
       (odp.map(vr).join('') || '<div class="mut">Ni odprtih postavk.</div>') +
       (prv.length ? '<details style="margin-top:8px"><summary class="mut" style="cursor:pointer">Prevzeto (' + prv.length + ')</summary>' + prv.map(vr).join('') + '</details>' : '') + '</div>';
   }).join('');
@@ -554,6 +617,51 @@ const drop = document.getElementById('drop');
 document.addEventListener('dragover', e => { e.preventDefault(); drop.style.display = 'block'; });
 document.addEventListener('dragleave', e => { if (!e.relatedTarget) drop.style.display = 'none'; });
 document.addEventListener('drop', e => { e.preventDefault(); drop.style.display = 'none'; const f = e.dataTransfer.files[0]; if (f) uvozi(f); });
+// ✏️ UREJANJE POSTAVKE (naročilo 'n' ali poizvedba 'p') v oknu — vsa polja na enem mestu
+let ED = null;
+function edOdpri(tip, id) {
+  const x = (tip === 'n' ? D : P).find(o => o.id === id); if (!x) return;
+  ED = { tip, id };
+  const f = (lbl, key, val, extra, cls) => '<label class="' + (cls || '') + '">' + lbl + '<input class="f" data-k="' + key + '" value="' + esc(val == null ? '' : val) + '" ' + (extra || '') + '></label>';
+  let h = '<div style="display:flex;align-items:center;gap:8px"><b style="font-size:16px">✏️ ' + (tip === 'n' ? 'Uredi postavko naročila' : 'Uredi poizvedbo') + '</b>' +
+    '<button class="btn" style="margin-left:auto;padding:3px 9px" onclick="edZapri()">✕</button></div><div class="g">';
+  if (tip === 'n') {
+    h += f('Ime izdelka', 'naziv', x.naziv, '', 'full') + f('SKU', 'sku', x.sku) + f('Naša šifra', 'nasa_sifra', x.nasa_sifra) +
+      f('Kartoni *', 'kartoni', x.kartoni, 'inputmode="numeric" oninput="edKosov()"') + f('Kosov v kartonu', 'kos_karton', x.kos_karton || '', 'inputmode="numeric" placeholder="ni podatka" oninput="edKosov()"') +
+      '<label>Kosov skupaj<input class="f" id="edKos" value="' + (x.kosov || '') + '" disabled></label>' + f('Cena/kos €', 'cena_kos', x.cena_kos ? String(x.cena_kos).replace('.', ',') : '', 'inputmode="decimal"') +
+      '<label>Skladišče<select class="f" data-k="skladisce"><option value="">— izberi</option>' + SK.map(s => '<option' + (x.skladisce === s ? ' selected' : '') + '>' + s + '</option>').join('') + '</select></label>' +
+      '<label>Status<select class="f" data-k="status">' + Object.entries(ST).map(([k, l]) => '<option value="' + k + '"' + (x.status === k ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>' +
+      f('Datum naročila', 'datum_narocila', x.datum_narocila, 'type="date"') + f('Komentar', 'opomba', x.opomba, '', 'full');
+  } else {
+    h += f('SKU', 'sku', x.sku) + f('Ime izdelka', 'naziv', x.naziv) + f('Naša šifra', 'nasa_sifra', x.nasa_sifra) + f('Kol. (ctn)', 'kartoni', x.kartoni || '', 'inputmode="numeric" placeholder="—"') +
+      f('Pričakujemo od', 'od', x.od, 'type="date"') + f('do', 'do', x.do, 'type="date"') +
+      '<label class="full">Status<select class="f" data-k="status">' + Object.entries(PST).map(([k, l]) => '<option value="' + k + '"' + (x.status === k ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>' +
+      f('Komentar', 'komentar', x.komentar, '', 'full');
+  }
+  h += '</div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="edZapri()">Prekliči</button><button class="btn pri" onclick="edShrani()">Shrani</button></div>';
+  document.getElementById('edBox').innerHTML = h;
+  document.getElementById('edOkno').style.display = 'flex';
+  const prvi = document.querySelector('#edBox [data-k="kartoni"]'); if (prvi) { prvi.focus(); prvi.select(); }
+}
+function edKosov() {
+  const g = k => parseInt((document.querySelector('#edBox [data-k="' + k + '"]') || {}).value, 10);
+  const a = g('kartoni'), b = g('kos_karton'), el = document.getElementById('edKos');
+  if (el) el.value = a > 0 && b > 0 ? a * b : (b > 0 ? '' : el.value);
+}
+function edZapri() { document.getElementById('edOkno').style.display = 'none'; ED = null; }
+async function edShrani() {
+  if (!ED) return;
+  const x = (ED.tip === 'n' ? D : P).find(o => o.id === ED.id) || {}, spr = {};
+  document.querySelectorAll('#edBox [data-k]').forEach(el => {
+    const k = el.dataset.k, v = el.value.trim(), prej = x[k] == null ? '' : String(x[k]);
+    if (v !== prej && !(k === 'cena_kos' && parseFloat(v.replace(',', '.')) === Number(x[k]))) spr[k] = k === 'cena_kos' ? v.replace(',', '.') : v;
+  });
+  if (!Object.keys(spr).length) { edZapri(); return; }
+  if (ED.tip === 'n' && 'kartoni' in spr && !(parseInt(spr.kartoni, 10) > 0)) { sporocilo('Kartonov mora biti vsaj 1.', 'er', 4000); return; }
+  const r = await pPost(ED.tip === 'n' ? '/hsplus/api/uredi' : '/hsplus/api/poizvedba-uredi', Object.assign({ ids: [ED.id] }, spr));
+  if (r.ok) { edZapri(); sporocilo('✓ Shranjeno', 'ok', 2000); nalozi(); }
+}
+document.addEventListener('keydown', e => { if (!ED) return; if (e.key === 'Escape') edZapri(); else if (e.key === 'Enter' && e.target.tagName === 'INPUT') edShrani(); });
 try { const t = localStorage.getItem('hsb_tab'); if (t && document.getElementById('pg-' + t)) tab(t); } catch (e) {}
 nalozi();
 // drugi uporabniki — osveži vsako minuto (ne med izbiranjem ali tipkanjem)
