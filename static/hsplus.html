@@ -9,9 +9,10 @@
 <style>
   :root { --bg:#f4f5f7; --card:#fff; --bd:#e3e6eb; --txt:#16181d; --txt2:#5d6470; --txt3:#9aa1ad; --acc:#3a6fff;
     --c-nar:#2563eb; --b-nar:#dbeafe; --c-cak:#b45309; --b-cak:#fef3c7; --c-man:#dc2626; --b-man:#fee2e2;
-    --c-prv:#15803d; --b-prv:#dcfce7; --c-pre:#64748b; --b-pre:#e2e8f0; }
+    --c-prv:#15803d; --b-prv:#dcfce7; --c-pre:#64748b; --b-pre:#e2e8f0;
+    --c-brn:#6d28d9; --b-brn:#ede9fe; --c-gro:#0f766e; --b-gro:#ccfbf1; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#111317; --card:#1a1d23; --bd:#2b3039; --txt:#e8eaee; --txt2:#a3aab6; --txt3:#6b7380;
-    --c-nar:#93c5fd; --b-nar:#172554; --c-cak:#fcd34d; --b-cak:#3a2e0d; --c-man:#fca5a5; --b-man:#3d1414; --c-prv:#86efac; --b-prv:#14361f; --c-pre:#cbd5e1; --b-pre:#2b3039; } }
+    --c-nar:#93c5fd; --b-nar:#172554; --c-cak:#fcd34d; --b-cak:#3a2e0d; --c-man:#fca5a5; --b-man:#3d1414; --c-prv:#86efac; --b-prv:#14361f; --c-pre:#cbd5e1; --b-pre:#2b3039; --c-brn:#c4b5fd; --b-brn:#2e1065; --c-gro:#5eead4; --b-gro:#042f2e; } }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.45 'DM Sans',-apple-system,'Segoe UI',sans-serif; }
   .wrap { padding:16px 20px; }
@@ -67,6 +68,15 @@
   .pill { display:inline-block; padding:1px 8px; border-radius:6px; font-weight:700; font-size:12px; }
   select.s option { background:var(--card); color:var(--txt); }
   .sk-prazno { color:var(--txt3); }
+  /* skladišči: Brnik vijolično, Grosuplje turkizno (ločeno od barv statusov) */
+  select.s.sk-Brnik, .skp.sk-Brnik { background:var(--b-brn); color:var(--c-brn); border-color:var(--b-brn); }
+  select.s.sk-Grosuplje, .skp.sk-Grosuplje { background:var(--b-gro); color:var(--c-gro); border-color:var(--b-gro); }
+  .chip.sk-Brnik.on { background:var(--c-brn); border-color:var(--c-brn); color:#fff; }
+  .chip.sk-Grosuplje.on { background:var(--c-gro); border-color:var(--c-gro); color:#fff; }
+  .chip.sk-Brnik:not(.on) { color:var(--c-brn); border-color:var(--c-brn); }
+  .chip.sk-Grosuplje:not(.on) { color:var(--c-gro); border-color:var(--c-gro); }
+  .skp { display:inline-block; padding:1px 8px; border-radius:6px; font-weight:700; font-size:12px; }
+  .sklad .card.sk-Brnik { border-top:4px solid var(--c-brn); } .sklad .card.sk-Grosuplje { border-top:4px solid var(--c-gro); }
   input.in { border:1px solid transparent; background:transparent; border-radius:6px; padding:4px 6px; font:inherit; font-size:12.5px; color:var(--txt); width:100%; min-width:80px; }
   input.in:hover { border-color:var(--bd); }
   input.in:focus { border-color:var(--acc); background:var(--card); outline:none; }
@@ -98,31 +108,11 @@
     <div><h1>📦 HS+ prevzemi</h1><div class="sub">Postavke iz B2B naročil HS Plus · skladišče in status po postavki</div></div>
     <span style="margin-left:auto"></span>
     <label class="sub">Kdo: <input id="kdo" class="f" placeholder="ime (neobvezno)" style="width:130px;padding:4px 8px"></label>
-    <button class="btn" onclick="rocnoOdpri()">＋ Ročna postavka</button>
     <button class="btn pri" onclick="document.getElementById('pdf').click()">⬆ Uvozi PDF naročila</button>
     <input type="file" id="pdf" accept="application/pdf,.pdf" style="display:none" onchange="uvozi(this.files[0]);this.value=''">
   </div>
   <div class="drop" id="drop">Spusti PDF naročila sem</div>
   <div class="msg" id="msg"></div>
-
-  <div id="rocno">
-    <div style="display:flex;align-items:center;margin-bottom:10px"><b>＋ Ročna postavka</b><span class="sub" style="margin-left:8px">začni tipkati SKU ali ime — predlogi iz HS+ kataloga</span>
-      <button class="btn" style="margin-left:auto;padding:3px 9px" onclick="rocnoZapri()">✕</button></div>
-    <div class="grid">
-      <label style="grid-column:span 2" class="sug">Izdelek (SKU / ime / EAN)
-        <input class="f" id="rq" autocomplete="off" placeholder="npr. MUSCULEX" oninput="predlogi()" onkeydown="sugTipka(event)">
-        <div class="sug-list" id="sug"></div></label>
-      <label>Naša šifra <input class="f" id="rNs" placeholder="npr. Maaa41"></label>
-      <label>Kartoni <input class="f" id="rKart" inputmode="numeric" placeholder="ni podatka" oninput="rocnoKosov()"></label>
-      <label>Kosov v kartonu <input class="f" id="rKk" inputmode="numeric" placeholder="ni podatka" oninput="rocnoKosov()"></label>
-      <label>Kosov skupaj <input class="f" id="rKos" inputmode="numeric" placeholder="obvezno"></label>
-      <label>Cena/kos € <input class="f" id="rCena" inputmode="decimal" placeholder="iz kataloga"></label>
-      <label>Skladišče <select class="f" id="rSk"><option>Brnik</option><option>Grosuplje</option></select></label>
-      <label style="grid-column:span 2">Komentar <input class="f" id="rKom" placeholder="neobvezno"></label>
-      <button class="btn pri" onclick="rocnoShrani()">Dodaj postavko</button>
-    </div>
-    <div id="rIzbran" class="sub" style="margin-top:8px"></div>
-  </div>
 
   <div class="tabs">
     <div class="tab on" data-t="izdelki" onclick="tab('izdelki')">Izdelki</div>
@@ -133,8 +123,27 @@
     <div class="kpi" id="kpi"></div>
     <div class="bar">
       <input type="search" class="f" id="q" placeholder="Išči ime, SKU, našo šifro ali EAN" oninput="render()" style="width:280px">
+      <button class="btn" onclick="rocnoOdpri()" style="background:var(--b-prv);color:var(--c-prv);border-color:var(--c-prv)">＋ Ročna postavka</button>
       <span class="sub" style="margin-left:6px">Skladišče:</span><span id="fSk"></span>
       <label class="sub" style="margin-left:auto;cursor:pointer"><input type="checkbox" id="kazPrev" onchange="render()"> Pokaži prevzete</label>
+    </div>
+    <div id="rocno">
+      <div style="display:flex;align-items:center;margin-bottom:10px"><b>＋ Ročna postavka</b><span class="sub" style="margin-left:8px">začni tipkati SKU ali ime — predlogi iz HS+ kataloga</span>
+        <button class="btn" style="margin-left:auto;padding:3px 9px" onclick="rocnoZapri()">✕</button></div>
+      <div class="grid">
+        <label style="grid-column:span 2" class="sug">Izdelek (SKU / ime / EAN)
+          <input class="f" id="rq" autocomplete="off" placeholder="npr. MUSCULEX" oninput="predlogi()" onkeydown="sugTipka(event)" onblur="setTimeout(pakiranjeIsci,250)">
+          <div class="sug-list" id="sug"></div></label>
+        <label>Naša šifra <input class="f" id="rNs" placeholder="npr. Maaa41"></label>
+        <label>Kartoni * <input class="f" id="rKart" inputmode="numeric" placeholder="obvezno" oninput="rocnoKosov()"></label>
+        <label>Kosov v kartonu <input class="f" id="rKk" inputmode="numeric" placeholder="ni podatka" oninput="rocnoKosov()"></label>
+        <label>Kosov skupaj <input class="f" id="rKos" inputmode="numeric" placeholder="izračuna se"></label>
+        <label>Cena/kos € <input class="f" id="rCena" inputmode="decimal" placeholder="iz kataloga"></label>
+        <label>Skladišče <select class="f" id="rSk"><option>Brnik</option><option>Grosuplje</option></select></label>
+        <label style="grid-column:span 2">Komentar <input class="f" id="rKom" placeholder="neobvezno"></label>
+        <button class="btn pri" onclick="rocnoShrani()">Dodaj postavko</button>
+      </div>
+      <div id="rIzbran" class="sub" style="margin-top:8px"></div>
     </div>
     <div class="card"><table>
       <thead><tr><th style="width:34px"><input type="checkbox" id="selAll" onchange="izberiVse(this.checked)"></th><th style="width:54px"></th><th>Izdelek</th><th>Naša šifra</th>
@@ -203,7 +212,7 @@ function chips() {
     Object.entries(ST).map(([k, l]) => { const a = po(k); return '<div class="k-' + k + (fSt === k ? ' on' : '') + '" onclick="fSt=fSt===\'' + k + '\'?\'vse\':\'' + k + '\';render()"><b>' + a.length + '</b><span>' + l + '</span><small>' + kos(a) + ' kos</small></div>'; }).join('');
   const n = s => D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano' && (s === 'brez' ? !it.skladisce : it.skladisce === s)).length;
   document.getElementById('fSk').innerHTML = [['vse', 'Vsa'], ...SK.map(s => [s, s]), ['brez', 'Ni določeno']].map(([k, l]) =>
-    '<span class="chip' + (fSk === k ? ' on' : '') + '" onclick="fSk=\'' + k + '\';render()">' + l + (k === 'vse' ? '' : ' ' + n(k)) + '</span>').join(' ');
+    '<span class="chip sk-' + k + (fSk === k ? ' on' : '') + '" onclick="fSk=\'' + k + '\';render()">' + l + (k === 'vse' ? '' : ' ' + n(k)) + '</span>').join(' ');
 }
 function render() {
   chips();
@@ -211,7 +220,7 @@ function render() {
   let prej = null;
   document.getElementById('tb').innerHTML = rows.length ? rows.map(it => {
     const loc = prej !== null && prej !== it.dodano; prej = it.dodano;
-    const skl = '<select class="s' + (it.skladisce ? '' : ' sk-prazno') + '" onchange="uredi([\'' + it.id + '\'],{skladisce:this.value})"><option value="">— izberi</option>' +
+    const skl = '<select class="s' + (it.skladisce ? ' sk-' + it.skladisce : ' sk-prazno') + '" onchange="uredi([\'' + it.id + '\'],{skladisce:this.value})"><option value="">— izberi</option>' +
       SK.map(s => '<option' + (it.skladisce === s ? ' selected' : '') + '>' + s + '</option>').join('') + '</select>';
     const st = '<select class="s st-' + it.status + '" onchange="spremeniStatus(\'' + it.id + '\',this)">' +
       Object.entries(ST).map(([k, l]) => '<option value="' + k + '"' + (it.status === k ? ' selected' : '') + '>' + l + (k === it.status ? manjkaTxt(it) : '') + '</option>').join('') + '</select>';
@@ -223,7 +232,7 @@ function render() {
       '<td><div class="naz">' + esc(it.naziv) + (it.barva ? ' <span class="mut">· ' + esc(it.barva) + '</span>' : '') + (it.rocno ? '<span class="tag" title="ročno dodana postavka">ročno</span>' : '') + '</div>' +
         '<div class="mut">' + [it.sku && it.sku.toUpperCase() !== String(it.naziv).toUpperCase() ? 'SKU ' + esc(it.sku) : '', esc(it.ean)].filter(Boolean).join(' · ') + '</div></td>' +
       '<td><input class="in" value="' + esc(it.nasa_sifra || '') + '" placeholder="+ šifra" onchange="uredi([\'' + it.id + '\'],{nasa_sifra:this.value})" style="width:110px"></td>' +
-      '<td class="r">' + kart + '</td><td class="r"><b>' + it.kosov + '</b></td>' +
+      '<td class="r">' + kart + '</td><td class="r"><b>' + (it.kosov || '<span class="mut">—</span>') + '</b></td>' +
       '<td class="r hide-m">' + (it.cena_kos ? eur(it.cena_kos) : '<span class="mut">—</span>') + '</td><td>' + skl + '</td><td>' + st + '</td>' +
       '<td class="hide-m"><input class="in" value="' + esc(it.opomba || '') + '" placeholder="💬 + komentar" onchange="uredi([\'' + it.id + '\'],{opomba:this.value})"></td>' +
       '<td class="hide-m mut">' + dat(it.dodano) + '</td></tr>';
@@ -308,7 +317,8 @@ function predlogi() {
 function risiSug(brezKataloga) {
   const el = document.getElementById('sug');
   el.innerHTML = SUG.length ? SUG.map((p, i) => '<div class="sug-it' + (i === sugI ? ' on' : '') + '" onmousedown="izberiSug(' + i + ')">' + imgHtml(p.slika, '') +
-    '<div><b>' + esc(p.sku) + '</b> <span class="mut">' + esc(p.ean) + '</span><div>' + esc(p.naziv) + '</div></div><span style="margin-left:auto;white-space:nowrap">' + (p.cena ? eur(p.cena) : '') + '</span></div>').join('')
+    '<div><b>' + esc(p.sku) + '</b> <span class="mut">' + esc(p.ean) + '</span><div>' + esc(p.naziv) + '</div></div><span style="margin-left:auto;white-space:nowrap;text-align:right">' + (p.cena ? eur(p.cena) : '') +
+    (p.kos_karton ? '<br><span class="mut">' + p.kos_karton + ' kos/karton</span>' : '') + '</span></div>').join('')
     : '<div class="sug-it mut">' + (brezKataloga ? 'HS+ katalog ni naložen (Orodja → HS+ katalog) — vpiši ročno.' : 'Ni zadetkov v HS+ katalogu — lahko vpišeš ročno.') + '</div>';
   el.style.display = 'block';
 }
@@ -324,14 +334,29 @@ function izberiSug(i) {
   document.getElementById('rq').value = p.sku || p.naziv;
   if (p.cena) document.getElementById('rCena').value = String(p.cena).replace('.', ',');
   document.getElementById('sug').style.display = 'none';
-  document.getElementById('rIzbran').innerHTML = '✓ Iz kataloga: <b>' + esc(p.sku) + '</b> · ' + esc(p.naziv) + (p.ean ? ' · EAN ' + esc(p.ean) : '') + ' — kartoni in kosi v kartonu: vpiši, če jih poznaš.';
+  pakiranjeVpisi(p.kos_karton, p.pak_vir);
+  document.getElementById('rIzbran').innerHTML = '✓ Iz kataloga: <b>' + esc(p.sku) + '</b> · ' + esc(p.naziv) + (p.ean ? ' · EAN ' + esc(p.ean) : '') +
+    (p.kos_karton ? ' · 📦 <b>' + p.kos_karton + ' kos/karton</b> (' + esc(p.pak_vir || '') + ') — vpiši samo število kartonov' : ' — pakiranje še ni znano: vpiši kose v kartonu, zapomnim si jih za naslednjič.');
   document.getElementById('rKart').focus();
+}
+// znano pakiranje (pretekla naročila / ročni vnosi / HS+ katalog) → kosi v kartonu; ne prepiše, kar je uporabnik že vpisal
+function pakiranjeVpisi(kk, vir) {
+  const el = document.getElementById('rKk');
+  if (kk > 0 && !el.value) { el.value = kk; el.title = 'samodejno: ' + (vir || ''); el.style.background = 'var(--b-prv)'; rocnoKosov(); }
+}
+async function pakiranjeIsci() {
+  const q = document.getElementById('rq').value.trim();
+  if (!q || IZBRAN || document.getElementById('rKk').value) return;
+  try {
+    const d = await (await fetch('/hsplus/api/pakiranje?q=' + encodeURIComponent(q))).json();
+    if (d.kos_karton) { pakiranjeVpisi(d.kos_karton, d.vir); document.getElementById('rIzbran').innerHTML = '📦 Znano pakiranje: <b>' + d.kos_karton + ' kos/karton</b> (' + esc(d.vir || '') + ')'; }
+  } catch (e) {}
 }
 document.addEventListener('click', e => { if (!e.target.closest('.sug')) document.getElementById('sug').style.display = 'none'; });
 async function rocnoShrani() {
   const v = id => document.getElementById(id).value.trim(), q = v('rq');
   if (!q) { sporocilo('Vpiši SKU ali ime izdelka.', 'er', 4000); return; }
-  if (!(parseInt(v('rKos'), 10) > 0) && !(parseInt(v('rKart'), 10) > 0 && parseInt(v('rKk'), 10) > 0)) { sporocilo('Vpiši količino (kosov skupaj).', 'er', 4000); return; }
+  if (!(parseInt(v('rKart'), 10) > 0)) { sporocilo('Vpiši število kartonov (naročamo samo po kartonih).', 'er', 4000); document.getElementById('rKart').focus(); return; }
   const p = IZBRAN && (IZBRAN.sku === q || IZBRAN.naziv === q) ? IZBRAN : null;
   const body = { naziv: p ? p.naziv : q, sku: p ? p.sku : q, ean: p ? p.ean : '', cena_kos: v('rCena').replace(',', '.'),
     kartoni: v('rKart'), kos_karton: v('rKk'), kosov: v('rKos'), nasa_sifra: v('rNs'), skladisce: v('rSk'), opomba: v('rKom'), kdo: kdo() };
@@ -340,6 +365,7 @@ async function rocnoShrani() {
     if (!r.ok) { sporocilo('✗ ' + esc(r.error || 'Napaka'), 'er', 5000); return; }
     sporocilo('✓ Dodano: ' + esc(body.sku || body.naziv), 'ok', 4000);
     ['rq', 'rNs', 'rKart', 'rKk', 'rKos', 'rCena', 'rKom'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('rKk').style.background = '';
     IZBRAN = null; document.getElementById('rIzbran').textContent = ''; document.getElementById('rq').focus();
     fSt = 'vse'; nalozi();
   } catch (e) { sporocilo('✗ Shranjevanje ni uspelo — preveri povezavo.', 'er', 5000); }
@@ -351,7 +377,7 @@ function renderSklad() {
     if (!s && !its.length) return '';
     const odp = its.filter(it => it.status !== 'prevzeto'), prv = its.filter(it => it.status === 'prevzeto');
     const vr = it => '<div class="row"><span style="display:flex;gap:8px;align-items:center">' + imgHtml(it.slika) + '<span>' + esc(it.naziv) + (it.nasa_sifra ? ' <span class="tag">' + esc(it.nasa_sifra) + '</span>' : '') + (it.opomba ? '<br><span class="mut">💬 ' + esc(it.opomba) + '</span>' : '') + '</span></span><span style="white-space:nowrap"><b>' + it.kosov + '</b> kos · <span class="pill st-' + it.status + '">' + ST[it.status] + manjkaTxt(it) + '</span></span></div>';
-    return '<div class="card"><h3>' + (s || 'Ni določeno') + '</h3><div class="mut" style="margin-bottom:8px">Odprto ' + odp.length + ' (' + odp.reduce((a, it) => a + it.kosov, 0) + ' kos) · prevzeto ' + prv.length + '</div>' +
+    return '<div class="card sk-' + (s || 'brez') + '"><h3>' + (s ? '<span class="skp sk-' + s + '" style="font-size:15px">' + s + '</span>' : 'Ni določeno') + '</h3><div class="mut" style="margin-bottom:8px">Odprto ' + odp.length + ' (' + odp.reduce((a, it) => a + it.kosov, 0) + ' kos) · prevzeto ' + prv.length + '</div>' +
       (odp.map(vr).join('') || '<div class="mut">Ni odprtih postavk.</div>') +
       (prv.length ? '<details style="margin-top:8px"><summary class="mut" style="cursor:pointer">Prevzeto (' + prv.length + ')</summary>' + prv.map(vr).join('') + '</details>' : '') + '</div>';
   }).join('');

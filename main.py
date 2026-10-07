@@ -9016,7 +9016,8 @@ def _hsb_katalog():
     if mt != _hsb_kat["mtime"]:
         prods = ((_jload(HSPLUS_CATALOG_CACHE, {}) or {}).get("products") or []) if mt else []
         vsi = [{"sku": str(p.get("sku") or "").strip(), "ean": str(p.get("ean") or "").strip(), "naziv": str(p.get("name") or "").strip(),
-                "cena": p.get("price"), "slika": p.get("image") or ""} for p in prods if p.get("sku") or p.get("name")]
+                "cena": p.get("price"), "slika": p.get("image") or "", "kos_karton": int(p.get("kos_karton") or 0)}
+               for p in prods if p.get("sku") or p.get("name")]
         _hsb_kat.update(mtime=mt, vsi=vsi, ean={p["ean"]: p for p in vsi if p["ean"]}, sku={p["sku"].upper(): p for p in vsi if p["sku"]})
     return _hsb_kat
 
@@ -9038,16 +9039,60 @@ async def hsplus_seznam():
     return {"ok": True, "items": items, "skladisca": HSB_SKLADISCA, "statusi": HSB_STATUSI}
 
 
+def _hsb_pakiranja(d: dict = None) -> dict:
+    """Kosov v kartonu, kot jih poznamo iz preteklih B2B naročil in ročnih vnosov (najnovejši zapis velja):
+    {ključ: {"kos_karton", "vir", "at"}}, ključi = EAN, SKU (velike), ime pred 1. presledkom."""
+    d = d or _hsb_load()
+    out = {}
+    for it in sorted(d["items"] + d.get("izbrisani", []), key=lambda x: str(x.get("dodano") or "")):
+        kk = int(it.get("kos_karton") or 0)
+        if kk <= 0:
+            continue
+        zap = {"kos_karton": kk, "vir": "ročno" if it.get("rocno") else ("naročilo #" + str(it.get("narocilo")) if it.get("narocilo") else "naročilo"),
+               "at": str(it.get("dodano") or "")[:10]}
+        for k in (it.get("ean"), it.get("sku"), str(it.get("naziv") or "").split(" ")[0]):
+            if k:
+                out[str(k).strip().upper()] = zap
+    return out
+
+
+def _hsb_pakiranje_za(pak: dict, ean="", sku="", naziv="", kat: dict = None):
+    """Najprej pretekla naročila/ročni vnosi, nato HS+ katalog (če izvoz ima polje za pakiranje)."""
+    for k in (ean, sku, str(naziv or "").split(" ")[0]):
+        if k and str(k).strip().upper() in pak:
+            return pak[str(k).strip().upper()]
+    if kat and kat.get("kos_karton"):
+        return {"kos_karton": kat["kos_karton"], "vir": "HS+ katalog", "at": ""}
+    return None
+
+
 @app.get("/hsplus/api/katalog")
 async def hsplus_api_katalog(q: str = ""):
-    """Predlogi za ročno postavko iz HS+ kataloga: SKU / ime / EAN vsebuje q (najprej začetek SKU-ja)."""
+    """Predlogi za ročno postavko iz HS+ kataloga: SKU / ime / EAN vsebuje q (najprej začetek SKU-ja) + znano pakiranje."""
     q = (q or "").strip().upper()
     if len(q) < 2:
         return {"ok": True, "predlogi": []}
     vsi = _hsb_katalog()["vsi"]
     zad = [p for p in vsi if q in p["sku"].upper() or q in p["naziv"].upper() or (q.isdigit() and q in p["ean"])]
     zad.sort(key=lambda p: (not p["sku"].upper().startswith(q), p["sku"]))
-    return {"ok": True, "predlogi": zad[:12], "katalog": len(vsi)}
+    pak = _hsb_pakiranja()
+    out = []
+    for p in zad[:12]:
+        pz = _hsb_pakiranje_za(pak, p["ean"], p["sku"], p["naziv"], p)
+        out.append(dict(p, kos_karton=pz["kos_karton"] if pz else 0, pak_vir=pz["vir"] if pz else ""))
+    return {"ok": True, "predlogi": out, "katalog": len(vsi)}
+
+
+@app.get("/hsplus/api/pakiranje")
+async def hsplus_api_pakiranje(q: str = ""):
+    """Znano pakiranje za ročno vpisan SKU/EAN (brez izbire iz predlogov)."""
+    q = (q or "").strip()
+    if not q:
+        return {"ok": True, "kos_karton": 0}
+    kat = _hsb_katalog()
+    kp = kat["ean"].get(q) or kat["sku"].get(q.upper())
+    pz = _hsb_pakiranje_za(_hsb_pakiranja(), q if q.isdigit() else "", q, q, kp)
+    return {"ok": True, "kos_karton": pz["kos_karton"] if pz else 0, "vir": pz["vir"] if pz else ""}
 
 
 @app.post("/hsplus/api/dodaj")
@@ -9062,9 +9107,9 @@ async def hsplus_dodaj(data: dict):
         except Exception:
             return 0
     kart, kosk = int(num("kartoni")), int(num("kos_karton"))
-    kosov = int(num("kosov")) or kart * kosk
-    if kosov <= 0:
-        return {"ok": False, "error": "Vpiši količino (kosov ali kartoni × kosov v kartonu)."}
+    if kart <= 0:
+        return {"ok": False, "error": "Vpiši število kartonov (naročamo samo po kartonih)."}
+    kosov = int(num("kosov")) or kart * kosk   # 0 = pakiranje ni znano
     sk = data.get("skladisce") if data.get("skladisce") in HSB_SKLADISCA else "Brnik"
     cena = round(num("cena_kos"), 2)
     it = {"id": uuid.uuid4().hex[:10], "ean": str(data.get("ean") or "").strip(), "naziv": naziv, "sku": str(data.get("sku") or "").strip()[:60],
@@ -17697,6 +17742,16 @@ def _hsplus_parse_xml(xml_bytes):
         else:
             sku_val = raw_sku
             ean_val = ""
+        # pakiranje (kosov v kartonu), če ga HS+ izvoz ima — ime polja ni znano, zato vzamemo prvo, ki ga spominja
+        kos_karton, kos_polje = 0, ""
+        for ch in p.iter():
+            tg = str(ch.tag).lower().split("}")[-1]
+            if ch is p or not any(w in tg for w in ("carton", "karton", "pack", "box", "per_case", "case_qty", "inner", "outer", "pieces_per", "qty_per")):
+                continue
+            m_ = _re_hsplus.search(r"\d+", (ch.text or "") + " " + " ".join(str(v) for v in ch.attrib.values()))
+            if m_ and 0 < int(m_.group(0)) < 100000:
+                kos_karton, kos_polje = int(m_.group(0)), tg
+                break
         out.append({
             "sku": sku_val,
             "ean": ean_val,
@@ -17708,6 +17763,7 @@ def _hsplus_parse_xml(xml_bytes):
             "image": imgs[0] if imgs else "",
             "images": imgs,
             "root": _hsplus_root_key(nm),
+            **({"kos_karton": kos_karton, "kos_polje": kos_polje} if kos_karton else {}),
         })
     return out
 
