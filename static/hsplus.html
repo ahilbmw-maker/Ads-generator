@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HS+ prevzemi</title>
+<link rel="icon" type="image/png" href="/static/suban-s-icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --bd:#e3e6eb; --txt:#16181d; --txt2:#5d6470; --txt3:#9aa1ad; --acc:#3a6fff;
+    --ok:#15803d; --okbg:#dcfce7; --wa:#a16207; --wabg:#fef3c7; --er:#b91c1c; --erbg:#fee2e2; --in:#1d4ed8; --inbg:#dbeafe; --gr:#475569; --grbg:#e2e8f0; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#111317; --card:#1a1d23; --bd:#2b3039; --txt:#e8eaee; --txt2:#a3aab6; --txt3:#6b7380;
+    --okbg:#14361f; --ok:#86efac; --wabg:#3a2e0d; --wa:#fcd34d; --erbg:#3d1414; --er:#fca5a5; --inbg:#172554; --in:#93c5fd; --grbg:#2b3039; --gr:#cbd5e1; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.45 'DM Sans',-apple-system,'Segoe UI',sans-serif; }
+  .wrap { max-width:1280px; margin:0 auto; padding:16px; }
+  .head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+  .head h1 { font-size:20px; margin:0; font-weight:700; }
+  .head .sub { color:var(--txt2); font-size:12px; }
+  .btn { border:1px solid var(--bd); background:var(--card); color:var(--txt); border-radius:8px; padding:7px 12px; font:600 13px inherit; font-family:inherit; cursor:pointer; }
+  .btn:hover { border-color:var(--acc); }
+  .btn.pri { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--bd); margin-bottom:12px; }
+  .tab { padding:8px 14px; cursor:pointer; color:var(--txt2); font-weight:600; border-bottom:2px solid transparent; }
+  .tab.on { color:var(--acc); border-bottom-color:var(--acc); }
+  .kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; margin-bottom:12px; }
+  .kpi div { background:var(--card); border:1px solid var(--bd); border-radius:10px; padding:10px 12px; cursor:pointer; }
+  .kpi b { display:block; font-size:22px; }
+  .kpi span { color:var(--txt2); font-size:12px; }
+  .bar { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  .bar input[type=search] { height:34px; border:1px solid var(--bd); border-radius:8px; padding:0 10px; background:var(--card); color:var(--txt); font:inherit; width:220px; }
+  .chip { border:1px solid var(--bd); background:var(--card); color:var(--txt2); border-radius:999px; padding:4px 11px; cursor:pointer; font-size:12.5px; font-weight:600; }
+  .chip.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:12px; overflow:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.4px; color:var(--txt3); padding:9px 8px; border-bottom:1px solid var(--bd); white-space:nowrap; position:sticky; top:0; background:var(--card); }
+  td { padding:8px; border-bottom:1px solid var(--bd); vertical-align:middle; }
+  tr.sel td { background:rgba(58,111,255,.07); }
+  tr.loc td { border-top:2px solid var(--bd); }
+  .naz { font-weight:600; }
+  .mut { color:var(--txt3); font-size:11.5px; }
+  .r { text-align:right; white-space:nowrap; }
+  select.s { border:1px solid var(--bd); border-radius:7px; padding:4px 6px; font:600 12.5px inherit; font-family:inherit; background:var(--card); color:var(--txt); }
+  .st-naroceno { background:var(--inbg); color:var(--in); border-color:transparent; }
+  .st-cakajoce { background:var(--wabg); color:var(--wa); border-color:transparent; }
+  .st-manjka { background:var(--erbg); color:var(--er); border-color:transparent; }
+  .st-prevzeto { background:var(--okbg); color:var(--ok); border-color:transparent; }
+  .st-preklicano { background:var(--grbg); color:var(--gr); border-color:transparent; text-decoration:line-through; }
+  .sk-prazno { color:var(--txt3); }
+  #selBar { position:sticky; bottom:10px; display:none; gap:8px; align-items:center; flex-wrap:wrap; background:var(--txt); color:var(--bg); padding:10px 14px; border-radius:12px; margin-top:10px; }
+  #selBar .btn { padding:5px 10px; }
+  .drop { border:2px dashed var(--bd); border-radius:12px; padding:14px; text-align:center; color:var(--txt2); margin-bottom:12px; display:none; background:var(--card); }
+  .drop.over { border-color:var(--acc); color:var(--acc); }
+  .msg { padding:10px 12px; border-radius:10px; margin-bottom:12px; display:none; }
+  .msg.ok { background:var(--okbg); color:var(--ok); } .msg.er { background:var(--erbg); color:var(--er); } .msg.in { background:var(--inbg); color:var(--in); }
+  .sklad { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:12px; }
+  .sklad .card { padding:14px; }
+  .sklad h3 { margin:0 0 8px; font-size:16px; }
+  .sklad .row { display:flex; justify-content:space-between; gap:8px; padding:5px 0; border-bottom:1px solid var(--bd); font-size:13px; }
+  .empty { padding:40px; text-align:center; color:var(--txt3); }
+  @media (max-width:700px) { .hide-m { display:none; } .bar input[type=search] { width:100%; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div><h1>📦 HS+ prevzemi</h1><div class="sub">Postavke iz B2B naročil HS Plus · skladišče in status po postavki</div></div>
+    <span style="margin-left:auto"></span>
+    <label class="sub">Kdo: <input id="kdo" placeholder="ime (neobvezno)" style="height:30px;border:1px solid var(--bd);border-radius:7px;padding:0 8px;width:120px;background:var(--card);color:var(--txt);font:inherit"></label>
+    <button class="btn pri" onclick="document.getElementById('pdf').click()">⬆ Uvozi PDF naročila</button>
+    <input type="file" id="pdf" accept="application/pdf,.pdf" style="display:none" onchange="uvozi(this.files[0]);this.value=''">
+  </div>
+  <div class="drop" id="drop">Spusti PDF naročila sem</div>
+  <div class="msg" id="msg"></div>
+  <div class="tabs">
+    <div class="tab on" data-t="izdelki" onclick="tab('izdelki')">Izdelki</div>
+    <div class="tab" data-t="skladisce" onclick="tab('skladisce')">Skladišče</div>
+  </div>
+
+  <div id="pg-izdelki">
+    <div class="kpi" id="kpi"></div>
+    <div class="bar">
+      <input type="search" id="q" placeholder="Išči ime ali EAN" oninput="render()">
+      <span class="sub" style="margin-left:6px">Status:</span><span id="fSt"></span>
+      <span class="sub" style="margin-left:6px">Skladišče:</span><span id="fSk"></span>
+      <label class="sub" style="margin-left:auto;cursor:pointer"><input type="checkbox" id="kazPrev" onchange="render()"> Pokaži prevzete</label>
+    </div>
+    <div class="card"><table>
+      <thead><tr><th style="width:30px"><input type="checkbox" id="selAll" onchange="izberiVse(this.checked)"></th><th>Izdelek</th><th class="r">Kartoni</th><th class="r">Kosov</th><th class="r hide-m">Cena/kos</th><th>Skladišče</th><th>Status</th><th class="hide-m">Dodano</th></tr></thead>
+      <tbody id="tb"></tbody>
+    </table></div>
+    <div id="selBar">
+      <b id="selN">0</b> izbranih
+      <span style="margin-left:8px">Skladišče:</span>
+      <button class="btn" onclick="masovno({skladisce:'Brnik'})">Brnik</button>
+      <button class="btn" onclick="masovno({skladisce:'Grosuplje'})">Grosuplje</button>
+      <span style="margin-left:8px">Status:</span>
+      <button class="btn" onclick="masovno({status:'cakajoce'})">Čakajoče</button>
+      <button class="btn" onclick="masovno({status:'prevzeto'})">Prevzeto</button>
+      <button class="btn" onclick="masovno({status:'naroceno'})">Naročeno</button>
+      <button class="btn" onclick="izbrisi()" style="margin-left:auto">🗑 Odstrani</button>
+      <button class="btn" onclick="SEL.clear();render()">✕</button>
+    </div>
+  </div>
+
+  <div id="pg-skladisce" style="display:none"><div class="sklad" id="skl"></div></div>
+</div>
+
+<script>
+const ST = { naroceno: 'Naročeno', cakajoce: 'Čakajoče', manjka: 'Manjka', prevzeto: 'Prevzeto', preklicano: 'Preklicano' };
+const SK = ['Brnik', 'Grosuplje'];
+let D = [], SEL = new Set(), fSt = 'vse', fSk = 'vse';
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const eur = v => (Number(v) || 0).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+const dat = s => { const d = new Date(s); return isNaN(d) ? '' : d.getDate() + '. ' + (d.getMonth() + 1) + '. ' + d.getFullYear(); };
+try { document.getElementById('kdo').value = localStorage.getItem('hsb_kdo') || ''; } catch (e) {}
+document.getElementById('kdo').addEventListener('input', e => { try { localStorage.setItem('hsb_kdo', e.target.value); } catch (er) {} });
+
+function sporocilo(t, cls, ms) {
+  const m = document.getElementById('msg'); m.className = 'msg ' + cls; m.innerHTML = t; m.style.display = 'block';
+  clearTimeout(m._t); if (ms) m._t = setTimeout(() => m.style.display = 'none', ms);
+}
+async function nalozi() {
+  try { const d = await (await fetch('/hsplus/api/seznam', { cache: 'no-store' })).json(); if (d.ok) { D = d.items || []; render(); } }
+  catch (e) { sporocilo('Seznama ni bilo mogoče naložiti.', 'er'); }
+}
+function tab(t) {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.dataset.t === t));
+  document.getElementById('pg-izdelki').style.display = t === 'izdelki' ? '' : 'none';
+  document.getElementById('pg-skladisce').style.display = t === 'skladisce' ? '' : 'none';
+  render();
+}
+// vrstni red: novejši uvozi zgoraj; znotraj uvoza po statusu (odprti najprej), nato po vrstnem redu v PDF-ju
+const STR = { naroceno: 0, cakajoce: 1, manjka: 2, preklicano: 3, prevzeto: 4 };
+function vidni() {
+  const q = document.getElementById('q').value.trim().toLowerCase(), kaz = document.getElementById('kazPrev').checked;
+  return D.filter(it => {
+    if (fSt === 'vse' ? (!kaz && it.status === 'prevzeto') : it.status !== fSt) return false;
+    if (fSk !== 'vse' && (fSk === 'brez' ? it.skladisce : it.skladisce !== fSk)) return false;
+    if (q && !((it.naziv + ' ' + it.barva + ' ' + it.ean).toLowerCase().includes(q))) return false;
+    return true;
+  }).sort((a, b) => String(b.dodano).localeCompare(String(a.dodano)) || (STR[a.status] - STR[b.status]) || (a.idx - b.idx));
+}
+function chips() {
+  const n = s => D.filter(it => it.status === s).length;
+  document.getElementById('fSt').innerHTML = [['vse', 'Vse odprte']].concat(Object.entries(ST)).map(([k, l]) =>
+    '<span class="chip' + (fSt === k ? ' on' : '') + '" onclick="fSt=\'' + k + '\';render()">' + l + (k === 'vse' ? '' : ' ' + n(k)) + '</span>').join(' ');
+  document.getElementById('fSk').innerHTML = [['vse', 'Vsa'], ...SK.map(s => [s, s]), ['brez', 'Ni določeno']].map(([k, l]) =>
+    '<span class="chip' + (fSk === k ? ' on' : '') + '" onclick="fSk=\'' + k + '\';render()">' + l + '</span>').join(' ');
+  const odp = D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano');
+  document.getElementById('kpi').innerHTML =
+    '<div onclick="fSt=\'naroceno\';render()"><b>' + n('naroceno') + '</b><span>Naročeno</span></div>' +
+    '<div onclick="fSt=\'cakajoce\';render()"><b>' + n('cakajoce') + '</b><span>Čakajoče</span></div>' +
+    '<div onclick="fSt=\'manjka\';render()"><b>' + n('manjka') + '</b><span>Manjka</span></div>' +
+    '<div onclick="fSt=\'prevzeto\';render()"><b>' + n('prevzeto') + '</b><span>Prevzeto</span></div>' +
+    '<div onclick="fSk=\'brez\';fSt=\'vse\';render()"><b>' + odp.filter(it => !it.skladisce).length + '</b><span>Brez skladišča</span></div>' +
+    '<div><b>' + eur(odp.reduce((s, it) => s + (Number(it.vsota) || 0), 0)) + '</b><span>Odprto (vrednost)</span></div>';
+}
+function render() {
+  chips();
+  const rows = vidni();
+  let prej = null;
+  document.getElementById('tb').innerHTML = rows.length ? rows.map(it => {
+    const loc = prej !== null && prej !== it.dodano; prej = it.dodano;
+    const skl = '<select class="s' + (it.skladisce ? '' : ' sk-prazno') + '" onchange="uredi([\'' + it.id + '\'],{skladisce:this.value})"><option value="">— izberi</option>' +
+      SK.map(s => '<option' + (it.skladisce === s ? ' selected' : '') + '>' + s + '</option>').join('') + '</select>';
+    const st = '<select class="s st-' + it.status + '" onchange="spremeniStatus(\'' + it.id + '\',this)">' +
+      Object.entries(ST).map(([k, l]) => '<option value="' + k + '"' + (it.status === k ? ' selected' : '') + '>' + l + (k === 'manjka' && it.status === 'manjka' && it.manjka ? ' ' + it.manjka : '') + '</option>').join('') + '</select>';
+    const zg = (it.zgodovina || []).slice(-6).reverse().map(z => dat(z.at) + ' ' + z.polje + ': ' + (z.prej || '—') + ' → ' + z.potem + (z.kdo ? ' (' + z.kdo + ')' : '')).join('\n');
+    return '<tr class="' + (SEL.has(it.id) ? 'sel' : '') + (loc ? ' loc' : '') + '" title="' + esc(zg) + '">' +
+      '<td><input type="checkbox" ' + (SEL.has(it.id) ? 'checked' : '') + ' onchange="izberi(\'' + it.id + '\',this.checked,event)"></td>' +
+      '<td><div class="naz">' + esc(it.naziv) + (it.barva ? ' <span class="mut">· ' + esc(it.barva) + '</span>' : '') + '</div><div class="mut">' + esc(it.ean) + (it.opomba ? ' · ' + esc(it.opomba) : '') + '</div></td>' +
+      '<td class="r">' + it.kartoni + ' × ' + it.kos_karton + '</td><td class="r"><b>' + it.kosov + '</b></td>' +
+      '<td class="r hide-m">' + eur(it.cena_kos) + '</td><td>' + skl + '</td><td>' + st + '</td><td class="hide-m mut">' + dat(it.dodano) + '</td></tr>';
+  }).join('') : '<tr><td colspan="8" class="empty">' + (D.length ? 'Ni postavk za izbrane filtre.' : 'Še ni postavk. Uvozi PDF B2B naročila HS+.') + '</td></tr>';
+  document.getElementById('selN').textContent = SEL.size;
+  document.getElementById('selBar').style.display = SEL.size ? 'flex' : 'none';
+  const vis = rows.map(it => it.id), sa = document.getElementById('selAll');
+  sa.checked = vis.length > 0 && vis.every(id => SEL.has(id)); sa.indeterminate = !sa.checked && vis.some(id => SEL.has(id));
+  renderSklad();
+}
+let zadnji = -1;
+function izberi(id, on, ev) {
+  const rows = vidni().map(it => it.id), i = rows.indexOf(id);
+  if (ev && ev.shiftKey && zadnji >= 0 && i >= 0) { const [a, b] = zadnji < i ? [zadnji, i] : [i, zadnji]; rows.slice(a, b + 1).forEach(x => on ? SEL.add(x) : SEL.delete(x)); }
+  else on ? SEL.add(id) : SEL.delete(id);
+  zadnji = i; render();
+}
+function izberiVse(on) { vidni().forEach(it => on ? SEL.add(it.id) : SEL.delete(it.id)); render(); }
+async function uredi(ids, spr) {
+  try {
+    const r = await (await fetch('/hsplus/api/uredi', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ ids, kdo: document.getElementById('kdo').value }, spr)) })).json();
+    if (!r.ok) { sporocilo(esc(r.error || 'Napaka'), 'er', 5000); }
+  } catch (e) { sporocilo('Shranjevanje ni uspelo — preveri povezavo.', 'er', 5000); }
+  await nalozi();
+}
+function spremeniStatus(id, sel) {
+  if (sel.value === 'manjka') {
+    const v = prompt('Koliko kosov manjka?', '');
+    if (v === null || !(parseInt(v, 10) > 0)) { render(); return; }
+    return uredi([id], { status: 'manjka', manjka: parseInt(v, 10) });
+  }
+  uredi([id], { status: sel.value });
+}
+async function masovno(spr) { const ids = [...SEL]; if (!ids.length) return; await uredi(ids, spr); SEL.clear(); render(); }
+async function izbrisi() {
+  const ids = [...SEL]; if (!ids.length || !confirm('Odstranim ' + ids.length + ' postavk s seznama? (shranjene ostanejo v arhivu)')) return;
+  await fetch('/hsplus/api/izbrisi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+  SEL.clear(); nalozi();
+}
+async function uvozi(f, znova) {
+  if (!f) return;
+  sporocilo('⏳ Berem PDF »' + esc(f.name) + '« … (do 1 minute)', 'in');
+  const fd = new FormData(); fd.append('file', f);
+  try {
+    const r = await (await fetch('/hsplus/api/uvoz' + (znova ? '?znova=1' : ''), { method: 'POST', body: fd })).json();
+    if (!r.ok) {
+      if (r.podvojeno && confirm(r.error + '\n\nVseeno uvozim še enkrat?')) return uvozi(f, true);
+      return sporocilo('✗ ' + esc(r.error || 'Uvoz ni uspel'), 'er');
+    }
+    sporocilo('✓ Uvoženih ' + r.dodanih + ' postavk' + (r.narocilo ? ' (naročilo #' + esc(r.narocilo) + ')' : '') + ' · vsota ' + eur(r.vsota) +
+      (r.ujema ? ' = skupaj na PDF ✓' : ' — <b>ne ujema se s skupajem na PDF (' + eur(r.skupaj) + ')</b>, preveri postavke'), r.ujema ? 'ok' : 'er');
+    fSt = 'vse'; fSk = 'vse'; nalozi();
+  } catch (e) { sporocilo('✗ Uvoz ni uspel — preveri povezavo.', 'er'); }
+}
+function renderSklad() {
+  const el = document.getElementById('skl'); if (!el) return;
+  el.innerHTML = SK.concat(['']).map(s => {
+    const its = D.filter(it => it.skladisce === s && it.status !== 'preklicano');
+    if (!s && !its.length) return '';
+    const odp = its.filter(it => it.status !== 'prevzeto'), prv = its.filter(it => it.status === 'prevzeto');
+    const vr = it => '<div class="row"><span>' + esc(it.naziv) + (it.barva ? ' <span class="mut">' + esc(it.barva) + '</span>' : '') + '</span><span><b>' + it.kosov + '</b> kos · <span class="s st-' + it.status + '" style="padding:1px 7px;border-radius:6px">' + ST[it.status] + (it.status === 'manjka' && it.manjka ? ' ' + it.manjka : '') + '</span></span></div>';
+    return '<div class="card"><h3>' + (s || 'Ni določeno') + '</h3><div class="mut" style="margin-bottom:8px">Odprto ' + odp.length + ' (' + odp.reduce((a, it) => a + it.kosov, 0) + ' kos) · prevzeto ' + prv.length + '</div>' +
+      (odp.map(vr).join('') || '<div class="mut">Ni odprtih postavk.</div>') +
+      (prv.length ? '<details style="margin-top:8px"><summary class="mut" style="cursor:pointer">Prevzeto (' + prv.length + ')</summary>' + prv.map(vr).join('') + '</details>' : '') + '</div>';
+  }).join('');
+}
+// povleci in spusti PDF kamorkoli na stran
+const drop = document.getElementById('drop');
+document.addEventListener('dragover', e => { e.preventDefault(); drop.style.display = 'block'; drop.classList.add('over'); });
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) { drop.classList.remove('over'); drop.style.display = 'none'; } });
+document.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); drop.style.display = 'none'; const f = e.dataTransfer.files[0]; if (f) uvozi(f); });
+nalozi();
+setInterval(() => { if (!document.hidden && !SEL.size) nalozi(); }, 60000);   // drugi uporabniki — osveži vsako minuto (ne med izbiranjem)
+</script>
+</body>
+</html>

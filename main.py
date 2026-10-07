@@ -339,6 +339,10 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
             path = request.url.path
             if path in _AUTH_EXEMPT_EXACT or path.startswith(_AUTH_EXEMPT_PREFIX):
                 return await call_next(request)
+            # HS+ B2B prevzemi (/hsplus): ZAČASNO odprto brez gesla (dogovor 2026-10-07 — zaklenemo, ko je stran končana).
+            # /hsplus-catalog* ipd. (drug prefiks) ostanejo zaklenjeni.
+            if path == "/hsplus" or path.startswith("/hsplus/"):
+                return await call_next(request)
             wants_html = "text/html" in request.headers.get("accept", "")
             if path == "/nabava" or path == "/nabava-login" or path.startswith("/nabava-"):
                 if path == "/nabava-login":          # VEDNO dostopen — sicer redirect zanka
@@ -8977,6 +8981,179 @@ Brez dodatnih komentarjev, samo JSON."""
     except Exception as e:
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ════════════════════════════════════════════════════════════════════
+#  HS+ B2B PREVZEMI (/hsplus) — en dolg seznam postavk iz B2B naročil HS Plus: skladišče (Brnik/Grosuplje) in
+#  status po postavki. Zaenkrat brez gesla (AuthGate izjema). Shramba /data/hsplus_b2b.json (_jsave: atomično + .bak).
+# ════════════════════════════════════════════════════════════════════
+HSB_FILE = DATA_DIR / "hsplus_b2b.json"
+HSB_SKLADISCA = ("Brnik", "Grosuplje")
+HSB_STATUSI = ("naroceno", "cakajoce", "manjka", "prevzeto", "preklicano")
+_hsb_lock = asyncio.Lock()
+
+
+def _hsb_load(strict=False) -> dict:
+    d = _jload(HSB_FILE, {}, strict=strict) or {}
+    d.setdefault("items", []); d.setdefault("narocila", {}); d.setdefault("izbrisani", [])
+    return d
+
+
+@app.get("/hsplus", response_class=HTMLResponse)
+def hsplus_page():
+    return FileResponse("static/hsplus.html", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/hsplus/api/seznam")
+async def hsplus_seznam():
+    d = _hsb_load()
+    return {"ok": True, "items": d["items"], "skladisca": HSB_SKLADISCA, "statusi": HSB_STATUSI}
+
+
+def _hsb_beri_pdf(content_bytes: bytes) -> dict:
+    """B2B naročilo HS+ (PDF) → postavke prek Claude Vision. Kontrola: vsota postavk = skupaj naročila; ob razliki še enkrat."""
+    import base64
+    doc = {"type": "document", "source": {"type": "base64", "media_type": "application/pdf",
+                                           "data": base64.b64encode(content_bytes).decode()}}
+    prompt = """To je B2B naročilo HS Plus (Order #...). Tabela "Order items" ima stolpce: Item (EAN v oklepaju + ime, pod njim
+morda "Color: ..."), Price per piece, Pieces per carton, Price per carton, Quantity (= število kartonov), Subtotal.
+Tabela se lahko nadaljuje na več straneh in se glava ponovi — vzemi VSE vrstice postavk, od vrha do dna, nobene ne izpusti.
+Vrni IZKLJUČNO JSON:
+{"narocilo": "1342", "datum": "10/07/2026", "skupaj": 5201.03, "stevilo_vrstic": 15,
+ "items": [{"ean": "3831121188653", "naziv": "NAIL PRO", "barva": "", "cena_kos": 1.31, "kos_karton": 60,
+            "cena_karton": 78.60, "kartoni": 1, "vsota": 78.60}]}
+Števila kot števila (decimalna pika, brez €). "barva" = vrednost za "Color:" ali prazno. "skupaj" = Order total."""
+    client = anthropic.Anthropic()
+
+    def _beri(model, opomba=""):
+        r = client.messages.create(model=model, _keep_model=True, max_tokens=16000,
+                                   messages=[{"role": "user", "content": [doc, {"type": "text", "text": prompt + opomba}]}])
+        if getattr(r, "stop_reason", "") == "refusal":
+            raise RuntimeError("model je zavrnil zahtevo")
+        return parse_json_response("".join(b.text for b in r.content if getattr(b, "type", "") == "text")) or {}
+
+    def _kontrola(p):
+        its = p.get("items") or []
+        vs = round(sum(float(i.get("vsota") or 0) for i in its), 2)
+        return vs, abs(vs - float(p.get("skupaj") or 0)) < 0.05 and len(its) >= int(p.get("stevilo_vrstic") or 0)
+
+    parsed, model = {}, os.environ.get("HS_PDF_MODEL", "claude-sonnet-5-5")
+    for mdl in dict.fromkeys([model, "claude-sonnet-4-6"]):
+        try:
+            parsed = _beri(mdl); model = mdl
+            break
+        except Exception as e:
+            print(f"[hsplus-b2b] {mdl} napaka: {e}")
+    vs, ok = _kontrola(parsed)
+    if parsed and not ok:
+        try:
+            p2 = _beri(model, f"\n\nPOZOR: vsota postavk ({vs}) se ne ujema z Order total ({parsed.get('skupaj')}) ali manjkajo vrstice "
+                              f"({len(parsed.get('items') or [])} od {parsed.get('stevilo_vrstic')}). Preveri vsako vrstico na vseh straneh še enkrat.")
+            vs2, ok2 = _kontrola(p2)
+            if ok2 or len(p2.get("items") or []) > len(parsed.get("items") or []):
+                parsed, vs, ok = p2, vs2, ok2
+        except Exception as e:
+            print(f"[hsplus-b2b] kontrola: {e}")
+    parsed["_vsota"], parsed["_ujema"], parsed["_model"] = vs, ok, model
+    return parsed
+
+
+@app.post("/hsplus/api/uvoz")
+async def hsplus_uvoz(file: UploadFile = File(...), znova: int = 0):
+    content = await file.read()
+    if not content or len(content) > 15_000_000:
+        return {"ok": False, "error": "Prazna ali prevelika datoteka (največ 15 MB)."}
+    try:
+        p = await asyncio.get_event_loop().run_in_executor(None, _hsb_beri_pdf, content)
+    except Exception as e:
+        return {"ok": False, "error": f"Branje PDF ni uspelo: {e}"}
+    its = [i for i in (p.get("items") or []) if isinstance(i, dict) and (i.get("naziv") or i.get("ean"))]
+    if not its:
+        return {"ok": False, "error": "Iz PDF-ja ne morem prebrati postavk."}
+    nar = str(p.get("narocilo") or "").strip().lstrip("#")
+    async with _hsb_lock:
+        try:
+            d = _hsb_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Shramba ni berljiva ({e}) — poskusi znova."}
+        if nar and nar in d["narocila"] and not znova:
+            return {"ok": False, "podvojeno": True, "error": f"Naročilo #{nar} je že uvoženo ({d['narocila'][nar].get('uvoz', '')[:16].replace('T', ' ')})."}
+        zdaj = _lj_iso()
+        f = lambda v, t=float: (t(v) if v not in (None, "") else 0)
+        novi = []
+        for idx, i in enumerate(its):
+            kart, kos = int(f(i.get("kartoni"), float)), int(f(i.get("kos_karton"), float))
+            novi.append({"id": uuid.uuid4().hex[:10], "ean": str(i.get("ean") or "").strip("() "), "naziv": str(i.get("naziv") or "").strip(),
+                         "barva": str(i.get("barva") or "").strip(), "cena_kos": round(f(i.get("cena_kos")), 2), "kos_karton": kos,
+                         "kartoni": kart, "kosov": kart * kos, "vsota": round(f(i.get("vsota")), 2), "narocilo": nar,
+                         "dodano": zdaj, "idx": idx, "skladisce": "", "status": "naroceno", "manjka": 0, "opomba": "", "zgodovina": []})
+        d["items"] = novi + d["items"]
+        if nar:
+            d["narocila"][nar] = {"uvoz": zdaj, "datum": p.get("datum"), "skupaj": p.get("skupaj"), "n": len(novi), "ime": file.filename}
+        _jsave(HSB_FILE, d)
+    return {"ok": True, "dodanih": len(novi), "narocilo": nar, "skupaj": p.get("skupaj"), "vsota": p.get("_vsota"),
+            "ujema": p.get("_ujema"), "vrstic": p.get("stevilo_vrstic"), "model": p.get("_model")}
+
+
+@app.post("/hsplus/api/uredi")
+async def hsplus_uredi(data: dict):
+    """Body: {ids: [...], skladisce?, status?, manjka?, opomba?, kdo?} — vsaka sprememba gre v zgodovino postavke."""
+    ids = set(str(x) for x in (data.get("ids") or []))
+    if not ids:
+        return {"ok": False, "error": "Ni izbranih postavk."}
+    spr = {}
+    if "skladisce" in data:
+        if data["skladisce"] not in ("",) + HSB_SKLADISCA:
+            return {"ok": False, "error": "Neznano skladišče."}
+        spr["skladisce"] = data["skladisce"]
+    if "status" in data:
+        if data["status"] not in HSB_STATUSI:
+            return {"ok": False, "error": "Neznan status."}
+        spr["status"] = data["status"]
+    if "manjka" in data:
+        try:
+            spr["manjka"] = max(0, int(data.get("manjka") or 0))
+        except Exception:
+            return {"ok": False, "error": "Manjka mora biti število."}
+    if "opomba" in data:
+        spr["opomba"] = str(data.get("opomba") or "")[:300]
+    if not spr:
+        return {"ok": False, "error": "Ni sprememb."}
+    kdo = str(data.get("kdo") or "")[:40]
+    async with _hsb_lock:
+        try:
+            d = _hsb_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Shramba ni berljiva ({e}) — poskusi znova."}
+        zdaj, n = _lj_iso(), 0
+        for it in d["items"]:
+            if it.get("id") not in ids:
+                continue
+            for k, v in spr.items():
+                if it.get(k) != v:
+                    it.setdefault("zgodovina", []).append({"at": zdaj, "polje": k, "prej": it.get(k), "potem": v, "kdo": kdo})
+                    it[k] = v
+            n += 1
+        _jsave(HSB_FILE, d)
+    return {"ok": True, "n": n}
+
+
+@app.post("/hsplus/api/izbrisi")
+async def hsplus_izbrisi(data: dict):
+    """Odstrani postavke s seznama (npr. napačen uvoz) — premaknejo se v 'izbrisani', nič se ne izgubi."""
+    ids = set(str(x) for x in (data.get("ids") or []))
+    async with _hsb_lock:
+        try:
+            d = _hsb_load(strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Shramba ni berljiva ({e})"}
+        ven = [it for it in d["items"] if it.get("id") in ids]
+        d["items"] = [it for it in d["items"] if it.get("id") not in ids]
+        for it in ven:
+            it["izbrisano"] = _lj_iso()
+        d["izbrisani"] = (ven + d["izbrisani"])[:5000]
+        _jsave(HSB_FILE, d)
+    return {"ok": True, "n": len(ven)}
 
 
 @app.post("/orodja-export-hs-xlsx")
