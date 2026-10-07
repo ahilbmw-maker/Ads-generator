@@ -12903,12 +12903,22 @@ function paketBato(){
   const items=rows.filter(o=>o.x.cms_id), brez=rows.length-items.length;
   if(!items.length){alert('Med izbranimi (v Bato pogledu) ni izdelkov s CMS ID.');return;}
   const cur=items[0].cur||'EUR';
+  // znesek je v VALUTI TRGA (ne koraki!) — primer za opozorilo: 1 korak v tej valuti
+  const KOR={EUR:1,HUF:100,RSD:100,CZK:5,PLN:5,RON:5}[String(cur).toUpperCase()]||1;
   const v=prompt('± CMS: '+items.length+' izdelkov na '+String(trg).toUpperCase()+(brez?' ('+brez+' brez CMS ID bo izpuščenih)':'')
-    +'.\n\nZa koliko '+cur+' spremenim PRODAJNO ceno? (npr. 1 = +1 '+cur+', -1 = −1 '+cur+'; brez zaokroževanja)\nVpiši znesek:','1');
+    +'.\n\nZa koliko '+cur+' spremenim PRODAJNO ceno?\n⚠ Znesek je v '+cur+', NE v korakih: 1 = +1 '+cur+(KOR>1?' (za +'+KOR+' '+cur+' vpiši '+KOR+')':'')+', -1 = −1 '+cur+'. Brez zaokroževanja.\nVpiši znesek:',String(KOR));
   if(v===null) return;
   const delta=parseFloat(String(v).replace(/\s/g,'').replace(',','.'));
   if(!isFinite(delta)||delta===0){alert('Neveljaven znesek.');return;}
-  if(!confirm('± Spremenim prodajno ceno za '+(delta>0?'+':'')+String(delta).replace('.',',')+' '+cur+' pri '+items.length+' izdelkih na '+String(trg).toUpperCase()+'?\n\nVtičnik pripravi vse hkrati v ozadju (seznam v panelu, »💾 Shrani izbrane« ali 🚀 samodejno).')) return;
+  // sumljiv znesek za to valuto (npr. +2 Ft namesto +200 Ft) → še enkrat vprašaj
+  const ad=Math.abs(delta), C=String(cur).toUpperCase();
+  const sumljivo=((C==='HUF'||C==='RSD')&&ad<50)||((C==='CZK'||C==='PLN'||C==='RON')&&ad<3)||(C==='EUR'&&ad>20)||((C==='HUF'||C==='RSD')&&ad>3000)||((C==='CZK'||C==='PLN'||C==='RON')&&ad>300);
+  if(sumljivo&&!confirm('⚠ POZOR: vpisala si '+(delta>0?'+':'')+String(delta).replace('.',',')+' '+cur+' — to je '+(ad<KOR?'zelo MALO':'zelo VELIKO')+' za '+cur+'.\n'
+    +(ad<KOR?'Si morda mislila '+(delta>0?'+':'−')+(ad*KOR)+' '+cur+'? (znesek je v '+cur+', ne v korakih)\n':'')+'\nOK = res '+(delta>0?'+':'')+String(delta).replace('.',',')+' '+cur+' · Prekliči = popravim')) return;
+  const pr=items[0], st=+(pr.x.koncna||pr.x.cena)||0, fmt=n=>(Math.round(n*100)/100).toLocaleString('sl-SI');
+  if(!confirm('± Spremenim prodajno ceno za '+(delta>0?'+':'')+String(delta).replace('.',',')+' '+cur+' pri '+items.length+' izdelkih na '+String(trg).toUpperCase()+'?\n\n'
+    +(st?'Primer: '+String(pr.x.sku||'').toUpperCase()+'  '+fmt(st)+' → '+fmt(st+delta)+' '+cur+'\n\n':'')
+    +'Vtičnik pripravi vse hkrati v ozadju (seznam v panelu, »💾 Shrani izbrane« ali 🚀 samodejno).')) return;
   window.postMessage({type:'suban-kalk-paket',trg,koraki:1,delta,mode:'vzporedno',items:items.map(o=>{const x=o.x;return {sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
     cena:+x.cena||0,valuta:cur,naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc};})},'*');
 }
