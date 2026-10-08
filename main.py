@@ -13291,14 +13291,11 @@ function planOdpri() {
   if (!o) { o = document.createElement('div'); o.id = 'planOkno'; document.body.appendChild(o);
     o.addEventListener('click', e => { if (e.target === o) o.style.display = 'none'; });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && o.style.display !== 'none') o.style.display = 'none'; }, true); }
-  // najprej vprašaj: samo dvigi (spusti ostanejo — npr. RVC 7 ne pade pod 7) ali vsi predlogi
-  const b = 'style="flex:1;padding:16px;font-size:15px;font-weight:700;text-align:left;line-height:1.4"';
-  o.innerHTML = '<div class="plan-box" style="max-width:560px"><div style="display:flex;align-items:center"><b style="font-size:17px">🧮 Plan cen · ' + esc(String(trg).toUpperCase()) + '</b>' +
-    '<button class="btn" style="margin-left:auto" onclick="document.getElementById(&quot;planOkno&quot;).style.display=&quot;none&quot;">✕</button></div>' +
-    '<div class="dim" style="margin:8px 0 14px">Katere predloge naj upoštevam? (' + SEL.size + ' izbranih)</div><div style="display:flex;gap:10px;flex-wrap:wrap">' +
-    '<button class="btn" ' + b + ' onclick="planZacni(&quot;dvig&quot;)">⬆ Samo dvigi<div class="dim" style="font-weight:400;font-size:12px">cene, ki bi šle navzdol, pusti pri miru</div></button>' +
-    '<button class="btn" ' + b + ' onclick="planZacni(&quot;najblizja&quot;)">↕ Vse<div class="dim" style="font-weight:400;font-size:12px">najbližja Bato — dvigi in spusti</div></button></div></div>';
-  o.style.display = 'flex';
+  // brez vmesnega koraka: plan vedno izračuna VSE (dvigi, spusti, Bato, decimalke); v oknu filter ⬆ / ⬇ / 🔧
+  o.style.display = 'flex'; PLAN_FLT = 'vse';
+  o.innerHTML = '<div class="plan-box"><b>🧮 Plan cen</b> · računam …</div>';
+  const sm = planNastavitve().smer;
+  planZacni(sm === 'gor' ? 'gor' : 'najblizja');
 }
 async function planZacni(smer) {
   const N = planNastavitve(); N.smer = smer;
@@ -13306,18 +13303,21 @@ async function planZacni(smer) {
   const bl = await danesBlok((D && D.rows || []).filter(x => SEL.has(x.g_id)));
   if (!bl && !confirm('Ne morem preveriti, kaj je bilo danes že spremenjeno (strežnik ni odgovoril).\n\nVseeno nadaljujem?')) return;
   DANES_BLOK = bl || {};
-  PLAN = planIzracun();
-  PLAN.izbrani = new Set(PLAN.predlogi.filter(p => p.ok).map(p => p.x.g_id));
-  planRisi();
+  PLAN = planIzracun(); planIzberiOk(); planRisi();
 }
+// filter v oknu: vse / gor (dvigi) / dol (spusti) / dec (🔧 decimalke) — prikazani in potrjeni so SAMO izdelki iz filtra
+let PLAN_FLT = 'vse';
+const planTip = p => p.dec ? 'dec' : (p.diff > 0 ? 'gor' : 'dol');
+const planVid = p => PLAN_FLT === 'vse' || planTip(p) === PLAN_FLT;
+function planIzberiOk() { PLAN.izbrani = new Set(PLAN.predlogi.filter(p => p.ok && planVid(p)).map(p => p.x.g_id)); }
+function planFilter(f) { PLAN_FLT = f; planIzberiOk(); planRisi(); }
 function planNastavi(k, v) {
   const N = planNastavitve(); N[k] = k === 'smer' ? v : (parseFloat(String(v).replace(',', '.')) || 0);
   try { localStorage.setItem('mz_plan', JSON.stringify(N)); } catch (e) {}
-  const prej = PLAN ? PLAN.izbrani : null; PLAN = planIzracun();
-  PLAN.izbrani = new Set(PLAN.predlogi.filter(p => p.ok).map(p => p.x.g_id)); planRisi();
+  PLAN = planIzracun(); planIzberiOk(); planRisi();
 }
 function planKljukica(g, on) { on ? PLAN.izbrani.add(g) : PLAN.izbrani.delete(g); planRisi(); }
-function planVse(on) { PLAN.predlogi.forEach(p => on ? PLAN.izbrani.add(p.x.g_id) : PLAN.izbrani.delete(p.x.g_id)); planRisi(); }
+function planVse(on) { PLAN.predlogi.filter(planVid).forEach(p => on ? PLAN.izbrani.add(p.x.g_id) : PLAN.izbrani.delete(p.x.g_id)); planRisi(); }
 function planRisi() {
   const o = document.getElementById('planOkno'), P2 = PLAN, N = P2.N;
   const iz = P2.predlogi.filter(p => P2.izbrani.has(p.x.g_id));
@@ -13325,7 +13325,10 @@ function planRisi() {
   const avg = (a, f) => a.length ? a.reduce((s, p) => s + f(p), 0) / a.length : 0;
   const f2n = v => (Math.round(v * 100) / 100).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const mc = m => '<span class="m ' + mcls(Math.round(m * 10) / 10) + '">' + (Math.round(m * 10) / 10).toLocaleString('sl-SI') + ' %</span>';
-  const vrst = P2.predlogi.map(p => {
+  const vid = P2.predlogi.filter(planVid);
+  const nT = t => P2.predlogi.filter(p => t === 'vse' || planTip(p) === t).length;
+  const fch = (t, l) => '<span class="chip' + (PLAN_FLT === t ? ' on' : '') + '" style="cursor:pointer;padding:5px 12px;font-weight:700" onclick="planFilter(&quot;' + t + '&quot;)">' + l + ' ' + nT(t) + '</span>';
+  const vrst = vid.map(p => {
     const on = P2.izbrani.has(p.x.g_id);
     return '<tr' + (p.ok ? '' : ' class="plan-flag"') + '><td><input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="planKljukica(\'' + esc(p.x.g_id) + '\',this.checked)"></td>' +
       '<td><b style="font-family:ui-monospace,monospace">' + esc(p.sku) + '</b><div class="dim" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.x.naziv || '') + '</div></td>' +
@@ -13338,7 +13341,7 @@ function planRisi() {
   o.innerHTML = '<div class="plan-box">' +
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:17px">🧮 Plan cen · ' + esc(String(trg).toUpperCase()) + '</b>' +
       '<span class="dim">predlog — v CMS se še nič ne spremeni</span><button class="btn" style="margin-left:auto" onclick="document.getElementById(\'planOkno\').style.display=\'none\'">✕</button></div>' +
-    '<div class="plan-nast">Cilj: <select onchange="planNastavi(\'smer\',this.value)"><option value="najblizja"' + (N.smer === 'najblizja' ? ' selected' : '') + '>najbližja Bato (enako → navzgor)</option><option value="dvig"' + (N.smer === 'dvig' ? ' selected' : '') + '>samo dvigi (spuste pusti)</option><option value="gor"' + (N.smer === 'gor' ? ' selected' : '') + '>samo navzgor na Bato</option></select>' +
+    '<div class="plan-nast">Cilj: <select onchange="planNastavi(\'smer\',this.value)"><option value="najblizja"' + (N.smer === 'najblizja' ? ' selected' : '') + '>najbližja Bato (enako → navzgor)</option><option value="gor"' + (N.smer === 'gor' ? ' selected' : '') + '>samo navzgor na Bato</option></select>' +
       ' · Prag marže <input type="number" value="' + N.prag + '" onchange="planNastavi(\'prag\',this.value)" style="width:60px"> %' +
       ' · Največja sprememba ± <input type="number" value="' + N.maxPct + '" onchange="planNastavi(\'maxPct\',this.value)" style="width:60px"> %</div>' +
     '<div class="plan-kpi">' +
@@ -13347,7 +13350,9 @@ function planRisi() {
       '<div><b>' + f2n(avg(iz, p => p.rZdaj)) + ' → ' + f2n(avg(iz, p => p.rPo)) + ' €</b><span>Ø razlika na izdelek</span></div>' +
       '<div><b>' + (Math.round(avg(iz, p => p.mZdaj) * 10) / 10).toLocaleString('sl-SI') + ' → ' + (Math.round(avg(iz, p => p.mPo) * 10) / 10).toLocaleString('sl-SI') + ' %</b><span>Ø marža</span></div>' +
       '<div><b>' + P2.preskok.length + '</b><span>preskočenih</span></div></div>' +
-    (P2.predlogi.length ? '<div class="plan-tab"><table><thead><tr><th><input type="checkbox" ' + (iz.length === P2.predlogi.length ? 'checked' : '') + ' onchange="planVse(this.checked)"></th><th>SKU</th><th class="r">Zdaj</th><th class="r">Predlog</th><th class="r">Sprememba</th><th class="r">Marža</th><th class="r">Razlika €</th><th>Opomba</th></tr></thead><tbody>' + vrst + '</tbody></table></div>'
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 8px">' + fch('vse', 'Vse') + fch('gor', '⬆ Samo dvigi') + fch('dol', '⬇ Samo spusti') + fch('dec', '🔧 Decimalke') +
+      '<span class="dim" style="margin-left:6px">v vrsto gredo samo potrjeni iz prikazanih</span></div>' +
+    (vid.length ? '<div class="plan-tab"><table><thead><tr><th><input type="checkbox" ' + (vid.length && vid.every(p => P2.izbrani.has(p.x.g_id)) ? 'checked' : '') + ' onchange="planVse(this.checked)"></th><th>SKU</th><th class="r">Zdaj</th><th class="r">Predlog</th><th class="r">Sprememba</th><th class="r">Marža</th><th class="r">Razlika €</th><th>Opomba</th></tr></thead><tbody>' + vrst + '</tbody></table></div>'
       : '<div class="dim" style="padding:20px;text-align:center">Med izbranimi ni izdelkov za spremembo.</div>') +
     (P2.preskok.length ? '<details style="margin-top:8px"><summary class="dim" style="cursor:pointer">Preskočeni (' + P2.preskok.length + ')</summary><div class="dim" style="margin-top:6px">' +
       Object.entries(poRazlogu).map(([r, a]) => '<div><b>' + esc(r) + '</b> (' + a.length + '): ' + a.slice(0, 40).map(esc).join(', ') + (a.length > 40 ? ' …' : '') + '</div>').join('') + '</div></details>' : '') +
