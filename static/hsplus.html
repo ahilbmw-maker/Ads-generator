@@ -259,11 +259,11 @@ const ST = { naroceno: 'Naročeno', potrjeno: 'Potrjeno', cakajoce: 'Čakajoče'
 const SK = ['Brnik', 'Grosuplje'];
 let D = [], SEL = new Set(), fSk = 'vse';
 // vidni statusi (več hkrati); privzeto samo Naročeno + Manjka — zapomni se v brskalniku
-const ST_PRIVZ = ['naroceno', 'potrjeno', 'manjka'];
+const ST_PRIVZ = ['naroceno', 'manjka'];
 let fStS = new Set(ST_PRIVZ);
 try { const x = JSON.parse(localStorage.getItem('hsb_st') || 'null'); if (Array.isArray(x)) fStS = new Set(x); } catch (e) {}
-// nov status Potrjeno (2026-10-08): enkrat dodaj v shranjen filter, da potrjene postavke ne »izginejo«
-try { if (!localStorage.getItem('hsb_st_pot')) { if (fStS.has('naroceno')) fStS.add('potrjeno'); localStorage.setItem('hsb_st_pot', '1'); localStorage.setItem('hsb_st', JSON.stringify([...fStS])); } } catch (e) {}
+// Potrjeno privzeto NI prikazano (samo Naročeno + Manjka); enkrat ga odstrani iz filtra, kamor ga je dodala prejšnja verzija
+try { if (!localStorage.getItem('hsb_st_pot2')) { fStS.delete('potrjeno'); localStorage.setItem('hsb_st_pot2', '1'); localStorage.setItem('hsb_st', JSON.stringify([...fStS])); } } catch (e) {}
 function stNastavi(arr) { fStS = new Set(arr); try { localStorage.setItem('hsb_st', JSON.stringify([...fStS])); } catch (e) {} render(); }
 function stPreklopi(k) { const n = new Set(fStS); n.has(k) ? n.delete(k) : n.add(k); stNastavi([...n]); }
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -720,7 +720,8 @@ function renderSklad() {
     if (!s && !its.length) return '';
     const cas = s === 'Grosuplje';   // časovnica samo za oddaljeno skladišče; Brnik = zaloga, pripravljeno
     const odp = its.filter(it => it.status !== 'prevzeto').sort((a, b) => cas ? String(a.datum_narocila || '9').localeCompare(String(b.datum_narocila || '9')) : 0);
-    const prv = its.filter(it => it.status === 'prevzeto');
+    // Brnik: prevzeti izdelki niso več v skladišču → ne prikazuj jih (Grosuplje jih rabi za Ø dobavo)
+    const prv = s === 'Brnik' ? [] : its.filter(it => it.status === 'prevzeto');
     const dob = prv.map(it => it.prevzeto_at && dDat(it.datum_narocila) ? dniMed(dDat(it.datum_narocila), dDat(it.prevzeto_at)) : null).filter(x => x != null);
     const zam = cas ? odp.filter(it => dDat(it.datum_narocila) && dniMed(dDat(it.datum_narocila), danes0()) > CILJ).length : 0;
     // vrstica = mreža: slika · ime (+ količina, komentar) · časovnica · status
@@ -730,7 +731,7 @@ function renderSklad() {
       (cas ? casovnica(it) : '') + '<span class="pill st-' + it.status + '" style="justify-self:end">' + ST[it.status] + manjkaTxt(it) + '</span></div>';
     return '<div class="card sk-' + (s || 'brez') + '"><h3>' + (s ? '<span class="skp sk-' + s + '" style="font-size:15px">' + s + '</span>' : 'Ni določeno') + '</h3>' +
       '<div class="mut" style="margin-bottom:8px">Odprto ' + odp.length + ' (' + odp.reduce((a, it) => a + (it.kartoni || 0), 0) + ' krt)' +
-        (zam ? ' · <b style="color:var(--c-man)">' + zam + ' čez cilj</b>' : '') + ' · prevzeto ' + prv.length +
+        (zam ? ' · <b style="color:var(--c-man)">' + zam + ' čez cilj</b>' : '') + (s === 'Brnik' ? '' : ' · prevzeto ' + prv.length) +
         (cas && dob.length ? ' · Ø dobava <b>' + Math.round(dob.reduce((a, x) => a + x, 0) / dob.length) + ' dni</b> (' + dob.length + ')' : '') + '</div>' +
       (odp.map(vr).join('') || '<div class="mut">Ni odprtih postavk.</div>') +
       (prv.length ? '<details style="margin-top:8px"><summary class="mut" style="cursor:pointer">Prevzeto (' + prv.length + ')</summary>' + prv.map(vr).join('') + '</details>' : '') + '</div>';
