@@ -597,8 +597,22 @@ def _get_feed_lock() -> "asyncio.Lock":
     return _feed_lock
 
 
+FEED_URA = 6   # feed beremo vsak dan ob 6:00 (Ljubljana) — trgovina ga zgradi okoli 5:30
+
+
+def _feed_zadnja_6():
+    """Zadnji termin branja feeda (danes 6:00, če je že mimo, sicer včeraj 6:00) v lokalnem času strežnika
+    (naiven, kot last_fetch = datetime.now(); strežnik teče v UTC)."""
+    lj = _lj_now()
+    t = lj.replace(hour=FEED_URA, minute=0, second=0, microsecond=0)
+    if lj < t:
+        t -= timedelta(days=1)
+    return t.astimezone().replace(tzinfo=None)
+
+
 def is_cache_stale():
-    return last_fetch is None or datetime.now() - last_fetch > timedelta(hours=CACHE_TTL_HOURS)
+    # zastarel = prebran pred zadnjim terminom ob 6:00 (ali starejši od 24 h)
+    return last_fetch is None or last_fetch < _feed_zadnja_6() or datetime.now() - last_fetch > timedelta(hours=CACHE_TTL_HOURS)
 
 
 def extract_slug(url: str) -> Optional[str]:
@@ -1038,7 +1052,7 @@ def _load_feed_cache_from_disk(allow_stale: bool = False) -> bool:
         # POMEMBNO: star cache VSEENO naložimo (feed ne sme biti nikoli prazen — sicer
         # "URL ni najden" v generatorju in price checkerju). TTL le sproži osvežitev
         # v ozadju (ensure_cache_fresh/periodic_refresh), a stari URL-ji ostanejo na voljo.
-        _star = datetime.now() - saved_at > timedelta(hours=CACHE_TTL_HOURS)
+        _star = datetime.now() - saved_at > timedelta(hours=CACHE_TTL_HOURS) or saved_at < _feed_zadnja_6()   # prebran pred zadnjo 6:00
         if _star and not allow_stale:
             # cache je star IN klicatelj noče starega (hoče sprožiti prenos) → ne naloži, vrni False
             print("[feed cache] disk cache zastarel, bo osvežen")
@@ -2101,7 +2115,7 @@ async def startup_event():
     loaded = _load_feed_cache_from_disk(allow_stale=True)
     # če ni bil naložen SVEŽ (ni ga, ali je star), sproži prenos v ozadju
     if is_cache_stale():
-        asyncio.create_task(fetch_all_feeds())
+        asyncio.create_task(ensure_cache_fresh())   # pod lockom (brez dvojnega prenosa)
 
     # FFmpeg warm-up v ozadju (lahko traja do 30s ob prvem zagonu) — ne sme blokirati startupa
     asyncio.create_task(_ffmpeg_warmup())
@@ -2142,15 +2156,20 @@ async def _ffmpeg_warmup():
 
 
 async def periodic_refresh():
+    """Feed vsak dan ob 6:00 (Ljubljana). Prenos pod istim lockom kot ensure_cache_fresh — prej sta lahko tekla
+    hkrati in spremembe cen zabeležila dvakrat (podvojene vrstice v zgodovini cen)."""
     while True:
-        # počakaj do poteka TTL (7 dni) glede na zadnji prenos
-        if last_fetch:
-            age = (datetime.now() - last_fetch).total_seconds()
-            wait = max(60, CACHE_TTL_HOURS * 3600 - age)
-        else:
-            wait = CACHE_TTL_HOURS * 3600
-        await asyncio.sleep(wait)
-        await fetch_all_feeds()
+        try:
+            naslednji = _feed_zadnja_6() + timedelta(days=1)
+            await asyncio.sleep(max(60, (naslednji - datetime.now()).total_seconds() + 30))
+            async with _get_feed_lock():
+                if is_cache_stale():
+                    await fetch_all_feeds()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"[feed] dnevna osvežitev ob {FEED_URA}:00: {e}")
+            await asyncio.sleep(600)
 
 
 # ─── EMAIL IMAP POLLING ──────────────────────────────────────────────────────
