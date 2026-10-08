@@ -72,6 +72,7 @@ _AI_CLAUDE_CENE = [   # (predpona modela, $ vhod / 1M, $ izhod / 1M) — vrstni 
     ("claude-opus-5-5", 4.0, 20.0), ("claude-opus-5", 5.0, 25.0), ("claude-opus-4", 5.0, 25.0),
     ("claude-fable", 10.0, 50.0), ("claude-mythos", 10.0, 50.0),
     ("claude-sonnet-5", 2.0, 10.0), ("claude-sonnet-4", 3.0, 15.0),
+    ("claude-haiku-5", 0.10, 0.50),   # Haiku 5.5: prompt ≤ 100K žetonov (daljši 0,50 / 2,50 — pri nas ne pride v poštev)
     ("claude-haiku-4", 1.0, 5.0), ("claude-haiku-3", 0.8, 4.0),
 ]
 _AI_OPENAI_CENE = {"gpt-image-2": (5.0, 8.0, 30.0), "gpt-image-2.5-flare": (5.0, 8.0, 30.0)}   # $ / 1M: tekst vhod, slika vhod, izhod
@@ -180,6 +181,14 @@ def _ai_log_gemini(model: str, result: dict, funkcija: str = ""):
 # ob napaki 400/404/403, zavrnitvi (refusal) ali praznem odgovoru se isti klic ponovi s Sonnet 4.6.
 SONNET_MODEL = (os.environ.get("SONNET_MODEL") or "claude-sonnet-5-5").strip()
 SONNET_FALLBACK = "claude-sonnet-4-6"
+# HAIKU (prevodi Meta oglasov, branje imen videov): Claude Haiku 5.5 — ~10× cenejši od Haiku 4.5; razmišlja privzeto,
+# zato effort »low« (_haiku_kw). Nazaj: env HAIKU_MODEL=claude-haiku-4-5-20251001.
+HAIKU_MODEL = (os.environ.get("HAIKU_MODEL") or "claude-haiku-5-5").strip()
+
+
+def _haiku_kw(model: str) -> dict:
+    """Dodatni parametri za Haiku 5.5 (manj razmišljanja = manj izhodnih žetonov); Haiku 4.5 jih ne sprejme."""
+    return {"output_config": {"effort": "low"}} if str(model).startswith("claude-haiku-5") else {}
 _SONNET_OLD = {"claude-sonnet-4-6", "claude-sonnet-4-5"}
 
 
@@ -5196,7 +5205,7 @@ async def call_claude(prompt: str, model: str, tools=None, max_tokens: int = 400
     # kot razmišljanje → stari limiti (800–1500) odrežejo JSON. Limit je samo zgornja meja — plača se dejanska poraba.
     if model in _SONNET_OLD and SONNET_MODEL != SONNET_FALLBACK:
         max_tokens = max(max_tokens, 8000 if tools else 4000)
-    kwargs = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}
+    kwargs = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}], **_haiku_kw(model)}
     if tools:
         kwargs["tools"] = tools
 
@@ -5328,7 +5337,7 @@ SPLOŠNA PRAVILA:
 Vrni SAMO JSON:
 {{"hr":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"rs":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"hu":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"cz":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"sk":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"pl":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"gr":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"ro":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}},"bg":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}}}}"""
 
-        trans_text = await call_claude(trans_prompt, "claude-haiku-4-5-20251001", None, 5000)
+        trans_text = await call_claude(trans_prompt, HAIKU_MODEL, None, 8000)
         trans_data = parse_json_response(trans_text)
         if not trans_data:
             return {"error": "Napaka pri prevajanju."}
@@ -6239,9 +6248,9 @@ Vrni SAMO JSON: {{{batch_json_keys}}}"""
                         if skip_haiku_for_rest or last_error_was_529:
                             model = "claude-sonnet-4-6"
                         else:
-                            model = "claude-haiku-4-5-20251001" if attempt < 2 else "claude-sonnet-4-6"
+                            model = HAIKU_MODEL if attempt < 2 else "claude-sonnet-4-6"
                         try:
-                            batch_text = await call_claude(batch_prompt, model, None, 4000)
+                            batch_text = await call_claude(batch_prompt, model, None, 6000)   # Haiku 5.5 razmišlja → več prostora
                             batch_data = parse_json_response(batch_text)
                             if batch_data:
                                 missing = [lang for lang in batch if lang not in batch_data]
@@ -6374,11 +6383,12 @@ async def extract_videos(data: dict):
     def _call(model):
         return client.messages.create(
             model=model,
-            max_tokens=500,
+            max_tokens=2000,   # Haiku 5.5 razmišlja — prostor za razmišljanje + seznam
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
                 {"type": "text", "text": _prompt}
-            ]}]
+            ]}],
+            **_haiku_kw(model),
         )
 
     # Retry do 3x — pri 529 overload preklopi na Sonnet
@@ -6386,7 +6396,7 @@ async def extract_videos(data: dict):
     last_err = None
     for attempt in range(3):
         # Prva 2 poskusa Haiku, 3. Sonnet (ali takoj Sonnet po 529)
-        model = "claude-haiku-4-5-20251001" if attempt == 0 else "claude-sonnet-4-6"
+        model = HAIKU_MODEL if attempt == 0 else "claude-sonnet-4-6"
         try:
             msg = await loop.run_in_executor(None, lambda m=model: _call(m))
             break
@@ -6400,7 +6410,7 @@ async def extract_videos(data: dict):
     if msg is None:
         return {"error": "Anthropic je trenutno preobremenjen (529). Poskusi znova čez nekaj sekund."}
 
-    text = msg.content[0].text.strip()
+    text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()   # Haiku 5.5: prvi blok je lahko »thinking«
     text = re.sub(r"```json\s*", "", text)
     text = re.sub(r"```\s*", "", text).strip()
     try:
