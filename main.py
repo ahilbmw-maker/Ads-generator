@@ -13124,6 +13124,7 @@ function planIzracun() {
     const neto = p => x.neto * p / c, mz = p => (neto(p) - x.nc) / neto(p) * 100;
     let pred = N.smer === 'gor' ? k.up : k.pick, opomba = [];
     if (pred < c && mz(pred) < N.prag) { pred = k.up; opomba.push('↑ zaradi marže'); }
+    if (N.smer === 'dvig' && pred < c) return ze('predlog za spust (samo dvigi)');   // najprej samo dvigi, spuste pusti
     const pct = (pred - c) / c * 100, mPo = mz(pred);
     if (mPo < N.prag) opomba.push('marža pod ' + N.prag + ' %');
     const velika = Math.abs(pct) > N.maxPct;
@@ -13136,13 +13137,25 @@ function planIzracun() {
 }
 function planOdpri() {
   if (!SEL.size) { alert('Najprej izberi izdelke (kljukice, Shift za razpon).'); return; }
-  PLAN = planIzracun();
-  PLAN.izbrani = new Set(PLAN.predlogi.filter(p => p.ok).map(p => p.x.g_id));
   let o = document.getElementById('planOkno');
   if (!o) { o = document.createElement('div'); o.id = 'planOkno'; document.body.appendChild(o);
     o.addEventListener('click', e => { if (e.target === o) o.style.display = 'none'; });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && o.style.display !== 'none') o.style.display = 'none'; }, true); }
-  o.style.display = 'flex'; planRisi();
+  // najprej vprašaj: samo dvigi (spusti ostanejo — npr. RVC 7 ne pade pod 7) ali vsi predlogi
+  const b = 'style="flex:1;padding:16px;font-size:15px;font-weight:700;text-align:left;line-height:1.4"';
+  o.innerHTML = '<div class="plan-box" style="max-width:560px"><div style="display:flex;align-items:center"><b style="font-size:17px">🧮 Plan cen · ' + esc(String(trg).toUpperCase()) + '</b>' +
+    '<button class="btn" style="margin-left:auto" onclick="document.getElementById(&quot;planOkno&quot;).style.display=&quot;none&quot;">✕</button></div>' +
+    '<div class="dim" style="margin:8px 0 14px">Katere predloge naj upoštevam? (' + SEL.size + ' izbranih)</div><div style="display:flex;gap:10px;flex-wrap:wrap">' +
+    '<button class="btn" ' + b + ' onclick="planZacni(&quot;dvig&quot;)">⬆ Samo dvigi<div class="dim" style="font-weight:400;font-size:12px">cene, ki bi šle navzdol, pusti pri miru</div></button>' +
+    '<button class="btn" ' + b + ' onclick="planZacni(&quot;najblizja&quot;)">↕ Vse<div class="dim" style="font-weight:400;font-size:12px">najbližja Bato — dvigi in spusti</div></button></div></div>';
+  o.style.display = 'flex';
+}
+function planZacni(smer) {
+  const N = planNastavitve(); N.smer = smer;
+  try { localStorage.setItem('mz_plan', JSON.stringify(N)); } catch (e) {}
+  PLAN = planIzracun();
+  PLAN.izbrani = new Set(PLAN.predlogi.filter(p => p.ok).map(p => p.x.g_id));
+  planRisi();
 }
 function planNastavi(k, v) {
   const N = planNastavitve(); N[k] = k === 'smer' ? v : (parseFloat(String(v).replace(',', '.')) || 0);
@@ -13172,7 +13185,7 @@ function planRisi() {
   o.innerHTML = '<div class="plan-box">' +
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:17px">🧮 Plan cen · ' + esc(String(trg).toUpperCase()) + '</b>' +
       '<span class="dim">predlog — v CMS se še nič ne spremeni</span><button class="btn" style="margin-left:auto" onclick="document.getElementById(\'planOkno\').style.display=\'none\'">✕</button></div>' +
-    '<div class="plan-nast">Cilj: <select onchange="planNastavi(\'smer\',this.value)"><option value="najblizja"' + (N.smer === 'najblizja' ? ' selected' : '') + '>najbližja Bato (enako → navzgor)</option><option value="gor"' + (N.smer === 'gor' ? ' selected' : '') + '>samo navzgor na Bato</option></select>' +
+    '<div class="plan-nast">Cilj: <select onchange="planNastavi(\'smer\',this.value)"><option value="najblizja"' + (N.smer === 'najblizja' ? ' selected' : '') + '>najbližja Bato (enako → navzgor)</option><option value="dvig"' + (N.smer === 'dvig' ? ' selected' : '') + '>samo dvigi (spuste pusti)</option><option value="gor"' + (N.smer === 'gor' ? ' selected' : '') + '>samo navzgor na Bato</option></select>' +
       ' · Prag marže <input type="number" value="' + N.prag + '" onchange="planNastavi(\'prag\',this.value)" style="width:60px"> %' +
       ' · Največja sprememba ± <input type="number" value="' + N.maxPct + '" onchange="planNastavi(\'maxPct\',this.value)" style="width:60px"> %</div>' +
     '<div class="plan-kpi">' +
