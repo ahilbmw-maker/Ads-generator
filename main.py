@@ -5726,15 +5726,20 @@ async def ai_proxy(data: dict):
     """Proxy za AI klice iz frontenda (za Sporočanje)."""
     prompt = data.get("prompt", "")
     max_tokens = min(int(data.get("max_tokens", 500)), 800)
-    model = data.get("model", "claude-haiku-4-5-20251001")
+    model = data.get("model") or HAIKU_MODEL
+    if str(model).startswith("claude-haiku"):
+        model = HAIKU_MODEL   # frontend pošilja haiku-4-5 → privzeti Haiku (5.5)
     if not prompt:
         return {"content": [{"text": ""}]}
+    kw = _haiku_kw(model)
     msg = client.messages.create(
         model=model,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}]
+        max_tokens=max_tokens + (2000 if kw else 0),   # Haiku 5.5 razmišlja → več prostora
+        messages=[{"role": "user", "content": prompt}],
+        **kw
     )
-    return {"content": [{"type": "text", "text": msg.content[0].text}]}
+    txt = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+    return {"content": [{"type": "text", "text": txt}]}
 
 SUPPORT_PREVOD_MODEL = "claude-sonnet-5-5"   # SLX Support Helper (vtičnik): prepoznava jezika + prevod
 _SUPPORT_BREZ_NOGE = ("BREZ zaključnega pozdrava (npr. Lep pozdrav, S spoštovanjem, Best Regards, Lijepi pozdravi, S pozdravem), "
@@ -21122,11 +21127,12 @@ Nizek (<50) = pristno vprašanje o naročilih/izdelkih/dostavi (npr. order #1234
 
         try:
             msg = client_h.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=200,
-                messages=[{"role": "user", "content": prompt}]
+                model=HAIKU_MODEL,
+                max_tokens=2000,
+                messages=[{"role": "user", "content": prompt}],
+                **_haiku_kw(HAIKU_MODEL)
             )
-            txt = msg.content[0].text.strip() if msg.content else "{}"
+            txt = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip() or "{}"
             txt = re.sub(r'^```(?:json)?|```$', '', txt, flags=re.MULTILINE).strip()
             try:
                 ai = json.loads(txt)
@@ -27312,7 +27318,7 @@ async def pozicije_recognize(data: dict):
     def _call(model):
         return client.messages.create(
             model=model,
-            max_tokens=400,
+            max_tokens=400 + (2000 if _haiku_kw(model) else 0), **_haiku_kw(model),
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
                 {"type": "text", "text": _prompt},
@@ -27321,7 +27327,7 @@ async def pozicije_recognize(data: dict):
 
     msg = None
     for attempt in range(3):
-        model = "claude-haiku-4-5-20251001" if attempt == 0 else "claude-sonnet-4-6"
+        model = HAIKU_MODEL if attempt == 0 else "claude-sonnet-4-6"
         try:
             msg = await loop.run_in_executor(None, lambda m=model: _call(m))
             break
@@ -27384,7 +27390,7 @@ async def pozicije_recognize_pos(data: dict):
 
     def _call(model):
         return client.messages.create(
-            model=model, max_tokens=200,
+            model=model, max_tokens=200 + (2000 if _haiku_kw(model) else 0), **_haiku_kw(model),
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
                 {"type": "text", "text": _prompt},
@@ -27393,7 +27399,7 @@ async def pozicije_recognize_pos(data: dict):
 
     msg = None
     for attempt in range(3):
-        model = "claude-haiku-4-5-20251001" if attempt == 0 else "claude-sonnet-4-6"
+        model = HAIKU_MODEL if attempt == 0 else "claude-sonnet-4-6"
         try:
             msg = await loop.run_in_executor(None, lambda m=model: _call(m))
             break
