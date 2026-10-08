@@ -6140,6 +6140,89 @@ async def generate_multi(req: MultiAdRequest):
     return {"results": results}
 
 
+_META_LANG_BATCHES = [["hr", "rs"], ["hu", "cz"], ["sk", "pl"], ["gr", "ro", "bg"]]
+_META_LANG_INFO = {
+    "hr": "HR (hrvaščina, latinica)",
+    "rs": "RS (srbščina, SAMO latinica!)",
+    "hu": "HU (madžarščina - aglutinacijski jezik, ne prevajaj dobesedno)",
+    "cz": "CZ (češčina)",
+    "sk": "SK (slovaščina)",
+    "pl": "PL (poljščina)",
+    "gr": "GR (grščina, grška pisava!)",
+    "ro": "RO (romunščina, latinica)",
+    "bg": "BG (bolgarščina, SAMO cirilica!)",
+}
+
+
+def _meta_batch_prompt(sl_pts, sl_hls, batch, pt_count, hl_count) -> str:
+    """Prompt za prevod Meta oglasov v en paket jezikov (skupen za /generate-multi-stream in /meta-prevedi)."""
+    pt_ph = ", ".join([f'"PT {i2+1}"' for i2 in range(pt_count)])
+    hl_ph = ", ".join([f'"HL {i2+1}"' for i2 in range(hl_count)])
+    batch_json_keys = ", ".join([f'"{lang}":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}}' for lang in batch])
+    batch_lang_lines = "\n".join([f"- {_META_LANG_INFO[lang]}" for lang in batch])
+    return f"""Prevedi Meta oglase iz slovenščine v naslednje jezike. Ohrani ŠTEVILO in POZICIJO emoji-jev točno kot v originalu.
+
+Primary Texts: {json.dumps(sl_pts, ensure_ascii=False)}
+Headlines: {json.dumps(sl_hls, ensure_ascii=False)}
+
+Prevedi SAMO v te jezike:
+{batch_lang_lines}
+
+SPLOŠNA PRAVILA:
+- Ohrani prodajni/energičen ton
+- Prevodi morajo zveneti kot materni govorec
+- Ohrani ŠTEVILO emoji-jev
+- Headlines: MAX 5 besed
+- Ne prevajaj imen izdelkov/blagovnih znamk
+
+Vrni SAMO JSON: {{{batch_json_keys}}}"""
+
+
+_META_PREVEDI_MODELI = {"haiku55": "claude-haiku-5-5", "haiku45": "claude-haiku-4-5-20251001"}
+
+
+@app.get("/meta-prevedi")
+async def meta_prevedi_status(request: Request):
+    return {"owner": _owner_authorized(request)}
+
+
+@app.post("/meta-prevedi")
+async def meta_prevedi(request: Request):
+    """🔁 Prevedi znova (samo lastnik): podana SL besedila → vsi jeziki z izbranim Haiku (primerjava 5.5 / 4.5)."""
+    if not _owner_authorized(request):
+        return JSONResponse({"error": "owner"}, status_code=403)
+    body = await request.json()
+    sl_pts = [str(x).strip() for x in (body.get("pt") or []) if str(x).strip()]
+    sl_hls = [str(x).strip() for x in (body.get("hl") or []) if str(x).strip()]
+    if not sl_pts:
+        return {"error": "Ni slovenskih Primary Textov."}
+    model = _META_PREVEDI_MODELI.get(body.get("model") or "haiku55", HAIKU_MODEL)
+
+    async def en_paket(batch):
+        prompt = _meta_batch_prompt(sl_pts, sl_hls, batch, len(sl_pts), len(sl_hls))
+        for attempt in range(2):
+            try:
+                data = parse_json_response(await call_claude(prompt, model, None, 6000))
+                if data and all(l in data for l in batch):
+                    return {l: data[l] for l in batch}
+            except Exception as e:
+                print(f"[meta-prevedi] {batch} ({model}) napaka {attempt+1}/2: {type(e).__name__}: {str(e)[:200]}")
+        return {}
+
+    deli = await asyncio.gather(*[en_paket(b) for b in _META_LANG_BATCHES])
+    out = {"product": body.get("product") or "Prevod", "product_urls": body.get("product_urls") or {},
+           "sl": {"pt": sl_pts, "hl": sl_hls}, "model": model}
+    manjka = []
+    for b, d in zip(_META_LANG_BATCHES, deli):
+        if d:
+            out.update(d)
+        else:
+            manjka += b
+    if manjka:
+        out["manjka"] = manjka
+    return out
+
+
 @app.post("/generate-multi-stream")
 async def generate_multi_stream(req: MultiAdRequest):
     """SSE streaming endpoint — pošilja rezultate batch po batch."""
@@ -6178,27 +6261,7 @@ async def generate_multi_stream(req: MultiAdRequest):
                 product_name = result.get("product", "Izdelek")
 
                 # Step 2: Parallel translation in 4 batches of 2-3 langs
-                pt_ph = ", ".join([f'"PT {i2+1}"' for i2 in range(req.pt_count)])
-                hl_ph = ", ".join([f'"HL {i2+1}"' for i2 in range(req.hl_count)])
-
-                lang_batches = [
-                    ["hr", "rs"],
-                    ["hu", "cz"],
-                    ["sk", "pl"],
-                    ["gr", "ro", "bg"],
-                ]
-
-                lang_info = {
-                    "hr": "HR (hrvaščina, latinica)",
-                    "rs": "RS (srbščina, SAMO latinica!)",
-                    "hu": "HU (madžarščina - aglutinacijski jezik, ne prevajaj dobesedno)",
-                    "cz": "CZ (češčina)",
-                    "sk": "SK (slovaščina)",
-                    "pl": "PL (poljščina)",
-                    "gr": "GR (grščina, grška pisava!)",
-                    "ro": "RO (romunščina, latinica)",
-                    "bg": "BG (bolgarščina, SAMO cirilica!)",
-                }
+                lang_batches = _META_LANG_BATCHES
 
                 full_result = {
                     "product": product_name,
@@ -6213,28 +6276,7 @@ async def generate_multi_stream(req: MultiAdRequest):
                 for batch in lang_batches:
                     yield f"data: {json.dumps({'type': 'progress', 'index': i, 'step': 'translating', 'langs': batch})}\n\n"
 
-                    batch_json_keys = ", ".join([
-                        f'"{lang}":{{"pt":[{pt_ph}],"hl":[{hl_ph}]}}'
-                        for lang in batch
-                    ])
-                    batch_lang_lines = "\n".join([f"- {lang_info[lang]}" for lang in batch])
-
-                    batch_prompt = f"""Prevedi Meta oglase iz slovenščine v naslednje jezike. Ohrani ŠTEVILO in POZICIJO emoji-jev točno kot v originalu.
-
-Primary Texts: {json.dumps(sl_pts, ensure_ascii=False)}
-Headlines: {json.dumps(sl_hls, ensure_ascii=False)}
-
-Prevedi SAMO v te jezike:
-{batch_lang_lines}
-
-SPLOŠNA PRAVILA:
-- Ohrani prodajni/energičen ton
-- Prevodi morajo zveneti kot materni govorec
-- Ohrani ŠTEVILO emoji-jev
-- Headlines: MAX 5 besed
-- Ne prevajaj imen izdelkov/blagovnih znamk
-
-Vrni SAMO JSON: {{{batch_json_keys}}}"""
+                    batch_prompt = _meta_batch_prompt(sl_pts, sl_hls, batch, req.pt_count, req.hl_count)
 
                     # Retry do 3x — pri 529 overload se model preklopi na Sonnet
                     # Če smo že kdaj v tem requestu videli 529, takoj uporabi Sonnet

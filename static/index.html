@@ -1075,7 +1075,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-08 06:33</div>
+      <div class="sidebar-logo-sub">build 2026-10-08 06:45</div>
     </div>
   </div>
 
@@ -1485,6 +1485,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div class="results-hdr">
         <div class="prod-tabs" id="prodTabs"></div>
         <div class="results-hdr-right">
+          <button class="back-btn" id="metaPrevBtn" onclick="metaPrevOdpri()" style="display:none" title="Samo lastnik: prevedi trenutna SL besedila znova (primerjava modelov)">🔁 Prevedi znova</button>
           <button class="back-btn" id="metaRegenBtn" onclick="metaRegen()"><svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg> Regeneriraj</button>
           <button class="back-btn" onclick="metaGoBack()"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Nov vnos</button>
         </div>
@@ -6914,7 +6915,58 @@ async function metaRegen() {
   btn.disabled=false;
 }
 
+// 🔁 Prevedi znova (samo lastnik): trenutna / prilepljena SL besedila → vsi jeziki z izbranim Haiku, rezultat kot nov zavihek
+let metaZadnji=[], metaOwner=null;
+async function metaPrevPokazi(){
+  if(metaOwner===null){ try{ metaOwner=!!(await (await fetch('/meta-prevedi')).json()).owner; }catch(e){ metaOwner=false; } }
+  const b=document.getElementById('metaPrevBtn'); if(b) b.style.display=metaOwner?'':'none';
+}
+function metaPrevOdpri(){
+  const on=document.querySelector('.prod-tab.on'); const idx=on?+on.id.replace('ptab-',''):0;
+  const d=metaZadnji[idx]||{}; const sl=d.sl||{};
+  const pts=Array.isArray(sl.pt)?sl.pt:(sl.pt?[sl.pt]:[]); const hls=Array.isArray(sl.hl)?sl.hl:(sl.hl?[sl.hl]:[]);
+  let ov=document.getElementById('metaPrevOv'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='metaPrevOv';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML=`<div class="card" style="width:min(760px,100%);max-height:90vh;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:10px">
+    <div style="font-weight:700;font-size:15px">🔁 Prevedi znova — samo prevod obstoječih SL besedil</div>
+    <div style="font-size:12px;color:var(--text-tertiary)">Primary Texts in Headlines ločuj s prazno vrstico. Rezultat se doda kot nov zavihek (za primerjavo).</div>
+    <label style="font-size:12px;font-weight:600">Primary Texts (SL)</label>
+    <textarea id="mpPt" rows="9" style="width:100%;font:inherit;font-size:13px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">${esc(pts.join('\n\n'))}</textarea>
+    <label style="font-size:12px;font-weight:600">Headlines (SL)</label>
+    <textarea id="mpHl" rows="4" style="width:100%;font:inherit;font-size:13px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">${esc(hls.join('\n\n'))}</textarea>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="mpModel" style="padding:7px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)"><option value="haiku55">Haiku 5.5</option><option value="haiku45">Haiku 4.5</option></select>
+      <span id="mpSt" style="font-size:12px;color:var(--text-tertiary)"></span>
+      <span style="flex:1"></span>
+      <button class="back-btn" onclick="document.getElementById('metaPrevOv').remove()">Prekliči</button>
+      <button class="back-btn" id="mpGo" onclick="metaPrevZazeni(${idx})" style="background:var(--accent);color:#fff;border-color:var(--accent)">Prevedi</button>
+    </div></div>`;
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
+async function metaPrevZazeni(idx){
+  const deli=id=>document.getElementById(id).value.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean);
+  const pt=deli('mpPt'), hl=deli('mpHl'), sel=document.getElementById('mpModel');
+  if(!pt.length){ document.getElementById('mpSt').textContent='Vpiši vsaj en Primary Text.'; return; }
+  const btn=document.getElementById('mpGo'); btn.disabled=true;
+  document.getElementById('mpSt').textContent='Prevajam (≈ 20–40 s)...';
+  const izv=metaZadnji[idx]||{};
+  try{
+    const r=await fetch('/meta-prevedi',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pt,hl,model:sel.value,product:(izv.product||'Prevod')+' · '+sel.options[sel.selectedIndex].text,product_urls:izv.product_urls||{}})});
+    const d=await r.json();
+    if(d.error) throw new Error(d.error==='owner'?'Samo za lastnika.':d.error);
+    metaZadnji=metaZadnji.concat([d]);
+    document.getElementById('metaPrevOv').remove();
+    renderMetaResults(metaZadnji);
+    swProd(metaZadnji.length-1);
+    if(d.manjka&&d.manjka.length) alert('⚠ Prevod ni uspel za: '+d.manjka.join(', ').toUpperCase());
+  }catch(e){ document.getElementById('mpSt').textContent='❌ '+(e.message||'napaka'); btn.disabled=false; }
+}
+
 function renderMetaResults(results) {
+  metaZadnji=results.slice(); metaPrevPokazi();
   const tabs=document.getElementById('prodTabs'),panels=document.getElementById('prodPanels');
   tabs.innerHTML='';panels.innerHTML='';
 
