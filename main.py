@@ -1463,6 +1463,45 @@ async def marza_neuvoz_post(request: Request):
     return {"ok": True, "n": len(t)}
 
 
+@app.post("/cms-log-urejeno")
+async def cms_log_urejeno(request: Request):
+    """Vtičnik (panel) po shranjevanju: {items: [{trg, cms_id, sku, prodajna_stara, prodajna}], vir} → »urejeno« v dnevnik CMS
+    NEPOSREDNO (prej le prek odprte Marže na ISTEM trgu — sicer se je oznaka izgubila in izdelek je bil dvignjen še enkrat).
+    Idempotentno: zapis, označen v zadnjih 10 min, se ne prepiše."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    try:
+        b = await request.json()
+    except Exception:
+        return {"ok": False, "error": "Neveljaven JSON"}
+    items = [i for i in (b.get("items") or []) if isinstance(i, dict) and i.get("cms_id") and i.get("trg")][:500]
+    vir = str(b.get("vir") or "Vtičnik")[:40]
+    now = _lj_iso()
+    meja = (datetime.fromisoformat(now) - timedelta(minutes=10)).isoformat(timespec="seconds")
+    n = 0
+    async with _cms_log_get_lock():
+        try:
+            log = _jload(CMS_LOG_FILE, {}, strict=True)
+        except Exception as e:
+            return {"ok": False, "error": f"Dnevnik CMS trenutno ni berljiv ({e})"}
+        for i in items:
+            trg, cid = str(i["trg"]).lower(), str(i["cms_id"]).strip()
+            k = f"{trg}|{cid}"
+            e = log.get(k) or {}
+            if str(e.get("done_at") or "") >= meja:
+                continue
+            e.update({"cms_id": cid, "trg": trg, "sku": str(i.get("sku") or e.get("sku") or "").upper(), "vir": vir, "done_at": now,
+                      "opened_at": e.get("opened_at") if str(e.get("opened_at") or "")[:10] == now[:10] else now})
+            if i.get("prodajna_stara") not in (None, ""):
+                e["cena_ob_odprtju"] = i.get("prodajna_stara")
+            if i.get("prodajna") not in (None, ""):
+                e["cena_nova"] = i.get("prodajna")
+            log[k] = e; n += 1
+        if n:
+            _jsave(CMS_LOG_FILE, log)
+    return {"ok": True, "zapisanih": n}
+
+
 @app.post("/cms-log")
 async def cms_log_post(request: Request):
     """Body: {akcija:'open'|'done'|'undo', cms_id, trg ('sl'..'ro' ali '*' = Price Checker), sku, cena, vir}
