@@ -13259,11 +13259,20 @@ function planIzracun() {
     if (x.neuvoz) return ze('🚫 ne uvažamo');
     if (x.cms && (!x.cms.trg || x.cms.trg === trg || x.cms.trg === '*') && [x.cms.done_at, x.cms.opened_at].some(t => t && new Date(t).toDateString() === danes)) return ze('danes že urejeno');
     if (DANES_BLOK[trg + '|' + x.cms_id]) return ze('⛔ ' + DANES_BLOK[trg + '|' + x.cms_id]);   // 1× na dan (strežnik: dnevnik, vrsta, feed)
+    // valute brez decimalk (CZK, HUF, PLN, RON, RSD): batoCands zaokroži na celo, zato je npr. 538,99 CZK »že Bato« (539) —
+    // taka cena dobi 🔧 popravek decimalk na celo število (vedno, tudi v načinu »samo dvigi«; samodejno potrjeno)
+    const decimalke = (BATO_CFG[cur] || BATO_CFG.EUR).dec === 0 && Math.abs(c - Math.round(c)) > 0.001;
     const k = batoCands(c, cur);
-    if (!k) return ze('že Bato');
+    if (!k && !decimalke) return ze('že Bato');
     if (!x.nc || !x.neto) return ze('brez NC');
     const neto = p => x.neto * p / c, mz = p => (neto(p) - x.nc) / neto(p) * 100;
-    let pred = N.smer === 'gor' ? k.up : k.pick, opomba = [];
+    if (!k) {
+      const pred = Math.round(c);
+      predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct: (pred - c) / c * 100, mZdaj: mz(c), mPo: mz(pred),
+        rZdaj: neto(c) - x.nc, rPo: neto(pred) - x.nc, opomba: '🔧 decimalke', ok: true, dec: true });
+      return;
+    }
+    let pred = N.smer === 'gor' ? k.up : k.pick, opomba = decimalke ? ['🔧 + decimalke'] : [];
     if (pred < c && mz(pred) < N.prag) { pred = k.up; opomba.push('↑ zaradi marže'); }
     if (N.smer === 'dvig' && pred < c) return ze('predlog za spust (samo dvigi)');   // najprej samo dvigi, spuste pusti
     const pct = (pred - c) / c * 100, mPo = mz(pred);
@@ -13312,7 +13321,7 @@ function planVse(on) { PLAN.predlogi.forEach(p => on ? PLAN.izbrani.add(p.x.g_id
 function planRisi() {
   const o = document.getElementById('planOkno'), P2 = PLAN, N = P2.N;
   const iz = P2.predlogi.filter(p => P2.izbrani.has(p.x.g_id));
-  const up = iz.filter(p => p.diff > 0).length, dn = iz.length - up;
+  const dc = iz.filter(p => p.dec).length, up = iz.filter(p => !p.dec && p.diff > 0).length, dn = iz.length - up - dc;
   const avg = (a, f) => a.length ? a.reduce((s, p) => s + f(p), 0) / a.length : 0;
   const f2n = v => (Math.round(v * 100) / 100).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const mc = m => '<span class="m ' + mcls(Math.round(m * 10) / 10) + '">' + (Math.round(m * 10) / 10).toLocaleString('sl-SI') + ' %</span>';
@@ -13334,7 +13343,7 @@ function planRisi() {
       ' · Največja sprememba ± <input type="number" value="' + N.maxPct + '" onchange="planNastavi(\'maxPct\',this.value)" style="width:60px"> %</div>' +
     '<div class="plan-kpi">' +
       '<div><b>' + iz.length + '</b> / ' + P2.predlogi.length + '<span>potrjenih predlogov</span></div>' +
-      '<div><b class="up">' + up + ' ↑</b> · <b class="dn">' + dn + ' ↓</b><span>smer</span></div>' +
+      '<div><b class="up">' + up + ' ↑</b> · <b class="dn">' + dn + ' ↓</b>' + (dc ? ' · <b>' + dc + ' 🔧</b>' : '') + '<span>smer' + (dc ? ' · decimalke' : '') + '</span></div>' +
       '<div><b>' + f2n(avg(iz, p => p.rZdaj)) + ' → ' + f2n(avg(iz, p => p.rPo)) + ' €</b><span>Ø razlika na izdelek</span></div>' +
       '<div><b>' + (Math.round(avg(iz, p => p.mZdaj) * 10) / 10).toLocaleString('sl-SI') + ' → ' + (Math.round(avg(iz, p => p.mPo) * 10) / 10).toLocaleString('sl-SI') + ' %</b><span>Ø marža</span></div>' +
       '<div><b>' + P2.preskok.length + '</b><span>preskočenih</span></div></div>' +
