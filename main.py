@@ -19098,13 +19098,47 @@ async def hsuvoz_filter_ordered(file: UploadFile = File(...)):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+def _hsb_odprto_po_sku() -> dict:
+    """HS+ prevzemi → odprte (še ne prevzete) postavke po SKU: {SKU: {status: kosov}}. Ključi: HS+ SKU, naša šifra,
+    SKU_barva in prva beseda naziva (SKU na B2B naročilu). Za HS+ naročanje: kaj je že naročeno, a še ni na zalogi."""
+    out = {}
+    try:
+        for it in _hsb_load().get("items", []):
+            st = it.get("status")
+            if st in ("prevzeto", "preklicano"):
+                continue
+            kos = int((it.get("manjka") if st == "manjka" and it.get("manjka") else it.get("kosov")) or 0)
+            sku, barva = str(it.get("sku") or "").strip(), str(it.get("barva") or "").strip()
+            kljuci = {sku, str(it.get("nasa_sifra") or "").strip(), str(it.get("naziv") or "").strip().split(" ")[0]}
+            if sku and barva:
+                kljuci.add(sku + "_" + barva)
+            for k in {k.upper() for k in kljuci if k}:
+                d = out.setdefault(k, {})
+                d[st] = d.get(st, 0) + kos
+    except Exception as e:
+        print(f"[hsuvoz] HS+ prevzemi ni berljiv: {e}")
+    return out
+
+
+def _hsuvoz_dodaj_hsb(items: list) -> list:
+    odp = _hsb_odprto_po_sku()
+    for it in items or []:
+        h = odp.get(str(it.get("sku") or "").strip().upper())
+        if h:
+            it["hsb"] = h
+        else:
+            it.pop("hsb", None)
+    return items
+
+
 @app.get("/hsuvoz-data")
 async def hsuvoz_data():
-    """Vrne trenutne HS+ uvoz podatke."""
+    """Vrne trenutne HS+ uvoz podatke (+ hsb: že naročeno v HS+ prevzemih, še ne prevzeto)."""
     try:
         if not HSUVOZ_CURRENT.exists():
             return {"loaded": False, "items": []}
         data = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
+        _hsuvoz_dodaj_hsb(data.get("items"))
         return {"loaded": True, **data}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -19326,7 +19360,10 @@ async def hsuvoz_order_data():
     try:
         if not HSUVOZ_ORDER.exists():
             return {"items": []}
-        return json.loads(HSUVOZ_ORDER.read_text(encoding="utf-8"))
+        data = json.loads(HSUVOZ_ORDER.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            _hsuvoz_dodaj_hsb(data.get("items"))
+        return data
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
