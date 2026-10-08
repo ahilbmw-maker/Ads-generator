@@ -885,7 +885,7 @@ def _apply_feed_lang(lang: str, prods, meta: dict):
         return
     if old:
         try:
-            _record_price_changes(lang, old, prods)
+            _record_price_changes(lang, old, prods, _iso_from_http_date(meta.get("last_modified") or ""))
         except Exception as e:
             print(f"[cene diff] {lang}: {e}")
     feed_by_lang[lang] = prods
@@ -1300,6 +1300,10 @@ async def cena_zgodovina(request: Request, trg: str, g_id: str, cms_id: str = ""
                 except Exception:
                     continue
                 if z.get("trg") == trg and z.get("g_id") == g_id:
+                    # dvojnik (isti feed zabeležen 2× — npr. dve hkratni osvežitvi): ista minuta + iste cene → preskoči
+                    kl = lambda q: (str(q.get("at") or "")[:16], q.get("old_price"), q.get("new_price"), q.get("old_sale"), q.get("new_sale"))
+                    if out and kl(out[-1]) == kl(z):
+                        continue
                     out.append(z)
     except FileNotFoundError:
         pass
@@ -1310,8 +1314,9 @@ async def cena_zgodovina(request: Request, trg: str, g_id: str, cms_id: str = ""
             "zdaj": {"price": d.get("price"), "sale_price": d.get("sale_price")}}
 
 
-def _record_price_changes(lang: str, old: dict, new: dict):
-    """Zabeleži izdelke, ki jim je med staro in novo verzijo feeda spremenjena redna ali akcijska cena."""
+def _record_price_changes(lang: str, old: dict, new: dict, zgrajen: str = ""):
+    """Zabeleži izdelke, ki jim je med staro in novo verzijo feeda spremenjena redna ali akcijska cena.
+    zgrajen = kdaj je trgovina zgradila novi feed (Last-Modified) — sprememba je v trgovini nastala PRED tem; »at« = kdaj smo jo zaznali."""
     _cena_zgodovina_zacetek()   # najprej začetek zgodovine (če je še ni), šele nato nove spremembe
     now = _lj_iso()
     data = _jload(PRICE_CHANGES_FILE, {})
@@ -1325,7 +1330,7 @@ def _record_price_changes(lang: str, old: dict, new: dict):
         os_, ns = (o.get("sale_price") or ""), (d.get("sale_price") or "")
         if op != np_ or os_ != ns:
             trg[str(g_id)] = {"at": now, "old_price": op, "new_price": np_, "old_sale": os_, "new_sale": ns}
-            zgod.append({"trg": lang, "g_id": str(g_id), "mpn": str(d.get("mpn") or ""), "at": now, "vir": "feed",
+            zgod.append({"trg": lang, "g_id": str(g_id), "mpn": str(d.get("mpn") or ""), "at": now, "zgrajen": zgrajen, "vir": "feed",
                          "old_price": op, "new_price": np_, "old_sale": os_, "new_sale": ns})
             n += 1
     data[lang] = _prune_by_age(trg, "at", PRICE_CHANGES_KEEP_DAYS)
@@ -1643,6 +1648,59 @@ async def cene_vrsta_get():
     return {"ok": True, "postavke": d["postavke"][-2000:], "stevci": st, "ustavljeno": d["ustavljeno"]}
 
 
+def _cene_danes(items: list, izkljuci_id: str = "") -> dict:
+    """VAROVALKA »1 sprememba cene na dan« (trg + izdelek). Vrne {"trg|cms_id": razlog} za izdelke, ki so bili DANES že:
+    - urejeni/odprti v CMS prek suban.ai (dnevnik CMS, tudi Price Checker »*«),
+    - spremenjeni ali čakajo v Vrsti cen (izkljuci_id = postavka, ki jo vtičnik pravkar izvaja),
+    - spremenjeni v današnjem feedu, če sprememba NI pojasnjena z našim urejanjem včeraj/danes (= nekdo je ceno spremenil
+      neposredno v CMS; feed jo pokaže z zamikom, zato bi jo sicer dvignili še enkrat)."""
+    danes = _lj_iso()[:10]
+    vceraj = (datetime.fromisoformat(danes) - timedelta(days=1)).strftime("%Y-%m-%d")
+    log = _jload(CMS_LOG_FILE, {}) or {}
+    vrsta = _vrsta_load().get("postavke") or []
+    pc = _jload(PRICE_CHANGES_FILE, {}) or {}
+    out = {}
+    for i in items or []:
+        trg, cid, gid = str(i.get("trg") or "").lower(), str(i.get("cms_id") or ""), str(i.get("g_id") or "")
+        if not trg or not cid:
+            continue
+        k = f"{trg}|{cid}"
+        zap = [e for e in (log.get(k), log.get(f"*|{cid}")) if e]
+        r = ""
+        for e in zap:
+            if str(e.get("done_at") or "")[:10] == danes or str(e.get("opened_at") or "")[:10] == danes:
+                r = "danes že urejeno v CMS" + (f" ({e.get('vir')})" if e.get("vir") else "")
+                break
+        if not r:
+            for p in vrsta:
+                if p.get("trg") != trg or str(p.get("cms_id")) != cid or p.get("id") == izkljuci_id:
+                    continue
+                if p.get("status") in ("caka", "v_delu"):
+                    r = "že čaka v Vrsti cen"; break
+                if p.get("status") == "ok" and str(p.get("konec") or "")[:10] == danes:
+                    r = "danes že spremenjeno prek Vrste cen"; break
+        if not r and gid:
+            ch = (pc.get(trg) or {}).get(gid)
+            if ch and str(ch.get("at") or "")[:10] == danes:
+                pojasnjeno = any(str(e.get("done_at") or "")[:10] in (danes, vceraj) for e in zap)
+                if not pojasnjeno:
+                    st = str(ch.get("old_sale") or ch.get("old_price") or "").split(" ")[0]
+                    no = str(ch.get("new_sale") or ch.get("new_price") or "").split(" ")[0]
+                    r = f"cena spremenjena mimo suban.ai (današnji feed {st} → {no})"
+        if r:
+            out[k] = r
+    return out
+
+
+@app.post("/cene-danes")
+async def cene_danes(request: Request):
+    """{items: [{trg, cms_id, g_id}]} → {ok, blokirani: {"trg|cms_id": razlog}} — pred VSAKIM masovnim urejanjem cen."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    data = await request.json()
+    return {"ok": True, "blokirani": _cene_danes((data or {}).get("items") or [])}
+
+
 @app.post("/cene-vrsta/dodaj")
 async def cene_vrsta_dodaj(data: dict):
     """{items: [{trg, cms_id, g_id, sku, naziv, cur, stara, nova}]} — stara = končna cena ob planu, nova = cilj (prodajna)."""
@@ -1655,7 +1713,8 @@ async def cene_vrsta_dodaj(data: dict):
         except Exception as e:
             return {"ok": False, "error": f"Vrsta ni berljiva ({e})"}
         odprte = {(p["trg"], str(p["cms_id"])) for p in d["postavke"] if p.get("status") in ("caka", "v_delu")}
-        zdaj, n, ze = _lj_iso(), 0, 0
+        blok = _cene_danes([i for i in items if not i.get("razveljavi_za")])   # 1× na dan (razveljavitev je dovoljena)
+        zdaj, n, ze, danes_n = _lj_iso(), 0, 0, 0
         for i in items:
             k = (str(i["trg"]).lower(), str(i["cms_id"]))
             try:
@@ -1666,13 +1725,16 @@ async def cene_vrsta_dodaj(data: dict):
             if k in odprte:
                 ze += 1
                 continue
+            if f"{k[0]}|{k[1]}" in blok:
+                danes_n += 1
+                continue
             d["postavke"].append({"id": uuid.uuid4().hex[:10], "trg": k[0], "cms_id": k[1], "g_id": str(i.get("g_id") or ""),
                                   "sku": str(i.get("sku") or "")[:60], "naziv": str(i.get("naziv") or "")[:120], "cur": str(i.get("cur") or "")[:4],
                                   "stara": stara, "nova": nova, "ref": ref, "status": "caka", "dodano": zdaj, "razveljavi_za": i.get("razveljavi_za") or ""})
             odprte.add(k); n += 1
         d["postavke"] = d["postavke"][-5000:]
         _jsave(VRSTA_FILE, d)
-    return {"ok": True, "dodanih": n, "ze_v_vrsti": ze}
+    return {"ok": True, "dodanih": n, "ze_v_vrsti": ze, "danes_ze": danes_n, "blokirani": blok}
 
 
 @app.post("/cene-vrsta/naslednji")
@@ -1690,7 +1752,16 @@ async def cene_vrsta_naslednji(data: dict):
         for p in d["postavke"]:
             if p.get("status") == "v_delu" and p.get("zacetek") and (zd - datetime.fromisoformat(p["zacetek"])).total_seconds() > 900:
                 p["status"] = "caka"
-        vzeti = [p for p in d["postavke"] if p.get("status") == "caka"][:n]
+        vzeti = []
+        for p in d["postavke"]:
+            if p.get("status") != "caka" or len(vzeti) >= n:
+                continue
+            # varovalka tik pred izvedbo: med dodajanjem in izvedbo je lahko nekdo ceno že spremenil (razveljavitev dovoljena)
+            r = "" if p.get("razveljavi_za") else _cene_danes([p], izkljuci_id=p.get("id")).get(f"{p['trg']}|{p['cms_id']}", "")
+            if r:
+                p["status"], p["napaka"], p["konec"] = "napaka", "⛔ " + r + " — največ 1 sprememba na dan", zdaj
+                continue
+            vzeti.append(p)
         for p in vzeti:
             p["status"], p["zacetek"] = "v_delu", zdaj
         _jsave(VRSTA_FILE, d)
@@ -12606,6 +12677,7 @@ async def marza_trgi_stran(request: Request):
 <button onclick="paketCmsVarno()" title="Vtičnik Kalkulator cen: po vrsti odpre izbrane v CMS, doda izbrano število korakov (EUR +1 · CZK/PLN/RON +5 · HUF/RSD +100) in vpiše Redna — ti samo klikneš Update. Izdelki, ki so bili na tem trgu danes že odprti/urejeni v CMS (tudi iz Price Checkerja), se preskočijo." style="background:#16a34a;color:#fff">▶ Dvigni v CMS</button>
 <button onclick="planOdpri()" title="Predlog novih cen (Bato, varovalka marže, največja sprememba) za izbrane — samo pregled, v CMS se nič ne spremeni" style="background:#7c3aed;color:#fff">🧮 Plan cen</button>
 <button onclick="paketSamoBato()" title="Kot »▶ Dvigni v CMS«, a IZPUSTI izdelke, katerih končna cena že ima Bato končnico (HUF x499/x999 · EUR x,99 · CZK x49/x99/x9 · PLN/RON x9 · RSD x99) — te odznači; uredi samo ostale." style="background:#0f766e;color:#fff">▶ Preskoči Bato cene</button>
+<button onclick="paketDecimalke()" title="CZK/HUF/PLN/RON/RSD: izbranim z decimalno ceno (npr. 533,99) vtičnik prišteje 0,01 → cela cena (534). Izdelki s celo ceno se preskočijo. Ni dvig — ne šteje v »1× na dan« in se ne označi kot urejeno." style="background:#fef3c7;color:#92400e">🔧 Popravi decimalke</button>
 <button onclick="cmsDoneBulk()" title="Označi izbrane kot urejeno na tem trgu (kot D) — ostanejo urejeni, dokler jih ne odznačiš" style="background:#16a34a;color:#fff">✓ Označi urejeno</button>
 <button onclick="cmsUndoBulk()" title="Odstrani oznako urejeno (popravljeno / potrjeno / odprto) za izbrane na tem trgu" style="background:#dcfce7;color:#166534">↩ Odznači urejeno</button>
   <button onclick="selClear()" style="background:transparent;color:#cbd5e1">✕ Počisti izbor</button>
@@ -13012,7 +13084,8 @@ async function histOdpri(x){
     const akc=z.old_sale!==z.new_sale?'akcija '+pp(z.old_sale)+' → <b>'+pp(z.new_sale)+'</b>':'';
     const a=parseFloat(String(z.old_price||'').replace(',','.')),b=parseFloat(String(z.new_price||'').replace(',','.'));
     const sm=a>0&&b>0&&a!==b?(b>a?'<span style="color:#16a34a">▲ +'+(b-a).toFixed(2).replace('.',',')+'</span>':'<span style="color:#dc2626">▼ '+(b-a).toFixed(2).replace('.',',')+'</span>'):'';
-    vrst.push({at:z.at,html:'<td>'+fmtT(z.at)+'</td><td>'+[reg,akc].filter(Boolean).join(' · ')+'</td><td>'+sm+'</td><td style="color:var(--txt3)">'+esc(z.vir||'feed')+'</td>'});
+    // čas = kdaj je trgovina zgradila feed s to spremembo (sprememba v CMS je bila pred tem); starejši zapisi imajo samo čas zaznave
+    vrst.push({at:z.zgrajen||z.at,html:'<td title="'+(z.zgrajen?'feed zgrajen '+fmtT(z.zgrajen)+' · zaznano v suban.ai '+fmtT(z.at):'zaznano v suban.ai (čas gradnje feeda ni znan)')+'">'+(z.zgrajen?'feed '+fmtT(z.zgrajen):fmtT(z.at))+'</td><td>'+[reg,akc].filter(Boolean).join(' · ')+'</td><td>'+sm+'</td><td style="color:var(--txt3)">'+esc(z.vir||'feed')+'</td>'});
   });
   const c=d.cms; if(c){
     if(c.done_at) vrst.push({at:c.done_at,html:'<td>'+fmtT(c.done_at)+'</td><td>✓ označeno urejeno</td><td></td><td style="color:var(--txt3)">'+esc(c.vir||'')+'</td>'});
@@ -13101,7 +13174,16 @@ async function cmsUndoBulk(){
 // ═══ 🧮 PLAN CEN (korak 1: samo predlog in pregled — NIČ se ne spremeni v CMS) ═══
 // Za izbrane izdelke: cilj = najbližja Bato KONČNA cena (enaka razdalja → navzgor), varovalka marže (cena gre na Bato navzgor),
 // največja sprememba ±% (večje so označene ⚠ in niso samodejno potrjene). Preskoči: že Bato, danes urejene, 🚫, brez NC / CMS ID.
-let PLAN = null;
+let PLAN = null, DANES_BLOK = {};
+// ⛔ 1 sprememba cene na dan: strežnik vrne izdelke, ki so bili danes že spremenjeni (dnevnik CMS, Vrsta cen, feed mimo suban.ai)
+async function danesBlok(rows) {
+  try {
+    const r = await (await fetch('/cene-danes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+      body: JSON.stringify({ items: rows.filter(x => x.cms_id).map(x => ({ trg, cms_id: x.cms_id, g_id: x.g_id })) }) })).json();
+    if (r.ok) return r.blokirani || {};
+  } catch (e) {}
+  return null;
+}
 function planNastavitve() {
   try { return Object.assign({ prag: 20, maxPct: 15, smer: 'najblizja' }, JSON.parse(localStorage.getItem('mz_plan') || '{}')); } catch (e) { return { prag: 20, maxPct: 15, smer: 'najblizja' }; }
 }
@@ -13118,6 +13200,7 @@ function planIzracun() {
     if (!x.cms_id) return ze('ni CMS ID');
     if (x.neuvoz) return ze('🚫 ne uvažamo');
     if (x.cms && (!x.cms.trg || x.cms.trg === trg || x.cms.trg === '*') && [x.cms.done_at, x.cms.opened_at].some(t => t && new Date(t).toDateString() === danes)) return ze('danes že urejeno');
+    if (DANES_BLOK[trg + '|' + x.cms_id]) return ze('⛔ ' + DANES_BLOK[trg + '|' + x.cms_id]);   // 1× na dan (strežnik: dnevnik, vrsta, feed)
     const k = batoCands(c, cur);
     if (!k) return ze('že Bato');
     if (!x.nc || !x.neto) return ze('brez NC');
@@ -13150,9 +13233,12 @@ function planOdpri() {
     '<button class="btn" ' + b + ' onclick="planZacni(&quot;najblizja&quot;)">↕ Vse<div class="dim" style="font-weight:400;font-size:12px">najbližja Bato — dvigi in spusti</div></button></div></div>';
   o.style.display = 'flex';
 }
-function planZacni(smer) {
+async function planZacni(smer) {
   const N = planNastavitve(); N.smer = smer;
   try { localStorage.setItem('mz_plan', JSON.stringify(N)); } catch (e) {}
+  const bl = await danesBlok((D && D.rows || []).filter(x => SEL.has(x.g_id)));
+  if (!bl && !confirm('Ne morem preveriti, kaj je bilo danes že spremenjeno (strežnik ni odgovoril).\n\nVseeno nadaljujem?')) return;
+  DANES_BLOK = bl || {};
   PLAN = planIzracun();
   PLAN.izbrani = new Set(PLAN.predlogi.filter(p => p.ok).map(p => p.x.g_id));
   planRisi();
@@ -13222,7 +13308,7 @@ async function planVVrsto() {
     if (!r.ok) { alert(r.error || 'Napaka'); return; }
     document.getElementById('planOkno').style.display = 'none';
     SEL.clear(); selLast = -1; render();
-    vrstaOdpri('✓ V vrsto dodanih ' + r.dodanih + (r.ze_v_vrsti ? ' · ' + r.ze_v_vrsti + ' je že čakalo v vrsti' : '') + '. V panelu vtičnika vklopi »▶ Izvajaj vrsto«.');
+    vrstaOdpri('✓ V vrsto dodanih ' + r.dodanih + (r.ze_v_vrsti ? ' · ' + r.ze_v_vrsti + ' je že čakalo v vrsti' : '') + (r.danes_ze ? ' · ⛔ ' + r.danes_ze + ' izpuščenih (danes že spremenjeno)' : '') + '. V panelu vtičnika vklopi »▶ Izvajaj vrsto«.');
   } catch (e) { alert('Pošiljanje ni uspelo — preveri povezavo.'); }
 }
 let VRSTA = null, vrstaTimer = null, vrstaFlt = 'odprte';
@@ -13297,15 +13383,16 @@ async function paketSamoBato(){
   return paketCmsVarno();
 }
 async function paketCmsVarno(){
-  let log=null;
-  try{const r=await fetch('/cms-log',{cache:'no-store'}); const d=await r.json(); if(d.ok) log=d.log||{};}catch(e){}
-  if(!log && !confirm('Dnevnika CMS ni bilo mogoče prebrati — ne morem preveriti, kaj je bilo danes že urejeno.\n\nVseeno nadaljujem?')) return;
+  const izb=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id));
+  const bl=await danesBlok(izb);
+  if(!bl && !confirm('Ne morem preveriti, kaj je bilo danes že spremenjeno (strežnik ni odgovoril).\n\nVseeno nadaljujem?')) return;
   const danes=new Date().toDateString(), jeDanes=t=>!!t&&new Date(t).toDateString()===danes;
-  const skip=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&x.cms_id&&[log&&log[trg+'|'+x.cms_id],log&&log['*|'+x.cms_id],x.cms].some(e=>e&&(!e.trg||e.trg===trg||e.trg==='*')&&(jeDanes(e.done_at)||jeDanes(e.opened_at))));
+  const razlog=x=>(bl||{})[trg+'|'+x.cms_id]||(x.cms&&(!x.cms.trg||x.cms.trg===trg||x.cms.trg==='*')&&(jeDanes(x.cms.done_at)||jeDanes(x.cms.opened_at))?'danes že urejeno v CMS':'');
+  const skip=izb.filter(x=>x.cms_id&&razlog(x));
   if(skip.length){
     skip.forEach(x=>SEL.delete(x.g_id)); selLast=-1; render();
-    alert('⏭ Preskočenih '+skip.length+' — na '+String(trg).toUpperCase()+' so bili danes že odprti/urejeni v CMS (feed ima še staro ceno):\n\n'
-      +skip.slice(0,20).map(x=>'• '+String(x.sku||'').toUpperCase()).join('\n')+(skip.length>20?'\n… in še '+(skip.length-20):'')
+    alert('⛔ Preskočenih '+skip.length+' — na '+String(trg).toUpperCase()+' je cena lahko spremenjena največ 1× na dan:\n\n'
+      +skip.slice(0,20).map(x=>'• '+String(x.sku||'').toUpperCase()+' — '+razlog(x)).join('\n')+(skip.length>20?'\n… in še '+(skip.length-20):'')
       +(SEL.size?'\n\nNadaljujem z ostalimi ('+SEL.size+').':'\n\nNi ostalih izbranih.'));
     if(!SEL.size) return;
   }
@@ -13329,6 +13416,27 @@ function paketCms(){
   }
   window.postMessage({type:'suban-kalk-paket',trg,koraki,mode,items:items.map(x=>({sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
     cena:+x.cena||0,valuta:x.valuta||'',naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc}))},'*');
+}
+// 🔧 POPRAVI DECIMALKE (valute brez decimalk): prodajna 533,99 → 534. Vtičnik (1.26.4+) za te valute prodajno zaokroži na celo
+// in Redna vpiše s 4 decimalkami (prej 2 → npr. 363,996 v trgovini 363,99). Ni dvig: brez varovalke 1× na dan, brez zapisa urejeno.
+let DEC_PAKET = new Set();
+function paketDecimalke(){
+  const CELE = ['CZK', 'HUF', 'PLN', 'RON', 'RSD'];
+  const izb = (D && D.rows || []).filter(x => SEL.has(x.g_id));
+  const cur = String((izb[0] || {}).valuta || '').toUpperCase();
+  if (!izb.length) { alert('Najprej izberi izdelke.'); return; }
+  if (!CELE.includes(cur)) { alert('🔧 Popravi decimalke je za valute brez decimalk (' + CELE.join(', ') + '). Ta trg ima ' + (cur || '?') + '.'); return; }
+  const dec = c => { c = +c || 0; return c > 0 && Math.abs(c - Math.round(c)) > 0.001; };
+  const items = izb.filter(x => x.cms_id && (dec(x.koncna) || dec(x.cena)));
+  const ost = izb.length - items.length;
+  if (!items.length) { alert('Med izbranimi ni izdelkov z decimalno ceno (vse so že cele).'); return; }
+  const f = c => (+c || 0).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (!confirm('🔧 Popravim decimalke pri ' + items.length + ' izdelkih na ' + String(trg).toUpperCase() + '?' + (ost ? '\n(' + ost + ' s celo ceno ali brez CMS ID bo preskočenih)' : '') + '\n\n'
+    + items.slice(0, 12).map(x => '• ' + String(x.sku || '').toUpperCase() + '  ' + f(x.koncna || x.cena) + ' → ' + Math.round(+(x.koncna || x.cena) + 0.01) + ' ' + cur).join('\n') + (items.length > 12 ? '\n… in še ' + (items.length - 12) : '')
+    + '\n\nVtičnik (vsaj 1.26.4) prodajni ceni prišteje 0,01 in jo zaokroži na celo; pripravi vse hkrati v ozadju (»💾 Shrani izbrane« ali 🚀 samodejno).')) return;
+  DEC_PAKET = new Set(items.map(x => String(x.cms_id)));
+  window.postMessage({type:'suban-kalk-paket',trg,koraki:1,delta:0.01,mode:'vzporedno',items:items.map(x=>({sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
+    cena:+x.cena||0,valuta:cur,naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc}))},'*');
 }
 // ± ZNESEK → CMS (Bato pogled): uporabnik vpiše znesek v valuti trga (lahko negativen, npr. -1 lei: 70 → 69); vtičnik vsem
 // izbranim spremeni PRODAJNO ceno točno za ta znesek (brez zaokroževanja) in vpiše Redna = prodajna / DDV / (1 − popust). Vedno vzporedno.
@@ -13359,6 +13467,7 @@ function paketBato(){
 window.addEventListener('message',e=>{
   const d=e.data; if(!d||d.type!=='kalk-paket-urejeno'||String(d.trg||'')!==String(trg)) return;
   const ids=new Set((d.cms_ids||[]).map(String)); let n=0;
+  if([...ids].length&&[...ids].every(i=>DEC_PAKET.has(i))){ SEL.clear(); selLast=-1; render(); return; }   // 🔧 decimalke: ni dvig → brez zapisa urejeno
   (D&&D.rows||[]).forEach(x=>{ if(!x.cms_id||!ids.has(String(x.cms_id))) return;
     if(x.cms&&(x.cms.st==='popravljeno'||x.cms.st==='potrjeno')) return;
     cmsLog(x,'done'); const t=new Date().toISOString(); x.cms={st:'popravljeno',trg,opened_at:t,done_at:t,vir:'Paket CMS'}; n++; });

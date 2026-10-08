@@ -3243,7 +3243,7 @@ function _pcSendExt(tr, force){
 // (več trgov): vsak izdelek nosi svoj trg, vtičnik uporabi pravi jezik, valuto in korak (SLO: /products/{id}/edit).
 // Urejene vtičnik vrne (kalk-paket-urejeno, eno sporočilo na trg) → zapis »done« v dnevnik CMS + izbris vrstice (kot D).
 let _pcPaketTrgi = new Set(), _pcPaketKeys = {};   // trg|cms_id → ključi vrstic paketa
-function pcDvigniCms(){
+async function pcDvigniCms(){
   const po = {}, keys = {};   // trg|cms_id → item / ključi vrstic
   let brez = 0;
   _pcRows().forEach(tr => {
@@ -3257,8 +3257,19 @@ function pcDvigniCms(){
     po[k] = { trg, sku: String(row.sku || '').toUpperCase(), cms_id: cid, g_id: String(row.id || ''),
       cena: parseFloat(String(row.priceRaw || '').replace(/\s/g, '').replace(',', '.')) || 0, valuta: row.currency || '', naziv: String(row.product || '').slice(0, 120) };
   });
-  const items = Object.values(po);
+  let items = Object.values(po);
   if (!items.length) { alert('Med izbranimi (vidnimi) ni izdelkov s CMS ID in znanim trgom.'); return; }
+  // ⛔ 1 sprememba cene na dan (strežnik: dnevnik CMS, Vrsta cen, feed mimo suban.ai) — izpusti, ostale nadaljuj
+  let bl = null;
+  try { const r = await (await fetch('/cene-danes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+    body: JSON.stringify({ items: items.map(x => ({ trg: x.trg, cms_id: x.cms_id, g_id: x.g_id })) }) })).json(); if (r.ok) bl = r.blokirani || {}; } catch (e) {}
+  if (!bl && !confirm('Ne morem preveriti, kaj je bilo danes že spremenjeno (strežnik ni odgovoril).\n\nVseeno nadaljujem?')) return;
+  const skip = items.filter(x => (bl || {})[x.trg + '|' + x.cms_id]);
+  if (skip.length) {
+    alert('⛔ Izpuščenih ' + skip.length + ' — cena je lahko spremenjena največ 1× na dan:\n\n' + skip.slice(0, 20).map(x => '• ' + x.trg.toUpperCase() + ' ' + x.sku + ' — ' + bl[x.trg + '|' + x.cms_id]).join('\n') + (skip.length > 20 ? '\n… in še ' + (skip.length - 20) : ''));
+    items = items.filter(x => !bl[x.trg + '|' + x.cms_id]);
+    if (!items.length) return;
+  }
   const trgi = [...new Set(items.map(x => x.trg))];
   const STEP = { EUR:'+1 €', CZK:'+5 Kč', PLN:'+5 zł', RON:'+5 lei', HUF:'+100 Ft', RSD:'+100 din' };
   const kor = [...new Set(items.map(x => STEP[String(x.valuta || 'EUR').toUpperCase()] || '+1'))].join(' · ');
