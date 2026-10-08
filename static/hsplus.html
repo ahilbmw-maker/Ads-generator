@@ -8,11 +8,11 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
 <style>
   :root { --bg:#f4f5f7; --card:#fff; --bd:#e3e6eb; --txt:#16181d; --txt2:#5d6470; --txt3:#9aa1ad; --acc:#3a6fff;
-    --c-nar:#2563eb; --b-nar:#dbeafe; --c-cak:#b45309; --b-cak:#fef3c7; --c-man:#dc2626; --b-man:#fee2e2;
+    --c-nar:#2563eb; --b-nar:#dbeafe; --c-pot:#0891b2; --b-pot:#cffafe; --c-cak:#b45309; --b-cak:#fef3c7; --c-man:#dc2626; --b-man:#fee2e2;
     --c-prv:#15803d; --b-prv:#dcfce7; --c-pre:#64748b; --b-pre:#e2e8f0;
     --c-brn:#6d28d9; --b-brn:#ede9fe; --c-gro:#0f766e; --b-gro:#ccfbf1; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#111317; --card:#1a1d23; --bd:#2b3039; --txt:#e8eaee; --txt2:#a3aab6; --txt3:#6b7380;
-    --c-nar:#93c5fd; --b-nar:#172554; --c-cak:#fcd34d; --b-cak:#3a2e0d; --c-man:#fca5a5; --b-man:#3d1414; --c-prv:#86efac; --b-prv:#14361f; --c-pre:#cbd5e1; --b-pre:#2b3039; --c-brn:#c4b5fd; --b-brn:#2e1065; --c-gro:#5eead4; --b-gro:#042f2e; } }
+    --c-nar:#93c5fd; --b-nar:#172554; --c-pot:#67e8f9; --b-pot:#083344; --c-cak:#fcd34d; --b-cak:#3a2e0d; --c-man:#fca5a5; --b-man:#3d1414; --c-prv:#86efac; --b-prv:#14361f; --c-pre:#cbd5e1; --b-pre:#2b3039; --c-brn:#c4b5fd; --b-brn:#2e1065; --c-gro:#5eead4; --b-gro:#042f2e; } }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.45 'DM Sans',-apple-system,'Segoe UI',sans-serif; }
   .wrap { padding:16px 20px; }
@@ -33,6 +33,7 @@
   .kpi span { color:var(--txt2); font-size:12px; }
   .kpi small { display:block; color:var(--txt3); font-size:11.5px; }
   .k-naroceno { border-left-color:var(--c-nar) !important; } .k-naroceno b { color:var(--c-nar); }
+  .k-potrjeno { border-left-color:var(--c-pot) !important; } .k-potrjeno b { color:var(--c-pot); }
   .k-cakajoce { border-left-color:var(--c-cak) !important; } .k-cakajoce b { color:var(--c-cak); }
   .k-manjka { border-left-color:var(--c-man) !important; } .k-manjka b { color:var(--c-man); }
   .k-prevzeto { border-left-color:var(--c-prv) !important; } .k-prevzeto b { color:var(--c-prv); }
@@ -41,6 +42,7 @@
   .chip { border:1px solid var(--bd); background:var(--card); color:var(--txt2); border-radius:999px; padding:4px 11px; cursor:pointer; font-size:12.5px; font-weight:600; }
   .chip.on { background:var(--acc); border-color:var(--acc); color:#fff; }
   .chip.stc-naroceno { color:var(--c-nar); border-color:var(--c-nar); } .chip.stc-naroceno.on { background:var(--c-nar); color:#fff; }
+  .chip.stc-potrjeno { color:var(--c-pot); border-color:var(--c-pot); } .chip.stc-potrjeno.on { background:var(--c-pot); color:#fff; }
   .chip.stc-cakajoce { color:var(--c-cak); border-color:var(--c-cak); } .chip.stc-cakajoce.on { background:var(--c-cak); color:#fff; }
   .chip.stc-manjka { color:var(--c-man); border-color:var(--c-man); } .chip.stc-manjka.on { background:var(--c-man); color:#fff; }
   .chip.stc-prevzeto { color:var(--c-prv); border-color:var(--c-prv); } .chip.stc-prevzeto.on { background:var(--c-prv); color:#fff; }
@@ -51,6 +53,7 @@
   td { padding:7px 8px; border-bottom:1px solid var(--bd); vertical-align:middle; }
   tr > td:first-child { border-left:4px solid transparent; }
   tr.r-naroceno > td:first-child { border-left-color:var(--c-nar); }
+  tr.r-potrjeno > td:first-child { border-left-color:var(--c-pot); }
   tr.r-cakajoce > td:first-child { border-left-color:var(--c-cak); }
   tr.r-manjka > td:first-child { border-left-color:var(--c-man); }
   tr.r-prevzeto > td:first-child { border-left-color:var(--c-prv); }
@@ -66,6 +69,7 @@
   .r { text-align:right; white-space:nowrap; }
   select.s { border:1px solid var(--bd); border-radius:7px; padding:4px 6px; font-weight:700; font-size:12.5px; font-family:inherit; background:var(--card); color:var(--txt); cursor:pointer; }
   select.s.st-naroceno, .pill.st-naroceno { background:var(--b-nar); color:var(--c-nar); border-color:var(--b-nar); }
+  select.s.st-potrjeno, .pill.st-potrjeno { background:var(--b-pot); color:var(--c-pot); border-color:var(--b-pot); }
   select.s.st-cakajoce, .pill.st-cakajoce { background:var(--b-cak); color:var(--c-cak); border-color:var(--b-cak); }
   select.s.st-manjka, .pill.st-manjka { background:var(--b-man); color:var(--c-man); border-color:var(--b-man); }
   select.s.st-prevzeto, .pill.st-prevzeto { background:var(--b-prv); color:var(--c-prv); border-color:var(--b-prv); }
@@ -90,7 +94,7 @@
   #selBar .btn { padding:5px 10px; }
   #selBar .btn[class*="lb-"] { border-bottom-width:4px; }   /* barvna ločnica spodaj = barva skladišča/statusa */
   .lb-brn { border-bottom-color:var(--c-brn) !important; } .lb-gro { border-bottom-color:var(--c-gro) !important; }
-  .lb-nar { border-bottom-color:var(--c-nar) !important; } .lb-cak { border-bottom-color:var(--c-cak) !important; }
+  .lb-nar { border-bottom-color:var(--c-nar) !important; } .lb-cak { border-bottom-color:var(--c-cak) !important; } .lb-pot { border-bottom-color:var(--c-pot) !important; }
   .lb-prv { border-bottom-color:var(--c-prv) !important; } .lb-pre { border-bottom-color:var(--c-pre) !important; }
   .drop { border:2px dashed var(--acc); border-radius:12px; padding:14px; text-align:center; color:var(--acc); margin-bottom:12px; display:none; background:var(--card); }
   .msg { padding:10px 12px; border-radius:10px; margin-bottom:12px; display:none; }
@@ -202,6 +206,7 @@
       <button class="btn lb-gro" onclick="masovno({skladisce:'Grosuplje'})">Grosuplje</button>
       <span style="margin-left:8px">Status:</span>
       <button class="btn lb-nar" onclick="masovno({status:'naroceno'})">Naročeno</button>
+      <button class="btn lb-pot" onclick="masovno({status:'potrjeno'})" title="HS+ potrdil naročilo in poslal predračun">Potrjeno</button>
       <button class="btn lb-cak" onclick="masovno({status:'cakajoce'})">Čakajoče</button>
       <button class="btn lb-prv" onclick="masovno({status:'prevzeto'})">Prevzeto</button>
       <button class="btn lb-pre" onclick="masovno({status:'preklicano'})">Preklicano</button>
@@ -250,13 +255,15 @@
 <div id="edOkno" onclick="if(event.target===this)edZapri()"><div class="box" id="edBox"></div></div>
 
 <script>
-const ST = { naroceno: 'Naročeno', cakajoce: 'Čakajoče', manjka: 'Manjka', prevzeto: 'Prevzeto', preklicano: 'Preklicano' };
+const ST = { naroceno: 'Naročeno', potrjeno: 'Potrjeno', cakajoce: 'Čakajoče', manjka: 'Manjka', prevzeto: 'Prevzeto', preklicano: 'Preklicano' };
 const SK = ['Brnik', 'Grosuplje'];
 let D = [], SEL = new Set(), fSk = 'vse';
 // vidni statusi (več hkrati); privzeto samo Naročeno + Manjka — zapomni se v brskalniku
-const ST_PRIVZ = ['naroceno', 'manjka'];
+const ST_PRIVZ = ['naroceno', 'potrjeno', 'manjka'];
 let fStS = new Set(ST_PRIVZ);
 try { const x = JSON.parse(localStorage.getItem('hsb_st') || 'null'); if (Array.isArray(x)) fStS = new Set(x); } catch (e) {}
+// nov status Potrjeno (2026-10-08): enkrat dodaj v shranjen filter, da potrjene postavke ne »izginejo«
+try { if (!localStorage.getItem('hsb_st_pot')) { if (fStS.has('naroceno')) fStS.add('potrjeno'); localStorage.setItem('hsb_st_pot', '1'); localStorage.setItem('hsb_st', JSON.stringify([...fStS])); } } catch (e) {}
 function stNastavi(arr) { fStS = new Set(arr); try { localStorage.setItem('hsb_st', JSON.stringify([...fStS])); } catch (e) {} render(); }
 function stPreklopi(k) { const n = new Set(fStS); n.has(k) ? n.delete(k) : n.add(k); stNastavi([...n]); }
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -287,7 +294,7 @@ function tab(t) {
   render();
 }
 // vrstni red: novejši uvozi zgoraj; znotraj uvoza po statusu (odprti najprej), nato po vrstnem redu v PDF-ju
-const STR = { naroceno: 0, cakajoce: 1, manjka: 2, preklicano: 3, prevzeto: 4 };
+const STR = { naroceno: 0, potrjeno: 1, cakajoce: 2, manjka: 3, preklicano: 4, prevzeto: 5 };
 function vidni() {
   const q = document.getElementById('q').value.trim().toLowerCase();
   return D.filter(it => {
@@ -299,8 +306,8 @@ function vidni() {
 }
 function chips() {
   const po = s => D.filter(it => it.status === s), kos = a => a.reduce((x, it) => x + (it.kosov || 0), 0);
-  const sam = k => fStS.size === 1 && fStS.has(k), odpS = ['naroceno', 'cakajoce', 'manjka'];
-  document.getElementById('kpi').innerHTML = '<div class="' + (fStS.size === 3 && odpS.every(k => fStS.has(k)) ? 'on' : '') + '" onclick="stNastavi([\'naroceno\',\'cakajoce\',\'manjka\'])"><b>' + D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').length + '</b><span>Vse odprte</span><small>' + eur(D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').reduce((s, it) => s + (Number(it.vsota) || 0), 0)) + '</small></div>' +
+  const sam = k => fStS.size === 1 && fStS.has(k), odpS = ['naroceno', 'potrjeno', 'cakajoce', 'manjka'];
+  document.getElementById('kpi').innerHTML = '<div class="' + (fStS.size === odpS.length && odpS.every(k => fStS.has(k)) ? 'on' : '') + '" onclick="stNastavi([\'naroceno\',\'potrjeno\',\'cakajoce\',\'manjka\'])"><b>' + D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').length + '</b><span>Vse odprte</span><small>' + eur(D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').reduce((s, it) => s + (Number(it.vsota) || 0), 0)) + '</small></div>' +
     Object.entries(ST).map(([k, l]) => { const a = po(k); return '<div class="k-' + k + (sam(k) ? ' on' : '') + '" onclick="' + (sam(k) ? 'stNastavi(ST_PRIVZ)' : 'stNastavi([\'' + k + '\'])') + '"><b>' + a.length + '</b><span>' + l + '</span><small>' + kos(a) + ' kos</small></div>'; }).join('');
   const n = s => D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano' && (s === 'brez' ? !it.skladisce : it.skladisce === s)).length;
   document.getElementById('fSk').innerHTML = [['vse', 'Vsa'], ...SK.map(s => [s, s]), ['brez', 'Ni določeno']].map(([k, l]) =>

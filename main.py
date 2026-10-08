@@ -9263,7 +9263,7 @@ Brez dodatnih komentarjev, samo JSON."""
 # ════════════════════════════════════════════════════════════════════
 HSB_FILE = DATA_DIR / "hsplus_b2b.json"
 HSB_SKLADISCA = ("Brnik", "Grosuplje")
-HSB_STATUSI = ("naroceno", "cakajoce", "manjka", "prevzeto", "preklicano")
+HSB_STATUSI = ("naroceno", "potrjeno", "cakajoce", "manjka", "prevzeto", "preklicano")
 _hsb_lock = asyncio.Lock()
 
 
