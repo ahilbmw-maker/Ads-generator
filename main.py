@@ -19156,7 +19156,10 @@ async def hsuvoz_remove_ordered():
         data = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
         items = data.get("items", [])
         before = len(items)
-        kept = [it for it in items if not it.get("already_ordered", False)]
+        _hsuvoz_dodaj_hsb(items)   # tudi 🚚 naročeno v HS+ prevzemih (še ne prevzeto)
+        kept = [it for it in items if not (it.get("already_ordered", False) or it.get("hsb"))]
+        for it in kept:
+            it.pop("hsb", None)
         data["items"] = kept
         data["total_skus"] = len(kept)
         HSUVOZ_CURRENT.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -19333,6 +19336,8 @@ async def hsuvoz_data():
             return {"loaded": False, "items": []}
         data = json.loads(HSUVOZ_CURRENT.read_text(encoding="utf-8"))
         _hsuvoz_dodaj_hsb(data.get("items"))
+        # 🚚 naročeno v HS+ prevzemih = tudi »že naročeno« (oranžno, na vrh, »Odstrani že naročene«)
+        data["items"] = sorted(data.get("items") or [], key=lambda x: (not (x.get("already_ordered") or x.get("hsb")), -(x.get("qty", 0) or 0)))
         return {"loaded": True, **data}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

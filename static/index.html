@@ -1075,7 +1075,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-09 06:57</div>
+      <div class="sidebar-logo-sub">build 2026-10-09 07:06</div>
     </div>
   </div>
 
@@ -21208,7 +21208,7 @@ async function hsuvozLoadCurrent() {
       const undone = data.items.filter(it => !it.done).length;
       document.getElementById('hsuvozTitle').textContent = `ZA NAROČILO (${undone} / ${data.items.length})`;
       // gumb "Odstrani že naročene" — samo če obstajajo
-      const orderedCount = data.items.filter(it => it.already_ordered).length;
+      const orderedCount = data.items.filter(it => it.already_ordered || it.hsb).length;   // + 🚚 naročeno v HS+ prevzemih
       const remBtn = document.getElementById('hsuvozRemoveOrderedBtn');
       if (remBtn) {
         remBtn.style.display = orderedCount > 0 ? 'inline-block' : 'none';
@@ -21269,8 +21269,9 @@ function hsuvozRender(items, listId, source) {
       return '<a href="https://www.siluxar.si/narocilnice/' + id + '" target="_blank" style="color:var(--accent);text-decoration:none;font-size:10px;background:rgba(24,119,242,0.08);border:1px solid rgba(24,119,242,0.2);border-radius:4px;padding:2px 7px;display:inline-block">' + id + '</a>';
     }).join(' ');
 
-    const rowBg = source === 'order' ? 'rgba(15,118,110,0.05)' : (it.already_ordered ? 'rgba(217,119,6,0.10)' : (isDone ? 'rgba(0,0,0,0.02)' : 'var(--surface)'));
-    const rowBorder = source === 'order' ? '1px solid rgba(15,118,110,0.2)' : (it.already_ordered ? '1px solid rgba(217,119,6,0.4)' : '1px solid var(--border)');
+    const zeNar = it.already_ordered || it.hsb;   // oranžno tudi, če je naročeno v HS+ prevzemih (🚚)
+    const rowBg = source === 'order' ? 'rgba(15,118,110,0.05)' : (zeNar ? 'rgba(217,119,6,0.10)' : (isDone ? 'rgba(0,0,0,0.02)' : 'var(--surface)'));
+    const rowBorder = source === 'order' ? '1px solid rgba(15,118,110,0.2)' : (zeNar ? '1px solid rgba(217,119,6,0.4)' : '1px solid var(--border)');
     const skuColor = isDone ? 'var(--text-tertiary)' : (source === 'order' ? '#0f766e' : 'var(--text)');
     const skuDeco = isDone ? 'line-through' : 'none';
     const orderedTag = (source === 'current' && it.already_ordered)
@@ -21280,7 +21281,7 @@ function hsuvozRender(items, listId, source) {
     const HSB_ST = { potrjeno: 'potrjeno', naroceno: 'naročeno', cakajoce: 'čakajoče', manjka: 'manjka' };
     const hsbTag = it.hsb
       ? '<span title="HS+ prevzemi: naročeno, še ne prevzeto (ni na zalogi)" style="font-size:9px;font-weight:700;color:#0e7490;background:rgba(8,145,178,0.12);border:1px solid rgba(8,145,178,0.4);border-radius:4px;padding:1px 6px;margin-left:6px;white-space:nowrap;vertical-align:middle">🚚 HS+ ' +
-        Object.keys(HSB_ST).filter(k => it.hsb[k]).map(k => HSB_ST[k] + ' ' + it.hsb[k]).join(' · ') + ' kos</span>'
+        Object.keys(HSB_ST).filter(k => k in it.hsb).map(k => HSB_ST[k] + ' ' + (it.hsb[k] || '? (ni količine)')).join(' · ') + (Object.keys(HSB_ST).some(k => it.hsb[k]) ? ' kos' : '') + '</span>'
       : '';
 
     const isChecked = (window._hsuvozSelected || new Set()).has(it.sku + '|' + source);
