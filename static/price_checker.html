@@ -84,10 +84,10 @@
   }
   /* kartice (oblika kot HS+ prevzemi): obarvana po vrsti, ikona v krogu levo, velika številka + napis desno */
   .task-card {
-    display: grid; grid-template-columns: auto 1fr; column-gap: 12px; align-items: center;
+    display: grid; grid-template-columns: auto 1fr; column-gap: 12px; align-items: center; align-content: center;
     padding: 12px 14px;
     background: var(--surface);
-    border: 2px solid var(--border);
+    border: 2px solid #d9dde6;   /* siva obroba — svetle kartice se ne zlijejo z ozadjem */
     border-radius: 12px;
     cursor: pointer; transition: transform 0.12s, box-shadow 0.12s;
     flex: 1 1 150px; min-width: 140px; position: relative; overflow: hidden;
@@ -101,42 +101,42 @@
   .task-card.tc-all .task-icon { background: #f0f2f8; }
   .task-card.tc-all .task-num { color: var(--text); }
   .task-card.tc-all.active { border-color: var(--accent); }
-  #tc-lowval { background:#f5f3ff; border-color:#f5f3ff !important; } #tc-lowval .task-label { color:#7c3aed; }
+  #tc-lowval { background:#f5f3ff; border-color:#d9dde6 !important; } #tc-lowval .task-label { color:#7c3aed; }
 
   .task-card.tc-error .task-icon { background: var(--red-dim); }
   .task-card.tc-error .task-num { color: var(--red); }
-  .task-card.tc-error { background: var(--red-dim); border-color: var(--red-dim); }
+  .task-card.tc-error { background: var(--red-dim); }
   .task-card.tc-error .task-label { color: var(--red); }
   .task-card.tc-error.active { border-color: var(--red); }
 
   .task-card.tc-warn .task-icon { background: var(--yellow-dim); }
   .task-card.tc-warn .task-num { color: var(--yellow); }
-  .task-card.tc-warn { background: var(--yellow-dim); border-color: var(--yellow-dim); }
+  .task-card.tc-warn { background: var(--yellow-dim); }
   .task-card.tc-warn .task-label { color: var(--yellow); }
   .task-card.tc-warn.active { border-color: var(--yellow); }
 
   .task-card.tc-multi .task-icon { background: var(--purple-dim); }
   .task-card.tc-multi .task-num { color: var(--purple); }
-  .task-card.tc-multi { background: var(--purple-dim); border-color: var(--purple-dim); }
+  .task-card.tc-multi { background: var(--purple-dim); }
   .task-card.tc-multi .task-label { color: var(--purple); }
   .task-card.tc-multi.active { border-color: var(--purple); }
 
   .task-card.tc-qty .task-icon { background: var(--orange-dim); }
   .task-card.tc-qty .task-num { color: var(--orange); }
-  .task-card.tc-qty { background: var(--orange-dim); border-color: var(--orange-dim); }
+  .task-card.tc-qty { background: var(--orange-dim); }
   .task-card.tc-qty .task-label { color: var(--orange); }
   .task-card.tc-qty.active { border-color: var(--orange); }
 
   .task-card.tc-null .task-icon { background: var(--blue-dim); }
   .task-card.tc-null .task-num { color: var(--blue); }
-  .task-card.tc-null { background: var(--blue-dim); border-color: var(--blue-dim); }
+  .task-card.tc-null { background: var(--blue-dim); }
   .task-card.tc-null .task-label { color: var(--blue); }
   .task-card.tc-null.active { border-color: var(--blue); }
   #tc-lowval.active { border-color: #7c3aed !important; }
 
   .task-card.tc-ok .task-icon { background: var(--green-dim); }
   .task-card.tc-ok .task-num { color: var(--green); }
-  .task-card.tc-ok { background: var(--green-dim); border-color: var(--green-dim); }
+  .task-card.tc-ok { background: var(--green-dim); }
   .task-card.tc-ok .task-label { color: var(--green); }
   .task-card.tc-ok.active { border-color: var(--green); }
 
