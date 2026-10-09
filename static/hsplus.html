@@ -189,7 +189,7 @@
       <input type="search" class="f" id="q" placeholder="Išči ime, SKU, našo šifro ali EAN" oninput="render()" style="width:280px">
       <button class="btn" onclick="rocnoOdpri()" style="background:var(--b-prv);color:var(--c-prv);border-color:var(--c-prv)">＋ Ročna postavka</button>
       <span class="sub" style="margin-left:6px">Skladišče:</span><span id="fSk"></span>
-      <span class="sub" style="margin-left:10px">Status:</span><span id="fStC"></span>
+      <span id="fStC" style="margin-left:10px"></span>
       <span style="position:relative"><button class="btn" id="pkBtn" onclick="pkOdpri(event)" title="Koledar prevzemov — obarvani dnevi, ko smo prevzeli izdelke; klik na dan = samo prevzemi tistega dne">📅 Prevzemi</button></span>
       <span id="pkFlt"></span>
     </div>
@@ -282,6 +282,11 @@ try { const x = JSON.parse(localStorage.getItem('hsb_st') || 'null'); if (Array.
 // Potrjeno privzeto NI prikazano (samo Naročeno + Manjka); enkrat ga odstrani iz filtra, kamor ga je dodala prejšnja verzija
 try { if (!localStorage.getItem('hsb_st_pot2')) { fStS.delete('potrjeno'); localStorage.setItem('hsb_st_pot2', '1'); localStorage.setItem('hsb_st', JSON.stringify([...fStS])); } } catch (e) {}
 function stNastavi(arr) { fStS = new Set(arr); try { localStorage.setItem('hsb_st', JSON.stringify([...fStS])); } catch (e) {} render(); }
+// KPI kartica: klik = samo ta status (ponoven klik na edinega = privzeto), Ctrl/⌘ + klik = dodaj/odstrani (več hkrati)
+function kpiKlik(e, k) {
+  if (e && (e.ctrlKey || e.metaKey)) { const n = new Set(fStS); n.has(k) ? n.delete(k) : n.add(k); if (!n.size) n.add(k); stNastavi([...n]); return; }
+  stNastavi(fStS.size === 1 && fStS.has(k) ? ST_PRIVZ : [k]);
+}
 function stPreklopi(k) { const n = new Set(fStS); n.has(k) ? n.delete(k) : n.add(k); stNastavi([...n]); }
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const eur = v => (Number(v) || 0).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
@@ -326,14 +331,14 @@ function chips() {
   const po = s => D.filter(it => it.status === s), kos = a => a.reduce((x, it) => x + (it.kosov || 0), 0);
   const sam = k => fStS.size === 1 && fStS.has(k), odpS = ['naroceno', 'potrjeno', 'cakajoce', 'manjka'];
   const KIC = { naroceno: '🛒', potrjeno: '📄', cakajoce: '⏳', manjka: '⚠️', prevzeto: '📦', preklicano: '✕' };
-  document.getElementById('kpi').innerHTML = '<div data-ic="📋" class="' + (fStS.size === odpS.length && odpS.every(k => fStS.has(k)) ? 'on' : '') + '" onclick="stNastavi([\'naroceno\',\'potrjeno\',\'cakajoce\',\'manjka\'])"><b>' + D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').length + '</b><span>Vse odprte</span><small>' + eur(D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').reduce((s, it) => s + (Number(it.vsota) || 0), 0)) + '</small></div>' +
-    Object.entries(ST).map(([k, l]) => { const a = po(k); return '<div data-ic="' + (KIC[k] || '') + '" class="k-' + k + (sam(k) ? ' on' : '') + '" onclick="' + (sam(k) ? 'stNastavi(ST_PRIVZ)' : 'stNastavi([\'' + k + '\'])') + '"><b>' + a.length + '</b><span>' + l + '</span><small>' + kos(a) + ' kos</small></div>'; }).join('');
+  document.getElementById('kpi').innerHTML = '<div data-ic="📋" class="' + (fStS.size === odpS.length && odpS.every(k => fStS.has(k)) ? 'on' : '') + '" onclick="stNastavi([\'naroceno\',\'potrjeno\',\'cakajoce\',\'manjka\'])" title="Vse odprte (Naročeno, Potrjeno, Čakajoče, Manjka)"><b>' + D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').length + '</b><span>Vse odprte</span><small>' + eur(D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').reduce((s, it) => s + (Number(it.vsota) || 0), 0)) + '</small></div>' +
+    Object.entries(ST).map(([k, l]) => { const a = po(k); return '<div data-ic="' + (KIC[k] || '') + '" class="k-' + k + (fStS.has(k) ? ' on' : '') + '" onclick="kpiKlik(event,\'' + k + '\')" title="Klik = samo ' + l + ' · Ctrl + klik = dodaj / odstrani"><b>' + a.length + '</b><span>' + l + '</span><small>' + kos(a) + ' kos</small></div>'; }).join('');
   const n = s => D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano' && (s === 'brez' ? !it.skladisce : it.skladisce === s)).length;
   document.getElementById('fSk').innerHTML = [['vse', 'Vsa'], ...SK.map(s => [s, s]), ['brez', 'Ni določeno']].map(([k, l]) =>
     '<span class="chip sk-' + k + (fSk === k ? ' on' : '') + '" onclick="fSk=\'' + k + '\';render()">' + l + (k === 'vse' ? '' : ' ' + n(k)) + '</span>').join(' ');
-  document.getElementById('fStC').innerHTML = Object.entries(ST).map(([k, l]) =>
-    '<span class="chip stc stc-' + k + (fStS.has(k) ? ' on' : '') + '" onclick="stPreklopi(\'' + k + '\')" title="Prikaži / skrij ' + l + '">' + (fStS.has(k) ? '✓ ' : '') + l + ' ' + po(k).length + '</span>').join(' ') +
-    (ST_PRIVZ.length !== fStS.size || ST_PRIVZ.some(k => !fStS.has(k)) ? ' <span class="chip" onclick="stNastavi(ST_PRIVZ)" title="Privzeto: Naročeno + Manjka">↺</span>' : '');
+  // statusi so samo v karticah zgoraj (klik = en status, Ctrl/⌘ + klik = več); tu le namig + ↺ privzeto
+  document.getElementById('fStC').innerHTML = '<span class="sub">kartice zgoraj · <b>Ctrl + klik</b> = več statusov</span>' +
+    (ST_PRIVZ.length !== fStS.size || ST_PRIVZ.some(k => !fStS.has(k)) ? ' <span class="chip" onclick="stNastavi(ST_PRIVZ)" title="Privzeto: Naročeno + Manjka">↺ privzeto</span>' : '');
 }
 function render() {
   chips(); pkFltTxt();
