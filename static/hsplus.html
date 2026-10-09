@@ -333,7 +333,7 @@ function render() {
       '<td>' + imgHtml(it.slika) + '</td>' +
       '<td><div class="naz">' + esc(it.naziv) + (it.barva ? ' <span class="mut">· ' + esc(it.barva) + '</span>' : '') + (it.rocno ? '<span class="tag" title="ročno dodana postavka">ročno</span>' : '') + '</div>' +
         '<div class="mut">' + [it.sku && it.sku.toUpperCase() !== String(it.naziv).toUpperCase() ? 'SKU ' + esc(it.sku) : '', esc(it.ean)].filter(Boolean).join(' · ') + '</div></td>' +
-      '<td><input class="in" value="' + esc(it.nasa_sifra || '') + '" placeholder="+ šifra" onchange="uredi([\'' + it.id + '\'],{nasa_sifra:this.value})" style="width:110px"></td>' +
+      '<td><input class="in" value="' + esc(it.nasa_sifra || '') + '" placeholder="+ šifra" onchange="uredi([\'' + it.id + '\'],{nasa_sifra:this.value})" style="width:175px"></td>' +
       '<td class="r">' + kart + '</td><td class="r"><b>' + (it.kosov || '<span class="mut">—</span>') + '</b></td>' +
       '<td class="r hide-m">' + (it.cena_kos ? eur(it.cena_kos) : '<span class="mut">—</span>') + '</td><td>' + skl + '</td><td>' + st + '</td>' +
       '<td class="hide-m"><input class="in" value="' + esc(it.opomba || '') + '" placeholder="💬 + komentar" onchange="uredi([\'' + it.id + '\'],{opomba:this.value})"></td>' +
@@ -624,7 +624,7 @@ function renderPoiz() {
     return '<tr class="r-' + ({ vprasano: 'naroceno', pricakujemo: 'cakajoce', na_zalogi: 'prevzeto', ukinjeno: 'preklicano', v_narocilih: 'preklicano' }[p.status]) + (ri.dni < 0 ? ' r-manjka' : '') + '" title="' + esc(zg) + '">' +
       '<td></td><td>' + imgHtml(p.slika) + '</td>' +
       '<td><div class="naz">' + esc(p.sku) + (p.status === 'vprasano' ? ' <span class="novo">NOVO</span>' : '') + '</div><div class="mut">' + (p.naziv && p.naziv !== p.sku ? esc(p.naziv) : '') + (p.ean ? ' · ' + esc(p.ean) : '') + '</div></td>' +
-      '<td><input class="in" value="' + esc(p.nasa_sifra || '') + '" placeholder="+ šifra" onchange="pUredi([\'' + p.id + '\'],{nasa_sifra:this.value})" style="width:100px"></td>' +
+      '<td><input class="in" value="' + esc(p.nasa_sifra || '') + '" placeholder="+ šifra" onchange="pUredi([\'' + p.id + '\'],{nasa_sifra:this.value})" style="width:160px"></td>' +
       '<td class="r"><input class="in" value="' + (p.kartoni || '') + '" placeholder="—" inputmode="numeric" onchange="pUredi([\'' + p.id + '\'],{kartoni:this.value})" style="width:50px;text-align:right;min-width:0"></td>' +
       '<td>' + hs + '</td>' +
       '<td>' + rokHtml(p) + '</td>' +
