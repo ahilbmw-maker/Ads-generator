@@ -47,6 +47,15 @@
   .chip.stc-manjka { color:var(--c-man); border-color:var(--c-man); } .chip.stc-manjka.on { background:var(--c-man); color:#fff; }
   .chip.stc-prevzeto { color:var(--c-prv); border-color:var(--c-prv); } .chip.stc-prevzeto.on { background:var(--c-prv); color:#fff; }
   .chip.stc-preklicano { color:var(--c-pre); border-color:var(--c-pre); } .chip.stc-preklicano.on { background:var(--c-pre); color:#fff; }
+  .pk-box { position:absolute; z-index:50; background:var(--card); border:1px solid var(--bd); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,.18); padding:12px; width:300px; }
+  .pk-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-top:8px; }
+  .pk-grid span { text-align:center; font-size:11px; color:var(--txt3); padding:2px 0; }
+  .pk-d { border:1px solid transparent; border-radius:7px; padding:5px 0 3px; text-align:center; font-size:13px; cursor:default; color:var(--txt2); line-height:1.1; }
+  .pk-d.ima { background:var(--b-prv); color:var(--c-prv); font-weight:700; cursor:pointer; }
+  .pk-d.ima:hover, .pk-d.on { border-color:var(--c-prv); }
+  .pk-d.on { background:var(--c-prv); color:#fff; }
+  .pk-d small { display:block; font-size:9.5px; font-weight:600; opacity:.85; }
+  .pk-d.danes { outline:1px dashed var(--acc); }
   .card { background:var(--card); border:1px solid var(--bd); border-radius:12px; overflow:auto; }
   table { width:100%; border-collapse:collapse; }
   th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.4px; color:var(--txt3); padding:9px 8px; border-bottom:1px solid var(--bd); white-space:nowrap; position:sticky; top:0; background:var(--card); z-index:1; }
@@ -175,6 +184,8 @@
       <button class="btn" onclick="rocnoOdpri()" style="background:var(--b-prv);color:var(--c-prv);border-color:var(--c-prv)">＋ Ročna postavka</button>
       <span class="sub" style="margin-left:6px">Skladišče:</span><span id="fSk"></span>
       <span class="sub" style="margin-left:10px">Status:</span><span id="fStC"></span>
+      <span style="position:relative"><button class="btn" id="pkBtn" onclick="pkOdpri(event)" title="Koledar prevzemov — obarvani dnevi, ko smo prevzeli izdelke; klik na dan = samo prevzemi tistega dne">📅 Prevzemi</button></span>
+      <span id="pkFlt"></span>
     </div>
     <div id="rocno">
       <div style="display:flex;align-items:center;margin-bottom:10px"><b>＋ Ročna postavka</b><span class="sub" style="margin-left:8px">začni tipkati SKU ali ime — predlogi iz HS+ kataloga</span>
@@ -196,7 +207,7 @@
     </div>
     <div class="card"><table>
       <thead><tr><th style="width:34px"><input type="checkbox" id="selAll" onchange="izberiVse(this.checked)"></th><th style="width:54px"></th><th>Izdelek</th><th>Naša šifra</th>
-        <th class="r">Kartoni</th><th class="r">Kosov</th><th class="r hide-m">Cena/kos</th><th>Skladišče</th><th>Status</th><th class="hide-m" style="min-width:180px">Komentar</th><th class="hide-m" title="datum naročila (popraviš v ✏️)">Naročeno</th><th></th></tr></thead>
+        <th class="r">Kartoni</th><th class="r">Kosov</th><th class="r hide-m">Cena/kos</th><th>Skladišče</th><th>Status</th><th class="hide-m" style="min-width:180px">Komentar</th><th class="hide-m" title="datum naročila (popraviš v ✏️)">Naročeno</th><th class="hide-m" title="kdaj smo izdelek prevzeli na zalogo — nastavi se ob statusu Prevzeto, klik = popravek">Prevzeto</th><th></th></tr></thead>
       <tbody id="tb"></tbody>
     </table></div>
     <div id="selBar">
@@ -298,7 +309,8 @@ const STR = { naroceno: 0, potrjeno: 1, cakajoce: 2, manjka: 3, preklicano: 4, p
 function vidni() {
   const q = document.getElementById('q').value.trim().toLowerCase();
   return D.filter(it => {
-    if (!fStS.has(it.status)) return false;
+    if (fPrvDan) { if (it.status !== 'prevzeto' || String(it.prevzeto_at || '').slice(0, 10) !== fPrvDan) return false; }
+    else if (!fStS.has(it.status)) return false;
     if (fSk !== 'vse' && (fSk === 'brez' ? it.skladisce : it.skladisce !== fSk)) return false;
     if (q && !([it.naziv, it.barva, it.ean, it.sku, it.nasa_sifra, it.opomba].join(' ').toLowerCase().includes(q))) return false;
     return true;
@@ -317,7 +329,7 @@ function chips() {
     (ST_PRIVZ.length !== fStS.size || ST_PRIVZ.some(k => !fStS.has(k)) ? ' <span class="chip" onclick="stNastavi(ST_PRIVZ)" title="Privzeto: Naročeno + Manjka">↺</span>' : '');
 }
 function render() {
-  chips();
+  chips(); pkFltTxt();
   const rows = vidni();
   let prej = null;
   document.getElementById('tb').innerHTML = rows.length ? rows.map(it => {
@@ -337,8 +349,10 @@ function render() {
       '<td class="r">' + kart + '</td><td class="r"><b>' + (it.kosov || '<span class="mut">—</span>') + '</b></td>' +
       '<td class="r hide-m">' + (it.cena_kos ? eur(it.cena_kos) : '<span class="mut">—</span>') + '</td><td>' + skl + '</td><td>' + st + '</td>' +
       '<td class="hide-m"><input class="in" value="' + esc(it.opomba || '') + '" placeholder="💬 + komentar" onchange="uredi([\'' + it.id + '\'],{opomba:this.value})"></td>' +
-      '<td class="hide-m mut">' + dat(it.datum_narocila || it.dodano) + '</td><td><button class="btn ed" onclick="edOdpri(\'n\',\'' + it.id + '\')" title="Uredi postavko">✏️</button></td></tr>';
-  }).join('') : '<tr><td colspan="12" class="empty">' + (D.length ? 'Ni postavk za izbrane filtre.' : 'Še ni postavk. Uvozi PDF B2B naročila HS+ ali dodaj ročno postavko.') + '</td></tr>';
+      '<td class="hide-m mut">' + dat(it.datum_narocila || it.dodano) + '</td>' +
+      '<td class="hide-m">' + (it.status === 'prevzeto' ? '<span data-kol-odpri onclick="kolDatumPrv(this,\'' + it.id + '\')" style="cursor:pointer;color:var(--c-prv);font-weight:600" title="Datum prevzema na zalogo — klikni za popravek">' + (it.prevzeto_at ? dat(it.prevzeto_at) : '📅 vpiši') + '</span>' : '<span class="mut">—</span>') + '</td>' +
+      '<td><button class="btn ed" onclick="edOdpri(\'n\',\'' + it.id + '\')" title="Uredi postavko">✏️</button></td></tr>';
+  }).join('') : '<tr><td colspan="13" class="empty">' + (D.length ? 'Ni postavk za izbrane filtre.' : 'Še ni postavk. Uvozi PDF B2B naročila HS+ ali dodaj ročno postavko.') + '</td></tr>';
   document.getElementById('selN').textContent = SEL.size;
   document.getElementById('selBar').style.display = SEL.size ? 'flex' : 'none';
   const vis = rows.map(it => it.id), sa = document.getElementById('selAll');
@@ -580,6 +594,43 @@ function kolDatumNar(el, id) {
   const it = D.find(x => x.id === id) || {};
   kolOdpri(el, it.datum_narocila || '', it.datum_narocila || '', a => { if (a) uredi([id], { datum_narocila: a }); }, true);
 }
+// datum prevzema na zalogo (samo prevzeto) → shrani takoj
+function kolDatumPrv(el, id) {
+  const it = D.find(x => x.id === id) || {}, d0 = String(it.prevzeto_at || '').slice(0, 10);
+  kolOdpri(el, d0, d0, a => { if (a) uredi([id], { prevzeto_at: a }); }, true);
+}
+// 📅 KOLEDAR PREVZEMOV: dnevi s prevzetimi postavkami (prevzeto_at) obarvani; klik na dan → seznam samo tistega dne
+let fPrvDan = '', pkMes = null;
+function pkDni() { const m = {}; D.forEach(it => { if (it.status === 'prevzeto' && it.prevzeto_at) { const k = String(it.prevzeto_at).slice(0, 10); m[k] = (m[k] || 0) + 1; } }); return m; }
+function pkOdpri(e) {
+  if (e) e.stopPropagation();
+  let b = document.getElementById('pkBox');
+  if (b) { b.remove(); return; }
+  if (!pkMes) { const z = Object.keys(pkDni()).sort().pop(); const d = z ? new Date(z + 'T12:00') : new Date(); pkMes = new Date(d.getFullYear(), d.getMonth(), 1); }
+  b = document.createElement('div'); b.id = 'pkBox'; b.className = 'pk-box'; b.style.top = '36px'; b.style.left = '0';
+  b.onclick = ev => ev.stopPropagation();
+  document.getElementById('pkBtn').parentNode.appendChild(b); pkRisi();
+}
+function pkRisi() {
+  const b = document.getElementById('pkBox'); if (!b) return;
+  const m = pkDni(), y = pkMes.getFullYear(), mo = pkMes.getMonth(), prvi = (new Date(y, mo, 1).getDay() + 6) % 7, st = new Date(y, mo + 1, 0).getDate();
+  const iso = d => y + '-' + String(mo + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0'), danes = new Date().toISOString().slice(0, 10);
+  const MES = ['januar', 'februar', 'marec', 'april', 'maj', 'junij', 'julij', 'avgust', 'september', 'oktober', 'november', 'december'];
+  let h = '<div style="display:flex;align-items:center;gap:6px"><button class="btn" style="padding:2px 9px" onclick="pkPremik(-1)">◀</button><b style="flex:1;text-align:center">' + MES[mo] + ' ' + y + '</b><button class="btn" style="padding:2px 9px" onclick="pkPremik(1)">▶</button></div>' +
+    '<div class="pk-grid">' + ['pon', 'tor', 'sre', 'čet', 'pet', 'sob', 'ned'].map(x => '<span>' + x + '</span>').join('') + '<span></span>'.repeat(prvi);
+  for (let d = 1; d <= st; d++) { const k = iso(d), n = m[k] || 0;
+    h += '<div class="pk-d' + (n ? ' ima' : '') + (fPrvDan === k ? ' on' : '') + (k === danes ? ' danes' : '') + '"' + (n ? ' onclick="pkIzberi(&quot;' + k + '&quot;)" title="' + n + ' prevzetih postavk"' : '') + '>' + d + (n ? '<small>' + n + '</small>' : '') + '</div>'; }
+  const vMes = Object.keys(m).filter(k => k.startsWith(y + '-' + String(mo + 1).padStart(2, '0'))).reduce((a, k) => a + m[k], 0);
+  h += '</div><div class="sub" style="margin-top:8px">' + (vMes ? vMes + ' prevzetih postavk v mesecu · klikni obarvan dan' : 'V tem mesecu ni prevzemov.') + '</div>';
+  b.innerHTML = h;
+}
+function pkPremik(n) { pkMes = new Date(pkMes.getFullYear(), pkMes.getMonth() + n, 1); pkRisi(); }
+function pkIzberi(k) { fPrvDan = fPrvDan === k ? '' : k; const b = document.getElementById('pkBox'); if (b) b.remove(); render(); }
+function pkFltTxt() {
+  const el = document.getElementById('pkFlt'); if (!el) return;
+  el.innerHTML = fPrvDan ? '<span class="chip on" style="background:var(--c-prv);border-color:var(--c-prv)" onclick="fPrvDan=&quot;&quot;;render()" title="Počisti filter">📅 prevzeto ' + dat(fPrvDan + 'T12:00') + ' ✕</span>' : '';
+}
+document.addEventListener('click', () => { const b = document.getElementById('pkBox'); if (b) b.remove(); });
 function kolGumbTxt(btn, a, b) { if (btn) btn.textContent = a ? '📅 ' + rokTxt(a, b) : '📅 izberi rok'; }
 function rokInfo(p) {
   if (!['vprasano', 'pricakujemo'].includes(p.status) || !(p.do || p.od)) return { cls: '', txt: '', dni: 9999 };

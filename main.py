@@ -9832,6 +9832,11 @@ async def hsplus_uredi(data: dict):
         if not dn:
             return {"ok": False, "error": "Neveljaven datum naročila."}
         spr["datum_narocila"] = dn
+    if "prevzeto_at" in data:   # ročno popravljen datum prevzema na zalogo (samo pri statusu prevzeto)
+        pv = _hsb_datum(data.get("prevzeto_at"))
+        if not pv:
+            return {"ok": False, "error": "Neveljaven datum prevzema."}
+        spr["prevzeto_at"] = pv + "T12:00:00"
     if not spr:
         return {"ok": False, "error": "Ni sprememb."}
     kdo = str(data.get("kdo") or "")[:40]
