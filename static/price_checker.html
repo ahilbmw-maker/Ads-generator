@@ -3285,8 +3285,11 @@ async function pcDvigniCms(){
   }
   _pcPaketTrgi = new Set(trgi); _pcPaketKeys = keys;
   // ⛔ takoj »odprto danes« v dnevniku CMS — Marža / drug paket jih danes ne more dvigniti še enkrat
-  try { fetch('/cms-log-urejeno', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
-    body: JSON.stringify({ akcija: 'open', vir: 'Paket (Price Checker)', items: items.map(x => ({ trg: x.trg, cms_id: x.cms_id, sku: x.sku })) }) }); } catch (e) {}
+  // paket se pošlje šele, ko strežnik potrdi zapis (brez zapisa varovalka ne bi delovala)
+  try { const r = await fetch('/cms-log-urejeno', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ akcija: 'open', vir: 'Paket (Price Checker)', items: items.map(x => ({ trg: x.trg, cms_id: x.cms_id, sku: x.sku })) }) });
+    const d = await r.json(); if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status)); }
+  catch (e) { alert('⛔ Zapis »odprto« v dnevnik CMS ni uspel (' + e.message + ').\n\nPaket NI poslan. Osveži stran (prijava je morda potekla) in poskusi znova.'); return; }
   window.postMessage({ type: 'suban-kalk-paket', trg: trgi.length > 1 ? 'mix' : trgi[0], koraki, mode, items }, '*');
 }
 window.addEventListener('message', e => {

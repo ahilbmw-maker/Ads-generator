@@ -1504,6 +1504,7 @@ async def cms_log_urejeno(request: Request):
             log[k] = e; n += 1
         if n:
             _jsave(CMS_LOG_FILE, log)
+        _cene_ledger_zapisi([f"{str(i['trg']).lower()}|{str(i['cms_id']).strip()}" for i in items], vir)
     return {"ok": True, "zapisanih": n}
 
 
@@ -1552,6 +1553,8 @@ async def cms_log_post(request: Request):
         stari = _prune_by_age(log, "opened_at", CMS_LOG_KEEP_DAYS)
         log = {k: v for k, v in log.items() if k in stari or (v or {}).get("done_at")}
         _jsave(CMS_LOG_FILE, log)
+        if akcija in ("open", "done"):
+            _cene_ledger_zapisi([key], str(b.get("vir") or ""))
     return {"ok": True, "key": key, "zapis": log.get(key)}
 
 
@@ -1706,6 +1709,24 @@ async def cene_vrsta_get():
     return {"ok": True, "postavke": d["postavke"][-2000:], "stevci": st, "ustavljeno": d["ustavljeno"]}
 
 
+# ⛔ TRAJEN ZAPIS »cena spremenjena / odprta danes« (trg|cms_id → {at, vir}) — ločeno od dnevnika CMS, ker »↩ Odznači urejeno«
+# dnevnik izbriše (prikaz), varovalka 1× na dan pa mora ostati. Pišejo: /cms-log (open/done), /cms-log-urejeno, Vrsta /rezultat.
+CENE_LEDGER_FILE = DATA_DIR / "cene_spremembe_danes.json"
+
+
+def _cene_ledger_zapisi(kljuci, vir: str = ""):
+    try:
+        led = _jload(CENE_LEDGER_FILE, {}) or {}
+        now = _lj_iso()
+        for k in kljuci:
+            if k:
+                led[k] = {"at": now, "vir": vir}
+        meja = (datetime.fromisoformat(now) - timedelta(days=3)).isoformat(timespec="seconds")
+        _jsave(CENE_LEDGER_FILE, {k: v for k, v in led.items() if str((v or {}).get("at") or "") >= meja})
+    except Exception as e:
+        print(f"[cene ledger] {e}")
+
+
 def _cene_danes(items: list, izkljuci_id: str = "") -> dict:
     """VAROVALKA »1 sprememba cene na dan« (trg + izdelek). Vrne {"trg|cms_id": razlog} za izdelke, ki so bili DANES že:
     - urejeni/odprti v CMS prek suban.ai (dnevnik CMS, tudi Price Checker »*«),
@@ -1717,6 +1738,7 @@ def _cene_danes(items: list, izkljuci_id: str = "") -> dict:
     log = _jload(CMS_LOG_FILE, {}) or {}
     vrsta = _vrsta_load().get("postavke") or []
     pc = _jload(PRICE_CHANGES_FILE, {}) or {}
+    led = _jload(CENE_LEDGER_FILE, {}) or {}
     out = {}
     for i in items or []:
         trg, cid, gid = str(i.get("trg") or "").lower(), str(i.get("cms_id") or ""), str(i.get("g_id") or "")
@@ -1725,7 +1747,12 @@ def _cene_danes(items: list, izkljuci_id: str = "") -> dict:
         k = f"{trg}|{cid}"
         zap = [e for e in (log.get(k), log.get(f"*|{cid}")) if e]
         r = ""
-        for e in zap:
+        for lk in (k, f"*|{cid}"):   # trajen zapis (ostane tudi po »↩ Odznači urejeno«)
+            z = led.get(lk) or {}
+            if str(z.get("at") or "")[:10] == danes:
+                r = "danes že spremenjeno / odprto" + (f" ({z.get('vir')})" if z.get("vir") else "")
+                break
+        for e in ([] if r else zap):
             if str(e.get("done_at") or "")[:10] == danes or str(e.get("opened_at") or "")[:10] == danes:
                 r = "danes že urejeno v CMS" + (f" ({e.get('vir')})" if e.get("vir") else "")
                 break
@@ -1855,6 +1882,7 @@ async def cene_vrsta_rezultat(data: dict):
                 _jsave(CMS_LOG_FILE, log)
             except Exception as ex:
                 print(f"[vrsta] dnevnik CMS: {ex}")
+            _cene_ledger_zapisi([f"{p['trg']}|{p['cms_id']}"], "Vrsta cen")
     return {"ok": True}
 
 
@@ -13454,7 +13482,9 @@ setTimeout(vrstaNalozi, 1500);
 async function paketSamoBato(){
   const izb=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id));
   if(!izb.length) return;
-  const jeBato=x=>{const c=+(x.koncna||x.cena)||0; return c>0 && batoCands(c,x.valuta||'EUR')===null;};
+  const jeBato=x=>{const c=+(x.koncna||x.cena)||0, cfg=BATO_CFG[x.valuta||'EUR']||BATO_CFG.EUR;
+    if(cfg.dec===0&&Math.abs(c-Math.round(c))>0.001) return false;   // 538,99 CZK ni Bato (decimalke) — ostane za popravek
+    return c>0 && batoCands(c,x.valuta||'EUR')===null;};
   const bato=izb.filter(jeBato);
   if(bato.length){
     bato.forEach(x=>SEL.delete(x.g_id)); selLast=-1; render();
@@ -13481,7 +13511,7 @@ async function paketCmsVarno(){
   }
   paketCms();
 }
-function paketCms(){
+async function paketCms(){
   if(BATO) return paketBato();
   const items=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&x.cms_id);
   const brez=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&!x.cms_id).length;
@@ -13497,7 +13527,7 @@ function paketCms(){
     if(m===null) return;
     mode=String(m).trim()==='2'?'zaporedno':'vzporedno';
   }
-  oznaciOdprto(items,'Paket (Marža)');
+  if(!await oznaciOdprto(items,'Paket (Marža)')) return;
   window.postMessage({type:'suban-kalk-paket',trg,koraki,mode,items:items.map(x=>({sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
     cena:+x.cena||0,valuta:x.valuta||'',naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc}))},'*');
 }
@@ -13506,9 +13536,11 @@ function paketCms(){
 let DEC_PAKET = new Set();
 // ⛔ ob pošiljanju paketa vtičniku: izdelki takoj dobijo »odprto danes« v dnevniku CMS — drug paket / Price Checker / Plan
 // jih isti dan ne more dvigniti še enkrat, tudi preden vtičnik shrani (prej je veljalo šele po shranjevanju)
-function oznaciOdprto(rows, vir){
-  try{ fetch('/cms-log-urejeno',{method:'POST',headers:{'Content-Type':'application/json'},keepalive:true,
-    body:JSON.stringify({akcija:'open',vir,items:rows.filter(x=>x&&x.cms_id).map(x=>({trg,cms_id:String(x.cms_id),sku:String(x.sku||'').toUpperCase()}))})}); }catch(e){}
+async function oznaciOdprto(rows, vir){   // true = zapisano; false = paket se NE pošlje (brez zapisa ni varovalke)
+  try{ const r=await fetch('/cms-log-urejeno',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({akcija:'open',vir,items:rows.filter(x=>x&&x.cms_id).map(x=>({trg,cms_id:String(x.cms_id),sku:String(x.sku||'').toUpperCase()}))})});
+    const d=await r.json(); if(!d.ok) throw new Error(d.error||('HTTP '+r.status)); return true; }
+  catch(e){ alert('⛔ Zapis »odprto« v dnevnik CMS ni uspel ('+e.message+').\n\nPaket NI poslan — brez zapisa varovalka 1× na dan ne bi delovala.\nOsveži stran (prijava je morda potekla) in poskusi znova.'); return false; }
 }
 function paketDecimalke(){
   const CELE = ['CZK', 'HUF', 'PLN', 'RON', 'RSD'];
@@ -13530,7 +13562,7 @@ function paketDecimalke(){
 }
 // ± ZNESEK → CMS (Bato pogled): uporabnik vpiše znesek v valuti trga (lahko negativen, npr. -1 lei: 70 → 69); vtičnik vsem
 // izbranim spremeni PRODAJNO ceno točno za ta znesek (brez zaokroževanja) in vpiše Redna = prodajna / DDV / (1 − popust). Vedno vzporedno.
-function paketBato(){
+async function paketBato(){
   const rows=batoRows().filter(o=>SEL.has(o.x.g_id));
   const items=rows.filter(o=>o.x.cms_id), brez=rows.length-items.length;
   if(!items.length){alert('Med izbranimi (v Bato pogledu) ni izdelkov s CMS ID.');return;}
@@ -13551,7 +13583,7 @@ function paketBato(){
   if(!confirm('± Spremenim prodajno ceno za '+(delta>0?'+':'')+String(delta).replace('.',',')+' '+cur+' pri '+items.length+' izdelkih na '+String(trg).toUpperCase()+'?\n\n'
     +(st?'Primer: '+String(pr.x.sku||'').toUpperCase()+'  '+fmt(st)+' → '+fmt(st+delta)+' '+cur+'\n\n':'')
     +'Vtičnik pripravi vse hkrati v ozadju (seznam v panelu, »💾 Shrani izbrane« ali 🚀 samodejno).')) return;
-  oznaciOdprto(items.map(o=>o.x),'± Znesek (Marža)');
+  if(!await oznaciOdprto(items.map(o=>o.x),'± Znesek (Marža)')) return;
   window.postMessage({type:'suban-kalk-paket',trg,koraki:1,delta,mode:'vzporedno',items:items.map(o=>{const x=o.x;return {sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
     cena:+x.cena||0,valuta:cur,naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc};})},'*');
 }
@@ -13635,7 +13667,9 @@ function batoCands(price,cur){
   return {v:v/m, pick:pick/m, up:up/m, cfg:c};
 }
 function fmtC(v,cur){if(v==null)return '—';const c=BATO_CFG[cur]||BATO_CFG.EUR;
-  return v.toLocaleString('sl-SI',{minimumFractionDigits:c.dec,maximumFractionDigits:c.dec});}
+  // valute brez decimalk: decimalke pokaži, če so (npr. 533,99 CZK) — sicer bi se prikazalo zaokroženo (534) in napaka se ne bi videla
+  const d=(c.dec===0&&Math.abs(v-Math.round(v))>0.001)?2:c.dec;
+  return v.toLocaleString('sl-SI',{minimumFractionDigits:d,maximumFractionDigits:d});}
 function batoRows(){
   if(!D||!D.ok) return [];
   const q=(document.getElementById('q').value||'').toLowerCase().trim(), z=document.getElementById('naZal').checked;
