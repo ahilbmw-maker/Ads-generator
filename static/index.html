@@ -539,6 +539,17 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 
 /* ── SHARED COMPONENTS ── */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 12px; }
+/* 💸 Uvoz porabe: barvni prilepišči (FB modro, Google zeleno) — hitro vidno med drsenjem; .akt = izbrano za Ctrl+V */
+.sem-pb { border:2px dashed; border-radius:12px; padding:14px 16px; min-height:96px; cursor:pointer; outline:none; transition:box-shadow .12s, background .12s; }
+.sem-pb .sem-pb-t { font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px; }
+.sem-pb .sem-pb-s { font-size:12px; margin-top:4px; }
+.sem-pb-fb { background:rgba(55,138,221,.10); border-color:#378ADD; }
+.sem-pb-fb .sem-pb-t, .sem-pb-fb .sem-pb-s { color:#378ADD; }
+.sem-pb-google { background:rgba(99,153,34,.11); border-color:#639922; }
+.sem-pb-google .sem-pb-t, .sem-pb-google .sem-pb-s { color:#639922; }
+.sem-pb.akt { border-style:solid; box-shadow:0 0 0 3px rgba(55,138,221,.25); }
+.sem-pb-google.akt { box-shadow:0 0 0 3px rgba(99,153,34,.28); }
+.sem-pb:hover { filter:brightness(1.03); }
 .slabel { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: block; }
 .url-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .url-row { display: flex; align-items: center; gap: 8px; }
@@ -1075,7 +1086,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-09 08:23</div>
+      <div class="sidebar-logo-sub">build 2026-10-09 09:22</div>
     </div>
   </div>
 
@@ -3328,14 +3339,14 @@ input[type="text"].error { border-color: var(--red) !important; }
           <span style="font-size:11px;color:var(--text-tertiary)">prilepi screenshota (Ctrl+V) → Claude prebere zneske · poraba ÷ naročila iz posnetkov istih dni = dejanski CPA</span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">
-          <div id="semPasteBox-fb" tabindex="0" onclick="semPasteFocus('fb')" onfocus="semPasteFocus('fb')" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="semImgDrop(event,'fb')" style="border:1.5px dashed var(--border);border-radius:12px;padding:12px;min-height:92px;cursor:pointer;background:var(--surface);outline:none">
-            <div style="font-size:12.5px;font-weight:700">📘 Facebook — poraba po državah</div>
-            <div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">klikni sem in prilepi (Ctrl+V) · lahko več slik · ali <span onclick="event.stopPropagation();semImgPick('fb')" style="text-decoration:underline">izberi datoteke</span></div>
+          <div id="semPasteBox-fb" tabindex="0" onclick="semPasteFocus('fb')" onfocus="semPasteFocus('fb')" ondragover="event.preventDefault();this.classList.add('akt')" ondragleave="this.classList.remove('akt')" ondrop="semImgDrop(event,'fb')" class="sem-pb sem-pb-fb">
+            <div class="sem-pb-t"><span style="font-size:20px">📘</span> Facebook — poraba po državah</div>
+            <div class="sem-pb-s">klikni sem in prilepi (Ctrl+V) · lahko več slik · ali <span onclick="event.stopPropagation();semImgPick('fb')" style="text-decoration:underline">izberi datoteke</span></div>
             <div id="semThumbs-fb" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
           </div>
-          <div id="semPasteBox-google" tabindex="0" onclick="semPasteFocus('google')" onfocus="semPasteFocus('google')" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="semImgDrop(event,'google')" style="border:1.5px dashed var(--border);border-radius:12px;padding:12px;min-height:92px;cursor:pointer;background:var(--surface);outline:none">
-            <div style="font-size:12.5px;font-weight:700">🔎 Google — poraba po Maaarket.xx računih</div>
-            <div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">klikni sem in prilepi (Ctrl+V) · končnica računa = trg · ali <span onclick="event.stopPropagation();semImgPick('google')" style="text-decoration:underline">izberi datoteke</span></div>
+          <div id="semPasteBox-google" tabindex="0" onclick="semPasteFocus('google')" onfocus="semPasteFocus('google')" ondragover="event.preventDefault();this.classList.add('akt')" ondragleave="this.classList.remove('akt')" ondrop="semImgDrop(event,'google')" class="sem-pb sem-pb-google">
+            <div class="sem-pb-t"><span style="font-size:20px">🔎</span> Google — poraba po Maaarket.xx računih</div>
+            <div class="sem-pb-s">klikni sem in prilepi (Ctrl+V) · končnica računa = trg · ali <span onclick="event.stopPropagation();semImgPick('google')" style="text-decoration:underline">izberi datoteke</span></div>
             <div id="semThumbs-google" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
           </div>
         </div>
@@ -17104,7 +17115,7 @@ let _semSrcMeta = {fb:null, g:null};    // metapodatki s slik: total_shown, peri
 function semPasteFocus(kind){
   _semPasteKind = kind;
   ['fb','google'].forEach(k => { const b = document.getElementById('semPasteBox-'+k);
-    if (b) b.style.borderColor = (k===kind) ? 'var(--accent)' : 'var(--border)'; });
+    if (b) b.classList.toggle('akt', k===kind); });
   const box = document.getElementById('semPasteBox-'+kind);
   if (box) { try{ box.focus({preventScroll:true}); }catch(e){ box.focus(); } }
 }
@@ -17112,7 +17123,7 @@ function semImgPick(kind){ const i = document.getElementById('semImgInp-'+kind);
 function semImgFiles(inp, kind){ [...(inp.files||[])].forEach(f => semImgAdd(f, kind)); inp.value=''; semPasteFocus(kind); }
 function semImgDrop(e, kind){
   e.preventDefault();
-  const b = document.getElementById('semPasteBox-'+kind); if (b) b.style.borderColor='var(--border)';
+  const b = document.getElementById('semPasteBox-'+kind); if (b) b.classList.remove('akt');
   const fs = [...(e.dataTransfer.files||[])].filter(f => f.type && f.type.startsWith('image/'));
   fs.forEach(f => semImgAdd(f, kind));
   if (fs.length) semPasteFocus(kind);
