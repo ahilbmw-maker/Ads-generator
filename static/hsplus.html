@@ -26,18 +26,24 @@
   .tabs { display:flex; gap:4px; border-bottom:1px solid var(--bd); margin-bottom:12px; }
   .tab { padding:8px 14px; cursor:pointer; color:var(--txt2); font-weight:600; border-bottom:2px solid transparent; }
   .tab.on { color:var(--acc); border-bottom-color:var(--acc); }
-  .kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; margin-bottom:12px; }
-  .kpi > div { background:var(--card); border:1px solid var(--bd); border-left:4px solid var(--bd); border-radius:0 10px 10px 0; padding:10px 12px; cursor:pointer; }
-  .kpi > div.on { outline:2px solid var(--acc); }
-  .kpi b { display:block; font-size:22px; }
-  .kpi span { color:var(--txt2); font-size:12px; }
-  .kpi small { display:block; color:var(--txt3); font-size:11.5px; }
-  .k-naroceno { border-left-color:var(--c-nar) !important; } .k-naroceno b { color:var(--c-nar); }
-  .k-potrjeno { border-left-color:var(--c-pot) !important; } .k-potrjeno b { color:var(--c-pot); }
-  .k-cakajoce { border-left-color:var(--c-cak) !important; } .k-cakajoce b { color:var(--c-cak); }
-  .k-manjka { border-left-color:var(--c-man) !important; } .k-manjka b { color:var(--c-man); }
-  .k-prevzeto { border-left-color:var(--c-prv) !important; } .k-prevzeto b { color:var(--c-prv); }
-  .k-preklicano { border-left-color:var(--c-pre) !important; } .k-preklicano b { color:var(--c-pre); }
+  /* KPI (oblika C): obarvana kartica po statusu + ikona v krogu (data-ic), velika številka */
+  .kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin-bottom:14px; }
+  .kpi > div { --kc:var(--txt); background:var(--card); border:1px solid var(--bd); border-radius:12px; padding:12px 14px; cursor:pointer;
+    display:grid; grid-template-columns:auto 1fr; column-gap:12px; align-items:center; transition:transform .08s; }
+  .kpi > div:hover { transform:translateY(-1px); }
+  .kpi > div::before { content:attr(data-ic); grid-row:1 / span 3; width:42px; height:42px; border-radius:50%; background:var(--card);
+    display:flex; align-items:center; justify-content:center; font-size:20px; }
+  .kpi > div:not([data-ic]) { grid-template-columns:1fr; } .kpi > div:not([data-ic])::before { display:none; }
+  .kpi > div.on { outline:3px solid var(--kc); outline-offset:2px; }
+  .kpi b { display:block; font-size:30px; line-height:1.05; color:var(--kc); font-weight:700; }
+  .kpi span { color:var(--kc); font-size:14px; font-weight:600; }
+  .kpi small { display:block; color:var(--txt2); font-size:12.5px; }
+  .kpi .k-naroceno { --kc:var(--c-nar); background:var(--b-nar); border-color:var(--b-nar); }
+  .kpi .k-potrjeno { --kc:var(--c-pot); background:var(--b-pot); border-color:var(--b-pot); }
+  .kpi .k-cakajoce { --kc:var(--c-cak); background:var(--b-cak); border-color:var(--b-cak); }
+  .kpi .k-manjka { --kc:var(--c-man); background:var(--b-man); border-color:var(--b-man); }
+  .kpi .k-prevzeto { --kc:var(--c-prv); background:var(--b-prv); border-color:var(--b-prv); }
+  .kpi .k-preklicano { --kc:var(--c-pre); background:var(--b-pre); border-color:var(--b-pre); }
   .bar { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
   .chip { border:1px solid var(--bd); background:var(--card); color:var(--txt2); border-radius:999px; padding:4px 11px; cursor:pointer; font-size:12.5px; font-weight:600; }
   .chip.on { background:var(--acc); border-color:var(--acc); color:#fff; }
@@ -319,8 +325,9 @@ function vidni() {
 function chips() {
   const po = s => D.filter(it => it.status === s), kos = a => a.reduce((x, it) => x + (it.kosov || 0), 0);
   const sam = k => fStS.size === 1 && fStS.has(k), odpS = ['naroceno', 'potrjeno', 'cakajoce', 'manjka'];
-  document.getElementById('kpi').innerHTML = '<div class="' + (fStS.size === odpS.length && odpS.every(k => fStS.has(k)) ? 'on' : '') + '" onclick="stNastavi([\'naroceno\',\'potrjeno\',\'cakajoce\',\'manjka\'])"><b>' + D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').length + '</b><span>Vse odprte</span><small>' + eur(D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').reduce((s, it) => s + (Number(it.vsota) || 0), 0)) + '</small></div>' +
-    Object.entries(ST).map(([k, l]) => { const a = po(k); return '<div class="k-' + k + (sam(k) ? ' on' : '') + '" onclick="' + (sam(k) ? 'stNastavi(ST_PRIVZ)' : 'stNastavi([\'' + k + '\'])') + '"><b>' + a.length + '</b><span>' + l + '</span><small>' + kos(a) + ' kos</small></div>'; }).join('');
+  const KIC = { naroceno: '🛒', potrjeno: '📄', cakajoce: '⏳', manjka: '⚠️', prevzeto: '📦', preklicano: '✕' };
+  document.getElementById('kpi').innerHTML = '<div data-ic="📋" class="' + (fStS.size === odpS.length && odpS.every(k => fStS.has(k)) ? 'on' : '') + '" onclick="stNastavi([\'naroceno\',\'potrjeno\',\'cakajoce\',\'manjka\'])"><b>' + D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').length + '</b><span>Vse odprte</span><small>' + eur(D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano').reduce((s, it) => s + (Number(it.vsota) || 0), 0)) + '</small></div>' +
+    Object.entries(ST).map(([k, l]) => { const a = po(k); return '<div data-ic="' + (KIC[k] || '') + '" class="k-' + k + (sam(k) ? ' on' : '') + '" onclick="' + (sam(k) ? 'stNastavi(ST_PRIVZ)' : 'stNastavi([\'' + k + '\'])') + '"><b>' + a.length + '</b><span>' + l + '</span><small>' + kos(a) + ' kos</small></div>'; }).join('');
   const n = s => D.filter(it => it.status !== 'prevzeto' && it.status !== 'preklicano' && (s === 'brez' ? !it.skladisce : it.skladisce === s)).length;
   document.getElementById('fSk').innerHTML = [['vse', 'Vsa'], ...SK.map(s => [s, s]), ['brez', 'Ni določeno']].map(([k, l]) =>
     '<span class="chip sk-' + k + (fSk === k ? ' on' : '') + '" onclick="fSk=\'' + k + '\';render()">' + l + (k === 'vse' ? '' : ' ' + n(k)) + '</span>').join(' ');
