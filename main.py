@@ -1476,6 +1476,7 @@ async def cms_log_urejeno(request: Request):
         return {"ok": False, "error": "Neveljaven JSON"}
     items = [i for i in (b.get("items") or []) if isinstance(i, dict) and i.get("cms_id") and i.get("trg")][:500]
     vir = str(b.get("vir") or "Vtičnik")[:40]
+    odpri = b.get("akcija") == "open"   # ob POŠILJANJU paketa: »odprto danes« → varovalka 1× na dan takoj velja (tudi za drug paket istočasno)
     now = _lj_iso()
     meja = (datetime.fromisoformat(now) - timedelta(minutes=10)).isoformat(timespec="seconds")
     n = 0
@@ -1488,6 +1489,10 @@ async def cms_log_urejeno(request: Request):
             trg, cid = str(i["trg"]).lower(), str(i["cms_id"]).strip()
             k = f"{trg}|{cid}"
             e = log.get(k) or {}
+            if odpri:
+                e.update({"cms_id": cid, "trg": trg, "sku": str(i.get("sku") or e.get("sku") or "").upper(), "vir": vir, "opened_at": now})
+                log[k] = e; n += 1
+                continue
             if str(e.get("done_at") or "") >= meja:
                 continue
             e.update({"cms_id": cid, "trg": trg, "sku": str(i.get("sku") or e.get("sku") or "").upper(), "vir": vir, "done_at": now,
@@ -13492,12 +13497,19 @@ function paketCms(){
     if(m===null) return;
     mode=String(m).trim()==='2'?'zaporedno':'vzporedno';
   }
+  oznaciOdprto(items,'Paket (Marža)');
   window.postMessage({type:'suban-kalk-paket',trg,koraki,mode,items:items.map(x=>({sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
     cena:+x.cena||0,valuta:x.valuta||'',naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc}))},'*');
 }
 // 🔧 POPRAVI DECIMALKE (valute brez decimalk): prodajna 533,99 → 534. Vtičnik (1.26.4+) za te valute prodajno zaokroži na celo
 // in Redna vpiše s 4 decimalkami (prej 2 → npr. 363,996 v trgovini 363,99). Ni dvig: brez varovalke 1× na dan, brez zapisa urejeno.
 let DEC_PAKET = new Set();
+// ⛔ ob pošiljanju paketa vtičniku: izdelki takoj dobijo »odprto danes« v dnevniku CMS — drug paket / Price Checker / Plan
+// jih isti dan ne more dvigniti še enkrat, tudi preden vtičnik shrani (prej je veljalo šele po shranjevanju)
+function oznaciOdprto(rows, vir){
+  try{ fetch('/cms-log-urejeno',{method:'POST',headers:{'Content-Type':'application/json'},keepalive:true,
+    body:JSON.stringify({akcija:'open',vir,items:rows.filter(x=>x&&x.cms_id).map(x=>({trg,cms_id:String(x.cms_id),sku:String(x.sku||'').toUpperCase()}))})}); }catch(e){}
+}
 function paketDecimalke(){
   const CELE = ['CZK', 'HUF', 'PLN', 'RON', 'RSD'];
   const izb = (D && D.rows || []).filter(x => SEL.has(x.g_id));
@@ -13539,6 +13551,7 @@ function paketBato(){
   if(!confirm('± Spremenim prodajno ceno za '+(delta>0?'+':'')+String(delta).replace('.',',')+' '+cur+' pri '+items.length+' izdelkih na '+String(trg).toUpperCase()+'?\n\n'
     +(st?'Primer: '+String(pr.x.sku||'').toUpperCase()+'  '+fmt(st)+' → '+fmt(st+delta)+' '+cur+'\n\n':'')
     +'Vtičnik pripravi vse hkrati v ozadju (seznam v panelu, »💾 Shrani izbrane« ali 🚀 samodejno).')) return;
+  oznaciOdprto(items.map(o=>o.x),'± Znesek (Marža)');
   window.postMessage({type:'suban-kalk-paket',trg,koraki:1,delta,mode:'vzporedno',items:items.map(o=>{const x=o.x;return {sku:String(x.sku||'').toUpperCase(),cms_id:String(x.cms_id),g_id:String(x.g_id),
     cena:+x.cena||0,valuta:cur,naziv:String(x.naziv||'').slice(0,120),razlika:x.marza_eur,nc:x.nc};})},'*');
 }
