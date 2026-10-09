@@ -12779,7 +12779,7 @@ async def marza_trgi_stran(request: Request):
   <button onclick="selClear()" style="background:transparent;color:#cbd5e1">✕ Počisti izbor</button>
 </div>
 <div class="wrap"><table><thead><tr>
-  <th><input type="checkbox" class="selcb" data-selall="1" title="Izberi vse prikazane vrstice"></th>
+  <th><input type="checkbox" class="selcb" data-selall="1" title="Izberi VSE, ki ustrezajo filtrom (tudi tiste pod »Prikaži več«)"></th>
   <th onclick="srt('sku')">SKU</th>
   <th onclick="srt('naziv')">Naziv</th>
   <th class="r" onclick="srt('koncna')">Cena</th>
@@ -12801,7 +12801,7 @@ async def marza_trgi_stran(request: Request):
   <button class="btn" onclick="izvoziBato()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
 <div class="wrap" id="bwrap" style="display:none"><table><thead><tr>
-  <th><input type="checkbox" class="selcb" data-selall="1" title="Izberi vse prikazane vrstice"></th>
+  <th><input type="checkbox" class="selcb" data-selall="1" title="Izberi VSE, ki ustrezajo filtrom (tudi tiste pod »Prikaži več«)"></th>
   <th onclick="bsrt('sku')">SKU</th>
   <th onclick="bsrt('naziv')">Naziv</th>
   <th class="r" onclick="bsrt('reg')">Redna zdaj</th>
@@ -13204,9 +13204,11 @@ document.addEventListener('click',e=>{const b=e.target.closest('button[data-hist
 // ═══ MNOŽIČNI IZBOR (za 🚫 Ne uvažamo) — ključ g_id, izbor ostane ob filtriranju/sortiranju ═══
 let SEL=new Set(), selLast=-1;
 function selRowsVis(){return kbRows().map(tr=>D.rows[+tr.dataset.i]).filter(Boolean);}
+// vsi, ki ustrezajo filtrom (tudi tisti pod »Prikaži več«) — kljukica v glavi izbere VSE, ne le prikazanih 300
+function selRowsAll(){try{return BATO?batoRows().map(o=>o.x):filtered();}catch(e){return selRowsVis();}}
 function selClick(cb,e){
   const rows=selRowsVis();
-  if(cb.dataset.selall){ const on=cb.checked; rows.forEach(x=>on?SEL.add(x.g_id):SEL.delete(x.g_id)); selLast=-1; render(); return; }
+  if(cb.dataset.selall){ const on=cb.checked; selRowsAll().forEach(x=>on?SEL.add(x.g_id):SEL.delete(x.g_id)); selLast=-1; render(); return; }
   const x=D.rows[+cb.dataset.sel]; if(!x) return;
   const i=rows.indexOf(x), on=cb.checked;
   if(e.shiftKey && selLast>=0 && i>=0){ const [a,b]=selLast<i?[selLast,i]:[i,selLast]; rows.slice(a,b+1).forEach(r=>on?SEL.add(r.g_id):SEL.delete(r.g_id)); }
@@ -13218,7 +13220,7 @@ function selUpd(){
   const bar=document.getElementById('selBar'); if(!bar) return;
   document.getElementById('selN').textContent=SEL.size;
   bar.style.display=SEL.size?'flex':'none';
-  const rows=selRowsVis(), all=rows.length&&rows.every(x=>SEL.has(x.g_id)), some=rows.some(x=>SEL.has(x.g_id));
+  const rows=selRowsAll(), all=rows.length&&rows.every(x=>SEL.has(x.g_id)), some=rows.some(x=>SEL.has(x.g_id));
   document.querySelectorAll('input.selcb[data-selall]').forEach(c=>{c.checked=!!all;c.indeterminate=!all&&some;});
 }
 async function neuvozBulk(on){
