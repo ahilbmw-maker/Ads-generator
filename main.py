@@ -13474,28 +13474,35 @@ function planIzracun() {
     const k = batoCands(c, cur);
     // 🎯 POD PRAG (samo EUR): X0,99 → (X0 − 1),99 — 20,99 → 19,99 · 30,99 → 29,99 · 100,99 → 99,99 (levo število se spremeni),
     // če razlika (cena brez DDV − NC) po znižanju ostane ≥ N.podRaz € (privzeto 8,99; 0 = izklop). Ne v načinu »samo navzgor«.
-    const podC = p => (cur === 'EUR' && N.podRaz > 0 && N.smer !== 'gor' && p >= 10 && Math.floor(p + 1e-9) % 10 === 0) ? Math.round((Math.floor(p + 1e-9) - 0.01) * 100) / 100 : null;
+    // pravila po valuti: EUR prag desetice (20,99 → 19,99; dvig +1 €) · RSD prag tisočice (2099 → 1999; dvig +100 RSD) — razlika vedno v €
+    const PR = { EUR: { unit: 10, korak: 1, korTxt: '+1 €' }, RSD: { unit: 1000, korak: 100, korTxt: '+100 RSD' } }[cur] || null;
+    const pragOd = p => cur === 'EUR' ? Math.floor(p + 1e-9) : Math.round(p) - 99;   // 20,99 → 20 · 2099 → 2000
+    const podC = p => {
+      if (!PR || !(N.podRaz > 0) || N.smer === 'gor') return null;
+      if (cur === 'EUR') return (p >= 10 && Math.floor(p + 1e-9) % 10 === 0) ? Math.round((Math.floor(p + 1e-9) - 0.01) * 100) / 100 : null;
+      const r = Math.round(p); return (r >= 1000 && Math.abs(p - r) < 0.001 && (r - 99) % 1000 === 0) ? r - 100 : null;   // RSD: 2099 → 1999
+    };
     const podOk = p => { const q = podC(p); return q != null && x.nc && x.neto && (x.neto * q / c - x.nc) >= N.podRaz - 1e-9 ? q : null; };
     // 💶 NIZKA RAZLIKA (samo EUR): razlika (cena brez DDV − NC) < N.dvigRaz € (privzeto 7; 0 = izklop) → dvig za ~1 € na Bato x,99
     // (cilj = najbližja Bato od cena + 1 €; tudi če je cena že Bato: 14,99 → 15,99). Prestop desetice (19,99 → 20,99) ni samodejno potrjen.
-    const nizka = () => cur === 'EUR' && N.dvigRaz > 0 && x.nc && x.neto && (x.neto - x.nc) < N.dvigRaz;
+    const nizka = () => !!PR && N.dvigRaz > 0 && x.nc && x.neto && (x.neto - x.nc) < N.dvigRaz;
     if (!k && !decimalke && !podOk(c) && !nizka()) return ze('že Bato');
     if (!x.nc || !x.neto) return ze('brez NC');
     const neto = p => x.neto * p / c, mz = p => (neto(p) - x.nc) / neto(p) * 100;
     if (nizka()) {
-      const t = Math.round((c + 1) * 100) / 100, kt = batoCands(t, cur);
+      const t = Math.round((c + PR.korak) * 100) / 100, kt = batoCands(t, cur);
       let pred = kt ? kt.pick : t; if (pred <= c) pred = kt ? kt.up : t;
       const pct = (pred - c) / c * 100, velika = Math.abs(pct) > N.maxPct, mPo = mz(pred);
-      const cez = Math.floor(pred / 10 + 1e-9) > Math.floor(c / 10 + 1e-9);   // npr. 19,99 → 20,99: levo število zraste
+      const cez = Math.floor(pred / PR.unit + 1e-9) > Math.floor(c / PR.unit + 1e-9);   // npr. 19,99 → 20,99 · 1999 → 2099: levo število zraste
       predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct, mZdaj: mz(c), mPo, rZdaj: neto(c) - x.nc, rPo: neto(pred) - x.nc,
-        opomba: ['💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → +1 €'].concat(cez ? ['⚠ čez prag ' + Math.floor(pred / 10 + 1e-9) * 10] : [], velika ? ['sprememba nad ' + N.maxPct + ' %'] : []).join(' · '),
+        opomba: ['💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → ' + PR.korTxt].concat(cez ? ['⚠ čez prag ' + Math.floor(pred / PR.unit + 1e-9) * PR.unit] : [], velika ? ['sprememba nad ' + N.maxPct + ' %'] : []).join(' · '),
         ok: !velika && !cez, nizka: true });
       return;
     }
     if (!k && !decimalke) {   // že Bato (npr. 20,99), a pod pragom je smiselno: 19,99
       const pred = podOk(c), pct = (pred - c) / c * 100, velika = Math.abs(pct) > N.maxPct, mPo = mz(pred);
       predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct, mZdaj: mz(c), mPo, rZdaj: neto(c) - x.nc, rPo: neto(pred) - x.nc,
-        opomba: ['🎯 pod prag ' + Math.floor(c + 1e-9)].concat(mPo < N.prag ? ['marža pod ' + N.prag + ' %'] : [], velika ? ['sprememba nad ' + N.maxPct + ' %'] : []).join(' · '), ok: !velika && mPo >= N.prag, pod: true });
+        opomba: ['🎯 pod prag ' + pragOd(c)].concat(mPo < N.prag ? ['marža pod ' + N.prag + ' %'] : [], velika ? ['sprememba nad ' + N.maxPct + ' %'] : []).join(' · '), ok: !velika && mPo >= N.prag, pod: true });
       return;
     }
     if (!k) {
@@ -13507,7 +13514,7 @@ function planIzracun() {
     let pred = N.smer === 'gor' ? k.up : k.pick, opomba = decimalke ? ['🔧 + decimalke'] : [];
     if (pred < c && mz(pred) < N.prag) { pred = k.up; opomba.push('↑ zaradi marže'); }
     if (N.smer === 'dvig' && pred < c) return ze('predlog za spust (samo dvigi)');   // najprej samo dvigi, spuste pusti
-    { const q = podOk(pred); if (q != null && mz(q) >= N.prag) { opomba.push('🎯 pod prag ' + Math.floor(pred + 1e-9) + ' (namesto ' + pred.toFixed(2).replace('.', ',') + ')'); pred = q; } }
+    { const q = podOk(pred); if (q != null && mz(q) >= N.prag) { opomba.push('🎯 pod prag ' + pragOd(pred) + ' (namesto ' + fmtC(pred, cur) + ')'); pred = q; } }
     const pct = (pred - c) / c * 100, mPo = mz(pred);
     if (mPo < N.prag) opomba.push('marža pod ' + N.prag + ' %');
     const velika = Math.abs(pct) > N.maxPct;
@@ -13577,8 +13584,8 @@ function planRisi() {
     '<div class="plan-nast">Cilj: <select onchange="planNastavi(\'smer\',this.value)"><option value="najblizja"' + (N.smer === 'najblizja' ? ' selected' : '') + '>najbližja Bato (enako → navzgor)</option><option value="gor"' + (N.smer === 'gor' ? ' selected' : '') + '>samo navzgor na Bato</option></select>' +
       ' · Prag marže <input type="number" value="' + N.prag + '" onchange="planNastavi(\'prag\',this.value)" style="width:60px"> %' +
       ' · Največja sprememba ± <input type="number" value="' + N.maxPct + '" onchange="planNastavi(\'maxPct\',this.value)" style="width:60px"> %' +
-      ' · <span title="Samo EUR: cena X0,99 (20,99 · 30,99 · 100,99) → (X0−1),99 (19,99 · 29,99 · 99,99), če razlika po znižanju ostane vsaj toliko. 0 = izklop.">🎯 Pod prag (20,99 → 19,99) pri razliki ≥ <input type="number" step="0.01" value="' + N.podRaz + '" onchange="planNastavi(\'podRaz\',this.value)" style="width:70px"> €</span>' +
-      ' · <span title="Samo EUR: če je razlika (cena brez DDV − NC) manjša od tega zneska, predlagaj dvig za ~1 € na Bato x,99 (tudi pri že Bato ceni). Prestop desetice (19,99 → 20,99) ni samodejno potrjen. 0 = izklop.">💶 Dvig +1 € pri razliki < <input type="number" step="0.5" value="' + N.dvigRaz + '" onchange="planNastavi(\'dvigRaz\',this.value)" style="width:60px"> €</span></div>' +
+      ' · <span title="EUR: X0,99 → (X0−1),99 (20,99 → 19,99 · 100,99 → 99,99) · RSD: N099 → (N−1)999 (2099 → 1999), če razlika po znižanju ostane vsaj toliko €. 0 = izklop.">🎯 Pod prag (20,99 → 19,99 · 2099 → 1999) pri razliki ≥ <input type="number" step="0.01" value="' + N.podRaz + '" onchange="planNastavi(\'podRaz\',this.value)" style="width:70px"> €</span>' +
+      ' · <span title="EUR +1 € · RSD +100 RSD: če je razlika (cena brez DDV − NC) manjša od tega zneska v €, predlagaj dvig na Bato (tudi pri že Bato ceni). Prestop praga (19,99 → 20,99 · 1999 → 2099) ni samodejno potrjen. 0 = izklop.">💶 Dvig (+1 € · +100 RSD) pri razliki < <input type="number" step="0.5" value="' + N.dvigRaz + '" onchange="planNastavi(\'dvigRaz\',this.value)" style="width:60px"> €</span></div>' +
     '<div class="plan-kpi">' +
       '<div><b>' + iz.length + '</b> / ' + P2.predlogi.length + '<span>potrjenih predlogov</span></div>' +
       '<div><b class="up">' + up + ' ↑</b> · <b class="dn">' + dn + ' ↓</b>' + (dc ? ' · <b>' + dc + ' 🔧</b>' : '') + '<span>smer' + (dc ? ' · decimalke' : '') + '</span></div>' +
