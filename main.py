@@ -1898,6 +1898,16 @@ def _cene_danes(items: list, izkljuci_id: str = "") -> dict:
     return out
 
 
+@app.get("/cene-danes-seznam")
+async def cene_danes_seznam(request: Request):
+    """Trajen zapis »danes že spremenjeno / odprto« ({trg|cms_id: {at, vir}}) — Price Checker ga ima naložen, da ob ✎ / A opozori takoj."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    danes = _lj_iso()[:10]
+    led = _jload(CENE_LEDGER_FILE, {}) or {}
+    return {"ok": True, "danes": {k: v for k, v in led.items() if str((v or {}).get("at") or "")[:10] == danes}}
+
+
 @app.post("/cene-danes")
 async def cene_danes(request: Request):
     """{items: [{trg, cms_id, g_id}]} → {ok, blokirani: {"trg|cms_id": razlog}} — pred VSAKIM masovnim urejanjem cen."""

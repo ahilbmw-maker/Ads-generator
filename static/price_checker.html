@@ -646,6 +646,10 @@ async function loadCmsLog(rerender) {
 }
 loadCmsLog(false);
 setInterval(() => loadCmsLog(true), 60000);   // vsako minuto (tudi urejanja drugih uporabnikov)
+// ⛔ trajen zapis »danes že spremenjeno« (isti kot varovalka 1× na dan; »↩ Odznači« ga ne briše) — za opozorilo ob ✎ / A
+let _pcDanes = {};
+async function loadDanes() { try { const d = await (await fetch('/cene-danes-seznam', { cache: 'no-store' })).json(); if (d.ok) _pcDanes = d.danes || {}; } catch (e) {} }
+loadDanes(); setInterval(loadDanes, 60000);
 function _cmsBadge(pid) {
   const L = _cmsRecent(pid); if (!L.length) return '';
   const e = L[0], done = L.some(x => x.done_at);
@@ -659,7 +663,10 @@ function _cmsBadge(pid) {
 function _pcCmsLog(a, ev) {
   const pid = a.dataset.pcCms, trg = a.dataset.pcTrg || '*', L = _cmsRecent(pid);
   try { const tr = a.closest('tr'); const i = _pcRows().indexOf(tr); if (i >= 0) _pcFocusRow(i); } catch (e) {}
-  if (L.length) {
+  const dz = _pcDanes[trg + '|' + pid] || _pcDanes['*|' + pid];
+  if (dz) {   // ⛔ danes že spremenjen / odprt (trajen zapis) — glavno opozorilo, da cene ne dvigneš dvakrat
+    if (!confirm('⛔ ' + a.dataset.pcSku + (trg !== '*' ? ' (' + trg.toUpperCase() + ')' : '') + ' je bil DANES že spremenjen / odprt v CMS' + (dz.vir ? ' — ' + dz.vir : '') + ' (' + _fmtT(dz.at) + ').\n\nCena je lahko spremenjena največ 1× na dan. Vseeno odprem CMS?')) { if (ev) ev.preventDefault(); return false; }
+  } else if (L.length) {
     const msg = 'Ta izdelek je bil nedavno že odprt v CMS:\n\n' + L.map(x => '• ' + (x.done_at ? '✓ označeno ' + _fmtT(x.done_at) : '✎ odprto ' + _fmtT(x.opened_at)) + ' — ' + _cmsVir(x)).join('\n') + '\n\nVseeno odprem CMS?';
     if (!confirm(msg)) { if (ev) ev.preventDefault(); return false; }
   }
@@ -667,6 +674,7 @@ function _pcCmsLog(a, ev) {
     fetch('/cms-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
       body: JSON.stringify({ akcija: 'open', cms_id: pid, trg, sku: a.dataset.pcSku, vir: 'Price Checker' }) });
     const k = String(pid); (_cmsLogById[k] = _cmsLogById[k] || []).push({ cms_id: k, trg, opened_at: new Date().toISOString(), vir: 'Price Checker' });
+    _pcDanes[trg + '|' + k] = { at: new Date().toISOString(), vir: 'Price Checker' };
     setTimeout(() => { if (typeof renderTable === 'function' && allRows && allRows.length) renderTable(allRows); }, 400);
   } catch (e) { /* tiho — dnevnik je opcijski */ }
   return true;
