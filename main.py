@@ -13298,7 +13298,7 @@ async function danesBlok(rows) {
   return null;
 }
 function planNastavitve() {
-  try { return Object.assign({ prag: 20, maxPct: 15, smer: 'najblizja' }, JSON.parse(localStorage.getItem('mz_plan') || '{}')); } catch (e) { return { prag: 20, maxPct: 15, smer: 'najblizja' }; }
+  try { return Object.assign({ prag: 20, maxPct: 15, smer: 'najblizja', podRaz: 8.99 }, JSON.parse(localStorage.getItem('mz_plan') || '{}')); } catch (e) { return { prag: 20, maxPct: 15, smer: 'najblizja', podRaz: 8.99 }; }
 }
 function planIzracun() {
   const N = planNastavitve(), danes = new Date().toDateString();
@@ -13318,9 +13318,19 @@ function planIzracun() {
     // taka cena dobi 🔧 popravek decimalk na celo število (vedno, tudi v načinu »samo dvigi«; samodejno potrjeno)
     const decimalke = (BATO_CFG[cur] || BATO_CFG.EUR).dec === 0 && Math.abs(c - Math.round(c)) > 0.001;
     const k = batoCands(c, cur);
-    if (!k && !decimalke) return ze('že Bato');
+    // 🎯 POD PRAG (samo EUR): X0,99 → (X0 − 1),99 — 20,99 → 19,99 · 30,99 → 29,99 · 100,99 → 99,99 (levo število se spremeni),
+    // če razlika (cena brez DDV − NC) po znižanju ostane ≥ N.podRaz € (privzeto 8,99; 0 = izklop). Ne v načinu »samo navzgor«.
+    const podC = p => (cur === 'EUR' && N.podRaz > 0 && N.smer !== 'gor' && p >= 10 && Math.floor(p + 1e-9) % 10 === 0) ? Math.round((Math.floor(p + 1e-9) - 0.01) * 100) / 100 : null;
+    const podOk = p => { const q = podC(p); return q != null && x.nc && x.neto && (x.neto * q / c - x.nc) >= N.podRaz - 1e-9 ? q : null; };
+    if (!k && !decimalke && !podOk(c)) return ze('že Bato');
     if (!x.nc || !x.neto) return ze('brez NC');
     const neto = p => x.neto * p / c, mz = p => (neto(p) - x.nc) / neto(p) * 100;
+    if (!k && !decimalke) {   // že Bato (npr. 20,99), a pod pragom je smiselno: 19,99
+      const pred = podOk(c), pct = (pred - c) / c * 100, velika = Math.abs(pct) > N.maxPct, mPo = mz(pred);
+      predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct, mZdaj: mz(c), mPo, rZdaj: neto(c) - x.nc, rPo: neto(pred) - x.nc,
+        opomba: ['🎯 pod prag ' + Math.floor(c + 1e-9)].concat(mPo < N.prag ? ['marža pod ' + N.prag + ' %'] : [], velika ? ['sprememba nad ' + N.maxPct + ' %'] : []).join(' · '), ok: !velika && mPo >= N.prag, pod: true });
+      return;
+    }
     if (!k) {
       const pred = Math.round(c);
       predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct: (pred - c) / c * 100, mZdaj: mz(c), mPo: mz(pred),
@@ -13330,6 +13340,7 @@ function planIzracun() {
     let pred = N.smer === 'gor' ? k.up : k.pick, opomba = decimalke ? ['🔧 + decimalke'] : [];
     if (pred < c && mz(pred) < N.prag) { pred = k.up; opomba.push('↑ zaradi marže'); }
     if (N.smer === 'dvig' && pred < c) return ze('predlog za spust (samo dvigi)');   // najprej samo dvigi, spuste pusti
+    { const q = podOk(pred); if (q != null && mz(q) >= N.prag) { opomba.push('🎯 pod prag ' + Math.floor(pred + 1e-9) + ' (namesto ' + pred.toFixed(2).replace('.', ',') + ')'); pred = q; } }
     const pct = (pred - c) / c * 100, mPo = mz(pred);
     if (mPo < N.prag) opomba.push('marža pod ' + N.prag + ' %');
     const velika = Math.abs(pct) > N.maxPct;
@@ -13398,7 +13409,8 @@ function planRisi() {
       '<span class="dim">predlog — v CMS se še nič ne spremeni</span><button class="btn" style="margin-left:auto" onclick="document.getElementById(\'planOkno\').style.display=\'none\'">✕</button></div>' +
     '<div class="plan-nast">Cilj: <select onchange="planNastavi(\'smer\',this.value)"><option value="najblizja"' + (N.smer === 'najblizja' ? ' selected' : '') + '>najbližja Bato (enako → navzgor)</option><option value="gor"' + (N.smer === 'gor' ? ' selected' : '') + '>samo navzgor na Bato</option></select>' +
       ' · Prag marže <input type="number" value="' + N.prag + '" onchange="planNastavi(\'prag\',this.value)" style="width:60px"> %' +
-      ' · Največja sprememba ± <input type="number" value="' + N.maxPct + '" onchange="planNastavi(\'maxPct\',this.value)" style="width:60px"> %</div>' +
+      ' · Največja sprememba ± <input type="number" value="' + N.maxPct + '" onchange="planNastavi(\'maxPct\',this.value)" style="width:60px"> %' +
+      ' · <span title="Samo EUR: cena X0,99 (20,99 · 30,99 · 100,99) → (X0−1),99 (19,99 · 29,99 · 99,99), če razlika po znižanju ostane vsaj toliko. 0 = izklop.">🎯 Pod prag (20,99 → 19,99) pri razliki ≥ <input type="number" step="0.01" value="' + N.podRaz + '" onchange="planNastavi(\'podRaz\',this.value)" style="width:70px"> €</span></div>' +
     '<div class="plan-kpi">' +
       '<div><b>' + iz.length + '</b> / ' + P2.predlogi.length + '<span>potrjenih predlogov</span></div>' +
       '<div><b class="up">' + up + ' ↑</b> · <b class="dn">' + dn + ' ↓</b>' + (dc ? ' · <b>' + dc + ' 🔧</b>' : '') + '<span>smer' + (dc ? ' · decimalke' : '') + '</span></div>' +
