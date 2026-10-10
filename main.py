@@ -1783,6 +1783,10 @@ def _cene_danes(items: list, izkljuci_id: str = "") -> dict:
             ch = (pc.get(trg) or {}).get(gid)
             if ch and str(ch.get("at") or "")[:10] == danes:
                 pojasnjeno = any(str(e.get("done_at") or "")[:10] in (danes, vceraj) for e in zap)
+                # 🔧 popravek decimalk (npr. 348,99 → 349) se namenoma ne beleži — sprememba < 1 enote ni dvig, ne blokiraj
+                _f = lambda v: float(re.sub(r"[^\d.]", "", str(v or "").split(" ")[0].replace(",", ".")) or 0)
+                if abs(_f(ch.get("new_sale") or ch.get("new_price")) - _f(ch.get("old_sale") or ch.get("old_price"))) < 1:
+                    pojasnjeno = True
                 if not pojasnjeno:
                     st = str(ch.get("old_sale") or ch.get("old_price") or "").split(" ")[0]
                     no = str(ch.get("new_sale") or ch.get("new_price") or "").split(" ")[0]
@@ -12701,7 +12705,7 @@ async def marza_trgi_stran(request: Request):
   .cst-odprto{background:#eff6ff;color:#1d4ed8}.cst-popravljeno{background:#dcfce7;color:#166534}.cst-potrjeno{background:#16a34a;color:#fff}.cst-nespremenjeno{background:#fef3c7;color:#92400e}
   .spr{font-size:12px;color:var(--txt2);margin-top:2px}
   #planOkno{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding-top:4vh}
-  .plan-box{background:var(--card,#fff);color:var(--txt);border-radius:14px;padding:16px 18px;width:min(1200px,96vw);max-height:90vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3);font-size:13px}
+  .plan-box{background:var(--card,#fff);color:var(--txt);border-radius:14px;padding:16px 18px;width:min(1800px,98vw);max-height:94vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3);font-size:13px}
   .plan-nast{margin:10px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:var(--txt2)}
   .plan-nast input,.plan-nast select{border:1px solid var(--bd);border-radius:6px;padding:3px 6px;font:inherit}
   .plan-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:10px}
@@ -12718,6 +12722,7 @@ async def marza_trgi_stran(request: Request):
   #feedInfo{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--txt2)}
   #feedInfo .chip{padding:3px 10px;font-size:12.5px}
   #feedInfo .novo{color:#b45309;font-weight:700}
+  .plan-box .bnote{white-space:normal;max-width:none;overflow:visible;line-height:1.35;padding:2px 7px}   /* v planu cen celotna opomba (brez …) */
   .bnote{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;background:#fef3c7;color:#92400e;white-space:nowrap;display:inline-block;max-width:110px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;cursor:help}
   .skut{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;font-weight:800;color:#26215c;background:#dedafb;border:1px solid #8f87e0;border-radius:6px;padding:2px 8px;line-height:1.35}
   .btn{padding:7px 13px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:#16a34a;color:#fff}
@@ -13479,6 +13484,10 @@ function vrstaOdpri(sporocilo) {
   vrstaNalozi(); clearInterval(vrstaTimer); vrstaTimer = setInterval(vrstaNalozi, 10000);   // v živo, dokler je okno odprto
 }
 function vrstaZapri() { const o = document.getElementById('vrstaOkno'); if (o) o.style.display = 'none'; clearInterval(vrstaTimer); vrstaTimer = null; }
+function vrstaZnovaNapake() {   // vse ⚠ napake nazaj v čakanje (varovalka 1× na dan se ob izvedbi preveri znova)
+  const ids = (VRSTA && VRSTA.postavke || []).filter(p => p.status === 'napaka').map(p => p.id);
+  if (ids.length && confirm('Vse napake (' + ids.length + ') vrnem v čakanje?')) vrstaAkcija({ ids, akcija: 'znova' });
+}
 async function vrstaAkcija(body) {
   try { const r = await (await fetch('/cene-vrsta/akcija', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json(); if (!r.ok) alert(r.error || 'Napaka'); } catch (e) {}
   vrstaNalozi();
@@ -13516,7 +13525,7 @@ function vrstaRisi() {
           (p.status === 'ok' && !p.razveljavljeno ? '<button class="btn" title="Doda obratno spremembo v vrsto (nazaj na prejšnjo ceno)" onclick="if(confirm(\'Vrnem ' + esc(p.sku) + ' na ' + f(p.stara) + '?\'))vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'razveljavi\'})">↩ Razveljavi</button>' : '') +
         '</td></tr>').join('') + '</tbody></table></div>'
       : '<div class="dim" style="padding:20px;text-align:center">Ni postavk.</div>') +
-    ((s.caka || 0) + (s.napaka || 0) ? '<div style="margin-top:10px;display:flex;gap:8px"><button class="btn" onclick="if(confirm(\'Prekličem vse čakajoče in napake?\'))vrstaAkcija({ids:VRSTA.postavke.filter(p=>[\'caka\',\'napaka\'].includes(p.status)).map(p=>p.id),akcija:\'preklici\'})">✕ Prekliči vse odprte</button></div>' : '') +
+    ((s.caka || 0) + (s.napaka || 0) ? '<div style="margin-top:10px;display:flex;gap:8px">' + ((s.napaka || 0) ? '<button class="btn" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="vrstaZnovaNapake()">↻ Znova vse napake (' + (s.napaka || 0) + ')</button>' : '') + '<button class="btn" onclick="if(confirm(\'Prekličem vse čakajoče in napake?\'))vrstaAkcija({ids:VRSTA.postavke.filter(p=>[\'caka\',\'napaka\'].includes(p.status)).map(p=>p.id),akcija:\'preklici\'})">✕ Prekliči vse odprte</button></div>' : '') +
   '</div>';
 }
 setTimeout(vrstaNalozi, 1500);
