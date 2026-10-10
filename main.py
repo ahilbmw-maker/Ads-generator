@@ -13377,18 +13377,26 @@ async function cmsDoneBulk(){
   const brez=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&!x.cms_id).length;
   if(!items.length){alert(vse.length?'Vsi izbrani so že označeni kot urejeno.':'Med izbranimi ni izdelkov s CMS ID.');return;}
   if(!confirm('✓ Označim urejeno na '+String(trg).toUpperCase()+': '+items.length+' izdelkov?'+(brez?'\n('+brez+' brez CMS ID bo izpuščenih)':''))) return;
-  const ok=[]; for(let i=0;i<items.length;i+=10) ok.push(...await Promise.all(items.slice(i,i+10).map(x=>cmsLog(x,'done'))));   // po 10 (strežnik piše dnevnik zaporedno)
+  // EN zahtevek za vse (prej 1 zahtevek na izdelek → pri 300 so se nekateri izgubili / niso uspeli in so se spet prikazali)
+  const vir=BATO?'Bato cene':'Marža po trgih';
+  let ok=false, err='';
+  for(let i=0;i<items.length&&!err;i+=500){
+    try{ const r=await fetch('/cms-log-urejeno',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({akcija:'done',vir:'Označi urejeno ('+vir+')',items:items.slice(i,i+500).map(x=>({trg,cms_id:String(x.cms_id),g_id:String(x.g_id||''),sku:String(x.sku||'').toUpperCase(),naziv:String(x.naziv||'').slice(0,120),valuta:x.valuta||''}))})});
+      const d=await r.json(); if(!d.ok) err=d.error||('HTTP '+r.status); }
+    catch(e){ err=e.message; }
+  }
+  ok=!err;
+  if(!ok){ alert('⛔ Označevanje ni uspelo ('+err+') — nič ni označeno. Osveži stran in poskusi znova.'); return; }
   const t=new Date().toISOString();
-  items.forEach((x,i)=>{ if(ok[i]) x.cms={st:'popravljeno',trg,opened_at:(x.cms&&x.cms.opened_at)||t,done_at:t,vir:BATO?'Bato cene':'Marža po trgih'}; });
-  const nap=ok.filter(v=>!v).length;
+  items.forEach(x=>{ x.cms={st:'popravljeno',trg,opened_at:(x.cms&&x.cms.opened_at)||t,done_at:t,vir}; });
   SEL.clear(); selLast=-1; render();
-  if(nap) alert(nap+' izdelkov ni bilo mogoče označiti — poskusi znova.');
 }
 async function cmsUndoBulk(){
   const items=(D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&x.cms&&x.cms_id);
   if(!items.length){alert('Med izbranimi ni označenih kot urejeno.');return;}
   if(!confirm('↩ Odznačim urejeno na '+String(trg).toUpperCase()+': '+items.length+' izdelkov?')) return;
-  const ok=await Promise.all(items.map(x=>cmsLog(x,'undo')));
+  const ok=[]; for(let i=0;i<items.length;i+=10) ok.push(...await Promise.all(items.slice(i,i+10).map(x=>cmsLog(x,'undo'))));   // po 10 (prej vse hkrati → pri velikem izboru so nekateri padli)
   items.forEach((x,i)=>{ if(ok[i]) x.cms=null; });
   const nap=ok.filter(v=>!v).length;
   SEL.clear(); selLast=-1; render();
