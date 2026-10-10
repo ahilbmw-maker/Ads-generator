@@ -1922,7 +1922,7 @@ async def cene_vrsta_akcija(data: dict):
         for p in d["postavke"]:
             if p.get("id") not in ids:
                 continue
-            if ak == "preklici" and p.get("status") in ("caka", "napaka"):
+            if ak == "preklici" and p.get("status") in ("caka", "napaka", "v_delu"):   # v_delu: zataknjene (zaprt Chrome …); če vtičnik vseeno javi rezultat, /rezultat zapiše pravo stanje
                 p["status"] = "preklicano"; n += 1
             elif ak == "znova" and p.get("status") in ("napaka", "preklicano", "v_delu"):
                 p["status"], p["napaka"] = "caka", ""; n += 1
@@ -13520,12 +13520,12 @@ function vrstaRisi() {
           (p.feed ? '<div style="font-size:12px;font-weight:700;color:' + ({ potrjeno: '#15803d', odstopa: '#dc2626', caka: '#64748b', ni_v_feedu: '#b45309' }[p.feed.stanje] || '#64748b') + '">' +
             ({ potrjeno: '✓ potrjeno v feedu (' + f(p.feed.cena) + ')', odstopa: '⚠ feed ' + f(p.feed.cena) + ' ≠ plan ' + f(p.nova), caka: '⏳ čaka nov feed', ni_v_feedu: 'ni v feedu' }[p.feed.stanje] || '') + '</div>' : '') + '</td>' +
         '<td class="dim">' + fmtT(p.konec || p.dodano) + '</td><td style="white-space:nowrap">' +
-          (['caka', 'napaka'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'preklici\'})">✕ Prekliči</button> ' : '') +
+          (['caka', 'napaka', 'v_delu'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'preklici\'})">✕ Prekliči</button> ' : '') +
           (['napaka', 'preklicano'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'znova\'})">↻ Znova</button> ' : '') +
           (p.status === 'ok' && !p.razveljavljeno ? '<button class="btn" title="Doda obratno spremembo v vrsto (nazaj na prejšnjo ceno)" onclick="if(confirm(\'Vrnem ' + esc(p.sku) + ' na ' + f(p.stara) + '?\'))vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'razveljavi\'})">↩ Razveljavi</button>' : '') +
         '</td></tr>').join('') + '</tbody></table></div>'
       : '<div class="dim" style="padding:20px;text-align:center">Ni postavk.</div>') +
-    ((s.caka || 0) + (s.napaka || 0) ? '<div style="margin-top:10px;display:flex;gap:8px">' + ((s.napaka || 0) ? '<button class="btn" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="vrstaZnovaNapake()">↻ Znova vse napake (' + (s.napaka || 0) + ')</button>' : '') + '<button class="btn" onclick="if(confirm(\'Prekličem vse čakajoče in napake?\'))vrstaAkcija({ids:VRSTA.postavke.filter(p=>[\'caka\',\'napaka\'].includes(p.status)).map(p=>p.id),akcija:\'preklici\'})">✕ Prekliči vse odprte</button></div>' : '') +
+    ((s.caka || 0) + (s.napaka || 0) + (s.v_delu || 0) ? '<div style="margin-top:10px;display:flex;gap:8px">' + ((s.napaka || 0) ? '<button class="btn" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="vrstaZnovaNapake()">↻ Znova vse napake (' + (s.napaka || 0) + ')</button>' : '') + '<button class="btn" onclick="if(confirm(\'Prekličem vse čakajoče, v delu in napake?\'))vrstaAkcija({ids:VRSTA.postavke.filter(p=>[\'caka\',\'napaka\',\'v_delu\'].includes(p.status)).map(p=>p.id),akcija:\'preklici\'})">✕ Prekliči vse odprte</button></div>' : '') +
   '</div>';
 }
 setTimeout(vrstaNalozi, 1500);
