@@ -1492,6 +1492,13 @@ async def cms_log_urejeno(request: Request):
     items = [i for i in (b.get("items") or []) if isinstance(i, dict) and i.get("cms_id") and i.get("trg")][:500]
     vir = str(b.get("vir") or "Vtičnik")[:40]
     odpri = b.get("akcija") == "open"   # ob POŠILJANJU paketa: »odprto danes« → varovalka 1× na dan takoj velja (tudi za drug paket istočasno)
+    zdaj_d = _lj_iso()
+    dn = [{"at": zdaj_d, "trg": str(i["trg"]).lower(), "cms_id": str(i["cms_id"]).strip(), "g_id": str(i.get("g_id") or ""), "sku": str(i.get("sku") or "").upper(),
+           "naziv": str(i.get("naziv") or "")[:120], "cur": str(i.get("cur") or i.get("valuta") or "")[:4], "vir": vir,
+           "cms_prej": i.get("prodajna_stara"), "cms_potem": i.get("prodajna")} for i in items]
+    if b.get("akcija") == "dec":   # 🔧 decimalke: samo v dnevnik sprememb (ni dvig → brez varovalke in dnevnika CMS)
+        _cene_dnevnik_dodaj(dn)
+        return {"ok": True, "zapisanih": len(dn)}
     now = _lj_iso()
     meja = (datetime.fromisoformat(now) - timedelta(minutes=10)).isoformat(timespec="seconds")
     n = 0
@@ -1520,6 +1527,8 @@ async def cms_log_urejeno(request: Request):
         if n:
             _jsave(CMS_LOG_FILE, log)
         _cene_ledger_zapisi([f"{str(i['trg']).lower()}|{str(i['cms_id']).strip()}" for i in items], vir)
+    if not odpri:
+        _cene_dnevnik_dodaj(dn)
     return {"ok": True, "zapisanih": n}
 
 
@@ -1541,6 +1550,7 @@ async def cms_log_post(request: Request):
         return {"ok": False, "error": "Manjka cms_id"}
     key = f"{trg}|{cms_id}"
     now = _lj_iso()
+    _prej_done = ""
     async with _cms_log_get_lock():
         try:
             log = _jload(CMS_LOG_FILE, {}, strict=True)   # neberljiv dnevnik → ne zapiši praznega čez starega
@@ -1559,6 +1569,7 @@ async def cms_log_post(request: Request):
                     e["cena_ob_odprtju"] = b.get("cena")
                 e.pop("done_at", None)
             elif akcija == "done":
+                _prej_done = str(e.get("done_at") or "")
                 e["done_at"] = now
                 e.setdefault("opened_at", now)
                 if b.get("cena") is not None and "cena_ob_odprtju" not in e:
@@ -1570,6 +1581,10 @@ async def cms_log_post(request: Request):
         _jsave(CMS_LOG_FILE, log)
         if akcija in ("open", "done"):
             _cene_ledger_zapisi([key], str(b.get("vir") or ""))
+    # v dnevnik sprememb samo, če ni že zapisano v zadnjih 10 min (paket vtičnika zapiše sam, Marža ga potem še označi)
+    if akcija == "done" and _prej_done < (datetime.fromisoformat(now) - timedelta(minutes=10)).isoformat(timespec="seconds"):
+        _cene_dnevnik_dodaj([{"at": now, "trg": trg, "cms_id": cms_id, "sku": str(b.get("sku") or "").upper(),
+                              "vir": "ročno označeno (" + (str(b.get("vir") or "") or "D") + ")", "prej": b.get("cena")}])
     return {"ok": True, "key": key, "zapis": log.get(key)}
 
 
@@ -1722,6 +1737,93 @@ async def cene_vrsta_get():
     st["odstopa"] = sum(1 for p in d["postavke"] if (p.get("feed") or {}).get("stanje") == "odstopa" and not p.get("razveljavljeno"))
     st["potrjeno"] = sum(1 for p in d["postavke"] if (p.get("feed") or {}).get("stanje") == "potrjeno")
     return {"ok": True, "postavke": d["postavke"][-2000:], "stevci": st, "ustavljeno": d["ustavljeno"]}
+
+
+# 📜 DNEVNIK VSEH SPREMEMB CEN (append-only, /data/cene_dnevnik.jsonl): ena vrstica na spremembo, ne glede na vir
+# (Vrsta cen, paket vtičnika, ± Znesek, Price Checker, ▶ en izdelek, 🔧 decimalke, ročno D). Samo za pregled — varovalka 1× na dan je ločena.
+CENE_DNEVNIK_FILE = DATA_DIR / "cene_dnevnik.jsonl"
+
+
+def _cene_dnevnik_dodaj(zapisi: list):
+    zapisi = [z for z in (zapisi or []) if z and z.get("cms_id") and z.get("trg")]
+    if not zapisi:
+        return
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if not CENE_DNEVNIK_FILE.exists():
+            _cene_dnevnik_zacetek()
+        with open(CENE_DNEVNIK_FILE, "a", encoding="utf-8") as f:
+            f.write("".join(json.dumps(z, ensure_ascii=False) + "\n" for z in zapisi))
+    except Exception as e:
+        print(f"[cene dnevnik] zapis: {e}")
+
+
+def _cene_dnevnik_zacetek():
+    """Ob prvem zagonu: začetek iz Vrste cen (✅) in dnevnika CMS (zadnji »urejeno« po izdelku, brez Vrste)."""
+    if CENE_DNEVNIK_FILE.exists():
+        return
+    zap = []
+    try:
+        for p in _vrsta_load().get("postavke") or []:
+            if p.get("status") == "ok" and p.get("konec"):
+                r = p.get("rezultat") or {}
+                zap.append({"at": p["konec"], "trg": p["trg"], "cms_id": str(p["cms_id"]), "g_id": str(p.get("g_id") or ""), "sku": p.get("sku", ""),
+                            "naziv": p.get("naziv", ""), "cur": p.get("cur", ""), "vir": "Vrsta cen" + (" (razveljavitev)" if p.get("razveljavi_za") else ""),
+                            "prej": p.get("stara"), "potem": p.get("nova"), "cms_prej": r.get("prodajna_stara"), "cms_potem": r.get("prodajna")})
+        for k, e in (_jload(CMS_LOG_FILE, {}) or {}).items():
+            if e.get("done_at") and "Vrsta" not in str(e.get("vir") or ""):
+                zap.append({"at": e["done_at"], "trg": e.get("trg") or k.split("|")[0], "cms_id": str(e.get("cms_id") or k.split("|")[-1]), "g_id": "",
+                            "sku": e.get("sku", ""), "vir": e.get("vir") or "dnevnik CMS", "cms_prej": e.get("cena_ob_odprtju"), "cms_potem": e.get("cena_nova")})
+    except Exception as ex:
+        print(f"[cene dnevnik] začetek: {ex}")
+    zap.sort(key=lambda z: str(z.get("at") or ""))
+    with open(CENE_DNEVNIK_FILE, "w", encoding="utf-8") as f:
+        f.write("".join(json.dumps(z, ensure_ascii=False) + "\n" for z in zap))
+    print(f"[cene dnevnik] začetek: {len(zap)} zapisov")
+
+
+@app.get("/cene-dnevnik")
+async def cene_dnevnik_get(request: Request, od: str = "", do: str = "", trg: str = ""):
+    """Spremembe cen v obdobju [od, do] (YYYY-MM-DD, privzeto danes) + stanje v feedu (✓ potrjeno / ⏳ čaka feed / ⚠ ni spremembe)."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    _cene_dnevnik_zacetek()
+    danes = _lj_iso()[:10]
+    od, do, trg = (od or danes)[:10], (do or od or danes)[:10], (trg or "").lower()
+    out = []
+    try:
+        with open(CENE_DNEVNIK_FILE, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    z = json.loads(line)
+                except Exception:
+                    continue
+                d = str(z.get("at") or "")[:10]
+                if d < od or d > do or (trg and z.get("trg") != trg):
+                    continue
+                out.append(z)
+    except FileNotFoundError:
+        pass
+    pc = _jload(PRICE_CHANGES_FILE, {}) or {}
+    for z in out:
+        t, gid = z.get("trg"), str(z.get("g_id") or "")
+        meta = feed_meta.get(t) or {}
+        zgr = _iso_from_http_date(meta.get("last_modified") or "") or meta.get("fetched_at") or ""
+        it = (feed_by_lang.get(t) or {}).get(gid) if gid else None
+        if it:
+            c, _x = _marza_parse_price(it.get("price")); a, _y = _marza_parse_price(it.get("sale_price"))
+            z["feed_cena"] = a if (a and c and a < c) else c
+        ch = (pc.get(t) or {}).get(gid) if gid else None
+        if not gid:
+            z["feed"] = ""
+        elif ch and str(ch.get("at") or "") >= str(z.get("at") or ""):
+            z["feed"] = "potrjeno"
+        elif zgr and zgr > str(z.get("at") or ""):
+            z["feed"] = "ni_spremembe"
+        else:
+            z["feed"] = "caka"
+    out.sort(key=lambda z: str(z.get("at") or ""), reverse=True)
+    return {"ok": True, "od": od, "do": do, "zapisi": out[:5000], "skupaj": len(out)}
 
 
 # ⛔ TRAJEN ZAPIS »cena spremenjena / odprta danes« (trg|cms_id → {at, vir}) — ločeno od dnevnika CMS, ker »↩ Odznači urejeno«
@@ -1902,6 +2004,11 @@ async def cene_vrsta_rezultat(data: dict):
             except Exception as ex:
                 print(f"[vrsta] dnevnik CMS: {ex}")
             _cene_ledger_zapisi([f"{p['trg']}|{p['cms_id']}"], "Vrsta cen")
+        r = p.get("rezultat") or {}
+        _cene_dnevnik_dodaj([{"at": p.get("konec") or _lj_iso(), "trg": p["trg"], "cms_id": str(p["cms_id"]), "g_id": str(p.get("g_id") or ""),
+                              "sku": p.get("sku", ""), "naziv": p.get("naziv", ""), "cur": p.get("cur", ""),
+                              "vir": "Vrsta cen" + (" (razveljavitev)" if p.get("razveljavi_za") else ""),
+                              "prej": p.get("stara"), "potem": p.get("nova"), "cms_prej": r.get("prodajna_stara"), "cms_potem": r.get("prodajna")}])
     return {"ok": True}
 
 
@@ -12784,6 +12891,7 @@ async def marza_trgi_stran(request: Request):
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s ✓ (popravljeno) ali potrjene v novem feedu. Samo odprti v CMS (✎) in opozorila ostanejo vidni."><input type="checkbox" id="skrijUr" onchange="savePref();render()"> Skrij urejene</label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s 🚫 (ne uvažamo na ta trg — npr. carina v RS). Izključeni so tudi iz Bato cen."><input type="checkbox" id="skrijNu" checked onchange="savePref();render()"> Skrij neuvozne <span id="nuCnt" class="dim"></span></label>
   <button class="bato-btn" id="vrstaBtn" onclick="vrstaOdpri()" title="Vrsta potrjenih cen iz »🧮 Plan cen« — izvaja jo vtičnik po 5">📋 Vrsta cen</button>
+  <button class="bato-btn" onclick="spOdpri()" title="Vse spremembe cen (Vrsta, paketi, ± Znesek, Price Checker, decimalke, ročno) po dnevih, s preverbo v feedu">📜 Spremembe cen</button>
   <button class="bato-btn" id="batoBtn" onclick="toggleBato()" title="Redne cene, ki se ne končajo na bato (x,99 / x99 / x9)">💲 Bato cene</button>
   <button class="btn" id="mainCsv" onclick="izvozi()" style="margin-left:auto">⬇ Izvozi CSV</button>
 </div>
@@ -13484,6 +13592,59 @@ function vrstaOdpri(sporocilo) {
   vrstaNalozi(); clearInterval(vrstaTimer); vrstaTimer = setInterval(vrstaNalozi, 10000);   // v živo, dokler je okno odprto
 }
 function vrstaZapri() { const o = document.getElementById('vrstaOkno'); if (o) o.style.display = 'none'; clearInterval(vrstaTimer); vrstaTimer = null; }
+// 📜 SPREMEMBE CEN — en pregled vseh sprememb (dnevnik /cene-dnevnik), filtri dan / trg / vir / iskanje, CSV
+let SP = null, SP_F = { od: '', do: '', trg: '', vir: '', q: '' };
+async function spOdpri() {
+  let o = document.getElementById('spOkno');
+  if (!o) { o = document.createElement('div'); o.id = 'spOkno'; o.className = 'vrsta-ov'; document.body.appendChild(o);
+    o.addEventListener('click', e => { if (e.target === o) o.style.display = 'none'; }); }
+  if (!SP_F.od) { const d = new Date(), z = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); SP_F.od = SP_F.do = z; }
+  o.style.display = 'flex'; o.innerHTML = '<div class="plan-box">📜 nalagam …</div>'; await spNalozi();
+}
+async function spNalozi() {
+  try { SP = await (await fetch('/cene-dnevnik?od=' + SP_F.od + '&do=' + SP_F.do, { cache: 'no-store' })).json(); } catch (e) { SP = { ok: false, error: e.message }; }
+  spRisi();
+}
+function spVidni() {
+  const q = SP_F.q.trim().toLowerCase();
+  return (SP && SP.zapisi || []).filter(z => (!SP_F.trg || z.trg === SP_F.trg) && (!SP_F.vir || String(z.vir || '').startsWith(SP_F.vir)) &&
+    (!q || (String(z.sku || '') + ' ' + String(z.naziv || '')).toLowerCase().includes(q)));
+}
+function spRisi() {
+  const o = document.getElementById('spOkno'); if (!o) return;
+  if (!SP || !SP.ok) { o.innerHTML = '<div class="plan-box">❌ ' + esc((SP && SP.error) || 'napaka') + ' <button class="btn" onclick="document.getElementById(\'spOkno\').style.display=\'none\'">✕</button></div>'; return; }
+  const vse = SP.zapisi || [], vid = spVidni();
+  const f = v => v == null || v === '' ? '—' : (Math.round(+v * 100) / 100).toLocaleString('sl-SI');
+  const poTrgu = {}; vid.forEach(z => poTrgu[z.trg] = (poTrgu[z.trg] || 0) + 1);
+  const viri = [...new Set(vse.map(z => String(z.vir || '').replace(/ \(.*$/, '')))].sort();
+  const trgi = [...new Set(vse.map(z => z.trg))].sort();
+  const FS = { potrjeno: ['✓ v feedu', '#15803d'], caka: ['⏳ čaka feed', '#64748b'], ni_spremembe: ['⚠ feed brez spremembe', '#dc2626'] };
+  const sel = (id, opts, val, l) => '<select onchange="SP_F.' + id + '=this.value;spRisi()" style="padding:5px 8px;border:1px solid var(--bd);border-radius:7px"><option value="">' + l + '</option>' + opts.map(x => '<option' + (x === val ? ' selected' : '') + ' value="' + esc(x) + '">' + esc(String(x).toUpperCase() === x ? x : x) + '</option>').join('') + '</select>';
+  o.innerHTML = '<div class="plan-box">' +
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:17px">📜 Spremembe cen</b>' +
+      '<span class="dim">' + vid.length + (vid.length !== vse.length ? ' / ' + vse.length : '') + ' sprememb · ' + Object.entries(poTrgu).map(([t, n]) => t.toUpperCase() + ' ' + n).join(' · ') + '</span>' +
+      '<button class="btn" style="margin-left:auto" onclick="spCsv()">⬇ CSV</button><button class="btn" onclick="document.getElementById(\'spOkno\').style.display=\'none\'">✕</button></div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0">Od <input type="date" value="' + SP_F.od + '" onchange="SP_F.od=this.value;if(SP_F.do<SP_F.od)SP_F.do=SP_F.od;spNalozi()"> do <input type="date" value="' + SP_F.do + '" onchange="SP_F.do=this.value;spNalozi()">' +
+      sel('trg', trgi, SP_F.trg, 'vsi trgi') + sel('vir', viri, SP_F.vir, 'vsi viri') +
+      '<input type="search" placeholder="SKU ali naziv" value="' + esc(SP_F.q) + '" oninput="SP_F.q=this.value;spRisi()" style="padding:5px 8px;border:1px solid var(--bd);border-radius:7px;width:200px"></div>' +
+    (vid.length ? '<div class="plan-tab"><table><thead><tr><th>Čas</th><th>Trg</th><th>SKU</th><th class="r">Cena za stranko</th><th class="r">CMS Prodajna</th><th>Feed</th><th>Vir</th></tr></thead><tbody>' +
+      vid.slice(0, 2000).map(z => { const fs = FS[z.feed];
+        return '<tr><td class="dim" style="white-space:nowrap">' + fmtT(z.at) + '</td><td><b>' + esc(String(z.trg || '').toUpperCase()) + '</b></td>' +
+          '<td><b style="font-family:ui-monospace,monospace">' + esc(z.sku || '') + '</b><div class="dim" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(z.naziv || '') + '</div></td>' +
+          '<td class="r">' + (z.prej != null || z.potem != null ? f(z.prej) + ' → <b>' + f(z.potem) + '</b>' : '<span class="dim">—</span>') + '</td>' +
+          '<td class="r">' + (z.cms_prej != null || z.cms_potem != null ? f(z.cms_prej) + ' → <b>' + f(z.cms_potem) + '</b>' : '<span class="dim">—</span>') + ' <span class="dim">' + esc(z.cur || '') + '</span></td>' +
+          '<td style="white-space:nowrap">' + (fs ? '<b style="color:' + fs[1] + '">' + fs[0] + '</b>' : '<span class="dim">—</span>') + (z.feed_cena != null ? ' <span class="dim">(' + f(z.feed_cena) + ')</span>' : '') + '</td>' +
+          '<td class="dim">' + esc(z.vir || '') + '</td></tr>'; }).join('') + '</tbody></table></div>'
+      : '<div class="dim" style="padding:20px;text-align:center">V izbranem obdobju ni zabeleženih sprememb.</div>') +
+    '<div class="dim" style="margin-top:8px">Dnevnik se zbira od uvedbe (starejši zapisi: Vrsta cen in zadnji »urejeno« po izdelku). »Feed« = ali je feed, zgrajen po spremembi, pokazal novo ceno.</div></div>';
+}
+function spCsv() {
+  const e = v => { v = v == null ? '' : String(v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }, n = v => v == null || v === '' ? '' : String(Math.round(+v * 100) / 100).replace('.', ',');
+  let csv = '\ufeffČas;Trg;SKU;Naziv;Valuta;Cena prej;Cena potem;CMS Prodajna prej;CMS Prodajna potem;Feed;Cena v feedu;Vir\n';
+  spVidni().forEach(z => { csv += [e(z.at), e(String(z.trg || '').toUpperCase()), e(z.sku), e(z.naziv), e(z.cur), n(z.prej), n(z.potem), n(z.cms_prej), n(z.cms_potem), e(z.feed), n(z.feed_cena), e(z.vir)].join(';') + '\n'; });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'spremembe_cen_' + SP_F.od + (SP_F.do !== SP_F.od ? '_' + SP_F.do : '') + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
 function vrstaZnovaNapake() {   // vse ⚠ napake nazaj v čakanje (varovalka 1× na dan se ob izvedbi preveri znova)
   const ids = (VRSTA && VRSTA.postavke || []).filter(p => p.status === 'napaka').map(p => p.id);
   if (ids.length && confirm('Vse napake (' + ids.length + ') vrnem v čakanje?')) vrstaAkcija({ ids, akcija: 'znova' });
