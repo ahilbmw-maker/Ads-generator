@@ -13490,9 +13490,36 @@ function planIzracun() {
     // (8,99 €) jih dvigni na naslednjo x499/x999 (4399 → 4499 · 4199 → 4499 · 4799 → 4999), x099 pa preveri pod prag (5099 → 4999)
     const hufX99 = cur === 'HUF' && Math.abs(c - Math.round(c)) < 0.001 && Math.round(c) % 100 === 99;
     const raz0 = x.nc && x.neto ? x.neto - x.nc : null;
-    if (cur !== 'PLN' && !k && !decimalke && !podOk(c) && !nizka()) return ze('že Bato');
+    if (cur !== 'PLN' && cur !== 'CZK' && !k && !decimalke && !podOk(c) && !nizka()) return ze('že Bato');
     if (!x.nc || !x.neto) return ze('brez NC');
     const neto = p => x.neto * p / c, mz = p => (neto(p) - x.nc) / neto(p) * 100;
+    // 🇨🇿 CZK — končnice x9 (cela števila):
+    //   X00–X10 → (X−1)99 (500–510 → 499; samo ~0,40 € → brez pravila 8,99) · X80–X98 → X99 (589 → 599)
+    //   ostalo → naslednja x9 navzgor (511 → 519, 523 → 529); x0 → x9 (−1, 520 → 519); x9 (519 … 579) ostane
+    //   razlika < N.dvigRaz € (7) → še +25 Kč (~1 €) in na x9; prestop stotice pri dvigu (599 → 619) ⚠ ročno
+    if (cur === 'CZK') {
+      const r = Math.round(c), st = r % 100, e = r % 10, razPo = q => neto(q) - x.nc, op = [];
+      const naX9 = q => q % 10 === 9 ? q : q + (9 - q % 10);   // naslednja x9 navzgor (ali ista)
+      let pred = r;
+      if (r >= 100 && st <= 10) { pred = r - st - 1; op.push('pod prag ' + (r - st) + ' → ' + (r - st - 1)); }
+      else if (st >= 80 && st <= 98) { pred = r - st + 99; op.push(st <= 88 ? '⚠ → x99 (+' + (99 - st) + ' Kč — preveri)' : '→ x99'); }
+      else if (e === 0) { pred = r - 1; op.push('x0 → x9'); }
+      else if (e !== 9) { pred = naX9(r); op.push('→ x9'); }
+      if (N.dvigRaz > 0 && razPo(c) < N.dvigRaz) {
+        let q = naX9(pred + 25); if (q % 100 >= 80 && q % 100 <= 98) q = q - q % 100 + 99;
+        pred = q; op.push('💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → +25 Kč');
+      }
+      if (Math.abs(pred - c) < 0.001) return ze('CZK že urejeno (x9)');
+      if (decimalke) op.push(pred === r ? '🔧 decimalke' : '🔧 + decimalke');
+      const pct = (pred - c) / c * 100, velika = Math.abs(pct) > N.maxPct, mPo = mz(pred);
+      const cez = pred > c && Math.floor(pred / 100 + 1e-9) > Math.floor(c / 100 + 1e-9);
+      if (cez) op.push('⚠ čez prag ' + Math.floor(pred / 100 + 1e-9) * 100);
+      if (pred < c && mPo < N.prag) op.push('marža pod ' + N.prag + ' %');
+      if (velika) op.push('sprememba nad ' + N.maxPct + ' %');
+      predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct, mZdaj: mz(c), mPo, rZdaj: neto(c) - x.nc, rPo: neto(pred) - x.nc,
+        opomba: op.join(' · '), ok: !velika && !cez && !(st >= 80 && st <= 88) && (pred > c || mPo >= N.prag), dec: decimalke && pred === r });   // 580–588 → 599: ročno
+      return;
+    }
     // 🇵🇱 PLN — lepe končnice x4 in x9 (lastna pravila namesto Bato x9):
     //   x0 → x9 (−1, vedno) · x1 → x9 (−2), če razlika ostane ≥ N.podRaz €, sicer → x4 (+3) · x2 → x4 (+2) · x3 → x4 (+1)
     //   x6–x8 → x9 · x4, x5, x9 ostanejo · razlika < N.dvigRaz € (7) → še +5 PLN (49 → 54, 54 → 59)
