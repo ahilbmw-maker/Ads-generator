@@ -3256,7 +3256,7 @@ function _pcSendExt(tr, force){
     if (!force && key === _pcExtLast) return;
     _pcExtLast = key;
     const a = tr.querySelector('a[data-pc-cms]');
-    window.postMessage({ type:'suban-kalk', trg, sku:String(row.sku||'').toUpperCase(), cms_id: a ? String(a.dataset.pcCms||'') : '',
+    window.postMessage({ type:'suban-kalk', trg, sku:String(row.sku||'').toUpperCase(), cms_id: a ? String(a.dataset.pcCms||'') : '', g_id: String(row.id||''),
       samo_trg:true, cena:(parseFloat(String(row.priceRaw||'').replace(/\s/g,'').replace(',','.')) || 0),   // cena samo za prikaz v vtičniku (polja ne spremeni)
       valuta:row.currency||'', vir:'Price Checker', naziv:String(row.product||'').slice(0,120) }, '*');
   } catch (e) {}
