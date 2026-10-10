@@ -1422,6 +1422,21 @@ async def feed_refresh_one(request: Request):
             "fetched_at": meta.get("fetched_at"), "built_at": _iso_from_http_date(meta.get("last_modified") or "")}
 
 
+@app.post("/feed-refresh-vse")
+async def feed_refresh_vse(request: Request):
+    """Ročna osvežitev feedov VSEH trgov naenkrat (gumb v Marži po trgih). Zaporedno pod _feed_lock; trg, ki ne uspe, obdrži prejšnjo verzijo."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    async with _get_feed_lock():
+        await fetch_all_feeds()
+    trgi = {}
+    for t in MAAARKET_FEEDS:
+        m = feed_meta.get(t) or {}
+        trgi[t] = {"ok": not m.get("error"), "count": len(feed_by_lang.get(t) or {}),
+                   "built_at": _iso_from_http_date(m.get("last_modified") or ""), "error": m.get("error")}
+    return {"ok": True, "trgi": trgi, "napake": [t for t, v in trgi.items() if not v["ok"]]}
+
+
 @app.get("/cms-log")
 async def cms_log_get(request: Request):
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
@@ -13628,7 +13643,15 @@ async function loadFeedInfo(){
   el.innerHTML='<span>Feed <b>'+L+'</b>: '+(m.built_at?'zgrajen v trgovini <b>'+fmtT(m.built_at)+'</b> · ':'')+'prebran <b>'+fmtT(m.fetched_at)+'</b></span>'+
     (m.novejsi?'<span class="novo">⚠ v trgovini je novejši feed ('+fmtT(m.live_built_at)+')</span>':'')+
     (m.error?'<span class="novo" title="'+esc(m.error)+'">⚠ zadnji prenos ni uspel ('+fmtT(m.last_error_at)+') — prikazana prejšnja verzija</span>':'')+
-    '<button class="chip" id="refBtn" onclick="refreshTrg()" title="Ponovno prebere feed samo za ta trg">↻ Osveži '+L+'</button>';
+    '<button class="chip" id="refBtn" onclick="refreshTrg()" title="Ponovno prebere feed samo za ta trg">↻ Osveži '+L+'</button>'+
+    '<button class="chip" id="refVseBtn" onclick="refreshVse()" title="Ponovno prebere feede VSEH 10 trgov (traja ~1–2 min)">↻ Osveži vse feede</button>';
+}
+async function refreshVse(){
+  const b=document.getElementById('refVseBtn'); if(b){b.disabled=true;b.textContent='Osvežujem vse … (~1–2 min)';}
+  let r={}; try{r=await (await fetch('/feed-refresh-vse',{method:'POST'})).json();}catch(e){r={ok:false,error:e.message};}
+  if(!r.ok){alert(r.error||'Osvežitev ni uspela'); if(b){b.disabled=false;b.textContent='↻ Osveži vse feede';} return;}
+  if(r.napake&&r.napake.length) alert('⚠ Feed ni uspel za: '+r.napake.map(t=>t.toUpperCase()).join(', ')+' — tam ostaja prejšnja verzija.');
+  load();
 }
 async function refreshTrg(){
   const b=document.getElementById('refBtn'); if(b){b.disabled=true;b.textContent='Osvežujem …';}
