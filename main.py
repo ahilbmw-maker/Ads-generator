@@ -13490,7 +13490,7 @@ function planIzracun() {
     // (8,99 €) jih dvigni na naslednjo x499/x999 (4399 → 4499 · 4199 → 4499 · 4799 → 4999), x099 pa preveri pod prag (5099 → 4999)
     const hufX99 = cur === 'HUF' && Math.abs(c - Math.round(c)) < 0.001 && Math.round(c) % 100 === 99;
     const raz0 = x.nc && x.neto ? x.neto - x.nc : null;
-    if (cur !== 'PLN' && cur !== 'CZK' && !k && !decimalke && !podOk(c) && !nizka()) return ze('že Bato');
+    if (cur !== 'PLN' && cur !== 'RON' && cur !== 'CZK' && !k && !decimalke && !podOk(c) && !nizka()) return ze('že Bato');
     if (!x.nc || !x.neto) return ze('brez NC');
     const neto = p => x.neto * p / c, mz = p => (neto(p) - x.nc) / neto(p) * 100;
     // 🇨🇿 CZK — končnice x9 (cela števila):
@@ -13523,7 +13523,7 @@ function planIzracun() {
     // 🇵🇱 PLN — lepe končnice x4 in x9 (lastna pravila namesto Bato x9):
     //   x0 → x9 (−1, vedno) · x1 → x9 (−2), če razlika ostane ≥ N.podRaz €, sicer → x4 (+3) · x2 → x4 (+2) · x3 → x4 (+1)
     //   x6–x8 → x9 · x4, x5, x9 ostanejo · razlika < N.dvigRaz € (7) → še +5 PLN (49 → 54, 54 → 59)
-    if (cur === 'PLN') {
+    if (cur === 'PLN' || cur === 'RON') {   // RON: enaka pravila kot PLN (~5 lei = 1 €)
       const r = Math.round(c), e = ((r % 10) + 10) % 10, razPo = q => neto(q) - x.nc, op = [];
       let pred = r;
       if (e === 0) { pred = r - 1; op.push('x0 → x9'); }
@@ -13531,8 +13531,8 @@ function planIzracun() {
       else if (e === 2) { pred = r + 2; op.push('x2 → x4'); }
       else if (e === 3) { pred = r + 1; op.push('x3 → x4'); }
       else if (e >= 6 && e <= 8) { pred = r + (9 - e); op.push('→ x9'); }
-      if (N.dvigRaz > 0 && razPo(c) < N.dvigRaz) { pred += 5; op.push('💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → +5 PLN'); }
-      if (Math.abs(pred - c) < 0.001) return ze('PLN že urejeno (x4 / x5 / x9)');
+      if (N.dvigRaz > 0 && razPo(c) < N.dvigRaz) { pred += 5; op.push('💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → +5 ' + cur); }
+      if (Math.abs(pred - c) < 0.001) return ze(cur + ' že urejeno (x4 / x5 / x9)');
       if (decimalke && pred === r) op.unshift('🔧 decimalke');
       else if (decimalke) op.push('🔧 + decimalke');
       const pct = (pred - c) / c * 100, velika = Math.abs(pct) > N.maxPct, mPo = mz(pred);
