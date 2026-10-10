@@ -13486,12 +13486,26 @@ function planIzracun() {
     // 💶 NIZKA RAZLIKA (samo EUR): razlika (cena brez DDV − NC) < N.dvigRaz € (privzeto 7; 0 = izklop) → dvig za ~1 € na Bato x,99
     // (cilj = najbližja Bato od cena + 1 €; tudi če je cena že Bato: 14,99 → 15,99). Prestop desetice (19,99 → 20,99) ni samodejno potrjen.
     const nizka = () => !!PR && N.dvigRaz > 0 && x.nc && x.neto && (x.neto - x.nc) < N.dvigRaz;
+    // HUF: cene na xx99 (3699, 4199 …) so že urejene — ne normaliziraj na x499/x999 (ni spustov); samo pri razliki < N.podRaz
+    // (8,99 €) jih dvigni na naslednjo x499/x999 (4399 → 4499 · 4199 → 4499 · 4799 → 4999), x099 pa preveri pod prag (5099 → 4999)
+    const hufX99 = cur === 'HUF' && Math.abs(c - Math.round(c)) < 0.001 && Math.round(c) % 100 === 99;
+    const raz0 = x.nc && x.neto ? x.neto - x.nc : null;
     if (!k && !decimalke && !podOk(c) && !nizka()) return ze('že Bato');
     if (!x.nc || !x.neto) return ze('brez NC');
     const neto = p => x.neto * p / c, mz = p => (neto(p) - x.nc) / neto(p) * 100;
+    if (hufX99 && k && !nizka() && !podOk(c)) {
+      if (!(N.podRaz > 0) || raz0 >= N.podRaz) return ze('HUF xx99 — že urejeno');
+      const pred = k.up, pct = (pred - c) / c * 100, velika = Math.abs(pct) > N.maxPct, mPo = mz(pred);
+      const cez = Math.floor(pred / 5000 + 1e-9) > Math.floor(c / 5000 + 1e-9);
+      predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct, mZdaj: mz(c), mPo, rZdaj: neto(c) - x.nc, rPo: neto(pred) - x.nc,
+        opomba: ['💶 razlika pod ' + String(N.podRaz).replace('.', ',') + ' € → na x499/x999'].concat(cez ? ['⚠ čez prag ' + Math.floor(pred / 5000 + 1e-9) * 5000] : [], velika ? ['sprememba nad ' + N.maxPct + ' %'] : []).join(' · '),
+        ok: !velika && !cez, nizka: true });
+      return;
+    }
     if (nizka()) {
       const t = Math.round((c + PR.korak) * 100) / 100, kt = batoCands(t, cur);
       let pred = kt ? kt.pick : t; if (pred <= c) pred = kt ? kt.up : t;
+      if (hufX99) pred = t;   // HUF xx99: točno +400 Ft (4399 → 4799 ostane xx99)
       const pct = (pred - c) / c * 100, velika = Math.abs(pct) > N.maxPct, mPo = mz(pred);
       const cu = PR.cez || PR.unit, cez = Math.floor(pred / cu + 1e-9) > Math.floor(c / cu + 1e-9);   // npr. 19,99 → 20,99 · 1999 → 2099: levo število zraste
       predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct, mZdaj: mz(c), mPo, rZdaj: neto(c) - x.nc, rPo: neto(pred) - x.nc,
@@ -13513,6 +13527,8 @@ function planIzracun() {
     }
     let pred = N.smer === 'gor' ? k.up : k.pick, opomba = decimalke ? ['🔧 + decimalke'] : [];
     if (pred < c && mz(pred) < N.prag) { pred = k.up; opomba.push('↑ zaradi marže'); }
+    // spust ne sme spraviti razlike pod N.dvigRaz € (7) — takrat raje navzgor na naslednjo Bato (vse valute)
+    if (pred < c && N.dvigRaz > 0 && neto(pred) - x.nc < N.dvigRaz) { pred = k.up; opomba.push('↑ spust bi znižal razliko pod ' + String(N.dvigRaz).replace('.', ',') + ' €'); }
     if (N.smer === 'dvig' && pred < c) return ze('predlog za spust (samo dvigi)');   // najprej samo dvigi, spuste pusti
     { const q = podOk(pred); if (q != null && mz(q) >= N.prag) { opomba.push('🎯 pod prag ' + pragOd(pred) + ' (namesto ' + fmtC(pred, cur) + ')'); pred = q; } }
     const pct = (pred - c) / c * 100, mPo = mz(pred);
