@@ -13573,9 +13573,21 @@ function planNastavi(k, v) {
   PLAN = planIzracun(); planIzberiOk(); planRisi();
 }
 function planKljukica(g, on) { on ? PLAN.izbrani.add(g) : PLAN.izbrani.delete(g); planRisi(); }
+// klik kjerkoli v vrstici = (od)označi; Shift + klik = razpon od zadnjega klika
+let PLAN_ZADNJI = -1;
+function planVrstaKlik(e, tr, izCb) {
+  if (!tr || (!izCb && e.target.closest('a,button,input,select'))) return;
+  const vid = PLAN.predlogi.filter(planVid), i = +tr.dataset.pi, p = vid[i]; if (!p) return;
+  const on = !PLAN.izbrani.has(p.x.g_id);
+  if (e.shiftKey && PLAN_ZADNJI >= 0) { const [a, b] = PLAN_ZADNJI < i ? [PLAN_ZADNJI, i] : [i, PLAN_ZADNJI]; vid.slice(a, b + 1).forEach(q => on ? PLAN.izbrani.add(q.x.g_id) : PLAN.izbrani.delete(q.x.g_id)); }
+  else { on ? PLAN.izbrani.add(p.x.g_id) : PLAN.izbrani.delete(p.x.g_id); }
+  PLAN_ZADNJI = i; planRisi();
+}
 function planVse(on) { PLAN.predlogi.filter(planVid).forEach(p => on ? PLAN.izbrani.add(p.x.g_id) : PLAN.izbrani.delete(p.x.g_id)); planRisi(); }
 function planRisi() {
   const o = document.getElementById('planOkno'), P2 = PLAN, N = P2.N;
+  const _sb = o.querySelector('.plan-box'), _st = _sb ? _sb.scrollTop : 0;   // ohrani položaj drsnika ob ponovnem izrisu
+  setTimeout(() => { const b = o.querySelector('.plan-box'); if (b && _st) b.scrollTop = _st; }, 0);
   const iz = P2.predlogi.filter(p => P2.izbrani.has(p.x.g_id));
   const dc = iz.filter(p => p.dec).length, up = iz.filter(p => !p.dec && p.diff > 0).length, dn = iz.length - up - dc;
   const avg = (a, f) => a.length ? a.reduce((s, p) => s + f(p), 0) / a.length : 0;
@@ -13586,7 +13598,7 @@ function planRisi() {
   const fch = (t, l) => '<span class="chip' + (PLAN_FLT === t ? ' on' : '') + '" style="cursor:pointer;padding:5px 12px;font-weight:700" onclick="planFilter(&quot;' + t + '&quot;)">' + l + ' ' + nT(t) + '</span>';
   const vrst = vid.map(p => {
     const on = P2.izbrani.has(p.x.g_id);
-    return '<tr' + (p.ok ? '' : ' class="plan-flag"') + '><td><input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="planKljukica(\'' + esc(p.x.g_id) + '\',this.checked)"></td>' +
+    return '<tr' + (p.ok ? '' : ' class="plan-flag"') + ' data-pi="' + vid.indexOf(p) + '" onclick="planVrstaKlik(event,this)" style="cursor:pointer"><td><input type="checkbox" ' + (on ? 'checked' : '') + ' onclick="event.stopPropagation();planVrstaKlik(event,this.closest(\'tr\'),true)"></td>' +
       '<td><b style="font-family:ui-monospace,monospace">' + esc(p.sku) + '</b><div class="dim" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.x.naziv || '') + '</div></td>' +
       '<td class="r">' + fmtC(p.c, p.cur) + '</td><td class="r" style="font-weight:800;font-size:15px">' + fmtC(p.pred, p.cur) + ' <span class="dim">' + esc(p.cur) + '</span></td>' +
       '<td class="r ' + (p.diff > 0 ? 'up' : 'dn') + '">' + (p.diff > 0 ? '+' : '') + fmtC(p.diff, p.cur) + '<div class="dim">' + (p.pct > 0 ? '+' : '') + p.pct.toFixed(1).replace('.', ',') + ' %</div></td>' +
