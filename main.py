@@ -1986,6 +1986,8 @@ async def cene_vrsta_rezultat(data: dict):
         p = next((x for x in d["postavke"] if x.get("id") == pid), None)
         if not p:
             return {"ok": False, "error": "Postavke ni v vrsti."}
+        if p.get("rocno") and p.get("status") == "ok":   # že ✓ ročno shranjeno — rezultat vtičnika (npr. napaka) ne prepiše
+            return {"ok": True, "prezrto": True}
         p["status"] = "ok" if data.get("ok") else "napaka"
         p["napaka"] = "" if data.get("ok") else str(data.get("napaka") or "napaka")[:200]
         p["rezultat"] = data.get("rezultat") if isinstance(data.get("rezultat"), dict) else {}
@@ -2025,12 +2027,16 @@ async def cene_vrsta_akcija(data: dict):
             _jsave(VRSTA_FILE, d)
             return {"ok": True, "ustavljeno": d["ustavljeno"]}
         ids, ak, n = set(str(x) for x in (data.get("ids") or [])), data.get("akcija"), 0
-        nove = []
+        nove, rocni = [], []
         for p in d["postavke"]:
             if p.get("id") not in ids:
                 continue
             if ak == "preklici" and p.get("status") in ("caka", "napaka", "v_delu"):   # v_delu: zataknjene (zaprt Chrome …); če vtičnik vseeno javi rezultat, /rezultat zapiše pravo stanje
                 p["status"] = "preklicano"; n += 1
+            elif ak == "rocno" and p.get("status") in ("v_delu", "napaka", "caka"):
+                # ✓ uporabnik je ceno v CMS shranil ročno (npr. SI: skrit izdelek B v A+B ne pusti shraniti) → urejeno
+                p["status"], p["napaka"], p["konec"], p["rocno"] = "ok", "", _lj_iso(), True
+                rocni.append(dict(p)); n += 1
             elif ak == "znova" and p.get("status") in ("napaka", "preklicano", "v_delu"):
                 p["status"], p["napaka"] = "caka", ""; n += 1
             elif ak == "razveljavi" and p.get("status") == "ok":
@@ -2042,6 +2048,23 @@ async def cene_vrsta_akcija(data: dict):
                 p["razveljavljeno"] = _lj_iso(); n += 1
         d["postavke"].extend(nove)
         _jsave(VRSTA_FILE, d)
+    if rocni:   # enako kot uspešen /rezultat: dnevnik CMS (urejeno), trajen zapis 1× na dan, 📜 Spremembe cen
+        async with _cms_log_get_lock():
+            try:
+                log = _jload(CMS_LOG_FILE, {}, strict=True)
+                for p in rocni:
+                    k = f"{p['trg']}|{p['cms_id']}"
+                    e = log.get(k) or {}
+                    e.update({"cms_id": p["cms_id"], "trg": p["trg"], "sku": str(p.get("sku") or "").upper(), "vir": "Vrsta cen (ročno shranjeno)",
+                              "done_at": p["konec"], "opened_at": e.get("opened_at") or p["konec"], "cena_ob_odprtju": p.get("stara")})
+                    log[k] = e
+                _jsave(CMS_LOG_FILE, log)
+            except Exception as ex:
+                print(f"[vrsta] ročno → dnevnik CMS: {ex}")
+            _cene_ledger_zapisi([f"{p['trg']}|{p['cms_id']}" for p in rocni], "Vrsta cen (ročno)")
+        _cene_dnevnik_dodaj([{"at": p["konec"], "trg": p["trg"], "cms_id": str(p["cms_id"]), "g_id": str(p.get("g_id") or ""), "sku": p.get("sku", ""),
+                              "naziv": p.get("naziv", ""), "cur": p.get("cur", ""), "vir": "Vrsta cen (ročno shranjeno)", "prej": p.get("stara"), "potem": p.get("nova"),
+                              "cms_prej": (p.get("rezultat") or {}).get("prodajna_stara"), "cms_potem": (p.get("rezultat") or {}).get("prodajna")} for p in rocni])
     return {"ok": True, "n": n}
 
 
@@ -13684,11 +13707,12 @@ function vrstaRisi() {
         '<div class="dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.naziv || '') + '</div></td>' +
         '<td class="r">' + f(p.stara) + '</td><td class="r"><b>' + f(p.nova) + '</b> <span class="dim">' + esc(p.cur || '') + '</span></td>' +
         '<td><b style="color:' + (S[p.status] || ['', ''])[1] + '">' + (S[p.status] || [p.status])[0] + '</b>' + (p.napaka ? '<div class="dim" style="color:#dc2626">' + esc(p.napaka) + '</div>' : '') +
-          (p.razveljavljeno ? '<div class="dim">razveljavljeno ' + fmtT(p.razveljavljeno) + '</div>' : '') +
+          (p.razveljavljeno ? '<div class="dim">razveljavljeno ' + fmtT(p.razveljavljeno) + '</div>' : '') + (p.rocno ? '<div class="dim">✋ ročno shranjeno</div>' : '') +
           (p.rezultat && p.rezultat.prodajna != null ? '<div class="dim" title="»Prodajna« v CMS pred in po spremembi (vtičnik)">CMS Prodajna ' + f(+p.rezultat.prodajna_stara) + ' → ' + f(+p.rezultat.prodajna) + '</div>' : '') +
           (p.feed ? '<div style="font-size:12px;font-weight:700;color:' + ({ potrjeno: '#15803d', odstopa: '#dc2626', caka: '#64748b', ni_v_feedu: '#b45309' }[p.feed.stanje] || '#64748b') + '">' +
             ({ potrjeno: '✓ potrjeno v feedu (' + f(p.feed.cena) + ')', odstopa: '⚠ feed ' + f(p.feed.cena) + ' ≠ plan ' + f(p.nova), caka: '⏳ čaka nov feed', ni_v_feedu: 'ni v feedu' }[p.feed.stanje] || '') + '</div>' : '') + '</td>' +
         '<td class="dim">' + fmtT(p.konec || p.dodano) + '</td><td style="white-space:nowrap">' +
+          (['v_delu', 'napaka'].includes(p.status) ? '<button class="btn" style="background:#16a34a;color:#fff;border-color:#16a34a" title="Ceno sem v CMS shranil(a) ročno — označi kot urejeno" onclick="if(confirm(\'Si ' + esc(p.sku) + ' v CMS res shranil(a) ročno na ' + f(p.nova) + '?\'))vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'rocno\'})">✓ Shranjeno ročno</button> ' : '') +
           (['caka', 'napaka', 'v_delu'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'preklici\'})">✕ Prekliči</button> ' : '') +
           (['napaka', 'preklicano'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'znova\'})">↻ Znova</button> ' : '') +
           (p.status === 'ok' && !p.razveljavljeno ? '<button class="btn" title="Doda obratno spremembo v vrsto (nazaj na prejšnjo ceno)" onclick="if(confirm(\'Vrnem ' + esc(p.sku) + ' na ' + f(p.stara) + '?\'))vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'razveljavi\'})">↩ Razveljavi</button>' : '') +
