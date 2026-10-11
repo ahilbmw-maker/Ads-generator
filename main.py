@@ -11039,6 +11039,7 @@ PRODUCT:
 Name: {name}
 SKU: {sku}
 Description (may be Slovenian — translate meaning, output English): {desc}
+SELLER NOTES ON REAL USE (AUTHORITATIVE — override the description and your own assumptions; may be Slovenian, translate): {opomba}
 
 PRODUCT_DESC (build this FIRST, before writing prompts):
 From the name + description, write ONE concise PHYSICAL description of the product in English —
@@ -11051,9 +11052,17 @@ ALSO build (before writing prompts) and insert into BOTH prompts where marked:
 - USE_ACTION: ONE sentence describing exactly how the product is physically used — which part is held, what is pressed/pulled/placed, what moves and what visible result appears (e.g. "the thumb presses the round top button and the four blades spin inside the clear bowl, chopping the onion into even pieces"). Pick the SIMPLEST use-moment that shows the benefit (no assembly, no unfolding, no multi-step setup).
 - MACRO_DETAIL: the single most eye-catching REAL detail visible on the product (texture, button, mechanism, light, edge).
 - SOUND: the natural sound the product makes in use (click, whir, splash, snap …) — mention it in the action scene.
+- USAGE_FACTS: 2–5 short HARD facts about how this product REALLY works and is used, taken ONLY from the description + seller notes:
+  power source (battery / rechargeable / USB / mains / manual / none), whether it is cordless while in use, where and how it is used,
+  what it is attached to or placed on. Never invent features that are not stated.
+- NEVER_SHOW: 3–6 things the video must NOT show because they would be wrong or misleading for this product
+  (e.g. "charging cable plugged in during use", "wall socket", "product hanging on a cable", "assembly", "spraying liquid").
+  DEFAULT RULE: never show charging, cables, plugs, sockets, power banks or battery changing — a rechargeable product is shown
+  already charged and used cordless. Only if the product genuinely works ONLY while plugged in may a cable appear.
+ALL scenes must follow USAGE_FACTS and avoid NEVER_SHOW. Do NOT write the USAGE FACTS / NEVER SHOW lines into the prompts yourself — they are inserted automatically.
 
 Return ONLY JSON, no markdown:
-{{"brand": "", "product_desc": "<the physical description>", "product_size": "...", "use_action": "...", "macro_detail": "...", "prompts": [{{"title": "PROMPT 1 — WINNER (UGC)", "text": "..."}}, {{"title": "PROMPT 2 — SCROLL STOPPER", "text": "..."}}]}}"""
+{{"brand": "", "product_desc": "<the physical description>", "product_size": "...", "use_action": "...", "macro_detail": "...", "usage_facts": ["..."], "never_show": ["..."], "prompts": [{{"title": "PROMPT 1 — WINNER (UGC)", "text": "..."}}, {{"title": "PROMPT 2 — SCROLL STOPPER", "text": "..."}}]}}"""
 
 VA_LOCK_BLOK = ("CRITICAL PRODUCT LOCK: Use the EXACT product shown in the reference images and NOTHING ELSE. "
                 "Reproduce it precisely, visually IDENTICAL in EVERY scene, never morphing.")
@@ -11063,7 +11072,20 @@ VA_VIDNO_BLOK = ("PRODUCT VISIBILITY: the product stays fully visible and in sha
                  "NO extra parts, NO additional buttons, NO different colour, NO second product, NO packaging unless shown in the reference images.")
 
 
-def _va_zakleni(text: str, pdesc: str, ugc: bool) -> str:
+def _va_dejstva_blok(facts: list, never: list) -> str:
+    """USAGE FACTS + NEVER SHOW za prompt (privzeto vedno brez kablov/polnjenja, razen če dejstva pravijo drugače)."""
+    f = [str(x).strip().rstrip(".") for x in (facts or []) if str(x).strip()]
+    n = [str(x).strip().rstrip(".") for x in (never or []) if str(x).strip()]
+    if not n:
+        n = ["charging", "cables", "plugs", "wall sockets"]
+    out = []
+    if f:
+        out.append("USAGE FACTS (follow exactly): " + "; ".join(f) + ".")
+    out.append("NEVER SHOW: " + ", ".join(n) + ".")
+    return "\n".join(out)
+
+
+def _va_zakleni(text: str, pdesc: str, ugc: bool, dejstva: str = "") -> str:
     """Varovalka v2: vsak prompt MORA imeti »the exact … shown in the reference images« v 1. vrstici ter fiksne bloke."""
     t = (text or "").strip()
     vrst = t.split("\n")
@@ -11073,7 +11095,32 @@ def _va_zakleni(text: str, pdesc: str, ugc: bool) -> str:
     bloki = [b for b in (VA_LOCK_BLOK, VA_NOTEXT_BLOK, VA_LJUDJE_BLOK, VA_VIDNO_BLOK) if b.split(":")[0].split(".")[0] not in t]
     if bloki:
         vrst[1:1] = bloki
+    if dejstva and "USAGE FACTS" not in t and "NEVER SHOW" not in t:
+        fiks = ("CRITICAL PRODUCT LOCK", "NO TEXT", "All people", "PRODUCT VISIBILITY", "NO extra parts", "SCALE:")
+        idx = max([i for i, v in enumerate(vrst) if v.strip().startswith(fiks)] or [0])
+        vrst[idx + 1:idx + 1] = dejstva.split("\n")
     return "\n".join(vrst)
+
+
+VA_OPOMBE_FILE = DATA_DIR / "video_ads_opombe.json"   # {SKU_upper: {txt, at}} — ročna dejstva o uporabi (prednost pred opisom)
+
+
+def _va_opombe() -> dict:
+    try:
+        if VA_OPOMBE_FILE.exists():
+            return json.loads(VA_OPOMBE_FILE.read_text(encoding="utf-8")) or {}
+    except Exception:
+        pass
+    return {}
+
+
+def _va_opombe_save(d: dict):
+    try:
+        tmp = VA_OPOMBE_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, VA_OPOMBE_FILE)
+    except Exception as e:
+        print(f"[va] opombe save err: {e}")
 
 
 def _va_load() -> list:
@@ -11125,7 +11172,14 @@ def _va_build_brief(job: dict) -> str:
     if job.get("product_size"):
         lines += ["VELIKOST: " + str(job["product_size"])]
     if job.get("use_action"):
-        lines += ["UPORABA (prizor akcije): " + str(job["use_action"]), ""]
+        lines += ["UPORABA (prizor akcije): " + str(job["use_action"])]
+    if job.get("usage_facts"):
+        lines += ["DEJSTVA UPORABE: " + "; ".join(str(x) for x in job["usage_facts"])]
+    if job.get("never_show"):
+        lines += ["NE PRIKAZUJ: " + ", ".join(str(x) for x in job["never_show"])]
+    if job.get("opomba"):
+        lines += ["OPOMBA (ročno): " + str(job["opomba"])]
+    lines += [""]
     # SPREMEMBA 1 (2.5): uporabi VSE slike kot image_references (omni_reference ne rabi start_image)
     refs = job.get("ref_images") or []
     if len(refs) > 1:
@@ -11198,8 +11252,10 @@ async def _va_process_one(job: dict):
         refs = await _va_izberi_slike(refs)   # čist packshot najprej, brez slik z besedilom (uhaja v video)
         await _va_set(jid, step="prompti", ref_images=refs)
         desc = _va_feed_desc(job["url"])
+        opomba = ((_va_opombe().get(job["sku"].upper()) or {}).get("txt") or "").strip()
         raw = await call_claude(
-            VA_PROMPT_TEMPLATE.format(name=job.get("name") or job["sku"], sku=job["sku"], desc=desc),
+            VA_PROMPT_TEMPLATE.format(name=job.get("name") or job["sku"], sku=job["sku"], desc=desc,
+                                      opomba=opomba or "(none)"),
             "claude-sonnet-4-6", None, 8000)
         txt = (raw or "").strip()
         if txt.startswith("```"):
@@ -11211,12 +11267,16 @@ async def _va_process_one(job: dict):
         if len(prompts) < 2:
             raise RuntimeError(f"Claude vrnil samo {len(prompts)} promptov (pričakovano 2)")
         pd_ = (parsed.get("product_desc") or "").strip()
+        facts = [str(x) for x in (parsed.get("usage_facts") or []) if str(x).strip()][:6]
+        never = [str(x) for x in (parsed.get("never_show") or []) if str(x).strip()][:8]
+        dejstva = _va_dejstva_blok(facts, never)
         for k, p_ in enumerate(prompts):
             p_["title"] = p_.get("title") or ("PROMPT 1 — WINNER (UGC)" if k == 0 else "PROMPT 2 — SCROLL STOPPER")
-            p_["text"] = _va_zakleni(p_.get("text") or "", pd_, ugc=(k == 0))
+            p_["text"] = _va_zakleni(p_.get("text") or "", pd_, ugc=(k == 0), dejstva=dejstva)
         await _va_set(jid, status="done", step="", brand=parsed.get("brand") or "",
                       product_desc=parsed.get("product_desc") or "",
                       product_size=parsed.get("product_size") or "", use_action=parsed.get("use_action") or "",
+                      usage_facts=facts, never_show=never, opomba=opomba,
                       prompts=prompts, finished=datetime.now(timezone.utc).isoformat())
         # brief zgradi in shrani (za gumb Kopiraj)
         jobs = _va_load()
@@ -11271,6 +11331,10 @@ async def video_ads_add(data: dict):
                 continue
             if sku.upper() in existing:
                 dupl.append(sku); continue
+            if str(e.get("opomba") or "").strip():
+                op = _va_opombe()
+                op[sku.upper()] = {"txt": str(e["opomba"]).strip()[:1000], "at": _lj_iso()}
+                _va_opombe_save(op)
             jid = "va" + str(int(_time.time() * 1000)) + str(len(jobs))
             jobs.append({"id": jid, "sku": sku, "url": url, "name": e.get("name") or sku,
                          "status": "waiting", "error": None, "step": "",
@@ -11278,6 +11342,29 @@ async def video_ads_add(data: dict):
             added.append(sku); existing.add(sku.upper())
         _va_save(jobs)
     return {"ok": True, "added": added, "duplicates": dupl, "jobs": _va_load()}
+
+
+@app.post("/video-ads-opomba")
+async def video_ads_opomba(data: dict):
+    """Ročna dejstva o uporabi za SKU (npr. »brezžičen, med uporabo ni kabla«) — shrani; znova=1 ponovno pripravi zadnji brief."""
+    sku = str(data.get("sku") or "").strip()
+    if not sku:
+        return {"ok": False, "error": "Ni SKU."}
+    txt = str(data.get("opomba") or "").strip()[:1000]
+    async with _va_lock:
+        op = _va_opombe()
+        if txt:
+            op[sku.upper()] = {"txt": txt, "at": _lj_iso()}
+        else:
+            op.pop(sku.upper(), None)
+        _va_opombe_save(op)
+        jobs = _va_load()
+        if data.get("znova"):
+            j = next((j for j in reversed(jobs) if (j.get("sku") or "").upper() == sku.upper()), None)
+            if j and j.get("status") not in ("waiting", "running"):
+                j.update(status="waiting", error=None, step="", brief=None, prompts=None)
+        _va_save(jobs)
+    return {"ok": True, "jobs": _va_load()}
 
 
 @app.get("/video-ads-status")

@@ -1086,7 +1086,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-11 18:27</div>
+      <div class="sidebar-logo-sub">build 2026-10-11 18:51</div>
     </div>
   </div>
 
@@ -8020,6 +8020,7 @@ function vaShowConfirm(entries) {
       +   '</div>'
       +   (ok
           ? '<a href="' + esc(e.url) + '" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;color:var(--accent);word-break:break-all">' + esc(e.url) + ' ↗</a>'
+            + '<input data-vaop="' + i + '" onclick="event.preventDefault();event.stopPropagation();this.focus()" placeholder="Opomba za uporabo (neobvezno), npr. brezžičen, med uporabo ni kabla" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:inherit;background:var(--surface,#fff);color:var(--text)">'
           : '<span style="font-size:11px;color:var(--red)">✗ ni najden — dodaj URL ročno</span>')
       + '</div></label>';
   });
@@ -8048,7 +8049,8 @@ async function vaConfirmAdd() {
   const picked = [];
   ov.querySelectorAll('input[data-vai]:checked').forEach(cb => {
     const e = entries[parseInt(cb.dataset.vai)];
-    if (e && e.found) picked.push({ sku: e.sku, url: e.url, name: e.name });
+    const op = ov.querySelector('input[data-vaop="' + cb.dataset.vai + '"]');
+    if (e && e.found) picked.push({ sku: e.sku, url: e.url, name: e.name, opomba: op ? op.value.trim() : '' });
   });
   if (!picked.length) { ov.remove(); return; }
   const btn = document.getElementById('vaConfirmBtn');
@@ -8122,13 +8124,34 @@ function vaRender(jobs) {
       +   '<b style="font-family:\'DM Mono\',monospace;font-size:13px">' + esc(j.sku) + '</b>'
       +   '<span style="font-size:12px;color:var(--text-tertiary)">' + esc(j.name||'') + ' · brand: <b>' + esc(j.brand||'?') + '</b> · ' + (j.ref_images||[]).length + ' ref slik</span>'
       +   '<button onclick="vaCopyBrief(this,\'' + j.id + '\')" style="margin-left:auto;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">📋 Kopiraj brief</button>'
+      +   '<button onclick="vaOpomba(\'' + j.id + '\')" title="Ročna dejstva o uporabi (prednost pred opisom) → prompti se pripravijo znova" style="padding:6px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;font-family:inherit">✎ Opomba · znova</button>'
       +   '<button onclick="vaTogglePrompts(this)" style="padding:6px 10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;font-family:inherit">▾ Prompti</button>'
       + '</div>'
       + '<div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">' + titles + '</div>'
+      + ((j.usage_facts||[]).length || (j.never_show||[]).length || j.opomba
+          ? '<div style="font-size:11px;line-height:1.5;margin-top:6px;padding:6px 9px;background:var(--surface2);border-radius:7px">'
+            + (j.opomba ? '<div>✎ <b>Opomba:</b> ' + esc(j.opomba) + '</div>' : '')
+            + ((j.usage_facts||[]).length ? '<div>✓ <b>Uporaba:</b> ' + esc(j.usage_facts.join('; ')) + '</div>' : '')
+            + ((j.never_show||[]).length ? '<div style="color:var(--red)">✗ <b>Ne prikazuj:</b> ' + esc(j.never_show.join(', ')) + '</div>' : '')
+            + '</div>'
+          : '')
       + '<pre style="display:none;margin-top:10px;padding:10px;background:var(--surface2);border-radius:8px;font-size:10px;line-height:1.5;white-space:pre-wrap;max-height:340px;overflow-y:auto">' + esc(j.brief) + '</pre>'
       + '</div>';
   });
   wrap.innerHTML = html;
+}
+
+async function vaOpomba(jid) {
+  const j = _vaJobs.find(x => x.id === jid); if (!j) return;
+  const t = prompt('Opomba za uporabo ' + j.sku + ' (ima prednost pred opisom; prazno = brez).\nNpr.: brezžičen, polni se samo pred uporabo, med uporabo ni kabla.\n\nOK = shrani in pripravi prompte znova.', j.opomba || '');
+  if (t === null) return;
+  try {
+    const r = await fetch('/video-ads-opomba', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ sku: j.sku, opomba: t, znova: true }) });
+    const d = await r.json();
+    if (!d.ok) { alert('Napaka: ' + (d.error||'')); return; }
+    _vaJobs = d.jobs || []; vaRender(_vaJobs); vaStartPolling();
+  } catch(e) { alert('Napaka: ' + e.message); }
 }
 
 function vaTogglePrompts(btn) {
