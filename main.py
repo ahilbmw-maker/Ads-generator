@@ -1718,6 +1718,9 @@ async def cene_vrsta_get():
         p.pop("feed", None)
         if p.get("status") != "ok" or not p.get("konec"):
             continue
+        if p.get("feed_pusti"):   # ✓ uporabnik je odstopanje preveril in ceno pustil, kakršna je
+            p["feed"] = {"stanje": "pusti", "at": p["feed_pusti"]}
+            continue
         meta = feed_meta.get(p["trg"]) or {}
         zgrajen = _iso_from_http_date(meta.get("last_modified") or "") or meta.get("fetched_at") or ""
         if not zgrajen or zgrajen <= p["konec"]:
@@ -2043,6 +2046,8 @@ async def cene_vrsta_akcija(data: dict):
                 continue
             if ak == "preklici" and p.get("status") in ("caka", "napaka", "v_delu"):   # v_delu: zataknjene (zaprt Chrome …); če vtičnik vseeno javi rezultat, /rezultat zapiše pravo stanje
                 p["status"] = "preklicano"; n += 1
+            elif ak == "pusti" and p.get("status") == "ok":   # ✓ odstopanje v feedu preverjeno — cena ostane, postavka ni več med »⚠ Odstopa«
+                p["feed_pusti"] = _lj_iso(); n += 1
             elif ak == "rocno" and p.get("status") in ("v_delu", "napaka", "caka"):
                 # ✓ uporabnik je ceno v CMS shranil ročno (npr. SI: skrit izdelek B v A+B ne pusti shraniti) → urejeno
                 p["status"], p["napaka"], p["konec"], p["rocno"] = "ok", "", _lj_iso(), True
@@ -13805,12 +13810,13 @@ function vrstaRisi() {
         '<td><b style="color:' + (S[p.status] || ['', ''])[1] + '">' + (S[p.status] || [p.status])[0] + '</b>' + (p.napaka ? '<div class="dim" style="color:#dc2626">' + esc(p.napaka) + '</div>' : '') +
           (p.razveljavljeno ? '<div class="dim">razveljavljeno ' + fmtT(p.razveljavljeno) + '</div>' : '') + (p.rocno ? '<div class="dim">✋ ročno shranjeno</div>' : '') +
           (p.rezultat && p.rezultat.prodajna != null ? '<div class="dim" title="»Prodajna« v CMS pred in po spremembi (vtičnik)">CMS Prodajna ' + f(+p.rezultat.prodajna_stara) + ' → ' + f(+p.rezultat.prodajna) + '</div>' : '') +
-          (p.feed ? '<div style="font-size:12px;font-weight:700;color:' + ({ potrjeno: '#15803d', odstopa: '#dc2626', caka: '#64748b', ni_v_feedu: '#b45309' }[p.feed.stanje] || '#64748b') + '">' +
-            ({ potrjeno: '✓ potrjeno v feedu (' + f(p.feed.cena) + ')', odstopa: '⚠ feed ' + f(p.feed.cena) + ' ≠ plan ' + f(p.nova), caka: '⏳ čaka nov feed', ni_v_feedu: 'ni v feedu' }[p.feed.stanje] || '') + '</div>' : '') + '</td>' +
+          (p.feed ? '<div style="font-size:12px;font-weight:700;color:' + ({ potrjeno: '#15803d', odstopa: '#dc2626', caka: '#64748b', ni_v_feedu: '#b45309', pusti: '#2563eb' }[p.feed.stanje] || '#64748b') + '">' +
+            ({ potrjeno: '✓ potrjeno v feedu (' + f(p.feed.cena) + ')', odstopa: '⚠ feed ' + f(p.feed.cena) + ' ≠ plan ' + f(p.nova), caka: '⏳ čaka nov feed', ni_v_feedu: 'ni v feedu', pusti: '✓ preverjeno — cena ostane' }[p.feed.stanje] || '') + '</div>' : '') + '</td>' +
         '<td class="dim">' + fmtT(p.konec || p.dodano) + '</td><td style="white-space:nowrap">' +
           (['v_delu', 'napaka'].includes(p.status) ? '<button class="btn" style="background:#16a34a;color:#fff;border-color:#16a34a" title="Ceno sem v CMS shranil(a) ročno — označi kot urejeno" onclick="if(confirm(\'Si ' + esc(p.sku) + ' v CMS res shranil(a) ročno na ' + f(p.nova) + '?\'))vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'rocno\'})">✓ Shranjeno ročno</button> ' : '') +
           (['caka', 'napaka', 'v_delu'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'preklici\'})">✕ Prekliči</button> ' : '') +
           (['napaka', 'preklicano'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'znova\'})">↻ Znova</button> ' : '') +
+          (p.status === 'ok' && p.feed && p.feed.stanje === 'odstopa' ? '<button class="btn" style="background:#2563eb;color:#fff;border-color:#2563eb" title="Cena v trgovini je v redu taka, kot je — odstrani iz »⚠ Odstopa v feedu« (v CMS se nič ne spremeni)" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'pusti\'})">✓ Pusti tako</button> ' : '') +
           (p.status === 'ok' && !p.razveljavljeno ? '<button class="btn" title="Doda obratno spremembo v vrsto (nazaj na prejšnjo ceno)" onclick="if(confirm(\'Vrnem ' + esc(p.sku) + ' na ' + f(p.stara) + '?\'))vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'razveljavi\'})">↩ Razveljavi</button>' : '') +
         '</td></tr>').join('') + '</tbody></table></div>'
       : '<div class="dim" style="padding:20px;text-align:center">Ni postavk.</div>') +
