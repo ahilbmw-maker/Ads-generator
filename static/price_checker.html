@@ -420,10 +420,10 @@
 </div>
 
 <div class="table-wrap" id="tableWrap" style="display:none">
-<div id="quickDeleteBar" style="display:none;align-items:center;gap:10px;padding:8px 14px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;margin:12px 0 6px;font-size:12px">
-  <span id="quickDeleteLabel" style="color:#dc2626;font-weight:600">V tem pogledu je N naročil</span>
-  <button onclick="deleteAllInView()" style="background:#dc2626;border:none;color:#fff;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🗑 Izbriši VSE iz tega pogleda</button>
-  <span style="color:var(--muted);font-size:11px">En klik — počisti cel filter naenkrat</span>
+<!-- 🗑 Izbriši VSE iz tega pogleda: ob zagonu se premakne tik pod vrstico kartic, gumb je poravnan POD aktivno kartico (pcQdPostavi) -->
+<div id="quickDeleteBar" style="display:none;align-items:center;padding:8px 24px 0;font-size:12px">
+  <span id="quickDeleteLabel" style="display:none">V tem pogledu je N naročil</span>
+  <button id="qdBtn" onclick="deleteAllInView()" style="background:#dc2626;border:none;color:#fff;padding:7px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🗑 Izbriši vse (<span id="qdN">0</span>)</button>
 </div>
 
 <div id="bulkBar" style="display:none;align-items:center;gap:10px;padding:8px 14px;background:var(--accent);border-radius:8px;margin:12px 0 6px;color:#fff;font-size:12px;font-weight:500">
@@ -1607,12 +1607,8 @@ function taskFilter(f, card) {
   const multiView = document.getElementById('multiView');
   const filtersBar = document.getElementById('storeFilterBar');
 
-  // vrstica "Izbriši VSE iz tega pogleda" je v tableWrap, ki je pri Združenih skrit → premakni jo nad multiView
-  const _qd = document.getElementById('quickDeleteBar');
-  if (_qd) {
-    if (f === 'multi') { if (_qd.nextElementSibling !== multiView) multiView.parentNode.insertBefore(_qd, multiView); }
-    else if (_qd.parentNode !== tableWrap) tableWrap.insertBefore(_qd, tableWrap.firstChild);
-  }
+  // gumb "Izbriši VSE iz tega pogleda" je pod vrstico kartic (pcQdPostavi) — velja za vse poglede
+  pcQdPostavi();
   if (f === 'multi') {
     tableWrap.style.display = 'none';
     multiView.style.display = 'block';
@@ -1637,6 +1633,33 @@ function taskFilter(f, card) {
   }
   if (typeof _pcFocusIndex !== 'undefined') _pcFocusIndex = -1;
 }
+
+// 🗑 gumb tik pod AKTIVNO kartico (enaka širina) — hiter klik brez premikanja miške levo/desno
+function pcQdPostavi() {
+  const qd = document.getElementById('quickDeleteBar'), tb = document.getElementById('taskBar');
+  if (!qd || !tb) return;
+  if (qd.previousElementSibling !== tb) tb.parentNode.insertBefore(qd, tb.nextSibling);
+  const card = tb.querySelector('.task-card.active') || tb.querySelector('.task-card');
+  const btn = document.getElementById('qdBtn'), lbl = document.getElementById('quickDeleteLabel'), nEl = document.getElementById('qdN');
+  if (lbl && nEl) { const m = (lbl.textContent || '').match(/\d+/); const t = m ? m[0] : '0'; if (nEl.textContent !== t) nEl.textContent = t; }
+  if (btn && lbl && btn.title !== lbl.textContent) btn.title = lbl.textContent + ' — en klik počisti cel pogled';
+  if (!card || !btn || !card.offsetWidth) return;
+  const pl = Math.max(0, card.getBoundingClientRect().left - qd.getBoundingClientRect().left) + 'px', w = card.offsetWidth + 'px';
+  if (qd.style.paddingLeft !== pl) qd.style.paddingLeft = pl;
+  if (btn.style.width !== w) btn.style.width = w;
+}
+(function () {
+  const go = () => {
+    const qd = document.getElementById('quickDeleteBar'), tb = document.getElementById('taskBar');
+    if (!qd || !tb) return;
+    pcQdPostavi();
+    let t = null; const tik = () => { clearTimeout(t); t = setTimeout(pcQdPostavi, 30); };
+    new MutationObserver(tik).observe(qd, { attributes: true, attributeFilter: ['style'], subtree: true, childList: true, characterData: true });
+    new MutationObserver(tik).observe(tb, { attributes: true, attributeFilter: ['class', 'style'], subtree: true });
+    window.addEventListener('resize', tik);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+})();
 
 function updateQuickDeleteLabel(f) {
   const lbl = document.getElementById('quickDeleteLabel');
