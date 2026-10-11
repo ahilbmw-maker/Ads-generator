@@ -7409,6 +7409,23 @@ async def generate_kreative(data: dict):
             _ref_raw = (__import__("base64").b64decode(_b64), _mime, f"ref.{_ext}")
         except Exception:
             _ref_raw = None
+    if _ref_raw:
+        # pomanjšaj referenco na največ 1024 px (manj vhodnih žetonov/prenosa; OpenAI jo sicer pomanjša sam)
+        try:
+            from PIL import Image as _PILr
+            import io as _ior
+            with _PILr.open(_ior.BytesIO(_ref_raw[0])) as _im:
+                if max(_im.size) > 1024:
+                    _im.thumbnail((1024, 1024))
+                    _buf = _ior.BytesIO()
+                    if _im.mode in ("RGBA", "LA", "P"):
+                        _im.save(_buf, format="PNG", optimize=True)
+                        _ref_raw = (_buf.getvalue(), "image/png", "ref.png")
+                    else:
+                        _im.convert("RGB").save(_buf, format="JPEG", quality=92)
+                        _ref_raw = (_buf.getvalue(), "image/jpeg", "ref.jpg")
+        except Exception as _e:
+            print(f"[kreative] pomanjšanje reference ni uspelo: {_e}")
 
     async def generate_one_gemini(combo_prompt, model_key):
         model_id = "gemini-3-pro-image" if model_key == "pro" else "gemini-3.1-flash-image-preview"
