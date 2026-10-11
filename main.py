@@ -13629,6 +13629,10 @@ function planNastavi(k, v) {
   PLAN = planIzracun(); planIzberiOk(); planRisi();
 }
 function planKljukica(g, on) { on ? PLAN.izbrani.add(g) : PLAN.izbrani.delete(g); planRisi(); }
+function planKopiraj(el, t) {   // klik na SKU v planu = kopiraj (vrstica se ne (od)označi)
+  try { navigator.clipboard.writeText(t); } catch (e) { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); }
+  const o = el.textContent; el.textContent = '✓ kopirano'; setTimeout(() => { el.textContent = o; }, 900);
+}
 // klik kjerkoli v vrstici = (od)označi; Shift + klik = razpon od zadnjega klika
 let PLAN_ZADNJI = -1;
 function planVrstaKlik(e, tr, izCb) {
@@ -13655,7 +13659,8 @@ function planRisi() {
   const vrst = vid.map(p => {
     const on = P2.izbrani.has(p.x.g_id);
     return '<tr' + (p.ok ? '' : ' class="plan-flag"') + ' data-pi="' + vid.indexOf(p) + '" onclick="planVrstaKlik(event,this)" style="cursor:pointer"><td><input type="checkbox" ' + (on ? 'checked' : '') + ' onclick="event.stopPropagation();planVrstaKlik(event,this.closest(\'tr\'),true)"></td>' +
-      '<td><b style="font-family:ui-monospace,monospace">' + esc(p.sku) + '</b><div class="dim" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.x.naziv || '') + '</div></td>' +
+      '<td><b style="font-family:ui-monospace,monospace;cursor:copy;border-bottom:1px dashed var(--bd)" title="Klik = kopiraj SKU" onclick="event.stopPropagation();planKopiraj(this,\'' + esc(p.sku) + '\')">' + esc(p.sku) + '</b>' +
+        '<div class="dim" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (p.x.url ? '<a href="' + esc(p.x.url) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Odpri v trgovini ' + esc(String(trg).toUpperCase()) + '" style="color:inherit;text-decoration:underline dotted">' + esc(p.x.naziv || '') + ' ↗</a>' : esc(p.x.naziv || '')) + '</div></td>' +
       '<td class="r">' + fmtC(p.c, p.cur) + '</td><td class="r" style="font-weight:800;font-size:15px">' + fmtC(p.pred, p.cur) + ' <span class="dim">' + esc(p.cur) + '</span></td>' +
       '<td class="r ' + (p.diff > 0 ? 'up' : 'dn') + '">' + (p.diff > 0 ? '+' : '') + fmtC(p.diff, p.cur) + '<div class="dim">' + (p.pct > 0 ? '+' : '') + p.pct.toFixed(1).replace('.', ',') + ' %</div></td>' +
       '<td class="r">' + mc(p.mZdaj) + ' → ' + mc(p.mPo) + '</td><td class="r">' + f2n(p.rZdaj) + ' → <b>' + f2n(p.rPo) + '</b> €</td>' +
