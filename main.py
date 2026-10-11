@@ -11004,6 +11004,9 @@ EVERY prompt MUST:
    CRITICAL PRODUCT LOCK: Use the EXACT product shown in the reference images and NOTHING ELSE. Reproduce it precisely, visually IDENTICAL in EVERY scene, never morphing.
    NO TEXT. NO WORDS. NO LETTERS. NO LOGO. NO BRAND NAME. NO CAPTIONS. NO NUMBERS. ICONS ONLY.
    All people fully clothed. Realistic, believable results only.
+   PRODUCT VISIBILITY: the product stays fully visible and in sharp focus, never hidden by hands or cropped out; the camera holds on it clearly while it is used.
+   NO extra parts, NO additional buttons, NO different colour, NO second product, NO packaging unless shown in the reference images.
+   SCALE: [PRODUCT_SIZE] — keep this real-world size relative to hands and body in every scene.
    + category-specific safety constraints on the next line(s) (e.g. NO MEDICAL CLAIMS for health/beauty/body products;
      no open fire for lanterns/candles; Do NOT exaggerate performance for tools/optics; NO GUARANTEED PROTECTION CLAIMS for repellents/safety; no children using sharp/hot items).
 3) Then a STYLE line and Scene 1–5 exactly as below (one action per short line, hook in the very first second, clear payoff).
@@ -11013,19 +11016,19 @@ EVERY prompt MUST:
 English only. No prices. No CTA words. No voiceover. Absolutely no on-screen text anywhere.
 
 PROMPT 1 — WINNER (UGC PROBLEM -> PRODUCT -> RELIEF)
-STYLE: authentic user-generated-content look — filmed like a real smartphone clip, a relatable everyday person, real home/real-world setting, natural light, subtle handheld camera movement, candid (NOT a polished studio ad).
+STYLE: authentic user-generated-content look — ONE CONTINUOUS HANDHELD SMARTPHONE TAKE with no cuts from 0 to 11s (fewer cuts = the product stays identical), a relatable everyday person, real home/real-world setting, natural light, subtle handheld camera movement, candid (NOT a polished studio ad). Only the final hero shot is a separate cut.
 Scene 1 (HOOK 0-2s): open on the exact problem the target customer instantly recognises — a relatable person clearly frustrated, shot close and candid like a phone video; small problem icon pulses.
-Scene 2 (PRODUCT 2-4s): the person grabs/reveals the exact product from the reference images, in-hand, plus one clean beauty beat identical to the reference.
-Scene 3 (ACTION 4-8s): the person uses the exact product naturally and we clearly SEE it working; the benefit is obvious and satisfying.
+Scene 2 (PRODUCT 2-4s): in the same take, the person grabs the exact product from the reference images, in-hand, turning it once so its real shape and colour are clearly visible.
+Scene 3 (ACTION 4-8s): the person performs exactly this action: [USE_ACTION]. We clearly SEE it working; the benefit is obvious and satisfying. One simple physical movement, no assembly or unfolding.
 Scene 4 (PAYOFF 8-11s): the person's face shifts from frustration to genuine relief/delight; positive icon (heart/check/sparkle) appears.
 Scene 5 (HERO 11-12s): clean floating hero shot of the exact product, centred.
 End line: "Ultra realistic. Authentic UGC conversion-focused ad. Natural sound design, no voiceover."
 
 PROMPT 2 — SCROLL STOPPER (EXTREME CLOSE-UP HOOK)
 STYLE: maximum scroll-stopping impact — start on a mesmerising extreme macro, then a satisfying product-in-action payoff; semi-UGC realism, crisp and tactile.
-Scene 1 (HOOK 0-2s): extreme macro close-up of the most eye-catching detail of the exact product, filling the frame, hypnotic.
+Scene 1 (HOOK 0-2s): extreme macro close-up of [MACRO_DETAIL] exactly as it appears in the reference images (a REAL visible detail — do not invent texture), filling the frame, hypnotic.
 Scene 2 (REVEAL 2-5s): smooth pull-back revealing the full exact product, every detail matching the reference.
-Scene 3 (SATISFYING ACTION 5-9s): the single most satisfying use-moment in slow motion / crisp detail (the "oddly satisfying" beat).
+Scene 3 (SATISFYING ACTION 5-9s): [USE_ACTION] — the single most satisfying use-moment in slow motion / crisp detail (the "oddly satisfying" beat), product fully visible.
 Scene 4 (RESULT 9-11s): quick reveal of the clear end result/benefit; sparkle/check icon appears.
 Scene 5 (HERO 11-12s): clean floating hero shot of the exact product, centred.
 End line: "Ultra realistic. Maximum scroll-stopping conversion ad. Punchy natural sound design, no voiceover."
@@ -11043,13 +11046,21 @@ colour, shape, material and the single key feature (e.g. "matt black oval wirele
 massager with a soft grey fabric foot opening"). No marketing words, no claims, just what it
 physically looks like. Use this exact string as [PRODUCT_DESC] in the first line of BOTH prompts.
 
+ALSO build (before writing prompts) and insert into BOTH prompts where marked:
+- PRODUCT_SIZE: real-world size relative to a hand/body (e.g. "palm-sized, fits in one hand", "about the length of a forearm", "knee-high"). Infer from the description; if unknown, choose the most plausible size for this kind of product.
+- USE_ACTION: ONE sentence describing exactly how the product is physically used — which part is held, what is pressed/pulled/placed, what moves and what visible result appears (e.g. "the thumb presses the round top button and the four blades spin inside the clear bowl, chopping the onion into even pieces"). Pick the SIMPLEST use-moment that shows the benefit (no assembly, no unfolding, no multi-step setup).
+- MACRO_DETAIL: the single most eye-catching REAL detail visible on the product (texture, button, mechanism, light, edge).
+- SOUND: the natural sound the product makes in use (click, whir, splash, snap …) — mention it in the action scene.
+
 Return ONLY JSON, no markdown:
-{{"brand": "", "product_desc": "<the physical description>", "prompts": [{{"title": "PROMPT 1 — WINNER (UGC)", "text": "..."}}, {{"title": "PROMPT 2 — SCROLL STOPPER", "text": "..."}}]}}"""
+{{"brand": "", "product_desc": "<the physical description>", "product_size": "...", "use_action": "...", "macro_detail": "...", "prompts": [{{"title": "PROMPT 1 — WINNER (UGC)", "text": "..."}}, {{"title": "PROMPT 2 — SCROLL STOPPER", "text": "..."}}]}}"""
 
 VA_LOCK_BLOK = ("CRITICAL PRODUCT LOCK: Use the EXACT product shown in the reference images and NOTHING ELSE. "
                 "Reproduce it precisely, visually IDENTICAL in EVERY scene, never morphing.")
 VA_NOTEXT_BLOK = "NO TEXT. NO WORDS. NO LETTERS. NO LOGO. NO BRAND NAME. NO CAPTIONS. NO NUMBERS. ICONS ONLY."
 VA_LJUDJE_BLOK = "All people fully clothed. Realistic, believable results only."
+VA_VIDNO_BLOK = ("PRODUCT VISIBILITY: the product stays fully visible and in sharp focus, never hidden by hands or cropped out; the camera holds on it clearly while it is used. "
+                 "NO extra parts, NO additional buttons, NO different colour, NO second product, NO packaging unless shown in the reference images.")
 
 
 def _va_zakleni(text: str, pdesc: str, ugc: bool) -> str:
@@ -11059,7 +11070,7 @@ def _va_zakleni(text: str, pdesc: str, ugc: bool) -> str:
     prva = vrst[0] if vrst else ""
     if "shown in the reference images" not in prva:
         vrst.insert(0, f"Generate a 12-second {'UGC' if ugc else 'scroll-stopping'} ad for the exact {pdesc or 'product'} shown in the reference images.")
-    bloki = [b for b in (VA_LOCK_BLOK, VA_NOTEXT_BLOK, VA_LJUDJE_BLOK) if b.split(":")[0].split(".")[0] not in t]
+    bloki = [b for b in (VA_LOCK_BLOK, VA_NOTEXT_BLOK, VA_LJUDJE_BLOK, VA_VIDNO_BLOK) if b.split(":")[0].split(".")[0] not in t]
     if bloki:
         vrst[1:1] = bloki
     return "\n".join(vrst)
@@ -11111,6 +11122,10 @@ def _va_build_brief(job: dict) -> str:
     pdesc = (job.get("product_desc") or "").strip()
     if pdesc:
         lines += ["OPIS IZDELKA (za vstavljanje v prompte):", pdesc, ""]
+    if job.get("product_size"):
+        lines += ["VELIKOST: " + str(job["product_size"])]
+    if job.get("use_action"):
+        lines += ["UPORABA (prizor akcije): " + str(job["use_action"]), ""]
     # SPREMEMBA 1 (2.5): uporabi VSE slike kot image_references (omni_reference ne rabi start_image)
     refs = job.get("ref_images") or []
     if len(refs) > 1:
@@ -11133,6 +11148,42 @@ def _va_build_brief(job: dict) -> str:
     return "\n".join(lines)
 
 
+VA_REF_MAX = 5   # po izboru: največ 5 čistih slik (packshot + koti + uporaba) — manj, a boljših
+
+
+async def _va_izberi_slike(urls: list) -> list:
+    """Claude vision izbere do VA_REF_MAX referenčnih slik: 1. = čist packshot (enotno ozadje, sam izdelek, brez besedila),
+    nato 1–2 druga kota in 1 slika uporabe (kako ga drži roka). IZLOČI infografike, besedilo, puščice, mere, kolaže,
+    več izdelkov, samo embalažo — besedilo v referencah uhaja v video. Ob napaki: prve 4 v izvirnem vrstnem redu."""
+    urls = [str(u).replace(" ", "%20") for u in (urls or []) if u]
+    if len(urls) <= 2:
+        return urls
+    vsebina = [{"type": "text", "text": (
+        "These are product gallery images for an e-commerce product. Select reference images for an AI VIDEO model that must "
+        "reproduce this exact product. Rules: (1) index 0 of your answer = the cleanest packshot: product alone, plain/white or simple "
+        "background, whole product visible, NO text. (2) then up to 2 images showing other angles of the same product, NO text. "
+        "(3) then at most 1 photo of the product in real use (in hand / on body / in place) if available, NO overlaid text. "
+        "EXCLUDE any image with text, letters, numbers, arrows, measurements, badges, infographics, collages/split screens, "
+        f"multiple different products, or packaging only. Maximum {VA_REF_MAX} images. "
+        'Return ONLY JSON: {"izbrane": [indices in order], "izlocene": {"index": "reason"}}')}]
+    for i, u in enumerate(urls):
+        vsebina += [{"type": "text", "text": f"Image {i}:"}, {"type": "image", "source": {"type": "url", "url": u}}]
+    try:
+        loop = asyncio.get_event_loop()
+        msg = await loop.run_in_executor(None, lambda: client.messages.create(
+            model="claude-sonnet-4-6", max_tokens=3000, messages=[{"role": "user", "content": vsebina}]))
+        raw = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
+        m = re.search(r"\{.*\}", raw, re.S)
+        izb = [int(x) for x in (json.loads(m.group(0)).get("izbrane") or [])] if m else []
+        izb = [i for i in dict.fromkeys(izb) if 0 <= i < len(urls)][:VA_REF_MAX]
+        if izb:
+            print(f"[va] slike: izbranih {len(izb)} / {len(urls)}")
+            return [urls[i] for i in izb]
+    except Exception as e:
+        print(f"[va] izbor slik ni uspel ({str(e)[:160]}) — uporabim prve 4")
+    return urls[:4]
+
+
 async def _va_process_one(job: dict):
     jid = job["id"]
     try:
@@ -11143,6 +11194,8 @@ async def _va_process_one(job: dict):
             imgs = await fetch_product_images({"url": job["url"]})
             refs = (imgs.get("images") or [])[:VA_REF_IMAGES]
 
+        await _va_set(jid, step="izbor slik")
+        refs = await _va_izberi_slike(refs)   # čist packshot najprej, brez slik z besedilom (uhaja v video)
         await _va_set(jid, step="prompti", ref_images=refs)
         desc = _va_feed_desc(job["url"])
         raw = await call_claude(
@@ -11163,6 +11216,7 @@ async def _va_process_one(job: dict):
             p_["text"] = _va_zakleni(p_.get("text") or "", pd_, ugc=(k == 0))
         await _va_set(jid, status="done", step="", brand=parsed.get("brand") or "",
                       product_desc=parsed.get("product_desc") or "",
+                      product_size=parsed.get("product_size") or "", use_action=parsed.get("use_action") or "",
                       prompts=prompts, finished=datetime.now(timezone.utc).isoformat())
         # brief zgradi in shrani (za gumb Kopiraj)
         jobs = _va_load()
