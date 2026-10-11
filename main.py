@@ -13186,7 +13186,7 @@ async def marza_trgi_stran(request: Request):
       <button type="button" id="rClr" onclick="rOd.value='';rDo.value='';razCustom()" title="Počisti razpon" style="display:none;border:0;background:none;cursor:pointer;color:var(--txt3);font-size:15px;padding:0 2px">×</button>
     </span></label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
-  <select id="sigF" onchange="render()" title="📊 Filtriraj po signalu cene iz prodaje" style="padding:5px 8px;border:1px solid var(--bd);border-radius:7px;font-family:inherit;font-size:13.5px;font-weight:600"><option value="">📊 vsi signali</option><option value="gor">🟢 dvig</option><option value="dol">🔴 spust</option><option value="mrtva">⚠ mrtva zaloga</option><option value="drzi">⏸ drži</option><option value="sez">🎄☀️ sezona</option></select>
+  <select id="sigF" onchange="render()" title="📊 Filtriraj po signalu cene iz prodaje" style="padding:5px 8px;border:1px solid var(--bd);border-radius:7px;font-family:inherit;font-size:13.5px;font-weight:600"><option value="">📊 vsi signali</option><option value="gor">🟢 dvig</option><option value="dol">🔴 spust</option><option value="volumen">📈 samo z volumnom (≥ 30 / 30 dni)</option><option value="malo">💤 brez volumna</option><option value="drzi">⏸ drži</option><option value="sez">🎄☀️ sezona</option></select>
   <button class="chip" id="obrBtn" onclick="obratOsvezi()" title="Ponovno prebere prodajo iz Siluxarja (sicer vsak dan ob 6:40)">↻ Obrat</button>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s ✓ (popravljeno) ali potrjene v novem feedu. Samo odprti v CMS (✎) in opozorila ostanejo vidni."><input type="checkbox" id="skrijUr" onchange="savePref();render()"> Skrij urejene</label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s 🚫 (ne uvažamo na ta trg — npr. carina v RS). Izključeni so tudi iz Bato cen."><input type="checkbox" id="skrijNu" checked onchange="savePref();render()"> Skrij neuvozne <span id="nuCnt" class="dim"></span></label>
@@ -13273,7 +13273,7 @@ async function load(){
 }
 // ═══ 📊 SIGNAL CENE IZ OBRATA (faza 2) — samo prikaz, cen ne spreminja ═══
 // dnevi zaloge = zaloga / (½ Ø7 + ½ Ø28) · < OBR_NIZKO dni → dvig · > OBR_VISOKO → spust (razen razlika < 7 €) · trend 28 dni · sezona ročno
-let OBR = null; const OBR_NIZKO = 21, OBR_VISOKO = 90, OBR_PAD = -15, OBR_MIN30 = 10, OBR_MRTVA = 30;
+let OBR = null; const OBR_NIZKO = 21, OBR_VISOKO = 90, OBR_PAD = -15, OBR_MIN30 = 30;   // signal samo za izdelke z volumnom (≥ 30 prodanih / 30 dni ≈ 1 na dan)
 async function obratNalozi(){ try{ const d=await (await fetch('/obrat-podatki',{cache:'no-store'})).json(); if(d.ok) OBR=d; }catch(e){} obratZdruzi(); }
 function obratZdruzi(){
   if(!D||!D.rows) return;
@@ -13288,8 +13288,8 @@ function obratZdruzi(){
       const opis=(poti?'🚚 na poti '+poti+' kos (HS+) · ':'')+'Ø '+String(o.d7).replace('.',',')+'/dan (7 d) · '+String(o.d28).replace('.',',')+'/dan (28 d) · trend '+(tr==null?'—':(tr>0?'+':'')+tr+' %')+' · zaloga '+zal+' → '+(dos==null?'∞':dos+' dni')+(o.brez?' · '+o.brez+' dni brez prodaje':'')+(raz!=null?' · razlika '+raz.toFixed(2).replace('.',',')+' €':'');
       const predSez=(sz==='zima'&&mes>=9)||(sz==='zima'&&mes<=1)||(sz==='poletje'&&mes>=3&&mes<=7);
       if(predSez) sig={k:'sez',t:sz==='zima'?'🎄 sezona':'☀️ sezona',c:'#2563eb',r:5,o:'Pred / med sezono ('+sz+') — ne spuščaj; oceni po vrhu. '+opis};
-      else if(o.brez>=OBR_MRTVA) sig={k:'mrtva',t:'⚠ mrtva',c:'#b45309',r:3,o:o.brez+' dni brez prodaje'+(o.s60?'':' (v 60 dneh nič — nov izdelek ali brez oglasa?)')+', zaloga '+zal+' — postopno znižuj (ali Xsell / bundle). '+opis};
-      else if((o.s30||0)<OBR_MIN30) sig={k:'drzi',t:'⏸ malo prodaje',c:'#94a3b8',r:6,o:'Premalo prodaje za zanesljiv signal ('+(o.s30||0)+' v 30 dneh < '+OBR_MIN30+'). '+opis};
+      // brez volumna (ni v oglasih / se ne prodaja): cena ne pomaga — Bato je urejen; signal začne veljati, ko dobi obrat
+      else if((o.s30||0)<OBR_MIN30) sig={k:'malo',t:'💤 brez volumna',c:'#94a3b8',r:7,o:(o.s30||0)+' prodanih v 30 dneh (< '+OBR_MIN30+') — sprememba cene brez oglasa ne pomaga; signal velja, ko izdelek dobi obrat. '+opis};
       else if(dos!=null&&dos<OBR_NIZKO) sig={k:'gor',t:'🟢 dvig',c:'#15803d',r:1,o:'Zaloge za '+dos+' dni (< '+OBR_NIZKO+') — dvig zaščiti zalogo in poveča razliko. '+opis};
       else if(dos==null||dos>OBR_VISOKO){
         if(raz!=null&&raz<7) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Preveč zaloge, a razlika < 7 € — ne spuščaj; Xsell / bundle / oglas. '+opis};
@@ -13348,7 +13348,8 @@ function filtered(){
     if(skritNeuvoz(x)) return false;
     if(!razMatch(x.marza_eur)) return false;
     const sf=document.getElementById('sigF')&&document.getElementById('sigF').value;
-    if(sf && (x.sig||{}).k!==sf) return false;
+    if(sf==='volumen'){ if(!x.sig||x.sig.k==='malo') return false; }
+    else if(sf && (x.sig||{}).k!==sf) return false;
     const m=x.marza_pct;
     if(flt==='nonc') return m==null;
     if(flt==='ugib') return (x.nacin||'').startsWith('slika');
@@ -13799,7 +13800,7 @@ function planIzracun() {
     if (N.smer === 'obrat') {
       const sg = x.sig;
       if (!sg) return ze('📊 ni signala (ni podatkov o prodaji ali zaloge)');
-      if (sg.k === 'drzi' || sg.k === 'sez') return ze('📊 ' + sg.t);
+      if (sg.k === 'drzi' || sg.k === 'sez' || sg.k === 'malo') return ze('📊 ' + sg.t);
       const zz = ZADNJA[trg + '|' + x.cms_id] || ZADNJA['*|' + x.cms_id] || {}, zad = zz.at;
       if (zad && N.premor > 0) { const dni = Math.floor((Date.now() - new Date(zad)) / 864e5); if (dni < N.premor) return ze('⏳ premor obrata (spremenjeno pred ' + dni + ' dnevi, počakaj ' + (N.premor - dni) + ')'); }
       const L = PLAN_LUC && PLAN_LUC.luc;
