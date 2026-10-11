@@ -1086,7 +1086,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-11 16:54</div>
+      <div class="sidebar-logo-sub">build 2026-10-11 18:08</div>
     </div>
   </div>
 
@@ -2021,12 +2021,12 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div><!-- /kr-panel-gemini -->
 
     <!-- Tab: Higgsfield -->
-    <!-- 🎥 VIDEO ADS: priprava briefov (7 Seedance promptov/SKU) za izvedbo prek Claude+Higgsfield MCP -->
+    <!-- 🎥 VIDEO ADS: priprava briefov (v2: 2 Seedance prompta/SKU — WINNER UGC + SCROLL STOPPER) za izvedbo prek Claude+Higgsfield MCP -->
     <div id="kr-panel-videoads" style="display:none;padding:14px">
       <div class="card" style="padding:14px;margin-bottom:14px;max-width:760px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <span class="slabel" style="margin:0">🎥 VIDEO ADS — PRIPRAVA BRIEFOV</span>
-          <span style="font-size:11px;color:var(--text-tertiary)">SKU → 7 Seedance promptov + reference · izvedba v Claude chatu (tvoji Higgsfield kovanci)</span>
+          <span style="font-size:11px;color:var(--text-tertiary)">SKU → 2 Seedance prompta (WINNER UGC + SCROLL STOPPER) + vse reference · izvedba v Claude chatu (tvoji Higgsfield kovanci)</span>
         </div>
         <textarea id="vaSkus" rows="3" placeholder="SKU ali URL na vrstico, npr.&#10;AIRCOLIO&#10;https://www.maaarket.si/izdelek/..." style="width:100%;padding:9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:12px;font-family:'DM Mono',monospace;box-sizing:border-box;resize:vertical"></textarea>
         <div style="display:flex;gap:8px;margin-top:8px">
@@ -7969,7 +7969,7 @@ async function kQueueLoad() {
   kQueueProcess();
 }
 
-// ── 🎥 VIDEO ADS: briefi (SKU → 7 Seedance promptov; izvedba v Claude chatu) ──
+// ── 🎥 VIDEO ADS: briefi (v2: SKU → 2 Seedance prompta UGC; izvedba v Claude chatu) ──
 let _vaInited = false;
 let _vaPollTimer = null;
 let _vaJobs = [];
@@ -8143,8 +8143,8 @@ function vaTogglePrompts(btn) {
 const VA_INSTR = [
   'NAVODILA ZA CLAUDE (izvedba prek Higgsfield MCP):',
   '1. Uporabi Higgsfield connector (je že povezan na moj račun).',
-  '2. Za vsak brief spodaj: referenčno (naslovno) sliko uvozi z media_import_url in jo uporabi kot image_references.',
-  '3. Vsak PROMPT (5 na izdelek) generiraj z generate_video: model seedance_2_0, aspect_ratio 1:1 (univerzalen FB placement), duration 12, resolution 720p, count 1.',
+  '2. Za vsak brief spodaj: VSE referenčne slike uvozi z media_import_url in jih uporabi kot image_references (prva = primarna).',
+  '3. Vsak PROMPT (2 na izdelek: WINNER UGC + SCROLL STOPPER) generiraj z generate_video: model seedance_2_5, mode omni_reference, aspect_ratio 1:1, duration 12, resolution 720p, generate_audio true, count 1.',
   '4. PRED prvim generiranjem preveri ceno z get_cost in mi pokaži skupno oceno kreditov — počakaj na mojo potrditev.',
   '5. Generiraj ZAPOREDNO (1 po 1). Če kateri prompt pade, nadaljuj z naslednjim in na koncu povzemi.',
   '6. Vsak končan video mi pokaži v chatu.',
@@ -8162,7 +8162,7 @@ function vaCopyBrief(btn, jid) {
 function vaCopyAll() {
   const done = _vaJobs.filter(j => j.status === 'done' && j.brief);
   if (!done.length) return;
-  const all = VA_INSTR + '\nBriefov: ' + done.length + ' (vsak = 1 izdelek = 7 promptov = 7 videov)\n\n'
+  const all = VA_INSTR + '\nBriefov: ' + done.length + ' (vsak = 1 izdelek = 2 prompta = 2 videa)\n\n'
     + done.map(j => j.brief).join('\n\n');
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(all);
 }

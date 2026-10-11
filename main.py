@@ -10987,73 +10987,50 @@ async def kreative_batch_clear(data: dict):
 # brief za copy-paste v Claude chat (izvedba prek Higgsfield MCP na osebnem računu).
 VIDEO_ADS_FILE = DATA_DIR / "video_ads_jobs.json"
 _va_lock = asyncio.Lock()
-VA_REF_IMAGES = 4   # do 4 slike za identiteto izdelka (Sprememba 1). Opozorilo: galerija ima lahko infografike s tekstom — prednostno izberi packshote s čistim ozadjem
+VA_REF_IMAGES = 12   # v2: VSE razpoložljive slike (do 12) kot image_references — prva je primarna
 VA_PAUSE_S = 5
 
-VA_PROMPT_TEMPLATE = """You write Seedance 2.5 video-ad prompts for Facebook e-commerce ads.
-Write 7 prompts for the product below, EXACTLY in this structure and style (this is a proven template).
+VA_PROMPT_TEMPLATE = """You write Seedance 2.5 video-ad prompts for Facebook / TikTok e-commerce ads (v2: UGC direct-response).
+Polished studio-style ads sell poorly. Write EXACTLY 2 prompts that look like authentic, relatable, CONVERTING
+direct-response content: PROMPT 1 = WINNER (UGC), PROMPT 2 = SCROLL STOPPER.
 
-TOP PRIORITY — PRODUCT FIDELITY: These ads are for a REAL product that has reference images.
-The single most important thing is that the AI video reproduces the EXACT product from the reference
-images and never invents or substitutes a different one. Every prompt you write must relentlessly
-reinforce this: the product on screen = the product in the reference image, identical in every scene.
-Write each prompt so a video model that tends to drift is forced to stay locked to the reference.
+TOP PRIORITY — PRODUCT FIDELITY: a REAL product with reference images. The video must reproduce the EXACT product
+from the reference images and never invent or substitute a different one — identical in every scene, never morphing.
 
-- Each prompt starts EXACTLY like: "Generate a 12-second [viral/premium/ultra-viral] Facebook ad for the exact [PRODUCT_DESC] shown in the reference images."
-  where [PRODUCT_DESC] is the concrete physical description you build in PRODUCT_DESC below.
-  NEVER use a bare generic category name (e.g. "a foot massager"); ALWAYS "the exact ... shown in the reference images".
-- Then an IMPORTANT block with these ABSOLUTE rules (every prompt must contain them, in this order):
-  CRITICAL PRODUCT LOCK: Use the EXACT product shown in the reference images and NOTHING ELSE. Do NOT invent, imagine, redesign, restyle, or substitute a different product. This is a real physical product — reproduce it precisely: same shape, same colour, same material, same size, same proportions, same every detail, in EVERY single scene from the first frame to the last. The product must be visually IDENTICAL to the reference image in every shot. If a scene shows the product, it must be THIS product, not a similar or generic one. Never let the product morph, change design, or drift between scenes.
-  NO TEXT. NO WORDS. NO LETTERS. NO LOGO. NO BRAND NAME. NO CAPTIONS. NO NUMBERS.
-  ICONS ONLY (simple visual pictograms, no letters inside them).
-  Plus category-appropriate safety constraints (e.g. NO MEDICAL CLAIMS for health-adjacent products,
-  "Do NOT exaggerate performance" for optics/tools, NO GUARANTEED PROTECTION CLAIMS for repellents, etc.)
-- Then Scene 1 through Scene 5, short cinematic lines (one action per line), following these 7 angles:
-  PROMPT 1 — problem→freeze→product crashes into frame→relief (title it "(WINNER)")
-  PROMPT 2 — practical everyday/second angle
-  PROMPT 3 — extreme close-up hook, maximum scroll-stopping ("SCROLL STOPPER (BEST CTR)")
-  PROMPT 4 — lifestyle montage angle
-  PROMPT 5 — ultra-premium cinematic angle
-  PROMPT 6 — before/after transformation angle
-  PROMPT 7 — dynamic fast-cut energy / satisfying-loop angle
-- Scene 5 always ends with "Floating premium hero shot of the product." + "Display only visual icons (no text):" + 4-5 relevant icon names
-- End tags like: Ultra realistic. Premium [category] commercial. Facebook winner style. / Facebook feed optimized. / Maximum premium aesthetic.
-- English only. No prices. No CTA words. Absolutely no on-screen text anywhere.
+EVERY prompt MUST:
+1) Start EXACTLY with: "Generate a 12-second [UGC / scroll-stopping] ad for the exact [PRODUCT_DESC] shown in the reference images."
+   NEVER a bare generic category name — ALWAYS "the exact ... shown in the reference images".
+2) Then this FIXED block, verbatim, in this order:
+   CRITICAL PRODUCT LOCK: Use the EXACT product shown in the reference images and NOTHING ELSE. Reproduce it precisely, visually IDENTICAL in EVERY scene, never morphing.
+   NO TEXT. NO WORDS. NO LETTERS. NO LOGO. NO BRAND NAME. NO CAPTIONS. NO NUMBERS. ICONS ONLY.
+   All people fully clothed. Realistic, believable results only.
+   + category-specific safety constraints on the next line(s) (e.g. NO MEDICAL CLAIMS for health/beauty/body products;
+     no open fire for lanterns/candles; Do NOT exaggerate performance for tools/optics; NO GUARANTEED PROTECTION CLAIMS for repellents/safety; no children using sharp/hot items).
+3) Then a STYLE line and Scene 1–5 exactly as below (one action per short line, hook in the very first second, clear payoff).
+4) End with: "Display only visual icons (no text):" + 4–5 icons, one per line, then the end line given below.
+   Icons: one PROBLEM icon (snowflake / flame / dirt / pain …), one BENEFIT icon (warmth / clean / light / comfort …),
+   one PRODUCT-CATEGORY icon, plus sparkle / heart / checkmark. Never letters or words inside icons.
+English only. No prices. No CTA words. No voiceover. Absolutely no on-screen text anywhere.
 
-Example of the exact voice and formatting (different product — note: NO logo, NO brand text):
----
-Generate a 12-second viral Facebook ad for a windshield sunshade.
-IMPORTANT:
-NO TEXT. NO WORDS. NO LETTERS. NO LOGO. NO BRAND NAME. NO NUMBERS.
-ICONS ONLY.
-Focus on SUMMER. Focus on reducing heat buildup inside a parked car. NO WINTER. NO ICE. NO SNOW.
-Scene 1:
-Car parked under intense summer sun.
-Heat waves rise from the hood.
-Person opens the driver's door.
-A wave of hot air escapes.
-Sun icon appears.
-Scene 2:
-Everything freezes.
-The windshield sunshade flies into frame.
-Premium cinematic product reveal.
-Scene 3:
-Sunshade unfolds instantly across the windshield.
-Perfect fit.
-Scene 4:
-Person returns. Interior looks noticeably cooler.
-Snowflake icon appears.
-Scene 5:
-Floating premium hero shot of the product.
-Display only visual icons (no text):
-sun icon
-snowflake icon
-car icon
-sparkle icon
-Ultra realistic.
-Premium automotive summer commercial.
-Facebook winner style.
----
+PROMPT 1 — WINNER (UGC PROBLEM -> PRODUCT -> RELIEF)
+STYLE: authentic user-generated-content look — filmed like a real smartphone clip, a relatable everyday person, real home/real-world setting, natural light, subtle handheld camera movement, candid (NOT a polished studio ad).
+Scene 1 (HOOK 0-2s): open on the exact problem the target customer instantly recognises — a relatable person clearly frustrated, shot close and candid like a phone video; small problem icon pulses.
+Scene 2 (PRODUCT 2-4s): the person grabs/reveals the exact product from the reference images, in-hand, plus one clean beauty beat identical to the reference.
+Scene 3 (ACTION 4-8s): the person uses the exact product naturally and we clearly SEE it working; the benefit is obvious and satisfying.
+Scene 4 (PAYOFF 8-11s): the person's face shifts from frustration to genuine relief/delight; positive icon (heart/check/sparkle) appears.
+Scene 5 (HERO 11-12s): clean floating hero shot of the exact product, centred.
+End line: "Ultra realistic. Authentic UGC conversion-focused ad. Natural sound design, no voiceover."
+
+PROMPT 2 — SCROLL STOPPER (EXTREME CLOSE-UP HOOK)
+STYLE: maximum scroll-stopping impact — start on a mesmerising extreme macro, then a satisfying product-in-action payoff; semi-UGC realism, crisp and tactile.
+Scene 1 (HOOK 0-2s): extreme macro close-up of the most eye-catching detail of the exact product, filling the frame, hypnotic.
+Scene 2 (REVEAL 2-5s): smooth pull-back revealing the full exact product, every detail matching the reference.
+Scene 3 (SATISFYING ACTION 5-9s): the single most satisfying use-moment in slow motion / crisp detail (the "oddly satisfying" beat).
+Scene 4 (RESULT 9-11s): quick reveal of the clear end result/benefit; sparkle/check icon appears.
+Scene 5 (HERO 11-12s): clean floating hero shot of the exact product, centred.
+End line: "Ultra realistic. Maximum scroll-stopping conversion ad. Punchy natural sound design, no voiceover."
+
+Make the scenes CONCRETE for this product (the real problem it solves, the real use-moment, the real result) — keep the structure, timing and fixed blocks.
 
 PRODUCT:
 Name: {name}
@@ -11064,10 +11041,28 @@ PRODUCT_DESC (build this FIRST, before writing prompts):
 From the name + description, write ONE concise PHYSICAL description of the product in English —
 colour, shape, material and the single key feature (e.g. "matt black oval wireless heated foot
 massager with a soft grey fabric foot opening"). No marketing words, no claims, just what it
-physically looks like. Use this exact string as [PRODUCT_DESC] in the first line of EVERY prompt.
+physically looks like. Use this exact string as [PRODUCT_DESC] in the first line of BOTH prompts.
 
 Return ONLY JSON, no markdown:
-{{"brand": "", "product_desc": "<the physical description>", "prompts": [{{"title": "PROMPT 1 — ... (WINNER)", "text": "..."}}, ... 7 items ...]}}"""
+{{"brand": "", "product_desc": "<the physical description>", "prompts": [{{"title": "PROMPT 1 — WINNER (UGC)", "text": "..."}}, {{"title": "PROMPT 2 — SCROLL STOPPER", "text": "..."}}]}}"""
+
+VA_LOCK_BLOK = ("CRITICAL PRODUCT LOCK: Use the EXACT product shown in the reference images and NOTHING ELSE. "
+                "Reproduce it precisely, visually IDENTICAL in EVERY scene, never morphing.")
+VA_NOTEXT_BLOK = "NO TEXT. NO WORDS. NO LETTERS. NO LOGO. NO BRAND NAME. NO CAPTIONS. NO NUMBERS. ICONS ONLY."
+VA_LJUDJE_BLOK = "All people fully clothed. Realistic, believable results only."
+
+
+def _va_zakleni(text: str, pdesc: str, ugc: bool) -> str:
+    """Varovalka v2: vsak prompt MORA imeti »the exact … shown in the reference images« v 1. vrstici ter fiksne bloke."""
+    t = (text or "").strip()
+    vrst = t.split("\n")
+    prva = vrst[0] if vrst else ""
+    if "shown in the reference images" not in prva:
+        vrst.insert(0, f"Generate a 12-second {'UGC' if ugc else 'scroll-stopping'} ad for the exact {pdesc or 'product'} shown in the reference images.")
+    bloki = [b for b in (VA_LOCK_BLOK, VA_NOTEXT_BLOK, VA_LJUDJE_BLOK) if b.split(":")[0].split(".")[0] not in t]
+    if bloki:
+        vrst[1:1] = bloki
+    return "\n".join(vrst)
 
 
 def _va_load() -> list:
@@ -11121,11 +11116,11 @@ def _va_build_brief(job: dict) -> str:
     if len(refs) > 1:
         lines.append("Referenčne slike (uvozi VSE kot role image_references):")
         for i, u in enumerate(refs):
-            lines.append(f"- {u}" + ("   <- primarna" if i == 0 else ""))
+            lines.append(f"- {str(u).replace(' ', '%20')}" + ("   <- primarna" if i == 0 else ""))
     else:
-        lines.append("Referenčna slika (uvozi kot image_references):")
+        lines.append("Referenčna slika (uvozi kot image_references, primarna):")
         for u in refs:
-            lines.append(f"- {u}")
+            lines.append(f"- {str(u).replace(' ', '%20')}")
     # SPREMEMBA 5: fiksni, popolni tehnični parametri
     _ar = "9:16" if str(job.get("aspect") or "").strip() in ("9:16", "reels", "tiktok") else "1:1"
     lines += ["",
@@ -11159,9 +11154,13 @@ async def _va_process_one(job: dict):
             if txt.lower().startswith("json"):
                 txt = txt[4:]
         parsed = json.loads(txt)
-        prompts = parsed.get("prompts") or []
-        if len(prompts) < 7:
-            raise RuntimeError(f"Claude vrnil samo {len(prompts)} promptov (pričakovano 7)")
+        prompts = (parsed.get("prompts") or [])[:2]   # v2: NATANKO 2 (WINNER UGC + SCROLL STOPPER)
+        if len(prompts) < 2:
+            raise RuntimeError(f"Claude vrnil samo {len(prompts)} promptov (pričakovano 2)")
+        pd_ = (parsed.get("product_desc") or "").strip()
+        for k, p_ in enumerate(prompts):
+            p_["title"] = p_.get("title") or ("PROMPT 1 — WINNER (UGC)" if k == 0 else "PROMPT 2 — SCROLL STOPPER")
+            p_["text"] = _va_zakleni(p_.get("text") or "", pd_, ugc=(k == 0))
         await _va_set(jid, status="done", step="", brand=parsed.get("brand") or "",
                       product_desc=parsed.get("product_desc") or "",
                       prompts=prompts, finished=datetime.now(timezone.utc).isoformat())
