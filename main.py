@@ -2363,6 +2363,7 @@ async def startup_event():
     asyncio.create_task(_forecast2_scheduler_loop())
     asyncio.create_task(_zaloga_scheduler_loop())
     asyncio.create_task(_domov_predizracun_loop())   # Domov + Marža po trgih vnaprej izračunani
+    asyncio.create_task(_obrat_loop())   # 📊 prodaja po dnevih (Siluxar) → signal cene v Marži
     asyncio.create_task(_hsplus_daily_scheduler())
     asyncio.create_task(_hsplus_daily_scheduler())
     asyncio.create_task(_regen_worker_loop())
@@ -10226,6 +10227,134 @@ SELITEV_BATCH_LOG = DATA_DIR / "selitev_batch_log.json"   # log prenosov po sve�
 SILUXAR_DELETE_LOG = DATA_DIR / "siluxar_delete_log.json"   # zadnja brisanja alarmov (debug)
 
 
+# ════════════════════════════════════════════════════════════════════
+#  📊 OBRAT → SIGNAL CENE (faza 1): vsak dan prodaja po dnevih (zadnjih 60 dni) za vse Maaarket SKU-je iz Siluxarja
+#  (/apiproductsales, SKUPNA prodaja vseh trgov — po trgih kasneje, Marko). Kazalniki: Ø 7 / 28 dni, trend 28 dni, dnevi brez prodaje.
+#  Signal (dvig / drži / spust / mrtva / sezona) računa Marža po trgih iz teh kazalnikov + zaloge + razlike €. Cen NE spreminja.
+# ════════════════════════════════════════════════════════════════════
+OBRAT_FILE = DATA_DIR / "obrat_prodaja.json"
+OBRAT_SEZONA_FILE = DATA_DIR / "obrat_sezona.json"   # {SKU: "zima" | "poletje"}
+_obrat_lock = asyncio.Lock()
+
+
+def _obrat_kazalniki(dnevi: list) -> dict:
+    """dnevi = [kosov po dnevih, najstarejši → najnovejši]. Vrne Ø 7 / 28 dni, utežen Ø, trend 28 dni (% spremembe po premici), dni brez prodaje."""
+    v = [float(x or 0) for x in dnevi]
+    if not v:
+        return {}
+    z7, z28 = v[-7:], v[-28:]
+    d7, d28 = sum(z7) / max(1, len(z7)), sum(z28) / max(1, len(z28))
+    n = len(z28); trend = None
+    if n >= 14 and d28 > 0:
+        xs = list(range(n)); mx = sum(xs) / n
+        k = sum((x - mx) * (y - d28) for x, y in zip(xs, z28)) / (sum((x - mx) ** 2 for x in xs) or 1)
+        trend = round(k * (n - 1) / d28 * 100)   # % spremembe od začetka do konca 28 dni (po premici)
+    brez = 0
+    for x in reversed(v):
+        if x > 0:
+            break
+        brez += 1
+    return {"d7": round(d7, 2), "d28": round(d28, 2), "w": round(0.5 * d7 + 0.5 * d28, 2), "trend": trend, "brez": brez,
+            "s60": int(sum(v)), "n": len(v)}
+
+
+async def _obrat_osvezi() -> dict:
+    """Prebere prodajo zadnjih 60 dni za vse Maaarket SKU-je (iz Marže SL: SKU zaloge / feed) in shrani kazalnike."""
+    async with _obrat_lock:
+        try:
+            res = await _marza_trgi_get("sl")
+        except Exception as e:
+            return {"ok": False, "error": f"Marža SL ni na voljo: {e}"}
+        skus = sorted({str(r.get("nc_sku") or r.get("sku") or "").strip().upper() for r in (res or {}).get("rows") or []
+                       if "maaarket" in str(r.get("znamka") or "").lower()} - {""})
+        if not skus:
+            return {"ok": False, "error": "Ni Maaarket SKU-jev."}
+        do = datetime.fromisoformat(_lj_iso()).date() - timedelta(days=1)   # včeraj = zadnji poln dan
+        od = do - timedelta(days=59)
+        dates = [(od + timedelta(days=i)).isoformat() for i in range(60)]
+        key = os.environ.get("SILUXAR_SALES_KEY", "") or "WoodchuckShouldChuckWood"
+        out, nap, surovo = {}, [], {}
+        for i in range(0, len(skus), 150):
+            chunk = skus[i:i + 150]
+            try:
+                r, _ = await _slx_get(_slx("/apiproductsales"), method="POST", timeout=90,
+                                      json={"products": chunk, "date_from": od.isoformat(), "date_to": do.isoformat()},
+                                      headers={"Authorization": key, "Content-Type": "application/json"})
+                data = r.json() if r.status_code == 200 else {}
+                if r.status_code != 200:
+                    nap.append(f"HTTP {r.status_code}")
+            except Exception as e:
+                nap.append(str(e)[:120]); data = {}
+            for sku, vrst in (data or {}).items():
+                surovo[str(sku).upper()] = {str(x.get("date") or "")[:10]: float(x.get("sales") or 0) for x in (vrst or []) if isinstance(x, dict)}
+        # prazen rep (dnevi, za katere Siluxar še nima podatka) odreži — sicer bi bili videti kot dnevi brez prodaje
+        zadnji = max((d for po in surovo.values() for d in po), default="")
+        if zadnji:
+            dates = [d for d in dates if d <= zadnji]
+        for sku, po in surovo.items():
+            out[sku] = _obrat_kazalniki([po.get(d, 0) for d in dates])
+        if not out:
+            return {"ok": False, "error": "Siluxar ni vrnil prodaje: " + "; ".join(nap[:3])}
+        _jsave(OBRAT_FILE, {"at": _lj_iso(), "od": dates[0], "do": dates[-1], "sku": out, "napake": nap[:5]})
+        print(f"[obrat] {len(out)} SKU ({dates[0]} … {dates[-1]})" + (f" · napake: {nap[:2]}" if nap else ""))
+        return {"ok": True, "n": len(out), "od": dates[0], "do": dates[-1], "napake": nap[:5]}
+
+
+async def _obrat_loop():
+    """Vsak dan ob 6:40 (po feedih); ob zagonu, če je zapis starejši od 20 h."""
+    await asyncio.sleep(150)
+    try:
+        at = (_jload(OBRAT_FILE, {}) or {}).get("at") or ""
+        if not at or (datetime.fromisoformat(_lj_iso()) - datetime.fromisoformat(at)).total_seconds() > 20 * 3600:
+            await _obrat_osvezi()
+    except Exception as e:
+        print(f"[obrat] zagon: {e}")
+    while True:
+        try:
+            lj = _lj_now(); t = lj.replace(hour=6, minute=40, second=0, microsecond=0)
+            if lj >= t:
+                t += timedelta(days=1)
+            await asyncio.sleep(max(60, (t - lj).total_seconds()))
+            await _obrat_osvezi()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"[obrat] {e}"); await asyncio.sleep(600)
+
+
+@app.get("/obrat-podatki")
+async def obrat_podatki(request: Request):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    d = _jload(OBRAT_FILE, {}) or {}
+    return {"ok": True, "at": d.get("at"), "od": d.get("od"), "do": d.get("do"), "sku": d.get("sku") or {}, "sezona": _jload(OBRAT_SEZONA_FILE, {}) or {}}
+
+
+@app.post("/obrat-osvezi")
+async def obrat_osvezi_post(request: Request):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    return await _obrat_osvezi()
+
+
+@app.post("/obrat-sezona")
+async def obrat_sezona_post(request: Request):
+    """{sku, sezona: 'zima'|'poletje'|''} — ročna oznaka sezone (signal pred / med sezono ne predlaga spusta)."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    b = await request.json()
+    sku, sz = str(b.get("sku") or "").strip().upper(), str(b.get("sezona") or "")
+    if not sku:
+        return {"ok": False, "error": "Manjka SKU."}
+    d = _jload(OBRAT_SEZONA_FILE, {}) or {}
+    if sz in ("zima", "poletje"):
+        d[sku] = sz
+    else:
+        d.pop(sku, None)
+    _jsave(OBRAT_SEZONA_FILE, d)
+    return {"ok": True, "sku": sku, "sezona": d.get(sku, "")}
+
+
 @app.post("/product-sales")
 async def product_sales(data: dict):
     """Proxy do siluxar API za prodajo izdelkov po dnevih (Analiza izdelkov).
@@ -12926,6 +13055,8 @@ async def marza_trgi_stran(request: Request):
       <button type="button" id="rClr" onclick="rOd.value='';rDo.value='';razCustom()" title="Počisti razpon" style="display:none;border:0;background:none;cursor:pointer;color:var(--txt3);font-size:15px;padding:0 2px">×</button>
     </span></label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px"><input type="checkbox" id="naZal" onchange="savePref();render()"> Samo na zalogi</label>
+  <select id="sigF" onchange="render()" title="📊 Filtriraj po signalu cene iz prodaje" style="padding:5px 8px;border:1px solid var(--bd);border-radius:7px;font-family:inherit;font-size:13.5px;font-weight:600"><option value="">📊 vsi signali</option><option value="gor">🟢 dvig</option><option value="dol">🔴 spust</option><option value="mrtva">⚠ mrtva zaloga</option><option value="drzi">⏸ drži</option><option value="sez">🎄☀️ sezona</option></select>
+  <button class="chip" id="obrBtn" onclick="obratOsvezi()" title="Ponovno prebere prodajo iz Siluxarja (sicer vsak dan ob 6:40)">↻ Obrat</button>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s ✓ (popravljeno) ali potrjene v novem feedu. Samo odprti v CMS (✎) in opozorila ostanejo vidni."><input type="checkbox" id="skrijUr" onchange="savePref();render()"> Skrij urejene</label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s 🚫 (ne uvažamo na ta trg — npr. carina v RS). Izključeni so tudi iz Bato cen."><input type="checkbox" id="skrijNu" checked onchange="savePref();render()"> Skrij neuvozne <span id="nuCnt" class="dim"></span></label>
   <button class="bato-btn" id="vrstaBtn" onclick="vrstaOdpri()" title="Vrsta potrjenih cen iz »🧮 Plan cen« — izvaja jo vtičnik po 5">📋 Vrsta cen</button>
@@ -12955,8 +13086,9 @@ async def marza_trgi_stran(request: Request):
   <th class="r" onclick="srt('marza_eur')" title="Razlika = cena brez DDV − NC (v €), kot v Price Checkerju">Razlika €</th>
   <th class="r" onclick="srt('marza_pct')">Marža %</th>
   <th class="r" onclick="srt('zaloga')">Zaloga</th>
+  <th onclick="srt('sig_r')" title="📊 Signal cene iz prodaje (Siluxar, skupaj vsi trgi): dnevi zaloge × trend 28 dni × razlika €. Klik na celico = sezona.">Signal</th>
   <th class="r" onclick="srt('obrat')" title="Obrat v zadnjih 30 dneh (kosov, iz zaloge). V oklepaju trajanje zaloge.">Obrat 30d</th>
-</tr></thead><tbody id="tb"><tr><td colspan="13" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr></tbody></table></div>
+</tr></thead><tbody id="tb"><tr><td colspan="14" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr></tbody></table></div>
 <button class="more" id="more" style="display:none" onclick="lim+=300;render()">Prikaži več</button>
 <div class="bbar" id="bbar">
   <b>💲 Bato redne cene</b> <span class="dim">· samo Maaarket</span>
@@ -12997,16 +13129,64 @@ function srt(k){if(sk===k)sd=-sd;else{sk=k;sd=1;}savePref();render();}
 async function load(){
   SEL.clear(); selLast=-1;
   kbIdx=-1; kbKey=null; kbAuto=true;   // nov trg / osvežitev → ob izrisu označi prvo vrstico
-  document.getElementById('tb').innerHTML='<tr><td colspan="13" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr>';
+  document.getElementById('tb').innerHTML='<tr><td colspan="14" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr>';
   loadFeedInfo();
   try{ D=await (await fetch('/marza-trgi?trg='+trg)).json(); }catch(e){ D={ok:false,error:e.message}; }
-  if(!D.ok){document.getElementById('tb').innerHTML='<tr><td colspan="13" style="padding:30px;text-align:center;color:#b91c1c">'+esc(D.error||'Napaka')+'</td></tr>';document.getElementById('stats').innerHTML='';return;}
+  if(!D.ok){document.getElementById('tb').innerHTML='<tr><td colspan="14" style="padding:30px;text-align:center;color:#b91c1c">'+esc(D.error||'Napaka')+'</td></tr>';document.getElementById('stats').innerHTML='';return;}
   const fx=Object.entries(D.tecaji||{}).filter(([v])=>v!=='EUR').map(([v,r])=>'1 € = '+(r?r.toLocaleString('sl-SI'):'?')+' '+v).join(' · ');
   document.getElementById('fxInfo').textContent='DDV '+D.ddv+' %'+(fx?' · '+fx:'');
   D.rows.forEach((r,i)=>r._i=i);
+  await obratNalozi();
   drawStats();
   render();
 }
+// ═══ 📊 SIGNAL CENE IZ OBRATA (faza 2) — samo prikaz, cen ne spreminja ═══
+// dnevi zaloge = zaloga / (½ Ø7 + ½ Ø28) · < OBR_NIZKO dni → dvig · > OBR_VISOKO → spust (razen razlika < 7 €) · trend 28 dni · sezona ročno
+let OBR = null; const OBR_NIZKO = 21, OBR_VISOKO = 90, OBR_PAD = -15;
+async function obratNalozi(){ try{ const d=await (await fetch('/obrat-podatki',{cache:'no-store'})).json(); if(d.ok) OBR=d; }catch(e){} obratZdruzi(); }
+function obratZdruzi(){
+  if(!D||!D.rows) return;
+  const mes=new Date().getMonth()+1, S=(OBR&&OBR.sku)||{}, SZ=(OBR&&OBR.sezona)||{};
+  D.rows.forEach(x=>{
+    const key=String(x.nc_sku||x.sku||'').toUpperCase(), o=S[key]||S[String(x.sku||'').toUpperCase()];
+    const zal=+x.zaloga||0, raz=x.marza_eur, sz=SZ[key]||SZ[String(x.sku||'').toUpperCase()]||'';
+    let sig=null;
+    if(o && zal>0){
+      const w=o.w||0, dos=w>0?Math.round(zal/w):null, tr=o.trend, pad=tr!=null&&tr<=OBR_PAD;
+      const opis='Ø '+String(o.d7).replace('.',',')+'/dan (7 d) · '+String(o.d28).replace('.',',')+'/dan (28 d) · trend '+(tr==null?'—':(tr>0?'+':'')+tr+' %')+' · zaloga '+zal+' → '+(dos==null?'∞':dos+' dni')+(o.brez?' · '+o.brez+' dni brez prodaje':'')+(raz!=null?' · razlika '+raz.toFixed(2).replace('.',',')+' €':'');
+      const predSez=(sz==='zima'&&mes>=9)||(sz==='zima'&&mes<=1)||(sz==='poletje'&&mes>=3&&mes<=7);
+      if(predSez) sig={k:'sez',t:sz==='zima'?'🎄 sezona':'☀️ sezona',c:'#2563eb',r:5,o:'Pred / med sezono ('+sz+') — ne spuščaj; oceni po vrhu. '+opis};
+      else if(o.brez>=14) sig={k:'mrtva',t:'⚠ mrtva',c:'#b45309',r:3,o:o.brez+' dni brez prodaje, zaloga '+zal+' — postopno znižuj (ali Xsell / bundle). '+opis};
+      else if(dos!=null&&dos<OBR_NIZKO) sig={k:'gor',t:'🟢 dvig',c:'#15803d',r:1,o:'Zaloge za '+dos+' dni (< '+OBR_NIZKO+') — dvig zaščiti zalogo in poveča razliko. '+opis};
+      else if(dos==null||dos>OBR_VISOKO){
+        if(raz!=null&&raz<7) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Preveč zaloge, a razlika < 7 € — ne spuščaj; Xsell / bundle / oglas. '+opis};
+        else sig={k:'dol',t:'🔴 spust',c:'#dc2626',r:2,o:'Zaloge za '+(dos==null?'∞':dos)+' dni (> '+OBR_VISOKO+')'+(pad?', prodaja pada':'')+' — kapital je zaklenjen. '+opis};
+      } else if(!pad&&raz!=null&&raz<9) sig={k:'gor',t:'🟢 test dvig',c:'#15803d',r:1,o:'Zdrava zaloga, prodaja ne pada, razlika < 9 € — poskusi en Bato korak gor. '+opis};
+      else if(pad&&raz!=null&&raz>9) sig={k:'dol',t:'🔴 test spust',c:'#dc2626',r:2,o:'Prodaja pada (trend '+tr+' %), razlika > 9 € — poskusi en korak dol (pod prag). '+opis};
+      else sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Zdravo stanje — spremljaj. '+opis};
+    }
+    x.sig=sig; x.sig_r=sig?sig.r:9; x.sezona=sz;
+  });
+}
+function sigTd(x){
+  const s=x.sig;
+  return '<td data-sez="'+x._i+'" style="cursor:pointer;white-space:nowrap" title="'+esc(s?s.o:(OBR?'Ni podatkov o prodaji za ta SKU (ali ni zaloge)':'Obrat še ni naložen — ↻ Obrat'))+' · klik = sezona">'+
+    (s?'<b style="color:'+s.c+';font-size:12.5px">'+s.t+'</b>':'<span class="dim">—</span>')+(x.sezona&&(!s||s.k!=='sez')?' <span title="sezona: '+esc(x.sezona)+'">'+(x.sezona==='zima'?'🎄':'☀️')+'</span>':'')+'</td>';
+}
+async function obratOsvezi(){
+  const b=document.getElementById('obrBtn'); if(b){b.disabled=true;b.textContent='Berem prodajo …';}
+  let r={}; try{ r=await (await fetch('/obrat-osvezi',{method:'POST'})).json(); }catch(e){ r={ok:false,error:e.message}; }
+  if(b){b.disabled=false;b.textContent='↻ Obrat';}
+  if(!r.ok){ alert('Obrat ni uspel: '+(r.error||'napaka')); return; }
+  await obratNalozi(); render();
+}
+document.addEventListener('click',async e=>{const td=e.target.closest('td[data-sez]'); if(!td) return; e.stopPropagation();
+  const x=D&&D.rows[+td.dataset.sez]; if(!x) return; const sku=String(x.nc_sku||x.sku||'').toUpperCase();
+  const v=prompt('Sezona za '+sku+':\n1 = 🎄 zima (sep–jan ne spuščaj)\n2 = ☀️ poletje (mar–jul ne spuščaj)\n0 = brez sezone',x.sezona==='zima'?'1':x.sezona==='poletje'?'2':'0');
+  if(v===null) return; const sz={'1':'zima','2':'poletje'}[String(v).trim()]||'';
+  try{ const r=await (await fetch('/obrat-sezona',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku,sezona:sz})})).json();
+    if(r.ok){ OBR=OBR||{sku:{},sezona:{}}; OBR.sezona=OBR.sezona||{}; if(sz) OBR.sezona[sku]=sz; else delete OBR.sezona[sku]; obratZdruzi(); render(); } }catch(err){ alert('Shranjevanje ni uspelo.'); }
+},true);
 // kazalniki v glavi: samo izbrane znamke (npr. Maaarket) — nič izbranega = vse
 function drawStats(){
   const R=D.rows.filter(x=>!ZN.size||ZN.has(x.znamka||'(prazno)'));
@@ -13032,6 +13212,8 @@ function filtered(){
     if(skritUrejen(x)) return false;
     if(skritNeuvoz(x)) return false;
     if(!razMatch(x.marza_eur)) return false;
+    const sf=document.getElementById('sigF')&&document.getElementById('sigF').value;
+    if(sf && (x.sig||{}).k!==sf) return false;
     const m=x.marza_pct;
     if(flt==='nonc') return m==null;
     if(flt==='ugib') return (x.nacin||'').startsWith('slika');
@@ -13140,8 +13322,8 @@ function renderMain(){
     '<td class="r">'+(x.nc==null?'<button type="button" class="skub" data-skubtn="'+x._i+'" title="Ni NC — popravi SKU (velja za vse trge)">✎ SKU</button>':f2(x.nc))+'</td>'+
     razTd(x.marza_eur,RR)+
     '<td class="r">'+(x.marza_pct==null?'<span class="dim">—</span>':'<span class="m '+mcls(x.marza_pct)+'">'+x.marza_pct.toLocaleString('sl-SI')+' %</span>')+'</td>'+
-    '<td class="r'+(x.zaloga>0?'':' dim')+'">'+(x.zaloga||0)+'</td>'+obratTd(x)+'</tr>'
-  ).join('') : '<tr><td colspan="13" style="padding:30px;text-align:center" class="dim">Ni zadetkov.</td></tr>';
+    '<td class="r'+(x.zaloga>0?'':' dim')+'">'+(x.zaloga||0)+'</td>'+sigTd(x)+obratTd(x)+'</tr>'
+  ).join('') : '<tr><td colspan="14" style="padding:30px;text-align:center" class="dim">Ni zadetkov.</td></tr>';
   const mb=document.getElementById('more'); mb.style.display=r.length>lim?'block':'none';
   mb.textContent='Prikaži več ('+(r.length-lim)+' preostalih)';
 }
