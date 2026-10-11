@@ -420,8 +420,8 @@
 </div>
 
 <div class="table-wrap" id="tableWrap" style="display:none">
-<!-- 🗑 Izbriši VSE iz tega pogleda: ob zagonu se premakne tik pod vrstico kartic, gumb je poravnan POD aktivno kartico (pcQdPostavi) -->
-<div id="quickDeleteBar" style="display:none;align-items:center;padding:8px 24px 0;font-size:12px">
+<!-- 🗑 Izbriši VSE iz tega pogleda: ob zagonu se premakne v vrstico kartic (nova vrsta), gumb je poravnan POD aktivno kartico (pcQdPostavi) -->
+<div id="quickDeleteBar" style="display:none;align-items:center;flex:1 1 100%;padding:0;margin-top:-2px;font-size:12px">
   <span id="quickDeleteLabel" style="display:none">V tem pogledu je N naročil</span>
   <button id="qdBtn" onclick="deleteAllInView()" style="background:#dc2626;border:none;color:#fff;padding:7px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🗑 Izbriši vse (<span id="qdN">0</span>)</button>
 </div>
@@ -1638,7 +1638,7 @@ function taskFilter(f, card) {
 function pcQdPostavi() {
   const qd = document.getElementById('quickDeleteBar'), tb = document.getElementById('taskBar');
   if (!qd || !tb) return;
-  if (qd.previousElementSibling !== tb) tb.parentNode.insertBefore(qd, tb.nextSibling);
+  if (qd.parentNode !== tb) tb.appendChild(qd);   // nova vrstica ZNOTRAJ vrstice kartic (flex-wrap, 100 %) → ozadje in razmik kot kartice
   const card = tb.querySelector('.task-card.active') || tb.querySelector('.task-card');
   const btn = document.getElementById('qdBtn'), lbl = document.getElementById('quickDeleteLabel'), nEl = document.getElementById('qdN');
   if (lbl && nEl) { const m = (lbl.textContent || '').match(/\d+/); const t = m ? m[0] : '0'; if (nEl.textContent !== t) nEl.textContent = t; }
