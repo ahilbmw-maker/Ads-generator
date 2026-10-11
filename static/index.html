@@ -1086,7 +1086,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-11 13:31</div>
+      <div class="sidebar-logo-sub">build 2026-10-11 16:54</div>
     </div>
   </div>
 
@@ -3499,7 +3499,8 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div>
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-            <span class="slabel" style="margin:0" id="anTableTitle">ZALOGA IZDELKOV (0)</span>
+            <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="slabel" style="margin:0" id="anTableTitle">ZALOGA IZDELKOV (0)</span>
+              <span id="anSelBar" style="display:none;align-items:center;gap:6px"><button onclick="anSelKopiraj(this)" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📋 Kopiraj izbrane SKU (<span id="anSelN">0</span>)</button><button onclick="anSel.clear();anRenderTable()" title="Počisti izbor" style="padding:6px 10px;background:none;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;cursor:pointer;color:var(--text-secondary)">✕</button></span></span>
             <input type="text" id="anSearch" placeholder="🔍 Išči SKU ali naziv..." oninput="window._anPage = 1; anRenderTable()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:240px">
           </div>
 
@@ -19368,6 +19369,26 @@ function anToggleAllAccounts(all) {
   anRenderTable();
 }
 
+// ☑ IZBOR SKU-jev v tabeli (Obrat 7 dni FB) → »📋 Kopiraj izbrane SKU« (vsak v svojo vrstico); Shift = razpon
+const anSel = new Set(); let anSelZadnji = -1;
+function anSelKlik(e, cb) {
+  e.stopPropagation();
+  const vrst = (anFilteredData || []).map(r => r.sku), sku = cb.dataset.ansel, i = vrst.indexOf(sku);
+  if (e.shiftKey && anSelZadnji >= 0 && i >= 0) { const [a, b] = anSelZadnji < i ? [anSelZadnji, i] : [i, anSelZadnji]; vrst.slice(a, b + 1).forEach(k => cb.checked ? anSel.add(k) : anSel.delete(k)); }
+  else cb.checked ? anSel.add(sku) : anSel.delete(sku);
+  anSelZadnji = i; anRenderTable();
+}
+function anSelVse(on) { (anFilteredData || []).forEach(r => on ? anSel.add(r.sku) : anSel.delete(r.sku)); anRenderTable(); }
+function anSelBar() {
+  const b = document.getElementById('anSelBar'); if (!b) return;
+  b.style.display = anSel.size ? 'inline-flex' : 'none';
+  const n = document.getElementById('anSelN'); if (n) n.textContent = anSel.size;
+}
+async function anSelKopiraj(btn) {
+  const t = [...anSel].join('\n');
+  try { await navigator.clipboard.writeText(t); } catch (e) { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); }
+  const o = btn.innerHTML; btn.innerHTML = '✓ Kopirano ' + anSel.size + ' SKU'; setTimeout(() => { btn.innerHTML = o; }, 1500);
+}
 function anRenderTable() {
   const search = (document.getElementById('anSearch')?.value || '').toLowerCase().trim();
   const skuMap = window._anSkuMap || {};
@@ -19556,6 +19577,7 @@ function anRenderTable() {
   const pageItems = filtered.slice(pageStart, pageEnd);
 
   document.getElementById('anTableTitle').textContent = 'ZALOGA IZDELKOV (' + filtered.length + ')';
+  anSelBar();
 
   const table = document.getElementById('anTable');
   const empty = document.getElementById('anEmpty');
@@ -19634,7 +19656,7 @@ function anRenderTable() {
   headerHtml +=
     '<div style="display:grid;grid-template-columns:24px ' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;user-select:none;min-width:' + (minWidth + 34) + 'px;width:100%;border-bottom:2px solid var(--border)">' +
     '<span title="Zaznamek tukaj sem ostal">🚩</span>' +
-    '<span style="cursor:pointer" onclick="anSortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
+    '<span style="display:flex;align-items:center;gap:6px"><input type="checkbox" title="Izberi vse (filtrirane)" onclick="event.stopPropagation();anSelVse(this.checked)"' + (anFilteredData.length && anFilteredData.every(r => anSel.has(r.sku)) ? ' checked' : '') + ' style="cursor:pointer;width:14px;height:14px"><span style="cursor:pointer" onclick="anSortBy(\'sku\')">SKU' + sortInd('sku') + '</span></span>' +
     '<span style="cursor:pointer" onclick="anSortBy(\'title\')">Naziv izdelka' + sortInd('title') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock\')">Zaloga' + sortInd('stock') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="anSortBy(\'stock30\')">Obrat 30d' + sortInd('stock30') + '</span>' +
@@ -19760,7 +19782,7 @@ function anRenderTable() {
       const bmAttr = bmarked ? ' data-bookmark-row="meta"' : '';
       return '<div' + bmAttr + ' style="display:grid;grid-template-columns:24px ' + cols + ';gap:10px;align-items:center;padding:12px 14px;background:' + rowBg + ';border:' + bmBorder + ';border-radius:var(--radius);font-size:13px;min-width:' + (minWidth + 34) + 'px;width:100%">' +
         bookmarkBtnHtml('meta', r.sku, 'anRenderTable') +
-        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.sku) + '">' + esc(r.sku) + (bmarked ? ' <span style="font-size:9px;color:#EF9F27;font-weight:700">← TU</span>' : '') + '</div>' +
+        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px" title="' + esc(r.sku) + '"><input type="checkbox" data-ansel="' + esc(r.sku) + '"' + (anSel.has(r.sku) ? ' checked' : '') + ' onclick="anSelKlik(event,this)" style="cursor:pointer;width:14px;height:14px;flex:none">' + esc(r.sku) + (bmarked ? ' <span style="font-size:9px;color:#EF9F27;font-weight:700">← TU</span>' : '') + '</div>' +
         '<div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.title) + '">' + esc(r.title) + '</div>' +
         '<div style="text-align:center;font-weight:600;color:' + stockColor + '">' + r.stock + '</div>' +
         '<div style="text-align:center;font-weight:500;color:' + obratColor + '">' + r.stock30 + '</div>' +
