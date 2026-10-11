@@ -1785,6 +1785,80 @@ def _cene_dnevnik_zacetek():
     print(f"[cene dnevnik] začetek: {len(zap)} zapisov")
 
 
+@app.get("/cene-zadnja")
+async def cene_zadnja(request: Request, trg: str = ""):
+    """{trg|cms_id: zadnji čas spremembe} iz 📜 dnevnika sprememb (zadnjih 60 dni) — Plan cen »po obratu«: premor N dni."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    trg = (trg or "").lower()
+    meja = (datetime.fromisoformat(_lj_iso()) - timedelta(days=60)).isoformat(timespec="seconds")
+    out = {}
+    try:
+        with open(CENE_DNEVNIK_FILE, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    z = json.loads(line)
+                except Exception:
+                    continue
+                at = str(z.get("at") or "")
+                if at < meja or (trg and z.get("trg") not in (trg, "*")):
+                    continue
+                k = f"{z.get('trg')}|{z.get('cms_id')}"
+                e = out.setdefault(k, {"at": "", "dvigi": 0})
+                if at > e["at"]:
+                    e["at"] = at
+                try:   # dvig = cena za stranko (ali »Prodajna« v CMS) navzgor; 🔧 decimalke ne štejejo
+                    a_, b_ = (z.get("prej"), z.get("potem")) if z.get("potem") is not None else (z.get("cms_prej"), z.get("cms_potem"))
+                    if a_ is not None and b_ is not None and float(b_) - float(a_) >= 1 and "ecimalk" not in str(z.get("vir") or ""):
+                        e["dvigi"] += 1
+                except Exception:
+                    pass
+    except FileNotFoundError:
+        pass
+    return {"ok": True, "zadnja": out}
+
+
+# 🚦 LUČ TRGA za Plan cen »po obratu«: zadnji 4 polni tedni proti prejšnjim 4 (Analiza → Trend, realno = z fail %):
+# dobiček/dan, naročila/dan, CPA na +1 € RVC. 🟢 dvigi dovoljeni · 🟡 samo dvig pri malo zaloge · 🔴 brez dvigov.
+PLAN_LUC_TRG = {"sl": "SI", "hr": "HR", "rs": "RS", "hu": "HU", "cz": "CZ", "sk": "SK", "pl": "PL", "gr": "GR", "ro": "RO", "bg": "BG"}
+
+
+@app.get("/plan-luc")
+async def plan_luc(request: Request, trg: str = "sl", obd: float = 0):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    T = PLAN_LUC_TRG.get((trg or "").lower(), (trg or "").upper())
+    try:
+        ved = [b for b in ((await semafor_trend("teden", T)).get("vedra") or []) if not b.get("delno")]
+    except Exception as e:
+        return {"ok": False, "error": f"Trend ni na voljo: {e}"}
+    if len(ved) < 8:
+        return {"ok": True, "trg": T, "luc": "siva", "razlogi": [f"premalo tednov v Semaforju ({len(ved)} / 8)"], "m": {}}
+    def agr(xs):
+        dni = sum(b["dni"] for b in xs) or 1; o = sum(b["orders"] for b in xs) or 1
+        rv = sum(b["rvc"] for b in xs); sp = sum(b["spend"] for b in xs)
+        dob = sum(b.get("dobicek_real", b["dobicek"]) for b in xs)
+        return {"nar_dan": o / dni, "dob_dan": dob / dni, "prisp_nar": dob / o, "neto_dan": (dob - obd * o) / dni,
+                "rvc_nar": rv / o, "cpa": sp / o, "tedni": f"{xs[0]['k']} … {xs[-1]['k']}"}
+    a, b = agr(ved[-8:-4]), agr(ved[-4:])
+    pct = lambda x, y: (y - x) / abs(x) * 100 if x else 0
+    d_nar, d_pn, d_neto = pct(a["nar_dan"], b["nar_dan"]), pct(a["prisp_nar"], b["prisp_nar"]), pct(a["neto_dan"], b["neto_dan"])
+    drv, dcpa = b["rvc_nar"] - a["rvc_nar"], b["cpa"] - a["cpa"]
+    cpr = dcpa / drv if drv >= 0.05 else None   # CPA na +1 € RVC (samo, ko je RVC zrasel)
+    # GLAVNO MERILO = prispevek na naročilo (realno, po neprevzetih) — manj naročil z večjim prispevkom je bolje (obdelava, zaposleni);
+    # neto/dan = dobiček − strošek obdelave × naročila. Padec naročil sam po sebi NI rdeč (le opozorilo pri velikem padcu).
+    razl, luc = [], "zelena"
+    if d_pn < -3 or (obd > 0 and d_neto < -5) or (cpr is not None and cpr > 0.8) or (drv >= 0.05 and dcpa > drv):
+        luc = "rdeca"
+    elif (cpr is not None and cpr >= 0.5) or d_nar < -20:
+        luc = "rumena"
+    razl.append(f"prispevek/nar. (realno) {a['prisp_nar']:.2f} → {b['prisp_nar']:.2f} € ({d_pn:+.0f} %)")
+    razl.append(f"dobiček/dan {a['dob_dan']:.0f} → {b['dob_dan']:.0f} €" + (f" · neto po obdelavi {a['neto_dan']:.0f} → {b['neto_dan']:.0f} €" if obd > 0 else ""))
+    razl.append(f"naročila/dan {a['nar_dan']:.0f} → {b['nar_dan']:.0f} ({d_nar:+.0f} %)")
+    razl.append(f"RVC/nar. {a['rvc_nar']:.2f} → {b['rvc_nar']:.2f} € · CPA {a['cpa']:.2f} → {b['cpa']:.2f} €" + (f" · CPA na +1 € RVC {cpr:.2f}" if cpr is not None else ""))
+    return {"ok": True, "trg": T, "luc": luc, "razlogi": razl, "m": {"prej": a, "zdaj": b, "d_nar": round(d_nar, 1), "d_prisp_nar": round(d_pn, 1), "d_neto": round(d_neto, 1), "cpa_na_rvc": None if cpr is None else round(cpr, 2)}}
+
+
 @app.get("/cene-dnevnik")
 async def cene_dnevnik_get(request: Request, od: str = "", do: str = "", trg: str = ""):
     """Spremembe cen v obdobju [od, do] (YYYY-MM-DD, privzeto danes) + stanje v feedu (✓ potrjeno / ⏳ čaka feed / ⚠ ni spremembe)."""
@@ -10378,7 +10452,12 @@ async def obrat_podatki(request: Request):
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
     d = _jload(OBRAT_FILE, {}) or {}
-    return {"ok": True, "at": d.get("at"), "od": d.get("od"), "do": d.get("do"), "sku": d.get("sku") or {}, "sezona": _jload(OBRAT_SEZONA_FILE, {}) or {}}
+    try:   # 🚚 blago na poti (HS+ prevzemi: naročeno / potrjeno / čakajoče / manjka) — dnevi zaloge ga prištejejo
+        poti = {k: sum(v for st, v in (o or {}).items() if isinstance(v, (int, float))) for k, o in _hsb_odprto_po_sku().items()}
+    except Exception:
+        poti = {}
+    return {"ok": True, "at": d.get("at"), "od": d.get("od"), "do": d.get("do"), "sku": d.get("sku") or {}, "sezona": _jload(OBRAT_SEZONA_FILE, {}) or {},
+            "na_poti": {k: v for k, v in poti.items() if v > 0}}
 
 
 @app.post("/obrat-osvezi")
@@ -13194,21 +13273,23 @@ async function load(){
 }
 // ═══ 📊 SIGNAL CENE IZ OBRATA (faza 2) — samo prikaz, cen ne spreminja ═══
 // dnevi zaloge = zaloga / (½ Ø7 + ½ Ø28) · < OBR_NIZKO dni → dvig · > OBR_VISOKO → spust (razen razlika < 7 €) · trend 28 dni · sezona ročno
-let OBR = null; const OBR_NIZKO = 21, OBR_VISOKO = 90, OBR_PAD = -15;
+let OBR = null; const OBR_NIZKO = 21, OBR_VISOKO = 90, OBR_PAD = -15, OBR_MIN30 = 10, OBR_MRTVA = 30;
 async function obratNalozi(){ try{ const d=await (await fetch('/obrat-podatki',{cache:'no-store'})).json(); if(d.ok) OBR=d; }catch(e){} obratZdruzi(); }
 function obratZdruzi(){
   if(!D||!D.rows) return;
-  const mes=new Date().getMonth()+1, S=(OBR&&OBR.sku)||{}, SZ=(OBR&&OBR.sezona)||{};
+  const mes=new Date().getMonth()+1, S=(OBR&&OBR.sku)||{}, SZ=(OBR&&OBR.sezona)||{}, NP=(OBR&&OBR.na_poti)||{};
   D.rows.forEach(x=>{
     const key=String(x.nc_sku||x.sku||'').toUpperCase(), o=S[key]||S[String(x.sku||'').toUpperCase()];
     const zal=+x.zaloga||0, raz=x.marza_eur, sz=SZ[key]||SZ[String(x.sku||'').toUpperCase()]||'';
     let sig=null;
     if(o && zal>0){
-      const w=o.w||0, dos=w>0?Math.round(zal/w):null, tr=o.trend, pad=tr!=null&&tr<=OBR_PAD;
-      const opis='Ø '+String(o.d7).replace('.',',')+'/dan (7 d) · '+String(o.d28).replace('.',',')+'/dan (28 d) · trend '+(tr==null?'—':(tr>0?'+':'')+tr+' %')+' · zaloga '+zal+' → '+(dos==null?'∞':dos+' dni')+(o.brez?' · '+o.brez+' dni brez prodaje':'')+(raz!=null?' · razlika '+raz.toFixed(2).replace('.',',')+' €':'');
+      const poti=+(NP[key]||NP[String(x.sku||'').toUpperCase()]||0);
+      const w=o.w||0, dos=w>0?Math.round((zal+poti)/w):null, tr=o.trend, pad=tr!=null&&tr<=OBR_PAD;
+      const opis=(poti?'🚚 na poti '+poti+' kos (HS+) · ':'')+'Ø '+String(o.d7).replace('.',',')+'/dan (7 d) · '+String(o.d28).replace('.',',')+'/dan (28 d) · trend '+(tr==null?'—':(tr>0?'+':'')+tr+' %')+' · zaloga '+zal+' → '+(dos==null?'∞':dos+' dni')+(o.brez?' · '+o.brez+' dni brez prodaje':'')+(raz!=null?' · razlika '+raz.toFixed(2).replace('.',',')+' €':'');
       const predSez=(sz==='zima'&&mes>=9)||(sz==='zima'&&mes<=1)||(sz==='poletje'&&mes>=3&&mes<=7);
       if(predSez) sig={k:'sez',t:sz==='zima'?'🎄 sezona':'☀️ sezona',c:'#2563eb',r:5,o:'Pred / med sezono ('+sz+') — ne spuščaj; oceni po vrhu. '+opis};
-      else if(o.brez>=14) sig={k:'mrtva',t:'⚠ mrtva',c:'#b45309',r:3,o:o.brez+' dni brez prodaje, zaloga '+zal+' — postopno znižuj (ali Xsell / bundle). '+opis};
+      else if(o.brez>=OBR_MRTVA) sig={k:'mrtva',t:'⚠ mrtva',c:'#b45309',r:3,o:o.brez+' dni brez prodaje'+(o.s60?'':' (v 60 dneh nič — nov izdelek ali brez oglasa?)')+', zaloga '+zal+' — postopno znižuj (ali Xsell / bundle). '+opis};
+      else if((o.s30||0)<OBR_MIN30) sig={k:'drzi',t:'⏸ malo prodaje',c:'#94a3b8',r:6,o:'Premalo prodaje za zanesljiv signal ('+(o.s30||0)+' v 30 dneh < '+OBR_MIN30+'). '+opis};
       else if(dos!=null&&dos<OBR_NIZKO) sig={k:'gor',t:'🟢 dvig',c:'#15803d',r:1,o:'Zaloge za '+dos+' dni (< '+OBR_NIZKO+') — dvig zaščiti zalogo in poveča razliko. '+opis};
       else if(dos==null||dos>OBR_VISOKO){
         if(raz!=null&&raz<7) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Preveč zaloge, a razlika < 7 € — ne spuščaj; Xsell / bundle / oglas. '+opis};
@@ -13686,7 +13767,7 @@ async function cmsUndoBulk(){
 // ═══ 🧮 PLAN CEN (korak 1: samo predlog in pregled — NIČ se ne spremeni v CMS) ═══
 // Za izbrane izdelke: cilj = najbližja Bato KONČNA cena (enaka razdalja → navzgor), varovalka marže (cena gre na Bato navzgor),
 // največja sprememba ±% (večje so označene ⚠ in niso samodejno potrjene). Preskoči: že Bato, danes urejene, 🚫, brez NC / CMS ID.
-let PLAN = null, DANES_BLOK = {};
+let PLAN = null, DANES_BLOK = {}, ZADNJA = {}, PLAN_LUC = null;
 // ⛔ 1 sprememba cene na dan: strežnik vrne izdelke, ki so bili danes že spremenjeni (dnevnik CMS, Vrsta cen, feed mimo suban.ai)
 async function danesBlok(rows) {
   try {
@@ -13697,7 +13778,7 @@ async function danesBlok(rows) {
   return null;
 }
 function planNastavitve() {
-  try { return Object.assign({ prag: 20, maxPct: 15, smer: 'najblizja', podRaz: 8.99, dvigRaz: 7 }, JSON.parse(localStorage.getItem('mz_plan') || '{}')); } catch (e) { return { prag: 20, maxPct: 15, smer: 'najblizja', podRaz: 8.99, dvigRaz: 7 }; }
+  try { return Object.assign({ prag: 20, maxPct: 15, smer: 'najblizja', podRaz: 8.99, dvigRaz: 7, premor: 14, obd: 1.5 }, JSON.parse(localStorage.getItem('mz_plan') || '{}')); } catch (e) { return { prag: 20, maxPct: 15, smer: 'najblizja', podRaz: 8.99, dvigRaz: 7, premor: 14, obd: 1.5 }; }
 }
 function planIzracun() {
   const N = planNastavitve(), danes = new Date().toDateString();
@@ -13713,6 +13794,44 @@ function planIzracun() {
     if (x.neuvoz) return ze('🚫 ne uvažamo');
     if (x.cms && (!x.cms.trg || x.cms.trg === trg || x.cms.trg === '*') && [x.cms.done_at, x.cms.opened_at].some(t => t && new Date(t).toDateString() === danes)) return ze('danes že urejeno');
     if (DANES_BLOK[trg + '|' + x.cms_id]) return ze('⛔ ' + DANES_BLOK[trg + '|' + x.cms_id]);   // 1× na dan (strežnik: dnevnik, vrsta, feed)
+    // 📊 PO OBRATU (faza 3): en korak v smeri signala (🟢 gor · 🔴/⚠ dol), lepe končnice po valuti, premor N dni po zadnji spremembi.
+    // Samo predlog — potrdi uporabnik. Varovalke: razlika ≥ 7 € pri spustu, marža, ±%, prestop praga pri dvigu ⚠.
+    if (N.smer === 'obrat') {
+      const sg = x.sig;
+      if (!sg) return ze('📊 ni signala (ni podatkov o prodaji ali zaloge)');
+      if (sg.k === 'drzi' || sg.k === 'sez') return ze('📊 ' + sg.t);
+      const zz = ZADNJA[trg + '|' + x.cms_id] || ZADNJA['*|' + x.cms_id] || {}, zad = zz.at;
+      if (zad && N.premor > 0) { const dni = Math.floor((Date.now() - new Date(zad)) / 864e5); if (dni < N.premor) return ze('⏳ premor obrata (spremenjeno pred ' + dni + ' dnevi, počakaj ' + (N.premor - dni) + ')'); }
+      const L = PLAN_LUC && PLAN_LUC.luc;
+      if (sg.k === 'gor') {
+        if ((zz.dvigi || 0) >= 2) return ze('📊 že ' + zz.dvigi + ' dviga v 60 dneh — počakaj meritev učinka');
+        if (L === 'rdeca') return ze('🔴 trg: brez dvigov (' + ((PLAN_LUC.razlogi || [])[0] || '') + ')');
+        if (L === 'rumena' && sg.t !== '🟢 dvig') return ze('🟡 trg: samo dvig pri malo zaloge (ne test dvig)');
+      }
+      if (!x.nc || !x.neto) return ze('brez NC');
+      const gor = sg.k === 'gor';
+      const KOR = { EUR: 1, RSD: 100, HUF: 400, CZK: 25, PLN: 5, RON: 5 }[cur] || 1;
+      const lepo = (t, navzgor) => {   // najbližja lepa cena v smeri: EUR x,99 · RSD/HUF xx99 · CZK x9 · PLN/RON x4/x9
+        const e = 1e-9;
+        if (cur === 'EUR') return navzgor ? Math.ceil(t - 0.99 - e) + 0.99 : Math.floor(t - 0.99 + e) + 0.99;
+        const [p, m] = cur === 'CZK' ? [9, 10] : (cur === 'PLN' || cur === 'RON') ? [4, 5] : [99, 100];
+        return navzgor ? Math.ceil((t - p) / m - e) * m + p : Math.floor((t - p) / m + e) * m + p;
+      };
+      const pred = Math.round(lepo(gor ? c + KOR : c - KOR, gor) * 100) / 100;
+      const neto = p => x.neto * p / c, mz = p => (neto(p) - x.nc) / neto(p) * 100;
+      if (!gor && N.dvigRaz > 0 && neto(pred) - x.nc < N.dvigRaz) return ze('📊 ' + sg.t + ' — spust bi znižal razliko pod ' + String(N.dvigRaz).replace('.', ',') + ' €');
+      const pct = (pred - c) / c * 100, velika = Math.abs(pct) > N.maxPct, mPo = mz(pred);
+      const PRG = { EUR: 10, RSD: 1000, HUF: 5000, CZK: 100, PLN: 100, RON: 100 }[cur] || 10;
+      const cez = gor && Math.floor(pred / PRG + 1e-9) > Math.floor(c / PRG + 1e-9);
+      const op = [sg.t + ': ' + String(sg.o).split(' — ')[0]];
+      if (cez) op.push('⚠ čez prag ' + Math.floor(pred / PRG + 1e-9) * PRG);
+      if (!gor && mPo < N.prag) op.push('marža pod ' + N.prag + ' %');
+      if (velika) op.push('sprememba nad ' + N.maxPct + ' %');
+      if (decimalke) op.push('🔧 + decimalke');
+      predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct, mZdaj: mz(c), mPo, rZdaj: neto(c) - x.nc, rPo: neto(pred) - x.nc,
+        opomba: op.join(' · '), ok: !velika && !cez && (gor || mPo >= N.prag), obrat: sg.k });
+      return;
+    }
     // valute brez decimalk (CZK, HUF, PLN, RON, RSD): batoCands zaokroži na celo, zato je npr. 538,99 CZK »že Bato« (539) —
     // taka cena dobi 🔧 popravek decimalk na celo število (vedno, tudi v načinu »samo dvigi«; samodejno potrjeno)
     const decimalke = (BATO_CFG[cur] || BATO_CFG.EUR).dec === 0 && Math.abs(c - Math.round(c)) > 0.001;
@@ -13847,7 +13966,7 @@ function planOdpri() {
   o.style.display = 'flex'; PLAN_FLT = 'vse';
   o.innerHTML = '<div class="plan-box"><b>🧮 Plan cen</b> · računam …</div>';
   const sm = planNastavitve().smer;
-  planZacni(sm === 'gor' ? 'gor' : 'najblizja');
+  planZacni(sm === 'gor' || sm === 'obrat' ? sm : 'najblizja');
 }
 async function planZacni(smer) {
   const N = planNastavitve(); N.smer = smer;
@@ -13855,6 +13974,8 @@ async function planZacni(smer) {
   const bl = await danesBlok((D && D.rows || []).filter(x => SEL.has(x.g_id)));
   if (!bl && !confirm('Ne morem preveriti, kaj je bilo danes že spremenjeno (strežnik ni odgovoril).\n\nVseeno nadaljujem?')) return;
   DANES_BLOK = bl || {};
+  try { const z = await (await fetch('/cene-zadnja?trg=' + encodeURIComponent(trg), { cache: 'no-store' })).json(); ZADNJA = (z && z.zadnja) || {}; } catch (e) { ZADNJA = {}; }
+  try { const l = await (await fetch('/plan-luc?trg=' + encodeURIComponent(trg) + '', { cache: 'no-store' })).json(); PLAN_LUC = l && l.ok ? l : null; } catch (e) { PLAN_LUC = null; }
   PLAN = planIzracun(); planIzberiOk(); planRisi();
 }
 // filter v oknu: vse / gor (dvigi) / dol (spusti) / dec (🔧 decimalke) — prikazani in potrjeni so SAMO izdelki iz filtra
@@ -13910,11 +14031,17 @@ function planRisi() {
   o.innerHTML = '<div class="plan-box">' +
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:17px">🧮 Plan cen · ' + esc(String(trg).toUpperCase()) + '</b>' +
       '<span class="dim">predlog — v CMS se še nič ne spremeni</span><button class="btn" style="margin-left:auto" onclick="document.getElementById(\'planOkno\').style.display=\'none\'">✕</button></div>' +
-    '<div class="plan-nast">Cilj: <select onchange="planNastavi(\'smer\',this.value)"><option value="najblizja"' + (N.smer === 'najblizja' ? ' selected' : '') + '>najbližja Bato (enako → navzgor)</option><option value="gor"' + (N.smer === 'gor' ? ' selected' : '') + '>samo navzgor na Bato</option></select>' +
+    '<div class="plan-nast">Cilj: <select onchange="planNastavi(\'smer\',this.value)"><option value="najblizja"' + (N.smer === 'najblizja' ? ' selected' : '') + '>najbližja Bato (enako → navzgor)</option><option value="gor"' + (N.smer === 'gor' ? ' selected' : '') + '>samo navzgor na Bato</option><option value="obrat"' + (N.smer === 'obrat' ? ' selected' : '') + '>📊 po obratu (signal)</option></select>' +
+      (N.smer === 'obrat' ? ' · ⏳ premor po spremembi <input type="number" min="0" value="' + N.premor + '" onchange="planNastavi(\'premor\',this.value)" style="width:50px"> dni' +
+        '' : '') +
       ' · Prag marže <input type="number" value="' + N.prag + '" onchange="planNastavi(\'prag\',this.value)" style="width:60px"> %' +
       ' · Največja sprememba ± <input type="number" value="' + N.maxPct + '" onchange="planNastavi(\'maxPct\',this.value)" style="width:60px"> %' +
       ' · <span title="EUR: X0,99 → (X0−1),99 (20,99 → 19,99 · 100,99 → 99,99) · RSD in HUF: N099 → (N−1)999 (2099 → 1999 · 5099 → 4999), če razlika po znižanju ostane vsaj toliko €. 0 = izklop.">🎯 Pod prag (20,99 → 19,99 · 2099 → 1999) pri razliki ≥ <input type="number" step="0.01" value="' + N.podRaz + '" onchange="planNastavi(\'podRaz\',this.value)" style="width:70px"> €</span>' +
       ' · <span title="EUR +1 € · RSD +100 · HUF +400 Ft: če je razlika (cena brez DDV − NC) manjša od tega zneska v €, predlagaj dvig na Bato (tudi pri že Bato ceni). Prestop praga (19,99 → 20,99 · 1999 → 2099) ni samodejno potrjen. 0 = izklop.">💶 Dvig (+1 € · +100 RSD · +400 Ft) pri razliki < <input type="number" step="0.5" value="' + N.dvigRaz + '" onchange="planNastavi(\'dvigRaz\',this.value)" style="width:60px"> €</span></div>' +
+    (N.smer === 'obrat' && PLAN_LUC ? '<div style="margin:6px 0;padding:8px 12px;border-radius:10px;font-size:13px;background:' + ({ zelena: '#dcfce7', rumena: '#fef3c7', rdeca: '#fee2e2', siva: '#f1f5f9' }[PLAN_LUC.luc] || '#f1f5f9') + '">' +
+      '<b>' + ({ zelena: '🟢', rumena: '🟡', rdeca: '🔴', siva: '⚪' }[PLAN_LUC.luc] || '⚪') + ' Trg ' + esc(PLAN_LUC.trg || '') + ' (zadnji 4 tedni proti prejšnjim 4, Analiza → Trend):</b> ' +
+      esc((PLAN_LUC.razlogi || []).join(' · ')) + ' — ' + ({ zelena: 'dvigi dovoljeni', rumena: 'samo dvigi pri malo zaloge', rdeca: 'brez dvigov, samo spusti', siva: 'premalo podatkov — luč ne velja' }[PLAN_LUC.luc] || '') +
+      '<div class="dim" style="margin-top:3px">Glavno merilo: prispevek na naročilo (realno, po neprevzetih) — manj naročil z več prispevka je bolje. 🔴 = prispevek/nar. pade > 3 % ali CPA na +1 € RVC > 0,8 ali CPA zraste bolj kot RVC · 🟡 = CPA na +1 € RVC 0,5–0,8 ali naročila padejo > 20 %.</div></div>' : '') +
     '<div class="plan-kpi">' +
       '<div><b>' + iz.length + '</b> / ' + P2.predlogi.length + '<span>potrjenih predlogov</span></div>' +
       '<div><b class="up">' + up + ' ↑</b> · <b class="dn">' + dn + ' ↓</b>' + (dc ? ' · <b>' + dc + ' 🔧</b>' : '') + '<span>smer' + (dc ? ' · decimalke' : '') + '</span></div>' +
