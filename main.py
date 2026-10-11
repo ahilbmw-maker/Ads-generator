@@ -10255,7 +10255,48 @@ def _obrat_kazalniki(dnevi: list) -> dict:
             break
         brez += 1
     return {"d7": round(d7, 2), "d28": round(d28, 2), "w": round(0.5 * d7 + 0.5 * d28, 2), "trend": trend, "brez": brez,
-            "s60": int(sum(v)), "n": len(v)}
+            "s30": int(sum(v[-30:])), "s60": int(sum(v)), "n": len(v)}
+
+
+def _obrat_v_zalogo() -> int:
+    """V zalogo (STOCK_CSV_FILE) zapiše stock30 (prodano zadnjih 30 dni) in stock_duration (dni zaloge = zaloga SKU / Ø prodaja)
+    iz /data/obrat_prodaja.json. Vse strani (Zaloga, Marža, Xsell …) tako berejo svež obrat — CSV z obratom ni več potreben.
+    SKU-jev brez podatka o prodaji ne spremeni. Sinhrono (brez await) → ne prekriva se s sinhronizacijo zaloge."""
+    try:
+        import csv as _csv
+        from io import StringIO as _SIO
+        S = (_jload(OBRAT_FILE, {}) or {}).get("sku") or {}
+        if not S or not STOCK_CSV_FILE.exists():
+            return 0
+        rd = _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace")))
+        polja, vrst = list(rd.fieldnames or []), list(rd)
+        for c in ("stock30", "stock_duration"):
+            if c not in polja:
+                polja.append(c)
+        sk = lambda r: (r.get("product_sku") or r.get("sku") or "").strip().upper()
+        skupaj = {}
+        for r in vrst:   # zaloga SKU čez vsa skladišča
+            try:
+                skupaj[sk(r)] = skupaj.get(sk(r), 0) + int(float(str(r.get("stock") or 0).replace(",", ".")))
+            except Exception:
+                pass
+        n = 0
+        for r in vrst:
+            o = S.get(sk(r))
+            if not o or o.get("s30") is None:
+                continue
+            r["stock30"] = str(int(o["s30"]))
+            w, z = float(o.get("w") or 0), skupaj.get(sk(r), 0)
+            r["stock_duration"] = (str(round(z / w)) + " d") if w > 0 and z > 0 else ("0 d" if z <= 0 else "∞")
+            n += 1
+        out = _SIO(); wr = _csv.DictWriter(out, fieldnames=polja, extrasaction="ignore"); wr.writeheader()
+        for r in vrst:
+            wr.writerow(r)
+        STOCK_CSV_FILE.write_text(out.getvalue(), encoding="utf-8")
+        return n
+    except Exception as e:
+        print(f"[obrat → zaloga] {e}")
+        return 0
 
 
 async def _obrat_osvezi() -> dict:
@@ -10265,8 +10306,17 @@ async def _obrat_osvezi() -> dict:
             res = await _marza_trgi_get("sl")
         except Exception as e:
             return {"ok": False, "error": f"Marža SL ni na voljo: {e}"}
-        skus = sorted({str(r.get("nc_sku") or r.get("sku") or "").strip().upper() for r in (res or {}).get("rows") or []
-                       if "maaarket" in str(r.get("znamka") or "").lower()} - {""})
+        skus = {str(r.get("nc_sku") or r.get("sku") or "").strip().upper() for r in (res or {}).get("rows") or []
+                if "maaarket" in str(r.get("znamka") or "").lower()}
+        try:   # + vsi SKU-ji iz zaloge (variante, ostale znamke) — obrat za celo zalogo
+            import csv as _csv
+            from io import StringIO as _SIO
+            if STOCK_CSV_FILE.exists():
+                for r in _csv.DictReader(_SIO(STOCK_CSV_FILE.read_text(encoding="utf-8-sig", errors="replace"))):
+                    skus.add((r.get("product_sku") or r.get("sku") or "").strip().upper())
+        except Exception as e:
+            print(f"[obrat] SKU-ji iz zaloge: {e}")
+        skus = sorted(skus - {""})
         if not skus:
             return {"ok": False, "error": "Ni Maaarket SKU-jev."}
         do = datetime.fromisoformat(_lj_iso()).date() - timedelta(days=1)   # včeraj = zadnji poln dan
@@ -10296,8 +10346,9 @@ async def _obrat_osvezi() -> dict:
         if not out:
             return {"ok": False, "error": "Siluxar ni vrnil prodaje: " + "; ".join(nap[:3])}
         _jsave(OBRAT_FILE, {"at": _lj_iso(), "od": dates[0], "do": dates[-1], "sku": out, "napake": nap[:5]})
-        print(f"[obrat] {len(out)} SKU ({dates[0]} … {dates[-1]})" + (f" · napake: {nap[:2]}" if nap else ""))
-        return {"ok": True, "n": len(out), "od": dates[0], "do": dates[-1], "napake": nap[:5]}
+        nz = _obrat_v_zalogo()
+        print(f"[obrat] {len(out)} SKU ({dates[0]} … {dates[-1]}), v zalogo {nz}" + (f" · napake: {nap[:2]}" if nap else ""))
+        return {"ok": True, "n": len(out), "v_zalogo": nz, "od": dates[0], "do": dates[-1], "napake": nap[:5]}
 
 
 async def _obrat_loop():
@@ -12015,6 +12066,7 @@ async def _zaloga_sync_core():
     meta['last_siluxar_sync'] = datetime.now(timezone.utc).isoformat()
     meta['rows'] = len(existing)
     STOCK_CSV_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
+    _obrat_v_zalogo()   # 📊 obrat 30d + trajanje iz Siluxarjeve prodaje po dnevih (ni več CSV z obratom)
 
     nasi_count = len(existing) - external_count
     return {"ok": True, "total": len(existing), "added": added, "updated": updated,
@@ -13166,6 +13218,8 @@ function obratZdruzi(){
       else sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Zdravo stanje — spremljaj. '+opis};
     }
     x.sig=sig; x.sig_r=sig?sig.r:9; x.sezona=sz;
+    if(x._obrat_csv===undefined) x._obrat_csv=x.obrat;   // obrat iz CSV zaloge (rezerva)
+    x.obrat_slx=o&&o.s30!=null?o.s30:null; x.obrat=x.obrat_slx!=null?x.obrat_slx:x._obrat_csv;   // sortiranje, Bato pogled, CSV: Siluxar
   });
 }
 function sigTd(x){
@@ -13412,6 +13466,10 @@ function linksHtml(x){
     '<button type="button" class="nub'+(x.neuvoz?' on':'')+'" data-nu="'+x._i+'" title="'+(x.neuvoz?'Označeno: ne uvažamo na ta trg — klik prekliče':'Ne uvažamo na ta trg (npr. carina) — skrij in izključi iz Bato cen')+'">🚫</button>';
 }
 function obratTd(x){
+  if(x.obrat_slx!=null){   // Siluxar (isti vir kot graf) — prednost pred obratom iz CSV zaloge (ni vedno posodobljen)
+    const o=x.obrat_slx, c=o>=30?'#15803d':(o>=10?'var(--txt)':(o>0?'#a16207':'var(--txt3)'));
+    return '<td class="r" style="font-weight:700;color:'+c+'" title="Prodano zadnjih 30 dni (Siluxar, '+esc((OBR&&OBR.do)||'')+')'+(x._obrat_csv!=null&&x._obrat_csv!==o?' · CSV zaloge: '+x._obrat_csv:'')+'">'+o.toLocaleString('sl-SI')+'</td>';
+  }
   if(x.obrat==null) return '<td class="r"><span class="dim">—</span></td>';
   const o=x.obrat, c=o>=30?'#15803d':(o>=10?'var(--txt)':(o>0?'#a16207':'var(--txt3)'));
   return '<td class="r" style="font-weight:700;color:'+c+'" title="'+(x.trajanje?'Trajanje zaloge: '+esc(x.trajanje):'Obrat 30 dni')+'">'+o.toLocaleString('sl-SI')+'</td>';}
