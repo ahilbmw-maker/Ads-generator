@@ -13200,8 +13200,8 @@ async def marza_trgi_stran(request: Request):
   <button onclick="neuvozBulk(false)" style="background:#e2e8f0;color:#0f172a">↩ Odznači 🚫</button>
 <button onclick="paketCmsVarno()" title="Vtičnik Kalkulator cen: po vrsti odpre izbrane v CMS, doda izbrano število korakov (EUR +1 · CZK/PLN/RON +5 · HUF/RSD +100) in vpiše Redna — ti samo klikneš Update. Izdelki, ki so bili na tem trgu danes že odprti/urejeni v CMS (tudi iz Price Checkerja), se preskočijo." style="background:#16a34a;color:#fff">▶ Dvigni v CMS</button>
 <button onclick="planOdpri()" title="Predlog novih cen (Bato, varovalka marže, največja sprememba) za izbrane — samo pregled, v CMS se nič ne spremeni" style="background:#7c3aed;color:#fff">🧮 Plan cen</button>
-<button onclick="paketSamoBato()" title="Kot »▶ Dvigni v CMS«, a IZPUSTI izdelke, katerih končna cena že ima Bato končnico (HUF x499/x999 · EUR x,99 · CZK x49/x99/x9 · PLN/RON x9 · RSD x99) — te odznači; uredi samo ostale." style="background:#0f766e;color:#fff">▶ Preskoči Bato cene</button>
-<button onclick="paketDecimalke()" title="CZK/HUF/PLN/RON/RSD: izbranim z decimalno ceno (npr. 533,99) vtičnik prišteje 0,01 → cela cena (534). Izdelki s celo ceno se preskočijo. Ni dvig — ne šteje v »1× na dan« in se ne označi kot urejeno." style="background:#fef3c7;color:#92400e">🔧 Popravi decimalke</button>
+<button onclick="paketSamoBato()" style="display:none" data-skrito="Plan cen preskoči že Bato" title="Kot »▶ Dvigni v CMS«, a IZPUSTI izdelke, katerih končna cena že ima Bato končnico (HUF x499/x999 · EUR x,99 · CZK x49/x99/x9 · PLN/RON x9 · RSD x99) — te odznači; uredi samo ostale." style="background:#0f766e;color:#fff">▶ Preskoči Bato cene</button>
+<button onclick="paketDecimalke()" style="display:none" data-skrito="Plan cen: filter 🔧 Decimalke" title="CZK/HUF/PLN/RON/RSD: izbranim z decimalno ceno (npr. 533,99) vtičnik prišteje 0,01 → cela cena (534). Izdelki s celo ceno se preskočijo. Ni dvig — ne šteje v »1× na dan« in se ne označi kot urejeno." style="background:#fef3c7;color:#92400e">🔧 Popravi decimalke</button>
 <button onclick="cmsDoneBulk()" title="Označi izbrane kot urejeno na tem trgu (kot D) — ostanejo urejeni, dokler jih ne odznačiš" style="background:#16a34a;color:#fff">✓ Označi urejeno</button>
 <button onclick="cmsUndoBulk()" title="Odstrani oznako urejeno (popravljeno / potrjeno / odprto) za izbrane na tem trgu" style="background:#dcfce7;color:#166534">↩ Odznači urejeno</button>
   <button onclick="selClear()" style="background:transparent;color:#cbd5e1">✕ Počisti izbor</button>
@@ -14026,6 +14026,7 @@ function planRisi() {
       '<td class="r">' + fmtC(p.c, p.cur) + '</td><td class="r" style="font-weight:800;font-size:15px">' + fmtC(p.pred, p.cur) + ' <span class="dim">' + esc(p.cur) + '</span></td>' +
       '<td class="r ' + (p.diff > 0 ? 'up' : 'dn') + '">' + (p.diff > 0 ? '+' : '') + fmtC(p.diff, p.cur) + '<div class="dim">' + (p.pct > 0 ? '+' : '') + p.pct.toFixed(1).replace('.', ',') + ' %</div></td>' +
       '<td class="r">' + mc(p.mZdaj) + ' → ' + mc(p.mPo) + '</td><td class="r">' + f2n(p.rZdaj) + ' → <b>' + f2n(p.rPo) + '</b> €</td>' +
+      '<td style="white-space:nowrap">' + (p.x.sig ? '<b style="color:' + p.x.sig.c + ';font-size:12.5px;cursor:help" title="' + esc(p.x.sig.o) + '">' + p.x.sig.t + '</b>' : '<span class="dim">—</span>') + '</td>' +
       '<td>' + (p.opomba ? '<span class="bnote">' + (p.ok ? '' : '⚠ ') + esc(p.opomba) + '</span>' : '') + '</td></tr>';
   }).join('');
   const poRazlogu = {}; P2.preskok.forEach(s => (poRazlogu[s.r] = poRazlogu[s.r] || []).push(s.sku));
@@ -14051,7 +14052,7 @@ function planRisi() {
       '<div><b>' + P2.preskok.length + '</b><span>preskočenih</span></div></div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 8px">' + fch('vse', 'Vse') + fch('gor', '⬆ Samo dvigi') + fch('dol', '⬇ Samo spusti') + fch('dec', '🔧 Decimalke') +
       '<span class="dim" style="margin-left:6px">v vrsto gredo samo potrjeni iz prikazanih</span></div>' +
-    (vid.length ? '<div class="plan-tab"><table><thead><tr><th><input type="checkbox" ' + (vid.length && vid.every(p => P2.izbrani.has(p.x.g_id)) ? 'checked' : '') + ' onchange="planVse(this.checked)"></th><th>SKU</th><th class="r">Zdaj</th><th class="r">Predlog</th><th class="r">Sprememba</th><th class="r">Marža</th><th class="r">Razlika €</th><th>Opomba</th></tr></thead><tbody>' + vrst + '</tbody></table></div>'
+    (vid.length ? '<div class="plan-tab"><table><thead><tr><th><input type="checkbox" ' + (vid.length && vid.every(p => P2.izbrani.has(p.x.g_id)) ? 'checked' : '') + ' onchange="planVse(this.checked)"></th><th>SKU</th><th class="r">Zdaj</th><th class="r">Predlog</th><th class="r">Sprememba</th><th class="r">Marža</th><th class="r">Razlika €</th><th title="📊 Signal iz prodaje (obrat) — ob prehodu z miško razlog">Signal</th><th>Opomba</th></tr></thead><tbody>' + vrst + '</tbody></table></div>'
       : '<div class="dim" style="padding:20px;text-align:center">Med izbranimi ni izdelkov za spremembo.</div>') +
     (P2.preskok.length ? '<details style="margin-top:8px"><summary class="dim" style="cursor:pointer">Preskočeni (' + P2.preskok.length + ')</summary><div class="dim" style="margin-top:6px">' +
       Object.entries(poRazlogu).map(([r, a]) => '<div><b>' + esc(r) + '</b> (' + a.length + '): ' + a.slice(0, 40).map(esc).join(', ') + (a.length > 40 ? ' …' : '') + '</div>').join('') + '</div></details>' : '') +
