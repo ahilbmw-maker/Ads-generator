@@ -1710,9 +1710,10 @@ def _vrsta_load(strict=False) -> dict:
 async def cene_vrsta_get():
     d = _vrsta_load()
     zdaj = datetime.fromisoformat(_lj_iso())
-    for p in d["postavke"]:   # zataknjene (v delu > 15 min, npr. zaprt Chrome) prikaži kot čakajoče — naslednji jih spet vzame
+    for p in d["postavke"]:   # zataknjene (v delu > 15 min) — naslednji jih označi z napako (morda že shranjeno), ne vrne v čakanje
         if p.get("status") == "v_delu" and p.get("zacetek") and (zdaj - datetime.fromisoformat(p["zacetek"])).total_seconds() > 900:
-            p["status"] = "caka"
+            p["status"], p["napaka"] = "napaka", "⚠ vtičnik ni potrdil v 15 min — cena je morda že shranjena"
+    dz = _cene_dnevnik_zadnji()
     # ✓/⚠ PREVERBA S FEEDOM: pri urejenih primerjaj ceno za stranko v feedu (zgrajen PO spremembi) s planirano »nova»
     for p in d["postavke"]:
         p.pop("feed", None)
@@ -1723,6 +1724,10 @@ async def cene_vrsta_get():
             continue
         if p.get("feed_pusti"):   # ✓ uporabnik je odstopanje preveril in ceno pustil, kakršna je
             p["feed"] = {"stanje": "pusti", "at": p["feed_pusti"]}
+            continue
+        _z = dz.get(f"{p['trg']}|{p['cms_id']}") or {}
+        if _z.get("at") and _z["at"] > (p["konec"] or "")[:19] and (datetime.fromisoformat(_z["at"][:19]) - datetime.fromisoformat(p["konec"][:19])).total_seconds() > 120:
+            p["feed"] = {"stanje": "nadomesceno", "at": _z["at"], "vir": _z.get("vir")}   # kasnejša sprememba istega izdelka → feed primerjaj z njo
             continue
         meta = feed_meta.get(p["trg"]) or {}
         zgrajen = _iso_from_http_date(meta.get("last_modified") or "") or meta.get("fetched_at") or ""
@@ -1741,7 +1746,7 @@ async def cene_vrsta_get():
                      "cena": konc, "zgrajen": zgrajen}
     # NC + razlika € (cena brez DDV − NC, v EUR) pri ceni prej / plan / feed — iz Marže po trgih (predpomnilnik)
     _mz = {}
-    for _t in {p.get("trg") for p in d["postavke"][-2000:] if p.get("status") in ("ok", "caka", "napaka", "v_delu")}:
+    for _t in {p.get("trg") for p in d["postavke"] if p.get("status") in ("ok", "caka", "napaka", "v_delu")}:
         if _t not in MARZA_TRGI:
             continue
         try:
@@ -1750,7 +1755,7 @@ async def cene_vrsta_get():
             _mz[_t] = {str(r.get("g_id")): r for r in (_res.get("rows") or [])} if isinstance(_res, dict) else {}
         except Exception as _e:
             print(f"[vrsta] NC {_t}: {_e}")
-    for p in d["postavke"][-2000:]:
+    for p in d["postavke"]:
         r = (_mz.get(p.get("trg")) or {}).get(str(p.get("g_id") or ""))
         p.pop("nc", None); p.pop("raz", None)
         if not r or not r.get("nc") or not r.get("eur") or not r.get("koncna"):
@@ -1762,12 +1767,45 @@ async def cene_vrsta_get():
     st = {s: sum(1 for p in d["postavke"] if p.get("status") == s) for s in VRSTA_STATUSI}
     st["odstopa"] = sum(1 for p in d["postavke"] if (p.get("feed") or {}).get("stanje") == "odstopa" and not p.get("razveljavljeno"))
     st["potrjeno"] = sum(1 for p in d["postavke"] if (p.get("feed") or {}).get("stanje") == "potrjeno")
-    return {"ok": True, "postavke": d["postavke"][-2000:], "stevci": st, "ustavljeno": d["ustavljeno"]}
+    # zadnjih 2000 + starejše, ki jih štejejo števci (odprte, ⚠ odstopa) — prej: števec 20 odstopa, seznam prazen
+    _vse = d["postavke"]
+    _star = [p for p in _vse[:-2000] if p.get("status") in ("caka", "v_delu", "napaka")
+             or ((p.get("feed") or {}).get("stanje") == "odstopa" and not p.get("razveljavljeno"))]
+    return {"ok": True, "postavke": _star + _vse[-2000:], "stevci": st, "ustavljeno": d["ustavljeno"]}
 
 
 # 📜 DNEVNIK VSEH SPREMEMB CEN (append-only, /data/cene_dnevnik.jsonl): ena vrstica na spremembo, ne glede na vir
 # (Vrsta cen, paket vtičnika, ± Znesek, Price Checker, ▶ en izdelek, 🔧 decimalke, ročno D). Samo za pregled — varovalka 1× na dan je ločena.
 CENE_DNEVNIK_FILE = DATA_DIR / "cene_dnevnik.jsonl"
+
+
+_cd_zadnji_c = {"m": None, "d": {}}
+
+
+def _cene_dnevnik_zadnji() -> dict:
+    """{trg|cms_id: {"at", "cms_potem", "vir"}} — zadnja sprememba iz 📜 dnevnika (predpomnjeno po mtime)."""
+    try:
+        m = CENE_DNEVNIK_FILE.stat().st_mtime if CENE_DNEVNIK_FILE.exists() else None
+    except Exception:
+        m = None
+    if m is not None and _cd_zadnji_c["m"] == m:
+        return _cd_zadnji_c["d"]
+    out = {}
+    try:
+        with open(CENE_DNEVNIK_FILE, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    z = json.loads(line)
+                except Exception:
+                    continue
+                k, at = f"{z.get('trg')}|{z.get('cms_id')}", str(z.get("at") or "")
+                e = out.get(k)
+                if not e or at >= e["at"]:
+                    out[k] = {"at": at, "cms_potem": z.get("cms_potem"), "vir": z.get("vir")}   # brez cms_potem = neznano (ne staro vrednost)
+    except Exception:
+        pass
+    _cd_zadnji_c.update(m=m, d=out)
+    return out
 
 
 def _cene_dnevnik_dodaj(zapisi: list):
@@ -2065,9 +2103,10 @@ async def cene_vrsta_naslednji(data: dict):
         if d["ustavljeno"]:
             return {"ok": True, "postavke": [], "ustavljeno": True}
         zdaj = _lj_iso(); zd = datetime.fromisoformat(zdaj)
-        for p in d["postavke"]:
+        for p in d["postavke"]:   # ⛔ prej: nazaj v »čaka« → vtičnik je že shranjeno ceno dvignil ŠE ENKRAT (+korak dvakrat)
             if p.get("status") == "v_delu" and p.get("zacetek") and (zd - datetime.fromisoformat(p["zacetek"])).total_seconds() > 900:
-                p["status"] = "caka"
+                p["status"], p["konec"] = "napaka", zdaj
+                p["napaka"] = "⚠ vtičnik ni potrdil v 15 min — cena je morda ŽE shranjena; ↻ Znova preveri Prodajno v CMS in ne dvigne dvakrat"
         vzeti = []
         for p in d["postavke"]:
             if p.get("status") != "caka" or len(vzeti) >= n:
@@ -2078,8 +2117,18 @@ async def cene_vrsta_naslednji(data: dict):
                 p["status"], p["napaka"], p["konec"] = "napaka", "⛔ " + r + " — največ 1 sprememba na dan", zdaj
                 continue
             vzeti.append(p)
+        dz = _cene_dnevnik_zadnji() if vzeti else {}
         for p in vzeti:
             p["status"], p["zacetek"] = "v_delu", zdaj
+            # 🛡 pričakovana »Prodajna« v CMS PRED spremembo: prejšnji poskus te postavke (prebral CMS) ali zadnji zapis 📜 dnevnika.
+            # Vtičnik: CMS = pričakovano + korak → že shranjeno (ne dvigne še enkrat) · CMS ≠ pričakovano → napaka (preveri ročno)
+            pr = (p.get("rezultat") or {}).get("prodajna_stara")
+            if pr in (None, ""):
+                pr = (dz.get(f"{p['trg']}|{p['cms_id']}") or {}).get("cms_potem")
+            try:
+                p["cms_pricakovano"] = float(pr) if pr not in (None, "") else None
+            except Exception:
+                p["cms_pricakovano"] = None
         _jsave(VRSTA_FILE, d)
     return {"ok": True, "postavke": vzeti}
 
@@ -2098,6 +2147,9 @@ async def cene_vrsta_rezultat(data: dict):
             return {"ok": False, "error": "Postavke ni v vrsti."}
         if p.get("rocno") and p.get("status") == "ok":   # že ✓ ročno shranjeno — rezultat vtičnika (npr. napaka) ne prepiše
             return {"ok": True, "prezrto": True}
+        if p.get("rezultat"):   # že poročano → hrani tudi prejšnje (dvojna izvedba iste postavke = vidno)
+            p.setdefault("rez_prej", []).append({**p["rezultat"], "status": p.get("status"), "at": p.get("konec")})
+            p["rez_prej"] = p["rez_prej"][-5:]
         p["status"] = "ok" if data.get("ok") else "napaka"
         p["napaka"] = "" if data.get("ok") else str(data.get("napaka") or "napaka")[:200]
         p["rezultat"] = data.get("rezultat") if isinstance(data.get("rezultat"), dict) else {}
@@ -14393,9 +14445,10 @@ function vrstaRisi() {
           (p.raz.feed != null ? '<div style="font-size:12px" title="Razlika pri ceni, ki je zdaj v trgovini (feed)">feed ' + rzF(p.raz.feed) + '</div>' : '') : '<span class="dim">—</span>') + '</td>' +
         '<td><b style="color:' + (S[p.status] || ['', ''])[1] + '">' + (S[p.status] || [p.status])[0] + '</b>' + (p.napaka ? '<div class="dim" style="color:#dc2626">' + esc(p.napaka) + '</div>' : '') +
           (p.razveljavljeno ? '<div class="dim">razveljavljeno ' + fmtT(p.razveljavljeno) + '</div>' : '') + (p.rocno ? '<div class="dim">✋ ročno shranjeno</div>' : '') +
-          (p.rezultat && p.rezultat.prodajna != null ? '<div class="dim" title="»Prodajna« v CMS pred in po spremembi (vtičnik)">CMS Prodajna ' + f(+p.rezultat.prodajna_stara) + ' → ' + f(+p.rezultat.prodajna) + '</div>' : '') +
-          (p.feed ? '<div style="font-size:12px;font-weight:700;color:' + ({ potrjeno: '#15803d', odstopa: '#dc2626', caka: '#64748b', ni_v_feedu: '#b45309', pusti: '#2563eb' }[p.feed.stanje] || '#64748b') + '">' +
-            ({ potrjeno: '✓ potrjeno v feedu (' + f(p.feed.cena) + ')', odstopa: '⚠ feed ' + f(p.feed.cena) + ' ≠ plan ' + f(p.nova), caka: '⏳ čaka nov feed', ni_v_feedu: 'ni v feedu', pusti: '✓ preverjeno — cena ostane' }[p.feed.stanje] || '') + '</div>' : '') + '</td>' +
+          (p.rezultat && p.rezultat.prodajna != null ? '<div class="dim" title="»Prodajna« v CMS pred in po spremembi (vtičnik)">CMS Prodajna ' + f(+p.rezultat.prodajna_stara) + ' → ' + f(+p.rezultat.prodajna) + (p.rezultat.ze_shranjeno ? ' (že shranjeno — ni 2. dviga)' : '') + '</div>' : '') +
+          ((p.rez_prej || []).length ? '<div style="font-size:12px;font-weight:700;color:#b45309" title="Vtičnik je to postavko izvedel večkrat">⚠ izvedeno ' + (p.rez_prej.length + 1) + '×: ' + p.rez_prej.map(r => f(+r.prodajna_stara) + ' → ' + f(+r.prodajna)).join(' · ') + '</div>' : '') +
+          (p.feed ? '<div style="font-size:12px;font-weight:700;color:' + ({ potrjeno: '#15803d', odstopa: '#dc2626', caka: '#64748b', ni_v_feedu: '#b45309', pusti: '#2563eb', nadomesceno: '#64748b' }[p.feed.stanje] || '#64748b') + '">' +
+            ({ potrjeno: '✓ potrjeno v feedu (' + f(p.feed.cena) + ')', odstopa: '⚠ feed ' + f(p.feed.cena) + ' ≠ plan ' + f(p.nova), caka: '⏳ čaka nov feed', ni_v_feedu: 'ni v feedu', pusti: '✓ preverjeno — cena ostane', nadomesceno: '↪ nadomeščeno z novejšo spremembo ' + fmtT(p.feed.at) + (p.feed.vir ? ' (' + p.feed.vir + ')' : '') }[p.feed.stanje] || '') + '</div>' : '') + '</td>' +
         '<td class="dim">' + fmtT(p.konec || p.dodano) + '</td><td style="white-space:nowrap">' +
           (['v_delu', 'napaka'].includes(p.status) ? '<button class="btn" style="background:#16a34a;color:#fff;border-color:#16a34a" title="Ceno sem v CMS shranil(a) ročno — označi kot urejeno" onclick="if(confirm(\'Si ' + esc(p.sku) + ' v CMS res shranil(a) ročno na ' + f(p.nova) + '?\'))vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'rocno\'})">✓ Shranjeno ročno</button> ' : '') +
           (['caka', 'napaka', 'v_delu'].includes(p.status) ? '<button class="btn" onclick="vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'preklici\'})">✕ Prekliči</button> ' : '') +
