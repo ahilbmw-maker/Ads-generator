@@ -14033,7 +14033,7 @@ function planIzracun() {
     if (!x.cms_id) return ze('ni CMS ID');
     if (x.neuvoz) return ze('🚫 ne uvažamo');
     if (x.cms && (!x.cms.trg || x.cms.trg === trg || x.cms.trg === '*') && [x.cms.done_at, x.cms.opened_at].some(t => t && new Date(t).toDateString() === danes)) return ze('danes že urejeno');
-    if (DANES_BLOK[trg + '|' + x.cms_id]) return zeDec('⛔ ' + DANES_BLOK[trg + '|' + x.cms_id]);   // 1× na dan (strežnik: dnevnik, vrsta, feed)
+    if (DANES_BLOK[trg + '|' + x.cms_id]) return ze('⛔ ' + DANES_BLOK[trg + '|' + x.cms_id]);   // 1× na dan (strežnik: dnevnik, vrsta, feed)
     // 📊 PO OBRATU (faza 3): en korak v smeri signala (🟢 gor · 🔴/⚠ dol), lepe končnice po valuti, premor N dni po zadnji spremembi.
     // Samo predlog — potrdi uporabnik. Varovalke: razlika ≥ 7 € pri spustu, marža, ±%, prestop praga pri dvigu ⚠.
     if (N.smer === 'obrat') {
