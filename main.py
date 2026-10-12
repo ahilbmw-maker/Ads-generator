@@ -1739,6 +1739,26 @@ async def cene_vrsta_get():
         tol = 0.02 if str(p.get("cur") or "").upper() == "EUR" else 1
         p["feed"] = {"stanje": "potrjeno" if konc is not None and abs(konc - float(p["nova"])) <= tol else "odstopa",
                      "cena": konc, "zgrajen": zgrajen}
+    # NC + razlika € (cena brez DDV − NC, v EUR) pri ceni prej / plan / feed — iz Marže po trgih (predpomnilnik)
+    _mz = {}
+    for _t in {p.get("trg") for p in d["postavke"][-2000:] if p.get("status") in ("ok", "caka", "napaka", "v_delu")}:
+        if _t not in MARZA_TRGI:
+            continue
+        try:
+            _c = _marza_trgi_cache.get(_t)
+            _res = _c["res"] if _c else await _marza_trgi_get(_t)
+            _mz[_t] = {str(r.get("g_id")): r for r in (_res.get("rows") or [])} if isinstance(_res, dict) else {}
+        except Exception as _e:
+            print(f"[vrsta] NC {_t}: {_e}")
+    for p in d["postavke"][-2000:]:
+        r = (_mz.get(p.get("trg")) or {}).get(str(p.get("g_id") or ""))
+        p.pop("nc", None); p.pop("raz", None)
+        if not r or not r.get("nc") or not r.get("eur") or not r.get("koncna"):
+            continue
+        k = r["eur"] / r["koncna"] / (1 + MARZA_TRGI[p["trg"]][1] / 100)   # valuta trga → EUR brez DDV
+        rz = lambda c: round(float(c) * k - r["nc"], 2) if c not in (None, "") else None
+        p["nc"] = r["nc"]
+        p["raz"] = {"prej": rz(p.get("stara")), "novo": rz(p.get("nova")), "feed": rz((p.get("feed") or {}).get("cena"))}
     st = {s: sum(1 for p in d["postavke"] if p.get("status") == s) for s in VRSTA_STATUSI}
     st["odstopa"] = sum(1 for p in d["postavke"] if (p.get("feed") or {}).get("stanje") == "odstopa" and not p.get("razveljavljeno"))
     st["potrjeno"] = sum(1 for p in d["postavke"] if (p.get("feed") or {}).get("stanje") == "potrjeno")
@@ -13950,24 +13970,31 @@ function planIzracun() {
     // da se končna cena premakne točno na cilj — tudi pri popustu/akciji (ref = redna cena iz feeda za preverbo »Prodajna« v CMS)
     const cur = x.valuta || 'EUR', c = +(x.koncna || x.cena) || 0, sku = String(x.sku || '').toUpperCase();
     const ze = r => preskok.push({ x, sku, c, cur, r });
+    // izdelek z decimalkami v valuti brez decimalk (6715,5 HUF): namesto preskoka vsaj 🔧 popravek na celo (ni dvig, brez premora)
+    const zeDec = r => {
+      if (!((BATO_CFG[cur] || BATO_CFG.EUR).dec === 0 && Math.abs(c - Math.round(c)) > 0.001) || !x.nc || !x.neto) return ze(r);
+      const pred = Math.round(c), nt = p => x.neto * p / c, m = p => (nt(p) - x.nc) / nt(p) * 100;
+      predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct: (pred - c) / c * 100, mZdaj: m(c), mPo: m(pred),
+        rZdaj: nt(c) - x.nc, rPo: nt(pred) - x.nc, opomba: '🔧 decimalke (' + r + ')', ok: true, dec: true });
+    };
     if (!c) return ze('ni cene');
     if (!x.cms_id) return ze('ni CMS ID');
     if (x.neuvoz) return ze('🚫 ne uvažamo');
     if (x.cms && (!x.cms.trg || x.cms.trg === trg || x.cms.trg === '*') && [x.cms.done_at, x.cms.opened_at].some(t => t && new Date(t).toDateString() === danes)) return ze('danes že urejeno');
-    if (DANES_BLOK[trg + '|' + x.cms_id]) return ze('⛔ ' + DANES_BLOK[trg + '|' + x.cms_id]);   // 1× na dan (strežnik: dnevnik, vrsta, feed)
+    if (DANES_BLOK[trg + '|' + x.cms_id]) return zeDec('⛔ ' + DANES_BLOK[trg + '|' + x.cms_id]);   // 1× na dan (strežnik: dnevnik, vrsta, feed)
     // 📊 PO OBRATU (faza 3): en korak v smeri signala (🟢 gor · 🔴/⚠ dol), lepe končnice po valuti, premor N dni po zadnji spremembi.
     // Samo predlog — potrdi uporabnik. Varovalke: razlika ≥ 7 € pri spustu, marža, ±%, prestop praga pri dvigu ⚠.
     if (N.smer === 'obrat') {
       const sg = x.sig;
-      if (!sg) return ze('📊 ni signala (ni podatkov o prodaji ali zaloge)');
-      if (sg.k === 'drzi' || sg.k === 'sez' || sg.k === 'malo') return ze('📊 ' + sg.t);
+      if (!sg) return zeDec('📊 ni signala (ni podatkov o prodaji ali zaloge)');
+      if (sg.k === 'drzi' || sg.k === 'sez' || sg.k === 'malo') return zeDec('📊 ' + sg.t);
       const zz = ZADNJA[trg + '|' + x.cms_id] || ZADNJA['*|' + x.cms_id] || {}, zad = zz.at;
-      if (zad && N.premor > 0) { const dni = Math.floor((Date.now() - new Date(zad)) / 864e5); if (dni < N.premor) return ze('⏳ premor obrata (spremenjeno pred ' + dni + ' dnevi, počakaj ' + (N.premor - dni) + ')'); }
+      if (zad && N.premor > 0) { const dni = Math.floor((Date.now() - new Date(zad)) / 864e5); if (dni < N.premor) return zeDec('⏳ premor obrata (spremenjeno pred ' + dni + ' dnevi, počakaj ' + (N.premor - dni) + ')'); }
       const L = PLAN_LUC && PLAN_LUC.luc;
       if (sg.k === 'gor') {
-        if ((zz.dvigi || 0) >= 2) return ze('📊 že ' + zz.dvigi + ' dviga v 60 dneh — počakaj meritev učinka');
-        if (L === 'rdeca') return ze('🔴 trg: brez dvigov (' + ((PLAN_LUC.razlogi || [])[0] || '') + ')');
-        if (L === 'rumena' && sg.t !== '🟢 dvig') return ze('🟡 trg: samo dvig pri malo zaloge (ne test dvig)');
+        if ((zz.dvigi || 0) >= 2) return zeDec('📊 že ' + zz.dvigi + ' dviga v 60 dneh — počakaj meritev učinka');
+        if (L === 'rdeca') return zeDec('🔴 trg: brez dvigov (' + ((PLAN_LUC.razlogi || [])[0] || '') + ')');
+        if (L === 'rumena' && sg.t !== '🟢 dvig') return zeDec('🟡 trg: samo dvig pri malo zaloge (ne test dvig)');
       }
       if (!x.nc || !x.neto) return ze('brez NC');
       const gor = sg.k === 'gor';
@@ -14105,7 +14132,7 @@ function planIzracun() {
     if (pred < c && mz(pred) < N.prag) { pred = k.up; opomba.push('↑ zaradi marže'); }
     // spust ne sme spraviti razlike pod N.dvigRaz € (7) — takrat raje navzgor na naslednjo Bato (vse valute)
     if (pred < c && N.dvigRaz > 0 && neto(pred) - x.nc < N.dvigRaz) { pred = k.up; opomba.push('↑ spust bi znižal razliko pod ' + String(N.dvigRaz).replace('.', ',') + ' €'); }
-    if (N.smer === 'dvig' && pred < c) return ze('predlog za spust (samo dvigi)');   // najprej samo dvigi, spuste pusti
+    if (N.smer === 'dvig' && pred < c) return zeDec('predlog za spust (samo dvigi)');   // najprej samo dvigi, spuste pusti
     { const q = podOk(pred); if (q != null && mz(q) >= N.prag) { opomba.push('🎯 pod prag ' + pragOd(pred) + ' (namesto ' + fmtC(pred, cur) + ')'); pred = q; } }
     const pct = (pred - c) / c * 100, mPo = mz(pred);
     if (mPo < N.prag) opomba.push('marža pod ' + N.prag + ' %');
@@ -14142,7 +14169,8 @@ async function planZacni(smer) {
 // filter v oknu: vse / gor (dvigi) / dol (spusti) / dec (🔧 decimalke) — prikazani in potrjeni so SAMO izdelki iz filtra
 let PLAN_FLT = 'vse';
 const planTip = p => p.dec ? 'dec' : (p.diff > 0 ? 'gor' : 'dol');
-const planVid = p => PLAN_FLT === 'vse' || planTip(p) === PLAN_FLT;
+const planJeDec = p => p.dec || /🔧/.test(p.opomba || '');   // 🔧 filter: čisti popravek + predlogi, ki popravijo tudi decimalke (6715,5 → 6999)
+const planVid = p => PLAN_FLT === 'vse' || (PLAN_FLT === 'dec' ? planJeDec(p) : planTip(p) === PLAN_FLT);
 function planIzberiOk() { PLAN.izbrani = new Set(PLAN.predlogi.filter(p => p.ok && planVid(p)).map(p => p.x.g_id)); }
 function planFilter(f) { PLAN_FLT = f; planIzberiOk(); planRisi(); }
 function planNastavi(k, v) {
@@ -14176,7 +14204,7 @@ function planRisi() {
   const f2n = v => (Math.round(v * 100) / 100).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const mc = m => '<span class="m ' + mcls(Math.round(m * 10) / 10) + '">' + (Math.round(m * 10) / 10).toLocaleString('sl-SI') + ' %</span>';
   const vid = P2.predlogi.filter(planVid);
-  const nT = t => P2.predlogi.filter(p => t === 'vse' || planTip(p) === t).length;
+  const nT = t => P2.predlogi.filter(p => t === 'vse' || (t === 'dec' ? planJeDec(p) : planTip(p) === t)).length;
   const fch = (t, l) => '<span class="chip' + (PLAN_FLT === t ? ' on' : '') + '" style="cursor:pointer;padding:5px 12px;font-weight:700" onclick="planFilter(&quot;' + t + '&quot;)">' + l + ' ' + nT(t) + '</span>';
   const vrst = vid.map(p => {
     const on = P2.izbrani.has(p.x.g_id);
@@ -14316,6 +14344,12 @@ function vrstaPustiVse() {   // ⚠ Odstopa v feedu → vse »✓ Pusti tako« n
   if (!ids.length || !confirm('Označi vseh ' + ids.length + ' odstopajočih kot »✓ Pusti tako«? Cene v trgovini ostanejo take, kot so.')) return;
   vrstaAkcija({ ids, akcija: 'pusti' });
 }
+function vrstaRazveljaviVse() {   // ⚠ Odstopa v feedu → vse nazaj na prejšnjo ceno (opcijsko; dvojna potrditev)
+  const ids = (VRSTA && VRSTA.postavke || []).filter(p => p.status === 'ok' && p.feed && p.feed.stanje === 'odstopa' && !p.razveljavljeno).map(p => p.id);
+  if (!ids.length || !confirm('Vrnem VSEH ' + ids.length + ' odstopajočih na prejšnjo ceno? V vrsto se doda ' + ids.length + ' obratnih sprememb.')) return;
+  if (!confirm('Res? Vtičnik bo ' + ids.length + ' cen v CMS spremenil nazaj.')) return;
+  vrstaAkcija({ ids, akcija: 'razveljavi' });
+}
 function vrstaZnovaNapake() {   // vse ⚠ napake nazaj v čakanje (varovalka 1× na dan se ob izvedbi preveri znova)
   const ids = (VRSTA && VRSTA.postavke || []).filter(p => p.status === 'napaka').map(p => p.id);
   if (ids.length && confirm('Vse napake (' + ids.length + ') vrnem v čakanje?')) vrstaAkcija({ ids, akcija: 'znova' });
@@ -14331,7 +14365,14 @@ function vrstaRisi() {
   const vid = vse.filter(p => vrstaFlt === 'vse' || (vrstaFlt === 'odprte' ? ['caka', 'v_delu', 'napaka'].includes(p.status)
     : vrstaFlt === 'odstopa' ? (p.feed && p.feed.stanje === 'odstopa' && !p.razveljavljeno) : p.status === vrstaFlt));
   const f = v => v == null || v === '' ? '—' : (Math.round(v * 100) / 100).toLocaleString('sl-SI');
+  const rzF = v => v == null ? '—' : '<span style="font-weight:700;color:' + (v < 7 ? '#dc2626' : '#15803d') + '">' + v.toFixed(2).replace('.', ',') + '</span>';
   const ch = (k, l) => '<span class="chip' + (vrstaFlt === k ? ' on' : '') + '" onclick="vrstaFlt=\'' + k + '\';vrstaRisi()">' + l + '</span>';
+  // ohrani položaj drsnika (osvežitev vsakih 10 s je prej vrgla na vrh)
+  const _sb = o.querySelector('.plan-box'), _st = o.querySelector('.plan-tab');
+  const _poz = o.dataset.flt === vrstaFlt ? [_sb ? _sb.scrollTop : 0, _st ? _st.scrollTop : 0, _st ? _st.scrollLeft : 0] : [0, 0, 0];   // nov filter = na vrh
+  o.dataset.flt = vrstaFlt;
+  const _obnovi = () => { const b = o.querySelector('.plan-box'), t = o.querySelector('.plan-tab');
+    if (b) b.scrollTop = _poz[0]; if (t) { t.scrollTop = _poz[1]; t.scrollLeft = _poz[2]; } };
   o.innerHTML = '<div class="plan-box">' +
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:17px">📋 Vrsta cen</b>' +
       '<span class="dim">' + (s.caka || 0) + ' čaka · ' + (s.v_delu || 0) + ' v delu · ' + (s.ok || 0) + ' urejeno · ' + (s.napaka || 0) + ' napak' +
@@ -14342,11 +14383,14 @@ function vrstaRisi() {
     (o.dataset.msg ? '<div style="margin:8px 0;padding:8px 10px;border-radius:8px;background:#dcfce7;color:#166534">' + esc(o.dataset.msg) + '</div>' : '') +
     '<div class="dim" style="margin:6px 0 8px">Izvaja jo vtičnik: v panelu vklopi »▶ Izvajaj vrsto« (Chrome odprt, prijavljen v CMS). Vsak izdelek dobi točno ceno »Novo«; če je cena v CMS drugačna od »Prej«, ga preskoči (⚠).</div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + ch('odprte', 'Odprte') + ch('ok', 'Urejene') + ch('napaka', 'Napake') + ch('odstopa', '⚠ Odstopa v feedu') + ch('preklicano', 'Preklicane') + ch('vse', 'Vse') +
-      (vrstaFlt === 'odstopa' && vid.length ? '<button class="btn" style="margin-left:auto;background:#2563eb;color:#fff;border-color:#2563eb" title="Vse prikazane odstopajoče: cena v trgovini ostane taka, kot je (v CMS se nič ne spremeni)" onclick="vrstaPustiVse()">✓ Pusti tako vse (' + vid.length + ')</button>' : '') + '</div>' +
-    (vid.length ? '<div class="plan-tab"><table><thead><tr><th>Trg</th><th>SKU</th><th class="r">Prej</th><th class="r">Novo</th><th>Stanje</th><th>Dodano</th><th></th></tr></thead><tbody>' +
+      (vrstaFlt === 'odstopa' && vid.length ? '<button class="btn" style="margin-left:auto;background:#2563eb;color:#fff;border-color:#2563eb" title="Vse prikazane odstopajoče: cena v trgovini ostane taka, kot je (v CMS se nič ne spremeni)" onclick="vrstaPustiVse()">✓ Pusti tako vse (' + vid.length + ')</button>' +
+        '<button class="btn" title="Vse prikazane odstopajoče vrne na prejšnjo ceno (obratne postavke v vrsto)" onclick="vrstaRazveljaviVse()">↩ Razveljavi vse (' + vid.length + ')</button>' : '') + '</div>' +
+    (vid.length ? '<div class="plan-tab"><table><thead><tr><th>Trg</th><th>SKU</th><th class="r">Prej</th><th class="r">Novo</th><th class="r" title="NC (EUR) in razlika € = cena brez DDV − NC: pri prejšnji ceni → planu, spodaj pri ceni v feedu (trgovini). Rdeče = pod 7 €">NC · razlika €</th><th>Stanje</th><th>Dodano</th><th></th></tr></thead><tbody>' +
       vid.slice(0, 500).map(p => '<tr><td><b>' + esc(String(p.trg).toUpperCase()) + '</b></td><td><b style="font-family:ui-monospace,monospace;cursor:copy;border-bottom:1px dashed var(--bd)" title="Klik = kopiraj SKU" onclick="planKopiraj(this,\'' + esc(p.sku) + '\')">' + esc(p.sku) + '</b>' + (p.razveljavi_za ? ' <span class="dim">↩ razveljavitev</span>' : '') +
         '<div class="dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (p.url ? '<a href="' + esc(p.url) + '" target="_blank" rel="noopener" title="Odpri v trgovini ' + esc(String(p.trg).toUpperCase()) + '" style="color:inherit;text-decoration:underline dotted">' + esc(p.naziv || p.url) + ' ↗</a>' : esc(p.naziv || '')) + '</div></td>' +
         '<td class="r">' + f(p.stara) + '</td><td class="r"><b>' + f(p.nova) + '</b> <span class="dim">' + esc(p.cur || '') + '</span></td>' +
+        '<td class="r" style="white-space:nowrap">' + (p.raz ? '<div class="dim">NC ' + f(p.nc) + ' €</div><div>' + rzF(p.raz.prej) + ' → <b>' + rzF(p.raz.novo) + '</b></div>' +
+          (p.raz.feed != null ? '<div style="font-size:12px" title="Razlika pri ceni, ki je zdaj v trgovini (feed)">feed ' + rzF(p.raz.feed) + '</div>' : '') : '<span class="dim">—</span>') + '</td>' +
         '<td><b style="color:' + (S[p.status] || ['', ''])[1] + '">' + (S[p.status] || [p.status])[0] + '</b>' + (p.napaka ? '<div class="dim" style="color:#dc2626">' + esc(p.napaka) + '</div>' : '') +
           (p.razveljavljeno ? '<div class="dim">razveljavljeno ' + fmtT(p.razveljavljeno) + '</div>' : '') + (p.rocno ? '<div class="dim">✋ ročno shranjeno</div>' : '') +
           (p.rezultat && p.rezultat.prodajna != null ? '<div class="dim" title="»Prodajna« v CMS pred in po spremembi (vtičnik)">CMS Prodajna ' + f(+p.rezultat.prodajna_stara) + ' → ' + f(+p.rezultat.prodajna) + '</div>' : '') +
@@ -14362,6 +14406,7 @@ function vrstaRisi() {
       : '<div class="dim" style="padding:20px;text-align:center">Ni postavk.</div>') +
     ((s.caka || 0) + (s.napaka || 0) + (s.v_delu || 0) ? '<div style="margin-top:10px;display:flex;gap:8px">' + ((s.napaka || 0) ? '<button class="btn" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="vrstaZnovaNapake()">↻ Znova vse napake (' + (s.napaka || 0) + ')</button>' : '') + '<button class="btn" onclick="if(confirm(\'Prekličem vse čakajoče, v delu in napake?\'))vrstaAkcija({ids:VRSTA.postavke.filter(p=>[\'caka\',\'napaka\',\'v_delu\'].includes(p.status)).map(p=>p.id),akcija:\'preklici\'})">✕ Prekliči vse odprte</button></div>' : '') +
   '</div>';
+  _obnovi();
 }
 setTimeout(vrstaNalozi, 1500);
 // ▶ PRESKOČI BATO CENE: iz izbora IZPUSTI (odznači) izdelke, katerih KONČNA cena že ima Bato končnico (batoCands → null);
