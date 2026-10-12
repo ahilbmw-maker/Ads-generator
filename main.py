@@ -1716,6 +1716,9 @@ async def cene_vrsta_get():
     # ✓/⚠ PREVERBA S FEEDOM: pri urejenih primerjaj ceno za stranko v feedu (zgrajen PO spremembi) s planirano »nova»
     for p in d["postavke"]:
         p.pop("feed", None)
+        _it = (feed_by_lang.get(p.get("trg")) or {}).get(str(p.get("g_id") or "")) or {}
+        if _it.get("url"):
+            p["url"] = _it["url"]   # povezava v trgovino (klik na naziv v oknu Vrste)
         if p.get("status") != "ok" or not p.get("konec"):
             continue
         if p.get("feed_pusti"):   # ✓ uporabnik je odstopanje preveril in ceno pustil, kakršna je
@@ -14308,6 +14311,11 @@ function spCsv() {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = 'spremembe_cen_' + SP_F.od + (SP_F.do !== SP_F.od ? '_' + SP_F.do : '') + '.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
+function vrstaPustiVse() {   // ⚠ Odstopa v feedu → vse »✓ Pusti tako« naenkrat (feed_pusti; CMS se ne spremeni)
+  const ids = (VRSTA && VRSTA.postavke || []).filter(p => p.feed && p.feed.stanje === 'odstopa' && !p.razveljavljeno).map(p => p.id);
+  if (!ids.length || !confirm('Označi vseh ' + ids.length + ' odstopajočih kot »✓ Pusti tako«? Cene v trgovini ostanejo take, kot so.')) return;
+  vrstaAkcija({ ids, akcija: 'pusti' });
+}
 function vrstaZnovaNapake() {   // vse ⚠ napake nazaj v čakanje (varovalka 1× na dan se ob izvedbi preveri znova)
   const ids = (VRSTA && VRSTA.postavke || []).filter(p => p.status === 'napaka').map(p => p.id);
   if (ids.length && confirm('Vse napake (' + ids.length + ') vrnem v čakanje?')) vrstaAkcija({ ids, akcija: 'znova' });
@@ -14333,10 +14341,11 @@ function vrstaRisi() {
       '<button class="btn" onclick="vrstaZapri()">✕</button></div>' +
     (o.dataset.msg ? '<div style="margin:8px 0;padding:8px 10px;border-radius:8px;background:#dcfce7;color:#166534">' + esc(o.dataset.msg) + '</div>' : '') +
     '<div class="dim" style="margin:6px 0 8px">Izvaja jo vtičnik: v panelu vklopi »▶ Izvajaj vrsto« (Chrome odprt, prijavljen v CMS). Vsak izdelek dobi točno ceno »Novo«; če je cena v CMS drugačna od »Prej«, ga preskoči (⚠).</div>' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + ch('odprte', 'Odprte') + ch('ok', 'Urejene') + ch('napaka', 'Napake') + ch('odstopa', '⚠ Odstopa v feedu') + ch('preklicano', 'Preklicane') + ch('vse', 'Vse') + '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + ch('odprte', 'Odprte') + ch('ok', 'Urejene') + ch('napaka', 'Napake') + ch('odstopa', '⚠ Odstopa v feedu') + ch('preklicano', 'Preklicane') + ch('vse', 'Vse') +
+      (vrstaFlt === 'odstopa' && vid.length ? '<button class="btn" style="margin-left:auto;background:#2563eb;color:#fff;border-color:#2563eb" title="Vse prikazane odstopajoče: cena v trgovini ostane taka, kot je (v CMS se nič ne spremeni)" onclick="vrstaPustiVse()">✓ Pusti tako vse (' + vid.length + ')</button>' : '') + '</div>' +
     (vid.length ? '<div class="plan-tab"><table><thead><tr><th>Trg</th><th>SKU</th><th class="r">Prej</th><th class="r">Novo</th><th>Stanje</th><th>Dodano</th><th></th></tr></thead><tbody>' +
-      vid.slice(0, 500).map(p => '<tr><td><b>' + esc(String(p.trg).toUpperCase()) + '</b></td><td><b style="font-family:ui-monospace,monospace">' + esc(p.sku) + '</b>' + (p.razveljavi_za ? ' <span class="dim">↩ razveljavitev</span>' : '') +
-        '<div class="dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.naziv || '') + '</div></td>' +
+      vid.slice(0, 500).map(p => '<tr><td><b>' + esc(String(p.trg).toUpperCase()) + '</b></td><td><b style="font-family:ui-monospace,monospace;cursor:copy;border-bottom:1px dashed var(--bd)" title="Klik = kopiraj SKU" onclick="planKopiraj(this,\'' + esc(p.sku) + '\')">' + esc(p.sku) + '</b>' + (p.razveljavi_za ? ' <span class="dim">↩ razveljavitev</span>' : '') +
+        '<div class="dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (p.url ? '<a href="' + esc(p.url) + '" target="_blank" rel="noopener" title="Odpri v trgovini ' + esc(String(p.trg).toUpperCase()) + '" style="color:inherit;text-decoration:underline dotted">' + esc(p.naziv || p.url) + ' ↗</a>' : esc(p.naziv || '')) + '</div></td>' +
         '<td class="r">' + f(p.stara) + '</td><td class="r"><b>' + f(p.nova) + '</b> <span class="dim">' + esc(p.cur || '') + '</span></td>' +
         '<td><b style="color:' + (S[p.status] || ['', ''])[1] + '">' + (S[p.status] || [p.status])[0] + '</b>' + (p.napaka ? '<div class="dim" style="color:#dc2626">' + esc(p.napaka) + '</div>' : '') +
           (p.razveljavljeno ? '<div class="dim">razveljavljeno ' + fmtT(p.razveljavljeno) + '</div>' : '') + (p.rocno ? '<div class="dim">✋ ročno shranjeno</div>' : '') +
