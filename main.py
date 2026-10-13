@@ -32937,9 +32937,10 @@ async def xsell_seznam(request: Request):
             st["izbran"] = by.trenutni(st["izbran"])
         out.append({"g_id": r["g_id"], "sku": r["sku"], "naziv": r["naziv"], "slika": r["slika"], "cena": r["cena"],
                     "zaloga": r["zaloga"], "obrat": r["obrat"], "kat_ime": r["kat_ime"], "vir": st["vir"], "izbran": st["izbran"],
+                    "izbran_zaloga": ((by.najdi(st["izbran"]) or {}).get("zaloga") if st["izbran"] else None),   # ⚠ filter »Xsell brez zaloge«
                     "ima_predloge": bool((d["izdelki"].get(r["g_id"]) or {}).get("predlogi"))})
     out.sort(key=lambda x: (-(x["obrat"] or 0), -(x["zaloga"] or 0)))
-    return {"ok": True, "izdelki": out}
+    return {"ok": True, "izdelki": out, "min_zaloga": XSELL_MIN_ZALOGA}
 
 
 @app.get("/xsell-kategorije")

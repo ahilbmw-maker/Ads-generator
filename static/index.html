@@ -1086,7 +1086,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-13 17:20</div>
+      <div class="sidebar-logo-sub">build 2026-10-13 17:48</div>
     </div>
   </div>
 
@@ -11460,7 +11460,7 @@ async function xsPLoad(soft) {
   try {
     const [a, b] = await Promise.all([fetch('/xsell-seznam').then(r => r.json()), fetch('/xsell-moj-seznam').then(r => r.json())]);
     if (!a.ok) throw new Error(a.error || 'napaka');
-    _xs.list = a.izdelki || []; _xs.moj = (b && b.g_ids) || [];
+    _xs.list = a.izdelki || []; _xs.moj = (b && b.g_ids) || []; _xs.minZal = a.min_zaloga || 20;
     if (_xs.src === 'moj' && !_xs.moj.length) _xs.src = 'vsi';
     _xsPAt = Date.now();
     xsPRender();
@@ -11481,6 +11481,8 @@ document.addEventListener('visibilitychange', () => {
   if (izd && izd.offsetParent !== null) xsPLoad(true);
 });
 const xsPSt = x => _xs.run.has(x.g_id) ? 'run' : (x.izbran ? 'ok' : (x.ima_predloge ? 'pr' : 'no'));
+// ⚠ izbran Xsell nima (dovolj) zaloge → zamenjaj (pod mejo kandidatov, privzeto 20 kosov)
+const xsPNz = x => !!x.izbran && x.izbran_zaloga != null && x.izbran_zaloga < (_xs.minZal || 20);
 function xsPBase() {
   if (_xs.src === 'vsi') return _xs.list;
   const by = {}; _xs.list.forEach(x => { by[x.g_id] = x; });
@@ -11488,7 +11490,7 @@ function xsPBase() {
 }
 function xsPVis() {
   const q = (document.getElementById('xsPQ').value || '').toLowerCase().trim();
-  return xsPBase().filter(x => (_xs.pf === 'vse' || xsPSt(x) === _xs.pf) && (!q || (x.sku + ' ' + x.naziv).toLowerCase().includes(q)));
+  return xsPBase().filter(x => (_xs.pf === 'vse' || (_xs.pf === 'nz' ? xsPNz(x) : xsPSt(x) === _xs.pf)) && (!q || (x.sku + ' ' + x.naziv).toLowerCase().includes(q)));
 }
 function xsSetSrc(s) { _xs.src = s; xsLS('slx_xs_src', s); _xs.sel.clear(); xsPRender(); }
 function xsSetPF(f) { _xs.pf = f; xsPRender(); }
@@ -11501,8 +11503,9 @@ function xsPRender() {
     '<span class="xs-chip' + (_xs.src === 'vsi' ? ' on' : '') + '" onclick="xsSetSrc(\'vsi\')">Vsi po obratu ' + _xs.list.length + '</span>' +
     '<span class="xs-chip" id="xsPAt" onclick="xsPLoad(true)" title="Osveži seznam (obrat, zaloga, novi izdelki) — samodejno ob odprtju, če je starejši od 30 min" style="margin-left:auto;color:#64748b"></span>';
   xsPAtUI();
-  document.getElementById('xsPFil').innerHTML = [['vse', 'Vse ' + base.length], ['no', 'Brez predlogov ' + cnt.no], ['pr', 'Za izbrati ' + cnt.pr], ['ok', '✓ Izbran ' + cnt.ok]]
-    .map(f => '<span class="xs-chip' + (_xs.pf === f[0] ? ' on' : '') + '" onclick="xsSetPF(\'' + f[0] + '\')">' + f[1] + '</span>').join('');
+  const nNz = base.filter(xsPNz).length;
+  document.getElementById('xsPFil').innerHTML = [['vse', 'Vse ' + base.length], ['no', 'Brez predlogov ' + cnt.no], ['pr', 'Za izbrati ' + cnt.pr], ['ok', '✓ Izbran ' + cnt.ok]].concat(nNz || _xs.pf === 'nz' ? [['nz', '⚠ Xsell brez zaloge ' + nNz]] : [])
+    .map(f => '<span class="xs-chip' + (_xs.pf === f[0] ? ' on' : '') + '" onclick="xsSetPF(\'' + f[0] + '\')"' + (f[0] === 'nz' ? ' style="color:#dc2626;font-weight:700" title="Izbrani Xsell ima manj kot ' + (_xs.minZal || 20) + ' kosov zaloge — zamenjaj (drug predlog ali ↻ Nove predloge)"' : '') + '>' + f[1] + '</span>').join('');
   const vis = xsPVis();
   document.getElementById('xsPList').innerHTML = vis.length ? vis.slice(0, 400).map(x => {
     const st = xsPSt(x), on = _xs.item && _xs.item.g_id === x.g_id;
@@ -11510,7 +11513,8 @@ function xsPRender() {
       '<input type="checkbox" data-pg="' + xsE(x.g_id) + '"' + (_xs.sel.has(x.g_id) ? ' checked' : '') + '>' +
       (x.slika ? '<img loading="lazy" src="' + xsE(x.slika) + '">' : '<span></span>') +
       '<div style="min-width:0"><div class="xsA-t" title="' + xsE(x.naziv) + '">' + xsE(x.naziv) + '</div><div class="xsA-s">' + xsE(x.sku) + ' · obrat ' + (x.obrat || 0) + '</div></div>' +
-      '<span class="xs-st ' + XS_ST[st][0] + '" title="' + (st === 'ok' ? 'izbran: ' + xsE(x.izbran) : '') + '">' + (st === 'pr' ? 'predlogi' : XS_ST[st][1]) + '</span>' +
+      '<span class="xs-st ' + XS_ST[st][0] + '" title="' + (st === 'ok' ? 'izbran: ' + xsE(x.izbran) + (x.izbran_zaloga != null ? ' · zaloga ' + x.izbran_zaloga : '') : '') + '">' + (st === 'pr' ? 'predlogi' : XS_ST[st][1]) + '</span>' +
+      (xsPNz(x) ? '<span class="xs-st" style="background:#fee2e2;color:#dc2626;font-weight:700" title="Izbrani Xsell ' + xsE(x.izbran) + ' ima samo ' + x.izbran_zaloga + ' kos — zamenjaj">⚠ ' + x.izbran_zaloga + ' kos</span>' : '') +
       (_xs.src === 'moj' ? '<span class="xsA-x" data-px="' + xsE(x.g_id) + '" title="odstrani iz mojega seznama">×</span>' : '') + '</div>';
   }).join('') + (vis.length > 400 ? '<div class="xsA-empty">… prikazanih prvih 400 od ' + vis.length + ' — zoži z iskanjem</div>' : '')
     : '<div class="xsA-empty">' + (_xs.src === 'moj' && !_xs.moj.length ? 'Moj seznam je prazen — klikni »＋ Dodaj« in prilepi sliko ali SKU-je.' : 'Ni izdelkov v tem filtru.') + '</div>';
