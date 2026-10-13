@@ -14088,7 +14088,8 @@ function planIzracun() {
       if (cez) op.push('⚠ čez prag ' + Math.floor(pred / PRG + 1e-9) * PRG);
       if (!gor && mPo < N.prag) op.push('marža pod ' + N.prag + ' %');
       if (velika) op.push('sprememba nad ' + N.maxPct + ' %');
-      if (decimalke) op.push('🔧 + decimalke');
+      // (prej: `decimalke` je definiran šele spodaj → ReferenceError, plan »po obratu« ni nikoli pokazal predlogov)
+      if ((BATO_CFG[cur] || BATO_CFG.EUR).dec === 0 && Math.abs(c - Math.round(c)) > 0.001) op.push('🔧 + decimalke');
       predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct, mZdaj: mz(c), mPo, rZdaj: neto(c) - x.nc, rPo: neto(pred) - x.nc,
         opomba: op.join(' · '), ok: !velika && !cez && (gor || mPo >= N.prag), obrat: sg.k });
       return;
