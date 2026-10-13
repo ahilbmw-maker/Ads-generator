@@ -1782,6 +1782,21 @@ CENE_DNEVNIK_FILE = DATA_DIR / "cene_dnevnik.jsonl"
 _cd_zadnji_c = {"m": None, "d": {}}
 
 
+def _cd_dvojnik(seen: dict, z: dict) -> bool:
+    """True = enak zapis istega izdelka (prej/potem/CMS/vir) v ≤ 15 min za prejšnjim → dvojnik (podvojeno poročilo vtičnika)."""
+    k = f"{z.get('trg')}|{z.get('cms_id')}"
+    sig = (str(z.get("prej")), str(z.get("potem")), str(z.get("cms_prej")), str(z.get("cms_potem")), str(z.get("vir")))
+    at = str(z.get("at") or "")[:19]
+    prej = seen.get(k)
+    seen[k] = (sig, at)
+    if not prej or prej[0] != sig:
+        return False
+    try:
+        return abs((datetime.fromisoformat(at) - datetime.fromisoformat(prej[1])).total_seconds()) <= 900
+    except Exception:
+        return False
+
+
 def _cene_dnevnik_zadnji() -> dict:
     """{trg|cms_id: {"at", "cms_potem", "vir"}} — zadnja sprememba iz 📜 dnevnika (predpomnjeno po mtime)."""
     try:
@@ -1793,10 +1808,13 @@ def _cene_dnevnik_zadnji() -> dict:
     out = {}
     try:
         with open(CENE_DNEVNIK_FILE, encoding="utf-8") as f:
+            _seen = {}
             for line in f:
                 try:
                     z = json.loads(line)
                 except Exception:
+                    continue
+                if _cd_dvojnik(_seen, z):   # isti rezultat zapisan večkrat (vtičnik 1.28.0) → šteje enkrat
                     continue
                 k, at = f"{z.get('trg')}|{z.get('cms_id')}", str(z.get("at") or "")
                 e = out.get(k)
@@ -1856,10 +1874,13 @@ async def cene_zadnja(request: Request, trg: str = ""):
     out = {}
     try:
         with open(CENE_DNEVNIK_FILE, encoding="utf-8") as f:
+            _seen = {}
             for line in f:
                 try:
                     z = json.loads(line)
                 except Exception:
+                    continue
+                if _cd_dvojnik(_seen, z):   # isti rezultat zapisan večkrat (vtičnik 1.28.0) → šteje enkrat
                     continue
                 at = str(z.get("at") or "")
                 if at < meja or (trg and z.get("trg") not in (trg, "*")):
@@ -1931,10 +1952,13 @@ async def cene_dnevnik_get(request: Request, od: str = "", do: str = "", trg: st
     out = []
     try:
         with open(CENE_DNEVNIK_FILE, encoding="utf-8") as f:
+            _seen = {}
             for line in f:
                 try:
                     z = json.loads(line)
                 except Exception:
+                    continue
+                if _cd_dvojnik(_seen, z):   # isti rezultat zapisan večkrat (vtičnik 1.28.0) → šteje enkrat
                     continue
                 d = str(z.get("at") or "")[:10]
                 if d < od or d > do or (trg and z.get("trg") != trg):
@@ -2147,6 +2171,10 @@ async def cene_vrsta_rezultat(data: dict):
             return {"ok": False, "error": "Postavke ni v vrsti."}
         if p.get("rocno") and p.get("status") == "ok":   # že ✓ ročno shranjeno — rezultat vtičnika (npr. napaka) ne prepiše
             return {"ok": True, "prezrto": True}
+        _nr = data.get("rezultat") if isinstance(data.get("rezultat"), dict) else {}
+        _sr = p.get("rezultat") or {}
+        if p.get("status") == ("ok" if data.get("ok") else "napaka") and _sr and all(str(_sr.get(k)) == str(_nr.get(k)) for k in ("prodajna_stara", "prodajna")):
+            return {"ok": True, "dvojnik": True}   # isti rezultat poslan večkrat (vtičnik 1.28.0) — ne zapiši znova (dnevnik, ledger)
         if p.get("rezultat"):   # že poročano → hrani tudi prejšnje (dvojna izvedba iste postavke = vidno)
             p.setdefault("rez_prej", []).append({**p["rezultat"], "status": p.get("status"), "at": p.get("konec")})
             p["rez_prej"] = p["rez_prej"][-5:]
@@ -14468,7 +14496,10 @@ function vrstaRisi() {
         '<td><b style="color:' + (S[p.status] || ['', ''])[1] + '">' + (S[p.status] || [p.status])[0] + '</b>' + (p.napaka ? '<div class="dim" style="color:#dc2626">' + esc(p.napaka) + '</div>' : '') +
           (p.razveljavljeno ? '<div class="dim">razveljavljeno ' + fmtT(p.razveljavljeno) + '</div>' : '') + (p.rocno ? '<div class="dim">✋ ročno shranjeno</div>' : '') +
           (p.rezultat && p.rezultat.prodajna != null ? '<div class="dim" title="»Prodajna« v CMS pred in po spremembi (vtičnik)">CMS Prodajna ' + f(+p.rezultat.prodajna_stara) + ' → ' + f(+p.rezultat.prodajna) + (p.rezultat.ze_shranjeno ? ' (že shranjeno — ni 2. dviga)' : '') + '</div>' : '') +
-          ((p.rez_prej || []).length ? '<div style="font-size:12px;font-weight:700;color:#b45309" title="Vtičnik je to postavko izvedel večkrat">⚠ izvedeno ' + (p.rez_prej.length + 1) + '×: ' + p.rez_prej.map(r => f(+r.prodajna_stara) + ' → ' + f(+r.prodajna)).join(' · ') + '</div>' : '') +
+          // ⚠ izvedeno N× samo, če so se ZNESKI razlikovali (pravi 2. dvig: 14,99 → 15,99); enaki = podvojeno poročilo (1.28.0), ne dvig
+          ((rp => rp.length ? '<div style="font-size:12px;font-weight:700;color:#dc2626" title="Vtičnik je to postavko res izvedel večkrat (različni zneski) — preveri ceno v CMS">⚠ izvedeno ' + (rp.length + 1) + '×: ' + rp.map(r => f(+r.prodajna_stara) + ' → ' + f(+r.prodajna)).join(' · ') + '</div>' : '')
+            ((p.rez_prej || []).filter((r, i, a) => r.status === 'ok' && String(r.prodajna_stara) + '|' + String(r.prodajna) !== String((p.rezultat || {}).prodajna_stara) + '|' + String((p.rezultat || {}).prodajna)
+              && a.findIndex(q => String(q.prodajna_stara) + '|' + String(q.prodajna) === String(r.prodajna_stara) + '|' + String(r.prodajna)) === i))) +
           (p.feed ? '<div style="font-size:12px;font-weight:700;color:' + ({ potrjeno: '#15803d', odstopa: '#dc2626', caka: '#64748b', ni_v_feedu: '#b45309', pusti: '#2563eb', nadomesceno: '#64748b' }[p.feed.stanje] || '#64748b') + '">' +
             ({ potrjeno: '✓ potrjeno v feedu (' + f(p.feed.cena) + ')', odstopa: '⚠ feed ' + f(p.feed.cena) + ' ≠ plan ' + f(p.nova), caka: '⏳ čaka nov feed', ni_v_feedu: 'ni v feedu', pusti: '✓ preverjeno — cena ostane', nadomesceno: '↪ nadomeščeno z novejšo spremembo ' + fmtT(p.feed.at) + (p.feed.vir ? ' (' + p.feed.vir + ')' : '') }[p.feed.stanje] || '') + '</div>' : '') + '</td>' +
         '<td class="dim">' + fmtT(p.konec || p.dodano) + '</td><td style="white-space:nowrap">' +
