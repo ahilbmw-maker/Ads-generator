@@ -13506,7 +13506,12 @@ async function load(){
 // ═══ 📊 SIGNAL CENE IZ OBRATA (faza 2) — samo prikaz, cen ne spreminja ═══
 // dnevi zaloge = zaloga / (½ Ø7 + ½ Ø28) · < OBR_NIZKO dni → dvig · > OBR_VISOKO → spust (razen razlika < 7 €) · trend 28 dni · sezona ročno
 let OBR = null; const OBR_NIZKO = 21, OBR_VISOKO = 90, OBR_PAD = -15, OBR_MIN30 = 30;   // signal samo za izdelke z volumnom (≥ 30 prodanih / 30 dni ≈ 1 na dan)
-async function obratNalozi(){ try{ const d=await (await fetch('/obrat-podatki',{cache:'no-store'})).json(); if(d.ok) OBR=d; }catch(e){} obratZdruzi(); }
+async function obratNalozi(){
+  const [d,z]=await Promise.all([fetch('/obrat-podatki',{cache:'no-store'}).then(r=>r.json()).catch(()=>({})),
+    fetch('/cene-zadnja?trg='+encodeURIComponent(trg),{cache:'no-store'}).then(r=>r.json()).catch(()=>({}))]);
+  if(d&&d.ok) OBR=d; if(z&&z.zadnja) ZADNJA=z.zadnja;   // ⏳ premor v stolpcu Signal (zadnja sprememba iz 📜)
+  obratZdruzi();
+}
 function obratZdruzi(){
   if(!D||!D.rows) return;
   const mes=new Date().getMonth()+1, S=(OBR&&OBR.sku)||{}, SZ=(OBR&&OBR.sezona)||{}, NP=(OBR&&OBR.na_poti)||{};
@@ -13538,6 +13543,13 @@ function obratZdruzi(){
         const pr=Math.floor((c+KOR)/PRG+1e-9)*PRG;
         sig={k:'drzi',t:'⏸ drži · prag',c:'#b45309',r:4,o:'Signal bi bil »'+sig.t+'«, a dvig bi prestopil prag '+pr.toLocaleString('sl-SI')+' '+cur+' ('+c.toLocaleString('sl-SI')+' → nad '+pr.toLocaleString('sl-SI')+') — psihološko slabo; drži. '+sig.o};
       }
+    }
+    // ⏳ PREMOR: cena spremenjena v zadnjih N dneh (Plan cen »premor«, privzeto 14) → počakaj na učinek, ne spreminjaj znova
+    if(sig&&(sig.k==='gor'||sig.k==='dol')){
+      const zz=(typeof ZADNJA!=='undefined'&&ZADNJA)?(ZADNJA[trg+'|'+x.cms_id]||ZADNJA['*|'+x.cms_id]):null;
+      let pm=14; try{ const _p=planNastavitve().premor; if(_p!=null&&_p!=='') pm=+_p||0; }catch(e){}   // 0 = premor izklopljen
+      const dni=zz&&zz.at?Math.floor((Date.now()-new Date(zz.at))/864e5):null;
+      if(dni!=null&&dni<pm) sig={k:'drzi',t:'⏳ premor · '+(pm-dni)+' d',c:'#64748b',r:4,o:'Cena spremenjena pred '+dni+' dnevi ('+String(zz.at).slice(0,10)+') — počakaj še '+(pm-dni)+' dni na učinek; potem velja »'+sig.t+'«. '+sig.o};
     }
     x.sig=sig; x.sig_r=sig?sig.r:9; x.sezona=sz;
     if(x._obrat_csv===undefined) x._obrat_csv=x.obrat;   // obrat iz CSV zaloge (rezerva)
