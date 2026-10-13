@@ -13530,6 +13530,15 @@ function obratZdruzi(){
       else if(pad&&raz!=null&&raz>9) sig={k:'dol',t:'🔴 test spust',c:'#dc2626',r:2,o:'Prodaja pada (trend '+tr+' %), razlika > 9 € — poskusi en korak dol (pod prag). '+opis};
       else sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Zdravo stanje — spremljaj. '+opis};
     }
+    // ⏸ PRAG: dvig bi prestopil psihološki prag (19,99 → 20,99 · 4999 → 5399 · 1999 RSD → 2099 · 99 → 104 PLN …) → drži, ne dvig
+    if(sig&&sig.k==='gor'){
+      const cur=x.valuta||'EUR', c=+(x.koncna||x.cena)||0;
+      const KOR={EUR:1,RSD:100,HUF:400,CZK:25,PLN:5,RON:5}[cur]||1, PRG={EUR:10,RSD:1000,HUF:5000,CZK:100,PLN:100,RON:100}[cur]||10;
+      if(c>0&&Math.floor((c+KOR)/PRG+1e-9)>Math.floor(c/PRG+1e-9)){
+        const pr=Math.floor((c+KOR)/PRG+1e-9)*PRG;
+        sig={k:'drzi',t:'⏸ drži · prag',c:'#b45309',r:4,o:'Signal bi bil »'+sig.t+'«, a dvig bi prestopil prag '+pr.toLocaleString('sl-SI')+' '+cur+' ('+c.toLocaleString('sl-SI')+' → nad '+pr.toLocaleString('sl-SI')+') — psihološko slabo; drži. '+sig.o};
+      }
+    }
     x.sig=sig; x.sig_r=sig?sig.r:9; x.sezona=sz;
     if(x._obrat_csv===undefined) x._obrat_csv=x.obrat;   // obrat iz CSV zaloge (rezerva)
     x.obrat_slx=o&&o.s30!=null?o.s30:null; x.obrat=x.obrat_slx!=null?x.obrat_slx:x._obrat_csv;   // sortiranje, Bato pogled, CSV: Siluxar
