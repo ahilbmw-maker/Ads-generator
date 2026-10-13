@@ -496,7 +496,7 @@ loadSaleSkus();
 
 // ── PREGLEDANO DANES: dnevni reset; vrstica se vrne, če se ji cena spremeni ──
 let _pcSeen = {};          // {key: hash} za današnji dan (strežniško)
-let _pcHideSeen = false;   // ODSTRANJENO: funkcija pregledanih izklopljena
+let _pcHideSeen = true;    // 2026-10-13: pregledane (= izbrisane danes, ki jih Siluxar vrne) so VEDNO skrite — tudi v združenih (prej zatemnjene »✓ pregledano«)
 
 function pcRowKey(r) { return r.id + '|' + r.sku; }
 function pcRowHash(r) {
@@ -1316,7 +1316,7 @@ function _updateRazponCounts(rows) {
   if (_pcHideSeen && currentFilter !== 'resolved') {
     const _cnt = {}; rows.forEach(r => { _cnt[r.id] = (_cnt[r.id] || 0) + 1; });
     const _uns = new Set(rows.filter(r => !pcRowSeen(r)).map(r => r.id));
-    base = base.filter(r => !pcRowSeen(r) || (_cnt[r.id] > 1 && _uns.has(r.id)));   // pregledano danes (združena: vse ali nič)
+    base = base.filter(r => !pcRowSeen(r));   // pregledano danes (izbrisano) — skrito, tudi v združenih naročilih
   }
   if (currentCurrency && currentCurrency !== 'all' && !['resolved'].includes(currentCurrency)) base = base.filter(r => r.currency === currentCurrency);
   if (currentStore && currentStore !== 'all') base = base.filter(r => (r.store || '') === currentStore);
@@ -1427,7 +1427,7 @@ function renderTable(rows) {
   if (_pcHideSeen && currentFilter !== 'resolved') {
     const cntAll = {}; rows.forEach(r => { cntAll[r.id] = (cntAll[r.id] || 0) + 1; });
     const unseenIds = new Set(rows.filter(r => !pcRowSeen(r)).map(r => r.id));
-    filtered = filtered.filter(r => !pcRowSeen(r) || (cntAll[r.id] > 1 && unseenIds.has(r.id)));
+    filtered = filtered.filter(r => !pcRowSeen(r));   // značka »Združeno« ostane (šteje vse postavke naročila)
   }
   window._pcLastFiltered = filtered;   // točno to, kar je prikazano — za "Označi prikazane"
   // če je seznam prazen ZARADI pregledanih, to jasno povej (namesto tihe prazne tabele)
