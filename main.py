@@ -36251,7 +36251,9 @@ NL_JEZIKI = {"sl": "slovenščina", "hr": "hrvaščina", "rs": "srbščina (lati
              "cz": "češčina", "sk": "slovaščina", "gr": "grščina", "bg": "bolgarščina", "ro": "romunščina"}
 NL_BESEDILNA = ("NASLOV", "PODNASLOV", "BESEDILO", "GUMB", "IZP_NASLOV", "IZP_GUMB", "NOGA", "ODJAVA", "PREDNOSTI", "ZAUPANJE")
 # Dejstva za pas zaupanja (veljajo za vse trge; AI jih samo prevede) — spremeni tukaj, če se pogoji spremenijo
-NL_ZAUPANJE = "plačilo po povzetju · 365 dni za vračilo · hitra dostava"
+NL_ZAUPANJE = "Plačilo po povzetju · 365 dni za vračilo · Hitra dostava"
+NL_BREZ_STARE_CENE = {"sl"}   # SLO: brez prečrtane (prejšnje) cene in brez značke popusta — samo končna cena
+NL_CENA_NACINI = {"polna": "Polna cena", "popust": "Samo popust", "brez": "Brez cene"}
 _NL_EMOJI = re.compile("[\U0001F000-\U0001FAFF☀-➿⬀-⯿️‍⃣]")
 
 
@@ -36530,7 +36532,8 @@ async def _nl_koncept_slike(urls: list, naziv: str, opis: str, navodilo: str = "
         "for products that restore, clean, repair, renew, remove, protect, organise or visibly improve something.\n"
         "- in_use: close-up of hands / a person using the product in its real situation, showing the action AND its effect.\n"
         "- result: the visible benefit/result is the main subject, product next to it.\n"
-        "- lifestyle: product in an attractive real setting — ONLY if the product has no visible action or effect (pure decor/comfort).\n"
+        "- lifestyle: product in an attractive real setting — ONLY if the product has no visible action or effect (pure decor/comfort). "
+        "If in doubt, do NOT choose lifestyle.\n"
         + (f"USE CONCEPT: {vsiljen}.\n" if vsiljen else "Choose the concept that sells best; prefer before_after or in_use whenever the product changes something.\n")
         + "Base the function ONLY on the images and description — never invent features. "
         "Write prompt_en for an image model that gets the cleanest packshot as reference: describe the exact scene concretely "
@@ -36540,20 +36543,27 @@ async def _nl_koncept_slike(urls: list, naziv: str, opis: str, navodilo: str = "
         "a short fictional generic name. "
         "Also pick ref = index of the cleanest packshot (product alone, no text). "
         'Return ONLY JSON: {"ref": 0, "koncept": "before_after|in_use|result|lifestyle", "razlog_sl": "one sentence in Slovenian", "prompt_en": "..."}')}]
+    slike = []
     for i, u in enumerate(urls):
-        vsebina += [{"type": "text", "text": f"Image {i}:"}, {"type": "image", "source": {"type": "url", "url": u}}]
-    try:
-        loop = asyncio.get_event_loop()
-        msg = await loop.run_in_executor(None, lambda: client.messages.create(
-            model="claude-sonnet-4-6", max_tokens=4000, messages=[{"role": "user", "content": vsebina}]))
-        raw = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
-        j = _nl_json(raw)
-        ref = int(j.get("ref") or 0)
-        return {"ref_url": urls[ref if 0 <= ref < len(urls) else 0], "koncept": str(j.get("koncept") or ""),
-                "razlog": _nl_brez_emoji(j.get("razlog_sl") or "")[:300], "prompt": str(j.get("prompt_en") or "")[:2500]}
-    except Exception as e:
-        print(f"[newsletter] koncept slike: {str(e)[:200]}")
-        return {}
+        slike += [{"type": "text", "text": f"Image {i}:"}, {"type": "image", "source": {"type": "url", "url": u}}]
+    loop = asyncio.get_event_loop()
+    # 1. poskus s slikami; če slik ni mogoče prebrati → koncept samo iz opisa (nikoli tiho nazaj na lifestyle)
+    for z_slikami in (True, False):
+        try:
+            vsb = vsebina + slike if z_slikami else [{"type": "text", "text": vsebina[0]["text"] + "\n(Images are not available — decide from the name and description; set ref = 0.)"}]
+            msg = await loop.run_in_executor(None, lambda: client.messages.create(
+                model="claude-sonnet-4-6", max_tokens=4000, messages=[{"role": "user", "content": vsb}]))
+            raw = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
+            j = _nl_json(raw)
+            if not str(j.get("prompt_en") or "").strip():
+                raise RuntimeError("prazen prompt_en")
+            ref = int(j.get("ref") or 0) if z_slikami else 0
+            return {"ref_url": urls[ref if 0 <= ref < len(urls) else 0], "koncept": str(j.get("koncept") or ""),
+                    "razlog": ("" if z_slikami else "(slik ni bilo mogoče prebrati — iz opisa) ") + _nl_brez_emoji(j.get("razlog_sl") or "")[:300],
+                    "prompt": str(j.get("prompt_en") or "")[:2500]}
+        except Exception as e:
+            print(f"[newsletter] koncept slike ({'s slikami' if z_slikami else 'brez slik'}): {str(e)[:200]}")
+    return {}
 
 
 async def _nl_flare_hero(ref_url: str, naziv: str, navodilo: str, koncept_prompt: str = "") -> tuple:
@@ -36611,16 +36621,19 @@ Napiši v SLOVENŠČINI (matica — drugi trgi dobijo zvest prevod tega besedila
 - zadeva_ponovno: DRUGAČNA zadeva za ponovno pošiljanje tistim, ki prvega niso odprli (drug kot: korist, problem, ki ga reši, ali omejena zaloga — brez lažne nujnosti), največ 55 znakov
 - preheader: največ 90 znakov, dopolni zadevo
 - slika_naslov: SUPER PRODAJNI naslov, ki bo napisan NA SLIKI (2–6 besed, udarno, korist ali čustvo, brez cene)
-- slika_znacka: kratka značka na sliki (do 3 besede) — če je popust, točno popust (npr. "-40 %"), sicer kratka korist ali "NOVO"
+- slika_znacka: kratka značka na sliki (do 3 besede): konkretna korist ali dejstvo (npr. "Komplet 3 kosov"); NE popust in NE "NOVO"
+  (razen če navodilo izrecno pravi, da je izdelek nov) — popust trga doda sistem sam
 - in vsa zgornja besedilna polja predloge (ključi točno kot v predlogi)
 - PREDNOSTI: točno 3 ključne prednosti izdelka (vsaka do 7 besed, konkretno iz opisa), vsaka v svoji vrstici, brez alinej in številk
 - ZAUPANJE: točno ta dejstva, ločena s " · " (ne dodajaj ničesar): {zaupanje}
 - IZP_GUMB: besedilo malega gumba pri dodatnih izdelkih (1–2 besedi, npr. "Kupi")
+- IZP_IMENA: objekt {{"SKU": "kratko ime"}} za spodnje dodatne izdelke — do 5 besed, jasno kaj je, brez kod, angleških imen modelov
+  in vejic na koncu: {izp_seznam}
 
 Pravila: BREZ emojijev in posebnih simbolov (Mailchimp jih ne prikaže pravilno). Brez VELIKIH ČRK za cele stavke. Ne izmišljuj lastnosti,
 ki jih ni v opisu. Cene ne piši v besedilo (je v svojem polju). Pravilna slovenščina s šumniki.
 
-Vrni SAMO JSON: {{"zadeva": "...", "zadeva_ponovno": "...", "preheader": "...", "slika_naslov": "...", "slika_znacka": "...", "PREDNOSTI": "...", "ZAUPANJE": "...", "IZP_GUMB": "...", "NASLOV": "...", ...}}"""
+Vrni SAMO JSON: {{"zadeva": "...", "zadeva_ponovno": "...", "preheader": "...", "slika_naslov": "...", "slika_znacka": "...", "PREDNOSTI": "...", "ZAUPANJE": "...", "IZP_GUMB": "...", "IZP_IMENA": {{"SKU": "..."}}, "NASLOV": "...", ...}}"""
 
 NL_PREVOD_PROMPT = """Si profesionalni prevajalec za e-trgovino {znamka}. Spodaj je SLOVENSKO besedilo newsletterja (matica) v JSON.
 Prevedi VSAKO vrednost v jezike: {jeziki}.
@@ -36629,7 +36642,8 @@ Pravila:
 - ZVEST prevod pomena: nič ne dodajaj, nič ne izpuščaj, nobenih novih trditev, lastnosti ali obljub. Isti ključi kot v matici.
 - Slovnično in pravopisno brezhibno, z vsemi diakritičnimi znaki; naravno, kot bi napisal domač copywriter (ne okorno dobesedno).
 - Dolžine: zadeva in zadeva_ponovno največ 55 znakov, preheader največ 90, slika_naslov 2–6 besed — po potrebi skrajšaj, pomen ostane.
-- PREDNOSTI ostanejo 3 vrstice (vsaka v svoji vrstici). ZAUPANJE ostane ločeno s " · ".
+- PREDNOSTI ostanejo 3 vrstice (vsaka v svoji vrstici). ZAUPANJE ostane ločeno s " · " z veliko začetnico vsakega dela.
+- IZP_IMENA: prevedi vrednosti, ključi (SKU) ostanejo enaki.
 - Brez emojijev. Srbščina v latinici. Imen izdelkov in blagovnih znamk ne prevajaj.
 
 MATICA (SL):
@@ -36666,14 +36680,25 @@ def _nl_vstavi_za(h: str, oznaka: str, blok: str) -> str:
 def _nl_razsiri(h: str, vr: dict) -> str:
     """Prodajni bloki, ki jih predloga sama nima. Vsebina gre kot {{POLJE}} → kasneje varno vstavljena."""
     F = "font-family:Arial,Helvetica,sans-serif;"
-    blok = ""
+    # 1) takoj pod glavno sliko: cena (če je predloga nima) + gumb — na telefonu vidno brez drsenja čez besedilo
+    vrh = ""
+    if "{{CENA}}" not in h and (vr.get("CENA") or vr.get("POPUST")):
+        vrh += (f'<div style="{F}margin:16px 0 6px;text-align:center">'
+                + (f'<span style="font-size:30px;font-weight:700;color:#111">{{{{CENA}}}}</span>' if vr.get("CENA") else "")
+                + (f'<span style="font-size:18px;color:#8a8a8a;text-decoration:line-through;margin-left:10px">{{{{CENA_STARA}}}}</span>' if vr.get("CENA_STARA") else "")
+                + (f'<span style="display:inline-block;background:#d62d20;color:#ffffff;font-size:{14 if vr.get("CENA") else 22}px;font-weight:700;padding:3px 9px;'
+                   f'border-radius:4px;margin-left:10px;vertical-align:4px">{{{{POPUST}}}}</span>' if vr.get("POPUST") else "")
+                + '</div>')
+    if vr.get("GUMB") and vr.get("HERO_URL") and "{{HERO_SLIKA}}" in h:
+        vrh += (f'<div style="margin:8px 0 14px;text-align:center"><a href="{{{{HERO_URL}}}}" style="{F}display:inline-block;background:#e4572e;'
+                f'color:#ffffff;font-size:17px;font-weight:700;padding:14px 34px;border-radius:6px;text-decoration:none">{{{{GUMB}}}}</a></div>')
+    if vrh and "{{HERO_SLIKA}}" in h:
+        h = _nl_vstavi_za(h, "{{HERO_SLIKA}}", vrh)
+        vrh = ""
+    # 2) za besedilom: prednosti + pas zaupanja (+ cena, če je ni bilo mogoče postaviti pod sliko)
+    blok = vrh
     if (vr.get("PREDNOSTI") or "").strip():
         blok += f'<div style="{F}margin:14px 0 4px;font-size:15px;line-height:1.7;color:#222;text-align:left">{{{{!PREDNOSTI}}}}</div>'
-    if "{{CENA}}" not in h and vr.get("CENA"):
-        blok += (f'<div style="{F}margin:14px 0 4px;text-align:center"><span style="font-size:30px;font-weight:700;color:#111">{{{{CENA}}}}</span>'
-                 + (f'<span style="font-size:18px;color:#8a8a8a;text-decoration:line-through;margin-left:10px">{{{{CENA_STARA}}}}</span>' if vr.get("CENA_STARA") else "")
-                 + (f'<span style="display:inline-block;background:#d62d20;color:#ffffff;font-size:14px;font-weight:700;padding:3px 9px;border-radius:4px;margin-left:10px;vertical-align:4px">{{{{POPUST}}}}</span>' if vr.get("POPUST") else "")
-                 + '</div>')
     if (vr.get("ZAUPANJE") or "").strip():
         blok += f'<div style="{F}margin:14px 0 6px;padding:10px 12px;background:#f4f5f7;border-radius:6px;font-size:13px;line-height:1.5;color:#333;text-align:center;font-weight:700">{{{{ZAUPANJE}}}}</div>'
     if blok:
@@ -36702,6 +36727,48 @@ def _nl_sestavi(p: dict, vrednosti: dict) -> str:
         v = vrednosti.get(polje, "")
         h = h.replace("{{" + polje + "}}", _h.escape(str(v), quote=True))
     return h
+
+
+def _nl_najdi(rows, s):
+    s = str(s or "").upper()
+    return next((r for r in rows or [] if s and s in (str(r.get("sku") or "").upper(), str(r.get("nc_sku") or "").upper())), None)
+
+
+def _nl_lepo_ime(t: str) -> str:
+    return re.sub(r"\s+", " ", _nl_brez_emoji(t)).strip().rstrip(" ,;:-")[:70]
+
+
+def _nl_cene_feed(sku: str, izp: list, rows: list) -> dict:
+    """Surove cene iz feeda trga (glavni + izpostavitve po SKU) — pravila trga in način prikaza se uporabijo šele v _nl_cene_v_vr."""
+    r = _nl_najdi(rows, sku)
+    out = {"hero": _nl_vrstica_cene(r) if r else {}, "izp": []}
+    for s_ in izp or []:
+        x = _nl_najdi(rows, s_)
+        c = _nl_vrstica_cene(x) if x else {}
+        out["izp"].append({"sku": s_, "CENA": c.get("CENA", ""), "CENA_STARA": c.get("CENA_STARA", "")})
+    return out
+
+
+def _nl_cene_v_vr(vr: dict, cf: dict, trg: str, nacin: str) -> dict:
+    """Prikazane cene: SLO brez prečrtane cene/popusta; »popust« = samo značka; »brez« = nič."""
+    h = dict((cf or {}).get("hero") or {})
+    if trg in NL_BREZ_STARE_CENE:
+        h["CENA_STARA"] = h["POPUST"] = ""
+    if nacin == "popust":
+        h["CENA"] = h["CENA_STARA"] = ""
+    elif nacin == "brez":
+        h = {}
+    vr.update({k: h.get(k, "") for k in ("CENA", "CENA_STARA", "POPUST")})
+    for i, x in enumerate((cf or {}).get("izp") or [], 1):
+        vr[f"IZP{i}_CENA"] = "" if nacin in ("popust", "brez") else x.get("CENA", "")
+        vr[f"IZP{i}_CENA_STARA"] = "" if nacin in ("popust", "brez") or trg in NL_BREZ_STARE_CENE else x.get("CENA_STARA", "")
+    return vr
+
+
+def _nl_znacka(trg: str, cf: dict, nacin: str, korist: str) -> str:
+    """Značka na sliki: popust trga (ne v SLO, ne pri »brez cene«), sicer korist iz matice."""
+    pop = ((cf or {}).get("hero") or {}).get("POPUST") or ""
+    return pop if pop and trg not in NL_BREZ_STARE_CENE and nacin != "brez" else (korist or "")
 
 
 async def _nl_obdelaj(nid: str):
@@ -36774,7 +36841,7 @@ async def _nl_obdelaj(nid: str):
             r = najdi(vrstice[t], sku)
             if r:
                 c = _nl_vrstica_cene(r)
-                cene[t] = c["CENA"] + (f" (prej {c['CENA_STARA']}, {c['POPUST']})" if c["CENA_STARA"] else "")
+                cene[t] = c["CENA"] + (f" (prej {c['CENA_STARA']}, {c['POPUST']})" if c["CENA_STARA"] and t not in NL_BREZ_STARE_CENE else "")
             # predloga trga → univerzalna (AI dizajn, trg "*") → katera koli predloga znamke
             pred_trg[t] = (next((p for p in predloge if p.get("trg") == t), None) or next((p for p in predloge if p.get("trg") == "*"), None)
                            or (predloge[0] if predloge else None))
@@ -36793,8 +36860,9 @@ async def _nl_obdelaj(nid: str):
             cene=f"SI: {cena_sl}" if "sl" in cene else cena_sl,
             navodilo=("NAVODILO: " + n["navodilo"]) if n.get("navodilo") else "",
             polja="\n".join(f'- {k}: vzorec "{v[:200]}"' for k, v in polja_txt.items()) or "- NASLOV, BESEDILO, GUMB",
-            zaupanje=NL_ZAUPANJE), "claude-sonnet-4-6", None, 8000)
-        matica = {k: v for k, v in (_nl_json(raw) or {}).items() if isinstance(v, str)}
+            zaupanje=NL_ZAUPANJE,
+            izp_seznam="; ".join(f"{s_}: {(_nl_najdi(sl_rows, s_) or {}).get('naziv', '')}" for s_ in kandidati[:8]) or "(ni)"), "claude-sonnet-4-6", None, 8000)
+        matica = {k: v for k, v in (_nl_json(raw) or {}).items() if isinstance(v, str) or (k == "IZP_IMENA" and isinstance(v, dict))}
         if not matica.get("zadeva"):
             raise RuntimeError("AI ni vrnil slovenske matice besedil.")
         besedila = {"sl": matica}
@@ -36806,14 +36874,9 @@ async def _nl_obdelaj(nid: str):
                 matica=json.dumps(matica, ensure_ascii=False, indent=1), trgi=", ".join(drugi)), "claude-sonnet-4-6", None, 16000)
             prev = _nl_json(raw) or {}
             for t in drugi:
-                besedila[t] = {k: v for k, v in (prev.get(t) or {}).items() if isinstance(v, str)}
+                besedila[t] = {k: v for k, v in (prev.get(t) or {}).items() if isinstance(v, str) or (k == "IZP_IMENA" and isinstance(v, dict))}
                 if not besedila[t].get("zadeva"):
                     raise RuntimeError(f"Prevod za {MARZA_TRGI[t][0]} manjka — poskusi znova.")
-        # značka s popustom: vsak trg dobi SVOJ popust iz feeda (ne prevod slovenskega)
-        if re.fullmatch(r"-?\s*\d+\s*%", (matica.get("slika_znacka") or "").strip()):
-            for t in trgi_ok:
-                r_ = najdi(vrstice[t], sku)
-                besedila.setdefault(t, {})["slika_znacka"] = _nl_vrstica_cene(r_)["POPUST"] if r_ else ""
 
         # sestavi HTML po trgih
         izid = {}
@@ -36822,9 +36885,11 @@ async def _nl_obdelaj(nid: str):
             if not p or not r:
                 izid[t] = {"napaka": "ni predloge za znamko" if not p else "izdelka ni v feedu trga"}
                 continue
-            b = {k: _nl_brez_emoji(v) for k, v in (besedila.get(t) or {}).items()}
+            bt_ = besedila.get(t) or {}
+            imena = {str(k).upper(): _nl_lepo_ime(v) for k, v in ((bt_.get("IZP_IMENA") if isinstance(bt_.get("IZP_IMENA"), dict) else None) or {}).items()}
+            b = {k: _nl_brez_emoji(v) for k, v in bt_.items() if isinstance(v, str)}
             kamp = f"nl-{sku}-{_lj_iso()[:10]}"
-            vr = {"HERO_SLIKA": slika_url, "HERO_URL": _nl_utm(r.get("url"), kamp), **_nl_vrstica_cene(r),
+            vr = {"HERO_SLIKA": slika_url, "HERO_URL": _nl_utm(r.get("url"), kamp),
                   "TRGOVINA_URL": _nl_utm("https://" + urlparse(r.get("url") or "").netloc + "/", kamp) if r.get("url") else "",
                   "LOGO_URL": p.get("logo_url") or "",
                   **{k: b.get(k, "") for k in NL_BESEDILNA}}
@@ -36832,16 +36897,20 @@ async def _nl_obdelaj(nid: str):
             izbrani = list({id(x): x for x in (najdi(vrstice[t], s) for s in kandidati)
                             if x and str(x.get("sku") or "").upper() != sku.upper()}.values())[:st_izp]
             for i, x in enumerate(izbrani, 1):
-                c = _nl_vrstica_cene(x)
+                xs_ = str(x.get("sku") or "").upper()
                 vr.update({f"IZP{i}_SLIKA": x.get("slika") or "", f"IZP{i}_URL": _nl_utm(x.get("url"), kamp),
-                           f"IZP{i}_NAZIV": _nl_brez_emoji(x.get("naziv") or "")[:70], f"IZP{i}_CENA": c["CENA"], f"IZP{i}_CENA_STARA": c["CENA_STARA"]})
+                           f"IZP{i}_NAZIV": imena.get(xs_) or _nl_lepo_ime(x.get("naziv") or "")})
+            cf = _nl_cene_feed(sku, [x.get("sku") for x in izbrani], vrstice[t])
+            _nl_cene_v_vr(vr, cf, t, n.get("cena_nacin") or "polna")
             izid[t] = {"predloga": p["id"], "predloga_trg": p.get("trg"), "zadeva": b.get("zadeva", ""), "zadeva_ponovno": b.get("zadeva_ponovno", ""),
                        "preheader": b.get("preheader", ""), "vrednosti": vr, "izpostavitve": [x.get("sku") for x in izbrani],
+                       "cene_feed": cf, "cene_at": _lj_iso(), "slika_korist": b.get("slika_znacka", ""),
                        "manjka_izp": max(0, st_izp - len(izbrani)), "html": _nl_sestavi(p, vr)}
         for t, iz in izid.items():
             if not iz.get("napaka"):
                 bt = besedila.get(t) or {}
-                iz.update(slika_naslov=_nl_brez_emoji(bt.get("slika_naslov", "")), slika_znacka=_nl_brez_emoji(bt.get("slika_znacka", "")), slika_osnova=slika_url)
+                iz.update(slika_naslov=_nl_brez_emoji(bt.get("slika_naslov", "")), slika_osnova=slika_url,
+                          slika_znacka=_nl_znacka(t, iz.get("cene_feed"), n.get("cena_nacin") or "polna", iz.get("slika_korist")))
         await _nl_set(nid, trgi_izid=izid)
         if n.get("tekst_na_sliki"):
             await _nl_tekst_slike(nid, [t for t in trgi if not izid[t].get("napaka")])
@@ -36941,6 +37010,7 @@ async def mailchimp_nl_ustvari(request: Request):
          "navodilo": (b.get("navodilo") or "").strip()[:800], "navodilo_slika": (b.get("navodilo_slika") or "").strip()[:500],
          "slika_vir": "flare" if b.get("slika_vir") != "feed" else "feed", "tekst_na_sliki": b.get("tekst_na_sliki", True) is not False,
          "koncept": b.get("koncept") if b.get("koncept") in NL_KONCEPTI else "auto",
+         "cena_nacin": b.get("cena_nacin") if b.get("cena_nacin") in NL_CENA_NACINI else "polna",
          "status": "dela", "korak": "v vrsti", "at": _lj_iso()}
     async with _nl_lock:
         d = _nl_load(strict=True)
@@ -36960,7 +37030,117 @@ async def mailchimp_nl(id: str = ""):
         n = d["newsletterji"].get(id)
         return {"ok": bool(n), "nl": n} if n else {"ok": False, "error": "Ne obstaja."}
     return {"ok": True, "seznam": sorted([{k: n.get(k) for k in ("id", "sku", "znamka", "trgi", "status", "at", "napaka")}
-                                          for n in d["newsletterji"].values()], key=lambda x: x.get("at") or "", reverse=True)[:30]}
+                                          for n in d["newsletterji"].values() if not n.get("skrit")], key=lambda x: x.get("at") or "", reverse=True)[:30]}
+
+
+@app.post("/mailchimp/nl-izbrisi")
+async def mailchimp_nl_izbrisi(request: Request):
+    """Odstrani iz zgodovine (skrije; podatki ostanejo do 60 dni za ponovno pošiljanje s svežimi cenami). Mailchimp ostane nespremenjen."""
+    b = await request.json()
+    async with _nl_lock:
+        d = _nl_load(strict=True)
+        n = d["newsletterji"].get(str(b.get("id")))
+        if not n:
+            return {"ok": False, "error": "Ne obstaja."}
+        n["skrit"] = True
+        _jsave(NL_FILE, d)
+    return {"ok": True}
+
+
+async def _nl_osvezi_trg(n: dict, t: str, p: dict, rows: list, nacin: str, risi: bool = True) -> dict:
+    """Sveže cene iz feeda za en trg → nove vrednosti + html; ob spremembi popusta na sliki nova slika z besedilom (Flare).
+    Vrne {razlike: [...], iz: posodobljen zapis trga} — ne shrani."""
+    iz = json.loads(json.dumps(n["trgi_izid"][t]))
+    stare = _nl_cene_v_vr({}, iz.get("cene_feed") or {}, t, nacin)
+    cf = _nl_cene_feed(n["sku"], iz.get("izpostavitve") or [], rows)
+    nove = _nl_cene_v_vr({}, cf, t, nacin)
+    razlike = [{"kaj": k, "prej": stare.get(k, ""), "zdaj": nove.get(k, "")} for k in sorted(set(stare) | set(nove)) if stare.get(k, "") != nove.get(k, "")]
+    if _nl_najdi(rows, n["sku"]) is None:
+        razlike.append({"kaj": "IZDELEK", "prej": "v feedu", "zdaj": "ni več v feedu trga"})
+    iz["cene_feed"], iz["cene_at"] = cf, _lj_iso()
+    _nl_cene_v_vr(iz["vrednosti"], cf, t, nacin)
+    nova_z = _nl_znacka(t, cf, nacin, iz.get("slika_korist"))
+    if risi and iz.get("slika_tekst_url") and nova_z != (iz.get("slika_znacka") or ""):
+        iz["slika_znacka"] = nova_z
+        data, nap = await _nl_flare_tekst(iz.get("slika_osnova") or n.get("slika_url"), iz.get("slika_naslov") or "", nova_z, NL_JEZIKI.get(t, t))
+        url = None
+        if data:
+            url, nap = await _nl_nalozi_sliko(data, f"nl_{n.get('sku')}_{n['id']}_{t}_{uuid.uuid4().hex[:4]}.jpg")
+        iz["vrednosti"]["HERO_SLIKA"] = url or iz.get("slika_osnova") or n.get("slika_url")
+        iz["slika_tekst_url"], iz["slika_tekst_napaka"] = url, (None if url else nap)
+        razlike.append({"kaj": "ZNAČKA NA SLIKI", "prej": "", "zdaj": nova_z or "(brez)"})
+    iz["html"] = _nl_sestavi(p, iz["vrednosti"])
+    return {"razlike": razlike, "iz": iz}
+
+
+def _nl_po_kampanji(d: dict, cid: str):
+    for n in d["newsletterji"].values():
+        for t, iz in (n.get("trgi_izid") or {}).items():
+            if iz.get("campaign_id") == cid:
+                return n, t
+    return None, None
+
+
+@app.get("/mailchimp/nl-cene")
+async def mailchimp_nl_cene(id: str = "", campaign_id: str = ""):
+    """Primerja cene v newsletterju s trenutnim feedom (po pravilih trga in načinu prikaza). Brez sprememb."""
+    d = _nl_load()
+    if campaign_id:
+        n, t1 = _nl_po_kampanji(d, campaign_id)
+        if not n:
+            return {"ok": True, "ni_newsletter": True, "razlike": {}}
+        trgi = [t1]
+    else:
+        n = d["newsletterji"].get(id)
+        if not n:
+            return {"ok": False, "error": "Ne obstaja."}
+        trgi = [t for t, iz in (n.get("trgi_izid") or {}).items() if not iz.get("napaka")]
+    out = {}
+    for t in trgi:
+        p = d["predloge"].get(n["trgi_izid"][t].get("predloga") or "")
+        if not p:
+            continue
+        res = await _marza_trgi_get(t)
+        rows = (res.get("rows") or []) if isinstance(res, dict) and res.get("ok") else []
+        r = await _nl_osvezi_trg(n, t, p, rows, n.get("cena_nacin") or "polna", risi=False)
+        if r["razlike"]:
+            out[t] = r["razlike"]
+    return {"ok": True, "nl_id": n["id"], "razlike": out}
+
+
+@app.post("/mailchimp/nl-cene-osvezi")
+async def mailchimp_nl_cene_osvezi(request: Request):
+    """Osveži cene (in po potrebi značko na sliki) za trge; osnutek v Mailchimpu se posodobi (samo če še ni poslan)."""
+    b = await request.json()
+    d = _nl_load()
+    n = d["newsletterji"].get(str(b.get("id")))
+    if not n:
+        return {"ok": False, "error": "Ne obstaja."}
+    trgi = [t for t in (b.get("trgi") or list((n.get("trgi_izid") or {}).keys())) if not ((n.get("trgi_izid") or {}).get(t) or {}).get("napaka")]
+    rez = {}
+    for t in trgi:
+        iz0 = n["trgi_izid"][t]
+        p = d["predloge"].get(iz0.get("predloga") or "")
+        if not p:
+            continue
+        res = await _marza_trgi_get(t)
+        rows = (res.get("rows") or []) if isinstance(res, dict) and res.get("ok") else []
+        r = await _nl_osvezi_trg(n, t, p, rows, n.get("cena_nacin") or "polna")
+        mc = None
+        if iz0.get("campaign_id"):
+            ok, c = await _mc("GET", f"/campaigns/{iz0['campaign_id']}", params={"fields": "status"})
+            if ok and c.get("status") in ("save", "paused"):
+                ok2, e2 = await _mc("PUT", f"/campaigns/{iz0['campaign_id']}/content", {"html": r["iz"]["html"]})
+                mc = "posodobljeno" if ok2 else f"napaka: {e2}"
+            else:
+                mc = "kampanja je že razporejena/poslana — ni posodobljena" if ok else f"napaka: {c}"
+        async with _nl_lock:
+            d2 = _nl_load(strict=True)
+            if n["id"] in d2["newsletterji"]:
+                d2["newsletterji"][n["id"]]["trgi_izid"][t] = r["iz"]
+                _jsave(NL_FILE, d2)
+        rez[t] = {"razlike": r["razlike"], "mailchimp": mc}
+    return {"ok": True, "rezultati": rez}
 
 
 @app.post("/mailchimp/nl-uredi")
@@ -36970,6 +37150,16 @@ async def mailchimp_nl_uredi(request: Request):
     async with _nl_lock:
         d = _nl_load(strict=True)
         n = d["newsletterji"].get(str(b.get("id")))
+        if n and b.get("cena_nacin") in NL_CENA_NACINI:   # način cene velja za vse trge, ki še niso v Mailchimpu
+            n["cena_nacin"] = b["cena_nacin"]
+            for tt, izz in (n.get("trgi_izid") or {}).items():
+                pp = d["predloge"].get(izz.get("predloga") or "")
+                if pp and not izz.get("napaka") and not izz.get("campaign_id") and izz.get("cene_feed") is not None:
+                    _nl_cene_v_vr(izz["vrednosti"], izz["cene_feed"], tt, n["cena_nacin"])
+                    izz["html"] = _nl_sestavi(pp, izz["vrednosti"])
+            _jsave(NL_FILE, d)
+            if not b.get("trg"):
+                return {"ok": True}
         t = (n or {}).get("trgi_izid", {}).get(b.get("trg"))
         if not t or t.get("napaka"):
             return {"ok": False, "error": "Ni trga."}
@@ -37127,6 +37317,20 @@ async def _nl_ponovno_korak():
         if not ok:
             spremembe[z["orig_id"]] = {"status": "caka"}
             continue
+        sveze = ""
+        try:   # ponovno pošiljanje s TRENUTNIMI cenami (dvig/spust/konec akcije med prvim in ponovnim)
+            dn = _nl_load()
+            nl_ = dn["newsletterji"].get(z.get("nl") or "")
+            p_ = dn["predloge"].get(((nl_ or {}).get("trgi_izid") or {}).get(z["trg"], {}).get("predloga") or "") if nl_ else None
+            if nl_ and p_:
+                res_ = await _marza_trgi_get(z["trg"])
+                rows_ = (res_.get("rows") or []) if isinstance(res_, dict) and res_.get("ok") else []
+                if _nl_najdi(rows_, nl_["sku"]) is not None:
+                    sveze = (await _nl_osvezi_trg(nl_, z["trg"], p_, rows_, nl_.get("cena_nacin") or "polna"))["iz"]["html"]
+        except Exception as e_:
+            print(f"[newsletter] ponovno sveže cene: {e_}")
+        if sveze:
+            orig_html = {"html": sveze}
         nast = {"subject_line": z["zadeva"], "preview_text": z.get("preheader", ""), "title": z.get("title") or z["zadeva"]}
         s = c.get("settings") or {}
         if s.get("from_name"):
