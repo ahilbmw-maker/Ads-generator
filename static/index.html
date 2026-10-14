@@ -1086,7 +1086,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-14 07:50</div>
+      <div class="sidebar-logo-sub">build 2026-10-14 09:36</div>
     </div>
   </div>
 
@@ -3616,7 +3616,8 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div>
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-              <span class="slabel" style="margin:0" id="tt14TableTitle">TIKTOK OBRAT (0)</span>
+              <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="slabel" style="margin:0" id="tt14TableTitle">TIKTOK OBRAT (0)</span>
+                <span id="ttSelBar" style="display:none;align-items:center;gap:6px"><button onclick="ttSelKopiraj(this)" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📋 Kopiraj izbrane SKU (<span id="ttSelN">0</span>)</button><button onclick="ttSel.clear();tt14RenderTable()" title="Počisti izbor" style="padding:6px 10px;background:none;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;cursor:pointer;color:var(--text-secondary)">✕</button></span></span>
               <input type="text" id="tt14Search" placeholder="🔍 Išči SKU ali naziv..." oninput="tt14Page=1;tt14RenderTable()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:240px">
             </div>
             <div id="tt14Table" style="display:flex;flex-direction:column;gap:6px;overflow-x:auto"></div>
@@ -18529,6 +18530,26 @@ function tt14SetFilter(f, btn) {
   tt14RenderTable();
 }
 
+// ☑ IZBOR SKU-jev (Obrat 7 dni TikTok) → »📋 Kopiraj izbrane SKU« (vsak v svojo vrstico); Shift = razpon — kot Obrat 7 dni (FB)
+const ttSel = new Set(); let ttSelZadnji = -1;
+function ttSelKlik(e, cb) {
+  e.stopPropagation();
+  const vrst = window._tt14Vis || [], sku = cb.dataset.ttsel, i = vrst.indexOf(sku);
+  if (e.shiftKey && ttSelZadnji >= 0 && i >= 0) { const [a, b] = ttSelZadnji < i ? [ttSelZadnji, i] : [i, ttSelZadnji]; vrst.slice(a, b + 1).forEach(k => cb.checked ? ttSel.add(k) : ttSel.delete(k)); }
+  else cb.checked ? ttSel.add(sku) : ttSel.delete(sku);
+  ttSelZadnji = i; tt14RenderTable();
+}
+function ttSelVse(on) { (window._tt14Vis || []).forEach(k => on ? ttSel.add(k) : ttSel.delete(k)); tt14RenderTable(); }
+function ttSelBar() {
+  const b = document.getElementById('ttSelBar'); if (!b) return;
+  b.style.display = ttSel.size ? 'inline-flex' : 'none';
+  const n = document.getElementById('ttSelN'); if (n) n.textContent = ttSel.size;
+}
+async function ttSelKopiraj(btn) {
+  const t = [...ttSel].join('\n');
+  try { await navigator.clipboard.writeText(t); } catch (e) { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); }
+  const o = btn.innerHTML; btn.innerHTML = '✓ Kopirano ' + ttSel.size + ' SKU'; setTimeout(() => { btn.innerHTML = o; }, 1500);
+}
 function tt14RenderTable() {
   const tableEl = document.getElementById('tt14Table');
   const emptyEl = document.getElementById('tt14Empty');
@@ -18663,6 +18684,8 @@ function tt14RenderTable() {
   emptyEl.style.display = 'none';
 
   // Paginacija — 100 vrstic na stran (kot Zaloga tab)
+  window._tt14Vis = items.map(i => i.sku);   // ☑ izbor: vsi filtrirani (vse strani), Shift = razpon
+  ttSelBar();
   const totalItems = items.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / TT14_PER_PAGE));
   if (tt14Page > totalPages) tt14Page = 1;
@@ -18676,7 +18699,7 @@ function tt14RenderTable() {
 
   const GRID = '24px 160px 1fr 100px 80px 70px 80px 90px 70px';
   const header = `<div style="display:grid;grid-template-columns:${GRID};gap:10px;padding:11px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--border);margin-bottom:4px">
-    <span title="Zaznamek tukaj sem ostal">🚩</span><span style="${hStyle}" onclick="tt14SortBy('sku')">SKU${sortArrow('sku')}</span><span style="${hStyle}" onclick="tt14SortBy('title')">Naziv${sortArrow('title')}</span><span style="text-align:center;${hStyle}" onclick="tt14SortBy('campaigns')">Status TT${sortArrow('campaigns')}</span><span style="text-align:center;${hStyle}" onclick="tt14SortBy('create_time')">Kreirano${sortArrow('create_time')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('obrat14')">Obrat 14d${sortArrow('obrat14')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('spend')">Spend${sortArrow('spend')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('conversions')">Konv.${sortArrow('conversions')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('stock')">Zaloga${sortArrow('stock')}</span>
+    <span title="Zaznamek tukaj sem ostal">🚩</span><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" title="Izberi vse (filtrirane)" onclick="event.stopPropagation();ttSelVse(this.checked)"${(window._tt14Vis || []).length && window._tt14Vis.every(k => ttSel.has(k)) ? ' checked' : ''} style="cursor:pointer;width:14px;height:14px"><span style="${hStyle}" onclick="tt14SortBy('sku')">SKU${sortArrow('sku')}</span></span><span style="${hStyle}" onclick="tt14SortBy('title')">Naziv${sortArrow('title')}</span><span style="text-align:center;${hStyle}" onclick="tt14SortBy('campaigns')">Status TT${sortArrow('campaigns')}</span><span style="text-align:center;${hStyle}" onclick="tt14SortBy('create_time')">Kreirano${sortArrow('create_time')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('obrat14')">Obrat 14d${sortArrow('obrat14')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('spend')">Spend${sortArrow('spend')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('conversions')">Konv.${sortArrow('conversions')}</span><span style="text-align:right;${hStyle}" onclick="tt14SortBy('stock')">Zaloga${sortArrow('stock')}</span>
   </div>`;
   const limitNote = `<div style="text-align:center;padding:8px;font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);border-radius:var(--radius);margin-bottom:4px">Prikaz ${startIdx+1}–${endIdx} od ${totalItems} izdelkov</div>`;
 
@@ -18707,7 +18730,7 @@ function tt14RenderTable() {
 
     return `<div${bmAttr} style="display:grid;grid-template-columns:${GRID};gap:10px;padding:11px 14px;background:${bg};border:${bmBorder};border-radius:var(--radius);font-size:13px;align-items:center">
       ${bookmarkBtnHtml('obrat14tt', it.sku, 'tt14RenderTable')}
-      <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.sku)}${bmarked ? ' <span style="font-size:9px;color:#EF9F27;font-weight:700">← TU</span>' : ''}</div>
+      <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px"><input type="checkbox" data-ttsel="${esc(it.sku)}"${ttSel.has(it.sku) ? ' checked' : ''} onclick="ttSelKlik(event,this)" style="cursor:pointer;width:14px;height:14px;flex:none">${esc(it.sku)}${bmarked ? ' <span style="font-size:9px;color:#EF9F27;font-weight:700">← TU</span>' : ''}</div>
       <div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(it.title)}">${esc(it.title||'—')}</div>
       ${statusBadge}
       <div style="text-align:center;font-size:12px;color:var(--text-secondary)">${createDateStr || '—'}</div>
