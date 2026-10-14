@@ -59,15 +59,15 @@
   </div>
   <div id="sporocilo"></div>
   <div class="tabs">
-    <div class="tab on" data-t="kampanje" onclick="tab('kampanje')">📬 Kampanje</div>
-    <div class="tab" data-t="sku" onclick="tab('sku')">✨ Iz SKU</div>
+    <div class="tab on" data-t="sku" onclick="tab('sku')">✨ Iz SKU</div>
     <div class="tab" data-t="predloge" onclick="tab('predloge')">🧩 Predloge</div>
     <div class="tab" data-t="nova" onclick="tab('nova')">✏️ Ročna kampanja</div>
+    <div class="tab" data-t="kampanje" onclick="tab('kampanje')">📬 Kampanje</div>
     <div class="tab" data-t="trgi" onclick="tab('trgi')">⚙️ Trgi → seznami</div>
   </div>
 
   <!-- KAMPANJE -->
-  <div id="t-kampanje">
+  <div id="t-kampanje" style="display:none">
     <div class="card tbl-wrap">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
         <select class="f" id="fTrg" style="width:auto" onchange="risiKampanje()"><option value="">Vsi seznami</option></select>
@@ -89,7 +89,7 @@
   </div>
 
   <!-- IZ SKU -->
-  <div id="t-sku" style="display:none">
+  <div id="t-sku">
     <div class="grid2" style="grid-template-columns:minmax(0,420px) minmax(0,1fr)">
       <div>
         <div class="card">
@@ -543,7 +543,7 @@ async function nlOdpri(id) {
   if (!j.ok) { el.innerHTML = `<div class="msg err">${esc(j.error)}</div>`; return; }
   NL = j.nl;
   if (NL.status === 'dela') {
-    const k = {'v vrsti': 'v vrsti', feed: 'berem feede', slika: NL.slika_vir === 'flare' ? 'rišem sliko (Flare 2.5, ~1 min)' : 'slika', koncept: 'AI gleda slike izdelka in izbira koncept (prej/potem, v uporabi …)', besedila: 'pišem slovensko matico (Sonnet 5.5)', prevodi: 'prevajam matico v jezike trgov', 'besedilo na slikah': 'pišem besedilo na slike za vsak trg (Flare, ~1–2 min)'}[NL.korak] || NL.korak;
+    const k = {'v vrsti': 'v vrsti', feed: 'berem feede', slika: NL.slika_vir === 'flare' ? 'rišem sliko (Flare 2.5, ~1 min)' : 'slika', koncept: 'AI gleda slike izdelka in izbira koncept (prej/potem, v uporabi …)', besedila: 'pišem slovensko matico (Sonnet 5.5)', 'dodajam trge': 'dodajam trge (cene in izpostavitve iz feedov), nato prevod in slike (~1–2 min)', prevodi: 'prevajam matico v jezike trgov', 'besedilo na slikah': 'pišem besedilo na slike za vsak trg (Flare, ~1–2 min)'}[NL.korak] || NL.korak;
     el.innerHTML = `<b>${esc(NL.sku)}</b><div class="sub" style="margin-top:6px">⏳ ${esc(k)} …</div>`;
     nlTimer = setTimeout(() => nlOdpri(id), 3000); return;
   }
@@ -590,10 +590,10 @@ async function nlOdpri(id) {
         <div class="sub" style="margin-top:6px">Izpostavitve: ${(t.izpostavitve || []).map(esc).join(', ') || '—'}</div>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button class="btn" ${t.campaign_id ? 'disabled' : ''} onclick="nlShrani()">💾 Shrani popravke</button>
-          ${NL_TRG === 'sl' && trgi.length > 1 ? `<button class="btn pri" onclick="nlPrevedi()" title="Shrani SLO popravke in jih zvesto prevedi v vse ostale trge (ki še niso v Mailchimpu)">🌐 Prevedi matico v vse trge</button>` : ''}
+          ${NL_TRG === 'sl' ? `<button class="btn pri" onclick="nlPrevediOkno()" title="Shrani SLO popravke in jih zvesto prevedi v izbrane trge — tudi v trge, ki jih v newsletterju še ni">🌐 Prevedi v druge trge</button>` : ''}
         </div>
         ${NL.prevod_napaka ? `<div class="msg err" style="margin-top:8px">Prevod: ${esc(NL.prevod_napaka)}</div>` : ''}
-        ${NL_TRG !== 'sl' && iz.sl && !iz.sl.napaka ? `<div class="sub" style="margin-top:6px">Besedila popravljaj v matici (SI) in klikni »🌐 Prevedi matico v vse trge«.${NL.prevedeno_at ? ' Zadnji prevod: ' + fmtCas(NL.prevedeno_at) : ''}</div>` : ''}
+        ${NL_TRG !== 'sl' && iz.sl && !iz.sl.napaka ? `<div class="sub" style="margin-top:6px">Besedila popravljaj v matici (SI) in klikni »🌐 Prevedi v druge trge«.${NL.prevedeno_at ? ' Zadnji prevod: ' + fmtCas(NL.prevedeno_at) : ''}</div>` : ''}
       </div>
       <div><iframe class="prev" id="ePrev" sandbox=""></iframe></div>
     </div>`}
@@ -619,13 +619,33 @@ async function nlOdpri(id) {
 function zDolz() {
   [['eZadeva', 'zl1'], ['eZadeva2', 'zl2']].forEach(([i, l]) => { const e = document.getElementById(i); if (e) document.getElementById(l).textContent = `(${e.value.length} znakov${e.value.length > 60 ? ' — predolgo za mobilnik' : ''})`; });
 }
+function nlPrevediOkno() {
+  const iz = NL.trgi_izid || {};
+  const vrst = Object.entries(ST.trgi_vsi).filter(([t]) => t !== 'sl').map(([t, ime]) => {
+    const z = iz[t], vMc = z && z.campaign_id, ima = z && !z.napaka;
+    const stanje = vMc ? '✓ že v Mailchimpu — ne spreminja se' : ima ? 'v newsletterju — prevede se znova iz matice' : 'nov trg — doda se (cene in izpostavitve iz feeda)';
+    const privzeto = !vMc && (ima || !!ST.trgi[t]);
+    return `<tr><td><input type="checkbox" class="pdC" value="${t}" ${vMc ? 'disabled' : privzeto ? 'checked' : ''}></td><td><b>${esc(ime)}</b></td>
+      <td class="sub">${stanje}${ST.trgi[t] ? '' : ' · <span style="color:var(--warn)">ni audienca</span>'}</td></tr>`;
+  }).join('');
+  odpri(`<h3>🌐 Prevedi matico (SI) v druge trge</h3>
+    <div class="sub" style="margin-bottom:8px">Najprej se shranijo SLO popravki. Besedila se zvesto prevedejo iz matice; slike z besedilom se narišejo v jeziku trga.</div>
+    <div style="margin-bottom:6px"><a href="#" onclick="document.querySelectorAll('.pdC:not(:disabled)').forEach(c => c.checked = true);return false">vsi</a> ·
+      <a href="#" onclick="document.querySelectorAll('.pdC').forEach(c => c.checked = false);return false">nobeden</a></div>
+    <table><tbody>${vrst}</tbody></table>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" onclick="zapri()">Prekliči</button>
+      <button class="btn pri" onclick="nlPrevedi()">🌐 Prevedi</button></div>`);
+}
 async function nlPrevedi() {
+  const izbrani = [...document.querySelectorAll('.pdC:checked')].map(c => c.value);
+  if (!izbrani.length) { alert('Izberi vsaj en trg.'); return; }
+  zapri();
   const polja = {}; document.querySelectorAll('#nlDetajl [data-p]').forEach(e => polja[e.dataset.p] = e.value);
   const s1 = await api('/mailchimp/nl-uredi', {id: NL.id, trg: 'sl', zadeva: document.getElementById('eZadeva').value,
     zadeva_ponovno: document.getElementById('eZadeva2').value, preheader: document.getElementById('ePre').value, polja,
     ...(document.getElementById('eSlNaslov') ? {slika_naslov: document.getElementById('eSlNaslov').value, slika_znacka: (document.getElementById('eSlZnacka') || {}).value || ''} : {})});
   if (!s1.ok) { sporoci(s1.error); return; }
-  const j = await api('/mailchimp/nl-prevedi', {id: NL.id});
+  const j = await api('/mailchimp/nl-dodaj-trge', {id: NL.id, trgi: izbrani});
   if (!j.ok) { sporoci(j.error); return; }
   nlOdpri(NL.id);
 }

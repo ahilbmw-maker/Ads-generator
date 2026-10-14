@@ -36799,6 +36799,20 @@ def _nl_znacka(trg: str, cf: dict, nacin: str, korist: str) -> str:
     return pop if pop and trg not in NL_BREZ_STARE_CENE and nacin != "brez" else (korist or "")
 
 
+def _nl_kandidati_za(n: dict, hero_sl: dict, sl_rows: list) -> list:
+    """Izpostavitve: vpisani → Xsell (izbran + predlogi) → ista google kategorija → najbolje prodajani Maaarket z zalogo ≥ 20."""
+    sku = str(n.get("sku") or "").upper()
+    vpisani = [s_.strip().upper() for s_ in re.split(r"[,;\s]+", n.get("izpostavitve") or "") if s_.strip()]
+    nasi = sorted((r for r in sl_rows if r.get("sku") and str(r["sku"]).upper() != sku and (r.get("zaloga") or 0) >= 20
+                   and any(z in str(r.get("znamka") or "").lower() for z in MARZA_NASE_ZNAMKE)), key=lambda r: -(r.get("obrat") or 0))
+    xs = _xsell_load()["izdelki"].get(str(hero_sl.get("g_id"))) or {}
+    xs_sku = [str(x).upper() for x in ([xs.get("izbran")] + [q.get("sku") for q in (xs.get("predlogi") or []) if isinstance(q, dict)]) if x]
+    fsl = feed_by_lang.get("sl") or {}
+    kat = str((fsl.get(str(hero_sl.get("g_id"))) or {}).get("google_category") or "")
+    ista_kat = [str(r["sku"]).upper() for r in nasi if kat and str((fsl.get(str(r.get("g_id"))) or {}).get("google_category") or "") == kat]
+    return list(dict.fromkeys(vpisani + xs_sku + ista_kat + [str(r["sku"]).upper() for r in nasi]))[:40]
+
+
 async def _nl_obdelaj(nid: str):
     try:
         n = _nl_load()["newsletterji"][nid]
@@ -36815,16 +36829,8 @@ async def _nl_obdelaj(nid: str):
         hero_sl = najdi(sl_rows, sku) or next((najdi(vrstice[t], sku) for t in trgi if najdi(vrstice[t], sku)), None)
         if not hero_sl:
             raise RuntimeError(f"SKU {sku} ni v feedu.")
-        # izpostavitve: vpisani SKU-ji, sicer najbolje prodajani Maaarket z zalogo ≥ 20
-        vpisani = [s.strip().upper() for s in re.split(r"[,;\s]+", n.get("izpostavitve") or "") if s.strip()]
-        nasi = sorted((r for r in sl_rows if r.get("sku") and str(r["sku"]).upper() != sku.upper() and (r.get("zaloga") or 0) >= 20
-                       and any(z in str(r.get("znamka") or "").lower() for z in MARZA_NASE_ZNAMKE)), key=lambda r: -(r.get("obrat") or 0))
-        xs = _xsell_load()["izdelki"].get(str(hero_sl.get("g_id"))) or {}
-        xs_sku = [str(x).upper() for x in ([xs.get("izbran")] + [q.get("sku") for q in (xs.get("predlogi") or []) if isinstance(q, dict)]) if x]
-        fsl = feed_by_lang.get("sl") or {}
-        kat = str((fsl.get(str(hero_sl.get("g_id"))) or {}).get("google_category") or "")
-        ista_kat = [str(r["sku"]).upper() for r in nasi if kat and str((fsl.get(str(r.get("g_id"))) or {}).get("google_category") or "") == kat]
-        kandidati = list(dict.fromkeys(vpisani + xs_sku + ista_kat + [str(r["sku"]).upper() for r in nasi]))[:40]
+        kandidati = _nl_kandidati_za(n, hero_sl, sl_rows)
+        await _nl_set(nid, kandidati=kandidati)
 
         fd = (feed_by_lang.get("sl") or {}).get(str(hero_sl.get("g_id"))) or {}
         opis = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", str(fd.get("description") or "")))[:1500]
@@ -37213,7 +37219,7 @@ async def mailchimp_nl_uredi(request: Request):
     return {"ok": True, "html": t["html"]}
 
 
-async def _nl_prevedi_iz_matice(nid: str):
+async def _nl_prevedi_iz_matice(nid: str, samo: list = None, vedno_slike: list = None):
     """SLO matica (trenutna, z ročnimi popravki) → zvest prevod v vse ostale trge, ki še niso v Mailchimpu.
     Posodobi zadeve, preheader, besedilna polja, imena izpostavitev, naslov/korist na sliki; slike z besedilom nariše znova."""
     try:
@@ -37227,7 +37233,8 @@ async def _nl_prevedi_iz_matice(nid: str):
                   **{k: vr_sl.get(k, "") for k in NL_BESEDILNA if vr_sl.get(k)}}
         if imena:
             matica["IZP_IMENA"] = imena
-        drugi = [t for t, iz in (n.get("trgi_izid") or {}).items() if t != "sl" and not iz.get("napaka") and not iz.get("campaign_id")]
+        drugi = [t for t, iz in (n.get("trgi_izid") or {}).items() if t != "sl" and not iz.get("napaka") and not iz.get("campaign_id")
+                 and (samo is None or t in samo)]
         if not drugi:
             raise RuntimeError("Ni trgov za prevod (vsi so že v Mailchimpu ali imajo napako).")
         raw = await call_claude(NL_PREVOD_PROMPT.format(
@@ -37258,7 +37265,7 @@ async def _nl_prevedi_iz_matice(nid: str):
                 iz["slika_naslov"] = _nl_brez_emoji(b.get("slika_naslov", "")) or iz.get("slika_naslov", "")
                 iz["slika_korist"] = _nl_brez_emoji(b.get("slika_znacka", "")) or iz.get("slika_korist", "")
                 iz["slika_znacka"] = _nl_znacka(t, iz.get("cene_feed"), n.get("cena_nacin") or "polna", iz["slika_korist"])
-                if iz.get("slika_tekst_url") and (iz["slika_naslov"], iz["slika_znacka"]) != star:
+                if (iz.get("slika_tekst_url") and (iz["slika_naslov"], iz["slika_znacka"]) != star) or (t in (vedno_slike or []) and iz["slika_naslov"]):
                     nove_slike.append(t)
                 if p:
                     iz["html"] = _nl_sestavi(p, iz["vrednosti"])
@@ -37274,6 +37281,86 @@ async def _nl_prevedi_iz_matice(nid: str):
     except Exception as e:
         print(f"[newsletter] prevod iz matice {nid}: {e}")
         await _nl_set(nid, status="pripravljen", korak="", prevod_napaka=str(e)[:300])
+
+
+async def _nl_dodaj_trge(nid: str, novi: list, obstojeci: list):
+    """Novi trgi: cene, povezave, izpostavitve iz feeda trga (enako kot pri pripravi) + prevod matice + slika z besedilom.
+    Obstoječi izbrani trgi: samo nov prevod matice."""
+    try:
+        d = _nl_load()
+        n = d["newsletterji"][nid]
+        sku = n["sku"]
+        iz_sl = n["trgi_izid"]["sl"]
+        predloge = [p for p in d["predloge"].values() if p.get("znamka") == n["znamka"]]
+        res = await _marza_trgi_get("sl")
+        sl_rows = (res.get("rows") or []) if isinstance(res, dict) and res.get("ok") else []
+        hero_sl = _nl_najdi(sl_rows, sku) or {}
+        kandidati = n.get("kandidati") or (_nl_kandidati_za(n, hero_sl, sl_rows) if hero_sl else [])
+        slika = iz_sl.get("slika_osnova") or n.get("slika_url") or ""
+        kamp = f"nl-{sku}-{str(n.get('at') or _lj_iso())[:10]}"
+        nacin = n.get("cena_nacin") or "polna"
+        nova = {}
+        for t in novi:
+            res = await _marza_trgi_get(t)
+            rows = (res.get("rows") or []) if isinstance(res, dict) and res.get("ok") else []
+            p = (next((x for x in predloge if x.get("trg") == t), None) or next((x for x in predloge if x.get("trg") == "*"), None)
+                 or (predloge[0] if predloge else None))
+            r = _nl_najdi(rows, sku)
+            if not p or not r:
+                nova[t] = {"napaka": "ni predloge za znamko" if not p else "izdelka ni v feedu trga"}
+                continue
+            vr = {"HERO_SLIKA": slika, "HERO_URL": _nl_utm(r.get("url"), kamp),
+                  "TRGOVINA_URL": _nl_utm("https://" + urlparse(r.get("url") or "").netloc + "/", kamp) if r.get("url") else "",
+                  "LOGO_URL": p.get("logo_url") or "",
+                  **{k: (iz_sl.get("vrednosti") or {}).get(k, "") for k in NL_BESEDILNA}}   # začasno SLO — prevod jih takoj zamenja
+            st_izp = len({m for m in re.findall(r"\{\{IZP(\d)_", p["html"])})
+            izbrani = list({id(x): x for x in (_nl_najdi(rows, s_) for s_ in kandidati)
+                            if x and str(x.get("sku") or "").upper() != sku.upper()}.values())[:st_izp]
+            for i, x in enumerate(izbrani, 1):
+                vr.update({f"IZP{i}_SLIKA": x.get("slika") or "", f"IZP{i}_URL": _nl_utm(x.get("url"), kamp),
+                           f"IZP{i}_NAZIV": _nl_lepo_ime(x.get("naziv") or "")})
+            cf = _nl_cene_feed(sku, [x.get("sku") for x in izbrani], rows)
+            _nl_cene_v_vr(vr, cf, t, nacin)
+            korist = iz_sl.get("slika_korist") or iz_sl.get("slika_znacka") or ""
+            nova[t] = {"predloga": p["id"], "predloga_trg": p.get("trg"), "zadeva": iz_sl.get("zadeva", ""), "zadeva_ponovno": iz_sl.get("zadeva_ponovno", ""),
+                       "preheader": iz_sl.get("preheader", ""), "vrednosti": vr, "izpostavitve": [x.get("sku") for x in izbrani],
+                       "cene_feed": cf, "cene_at": _lj_iso(), "slika_korist": korist, "slika_naslov": iz_sl.get("slika_naslov", ""),
+                       "slika_osnova": slika, "slika_znacka": _nl_znacka(t, cf, nacin, korist),
+                       "manjka_izp": max(0, st_izp - len(izbrani)), "html": _nl_sestavi(p, vr)}
+        async with _nl_lock:
+            d = _nl_load(strict=True)
+            nn = d["newsletterji"][nid]
+            nn["trgi_izid"].update(nova)
+            nn["trgi"] = list(dict.fromkeys((nn.get("trgi") or []) + list(nova)))
+            _jsave(NL_FILE, d)
+        ok_novi = [t for t in novi if not nova[t].get("napaka")]
+        await _nl_prevedi_iz_matice(nid, samo=ok_novi + list(obstojeci), vedno_slike=ok_novi if n.get("tekst_na_sliki") else [])
+    except Exception as e:
+        print(f"[newsletter] dodaj trge {nid}: {e}")
+        await _nl_set(nid, status="pripravljen", korak="", prevod_napaka=str(e)[:300])
+
+
+@app.post("/mailchimp/nl-dodaj-trge")
+async def mailchimp_nl_dodaj_trge(request: Request):
+    """🌐 Prevedi v druge trge: {id, trgi} — trgi, ki jih še ni, se dodajo (iz feeda trga), ostali se prevedejo znova iz matice."""
+    b = await request.json()
+    async with _nl_lock:
+        d = _nl_load(strict=True)
+        n = d["newsletterji"].get(str(b.get("id")))
+        if not n or n.get("status") != "pripravljen":
+            return {"ok": False, "error": "Newsletter ni pripravljen."}
+        iz = n.get("trgi_izid") or {}
+        if "sl" not in iz or (iz["sl"] or {}).get("napaka"):
+            return {"ok": False, "error": "Matica (SI) ni v tem newsletterju."}
+        trgi = [t for t in dict.fromkeys(b.get("trgi") or []) if t in MARZA_TRGI and t != "sl"]
+        novi = [t for t in trgi if t not in iz or (iz[t] or {}).get("napaka")]
+        obst = [t for t in trgi if t in iz and not (iz[t] or {}).get("napaka") and not (iz[t] or {}).get("campaign_id")]
+        if not novi and not obst:
+            return {"ok": False, "error": "Izberi vsaj en trg (trgi, ki so že v Mailchimpu, se ne spreminjajo)."}
+        n.update(status="dela", korak="dodajam trge" if novi else "prevodi", prevod_napaka=None)
+        _jsave(NL_FILE, d)
+    asyncio.create_task(_nl_dodaj_trge(n["id"], novi, obst))
+    return {"ok": True, "novi": novi, "obstojeci": obst}
 
 
 @app.post("/mailchimp/nl-prevedi")
