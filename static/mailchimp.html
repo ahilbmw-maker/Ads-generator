@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Newsletter</title>
+<link rel="icon" type="image/png" href="/static/suban-s-icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --bd:#e3e6eb; --txt:#16181d; --txt2:#5d6470; --txt3:#9aa1ad; --acc:#3a6fff;
+    --ok:#15803d; --b-ok:#dcfce7; --warn:#b45309; --b-warn:#fef3c7; --err:#dc2626; --b-err:#fee2e2; --inf:#2563eb; --b-inf:#dbeafe; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#111317; --card:#1a1d23; --bd:#2b3039; --txt:#e8eaee; --txt2:#a3aab6; --txt3:#6b7380;
+    --ok:#86efac; --b-ok:#14361f; --warn:#fcd34d; --b-warn:#3a2e0d; --err:#fca5a5; --b-err:#3d1414; --inf:#93c5fd; --b-inf:#172554; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.45 'DM Sans',-apple-system,'Segoe UI',sans-serif; }
+  .wrap { padding:16px 20px; max-width:1400px; margin:0 auto; }
+  .head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+  .head h1 { font-size:20px; margin:0; font-weight:700; }
+  .sub { color:var(--txt2); font-size:12px; }
+  .btn { border:1px solid var(--bd); background:var(--card); color:var(--txt); border-radius:8px; padding:7px 12px; font-weight:600; font-size:13px; font-family:inherit; cursor:pointer; }
+  .btn:hover { border-color:var(--acc); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .btn.pri { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .btn.red { background:var(--err); border-color:var(--err); color:#fff; }
+  .btn.sm { padding:4px 9px; font-size:12px; }
+  input.f, select.f, textarea.f { border:1px solid var(--bd); border-radius:8px; padding:7px 9px; background:var(--card); color:var(--txt); font:inherit; width:100%; }
+  textarea.f { font-family:Consolas,monospace; font-size:12.5px; resize:vertical; }
+  label.l { display:block; font-size:12px; font-weight:600; color:var(--txt2); margin:10px 0 4px; }
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--bd); margin-bottom:14px; }
+  .tab { padding:8px 14px; cursor:pointer; color:var(--txt2); font-weight:600; border-bottom:2px solid transparent; }
+  .tab.on { color:var(--acc); border-bottom-color:var(--acc); }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:12px; padding:14px 16px; }
+  .grid2 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }
+  @media (max-width:900px) { .grid2 { grid-template-columns:1fr; } }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 8px; border-bottom:1px solid var(--bd); vertical-align:middle; font-size:13px; }
+  th { font-size:11.5px; color:var(--txt2); font-weight:600; text-transform:uppercase; letter-spacing:.3px; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:700; }
+  .p-save { background:var(--b-inf); color:var(--inf); } .p-schedule { background:var(--b-warn); color:var(--warn); }
+  .p-sent { background:var(--b-ok); color:var(--ok); } .p-sending { background:var(--b-warn); color:var(--warn); } .p-other { background:var(--bd); color:var(--txt2); }
+  .msg { padding:9px 12px; border-radius:8px; margin-bottom:12px; font-size:13px; }
+  .msg.err { background:var(--b-err); color:var(--err); } .msg.ok { background:var(--b-ok); color:var(--ok); }
+  iframe.prev { width:100%; height:620px; border:1px solid var(--bd); border-radius:10px; background:#fff; }
+  .acts { display:flex; gap:5px; flex-wrap:wrap; }
+  .dlg-bg { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; align-items:center; justify-content:center; z-index:100; padding:16px; }
+  .dlg { background:var(--card); border-radius:14px; padding:18px; width:640px; max-width:100%; max-height:90vh; overflow:auto; }
+  .dlg h3 { margin:0 0 8px; }
+  .muted { color:var(--txt3); }
+  .tbl-wrap { overflow-x:auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>📧 Newsletter</h1>
+    <span class="sub" id="racun">Nalagam …</span>
+    <span style="flex:1"></span>
+    <button class="btn" onclick="naloziVse()">↻ Osveži</button>
+  </div>
+  <div id="sporocilo"></div>
+  <div class="tabs">
+    <div class="tab on" data-t="kampanje" onclick="tab('kampanje')">📬 Kampanje</div>
+    <div class="tab" data-t="nova" onclick="tab('nova')">✏️ Nova kampanja</div>
+    <div class="tab" data-t="trgi" onclick="tab('trgi')">⚙️ Trgi → seznami</div>
+  </div>
+
+  <!-- KAMPANJE -->
+  <div id="t-kampanje">
+    <div class="card tbl-wrap">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+        <select class="f" id="fTrg" style="width:auto" onchange="risiKampanje()"><option value="">Vsi seznami</option></select>
+        <select class="f" id="fStatus" style="width:auto" onchange="risiKampanje()">
+          <option value="">Vsi statusi</option><option value="save">Osnutek</option><option value="schedule">Razporejeno</option><option value="sent">Poslano</option>
+        </select>
+      </div>
+      <table>
+        <thead><tr><th>Status</th><th>Zadeva</th><th>Seznam</th><th>Prejemnikov</th><th>Poslano</th><th>Odpiranja</th><th>Kliki</th><th></th></tr></thead>
+        <tbody id="kampTb"><tr><td colspan="8" class="muted">Nalagam …</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- NOVA -->
+  <div id="t-nova" style="display:none">
+    <div class="grid2">
+      <div class="card">
+        <label class="l">Trg / seznam</label>
+        <select class="f" id="nSeznam" onchange="privzetiPosiljatelj()"></select>
+        <label class="l">Zadeva</label>
+        <input class="f" id="nZadeva" maxlength="150" placeholder="npr. -30 % na zimske izdelke">
+        <label class="l">Predogledno besedilo (preheader)</label>
+        <input class="f" id="nPredogled" maxlength="150">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label class="l">Ime pošiljatelja</label><input class="f" id="nOdIme"></div>
+          <div><label class="l">Odgovor na (reply-to)</label><input class="f" id="nOdgovor" type="email"></div>
+        </div>
+        <label class="l">Interni naziv (neobvezno)</label>
+        <input class="f" id="nNaslov" placeholder="privzeto = zadeva">
+        <label class="l">HTML vsebina <span class="muted">(lahko pustiš prazno in urediš v Mailchimpu)</span></label>
+        <textarea class="f" id="nHtml" rows="16" oninput="predogled()" placeholder="<html>…</html>"></textarea>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn pri" id="nShrani" onclick="ustvariOsnutek()">💾 Ustvari osnutek</button>
+          <span class="sub" style="align-self:center">Nič se ne pošlje — osnutek se pojavi med kampanjami.</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="sub" style="margin-bottom:6px">Predogled</div>
+        <iframe class="prev" id="nPrev" sandbox=""></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRGI -->
+  <div id="t-trgi" style="display:none">
+    <div class="card" style="max-width:720px">
+      <div class="sub" style="margin-bottom:8px">Za vsak trg izberi Mailchimp audience. Shrani se na strežnik.</div>
+      <table><thead><tr><th>Trg</th><th>Audience</th><th>Naročnikov</th></tr></thead><tbody id="trgiTb"></tbody></table>
+      <div style="margin-top:12px"><button class="btn pri" onclick="shraniTrge()">💾 Shrani</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- okno: pošlji / test / predogled -->
+<div class="dlg-bg" id="dlgBg" onclick="if(event.target===this)zapri()"><div class="dlg" id="dlg"></div></div>
+
+<script>
+let ST = null, KAMP = [];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pct = v => v == null ? '—' : (v * 100).toFixed(1).replace('.', ',') + ' %';
+const fmtCas = s => s ? new Date(s).toLocaleString('sl-SI', {day:'numeric', month:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '—';
+const STATUS = {save:['Osnutek','p-save'], paused:['Ustavljeno','p-other'], schedule:['Razporejeno','p-schedule'], sending:['Pošilja','p-sending'], sent:['Poslano','p-sent']};
+
+function sporoci(t, tip) {
+  const el = document.getElementById('sporocilo');
+  el.innerHTML = t ? `<div class="msg ${tip || 'err'}">${esc(t)}</div>` : '';
+  if (t && tip === 'ok') setTimeout(() => { if (el.textContent.includes(t)) el.innerHTML = ''; }, 6000);
+}
+
+async function api(url, body) {
+  const opt = body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)};
+  const r = await fetch(url, {credentials:'include', ...opt});
+  let j; try { j = await r.json(); } catch (e) { j = {ok:false, error:'HTTP ' + r.status}; }
+  return j;
+}
+
+function tab(t) {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.dataset.t === t));
+  ['kampanje','nova','trgi'].forEach(x => document.getElementById('t-' + x).style.display = x === t ? '' : 'none');
+}
+
+function seznamPo(id) { return (ST?.seznami || []).find(s => s.id === id); }
+function trgSeznama(id) { return Object.entries(ST?.trgi || {}).find(([t, l]) => l === id)?.[0]; }
+function zastava(t) { return t ? (ST.trgi_vsi[t] || t.toUpperCase()) : ''; }
+
+async function naloziVse() {
+  sporoci('');
+  const s = await api('/mailchimp/stanje');
+  if (!s.ok) { document.getElementById('racun').textContent = ''; sporoci(s.error || 'Napaka'); return; }
+  ST = s;
+  document.getElementById('racun').textContent = `${s.racun.account_name || ''} · ${s.racun.total_subscribers ?? 0} naročnikov skupaj · ${s.seznami.length} seznamov`;
+  risiTrge(); risiIzbire();
+  const k = await api('/mailchimp/kampanje?count=100');
+  if (!k.ok) { sporoci(k.error); return; }
+  KAMP = k.kampanje; risiKampanje();
+}
+
+function risiIzbire() {
+  const opt = ST.seznami.map(l => { const t = trgSeznama(l.id); return `<option value="${l.id}">${t ? zastava(t) + ' · ' : ''}${esc(l.name)} (${l.members})</option>`; }).join('');
+  const fT = document.getElementById('fTrg'), v = fT.value;
+  fT.innerHTML = '<option value="">Vsi seznami</option>' + opt; fT.value = v;
+  const nS = document.getElementById('nSeznam'), v2 = nS.value;
+  nS.innerHTML = '<option value="">— izberi —</option>' + opt; nS.value = v2;
+}
+
+function privzetiPosiljatelj() {
+  const l = seznamPo(document.getElementById('nSeznam').value); if (!l) return;
+  document.getElementById('nOdIme').value = l.from_name || '';
+  document.getElementById('nOdgovor').value = l.from_email || '';
+}
+
+function risiTrge() {
+  const tb = document.getElementById('trgiTb');
+  tb.innerHTML = Object.entries(ST.trgi_vsi).map(([t, ime]) => {
+    const izb = ST.trgi[t] || '', l = seznamPo(izb);
+    return `<tr><td><b>${esc(ime)}</b></td><td><select class="f" data-trg="${t}" onchange="this.closest('tr').lastElementChild.textContent = (ST.seznami.find(s => s.id === this.value) || {}).members ?? '—'">
+      <option value="">— brez —</option>${ST.seznami.map(s => `<option value="${s.id}" ${s.id === izb ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></td>
+      <td>${l ? l.members : '—'}</td></tr>`;
+  }).join('');
+}
+
+async function shraniTrge() {
+  const trgi = {}; document.querySelectorAll('#trgiTb select').forEach(s => { if (s.value) trgi[s.dataset.trg] = s.value; });
+  const j = await api('/mailchimp/nastavitve', {trgi});
+  if (!j.ok) { sporoci(j.error); return; }
+  ST.trgi = j.trgi; risiIzbire(); sporoci('Shranjeno.', 'ok');
+}
+
+function risiKampanje() {
+  const fT = document.getElementById('fTrg').value, fS = document.getElementById('fStatus').value;
+  const vrst = KAMP.filter(c => (!fT || c.list_id === fT) && (!fS || c.status === fS));
+  const tb = document.getElementById('kampTb');
+  if (!vrst.length) { tb.innerHTML = '<tr><td colspan="8" class="muted">Ni kampanj.</td></tr>'; return; }
+  tb.innerHTML = vrst.map(c => {
+    const [ime, cls] = STATUS[c.status] || [c.status, 'p-other'];
+    const t = trgSeznama(c.list_id);
+    const urejanje = c.status === 'save' || c.status === 'paused';
+    return `<tr>
+      <td><span class="pill ${cls}">${ime}</span></td>
+      <td><b>${esc(c.zadeva || '(brez zadeve)')}</b>${c.predogled ? `<div class="sub">${esc(c.predogled)}</div>` : ''}</td>
+      <td>${t ? zastava(t) + ' · ' : ''}${esc(c.seznam)}</td>
+      <td>${c.status === 'sent' ? c.poslanih : c.prejemnikov}</td>
+      <td>${c.status === 'sent' || c.status === 'schedule' ? fmtCas(c.poslano) : '<span class="muted">—</span>'}</td>
+      <td>${c.status === 'sent' ? pct(c.odpiranja) : '—'}</td>
+      <td>${c.status === 'sent' ? pct(c.kliki) : '—'}</td>
+      <td><div class="acts">
+        <button class="btn sm" onclick="pokaziVsebino('${c.id}')">👁</button>
+        <a class="btn sm" style="text-decoration:none" target="_blank" href="https://${ST.dc}.admin.mailchimp.com/campaigns/${urejanje ? 'edit' : 'show'}?id=${c.web_id}">${urejanje ? '✎ Mailchimp' : '↗'}</a>
+        ${urejanje ? `<button class="btn sm" onclick="oknoTest('${c.id}')">🧪 Test</button><button class="btn sm pri" onclick="oknoPoslji('${c.id}')">📤 Pošlji</button>` : ''}
+        ${c.status === 'schedule' ? `<button class="btn sm" onclick="preklici('${c.id}')">⏸ Prekliči razpored</button>` : ''}
+      </div></td></tr>`;
+  }).join('');
+}
+
+function predogled() { document.getElementById('nPrev').srcdoc = document.getElementById('nHtml').value; }
+
+async function ustvariOsnutek() {
+  const list_id = document.getElementById('nSeznam').value, zadeva = document.getElementById('nZadeva').value.trim();
+  if (!list_id) { sporoci('Izberi seznam.'); return; }
+  if (!zadeva) { sporoci('Vpiši zadevo.'); return; }
+  const b = document.getElementById('nShrani'); b.disabled = true; b.textContent = 'Ustvarjam …';
+  const j = await api('/mailchimp/osnutek', {list_id, trg: trgSeznama(list_id), zadeva,
+    predogled: document.getElementById('nPredogled').value, od_ime: document.getElementById('nOdIme').value,
+    odgovor: document.getElementById('nOdgovor').value, naslov: document.getElementById('nNaslov').value,
+    html: document.getElementById('nHtml').value});
+  b.disabled = false; b.textContent = '💾 Ustvari osnutek';
+  if (!j.ok) { sporoci(j.error); if (!j.id) return; }
+  else sporoci('Osnutek ustvarjen.', 'ok');
+  ['nZadeva','nPredogled','nNaslov','nHtml'].forEach(id => document.getElementById(id).value = ''); predogled();
+  tab('kampanje'); await naloziVse();
+}
+
+function odpri(html) { document.getElementById('dlg').innerHTML = html; document.getElementById('dlgBg').style.display = 'flex'; }
+function zapri() { document.getElementById('dlgBg').style.display = 'none'; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') zapri(); });
+
+async function pokaziVsebino(id) {
+  odpri('<div class="muted">Nalagam …</div>');
+  const j = await api('/mailchimp/vsebina?id=' + encodeURIComponent(id));
+  if (!j.ok) { odpri(`<div class="msg err">${esc(j.error)}</div>`); return; }
+  odpri('<iframe class="prev" id="dPrev" sandbox=""></iframe><div style="text-align:right;margin-top:10px"><button class="btn" onclick="zapri()">Zapri</button></div>');
+  document.getElementById('dPrev').srcdoc = j.html || '<p style="font-family:sans-serif;color:#888">Vsebina je prazna — uredi jo v Mailchimpu.</p>';
+}
+
+function oknoTest(id) {
+  const c = KAMP.find(x => x.id === id);
+  let zadnji = ''; try { zadnji = localStorage.getItem('mc_test_emaili') || ''; } catch (e) {}
+  odpri(`<h3>🧪 Testni e-mail</h3><div class="sub">${esc(c.zadeva)}</div>
+    <label class="l">E-naslovi (ločeni z vejico, največ 10)</label><input class="f" id="dTest" value="${esc(zadnji)}">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" onclick="zapri()">Prekliči</button>
+    <button class="btn pri" id="dTestBtn" onclick="posljiTest('${id}')">Pošlji test</button></div>`);
+}
+
+async function posljiTest(id) {
+  const emaili = document.getElementById('dTest').value;
+  try { localStorage.setItem('mc_test_emaili', emaili); } catch (e) {}
+  document.getElementById('dTestBtn').disabled = true;
+  const j = await api('/mailchimp/test', {id, emaili});
+  zapri();
+  sporoci(j.ok ? 'Test poslan na: ' + j.emaili.join(', ') : j.error, j.ok ? 'ok' : 'err');
+}
+
+async function oknoPoslji(id) {
+  const c = KAMP.find(x => x.id === id);
+  odpri('<div class="muted">Preverjam kampanjo …</div>');
+  const p = await api('/mailchimp/preveri?id=' + encodeURIComponent(id));
+  if (!p.ok) { odpri(`<div class="msg err">${esc(p.error)}</div><div style="text-align:right"><button class="btn" onclick="zapri()">Zapri</button></div>`); return; }
+  const post = p.postavke.filter(i => i.tip !== 'success').map(i => `<li style="color:var(--${i.tip === 'error' ? 'err' : 'warn'})"><b>${esc(i.naslov)}</b> — ${esc(i.opis)}</li>`).join('');
+  const l = seznamPo(c.list_id), t = trgSeznama(c.list_id);
+  // privzeti čas razporeda: naslednja polna ura
+  const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1);
+  const lok = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  odpri(`<h3>📤 Pošlji kampanjo</h3>
+    <div><b>${esc(c.zadeva)}</b></div>
+    <div class="sub" style="margin:4px 0 10px">${t ? zastava(t) + ' · ' : ''}${esc(c.seznam)} · <b>${l ? l.members : c.prejemnikov}</b> naročnikov</div>
+    ${post ? `<ul style="margin:6px 0 10px;padding-left:18px">${post}</ul>` : '<div class="msg ok">✓ Kampanja je pripravljena.</div>'}
+    ${p.pripravljeno ? `
+    <label class="l"><input type="radio" name="kdaj" value="zdaj" checked> Pošlji takoj</label>
+    <label class="l"><input type="radio" name="kdaj" value="cas"> Razporedi (čas po Ljubljani, minute 00/15/30/45)</label>
+    <input class="f" type="datetime-local" id="dCas" value="${lok}" step="900" style="width:auto">
+    <label class="l" style="margin-top:14px">Za potrditev vpiši število naročnikov (<b>${l ? l.members : c.prejemnikov}</b>)</label>
+    <input class="f" id="dPotrdi" style="width:160px" autocomplete="off">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" onclick="zapri()">Prekliči</button>
+    <button class="btn red" id="dPosljiBtn" onclick="poslji('${id}', ${l ? l.members : c.prejemnikov})">📤 Pošlji</button></div>`
+    : '<div style="text-align:right"><button class="btn" onclick="zapri()">Zapri</button></div>'}`);
+}
+
+async function poslji(id, stevilo) {
+  if (document.getElementById('dPotrdi').value.replace(/\D/g, '') !== String(stevilo)) { alert('Število se ne ujema.'); return; }
+  let cas = '';
+  if (document.querySelector('input[name=kdaj]:checked').value === 'cas') {
+    const v = document.getElementById('dCas').value; if (!v) { alert('Izberi čas.'); return; }
+    const d = new Date(v);
+    if (d.getMinutes() % 15) { alert('Mailchimp dovoli samo minute 00, 15, 30 ali 45.'); return; }
+    if (d < new Date()) { alert('Čas je v preteklosti.'); return; }
+    cas = d.toISOString().replace(/\.\d{3}Z$/, '+00:00');
+  }
+  const b = document.getElementById('dPosljiBtn'); b.disabled = true; b.textContent = 'Pošiljam …';
+  const j = await api('/mailchimp/poslji', {id, cas});
+  zapri();
+  if (!j.ok) { sporoci(j.error); return; }
+  sporoci(j.razporejeno ? 'Kampanja razporejena.' : 'Kampanja poslana.', 'ok');
+  naloziVse();
+}
+
+async function preklici(id) {
+  if (!confirm('Prekliči razpored? Kampanja se vrne med osnutke.')) return;
+  const j = await api('/mailchimp/preklici-razpored', {id});
+  if (!j.ok) { sporoci(j.error); return; }
+  sporoci('Razpored preklican.', 'ok'); naloziVse();
+}
+
+naloziVse();
+</script>
+</body>
+</html>

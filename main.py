@@ -411,6 +411,11 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
                 if (path.startswith("/cashflow")
                         and OWNER_PASSWORD and not _owner_check_token(request.cookies.get(OWNER_COOKIE, ""))):
                     return JSONResponse({"ok": False, "error": "owner", "message": "Samo za lastnika."}, status_code=403)
+                # 📧 Newsletter (Mailchimp) je samo za lastnika — tudi brez nastavljenega OWNER_PASSWORD zaprto
+                if (path == "/mailchimp" or path.startswith("/mailchimp/")) and not _owner_authorized(request):
+                    if wants_html:
+                        return PlainTextResponse("403 — samo za lastnika (prijava z lastniškim geslom)", status_code=403)
+                    return JSONResponse({"ok": False, "error": "Samo za lastnika."}, status_code=403)
                 return await call_next(request)
             if wants_html:
                 return RedirectResponse(url="/login", status_code=302)
@@ -36040,3 +36045,195 @@ async def nabava_export_xlsx(container: str = ""):
 
 
 
+
+
+
+# ═══ 📧 NEWSLETTER (Mailchimp Marketing API, samo lastnik — vrata v AuthGate) ═══
+# env MAILCHIMP_API_KEY (oblika xxxx-us21; del za "-" = strežnik). Ločen audience za vsak trg.
+# Nastavitve /data/mailchimp.json {"trgi": {trg: list_id}}, dnevnik pošiljanj /data/mailchimp_dnevnik.jsonl.
+MC_FILE = DATA_DIR / "mailchimp.json"
+MC_DNEVNIK_FILE = DATA_DIR / "mailchimp_dnevnik.jsonl"
+
+
+def _mc_kljuc():
+    k = (os.environ.get("MAILCHIMP_API_KEY") or "").strip()
+    if not k or "-" not in k:
+        return None, None
+    return k, k.rsplit("-", 1)[1]
+
+
+async def _mc(method, pot, body=None, params=None):
+    """Klic Mailchimp API → (ok, json ali napaka)."""
+    k, dc = _mc_kljuc()
+    if not k:
+        return False, "MAILCHIMP_API_KEY ni nastavljen na Renderju."
+    try:
+        async with httpx.AsyncClient(timeout=30) as cl:
+            r = await cl.request(method, f"https://{dc}.api.mailchimp.com/3.0{pot}", auth=("suban", k), json=body, params=params)
+        if r.status_code == 204:
+            return True, {}
+        try:
+            j = r.json()
+        except Exception:
+            j = {"detail": r.text[:300]}
+        if r.status_code >= 400:
+            napaka = j.get("detail") or j.get("title") or f"HTTP {r.status_code}"
+            if j.get("errors"):
+                napaka += " · " + "; ".join(f"{e.get('field')}: {e.get('message')}" for e in j["errors"][:5])
+            return False, napaka
+        return True, j
+    except Exception as e:
+        return False, f"Mailchimp ni dosegljiv: {e}"
+
+
+def _mc_dnevnik(zapis: dict):
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with open(MC_DNEVNIK_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"at": _lj_iso(), **zapis}, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print("[mailchimp] dnevnik:", e)
+
+
+@app.get("/mailchimp", response_class=HTMLResponse)
+def mailchimp_page():
+    return FileResponse("static/mailchimp.html", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/mailchimp/stanje")
+async def mailchimp_stanje():
+    k, dc = _mc_kljuc()
+    if not k:
+        return {"ok": False, "error": "MAILCHIMP_API_KEY ni nastavljen na Renderju."}
+    ok, rac = await _mc("GET", "/", params={"fields": "account_name,email,total_subscribers"})
+    if not ok:
+        return {"ok": False, "error": rac}
+    ok, li = await _mc("GET", "/lists", params={"count": 100, "fields": "lists.id,lists.name,lists.stats.member_count,lists.campaign_defaults"})
+    if not ok:
+        return {"ok": False, "error": li}
+    seznami = [{"id": l["id"], "name": l.get("name", ""), "members": (l.get("stats") or {}).get("member_count", 0),
+                "from_name": (l.get("campaign_defaults") or {}).get("from_name", ""),
+                "from_email": (l.get("campaign_defaults") or {}).get("from_email", ""),
+                "language": (l.get("campaign_defaults") or {}).get("language", "")} for l in li.get("lists", [])]
+    nast = _jload(MC_FILE, {}) or {}
+    return {"ok": True, "dc": dc, "racun": rac, "seznami": seznami, "trgi": nast.get("trgi", {}),
+            "trgi_vsi": {t: v[0] for t, v in MARZA_TRGI.items()}}
+
+
+@app.post("/mailchimp/nastavitve")
+async def mailchimp_nastavitve(request: Request):
+    body = await request.json()
+    nast = _jload(MC_FILE, {}, strict=True) or {}
+    nast["trgi"] = {t: str(v) for t, v in (body.get("trgi") or {}).items() if t in MARZA_TRGI and v}
+    _jsave(MC_FILE, nast)
+    return {"ok": True, "trgi": nast["trgi"]}
+
+
+@app.get("/mailchimp/kampanje")
+async def mailchimp_kampanje(count: int = 50):
+    ok, j = await _mc("GET", "/campaigns", params={
+        "count": max(1, min(count, 200)), "sort_field": "create_time", "sort_dir": "DESC",
+        "fields": "campaigns.id,campaigns.web_id,campaigns.status,campaigns.create_time,campaigns.send_time,campaigns.emails_sent,"
+                  "campaigns.settings.title,campaigns.settings.subject_line,campaigns.settings.preview_text,"
+                  "campaigns.recipients.list_id,campaigns.recipients.list_name,campaigns.recipients.recipient_count,campaigns.report_summary"})
+    if not ok:
+        return {"ok": False, "error": j}
+    out = []
+    for c in j.get("campaigns", []):
+        s, rc, rs = c.get("settings") or {}, c.get("recipients") or {}, c.get("report_summary") or {}
+        out.append({"id": c["id"], "web_id": c.get("web_id"), "status": c.get("status"), "ustvarjeno": c.get("create_time"),
+                    "poslano": c.get("send_time"), "poslanih": c.get("emails_sent", 0), "naslov": s.get("title", ""),
+                    "zadeva": s.get("subject_line", ""), "predogled": s.get("preview_text", ""),
+                    "list_id": rc.get("list_id"), "seznam": rc.get("list_name", ""), "prejemnikov": rc.get("recipient_count", 0),
+                    "odpiranja": rs.get("open_rate"), "kliki": rs.get("click_rate")})
+    return {"ok": True, "kampanje": out}
+
+
+@app.get("/mailchimp/vsebina")
+async def mailchimp_vsebina(id: str):
+    ok, j = await _mc("GET", f"/campaigns/{id}/content", params={"fields": "html"})
+    if not ok:
+        return {"ok": False, "error": j}
+    return {"ok": True, "html": j.get("html", "")}
+
+
+@app.post("/mailchimp/osnutek")
+async def mailchimp_osnutek(request: Request):
+    """Nov osnutek kampanje na audience trga: nastavitve + HTML vsebina. Nič se ne pošlje."""
+    b = await request.json()
+    list_id = (b.get("list_id") or "").strip()
+    zadeva = (b.get("zadeva") or "").strip()
+    if not list_id or not zadeva:
+        return {"ok": False, "error": "Manjka seznam ali zadeva."}
+    nastavitve = {"subject_line": zadeva, "title": (b.get("naslov") or zadeva).strip()[:100],
+                  "preview_text": (b.get("predogled") or "").strip()}
+    if (b.get("od_ime") or "").strip():
+        nastavitve["from_name"] = b["od_ime"].strip()
+    if (b.get("odgovor") or "").strip():
+        nastavitve["reply_to"] = b["odgovor"].strip()
+    ok, c = await _mc("POST", "/campaigns", {"type": "regular", "recipients": {"list_id": list_id}, "settings": nastavitve})
+    if not ok:
+        return {"ok": False, "error": c}
+    html = b.get("html") or ""
+    if html.strip():
+        ok2, e2 = await _mc("PUT", f"/campaigns/{c['id']}/content", {"html": html})
+        if not ok2:
+            return {"ok": False, "error": f"Osnutek ustvarjen, vsebina ni shranjena: {e2}", "id": c["id"], "web_id": c.get("web_id")}
+    _mc_dnevnik({"akcija": "osnutek", "id": c["id"], "list_id": list_id, "trg": b.get("trg"), "zadeva": zadeva})
+    return {"ok": True, "id": c["id"], "web_id": c.get("web_id")}
+
+
+@app.post("/mailchimp/test")
+async def mailchimp_test(request: Request):
+    b = await request.json()
+    emaili = [e.strip() for e in re.split(r"[,;\s]+", b.get("emaili") or "") if "@" in e]
+    if not b.get("id") or not emaili:
+        return {"ok": False, "error": "Manjka kampanja ali e-naslov."}
+    ok, j = await _mc("POST", f"/campaigns/{b['id']}/actions/test", {"test_emails": emaili[:10], "send_type": "html"})
+    if not ok:
+        return {"ok": False, "error": j}
+    _mc_dnevnik({"akcija": "test", "id": b["id"], "emaili": emaili[:10]})
+    return {"ok": True, "emaili": emaili[:10]}
+
+
+@app.get("/mailchimp/preveri")
+async def mailchimp_preveri(id: str):
+    ok, j = await _mc("GET", f"/campaigns/{id}/send-checklist")
+    if not ok:
+        return {"ok": False, "error": j}
+    return {"ok": True, "pripravljeno": bool(j.get("is_ready")),
+            "postavke": [{"tip": i.get("type"), "naslov": i.get("heading"), "opis": i.get("details")} for i in j.get("items", [])]}
+
+
+@app.post("/mailchimp/poslji")
+async def mailchimp_poslji(request: Request):
+    """Pošlji takoj ali razporedi ({id, cas: UTC ISO, minute 00/15/30/45}). Pred tem send-checklist."""
+    b = await request.json()
+    cid = (b.get("id") or "").strip()
+    if not cid:
+        return {"ok": False, "error": "Manjka kampanja."}
+    ok, chk = await _mc("GET", f"/campaigns/{cid}/send-checklist")
+    if not ok:
+        return {"ok": False, "error": chk}
+    if not chk.get("is_ready"):
+        nap = [f"{i.get('heading')}: {i.get('details')}" for i in chk.get("items", []) if i.get("type") == "error"]
+        return {"ok": False, "error": "Kampanja ni pripravljena — " + ("; ".join(nap) or "preveri v Mailchimpu")}
+    cas = (b.get("cas") or "").strip()
+    if cas:
+        ok, j = await _mc("POST", f"/campaigns/{cid}/actions/schedule", {"schedule_time": cas})
+    else:
+        ok, j = await _mc("POST", f"/campaigns/{cid}/actions/send")
+    if not ok:
+        return {"ok": False, "error": j}
+    _mc_dnevnik({"akcija": "razporejeno" if cas else "poslano", "id": cid, "cas": cas or None})
+    return {"ok": True, "razporejeno": bool(cas)}
+
+
+@app.post("/mailchimp/preklici-razpored")
+async def mailchimp_preklici_razpored(request: Request):
+    b = await request.json()
+    ok, j = await _mc("POST", f"/campaigns/{b.get('id')}/actions/unschedule")
+    if not ok:
+        return {"ok": False, "error": j}
+    _mc_dnevnik({"akcija": "razpored_preklican", "id": b.get("id")})
+    return {"ok": True}
