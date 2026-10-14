@@ -100,6 +100,7 @@
   <div id="paket"></div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const MAX = { h: 40, d: 90 };
@@ -177,7 +178,9 @@ function risi() {
   let h = '<div class="kpi"><div><b>' + post.length + '</b><span class="sub">SKU-jev</span></div><div><b>' + brezNap.length + '</b><span class="sub">za izvoz</span></div>' +
     '<div><b style="color:var(--err)">' + post.filter(x => (x.napake || []).length).length + '</b><span class="sub">z napako</span></div>' +
     '<div><b>' + caka + '</b><span class="sub">v pripravi</span></div>' +
-    '<div style="display:flex;align-items:center;gap:8px"><button class="btn grn" ' + (caka || !brezNap.length ? 'disabled' : '') + ' onclick="izvozi()">⬇ Shrani in izvozi ZIP (' + brezNap.length + ')</button></div></div>';
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button class="btn grn" ' + (caka || !brezNap.length ? 'disabled' : '') + ' onclick="shraniVMapo()" title="Zapiše v izbrano mapo (npr. Documents\\subankampanije): Maaarket.xx\\ads_….csv + mapa za vsak SKU s slikami">📁 Shrani v mapo (' + brezNap.length + ')</button>' +
+      '<button class="btn" ' + (caka || !brezNap.length ? 'disabled' : '') + ' onclick="izvozi()">⬇ ZIP</button>' +
+      '<span class="sub" id="mapaInfo">' + (MAPA ? '📁 ' + esc(MAPA.name) + ' · <a href="#" onclick="mapaZamenjaj();return false">zamenjaj</a>' : 'mapa še ni izbrana') + '</span></div></div>';
   if (p.nova_kampanja) h += '<div class="msg ok">➕ Nova kampanja <b>' + esc(p.nova_kampanja.ime) + '</b> (kopija »' + esc(p.nova_kampanja.vir) + '«) · proračun ' + esc(p.nova_kampanja.budget) + ' / dan · Target CPA ' + esc(p.nova_kampanja.tcpa) + ' · Paused</div>';
   h += '<div class="msg warn">⚠ Uvoz v Editor je lokalen, dokler ne klikneš <b>Post</b>. V pregledu uvoza morajo biti samo <b>Added</b>, nobenega <b>Updated</b>. Vse skupine in oglasi so <b>Paused</b>. Slike Editor iz CSV ne pripne: uvozi mapo <b>images</b> (Import image assets from files) in jih pri vsakem oglasu izberi iz knjižnice (išči po SKU), dodaj še logo.' +
     (PAK.kampanja_najdena ? '' : ' <b>Kampanja ni več v nastavitvah — naloži izvoz znova.</b>') + '</div>';
@@ -216,6 +219,56 @@ document.addEventListener('input', e => {
   x._sprem = true;
 });
 document.addEventListener('change', e => { if (e.target.matches('[data-k="vkljuci"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
+// 📁 SHRANI V MAPO (File System Access API — Chrome/Edge): mapo izbereš enkrat (npr. Documents\subankampanije), ročaj se hrani v IndexedDB
+let MAPA = null;
+const idb = (fn) => new Promise((res, rej) => { const o = indexedDB.open('gdg', 1); o.onupgradeneeded = () => o.result.createObjectStore('k');
+  o.onsuccess = () => { const t = o.result.transaction('k', 'readwrite'), st = t.objectStore('k'); const r = fn(st); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }; o.onerror = () => rej(o.error); });
+async function mapaNalozi() { try { MAPA = await idb(st => st.get('mapa')) || null; } catch (e) { MAPA = null; } }
+async function mapaIzberi() {
+  if (!window.showDirectoryPicker) { alert('Ta brskalnik ne podpira shranjevanja v mapo — uporabi Chrome ali Edge (ali ⬇ ZIP).'); return null; }
+  try { MAPA = await window.showDirectoryPicker({ id: 'subankampanije', mode: 'readwrite', startIn: 'documents' }); } catch (e) { return null; }   // preklic
+  try { await idb(st => st.put(MAPA, 'mapa')); } catch (e) {}
+  return MAPA;
+}
+async function mapaZamenjaj() { await mapaIzberi(); if (PAK) risi(); }
+async function mapaDovoli() {
+  if (!MAPA) return !!(await mapaIzberi());
+  const o = { mode: 'readwrite' };
+  if ((await MAPA.queryPermission(o)) === 'granted') return true;
+  if ((await MAPA.requestPermission(o)) === 'granted') return true;
+  return !!(await mapaIzberi());
+}
+async function zapisi(dir, pot, data) {
+  const deli = pot.split('/').filter(Boolean); let d = dir;
+  for (const x of deli.slice(0, -1)) d = await d.getDirectoryHandle(x, { create: true });
+  const fh = await d.getFileHandle(deli[deli.length - 1], { create: true }), w = await fh.createWritable();
+  await w.write(data); await w.close();
+}
+async function shraniVMapo() {
+  if (!window.JSZip) { alert('Knjižnica za razpakiranje se ni naložila — osveži stran ali uporabi ⬇ ZIP.'); return; }
+  if (!(await mapaDovoli())) return;
+  const p = PAK.paket;
+  const sprem = p.postavke.filter(x => x._sprem).map(x => ({ sku: x.sku, ad_group: x.ad_group, ad_name: x.ad_name, naslovi: x.naslovi, opisi: x.opisi, vkljuci: x.vkljuci !== false }));
+  if (sprem.length) await api('/gads-dg/api/shrani', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, postavke: sprem }) });
+  await naloziPaket(p.id);
+  const nap = PAK.paket.postavke.filter(x => x.status === 'ok' && x.vkljuci !== false && (x.napake || []).length);
+  if (nap.length && !confirm(nap.length + ' oglasov ima napake in NE bodo shranjeni (' + nap.map(x => x.sku).join(', ') + '). Nadaljujem?')) return;
+  const r = await fetch('/gads-dg/api/izvoz/' + encodeURIComponent(p.id), { credentials: 'include' });
+  if (!r.ok) { let e = ''; try { e = (await r.json()).error; } catch (x) {} msg('msg', esc(e || 'Izvoz ni uspel.'), 'err'); return; }
+  const zip = await JSZip.loadAsync(await r.blob());
+  const trgMapa = (PAK.business_name || ('Maaarket.' + p.trg)).replace(/[\\/:*?"<>|]/g, '_');
+  const zig = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '');
+  const ime = { 'ads.csv': 'ads_' + zig + '.csv', 'manifest.csv': 'manifest_' + zig + '.csv', 'validation_report.csv': 'porocilo_' + zig + '.csv', 'NAVODILA.txt': 'NAVODILA_' + zig + '.txt' };
+  let n = 0;
+  try {
+    for (const [pot, f] of Object.entries(zip.files)) {
+      if (f.dir) continue;
+      const cilj = pot.startsWith('images/') ? trgMapa + '/' + pot.slice(7) : trgMapa + '/' + (ime[pot] || pot);
+      await zapisi(MAPA, cilj, await f.async('uint8array')); n++;
+    }
+  } catch (e) { msg('msg', 'Zapis v mapo ni uspel: ' + esc(e.message || e) + ' — poskusi znova ali uporabi ⬇ ZIP.', 'err'); return; }
+  msg('msg', '✓ Shranjeno ' + n + ' datotek v 📁 ' + esc(MAPA.name) + '\\' + esc(trgMapa) + ' — v Editorju uvozi ' + esc(ime['ads.csv']) + ', slike pa iz map po SKU.', 'ok');
+}
 async function izvozi() {
   const p = PAK.paket;
   const sprem = p.postavke.filter(x => x._sprem).map(x => ({ sku: x.sku, ad_group: x.ad_group, ad_name: x.ad_name, naslovi: x.naslovi, opisi: x.opisi, vkljuci: x.vkljuci !== false }));
@@ -225,7 +278,7 @@ async function izvozi() {
   if (nap.length && !confirm(nap.length + ' oglasov ima napake in NE bodo v izvozu (' + nap.map(x => x.sku).join(', ') + '). Nadaljujem?')) return;
   location.href = '/gads-dg/api/izvoz/' + encodeURIComponent(p.id);
 }
-nalozi().then(() => { const id = LS.get('gdg_pak'); if (id) naloziPaket(id); });
+mapaNalozi().then(nalozi).then(() => { const id = LS.get('gdg_pak'); if (id) naloziPaket(id); });
 </script>
 </body>
 </html>
