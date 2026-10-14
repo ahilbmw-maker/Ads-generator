@@ -11152,7 +11152,8 @@ TOP PRIORITY — PRODUCT FIDELITY: a REAL product with reference images. The vid
 from the reference images and never invent or substitute a different one — identical in every scene, never morphing.
 
 EVERY prompt MUST:
-1) Start EXACTLY with: "Generate a 12-second [UGC / scroll-stopping] ad for the exact [PRODUCT_DESC] shown in the reference images."
+1) Start EXACTLY with: "Generate a 10-second UGC ad for the exact [PRODUCT_DESC] shown in the reference images." (PROMPT 1)
+   or "Generate a 7-second scroll-stopping ad for the exact [PRODUCT_DESC] shown in the reference images." (PROMPT 2)
    NEVER a bare generic category name — ALWAYS "the exact ... shown in the reference images".
 2) Then this FIXED block, verbatim, in this order:
    CRITICAL PRODUCT LOCK: Use the EXACT product shown in the reference images and NOTHING ELSE. Reproduce it precisely, visually IDENTICAL in EVERY scene, never morphing.
@@ -11167,25 +11168,27 @@ EVERY prompt MUST:
 4) End with: "Display only visual icons (no text):" + 4–5 icons, one per line, then the end line given below.
    Icons: one PROBLEM icon (snowflake / flame / dirt / pain …), one BENEFIT icon (warmth / clean / light / comfort …),
    one PRODUCT-CATEGORY icon, plus sparkle / heart / checkmark. Never letters or words inside icons.
-English only. No prices. No CTA words. No voiceover. Absolutely no on-screen text anywhere.
+English only. No prices. No CTA words. No voiceover, no speech, no singing. Absolutely no on-screen text anywhere.
+AUDIO (always, never a silent video): an INSTRUMENTAL background music track (no vocals, no lyrics) that fits the mood + clearly audible natural product sounds ([SOUND]) on the action beat, mixed above the music.
+PACING: the hook is visible in the VERY FIRST FRAME (no fade-in, no slow intro, no empty establishing shot); every scene shows the product or the problem — no filler.
 
-PROMPT 1 — WINNER (UGC PROBLEM -> PRODUCT -> RELIEF)
-STYLE: authentic user-generated-content look — ONE CONTINUOUS HANDHELD SMARTPHONE TAKE with no cuts from 0 to 11s (fewer cuts = the product stays identical), a relatable everyday person, real home/real-world setting, natural light, subtle handheld camera movement, candid (NOT a polished studio ad). Only the final hero shot is a separate cut.
-Scene 1 (HOOK 0-2s): open on the exact problem the target customer instantly recognises — a relatable person clearly frustrated, shot close and candid like a phone video; small problem icon pulses.
-Scene 2 (PRODUCT 2-4s): in the same take, the person grabs the exact product from the reference images, in-hand, turning it once so its real shape and colour are clearly visible.
-Scene 3 (ACTION 4-8s): the person performs exactly this action: [USE_ACTION]. We clearly SEE it working; the benefit is obvious and satisfying. One simple physical movement, no assembly or unfolding.
-Scene 4 (PAYOFF 8-11s): the person's face shifts from frustration to genuine relief/delight; positive icon (heart/check/sparkle) appears.
-Scene 5 (HERO 11-12s): clean floating hero shot of the exact product, centred.
-End line: "Ultra realistic. Authentic UGC conversion-focused ad. Natural sound design, no voiceover."
+PROMPT 1 — WINNER (UGC PROBLEM -> PRODUCT -> RELIEF) — 10 SECONDS
+STYLE: authentic user-generated-content look — ONE CONTINUOUS HANDHELD SMARTPHONE TAKE with no cuts from 0 to 9s (fewer cuts = the product stays identical), a relatable everyday person, real home/real-world setting, natural light, subtle handheld camera movement, candid (NOT a polished studio ad), real-time speed (no slow motion). Only the final hero shot is a separate cut.
+Scene 1 (HOOK 0-2s): from the first frame, the exact problem the target customer instantly recognises — a relatable person clearly frustrated, shot close and candid like a phone video; small problem icon pulses.
+Scene 2 (PRODUCT 2-3.5s): in the same take, the person grabs the exact product from the reference images, in-hand, turning it once so its real shape and colour are clearly visible.
+Scene 3 (ACTION 3.5-7s): the person performs exactly this action: [USE_ACTION]. We clearly SEE it working; the benefit is obvious and satisfying. One simple physical movement, no assembly or unfolding.
+Scene 4 (PAYOFF 7-9s): the person's face shifts from frustration to genuine relief/delight; positive icon (heart/check/sparkle) appears.
+Scene 5 (HERO 9-10s): clean floating hero shot of the exact product, centred.
+End line: "Ultra realistic. Authentic UGC conversion-focused ad. Light upbeat instrumental music + natural product sounds, no voiceover."
 
-PROMPT 2 — SCROLL STOPPER (EXTREME CLOSE-UP HOOK)
-STYLE: maximum scroll-stopping impact — start on a mesmerising extreme macro, then a satisfying product-in-action payoff; semi-UGC realism, crisp and tactile.
-Scene 1 (HOOK 0-2s): extreme macro close-up of [MACRO_DETAIL] exactly as it appears in the reference images (a REAL visible detail — do not invent texture), filling the frame, hypnotic.
-Scene 2 (REVEAL 2-5s): smooth pull-back revealing the full exact product, every detail matching the reference.
-Scene 3 (SATISFYING ACTION 5-9s): [USE_ACTION] — the single most satisfying use-moment in slow motion / crisp detail (the "oddly satisfying" beat), product fully visible.
-Scene 4 (RESULT 9-11s): quick reveal of the clear end result/benefit; sparkle/check icon appears.
-Scene 5 (HERO 11-12s): clean floating hero shot of the exact product, centred.
-End line: "Ultra realistic. Maximum scroll-stopping conversion ad. Punchy natural sound design, no voiceover."
+PROMPT 2 — SCROLL STOPPER (EXTREME CLOSE-UP HOOK) — 7 SECONDS
+STYLE: maximum scroll-stopping impact, fast punchy rhythm — start on a mesmerising extreme macro, then a satisfying product-in-action payoff; semi-UGC realism, crisp and tactile.
+Scene 1 (HOOK 0-1.5s): from the first frame, extreme macro close-up of [MACRO_DETAIL] exactly as it appears in the reference images (a REAL visible detail — do not invent texture), filling the frame, hypnotic.
+Scene 2 (REVEAL 1.5-3s): quick smooth pull-back revealing the full exact product, every detail matching the reference.
+Scene 3 (SATISFYING ACTION 3-5.5s): [USE_ACTION] — the single most satisfying use-moment in crisp detail (the "oddly satisfying" beat; short slow-motion only here), product fully visible.
+Scene 4 (RESULT 5.5-6.5s): quick reveal of the clear end result/benefit; sparkle/check icon appears.
+Scene 5 (HERO 6.5-7s): clean floating hero shot of the exact product, centred.
+End line: "Ultra realistic. Maximum scroll-stopping conversion ad. Punchy rhythmic instrumental music synced to the cuts + crisp ASMR-like product sounds, no voiceover."
 
 Make the scenes CONCRETE for this product (the real problem it solves, the real use-moment, the real result) — keep the structure, timing and fixed blocks.
 
@@ -11205,7 +11208,7 @@ ALSO build (before writing prompts) and insert into BOTH prompts where marked:
 - PRODUCT_SIZE: real-world size relative to a hand/body (e.g. "palm-sized, fits in one hand", "about the length of a forearm", "knee-high"). Infer from the description; if unknown, choose the most plausible size for this kind of product.
 - USE_ACTION: ONE sentence describing exactly how the product is physically used — which part is held, what is pressed/pulled/placed, what moves and what visible result appears (e.g. "the thumb presses the round top button and the four blades spin inside the clear bowl, chopping the onion into even pieces"). Pick the SIMPLEST use-moment that shows the benefit (no assembly, no unfolding, no multi-step setup).
 - MACRO_DETAIL: the single most eye-catching REAL detail visible on the product (texture, button, mechanism, light, edge).
-- SOUND: the natural sound the product makes in use (click, whir, splash, snap …) — mention it in the action scene.
+- SOUND: the natural sound the product makes in use (click, whir, splash, snap …) — use it as [SOUND] in the AUDIO line and mention it in the action scene.
 - USAGE_FACTS: 2–5 short HARD facts about how this product REALLY works and is used, taken ONLY from the description + seller notes:
   power source (battery / rechargeable / USB / mains / manual / none), whether it is cordless while in use, where and how it is used,
   what it is attached to or placed on. Never invent features that are not stated.
@@ -11216,8 +11219,9 @@ ALSO build (before writing prompts) and insert into BOTH prompts where marked:
 ALL scenes must follow USAGE_FACTS and avoid NEVER_SHOW. Do NOT write the USAGE FACTS / NEVER SHOW lines into the prompts yourself — they are inserted automatically.
 
 Return ONLY JSON, no markdown:
-{{"brand": "", "product_desc": "<the physical description>", "product_size": "...", "use_action": "...", "macro_detail": "...", "usage_facts": ["..."], "never_show": ["..."], "prompts": [{{"title": "PROMPT 1 — WINNER (UGC)", "text": "..."}}, {{"title": "PROMPT 2 — SCROLL STOPPER", "text": "..."}}]}}"""
+{{"brand": "", "product_desc": "<the physical description>", "product_size": "...", "use_action": "...", "macro_detail": "...", "usage_facts": ["..."], "never_show": ["..."], "prompts": [{{"title": "PROMPT 1 — WINNER (UGC) · 10 s", "text": "..."}}, {{"title": "PROMPT 2 — SCROLL STOPPER · 7 s", "text": "..."}}]}}"""
 
+VA_DUR = {"winner": 10, "scroll": 7}   # 2026-10-14: prej 12 + 12 s → 17 s skupaj (~30 % manj kreditov, manj »spreminjanja« izdelka)
 VA_LOCK_BLOK = ("CRITICAL PRODUCT LOCK: Use the EXACT product shown in the reference images and NOTHING ELSE. "
                 "Reproduce it precisely, visually IDENTICAL in EVERY scene, never morphing.")
 VA_NOTEXT_BLOK = "NO TEXT. NO WORDS. NO LETTERS. NO LOGO. NO BRAND NAME. NO CAPTIONS. NO NUMBERS. ICONS ONLY."
@@ -11245,7 +11249,7 @@ def _va_zakleni(text: str, pdesc: str, ugc: bool, dejstva: str = "") -> str:
     vrst = t.split("\n")
     prva = vrst[0] if vrst else ""
     if "shown in the reference images" not in prva:
-        vrst.insert(0, f"Generate a 12-second {'UGC' if ugc else 'scroll-stopping'} ad for the exact {pdesc or 'product'} shown in the reference images.")
+        vrst.insert(0, f"Generate a {VA_DUR['winner'] if ugc else VA_DUR['scroll']}-second {'UGC' if ugc else 'scroll-stopping'} ad for the exact {pdesc or 'product'} shown in the reference images.")
     bloki = [b for b in (VA_LOCK_BLOK, VA_NOTEXT_BLOK, VA_LJUDJE_BLOK, VA_VIDNO_BLOK) if b.split(":")[0].split(".")[0] not in t]
     if bloki:
         vrst[1:1] = bloki
@@ -11347,7 +11351,8 @@ def _va_build_brief(job: dict) -> str:
     # SPREMEMBA 5: fiksni, popolni tehnični parametri
     _ar = "9:16" if str(job.get("aspect") or "").strip() in ("9:16", "reels", "tiktok") else "1:1"
     lines += ["",
-              f"Model: seedance_2_5 · mode: omni_reference · aspect_ratio: {_ar} · duration: 12 · resolution: 720p · generate_audio: true · count: 1",
+              f"Model: seedance_2_5 · mode: omni_reference · aspect_ratio: {_ar} · resolution: 720p · generate_audio: true · count: 1",
+              f"Duration PO PROMPTU: PROMPT 1 (WINNER) = {VA_DUR['winner']} s · PROMPT 2 (SCROLL STOPPER) = {VA_DUR['scroll']} s",
               ""]
     for p in (job.get("prompts") or []):
         lines.append(f"--- {p.get('title')} ---")
@@ -11425,7 +11430,7 @@ async def _va_process_one(job: dict):
         never = [str(x) for x in (parsed.get("never_show") or []) if str(x).strip()][:8]
         dejstva = _va_dejstva_blok(facts, never)
         for k, p_ in enumerate(prompts):
-            p_["title"] = p_.get("title") or ("PROMPT 1 — WINNER (UGC)" if k == 0 else "PROMPT 2 — SCROLL STOPPER")
+            p_["title"] = ("PROMPT 1 — WINNER (UGC)" if k == 0 else "PROMPT 2 — SCROLL STOPPER") + f" · duration {VA_DUR['winner'] if k == 0 else VA_DUR['scroll']} s"
             p_["text"] = _va_zakleni(p_.get("text") or "", pd_, ugc=(k == 0), dejstva=dejstva)
         await _va_set(jid, status="done", step="", brand=parsed.get("brand") or "",
                       product_desc=parsed.get("product_desc") or "",

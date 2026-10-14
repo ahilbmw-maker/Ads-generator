@@ -1086,7 +1086,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-14 12:07</div>
+      <div class="sidebar-logo-sub">build 2026-10-14 13:11</div>
     </div>
   </div>
 
@@ -8169,10 +8169,12 @@ const VA_INSTR = [
   'NAVODILA ZA CLAUDE (izvedba prek Higgsfield MCP):',
   '1. Uporabi Higgsfield connector (je že povezan na moj račun).',
   '2. Za vsak brief spodaj: VSE referenčne slike uvozi z media_import_url in jih uporabi kot image_references (prva = primarna).',
-  '3. Vsak PROMPT (2 na izdelek: WINNER UGC + SCROLL STOPPER) generiraj z generate_video: model seedance_2_5, mode omni_reference, aspect_ratio 1:1, duration 12, resolution 720p, generate_audio true, count 1.',
+  '3. Vsak PROMPT (2 na izdelek) generiraj z generate_video: model seedance_2_5, mode omni_reference, aspect_ratio 1:1, resolution 720p, generate_audio true, count 1 — duration PO PROMPTU: WINNER (UGC) = 10, SCROLL STOPPER = 7 (piše tudi v naslovu prompta).',
+  '   Besedila promptov NE spreminjaj in ne krajšaj (fiksni bloki varujejo izdelek in prepovedujejo besedilo na videu).',
   '4. PRED prvim generiranjem preveri ceno z get_cost in mi pokaži skupno oceno kreditov — počakaj na mojo potrditev.',
   '5. Generiraj ZAPOREDNO (1 po 1). Če kateri prompt pade, nadaljuj z naslednjim in na koncu povzemi.',
-  '6. Vsak končan video mi pokaži v chatu.',
+  '6. Vsak končan video mi pokaži v chatu z oznako SKU + WINNER / SCROLL STOPPER.',
+  '7. Na koncu kratka tabela: SKU · prompt · status (✓ / ✗ razlog) · porabljeni krediti.',
   ''
 ].join('\n');
 
@@ -8187,7 +8189,7 @@ function vaCopyBrief(btn, jid) {
 function vaCopyAll() {
   const done = _vaJobs.filter(j => j.status === 'done' && j.brief);
   if (!done.length) return;
-  const all = VA_INSTR + '\nBriefov: ' + done.length + ' (vsak = 1 izdelek = 2 prompta = 2 videa)\n\n'
+  const all = VA_INSTR + '\nBriefov: ' + done.length + ' (vsak = 1 izdelek = 2 prompta = 2 videa: 10 s + 7 s)\n\n'
     + done.map(j => j.brief).join('\n\n');
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(all);
 }
