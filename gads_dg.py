@@ -615,8 +615,8 @@ def vklopi(G: dict):
                 for s in [s_ for s_ in (x.get("slike") or []) if not s_.get("izkl")]:
                     f = SLIKE_DIR / pid / x["sku"] / s["datoteka"]
                     if f.exists():
-                        z.write(f, f"images/{x['sku']}/{s['datoteka']}")
-                        mw.writerow([x["sku"], x["ad_group"], x.get("ad_name"), {"1x1": "Square 1:1", "191x1": "Landscape 1.91:1", "4x5": "Portrait 4:5"}[s["vrsta"]], f"images/{x['sku']}/{s['datoteka']}"])
+                        z.write(f, f"images/{s['datoteka']}")
+                        mw.writerow([x["sku"], x["ad_group"], x.get("ad_name"), {"1x1": "Square 1:1", "191x1": "Landscape 1.91:1", "4x5": "Portrait 4:5"}[s["vrsta"]], f"images/{s['datoteka']}"])
             for x in p["postavke"]:
                 rw.writerow([x["sku"], "izvoženo" if x in izb else ("izključeno" if x.get("status") == "ok" and not x.get("napake") else "napaka"),
                              "; ".join(x.get("napake") or []), "; ".join(x.get("opozorila") or [])])
@@ -626,7 +626,7 @@ def vklopi(G: dict):
                 + ("0) NOVA KAMPANJA »" + nk["ime"] + "« (" + ST + ") — v pregledu uvoza mora biti Campaign: Added 1, nobena Updated.\n" if nk else "") +
                 "1) Google Ads Editor: Get recent changes.\n"
                 "2) Account > Import > From file > ads.csv  (pregled mora pokazati samo ADDED, nobenega UPDATED).\n"
-                "3) Account > Import > Import image assets from files > mapa images (slike gredo v knjižnico).\n"
+                "3) Account > Import > Import image assets from files > mapa slike (v ZIP: images) — vse slike naenkrat v knjižnico, imena po SKU.\n"
                 "4) Pri vsakem oglasu: Images > izberi iz knjižnice (išči po SKU) + Logos > logo Maaarket.\n"
                 "5) Preveri vse spremembe, šele nato Post. Status ob uvozu: " + ST + (" — po Post so takoj aktivni.\n" if ST == "Enabled" else ".\n")).encode("utf-8"))
         async with lock:

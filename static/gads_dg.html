@@ -185,7 +185,7 @@ function risi() {
       '<select class="f" id="stUvoz" onchange="LS.set(\'gdg_status\', this.value)" title="Status kampanje, skupin in oglasov ob uvozu v Editor" style="width:auto"><option value="Enabled"' + (stUvoz() === 'Enabled' ? ' selected' : '') + '>✅ ob Post takoj online</option><option value="Paused"' + (stUvoz() === 'Paused' ? ' selected' : '') + '>⏸ Paused</option></select>' +
       '<span class="sub" id="mapaInfo">' + (MAPA ? '📁 ' + esc(MAPA.name) + ' · <a href="#" onclick="mapaZamenjaj();return false">zamenjaj</a>' : 'mapa še ni izbrana') + '</span></div></div>';
   if (p.nova_kampanja) h += '<div class="msg ok">➕ Nova kampanja <b>' + esc(p.nova_kampanja.ime) + '</b> (kopija »' + esc(p.nova_kampanja.vir) + '«) · proračun ' + esc(p.nova_kampanja.budget) + ' / dan · Target CPA ' + esc(p.nova_kampanja.tcpa) + ' · ' + (stUvoz() === 'Enabled' ? 'online' : 'Paused') + '</div>';
-  h += '<div class="msg warn">⚠ Uvoz v Editor je lokalen, dokler ne klikneš <b>Post</b>. V pregledu uvoza morajo biti samo <b>Added</b>, nobenega <b>Updated</b>. Status ob uvozu: <b>' + (stUvoz() === 'Enabled' ? 'online (Enabled) — po Post takoj aktivni' : 'Paused') + '</b>. Slike Editor iz CSV ne pripne: uvozi mapo <b>images</b> (Import image assets from files) in jih pri vsakem oglasu izberi iz knjižnice (išči po SKU), dodaj še logo.' +
+  h += '<div class="msg warn">⚠ Uvoz v Editor je lokalen, dokler ne klikneš <b>Post</b>. V pregledu uvoza morajo biti samo <b>Added</b>, nobenega <b>Updated</b>. Status ob uvozu: <b>' + (stUvoz() === 'Enabled' ? 'online (Enabled) — po Post takoj aktivni' : 'Paused') + '</b>. Slike Editor iz CSV ne pripne: uvozi mapo <b>slike</b> (vse naenkrat) (Import image assets from files) in jih pri vsakem oglasu izberi iz knjižnice (išči po SKU), dodaj še logo.' +
     (PAK.kampanja_najdena ? '' : ' <b>Kampanja ni več v nastavitvah — naloži izvoz znova.</b>') + '</div>';
   h = '<div style="display:flex;align-items:center;gap:10px;margin:4px 0"><b>📦 Paket ' + esc(String(p.at || '').slice(0, 16).replace('T', ' ')) + ' · ' + esc(p.trg.toUpperCase()) + ' · ' + esc(p.kampanja) + '</b>' +
     (p.izvozeno ? ' <span class="pill p-ok">izvoženo ' + esc(String(p.izvozeno).slice(0, 16).replace('T', ' ')) + '</span>' : '') +
@@ -273,14 +273,18 @@ async function shraniVMapo() {
   const ime = { 'ads.csv': 'ads_' + zig + '.csv', 'manifest.csv': 'manifest_' + zig + '.csv', 'validation_report.csv': 'porocilo_' + zig + '.csv', 'NAVODILA.txt': 'NAVODILA_' + zig + '.txt' };
   let n = 0;
   try {
+    // 🖼 vse slike v ENO mapo »slike« (imena po SKU) — ob vsakem shranjevanju se izprazni, da v Editorju označiš vse naenkrat
+    const td = await MAPA.getDirectoryHandle(trgMapa, { create: true }), sd = await td.getDirectoryHandle('slike', { create: true });
+    const stare = []; for await (const [nm] of sd.entries()) stare.push(nm);
+    for (const nm of stare) { try { await sd.removeEntry(nm, { recursive: true }); } catch (x) {} }
     for (const [pot, f] of Object.entries(zip.files)) {
       if (f.dir) continue;
-      const cilj = pot.startsWith('images/') ? trgMapa + '/' + pot.slice(7) : trgMapa + '/' + (ime[pot] || pot);
+      const cilj = pot.startsWith('images/') ? trgMapa + '/slike/' + pot.split('/').pop() : trgMapa + '/' + (ime[pot] || pot);
       await zapisi(MAPA, cilj, await f.async('uint8array')); n++;
     }
   } catch (e) { msg('msg', 'Zapis v mapo ni uspel: ' + esc(e.message || e) + ' — poskusi znova ali uporabi ⬇ ZIP.', 'err'); return; }
   await nalozi(); zgodovina(); naloziPaket(p.id);   // nova kampanja / nove skupine so zdaj v seznamu trga (izbrana)
-  msg('msg', '✓ Shranjeno ' + n + ' datotek v 📁 ' + esc(MAPA.name) + '\\' + esc(trgMapa) + ' — v Editorju uvozi ' + esc(ime['ads.csv']) + ', slike pa iz map po SKU.', 'ok');
+  msg('msg', '✓ Shranjeno ' + n + ' datotek v 📁 ' + esc(MAPA.name) + '\\' + esc(trgMapa) + ' — v Editorju uvozi ' + esc(ime['ads.csv']) + ', slike pa iz mape »slike« (vse naenkrat; mapa vsebuje samo ta paket).', 'ok');
 }
 function stUvoz() { return LS.get('gdg_status') === 'Paused' ? 'Paused' : 'Enabled'; }
 async function noveSlike() {
