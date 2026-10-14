@@ -36263,6 +36263,20 @@ def _nl_load(strict=False) -> dict:
     return d
 
 
+_NL_EMOJI_ZAP = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF]\uFE0F?(?:\u200D[\U0001F000-\U0001FAFF\u2600-\u27BF]\uFE0F?)*")
+
+
+def _nl_zadeva(s, rezerva: str = "\u2728") -> str:
+    """Zadeva: točno EN emoji na začetku (prvi, ki ga je napisal AI/uporabnik, sicer rezerva) + besedilo brez emojijev."""
+    m = _NL_EMOJI_ZAP.search(str(s or ""))
+    txt = _nl_brez_emoji(s)
+    return f"{m.group(0) if m else rezerva} {txt}" if txt else ""
+
+
+def _nl_zadeva_tekst(s) -> str:
+    return _nl_brez_emoji(s).lower().strip(" .!?")
+
+
 def _nl_brez_emoji(s) -> str:
     return re.sub(r"[ \t]{2,}", " ", _NL_EMOJI.sub("", str(s or ""))).strip()
 
@@ -36617,8 +36631,8 @@ Predloga ima ta besedilna polja (vzorec = besedilo iz prejšnjega newsletterja; 
 {polja}
 
 Napiši v SLOVENŠČINI (matica — drugi trgi dobijo zvest prevod tega besedila):
-- zadeva: zadeva e-maila, največ 55 znakov, konkretna korist ali radovednost, brez clickbaita
-- zadeva_ponovno: DRUGAČNA zadeva za ponovno pošiljanje tistim, ki prvega niso odprli (drug kot: korist, problem, ki ga reši, ali omejena zaloga — brez lažne nujnosti), največ 55 znakov
+- zadeva: zadeva e-maila, največ 55 znakov, konkretna korist ali radovednost, brez clickbaita; ZAČNE se z ENIM primernim emojijem in presledkom
+- zadeva_ponovno: DRUGAČNA zadeva za ponovno pošiljanje tistim, ki prvega niso odprli (drug kot: korist, problem, ki ga reši, ali omejena zaloga — brez lažne nujnosti), največ 55 znakov; ZAČNE se z ENIM DRUGAČNIM emojijem kot zadeva
 - preheader: največ 90 znakov, dopolni zadevo
 - slika_naslov: SUPER PRODAJNI naslov, ki bo napisan NA SLIKI (2–6 besed, udarno, korist ali čustvo, brez cene)
 - slika_znacka: kratka značka na sliki (do 3 besede): konkretna korist ali dejstvo (npr. "Komplet 3 kosov"); NE popust in NE "NOVO"
@@ -36630,7 +36644,7 @@ Napiši v SLOVENŠČINI (matica — drugi trgi dobijo zvest prevod tega besedila
 - IZP_IMENA: objekt {{"SKU": "kratko ime"}} za spodnje dodatne izdelke — do 5 besed, jasno kaj je, brez kod, angleških imen modelov
   in vejic na koncu: {izp_seznam}
 
-Pravila: BREZ emojijev in posebnih simbolov (Mailchimp jih ne prikaže pravilno). Brez VELIKIH ČRK za cele stavke. Ne izmišljuj lastnosti,
+Pravila: BREZ emojijev in posebnih simbolov (v vsebini e-maila jih Mailchimp ne prikaže pravilno) — IZJEMA: točno en emoji na začetku zadeva in zadeva_ponovno. Brez VELIKIH ČRK za cele stavke. Ne izmišljuj lastnosti,
 ki jih ni v opisu. Cene ne piši v besedilo (je v svojem polju). Pravilna slovenščina s šumniki.
 
 Vrni SAMO JSON: {{"zadeva": "...", "zadeva_ponovno": "...", "preheader": "...", "slika_naslov": "...", "slika_znacka": "...", "PREDNOSTI": "...", "ZAUPANJE": "...", "IZP_GUMB": "...", "IZP_IMENA": {{"SKU": "..."}}, "NASLOV": "...", ...}}"""
@@ -36644,7 +36658,7 @@ Pravila:
 - Dolžine: zadeva in zadeva_ponovno največ 55 znakov, preheader največ 90, slika_naslov 2–6 besed — po potrebi skrajšaj, pomen ostane.
 - PREDNOSTI ostanejo 3 vrstice (vsaka v svoji vrstici). ZAUPANJE ostane ločeno s " · " z veliko začetnico vsakega dela.
 - IZP_IMENA: prevedi vrednosti, ključi (SKU) ostanejo enaki.
-- Brez emojijev. Srbščina v latinici. Imen izdelkov in blagovnih znamk ne prevajaj.
+- Brez emojijev, RAZEN enega na začetku zadeva in zadeva_ponovno — ohrani isti emoji kot v matici. Srbščina v latinici. Imen izdelkov in blagovnih znamk ne prevajaj.
 
 MATICA (SL):
 {matica}
@@ -36902,7 +36916,7 @@ async def _nl_obdelaj(nid: str):
                            f"IZP{i}_NAZIV": imena.get(xs_) or _nl_lepo_ime(x.get("naziv") or "")})
             cf = _nl_cene_feed(sku, [x.get("sku") for x in izbrani], vrstice[t])
             _nl_cene_v_vr(vr, cf, t, n.get("cena_nacin") or "polna")
-            izid[t] = {"predloga": p["id"], "predloga_trg": p.get("trg"), "zadeva": b.get("zadeva", ""), "zadeva_ponovno": b.get("zadeva_ponovno", ""),
+            izid[t] = {"predloga": p["id"], "predloga_trg": p.get("trg"), "zadeva": _nl_zadeva(bt_.get("zadeva")), "zadeva_ponovno": _nl_zadeva(bt_.get("zadeva_ponovno"), "\U0001F440"),
                        "preheader": b.get("preheader", ""), "vrednosti": vr, "izpostavitve": [x.get("sku") for x in izbrani],
                        "cene_feed": cf, "cene_at": _lj_iso(), "slika_korist": b.get("slika_znacka", ""),
                        "manjka_izp": max(0, st_izp - len(izbrani)), "html": _nl_sestavi(p, vr)}
@@ -37163,9 +37177,11 @@ async def mailchimp_nl_uredi(request: Request):
         t = (n or {}).get("trgi_izid", {}).get(b.get("trg"))
         if not t or t.get("napaka"):
             return {"ok": False, "error": "Ni trga."}
-        for k in ("zadeva", "zadeva_ponovno", "preheader"):
+        for k in ("zadeva", "zadeva_ponovno"):
             if k in b:
-                t[k] = _nl_brez_emoji(b[k])
+                t[k] = _nl_zadeva(b[k], "\u2728" if k == "zadeva" else "\U0001F440")
+        if "preheader" in b:
+            t["preheader"] = _nl_brez_emoji(b["preheader"])
         for k in NL_BESEDILNA:
             if k in (b.get("polja") or {}):
                 t["vrednosti"][k] = _nl_brez_emoji(b["polja"][k])
@@ -37211,6 +37227,8 @@ async def mailchimp_nl_v_mailchimp(request: Request):
             rezultati[t] = {"ok": False, "error": iz.get("napaka") or "ni vsebine"}; continue
         if iz.get("campaign_id"):
             rezultati[t] = {"ok": False, "error": "osnutek že ustvarjen"}; continue
+        if b.get("ponovno", True) and (not _nl_zadeva_tekst(iz.get("zadeva_ponovno")) or _nl_zadeva_tekst(iz.get("zadeva_ponovno")) == _nl_zadeva_tekst(iz.get("zadeva"))):
+            rezultati[t] = {"ok": False, "error": "zadeva za ponovno pošiljanje mora biti drugačna od prve"}; continue
         list_id = mapa.get(t)
         if not list_id:
             rezultati[t] = {"ok": False, "error": "trg nima audienca (⚙️ Trgi → seznami)"}; continue

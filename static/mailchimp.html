@@ -232,8 +232,8 @@ function seznamPo(id) { return (ST?.seznami || []).find(s => s.id === id); }
 function trgSeznama(id) { return Object.entries(ST?.trgi || {}).find(([t, l]) => l === id)?.[0]; }
 function zastava(t) { return t ? (ST.trgi_vsi[t] || t.toUpperCase()) : ''; }
 
-async function naloziVse() {
-  sporoci('');
+async function naloziVse(ohraniSporocilo) {
+  if (!ohraniSporocilo) sporoci('');
   const s = await api('/mailchimp/stanje');
   if (!s.ok) { document.getElementById('racun').textContent = ''; sporoci(s.error || 'Napaka'); return; }
   ST = s;
@@ -602,8 +602,9 @@ async function nlOdpri(id) {
       <div style="font-weight:700;margin-bottom:6px">📤 V Mailchimp</div>
       <div style="display:flex;flex-wrap:wrap;gap:4px 12px">${trgi.map(x => `<label style="font-size:13px"><input type="checkbox" class="vmc" value="${x}" ${iz[x].napaka || iz[x].campaign_id ? 'disabled' : 'checked'}> ${esc(zastava(x))}${iz[x].campaign_id ? ' ✓' : ''}${ST.trgi[x] ? '' : ' (ni audienca)'}</label>`).join('')}</div>
       <label class="l"><input type="checkbox" id="vPon" checked> 🔁 Ponovno neodprtim čez 3 dni (z »zadevo za ponovno«)</label>
-      <div style="margin-top:8px"><button class="btn pri" id="vBtn" onclick="nlVMailchimp()">📤 Ustvari osnutke v Mailchimpu</button>
-        <span class="sub">Nič se ne pošlje — osnutke testiraš in pošlješ v 📬 Kampanje.</span></div>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn pri" id="vBtn" onclick="nlVMailchimp()">📤 Ustvari osnutke v Mailchimpu</button>
+        ${trgi.some(x => iz[x].campaign_id) ? `<button class="btn red" onclick="nlPosljiVse()">🚀 Pošlji vse osnutke (${trgi.filter(x => iz[x].campaign_id).length})</button>` : ''}
+        <span class="sub">Osnutke najprej testiraj (🧪 v 📬 Kampanje), nato »🚀 Pošlji vse« — preveri vse trge in pošlje naenkrat.</span></div>
     </div>`;
   const f = document.getElementById('ePrev'); if (f) f.srcdoc = t.html || '';
   const kSel = document.getElementById('eKoncept'); if (kSel) kSel.value = NL.koncept || 'auto';
@@ -619,6 +620,69 @@ async function nlShrani() {
     zadeva_ponovno: document.getElementById('eZadeva2').value, preheader: document.getElementById('ePre').value, polja});
   if (!j.ok) { sporoci(j.error); return; }
   sporoci('Shranjeno.', 'ok'); nlOdpri(NL.id);
+}
+async function nlPosljiVse() {
+  const iz = NL.trgi_izid || {};
+  odpri('<div class="muted">Preverjam vse trge (pripravljenost v Mailchimpu, cene) …</div>');
+  const k = await api('/mailchimp/kampanje?count=100');
+  const stat = Object.fromEntries((k.kampanje || []).map(c => [c.id, c]));
+  const vrst = await Promise.all(Object.keys(iz).filter(t => iz[t].campaign_id).map(async t => {
+    const cid = iz[t].campaign_id, c = stat[cid] || {};
+    const odprt = ['save', 'paused'].includes(c.status);
+    const [pr, cn] = odprt ? await Promise.all([api('/mailchimp/preveri?id=' + cid), api('/mailchimp/nl-cene?campaign_id=' + cid)]) : [{}, {}];
+    const l = seznamPo(c.list_id) || {};
+    const napake = (pr.postavke || []).filter(i => i.tip === 'error').map(i => i.naslov + ': ' + i.opis);
+    const razl = (cn.razlike || {})[t] || [];
+    return {t, cid, status: c.status, odprt, clanov: l.members ?? c.prejemnikov ?? 0, pripravljeno: odprt && pr.ok && pr.pripravljeno && !razl.length, napake, razl, napakaApi: pr.error || cn.error};
+  }));
+  window._NLV = vrst;
+  const razTrgi = vrst.filter(v => v.razl.length).map(v => v.t);
+  const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1);
+  const lok = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  odpri(`<h3>🚀 Pošlji vse osnutke — ${esc(NL.sku)}</h3>
+    <table><thead><tr><th></th><th>Trg</th><th>Naročnikov</th><th>Stanje</th></tr></thead><tbody>${vrst.map((v, i) => `<tr>
+      <td><input type="checkbox" class="pvC" data-i="${i}" ${v.pripravljeno ? 'checked' : 'disabled'} onchange="pvVsota()"></td>
+      <td><b>${esc(zastava(v.t))}</b></td><td>${v.clanov}</td>
+      <td style="font-size:12.5px">${!v.odprt ? `<span class="pill p-other">${esc((STATUS[v.status] || [v.status || 'ni v Mailchimpu'])[0])}</span> — ni več osnutek`
+        : v.pripravljeno ? '<span style="color:var(--ok)">✓ pripravljeno, cene se ujemajo</span>'
+        : [v.napakaApi ? esc(v.napakaApi) : '', ...v.napake.map(esc), ...v.razl.map(x => `💶 ${esc(x.kaj)} ${esc(x.prej || '—')} → <b>${esc(x.zdaj || '—')}</b>`)].filter(Boolean).join('<br>')}</td></tr>`).join('')}</tbody></table>
+    ${razTrgi.length ? `<div style="margin-top:8px"><button class="btn sm pri" id="cOsvBtn" onclick="nlOsveziCene('${NL.id}', ${JSON.stringify(razTrgi).replace(/"/g, '&quot;')}, () => nlPosljiVse())">↻ Osveži cene (${razTrgi.map(zastava).join(', ')})</button></div>` : ''}
+    <label class="l"><input type="radio" name="pvKdaj" value="zdaj" checked> Pošlji takoj</label>
+    <label class="l"><input type="radio" name="pvKdaj" value="cas"> Razporedi vse ob (čas po Ljubljani, minute 00/15/30/45)</label>
+    <input class="f" type="datetime-local" id="pvCas" value="${lok}" step="900" style="width:auto">
+    <label class="l" style="margin-top:14px">Za potrditev vpiši skupno število naročnikov izbranih trgov (<b id="pvSum">0</b>)</label>
+    <input class="f" id="pvPotrdi" style="width:180px" autocomplete="off">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" onclick="zapri()">Prekliči</button>
+      <button class="btn red" id="pvBtn" onclick="pvPoslji()">🚀 Pošlji izbrane</button></div>`);
+  pvVsota();
+}
+function pvVsota() {
+  const sum = [...document.querySelectorAll('.pvC:checked')].reduce((a, c) => a + (window._NLV[+c.dataset.i].clanov || 0), 0);
+  document.getElementById('pvSum').textContent = sum;
+  document.getElementById('pvBtn').disabled = !sum;
+}
+async function pvPoslji() {
+  const izb = [...document.querySelectorAll('.pvC:checked')].map(c => window._NLV[+c.dataset.i]);
+  const sum = izb.reduce((a, v) => a + (v.clanov || 0), 0);
+  if (document.getElementById('pvPotrdi').value.replace(/\D/g, '') !== String(sum)) { alert('Število se ne ujema.'); return; }
+  let cas = '';
+  if (document.querySelector('input[name=pvKdaj]:checked').value === 'cas') {
+    const dd = new Date(document.getElementById('pvCas').value);
+    if (isNaN(dd) || dd.getMinutes() % 15) { alert('Mailchimp dovoli samo minute 00, 15, 30 ali 45.'); return; }
+    if (dd < new Date()) { alert('Čas je v preteklosti.'); return; }
+    cas = dd.toISOString().replace(/\.\d{3}Z$/, '+00:00');
+  }
+  const b = document.getElementById('pvBtn'); b.disabled = true;
+  const rez = [];
+  for (const v of izb) {   // eden za drugim — vsak pred pošiljanjem še enkrat preveri pripravljenost na strežniku
+    b.textContent = 'Pošiljam ' + zastava(v.t) + ' …';
+    const j = await api('/mailchimp/poslji', {id: v.cid, cas});
+    rez.push(zastava(v.t) + ': ' + (j.ok ? (j.razporejeno ? 'razporejeno' : 'poslano') : j.error));
+  }
+  zapri();
+  const nap = rez.filter(x => !/: (poslano|razporejeno)$/.test(x));
+  sporoci((nap.length ? 'Nekaj ni uspelo — ' : 'Uspešno — ') + rez.join(' · '), nap.length ? 'err' : 'ok');
+  await naloziVse(true); nlOdpri(NL.id);
 }
 async function nlCenaNacin(v) {
   const j = await api('/mailchimp/nl-uredi', {id: NL.id, cena_nacin: v});
@@ -684,7 +748,7 @@ async function nlVMailchimp() {
   if (!j.ok) { sporoci(j.error); return; }
   const nap = Object.entries(j.rezultati).filter(([t, r]) => !r.ok).map(([t, r]) => zastava(t) + ': ' + r.error);
   sporoci(nap.length ? 'Napake — ' + nap.join(' · ') : `Ustvarjenih ${trgi.length} osnutkov${j.ponovno ? `, ${j.ponovno} s ponovnim pošiljanjem` : ''}. Testiraj in pošlji v 📬 Kampanje.`, nap.length ? 'err' : 'ok');
-  await naloziVse(); nlOdpri(NL.id);
+  await naloziVse(true); nlOdpri(NL.id);
 }
 
 // ═══ PONOVNO ═══
