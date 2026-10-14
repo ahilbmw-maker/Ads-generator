@@ -37754,3 +37754,8 @@ async def mailchimp_ai_dizajn_izberi(request: Request):
                               "at": _lj_iso(), "html": h}
         _jsave(NL_FILE, d)
     return {"ok": True, "id": pid}
+
+
+# 🎯 Google Ads → Demand Gen Bulk Creator (ločen modul gads_dg.py: /gads-dg, /gads-dg/api/*)
+import gads_dg as _gads_dg
+_gads_dg.vklopi(globals())
