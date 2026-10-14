@@ -1706,6 +1706,18 @@ def _vrsta_load(strict=False) -> dict:
     return d
 
 
+_vrsta_nc_v_teku = set()
+
+
+async def _vrsta_nc_ozadje(t: str):
+    try:
+        await _marza_trgi_get(t)
+    except Exception as e:
+        print(f"[vrsta] NC ozadje {t}: {e}")
+    finally:
+        _vrsta_nc_v_teku.discard(t)
+
+
 @app.get("/cene-vrsta")
 async def cene_vrsta_get():
     d = _vrsta_load()
@@ -1751,7 +1763,12 @@ async def cene_vrsta_get():
             continue
         try:
             _c = _marza_trgi_cache.get(_t)
-            _res = _c["res"] if _c else await _marza_trgi_get(_t)
+            if not _c:   # brez čakanja: izračun Marže v ozadju, NC se pokaže ob naslednji osvežitvi (prej je okno čakalo sekunde)
+                if _t not in _vrsta_nc_v_teku:
+                    _vrsta_nc_v_teku.add(_t)
+                    asyncio.create_task(_vrsta_nc_ozadje(_t))
+                continue
+            _res = _c["res"]
             _mz[_t] = {str(r.get("g_id")): r for r in (_res.get("rows") or [])} if isinstance(_res, dict) else {}
         except Exception as _e:
             print(f"[vrsta] NC {_t}: {_e}")
@@ -14385,7 +14402,7 @@ function vrstaOdpri(sporocilo) {
   if (!o) { o = document.createElement('div'); o.id = 'vrstaOkno'; o.className = 'vrsta-ov'; document.body.appendChild(o);
     o.addEventListener('click', e => { if (e.target === o) vrstaZapri(); }); }
   o.style.display = 'flex'; o.dataset.msg = sporocilo || '';
-  vrstaNalozi(); clearInterval(vrstaTimer); vrstaTimer = setInterval(vrstaNalozi, 10000);   // v živo, dokler je okno odprto
+  vrstaNalozi(); clearInterval(vrstaTimer); vrstaTimer = setInterval(vrstaNalozi, 4000);   // v živo, dokler je okno odprto (4 s — vtičnik dela 7 hkrati)
 }
 function vrstaZapri() { const o = document.getElementById('vrstaOkno'); if (o) o.style.display = 'none'; clearInterval(vrstaTimer); vrstaTimer = null; }
 // 📜 SPREMEMBE CEN — en pregled vseh sprememb (dnevnik /cene-dnevnik), filtri dan / trg / vir / iskanje, CSV
@@ -14440,6 +14457,12 @@ function spCsv() {
   spVidni().forEach(z => { csv += [e(z.at), e(String(z.trg || '').toUpperCase()), e(z.sku), e(z.naziv), e(z.cur), n(z.prej), n(z.potem), n(z.cms_prej), n(z.cms_potem), e(z.feed), n(z.feed_cena), e(z.vir)].join(';') + '\n'; });
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = 'spremembe_cen_' + SP_F.od + (SP_F.do !== SP_F.od ? '_' + SP_F.do : '') + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+const vrstaJeVdelu = p => p.status === 'v_delu' || (p.status === 'napaka' && /vtičnik ni potrdil v 15 min/.test(p.napaka || ''));   // > 15 min se prikaže kot napaka
+function vrstaVdeluRocno() {   // izgubljena poročila (več panelov, vtičnik < 1.28.2): cene so v CMS shranjene, postavke visijo »v delu«
+  const ids = (VRSTA && VRSTA.postavke || []).filter(vrstaJeVdelu).map(p => p.id);
+  if (!ids.length || !confirm('Označim vseh ' + ids.length + ' postavk »v delu« kot ✓ shranjeno ročno?\n\nUporabi samo, če si v CMS preveril, da so cene res spremenjene. Jutrišnji feed jih še preveri (⚠ Odstopa v feedu).')) return;
+  vrstaAkcija({ ids, akcija: 'rocno' });
 }
 function vrstaPustiVse() {   // ⚠ Odstopa v feedu → vse »✓ Pusti tako« naenkrat (feed_pusti; CMS se ne spremeni)
   const ids = (VRSTA && VRSTA.postavke || []).filter(p => p.feed && p.feed.stanje === 'odstopa' && !p.razveljavljeno).map(p => p.id);
@@ -14510,7 +14533,7 @@ function vrstaRisi() {
           (p.status === 'ok' && !p.razveljavljeno ? '<button class="btn" title="Doda obratno spremembo v vrsto (nazaj na prejšnjo ceno)" onclick="if(confirm(\'Vrnem ' + esc(p.sku) + ' na ' + f(p.stara) + '?\'))vrstaAkcija({ids:[\'' + p.id + '\'],akcija:\'razveljavi\'})">↩ Razveljavi</button>' : '') +
         '</td></tr>').join('') + '</tbody></table></div>'
       : '<div class="dim" style="padding:20px;text-align:center">Ni postavk.</div>') +
-    ((s.caka || 0) + (s.napaka || 0) + (s.v_delu || 0) ? '<div style="margin-top:10px;display:flex;gap:8px">' + ((s.napaka || 0) ? '<button class="btn" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="vrstaZnovaNapake()">↻ Znova vse napake (' + (s.napaka || 0) + ')</button>' : '') + '<button class="btn" onclick="if(confirm(\'Prekličem vse čakajoče, v delu in napake?\'))vrstaAkcija({ids:VRSTA.postavke.filter(p=>[\'caka\',\'napaka\',\'v_delu\'].includes(p.status)).map(p=>p.id),akcija:\'preklici\'})">✕ Prekliči vse odprte</button></div>' : '') +
+    ((s.caka || 0) + (s.napaka || 0) + (s.v_delu || 0) ? '<div style="margin-top:10px;display:flex;gap:8px">' + ((s.napaka || 0) ? '<button class="btn" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="vrstaZnovaNapake()">↻ Znova vse napake (' + (s.napaka || 0) + ')</button>' : '') + (VRSTA.postavke.filter(vrstaJeVdelu).length ? '<button class="btn" style="background:#16a34a;color:#fff;border-color:#16a34a" title="Cene so v CMS že shranjene, a vtičnik ni javil rezultata (izgubljeno poročilo) — označi kot urejeno; feed jih jutri preveri" onclick="vrstaVdeluRocno()">✓ Vse v delu: shranjeno ročno (' + VRSTA.postavke.filter(vrstaJeVdelu).length + ')</button>' : '') + '<button class="btn" onclick="if(confirm(\'Prekličem vse čakajoče, v delu in napake?\'))vrstaAkcija({ids:VRSTA.postavke.filter(p=>[\'caka\',\'napaka\',\'v_delu\'].includes(p.status)).map(p=>p.id),akcija:\'preklici\'})">✕ Prekliči vse odprte</button></div>' : '') +
   '</div>';
   _obnovi();
 }
