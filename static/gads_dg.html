@@ -98,6 +98,7 @@
 
   <div id="msg"></div>
   <div id="paket"></div>
+  <div class="card" id="zgodCard"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b>📜 Zgodovina paketov</b><span class="sub">zadnjih 30 · klik Odpri = pregled, popravki, ponoven izvoz</span></div><div id="zgod" class="sub">Nalagam …</div></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -160,14 +161,14 @@ async function pripravi() {
   document.getElementById('btnPri').disabled = true;
   const d = await api('/gads-dg/api/pripravi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trg, kampanja, skus, nova }) });
   if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); document.getElementById('btnPri').disabled = false; return; }
-  LS.set('gdg_pak', d.id); msg('msg', '');
+  LS.set('gdg_pak', d.id); msg('msg', ''); zgodovina();
   clearInterval(POLL); POLL = setInterval(() => naloziPaket(d.id), 3000); naloziPaket(d.id);
 }
 async function naloziPaket(id) {
   const d = await api('/gads-dg/api/paket/' + encodeURIComponent(id));
   if (!d.ok) return;
-  PAK = d; risi();
-  if (d.paket.status !== 'v_delu') { clearInterval(POLL); POLL = null; document.getElementById('btnPri').disabled = false; }
+  PAK = d; LS.set('gdg_pak', id); risi();
+  if (d.paket.status !== 'v_delu') { if (POLL) zgodovina(); clearInterval(POLL); POLL = null; document.getElementById('btnPri').disabled = false; }
 }
 function cntHtml(s, m) { const n = (s || '').length; return '<span class="cnt' + (n > m ? ' over' : '') + '">' + n + '/' + m + '</span>'; }
 function risi() {
@@ -185,6 +186,9 @@ function risi() {
   if (p.nova_kampanja) h += '<div class="msg ok">➕ Nova kampanja <b>' + esc(p.nova_kampanja.ime) + '</b> (kopija »' + esc(p.nova_kampanja.vir) + '«) · proračun ' + esc(p.nova_kampanja.budget) + ' / dan · Target CPA ' + esc(p.nova_kampanja.tcpa) + ' · ' + (stUvoz() === 'Enabled' ? 'online' : 'Paused') + '</div>';
   h += '<div class="msg warn">⚠ Uvoz v Editor je lokalen, dokler ne klikneš <b>Post</b>. V pregledu uvoza morajo biti samo <b>Added</b>, nobenega <b>Updated</b>. Status ob uvozu: <b>' + (stUvoz() === 'Enabled' ? 'online (Enabled) — po Post takoj aktivni' : 'Paused') + '</b>. Slike Editor iz CSV ne pripne: uvozi mapo <b>images</b> (Import image assets from files) in jih pri vsakem oglasu izberi iz knjižnice (išči po SKU), dodaj še logo.' +
     (PAK.kampanja_najdena ? '' : ' <b>Kampanja ni več v nastavitvah — naloži izvoz znova.</b>') + '</div>';
+  h = '<div style="display:flex;align-items:center;gap:10px;margin:4px 0"><b>📦 Paket ' + esc(String(p.at || '').slice(0, 16).replace('T', ' ')) + ' · ' + esc(p.trg.toUpperCase()) + ' · ' + esc(p.kampanja) + '</b>' +
+    (p.izvozeno ? ' <span class="pill p-ok">izvoženo ' + esc(String(p.izvozeno).slice(0, 16).replace('T', ' ')) + '</span>' : '') +
+    '<span style="flex:1"></span><button class="btn sm" onclick="zapriPaket()">✕ Zapri</button></div>' + h;
   h += post.map((x, i) => {
     if (x.status === 'caka') return '<div class="oglas"><b>' + esc(x.sku) + '</b> <span class="pill p-inf">⏳ pripravljam</span></div>';
     const nap = x.napake || [], opz = x.opozorila || [];
@@ -258,7 +262,7 @@ async function shraniVMapo() {
   if (!r.ok) { let e = ''; try { e = (await r.json()).error; } catch (x) {} msg('msg', esc(e || 'Izvoz ni uspel.'), 'err'); return; }
   const zip = await JSZip.loadAsync(await r.blob());
   const trgMapa = (PAK.business_name || ('Maaarket.' + p.trg)).replace(/[\\/:*?"<>|]/g, '_');
-  const zig = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '');
+  const _d = new Date(), _2 = n => String(n).padStart(2, '0'), zig = _d.getFullYear() + '-' + _2(_d.getMonth() + 1) + '-' + _2(_d.getDate()) + '_' + _2(_d.getHours()) + _2(_d.getMinutes());   // lokalni čas (prej UTC)
   const ime = { 'ads.csv': 'ads_' + zig + '.csv', 'manifest.csv': 'manifest_' + zig + '.csv', 'validation_report.csv': 'porocilo_' + zig + '.csv', 'NAVODILA.txt': 'NAVODILA_' + zig + '.txt' };
   let n = 0;
   try {
@@ -268,10 +272,24 @@ async function shraniVMapo() {
       await zapisi(MAPA, cilj, await f.async('uint8array')); n++;
     }
   } catch (e) { msg('msg', 'Zapis v mapo ni uspel: ' + esc(e.message || e) + ' — poskusi znova ali uporabi ⬇ ZIP.', 'err'); return; }
-  await nalozi();   // nova kampanja / nove skupine so zdaj v seznamu trga (izbrana)
+  await nalozi(); zgodovina(); naloziPaket(p.id);   // nova kampanja / nove skupine so zdaj v seznamu trga (izbrana)
   msg('msg', '✓ Shranjeno ' + n + ' datotek v 📁 ' + esc(MAPA.name) + '\\' + esc(trgMapa) + ' — v Editorju uvozi ' + esc(ime['ads.csv']) + ', slike pa iz map po SKU.', 'ok');
 }
 function stUvoz() { return LS.get('gdg_status') === 'Paused' ? 'Paused' : 'Enabled'; }
+function zapriPaket() { clearInterval(POLL); POLL = null; PAK = null; LS.set('gdg_pak', ''); document.getElementById('paket').innerHTML = ''; msg('msg', ''); document.getElementById('priInfo').textContent = ''; zgodovina(); }
+async function zgodovina() {
+  const d = await api('/gads-dg/api/paketi'), el = document.getElementById('zgod');
+  if (!d.ok) { el.textContent = '—'; return; }
+  const ps = d.paketi || [];
+  el.innerHTML = ps.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+    '<tr style="color:var(--txt2);text-align:left"><th style="padding:5px">Datum</th><th>Trg</th><th>Kampanja</th><th>SKU-ji</th><th>Status</th><th></th></tr>' +
+    ps.map(p => '<tr style="border-top:1px solid var(--bd)"><td style="padding:6px 5px;white-space:nowrap">' + esc(String(p.at || '').slice(0, 16).replace('T', ' ')) + '</td><td><b>' + esc(String(p.trg || '').toUpperCase()) + '</b></td>' +
+      '<td>' + (p.nova ? '➕ ' : '') + esc(p.kampanja || '') + '</td><td>' + esc((p.skuji || []).join(', ')) + (p.n > (p.skuji || []).length ? ' … (' + p.n + ')' : '') + '</td>' +
+      '<td>' + (p.status === 'v_delu' ? '<span class="pill p-inf">⏳ v pripravi</span>' : p.izvozeno ? '<span class="pill p-ok">✓ izvoženo</span>' : '<span class="pill p-warn">pripravljeno</span>') + '</td>' +
+      '<td style="text-align:right"><button class="btn sm" onclick="odpriPaket(\'' + esc(p.id) + '\')">Odpri</button></td></tr>').join('') + '</table></div>'
+    : '<span class="muted">Še ni paketov.</span>';
+}
+function odpriPaket(id) { clearInterval(POLL); POLL = null; naloziPaket(id).then(() => { if (PAK && PAK.paket.status === 'v_delu') POLL = setInterval(() => naloziPaket(id), 3000); window.scrollTo(0, document.getElementById('paket').offsetTop - 10); }); }
 async function izvozi() {
   const p = PAK.paket;
   const sprem = p.postavke.filter(x => x._sprem).map(x => ({ sku: x.sku, ad_group: x.ad_group, ad_name: x.ad_name, naslovi: x.naslovi, opisi: x.opisi, vkljuci: x.vkljuci !== false }));
@@ -280,9 +298,9 @@ async function izvozi() {
   const nap = PAK.paket.postavke.filter(x => x.status === 'ok' && x.vkljuci !== false && (x.napake || []).length);
   if (nap.length && !confirm(nap.length + ' oglasov ima napake in NE bodo v izvozu (' + nap.map(x => x.sku).join(', ') + '). Nadaljujem?')) return;
   location.href = '/gads-dg/api/izvoz/' + encodeURIComponent(p.id) + '?status=' + stUvoz();
-  setTimeout(nalozi, 2500);   // nova kampanja / nove skupine so zdaj v seznamu trga
+  setTimeout(() => { nalozi(); zgodovina(); naloziPaket(p.id); }, 2500);   // nova kampanja / nove skupine so zdaj v seznamu trga
 }
-mapaNalozi().then(nalozi).then(() => { const id = LS.get('gdg_pak'); if (id) naloziPaket(id); });
+mapaNalozi().then(nalozi).then(zgodovina);   // zadnji paket se NE odpre sam — izbereš ga v Zgodovini
 </script>
 </body>
 </html>

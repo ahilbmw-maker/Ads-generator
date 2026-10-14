@@ -357,7 +357,8 @@ def vklopi(G: dict):
     async def dg_paketi(request: Request):
         if not prijava(request):
             return ni()
-        return {"ok": True, "paketi": [{k: p.get(k) for k in ("id", "trg", "kampanja", "status", "at")} | {"n": len(p.get("postavke") or [])} for p in pak_load()["paketi"]]}
+        return {"ok": True, "paketi": [{k: p.get(k) for k in ("id", "trg", "kampanja", "status", "at", "izvozeno")} | {"n": len(p.get("postavke") or []),
+                "skuji": [x.get("sku") for x in (p.get("postavke") or [])][:12], "nova": bool(p.get("nova_kampanja"))} for p in pak_load()["paketi"]]}
 
     @app.post("/gads-dg/api/shrani")
     async def dg_shrani(request: Request, data: dict):
@@ -481,6 +482,7 @@ def vklopi(G: dict):
                         k["skuji"].append(x["sku"])
                 tt["izbrana"] = p["kampanja"]
                 _jsave(NAST_FILE, d)
+        await pak_set(pid, lambda q: q.update(izvozeno=_lj_iso()))
         ime = f"suban_demandgen_{p['trg'].upper()}_{p['at'][:10]}.zip"
         zb.seek(0)
         return StreamingResponse(zb, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{ime}"'})
