@@ -81,6 +81,7 @@
         <textarea class="f" id="skus" rows="7" placeholder="AQUABARRIER&#10;ORTOFEET&#10;…"></textarea>
         <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button class="btn pri" id="btnPri" onclick="pripravi()">🧠 Pripravi oglase</button>
+          <label class="sub" style="display:flex;align-items:center;gap:5px;cursor:pointer" title="NB2.1 naredi 7 oglasnih kreativ na SKU (2× 1:1, 3× 4:5, 2× 1,91:1): ime + 3 prednosti z ikonami, besedilo v jeziku trga · ~0,25 $ / SKU"><input type="checkbox" id="aiSlike" checked> 🎨 AI kreative (NB2.1)</label>
           <span class="sub" id="priInfo"></span>
         </div>
       </div>
@@ -159,7 +160,7 @@ async function pripravi() {
   if (!kampanja) { msg('msg', 'Najprej naloži izvoz kampanje za ta trg.', 'err'); return; }
   const nova = document.getElementById('novaOn').checked ? { ime: document.getElementById('novaIme').value, budget: document.getElementById('novaBud').value, tcpa: document.getElementById('novaCpa').value } : null;
   document.getElementById('btnPri').disabled = true;
-  const d = await api('/gads-dg/api/pripravi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trg, kampanja, skus, nova }) });
+  const d = await api('/gads-dg/api/pripravi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trg, kampanja, skus, nova, ai_slike: document.getElementById('aiSlike').checked }) });
   if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); document.getElementById('btnPri').disabled = false; return; }
   LS.set('gdg_pak', d.id); msg('msg', ''); zgodovina();
   clearInterval(POLL); POLL = setInterval(() => naloziPaket(d.id), 3000); naloziPaket(d.id);
@@ -174,7 +175,7 @@ function cntHtml(s, m) { const n = (s || '').length; return '<span class="cnt' +
 function risi() {
   const p = PAK.paket, post = p.postavke || [];
   const ok = post.filter(x => x.status === 'ok'), brezNap = ok.filter(x => !(x.napake || []).length && x.vkljuci !== false);
-  const caka = post.filter(x => x.status === 'caka').length;
+  const caka = post.filter(x => x.status === 'caka' || x.slike_v_delu).length;
   document.getElementById('priInfo').textContent = caka ? '⏳ pripravljam … ' + (post.length - caka) + ' / ' + post.length : '';
   let h = '<div class="kpi"><div><b>' + post.length + '</b><span class="sub">SKU-jev</span></div><div><b>' + brezNap.length + '</b><span class="sub">za izvoz</span></div>' +
     '<div><b style="color:var(--err)">' + post.filter(x => (x.napake || []).length).length + '</b><span class="sub">z napako</span></div>' +
@@ -188,8 +189,9 @@ function risi() {
     (PAK.kampanja_najdena ? '' : ' <b>Kampanja ni več v nastavitvah — naloži izvoz znova.</b>') + '</div>';
   h = '<div style="display:flex;align-items:center;gap:10px;margin:4px 0"><b>📦 Paket ' + esc(String(p.at || '').slice(0, 16).replace('T', ' ')) + ' · ' + esc(p.trg.toUpperCase()) + ' · ' + esc(p.kampanja) + '</b>' +
     (p.izvozeno ? ' <span class="pill p-ok">izvoženo ' + esc(String(p.izvozeno).slice(0, 16).replace('T', ' ')) + '</span>' : '') +
-    '<span style="flex:1"></span><button class="btn sm" onclick="zapriPaket()">✕ Zapri</button></div>' + h;
+    '<span style="flex:1"></span><button class="btn sm" ' + (p.status === 'v_delu' ? 'disabled' : '') + ' onclick="noveSlike()" title="Samo nove AI kreative (NB2.1) za vse SKU-je v paketu — besedila ostanejo · ~0,25 $ / SKU">🎨 Nove AI slike</button><button class="btn sm" onclick="zapriPaket()">✕ Zapri</button></div>' + h;
   h += post.map((x, i) => {
+    if (x.slike_v_delu) return '<div class="oglas"><b>' + esc(x.sku) + '</b> <span class="pill p-inf">🎨 rišem nove AI slike …</span></div>';
     if (x.status === 'caka') return '<div class="oglas"><b>' + esc(x.sku) + '</b> <span class="pill p-inf">⏳ pripravljam</span></div>';
     const nap = x.napake || [], opz = x.opozorila || [];
     if (x.status !== 'ok') return '<div class="oglas napaka"><b>' + esc(x.sku) + '</b> <span class="pill p-err">✗ ' + esc(nap.join(' · ') || 'napaka') + '</span></div>';
@@ -205,7 +207,7 @@ function risi() {
       '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:12px;margin-top:6px">' +
         '<div><label class="l">Naslovi (do ' + MAX.h + ' znakov)</label>' + nas.map((s, j) => '<div class="vrsta"><input class="f" data-k="naslovi" data-j="' + j + '" maxlength="60" value="' + esc(s) + '">' + cntHtml(s, MAX.h) + '</div>').join('') + '</div>' +
         '<div><label class="l">Opisi (do ' + MAX.d + ' znakov)</label>' + opi.map((s, j) => '<div class="vrsta"><input class="f" data-k="opisi" data-j="' + j + '" maxlength="120" value="' + esc(s) + '">' + cntHtml(s, MAX.d) + '</div>').join('') + '</div></div>' +
-      '<label class="l">Slike (gredo v ZIP: images/' + esc(x.sku) + '/)</label><div class="slike">' + ((x.slike || []).map(s => '<figure><img loading="lazy" src="/gads-dg/api/slika/' + encodeURIComponent(p.id) + '/' + encodeURIComponent(x.sku) + '/' + encodeURIComponent(s.datoteka) + '"><figcaption>' + esc({ '1x1': '1:1', '191x1': '1,91:1', '4x5': '4:5' }[s.vrsta] || s.vrsta) + '</figcaption></figure>').join('') || '<span class="muted">ni slik</span>') + '</div>' +
+      '<label class="l">Slike ' + ((x.slike || []).some(s => s.ai) ? '🎨 AI (NB2.1)' : '(galerija)') + ' · klik na sliko = izključi / vključi' + ((x.bullets || []).length ? ' · na sliki: ' + esc(x.bullets.join(' · ')) : '') + '</label><div class="slike">' + ((x.slike || []).map(s => '<figure data-slika="' + esc(s.datoteka) + '" title="' + esc((s.vibe ? s.vibe + ' · ' : '') + (s.izkl ? 'izključena — klik = vključi' : 'klik = izključi')) + '" style="cursor:pointer;' + (s.izkl ? 'opacity:.3' : '') + '"><img loading="lazy" src="/gads-dg/api/slika/' + encodeURIComponent(p.id) + '/' + encodeURIComponent(x.sku) + '/' + encodeURIComponent(s.datoteka) + '" style="height:120px"><figcaption>' + esc({ '1x1': '1:1', '191x1': '1,91:1', '4x5': '4:5' }[s.vrsta] || s.vrsta) + (s.izkl ? ' ✕' : '') + '</figcaption></figure>').join('') || '<span class="muted">ni slik</span>') + '</div>' +
       '</div>';
   }).join('');
   const el = document.getElementById('paket'), y = window.scrollY, foc = document.activeElement && document.activeElement.closest && document.activeElement.closest('[data-i]');
@@ -222,6 +224,11 @@ document.addEventListener('input', e => {
   } else if (k === 'vkljuci') { x.vkljuci = e.target.checked; o.classList.toggle('izkl', !x.vkljuci); }
   else x[k] = e.target.value;
   x._sprem = true;
+});
+document.addEventListener('click', e => {   // 🖼 klik na sliko = izključi / vključi iz izvoza
+  const f = e.target.closest('figure[data-slika]'), o = f && f.closest('[data-i]'); if (!f || !o || !PAK) return;
+  const x = PAK.paket.postavke[+o.dataset.i], s_ = (x.slike || []).find(s => s.datoteka === f.dataset.slika); if (!s_) return;
+  s_.izkl = !s_.izkl; x._sprem = true; f.style.opacity = s_.izkl ? '.3' : ''; const c = f.querySelector('figcaption'); if (c) c.textContent = c.textContent.replace(' ✕', '') + (s_.izkl ? ' ✕' : '');
 });
 document.addEventListener('change', e => { if (e.target.matches('[data-k="vkljuci"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
 // 📁 SHRANI V MAPO (File System Access API — Chrome/Edge): mapo izbereš enkrat (npr. Documents\subankampanije), ročaj se hrani v IndexedDB
@@ -253,7 +260,7 @@ async function shraniVMapo() {
   if (!window.JSZip) { alert('Knjižnica za razpakiranje se ni naložila — osveži stran ali uporabi ⬇ ZIP.'); return; }
   if (!(await mapaDovoli())) return;
   const p = PAK.paket;
-  const sprem = p.postavke.filter(x => x._sprem).map(x => ({ sku: x.sku, ad_group: x.ad_group, ad_name: x.ad_name, naslovi: x.naslovi, opisi: x.opisi, vkljuci: x.vkljuci !== false }));
+  const sprem = p.postavke.filter(x => x._sprem).map(x => ({ sku: x.sku, ad_group: x.ad_group, ad_name: x.ad_name, naslovi: x.naslovi, opisi: x.opisi, vkljuci: x.vkljuci !== false, slike_izkl: (x.slike || []).filter(s => s.izkl).map(s => s.datoteka) }));
   if (sprem.length) await api('/gads-dg/api/shrani', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, postavke: sprem }) });
   await naloziPaket(p.id);
   const nap = PAK.paket.postavke.filter(x => x.status === 'ok' && x.vkljuci !== false && (x.napake || []).length);
@@ -276,6 +283,13 @@ async function shraniVMapo() {
   msg('msg', '✓ Shranjeno ' + n + ' datotek v 📁 ' + esc(MAPA.name) + '\\' + esc(trgMapa) + ' — v Editorju uvozi ' + esc(ime['ads.csv']) + ', slike pa iz map po SKU.', 'ok');
 }
 function stUvoz() { return LS.get('gdg_status') === 'Paused' ? 'Paused' : 'Enabled'; }
+async function noveSlike() {
+  const p = PAK.paket, n = p.postavke.filter(x => x.status === 'ok').length;
+  if (!confirm('Narišem nove AI kreative (NB2.1, 7 na SKU) za ' + n + ' SKU-jev? Besedila ostanejo. Ocena ~' + (n * 0.25).toFixed(2) + ' $.')) return;
+  const d = await api('/gads-dg/api/nove-slike', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) });
+  if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); return; }
+  clearInterval(POLL); POLL = setInterval(() => naloziPaket(p.id), 3000); naloziPaket(p.id);
+}
 function zapriPaket() { clearInterval(POLL); POLL = null; PAK = null; LS.set('gdg_pak', ''); document.getElementById('paket').innerHTML = ''; msg('msg', ''); document.getElementById('priInfo').textContent = ''; zgodovina(); }
 async function zgodovina() {
   const d = await api('/gads-dg/api/paketi'), el = document.getElementById('zgod');
@@ -292,7 +306,7 @@ async function zgodovina() {
 function odpriPaket(id) { clearInterval(POLL); POLL = null; naloziPaket(id).then(() => { if (PAK && PAK.paket.status === 'v_delu') POLL = setInterval(() => naloziPaket(id), 3000); window.scrollTo(0, document.getElementById('paket').offsetTop - 10); }); }
 async function izvozi() {
   const p = PAK.paket;
-  const sprem = p.postavke.filter(x => x._sprem).map(x => ({ sku: x.sku, ad_group: x.ad_group, ad_name: x.ad_name, naslovi: x.naslovi, opisi: x.opisi, vkljuci: x.vkljuci !== false }));
+  const sprem = p.postavke.filter(x => x._sprem).map(x => ({ sku: x.sku, ad_group: x.ad_group, ad_name: x.ad_name, naslovi: x.naslovi, opisi: x.opisi, vkljuci: x.vkljuci !== false, slike_izkl: (x.slike || []).filter(s => s.izkl).map(s => s.datoteka) }));
   if (sprem.length) await api('/gads-dg/api/shrani', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, postavke: sprem }) });
   await naloziPaket(p.id);
   const nap = PAK.paket.postavke.filter(x => x.status === 'ok' && x.vkljuci !== false && (x.napake || []).length);

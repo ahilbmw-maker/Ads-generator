@@ -187,6 +187,100 @@ def vklopi(G: dict):
                     print(f"[gads-dg] slika {sku} {u[:60]}: {e}")
         return out
 
+    # 🎨 načrt AI slik na SKU: (vrsta, razmerje za Gemini, indeks vibe) — Google priporoča ≥ 3 pokončne
+    DG_AI_NACRT = [("1x1", "1:1", 0), ("1x1", "1:1", 1), ("4x5", "4:5", 0), ("4x5", "4:5", 1), ("4x5", "4:5", 2), ("191x1", "16:9", 0), ("191x1", "16:9", 2)]
+    gem_sem = asyncio.Semaphore(6)   # vzporednih klicev Gemini (vse SKU-je skupaj)
+
+    def kreativa_prompt(trg, ime, bullets, vibe, razmerje):
+        jez = DG_JEZIK[trg]
+        oblika = {"1:1": "Square 1:1", "4:5": "Vertical portrait 4:5", "16:9": "Wide horizontal format (it will be cropped to 1.91:1, so keep ALL text and the product inside the central horizontal band)"}[razmerje]
+        return (f"From these reference images create a new high-converting e-commerce ad creative (Google Ads / Facebook) for the product {ime.upper()}. "
+                "Keep the product EXACTLY as in the reference images — same shape, colours, parts and details; never invent a different product. "
+                f"Background / scene: a more intense '{vibe}' look that sells the benefit. "
+                f"On-image text ONLY in {jez} (correct spelling, exactly these words): the product name '{ime.upper()}' in capital letters "
+                f"(you may style it as a small logo), and 3 short benefit callouts, each with a simple icon: " + " · ".join(f"\"{b}\"" for b in bullets[:3]) + ". "
+                "No prices, no discounts, no other words, no watermarks. Keep all text and icons well inside the image, at least 8% away from every edge — "
+                f"nothing may be cut off. {oblika} format.")
+
+    def ai_obrez(raw: bytes, vrsta: str) -> bytes:
+        """Gemini razmerje → točne mere Google Ads (16:9 → izrez sredine na 1,91:1)."""
+        from PIL import Image
+        w, h = DG_SLIKE[vrsta]
+        im = Image.open(io.BytesIO(raw)).convert("RGB")
+        r0, r1 = im.width / im.height, w / h
+        if r0 > r1 + 0.01:
+            nw = int(im.height * r1); x = (im.width - nw) // 2; im = im.crop((x, 0, x + nw, im.height))
+        elif r0 < r1 - 0.01:
+            nh = int(im.width / r1); y = (im.height - nh) // 2; im = im.crop((0, y, im.width, y + nh))
+        im = im.resize((w, h))
+        b = io.BytesIO(); im.save(b, format="JPEG", quality=90); return b.getvalue()
+
+    async def gemini_slika(refs, prompt, razmerje):
+        """NB2.1 (GEMINI_FLASH_IMG; ob napaki stari NB2 do ukinitve). Vrne bajte slike ali None."""
+        import httpx, base64, os
+        key = os.environ.get("GEMINI_API_KEY", "")
+        if not key:
+            raise RuntimeError("GEMINI_API_KEY ni nastavljen")
+        parts = [{"inline_data": {"mime_type": m, "data": base64.b64encode(b).decode()}} for b, m in refs] + [{"text": prompt}]
+        modeli = [G.get("GEMINI_FLASH_IMG") or "gemini-nano-banana-2.1"]
+        if G.get("GEMINI_FLASH_IMG_STARI") and G["GEMINI_FLASH_IMG_STARI"] not in modeli:
+            modeli.append(G["GEMINI_FLASH_IMG_STARI"])
+        zadnja = ""
+        async with gem_sem:
+            async with httpx.AsyncClient(timeout=150) as hc:
+                for model in modeli:
+                    for cfg in ({"responseModalities": ["IMAGE", "TEXT"], "imageConfig": {"aspectRatio": razmerje}}, {"responseModalities": ["IMAGE", "TEXT"]}):
+                        try:
+                            r = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
+                                              json={"contents": [{"parts": parts}], "generationConfig": cfg})
+                            j = r.json()
+                        except Exception as e:
+                            zadnja = str(e)[:150]; continue
+                        if r.status_code != 200:
+                            zadnja = str((j.get("error") or {}).get("message") or j)[:150]
+                            continue
+                        try:
+                            G["_ai_log_gemini"](model, j, "google_ads_dg")
+                        except Exception:
+                            pass
+                        for c in j.get("candidates") or []:
+                            for pt in (c.get("content") or {}).get("parts") or []:
+                                if "inlineData" in pt:
+                                    return base64.b64decode(pt["inlineData"].get("data") or "")
+                        zadnja = "Gemini ni vrnil slike"
+        raise RuntimeError(zadnja or "napaka Gemini")
+
+    async def pripravi_ai_slike(pid, sku, urls, ime, bullets, vibes, trg):
+        import httpx
+        mapa = SLIKE_DIR / pid / sku
+        mapa.mkdir(parents=True, exist_ok=True)
+        refs = []
+        async with httpx.AsyncClient(timeout=40, follow_redirects=True) as hc:
+            for u in urls[:3]:   # do 3 referenčne slike izdelka (enako kot Kreative: zvestoba izdelka)
+                try:
+                    r = await hc.get(u)
+                    if r.status_code == 200 and r.content:
+                        refs.append((r.content, (r.headers.get("content-type") or "image/jpeg").split(";")[0]))
+                except Exception as e:
+                    print(f"[gads-dg] ref {sku}: {e}")
+        if not refs:
+            return [], ["ni referenčnih slik"]
+        vibes = [v for v in (vibes or []) if v] or ["clean bright lifestyle", "in-use moment", "premium studio"]
+        while len(vibes) < 3:
+            vibes.append(vibes[-1])
+        bullets = [b for b in (bullets or []) if b][:3]
+
+        async def ena(i, vrsta, razm, vi):
+            try:
+                raw = await gemini_slika(refs, kreativa_prompt(trg, ime, bullets, vibes[vi], razm), razm)
+                fn = f"{sku}_{vrsta}_ai{i + 1}.jpg"
+                (mapa / fn).write_bytes(await asyncio.to_thread(ai_obrez, raw, vrsta))
+                return {"vrsta": vrsta, "datoteka": fn, "ai": True, "vibe": vibes[vi]}, None
+            except Exception as e:
+                return None, f"{vrsta}: {str(e)[:100]}"
+        rez = await asyncio.gather(*(ena(i, v, r_, vi) for i, (v, r_, vi) in enumerate(DG_AI_NACRT)))
+        return [x for x, _ in rez if x], [e for _, e in rez if e]
+
     def ai_besedila(trg, naziv, opis, primeri):
         jez = DG_JEZIK[trg]
         prim = "\n".join("- headlines: " + " | ".join(p["naslovi"]) + "\n  descriptions: " + " | ".join(p["opisi"]) for p in (primeri or [])[:2])
@@ -199,9 +293,12 @@ def vklopi(G: dict):
             f"- 5 headlines, each MAX {DG_MAX['headline']} characters (count carefully, spaces included): product name + main benefit, problem/solution, "
             "use case, key feature — all different, no repetition.\n"
             f"- 5 descriptions, each MAX {DG_MAX['description']} characters: concrete benefits and use, each different.\n"
+            f"- bullets: 3 very short selling benefit callouts for ON THE IMAGE, in {jez}, each max 3 words / 22 characters (e.g. 'Без кабели', 'Мокро и сухо').\n"
+            "- vibes: 3 short background/scene concepts for ad images, in English, max 4 words each, specific to this product (e.g. 'sunny kitchen in use', 'before/after floor', 'premium dark studio').\n"
             "Rules (Google Ads policy): no prices, no discounts or '1+1 free' unless clearly stated in the title, no 'best/#1' claims, no medical or "
             "guaranteed claims, no ALL CAPS words, max one exclamation mark in total, no emojis, no phone numbers or URLs.\n"
-            'Return ONLY JSON: {"kratko_ime": "...", "naslovi": ["...", "...", "...", "...", "..."], "opisi": ["...", "...", "...", "...", "..."]}')
+            'Return ONLY JSON: {"kratko_ime": "...", "naslovi": ["...", "...", "...", "...", "..."], "opisi": ["...", "...", "...", "...", "..."], '
+            '"bullets": ["...", "...", "..."], "vibes": ["...", "...", "..."]}')
         msg = G["client"].messages.create(model="claude-sonnet-4-6", max_tokens=6000, messages=[{"role": "user", "content": prompt}])
         raw = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
         m = re.search(r"\{.*\}", raw, re.S)
@@ -209,9 +306,11 @@ def vklopi(G: dict):
         skrajsaj = lambda s, n: s if len(s) <= n else (s[:n].rsplit(" ", 1)[0] if " " in s[:n] else s[:n]).rstrip(" ,.;:-")
         nas = [skrajsaj(str(x).strip(), DG_MAX["headline"]) for x in (j.get("naslovi") or []) if str(x).strip()][:5]
         opi = [skrajsaj(str(x).strip(), DG_MAX["description"]) for x in (j.get("opisi") or []) if str(x).strip()][:5]
-        return str(j.get("kratko_ime") or "").strip()[:25], nas, opi
+        bul = [skrajsaj(str(x).strip(), 26) for x in (j.get("bullets") or []) if str(x).strip()][:3]
+        vib = [str(x).strip()[:40] for x in (j.get("vibes") or []) if str(x).strip()][:3]
+        return str(j.get("kratko_ime") or "").strip()[:25], nas, opi, bul, vib
 
-    async def obdelaj(pid, trg, kampanja, skus):
+    async def obdelaj(pid, trg, kampanja, skus, ai_slike=True):
         try:
             res = await G["_marza_trgi_get"](trg)
             rows = (res or {}).get("rows") or []
@@ -235,13 +334,20 @@ def vklopi(G: dict):
                     post.update({"naziv": r.get("naziv") or it.get("title") or "", "url": r.get("url") or it.get("url") or "", "g_id": str(r.get("g_id") or "")})
                     slike_url = it.get("all_images") or ([r.get("slika")] if r.get("slika") else [])
                     try:
-                        kr, nas, opi = await asyncio.to_thread(ai_besedila, trg, post["naziv"], opis, kinfo.get("primeri"))
+                        kr, nas, opi, bul, vib = await asyncio.to_thread(ai_besedila, trg, post["naziv"], opis, kinfo.get("primeri"))
                     except Exception as e:
-                        kr, nas, opi = "", [], []
+                        kr, nas, opi, bul, vib = "", [], [], [], []
                         post["napake"].append(f"AI besedila: {str(e)[:120]}")
                     ime = kr or (post["naziv"].split(",")[0][:25])
+                    slike, nap_sl = [], []
+                    if ai_slike:   # 🎨 NB2.1 kreative (ime + 3 prednosti z ikonami + ozadje, besedilo v jeziku trga)
+                        slike, nap_sl = await pripravi_ai_slike(pid, sku, slike_url, ime, bul or nas[:3], vib, trg)
+                        if nap_sl:
+                            post["opozorila"].append("AI slike: " + "; ".join(nap_sl[:3]))
+                    if not slike:   # brez AI ali AI ni uspel → galerija feeda (izrez / bela podlaga)
+                        slike = await pripravi_slike(pid, sku, slike_url)
                     post.update({"kratko_ime": ime, "ad_group": f"{ime}, SKU: {sku}", "ad_name": ime, "naslovi": nas, "opisi": opi,
-                                 "slike": await pripravi_slike(pid, sku, slike_url), "vkljuci": True, "status": "ok"})
+                                 "bullets": bul, "vibes": vib, "slike": slike, "vkljuci": True, "status": "ok"})
                 await pak_set(pid, lambda p: p["postavke"].__setitem__(next(i for i, x in enumerate(p["postavke"]) if x["sku"] == sku), post))
 
         async def en_varno(sku):
@@ -297,7 +403,7 @@ def vklopi(G: dict):
                                    "postavke": [{"sku": s, "status": "caka"} for s in skus]})
             d["paketi"] = d["paketi"][:30]
             _jsave(PAK_FILE, d)
-        asyncio.create_task(obdelaj(pid, trg, kampanja, skus))   # besedila v slogu izvorne kampanje
+        asyncio.create_task(obdelaj(pid, trg, kampanja, skus, data.get("ai_slike", True) is not False))   # besedila v slogu izvorne kampanje
         return {"ok": True, "id": pid}
 
     def validiraj(p, nast):
@@ -317,7 +423,7 @@ def vklopi(G: dict):
         vidjena = set()
         for x in p["postavke"]:
             x["napake"] = [n for n in (x.get("napake") or []) if n.startswith("SKU ni") or n.startswith("AI") or n.startswith("priprava") or n.startswith("kampanja s tem")]
-            x["opozorila"] = []
+            x["opozorila"] = [o for o in (x.get("opozorila") or []) if o.startswith("AI slike")]
             if x.get("status") != "ok":
                 continue
             if not x.get("ad_group"):
@@ -339,9 +445,52 @@ def vklopi(G: dict):
             x["napake"] += [f"opis {i + 1} ima {len(s)} znakov (največ {DG_MAX['description']})" for i, s in enumerate(opi) if len(s) > DG_MAX["description"]]
             if not x.get("url"):
                 x["napake"].append("ni Final URL")
-            if not any(s["vrsta"] in ("1x1", "191x1") for s in x.get("slike") or []):
+            if not any(s["vrsta"] in ("1x1", "191x1") and not s.get("izkl") for s in x.get("slike") or []):
                 x["opozorila"].append("ni slike 1:1 ali 1,91:1 — dodaj jo v Editorju")
         return bn, kinfo
+
+    @app.post("/gads-dg/api/nove-slike")
+    async def dg_nove_slike(request: Request, data: dict):
+        """🎨 Samo nove AI kreative (NB2.1) za obstoječi paket — besedila ostanejo. {id, skus?: [...]} (prazno = vsi)."""
+        if not prijava(request):
+            return ni()
+        pid = str(data.get("id") or "")
+        p = next((x for x in pak_load()["paketi"] if x["id"] == pid), None)
+        if not p:
+            return {"ok": False, "error": "Paketa ni."}
+        izb = {str(x).upper() for x in (data.get("skus") or [])}
+        cilj = [x for x in p["postavke"] if x.get("status") == "ok" and (not izb or x["sku"] in izb)]
+        if not cilj:
+            return {"ok": False, "error": "V paketu ni pripravljenih SKU-jev."}
+        feed = G["feed_by_lang"].get(p["trg"]) or {}
+        await pak_set(pid, lambda q: q.update(status="v_delu"))
+        for x in cilj:
+            sku = x["sku"]
+            await pak_set(pid, lambda q, sku=sku: next(y for y in q["postavke"] if y["sku"] == sku).update(slike_v_delu=True))
+
+        async def delaj():
+            async def en(x):
+                try:
+                    it = feed.get(str(x.get("g_id") or "")) or {}
+                    urls = it.get("all_images") or []
+                    sl, nap = await pripravi_ai_slike(pid, x["sku"], urls, x.get("kratko_ime") or x.get("ad_name") or x["sku"],
+                                                      x.get("bullets") or (x.get("naslovi") or [])[:3], x.get("vibes") or [], p["trg"])
+                except Exception as e:
+                    sl, nap = [], [str(e)[:120]]
+
+                def upd(q):
+                    y = next(y for y in q["postavke"] if y["sku"] == x["sku"])
+                    y.pop("slike_v_delu", None)
+                    y["opozorila"] = [o for o in (y.get("opozorila") or []) if not o.startswith("AI slike")] + (["AI slike: " + "; ".join(nap[:3])] if nap else [])
+                    if sl:
+                        y["slike"] = sl
+                await pak_set(pid, upd)
+            try:
+                await asyncio.gather(*(en(x) for x in cilj))
+            finally:
+                await pak_set(pid, lambda q: q.update(status="pripravljeno"))
+        asyncio.create_task(delaj())
+        return {"ok": True, "n": len(cilj)}
 
     @app.get("/gads-dg/api/paket/{pid}")
     async def dg_paket(request: Request, pid: str):
@@ -380,6 +529,10 @@ def vklopi(G: dict):
                         x[k] = [str(s).strip() for s in n[k]][:5]
                 if "vkljuci" in n:
                     x["vkljuci"] = bool(n["vkljuci"])
+                if isinstance(n.get("slike_izkl"), list):   # 🖼 klik na sliko = izključi iz izvoza
+                    izk = set(map(str, n["slike_izkl"]))
+                    for s_ in x.get("slike") or []:
+                        s_["izkl"] = s_["datoteka"] in izk
         await pak_set(pid, upd)
         return {"ok": True}
 
@@ -444,7 +597,7 @@ def vklopi(G: dict):
         with zipfile.ZipFile(zb, "w", zipfile.ZIP_DEFLATED) as z:
             z.writestr("ads.csv", b.getvalue().encode("utf-16"))
             for x in izb:
-                for s in x.get("slike") or []:
+                for s in [s_ for s_ in (x.get("slike") or []) if not s_.get("izkl")]:
                     f = SLIKE_DIR / pid / x["sku"] / s["datoteka"]
                     if f.exists():
                         z.write(f, f"images/{x['sku']}/{s['datoteka']}")
