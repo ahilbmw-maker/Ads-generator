@@ -11192,21 +11192,29 @@ End line: "Ultra realistic. Maximum scroll-stopping conversion ad. Punchy rhythm
 
 Make the scenes CONCRETE for this product (the real problem it solves, the real use-moment, the real result) — keep the structure, timing and fixed blocks.
 
+LARGE / INSTALLED PRODUCTS (when WHAT THE IMAGES SHOW says velik = true: bigger than a person can hold and turn in one hand, or installed/fixed in place — curtains, tarps, covers, furniture, tents, mats, shelves):
+- PROMPT 1 Scene 2: the exact product ALREADY INSTALLED in its real place (or the last second of fastening it) — NEVER lifted, held up or turned in the hands.
+- USE_ACTION and the action scenes = the product doing its job IN PLACE (e.g. rain and wind hit the clear curtain while the terrace behind it stays dry and cosy).
+- SCALE = its real size relative to the room / terrace / person, not relative to a hand.
+TRANSPARENT PRODUCTS (prozoren = true): keep the product clearly visible through its edges, borders, eyelets, fasteners, reflections and water drops on its surface — it must never vanish or turn into a different, opaque object.
+
 PRODUCT:
 Name: {name}
 SKU: {sku}
 Description (may be Slovenian — translate meaning, output English): {desc}
 SELLER NOTES ON REAL USE (AUTHORITATIVE — override the description and your own assumptions; may be Slovenian, translate): {opomba}
+WHAT THE REFERENCE IMAGES SHOW (AUTHORITATIVE — written by a vision model that looked at the images; the product NAME can be ambiguous,
+e.g. "cover" may be a clear curtain/tarp and not a furniture cover — never reinterpret the product from its name): {slike}
 
 PRODUCT_DESC (build this FIRST, before writing prompts):
-From the name + description, write ONE concise PHYSICAL description of the product in English —
+From WHAT THE REFERENCE IMAGES SHOW first (then seller notes, then name + description), write ONE concise PHYSICAL description of the product in English —
 colour, shape, material and the single key feature (e.g. "matt black oval wireless heated foot
 massager with a soft grey fabric foot opening"). No marketing words, no claims, just what it
 physically looks like. Use this exact string as [PRODUCT_DESC] in the first line of BOTH prompts.
 
 ALSO build (before writing prompts) and insert into BOTH prompts where marked:
 - PRODUCT_SIZE: real-world size relative to a hand/body (e.g. "palm-sized, fits in one hand", "about the length of a forearm", "knee-high"). Infer from the description; if unknown, choose the most plausible size for this kind of product.
-- USE_ACTION: ONE sentence describing exactly how the product is physically used — which part is held, what is pressed/pulled/placed, what moves and what visible result appears (e.g. "the thumb presses the round top button and the four blades spin inside the clear bowl, chopping the onion into even pieces"). Pick the SIMPLEST use-moment that shows the benefit (no assembly, no unfolding, no multi-step setup).
+- USE_ACTION: ONE sentence describing exactly how the product is physically used — which part is held, what is pressed/pulled/placed, what moves and what visible result appears (e.g. "the thumb presses the round top button and the four blades spin inside the clear bowl, chopping the onion into even pieces"). Pick the SIMPLEST use-moment that shows the benefit (no assembly, no unfolding, no multi-step setup; for large/installed products: the product already in place doing its job).
 - MACRO_DETAIL: the single most eye-catching REAL detail visible on the product (texture, button, mechanism, light, edge).
 - SOUND: the natural sound the product makes in use (click, whir, splash, snap …) — use it as [SOUND] in the AUDIO line and mention it in the action scene.
 - USAGE_FACTS: 2–5 short HARD facts about how this product REALLY works and is used, taken ONLY from the description + seller notes:
@@ -11337,6 +11345,9 @@ def _va_build_brief(job: dict) -> str:
         lines += ["NE PRIKAZUJ: " + ", ".join(str(x) for x in job["never_show"])]
     if job.get("opomba"):
         lines += ["OPOMBA (ročno): " + str(job["opomba"])]
+    _os = job.get("opis_slik") or {}
+    if _os.get("kaj"):
+        lines += ["IZDELEK NA SLIKAH: " + str(_os.get("kaj")) + (" · velik/nameščen" if _os.get("velik") else "") + (" · prozoren" if _os.get("prozoren") else "")]
     lines += [""]
     # SPREMEMBA 1 (2.5): uporabi VSE slike kot image_references (omni_reference ne rabi start_image)
     refs = job.get("ref_images") or []
@@ -11364,13 +11375,13 @@ def _va_build_brief(job: dict) -> str:
 VA_REF_MAX = 5   # po izboru: največ 5 čistih slik (packshot + koti + uporaba) — manj, a boljših
 
 
-async def _va_izberi_slike(urls: list) -> list:
+async def _va_izberi_slike(urls: list) -> tuple:
     """Claude vision izbere do VA_REF_MAX referenčnih slik: 1. = čist packshot (enotno ozadje, sam izdelek, brez besedila),
     nato 1–2 druga kota in 1 slika uporabe (kako ga drži roka). IZLOČI infografike, besedilo, puščice, mere, kolaže,
     več izdelkov, samo embalažo — besedilo v referencah uhaja v video. Ob napaki: prve 4 v izvirnem vrstnem redu."""
     urls = [str(u).replace(" ", "%20") for u in (urls or []) if u]
-    if len(urls) <= 2:
-        return urls
+    if not urls:
+        return [], {}
     vsebina = [{"type": "text", "text": (
         "These are product gallery images for an e-commerce product. Select reference images for an AI VIDEO model that must "
         "reproduce this exact product. Rules: (1) index 0 of your answer = the cleanest packshot: product alone, plain/white or simple "
@@ -11378,7 +11389,13 @@ async def _va_izberi_slike(urls: list) -> list:
         "(3) then at most 1 photo of the product in real use (in hand / on body / in place) if available, NO overlaid text. "
         "EXCLUDE any image with text, letters, numbers, arrows, measurements, badges, infographics, collages/split screens, "
         f"multiple different products, or packaging only. Maximum {VA_REF_MAX} images. "
-        'Return ONLY JSON: {"izbrane": [indices in order], "izlocene": {"index": "reason"}}')}]
+        "If the product is never shown alone (e.g. only installed), choose the images where it is MOST clearly visible; "
+        "a collage is allowed only if it is the only image showing the product itself. "
+        "ALSO describe the product based ONLY on what the images show (ignore any name): what it physically is (material, colour, "
+        "transparency, shape, approximate real size), how it is used or installed as shown, velik = true if it is larger than a person "
+        "can hold and turn in one hand or it is installed/fixed in place, prozoren = true if it is transparent/see-through. "
+        'Return ONLY JSON: {"izbrane": [indices in order], "izlocene": {"index": "reason"}, '
+        '"opis": {"kaj": "...", "uporaba": "...", "velik": false, "prozoren": false}}')}]
     for i, u in enumerate(urls):
         vsebina += [{"type": "text", "text": f"Image {i}:"}, {"type": "image", "source": {"type": "url", "url": u}}]
     try:
@@ -11387,14 +11404,17 @@ async def _va_izberi_slike(urls: list) -> list:
             model="claude-sonnet-4-6", max_tokens=3000, messages=[{"role": "user", "content": vsebina}]))
         raw = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
         m = re.search(r"\{.*\}", raw, re.S)
-        izb = [int(x) for x in (json.loads(m.group(0)).get("izbrane") or [])] if m else []
+        j = json.loads(m.group(0)) if m else {}
+        opis = j.get("opis") if isinstance(j.get("opis"), dict) else {}
+        izb = [int(x) for x in (j.get("izbrane") or [])]
         izb = [i for i in dict.fromkeys(izb) if 0 <= i < len(urls)][:VA_REF_MAX]
         if izb:
-            print(f"[va] slike: izbranih {len(izb)} / {len(urls)}")
-            return [urls[i] for i in izb]
+            print(f"[va] slike: izbranih {len(izb)} / {len(urls)} · {str(opis.get('kaj') or '')[:80]}")
+            return [urls[i] for i in izb], opis
+        return urls[:4], opis
     except Exception as e:
         print(f"[va] izbor slik ni uspel ({str(e)[:160]}) — uporabim prve 4")
-    return urls[:4]
+    return urls[:4], {}
 
 
 async def _va_process_one(job: dict):
@@ -11408,13 +11428,15 @@ async def _va_process_one(job: dict):
             refs = (imgs.get("images") or [])[:VA_REF_IMAGES]
 
         await _va_set(jid, step="izbor slik")
-        refs = await _va_izberi_slike(refs)   # čist packshot najprej, brez slik z besedilom (uhaja v video)
-        await _va_set(jid, step="prompti", ref_images=refs)
+        refs, opis_sl = await _va_izberi_slike(refs)   # čist packshot najprej, brez slik z besedilom; + opis izdelka s slik
+        await _va_set(jid, step="prompti", ref_images=refs, opis_slik=opis_sl)
+        slike_txt = "; ".join(x for x in [str(opis_sl.get("kaj") or "").strip(), ("use/installation: " + str(opis_sl.get("uporaba")).strip()) if opis_sl.get("uporaba") else "",
+                                          "velik = " + ("true" if opis_sl.get("velik") else "false"), "prozoren = " + ("true" if opis_sl.get("prozoren") else "false")] if x) if opis_sl else "(not available)"
         desc = _va_feed_desc(job["url"])
         opomba = ((_va_opombe().get(job["sku"].upper()) or {}).get("txt") or "").strip()
         raw = await call_claude(
             VA_PROMPT_TEMPLATE.format(name=job.get("name") or job["sku"], sku=job["sku"], desc=desc,
-                                      opomba=opomba or "(none)"),
+                                      opomba=opomba or "(none)", slike=slike_txt),
             "claude-sonnet-4-6", None, 8000)
         txt = (raw or "").strip()
         if txt.startswith("```"):
