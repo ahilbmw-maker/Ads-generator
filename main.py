@@ -76,7 +76,12 @@ _AI_CLAUDE_CENE = [   # (predpona modela, $ vhod / 1M, $ izhod / 1M) — vrstni 
     ("claude-haiku-4", 1.0, 5.0), ("claude-haiku-3", 0.8, 4.0),
 ]
 _AI_OPENAI_CENE = {"gpt-image-2": (5.0, 8.0, 30.0), "gpt-image-2.5-flare": (5.0, 8.0, 30.0)}   # $ / 1M: tekst vhod, slika vhod, izhod
-_AI_GEMINI_CENE = {"gemini-3.1-flash-image-preview": (0.25, 1.5, 60.0), "gemini-3-pro-image": (2.0, 12.0, 120.0)}   # $ / 1M: vhod, tekst izhod, slika izhod
+_AI_GEMINI_CENE = {"gemini-3.1-flash-image-preview": (0.25, 1.5, 60.0), "gemini-3-pro-image": (2.0, 12.0, 120.0),
+                   "gemini-nano-banana-2.1": (1.5, 7.5, 30.0)}   # $ / 1M: vhod, tekst izhod, slika izhod
+# ⚡ Nano Banana 2.1 (2026-10-14): naslednik Nano Banana 2 (gemini-3.1-flash-image se ukine 29. 10. 2026), ~pol cene na sliko.
+# Ob napaki novega modela enkrat ponovi s starim (do ukinitve). Nazaj: env GEMINI_FLASH_IMG=gemini-3.1-flash-image-preview
+GEMINI_FLASH_IMG = os.environ.get("GEMINI_FLASH_IMG", "gemini-nano-banana-2.1")
+GEMINI_FLASH_IMG_STARI = "gemini-3.1-flash-image-preview"
 ELEVEN_USD_PER_1K = float(os.environ.get("ELEVEN_USD_PER_1K") or 0.18)   # Creator: $22 / 121.000 kreditov (1 znak = 1 kredit)
 _AI_SKIP_FN = {"_messages_create_sonnet", "_messages_create_logged", "_kw", "_ai_log", "_ai_log_claude", "_ai_funkcija",
                "_xsell_opus", "_xsell_log_usage", "_sonnet_call", "run", "_run", "_worker"}
@@ -7357,7 +7362,7 @@ async def fetch_product_images(data: dict):
 
 @app.post("/generate-kreative")
 async def generate_kreative(data: dict):
-    """Generira kreative z Google Gemini (Nano Banana 2) API."""
+    """Generira kreative z Google Gemini (Nano Banana 2.1 / Pro) API."""
     import base64, struct, zlib
 
     product_name = data.get("productName", "")
@@ -7548,14 +7553,20 @@ async def generate_kreative(data: dict):
             print(f"[kreative] pomanjšanje reference ni uspelo: {_e}")
 
     async def generate_one_gemini(combo_prompt, model_key):
-        model_id = "gemini-3-pro-image" if model_key == "pro" else "gemini-3.1-flash-image-preview"
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}"
+        model_id = "gemini-3-pro-image" if model_key == "pro" else GEMINI_FLASH_IMG
         parts = list(image_parts) + [{"text": combo_prompt}]
         payload = {"contents": [{"parts": parts}], "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]}}
         try:
             async with httpx.AsyncClient(timeout=120.0) as hc:
-                resp = await hc.post(api_url, json=payload, headers={"Content-Type": "application/json"})
+                resp = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}",
+                                     json=payload, headers={"Content-Type": "application/json"})
                 result = resp.json()
+                if resp.status_code != 200 and model_key != "pro" and model_id != GEMINI_FLASH_IMG_STARI:
+                    print(f"[kreative] {model_id} napaka {resp.status_code}: {str(result)[:160]} — ponovim s {GEMINI_FLASH_IMG_STARI}")
+                    model_id = GEMINI_FLASH_IMG_STARI
+                    resp = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}",
+                                         json=payload, headers={"Content-Type": "application/json"})
+                    result = resp.json()
             if resp.status_code != 200:
                 return None, result.get("error", {}).get("message", str(result))
             _ai_log_gemini(model_id, result, "generator")
@@ -7822,7 +7833,8 @@ async def localize_kreativa(data: dict):
 
     async def translate_one(lang_code, img_b64, img_mime, img_idx):
         lang_name = LANG_NAMES.get(lang_code, lang_code)
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={gemini_key}"
+        _pm = GEMINI_FLASH_IMG   # ⚡ Nano Banana 2.1 (rezerva: stari model ob napaki)
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{_pm}:generateContent?key={gemini_key}"
         brand_note = f" Do NOT translate these brand/product names (keep exactly as-is): {brand}." if brand else ""
         # Per-jezik opozorila — preprečijo mešanje sorodnih jezikov (npr. SL "hotovo" je češko)
         lang_hint = LANG_TRANSLATE_HINTS.get(lang_code, "")
@@ -7849,10 +7861,15 @@ async def localize_kreativa(data: dict):
             async with httpx.AsyncClient(timeout=120.0) as hc:
                 resp = await hc.post(api_url, json=payload, headers={"Content-Type": "application/json"})
                 result = resp.json()
+                if resp.status_code != 200 and _pm != GEMINI_FLASH_IMG_STARI:
+                    _pm = GEMINI_FLASH_IMG_STARI
+                    resp = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{_pm}:generateContent?key={gemini_key}",
+                                         json=payload, headers={"Content-Type": "application/json"})
+                    result = resp.json()
             if resp.status_code != 200:
                 return {"lang": lang_code, "lang_name": lang_name, "url": None,
                         "error": result.get("error", {}).get("message", str(result))[:200]}
-            _ai_log_gemini("gemini-3.1-flash-image-preview", result, "prevod_slik")
+            _ai_log_gemini(_pm, result, "prevod_slik")
             for candidate in result.get("candidates", []):
                 for part in candidate.get("content", {}).get("parts", []):
                     if "inlineData" in part:
