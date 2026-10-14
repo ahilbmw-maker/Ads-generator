@@ -191,6 +191,21 @@ def vklopi(G: dict):
     DG_AI_NACRT = [("1x1", "1:1", 0), ("1x1", "1:1", 1), ("4x5", "4:5", 0), ("4x5", "4:5", 1), ("4x5", "4:5", 2), ("191x1", "16:9", 0), ("191x1", "16:9", 2)]
     gem_sem = asyncio.Semaphore(6)   # vzporednih klicev Gemini (vse SKU-je skupaj)
 
+    def kratek_napis(b, n=20):
+        """Napis na sliki: do ~20 znakov (daljši se na slikah ne berejo); krajše ostane cele (»2 в 1«),
+        daljše skrajša na cele besede in ne konča z veznikom/predlogom (»Мокро и сухо почистване …« → »Мокро и сухо«)."""
+        t = " ".join(str(b).strip().rstrip(".!").split())
+        if len(t) <= n:
+            return t
+        out = []
+        for x in t.split():
+            if len(" ".join(out + [x])) > n:
+                break
+            out.append(x)
+        while len(out) > 1 and len(out[-1]) <= 3:
+            out.pop()
+        return " ".join(out) or t[:n]
+
     def kreativa_prompt(trg, ime, bullets, vibe, razmerje):
         jez = DG_JEZIK[trg]
         oblika = {"1:1": "Square 1:1", "4:5": "Vertical portrait 4:5", "16:9": "Wide horizontal format (it will be cropped to 1.91:1, so keep ALL text and the product inside the central horizontal band)"}[razmerje]
@@ -198,7 +213,7 @@ def vklopi(G: dict):
                 "Keep the product EXACTLY as in the reference images — same shape, colours, parts and details; never invent a different product. "
                 f"Background / scene: a more intense '{vibe}' look that sells the benefit. "
                 f"On-image text ONLY in {jez} (correct spelling, exactly these words): the product name '{ime.upper()}' in capital letters "
-                f"(you may style it as a small logo), and 3 short benefit callouts, each with a simple icon: " + " · ".join(f"\"{b}\"" for b in bullets[:3]) + ". "
+                f"(you may style it as a small logo), and 3 very short benefit labels (1–2 words each, big and readable), each with a simple icon: " + " · ".join(f"\"{kratek_napis(b)}\"" for b in bullets[:3]) + ". "
                 "No prices, no discounts, no other words, no watermarks. Keep all text and icons well inside the image, at least 8% away from every edge — "
                 f"nothing may be cut off. {oblika} format.")
 
@@ -293,7 +308,7 @@ def vklopi(G: dict):
             f"- 5 headlines, each MAX {DG_MAX['headline']} characters (count carefully, spaces included): product name + main benefit, problem/solution, "
             "use case, key feature — all different, no repetition.\n"
             f"- 5 descriptions, each MAX {DG_MAX['description']} characters: concrete benefits and use, each different.\n"
-            f"- bullets: 3 very short selling benefit callouts for ON THE IMAGE, in {jez}, each max 3 words / 22 characters (e.g. 'Без кабели', 'Мокро и сухо').\n"
+            f"- bullets: 3 ULTRA short selling callouts for ON THE IMAGE, in {jez}: 1–2 words each, MAX 14 characters (e.g. 'Без кабели', '2 в 1', 'Лесен монтаж') — a punchy label, never a sentence.\n"
             "- vibes: 3 short background/scene concepts for ad images, in English, max 4 words each, specific to this product (e.g. 'sunny kitchen in use', 'before/after floor', 'premium dark studio').\n"
             "Rules (Google Ads policy): no prices, no discounts or '1+1 free' unless clearly stated in the title, no 'best/#1' claims, no medical or "
             "guaranteed claims, no ALL CAPS words, max one exclamation mark in total, no emojis, no phone numbers or URLs.\n"
@@ -306,7 +321,7 @@ def vklopi(G: dict):
         skrajsaj = lambda s, n: s if len(s) <= n else (s[:n].rsplit(" ", 1)[0] if " " in s[:n] else s[:n]).rstrip(" ,.;:-")
         nas = [skrajsaj(str(x).strip(), DG_MAX["headline"]) for x in (j.get("naslovi") or []) if str(x).strip()][:5]
         opi = [skrajsaj(str(x).strip(), DG_MAX["description"]) for x in (j.get("opisi") or []) if str(x).strip()][:5]
-        bul = [skrajsaj(str(x).strip(), 26) for x in (j.get("bullets") or []) if str(x).strip()][:3]
+        bul = [kratek_napis(x) for x in (j.get("bullets") or []) if str(x).strip()][:3]
         vib = [str(x).strip()[:40] for x in (j.get("vibes") or []) if str(x).strip()][:3]
         return str(j.get("kratko_ime") or "").strip()[:25], nas, opi, bul, vib
 
