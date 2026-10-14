@@ -13,7 +13,7 @@
     --ok:#86efac; --b-ok:#14361f; --warn:#fcd34d; --b-warn:#3a2e0d; --err:#fca5a5; --b-err:#3d1414; --inf:#93c5fd; --b-inf:#172554; } }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.45 'DM Sans',-apple-system,'Segoe UI',sans-serif; }
-  .wrap { padding:16px 20px; max-width:1400px; margin:0 auto; }
+  .wrap { padding:16px 20px; }
   .head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
   .head h1 { font-size:20px; margin:0; font-weight:700; }
   .sub { color:var(--txt2); font-size:12px; }
@@ -40,7 +40,7 @@
   .p-sent { background:var(--b-ok); color:var(--ok); } .p-sending { background:var(--b-warn); color:var(--warn); } .p-other { background:var(--bd); color:var(--txt2); }
   .msg { padding:9px 12px; border-radius:8px; margin-bottom:12px; font-size:13px; }
   .msg.err { background:var(--b-err); color:var(--err); } .msg.ok { background:var(--b-ok); color:var(--ok); }
-  iframe.prev { width:100%; height:620px; border:1px solid var(--bd); border-radius:10px; background:#fff; }
+  iframe.prev { width:100%; height:calc(100vh - 200px); min-height:500px; border:1px solid var(--bd); border-radius:10px; background:#fff; }
   .acts { display:flex; gap:5px; flex-wrap:wrap; }
   .dlg-bg { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; align-items:center; justify-content:center; z-index:100; padding:16px; }
   .dlg { background:var(--card); border-radius:14px; padding:18px; width:640px; max-width:100%; max-height:90vh; overflow:auto; }
@@ -60,7 +60,9 @@
   <div id="sporocilo"></div>
   <div class="tabs">
     <div class="tab on" data-t="kampanje" onclick="tab('kampanje')">📬 Kampanje</div>
-    <div class="tab" data-t="nova" onclick="tab('nova')">✏️ Nova kampanja</div>
+    <div class="tab" data-t="sku" onclick="tab('sku')">✨ Iz SKU</div>
+    <div class="tab" data-t="predloge" onclick="tab('predloge')">🧩 Predloge</div>
+    <div class="tab" data-t="nova" onclick="tab('nova')">✏️ Ročna kampanja</div>
     <div class="tab" data-t="trgi" onclick="tab('trgi')">⚙️ Trgi → seznami</div>
   </div>
 
@@ -78,6 +80,78 @@
         <tbody id="kampTb"><tr><td colspan="8" class="muted">Nalagam …</td></tr></tbody>
       </table>
     </div>
+    <div class="card tbl-wrap" style="margin-top:14px">
+      <div style="font-weight:700;margin-bottom:4px">🔁 Ponovno neodprtim</div>
+      <div class="sub" style="margin-bottom:8px">Ko je prvotna kampanja poslana, suban.ai ustvari kopijo z drugo zadevo na segment »ni odprl« in jo razporedi <b id="ponDni">3</b> dni po pošiljanju (preveri vsakih 15 min). Razporejeno kampanjo vidiš zgoraj in jo lahko prekličeš.</div>
+      <table><thead><tr><th>Status</th><th>Trg</th><th>Zadeva (ponovno)</th><th>Prvotna</th><th>Termin</th><th></th></tr></thead>
+        <tbody id="ponTb"><tr><td colspan="6" class="muted">—</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- IZ SKU -->
+  <div id="t-sku" style="display:none">
+    <div class="grid2" style="grid-template-columns:minmax(0,420px) minmax(0,1fr)">
+      <div>
+        <div class="card">
+          <label class="l" style="margin-top:0">SKU glavnega izdelka</label>
+          <input class="f" id="sSku" placeholder="npr. M322" style="text-transform:uppercase">
+          <label class="l">Znamka (predloga)</label>
+          <select class="f" id="sZnamka"></select>
+          <label class="l">Trgi <span class="muted">(samo trgi z audiencem)</span></label>
+          <div id="sTrgi" style="display:flex;flex-wrap:wrap;gap:4px 12px"></div>
+          <label class="l">Izpostavitve — SKU-ji <span class="muted">(prazno = najbolje prodajani z zalogo)</span></label>
+          <input class="f" id="sIzp" placeholder="npr. M311, SILUX13, M293">
+          <label class="l">Glavna slika</label>
+          <select class="f" id="sSlika"><option value="flare">🎨 Nova slika — Flare 2.5 (lifestyle, brez besedila)</option><option value="feed">🖼 Slika iz trgovine</option></select>
+          <label class="l">Navodilo za sliko <span class="muted">(neobvezno)</span></label>
+          <input class="f" id="sNavSlika" placeholder="npr. zimski dnevni prostor, topla svetloba">
+          <label class="l">Navodilo za besedilo <span class="muted">(neobvezno)</span></label>
+          <textarea class="f" id="sNav" rows="3" style="font-family:inherit" placeholder="npr. poudari darilo za božič, popust velja do nedelje"></textarea>
+          <div style="margin-top:12px"><button class="btn pri" id="sBtn" onclick="nlUstvari()">✨ Pripravi newsletter</button></div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <div style="font-weight:700;margin-bottom:6px">Zadnji</div>
+          <div id="nlSeznam" class="sub">—</div>
+        </div>
+      </div>
+      <div class="card" id="nlDetajl"><div class="muted">Vpiši SKU in klikni »Pripravi newsletter« ali izberi zadnjega na levi.</div></div>
+    </div>
+  </div>
+
+  <!-- PREDLOGE -->
+  <div id="t-predloge" style="display:none">
+    <div class="grid2">
+      <div class="card">
+        <div style="font-weight:700">📥 Uvozi iz Mailchimp kampanje</div>
+        <div class="sub" style="margin:4px 0 8px">Iz svoje predloge v Mailchimpu naredi e-mail (»Create email« — osnutek je dovolj) in ga izberi tukaj. AI označi mesta za sliko, besedila, cene in povezave; videz in prevedena noga ostaneta. Za vsak trg uvozi svojo (noga v jeziku trga).</div>
+        <label class="l">Kampanja</label><select class="f" id="pKamp" onchange="pUgibaj()"></select>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+          <div><label class="l">Znamka</label><input class="f" id="pZnamka" list="znamkeDl" placeholder="Maaarket"></div>
+          <div><label class="l">Trg</label><select class="f" id="pTrg"></select></div>
+          <div><label class="l">Ime</label><input class="f" id="pIme" placeholder="neobvezno"></div>
+        </div>
+        <div style="margin-top:12px"><button class="btn pri" id="pBtn" onclick="pUvozi()">📥 Uvozi predlogo</button></div>
+      </div>
+      <div class="card">
+        <div style="font-weight:700">🎨 AI dizajn — 3 predlogi</div>
+        <div class="sub" style="margin:4px 0 8px">AI izriše 3 različne videze (minimalističen, akcijski, lifestyle). Izbrani velja za vse trge; besedila, noga in odjava se pišejo v jeziku trga.</div>
+        <div style="display:grid;grid-template-columns:1fr 110px;gap:10px">
+          <div><label class="l">Znamka</label><input class="f" id="aZnamka" list="znamkeDl" placeholder="Maaarket"></div>
+          <div><label class="l">Barva</label><input class="f" id="aBarva" type="color" value="#e4572e" style="height:36px;padding:2px"></div>
+        </div>
+        <label class="l">URL logotipa <span class="muted">(neobvezno; javen PNG — npr. iz Mailchimp Content Studio)</span></label>
+        <input class="f" id="aLogo" placeholder="https://mcusercontent.com/…/logo.png">
+        <label class="l">Navodilo <span class="muted">(neobvezno)</span></label>
+        <input class="f" id="aNav" placeholder="npr. zaobljeni robovi, temno siva noga">
+        <div style="margin-top:12px"><button class="btn pri" id="aBtn" onclick="aZacni()">🎨 Nariši 3 predloge</button> <span class="sub" id="aStanje"></span></div>
+      </div>
+    </div>
+    <div id="aPredlogi" style="display:none;margin-top:14px"></div>
+    <div class="card tbl-wrap" style="margin-top:14px">
+      <div style="font-weight:700;margin-bottom:8px">Shranjene predloge</div>
+      <table><thead><tr><th>Ime</th><th>Znamka</th><th>Trg</th><th>Polja</th><th>Vir</th><th></th></tr></thead><tbody id="predTb"></tbody></table>
+    </div>
+    <datalist id="znamkeDl"><option value="Maaarket"><option value="Silux"></datalist>
   </div>
 
   <!-- NOVA -->
@@ -97,7 +171,7 @@
         <label class="l">Interni naziv (neobvezno)</label>
         <input class="f" id="nNaslov" placeholder="privzeto = zadeva">
         <label class="l">HTML vsebina <span class="muted">(lahko pustiš prazno in urediš v Mailchimpu)</span></label>
-        <textarea class="f" id="nHtml" rows="16" oninput="predogled()" placeholder="<html>…</html>"></textarea>
+        <textarea class="f" id="nHtml" rows="22" oninput="predogled()" placeholder="<html>…</html>"></textarea>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           <button class="btn pri" id="nShrani" onclick="ustvariOsnutek()">💾 Ustvari osnutek</button>
           <span class="sub" style="align-self:center">Nič se ne pošlje — osnutek se pojavi med kampanjami.</span>
@@ -124,7 +198,7 @@
 <div class="dlg-bg" id="dlgBg" onclick="if(event.target===this)zapri()"><div class="dlg" id="dlg"></div></div>
 
 <script>
-let ST = null, KAMP = [];
+let ST = null, KAMP = [], PRED = [], NL = null, NL_TRG = '', nlTimer = null, aTimer = null;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = v => v == null ? '—' : (v * 100).toFixed(1).replace('.', ',') + ' %';
 const fmtCas = s => s ? new Date(s).toLocaleString('sl-SI', {day:'numeric', month:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '—';
@@ -145,7 +219,8 @@ async function api(url, body) {
 
 function tab(t) {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.dataset.t === t));
-  ['kampanje','nova','trgi'].forEach(x => document.getElementById('t-' + x).style.display = x === t ? '' : 'none');
+  ['kampanje','sku','predloge','nova','trgi'].forEach(x => document.getElementById('t-' + x).style.display = x === t ? '' : 'none');
+  if (t === 'predloge') aOsvezi();
 }
 
 function seznamPo(id) { return (ST?.seznami || []).find(s => s.id === id); }
@@ -161,7 +236,8 @@ async function naloziVse() {
   risiTrge(); risiIzbire();
   const k = await api('/mailchimp/kampanje?count=100');
   if (!k.ok) { sporoci(k.error); return; }
-  KAMP = k.kampanje; risiKampanje();
+  KAMP = k.kampanje; risiKampanje(); risiPKamp();
+  naloziPredloge(); naloziPonovno(); nlSeznam();
 }
 
 function risiIzbire() {
@@ -217,6 +293,7 @@ function risiKampanje() {
         <a class="btn sm" style="text-decoration:none" target="_blank" href="https://${ST.dc}.admin.mailchimp.com/campaigns/${urejanje ? 'edit' : 'show'}?id=${c.web_id}">${urejanje ? '✎ Mailchimp' : '↗'}</a>
         ${urejanje ? `<button class="btn sm" onclick="oknoTest('${c.id}')">🧪 Test</button><button class="btn sm pri" onclick="oknoPoslji('${c.id}')">📤 Pošlji</button>` : ''}
         ${c.status === 'schedule' ? `<button class="btn sm" onclick="preklici('${c.id}')">⏸ Prekliči razpored</button>` : ''}
+        <button class="btn sm" title="Uvozi kot predlogo" onclick="tab('predloge');document.getElementById('pKamp').value='${c.id}';pUgibaj()">📥</button>
       </div></td></tr>`;
   }).join('');
 }
@@ -317,6 +394,232 @@ async function preklici(id) {
   const j = await api('/mailchimp/preklici-razpored', {id});
   if (!j.ok) { sporoci(j.error); return; }
   sporoci('Razpored preklican.', 'ok'); naloziVse();
+}
+
+
+// ═══ PREDLOGE ═══
+const TRG_IME = t => t === '*' ? 'vsi (AI)' : zastava(t);
+async function naloziPredloge() {
+  const j = await api('/mailchimp/predloge'); if (!j.ok) return;
+  PRED = j.predloge;
+  const tb = document.getElementById('predTb');
+  tb.innerHTML = PRED.length ? PRED.map(p => `<tr><td><b>${esc(p.ime)}</b>${p.opomba ? `<div class="sub">${esc(p.opomba)}</div>` : ''}</td>
+    <td>${esc(p.znamka)}</td><td>${esc(TRG_IME(p.trg))}</td><td class="sub">${Object.keys(p.polja || {}).length}</td>
+    <td class="sub">${p.vir === 'ai' ? 'AI dizajn' : 'Mailchimp'}</td>
+    <td><div class="acts"><button class="btn sm" onclick="pPredogled('${p.id}')">👁 Polja</button><button class="btn sm" onclick="pIzbrisi('${p.id}')">🗑</button></div></td></tr>`).join('')
+    : '<tr><td colspan="6" class="muted">Ni predlog — uvozi iz kampanje ali naj AI nariše predloge.</td></tr>';
+  const zn = [...new Set(PRED.map(p => p.znamka))];
+  const sZ = document.getElementById('sZnamka'), v = sZ.value;
+  sZ.innerHTML = zn.length ? zn.map(z => `<option>${esc(z)}</option>`).join('') : '<option value="">— najprej dodaj predlogo —</option>';
+  if (zn.includes(v)) sZ.value = v;
+  document.getElementById('znamkeDl').innerHTML = [...new Set(['Maaarket', 'Silux', ...zn])].map(z => `<option value="${esc(z)}">`).join('');
+}
+function risiPKamp() {
+  const pk = document.getElementById('pKamp'), v = pk.value;
+  pk.innerHTML = '<option value="">— izberi kampanjo —</option>' + KAMP.map(c => `<option value="${c.id}">${esc(c.naslov || c.zadeva || '(brez)')} · ${esc(c.seznam)} · ${(STATUS[c.status] || [c.status])[0]}</option>`).join('');
+  pk.value = v;
+  const pt = document.getElementById('pTrg');
+  if (!pt.options.length) pt.innerHTML = Object.entries(ST.trgi_vsi).map(([t, i]) => `<option value="${t}">${esc(i)}</option>`).join('');
+  // trgi z audiencem za Iz SKU
+  const st = document.getElementById('sTrgi');
+  const izb = new Set([...st.querySelectorAll('input:checked')].map(x => x.value));
+  const mapirani = Object.keys(ST.trgi);
+  st.innerHTML = mapirani.length ? mapirani.map(t => `<label style="font-size:13px"><input type="checkbox" value="${t}" ${!st.dataset.init || izb.has(t) ? 'checked' : ''}> ${esc(zastava(t))}</label>`).join('')
+    : '<span class="sub">Najprej v ⚙️ Trgi → seznami poveži trge z audienci.</span>';
+  if (mapirani.length) st.dataset.init = '1';
+}
+function pUgibaj() {
+  const c = KAMP.find(x => x.id === document.getElementById('pKamp').value); if (!c) return;
+  const t = trgSeznama(c.list_id); if (t) document.getElementById('pTrg').value = t;
+  const n = (c.naslov || '') + ' ' + (c.seznam || '');
+  const zn = /silux/i.test(n) ? 'Silux' : /maaarket/i.test(n) ? 'Maaarket' : '';
+  if (zn && !document.getElementById('pZnamka').value) document.getElementById('pZnamka').value = zn;
+}
+async function pUvozi() {
+  const id = document.getElementById('pKamp').value, znamka = document.getElementById('pZnamka').value.trim(), trg = document.getElementById('pTrg').value;
+  if (!id || !znamka) { sporoci('Izberi kampanjo in vpiši znamko.'); return; }
+  const b = document.getElementById('pBtn'); b.disabled = true; b.textContent = 'AI označuje polja … (~30 s)';
+  const j = await api('/mailchimp/predloga-uvoz', {id, znamka, trg, ime: document.getElementById('pIme').value});
+  b.disabled = false; b.textContent = '📥 Uvozi predlogo';
+  if (!j.ok) { sporoci(j.error); return; }
+  sporoci('Predloga uvožena: ' + Object.keys(j.polja).join(', '), 'ok');
+  document.getElementById('pIme').value = '';
+  await naloziPredloge(); pPredogled(j.id);
+}
+async function pPredogled(id) {
+  odpri('<div class="muted">Nalagam …</div>');
+  const j = await api('/mailchimp/predloga?id=' + id);
+  if (!j.ok) { odpri(`<div class="msg err">${esc(j.error)}</div>`); return; }
+  const p = j.predloga;
+  odpri(`<h3>${esc(p.ime)}</h3><div class="sub" style="margin-bottom:8px">${esc(p.znamka)} · ${esc(TRG_IME(p.trg))} — rumeno so označena besedila, ki jih AI zamenja. Slike in povezave: ${Object.keys(p.polja).filter(k => /_(SLIKA|URL)$/.test(k)).join(', ') || '—'}</div>
+    <iframe class="prev" id="dPrev" sandbox=""></iframe><div style="text-align:right;margin-top:10px"><button class="btn" onclick="zapri()">Zapri</button></div>`);
+  document.getElementById('dPrev').srcdoc = j.predogled;
+}
+async function pIzbrisi(id) {
+  if (!confirm('Izbriši predlogo?')) return;
+  await api('/mailchimp/predloga-izbrisi', {id}); naloziPredloge();
+}
+
+// ═══ AI DIZAJN ═══
+async function aZacni() {
+  const znamka = document.getElementById('aZnamka').value.trim();
+  if (!znamka) { sporoci('Vpiši znamko.'); return; }
+  const j = await api('/mailchimp/ai-dizajn', {znamka, barva: document.getElementById('aBarva').value,
+    logo_url: document.getElementById('aLogo').value.trim(), navodilo: document.getElementById('aNav').value.trim()});
+  if (!j.ok) { sporoci(j.error); return; }
+  aOsvezi();
+}
+async function aOsvezi() {
+  clearTimeout(aTimer);
+  const j = await api('/mailchimp/ai-dizajn'); if (!j.ok) return;
+  const job = j.job || {}, box = document.getElementById('aPredlogi');
+  document.getElementById('aBtn').disabled = job.status === 'dela';
+  document.getElementById('aStanje').textContent = job.status === 'dela' ? '⏳ ' + (job.korak || '') + ' … (1–2 min)' : (job.napaka ? '⚠ ' + job.napaka : '');
+  if (job.status === 'dela') aTimer = setTimeout(aOsvezi, 4000);
+  if (!job.predlogi || !job.predlogi.length) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  box.innerHTML = `<div class="sub" style="margin-bottom:6px">Predlogi za <b>${esc(job.znamka)}</b> (predogled na najbolje prodajanih izdelkih):</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px">${job.predlogi.map((x, i) => `<div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b>${i + 1}. ${esc(x.slog)}</b><span style="flex:1"></span>
+        ${x.html ? `<button class="btn sm" ${job.status === 'dela' ? 'disabled' : ''} onclick="aPopravi(${i})">✎ Popravi</button><button class="btn sm pri" onclick="aIzberi(${i})">✓ Izberi</button>` : ''}</div>
+      ${x.html ? `<iframe class="prev" id="aPrev${i}" sandbox="" style="height:720px"></iframe>` : `<div class="msg err">${esc(x.napaka || 'napaka')}</div>`}
+      ${(x.popravki || []).length ? `<div class="sub" style="margin-top:6px">Popravki: ${x.popravki.map(esc).join(' · ')}</div>` : ''}</div>`).join('')}</div>`;
+  job.predlogi.forEach((x, i) => { const f = document.getElementById('aPrev' + i); if (f) f.srcdoc = x.predogled; });
+}
+async function aPopravi(i) {
+  const t = prompt('Kaj naj spremenim pri predlogu ' + (i + 1) + '? (npr. večji gumb, temnejša glava, cena bolj vidna)');
+  if (!t) return;
+  const j = await api('/mailchimp/ai-dizajn-popravi', {idx: i, popravek: t});
+  if (!j.ok) { sporoci(j.error); return; }
+  aOsvezi();
+}
+async function aIzberi(i) {
+  const ime = prompt('Ime predloge:', ''); if (ime === null) return;
+  const j = await api('/mailchimp/ai-dizajn-izberi', {idx: i, ime});
+  if (!j.ok) { sporoci(j.error); return; }
+  sporoci('Predloga shranjena — uporabiš jo v ✨ Iz SKU.', 'ok'); naloziPredloge();
+}
+
+// ═══ IZ SKU ═══
+async function nlUstvari() {
+  const sku = document.getElementById('sSku').value.trim().toUpperCase(), znamka = document.getElementById('sZnamka').value;
+  const trgi = [...document.querySelectorAll('#sTrgi input:checked')].map(x => x.value);
+  if (!sku || !znamka || !trgi.length) { sporoci('Vpiši SKU, izberi znamko in vsaj en trg.'); return; }
+  const b = document.getElementById('sBtn'); b.disabled = true;
+  const j = await api('/mailchimp/nl-ustvari', {sku, znamka, trgi, izpostavitve: document.getElementById('sIzp').value,
+    slika_vir: document.getElementById('sSlika').value, navodilo_slika: document.getElementById('sNavSlika').value, navodilo: document.getElementById('sNav').value});
+  b.disabled = false;
+  if (!j.ok) { sporoci(j.error); return; }
+  NL_TRG = ''; nlOdpri(j.id); nlSeznam();
+}
+async function nlSeznam() {
+  const j = await api('/mailchimp/nl'); if (!j.ok) return;
+  const ST_NL = {dela: '⏳', pripravljen: '✅', napaka: '⚠'};
+  document.getElementById('nlSeznam').innerHTML = j.seznam.length ? j.seznam.map(n => `<div style="padding:5px 0;border-bottom:1px solid var(--bd);cursor:pointer" onclick="NL_TRG='';nlOdpri('${n.id}')">
+    ${ST_NL[n.status] || ''} <b>${esc(n.sku)}</b> · ${esc(n.znamka)} · ${n.trgi.length} trgov <span class="muted">· ${fmtCas(n.at)}</span></div>`).join('') : '—';
+}
+function NL_POLJA_PRED(pid) { const p = PRED.find(x => x.id === pid); return p ? Object.keys(p.polja || {}) : []; }
+async function nlOdpri(id) {
+  clearTimeout(nlTimer);
+  const j = await api('/mailchimp/nl?id=' + id);
+  const el = document.getElementById('nlDetajl');
+  if (!j.ok) { el.innerHTML = `<div class="msg err">${esc(j.error)}</div>`; return; }
+  NL = j.nl;
+  if (NL.status === 'dela') {
+    const k = {'v vrsti': 'v vrsti', feed: 'berem feede', slika: NL.slika_vir === 'flare' ? 'rišem sliko (Flare 2.5, ~1 min)' : 'slika', besedila: 'pišem besedila za vse trge (~1 min)'}[NL.korak] || NL.korak;
+    el.innerHTML = `<b>${esc(NL.sku)}</b><div class="sub" style="margin-top:6px">⏳ ${esc(k)} …</div>`;
+    nlTimer = setTimeout(() => nlOdpri(id), 3000); return;
+  }
+  if (NL.status === 'napaka') { el.innerHTML = `<b>${esc(NL.sku)}</b><div class="msg err" style="margin-top:8px">${esc(NL.napaka)}</div>`; nlSeznam(); return; }
+  const iz = NL.trgi_izid || {}, trgi = Object.keys(iz);
+  if (!NL_TRG || !iz[NL_TRG]) NL_TRG = trgi.find(t => !iz[t].napaka) || trgi[0];
+  const t = iz[NL_TRG] || {}, vr = t.vrednosti || {};
+  const vPred = NL_POLJA_PRED(t.predloga);
+  const polja = ['NASLOV', 'PODNASLOV', 'BESEDILO', 'GUMB', 'IZP_NASLOV', 'IZP_GUMB', 'NOGA', 'ODJAVA'].filter(k => k in vr && vPred.includes(k));
+  el.innerHTML = `<div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+      ${NL.slika_url ? `<img src="${esc(NL.slika_url)}" style="width:180px;border-radius:8px;border:1px solid var(--bd)">` : ''}
+      <div style="flex:1;min-width:220px"><b style="font-size:16px">${esc(NL.sku)}</b> · ${esc(NL.znamka)}
+        ${NL.slika_napaka ? `<div class="msg err" style="margin:6px 0">Slika: ${esc(NL.slika_napaka)} — uporabljena slika iz trgovine.</div>` : ''}
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn sm" onclick="nlSlika('flare')">🎨 Nova slika (Flare)</button><button class="btn sm" onclick="nlSlika('feed')">🖼 Slika iz trgovine</button></div></div></div>
+    <div class="tabs" style="margin-top:12px;flex-wrap:wrap">${trgi.map(x => `<div class="tab ${x === NL_TRG ? 'on' : ''}" onclick="NL_TRG='${x}';nlOdpri('${NL.id}')">${esc(zastava(x))}${iz[x].napaka ? ' ⚠' : iz[x].campaign_id ? ' ✓' : ''}</div>`).join('')}</div>
+    ${t.napaka ? `<div class="msg err">${esc(t.napaka)}</div>` : `
+    <div class="grid2">
+      <div>
+        ${t.predloga_trg && t.predloga_trg !== NL_TRG && t.predloga_trg !== '*' ? `<div class="msg err">Uporabljena predloga trga ${esc(zastava(t.predloga_trg))} — noga je v drugem jeziku. Uvozi predlogo za ta trg.</div>` : ''}
+        ${t.manjka_izp ? `<div class="msg err">Za ${t.manjka_izp} izpostavitev ni bilo izdelka v feedu trga — mesto ostane prazno.</div>` : ''}
+        ${t.campaign_id ? `<div class="msg ok">Osnutek je v Mailchimpu — testiraj in pošlji v 📬 Kampanje.</div>` : ''}
+        <label class="l">Zadeva <span class="muted" id="zl1"></span></label><input class="f" id="eZadeva" value="${esc(t.zadeva)}" oninput="zDolz()">
+        <label class="l">Zadeva za ponovno (neodprti) <span class="muted" id="zl2"></span></label><input class="f" id="eZadeva2" value="${esc(t.zadeva_ponovno)}" oninput="zDolz()">
+        <label class="l">Preheader</label><input class="f" id="ePre" value="${esc(t.preheader)}">
+        ${polja.map(k => `<label class="l">${k}</label>${k === 'BESEDILO' || k === 'NOGA' ? `<textarea class="f" rows="4" style="font-family:inherit" data-p="${k}">${esc(vr[k])}</textarea>` : `<input class="f" data-p="${k}" value="${esc(vr[k])}">`}`).join('')}
+        <div class="sub" style="margin-top:6px">Izpostavitve: ${(t.izpostavitve || []).map(esc).join(', ') || '—'}</div>
+        <div style="margin-top:10px"><button class="btn" ${t.campaign_id ? 'disabled' : ''} onclick="nlShrani()">💾 Shrani popravke</button></div>
+      </div>
+      <div><iframe class="prev" id="ePrev" sandbox=""></iframe></div>
+    </div>`}
+    <div class="card" style="margin-top:14px;background:var(--bg)">
+      <div style="font-weight:700;margin-bottom:6px">📤 V Mailchimp</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px 12px">${trgi.map(x => `<label style="font-size:13px"><input type="checkbox" class="vmc" value="${x}" ${iz[x].napaka || iz[x].campaign_id ? 'disabled' : 'checked'}> ${esc(zastava(x))}${iz[x].campaign_id ? ' ✓' : ''}${ST.trgi[x] ? '' : ' (ni audienca)'}</label>`).join('')}</div>
+      <label class="l"><input type="checkbox" id="vPon" checked> 🔁 Ponovno neodprtim čez 3 dni (z »zadevo za ponovno«)</label>
+      <div style="margin-top:8px"><button class="btn pri" id="vBtn" onclick="nlVMailchimp()">📤 Ustvari osnutke v Mailchimpu</button>
+        <span class="sub">Nič se ne pošlje — osnutke testiraš in pošlješ v 📬 Kampanje.</span></div>
+    </div>`;
+  const f = document.getElementById('ePrev'); if (f) f.srcdoc = t.html || '';
+  zDolz(); nlSeznam();
+}
+function zDolz() {
+  [['eZadeva', 'zl1'], ['eZadeva2', 'zl2']].forEach(([i, l]) => { const e = document.getElementById(i); if (e) document.getElementById(l).textContent = `(${e.value.length} znakov${e.value.length > 60 ? ' — predolgo za mobilnik' : ''})`; });
+}
+async function nlShrani() {
+  const polja = {}; document.querySelectorAll('#nlDetajl [data-p]').forEach(e => polja[e.dataset.p] = e.value);
+  const j = await api('/mailchimp/nl-uredi', {id: NL.id, trg: NL_TRG, zadeva: document.getElementById('eZadeva').value,
+    zadeva_ponovno: document.getElementById('eZadeva2').value, preheader: document.getElementById('ePre').value, polja});
+  if (!j.ok) { sporoci(j.error); return; }
+  sporoci('Shranjeno.', 'ok'); nlOdpri(NL.id);
+}
+async function nlSlika(vir) {
+  let nav = null;
+  if (vir === 'flare') { nav = prompt('Navodilo za novo sliko (neobvezno):', NL.navodilo_slika || ''); if (nav === null) return; }
+  const j = await api('/mailchimp/nl-znova-slika', {id: NL.id, slika_vir: vir, navodilo_slika: nav});
+  if (!j.ok) { sporoci(j.error); return; }
+  nlOdpri(NL.id);
+}
+async function nlVMailchimp() {
+  const trgi = [...document.querySelectorAll('.vmc:checked')].map(x => x.value);
+  if (!trgi.length) { sporoci('Izberi vsaj en trg.'); return; }
+  const brez = trgi.filter(t => !ST.trgi[t]);
+  if (brez.length) { sporoci('Trgi brez audienca: ' + brez.map(zastava).join(', ') + ' — poveži jih v ⚙️ Trgi → seznami.'); return; }
+  if (!confirm(`Ustvarim ${trgi.length} osnutkov v Mailchimpu? (nič se ne pošlje)`)) return;
+  const b = document.getElementById('vBtn'); b.disabled = true; b.textContent = 'Ustvarjam …';
+  const j = await api('/mailchimp/nl-v-mailchimp', {id: NL.id, trgi, ponovno: document.getElementById('vPon').checked});
+  b.disabled = false; b.textContent = '📤 Ustvari osnutke v Mailchimpu';
+  if (!j.ok) { sporoci(j.error); return; }
+  const nap = Object.entries(j.rezultati).filter(([t, r]) => !r.ok).map(([t, r]) => zastava(t) + ': ' + r.error);
+  sporoci(nap.length ? 'Napake — ' + nap.join(' · ') : `Ustvarjenih ${trgi.length} osnutkov${j.ponovno ? `, ${j.ponovno} s ponovnim pošiljanjem` : ''}. Testiraj in pošlji v 📬 Kampanje.`, nap.length ? 'err' : 'ok');
+  await naloziVse(); nlOdpri(NL.id);
+}
+
+// ═══ PONOVNO ═══
+async function naloziPonovno() {
+  const j = await api('/mailchimp/ponovno'); if (!j.ok) return;
+  document.getElementById('ponDni').textContent = j.dni;
+  const S = {caka: ['Čaka na pošiljanje', 'p-save'], v_delu: ['Ustvarjam', 'p-sending'], razporejeno: ['Razporejeno', 'p-schedule'],
+             napaka: ['Napaka', 'p-other'], preklicano: ['Preklicano', 'p-other'], poteklo: ['Poteklo (ni bilo poslano 30 dni)', 'p-other']};
+  document.getElementById('ponTb').innerHTML = j.seznam.length ? j.seznam.map(z => {
+    const [ime, cls] = S[z.status] || [z.status, 'p-other'];
+    const orig = KAMP.find(c => c.id === z.orig_id);
+    return `<tr><td><span class="pill ${cls}">${ime}</span>${z.napaka ? `<div class="sub" style="color:var(--err)">${esc(z.napaka)}</div>` : ''}</td>
+      <td>${esc(zastava(z.trg))}</td><td>${esc(z.zadeva)}</td><td class="sub">${esc(orig ? orig.zadeva : z.orig_id)}${orig ? ' · ' + (STATUS[orig.status] || [orig.status])[0] : ''}</td>
+      <td>${z.cas ? fmtCas(z.cas) : '—'}</td>
+      <td>${['caka', 'razporejeno'].includes(z.status) ? `<button class="btn sm" onclick="ponPreklici('${z.orig_id}')">✕ Prekliči</button>` : ''}</td></tr>`;
+  }).join('') : '<tr><td colspan="6" class="muted">—</td></tr>';
+}
+async function ponPreklici(orig_id) {
+  if (!confirm('Prekličem ponovno pošiljanje neodprtim?')) return;
+  const j = await api('/mailchimp/ponovno-preklici', {orig_id});
+  if (!j.ok) { sporoci(j.error); return; }
+  naloziVse();
 }
 
 naloziVse();
