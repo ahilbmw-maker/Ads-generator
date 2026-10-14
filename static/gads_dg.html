@@ -73,7 +73,7 @@
             <div><label class="l">Dnevni proračun</label><input class="f" id="novaBud" inputmode="decimal"></div>
             <div><label class="l">Target CPA</label><input class="f" id="novaCpa" inputmode="decimal"></div>
           </div>
-          <div class="sub" style="margin-top:6px">Ostale nastavitve (omrežja, jeziki, lokacija, Merchant, cilji) se kopirajo iz izbrane kampanje. Nova je <b>Paused</b>, začetek danes.</div>
+          <div class="sub" style="margin-top:6px">Ostale nastavitve (omrežja, jeziki, lokacija, Merchant, cilji) se kopirajo iz izbrane kampanje. Status po izbiri ob izvozu (privzeto online), začetek danes.</div>
         </div>
       </div>
       <div>
@@ -180,9 +180,10 @@ function risi() {
     '<div><b>' + caka + '</b><span class="sub">v pripravi</span></div>' +
     '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button class="btn grn" ' + (caka || !brezNap.length ? 'disabled' : '') + ' onclick="shraniVMapo()" title="Zapiše v izbrano mapo (npr. Documents\\subankampanije): Maaarket.xx\\ads_….csv + mapa za vsak SKU s slikami">📁 Shrani v mapo (' + brezNap.length + ')</button>' +
       '<button class="btn" ' + (caka || !brezNap.length ? 'disabled' : '') + ' onclick="izvozi()">⬇ ZIP</button>' +
+      '<select class="f" id="stUvoz" onchange="LS.set(\'gdg_status\', this.value)" title="Status kampanje, skupin in oglasov ob uvozu v Editor" style="width:auto"><option value="Enabled"' + (stUvoz() === 'Enabled' ? ' selected' : '') + '>✅ ob Post takoj online</option><option value="Paused"' + (stUvoz() === 'Paused' ? ' selected' : '') + '>⏸ Paused</option></select>' +
       '<span class="sub" id="mapaInfo">' + (MAPA ? '📁 ' + esc(MAPA.name) + ' · <a href="#" onclick="mapaZamenjaj();return false">zamenjaj</a>' : 'mapa še ni izbrana') + '</span></div></div>';
-  if (p.nova_kampanja) h += '<div class="msg ok">➕ Nova kampanja <b>' + esc(p.nova_kampanja.ime) + '</b> (kopija »' + esc(p.nova_kampanja.vir) + '«) · proračun ' + esc(p.nova_kampanja.budget) + ' / dan · Target CPA ' + esc(p.nova_kampanja.tcpa) + ' · Paused</div>';
-  h += '<div class="msg warn">⚠ Uvoz v Editor je lokalen, dokler ne klikneš <b>Post</b>. V pregledu uvoza morajo biti samo <b>Added</b>, nobenega <b>Updated</b>. Vse skupine in oglasi so <b>Paused</b>. Slike Editor iz CSV ne pripne: uvozi mapo <b>images</b> (Import image assets from files) in jih pri vsakem oglasu izberi iz knjižnice (išči po SKU), dodaj še logo.' +
+  if (p.nova_kampanja) h += '<div class="msg ok">➕ Nova kampanja <b>' + esc(p.nova_kampanja.ime) + '</b> (kopija »' + esc(p.nova_kampanja.vir) + '«) · proračun ' + esc(p.nova_kampanja.budget) + ' / dan · Target CPA ' + esc(p.nova_kampanja.tcpa) + ' · ' + (stUvoz() === 'Enabled' ? 'online' : 'Paused') + '</div>';
+  h += '<div class="msg warn">⚠ Uvoz v Editor je lokalen, dokler ne klikneš <b>Post</b>. V pregledu uvoza morajo biti samo <b>Added</b>, nobenega <b>Updated</b>. Status ob uvozu: <b>' + (stUvoz() === 'Enabled' ? 'online (Enabled) — po Post takoj aktivni' : 'Paused') + '</b>. Slike Editor iz CSV ne pripne: uvozi mapo <b>images</b> (Import image assets from files) in jih pri vsakem oglasu izberi iz knjižnice (išči po SKU), dodaj še logo.' +
     (PAK.kampanja_najdena ? '' : ' <b>Kampanja ni več v nastavitvah — naloži izvoz znova.</b>') + '</div>';
   h += post.map((x, i) => {
     if (x.status === 'caka') return '<div class="oglas"><b>' + esc(x.sku) + '</b> <span class="pill p-inf">⏳ pripravljam</span></div>';
@@ -253,7 +254,7 @@ async function shraniVMapo() {
   await naloziPaket(p.id);
   const nap = PAK.paket.postavke.filter(x => x.status === 'ok' && x.vkljuci !== false && (x.napake || []).length);
   if (nap.length && !confirm(nap.length + ' oglasov ima napake in NE bodo shranjeni (' + nap.map(x => x.sku).join(', ') + '). Nadaljujem?')) return;
-  const r = await fetch('/gads-dg/api/izvoz/' + encodeURIComponent(p.id), { credentials: 'include' });
+  const r = await fetch('/gads-dg/api/izvoz/' + encodeURIComponent(p.id) + '?status=' + stUvoz(), { credentials: 'include' });
   if (!r.ok) { let e = ''; try { e = (await r.json()).error; } catch (x) {} msg('msg', esc(e || 'Izvoz ni uspel.'), 'err'); return; }
   const zip = await JSZip.loadAsync(await r.blob());
   const trgMapa = (PAK.business_name || ('Maaarket.' + p.trg)).replace(/[\\/:*?"<>|]/g, '_');
@@ -267,8 +268,10 @@ async function shraniVMapo() {
       await zapisi(MAPA, cilj, await f.async('uint8array')); n++;
     }
   } catch (e) { msg('msg', 'Zapis v mapo ni uspel: ' + esc(e.message || e) + ' — poskusi znova ali uporabi ⬇ ZIP.', 'err'); return; }
+  await nalozi();   // nova kampanja / nove skupine so zdaj v seznamu trga (izbrana)
   msg('msg', '✓ Shranjeno ' + n + ' datotek v 📁 ' + esc(MAPA.name) + '\\' + esc(trgMapa) + ' — v Editorju uvozi ' + esc(ime['ads.csv']) + ', slike pa iz map po SKU.', 'ok');
 }
+function stUvoz() { return LS.get('gdg_status') === 'Paused' ? 'Paused' : 'Enabled'; }
 async function izvozi() {
   const p = PAK.paket;
   const sprem = p.postavke.filter(x => x._sprem).map(x => ({ sku: x.sku, ad_group: x.ad_group, ad_name: x.ad_name, naslovi: x.naslovi, opisi: x.opisi, vkljuci: x.vkljuci !== false }));
@@ -276,7 +279,8 @@ async function izvozi() {
   await naloziPaket(p.id);
   const nap = PAK.paket.postavke.filter(x => x.status === 'ok' && x.vkljuci !== false && (x.napake || []).length);
   if (nap.length && !confirm(nap.length + ' oglasov ima napake in NE bodo v izvozu (' + nap.map(x => x.sku).join(', ') + '). Nadaljujem?')) return;
-  location.href = '/gads-dg/api/izvoz/' + encodeURIComponent(p.id);
+  location.href = '/gads-dg/api/izvoz/' + encodeURIComponent(p.id) + '?status=' + stUvoz();
+  setTimeout(nalozi, 2500);   // nova kampanja / nove skupine so zdaj v seznamu trga
 }
 mapaNalozi().then(nalozi).then(() => { const id = LS.get('gdg_pak'); if (id) naloziPaket(id); });
 </script>

@@ -303,15 +303,16 @@ def vklopi(G: dict):
     def validiraj(p, nast):
         kamp_t = nast.get("trgi", {}).get(p["trg"], {}).get("kampanje", {})
         kinfo = kamp_t.get(p.get("vir_kampanja") or p["kampanja"]) or {}
-        if p.get("nova_kampanja"):   # nova kampanja: brez obstoječih skupin; ime ne sme obstajati
+        if p.get("nova_kampanja"):   # nova kampanja: brez obstoječih skupin; ime ne sme obstajati (razen če jo je ustvaril ta paket)
             obst_ag, obst_sku = set(), set()
-            if p["kampanja"] in kamp_t:
+            if p["kampanja"] in kamp_t and kamp_t[p["kampanja"]].get("iz_paketa") != p["id"]:
                 for x in p["postavke"]:
                     if "kampanja s tem imenom že obstaja" not in (x.get("napake") or []):
                         x.setdefault("napake", []).append("kampanja s tem imenom že obstaja")
         else:
-            obst_ag = {x.lower() for x in kinfo.get("ad_groups") or []}
-            obst_sku = set(kinfo.get("skuji") or [])
+            agp = kinfo.get("ag_paket") or {}   # skupine, ki jih je izvozil TA paket, niso dvojniki
+            obst_ag = {x.lower() for x in kinfo.get("ad_groups") or [] if agp.get(x.lower()) != p["id"]}
+            obst_sku = {s_ for s_ in (kinfo.get("skuji") or []) if not any(v == p["id"] and ("sku: " + s_.lower()) in a for a, v in agp.items())}
         bn = kinfo.get("business_name") or ("Maaarket." + {"sl": "si"}.get(p["trg"], p["trg"]))
         vidjena = set()
         for x in p["postavke"]:
@@ -391,9 +392,11 @@ def vklopi(G: dict):
         return FileResponse(str(f), media_type="image/jpeg")
 
     @app.get("/gads-dg/api/izvoz/{pid}")
-    async def dg_izvoz(request: Request, pid: str):
+    async def dg_izvoz(request: Request, pid: str, status: str = "Enabled"):
+        """status = Enabled (privzeto — vse pregledaš v Subanu) ali Paused, velja za novo kampanjo, skupine in oglase."""
         if not prijava(request):
             return ni()
+        ST = "Paused" if str(status).lower().startswith("pause") else "Enabled"
         p = next((x for x in pak_load()["paketi"] if x["id"] == pid), None)
         if not p:
             return JSONResponse({"ok": False, "error": "Paketa ni."}, status_code=404)
@@ -410,10 +413,10 @@ def vklopi(G: dict):
             for x in ("ID", "Approval Status", "Ad strength", "Comment", "Labels"):
                 kv.pop(x, None)
             kv.update({"Campaign": nk["ime"], "Budget": f"{nk['budget']:.2f}", "Target CPA": f"{nk['tcpa']:.2f}",
-                       "Campaign Status": "Paused", "Start Date": _lj_iso()[:10]})
+                       "Campaign Status": ST, "Start Date": _lj_iso()[:10]})
             k_vr = [kv]
             for lv in kinfo.get("lokacije") or []:
-                lv = dict(lv); lv.update({"Campaign": nk["ime"], "Campaign Status": "Paused"}); lok.append(lv)
+                lv = dict(lv); lv.update({"Campaign": nk["ime"], "Campaign Status": ST}); lok.append(lv)
         stolpci = []
         for r_ in k_vr + lok:
             stolpci += [c for c in r_ if c not in stolpci]
@@ -425,10 +428,10 @@ def vklopi(G: dict):
             w.writerow(r_)
         for x in izb:   # vrstica A: nova oglasna skupina · vrstica B: nov oglas — oboje Paused, nobenega stolpca kampanje ali ID
             w.writerow({"Campaign": p["kampanja"], "Ad Group": x["ad_group"], "Ad Group Type": "Standard", "Channels": "All Google channels",
-                        "Optimized targeting": "Enabled", "Ad Group Status": "Paused"})
+                        "Optimized targeting": "Enabled", "Ad Group Status": ST})
             r = {"Campaign": p["kampanja"], "Ad Group": x["ad_group"], "Ad type": "Demand Gen image ad", "Ad Name": x.get("ad_name") or x["ad_group"],
                  "Business name": bn[:DG_MAX["business"]], "Video generation": "Disabled", "Adaptive layouts": "Enabled",
-                 "Final URL": x["url"], "Ad Group Status": "Paused", "Status": "Paused"}
+                 "Final URL": x["url"], "Ad Group Status": ST, "Status": ST}
             for i, s in enumerate([s for s in x.get("naslovi") or [] if s.strip()][:5]):
                 r[f"Headline {i + 1}"] = s
             for i, s in enumerate([s for s in x.get("opisi") or [] if s.strip()][:5]):
@@ -451,12 +454,33 @@ def vklopi(G: dict):
             z.writestr("manifest.csv", "﻿" + man.getvalue())
             z.writestr("validation_report.csv", "﻿" + rep.getvalue())
             z.writestr("NAVODILA.txt", ("" 
-                + ("0) NOVA KAMPANJA »" + nk["ime"] + "« (Paused) — v pregledu uvoza mora biti Campaign: Added 1, nobena Updated.\n" if nk else "") +
+                + ("0) NOVA KAMPANJA »" + nk["ime"] + "« (" + ST + ") — v pregledu uvoza mora biti Campaign: Added 1, nobena Updated.\n" if nk else "") +
                 "1) Google Ads Editor: Get recent changes.\n"
                 "2) Account > Import > From file > ads.csv  (pregled mora pokazati samo ADDED, nobenega UPDATED).\n"
                 "3) Account > Import > Import image assets from files > mapa images (slike gredo v knjižnico).\n"
                 "4) Pri vsakem oglasu: Images > izberi iz knjižnice (išči po SKU) + Logos > logo Maaarket.\n"
-                "5) Preveri vse spremembe, šele nato Post. Vsi oglasi in skupine so Paused.\n").encode("utf-8"))
+                "5) Preveri vse spremembe, šele nato Post. Status ob uvozu: " + ST + (" — po Post so takoj aktivni.\n" if ST == "Enabled" else ".\n")).encode("utf-8"))
+        async with lock:
+            d = _jload(NAST_FILE, {}) or {}
+            tt = d.setdefault("trgi", {}).setdefault(p["trg"], {"racun": "", "kampanje": {}, "izbrana": ""})
+            k = tt["kampanje"].get(p["kampanja"])
+            if k is None and nk:   # nova kampanja → v seznam trga (kopija izvorne; ime, proračun, CPA)
+                k = json.loads(json.dumps(kinfo or {}))
+                k.update({"ime": nk["ime"], "ad_groups": [], "skuji": [], "iz_suban": True, "iz_paketa": pid, "uvoz_at": _lj_iso()})
+                kv = k.get("kamp_vrstica") or {}
+                kv.update({"Campaign": nk["ime"], "Budget": f"{nk['budget']:.2f}", "Target CPA": f"{nk['tcpa']:.2f}"})
+                k["kamp_vrstica"] = kv
+                k["lokacije"] = [dict(l, Campaign=nk["ime"]) for l in (k.get("lokacije") or [])]
+                tt["kampanje"][nk["ime"]] = k
+            if k is not None:
+                for x in izb:
+                    k.setdefault("ag_paket", {})[x["ad_group"].lower()] = pid
+                    if x["ad_group"] not in k.setdefault("ad_groups", []):
+                        k["ad_groups"].append(x["ad_group"])
+                    if x["sku"] not in k.setdefault("skuji", []):
+                        k["skuji"].append(x["sku"])
+                tt["izbrana"] = p["kampanja"]
+                _jsave(NAST_FILE, d)
         ime = f"suban_demandgen_{p['trg'].upper()}_{p['at'][:10]}.zip"
         zb.seek(0)
         return StreamingResponse(zb, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{ime}"'})
