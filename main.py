@@ -36492,7 +36492,7 @@ def _nl_vrstica_cene(r: dict) -> dict:
     return out
 
 
-async def _nl_flare(ref_url: str, prompt: str) -> tuple:
+async def _nl_flare(ref_url: str, prompt: str, zgoraj: float = 0.5) -> tuple:
     """Referenčna slika → GPT Image 2.5 Flare (1024×1536 → sredinski obrez na 3:4 = 1024×1365, mobilnik) → (jpeg bytes, napaka)."""
     key = os.environ.get("OPENAI_API_KEY", "")
     if not key:
@@ -36527,7 +36527,7 @@ async def _nl_flare(ref_url: str, prompt: str) -> tuple:
             w, h = im.size
             nh = round(w * 4 / 3)
             if h > nh:
-                top = (h - nh) // 2
+                top = int((h - nh) * zgoraj)   # 0.5 = sredina; slike z besedilom 0.3 (naslov zgoraj ostane cel)
                 im = im.crop((0, top, w, top + nh))
                 buf = _io.BytesIO(); im.save(buf, "JPEG", quality=90); raw = buf.getvalue()
         except Exception as e:
@@ -36977,6 +36977,7 @@ async def _nl_tekst_slike(nid: str, trgi: list):
                 continue
             iz["slika_tekst_url"], iz["slika_tekst_napaka"] = url, (None if url else nap)
             if url:
+                iz["slika_tekst_za"] = [iz.get("slika_naslov"), iz.get("slika_znacka")]
                 iz["vrednosti"]["HERO_SLIKA"] = url
                 p = d["predloge"].get(iz.get("predloga") or "")
                 if p:
@@ -37196,6 +37197,12 @@ async def mailchimp_nl_uredi(request: Request):
                 t[k] = _nl_zadeva(b[k], "\u2728" if k == "zadeva" else "\U0001F440")
         if "preheader" in b:
             t["preheader"] = _nl_brez_emoji(b["preheader"])
+        if "slika_naslov" in b:
+            t["slika_naslov"] = _nl_brez_emoji(b["slika_naslov"])[:120]
+        if "slika_znacka" in b:
+            t["slika_znacka"] = _nl_brez_emoji(b["slika_znacka"])[:40]
+            if not re.fullmatch(r"-?\s*\d+\s*%", t["slika_znacka"]):
+                t["slika_korist"] = t["slika_znacka"]
         for k in NL_BESEDILNA:
             if k in (b.get("polja") or {}):
                 t["vrednosti"][k] = _nl_brez_emoji(b["polja"][k])
@@ -37204,6 +37211,85 @@ async def mailchimp_nl_uredi(request: Request):
             t["html"] = _nl_sestavi(p, t["vrednosti"])
         _jsave(NL_FILE, d)
     return {"ok": True, "html": t["html"]}
+
+
+async def _nl_prevedi_iz_matice(nid: str):
+    """SLO matica (trenutna, z ročnimi popravki) → zvest prevod v vse ostale trge, ki še niso v Mailchimpu.
+    Posodobi zadeve, preheader, besedilna polja, imena izpostavitev, naslov/korist na sliki; slike z besedilom nariše znova."""
+    try:
+        d = _nl_load()
+        n = d["newsletterji"][nid]
+        iz_sl = (n.get("trgi_izid") or {}).get("sl") or {}
+        vr_sl = iz_sl.get("vrednosti") or {}
+        imena = {str(s_).upper(): vr_sl.get(f"IZP{i}_NAZIV", "") for i, s_ in enumerate(iz_sl.get("izpostavitve") or [], 1) if vr_sl.get(f"IZP{i}_NAZIV")}
+        matica = {"zadeva": iz_sl.get("zadeva", ""), "zadeva_ponovno": iz_sl.get("zadeva_ponovno", ""), "preheader": iz_sl.get("preheader", ""),
+                  "slika_naslov": iz_sl.get("slika_naslov", ""), "slika_znacka": iz_sl.get("slika_korist") or iz_sl.get("slika_znacka", ""),
+                  **{k: vr_sl.get(k, "") for k in NL_BESEDILNA if vr_sl.get(k)}}
+        if imena:
+            matica["IZP_IMENA"] = imena
+        drugi = [t for t, iz in (n.get("trgi_izid") or {}).items() if t != "sl" and not iz.get("napaka") and not iz.get("campaign_id")]
+        if not drugi:
+            raise RuntimeError("Ni trgov za prevod (vsi so že v Mailchimpu ali imajo napako).")
+        raw = await call_claude(NL_PREVOD_PROMPT.format(
+            znamka=n["znamka"], jeziki=", ".join(f"{t} = {NL_JEZIKI[t]}" for t in drugi),
+            matica=json.dumps(matica, ensure_ascii=False, indent=1), trgi=", ".join(drugi)), "claude-sonnet-4-6", None, 16000)
+        prev = _nl_json(raw) or {}
+        nove_slike = []
+        async with _nl_lock:
+            d = _nl_load(strict=True)
+            n = d["newsletterji"][nid]
+            for t in drugi:
+                b = prev.get(t) or {}
+                if not isinstance(b, dict) or not b.get("zadeva"):
+                    continue
+                iz = n["trgi_izid"][t]
+                p = d["predloge"].get(iz.get("predloga") or "")
+                iz["zadeva"] = _nl_zadeva(b.get("zadeva"))
+                iz["zadeva_ponovno"] = _nl_zadeva(b.get("zadeva_ponovno"), "\U0001F440")
+                iz["preheader"] = _nl_brez_emoji(b.get("preheader", ""))
+                for k in NL_BESEDILNA:
+                    if isinstance(b.get(k), str) and b.get(k):
+                        iz["vrednosti"][k] = _nl_brez_emoji(b[k])
+                im = {str(k).upper(): _nl_lepo_ime(v) for k, v in (b.get("IZP_IMENA") or {}).items()} if isinstance(b.get("IZP_IMENA"), dict) else {}
+                for i, s_ in enumerate(iz.get("izpostavitve") or [], 1):
+                    if im.get(str(s_).upper()):
+                        iz["vrednosti"][f"IZP{i}_NAZIV"] = im[str(s_).upper()]
+                star = (iz.get("slika_naslov"), iz.get("slika_znacka"))
+                iz["slika_naslov"] = _nl_brez_emoji(b.get("slika_naslov", "")) or iz.get("slika_naslov", "")
+                iz["slika_korist"] = _nl_brez_emoji(b.get("slika_znacka", "")) or iz.get("slika_korist", "")
+                iz["slika_znacka"] = _nl_znacka(t, iz.get("cene_feed"), n.get("cena_nacin") or "polna", iz["slika_korist"])
+                if iz.get("slika_tekst_url") and (iz["slika_naslov"], iz["slika_znacka"]) != star:
+                    nove_slike.append(t)
+                if p:
+                    iz["html"] = _nl_sestavi(p, iz["vrednosti"])
+            n["prevedeno_at"] = _lj_iso()
+            _jsave(NL_FILE, d)
+        # matica: nova slika, če se naslov/značka razlikujeta od tistih, s katerima je bila narisana
+        iz_sl = (_nl_load()["newsletterji"][nid].get("trgi_izid") or {}).get("sl") or {}
+        if iz_sl.get("slika_tekst_url") and not iz_sl.get("campaign_id") and iz_sl.get("slika_tekst_za") != [iz_sl.get("slika_naslov"), iz_sl.get("slika_znacka")]:
+            nove_slike.append("sl")
+        if nove_slike:
+            await _nl_tekst_slike(nid, nove_slike)
+        await _nl_set(nid, status="pripravljen", korak="")
+    except Exception as e:
+        print(f"[newsletter] prevod iz matice {nid}: {e}")
+        await _nl_set(nid, status="pripravljen", korak="", prevod_napaka=str(e)[:300])
+
+
+@app.post("/mailchimp/nl-prevedi")
+async def mailchimp_nl_prevedi(request: Request):
+    b = await request.json()
+    async with _nl_lock:
+        d = _nl_load(strict=True)
+        n = d["newsletterji"].get(str(b.get("id")))
+        if not n or n.get("status") != "pripravljen":
+            return {"ok": False, "error": "Newsletter ni pripravljen."}
+        if "sl" not in (n.get("trgi_izid") or {}) or (n["trgi_izid"]["sl"] or {}).get("napaka"):
+            return {"ok": False, "error": "Matica (SI) ni v tem newsletterju."}
+        n.update(status="dela", korak="prevodi", prevod_napaka=None)
+        _jsave(NL_FILE, d)
+    asyncio.create_task(_nl_prevedi_iz_matice(n["id"]))
+    return {"ok": True}
 
 
 @app.post("/mailchimp/nl-znova-slika")

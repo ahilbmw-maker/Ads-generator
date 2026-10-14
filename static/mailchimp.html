@@ -588,7 +588,12 @@ async function nlOdpri(id) {
           <div class="sub" style="margin-top:6px">${t.slika_tekst_url ? '✓ Slika ima besedilo.' : 'Slika je zdaj brez besedila.'} Preveri črkovanje v predogledu — AI lahko zamenja kakšno črko; po potrebi klikni znova.</div>
         </div>
         <div class="sub" style="margin-top:6px">Izpostavitve: ${(t.izpostavitve || []).map(esc).join(', ') || '—'}</div>
-        <div style="margin-top:10px"><button class="btn" ${t.campaign_id ? 'disabled' : ''} onclick="nlShrani()">💾 Shrani popravke</button></div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn" ${t.campaign_id ? 'disabled' : ''} onclick="nlShrani()">💾 Shrani popravke</button>
+          ${NL_TRG === 'sl' && trgi.length > 1 ? `<button class="btn pri" onclick="nlPrevedi()" title="Shrani SLO popravke in jih zvesto prevedi v vse ostale trge (ki še niso v Mailchimpu)">🌐 Prevedi matico v vse trge</button>` : ''}
+        </div>
+        ${NL.prevod_napaka ? `<div class="msg err" style="margin-top:8px">Prevod: ${esc(NL.prevod_napaka)}</div>` : ''}
+        ${NL_TRG !== 'sl' && iz.sl && !iz.sl.napaka ? `<div class="sub" style="margin-top:6px">Besedila popravljaj v matici (SI) in klikni »🌐 Prevedi matico v vse trge«.${NL.prevedeno_at ? ' Zadnji prevod: ' + fmtCas(NL.prevedeno_at) : ''}</div>` : ''}
       </div>
       <div><iframe class="prev" id="ePrev" sandbox=""></iframe></div>
     </div>`}
@@ -613,6 +618,16 @@ async function nlOdpri(id) {
 }
 function zDolz() {
   [['eZadeva', 'zl1'], ['eZadeva2', 'zl2']].forEach(([i, l]) => { const e = document.getElementById(i); if (e) document.getElementById(l).textContent = `(${e.value.length} znakov${e.value.length > 60 ? ' — predolgo za mobilnik' : ''})`; });
+}
+async function nlPrevedi() {
+  const polja = {}; document.querySelectorAll('#nlDetajl [data-p]').forEach(e => polja[e.dataset.p] = e.value);
+  const s1 = await api('/mailchimp/nl-uredi', {id: NL.id, trg: 'sl', zadeva: document.getElementById('eZadeva').value,
+    zadeva_ponovno: document.getElementById('eZadeva2').value, preheader: document.getElementById('ePre').value, polja,
+    ...(document.getElementById('eSlNaslov') ? {slika_naslov: document.getElementById('eSlNaslov').value, slika_znacka: (document.getElementById('eSlZnacka') || {}).value || ''} : {})});
+  if (!s1.ok) { sporoci(s1.error); return; }
+  const j = await api('/mailchimp/nl-prevedi', {id: NL.id});
+  if (!j.ok) { sporoci(j.error); return; }
+  nlOdpri(NL.id);
 }
 async function nlShrani() {
   const polja = {}; document.querySelectorAll('#nlDetajl [data-p]').forEach(e => polja[e.dataset.p] = e.value);
