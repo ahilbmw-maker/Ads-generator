@@ -36266,11 +36266,22 @@ def _nl_load(strict=False) -> dict:
 _NL_EMOJI_ZAP = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF]\uFE0F?(?:\u200D[\U0001F000-\U0001FAFF\u2600-\u27BF]\uFE0F?)*")
 
 
+# Varni emojiji za zadevo: stari (Unicode do 10), en znak, privzeto barvni — povsod prikazani (Outlook, starejši Windows/Android).
+# Novejši (npr. nagrobnik) so kvadratek, nekateri (pisalo, sveča, snežinka, sonce) se brez FE0F izrišejo črno-belo → zamenjani z rezervo.
+NL_VARNI_EMOJI = ("✨🔥⭐✅💡🎁👉👀💥⚡🌟🛒💰💯"
+                  "👍🙌😍😊🤩🎉🏡🏠🌿🌱🍀🌸🌹"
+                  "🌷🌺💐🍂🎄🌞☕💪💚💙💜💛🔔"
+                  "📣💎🏆🎯⏰📦🚚🔧🔨🎈👌🐾🍳"
+                  "😎🙂")
+
+
 def _nl_zadeva(s, rezerva: str = "\u2728") -> str:
-    """Zadeva: točno EN emoji na začetku (prvi, ki ga je napisal AI/uporabnik, sicer rezerva) + besedilo brez emojijev."""
+    """Zadeva: točno EN varen emoji na začetku (prvi, ki ga je napisal AI/uporabnik, če je v NL_VARNI_EMOJI, sicer rezerva)
+    + besedilo brez emojijev."""
     m = _NL_EMOJI_ZAP.search(str(s or ""))
+    e = m.group(0).replace("\uFE0F", "") if m else ""
     txt = _nl_brez_emoji(s)
-    return f"{m.group(0) if m else rezerva} {txt}" if txt else ""
+    return f"{e if len(e) == 1 and e in NL_VARNI_EMOJI else rezerva} {txt}" if txt else ""
 
 
 def _nl_zadeva_tekst(s) -> str:
@@ -36586,7 +36597,8 @@ async def _nl_flare_hero(ref_url: str, naziv: str, navodilo: str, koncept_prompt
         return await _nl_flare(ref_url, (
             koncept_prompt.strip() + " "
             f"The product ({naziv}) must be IDENTICAL to the reference image: same shape, colors, proportions, materials and details — never alter or replace it. "
-            "Photorealistic, vertical portrait 3:4 (mobile-first), calm low-detail area in the top 25% for a headline added later. "
+            "Photorealistic, vertical portrait 3:4 (mobile-first), calm low-detail area in the top 25% for a headline added later; "
+            "keep the product and all important details within the central area — at least 12% away from the top and bottom edges (the image is cropped). "
             "NO overlay text, labels, arrows, logos, watermarks, badges or prices."
             + (f" Additional direction: {navodilo}" if navodilo else "")))
     return await _nl_flare(ref_url, (
@@ -36608,9 +36620,11 @@ async def _nl_flare_tekst(base_url: str, naslov: str, znacka: str, jezik: str, b
         + (f"2) BADGE (small rounded label or sticker, contrasting color{(' ' + barva) if barva else ''}): \"{znacka}\"\n" if znacka else "")
         + f"Language: {jezik}. Spell the text EXACTLY as given, character by character, with all diacritics / alphabet as written — "
         "no translation, no extra words, no other text, no logos, no prices unless they are in the given text. "
-        "Place the headline in the calmest area (usually the top), never covering the product; high contrast and readable on a phone "
-        "(add a subtle gradient or shadow behind the text if needed). Keep ALL text at least 12% away from the top and bottom edges "
-        "and 6% from the sides (the image will be cropped). Vertical portrait format."))
+        "Place the headline in the calmest area (usually the upper part), never covering the product; high contrast and readable on a phone "
+        "(add a subtle gradient or shadow behind the text if needed). "
+        "SAFE MARGINS (strict — the image is cropped afterwards): in the 1024×1536 output the TOP of the headline must start at least "
+        "200 px below the top edge (≈13%), all text at least 80 px from the left and right edges, and the product plus all text must end "
+        "at least 160 px above the bottom edge. Leave visible background above the headline. Vertical portrait format."), zgoraj=0.3)
 
 
 async def _nl_nalozi_sliko(data: bytes, ime: str) -> tuple:
@@ -36631,7 +36645,7 @@ Predloga ima ta besedilna polja (vzorec = besedilo iz prejšnjega newsletterja; 
 {polja}
 
 Napiši v SLOVENŠČINI (matica — drugi trgi dobijo zvest prevod tega besedila):
-- zadeva: zadeva e-maila, največ 55 znakov, konkretna korist ali radovednost, brez clickbaita; ZAČNE se z ENIM primernim emojijem in presledkom
+- zadeva: zadeva e-maila, največ 55 znakov, konkretna korist ali radovednost, brez clickbaita; ZAČNE se z ENIM primernim emojijem in presledkom — emoji IZKLJUČNO iz tega seznama (drugi se ne prikažejo povsod): {varni_emoji}
 - zadeva_ponovno: DRUGAČNA zadeva za ponovno pošiljanje tistim, ki prvega niso odprli (drug kot: korist, problem, ki ga reši, ali omejena zaloga — brez lažne nujnosti), največ 55 znakov; ZAČNE se z ENIM DRUGAČNIM emojijem kot zadeva
 - preheader: največ 90 znakov, dopolni zadevo
 - slika_naslov: SUPER PRODAJNI naslov, ki bo napisan NA SLIKI (2–6 besed, udarno, korist ali čustvo, brez cene)
@@ -36874,7 +36888,7 @@ async def _nl_obdelaj(nid: str):
             cene=f"SI: {cena_sl}" if "sl" in cene else cena_sl,
             navodilo=("NAVODILO: " + n["navodilo"]) if n.get("navodilo") else "",
             polja="\n".join(f'- {k}: vzorec "{v[:200]}"' for k, v in polja_txt.items()) or "- NASLOV, BESEDILO, GUMB",
-            zaupanje=NL_ZAUPANJE,
+            zaupanje=NL_ZAUPANJE, varni_emoji=" ".join(NL_VARNI_EMOJI),
             izp_seznam="; ".join(f"{s_}: {(_nl_najdi(sl_rows, s_) or {}).get('naziv', '')}" for s_ in kandidati[:8]) or "(ni)"), "claude-sonnet-4-6", None, 8000)
         matica = {k: v for k, v in (_nl_json(raw) or {}).items() if isinstance(v, str) or (k == "IZP_IMENA" and isinstance(v, dict))}
         if not matica.get("zadeva"):
