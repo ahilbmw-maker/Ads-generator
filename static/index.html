@@ -1086,7 +1086,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-14 09:36</div>
+      <div class="sidebar-logo-sub">build 2026-10-14 09:40</div>
     </div>
   </div>
 
@@ -3554,7 +3554,8 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div>
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-              <span class="slabel" style="margin:0" id="o14TableTitle">OBRAT IZDELKOV (0)</span>
+              <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="slabel" style="margin:0" id="o14TableTitle">OBRAT IZDELKOV (0)</span>
+                <span id="o14SelBar" style="display:none;align-items:center;gap:6px"><button onclick="o14SelKopiraj(this)" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📋 Kopiraj izbrane SKU (<span id="o14SelN">0</span>)</button><button onclick="o14Sel.clear();o14RenderTable()" title="Počisti izbor" style="padding:6px 10px;background:none;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;cursor:pointer;color:var(--text-secondary)">✕</button></span></span>
               <input type="text" id="o14Search" placeholder="🔍 Išči SKU ali naziv..." oninput="window._o14Page = 1; o14RenderTable()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;width:240px">
             </div>
             <div id="o14Table" style="display:flex;flex-direction:column;gap:6px;overflow-x:auto"></div>
@@ -19102,6 +19103,26 @@ function bookmarkBtnHtml(tabKey, sku, rerenderName) {
 // (samodejni skrol do zaznamka odstranjen na željo — zaznamek je le vizualni poudarek)
 function bookmarkScrollTo(tabKey) { /* no-op */ }
 
+// ☑ IZBOR SKU-jev (Obrat 7 dni FB — tabela Obrat izdelkov) → »📋 Kopiraj izbrane SKU« (vsak v svojo vrstico); Shift = razpon
+const o14Sel = new Set(); let o14SelZadnji = -1;
+function o14SelKlik(e, cb) {
+  e.stopPropagation();
+  const vrst = window._o14Vis || [], sku = cb.dataset.o14sel, i = vrst.indexOf(sku);
+  if (e.shiftKey && o14SelZadnji >= 0 && i >= 0) { const [a, b] = o14SelZadnji < i ? [o14SelZadnji, i] : [i, o14SelZadnji]; vrst.slice(a, b + 1).forEach(k => cb.checked ? o14Sel.add(k) : o14Sel.delete(k)); }
+  else cb.checked ? o14Sel.add(sku) : o14Sel.delete(sku);
+  o14SelZadnji = i; o14RenderTable();
+}
+function o14SelVse(on) { (window._o14Vis || []).forEach(k => on ? o14Sel.add(k) : o14Sel.delete(k)); o14RenderTable(); }
+function o14SelBar() {
+  const b = document.getElementById('o14SelBar'); if (!b) return;
+  b.style.display = o14Sel.size ? 'inline-flex' : 'none';
+  const n = document.getElementById('o14SelN'); if (n) n.textContent = o14Sel.size;
+}
+async function o14SelKopiraj(btn) {
+  const t = [...o14Sel].join('\n');
+  try { await navigator.clipboard.writeText(t); } catch (e) { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); }
+  const o = btn.innerHTML; btn.innerHTML = '✓ Kopirano ' + o14Sel.size + ' SKU'; setTimeout(() => { btn.innerHTML = o; }, 1500);
+}
 function o14RenderTable() {
   const search = (document.getElementById('o14Search')?.value || '').toLowerCase().trim();
   let filtered = [...o14Items];
@@ -19193,6 +19214,7 @@ function o14RenderTable() {
   const pageItems = filtered.slice(pageStart, pageEnd);
 
   document.getElementById('o14TableTitle').textContent = 'OBRAT IZDELKOV (' + filtered.length + ')';
+  window._o14Vis = filtered.map(r => r.sku); o14SelBar();   // ☑ izbor: vsi filtrirani, Shift = razpon
   const table = document.getElementById('o14Table');
   const empty = document.getElementById('o14Empty');
 
@@ -19253,7 +19275,7 @@ function o14RenderTable() {
 
   html += '<div style="display:grid;grid-template-columns:24px ' + cols + ';gap:10px;padding:12px 14px;background:var(--bg-secondary);border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.4px;user-select:none">' +
     '<span title="Zaznamek tukaj sem ostal">🚩</span>' +
-    '<span style="cursor:pointer" onclick="o14SortBy(\'sku\')">SKU' + sortInd('sku') + '</span>' +
+    '<span style="display:flex;align-items:center;gap:6px"><input type="checkbox" title="Izberi vse (filtrirane)" onclick="event.stopPropagation();o14SelVse(this.checked)"' + (filtered.length && filtered.every(r => o14Sel.has(r.sku)) ? ' checked' : '') + ' style="cursor:pointer;width:14px;height:14px"><span style="cursor:pointer" onclick="o14SortBy(\'sku\')">SKU' + sortInd('sku') + '</span></span>' +
     '<span style="cursor:pointer" onclick="o14SortBy(\'naziv\')">Naziv' + sortInd('naziv') + '</span>' +
     '<span style="text-align:center;cursor:pointer" onclick="o14SortBy(\'kolicina\')">Obrat' + sortInd('kolicina') + '</span>' +
     visibleAccounts.map(a => '<span style="text-align:center;cursor:pointer;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#185FA5;border-radius:3px;padding:4px 2px;color:#fff;font-weight:600" onclick="o14SortBy(\'acc:' + esc(a).replace(/\\/g, '\\\\').replace(/\'/g, "\\\'") + '\')" title="' + esc(a) + '">' + esc(ACC_SHORT[a] || a) + sortIndAcc('acc:' + a) + '</span>').join('') +
@@ -19290,7 +19312,7 @@ function o14RenderTable() {
 
       return '<div' + bmAttr + ' style="display:grid;grid-template-columns:24px ' + cols + ';gap:10px;align-items:center;padding:11px 14px;background:' + bg + ';border:' + bmBorder + ';border-radius:var(--radius);font-size:13px">' +
         bookmarkBtnHtml(bmKey, r.sku, 'o14RenderTable') +
-        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.sku) + (bmarked ? ' <span style="font-size:9px;color:#EF9F27;font-weight:700">← TU SEM OSTAL' + (bmKey !== 'obrat14' ? ' (' + esc(bmKey.replace('obrat14::','')) + ')' : '') + '</span>' : '') + '</div>' +
+        '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px"><input type="checkbox" data-o14sel="' + esc(r.sku) + '"' + (o14Sel.has(r.sku) ? ' checked' : '') + ' onclick="o14SelKlik(event,this)" style="cursor:pointer;width:14px;height:14px;flex:none">' + esc(r.sku) + (bmarked ? ' <span style="font-size:9px;color:#EF9F27;font-weight:700">← TU SEM OSTAL' + (bmKey !== 'obrat14' ? ' (' + esc(bmKey.replace('obrat14::','')) + ')' : '') + '</span>' : '') + '</div>' +
         '<div style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.naziv) + '">' + esc(r.naziv) + '</div>' +
         '<div style="text-align:center;font-weight:600;color:var(--text)">' + r.kolicina + '</div>' +
         accCells +
