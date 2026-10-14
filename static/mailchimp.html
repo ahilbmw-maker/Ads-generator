@@ -105,6 +105,7 @@
           <select class="f" id="sSlika"><option value="flare">🎨 Nova slika — Flare 2.5 (lifestyle, brez besedila)</option><option value="feed">🖼 Slika iz trgovine</option></select>
           <label class="l">Navodilo za sliko <span class="muted">(neobvezno)</span></label>
           <input class="f" id="sNavSlika" placeholder="npr. zimski dnevni prostor, topla svetloba">
+          <label class="l"><input type="checkbox" id="sTekst" checked> Prodajno besedilo na sliki — vsak trg v svojem jeziku <span class="muted">(Flare, 1 slika na trg)</span></label>
           <label class="l">Navodilo za besedilo <span class="muted">(neobvezno)</span></label>
           <textarea class="f" id="sNav" rows="3" style="font-family:inherit" placeholder="npr. poudari darilo za božič, popust velja do nedelje"></textarea>
           <div style="margin-top:12px"><button class="btn pri" id="sBtn" onclick="nlUstvari()">✨ Pripravi newsletter</button></div>
@@ -507,7 +508,7 @@ async function nlUstvari() {
   if (!sku || !znamka || !trgi.length) { sporoci('Vpiši SKU, izberi znamko in vsaj en trg.'); return; }
   const b = document.getElementById('sBtn'); b.disabled = true;
   const j = await api('/mailchimp/nl-ustvari', {sku, znamka, trgi, izpostavitve: document.getElementById('sIzp').value,
-    slika_vir: document.getElementById('sSlika').value, navodilo_slika: document.getElementById('sNavSlika').value, navodilo: document.getElementById('sNav').value});
+    slika_vir: document.getElementById('sSlika').value, tekst_na_sliki: document.getElementById('sTekst').checked, navodilo_slika: document.getElementById('sNavSlika').value, navodilo: document.getElementById('sNav').value});
   b.disabled = false;
   if (!j.ok) { sporoci(j.error); return; }
   NL_TRG = ''; nlOdpri(j.id); nlSeznam();
@@ -526,7 +527,7 @@ async function nlOdpri(id) {
   if (!j.ok) { el.innerHTML = `<div class="msg err">${esc(j.error)}</div>`; return; }
   NL = j.nl;
   if (NL.status === 'dela') {
-    const k = {'v vrsti': 'v vrsti', feed: 'berem feede', slika: NL.slika_vir === 'flare' ? 'rišem sliko (Flare 2.5, ~1 min)' : 'slika', besedila: 'pišem besedila za vse trge (~1 min)'}[NL.korak] || NL.korak;
+    const k = {'v vrsti': 'v vrsti', feed: 'berem feede', slika: NL.slika_vir === 'flare' ? 'rišem sliko (Flare 2.5, ~1 min)' : 'slika', besedila: 'pišem besedila za vse trge (~1 min)', 'besedilo na slikah': 'pišem besedilo na slike za vsak trg (Flare, ~1–2 min)'}[NL.korak] || NL.korak;
     el.innerHTML = `<b>${esc(NL.sku)}</b><div class="sub" style="margin-top:6px">⏳ ${esc(k)} …</div>`;
     nlTimer = setTimeout(() => nlOdpri(id), 3000); return;
   }
@@ -537,7 +538,7 @@ async function nlOdpri(id) {
   const vPred = NL_POLJA_PRED(t.predloga);
   const polja = ['NASLOV', 'PODNASLOV', 'BESEDILO', 'GUMB', 'IZP_NASLOV', 'IZP_GUMB', 'NOGA', 'ODJAVA'].filter(k => k in vr && vPred.includes(k));
   el.innerHTML = `<div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
-      ${NL.slika_url ? `<img src="${esc(NL.slika_url)}" style="width:180px;border-radius:8px;border:1px solid var(--bd)">` : ''}
+      ${(t.vrednosti || {}).HERO_SLIKA || NL.slika_url ? `<img src="${esc((t.vrednosti || {}).HERO_SLIKA || NL.slika_url)}" style="width:150px;border-radius:8px;border:1px solid var(--bd)">` : ''}
       <div style="flex:1;min-width:220px"><b style="font-size:16px">${esc(NL.sku)}</b> · ${esc(NL.znamka)}
         ${NL.slika_napaka ? `<div class="msg err" style="margin:6px 0">Slika: ${esc(NL.slika_napaka)} — uporabljena slika iz trgovine.</div>` : ''}
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
@@ -553,6 +554,18 @@ async function nlOdpri(id) {
         <label class="l">Zadeva za ponovno (neodprti) <span class="muted" id="zl2"></span></label><input class="f" id="eZadeva2" value="${esc(t.zadeva_ponovno)}" oninput="zDolz()">
         <label class="l">Preheader</label><input class="f" id="ePre" value="${esc(t.preheader)}">
         ${polja.map(k => `<label class="l">${k}</label>${k === 'BESEDILO' || k === 'NOGA' ? `<textarea class="f" rows="4" style="font-family:inherit" data-p="${k}">${esc(vr[k])}</textarea>` : `<input class="f" data-p="${k}" value="${esc(vr[k])}">`}`).join('')}
+        <div style="margin-top:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:10px">
+          <div style="font-weight:700;margin-bottom:2px">🖼 Besedilo na sliki <span class="sub">(${esc(zastava(NL_TRG))}, v jeziku trga)</span></div>
+          ${t.slika_tekst_napaka ? `<div class="msg err" style="margin:6px 0">${esc(t.slika_tekst_napaka)} — slika je brez besedila.</div>` : ''}
+          <label class="l">Naslov na sliki <span class="muted">(2–6 besed)</span></label><input class="f" id="eSlNaslov" value="${esc(t.slika_naslov || '')}">
+          <label class="l">Značka <span class="muted">(npr. -40 %, NOVO; prazno = brez)</span></label><input class="f" id="eSlZnacka" value="${esc(t.slika_znacka || '')}">
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            <button class="btn sm pri" ${t.campaign_id ? 'disabled' : ''} onclick="nlSlTekst(false)">🎨 Napiši na sliko (${esc(zastava(NL_TRG))})</button>
+            <button class="btn sm" ${t.campaign_id ? 'disabled' : ''} onclick="nlSlTekst(true)">🎨 Vsi trgi</button>
+            ${t.slika_tekst_url ? `<button class="btn sm" ${t.campaign_id ? 'disabled' : ''} onclick="nlSlBrez()">✕ Brez besedila</button>` : ''}
+          </div>
+          <div class="sub" style="margin-top:6px">${t.slika_tekst_url ? '✓ Slika ima besedilo.' : 'Slika je zdaj brez besedila.'} Preveri črkovanje v predogledu — AI lahko zamenja kakšno črko; po potrebi klikni znova.</div>
+        </div>
         <div class="sub" style="margin-top:6px">Izpostavitve: ${(t.izpostavitve || []).map(esc).join(', ') || '—'}</div>
         <div style="margin-top:10px"><button class="btn" ${t.campaign_id ? 'disabled' : ''} onclick="nlShrani()">💾 Shrani popravke</button></div>
       </div>
@@ -577,6 +590,22 @@ async function nlShrani() {
     zadeva_ponovno: document.getElementById('eZadeva2').value, preheader: document.getElementById('ePre').value, polja});
   if (!j.ok) { sporoci(j.error); return; }
   sporoci('Shranjeno.', 'ok'); nlOdpri(NL.id);
+}
+async function nlSlTekst(vsi) {
+  const naslov = document.getElementById('eSlNaslov').value.trim(), znacka = document.getElementById('eSlZnacka').value.trim();
+  if (!naslov) { sporoci('Vpiši naslov na sliki.'); return; }
+  const iz = NL.trgi_izid || {};
+  const trgi = vsi ? Object.keys(iz).filter(x => !iz[x].napaka && !iz[x].campaign_id) : [NL_TRG];
+  if (vsi && !confirm(`Napišem besedilo na sliko za ${trgi.length} trgov (vsak s svojim naslovom; ${trgi.length} × Flare)?`)) return;
+  const besedila = {[NL_TRG]: {naslov, znacka}};
+  const j = await api('/mailchimp/nl-slika-tekst', {id: NL.id, trgi, besedila});
+  if (!j.ok) { sporoci(j.error); return; }
+  nlOdpri(NL.id);
+}
+async function nlSlBrez() {
+  const j = await api('/mailchimp/nl-slika-tekst', {id: NL.id, trgi: [NL_TRG], brez: true});
+  if (!j.ok) { sporoci(j.error); return; }
+  nlOdpri(NL.id);
 }
 async function nlSlika(vir) {
   let nav = null;

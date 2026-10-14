@@ -36463,32 +36463,26 @@ def _nl_vrstica_cene(r: dict) -> dict:
     return out
 
 
-async def _nl_flare_hero(ref_url: str, naziv: str, navodilo: str) -> tuple:
-    """Referenčna slika izdelka → GPT Image 2.5 Flare (1536×1024, brez besedila) → (jpeg bytes, napaka)."""
+async def _nl_flare(ref_url: str, prompt: str) -> tuple:
+    """Referenčna slika → GPT Image 2.5 Flare (1024×1536 → sredinski obrez na 3:4 = 1024×1365, mobilnik) → (jpeg bytes, napaka)."""
     key = os.environ.get("OPENAI_API_KEY", "")
     if not key:
         return None, "OPENAI_API_KEY ni nastavljen."
     try:
+        from PIL import Image as _Img
+        import io as _io
         async with httpx.AsyncClient(timeout=60, follow_redirects=True) as hc:
             r = await hc.get(ref_url)
         if r.status_code != 200 or not r.content:
             return None, f"Referenčne slike ni mogoče prenesti (HTTP {r.status_code})."
         mime = (r.headers.get("content-type") or "image/jpeg").split(";")[0]
         if mime not in ("image/jpeg", "image/png", "image/webp"):
-            from PIL import Image as _Img
-            import io as _io
             buf = _io.BytesIO(); _Img.open(_io.BytesIO(r.content)).convert("RGB").save(buf, "JPEG", quality=92)
             ref, mime = buf.getvalue(), "image/jpeg"
         else:
             ref = r.content
-        prompt = (f"Premium e-commerce newsletter hero image of the exact product shown in the reference image ({naziv}). "
-                  "Keep the product identical to the reference: same shape, colors, proportions, materials and details — never alter or replace it. "
-                  "Place it in an attractive, realistic lifestyle setting where it is naturally used, soft natural light, clean composition, "
-                  "product clearly visible and in focus as the hero, wide landscape framing with some breathing room around it. "
-                  "Absolutely NO text, letters, numbers, logos, watermarks, badges, prices or graphic overlays."
-                  + (f" Additional direction: {navodilo}" if navodilo else ""))
         files = {"image[]": ("ref." + mime.split("/")[-1], ref, mime)}
-        form = {"model": "gpt-image-2.5-flare", "prompt": prompt, "size": "1536x1024", "n": "1", "output_format": "jpeg"}
+        form = {"model": "gpt-image-2.5-flare", "prompt": prompt, "size": "1024x1536", "n": "1", "output_format": "jpeg"}
         async with httpx.AsyncClient(timeout=240) as hc:
             resp = await hc.post("https://api.openai.com/v1/images/edits", headers={"Authorization": f"Bearer {key}"}, data=form, files=files)
             res = resp.json()
@@ -36498,9 +36492,46 @@ async def _nl_flare_hero(ref_url: str, naziv: str, navodilo: str) -> tuple:
         b64 = ((res.get("data") or [{}])[0]).get("b64_json")
         if not b64:
             return None, "Flare ni vrnil slike."
-        return _b64.b64decode(b64), None
+        raw = _b64.b64decode(b64)
+        try:   # 2:3 → 3:4 (obreže ~6 % zgoraj in spodaj)
+            im = _Img.open(_io.BytesIO(raw)).convert("RGB")
+            w, h = im.size
+            nh = round(w * 4 / 3)
+            if h > nh:
+                top = (h - nh) // 2
+                im = im.crop((0, top, w, top + nh))
+                buf = _io.BytesIO(); im.save(buf, "JPEG", quality=90); raw = buf.getvalue()
+        except Exception as e:
+            print(f"[newsletter] obrez 3:4: {e}")
+        return raw, None
     except Exception as e:
         return None, f"Flare: {str(e)[:200]}"
+
+
+async def _nl_flare_hero(ref_url: str, naziv: str, navodilo: str) -> tuple:
+    """Glavna slika brez besedila (osnova za vse trge)."""
+    return await _nl_flare(ref_url, (
+        f"Premium e-commerce newsletter hero image of the exact product shown in the reference image ({naziv}). "
+        "Keep the product identical to the reference: same shape, colors, proportions, materials and details — never alter or replace it. "
+        "Place it in an attractive, realistic lifestyle setting where it is naturally used, soft natural light, clean composition, "
+        "product clearly visible and in focus as the hero, vertical portrait framing (3:4, mobile-first) with the product in the central area "
+        "and calm, low-detail space in the upper part (for a headline added later). "
+        "Absolutely NO text, letters, numbers, logos, watermarks, badges, prices or graphic overlays."
+        + (f" Additional direction: {navodilo}" if navodilo else "")))
+
+
+async def _nl_flare_tekst(base_url: str, naslov: str, znacka: str, jezik: str, barva: str = "") -> tuple:
+    """Osnovna slika + prodajno besedilo v jeziku trga (naslov + značka), ostalo nespremenjeno."""
+    return await _nl_flare(base_url, (
+        "Use the provided image as the exact background: do NOT change the product, scene, lighting, colors or composition. "
+        "Only add a professional e-commerce advertising text overlay:\n"
+        f"1) HEADLINE (large, bold, modern sans-serif, max 2 lines): \"{naslov}\"\n"
+        + (f"2) BADGE (small rounded label or sticker, contrasting color{(' ' + barva) if barva else ''}): \"{znacka}\"\n" if znacka else "")
+        + f"Language: {jezik}. Spell the text EXACTLY as given, character by character, with all diacritics / alphabet as written — "
+        "no translation, no extra words, no other text, no logos, no prices unless they are in the given text. "
+        "Place the headline in the calmest area (usually the top), never covering the product; high contrast and readable on a phone "
+        "(add a subtle gradient or shadow behind the text if needed). Keep ALL text at least 12% away from the top and bottom edges "
+        "and 6% from the sides (the image will be cropped). Vertical portrait format."))
 
 
 async def _nl_nalozi_sliko(data: bytes, ime: str) -> tuple:
@@ -36524,6 +36555,8 @@ Za VSAK trg napiši v njegovem jeziku ({jeziki}):
 - zadeva: zadeva e-maila, največ 55 znakov, konkretna korist ali radovednost, brez clickbaita
 - zadeva_ponovno: DRUGAČNA zadeva za ponovno pošiljanje tistim, ki prvega niso odprli (drug kot: korist, problem, ki ga reši, ali omejena zaloga — brez lažne nujnosti), največ 55 znakov
 - preheader: največ 90 znakov, dopolni zadevo
+- slika_naslov: SUPER PRODAJNI naslov, ki bo napisan NA SLIKI (2–6 besed, udarno, korist ali čustvo, brez cene)
+- slika_znacka: kratka značka na sliki (do 3 besede) — če je popust, točno popust (npr. "-40 %"), sicer kratka korist ali "NOVO"
 - in vsa zgornja besedilna polja predloge (ključi točno kot v predlogi)
 
 Pravila: BREZ emojijev in posebnih simbolov (Mailchimp jih ne prikaže pravilno). Brez VELIKIH ČRK za cele stavke. Ne izmišljuj lastnosti,
@@ -36597,8 +36630,12 @@ async def _nl_obdelaj(nid: str):
                     if p and iz.get("vrednosti") is not None:
                         iz["vrednosti"]["HERO_SLIKA"] = slika_url
                         iz["html"] = _nl_sestavi(p, iz["vrednosti"])
-                n2.update(status="pripravljen", korak="", samo_slika=False)
+                        iz.update(slika_osnova=slika_url, slika_tekst_url=None)
+                n2["samo_slika"] = False
                 _jsave(NL_FILE, d2)
+            if n.get("tekst_na_sliki"):
+                await _nl_tekst_slike(nid, [t for t, iz in n["trgi_izid"].items() if not iz.get("napaka") and not iz.get("campaign_id")])
+            await _nl_set(nid, status="pripravljen", korak="")
             return
 
         # besedila (en klic za vse trge)
@@ -36652,10 +36689,92 @@ async def _nl_obdelaj(nid: str):
             izid[t] = {"predloga": p["id"], "predloga_trg": p.get("trg"), "zadeva": b.get("zadeva", ""), "zadeva_ponovno": b.get("zadeva_ponovno", ""),
                        "preheader": b.get("preheader", ""), "vrednosti": vr, "izpostavitve": [x.get("sku") for x in izbrani],
                        "manjka_izp": max(0, st_izp - len(izbrani)), "html": _nl_sestavi(p, vr)}
-        await _nl_set(nid, status="pripravljen", korak="", trgi_izid=izid, koncano=_lj_iso())
+        for t, iz in izid.items():
+            if not iz.get("napaka"):
+                bt = besedila.get(t) or {}
+                iz.update(slika_naslov=_nl_brez_emoji(bt.get("slika_naslov", "")), slika_znacka=_nl_brez_emoji(bt.get("slika_znacka", "")), slika_osnova=slika_url)
+        await _nl_set(nid, trgi_izid=izid)
+        if n.get("tekst_na_sliki"):
+            await _nl_tekst_slike(nid, [t for t in trgi if not izid[t].get("napaka")])
+        await _nl_set(nid, status="pripravljen", korak="", koncano=_lj_iso())
     except Exception as e:
         print(f"[newsletter] {nid}: {e}")
         await _nl_set(nid, status="napaka", korak="", napaka=str(e)[:300])
+
+
+async def _nl_tekst_slike(nid: str, trgi: list):
+    """Za vsak trg: osnovna slika + slika_naslov/slika_znacka (Flare, do 4 hkrati) → Mailchimp → HERO_SLIKA trga.
+    Ob napaki trg obdrži sliko brez besedila (napaka v slika_tekst_napaka)."""
+    await _nl_set(nid, korak="besedilo na slikah")
+    n = _nl_load()["newsletterji"].get(nid) or {}
+    sem = asyncio.Semaphore(4)
+
+    async def en(t):
+        iz = (n.get("trgi_izid") or {}).get(t) or {}
+        osnova = iz.get("slika_osnova") or n.get("slika_url")
+        if not osnova or not (iz.get("slika_naslov") or "").strip():
+            return t, None, "ni naslova za sliko"
+        async with sem:
+            data, nap = await _nl_flare_tekst(osnova, _nl_brez_emoji(iz["slika_naslov"]), _nl_brez_emoji(iz.get("slika_znacka") or ""), NL_JEZIKI.get(t, t))
+            if not data:
+                return t, None, nap
+            url, nap = await _nl_nalozi_sliko(data, f"nl_{n.get('sku')}_{nid}_{t}_{uuid.uuid4().hex[:4]}.jpg")
+            return t, url, nap
+
+    rez = await asyncio.gather(*[en(t) for t in trgi])
+    async with _nl_lock:
+        d = _nl_load(strict=True)
+        nn = d["newsletterji"].get(nid) or {}
+        for t, url, nap in rez:
+            iz = (nn.get("trgi_izid") or {}).get(t)
+            if not iz or iz.get("campaign_id"):
+                continue
+            iz["slika_tekst_url"], iz["slika_tekst_napaka"] = url, (None if url else nap)
+            if url:
+                iz["vrednosti"]["HERO_SLIKA"] = url
+                p = d["predloge"].get(iz.get("predloga") or "")
+                if p:
+                    iz["html"] = _nl_sestavi(p, iz["vrednosti"])
+        _jsave(NL_FILE, d)
+
+
+@app.post("/mailchimp/nl-slika-tekst")
+async def mailchimp_nl_slika_tekst(request: Request):
+    """Besedilo na sliki za izbrane trge: {id, trgi, besedila: {trg: {naslov, znacka}}, brez: bool (vrni sliko brez besedila)}."""
+    b = await request.json()
+    async with _nl_lock:
+        d = _nl_load(strict=True)
+        n = d["newsletterji"].get(str(b.get("id")))
+        if not n or n.get("status") != "pripravljen":
+            return {"ok": False, "error": "Newsletter ni pripravljen."}
+        trgi = [t for t in (b.get("trgi") or []) if t in (n.get("trgi_izid") or {}) and not n["trgi_izid"][t].get("napaka")
+                and not n["trgi_izid"][t].get("campaign_id")]
+        if not trgi:
+            return {"ok": False, "error": "Ni trgov (osnutek v Mailchimpu je že ustvarjen?)."}
+        for t in trgi:
+            iz = n["trgi_izid"][t]
+            bb = (b.get("besedila") or {}).get(t) or {}
+            if "naslov" in bb:
+                iz["slika_naslov"] = _nl_brez_emoji(bb["naslov"])[:120]
+            if "znacka" in bb:
+                iz["slika_znacka"] = _nl_brez_emoji(bb["znacka"])[:40]
+            if b.get("brez"):
+                iz["vrednosti"]["HERO_SLIKA"] = iz.get("slika_osnova") or n.get("slika_url")
+                iz["slika_tekst_url"] = None
+                p = d["predloge"].get(iz.get("predloga") or "")
+                if p:
+                    iz["html"] = _nl_sestavi(p, iz["vrednosti"])
+        if not b.get("brez"):
+            n.update(status="dela", korak="besedilo na slikah")
+        _jsave(NL_FILE, d)
+    if not b.get("brez"):
+        async def _run():
+            try:
+                await _nl_tekst_slike(n["id"], trgi)
+            finally:
+                await _nl_set(n["id"], status="pripravljen", korak="")
+        asyncio.create_task(_run())
+    return {"ok": True}
 
 
 @app.post("/mailchimp/nl-ustvari")
@@ -36671,7 +36790,8 @@ async def mailchimp_nl_ustvari(request: Request):
     nid = uuid.uuid4().hex[:10]
     n = {"id": nid, "sku": sku, "znamka": znamka, "trgi": trgi, "izpostavitve": b.get("izpostavitve") or "",
          "navodilo": (b.get("navodilo") or "").strip()[:800], "navodilo_slika": (b.get("navodilo_slika") or "").strip()[:500],
-         "slika_vir": "flare" if b.get("slika_vir") != "feed" else "feed", "status": "dela", "korak": "v vrsti", "at": _lj_iso()}
+         "slika_vir": "flare" if b.get("slika_vir") != "feed" else "feed", "tekst_na_sliki": b.get("tekst_na_sliki", True) is not False,
+         "status": "dela", "korak": "v vrsti", "at": _lj_iso()}
     async with _nl_lock:
         d = _nl_load(strict=True)
         d["newsletterji"][nid] = n
@@ -36923,7 +37043,7 @@ The newsletter presents ONE hero product, then a section with 3 extra products.
 
 Use EXACTLY these placeholders (double curly braces, uppercase) — the content is inserted later, never write real content instead of them:
 - {{TRGOVINA_URL}} link of logo/header to the shop
-- {{HERO_SLIKA}} hero image src (landscape 3:2, width 600), {{HERO_URL}} link on hero image, headline and button
+- {{HERO_SLIKA}} hero image src (portrait 3:4, width 600), {{HERO_URL}} link on hero image, headline and button
 - {{NASLOV}} headline, {{PODNASLOV}} subheadline, {{BESEDILO}} body text, {{GUMB}} button label
 - {{CENA}} price, {{CENA_STARA}} old struck-through price, {{POPUST}} discount label like "-30 %" (CENA_STARA and POPUST may be empty — design must still look good without them)
 - {{IZP_NASLOV}} heading of the extra-products section, {{IZP_GUMB}} label of small buttons on extra products
