@@ -103,6 +103,8 @@
           <input class="f" id="sIzp" placeholder="npr. M311, SILUX13, M293">
           <label class="l">Glavna slika</label>
           <select class="f" id="sSlika"><option value="flare">🎨 Nova slika — Flare 2.5 (lifestyle, brez besedila)</option><option value="feed">🖼 Slika iz trgovine</option></select>
+          <label class="l">Koncept slike</label>
+          <select class="f" id="sKoncept"><option value="auto">🧠 AI izbere (pokaže, kaj izdelek naredi)</option><option value="before_after">↔ Prej / potem</option><option value="in_use">✋ V uporabi</option><option value="result">✅ Rezultat</option><option value="lifestyle">🏡 Lifestyle</option></select>
           <label class="l">Navodilo za sliko <span class="muted">(neobvezno)</span></label>
           <input class="f" id="sNavSlika" placeholder="npr. zimski dnevni prostor, topla svetloba">
           <label class="l"><input type="checkbox" id="sTekst" checked> Prodajno besedilo na sliki — vsak trg v svojem jeziku <span class="muted">(Flare, 1 slika na trg)</span></label>
@@ -508,7 +510,7 @@ async function nlUstvari() {
   if (!sku || !znamka || !trgi.length) { sporoci('Vpiši SKU, izberi znamko in vsaj en trg.'); return; }
   const b = document.getElementById('sBtn'); b.disabled = true;
   const j = await api('/mailchimp/nl-ustvari', {sku, znamka, trgi, izpostavitve: document.getElementById('sIzp').value,
-    slika_vir: document.getElementById('sSlika').value, tekst_na_sliki: document.getElementById('sTekst').checked, navodilo_slika: document.getElementById('sNavSlika').value, navodilo: document.getElementById('sNav').value});
+    slika_vir: document.getElementById('sSlika').value, tekst_na_sliki: document.getElementById('sTekst').checked, koncept: document.getElementById('sKoncept').value, navodilo_slika: document.getElementById('sNavSlika').value, navodilo: document.getElementById('sNav').value});
   b.disabled = false;
   if (!j.ok) { sporoci(j.error); return; }
   NL_TRG = ''; nlOdpri(j.id); nlSeznam();
@@ -527,7 +529,7 @@ async function nlOdpri(id) {
   if (!j.ok) { el.innerHTML = `<div class="msg err">${esc(j.error)}</div>`; return; }
   NL = j.nl;
   if (NL.status === 'dela') {
-    const k = {'v vrsti': 'v vrsti', feed: 'berem feede', slika: NL.slika_vir === 'flare' ? 'rišem sliko (Flare 2.5, ~1 min)' : 'slika', besedila: 'pišem besedila za vse trge (~1 min)', 'besedilo na slikah': 'pišem besedilo na slike za vsak trg (Flare, ~1–2 min)'}[NL.korak] || NL.korak;
+    const k = {'v vrsti': 'v vrsti', feed: 'berem feede', slika: NL.slika_vir === 'flare' ? 'rišem sliko (Flare 2.5, ~1 min)' : 'slika', koncept: 'AI gleda slike izdelka in izbira koncept (prej/potem, v uporabi …)', besedila: 'pišem slovensko matico (Sonnet 5.5)', prevodi: 'prevajam matico v jezike trgov', 'besedilo na slikah': 'pišem besedilo na slike za vsak trg (Flare, ~1–2 min)'}[NL.korak] || NL.korak;
     el.innerHTML = `<b>${esc(NL.sku)}</b><div class="sub" style="margin-top:6px">⏳ ${esc(k)} …</div>`;
     nlTimer = setTimeout(() => nlOdpri(id), 3000); return;
   }
@@ -536,12 +538,17 @@ async function nlOdpri(id) {
   if (!NL_TRG || !iz[NL_TRG]) NL_TRG = trgi.find(t => !iz[t].napaka) || trgi[0];
   const t = iz[NL_TRG] || {}, vr = t.vrednosti || {};
   const vPred = NL_POLJA_PRED(t.predloga);
-  const polja = ['NASLOV', 'PODNASLOV', 'BESEDILO', 'GUMB', 'IZP_NASLOV', 'IZP_GUMB', 'NOGA', 'ODJAVA'].filter(k => k in vr && vPred.includes(k));
+  // PREDNOSTI, ZAUPANJE in IZP_GUMB suban.ai vstavi sam (tudi če jih predloga nima)
+  const polja = ['NASLOV', 'PODNASLOV', 'BESEDILO', 'PREDNOSTI', 'ZAUPANJE', 'GUMB', 'IZP_NASLOV', 'IZP_GUMB', 'NOGA', 'ODJAVA']
+    .filter(k => k in vr && (vPred.includes(k) || ['PREDNOSTI', 'ZAUPANJE', 'IZP_GUMB'].includes(k)));
+  const OZN = {PREDNOSTI: 'PREDNOSTI (3 vrstice → alineje)', ZAUPANJE: 'PAS ZAUPANJA', IZP_GUMB: 'GUMB PRI IZPOSTAVITVAH'};
   el.innerHTML = `<div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
       ${(t.vrednosti || {}).HERO_SLIKA || NL.slika_url ? `<img src="${esc((t.vrednosti || {}).HERO_SLIKA || NL.slika_url)}" style="width:150px;border-radius:8px;border:1px solid var(--bd)">` : ''}
       <div style="flex:1;min-width:220px"><b style="font-size:16px">${esc(NL.sku)}</b> · ${esc(NL.znamka)}
+        ${NL.slika_koncept ? `<div class="sub" style="margin-top:4px">Koncept: <b>${esc({before_after: 'Prej / potem', in_use: 'V uporabi', result: 'Rezultat', lifestyle: 'Lifestyle'}[NL.slika_koncept] || NL.slika_koncept)}</b>${NL.slika_koncept_razlog ? ' — ' + esc(NL.slika_koncept_razlog) : ''}</div>` : ''}
         ${NL.slika_napaka ? `<div class="msg err" style="margin:6px 0">Slika: ${esc(NL.slika_napaka)} — uporabljena slika iz trgovine.</div>` : ''}
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <select class="f" id="eKoncept" style="width:auto;padding:4px 8px;font-size:12px"><option value="auto">🧠 AI izbere (pokaže, kaj izdelek naredi)</option><option value="before_after">↔ Prej / potem</option><option value="in_use">✋ V uporabi</option><option value="result">✅ Rezultat</option><option value="lifestyle">🏡 Lifestyle</option></select>
           <button class="btn sm" onclick="nlSlika('flare')">🎨 Nova slika (Flare)</button><button class="btn sm" onclick="nlSlika('feed')">🖼 Slika iz trgovine</button></div></div></div>
     <div class="tabs" style="margin-top:12px;flex-wrap:wrap">${trgi.map(x => `<div class="tab ${x === NL_TRG ? 'on' : ''}" onclick="NL_TRG='${x}';nlOdpri('${NL.id}')">${esc(zastava(x))}${iz[x].napaka ? ' ⚠' : iz[x].campaign_id ? ' ✓' : ''}</div>`).join('')}</div>
     ${t.napaka ? `<div class="msg err">${esc(t.napaka)}</div>` : `
@@ -553,7 +560,7 @@ async function nlOdpri(id) {
         <label class="l">Zadeva <span class="muted" id="zl1"></span></label><input class="f" id="eZadeva" value="${esc(t.zadeva)}" oninput="zDolz()">
         <label class="l">Zadeva za ponovno (neodprti) <span class="muted" id="zl2"></span></label><input class="f" id="eZadeva2" value="${esc(t.zadeva_ponovno)}" oninput="zDolz()">
         <label class="l">Preheader</label><input class="f" id="ePre" value="${esc(t.preheader)}">
-        ${polja.map(k => `<label class="l">${k}</label>${k === 'BESEDILO' || k === 'NOGA' ? `<textarea class="f" rows="4" style="font-family:inherit" data-p="${k}">${esc(vr[k])}</textarea>` : `<input class="f" data-p="${k}" value="${esc(vr[k])}">`}`).join('')}
+        ${polja.map(k => `<label class="l">${OZN[k] || k}</label>${k === 'BESEDILO' || k === 'NOGA' || k === 'PREDNOSTI' ? `<textarea class="f" rows="4" style="font-family:inherit" data-p="${k}">${esc(vr[k])}</textarea>` : `<input class="f" data-p="${k}" value="${esc(vr[k])}">`}`).join('')}
         <div style="margin-top:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:10px">
           <div style="font-weight:700;margin-bottom:2px">🖼 Besedilo na sliki <span class="sub">(${esc(zastava(NL_TRG))}, v jeziku trga)</span></div>
           ${t.slika_tekst_napaka ? `<div class="msg err" style="margin:6px 0">${esc(t.slika_tekst_napaka)} — slika je brez besedila.</div>` : ''}
@@ -579,6 +586,7 @@ async function nlOdpri(id) {
         <span class="sub">Nič se ne pošlje — osnutke testiraš in pošlješ v 📬 Kampanje.</span></div>
     </div>`;
   const f = document.getElementById('ePrev'); if (f) f.srcdoc = t.html || '';
+  const kSel = document.getElementById('eKoncept'); if (kSel) kSel.value = NL.koncept || 'auto';
   zDolz(); nlSeznam();
 }
 function zDolz() {
@@ -610,7 +618,8 @@ async function nlSlBrez() {
 async function nlSlika(vir) {
   let nav = null;
   if (vir === 'flare') { nav = prompt('Navodilo za novo sliko (neobvezno):', NL.navodilo_slika || ''); if (nav === null) return; }
-  const j = await api('/mailchimp/nl-znova-slika', {id: NL.id, slika_vir: vir, navodilo_slika: nav});
+  const kEl = document.getElementById('eKoncept');
+  const j = await api('/mailchimp/nl-znova-slika', {id: NL.id, slika_vir: vir, navodilo_slika: nav, koncept: kEl ? kEl.value : undefined});
   if (!j.ok) { sporoci(j.error); return; }
   nlOdpri(NL.id);
 }
