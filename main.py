@@ -37781,3 +37781,7 @@ async def mailchimp_ai_dizajn_izberi(request: Request):
 # 🎯 Google Ads → Demand Gen Bulk Creator (ločen modul gads_dg.py: /gads-dg, /gads-dg/api/*)
 import gads_dg as _gads_dg
 _gads_dg.vklopi(globals())
+
+# 📘 Meta Ads (Beta) — ločen modul (meta_ads.py): SKU → Flare kreative po trgih + CSV za Ads Manager »Import ads«
+import meta_ads as _meta_ads
+_meta_ads.vklopi(globals())
