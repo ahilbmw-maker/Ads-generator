@@ -628,12 +628,14 @@ def vklopi(G: dict):
             return JSONResponse({"ok": False}, status_code=404)
         return FileResponse(str(f), headers={"Cache-Control": "private, max-age=3600"})
 
-    def sestavi(p, status):
-        """→ (vrstice CSV, slike [fn], videi [fn], opozorila)."""
+    def sestavi(p, status, nacin="loceni"):
+        """→ (vrstice CSV, slike [fn], videi [fn], opozorila, rocno {trg: [slike]}).
+        nacin »flex«: 1 oglas na trg (prva kreativa + 1 headline + 1 primary text) — ostale slike in videe dodaš ročno
+        (Format → Flexible → Add media) iz mape trga; Flexible = 1 oglas → limit 250 oglasov / stran ni problem."""
         n = p.get("nastavitve") or {}
         kamp = str(n.get("kampanja") or f"[ALL 9.0BID] {p['sku']} #BidCap (Suban)")
         st = "ACTIVE" if status == "ACTIVE" else "PAUSED"
-        vrst, slike, videi, opz = [], set(), set(), []
+        vrst, slike, videi, opz, rocno = [], set(), set(), [], {}
         nk = len(p.get("kreative") or [])
         vid = [(j, v) for j, v in enumerate(p.get("videi") or []) if v.get("vkljuci")]   # besedilo videa = po mestu v celem seznamu (5 + j)
         for t in MA_TRGI:
@@ -647,6 +649,11 @@ def vklopi(G: dict):
             sid = tt.get("stran") if tt.get("stran") in MA_STRANI else "101449685670882"
             izkl = set(tt.get("izkl") or [])
             prva = None
+            if nacin == "flex":   # vse slike trga v mapo za ročno dodajanje, v CSV samo prva
+                rocno[t] = [s_ for s_ in (((tt.get("slike") or {}).get(str(i)) or {}).get("datoteka") for i in range(nk) if f"slika{i}" not in izkl) if s_]
+                for j_, v in vid:
+                    if f"video{j_}" not in izkl:
+                        videi.add(v["datoteka"])
             enote = [("slika", i, i) for i in range(nk)] + [("video", j, nk + j) for j, _ in vid]
             vfile = {j: v["datoteka"] for j, v in vid}
             for vrsta, i, oi in enote:
@@ -674,16 +681,20 @@ def vklopi(G: dict):
                           "Video File Name": vfn, "Creative Type": ct,
                           "Instagram Account ID": f"x:{stran['ig_x']}" if stran.get("ig_x") else "",
                           "Instagram Account ID (New)": "" if stran.get("ig_x") else stran["ig"]})
+                if nacin == "flex":
+                    r["Ad Name"] = f"{p['sku']} {t.upper()} flexible"
                 vrst.append(r)
                 slike.add(img)
                 if vfn:
                     videi.add(vfn)
-        if len(videi) > 10:
+                if nacin == "flex":
+                    break   # 1 oglas na trg
+        if len(videi) > 10 and nacin != "flex":
             opz.append(f"{len(videi)} videov — Meta sprejme največ 10 na uvoz")
-        return vrst, sorted(slike), sorted(videi), opz
+        return vrst, sorted(slike), sorted(videi), opz, rocno
 
     @app.get("/meta-ads/api/izvoz/{pid}")
-    async def ma_izvoz(request: Request, pid: str, status: str = "ACTIVE"):
+    async def ma_izvoz(request: Request, pid: str, status: str = "ACTIVE", nacin: str = "loceni"):
         if not prijava(request):
             return ni()
         p = pak_get(pid)
@@ -691,7 +702,8 @@ def vklopi(G: dict):
             return JSONResponse({"ok": False, "error": "Paketa ni."}, status_code=404)
         if not GLAVE:
             return JSONResponse({"ok": False, "error": "Manjka static/meta_ads_glave.json."}, status_code=500)
-        vrst, slike, videi, opz = sestavi(p, status)
+        nacin = "flex" if nacin == "flex" else "loceni"
+        vrst, slike, videi, opz, rocno = sestavi(p, status, nacin)
         if not vrst:
             return JSONResponse({"ok": False, "error": "Ni nobenega oglasa za izvoz. " + " · ".join(opz[:5])}, status_code=400)
         buf = io.StringIO()
@@ -706,12 +718,19 @@ def vklopi(G: dict):
                 zf.write(MAPA / pid / s, "slike/" + s)
             for v in videi:
                 zf.write(MAPA / pid / "videi" / v, "videi/" + v, compress_type=zipfile.ZIP_STORED)
+            for t, sl_ in rocno.items():   # flex: mapa trga z vsemi kreativami za ročno dodajanje
+                for s in sl_:
+                    zf.write(MAPA / pid / s, f"{t.upper()}/{s}")
+            koraki = ("1. Ads Manager → Import/Export → Import ads\r\n"
+                      "2. File: meta_uvoz.csv\r\n3. Images: vse iz mape slike (Ctrl+A)\r\n4. Videos: vse iz mape videi (max 10 × 10 MB)\r\n"
+                      "5. Import → preglej osnutke (In draft) → Publish\r\n") if nacin != "flex" else (
+                      "1. Ads Manager → Import/Export → Import ads → File: meta_uvoz.csv, Images: vse iz mape slike → Import\r\n"
+                      "2. Za vsak ad set (trg): odpri oglas »… flexible« → Format: Flexible → Add media → iz mape trga (npr. PL) označi vse slike (Ctrl+A),\r\n"
+                      "   nato še videe iz mape videi → headline in primary text ostaneta po 1 → Publish\r\n")
             zf.writestr("NAVODILA.txt", (
                 f"Meta Ads uvoz — {p['sku']} — {_lj_iso()[:16]}\r\n\r\n"
-                f"{len(vrst)} oglasov, {len({r['Ad Set Name'] for r in vrst})} ad setov (trgi), status: {status}.\r\n\r\n"
-                "1. Ads Manager → Import/Export → Import ads\r\n"
-                "2. File: meta_uvoz.csv\r\n3. Images: vse iz mape slike (Ctrl+A)\r\n4. Videos: vse iz mape videi (max 10 × 10 MB)\r\n"
-                "5. Import → preglej osnutke (In draft) → Publish\r\n\r\n"
+                f"{len(vrst)} oglasov, {len({r['Ad Set Name'] for r in vrst})} ad setov (trgi), status: {status}, način: {'Flexible (ročno dopolni)' if nacin == 'flex' else 'ločeni oglasi'}.\r\n\r\n"
+                + koraki + "\r\n"
                 + ("Opozorila:\r\n" + "\r\n".join(opz) + "\r\n" if opz else "")).encode("utf-8"))
         async with lock:
             d = nalozi()
@@ -720,7 +739,7 @@ def vklopi(G: dict):
                 prvic = not px.get("izvozeno")
                 px["izvozeno"] = _lj_iso()
                 if prvic:   # 📊 števec: prvi izvoz paketa
-                    d["evidenca"].append({"sku": p["sku"], "at": _lj_iso(), "oglasov": len(vrst), "slik": len(slike),
+                    d["evidenca"].append({"sku": p["sku"], "at": _lj_iso(), "oglasov": len(vrst), "slik": len(set(slike) | {s for x in rocno.values() for s in x}), "nacin": nacin,
                                           "trgi": sorted({r["Ad Set Name"] for r in vrst})})
                 _jsave(PAK_FILE, d)
         z.seek(0)
