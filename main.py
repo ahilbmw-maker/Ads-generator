@@ -14251,7 +14251,12 @@ function planIzracun() {
       else if (e === 2) { pred = r + 2; op.push('x2 → x4'); }
       else if (e === 3) { pred = r + 1; op.push('x3 → x4'); }
       else if (e >= 6 && e <= 8) { pred = r + (9 - e); op.push('→ x9'); }
-      if (N.dvigRaz > 0 && razPo(c) < N.dvigRaz) { pred += 5; op.push('💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → +5 ' + cur); }
+      if (N.dvigRaz > 0 && razPo(c) < N.dvigRaz) {
+        pred += 5;
+        // nikoli okrogla cena (x0: 70, 80, 110 …) — 65 → 69 namesto 70, 105 → 109
+        if (pred % 10 === 0) { pred -= 1; op.push('💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → x9 (ne okroglo ' + (pred + 1) + ')'); }
+        else op.push('💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → +5 ' + cur);
+      }
       if (Math.abs(pred - c) < 0.001) return ze(cur + ' že urejeno (x4 / x5 / x9)');
       if (decimalke && pred === r) op.unshift('🔧 decimalke');
       else if (decimalke) op.push('🔧 + decimalke');
