@@ -41,6 +41,7 @@ MA_STRAN_TRG = {"pl": "100158825529238", "sk": "108850387978565", "hr": "1057098
 MA_CTA = {"sl": "Kupi zdaj", "hr": "Kupi sada", "rs": "Kupi sada", "hu": "Vásárolj most", "pl": "Kup teraz", "cz": "Koupit",
           "sk": "Kúpiť teraz", "gr": "Αγόρασε τώρα", "bg": "Купи сега", "ro": "Cumpără acum"}   # samo za predogled (CTA = SHOP_NOW)
 MA_EMOJI = "✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌 🙌 😍 💎 🏆 ⚡ 🌟 👏 💫 🛒 📦 🔑 💯 😊 🤩 🌿 🌱 🍃 🌸 🌻 🌞 🍀 🎉 🎊 🛍️ 💚 💙 🧡 💜 🤍 🖤"
+MA_ZNAK = "🤖"   # znak pred imenom kampanje = ustvarjeno v suban.ai
 MA_SLIKA = {"1:1": (1080, 1080), "4:5": (1080, 1350)}   # 1:1 kot generator Kreative; 4:5 = preizkus za mobilni Feed (privzeto kreativa 5)
 MA_FLARE_SIZE = {"1:1": "1024x1024", "4:5": "1024x1536"}   # 4:5: Flare 2:3 → izrez sredine 4:5
 MA_N_KREATIV = 5
@@ -530,7 +531,7 @@ def vklopi(G: dict):
             elif sku not in d["brez_rs"]:
                 d["brez_rs"].append(sku)
             d["paketi"].insert(0, {"id": pid, "sku": sku, "at": _lj_iso(), "status": "koncept_v_delu", "trgi_izbor": trgi_izbor, "asana": asana,
-                                   "nastavitve": {"proracun": 60, "bid": 9, "status": "ACTIVE", "kampanja": f"[ALL 9.0BID] {sku} #BidCap (Suban)"}})
+                                   "nastavitve": {"proracun": 60, "bid": 9, "status": "ACTIVE", "kampanja": f"{MA_ZNAK} [ALL 9.0BID] {sku} #BidCap (Suban)"}})
             for p in d["paketi"][30:]:   # stari paketi: slike/videi z diska
                 import shutil
                 shutil.rmtree(MAPA / p["id"], ignore_errors=True)
@@ -632,7 +633,9 @@ def vklopi(G: dict):
         nacin »flex«: 1 oglas na trg (prva kreativa + 1 headline + 1 primary text) — ostale slike in videe dodaš ročno
         (Format → Flexible → Add media) iz mape trga; Flexible = 1 oglas → limit 250 oglasov / stran ni problem."""
         n = p.get("nastavitve") or {}
-        kamp = str(n.get("kampanja") or f"[ALL 9.0BID] {p['sku']} #BidCap (Suban)")
+        kamp = str(n.get("kampanja") or f"[ALL 9.0BID] {p['sku']} #BidCap (Suban)").strip()
+        if not kamp.startswith(MA_ZNAK):   # 🤖 = kampanja iz suban.ai (vedno spredaj, tudi če ime ročno spremeniš)
+            kamp = f"{MA_ZNAK} {kamp}"
         st = "ACTIVE" if status == "ACTIVE" else "PAUSED"
         vrst, slike, videi, opz, rocno = [], set(), set(), [], {}
         nk = len(p.get("kreative") or [])
