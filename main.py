@@ -1717,6 +1717,7 @@ def _vrsta_load(strict=False) -> dict:
 
 
 _vrsta_nc_v_teku = set()
+_vrsta_nc_map = {}   # trg → (rezultat Marže, {g_id: vrstica})
 
 
 async def _vrsta_nc_ozadje(t: str):
@@ -1779,7 +1780,11 @@ async def cene_vrsta_get():
                     asyncio.create_task(_vrsta_nc_ozadje(_t))
                 continue
             _res = _c["res"]
-            _mz[_t] = {str(r.get("g_id")): r for r in (_res.get("rows") or [])} if isinstance(_res, dict) else {}
+            _pc = _vrsta_nc_map.get(_t)   # predpomnjen slovar g_id → vrstica (okno Vrste osvežuje vsake 4 s)
+            if not _pc or _pc[0] is not _res:
+                _pc = (_res, {str(r.get("g_id")): r for r in (_res.get("rows") or [])} if isinstance(_res, dict) else {})
+                _vrsta_nc_map[_t] = _pc
+            _mz[_t] = _pc[1]
         except Exception as _e:
             print(f"[vrsta] NC {_t}: {_e}")
     for p in d["postavke"]:
