@@ -41,7 +41,6 @@ MA_STRAN_TRG = {"pl": "100158825529238", "sk": "108850387978565", "hr": "1057098
 MA_CTA = {"sl": "Kupi zdaj", "hr": "Kupi sada", "rs": "Kupi sada", "hu": "Vásárolj most", "pl": "Kup teraz", "cz": "Koupit",
           "sk": "Kúpiť teraz", "gr": "Αγόρασε τώρα", "bg": "Купи сега", "ro": "Cumpără acum"}   # samo za predogled (CTA = SHOP_NOW)
 MA_EMOJI = "✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌 🙌 😍 💎 🏆 ⚡ 🌟 👏 💫 🛒 📦 🔑 💯 😊 🤩 🌿 🌱 🍃 🌸 🌻 🌞 🍀 🎉 🎊 🛍️ 💚 💙 🧡 💜 🤍 🖤"
-MA_UTM = "utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}"
 MA_SLIKA = {"1:1": (1080, 1080), "4:5": (1080, 1350)}   # 1:1 kot generator Kreative; 4:5 = preizkus za mobilni Feed (privzeto kreativa 5)
 MA_FLARE_SIZE = {"1:1": "1024x1024", "4:5": "1024x1536"}   # 4:5: Flare 2:3 → izrez sredine 4:5
 MA_N_KREATIV = 5
@@ -676,7 +675,7 @@ def vklopi(G: dict):
                 r.update({"Campaign Name": kamp, "Campaign Status": st, "Campaign Daily Budget": str(n.get("proracun") or 60),
                           "Ad Set Run Status": st, "Ad Set Name": t.upper(), "Countries": MA_DRZAVA[t], "Bid Amount": str(n.get("bid") or 9),
                           "Link Object ID": f"o:{sid}", "Optimized Conversion Tracking Pixels": f"tp:{MA_PIKSEL[t]}",
-                          "Conversion Tracking Pixels": f"tp:{MA_PIKSEL[t]}", "Link": tt["url"], "URL Tags": MA_UTM,
+                          "Conversion Tracking Pixels": f"tp:{MA_PIKSEL[t]}", "Link": tt["url"],
                           "Ad Status": st, "Ad Name": an, "Title": o["hl"], "Body": o["pt"], "Image File Name": img,
                           "Video File Name": vfn, "Creative Type": ct,
                           "Instagram Account ID": f"x:{stran['ig_x']}" if stran.get("ig_x") else "",
