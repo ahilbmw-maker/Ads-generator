@@ -1,7 +1,7 @@
 # 📘 Meta Ads (Beta) — SKU → 1 kampanja (vsi trgi naenkrat), ad set = trg, oglasi = 5 lokaliziranih Flare kreativ + univerzalni videi
-# (2026-10-15). Tok (čarovnik): 1) koncept: SLO matica (ime, 5 vibe, 5 setov po 3 bullete, HL/PT za vsak oglas) + videi iz Asane
-# → 2) 5 osnovnih slik BREZ besedila (GPT Image 2.5 Flare) → 3) lokalizacija: prevod bulletov in HL/PT v jezike trgov + besedilo na
-# osnovno sliko po trgu (Flare ali NB2.1) → pregled kot FB oglas → CSV za Ads Manager »Import ads« (UTF-16 TAB, stolpci Metinega
+# (2026-10-15). Tok (čarovnik): 1) koncept: A/B opcije kot generator Kreative (/analyze-product-kreative) + SLO HL/PT + videi iz Asane
+# → 2) 5 angleških kreativ z ISTIM promptom in Flare kot generator Kreative → 3) lokalizacija: HL/PT v jezike trgov (Sonnet) + prevod
+# angleških napisov na sliki s promptom »Lok« (/localize-kreativa; NB2.1 privzeto ali Flare) → pregled kot FB oglas → CSV za Ads Manager »Import ads« (UTF-16 TAB, stolpci Metinega
 # izvoza; preizkušeno 2026-10-15: 12/12 oglasov) + slike/ + videi/ (ujemanje po imenu datoteke). Oglasi z več naslovi/besedili
 # (Flexible) se ne uvozijo → 1 oglas = 1 kreativa + 1 Title + 1 Body. Ločen modul, vklop: meta_ads.vklopi(globals()).
 import asyncio
@@ -42,7 +42,8 @@ MA_CTA = {"sl": "Kupi zdaj", "hr": "Kupi sada", "rs": "Kupi sada", "hu": "Vásá
           "sk": "Kúpiť teraz", "gr": "Αγόρασε τώρα", "bg": "Купи сега", "ro": "Cumpără acum"}   # samo za predogled (CTA = SHOP_NOW)
 MA_EMOJI = "✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌 🙌 😍 💎 🏆 ⚡ 🌟 👏 💫 🛒 📦 🔑 💯 😊 🤩 🌿 🌱 🍃 🌸 🌻 🌞 🍀 🎉 🎊 🛍️ 💚 💙 🧡 💜 🤍 🖤"
 MA_UTM = "utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}"
-MA_SLIKA = (1080, 1350)   # 4:5 (Feed); Flare 1024×1536 → izrez 4:5 → 1080×1350
+MA_SLIKA = {"1:1": (1080, 1080), "4:5": (1080, 1350)}   # 1:1 kot generator Kreative; 4:5 = preizkus za mobilni Feed (privzeto kreativa 5)
+MA_FLARE_SIZE = {"1:1": "1024x1024", "4:5": "1024x1536"}   # 4:5: Flare 2:3 → izrez sredine 4:5
 MA_N_KREATIV = 5
 # stalni stolpci iz vzorčne kampanje DERISILK (izvoz 2026-10-15) — vse ostalo prazno
 MA_STALNO = {
@@ -135,14 +136,14 @@ def vklopi(G: dict):
         return out
 
     # ── Flare / NB2.1 ──
-    async def flare(refs, prompt, funkcija="meta_ads"):
-        """refs = [(bytes, mime)] → GPT Image 2.5 Flare 1024×1536 → izrez 4:5 1080×1350 (jpeg)."""
+    async def flare(refs, prompt, razmerje="1:1", funkcija="meta_ads"):
+        """refs = [(bytes, mime)] → GPT Image 2.5 Flare 1024×1024 (kot generator Kreative) → 1080×1080 (jpeg)."""
         import httpx, os
         key = os.environ.get("OPENAI_API_KEY", "")
         if not key:
             raise RuntimeError("OPENAI_API_KEY ni nastavljen")
-        files = [("image[]", (f"ref{i}.{m.split('/')[-1]}", b, m)) for i, (b, m) in enumerate(refs[:3])]
-        form = {"model": "gpt-image-2.5-flare", "prompt": prompt, "size": "1024x1536", "n": "1", "output_format": "jpeg"}
+        files = [("image[]", (f"ref{i}.{m.split('/')[-1]}", b, m)) for i, (b, m) in enumerate(refs[:1])]   # generator Kreative: 1 referenca
+        form = {"model": "gpt-image-2.5-flare", "prompt": prompt, "size": MA_FLARE_SIZE.get(razmerje, "1024x1024"), "n": "1", "output_format": "jpeg"}
         async with flare_sem:
             async with httpx.AsyncClient(timeout=300) as hc:
                 r = await hc.post("https://api.openai.com/v1/images/edits", headers={"Authorization": f"Bearer {key}"}, data=form, files=files)
@@ -156,9 +157,9 @@ def vklopi(G: dict):
         b64 = ((j.get("data") or [{}])[0]).get("b64_json")
         if not b64:
             raise RuntimeError("Flare ni vrnil slike")
-        return await asyncio.to_thread(obrez45, base64.b64decode(b64))
+        return await asyncio.to_thread(obrez, base64.b64decode(b64), razmerje)
 
-    async def nb21(ref, prompt):
+    async def nb21(ref, prompt, razmerje="1:1"):
         """NB2.1 (Gemini) urejanje osnovne slike — alternativa Flare za besedilo na sliki."""
         import httpx, os
         key = os.environ.get("GEMINI_API_KEY", "")
@@ -171,7 +172,7 @@ def vklopi(G: dict):
             async with httpx.AsyncClient(timeout=180) as hc:
                 for model in modeli:
                     r = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
-                                      json={"contents": [{"parts": parts}], "generationConfig": {"responseModalities": ["IMAGE", "TEXT"], "imageConfig": {"aspectRatio": "4:5"}}})
+                                      json={"contents": [{"parts": parts}], "generationConfig": {"responseModalities": ["IMAGE", "TEXT"], "imageConfig": {"aspectRatio": razmerje}}})
                     j = r.json()
                     if r.status_code != 200:
                         zadnja = str((j.get("error") or {}).get("message") or j)[:200]; continue
@@ -182,14 +183,14 @@ def vklopi(G: dict):
                     for c in j.get("candidates") or []:
                         for pt in (c.get("content") or {}).get("parts") or []:
                             if "inlineData" in pt:
-                                return await asyncio.to_thread(obrez45, base64.b64decode(pt["inlineData"].get("data") or ""))
+                                return await asyncio.to_thread(obrez, base64.b64decode(pt["inlineData"].get("data") or ""), razmerje)
                     zadnja = "NB2.1 ni vrnil slike"
         raise RuntimeError(zadnja or "napaka NB2.1")
 
-    def obrez45(raw):
+    def obrez(raw, razmerje="1:1"):
         from PIL import Image
         im = Image.open(io.BytesIO(raw)).convert("RGB")
-        w, h = MA_SLIKA
+        w, h = MA_SLIKA.get(razmerje, MA_SLIKA["1:1"])
         r0, r1 = im.width / im.height, w / h
         if r0 > r1 + 0.01:
             nw = int(im.height * r1); x = (im.width - nw) // 2; im = im.crop((x, 0, x + nw, im.height))
@@ -198,25 +199,41 @@ def vklopi(G: dict):
         im = im.resize((w, h))
         b = io.BytesIO(); im.save(b, format="JPEG", quality=90); return b.getvalue()
 
-    def prompt_osnova(ime, vibe):
-        return (f"From these reference images create a new high-converting Facebook/Instagram ad image for the product {ime.upper()}. "
-                "Keep the product EXACTLY as in the reference images — same shape, colours, parts, proportions and details; never invent a different product. "
-                f"Background / scene: a more intense '{vibe}' look that sells the benefit; photorealistic, premium, scroll-stopping. "
-                "ABSOLUTELY NO TEXT: no letters, words, numbers, logos, icons, labels or watermarks anywhere in the image. "
-                "Composition for a vertical 4:5 feed ad: keep the top ~25% calm (sky, wall, soft background) for a headline that will be added later, "
-                "and the bottom ~22% calm for 3 benefit labels; the product sits in the middle and is clearly visible. "
-                "The output is cropped to 4:5 afterwards, so keep the product at least 15% away from the top and bottom edges. Vertical portrait format.")
+    def prompt_kreativa(ime, vibe, tekst, hook="", razmerje="1:1"):
+        """Prompt generatorja Kreative (/generate-kreative) + HOOK: velik hook napis zgoraj, ime izdelka kot MANJŠI logo
+        (sam branding kupcu še nič ne pove — uporabnik 2026-10-15). Brez hooka = točno prompt generatorja."""
+        if hook:
+            napisi = (f"Do not include any text/words on the image except: (1) a short, big, bold HOOK headline '{hook}' — the most prominent text, "
+                      f"at the top, high contrast; (2) the device name in capital letters '{ime.upper()}' as a SMALL logo (clearly smaller than the hook, "
+                      "e.g. in a corner) — never the biggest element. ")
+        else:
+            napisi = f"Do not include any text/words on the image except the device name in capital letters '{ime.upper()}' — place it where it fits best or makes sense. "
+        return (f"From these reference images create a new FB ad creative. "
+                f"Try a more intense '{vibe}' background. "
+                + napisi +
+                f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
+                f"Highlight (can be through icons or text in English) that it is: {tekst}. "
+                f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. "
+                + ("Square 1:1 format." if razmerje != "4:5" else
+                   "Vertical 4:5 portrait format for the mobile feed: the image is cropped to 4:5 afterwards, so keep ALL text, icons and the product "
+                   "at least 12% away from the top and bottom edges."))
 
-    def prompt_tekst(ime, bullets, jezik):
-        return ("Use the provided image as the exact background: do NOT change the product, scene, lighting, colours or composition. "
-                "Only add a professional e-commerce ad text overlay:\n"
-                f"1) At the top: the product name \"{ime.upper()}\" in big bold capital letters (may be styled as a simple modern logo).\n"
-                "2) At the bottom: exactly 3 short benefit labels side by side (or stacked), each with a simple matching line icon above or beside it: "
-                + " · ".join(f"\"{b}\"" for b in bullets[:3]) + "\n"
-                f"Language: {jezik}. Spell every label EXACTLY as given, character by character, with all diacritics / alphabet as written — "
-                "no translation, no extra words, no prices, no other text. High contrast and readable on a phone (subtle gradient or shadow behind text if needed). "
-                "SAFE MARGINS (strict — the image is cropped to 4:5 afterwards): in the 1024×1536 output all text must be at least 220 px from the top "
-                "and bottom edges and at least 70 px from the left and right edges. Never cover the product. Vertical portrait format.")
+    def prompt_prevod(t, ime):
+        """Isti prompt kot »Lok« (prevod slik): prevedi vidno besedilo, vse ostalo enako; ime izdelka/logo ostane."""
+        lang = t.upper()
+        lang_name = (G.get("LANG_NAMES") or {}).get(lang, MA_JEZIK[t])
+        hint = (G.get("LANG_TRANSLATE_HINTS") or {}).get(lang, "")
+        brand_note = f" Do NOT translate these brand/product names (keep exactly as-is): {ime}." if ime else ""
+        return (f"Edit this image to translate all visible text into {lang_name}. "
+                f"Keep EVERYTHING exactly the same — same people, same background, same layout, same design, same product, same icons, same colors, same fonts. "
+                f"ONLY translate the text that is NOT a brand name or logo."
+                f"{brand_note} "
+                f"Do NOT translate or modify any brand names, logos, or product names. "
+                f"Keep all text in the same position, same style, same size. "
+                f"CRITICAL TRANSLATION QUALITY: Use ONLY correct, native {lang_name}. "
+                f"Do NOT use words from other similar/neighboring languages. "
+                f"Translate the MEANING correctly, not phonetically. "
+                f"{hint}")
 
     async def prenesi(urls, n=3):
         import httpx
@@ -276,33 +293,53 @@ def vklopi(G: dict):
                         nap.append(f"video {ime[:40]}: {str(e)[:80]}")
         return videi, nap
 
-    # ── 1) koncept (SLO matica) ──
-    def koncept_ai(naziv, opis, n_oglasov):
+    # ── 1) koncept: A/B opcije kot generator Kreative (/analyze-product-kreative) + SLO besedila oglasov ──
+    MA_PARI = [(0, 0), (1, 1), (0, 2), (1, 3), (2, 4)]   # (A, B): MAIN×BEST, HIGH×SECOND, MAIN×SCROLL STOPPER, HIGH×BONUS, PROBLEM×LIFESTYLE
+
+    async def kreative_ab(url, naziv, opis):
+        """→ (ime, a_opcije, b_opcije). Najprej isti endpoint kot generator Kreative; rezerva: enak format iz opisa."""
+        j = {}
+        if url and G.get("analyze_product_kreative"):
+            try:
+                j = await G["analyze_product_kreative"]({"url": url}) or {}
+            except Exception as e:
+                print(f"[meta-ads] analiza Kreative: {e}")
+        if not (j.get("aOptions") and j.get("bOptions")):
+            j = await asyncio.to_thread(claude_json, (
+                "Generate structured data for FB ad creatives for this product. ALL in ENGLISH.\n"
+                f"Product: {naziv}\nDescription: {opis[:1800]}\n"
+                "name: brand/model name in CAPS. aOptions: exactly 5 (labels MAIN VERSION, HIGH-CONVERT, PROBLEM-SOLUTION, ULTRA SIMPLE, SOCIAL PROOF), "
+                "text = selling punches (not features), 2–3 words each, comma separated (e.g. 'Pull the Root, Stop the Weed, No Chemicals'). "
+                "bOptions: exactly 5 (labels BEST, SECOND OPTION, SCROLL STOPPER, BONUS, LIFESTYLE), text = background vibe concept specific to this product, "
+                "max 3 words, always an action or moment (e.g. 'evening atmosphere shot', 'before/after counter').\n"
+                'Return ONLY JSON: {"name": "...", "aOptions": [{"label": "...", "text": "..."}], "bOptions": [{"label": "...", "text": "..."}]}'), 3000)
+        a = [x for x in (j.get("aOptions") or []) if x.get("text")]
+        b = [x for x in (j.get("bOptions") or []) if x.get("text")]
+        return re.sub(r"[^A-Z0-9 \-&]", "", str(j.get("name") or "").upper())[:20].strip(), a, b
+
+    def hooki_ai(naziv, opis, kreative):
+        """En angleški HOOK na kreativo (velik napis zgoraj na sliki): problem / korist / radovednost, max 5 besed, ujema se s prednostmi A."""
+        j = claude_json(
+            "Write one scroll-stopping HOOK headline in ENGLISH for each Facebook ad image below (big text at the top of the image). "
+            "Max 5 words, punchy, a problem, benefit or curiosity — not the product name, no prices, no '#1/best', no medical claims. "
+            "Each hook must match that image's benefits and be different from the others (e.g. 'Cold Feet? Not Anymore', 'Winter Walks, Warm Toes').\n"
+            f"Product: {naziv}\nDescription: {opis[:1200]}\n"
+            + "\n".join(f"{i + 1}. benefits: {k['tekst']} · scene: {k['vibe']}" for i, k in enumerate(kreative))
+            + '\nReturn ONLY JSON: {"hooki": ["...", ...same count]}', 2000)
+        h = [str(x).strip()[:40] for x in (j.get("hooki") or [])]
+        return h if len(h) == len(kreative) else [""] * len(kreative)
+
+    def oglasi_ai(naziv, opis, prednosti, n_oglasov):
         prompt = (
-            "You create Facebook/Instagram ad concepts for the e-commerce shop Maaarket (Slovenia, 10 EU markets).\n"
-            f"Product: {naziv}\nDescription (may be another language — use its meaning): {opis[:1800]}\n\n"
-            "Return JSON with:\n"
-            "- ime: the short distinctive product/brand name for ON the image, CAPS, Latin letters, max 18 chars (e.g. 'LAMPELX', 'ORTOCOCC').\n"
-            f"- kreative: exactly {MA_N_KREATIV} DIFFERENT creatives, each {{\"oznaka\", \"vibe\", \"bullets\"}}:\n"
-            "  oznaka: MAIN VERSION / HIGH-CONVERT / PROBLEM-SOLUTION / ULTRA SIMPLE / SOCIAL PROOF (in this order);\n"
-            "  vibe: background/scene concept in ENGLISH, max 4 words, specific to this product, always an action or moment "
-            "(e.g. 'root pull satisfying moment', 'before/after counter', 'evening atmosphere shot', 'sizzle sound moment') — all 5 clearly different;\n"
-            "  bullets: exactly 3 selling punches in SLOVENIAN for ON the image, 1–2 words each, max 16 characters, benefits not features "
-            "(e.g. 'Brez kemikalij', 'Takoj toplo', 'Brez vrtanja').\n"
-            f"- oglasi: exactly {n_oglasov} DIFFERENT ad texts in SLOVENIAN, each {{\"hl\", \"pt\"}}:\n"
-            "  pt (Primary Text): 2–3 lines, 2–3 emojis, selling tone, no prices, every one different (problem, benefit, use case, social, curiosity);\n"
-            "  hl (Headline): MAX 5 words, starts with 1 emoji, no prices, every one different.\n"
-            f"  EMOJI RULE: use ONLY these emojis (others may show as squares): {MA_EMOJI}\n"
-            "Rules (Meta policy): no prices or discounts, no 'best/#1' claims, no medical or guaranteed results, no personal attributes "
-            "('Are you overweight?'), correct Slovenian with č š ž.\n"
-            'Return ONLY JSON: {"ime": "...", "kreative": [{"oznaka": "...", "vibe": "...", "bullets": ["...","...","..."]}], "oglasi": [{"hl": "...", "pt": "..."}]}')
+            f"Napiši {n_oglasov} RAZLIČNIH Facebook/Instagram oglasov v SLOVENŠČINI za izdelek trgovine Maaarket.\n"
+            f"Izdelek: {naziv}\nOpis (lahko v drugem jeziku — uporabi pomen): {opis[:1800]}\nKljučne prednosti (angleško): {prednosti}\n"
+            "Vsak oglas: pt (Primary Text): 2–3 vrstice, 2–3 emoji-ji, prodajni ton, brez cen, vsak DRUGAČEN (problem, korist, uporaba, mnenja, radovednost); "
+            "hl (Headline): MAX 5 BESED, 1 emoji na začetku, brez cen, vsak DRUGAČEN.\n"
+            f"EMOJI PRAVILO: uporabljaj SAMO te emoji-je (drugi se lahko prikažejo kot □): {MA_EMOJI}\n"
+            "Pravila Mete: brez cen in popustov, brez 'najboljši/#1', brez zdravstvenih obljub, brez osebnih lastnosti ('Imaš prekomerno težo?'); šumniki č š ž.\n"
+            'Vrni SAMO JSON: {"oglasi": [{"hl": "...", "pt": "..."}]}')
         j = claude_json(prompt)
-        kre = []
-        for k in (j.get("kreative") or [])[:MA_N_KREATIV]:
-            kre.append({"oznaka": str(k.get("oznaka") or "")[:30], "vibe": str(k.get("vibe") or "").strip()[:60],
-                        "bullets": [str(b).strip()[:24] for b in (k.get("bullets") or []) if str(b).strip()][:3]})
-        ogl = [{"hl": str(o.get("hl") or "").strip(), "pt": str(o.get("pt") or "").strip()} for o in (j.get("oglasi") or []) if o][:n_oglasov]
-        return re.sub(r"[^A-Z0-9 \-&]", "", str(j.get("ime") or "").upper())[:18].strip(), kre, ogl
+        return [{"hl": str(o.get("hl") or "").strip(), "pt": str(o.get("pt") or "").strip()} for o in (j.get("oglasi") or []) if o][:n_oglasov]
 
     async def obdelaj_koncept(pid):
         p = pak_get(pid)
@@ -317,8 +354,20 @@ def vklopi(G: dict):
             it = feed_sl.get(sl.get("g_id")) or {}
             slike = it.get("all_images") or ([sl.get("slika")] if sl.get("slika") else [])
             videi, nap = await asana_videi(pid, sku, p.get("asana") or []) if p.get("asana") else ([], [])
-            n_ogl = MA_N_KREATIV + len([v for v in videi])
-            ime, kre, ogl = await asyncio.to_thread(koncept_ai, sl.get("naziv") or it.get("title") or sku, it.get("description") or "", max(n_ogl, MA_N_KREATIV))
+            n_ogl = MA_N_KREATIV + len(videi)
+            naziv = sl.get("naziv") or it.get("title") or sku
+            ime, a_opc, b_opc = await kreative_ab(sl.get("url") or "", naziv, it.get("description") or "")
+            if not (a_opc and b_opc):
+                raise RuntimeError("analiza izdelka ni vrnila A/B opcij")
+            kre = []
+            for ia, ib in MA_PARI[:MA_N_KREATIV]:
+                a_, b_ = a_opc[ia % len(a_opc)], b_opc[ib % len(b_opc)]
+                kre.append({"oznaka": f"{a_.get('label', 'A')} × {b_.get('label', 'B')}", "tekst": str(a_["text"]).strip()[:120], "vibe": str(b_["text"]).strip()[:60],
+                            "razmerje": "4:5" if len(kre) == MA_N_KREATIV - 1 else "1:1"})   # 4 × 1:1 + 1 × 4:5 (preizkus mobilni Feed)
+            hk, ogl = await asyncio.gather(asyncio.to_thread(hooki_ai, naziv, it.get("description") or "", kre),
+                                           asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", a_opc[0]["text"], max(n_ogl, MA_N_KREATIV)))
+            for k_, h_ in zip(kre, hk):
+                k_["hook"] = h_
             trgi = {}
             for t in MA_TRGI:
                 x = info.get(t)
@@ -337,12 +386,12 @@ def vklopi(G: dict):
             err = str(e)[:200]
             await pak_set(pid, lambda q: q.update(status="napaka", napaka=f"Koncept ni uspel: {err}"))
 
-    # ── 2) osnovne slike (brez besedila) ──
+    # ── 2) kreative v angleščini (isti prompt + Flare kot generator Kreative) ──
     async def obdelaj_osnove(pid, indeksi):
         p = pak_get(pid)
         mapa = MAPA / pid
         mapa.mkdir(parents=True, exist_ok=True)
-        refs = await prenesi(p.get("ref_slike") or [])
+        refs = await prenesi(p.get("ref_slike") or [], 1)
         if not refs:
             await pak_set(pid, lambda q: q.update(status="koncept", napaka="Ni referenčnih slik izdelka (feed)."))
             return
@@ -350,7 +399,8 @@ def vklopi(G: dict):
         async def ena(i):
             k = p["kreative"][i]
             try:
-                raw = await flare(refs, prompt_osnova(p.get("ime") or p["sku"], k.get("vibe") or "clean lifestyle"))
+                razm = k.get("razmerje") or "1:1"
+                raw = await flare(refs, prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", razm), razm)
                 fn = f"osnova_{i + 1}_{uuid.uuid4().hex[:4]}.jpg"
                 (mapa / fn).write_bytes(raw)
                 await pak_set(pid, lambda q: q["kreative"][i].update(osnova=fn, osnova_napaka="", v_delu=False))
@@ -361,33 +411,29 @@ def vklopi(G: dict):
         await pak_set(pid, lambda q: q.update(status="osnove"))
 
     # ── 3) lokalizacija: prevodi + besedilo na slikah po trgih ──
-    def prevedi(t, ime, kre, ogl):
+    def prevedi(t, ogl):
         jez = MA_JEZIK[t]
         prompt = (
             f"Translate these Facebook ad texts from Slovenian into {jez}. Native, natural marketing language (not literal), correct grammar and "
             "diacritics; keep the number and position of emojis exactly; keep brand/product names unchanged; headlines max 5 words.\n"
-            f"Image labels (bullets) must stay ULTRA short: 1–2 words, max 16 characters each — rephrase if needed.\n"
-            f"Product name (do NOT translate): {ime}\n"
-            f"bullets: {json.dumps([k['bullets'] for k in kre], ensure_ascii=False)}\n"
             f"ads: {json.dumps(ogl, ensure_ascii=False)}\n"
-            'Return ONLY JSON: {"bullets": [["..","..",".."], ...same count], "ads": [{"hl": "...", "pt": "..."}, ...same count]}')
+            'Return ONLY JSON: {"ads": [{"hl": "...", "pt": "..."}, ...same count]}')
         j = claude_json(prompt)
-        bul = [[str(b).strip()[:24] for b in (x or [])][:3] for x in (j.get("bullets") or [])]
         ads = [{"hl": str(a.get("hl") or "").strip(), "pt": str(a.get("pt") or "").strip()} for a in (j.get("ads") or [])]
-        if len(bul) != len(kre) or len(ads) != len(ogl):
-            raise RuntimeError("prevod: napačno število postavk")
-        return bul, ads
+        if len(ads) != len(ogl):
+            raise RuntimeError("prevod: napačno število oglasov")
+        return ads
 
     async def tekst_slika(pid, t, i, model):
+        """Angleška kreativa → napisi v jeziku trga (prompt »Lok«), NB2.1 ali Flare."""
         p = pak_get(pid)
         k = p["kreative"][i]
-        tt = p["trgi"][t]
         osn = MAPA / pid / (k.get("osnova") or "")
         if not k.get("osnova") or not osn.exists():
-            raise RuntimeError("ni osnovne slike")
-        bul = (tt.get("bullets") or [[]] * MA_N_KREATIV)[i] if t != "sl" else k["bullets"]
-        pr = prompt_tekst(p.get("ime") or p["sku"], bul, MA_JEZIK[t])
-        raw = await (nb21(osn.read_bytes(), pr) if model == "nb21" else flare([(osn.read_bytes(), "image/jpeg")], pr))
+            raise RuntimeError("ni angleške kreative")
+        pr = prompt_prevod(t, p.get("ime") or "")
+        razm = k.get("razmerje") or "1:1"
+        raw = await (flare([(osn.read_bytes(), "image/jpeg")], pr, razm) if model == "flare" else nb21(osn.read_bytes(), pr, razm))
         fn = f"{p['sku']}_{t}_{i + 1}.jpg"
         (MAPA / pid / fn).write_bytes(raw)
         return fn
@@ -401,11 +447,11 @@ def vklopi(G: dict):
 
             async def prevod(t):
                 if t == "sl":
-                    await pak_set(pid, lambda q: q["trgi"]["sl"].update(bullets=[k["bullets"] for k in q["kreative"]], oglasi=[dict(o) for o in q["oglasi_sl"]]))
+                    await pak_set(pid, lambda q: q["trgi"]["sl"].update(oglasi=[dict(o) for o in q["oglasi_sl"]], prevod_napaka=""))
                     return
                 try:
-                    bul, ads = await asyncio.to_thread(prevedi, t, p.get("ime") or "", p["kreative"], ogl_sl)
-                    await pak_set(pid, lambda q: q["trgi"][t].update(bullets=bul, oglasi=ads, prevod_napaka=""))
+                    ads = await asyncio.to_thread(prevedi, t, ogl_sl)
+                    await pak_set(pid, lambda q: q["trgi"][t].update(oglasi=ads, prevod_napaka=""))
                 except Exception as e:
                     err = str(e)[:160]
                     await pak_set(pid, lambda q: q["trgi"][t].update(prevod_napaka=err))
@@ -510,11 +556,15 @@ def vklopi(G: dict):
 
         def upd(p):
             if data.get("ime"):
-                p["ime"] = re.sub(r"[^A-Z0-9 \-&]", "", str(data["ime"]).upper())[:18].strip() or p.get("ime")
+                p["ime"] = re.sub(r"[^A-Z0-9 \-&]", "", str(data["ime"]).upper())[:20].strip() or p.get("ime")
             for i, k in enumerate(data.get("kreative") or []):
                 if i < len(p.get("kreative") or []):
-                    p["kreative"][i]["vibe"] = str(k.get("vibe") or p["kreative"][i]["vibe"])[:60]
-                    p["kreative"][i]["bullets"] = [str(b).strip()[:24] for b in (k.get("bullets") or p["kreative"][i]["bullets"])][:3]
+                    p["kreative"][i]["vibe"] = str(k.get("vibe") or p["kreative"][i].get("vibe") or "")[:60]
+                    p["kreative"][i]["tekst"] = str(k.get("tekst") or p["kreative"][i].get("tekst") or "")[:120]
+                    if k.get("razmerje") in MA_SLIKA:
+                        p["kreative"][i]["razmerje"] = k["razmerje"]
+                    if "hook" in k:
+                        p["kreative"][i]["hook"] = str(k.get("hook") or "").strip()[:40]
             if isinstance(data.get("oglasi_sl"), list):
                 p["oglasi_sl"] = [{"hl": str(o.get("hl") or ""), "pt": str(o.get("pt") or "")} for o in data["oglasi_sl"]]
             for v in data.get("videi") or []:
@@ -559,7 +609,7 @@ def vklopi(G: dict):
         p = pak_get(pid)
         if not p or not any(k.get("osnova") for k in p.get("kreative") or []):
             return {"ok": False, "error": "Najprej ustvari osnovne slike."}
-        model = "nb21" if data.get("model") == "nb21" else "flare"
+        model = "flare" if data.get("model") == "flare" else "nb21"   # privzeto NB2.1 = isto kot »Lok« (prevod slik)
         samo = [(str(x[0]), int(x[1])) for x in (data.get("samo") or []) if x and x[0] in MA_TRGI]
         await pak_set(pid, lambda q: q.update(status="lokal_v_delu"))
         asyncio.create_task(obdelaj_lokal(pid, model, samo or None))
@@ -610,7 +660,7 @@ def vklopi(G: dict):
                     if not s:
                         opz.append(f"{t.upper()} kreativa {i + 1}: ni slike — izpuščena"); continue
                     prva = prva or s
-                    img, vfn, ct, an = s, "", "Link Page Post Ad", f"{p['sku']} {t.upper()} slika {i + 1}"
+                    img, vfn, ct, an = s, "", "Link Page Post Ad", f"{p['sku']} {t.upper()} slika {i + 1} ({p['kreative'][i].get('razmerje') or '1:1'})"
                 else:
                     if not prva:
                         opz.append(f"{t.upper()} video {i + 1}: ni sličice (nobene slike trga) — izpuščen"); continue

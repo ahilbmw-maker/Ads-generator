@@ -96,7 +96,7 @@
   .osn { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; }
   @media (max-width:1200px) { .osn { grid-template-columns:repeat(3,minmax(0,1fr)); } }
   .osn-k { border:1px solid var(--bd); border-radius:12px; overflow:hidden; background:var(--card2); }
-  .osn-k .img { aspect-ratio:4/5; background:var(--bd); display:flex; align-items:center; justify-content:center; position:relative; }
+  .osn-k .img { aspect-ratio:1/1; background:var(--bd); display:flex; align-items:center; justify-content:center; position:relative; }
   .osn-k img { width:100%; height:100%; object-fit:cover; display:block; }
   .osn-k .tx { padding:8px 10px; font-size:12px; }
   .ttabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
@@ -111,7 +111,7 @@
   .fbk .pn { font-size:13px; font-weight:700; line-height:1.15; } .fbk .sp { font-size:11px; color:var(--txt3); }
   .fbk textarea.pt { border:0; background:transparent; width:100%; padding:2px 12px 8px; font:13px/1.45 inherit; font-family:inherit; color:var(--txt); resize:vertical; min-height:62px; }
   .fbk textarea.pt:focus, .fbk input.hl:focus { outline:2px solid var(--acc2); }
-  .fbk .md { aspect-ratio:4/5; background:var(--bd); position:relative; display:flex; align-items:center; justify-content:center; }
+  .fbk .md { aspect-ratio:1/1; background:var(--bd); position:relative; display:flex; align-items:center; justify-content:center; }
   .fbk .md img, .fbk .md video { width:100%; height:100%; object-fit:cover; display:block; }
   .fbk .ft { display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--card2); border-top:1px solid var(--bd); }
   .fbk .dom { font-size:10.5px; color:var(--txt3); text-transform:uppercase; }
@@ -132,7 +132,7 @@
   <div class="top">
     <a class="btn ghost" href="/" title="Na domačo stran suban.ai">← suban.ai</a>
     <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#1877F2" d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg></div>
-    <div><h1>Meta Ads <span class="beta">BETA</span></h1><div class="sub">SKU → 1 kampanja · ad set = trg · 5 Flare kreativ v jeziku trga + videi → CSV za Ads Manager »Import ads«</div></div>
+    <div><h1>Meta Ads <span class="beta">BETA</span></h1><div class="sub">SKU → 1 kampanja · ad set = trg · 5 Flare kreativ (kot generator Kreative), napisi prevedeni v jezik trga + videi → CSV za Ads Manager »Import ads«</div></div>
   </div>
 
   <div class="kpis" id="kpis"></div>
@@ -151,7 +151,7 @@
       <textarea class="f" id="asana" rows="2" placeholder="https://app.asana.com/1/…/task/1211103386362549"></textarea>
       <div style="display:flex;align-items:center;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--bd);flex-wrap:wrap">
         <button class="btn pri lg" id="btnKon" onclick="koncept()">1 · Pripravi koncept →</button>
-        <span class="sub">Sonnet napiše ime, 5 vibe, 5 × 3 bullete in besedila oglasov v slovenščini — vse lahko popraviš, preden se rišejo slike.</span>
+        <span class="sub">Analiza kot v generatorju Kreative (ime, A prednosti, B vibe) + besedila oglasov v slovenščini — vse lahko popraviš, preden se rišejo slike.</span>
       </div>
       <div id="msgNov"></div>
     </div>
@@ -265,7 +265,7 @@ function zagonPoll() {
 }
 function koraki() {
   const s = PAK.status, ima2 = (PAK.kreative || []).some(k => k.osnova), ima3 = TRGI.some(t => PAK.trgi && PAK.trgi[t] && PAK.trgi[t].slike);
-  const k = [[1, '1 · Koncept', !!PAK.kreative, true], [2, '2 · Osnovne slike', ima2, !!PAK.kreative], [3, '3 · Trgi in izvoz', ima3, ima2 || s === 'lokal_v_delu']];
+  const k = [[1, '1 · Koncept', !!PAK.kreative, true], [2, '2 · Kreative (EN)', ima2, !!PAK.kreative], [3, '3 · Trgi in izvoz', ima3, ima2 || s === 'lokal_v_delu']];
   return '<div class="koraki">' + k.map(([n, t, g, odkl]) => '<span class="korak' + (KORAK === n ? ' on' : '') + (g ? ' gotov' : '') + (odkl ? '' : ' zaklenjen') + '" ' + (odkl ? 'onclick="KORAK=' + n + ';risi()"' : '') + '>' + (g ? '✓ ' : '') + t + '</span>').join('') + '</div>';
 }
 function risi() {
@@ -275,7 +275,7 @@ function risi() {
   const napr = p.status === 'lokal_v_delu' && p.lok_skupaj ? Math.round((p.lok_gotovo || 0) / p.lok_skupaj * 100) : 0;
   let h = '<div class="pak-bar"><div><div class="pak-t">' + esc(p.sku) + (p.ime && p.ime !== p.sku ? ' · ' + esc(p.ime) : '') + '</div><div class="sub">' + esc(p.naziv || '') + ' · ' + esc(cas(p.at)) +
     (p.izvozeno ? ' · <span style="color:var(--ok);font-weight:700">✓ izvoženo ' + esc(cas(p.izvozeno)) + '</span>' : '') + '</div></div>' + koraki() + '<span class="grow"></span>' +
-    (vd ? '<span class="pill p-inf"><span class="spin" style="width:10px;height:10px"></span>' + ({ koncept_v_delu: 'pišem koncept …', osnove_v_delu: 'Flare riše osnovne slike …', lokal_v_delu: 'prevajam in pišem na slike … ' + (p.lok_gotovo || 0) + ' / ' + (p.lok_skupaj || '?') }[p.status]) + '</span>' +
+    (vd ? '<span class="pill p-inf"><span class="spin" style="width:10px;height:10px"></span>' + ({ koncept_v_delu: 'pišem koncept …', osnove_v_delu: 'Flare riše kreative …', lokal_v_delu: 'prevajam napise in besedila … ' + (p.lok_gotovo || 0) + ' / ' + (p.lok_skupaj || '?') }[p.status]) + '</span>' +
       (napr ? '<span class="prog"><i style="width:' + napr + '%"></i></span>' : '') : '') +
     '<button class="btn sm ghost" onclick="zapri()" title="Zapri (ostane v zgodovini)">✕</button></div>';
   if (p.status === 'napaka') h += '<div class="msg err">' + esc(p.napaka || 'Napaka') + '</div>';
@@ -290,10 +290,12 @@ function risi1(p) {
   const vid = p.videi || [], n = 5 + vid.length;
   const ogl = (p.oglasi_sl || []).concat(Array(Math.max(0, n - (p.oglasi_sl || []).length)).fill({ hl: '', pt: '' }));
   let h = '<div class="card"><div class="card-h"><b>🏷 Ime na sliki</b><input class="f" data-e="ime" value="' + esc(p.ime || '') + '" style="max-width:240px;font-weight:700"><span class="sub">CAPS, se ne prevaja</span></div>' +
-    '<div class="card-h" style="margin-top:6px"><b>🎨 5 kreativ</b><span class="sub">vibe = ozadje (angleško, za Flare) · 3 bulleti = napisi na sliki (slovensko, prevedejo se v jezik trga)</span></div><div class="kre">' +
+    '<div class="card-h" style="margin-top:6px"><b>🎨 5 kreativ (kot generator Kreative)</b><span class="sub">hook = velik napis zgoraj · ime = manjši logo · A = prednosti z ikonami · B = vibe ozadja (vse angleško) · v koraku 3 se angleški napisi prevedejo v jezik trga</span></div><div class="kre">' +
     (p.kreative || []).map((k, i) => '<div class="kre-k"><div class="oz">' + (i + 1) + ' · ' + esc(k.oznaka || '') + '</div>' +
-      '<label class="l" style="margin:6px 0 0">Vibe</label><input class="f" data-e="vibe" data-i="' + i + '" value="' + esc(k.vibe) + '">' +
-      '<label class="l" style="margin:8px 0 0">Bulleti</label>' + [0, 1, 2].map(j => '<input class="f" data-e="bul" data-i="' + i + '" data-j="' + j + '" maxlength="24" value="' + esc((k.bullets || [])[j] || '') + '">').join('') + '</div>').join('') + '</div></div>';
+      '<label class="l" style="margin:6px 0 0">Razmerje</label>' + razmSel(k, i) +
+      '<label class="l" style="margin:8px 0 0">Hook (velik napis zgoraj, EN)</label><input class="f" data-e="hook" data-i="' + i + '" maxlength="40" value="' + esc(k.hook || '') + '" style="font-weight:700">' +
+      '<label class="l" style="margin:8px 0 0">A · prednosti (EN)</label><textarea class="f" data-e="tekst" data-i="' + i + '" rows="2" maxlength="120">' + esc(k.tekst || '') + '</textarea>' +
+      '<label class="l" style="margin:8px 0 0">B · vibe ozadja</label><input class="f" data-e="vibe" data-i="' + i + '" value="' + esc(k.vibe) + '"></div>').join('') + '</div></div>';
   h += '<div class="card"><div class="card-h"><b>✍ Besedila oglasov (SLO matica)</b><span class="sub">1 oglas = 1 kreativa + headline + primary text · prevedejo se v koraku 3 (tam jih lahko popraviš po trgu)</span></div>' +
     ogl.slice(0, n).map((o, i) => '<div class="ogl"><span class="pill ' + (i < 5 ? 'p-inf' : 'p-mut') + '">' + (i < 5 ? '🖼 Kreativa ' + (i + 1) : '▶ Video ' + (i - 4)) + '</span>' +
       '<input class="f" data-e="hl" data-i="' + i + '" placeholder="Headline (max 5 besed)" value="' + esc(o.hl) + '">' +
@@ -304,20 +306,21 @@ function risi1(p) {
       '<div class="sub">' + v.mb + ' MB · ' + esc(v.izvor) + '</div>' + (v.opomba ? '<div style="color:var(--err);font-size:11.5px">' + esc(v.opomba) + '</div>' : '') + '</figure>').join('') + '</div>'
       : '<div class="sub">Ni videov (v novem SKU-ju dodaj povezavo do Asana taska).</div>') + '</div>';
   h += '<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><button class="btn" onclick="shrani(true)">💾 Shrani popravke</button><span class="grow"></span>' +
-    '<span class="sub">Flare 2.5 nariše 5 osnovnih slik BREZ besedila (~0,1–0,2 $ / sliko)</span>' +
-    '<button class="btn pri lg" ' + (V_DELU.includes(p.status) ? 'disabled' : '') + ' onclick="osnove()">2 · Ustvari osnovne slike →</button></div>';
+    '<span class="sub">Flare 2.5 nariše 5 kreativ z angleškimi napisi — isti prompt kot generator Kreative</span>' +
+    '<button class="btn pri lg" ' + (V_DELU.includes(p.status) ? 'disabled' : '') + ' onclick="osnove()">2 · Ustvari kreative →</button></div>';
   return h;
 }
 // ── 2 · osnovne slike ──
 function risi2(p) {
   const nT = TRGI.filter(t => p.trgi[t] && p.trgi[t].vkljuci).length, nO = (p.kreative || []).filter(k => k.osnova).length;
-  let h = '<div class="card"><div class="card-h"><b>🖼 Osnovne slike (brez besedila)</b><span class="sub">isto ozadje v vseh trgih — v koraku 3 dobi vsak trg svoje ime + bullete · ↻ = nova slika (lahko prej popraviš vibe)</span></div><div class="osn">' +
-    p.kreative.map((k, i) => '<div class="osn-k"><div class="img">' + (k.v_delu ? '<span class="spin"></span>' : k.osnova ? '<img src="' + dat(k.osnova) + '" loading="lazy">' : '<span class="sub" style="padding:10px;text-align:center">' + esc(k.osnova_napaka || 'še ni slike') + '</span>') + '</div>' +
-      '<div class="tx"><b style="color:var(--vi)">' + (i + 1) + ' · ' + esc(k.oznaka || '') + '</b><input class="f" data-e="vibe" data-i="' + i + '" value="' + esc(k.vibe) + '" style="margin:5px 0;font-size:12px">' +
-      '<div class="sub">' + esc((k.bullets || []).join(' · ')) + '</div><button class="btn sm" style="margin-top:6px" ' + (k.v_delu ? 'disabled' : '') + ' onclick="osnove([' + i + '])">↻ Nova slika</button></div></div>').join('') + '</div></div>';
-  h += '<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><label class="sub" style="display:flex;align-items:center;gap:6px">Besedilo na slike z <select class="f" id="model" style="width:auto" onchange="LS.set(\'ma_model\', this.value)">' +
-    '<option value="flare"' + (LS.get('ma_model') !== 'nb21' ? ' selected' : '') + '>GPT Image 2.5 Flare</option><option value="nb21"' + (LS.get('ma_model') === 'nb21' ? ' selected' : '') + '>Nano Banana 2.1 (ceneje)</option></select></label>' +
-    '<span class="grow"></span><span class="sub">' + nT + ' trgov × ' + nO + ' slik = <b>' + (nT * nO) + '</b> slik z besedilom + prevodi besedil</span>' +
+  let h = '<div class="card"><div class="card-h"><b>🖼 Kreative (angleško)</b><span class="sub">v koraku 3 se angleški napisi prevedejo v jezik vsakega trga, vse ostalo ostane enako · ↻ = nova slika (lahko prej popraviš A / B)</span></div><div class="osn">' +
+    p.kreative.map((k, i) => '<div class="osn-k"><div class="img" style="aspect-ratio:' + (k.razmerje === '4:5' ? '4/5' : '1/1') + '">' + (k.v_delu ? '<span class="spin"></span>' : k.osnova ? '<img src="' + dat(k.osnova) + '" loading="lazy">' : '<span class="sub" style="padding:10px;text-align:center">' + esc(k.osnova_napaka || 'še ni slike') + '</span>') + '</div>' +
+      '<div class="tx"><b style="color:var(--vi)">' + (i + 1) + ' · ' + esc(k.oznaka || '') + '</b>' + razmSel(k, i, 'margin-top:5px') + '<input class="f" data-e="vibe" data-i="' + i + '" value="' + esc(k.vibe) + '" style="margin:5px 0;font-size:12px">' +
+      '<input class="f" data-e="hook" data-i="' + i + '" value="' + esc(k.hook || '') + '" placeholder="hook" style="font-size:12px;font-weight:700;margin-bottom:5px">' +
+      '<textarea class="f" data-e="tekst" data-i="' + i + '" rows="2" style="font-size:12px">' + esc(k.tekst || '') + '</textarea><button class="btn sm" style="margin-top:6px" ' + (k.v_delu ? 'disabled' : '') + ' onclick="osnove([' + i + '])">↻ Nova slika</button></div></div>').join('') + '</div></div>';
+  h += '<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><label class="sub" style="display:flex;align-items:center;gap:6px">Prevod napisov z <select class="f" id="model" style="width:auto" onchange="LS.set(\'ma_model\', this.value)">' +
+    '<option value="nb21"' + (LS.get('ma_model') !== 'flare' ? ' selected' : '') + '>Nano Banana 2.1 (kot »Lok«)</option><option value="flare"' + (LS.get('ma_model') === 'flare' ? ' selected' : '') + '>GPT Image 2.5 Flare</option></select></label>' +
+    '<span class="grow"></span><span class="sub">' + nT + ' trgov × ' + nO + ' kreativ = <b>' + (nT * nO) + '</b> prevedenih slik + prevodi besedil oglasov</span>' +
     '<button class="btn pri lg" ' + (V_DELU.includes(p.status) || !nO ? 'disabled' : '') + ' onclick="lokaliziraj()">3 · Lokaliziraj za ' + nT + ' trgov →</button></div>';
   return h;
 }
@@ -356,7 +359,7 @@ function risi3(p) {
         : '<video src="' + dat(vids[i].datoteka) + '#t=0.5" preload="metadata" controls muted></video>';
       return '<div class="fbk' + (iz ? ' izkl' : '') + '"><div class="hd"><div class="av">m</div><div><div class="pn">' + esc(stran.ime) + '</div><div class="sp">Sponzorirano · ' + (vr === 'slika' ? 'kreativa ' + (i + 1) : 'video ' + (i + 1)) + '</div></div></div>' +
         '<textarea class="pt" data-e="t_pt" data-o="' + oi + '" rows="3">' + esc(o.pt) + '</textarea>' +
-        '<div class="md">' + md + '<div class="ak">' + (vr === 'slika' ? '<button title="Nova slika z besedilom za ta trg" onclick="znovaSlika(\'' + TRG + '\',' + i + ')">↻</button>' : '') +
+        '<div class="md" style="aspect-ratio:' + (vr === 'slika' && p.kreative[i].razmerje === '4:5' ? '4/5' : '1/1') + '">' + md + '<div class="ak">' + (vr === 'slika' ? '<button title="Nova slika z besedilom za ta trg" onclick="znovaSlika(\'' + TRG + '\',' + i + ')">↻</button>' : '') +
           '<button title="' + (iz ? 'Vključi oglas' : 'Izključi oglas iz izvoza') + '" onclick="izkljuci(\'' + key + '\')">' + (iz ? '↺' : '✕') + '</button></div></div>' +
         '<div class="ft"><div style="flex:1;min-width:0"><div class="dom">' + esc((x.url || '').replace(/^https?:\/\/(www\.)?/, '').split('/')[0]) + '</div><input class="hl" data-e="t_hl" data-o="' + oi + '" value="' + esc(o.hl) + '"></div><span class="cta">' + esc((ST.cta || {})[TRG] || 'Shop now') + '</span></div></div>';
     }).join('') + '</div>';
@@ -369,7 +372,8 @@ document.addEventListener('input', e => {
   const i = +t.dataset.i, o = +t.dataset.o;
   if (k === 'ime') PAK.ime = t.value;
   else if (k === 'vibe') PAK.kreative[i].vibe = t.value;
-  else if (k === 'bul') { PAK.kreative[i].bullets = (PAK.kreative[i].bullets || ['', '', '']).slice(); PAK.kreative[i].bullets[+t.dataset.j] = t.value; }
+  else if (k === 'tekst' || k === 'hook') PAK.kreative[i][k] = t.value;
+  else if (k === 'razm') { PAK.kreative[i].razmerje = t.value; }
   else if (k === 'hl' || k === 'pt') { PAK.oglasi_sl = PAK.oglasi_sl || []; while (PAK.oglasi_sl.length <= i) PAK.oglasi_sl.push({ hl: '', pt: '' }); PAK.oglasi_sl[i] = Object.assign({}, PAK.oglasi_sl[i], { [k]: t.value }); }
   else if (k === 'vid') { const v = PAK.videi.find(x => x.datoteka === t.dataset.f); if (v) v.vkljuci = t.checked; }
   else if (k === 't_hl' || k === 't_pt') { const x = PAK.trgi[TRG]; x.oglasi[o] = Object.assign({}, x.oglasi[o], { [k.slice(2)]: t.value }); }
@@ -378,7 +382,8 @@ document.addEventListener('input', e => {
   else if (k.startsWith('n_')) { PAK.nastavitve = PAK.nastavitve || {}; PAK.nastavitve[k.slice(2)] = t.value; }
   clearTimeout(SHR); SHR = setTimeout(() => shrani(false), 1200);
 });
-document.addEventListener('change', e => { if (e.target.matches('[data-e="vid"],[data-e="stran"],[data-e="vkljuci"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
+const razmSel = (k, i, st) => '<select class="f" data-e="razm" data-i="' + i + '" style="' + (st || '') + ';font-size:12px">' + ['1:1', '4:5'].map(r => '<option value="' + r + '"' + ((k.razmerje || '1:1') === r ? ' selected' : '') + '>' + (r === '1:1' ? '1:1 · 1080×1080 (vse postavitve)' : '4:5 · 1080×1350 (mobilni Feed)') + '</option>').join('') + '</select>';
+document.addEventListener('change', e => { if (e.target.matches('[data-e="vid"],[data-e="stran"],[data-e="vkljuci"],[data-e="razm"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
 async function shrani(pokazi) {
   clearTimeout(SHR); if (!PAK) return;
   const trgi = {}; TRGI.forEach(t => { const x = PAK.trgi && PAK.trgi[t]; if (x) trgi[t] = { vkljuci: x.vkljuci, stran: x.stran, oglasi: x.oglasi, izkl: x.izkl || [] }; });
@@ -388,7 +393,7 @@ async function shrani(pokazi) {
 async function osnove(idx) {
   await shrani(false);
   const n = idx ? idx.length : PAK.kreative.length;
-  if (!idx && PAK.kreative.some(k => k.osnova) && !confirm('Znova narišem vseh ' + n + ' osnovnih slik? (obstoječe se zamenjajo)')) return;
+  if (!idx && PAK.kreative.some(k => k.osnova) && !confirm('Znova narišem vseh ' + n + ' kreativ? (obstoječe se zamenjajo)')) return;
   const d = await post('/meta-ads/api/osnove', { id: PAK.id, indeksi: idx || null });
   if (!d.ok) { msg('msg', esc(d.error), 'err'); return; }
   KORAK = 2; await odpri(PAK.id);
@@ -396,13 +401,13 @@ async function osnove(idx) {
 async function lokaliziraj() {
   await shrani(false);
   const nT = TRGI.filter(t => PAK.trgi[t] && PAK.trgi[t].vkljuci).length, nO = PAK.kreative.filter(k => k.osnova).length, m = document.getElementById('model').value;
-  if (!confirm('Prevedem besedila in na ' + nO + ' osnovnih slik napišem ime + bullete za ' + nT + ' trgov (' + (nT * nO) + ' slik, ' + (m === 'nb21' ? 'NB2.1' : 'Flare 2.5') + ')? Ročni popravki besedil po trgih se prepišejo.')) return;
+  if (!confirm('Prevedem besedila oglasov in angleške napise na ' + nO + ' kreativah v jezik ' + nT + ' trgov (' + (nT * nO) + ' slik, ' + (m === 'flare' ? 'Flare 2.5' : 'NB2.1') + ')? Ročni popravki besedil po trgih se prepišejo.')) return;
   const d = await post('/meta-ads/api/lokaliziraj', { id: PAK.id, model: m });
   if (!d.ok) { msg('msg', esc(d.error), 'err'); return; }
   KORAK = 3; await odpri(PAK.id);
 }
 async function znovaSlika(t, i) {
-  const d = await post('/meta-ads/api/lokaliziraj', { id: PAK.id, model: LS.get('ma_model') === 'nb21' ? 'nb21' : 'flare', samo: [[t, i]] });
+  const d = await post('/meta-ads/api/lokaliziraj', { id: PAK.id, model: LS.get('ma_model') === 'flare' ? 'flare' : 'nb21', samo: [[t, i]] });
   if (!d.ok) { msg('msg', esc(d.error), 'err'); return; }
   PAK.trgi[t].slike = PAK.trgi[t].slike || {}; PAK.trgi[t].slike[String(i)] = {}; PAK.status = 'lokal_v_delu'; risi(); zagonPoll();
 }
