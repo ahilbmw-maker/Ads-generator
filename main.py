@@ -14227,7 +14227,11 @@ function planIzracun() {
       else if (e !== 9) { pred = naX9(r); op.push('→ x9'); }
       if (N.dvigRaz > 0 && razPo(c) < N.dvigRaz) {
         let q = naX9(pred + 25); if (q % 100 >= 80 && q % 100 <= 98) q = q - q % 100 + 99;
-        pred = q; op.push('💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → +25 Kč');
+        // ⤵ tik pod stotico: 279 → 299 (ne 309); čez stotico samo, ko je cena že X99 (299 → 329 ⚠, 199 → 229 ⚠)
+        const sto = (Math.floor(r / 100) + 1) * 100;
+        if (q >= sto && r % 100 !== 99) { q = sto - 1; op.push('💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → ' + q + ' (tik pod pragom ' + sto + ')'); }
+        else op.push('💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → +25 Kč');
+        pred = q;
       }
       if (Math.abs(pred - c) < 0.001) return ze('CZK že urejeno (x9)');
       if (decimalke) op.push(pred === r ? '🔧 decimalke' : '🔧 + decimalke');
@@ -14256,6 +14260,9 @@ function planIzracun() {
         // nikoli okrogla cena (x0: 70, 80, 110 …) — 65 → 69 namesto 70, 105 → 109
         if (pred % 10 === 0) { pred -= 1; op.push('💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → x9 (ne okroglo ' + (pred + 1) + ')'); }
         else op.push('💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → +5 ' + cur);
+        // ⤵ tik pod stotico: 97 → 99 (ne 104); čez stotico samo, ko je cena že X99 (99 → 104 ⚠)
+        const sto = (Math.floor(r / 100) + 1) * 100;
+        if (pred >= sto && r % 100 !== 99) { pred = sto - 1; op.push('→ ' + pred + ' (tik pod pragom ' + sto + ')'); }
       }
       if (Math.abs(pred - c) < 0.001) return ze(cur + ' že urejeno (x4 / x5 / x9)');
       if (decimalke && pred === r) op.unshift('🔧 decimalke');
@@ -14282,10 +14289,15 @@ function planIzracun() {
       const t = Math.round((c + PR.korak) * 100) / 100, kt = batoCands(t, cur);
       let pred = kt ? kt.pick : t; if (pred <= c) pred = kt ? kt.up : t;
       if (hufX99) pred = t;   // HUF xx99: točno +400 Ft (4399 → 4799 ostane xx99)
+      // ⤵ TIK POD PRAGOM: dvig, ki bi prestopil prag (EUR 10 · RSD 1000 · HUF 5000), se ustavi tik pod njim (18,49 → 19,99 · 4799 → 4999),
+      // čez prag gre samo, ko je cena ŽE tik pod njim (19,99 → 20,99 ⚠ · 1999 → 2099 ⚠)
+      let podPragom = '';
+      { const cu0 = PR.cez || PR.unit, meja = (Math.floor(c / cu0 + 1e-9) + 1) * cu0, pod = Math.round((meja - (cur === 'EUR' ? 0.01 : 1)) * 100) / 100;
+        if (pred >= meja - 1e-9 && c < pod - 1e-9) { pred = pod; podPragom = '→ ' + fmtC(pod, cur) + ' (tik pod pragom ' + meja + ')'; } }
       const pct = (pred - c) / c * 100, velika = Math.abs(pct) > N.maxPct, mPo = mz(pred);
       const cu = PR.cez || PR.unit, cez = Math.floor(pred / cu + 1e-9) > Math.floor(c / cu + 1e-9);   // npr. 19,99 → 20,99 · 1999 → 2099: levo število zraste
       predlogi.push({ x, sku, cur, c, pred, diff: Math.round((pred - c) * 100) / 100, pct, mZdaj: mz(c), mPo, rZdaj: neto(c) - x.nc, rPo: neto(pred) - x.nc,
-        opomba: ['💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → ' + PR.korTxt].concat(cez ? ['⚠ čez prag ' + Math.floor(pred / cu + 1e-9) * cu] : [], velika ? ['sprememba nad ' + N.maxPct + ' %'] : []).join(' · '),
+        opomba: ['💶 razlika pod ' + String(N.dvigRaz).replace('.', ',') + ' € → ' + (podPragom || PR.korTxt)].concat(cez ? ['⚠ čez prag ' + Math.floor(pred / cu + 1e-9) * cu] : [], velika ? ['sprememba nad ' + N.maxPct + ' %'] : []).join(' · '),
         ok: !velika && !cez, nizka: true });
       return;
     }
