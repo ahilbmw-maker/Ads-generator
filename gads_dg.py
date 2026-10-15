@@ -124,6 +124,11 @@ def vklopi(G: dict):
                 k["uvoz_at"] = _lj_iso()
                 tt["kampanje"][k["ime"]] = k
                 tt["izbrana"] = tt.get("izbrana") or k["ime"]
+                nar = tt.setdefault("narejeni", {})   # 📒 evidenca narejenih SKU-jev na trgu (tudi ročni oglasi iz izvoza)
+                for ag in k["ad_groups"]:
+                    m_ = re.search(r"SKU:\s*([A-Za-z0-9_\-\.]+)", ag)
+                    if m_ and m_.group(1).upper() not in nar:
+                        nar[m_.group(1).upper()] = {"kampanja": k["ime"], "ad_group": ag, "at": k["uvoz_at"], "vir": "izvoz"}
                 nove.append({"trg": t, "kampanja": k["ime"], "ad_groups": len(k["ad_groups"]), "skuji": len(k["skuji"])})
             if not nove:
                 return {"ok": False, "error": "Trga ni bilo mogoče določiti (ni Final URL) — izberi trg ročno in naloži znova."}
@@ -410,16 +415,30 @@ def vklopi(G: dict):
             if bud <= 0 or tcpa <= 0:
                 return {"ok": False, "error": "Proračun in Target CPA morata biti večja od 0."}
             nova = {"ime": ime_n, "vir": kampanja, "budget": bud, "tcpa": tcpa}
+        # 📒 že narejeni na tem trgu (evidenca + SKU-ji vseh kampanj trga) → preskoči, razen če »tudi že narejene«
+        nar = dict(tt.get("narejeni") or {})
+        for kn, kv in (tt.get("kampanje") or {}).items():
+            for s_ in kv.get("skuji") or []:
+                nar.setdefault(s_, {"kampanja": kn, "at": kv.get("uvoz_at"), "vir": "izvoz"})
+        preskoceni = []
+        if not data.get("tudi_narejene"):
+            for s_ in skus:
+                if s_ in nar:
+                    preskoceni.append({"sku": s_, "kampanja": nar[s_].get("kampanja"), "at": str(nar[s_].get("at") or "")[:10], "ad_group": nar[s_].get("ad_group")})
+            skus = [s_ for s_ in skus if s_ not in nar]
+        if not skus:
+            return {"ok": False, "preskoceni": preskoceni,
+                    "error": "Vsi SKU-ji so na tem trgu že narejeni: " + ", ".join(f"{x['sku']} ({x['at']}, {x['kampanja']})" for x in preskoceni) + " — označi »Tudi že narejene«, če jih želiš znova."}
         pid = datetime.now().strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:4]
         async with lock:
             d = pak_load()
             d["paketi"].insert(0, {"id": pid, "trg": trg, "kampanja": nova["ime"] if nova else kampanja, "vir_kampanja": kampanja,
-                                   "nova_kampanja": nova, "status": "v_delu", "at": _lj_iso(),
+                                   "nova_kampanja": nova, "status": "v_delu", "at": _lj_iso(), "preskoceni": preskoceni,
                                    "postavke": [{"sku": s, "status": "caka"} for s in skus]})
             d["paketi"] = d["paketi"][:30]
             _jsave(PAK_FILE, d)
         asyncio.create_task(obdelaj(pid, trg, kampanja, skus, data.get("ai_slike", True) is not False))   # besedila v slogu izvorne kampanje
-        return {"ok": True, "id": pid}
+        return {"ok": True, "id": pid, "preskoceni": preskoceni}
 
     def validiraj(p, nast):
         kamp_t = nast.get("trgi", {}).get(p["trg"], {}).get("kampanje", {})
@@ -641,7 +660,9 @@ def vklopi(G: dict):
                 k["kamp_vrstica"] = kv
                 k["lokacije"] = [dict(l, Campaign=nk["ime"]) for l in (k.get("lokacije") or [])]
                 tt["kampanje"][nk["ime"]] = k
-            if k is not None:
+            if True:
+                if k is None:   # kampanja ni (več) v seznamu trga → dodaj jo, da evidenca in dvojniki delujejo
+                    k = tt["kampanje"].setdefault(p["kampanja"], {"ime": p["kampanja"], "ad_groups": [], "skuji": [], "uvoz_at": _lj_iso()})
                 for x in izb:
                     k.setdefault("ag_paket", {})[x["ad_group"].lower()] = pid
                     if x["ad_group"] not in k.setdefault("ad_groups", []):
@@ -649,6 +670,9 @@ def vklopi(G: dict):
                     if x["sku"] not in k.setdefault("skuji", []):
                         k["skuji"].append(x["sku"])
                 tt["izbrana"] = p["kampanja"]
+                nar = tt.setdefault("narejeni", {})
+                for x in izb:
+                    nar[x["sku"]] = {"kampanja": p["kampanja"], "ad_group": x["ad_group"], "at": _lj_iso(), "vir": "suban", "pid": pid}
                 _jsave(NAST_FILE, d)
         await pak_set(pid, lambda q: q.update(izvozeno=_lj_iso()))
         ime = f"suban_demandgen_{p['trg'].upper()}_{p['at'][:10]}.zip"

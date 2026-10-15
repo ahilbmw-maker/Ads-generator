@@ -82,6 +82,7 @@
         <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button class="btn pri" id="btnPri" onclick="pripravi()">🧠 Pripravi oglase</button>
           <label class="sub" style="display:flex;align-items:center;gap:5px;cursor:pointer" title="NB2.1 naredi 7 oglasnih kreativ na SKU (2× 1:1, 3× 4:5, 2× 1,91:1): ime + 3 prednosti z ikonami, besedilo v jeziku trga · ~0,25 $ / SKU"><input type="checkbox" id="aiSlike" checked> 🎨 AI kreative (NB2.1)</label>
+          <label class="sub" style="display:flex;align-items:center;gap:5px;cursor:pointer" title="SKU-je, ki so na tem trgu že narejeni (Suban ali izvoz iz Editorja), privzeto preskoči — označi, če jih želiš znova"><input type="checkbox" id="tudiNar"> ↻ Tudi že narejene</label>
           <span class="sub" id="priInfo"></span>
         </div>
       </div>
@@ -160,9 +161,10 @@ async function pripravi() {
   if (!kampanja) { msg('msg', 'Najprej naloži izvoz kampanje za ta trg.', 'err'); return; }
   const nova = document.getElementById('novaOn').checked ? { ime: document.getElementById('novaIme').value, budget: document.getElementById('novaBud').value, tcpa: document.getElementById('novaCpa').value } : null;
   document.getElementById('btnPri').disabled = true;
-  const d = await api('/gads-dg/api/pripravi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trg, kampanja, skus, nova, ai_slike: document.getElementById('aiSlike').checked }) });
-  if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); document.getElementById('btnPri').disabled = false; return; }
-  LS.set('gdg_pak', d.id); msg('msg', ''); zgodovina();
+  const d = await api('/gads-dg/api/pripravi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trg, kampanja, skus, nova, ai_slike: document.getElementById('aiSlike').checked, tudi_narejene: document.getElementById('tudiNar').checked }) });
+  if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), (d.preskoceni || []).length ? 'warn' : 'err'); document.getElementById('btnPri').disabled = false; return; }
+  LS.set('gdg_pak', d.id); zgodovina();
+  msg('msg', (d.preskoceni || []).length ? '📒 Preskočeni (na tem trgu že narejeni): ' + d.preskoceni.map(x => '<b>' + esc(x.sku) + '</b> (' + esc(x.at || '?') + ', ' + esc(x.kampanja || '') + ')').join(' · ') + ' — za ponovno pripravo označi »↻ Tudi že narejene«.' : '', 'warn');
   clearInterval(POLL); POLL = setInterval(() => naloziPaket(d.id), 3000); naloziPaket(d.id);
 }
 async function naloziPaket(id) {
@@ -184,6 +186,7 @@ function risi() {
       '<button class="btn" ' + (caka || !brezNap.length ? 'disabled' : '') + ' onclick="izvozi()">⬇ ZIP</button>' +
       '<select class="f" id="stUvoz" onchange="LS.set(\'gdg_status\', this.value)" title="Status kampanje, skupin in oglasov ob uvozu v Editor" style="width:auto"><option value="Enabled"' + (stUvoz() === 'Enabled' ? ' selected' : '') + '>✅ ob Post takoj online</option><option value="Paused"' + (stUvoz() === 'Paused' ? ' selected' : '') + '>⏸ Paused</option></select>' +
       '<span class="sub" id="mapaInfo">' + (MAPA ? '📁 ' + esc(MAPA.name) + ' · <a href="#" onclick="mapaZamenjaj();return false">zamenjaj</a>' : 'mapa še ni izbrana') + '</span></div></div>';
+  if ((p.preskoceni || []).length) h += '<div class="msg warn">📒 Preskočeni (že narejeni na ' + esc(p.trg.toUpperCase()) + '): ' + p.preskoceni.map(x => '<b>' + esc(x.sku) + '</b> (' + esc(x.at || '?') + ', ' + esc(x.kampanja || '') + ')').join(' · ') + '</div>';
   if (p.nova_kampanja) h += '<div class="msg ok">➕ Nova kampanja <b>' + esc(p.nova_kampanja.ime) + '</b> (kopija »' + esc(p.nova_kampanja.vir) + '«) · proračun ' + esc(p.nova_kampanja.budget) + ' / dan · Target CPA ' + esc(p.nova_kampanja.tcpa) + ' · ' + (stUvoz() === 'Enabled' ? 'online' : 'Paused') + '</div>';
   h += '<div class="msg warn">⚠ Uvoz v Editor je lokalen, dokler ne klikneš <b>Post</b>. V pregledu uvoza morajo biti samo <b>Added</b>, nobenega <b>Updated</b>. Status ob uvozu: <b>' + (stUvoz() === 'Enabled' ? 'online (Enabled) — po Post takoj aktivni' : 'Paused') + '</b>. Slike Editor iz CSV ne pripne: uvozi mapo <b>slike</b> (vse naenkrat) (Import image assets from files) in jih pri vsakem oglasu izberi iz knjižnice (išči po SKU), dodaj še logo.' +
     (PAK.kampanja_najdena ? '' : ' <b>Kampanja ni več v nastavitvah — naloži izvoz znova.</b>') + '</div>';
