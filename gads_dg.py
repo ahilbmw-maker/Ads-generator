@@ -11,7 +11,7 @@ import json
 import re
 import uuid
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 
 DG_JEZIK = {"sl": "Slovenian", "hr": "Croatian", "rs": "Serbian (Latin script)", "hu": "Hungarian", "pl": "Polish",
             "cz": "Czech", "sk": "Slovak", "gr": "Greek", "bg": "Bulgarian", "ro": "Romanian"}
@@ -92,7 +92,35 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         d = _jload(NAST_FILE, {}) or {}
-        return {"ok": True, "trgi": d.get("trgi") or {}, "jeziki": DG_JEZIK}
+        return {"ok": True, "trgi": d.get("trgi") or {}, "jeziki": DG_JEZIK, "stat": statistika(d)}
+
+    def statistika(d):
+        """📊 Števec: oglasi (SKU-ji, izvoženi prek Suban) in nove kampanje — danes / skupaj / po trgih + zadnjih 14 dni."""
+        danes = _lj_iso()[:10]
+        po_trgih, dnevi, kamp = {}, {}, {}
+        for t, tt in (d.get("trgi") or {}).items():
+            s = po_trgih.setdefault(t, {"oglasi": 0, "danes": 0, "kampanje": 0, "vsi": len(tt.get("narejeni") or {})})
+            for sku, z in (tt.get("narejeni") or {}).items():
+                if z.get("vir") != "suban":
+                    continue
+                dan = str(z.get("at") or "")[:10]
+                s["oglasi"] += 1
+                s["danes"] += dan == danes
+                dnevi[dan] = dnevi.get(dan, 0) + 1
+            for ime, k in (tt.get("kampanje") or {}).items():
+                if k.get("iz_suban"):
+                    kamp[(t, ime)] = str(k.get("ustvarjena") or k.get("uvoz_at") or "")[:10]
+        for p in pak_load()["paketi"]:
+            if p.get("nova_kampanja") and p.get("izvozeno"):
+                kamp.setdefault((p["trg"], p["kampanja"]), str(p["izvozeno"])[:10])
+        for (t, _), dan in kamp.items():
+            po_trgih.setdefault(t, {"oglasi": 0, "danes": 0, "kampanje": 0, "vsi": 0})["kampanje"] += 1
+        od = (datetime.strptime(danes, "%Y-%m-%d") - timedelta(days=13))
+        zad14 = [{"d": (od + timedelta(days=i)).strftime("%Y-%m-%d"), "n": dnevi.get((od + timedelta(days=i)).strftime("%Y-%m-%d"), 0)} for i in range(14)]
+        return {"danes": {"oglasi": sum(s["danes"] for s in po_trgih.values()), "kampanje": sum(1 for v in kamp.values() if v == danes)},
+                "skupaj": {"oglasi": sum(s["oglasi"] for s in po_trgih.values()), "kampanje": len(kamp),
+                           "trgi": sum(1 for s in po_trgih.values() if s["oglasi"] or s["kampanje"])},
+                "po_trgih": po_trgih, "dnevi": zad14}
 
     @app.post("/gads-dg/api/uvoz")
     async def dg_uvoz(request: Request, file: UploadFile = File(...), trg: str = Form("")):
@@ -122,6 +150,12 @@ def vklopi(G: dict):
                 if racun:
                     tt["racun"] = racun
                 k["uvoz_at"] = _lj_iso()
+                star = tt["kampanje"].get(k["ime"]) or {}
+                for f_ in ("iz_suban", "iz_paketa", "ag_paket"):   # ponoven uvoz iz Editorja ohrani, da jo je ustvaril Suban (števec)
+                    if star.get(f_):
+                        k[f_] = star[f_]
+                if star.get("iz_suban"):
+                    k["ustvarjena"] = star.get("ustvarjena") or star.get("uvoz_at")
                 tt["kampanje"][k["ime"]] = k
                 tt["izbrana"] = tt.get("izbrana") or k["ime"]
                 nar = tt.setdefault("narejeni", {})   # 📒 evidenca narejenih SKU-jev na trgu (tudi ročni oglasi iz izvoza)

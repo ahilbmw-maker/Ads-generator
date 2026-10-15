@@ -6,110 +6,199 @@
 <title>Google Ads Demand Gen</title>
 <link rel="icon" type="image/png" href="/static/suban-s-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flag-icons@7.2.3/css/flag-icons.min.css">
 <style>
-  :root { --bg:#f4f5f7; --card:#fff; --bd:#e3e6eb; --txt:#16181d; --txt2:#5d6470; --txt3:#9aa1ad; --acc:#3a6fff;
+  :root { --bg:#f3f4f7; --card:#fff; --card2:#f8f9fb; --bd:#e3e6eb; --bd2:#cfd4dc; --txt:#16181d; --txt2:#5d6470; --txt3:#9aa1ad;
+    --acc:#3a6fff; --acc2:#e8eeff; --g-b:#4285f4; --g-r:#ea4335; --g-y:#fbbc05; --g-g:#34a853;
     --ok:#15803d; --b-ok:#dcfce7; --warn:#b45309; --b-warn:#fef3c7; --err:#dc2626; --b-err:#fee2e2; --inf:#2563eb; --b-inf:#dbeafe; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#111317; --card:#1a1d23; --bd:#2b3039; --txt:#e8eaee; --txt2:#a3aab6; --txt3:#6b7380;
-    --ok:#86efac; --b-ok:#14361f; --warn:#fcd34d; --b-warn:#3a2e0d; --err:#fca5a5; --b-err:#3d1414; --inf:#93c5fd; --b-inf:#172554; } }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#111317; --card:#1a1d23; --card2:#20242b; --bd:#2b3039; --bd2:#3a404b; --txt:#e8eaee; --txt2:#a3aab6; --txt3:#6b7380;
+    --acc:#6b93ff; --acc2:#1d2a4d; --ok:#86efac; --b-ok:#14361f; --warn:#fcd34d; --b-warn:#3a2e0d; --err:#fca5a5; --b-err:#3d1414; --inf:#93c5fd; --b-inf:#172554; } }
+  :root[data-theme="dark"] { --bg:#111317; --card:#1a1d23; --card2:#20242b; --bd:#2b3039; --bd2:#3a404b; --txt:#e8eaee; --txt2:#a3aab6; --txt3:#6b7380;
+    --acc:#6b93ff; --acc2:#1d2a4d; --ok:#86efac; --b-ok:#14361f; --warn:#fcd34d; --b-warn:#3a2e0d; --err:#fca5a5; --b-err:#3d1414; --inf:#93c5fd; --b-inf:#172554; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.45 'DM Sans',-apple-system,'Segoe UI',sans-serif; }
-  .wrap { padding:16px 20px; max-width:1500px; margin:0 auto; }
-  .head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
-  .head h1 { font-size:20px; margin:0; font-weight:700; }
+  a { color:var(--acc); }
+  .wrap { padding:0 20px 40px; }
+  .top { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 0 12px; }
+  .logo { width:34px; height:34px; border-radius:9px; background:var(--card); border:1px solid var(--bd); display:flex; align-items:center; justify-content:center; flex:none; }
+  .top h1 { font-size:19px; margin:0; font-weight:700; letter-spacing:-.2px; }
   .sub { color:var(--txt2); font-size:12px; }
-  .btn { border:1px solid var(--bd); background:var(--card); color:var(--txt); border-radius:8px; padding:7px 12px; font-weight:600; font-size:13px; font-family:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
+  .muted { color:var(--txt3); }
+  .grow { flex:1; }
+  .btn { border:1px solid var(--bd); background:var(--card); color:var(--txt); border-radius:8px; padding:7px 12px; font-weight:600; font-size:13px; font-family:inherit; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
   .btn:hover { border-color:var(--acc); }
-  .btn:disabled { opacity:.5; cursor:default; }
+  .btn:disabled { opacity:.45; cursor:default; border-color:var(--bd); }
   .btn.pri { background:var(--acc); border-color:var(--acc); color:#fff; }
   .btn.grn { background:#16a34a; border-color:#16a34a; color:#fff; }
+  .btn.ghost { background:transparent; border-color:transparent; color:var(--txt2); }
+  .btn.ghost:hover { background:var(--card2); border-color:var(--bd); }
   .btn.sm { padding:4px 9px; font-size:12px; }
+  .btn.lg { padding:10px 18px; font-size:14px; }
   input.f, select.f, textarea.f { border:1px solid var(--bd); border-radius:8px; padding:7px 9px; background:var(--card); color:var(--txt); font:inherit; width:100%; }
-  textarea.f { font-family:Consolas,monospace; font-size:12.5px; resize:vertical; }
-  label.l { display:block; font-size:12px; font-weight:600; color:var(--txt2); margin:10px 0 4px; }
-  .card { background:var(--card); border:1px solid var(--bd); border-radius:12px; padding:14px 16px; margin-bottom:12px; }
-  .grid3 { display:grid; grid-template-columns:220px minmax(0,1fr) minmax(0,1.2fr); gap:14px; align-items:start; }
-  @media (max-width:1000px) { .grid3 { grid-template-columns:1fr; } }
-  .msg { padding:9px 12px; border-radius:8px; margin:10px 0; font-size:13px; }
-  .msg.err { background:var(--b-err); color:var(--err); } .msg.ok { background:var(--b-ok); color:var(--ok); } .msg.warn { background:var(--b-warn); color:var(--warn); }
-  .pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:700; }
-  .p-ok { background:var(--b-ok); color:var(--ok); } .p-err { background:var(--b-err); color:var(--err); } .p-warn { background:var(--b-warn); color:var(--warn); } .p-inf { background:var(--b-inf); color:var(--inf); }
-  .muted { color:var(--txt3); }
-  .oglas { border:1px solid var(--bd); border-radius:12px; padding:12px 14px; margin-bottom:10px; background:var(--card); }
+  input.f:focus, select.f:focus, textarea.f:focus { outline:none; border-color:var(--acc); box-shadow:0 0 0 3px var(--acc2); }
+  textarea.f { font-family:Consolas,monospace; font-size:12.5px; resize:vertical; line-height:1.55; }
+  label.l { display:block; font-size:11.5px; font-weight:700; color:var(--txt2); margin:12px 0 5px; text-transform:uppercase; letter-spacing:.4px; }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:16px 18px; margin-bottom:14px; }
+  .card-h { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .card-h b { font-size:14.5px; }
+  .msg { padding:9px 12px; border-radius:9px; margin:10px 0; font-size:13px; }
+  .msg.err { background:var(--b-err); color:var(--err); } .msg.ok { background:var(--b-ok); color:var(--ok); } .msg.warn { background:var(--b-warn); color:var(--warn); } .msg.inf { background:var(--b-inf); color:var(--inf); }
+  .pill { display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+  .p-ok { background:var(--b-ok); color:var(--ok); } .p-err { background:var(--b-err); color:var(--err); } .p-warn { background:var(--b-warn); color:var(--warn); } .p-inf { background:var(--b-inf); color:var(--inf); } .p-mut { background:var(--card2); color:var(--txt2); border:1px solid var(--bd); }
+  /* 📊 KPI trak */
+  .kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
+  .kpi { background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:13px 16px; position:relative; overflow:hidden; min-height:92px; }
+  .kpi::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--c, var(--acc)); }
+  .kpi .kl { font-size:11.5px; font-weight:700; color:var(--txt2); text-transform:uppercase; letter-spacing:.4px; }
+  .kpi .kv { font-size:28px; font-weight:700; line-height:1.15; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .kpi .kv small { font-size:15px; color:var(--txt3); font-weight:600; }
+  .kpi .ks { font-size:12px; color:var(--txt2); margin-top:2px; }
+  .spark { display:flex; align-items:flex-end; gap:3px; height:30px; position:absolute; right:14px; bottom:13px; }
+  .spark i { width:7px; background:var(--g-b); border-radius:2px 2px 0 0; opacity:.75; min-height:2px; }
+  .spark i.z { background:var(--bd2); opacity:1; }
+  .spark i.d { opacity:1; background:var(--g-g); }
+  @media (max-width:900px) { .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  /* 🌍 trgi */
+  .trgi { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .trg { border:1px solid var(--bd); background:var(--card); border-radius:11px; padding:7px 11px 7px 9px; cursor:pointer; display:flex; align-items:center; gap:8px; font:inherit; color:var(--txt); min-width:104px; text-align:left; }
+  .trg:hover { border-color:var(--bd2); }
+  .trg.on { border-color:var(--acc); box-shadow:0 0 0 3px var(--acc2); }
+  .trg.prazen { opacity:.55; }
+  .trg .fi { width:22px; height:16px; border-radius:3px; box-shadow:0 0 0 1px var(--bd); flex:none; }
+  .trg b { font-size:13px; display:block; line-height:1.1; }
+  .trg span { font-size:11px; color:var(--txt2); }
+  .trg em { font-style:normal; color:var(--ok); font-weight:700; }
+  /* glavna mreža */
+  .main { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr); gap:14px; align-items:start; }
+  @media (max-width:1050px) { .main { grid-template-columns:1fr; } }
+  .row2 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
+  .kinfo { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .tog { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:600; cursor:pointer; user-select:none; }
+  .tog input { width:16px; height:16px; accent-color:var(--acc); }
+  .nova { border:1px dashed var(--bd2); border-radius:10px; padding:4px 12px 12px; margin-top:10px; background:var(--card2); }
+  .skuInfo { display:flex; gap:6px; flex-wrap:wrap; margin-top:7px; min-height:22px; align-items:center; }
+  .akc { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:14px; padding-top:14px; border-top:1px solid var(--bd); }
+  .prog { height:6px; background:var(--card2); border-radius:99px; overflow:hidden; border:1px solid var(--bd); width:180px; }
+  .prog i { display:block; height:100%; background:var(--acc); transition:width .4s; }
+  /* zgodovina */
+  .zg { max-height:560px; overflow-y:auto; margin:0 -6px; }
+  .zg-r { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:10px; align-items:center; padding:9px 8px; border-radius:9px; cursor:pointer; border:1px solid transparent; }
+  .zg-r:hover { background:var(--card2); }
+  .zg-r.on { border-color:var(--acc); background:var(--acc2); }
+  .zg-r .fi { width:20px; height:15px; border-radius:3px; box-shadow:0 0 0 1px var(--bd); }
+  .zg-t { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .zg-s { font-size:11.5px; color:var(--txt2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .zg-d { font-size:11px; color:var(--txt3); text-align:right; }
+  details.nav { border:1px solid var(--bd); border-radius:10px; padding:0 12px; background:var(--card2); font-size:12.5px; color:var(--txt2); }
+  details.nav summary { cursor:pointer; padding:9px 0; font-weight:700; color:var(--txt); }
+  details.nav ol { margin:0 0 10px; padding-left:18px; } details.nav li { margin:3px 0; }
+  /* paket */
+  .pak-bar { position:sticky; top:0; z-index:5; background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:12px 16px; margin-bottom:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; box-shadow:0 6px 16px -12px rgba(0,0,0,.35); }
+  .pak-t { font-size:15px; font-weight:700; }
+  .stats { display:flex; gap:6px; flex-wrap:wrap; }
+  .oglas { border:1px solid var(--bd); border-radius:14px; padding:14px 16px; margin-bottom:12px; background:var(--card); }
   .oglas.izkl { opacity:.5; }
   .oglas.napaka { border-color:var(--err); }
-  .oglas-h { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
-  .slike { display:flex; gap:6px; flex-wrap:wrap; }
-  .slike figure { margin:0; text-align:center; font-size:10.5px; color:var(--txt3); }
-  .slike img { height:74px; border-radius:6px; border:1px solid var(--bd); background:#fff; display:block; }
-  .vrsta { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+  .oglas.caka { display:flex; align-items:center; gap:10px; padding:12px 16px; }
+  .oglas-h { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  .oglas-h .sku { font-weight:700; font-size:15px; display:flex; align-items:center; gap:7px; cursor:pointer; }
+  .oglas-h .sku input { width:16px; height:16px; accent-color:var(--acc); }
+  .slike { display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; }
+  .slike figure { margin:0; text-align:center; font-size:10.5px; color:var(--txt3); cursor:pointer; flex:none; position:relative; }
+  .slike img { height:130px; border-radius:8px; border:1px solid var(--bd); background:#fff; display:block; }
+  .slike figure.izkl img { opacity:.25; }
+  .slike figure.izkl::after { content:'✕'; position:absolute; top:44px; left:0; right:0; font-size:28px; color:var(--err); font-weight:700; }
+  .vrsta { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
   .vrsta input { flex:1; }
-  .cnt { font-size:11px; color:var(--txt3); min-width:44px; text-align:right; font-variant-numeric:tabular-nums; }
+  .cnt { font-size:11px; color:var(--txt3); min-width:40px; text-align:right; font-variant-numeric:tabular-nums; }
   .cnt.over { color:var(--err); font-weight:700; }
-  .kpi { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 10px; }
-  .kpi div { background:var(--card); border:1px solid var(--bd); border-radius:10px; padding:8px 14px; }
-  .kpi b { font-size:18px; display:block; }
+  .spin { width:14px; height:14px; border:2px solid var(--bd2); border-top-color:var(--acc); border-radius:50%; animation:sp 0.8s linear infinite; display:inline-block; flex:none; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  .prazno { text-align:center; padding:26px 10px; color:var(--txt3); font-size:13px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="head">
-    <a class="btn" href="/" title="Na domačo stran suban.ai">🏠 Domov</a>
-    <h1>🎯 Google Ads · Demand Gen</h1>
-    <span class="sub">SKU → besedila v jeziku trga + slike → ZIP za Google Ads Editor (uvoziš, pripneš slike, pregledaš, Post)</span>
+  <div class="top">
+    <a class="btn ghost" href="/" title="Na domačo stran suban.ai">← suban.ai</a>
+    <div class="logo"><svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#ea4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285f4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#fbbc05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.5 0 20.1 0 24s1 7.5 2.7 10.7l7.8-6.1z"/><path fill="#34a853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg></div>
+    <div><h1>Google Ads · Demand Gen</h1><div class="sub">SKU → besedila v jeziku trga + AI kreative → Google Ads Editor</div></div>
+    <span class="grow"></span>
+    <input type="file" id="izvoz" accept=".csv,.tsv,.txt" style="display:none" onchange="naloziIzvoz()">
+    <button class="btn" onclick="document.getElementById('izvoz').click()" title="Editor → izberi Demand Gen kampanjo → Account → Export → CSV. Trg se določi po domeni v Final URL. Naloži znova, ko v Editorju dodaš nove oglase.">⬆ Naloži izvoz iz Editorja</button>
+  </div>
+  <div id="uvozMsg"></div>
+
+  <div class="kpis" id="kpis">
+    <div class="kpi" style="--c:var(--g-g)"><div class="kl">Oglasi danes</div><div class="kv">–</div></div>
+    <div class="kpi" style="--c:var(--g-b)"><div class="kl">Oglasi skupaj</div><div class="kv">–</div></div>
+    <div class="kpi" style="--c:var(--g-y)"><div class="kl">Nove kampanje</div><div class="kv">–</div></div>
+    <div class="kpi" style="--c:var(--g-r)"><div class="kl">Aktivni trgi</div><div class="kv">–</div></div>
   </div>
 
-  <div class="card">
-    <div class="grid3">
-      <div>
-        <label class="l" style="margin-top:0">Trg</label>
-        <select class="f" id="trg" onchange="trgIzbran()"></select>
-        <label class="l">Demand Gen kampanja</label>
-        <select class="f" id="kamp" onchange="kampInfo()"></select>
-        <div class="sub" id="kampInfo" style="margin-top:6px"></div>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-weight:700;font-size:13px;cursor:pointer"><input type="checkbox" id="novaOn" onchange="novaUI()"> ➕ Nova kampanja (kopija izbrane)</label>
-        <div id="novaBox" style="display:none">
-          <label class="l">Ime nove kampanje</label><input class="f" id="novaIme">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-            <div><label class="l">Dnevni proračun</label><input class="f" id="novaBud" inputmode="decimal"></div>
-            <div><label class="l">Target CPA</label><input class="f" id="novaCpa" inputmode="decimal"></div>
-          </div>
-          <div class="sub" style="margin-top:6px">Ostale nastavitve (omrežja, jeziki, lokacija, Merchant, cilji) se kopirajo iz izbrane kampanje. Status po izbiri ob izvozu (privzeto online), začetek danes.</div>
+  <div class="trgi" id="trgi"></div>
+
+  <div class="main">
+    <div class="card">
+      <div class="card-h"><b>🧠 Nov paket oglasov</b><span class="sub" id="trgNaslov"></span></div>
+      <label class="l" style="margin-top:4px">Demand Gen kampanja</label>
+      <select class="f" id="kamp" onchange="kampInfo()"></select>
+      <div class="kinfo" id="kampInfo"></div>
+      <div style="margin-top:12px"><label class="tog"><input type="checkbox" id="novaOn" onchange="novaUI()"> ➕ Ustvari novo kampanjo (kopija izbrane)</label></div>
+      <div class="nova" id="novaBox" style="display:none">
+        <label class="l">Ime nove kampanje</label><input class="f" id="novaIme">
+        <div class="row2">
+          <div><label class="l">Dnevni proračun</label><input class="f" id="novaBud" inputmode="decimal"></div>
+          <div><label class="l">Target CPA</label><input class="f" id="novaCpa" inputmode="decimal"></div>
         </div>
+        <div class="sub" style="margin-top:8px">Omrežja, jeziki, lokacija, Merchant in cilji se kopirajo iz izbrane kampanje. Začetek danes, status po izbiri ob izvozu.</div>
       </div>
-      <div>
-        <label class="l" style="margin-top:0">SKU-ji (vsak v svojo vrstico ali ločeni z vejico)</label>
-        <textarea class="f" id="skus" rows="7" placeholder="AQUABARRIER&#10;ORTOFEET&#10;…"></textarea>
-        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <button class="btn pri" id="btnPri" onclick="pripravi()">🧠 Pripravi oglase</button>
-          <label class="sub" style="display:flex;align-items:center;gap:5px;cursor:pointer" title="NB2.1 naredi 7 oglasnih kreativ na SKU (2× 1:1, 3× 4:5, 2× 1,91:1): ime + 3 prednosti z ikonami, besedilo v jeziku trga · ~0,25 $ / SKU"><input type="checkbox" id="aiSlike" checked> 🎨 AI kreative (NB2.1)</label>
-          <label class="sub" style="display:flex;align-items:center;gap:5px;cursor:pointer" title="SKU-je, ki so na tem trgu že narejeni (Suban ali izvoz iz Editorja), privzeto preskoči — označi, če jih želiš znova"><input type="checkbox" id="tudiNar"> ↻ Tudi že narejene</label>
-          <span class="sub" id="priInfo"></span>
-        </div>
+      <label class="l">SKU-ji <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· vsak v svojo vrstico ali ločeni z vejico</span></label>
+      <textarea class="f" id="skus" rows="7" placeholder="AQUABARRIER&#10;ORTOFEET&#10;VACUSTICK" oninput="skuInfo()"></textarea>
+      <div class="skuInfo" id="skuInfo"></div>
+      <div class="akc">
+        <button class="btn pri lg" id="btnPri" onclick="pripravi()">🧠 Pripravi oglase</button>
+        <label class="tog" title="NB2.1 naredi 7 oglasnih kreativ na SKU (2× 1:1, 3× 4:5, 2× 1,91:1): ime + 3 prednosti z ikonami, besedilo v jeziku trga · ~0,25 $ / SKU"><input type="checkbox" id="aiSlike" checked onchange="skuInfo()"> 🎨 AI kreative (NB2.1)</label>
+        <label class="tog" title="SKU-je, ki so na tem trgu že narejeni (Suban ali izvoz iz Editorja), privzeto preskoči — označi, če jih želiš znova"><input type="checkbox" id="tudiNar" onchange="skuInfo()"> ↻ Tudi že narejene</label>
+        <span class="grow"></span>
+        <span class="sub" id="priInfo"></span>
       </div>
-      <div>
-        <label class="l" style="margin-top:0">Izvoz kampanje iz Google Ads Editorja (za mapiranje trga in preverbo dvojnikov)</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <input type="file" id="izvoz" accept=".csv,.tsv,.txt" style="font-size:12px">
-          <button class="btn" onclick="naloziIzvoz()">⬆ Naloži izvoz</button>
-        </div>
-        <div class="sub" style="margin-top:6px">Editor → izberi Demand Gen kampanjo → Account → Export → CSV. Trg se določi po domeni v Final URL. Naloži znova, ko dodaš nove oglase (sicer preverba dvojnikov ne vidi novih skupin).</div>
-        <div id="uvozMsg"></div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card-h"><b>📜 Zgodovina paketov</b><span class="sub">zadnjih 30 · klik = odpri</span></div>
+        <div class="zg" id="zgod"><div class="prazno">Nalagam …</div></div>
       </div>
+      <details class="nav">
+        <summary>📘 Kako uvozim v Google Ads Editor</summary>
+        <ol>
+          <li><b>📁 Shrani v mapo</b> zapiše <code>Maaarket.xx\ads_….csv</code> in mapo <b>slike</b> (samo ta paket).</li>
+          <li>Editor → <b>Account → Import → From file</b> → izberi <code>ads_….csv</code>.</li>
+          <li>V pregledu morajo biti samo <b>Added</b>, nobenega <b>Updated</b>.</li>
+          <li>Slike: <b>Image assets → Import from files</b> → vse iz mape <b>slike</b>, nato jih pri vsakem oglasu izberi iz knjižnice (išči po SKU) + logo.</li>
+          <li>Klikni <b>Post</b> — šele takrat gre v Google Ads.</li>
+          <li>Ko v Editorju dodaš oglase ročno, <b>naloži izvoz znova</b> (preverba dvojnikov).</li>
+        </ol>
+      </details>
     </div>
   </div>
 
   <div id="msg"></div>
   <div id="paket"></div>
-  <div class="card" id="zgodCard"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b>📜 Zgodovina paketov</b><span class="sub">zadnjih 30 · klik Odpri = pregled, popravki, ponoven izvoz</span></div><div id="zgod" class="sub">Nalagam …</div></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const MAX = { h: 40, d: 90 };
-let NAST = { trgi: {}, jeziki: {} }, PAK = null, POLL = null;
+let NAST = { trgi: {}, jeziki: {} }, PAK = null, POLL = null, TRG = 'bg';
 const TRGI = ['sl', 'hr', 'rs', 'hu', 'pl', 'cz', 'sk', 'gr', 'bg', 'ro'];
+const ZASTAVA = { sl: 'si' };
+const zast = t => '<span class="fi fi-' + (ZASTAVA[t] || t) + '"></span>';
 const LS = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
+const cas = s => String(s || '').slice(0, 16).replace('T', ' ');
+const datum = s => { const m = String(s || '').match(/^(\d{4})-(\d\d)-(\d\d)/); return m ? +m[3] + '. ' + +m[2] + '.' : ''; };
 
 async function api(url, opt) {
   const r = await fetch(url, Object.assign({ credentials: 'include' }, opt || {}));
@@ -120,53 +209,91 @@ function msg(el, t, cls) { document.getElementById(el).innerHTML = t ? '<div cla
 
 async function nalozi() {
   NAST = await api('/gads-dg/api/nastavitve');
-  const s = document.getElementById('trg'), cur = LS.get('gdg_trg') || 'bg';
-  s.innerHTML = TRGI.map(t => '<option value="' + t + '"' + (t === cur ? ' selected' : '') + '>' + t.toUpperCase() + ' · ' + esc((NAST.jeziki || {})[t] || '') +
-    ((NAST.trgi || {})[t] ? ' ✓' : ' — ni izvoza') + '</option>').join('');
-  trgIzbran();
+  TRG = LS.get('gdg_trg') || 'bg'; if (!TRGI.includes(TRG)) TRG = 'bg';
+  risiKpi(); trgIzbran();
 }
+// 📊 števec: oglasi (SKU-ji, izvoženi prek Suban) in nove kampanje
+function risiKpi() {
+  const st = NAST.stat || { danes: {}, skupaj: {}, dnevi: [], po_trgih: {} }, dn = st.dnevi || [];
+  const vceraj = dn.length > 1 ? dn[dn.length - 2].n : 0, max = Math.max(1, ...dn.map(x => x.n)), n7 = dn.slice(-7).reduce((a, x) => a + x.n, 0);
+  const spark = '<div class="spark" title="Zadnjih 14 dni">' + dn.map((x, i) => '<i class="' + (x.n ? (i === dn.length - 1 ? 'd' : '') : 'z') + '" style="height:' + Math.max(2, Math.round(x.n / max * 30)) + 'px" title="' + esc(datum(x.d)) + ': ' + x.n + '"></i>').join('') + '</div>';
+  const pt = st.po_trgih || {}, akt = TRGI.filter(t => pt[t] && (pt[t].oglasi || pt[t].kampanje));
+  document.getElementById('kpis').innerHTML =
+    '<div class="kpi" style="--c:var(--g-g)"><div class="kl">Oglasi danes</div><div class="kv">' + (st.danes.oglasi || 0) + '</div><div class="ks">včeraj ' + vceraj + ' · 7 dni ' + n7 + '</div></div>' +
+    '<div class="kpi" style="--c:var(--g-b)"><div class="kl">Oglasi skupaj</div><div class="kv">' + (st.skupaj.oglasi || 0) + '</div><div class="ks">SKU-jev prek Suban</div>' + spark + '</div>' +
+    '<div class="kpi" style="--c:var(--g-y)"><div class="kl">Nove kampanje</div><div class="kv">' + (st.danes.kampanje || 0) + ' <small>/ ' + (st.skupaj.kampanje || 0) + '</small></div><div class="ks">danes / skupaj</div></div>' +
+    '<div class="kpi" style="--c:var(--g-r)"><div class="kl">Aktivni trgi</div><div class="kv">' + akt.length + ' <small>/ ' + TRGI.length + '</small></div><div class="ks">' + (akt.map(t => t.toUpperCase()).join(' · ') || 'še noben') + '</div></div>';
+}
+function risiTrgi() {
+  const pt = (NAST.stat || {}).po_trgih || {};
+  document.getElementById('trgi').innerHTML = TRGI.map(t => {
+    const ima = !!(NAST.trgi || {})[t], s = pt[t] || {};
+    return '<button class="trg' + (t === TRG ? ' on' : '') + (ima ? '' : ' prazen') + '" onclick="izberiTrg(\'' + t + '\')" title="' + esc((NAST.jeziki || {})[t] || '') + (ima ? '' : ' — izvoz kampanje še ni naložen') + '">' + zast(t) +
+      '<div><b>' + t.toUpperCase() + '</b><span>' + (ima ? (s.oglasi || 0) + ' oglasov' + (s.danes ? ' · <em>+' + s.danes + '</em>' : '') : 'ni izvoza') + '</span></div></button>';
+  }).join('');
+}
+function izberiTrg(t) { TRG = t; trgIzbran(); }
 function trgIzbran() {
-  const t = document.getElementById('trg').value; LS.set('gdg_trg', t);
+  const t = TRG; LS.set('gdg_trg', t); risiTrgi();
   const tt = (NAST.trgi || {})[t] || { kampanje: {} }, k = Object.keys(tt.kampanje || {});
+  document.getElementById('trgNaslov').innerHTML = zast(t) + ' ' + t.toUpperCase() + ' · ' + esc((NAST.jeziki || {})[t] || '') + (tt.racun ? ' · ' + esc(tt.racun) : '');
   document.getElementById('kamp').innerHTML = k.length ? k.map(n => '<option' + (n === tt.izbrana ? ' selected' : '') + '>' + esc(n) + '</option>').join('')
-    : '<option value="">— naloži izvoz kampanje za ' + t.toUpperCase() + ' —</option>';
-  kampInfo();
+    : '<option value="">— naloži izvoz kampanje za ' + t.toUpperCase() + ' (gumb zgoraj desno) —</option>';
+  kampInfo(); skuInfo();
 }
 function novaUI() {
-  const on = document.getElementById('novaOn').checked, t = document.getElementById('trg').value, n = document.getElementById('kamp').value;
+  const on = document.getElementById('novaOn').checked, t = TRG, n = document.getElementById('kamp').value;
   document.getElementById('novaBox').style.display = on ? 'block' : 'none';
   const k = (((NAST.trgi || {})[t] || {}).kampanje || {})[n] || {}, kv = k.kamp_vrstica || {};
   if (on && !document.getElementById('novaIme').value) document.getElementById('novaIme').value = '(Suban) ' + (k.business_name || ('Maaarket.' + t)) + ' – Demand Gen';
   if (on) { document.getElementById('novaBud').value = document.getElementById('novaBud').value || kv['Budget'] || ''; document.getElementById('novaCpa').value = document.getElementById('novaCpa').value || kv['Target CPA'] || ''; }
 }
 function kampInfo() {
-  const t = document.getElementById('trg').value, n = document.getElementById('kamp').value;
+  const t = TRG, n = document.getElementById('kamp').value;
   const tt = (NAST.trgi || {})[t] || {}, k = (tt.kampanje || {})[n];
   ['novaIme', 'novaBud', 'novaCpa'].forEach(i => { const e = document.getElementById(i); if (e) e.value = ''; }); if (document.getElementById('novaOn')) novaUI();
-  document.getElementById('kampInfo').innerHTML = k ? (tt.racun ? 'Račun: <b>' + esc(tt.racun) + '</b><br>' : '') +
-    'Business name: <b>' + esc(k.business_name || '?') + '</b><br>' + (k.ad_groups || []).length + ' obstoječih skupin · ' + (k.skuji || []).length + ' SKU-jev<br>' +
-    '<span class="muted">izvoz: ' + esc(String(k.uvoz_at || '').slice(0, 16).replace('T', ' ')) + '</span>' : '';
+  document.getElementById('kampInfo').innerHTML = k ? '<span class="pill p-mut">🏷 ' + esc(k.business_name || '?') + '</span>' +
+    '<span class="pill p-mut">' + (k.ad_groups || []).length + ' skupin</span><span class="pill p-mut">' + (k.skuji || []).length + ' SKU</span>' +
+    (k.iz_suban ? '<span class="pill p-inf">➕ ustvaril Suban</span>' : '') +
+    '<span class="pill p-mut" title="Kdaj je bil naložen izvoz iz Editorja">⬆ ' + esc(cas(k.uvoz_at)) + '</span>' : '';
+  skuInfo();
+}
+// ✓ sproti: kateri SKU-ji so na tem trgu že narejeni (preskočijo se)
+function skuSeznam() { return [...new Set(document.getElementById('skus').value.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean))]; }
+function skuInfo() {
+  const el = document.getElementById('skuInfo'), sk = skuSeznam(); if (!el) return;
+  if (!sk.length) { el.innerHTML = ''; return; }
+  const tt = (NAST.trgi || {})[TRG] || {}, nar = Object.assign({}, tt.narejeni || {});
+  Object.entries(tt.kampanje || {}).forEach(([kn, kv]) => (kv.skuji || []).forEach(s => { if (!nar[s]) nar[s] = { kampanja: kn, at: kv.uvoz_at }; }));
+  const ze = sk.filter(s => nar[s]), novi = sk.length - ze.length, tudi = document.getElementById('tudiNar').checked, ai = document.getElementById('aiSlike').checked;
+  const n = tudi ? sk.length : novi;
+  el.innerHTML = '<span class="pill p-ok">' + novi + ' novih</span>' +
+    (ze.length ? '<span class="pill ' + (tudi ? 'p-inf' : 'p-warn') + '" title="' + esc(ze.map(s => s + ' — ' + datum(nar[s].at) + ' · ' + (nar[s].kampanja || '')).join('\n')) + '">' + (tudi ? '↻ ' : '📒 preskočim ') + ze.length + ': ' + esc(ze.slice(0, 6).join(', ')) + (ze.length > 6 ? ' …' : '') + '</span>' : '') +
+    (ai && n ? '<span class="sub">🎨 ~' + (n * 0.25).toFixed(2).replace('.', ',') + ' $</span>' : '');
 }
 async function naloziIzvoz() {
-  const f = document.getElementById('izvoz').files[0]; if (!f) { msg('uvozMsg', 'Izberi datoteko izvoza.', 'err'); return; }
+  const inp = document.getElementById('izvoz'), f = inp.files[0]; if (!f) return;
+  msg('uvozMsg', '<span class="spin"></span> Berem izvoz »' + esc(f.name) + '« …', 'inf');
   const fd = new FormData(); fd.append('file', f); fd.append('trg', '');
-  const d = await api('/gads-dg/api/uvoz', { method: 'POST', body: fd });
+  const d = await api('/gads-dg/api/uvoz', { method: 'POST', body: fd }); inp.value = '';
   if (!d.ok) { msg('uvozMsg', esc(d.error || 'Napaka'), 'err'); return; }
-  msg('uvozMsg', '✓ ' + d.nove.map(n => n.trg.toUpperCase() + ': »' + esc(n.kampanja) + '« (' + n.ad_groups + ' skupin, ' + n.skuji + ' SKU)').join('<br>'), 'ok');
+  msg('uvozMsg', '✓ Naloženo: ' + d.nove.map(n => n.trg.toUpperCase() + ' »' + esc(n.kampanja) + '« (' + n.ad_groups + ' skupin, ' + n.skuji + ' SKU)').join(' · '), 'ok');
   if (d.nove[0]) LS.set('gdg_trg', d.nove[0].trg);
   await nalozi();
 }
 async function pripravi() {
-  const trg = document.getElementById('trg').value, kampanja = document.getElementById('kamp').value, skus = document.getElementById('skus').value;
-  if (!kampanja) { msg('msg', 'Najprej naloži izvoz kampanje za ta trg.', 'err'); return; }
+  const trg = TRG, kampanja = document.getElementById('kamp').value, skus = document.getElementById('skus').value;
+  if (!kampanja) { msg('msg', 'Najprej naloži izvoz kampanje za ' + trg.toUpperCase() + ' (⬆ Naloži izvoz iz Editorja).', 'err'); return; }
+  if (!skuSeznam().length) { msg('msg', 'Vpiši vsaj en SKU.', 'err'); document.getElementById('skus').focus(); return; }
   const nova = document.getElementById('novaOn').checked ? { ime: document.getElementById('novaIme').value, budget: document.getElementById('novaBud').value, tcpa: document.getElementById('novaCpa').value } : null;
   document.getElementById('btnPri').disabled = true;
   const d = await api('/gads-dg/api/pripravi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trg, kampanja, skus, nova, ai_slike: document.getElementById('aiSlike').checked, tudi_narejene: document.getElementById('tudiNar').checked }) });
   if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), (d.preskoceni || []).length ? 'warn' : 'err'); document.getElementById('btnPri').disabled = false; return; }
-  LS.set('gdg_pak', d.id); zgodovina();
-  msg('msg', (d.preskoceni || []).length ? '📒 Preskočeni (na tem trgu že narejeni): ' + d.preskoceni.map(x => '<b>' + esc(x.sku) + '</b> (' + esc(x.at || '?') + ', ' + esc(x.kampanja || '') + ')').join(' · ') + ' — za ponovno pripravo označi »↻ Tudi že narejene«.' : '', 'warn');
-  clearInterval(POLL); POLL = setInterval(() => naloziPaket(d.id), 3000); naloziPaket(d.id);
+  LS.set('gdg_pak', d.id); msg('msg', '');
+  clearInterval(POLL); POLL = setInterval(() => naloziPaket(d.id), 3000);
+  await naloziPaket(d.id); zgodovina(); skoci();
 }
+function skoci() { const e = document.getElementById('paket'); if (e) window.scrollTo({ top: e.offsetTop - 8, behavior: 'smooth' }); }
 async function naloziPaket(id) {
   const d = await api('/gads-dg/api/paket/' + encodeURIComponent(id));
   if (!d.ok) return;
@@ -174,48 +301,56 @@ async function naloziPaket(id) {
   if (d.paket.status !== 'v_delu') { if (POLL) zgodovina(); clearInterval(POLL); POLL = null; document.getElementById('btnPri').disabled = false; }
 }
 function cntHtml(s, m) { const n = (s || '').length; return '<span class="cnt' + (n > m ? ' over' : '') + '">' + n + '/' + m + '</span>'; }
+function preskHtml(p) { return (p.preskoceni || []).length ? '<div class="msg warn">📒 Preskočeni (že narejeni na ' + esc(p.trg.toUpperCase()) + '): ' + p.preskoceni.map(x => '<b>' + esc(x.sku) + '</b> (' + esc(datum(x.at) || '?') + ', ' + esc(x.kampanja || '') + ')').join(' · ') + ' — za ponovno pripravo označi »↻ Tudi že narejene«.</div>' : ''; }
 function risi() {
   const p = PAK.paket, post = p.postavke || [];
   const ok = post.filter(x => x.status === 'ok'), brezNap = ok.filter(x => !(x.napake || []).length && x.vkljuci !== false);
-  const caka = post.filter(x => x.status === 'caka' || x.slike_v_delu).length;
-  document.getElementById('priInfo').textContent = caka ? '⏳ pripravljam … ' + (post.length - caka) + ' / ' + post.length : '';
-  let h = '<div class="kpi"><div><b>' + post.length + '</b><span class="sub">SKU-jev</span></div><div><b>' + brezNap.length + '</b><span class="sub">za izvoz</span></div>' +
-    '<div><b style="color:var(--err)">' + post.filter(x => (x.napake || []).length).length + '</b><span class="sub">z napako</span></div>' +
-    '<div><b>' + caka + '</b><span class="sub">v pripravi</span></div>' +
-    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button class="btn grn" ' + (caka || !brezNap.length ? 'disabled' : '') + ' onclick="shraniVMapo()" title="Zapiše v izbrano mapo (npr. Documents\\subankampanije): Maaarket.xx\\ads_….csv + mapa za vsak SKU s slikami">📁 Shrani v mapo (' + brezNap.length + ')</button>' +
-      '<button class="btn" ' + (caka || !brezNap.length ? 'disabled' : '') + ' onclick="izvozi()">⬇ ZIP</button>' +
-      '<select class="f" id="stUvoz" onchange="LS.set(\'gdg_status\', this.value)" title="Status kampanje, skupin in oglasov ob uvozu v Editor" style="width:auto"><option value="Enabled"' + (stUvoz() === 'Enabled' ? ' selected' : '') + '>✅ ob Post takoj online</option><option value="Paused"' + (stUvoz() === 'Paused' ? ' selected' : '') + '>⏸ Paused</option></select>' +
-      '<span class="sub" id="mapaInfo">' + (MAPA ? '📁 ' + esc(MAPA.name) + ' · <a href="#" onclick="mapaZamenjaj();return false">zamenjaj</a>' : 'mapa še ni izbrana') + '</span></div></div>';
-  if ((p.preskoceni || []).length) h += '<div class="msg warn">📒 Preskočeni (že narejeni na ' + esc(p.trg.toUpperCase()) + '): ' + p.preskoceni.map(x => '<b>' + esc(x.sku) + '</b> (' + esc(x.at || '?') + ', ' + esc(x.kampanja || '') + ')').join(' · ') + '</div>';
+  const caka = post.filter(x => x.status === 'caka' || x.slike_v_delu).length, napN = post.filter(x => (x.napake || []).length || (x.status !== 'ok' && x.status !== 'caka')).length;
+  const pct = post.length ? Math.round((post.length - caka) / post.length * 100) : 0;
+  document.getElementById('priInfo').innerHTML = caka ? '<span style="display:inline-flex;align-items:center;gap:8px"><span class="spin"></span>' + (post.length - caka) + ' / ' + post.length + ' <span class="prog"><i style="width:' + pct + '%"></i></span></span>' : '';
+  const dis = caka || !brezNap.length ? 'disabled' : '';
+  let h = '<div class="pak-bar">' + zast(p.trg) +
+    '<div><div class="pak-t">' + esc(p.kampanja) + '</div><div class="sub">' + esc(p.trg.toUpperCase()) + ' · paket ' + esc(cas(p.at)) +
+      (p.izvozeno ? ' · <span style="color:var(--ok);font-weight:700">✓ izvoženo ' + esc(cas(p.izvozeno)) + '</span>' : '') + '</div></div>' +
+    '<div class="stats"><span class="pill p-mut">' + post.length + ' SKU</span><span class="pill p-ok">' + brezNap.length + ' za izvoz</span>' +
+      (napN ? '<span class="pill p-err">' + napN + ' z napako</span>' : '') + (caka ? '<span class="pill p-inf"><span class="spin" style="width:10px;height:10px"></span>' + caka + ' v pripravi</span>' : '') + '</div>' +
+    '<span class="grow"></span>' +
+    '<select class="f" id="stUvoz" onchange="LS.set(\'gdg_status\', this.value); risi()" title="Status kampanje, skupin in oglasov ob uvozu v Editor" style="width:auto"><option value="Enabled"' + (stUvoz() === 'Enabled' ? ' selected' : '') + '>✅ po Post takoj online</option><option value="Paused"' + (stUvoz() === 'Paused' ? ' selected' : '') + '>⏸ Paused</option></select>' +
+    '<button class="btn grn" ' + dis + ' onclick="shraniVMapo()" title="Zapiše v izbrano mapo: Maaarket.xx\\ads_….csv + mapa »slike«">📁 Shrani v mapo (' + brezNap.length + ')</button>' +
+    '<button class="btn" ' + dis + ' onclick="izvozi()">⬇ ZIP</button>' +
+    '<button class="btn sm ghost" ' + (p.status === 'v_delu' ? 'disabled' : '') + ' onclick="noveSlike()" title="Samo nove AI kreative (NB2.1) za vse SKU-je v paketu — besedila ostanejo · ~0,25 $ / SKU">🎨 Nove AI slike</button>' +
+    '<button class="btn sm ghost" onclick="zapriPaket()" title="Zapri paket (ostane v zgodovini)">✕</button>' +
+    '<div style="flex-basis:100%" class="sub" id="mapaInfo">' + (MAPA ? '📁 Mapa: <b>' + esc(MAPA.name) + '</b> · <a href="#" onclick="mapaZamenjaj();return false">zamenjaj</a>' : '📁 Mapa še ni izbrana — izbereš jo ob prvem shranjevanju') + '</div></div>';
+  h += preskHtml(p);
   if (p.nova_kampanja) h += '<div class="msg ok">➕ Nova kampanja <b>' + esc(p.nova_kampanja.ime) + '</b> (kopija »' + esc(p.nova_kampanja.vir) + '«) · proračun ' + esc(p.nova_kampanja.budget) + ' / dan · Target CPA ' + esc(p.nova_kampanja.tcpa) + ' · ' + (stUvoz() === 'Enabled' ? 'online' : 'Paused') + '</div>';
-  h += '<div class="msg warn">⚠ Uvoz v Editor je lokalen, dokler ne klikneš <b>Post</b>. V pregledu uvoza morajo biti samo <b>Added</b>, nobenega <b>Updated</b>. Status ob uvozu: <b>' + (stUvoz() === 'Enabled' ? 'online (Enabled) — po Post takoj aktivni' : 'Paused') + '</b>. Slike Editor iz CSV ne pripne: uvozi mapo <b>slike</b> (vse naenkrat) (Import image assets from files) in jih pri vsakem oglasu izberi iz knjižnice (išči po SKU), dodaj še logo.' +
-    (PAK.kampanja_najdena ? '' : ' <b>Kampanja ni več v nastavitvah — naloži izvoz znova.</b>') + '</div>';
-  h = '<div style="display:flex;align-items:center;gap:10px;margin:4px 0"><b>📦 Paket ' + esc(String(p.at || '').slice(0, 16).replace('T', ' ')) + ' · ' + esc(p.trg.toUpperCase()) + ' · ' + esc(p.kampanja) + '</b>' +
-    (p.izvozeno ? ' <span class="pill p-ok">izvoženo ' + esc(String(p.izvozeno).slice(0, 16).replace('T', ' ')) + '</span>' : '') +
-    '<span style="flex:1"></span><button class="btn sm" ' + (p.status === 'v_delu' ? 'disabled' : '') + ' onclick="noveSlike()" title="Samo nove AI kreative (NB2.1) za vse SKU-je v paketu — besedila ostanejo · ~0,25 $ / SKU">🎨 Nove AI slike</button><button class="btn sm" onclick="zapriPaket()">✕ Zapri</button></div>' + h;
+  if (!PAK.kampanja_najdena) h += '<div class="msg err">Kampanja ni več v nastavitvah trga — naloži izvoz iz Editorja znova.</div>';
   h += post.map((x, i) => {
-    if (x.slike_v_delu) return '<div class="oglas"><b>' + esc(x.sku) + '</b> <span class="pill p-inf">🎨 rišem nove AI slike …</span></div>';
-    if (x.status === 'caka') return '<div class="oglas"><b>' + esc(x.sku) + '</b> <span class="pill p-inf">⏳ pripravljam</span></div>';
+    if (x.slike_v_delu) return '<div class="oglas caka"><span class="spin"></span><b>' + esc(x.sku) + '</b> <span class="sub">🎨 rišem nove AI slike …</span></div>';
+    if (x.status === 'caka') return '<div class="oglas caka"><span class="spin"></span><b>' + esc(x.sku) + '</b> <span class="sub">pripravljam besedila in slike …</span></div>';
     const nap = x.napake || [], opz = x.opozorila || [];
-    if (x.status !== 'ok') return '<div class="oglas napaka"><b>' + esc(x.sku) + '</b> <span class="pill p-err">✗ ' + esc(nap.join(' · ') || 'napaka') + '</span></div>';
+    if (x.status !== 'ok') return '<div class="oglas napaka caka"><b>' + esc(x.sku) + '</b> <span class="pill p-err">✗ ' + esc(nap.join(' · ') || 'napaka') + '</span></div>';
     const nas = (x.naslovi || []).concat(['', '', '', '', '']).slice(0, 5), opi = (x.opisi || []).concat(['', '', '', '', '']).slice(0, 5);
+    const sl = x.slike || [], vkl = sl.filter(s => !s.izkl).length;
     return '<div class="oglas' + (x.vkljuci === false ? ' izkl' : '') + (nap.length ? ' napaka' : '') + '" data-i="' + i + '">' +
-      '<div class="oglas-h"><label style="display:flex;align-items:center;gap:6px;font-weight:700"><input type="checkbox" data-k="vkljuci"' + (x.vkljuci !== false ? ' checked' : '') + '> ' + esc(x.sku) + '</label>' +
-        '<span class="sub">' + esc(x.naziv || '') + '</span>' + (x.url ? ' <a href="' + esc(x.url) + '" target="_blank" rel="noopener" class="sub">↗ trgovina</a>' : '') +
-        (nap.length ? ' <span class="pill p-err">✗ ' + esc(nap.join(' · ')) + '</span>' : ' <span class="pill p-ok">✓ pripravljeno</span>') +
-        (opz.length ? ' <span class="pill p-warn">⚠ ' + esc(opz.join(' · ')) + '</span>' : '') + '</div>' +
-      '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px">' +
+      '<div class="oglas-h"><label class="sku"><input type="checkbox" data-k="vkljuci"' + (x.vkljuci !== false ? ' checked' : '') + '> ' + esc(x.sku) + '</label>' +
+        '<span class="sub" style="max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(x.naziv || '') + '</span>' + (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" class="sub">↗ trgovina</a>' : '') +
+        '<span class="grow"></span>' +
+        (nap.length ? '<span class="pill p-err">✗ ' + esc(nap.join(' · ')) + '</span>' : '<span class="pill p-ok">✓ pripravljeno</span>') +
+        (opz.length ? '<span class="pill p-warn" style="max-width:460px;overflow:hidden;text-overflow:ellipsis;display:inline-block" title="' + esc(opz.join('\n')) + '">⚠ ' + esc(opz.join(' · ')) + '</span>' : '') + '</div>' +
+      '<div class="row2">' +
         '<div><label class="l" style="margin-top:0">Oglasna skupina</label><input class="f" data-k="ad_group" value="' + esc(x.ad_group || '') + '"></div>' +
         '<div><label class="l" style="margin-top:0">Ime oglasa</label><input class="f" data-k="ad_name" value="' + esc(x.ad_name || '') + '"></div></div>' +
-      '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:12px;margin-top:6px">' +
-        '<div><label class="l">Naslovi (do ' + MAX.h + ' znakov)</label>' + nas.map((s, j) => '<div class="vrsta"><input class="f" data-k="naslovi" data-j="' + j + '" maxlength="60" value="' + esc(s) + '">' + cntHtml(s, MAX.h) + '</div>').join('') + '</div>' +
-        '<div><label class="l">Opisi (do ' + MAX.d + ' znakov)</label>' + opi.map((s, j) => '<div class="vrsta"><input class="f" data-k="opisi" data-j="' + j + '" maxlength="120" value="' + esc(s) + '">' + cntHtml(s, MAX.d) + '</div>').join('') + '</div></div>' +
-      '<label class="l">Slike ' + ((x.slike || []).some(s => s.ai) ? '🎨 AI (NB2.1)' : '(galerija)') + ' · klik na sliko = izključi / vključi' + ((x.bullets || []).length ? ' · na sliki: ' + esc(x.bullets.join(' · ')) : '') + '</label><div class="slike">' + ((x.slike || []).map(s => '<figure data-slika="' + esc(s.datoteka) + '" title="' + esc((s.vibe ? s.vibe + ' · ' : '') + (s.izkl ? 'izključena — klik = vključi' : 'klik = izključi')) + '" style="cursor:pointer;' + (s.izkl ? 'opacity:.3' : '') + '"><img loading="lazy" src="/gads-dg/api/slika/' + encodeURIComponent(p.id) + '/' + encodeURIComponent(x.sku) + '/' + encodeURIComponent(s.datoteka) + '" style="height:120px"><figcaption>' + esc({ '1x1': '1:1', '191x1': '1,91:1', '4x5': '4:5' }[s.vrsta] || s.vrsta) + (s.izkl ? ' ✕' : '') + '</figcaption></figure>').join('') || '<span class="muted">ni slik</span>') + '</div>' +
+      '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px">' +
+        '<div><label class="l">Naslovi · do ' + MAX.h + ' znakov</label>' + nas.map((s, j) => '<div class="vrsta"><input class="f" data-k="naslovi" data-j="' + j + '" maxlength="60" value="' + esc(s) + '">' + cntHtml(s, MAX.h) + '</div>').join('') + '</div>' +
+        '<div><label class="l">Opisi · do ' + MAX.d + ' znakov</label>' + opi.map((s, j) => '<div class="vrsta"><input class="f" data-k="opisi" data-j="' + j + '" maxlength="120" value="' + esc(s) + '">' + cntHtml(s, MAX.d) + '</div>').join('') + '</div></div>' +
+      '<label class="l">Slike · <span class="slN">' + vkl + '</span>/' + sl.length + ' ' + (sl.some(s => s.ai) ? '🎨 AI NB2.1' : 'galerija') + ' <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· klik = izključi / vključi' + ((x.bullets || []).length ? ' · na sliki: ' + esc(x.bullets.join(' · ')) : '') + '</span></label>' +
+      '<div class="slike">' + (sl.map(s => '<figure data-slika="' + esc(s.datoteka) + '" class="' + (s.izkl ? 'izkl' : '') + '" title="' + esc((s.vibe ? s.vibe + ' · ' : '') + (s.izkl ? 'izključena — klik = vključi' : 'klik = izključi')) + '"><img loading="lazy" src="/gads-dg/api/slika/' + encodeURIComponent(p.id) + '/' + encodeURIComponent(x.sku) + '/' + encodeURIComponent(s.datoteka) + '"><figcaption>' + esc({ '1x1': '1:1', '191x1': '1,91:1', '4x5': '4:5' }[s.vrsta] || s.vrsta) + '</figcaption></figure>').join('') || '<span class="muted">ni slik</span>') + '</div>' +
       '</div>';
   }).join('');
   const el = document.getElementById('paket'), y = window.scrollY, foc = document.activeElement && document.activeElement.closest && document.activeElement.closest('[data-i]');
   if (foc && POLL) return;   // med pripravo ne prerisuj, ko nekaj tipkaš
   el.innerHTML = h; window.scrollTo(0, y);
+  document.querySelectorAll('.zg-r').forEach(r => r.classList.toggle('on', r.dataset.id === p.id));
 }
 document.addEventListener('input', e => {
   const o = e.target.closest('[data-i]'); if (!o || !PAK) return;
@@ -231,7 +366,8 @@ document.addEventListener('input', e => {
 document.addEventListener('click', e => {   // 🖼 klik na sliko = izključi / vključi iz izvoza
   const f = e.target.closest('figure[data-slika]'), o = f && f.closest('[data-i]'); if (!f || !o || !PAK) return;
   const x = PAK.paket.postavke[+o.dataset.i], s_ = (x.slike || []).find(s => s.datoteka === f.dataset.slika); if (!s_) return;
-  s_.izkl = !s_.izkl; x._sprem = true; f.style.opacity = s_.izkl ? '.3' : ''; const c = f.querySelector('figcaption'); if (c) c.textContent = c.textContent.replace(' ✕', '') + (s_.izkl ? ' ✕' : '');
+  s_.izkl = !s_.izkl; x._sprem = true; f.classList.toggle('izkl', s_.izkl);
+  const n = o.querySelector('.slN'); if (n) n.textContent = x.slike.filter(s => !s.izkl).length;
 });
 document.addEventListener('change', e => { if (e.target.matches('[data-k="vkljuci"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
 // 📁 SHRANI V MAPO (File System Access API — Chrome/Edge): mapo izbereš enkrat (npr. Documents\subankampanije), ročaj se hrani v IndexedDB
@@ -259,15 +395,19 @@ async function zapisi(dir, pot, data) {
   const fh = await d.getFileHandle(deli[deli.length - 1], { create: true }), w = await fh.createWritable();
   await w.write(data); await w.close();
 }
-async function shraniVMapo() {
-  if (!window.JSZip) { alert('Knjižnica za razpakiranje se ni naložila — osveži stran ali uporabi ⬇ ZIP.'); return; }
-  if (!(await mapaDovoli())) return;
-  const p = PAK.paket;
+async function shraniSpremembe(p) {
   const sprem = p.postavke.filter(x => x._sprem).map(x => ({ sku: x.sku, ad_group: x.ad_group, ad_name: x.ad_name, naslovi: x.naslovi, opisi: x.opisi, vkljuci: x.vkljuci !== false, slike_izkl: (x.slike || []).filter(s => s.izkl).map(s => s.datoteka) }));
   if (sprem.length) await api('/gads-dg/api/shrani', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, postavke: sprem }) });
   await naloziPaket(p.id);
   const nap = PAK.paket.postavke.filter(x => x.status === 'ok' && x.vkljuci !== false && (x.napake || []).length);
-  if (nap.length && !confirm(nap.length + ' oglasov ima napake in NE bodo shranjeni (' + nap.map(x => x.sku).join(', ') + '). Nadaljujem?')) return;
+  return !(nap.length && !confirm(nap.length + ' oglasov ima napake in NE bodo v izvozu (' + nap.map(x => x.sku).join(', ') + '). Nadaljujem?'));
+}
+async function shraniVMapo() {
+  if (!window.JSZip) { alert('Knjižnica za razpakiranje se ni naložila — osveži stran ali uporabi ⬇ ZIP.'); return; }
+  if (!(await mapaDovoli())) return;
+  const p = PAK.paket;
+  if (!(await shraniSpremembe(p))) return;
+  msg('msg', '<span class="spin"></span> Shranjujem v mapo …', 'inf');
   const r = await fetch('/gads-dg/api/izvoz/' + encodeURIComponent(p.id) + '?status=' + stUvoz(), { credentials: 'include' });
   if (!r.ok) { let e = ''; try { e = (await r.json()).error; } catch (x) {} msg('msg', esc(e || 'Izvoz ni uspel.'), 'err'); return; }
   const zip = await JSZip.loadAsync(await r.blob());
@@ -286,8 +426,8 @@ async function shraniVMapo() {
       await zapisi(MAPA, cilj, await f.async('uint8array')); n++;
     }
   } catch (e) { msg('msg', 'Zapis v mapo ni uspel: ' + esc(e.message || e) + ' — poskusi znova ali uporabi ⬇ ZIP.', 'err'); return; }
-  await nalozi(); zgodovina(); naloziPaket(p.id);   // nova kampanja / nove skupine so zdaj v seznamu trga (izbrana)
-  msg('msg', '✓ Shranjeno ' + n + ' datotek v 📁 ' + esc(MAPA.name) + '\\' + esc(trgMapa) + ' — v Editorju uvozi ' + esc(ime['ads.csv']) + ', slike pa iz mape »slike« (vse naenkrat; mapa vsebuje samo ta paket).', 'ok');
+  await nalozi(); zgodovina(); naloziPaket(p.id);   // nova kampanja / nove skupine so zdaj v seznamu trga (izbrana); števec se osveži
+  msg('msg', '✓ Shranjeno ' + n + ' datotek v 📁 ' + esc(MAPA.name) + '\\' + esc(trgMapa) + ' — v Editorju uvozi <b>' + esc(ime['ads.csv']) + '</b>, slike pa iz mape »slike« (vse naenkrat).', 'ok');
 }
 function stUvoz() { return LS.get('gdg_status') === 'Paused' ? 'Paused' : 'Enabled'; }
 async function noveSlike() {
@@ -300,24 +440,17 @@ async function noveSlike() {
 function zapriPaket() { clearInterval(POLL); POLL = null; PAK = null; LS.set('gdg_pak', ''); document.getElementById('paket').innerHTML = ''; msg('msg', ''); document.getElementById('priInfo').textContent = ''; zgodovina(); }
 async function zgodovina() {
   const d = await api('/gads-dg/api/paketi'), el = document.getElementById('zgod');
-  if (!d.ok) { el.textContent = '—'; return; }
-  const ps = d.paketi || [];
-  el.innerHTML = ps.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
-    '<tr style="color:var(--txt2);text-align:left"><th style="padding:5px">Datum</th><th>Trg</th><th>Kampanja</th><th>SKU-ji</th><th>Status</th><th></th></tr>' +
-    ps.map(p => '<tr style="border-top:1px solid var(--bd)"><td style="padding:6px 5px;white-space:nowrap">' + esc(String(p.at || '').slice(0, 16).replace('T', ' ')) + '</td><td><b>' + esc(String(p.trg || '').toUpperCase()) + '</b></td>' +
-      '<td>' + (p.nova ? '➕ ' : '') + esc(p.kampanja || '') + '</td><td>' + esc((p.skuji || []).join(', ')) + (p.n > (p.skuji || []).length ? ' … (' + p.n + ')' : '') + '</td>' +
-      '<td>' + (p.status === 'v_delu' ? '<span class="pill p-inf">⏳ v pripravi</span>' : p.izvozeno ? '<span class="pill p-ok">✓ izvoženo</span>' : '<span class="pill p-warn">pripravljeno</span>') + '</td>' +
-      '<td style="text-align:right"><button class="btn sm" onclick="odpriPaket(\'' + esc(p.id) + '\')">Odpri</button></td></tr>').join('') + '</table></div>'
-    : '<span class="muted">Še ni paketov.</span>';
+  if (!d.ok) { el.innerHTML = '<div class="prazno">—</div>'; return; }
+  const ps = d.paketi || [], cur = PAK && PAK.paket.id;
+  el.innerHTML = ps.length ? ps.map(p => '<div class="zg-r' + (p.id === cur ? ' on' : '') + '" data-id="' + esc(p.id) + '" onclick="odpriPaket(\'' + esc(p.id) + '\')">' + zast(String(p.trg || '')) +
+      '<div style="min-width:0"><div class="zg-t">' + (p.nova ? '➕ ' : '') + esc(p.kampanja || '') + '</div><div class="zg-s" title="' + esc((p.skuji || []).join(', ')) + '">' + p.n + ' SKU · ' + esc((p.skuji || []).join(', ')) + '</div></div>' +
+      '<div class="zg-d">' + (p.status === 'v_delu' ? '<span class="pill p-inf">⏳ v pripravi</span>' : p.izvozeno ? '<span class="pill p-ok">✓ izvoženo</span>' : '<span class="pill p-warn">pripravljeno</span>') + '<div style="margin-top:3px">' + esc(datum(p.at)) + ' ' + esc(String(p.at || '').slice(11, 16)) + '</div></div></div>').join('')
+    : '<div class="prazno">Še ni paketov — vpiši SKU-je in klikni »Pripravi oglase«.</div>';
 }
-function odpriPaket(id) { clearInterval(POLL); POLL = null; naloziPaket(id).then(() => { if (PAK && PAK.paket.status === 'v_delu') POLL = setInterval(() => naloziPaket(id), 3000); window.scrollTo(0, document.getElementById('paket').offsetTop - 10); }); }
+function odpriPaket(id) { clearInterval(POLL); POLL = null; naloziPaket(id).then(() => { if (PAK && PAK.paket.status === 'v_delu') POLL = setInterval(() => naloziPaket(id), 3000); skoci(); }); }
 async function izvozi() {
   const p = PAK.paket;
-  const sprem = p.postavke.filter(x => x._sprem).map(x => ({ sku: x.sku, ad_group: x.ad_group, ad_name: x.ad_name, naslovi: x.naslovi, opisi: x.opisi, vkljuci: x.vkljuci !== false, slike_izkl: (x.slike || []).filter(s => s.izkl).map(s => s.datoteka) }));
-  if (sprem.length) await api('/gads-dg/api/shrani', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, postavke: sprem }) });
-  await naloziPaket(p.id);
-  const nap = PAK.paket.postavke.filter(x => x.status === 'ok' && x.vkljuci !== false && (x.napake || []).length);
-  if (nap.length && !confirm(nap.length + ' oglasov ima napake in NE bodo v izvozu (' + nap.map(x => x.sku).join(', ') + '). Nadaljujem?')) return;
+  if (!(await shraniSpremembe(p))) return;
   location.href = '/gads-dg/api/izvoz/' + encodeURIComponent(p.id) + '?status=' + stUvoz();
   setTimeout(() => { nalozi(); zgodovina(); naloziPaket(p.id); }, 2500);   // nova kampanja / nove skupine so zdaj v seznamu trga
 }
