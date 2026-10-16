@@ -21,7 +21,7 @@ MA_JEZIK_SL = {"sl": "slovenščina", "hr": "hrvaščina", "rs": "srbščina (la
                "sk": "slovaščina", "gr": "grščina", "bg": "bolgarščina", "ro": "romunščina"}
 MA_DRZAVA = {"sl": "SI", "hr": "HR", "rs": "RS", "hu": "HU", "pl": "PL", "cz": "CZ", "sk": "SK", "gr": "GR", "bg": "BG", "ro": "RO"}
 MA_PIKSEL = {"sl": "824813018035664", "pl": "594485055250881", "sk": "776399419706604", "hr": "208841773552108", "rs": "267002177947845",
-             "ro": "425303159069154", "bg": "5475417162514514", "hu": "317577872660835", "cz": "834090430851647", "gr": "317900732285651"}
+             "ro": "425303159069154", "bg": "5475417162514514", "hu": "317577872660835", "cz": "834090430851647", "gr": "3179900732285651"}
 # FB strani (limit 250 oglasov / stran) → IG račun (novi ID 1784…); x: = star IG ID iz izvoza (znan le za EU)
 MA_STRANI = {
     "101449685670882": {"ime": "Maaarket EU", "ig": "17841450081366206", "ig_x": "4839343202764200"},
