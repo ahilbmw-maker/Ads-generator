@@ -157,7 +157,7 @@
     </div>
     <div>
       <div class="card">
-        <div class="card-h"><b>📜 Zgodovina</b><span class="sub">zadnjih 30 · klik = odpri</span></div>
+        <div class="card-h"><b>📜 Zgodovina</b><span class="sub">zadnjih 30 · klik = odpri</span><span class="grow"></span><button class="btn sm ghost" onclick="izbrisiVse()" title="Izbriše vse pakete (razen tistih, ki se še pripravljajo) — števec oglasov ostane">🗑 Počisti vse</button></div>
         <div class="zg" id="zgod"><div class="prazno">Nalagam …</div></div>
       </div>
       <details class="nav">
@@ -434,12 +434,24 @@ async function znovaSlika(t, i) {
 const nacin = () => LS.get('ma_nacin') === 'loceni' ? 'loceni' : 'flex';   // privzeto Flexible (limit 250 oglasov / stran)
 function izkljuci(key) { const x = PAK.trgi[TRG]; x.izkl = x.izkl || []; x.izkl = x.izkl.includes(key) ? x.izkl.filter(k => k !== key) : x.izkl.concat([key]); risi(); shrani(false); }
 function zapri() { clearInterval(POLL); POLL = null; PAK = null; LS.set('ma_pak', ''); risi(); msg('msg', ''); document.querySelectorAll('.zg-r').forEach(r => r.classList.remove('on')); }
+async function izbrisi(id, sku) {
+  if (!confirm('Izbrišem paket ' + sku + ' iz zgodovine (skupaj s slikami)? Števec oglasov ostane.')) return;
+  const d = await post('/meta-ads/api/izbrisi', { id }); if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); return; }
+  if (PAK && PAK.id === id) zapri();
+  stanje();
+}
+async function izbrisiVse() {
+  if (!confirm('Izbrišem VSE pakete iz zgodovine (skupaj s slikami)? Paketi v pripravi ostanejo, števec oglasov ostane.')) return;
+  const d = await post('/meta-ads/api/izbrisi', { vse: true }); if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); return; }
+  if (PAK && !V_DELU.includes(PAK.status)) zapri();
+  msg('msg', '✓ Izbrisanih ' + d.izbrisanih + ' paketov.', 'ok'); stanje();
+}
 function zgodovina() {
   const ps = ST.paketi || [], el = document.getElementById('zgod');
   const opis = { koncept_v_delu: ['p-inf', '⏳ koncept'], koncept: ['p-mut', '1 · koncept'], osnove_v_delu: ['p-inf', '⏳ slike'], osnove: ['p-mut', '2 · slike'], lokal_v_delu: ['p-inf', '⏳ trgi'], pripravljeno: ['p-warn', 'pripravljeno'], napaka: ['p-err', 'napaka'] };
   el.innerHTML = ps.length ? ps.map(p => { const o = p.izvozeno ? ['p-ok', '✓ izvoženo'] : opis[p.status] || ['p-mut', p.status];
     return '<div class="zg-r' + (PAK && PAK.id === p.id ? ' on' : '') + '" data-id="' + esc(p.id) + '" onclick="odpri(\'' + esc(p.id) + '\')"><div style="min-width:0"><div class="zg-t">' + esc(p.sku) + (p.ime && p.ime !== p.sku ? ' <span class="sub">' + esc(p.ime) + '</span>' : '') + '</div>' +
-      '<div class="zg-s">' + (p.trgi || []).map(t => t.toUpperCase()).join(' · ') + '</div></div><div class="zg-d"><span class="pill ' + o[0] + '">' + o[1] + '</span><div style="margin-top:3px">' + esc(datum(p.at)) + ' ' + esc(String(p.at || '').slice(11, 16)) + '</div></div></div>'; }).join('')
+      '<div class="zg-s">' + (p.trgi || []).map(t => t.toUpperCase()).join(' · ') + '</div></div><div class="zg-d"><span class="pill ' + o[0] + '">' + o[1] + '</span><div style="margin-top:3px">' + esc(datum(p.at)) + ' ' + esc(String(p.at || '').slice(11, 16)) + ' <button class="btn sm ghost" style="padding:1px 5px" title="Izbriši iz zgodovine" onclick="event.stopPropagation();izbrisi(\'' + esc(p.id) + '\',\'' + esc(p.sku) + '\')">🗑</button></div></div></div>'; }).join('')
     : '<div class="prazno">Še ni paketov — vpiši SKU in klikni »Pripravi koncept«.</div>';
 }
 // 📁 SHRANI V MAPO: <izbrana mapa>\Meta Ads\ (ob vsakem shranjevanju izpraznjena) — meta_uvoz.csv, slike\, videi\, NAVODILA.txt

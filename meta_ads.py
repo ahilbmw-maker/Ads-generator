@@ -106,8 +106,20 @@ def vklopi(G: dict):
     def claude_json(prompt, max_tokens=8000):
         msg = G["client"].messages.create(model="claude-sonnet-4-6", max_tokens=max_tokens, messages=[{"role": "user", "content": prompt}])
         raw = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
-        m = re.search(r"\{.*\}", raw, re.S)
-        return json.loads(m.group(0)) if m else {}
+        return beri_json(raw)
+
+    def beri_json(raw):
+        """Prvi veljaven JSON objekt v odgovoru (model včasih doda besedilo ali drug {…} za JSON → »Extra data«)."""
+        dec = json.JSONDecoder()
+        najboljsi = {}
+        for m in re.finditer(r"\{", raw or ""):
+            try:
+                obj, _ = dec.raw_decode(raw, m.start())
+            except ValueError:
+                continue
+            if isinstance(obj, dict) and len(json.dumps(obj)) > len(json.dumps(najboljsi)):
+                najboljsi = obj   # največji objekt (ne gnezden delček)
+        return najboljsi
 
     def najdi(rows, sku):
         u = sku.strip().upper()
@@ -542,6 +554,25 @@ def vklopi(G: dict):
             _jsave(PAK_FILE, d)
         asyncio.create_task(obdelaj_koncept(pid))
         return {"ok": True, "id": pid}
+
+    @app.post("/meta-ads/api/izbrisi")
+    async def ma_izbrisi(request: Request, data: dict):
+        """🗑 Izbriše paket(e) iz zgodovine + njihove slike/videe z diska. Števec (evidenca) ostane. {id} ali {vse: true}."""
+        if not prijava(request):
+            return ni()
+        import shutil
+        async with lock:
+            d = nalozi()
+            if data.get("vse"):
+                ids = [p["id"] for p in d["paketi"] if p.get("status") not in ("koncept_v_delu", "osnove_v_delu", "lokal_v_delu")]
+            else:
+                ids = [str(data.get("id") or "")]
+            ids = [i for i in ids if re.fullmatch(r"[0-9a-f]{18}", i)]
+            d["paketi"] = [p for p in d["paketi"] if p["id"] not in ids]
+            _jsave(PAK_FILE, d)
+        for i in ids:
+            shutil.rmtree(MAPA / i, ignore_errors=True)
+        return {"ok": True, "izbrisanih": len(ids)}
 
     @app.get("/meta-ads/api/paket/{pid}")
     async def ma_paket(request: Request, pid: str):
