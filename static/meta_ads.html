@@ -293,8 +293,9 @@ function risi1(p) {
   let h = '<div class="card"><div class="card-h"><b>🏷 Ime na sliki</b><input class="f" data-e="ime" value="' + esc(p.ime || '') + '" style="max-width:240px;font-weight:700"><span class="sub">CAPS, se ne prevaja</span></div>' +
     '<div class="card-h" style="margin-top:6px"><b>🎨 5 kreativ (kot generator Kreative)</b><span class="sub">hook = velik napis zgoraj · ime = manjši logo · A = prednosti z ikonami · B = vibe ozadja (vse angleško) · v koraku 3 se angleški napisi prevedejo v jezik trga</span></div><div class="kre">' +
     (p.kreative || []).map((k, i) => '<div class="kre-k"><div class="oz">' + (i + 1) + ' · ' + esc(k.oznaka || '') + '</div>' +
-      '<label class="l" style="margin:6px 0 0">Razmerje</label>' + razmSel(k, i) +
-      '<label class="l" style="margin:8px 0 0">Hook (velik napis zgoraj, EN)</label><input class="f" data-e="hook" data-i="' + i + '" maxlength="40" value="' + esc(k.hook || '') + '" style="font-weight:700">' +
+      '<label class="l" style="margin:6px 0 0">Tip scene</label>' + scenaSel(k, i) +
+      (k.refs && k.refs.length ? '<div style="display:flex;gap:4px;margin-top:5px" title="Referenčne slike iz galerije (1. = packshot)">' + k.refs.map(u => '<img src="' + esc(u) + '" loading="lazy" style="width:38px;height:38px;object-fit:cover;border-radius:6px;border:1px solid var(--bd)">').join('') + '</div>' : '') +
+      '<label class="l" style="margin:8px 0 0">Hook (velik napis, EN)</label><input class="f" data-e="hook" data-i="' + i + '" maxlength="40" value="' + esc(k.hook || '') + '" style="font-weight:700">' +
       '<label class="l" style="margin:8px 0 0">A · prednosti (EN)</label><textarea class="f" data-e="tekst" data-i="' + i + '" rows="2" maxlength="120">' + esc(k.tekst || '') + '</textarea>' +
       '<label class="l" style="margin:8px 0 0">B · vibe ozadja</label><input class="f" data-e="vibe" data-i="' + i + '" value="' + esc(k.vibe) + '"></div>').join('') + '</div></div>';
   h += '<div class="card"><div class="card-h"><b>✍ Besedila oglasov (SLO matica)</b><span class="sub">1 oglas = 1 kreativa + headline + primary text · prevedejo se v koraku 3 (tam jih lahko popraviš po trgu)</span></div>' +
@@ -316,7 +317,7 @@ function risi2(p) {
   const nT = TRGI.filter(t => p.trgi[t] && p.trgi[t].vkljuci).length, nO = (p.kreative || []).filter(k => k.osnova).length;
   let h = '<div class="card"><div class="card-h"><b>🖼 Kreative (angleško)</b><span class="sub">v koraku 3 se angleški napisi prevedejo v jezik vsakega trga, vse ostalo ostane enako · ↻ = nova slika (lahko prej popraviš A / B)</span></div><div class="osn">' +
     p.kreative.map((k, i) => '<div class="osn-k"><div class="img" style="aspect-ratio:' + (k.razmerje === '4:5' ? '4/5' : '1/1') + '">' + (k.v_delu ? '<span class="spin"></span>' : k.osnova ? '<img src="' + dat(k.osnova) + '" loading="lazy">' : '<span class="sub" style="padding:10px;text-align:center">' + esc(k.osnova_napaka || 'še ni slike') + '</span>') + '</div>' +
-      '<div class="tx"><b style="color:var(--vi)">' + (i + 1) + ' · ' + esc(k.oznaka || '') + '</b>' + razmSel(k, i, 'margin-top:5px') + '<input class="f" data-e="vibe" data-i="' + i + '" value="' + esc(k.vibe) + '" style="margin:5px 0;font-size:12px">' +
+      '<div class="tx"><b style="color:var(--vi)">' + (i + 1) + ' · ' + esc(k.oznaka || '') + '</b>' + scenaSel(k, i, 'margin-top:5px') + '<input class="f" data-e="vibe" data-i="' + i + '" value="' + esc(k.vibe) + '" style="margin:5px 0;font-size:12px">' +
       '<input class="f" data-e="hook" data-i="' + i + '" value="' + esc(k.hook || '') + '" placeholder="hook" style="font-size:12px;font-weight:700;margin-bottom:5px">' +
       '<textarea class="f" data-e="tekst" data-i="' + i + '" rows="2" style="font-size:12px">' + esc(k.tekst || '') + '</textarea><button class="btn sm" style="margin-top:6px" ' + (k.v_delu ? 'disabled' : '') + ' onclick="osnove([' + i + '])">↻ Nova slika</button></div></div>').join('') + '</div></div>';
   h += '<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><label class="sub" style="display:flex;align-items:center;gap:6px">Prevod napisov z <select class="f" id="model" style="width:auto" onchange="LS.set(\'ma_model\', this.value)">' +
@@ -393,6 +394,7 @@ document.addEventListener('input', e => {
   else if (k === 'vibe') PAK.kreative[i].vibe = t.value;
   else if (k === 'tekst' || k === 'hook') PAK.kreative[i][k] = t.value;
   else if (k === 'razm') { PAK.kreative[i].razmerje = t.value; }
+  else if (k === 'scena') { PAK.kreative[i].scena = t.value; }
   else if (k === 'hl' || k === 'pt') { PAK.oglasi_sl = PAK.oglasi_sl || []; while (PAK.oglasi_sl.length <= i) PAK.oglasi_sl.push({ hl: '', pt: '' }); PAK.oglasi_sl[i] = Object.assign({}, PAK.oglasi_sl[i], { [k]: t.value }); }
   else if (k === 'vid') { const v = PAK.videi.find(x => x.datoteka === t.dataset.f); if (v) v.vkljuci = t.checked; }
   else if (k === 't_hl' || k === 't_pt') { const x = PAK.trgi[TRG]; x.oglasi[o] = Object.assign({}, x.oglasi[o], { [k.slice(2)]: t.value }); }
@@ -402,8 +404,9 @@ document.addEventListener('input', e => {
   else if (k.startsWith('n_')) { PAK.nastavitve = PAK.nastavitve || {}; PAK.nastavitve[k.slice(2)] = t.value; }
   clearTimeout(SHR); SHR = setTimeout(() => shrani(false), 1200);
 });
+const scenaSel = (k, i, st) => '<select class="f" data-e="scena" data-i="' + i + '" style="' + (st || '') + ';font-size:12px">' + Object.entries(ST.scene || {}).map(([s, n]) => '<option value="' + s + '"' + (k.scena === s ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + (k.scena ? '' : '<option selected value="">— (kot generator)</option>') + '</select>';
 const razmSel = (k, i, st) => '<select class="f" data-e="razm" data-i="' + i + '" style="' + (st || '') + ';font-size:12px">' + ['1:1', '4:5'].map(r => '<option value="' + r + '"' + ((k.razmerje || '1:1') === r ? ' selected' : '') + '>' + (r === '1:1' ? '1:1 · 1080×1080 (vse postavitve)' : '4:5 · 1080×1350 (mobilni Feed)') + '</option>').join('') + '</select>';
-document.addEventListener('change', e => { if (e.target.matches('[data-e="vid"],[data-e="stran"],[data-e="vkljuci"],[data-e="razm"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
+document.addEventListener('change', e => { if (e.target.matches('[data-e="vid"],[data-e="stran"],[data-e="vkljuci"],[data-e="razm"],[data-e="scena"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
 async function shrani(pokazi) {
   clearTimeout(SHR); if (!PAK) return;
   const trgi = {}; TRGI.forEach(t => { const x = PAK.trgi && PAK.trgi[t]; if (x) trgi[t] = { vkljuci: x.vkljuci, stran: x.stran, oglasi: x.oglasi, izkl: x.izkl || [], ...(x.bid ? { bid: x.bid } : {}) }; });

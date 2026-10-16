@@ -44,6 +44,25 @@ MA_EMOJI = "✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌
 # Bid cap po trgu (€, kot v tekočih kampanjah 2026-10-16) — v koraku 3 nastavljiv po trgu
 MA_BID = {"pl": 7.7, "bg": 7.7, "gr": 7.7, "cz": 7.7, "ro": 8.5, "rs": 9.0, "sk": 9.0, "hu": 9.0, "sl": 9.0, "hr": 9.0}
 MA_ADSET = {"sl": "SLO"}   # ime ad seta (ostali = koda trga)
+# 🎬 5 različnih tipov scene + postavitev napisov (2026-10-16: vseh 5 kreativ je bilo videti enako — ista referenca, isti kot, ista postavitev)
+MA_SCENE = {
+    "hero": {"ime": "Hero izdelek", "vloga": "packshot",
+             "scena": "HERO PRODUCT SHOT: the product large and centred as the star of the image in a premium staged setting, dramatic lighting, shallow depth of field.",
+             "postavitev": "hook headline across the top, the 3 benefit icons in a row along the bottom, small logo in the bottom-right corner."},
+    "uporaba": {"ime": "V uporabi", "vloga": "uporaba",
+                "scena": "IN USE: a close-up of a real person's hands using the product exactly as intended, showing the action; the product clearly visible and recognisable.",
+                "postavitev": "hook headline on the LEFT side stacked in 2–3 lines, the 3 benefit icons stacked vertically on the RIGHT side, small logo in the top-right corner."},
+    "prej_potem": {"ime": "Prej / potem", "vloga": "prej_potem",
+                   "scena": "BEFORE / AFTER: split composition — one side shows the problem (before), the other side shows the result achieved with the product (after), with a clean dividing line; small 'BEFORE' and 'AFTER' labels are allowed.",
+                   "postavitev": "hook headline across the top above the split, the 3 benefit icons in a row along the bottom, small logo in the top-left corner."},
+    "okolje": {"ime": "Okolje / lifestyle", "vloga": "okolje",
+               "scena": "LIFESTYLE: a wide, emotional scene of the product in its real environment with people enjoying the result, warm natural light, authentic and aspirational.",
+               "postavitev": "hook headline at the BOTTOM over a soft dark gradient, the 3 benefit icons in a row just above it, small logo in the top-left corner."},
+    "detajl": {"ime": "Detajl / komplet", "vloga": "detajl",
+               "scena": "DETAIL / BUNDLE: a macro close-up of the product's key feature or the complete set neatly arranged, rich textures, crisp studio light.",
+               "postavitev": "hook headline in the top-left area, the 3 benefits as badges in a vertical column on the LEFT, small logo in the bottom-right corner."},
+}
+MA_SCENE_RED = ["hero", "uporaba", "prej_potem", "okolje", "detajl"]   # kreativa 1–5
 MA_ZNAK = "🤖"   # znak pred imenom kampanje = ustvarjeno v suban.ai
 MA_SLIKA = {"1:1": (1080, 1080), "4:5": (1080, 1350)}   # 1:1 kot generator Kreative; 4:5 = preizkus za mobilni Feed (privzeto kreativa 5)
 MA_FLARE_SIZE = {"1:1": "1024x1024", "4:5": "1024x1536"}   # 4:5: Flare 2:3 → izrez sredine 4:5
@@ -151,13 +170,13 @@ def vklopi(G: dict):
         return out
 
     # ── Flare / NB2.1 ──
-    async def flare(refs, prompt, razmerje="1:1", funkcija="meta_ads"):
+    async def flare(refs, prompt, razmerje="1:1", funkcija="meta_ads", n_ref=1):
         """refs = [(bytes, mime)] → GPT Image 2.5 Flare 1024×1024 (kot generator Kreative) → 1080×1080 (jpeg)."""
         import httpx, os
         key = os.environ.get("OPENAI_API_KEY", "")
         if not key:
             raise RuntimeError("OPENAI_API_KEY ni nastavljen")
-        files = [("image[]", (f"ref{i}.{m.split('/')[-1]}", b, m)) for i, (b, m) in enumerate(refs[:1])]   # generator Kreative: 1 referenca
+        files = [("image[]", (f"ref{i}.{m.split('/')[-1]}", b, m)) for i, (b, m) in enumerate(refs[:n_ref])]   # kreative: do 3 (packshot + slika scene), prevod: 1
         form = {"model": "gpt-image-2.5-flare", "prompt": prompt, "size": MA_FLARE_SIZE.get(razmerje, "1024x1024"), "n": "1", "output_format": "jpeg"}
         async with flare_sem:
             async with httpx.AsyncClient(timeout=300) as hc:
@@ -254,18 +273,20 @@ def vklopi(G: dict):
         c.paste(im, (0, 128))
         b = io.BytesIO(); c.save(b, format="JPEG", quality=92); return b.getvalue()
 
-    def prompt_kreativa(ime, vibe, tekst, hook="", razmerje="1:1"):
+    def prompt_kreativa(ime, vibe, tekst, hook="", razmerje="1:1", scena=""):
         """Prompt generatorja Kreative (/generate-kreative) + HOOK: velik hook napis zgoraj, ime izdelka kot MANJŠI logo
         (sam branding kupcu še nič ne pove — uporabnik 2026-10-15). Brez hooka = točno prompt generatorja."""
         if hook:
             napisi = (f"Do not include any text/words on the image except: (1) a short, big, bold HOOK headline '{hook}' — the most prominent text, "
-                      f"at the top, high contrast; (2) the device name in capital letters '{ime.upper()}' as a SMALL logo (clearly smaller than the hook, "
-                      "e.g. in a corner) — never the biggest element. ")
+                      f"high contrast; (2) the device name in capital letters '{ime.upper()}' as a SMALL logo (clearly smaller than the hook) — never the biggest element. ")
         else:
             napisi = f"Do not include any text/words on the image except the device name in capital letters '{ime.upper()}' — place it where it fits best or makes sense. "
-        return (f"From these reference images create a new FB ad creative. "
-                f"Try a more intense '{vibe}' background. "
-                + napisi +
+        sc = MA_SCENE.get(scena) or {}
+        return ("From these reference images create a new FB ad creative. "
+                + (f"SCENE TYPE — {sc['scena']} The product must look EXACTLY like in the reference images (same shape, colours, parts). " if sc else "")
+                + f"Try a more intense '{vibe}' background. "
+                + napisi
+                + (f"LAYOUT: {sc['postavitev']} " if sc else "") +
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
                 f"Highlight (can be through icons or text in English) that it is: {tekst}. "
                 f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. "
@@ -385,6 +406,36 @@ def vklopi(G: dict):
         h = [str(x).strip()[:40] for x in (j.get("hooki") or [])]
         return h if len(h) == len(kreative) else [""] * len(kreative)
 
+    def razvrsti_galerijo(urls):
+        """Sonnet vision: vloga vsake slike galerije (packshot / uporaba / detajl / okolje / prej_potem / izlocena = besedilo, infografika, kolaž)."""
+        vsebina = [{"type": "text", "text": (
+            "These are e-commerce product gallery images. Classify EACH image into exactly one role: "
+            "packshot = product alone, clean/simple background, no text; uporaba = product being used by a person / in hands; "
+            "detajl = close-up of a detail, texture or the set/package contents; okolje = product in its real environment / lifestyle scene; "
+            "prej_potem = before/after comparison; izlocena = contains text, letters, numbers, arrows, badges, infographic, collage, or other products. "
+            "Also pick the single best packshot (most faithful, whole product visible). "
+            'Return ONLY JSON: {"vloge": {"0": "packshot", "1": "uporaba", ...}, "najboljsi_packshot": 0}')}]
+        for i, u in enumerate(urls):
+            vsebina += [{"type": "text", "text": f"Image {i}:"}, {"type": "image", "source": {"type": "url", "url": u}}]
+        msg = G["client"].messages.create(model="claude-sonnet-4-6", max_tokens=3000, messages=[{"role": "user", "content": vsebina}])
+        j = beri_json("".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text"))
+        vloge = {int(k): str(v) for k, v in (j.get("vloge") or {}).items() if str(k).isdigit() and int(k) < len(urls)}
+        try:
+            naj = int(j.get("najboljsi_packshot"))
+        except (TypeError, ValueError):
+            naj = next((i for i, v in vloge.items() if v == "packshot"), 0)
+        return vloge, (naj if 0 <= naj < len(urls) else 0)
+
+    def reference_za(urls, vloge, naj, scena, i):
+        """packshot (zvestoba izdelka) + do 2 sliki, ki ustrezata sceni; brez slik z besedilom. Različne kreative dobijo različne slike."""
+        dobre = [k for k in range(len(urls)) if vloge.get(k) != "izlocena"] or list(range(len(urls)))
+        vloga = MA_SCENE[scena]["vloga"]
+        ujemajo = [k for k in dobre if vloge.get(k) == vloga and k != naj]
+        ostale = [k for k in dobre if k != naj and k not in ujemajo]
+        ostale = ostale[i % len(ostale):] + ostale[:i % len(ostale)] if ostale else []   # zamik → vsaka kreativa drugo dodatno sliko
+        izb = [naj] + (ujemajo + ostale)[:2]
+        return [urls[k] for k in dict.fromkeys(izb)]
+
     def oglasi_ai(naziv, opis, prednosti, n_oglasov):
         prompt = (
             f"Napiši {n_oglasov} RAZLIČNIH Facebook/Instagram oglasov v SLOVENŠČINI za izdelek trgovine Maaarket.\n"
@@ -409,6 +460,12 @@ def vklopi(G: dict):
             feed_sl = G["feed_by_lang"].get("sl") or {}
             it = feed_sl.get(sl.get("g_id")) or {}
             slike = it.get("all_images") or ([sl.get("slika")] if sl.get("slika") else [])
+            if G.get("_kbatch_images_by_sku"):   # 🖼 cela galerija po SKU (isti vir kot Optimizacija slik: glavna + galerija)
+                try:
+                    gal = await G["_kbatch_images_by_sku"](sku, 14)
+                    slike = list(dict.fromkeys([u for u in (gal or []) + slike if u]))[:14]
+                except Exception as e:
+                    print(f"[meta-ads] galerija {sku}: {e}")
             videi, nap = await asana_videi(pid, sku, p.get("asana") or []) if p.get("asana") else ([], [])
             n_ogl = MA_N_KREATIV + len(videi)
             naziv = sl.get("naziv") or it.get("title") or sku
@@ -419,11 +476,19 @@ def vklopi(G: dict):
             for ia, ib in MA_PARI[:MA_N_KREATIV]:
                 a_, b_ = a_opc[ia % len(a_opc)], b_opc[ib % len(b_opc)]
                 kre.append({"oznaka": f"{a_.get('label', 'A')} × {b_.get('label', 'B')}", "tekst": str(a_["text"]).strip()[:120], "vibe": str(b_["text"]).strip()[:60],
-                            "razmerje": "4:5" if len(kre) == MA_N_KREATIV - 1 else "1:1"})   # 4 × 1:1 + 1 × 4:5 (preizkus mobilni Feed)
+                            "razmerje": "1:1"})   # 4 × 1:1 + 1 × 4:5 (preizkus mobilni Feed)
             hk, ogl = await asyncio.gather(asyncio.to_thread(hooki_ai, naziv, it.get("description") or "", kre),
                                            asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", a_opc[0]["text"], max(n_ogl, MA_N_KREATIV)))
             for k_, h_ in zip(kre, hk):
                 k_["hook"] = h_
+            try:
+                vloge, naj = await asyncio.to_thread(razvrsti_galerijo, slike[:12]) if len(slike) > 1 else ({}, 0)
+            except Exception as e:
+                print(f"[meta-ads] razvrstitev galerije: {e}")
+                vloge, naj = {}, 0
+            for i_, k_ in enumerate(kre):
+                k_["scena"] = MA_SCENE_RED[i_ % len(MA_SCENE_RED)]
+                k_["refs"] = reference_za(slike[:12], vloge, naj, k_["scena"], i_) if slike else []
             trgi = {}
             for t in MA_TRGI:
                 x = info.get(t)
@@ -436,7 +501,7 @@ def vklopi(G: dict):
                 elif x.get("neuvoz"):
                     trgi[t]["opomba"] = "🚫 ne uvažamo (Marža)"
             await pak_set(pid, lambda q: q.update(status="koncept", ime=ime or sku, naziv=sl.get("naziv") or "", kreative=kre, oglasi_sl=ogl,
-                                                    videi=videi, opozorila=nap, ref_slike=slike[:6], trgi=trgi))
+                                                    videi=videi, opozorila=nap, ref_slike=slike[:12], galerija_vloge={str(k): v for k, v in vloge.items()}, trgi=trgi))
         except Exception as e:
             print(f"[meta-ads] koncept {pid}: {e}")
             err = str(e)[:200]
@@ -447,22 +512,25 @@ def vklopi(G: dict):
         p = pak_get(pid)
         mapa = MAPA / pid
         mapa.mkdir(parents=True, exist_ok=True)
-        refs = await prenesi(p.get("ref_slike") or [], 1)
-        if not refs:
+        if not (p.get("ref_slike") or any(k.get("refs") for k in p["kreative"])):
             await pak_set(pid, lambda q: q.update(status="koncept", napaka="Ni referenčnih slik izdelka (feed)."))
             return
 
         async def ena(i):
             k = p["kreative"][i]
             try:
-                razm = k.get("razmerje") or "1:1"
+                razm = "1:1"   # 2026-10-16: vse kreative 1:1 (Meta pri Add media sama naredi 4:5 / 9:16 / 1,91:1)
                 # 4:5: Flare varne cone ne drži (hook do roba → obrez ga odreže) → nariši 1:1 (postavitev drži) + podaljšaj samo ozadje do 4:5
-                raw = await flare(refs, prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", "1:1"), "1:1")
+                refs = await prenesi(k.get("refs") or p.get("ref_slike") or [], 3)
+                if not refs:
+                    raise RuntimeError("referenčnih slik ni bilo mogoče prenesti")
+                raw = await flare(refs, prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", "1:1",
+                                                        k.get("scena") or ""), "1:1", n_ref=3)
                 if razm == "4:5":
                     raw = await kvadrat_v_45(raw)
                 fn = f"osnova_{i + 1}_{uuid.uuid4().hex[:4]}.jpg"
                 (mapa / fn).write_bytes(raw)
-                await pak_set(pid, lambda q: q["kreative"][i].update(osnova=fn, osnova_napaka="", v_delu=False))
+                await pak_set(pid, lambda q: q["kreative"][i].update(osnova=fn, osnova_napaka="", v_delu=False, razmerje=razm))
             except Exception as e:
                 err = str(e)[:160]
                 await pak_set(pid, lambda q: q["kreative"][i].update(osnova_napaka=err, v_delu=False))
@@ -491,7 +559,9 @@ def vklopi(G: dict):
         if not k.get("osnova") or not osn.exists():
             raise RuntimeError("ni angleške kreative")
         pr = prompt_prevod(t, p.get("ime") or "")
-        razm = k.get("razmerje") or "1:1"
+        from PIL import Image as _Im
+        with _Im.open(osn) as _im:   # razmerje iz dejanske slike (stari paketi imajo lahko 4:5)
+            razm = "4:5" if _im.height > _im.width * 1.1 else "1:1"
         if model == "flare" and razm == "4:5":   # Flare vrne 2:3 → brez podaljšanja bi drugi obrez odrezal hook/ikone
             raw = await flare([(await asyncio.to_thread(podaljsaj_23, osn.read_bytes()), "image/jpeg")],
                               pr + " The top and bottom bands are only a background extension — keep them as plain background, do not add anything there.", razm)
@@ -558,7 +628,7 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         d = nalozi()
-        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID,
+        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "scene": {k: v["ime"] for k, v in MA_SCENE.items()},
                 "paketi": [{k: p.get(k) for k in ("id", "sku", "ime", "status", "at", "izvozeno")} |
                            {"trgi": [t for t in MA_TRGI if ((p.get("trgi") or {}).get(t) or {}).get("vkljuci")]} for p in d["paketi"]]}
 
@@ -643,6 +713,8 @@ def vklopi(G: dict):
                 if i < len(p.get("kreative") or []):
                     p["kreative"][i]["vibe"] = str(k.get("vibe") or p["kreative"][i].get("vibe") or "")[:60]
                     p["kreative"][i]["tekst"] = str(k.get("tekst") or p["kreative"][i].get("tekst") or "")[:120]
+                    if k.get("scena") in MA_SCENE:
+                        p["kreative"][i]["scena"] = k["scena"]
                     if k.get("razmerje") in MA_SLIKA:
                         p["kreative"][i]["razmerje"] = k["razmerje"]
                     if "hook" in k:
