@@ -41,6 +41,9 @@ MA_STRAN_TRG = {"pl": "100158825529238", "sk": "108850387978565", "hr": "1057098
 MA_CTA = {"sl": "Kupi zdaj", "hr": "Kupi sada", "rs": "Kupi sada", "hu": "Vásárolj most", "pl": "Kup teraz", "cz": "Koupit",
           "sk": "Kúpiť teraz", "gr": "Αγόρασε τώρα", "bg": "Купи сега", "ro": "Cumpără acum"}   # samo za predogled (CTA = SHOP_NOW)
 MA_EMOJI = "✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌 🙌 😍 💎 🏆 ⚡ 🌟 👏 💫 🛒 📦 🔑 💯 😊 🤩 🌿 🌱 🍃 🌸 🌻 🌞 🍀 🎉 🎊 🛍️ 💚 💙 🧡 💜 🤍 🖤"
+# Bid cap po trgu (€, kot v tekočih kampanjah 2026-10-16) — v koraku 3 nastavljiv po trgu
+MA_BID = {"pl": 7.7, "bg": 7.7, "gr": 7.7, "cz": 7.7, "ro": 8.5, "rs": 9.0, "sk": 9.0, "hu": 9.0, "sl": 9.0, "hr": 9.0}
+MA_ADSET = {"sl": "SLO"}   # ime ad seta (ostali = koda trga)
 MA_ZNAK = "🤖"   # znak pred imenom kampanje = ustvarjeno v suban.ai
 MA_SLIKA = {"1:1": (1080, 1080), "4:5": (1080, 1350)}   # 1:1 kot generator Kreative; 4:5 = preizkus za mobilni Feed (privzeto kreativa 5)
 MA_FLARE_SIZE = {"1:1": "1024x1024", "4:5": "1024x1536"}   # 4:5: Flare 2:3 → izrez sredine 4:5
@@ -495,7 +498,7 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         d = nalozi()
-        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA,
+        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID,
                 "paketi": [{k: p.get(k) for k in ("id", "sku", "ime", "status", "at", "izvozeno")} |
                            {"trgi": [t for t in MA_TRGI if ((p.get("trgi") or {}).get(t) or {}).get("vkljuci")]} for p in d["paketi"]]}
 
@@ -531,7 +534,7 @@ def vklopi(G: dict):
             elif sku not in d["brez_rs"]:
                 d["brez_rs"].append(sku)
             d["paketi"].insert(0, {"id": pid, "sku": sku, "at": _lj_iso(), "status": "koncept_v_delu", "trgi_izbor": trgi_izbor, "asana": asana,
-                                   "nastavitve": {"proracun": 60, "bid": 9, "status": "ACTIVE", "kampanja": f"{MA_ZNAK} [ALL 9.0BID] {sku} #BidCap (Suban)"}})
+                                   "nastavitve": {"proracun": 60, "status": "ACTIVE", "kampanja": f"{MA_ZNAK} [ALL 9.0BID] {sku} #BidCap (Suban)"}})
             for p in d["paketi"][30:]:   # stari paketi: slike/videi z diska
                 import shutil
                 shutil.rmtree(MAPA / p["id"], ignore_errors=True)
@@ -576,6 +579,13 @@ def vklopi(G: dict):
                     for k_ in ("vkljuci", "stran"):
                         if k_ in tv:
                             p["trgi"][t][k_] = tv[k_]
+                    if "bid" in tv:
+                        try:
+                            b_ = round(float(str(tv["bid"]).replace(",", ".")), 2)
+                            if b_ > 0:
+                                p["trgi"][t]["bid"] = b_
+                        except ValueError:
+                            pass
                     if isinstance(tv.get("oglasi"), list):
                         p["trgi"][t]["oglasi"] = [{"hl": str(o.get("hl") or ""), "pt": str(o.get("pt") or "")} for o in tv["oglasi"]]
                     if isinstance(tv.get("izkl"), list):
@@ -631,7 +641,7 @@ def vklopi(G: dict):
     def sestavi(p, status, nacin="loceni"):
         """→ (vrstice CSV, slike [fn], videi [fn], opozorila, rocno {trg: [slike]}).
         nacin »flex«: 1 oglas na trg (prva kreativa + 1 headline + 1 primary text) — ostale slike in videe dodaš ročno
-        (Format → Flexible → Add media) iz mape trga; Flexible = 1 oglas → limit 250 oglasov / stran ni problem."""
+        (Format → Flexible → Add media, v iskalniku »_pl«) — VSE slike v ENI mapi slike/ (uporabnik 2026-10-16); Flexible = 1 oglas → limit 250 / stran ni problem."""
         n = p.get("nastavitve") or {}
         kamp = str(n.get("kampanja") or f"[ALL 9.0BID] {p['sku']} #BidCap (Suban)").strip()
         if not kamp.startswith(MA_ZNAK):   # 🤖 = kampanja iz suban.ai (vedno spredaj, tudi če ime ročno spremeniš)
@@ -676,7 +686,7 @@ def vklopi(G: dict):
                     img, vfn, ct, an = prva, vfile[i], "Video Page Post Ad", f"{p['sku']} {t.upper()} video {i + 1}"
                 r = dict(MA_STALNO)
                 r.update({"Campaign Name": kamp, "Campaign Status": st, "Campaign Daily Budget": str(n.get("proracun") or 60),
-                          "Ad Set Run Status": st, "Ad Set Name": t.upper(), "Countries": MA_DRZAVA[t], "Bid Amount": str(n.get("bid") or 9),
+                          "Ad Set Run Status": st, "Ad Set Name": MA_ADSET.get(t, t.upper()), "Countries": MA_DRZAVA[t], "Bid Amount": f"{float(tt.get('bid') or MA_BID.get(t, 9)):g}",
                           "Link Object ID": f"o:{sid}", "Optimized Conversion Tracking Pixels": f"tp:{MA_PIKSEL[t]}",
                           "Conversion Tracking Pixels": f"tp:{MA_PIKSEL[t]}", "Link": tt["url"],
                           "Ad Status": st, "Ad Name": an, "Title": o["hl"], "Body": o["pt"], "Image File Name": img,
@@ -720,15 +730,14 @@ def vklopi(G: dict):
                 zf.write(MAPA / pid / s, "slike/" + s)
             for v in videi:
                 zf.write(MAPA / pid / "videi" / v, "videi/" + v, compress_type=zipfile.ZIP_STORED)
-            for t, sl_ in rocno.items():   # flex: mapa trga z vsemi kreativami za ročno dodajanje
-                for s in sl_:
-                    zf.write(MAPA / pid / s, f"{t.upper()}/{s}")
+            for s in sorted({s for sl_ in rocno.values() for s in sl_} - set(slike)):   # flex: vse kreative vseh trgov v isto mapo slike/
+                zf.write(MAPA / pid / s, "slike/" + s)
             koraki = ("1. Ads Manager → Import/Export → Import ads\r\n"
                       "2. File: meta_uvoz.csv\r\n3. Images: vse iz mape slike (Ctrl+A)\r\n4. Videos: vse iz mape videi (max 10 × 10 MB)\r\n"
                       "5. Import → preglej osnutke (In draft) → Publish\r\n") if nacin != "flex" else (
-                      "1. Ads Manager → Import/Export → Import ads → File: meta_uvoz.csv, Images: vse iz mape slike → Import\r\n"
-                      "2. Za vsak ad set (trg): odpri oglas »… flexible« → Format: Flexible → Add media → iz mape trga (npr. PL) označi vse slike (Ctrl+A),\r\n"
-                      "   nato še videe iz mape videi → headline in primary text ostaneta po 1 → Publish\r\n")
+                      "1. Ads Manager → Import/Export → Import ads → File: meta_uvoz.csv, Images: VSE iz mape slike (Ctrl+A) → Import\r\n"
+                      "2. Za vsak ad set (trg): odpri oglas »… flexible« → Format: Flexible → Add media → v iskalnik vpiši »_pl« (oz. _sl, _ro …)\r\n"
+                      "   → izberi zadnje slike trga + videe (iskalnik »video«) → headline in primary text ostaneta po 1 → Publish\r\n")
             zf.writestr("NAVODILA.txt", (
                 f"Meta Ads uvoz — {p['sku']} — {_lj_iso()[:16]}\r\n\r\n"
                 f"{len(vrst)} oglasov, {len({r['Ad Set Name'] for r in vrst})} ad setov (trgi), status: {status}, način: {'Flexible (ročno dopolni)' if nacin == 'flex' else 'ločeni oglasi'}.\r\n\r\n"

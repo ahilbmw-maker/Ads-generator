@@ -163,8 +163,8 @@
       <details class="nav">
         <summary>📘 Kako uvozim v Meta Ads Manager</summary>
         <ol>
-          <li><b>📁 Shrani v mapo</b> zapiše v mapo <b>Meta Ads</b>: <code>meta_uvoz.csv</code>, <code>slike\</code>, <code>videi\</code> in pri Flexible še mapo za vsak trg (mapa se ob vsakem shranjevanju izprazni).</li>
-          <li><b>Flexible</b> (privzeto): v uvozu je 1 oglas na trg → nato v oglasu Format <b>Flexible</b> → <b>Add media</b> iz mape trga + videi. 1 oglas = limit 250 / stran ni problem.</li>
+          <li><b>📁 Shrani v mapo</b> zapiše v mapo <b>Meta Ads</b>: <code>meta_uvoz.csv</code>, <code>slike\</code>, <code>videi\</code> — vse slike vseh trgov v eni mapi (mapa se ob vsakem shranjevanju izprazni).</li>
+          <li><b>Flexible</b> (privzeto): v uvozu je 1 oglas na trg → nato v oglasu Format <b>Flexible</b> → <b>Add media</b> → v iskalnik <code>_pl</code> (oz. _sl, _ro …) + videi. 1 oglas = limit 250 / stran ni problem.</li>
           <li>Ads Manager → <b>Import/Export → Import ads</b>.</li>
           <li><b>File</b>: meta_uvoz.csv · <b>Images</b>: vse iz <code>slike</code> (Ctrl+A) · <b>Videos</b>: vse iz <code>videi</code> (max 10 × 10 MB).</li>
           <li><b>Import</b> → kampanja je »In draft« → preglej → <b>Publish</b>.</li>
@@ -333,7 +333,7 @@ function risi3(p) {
   let h = '<div class="card"><div class="row">' +
     '<div style="flex:2;min-width:260px"><label class="l" style="margin-top:0">Ime kampanje</label><input class="f" data-e="n_kampanja" value="' + esc(n.kampanja || '') + '"></div>' +
     '<div style="width:130px"><label class="l" style="margin-top:0">Proračun € / dan</label><input class="f" data-e="n_proracun" inputmode="decimal" value="' + esc(n.proracun) + '"></div>' +
-    '<div style="width:110px"><label class="l" style="margin-top:0">Bid cap €</label><input class="f" data-e="n_bid" inputmode="decimal" value="' + esc(n.bid) + '"></div>' +
+
     '<div style="width:190px"><label class="l" style="margin-top:0">Status ob uvozu</label><select class="f" onchange="LS.set(\'ma_status\', this.value)"><option value="ACTIVE"' + (st === 'ACTIVE' ? ' selected' : '') + '>✅ po Publish online</option><option value="PAUSED"' + (st === 'PAUSED' ? ' selected' : '') + '>⏸ Paused</option></select></div>' +
     '<div style="width:270px"><label class="l" style="margin-top:0">Način izvoza</label><select class="f" onchange="LS.set(\'ma_nacin\', this.value);risi()"><option value="flex"' + (nacin() === 'flex' ? ' selected' : '') + '>🧩 Flexible · 1 oglas na trg (kreative dodaš ročno)</option><option value="loceni"' + (nacin() === 'loceni' ? ' selected' : '') + '>📑 Ločeni oglasi · vsaka kreativa svoj oglas</option></select></div>' +
     '<span class="grow"></span><button class="btn grn lg" onclick="shraniVMapo()">📁 Shrani v mapo</button><button class="btn" onclick="izvozi()">⬇ ZIP</button></div>' +
@@ -348,6 +348,7 @@ function risi3(p) {
   h += '<div class="card"><div class="card-h">' + zast(TRG) + '<b>' + TRG.toUpperCase() + ' · ' + esc((ST.jeziki || {})[TRG] || '') + '</b>' +
     (x.url ? '<a class="sub" href="' + esc(x.url) + '" target="_blank" rel="noopener">↗ ' + esc(x.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60)) + '</a>' : '<span class="pill p-err">ni URL-ja</span>') +
     (x.opomba ? '<span class="pill p-warn">' + esc(x.opomba) + '</span>' : '') + '<span class="grow"></span>' +
+    '<label class="sub" style="display:flex;gap:6px;align-items:center">Bid cap € <input class="f" data-e="bid" inputmode="decimal" style="width:70px" value="' + esc(x.bid || (ST.bid || {})[TRG] || 9) + '"></label>' +
     '<label class="sub" style="display:flex;gap:6px;align-items:center">FB stran <select class="f" data-e="stran" style="width:auto">' + Object.entries(ST.strani || {}).map(([id, s]) => '<option value="' + id + '"' + (id === x.stran ? ' selected' : '') + '>' + esc(s.ime) + '</option>').join('') + '</select></label>' +
     '<label class="tog sub" style="display:flex;gap:6px;align-items:center;font-weight:700;cursor:pointer"><input type="checkbox" data-e="vkljuci"' + (x.vkljuci ? ' checked' : '') + (x.url ? '' : ' disabled') + '> vključi trg</label></div>';
   if (x.prevod_napaka) h += '<div class="msg err">Prevod ni uspel: ' + esc(x.prevod_napaka) + ' — klikni »3 · Lokaliziraj« v koraku 2 znova.</div>';
@@ -362,7 +363,7 @@ function risi3(p) {
       '<textarea class="pt" data-e="t_pt" data-o="0" rows="4">' + esc(o.pt) + '</textarea>' +
       '<div class="md">' + (prva.datoteka ? '<img src="' + dat(prva.datoteka) + '">' : '<span class="sub">ni slike</span>') + '</div>' +
       '<div class="ft"><div style="flex:1;min-width:0"><div class="dom">' + esc((x.url || '').replace(/^https?:\/\/(www\.)?/, '').split('/')[0]) + '</div><input class="hl" data-e="t_hl" data-o="0" value="' + esc(o.hl) + '"></div><span class="cta">' + esc((ST.cta || {})[TRG] || 'Shop now') + '</span></div></div>' +
-      '<div><div class="sub" style="margin-bottom:8px">🧩 V CSV gre samo 1. kreativa · ostale v Ads Managerju dodaš ročno (Format → Flexible → Add media) iz mape <b>' + TRG.toUpperCase() + '</b> in <b>videi</b> · ✕ = ne dodaj</div>' +
+      '<div><div class="sub" style="margin-bottom:8px">🧩 V CSV gre samo 1. kreativa · ostale v Ads Managerju dodaš ročno (Format → Flexible → Add media) — v iskalnik vpiši <b>_' + TRG + '</b> + videi · ✕ = ne dodaj</div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px">' +
       p.kreative.map((k, i) => { const s = (x.slike || {})[String(i)] || {}, iz = izkl.has('slika' + i);
         return '<div class="fbk' + (iz ? ' izkl' : '') + '"><div class="md" style="aspect-ratio:' + (k.razmerje === '4:5' ? '4/5' : '1/1') + '">' + (s.datoteka ? '<img src="' + dat(s.datoteka) + '?v=' + encodeURIComponent(s.datoteka) + '" loading="lazy">' : s.napaka ? '<span class="sub" style="padding:8px;color:var(--err)">' + esc(s.napaka) + '</span>' : p.status === 'lokal_v_delu' ? '<span class="spin"></span>' : '<span class="sub">ni slike</span>') +
@@ -396,6 +397,7 @@ document.addEventListener('input', e => {
   else if (k === 'vid') { const v = PAK.videi.find(x => x.datoteka === t.dataset.f); if (v) v.vkljuci = t.checked; }
   else if (k === 't_hl' || k === 't_pt') { const x = PAK.trgi[TRG]; x.oglasi[o] = Object.assign({}, x.oglasi[o], { [k.slice(2)]: t.value }); }
   else if (k === 'stran') { PAK.trgi[TRG].stran = t.value; risi(); }
+  else if (k === 'bid') PAK.trgi[TRG].bid = t.value;
   else if (k === 'vkljuci') { PAK.trgi[TRG].vkljuci = t.checked; risi(); }
   else if (k.startsWith('n_')) { PAK.nastavitve = PAK.nastavitve || {}; PAK.nastavitve[k.slice(2)] = t.value; }
   clearTimeout(SHR); SHR = setTimeout(() => shrani(false), 1200);
@@ -404,7 +406,7 @@ const razmSel = (k, i, st) => '<select class="f" data-e="razm" data-i="' + i + '
 document.addEventListener('change', e => { if (e.target.matches('[data-e="vid"],[data-e="stran"],[data-e="vkljuci"],[data-e="razm"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
 async function shrani(pokazi) {
   clearTimeout(SHR); if (!PAK) return;
-  const trgi = {}; TRGI.forEach(t => { const x = PAK.trgi && PAK.trgi[t]; if (x) trgi[t] = { vkljuci: x.vkljuci, stran: x.stran, oglasi: x.oglasi, izkl: x.izkl || [] }; });
+  const trgi = {}; TRGI.forEach(t => { const x = PAK.trgi && PAK.trgi[t]; if (x) trgi[t] = { vkljuci: x.vkljuci, stran: x.stran, oglasi: x.oglasi, izkl: x.izkl || [], ...(x.bid ? { bid: x.bid } : {}) }; });
   await post('/meta-ads/api/shrani', { id: PAK.id, ime: PAK.ime, kreative: PAK.kreative, oglasi_sl: PAK.oglasi_sl, videi: PAK.videi, trgi, nastavitve: PAK.nastavitve });
   if (pokazi) msg('msg', '✓ Shranjeno', 'ok');
 }
@@ -488,7 +490,7 @@ async function shraniVMapo() {
   } catch (e) { msg('msg', 'Zapis v mapo ni uspel: ' + esc(e.message || e) + ' — poskusi ⬇ ZIP.', 'err'); return; }
   const opz = (nav.split('Opozorila:')[1] || '').trim();
   msg('msg', '✓ Shranjeno ' + n + ' datotek v 📁 ' + esc(MAPA.name) + '\\Meta Ads — ' + (nacin() === 'flex'
-      ? 'Import ads → File <b>meta_uvoz.csv</b>, Images vse iz <b>slike</b> → nato v vsakem ad setu oglas »… flexible« → Format Flexible → Add media iz mape trga (PL, RO …) in <b>videi</b>.'
+      ? 'Import ads → File <b>meta_uvoz.csv</b>, Images vse iz <b>slike</b> → nato v vsakem ad setu oglas »… flexible« → Format Flexible → Add media → v iskalnik <b>_pl</b> (_sl, _ro …) + videi.'
       : 'v Ads Managerju: Import ads → File <b>meta_uvoz.csv</b>, Images vse iz <b>slike</b>, Videos vse iz <b>videi</b>.') +
     (opz ? '<br>⚠ ' + esc(opz).replace(/\r?\n/g, ' · ') : ''), opz ? 'warn' : 'ok');
   stanje(); odpri(PAK.id);
