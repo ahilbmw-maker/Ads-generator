@@ -214,6 +214,16 @@ def vklopi(G: dict):
         im = im.resize((w, h))
         b = io.BytesIO(); im.save(b, format="JPEG", quality=90); return b.getvalue()
 
+    def podaljsaj_23(raw):
+        """4:5 slika → 1024×1536 (2:3): zgoraj/spodaj zamegljen podaljšek robnih vrstic, sredina = izvirnik (1024×1280)."""
+        from PIL import Image, ImageFilter
+        im = Image.open(io.BytesIO(raw)).convert("RGB").resize((1024, 1280))
+        c = Image.new("RGB", (1024, 1536))
+        c.paste(im.crop((0, 0, 1024, 40)).resize((1024, 128)).filter(ImageFilter.GaussianBlur(12)), (0, 0))
+        c.paste(im.crop((0, 1240, 1024, 1280)).resize((1024, 128)).filter(ImageFilter.GaussianBlur(12)), (0, 1408))
+        c.paste(im, (0, 128))
+        b = io.BytesIO(); c.save(b, format="JPEG", quality=92); return b.getvalue()
+
     def prompt_kreativa(ime, vibe, tekst, hook="", razmerje="1:1"):
         """Prompt generatorja Kreative (/generate-kreative) + HOOK: velik hook napis zgoraj, ime izdelka kot MANJŠI logo
         (sam branding kupcu še nič ne pove — uporabnik 2026-10-15). Brez hooka = točno prompt generatorja."""
@@ -229,9 +239,15 @@ def vklopi(G: dict):
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
                 f"Highlight (can be through icons or text in English) that it is: {tekst}. "
                 f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. "
-                + ("Square 1:1 format." if razmerje != "4:5" else
-                   "Vertical 4:5 portrait format for the mobile feed: the image is cropped to 4:5 afterwards, so keep ALL text, icons and the product "
-                   "at least 12% away from the top and bottom edges."))
+                + ("Square 1:1 format." if razmerje != "4:5" else MA_VARNA_45))
+
+    # 📐 4:5 varna cona (2026-10-16, uporabnik: »tudi če ga FB odreže v 1:1«): Flare riše 1024×1536 → mi režemo na 4:5 (−128 px zgoraj/spodaj),
+    # FB lahko 4:5 prikaže še kot 1:1 (−10 % zgoraj/spodaj) → vse pomembno v osrednjem kvadratu 1024×1024 (≥ 256 px od zgornjega in spodnjega roba)
+    MA_VARNA_45 = ("Vertical portrait format. STRICT SAFE ZONE: the image will be cropped to 4:5 and may also be shown cropped to a centred SQUARE, "
+                   "so place EVERYTHING important — the hook headline, the logo, all icons/labels and the whole product — inside the CENTRAL SQUARE "
+                   "of the canvas (in the 1024×1536 output: at least 260 px below the top edge and at least 260 px above the bottom edge, "
+                   "at least 60 px from the left and right edges). The top and bottom bands outside this square contain ONLY background scene "
+                   "(sky, wall, table, floor) — no text, no icons, no product parts.")
 
     def prompt_prevod(t, ime):
         """Isti prompt kot »Lok« (prevod slik): prevedi vidno besedilo, vse ostalo enako; ime izdelka/logo ostane."""
@@ -448,7 +464,11 @@ def vklopi(G: dict):
             raise RuntimeError("ni angleške kreative")
         pr = prompt_prevod(t, p.get("ime") or "")
         razm = k.get("razmerje") or "1:1"
-        raw = await (flare([(osn.read_bytes(), "image/jpeg")], pr, razm) if model == "flare" else nb21(osn.read_bytes(), pr, razm))
+        if model == "flare" and razm == "4:5":   # Flare vrne 2:3 → brez podaljšanja bi drugi obrez odrezal hook/ikone
+            raw = await flare([(await asyncio.to_thread(podaljsaj_23, osn.read_bytes()), "image/jpeg")],
+                              pr + " The top and bottom bands are only a background extension — keep them as plain background, do not add anything there.", razm)
+        else:
+            raw = await (flare([(osn.read_bytes(), "image/jpeg")], pr, razm) if model == "flare" else nb21(osn.read_bytes(), pr, razm))
         fn = f"{p['sku']}_{t}_{i + 1}.jpg"
         (MAPA / pid / fn).write_bytes(raw)
         return fn
