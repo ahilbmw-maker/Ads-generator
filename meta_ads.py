@@ -214,6 +214,36 @@ def vklopi(G: dict):
         im = im.resize((w, h))
         b = io.BytesIO(); im.save(b, format="JPEG", quality=90); return b.getvalue()
 
+    def kvadrat_45_platno(raw):
+        """1:1 kreativa → 1080×1350: kreativa na sredini (1080×1080), pasova 135 px zgoraj/spodaj = zamegljen podaljšek robov."""
+        from PIL import Image, ImageFilter
+        im = Image.open(io.BytesIO(raw)).convert("RGB").resize((1080, 1080))
+        c = Image.new("RGB", (1080, 1350))
+        c.paste(im.crop((0, 0, 1080, 40)).resize((1080, 135)).filter(ImageFilter.GaussianBlur(14)), (0, 0))
+        c.paste(im.crop((0, 1040, 1080, 1080)).resize((1080, 135)).filter(ImageFilter.GaussianBlur(14)), (0, 1215))
+        c.paste(im, (0, 135))
+        b = io.BytesIO(); c.save(b, format="JPEG", quality=92); return b.getvalue(), im
+
+    async def kvadrat_v_45(raw):
+        """Varna 4:5: kvadrat na sredini + NB2.1 podaljša SAMO ozadje v pasova; sredino nato vedno vrnemo iz izvirnika (AI je ne sme spremeniti).
+        Ob napaki AI ostane zamegljen podaljšek — vse pomembno je vedno v osrednjem kvadratu (varno tudi za FB obrez na 1:1)."""
+        platno, kv = await asyncio.to_thread(kvadrat_45_platno, raw)
+        try:
+            ai = await nb21(platno, "This image has a finished square ad creative in the middle and blurry placeholder bands at the top and bottom. "
+                                    "Replace ONLY the blurry top and bottom bands with a natural, seamless continuation of the background scene "
+                                    "(sky, wall, table, floor — matching light and colours). Do NOT add any text, letters, icons, logos or product parts in the bands. "
+                                    "Do NOT change anything in the central square.", "4:5")
+
+            def zlepi(a):
+                from PIL import Image
+                im = Image.open(io.BytesIO(a)).convert("RGB").resize((1080, 1350))
+                im.paste(kv, (0, 135))   # sredina = izvirna kreativa (napisi ostanejo točno taki)
+                b = io.BytesIO(); im.save(b, format="JPEG", quality=90); return b.getvalue()
+            return await asyncio.to_thread(zlepi, ai)
+        except Exception as e:
+            print(f"[meta-ads] podaljšanje 4:5: {e}")
+            return platno
+
     def podaljsaj_23(raw):
         """4:5 slika → 1024×1536 (2:3): zgoraj/spodaj zamegljen podaljšek robnih vrstic, sredina = izvirnik (1024×1280)."""
         from PIL import Image, ImageFilter
@@ -239,15 +269,10 @@ def vklopi(G: dict):
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
                 f"Highlight (can be through icons or text in English) that it is: {tekst}. "
                 f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. "
-                + ("Square 1:1 format." if razmerje != "4:5" else MA_VARNA_45))
+                + "Square 1:1 format.")   # 4:5 = 1:1 + podaljšano ozadje (kvadrat_v_45)
 
-    # 📐 4:5 varna cona (2026-10-16, uporabnik: »tudi če ga FB odreže v 1:1«): Flare riše 1024×1536 → mi režemo na 4:5 (−128 px zgoraj/spodaj),
-    # FB lahko 4:5 prikaže še kot 1:1 (−10 % zgoraj/spodaj) → vse pomembno v osrednjem kvadratu 1024×1024 (≥ 256 px od zgornjega in spodnjega roba)
-    MA_VARNA_45 = ("Vertical portrait format. STRICT SAFE ZONE: the image will be cropped to 4:5 and may also be shown cropped to a centred SQUARE, "
-                   "so place EVERYTHING important — the hook headline, the logo, all icons/labels and the whole product — inside the CENTRAL SQUARE "
-                   "of the canvas (in the 1024×1536 output: at least 260 px below the top edge and at least 260 px above the bottom edge, "
-                   "at least 60 px from the left and right edges). The top and bottom bands outside this square contain ONLY background scene "
-                   "(sky, wall, table, floor) — no text, no icons, no product parts.")
+    # 📐 4:5 (2026-10-16 b): Flare je hook risal do roba in naš obrez 2:3 → 4:5 ga je odrezal (2× kljub navodilom v promptu) →
+    # kreativa se nariše kot 1:1 in se podaljša samo ozadje (kvadrat_v_45) → vse pomembno v osrednjem kvadratu (tudi za FB obrez na 1:1)
 
     def prompt_prevod(t, ime):
         """Isti prompt kot »Lok« (prevod slik): prevedi vidno besedilo, vse ostalo enako; ime izdelka/logo ostane."""
@@ -431,7 +456,10 @@ def vklopi(G: dict):
             k = p["kreative"][i]
             try:
                 razm = k.get("razmerje") or "1:1"
-                raw = await flare(refs, prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", razm), razm)
+                # 4:5: Flare varne cone ne drži (hook do roba → obrez ga odreže) → nariši 1:1 (postavitev drži) + podaljšaj samo ozadje do 4:5
+                raw = await flare(refs, prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", "1:1"), "1:1")
+                if razm == "4:5":
+                    raw = await kvadrat_v_45(raw)
                 fn = f"osnova_{i + 1}_{uuid.uuid4().hex[:4]}.jpg"
                 (mapa / fn).write_bytes(raw)
                 await pak_set(pid, lambda q: q["kreative"][i].update(osnova=fn, osnova_napaka="", v_delu=False))
