@@ -22,18 +22,19 @@ MA_JEZIK_SL = {"sl": "slovenščina", "hr": "hrvaščina", "rs": "srbščina (la
 MA_DRZAVA = {"sl": "SI", "hr": "HR", "rs": "RS", "hu": "HU", "pl": "PL", "cz": "CZ", "sk": "SK", "gr": "GR", "bg": "BG", "ro": "RO"}
 MA_PIKSEL = {"sl": "824813018035664", "pl": "594485055250881", "sk": "776399419706604", "hr": "208841773552108", "rs": "267002177947845",
              "ro": "425303159069154", "bg": "5475417162514514", "hu": "317577872660835", "cz": "834090430851647", "gr": "3179900732285651"}
-# FB strani (limit 250 oglasov / stran) → IG račun (novi ID 1784…); x: = star IG ID iz izvoza (znan le za EU)
+# FB strani (limit 250 oglasov / stran) → IG račun; ig_x = ID IG računa, kot ga kaže Ads Manager (stolpec »Instagram Account ID« z x:) —
+# novi 1784… v »Instagram Account ID (New)« Meta ob uvozu NE upošteva (2026-10-17: vsi oglasi dobili napačen IG); manjkajo še Sk, Cz, Retail
 MA_STRANI = {
     "101449685670882": {"ime": "Maaarket EU", "ig": "17841450081366206", "ig_x": "4839343202764200"},
-    "113166093926419": {"ime": "Maaarket Europe", "ig": "17841444633130037"},
-    "103042431541052": {"ime": "Maaarket", "ig": "17841441158665910"},
-    "100174912815985": {"ime": "Maaarket Store", "ig": "17841464785772189"},
-    "100158825529238": {"ime": "Maaarket PL", "ig": "17841447422595264"},
+    "113166093926419": {"ime": "Maaarket Europe", "ig": "17841444633130037", "ig_x": "5158852410822242"},
+    "103042431541052": {"ime": "Maaarket", "ig": "17841441158665910", "ig_x": "3134992383245025"},
+    "100174912815985": {"ime": "Maaarket Store", "ig": "17841464785772189", "ig_x": "7143299575791040"},
+    "100158825529238": {"ime": "Maaarket PL", "ig": "17841447422595264", "ig_x": "4501245506558690"},
     "108850387978565": {"ime": "Maaarket Sk", "ig": "17841446949811305"},
-    "105709857728802": {"ime": "Maaarket Hr", "ig": "17841436577490293"},
+    "105709857728802": {"ime": "Maaarket Hr", "ig": "17841436577490293", "ig_x": "3912646375476521"},
     "111891964957486": {"ime": "Maaarket Retail", "ig": "17841451744798020"},
     "100747945468598": {"ime": "Maaarket Cz", "ig": "17841447402045875"},
-    "107310948408390": {"ime": "Maaarket Outlet", "ig": "17841450415404322"},
+    "107310948408390": {"ime": "Maaarket Outlet", "ig": "17841450415404322", "ig_x": "4484961918278211"},
 }
 # privzeta stran po trgu (strani trga + splošne razporejene, da noben ne preseže 250 oglasov); v koraku 3 jo lahko zamenjaš
 MA_STRAN_TRG = {"pl": "100158825529238", "sk": "108850387978565", "hr": "105709857728802", "cz": "100747945468598", "sl": "101449685670882",
