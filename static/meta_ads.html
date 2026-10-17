@@ -65,7 +65,7 @@
   .trg.on { border-color:var(--acc); background:var(--acc2); }
   .trg.off { opacity:.5; text-decoration:line-through; }
   .trg small { font-weight:500; font-size:11px; color:var(--txt2); }
-  .zg { max-height:520px; overflow-y:auto; margin:0 -6px; }
+  .zg { margin:0 -6px; }
   .zg-r { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; padding:9px 8px; border-radius:9px; cursor:pointer; border:1px solid transparent; }
   .zg-r:hover { background:var(--card2); }
   .zg-r.on { border-color:var(--acc); background:var(--acc2); }
@@ -484,14 +484,17 @@ async function izbrisiVse() {
 function zgodovina() {
   const ps = ST.paketi || [], el = document.getElementById('zgod');
   const opis = { koncept_v_delu: ['p-inf', '⏳ koncept'], koncept: ['p-mut', '1 · koncept'], osnove_v_delu: ['p-inf', '⏳ slike'], osnove: ['p-mut', '2 · slike'], lokal_v_delu: ['p-inf', '⏳ trgi'], pripravljeno: ['p-warn', 'pripravljeno'], napaka: ['p-err', 'napaka'] };
-  el.innerHTML = ps.length ? ps.map(p => { const o = p.izvozeno ? ['p-ok', '✓ izvoženo'] : opis[p.status] || ['p-mut', p.status];
+  const vidni = ZG_VSE ? ps : ps.filter((p, i) => i < ZG_N || IZBRANI.has(p.id) || (PAK && PAK.id === p.id) || V_DELU.includes(p.status));   // prvih ZG_N + izbrani/odprti/v pripravi
+  el.innerHTML = ps.length ? vidni.map(p => { const o = p.izvozeno ? ['p-ok', '✓ izvoženo'] : opis[p.status] || ['p-mut', p.status];
     return '<div class="zg-r' + (PAK && PAK.id === p.id ? ' on' : '') + '" data-id="' + esc(p.id) + '" onclick="odpri(\'' + esc(p.id) + '\')"><div style="min-width:0;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" style="margin-top:3px;width:15px;height:15px;accent-color:var(--acc)" ' + (IZBRANI.has(p.id) ? 'checked ' : '') + 'onclick="event.stopPropagation()" onchange="izberi(\'' + esc(p.id) + '\',this.checked)"><div style="min-width:0"><div class="zg-t">' + esc(p.sku) + (p.ime && p.ime !== p.sku ? ' <span class="sub">' + esc(p.ime) + '</span>' : '') + '</div>' +
       '<div class="zg-s">' + (p.trgi || []).map(t => t.toUpperCase()).join(' · ') + '</div></div></div><div class="zg-d"><span class="pill ' + o[0] + '">' + o[1] + '</span><div style="margin-top:3px">' + esc(datum(p.at)) + ' ' + esc(String(p.at || '').slice(11, 16)) + ' <button class="btn sm ghost" style="padding:1px 5px" title="Izbriši iz zgodovine" onclick="event.stopPropagation();izbrisi(\'' + esc(p.id) + '\',\'' + esc(p.sku) + '\')">🗑</button></div></div></div>'; }).join('')
     : '<div class="prazno">Še ni paketov — vpiši SKU in klikni »Pripravi koncept«.</div>';
+  if (ps.length > ZG_N) el.innerHTML += '<div style="text-align:center;margin-top:6px"><button class="btn sm ghost" onclick="ZG_VSE=!ZG_VSE;zgodovina()">' + (ZG_VSE ? '▲ Prikaži manj' : '▼ Prikaži več (' + (ps.length - vidni.length) + ')') + '</button></div>';
   risiVec();
   clearTimeout(ZG_T); if (ps.some(p => V_DELU.includes(p.status))) ZG_T = setTimeout(stanje, 5000);   // paketi v pripravi → osveži zgodovino
 }
-let IZBRANI = new Set(), ZG_T = null;
+let IZBRANI = new Set(), ZG_T = null, ZG_VSE = false;
+const ZG_N = 5;   // zgodovina: privzeto zadnjih 5, »Prikaži več« za ostale
 function izberi(id, on) { if (on) IZBRANI.add(id); else IZBRANI.delete(id); risiVec(); }
 function risiVec() {
   const el = document.getElementById('vecBar'), ps = (ST.paketi || []).filter(p => IZBRANI.has(p.id));
