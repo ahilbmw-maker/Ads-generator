@@ -139,15 +139,16 @@
 
   <div class="main">
     <div class="card">
-      <div class="card-h"><b>🧠 Nov SKU</b><span class="sub">1 SKU = 1 kampanja z vsemi izbranimi trgi</span></div>
-      <div class="row">
-        <div style="flex:1;min-width:200px"><label class="l" style="margin-top:0">SKU</label><input class="f" id="sku" placeholder="MULTIMINCER" style="font-weight:700;text-transform:uppercase" onchange="skuPreveri()" onkeydown="if(event.key==='Enter')skuPreveri()"></div>
-        <button class="btn" onclick="skuPreveri()">🔎 Preveri</button>
+      <div class="card-h"><b>🧠 Novi SKU-ji</b><span class="sub">1 SKU = 1 kampanja z vsemi izbranimi trgi · več SKU-jev = več kampanj naenkrat</span></div>
+      <div class="row" style="align-items:flex-start">
+        <div style="flex:1;min-width:200px"><label class="l" style="margin-top:0">SKU-ji <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· vsak v svojo vrstico · za SKU lahko dodaš Asana povezavo do videov</span></label>
+          <textarea class="f" id="sku" rows="3" placeholder="MULTIMINCER https://app.asana.com/…/task/1211103386362549&#10;PANMAX&#10;M322" style="font-weight:700;font-family:Consolas,monospace;font-size:13px" onchange="skuPreveri()"></textarea></div>
+        <button class="btn" style="margin-top:22px" onclick="skuPreveri()">🔎 Preveri</button>
       </div>
       <div class="sub" id="skuInfo" style="margin-top:6px"></div>
       <label class="l">Trgi (ad seti) <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· klik = vključi / izključi · RS se zapomni po SKU (carina)</span></label>
       <div class="trgi" id="trgiIzbor"></div>
-      <label class="l">Videi iz Asane <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· povezava do taska (lahko več), prenesem vse .mp4</span></label>
+      <label class="l">Videi iz Asane <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· za 1 SKU (pri več SKU-jih povezavo napiši v vrstico za SKU) · prenesem vse .mp4</span></label>
       <textarea class="f" id="asana" rows="2" placeholder="https://app.asana.com/1/…/task/1211103386362549"></textarea>
       <div style="display:flex;align-items:center;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--bd);flex-wrap:wrap">
         <button class="btn pri lg" id="btnKon" onclick="koncept()">1 · Pripravi koncept →</button>
@@ -158,6 +159,7 @@
     <div>
       <div class="card">
         <div class="card-h"><b>📜 Zgodovina</b><span class="sub">zadnjih 30 · klik = odpri</span><span class="grow"></span><button class="btn sm ghost" onclick="izbrisiVse()" title="Izbriše vse pakete (razen tistih, ki se še pripravljajo) — števec oglasov ostane">🗑 Počisti vse</button></div>
+        <div id="vecBar" style="display:none;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 10px;padding:8px 10px;border-radius:10px;background:var(--acc2)"></div>
         <div class="zg" id="zgod"><div class="prazno">Nalagam …</div></div>
       </div>
       <details class="nav">
@@ -219,28 +221,58 @@ function preklopi(t) {
   if (SKUI && !SKUI.trgi[t].url) return;
   IZBOR = IZBOR.includes(t) ? IZBOR.filter(x => x !== t) : IZBOR.concat([t]); risiIzbor();
 }
+// več SKU-jev: vrstica = »SKU [asana povezave]«
+let SKUV = [];   // [{sku, asana, info, rs}]
+function skuVrstice() {
+  return document.getElementById('sku').value.split(/\n+/).map(l => l.trim()).filter(Boolean).map(l => {
+    const deli = l.split(/[\s,;]+/), sku = (deli.find(x => !/asana\.com|^https?:/i.test(x)) || '').toUpperCase();
+    return { sku, asana: deli.filter(x => /asana\.com/i.test(x)).join(' ') };
+  }).filter(x => x.sku).filter((x, i, a) => a.findIndex(y => y.sku === x.sku) === i).slice(0, 20);
+}
 async function skuPreveri() {
-  const sku = document.getElementById('sku').value.trim().toUpperCase(); if (!sku) return;
-  document.getElementById('skuInfo').innerHTML = '<span class="spin"></span> preverjam feede 10 trgov …';
-  const d = await api('/meta-ads/api/sku?sku=' + encodeURIComponent(sku));
-  if (!d.ok) { document.getElementById('skuInfo').innerHTML = '<span style="color:var(--err)">' + esc(d.error || 'Napaka') + '</span>'; return; }
-  SKUI = d;
-  IZBOR = TRGI.filter(t => d.trgi[t].url && !d.trgi[t].neuvoz && !(t === 'rs' && d.brez_rs));
-  const n = TRGI.filter(t => d.trgi[t].url).length;
-  document.getElementById('skuInfo').innerHTML = (d.naziv ? '<b>' + esc(d.naziv) + '</b> · ' : '') + 'v feedu ' + n + ' / 10 trgov' +
-    (d.brez_rs ? ' · <span class="pill p-warn">🚫 brez RS (zapomnjeno)</span>' : '') +
-    (d.narejeno ? ' · <span class="pill p-inf">📒 že narejeno ' + esc(datum(d.narejeno.at)) + ' (' + d.narejeno.oglasov + ' oglasov)</span>' : '');
+  const vr = skuVrstice(); if (!vr.length) return;
+  document.getElementById('skuInfo').innerHTML = '<span class="spin"></span> preverjam feede 10 trgov za ' + vr.length + ' SKU …';
+  const res = await Promise.all(vr.map(v => api('/meta-ads/api/sku?sku=' + encodeURIComponent(v.sku))));
+  SKUV = vr.map((v, i) => { const d = res[i] || {}; return Object.assign(v, { info: d.ok ? d : null, napaka: d.ok ? '' : (d.error || 'napaka'), rs: !!(d.ok && d.trgi.rs.url && !d.trgi.rs.neuvoz && !d.brez_rs) }); });
+  if (SKUV.length === 1 && SKUV[0].info) {   // en SKU: kot prej (trgi brez URL-ja označeni)
+    const d = SKUI = SKUV[0].info;
+    IZBOR = TRGI.filter(t => d.trgi[t].url && !d.trgi[t].neuvoz && !(t === 'rs' && d.brez_rs));
+    const n = TRGI.filter(t => d.trgi[t].url).length;
+    document.getElementById('skuInfo').innerHTML = (d.naziv ? '<b>' + esc(d.naziv) + '</b> · ' : '') + 'v feedu ' + n + ' / 10 trgov' +
+      (d.brez_rs ? ' · <span class="pill p-warn">🚫 brez RS (zapomnjeno)</span>' : '') +
+      (d.narejeno ? ' · <span class="pill p-inf">📒 že narejeno ' + esc(datum(d.narejeno.at)) + ' (' + d.narejeno.oglasov + ' oglasov)</span>' : '');
+  } else {
+    SKUI = null;
+    document.getElementById('skuInfo').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px">' +
+      '<tr style="color:var(--txt2);text-align:left"><th style="padding:4px 6px">SKU</th><th>Izdelek</th><th>Trgi</th><th title="Vključi RS (carina) — zapomni se po SKU">RS</th><th>Videi</th></tr>' +
+      SKUV.map((v, i) => { const d = v.info;
+        return '<tr style="border-top:1px solid var(--bd)"><td style="padding:5px 6px;font-weight:700">' + esc(v.sku) + '</td>' +
+          (d ? '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(d.naziv || '') + (d.narejeno ? ' <span class="pill p-inf">📒 ' + esc(datum(d.narejeno.at)) + '</span>' : '') + '</td><td>' + TRGI.filter(t => d.trgi[t].url).length + ' / 10</td>' +
+            '<td>' + (d.trgi.rs.url ? '<input type="checkbox" ' + (v.rs ? 'checked ' : '') + 'onchange="SKUV[' + i + '].rs=this.checked"' + (d.trgi.rs.neuvoz ? ' title="🚫 ne uvažamo (Marža)"' : '') + '>' + (d.trgi.rs.neuvoz ? ' 🚫' : '') : '<span class="muted">ni URL</span>') + '</td>'
+            : '<td colspan="3" style="color:var(--err)">' + esc(v.napaka) + '</td>') +
+          '<td>' + (v.asana ? '🎬' : '<span class="muted">—</span>') + '</td></tr>'; }).join('') + '</table>';
+    IZBOR = TRGI.filter(t => t !== 'rs').concat(SKUV.some(v => v.rs) ? ['rs'] : []);
+  }
   risiIzbor();
 }
 async function koncept() {
-  const sku = document.getElementById('sku').value.trim().toUpperCase();
-  if (!sku) { msg('msgNov', 'Vpiši SKU.', 'err'); return; }
-  if (!IZBOR.length) { msg('msgNov', 'Izberi vsaj en trg.', 'err'); return; }
+  if (!SKUV.length || SKUV.map(v => v.sku).join() !== skuVrstice().map(v => v.sku).join()) await skuPreveri();
+  const vr = SKUV.filter(v => v.info);
+  if (!vr.length) { msg('msgNov', 'Vpiši vsaj en SKU, ki je v feedu.', 'err'); return; }
+  if (!IZBOR.filter(t => t !== 'rs').length && !IZBOR.includes('rs')) { msg('msgNov', 'Izberi vsaj en trg.', 'err'); return; }
+  if (vr.length > 1 && !confirm('Pripravim koncept za ' + vr.length + ' SKU-jev (' + vr.length + ' kampanj)?')) return;
   document.getElementById('btnKon').disabled = true;
-  const d = await post('/meta-ads/api/koncept', { sku, trgi: IZBOR, asana: document.getElementById('asana').value });
+  const ids = [], nap = [];
+  for (const v of vr) {
+    const trgi = IZBOR.filter(t => t !== 'rs').concat((vr.length === 1 ? IZBOR.includes('rs') : v.rs) ? ['rs'] : []);
+    const d = await post('/meta-ads/api/koncept', { sku: v.sku, trgi, asana: [v.asana, vr.length === 1 ? document.getElementById('asana').value : ''].join(' ') });
+    if (d.ok) ids.push(d.id); else nap.push(v.sku + ': ' + (d.error || 'napaka'));
+  }
   document.getElementById('btnKon').disabled = false;
-  if (!d.ok) { msg('msgNov', esc(d.error || 'Napaka'), 'err'); return; }
-  msg('msgNov', ''); KORAK = 1; await odpri(d.id); stanje();
+  msg('msgNov', nap.length ? esc(nap.join(' · ')) : (ids.length > 1 ? '✓ Koncept se pripravlja za ' + ids.length + ' SKU-jev — spremljaj v Zgodovini (označi jih za množične korake).' : ''), nap.length ? 'err' : 'ok');
+  if (ids.length > 1) { IZBRANI = new Set(ids); }
+  if (ids.length === 1) { KORAK = 1; await odpri(ids[0]); }
+  stanje();
 }
 async function odpri(id) {
   const d = await api('/meta-ads/api/paket/' + encodeURIComponent(id));
@@ -453,9 +485,34 @@ function zgodovina() {
   const ps = ST.paketi || [], el = document.getElementById('zgod');
   const opis = { koncept_v_delu: ['p-inf', '⏳ koncept'], koncept: ['p-mut', '1 · koncept'], osnove_v_delu: ['p-inf', '⏳ slike'], osnove: ['p-mut', '2 · slike'], lokal_v_delu: ['p-inf', '⏳ trgi'], pripravljeno: ['p-warn', 'pripravljeno'], napaka: ['p-err', 'napaka'] };
   el.innerHTML = ps.length ? ps.map(p => { const o = p.izvozeno ? ['p-ok', '✓ izvoženo'] : opis[p.status] || ['p-mut', p.status];
-    return '<div class="zg-r' + (PAK && PAK.id === p.id ? ' on' : '') + '" data-id="' + esc(p.id) + '" onclick="odpri(\'' + esc(p.id) + '\')"><div style="min-width:0"><div class="zg-t">' + esc(p.sku) + (p.ime && p.ime !== p.sku ? ' <span class="sub">' + esc(p.ime) + '</span>' : '') + '</div>' +
-      '<div class="zg-s">' + (p.trgi || []).map(t => t.toUpperCase()).join(' · ') + '</div></div><div class="zg-d"><span class="pill ' + o[0] + '">' + o[1] + '</span><div style="margin-top:3px">' + esc(datum(p.at)) + ' ' + esc(String(p.at || '').slice(11, 16)) + ' <button class="btn sm ghost" style="padding:1px 5px" title="Izbriši iz zgodovine" onclick="event.stopPropagation();izbrisi(\'' + esc(p.id) + '\',\'' + esc(p.sku) + '\')">🗑</button></div></div></div>'; }).join('')
+    return '<div class="zg-r' + (PAK && PAK.id === p.id ? ' on' : '') + '" data-id="' + esc(p.id) + '" onclick="odpri(\'' + esc(p.id) + '\')"><div style="min-width:0;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" style="margin-top:3px;width:15px;height:15px;accent-color:var(--acc)" ' + (IZBRANI.has(p.id) ? 'checked ' : '') + 'onclick="event.stopPropagation()" onchange="izberi(\'' + esc(p.id) + '\',this.checked)"><div style="min-width:0"><div class="zg-t">' + esc(p.sku) + (p.ime && p.ime !== p.sku ? ' <span class="sub">' + esc(p.ime) + '</span>' : '') + '</div>' +
+      '<div class="zg-s">' + (p.trgi || []).map(t => t.toUpperCase()).join(' · ') + '</div></div></div><div class="zg-d"><span class="pill ' + o[0] + '">' + o[1] + '</span><div style="margin-top:3px">' + esc(datum(p.at)) + ' ' + esc(String(p.at || '').slice(11, 16)) + ' <button class="btn sm ghost" style="padding:1px 5px" title="Izbriši iz zgodovine" onclick="event.stopPropagation();izbrisi(\'' + esc(p.id) + '\',\'' + esc(p.sku) + '\')">🗑</button></div></div></div>'; }).join('')
     : '<div class="prazno">Še ni paketov — vpiši SKU in klikni »Pripravi koncept«.</div>';
+  risiVec();
+  clearTimeout(ZG_T); if (ps.some(p => V_DELU.includes(p.status))) ZG_T = setTimeout(stanje, 5000);   // paketi v pripravi → osveži zgodovino
+}
+let IZBRANI = new Set(), ZG_T = null;
+function izberi(id, on) { if (on) IZBRANI.add(id); else IZBRANI.delete(id); risiVec(); }
+function risiVec() {
+  const el = document.getElementById('vecBar'), ps = (ST.paketi || []).filter(p => IZBRANI.has(p.id));
+  IZBRANI = new Set(ps.map(p => p.id));
+  if (!ps.length) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  const n = ps.length, vd = ps.filter(p => V_DELU.includes(p.status)).length;
+  el.innerHTML = '<b style="font-size:12.5px">' + n + ' izbranih</b>' + (vd ? ' <span class="sub">(' + vd + ' v pripravi)</span>' : '') + '<span class="grow"></span>' +
+    '<button class="btn sm" onclick="vecKorak(\'osnove\')" title="Flare nariše 5 kreativ za vsak izbrani SKU">2 · Kreative</button>' +
+    '<button class="btn sm" onclick="vecKorak(\'lokaliziraj\')" title="Prevod napisov in besedil za vse trge">3 · Lokaliziraj</button>' +
+    '<button class="btn sm grn" onclick="shraniVMapo([...IZBRANI])" title="En CSV z vsemi izbranimi kampanjami, slike in videi v mapi vsake kampanje (SKU)">📁 Shrani v mapo</button>' +
+    '<button class="btn sm" onclick="izvozi([...IZBRANI])">⬇ ZIP</button>' +
+    '<button class="btn sm ghost" onclick="IZBRANI.clear();zgodovina()">✕</button>';
+}
+async function vecKorak(akcija) {
+  const ids = [...IZBRANI], m = LS.get('ma_model') === 'flare' ? 'flare' : 'nb21';
+  if (!confirm((akcija === 'osnove' ? 'Narišem 5 kreativ (Flare)' : 'Prevedem napise in besedila za vse trge (' + (m === 'flare' ? 'Flare' : 'NB2.1') + ')') + ' za ' + ids.length + ' paketov? Paketi v pripravi se preskočijo.')) return;
+  const d = await post('/meta-ads/api/vec', { akcija, ids, model: m });
+  if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); return; }
+  msg('msg', '✓ Zagnano za ' + d.zagnani + ' paketov' + (d.preskoceni ? ' · preskočenih ' + d.preskoceni + ' (v pripravi ali brez prejšnjega koraka)' : '') + '. Napredek spremljaj v Zgodovini.', d.preskoceni ? 'warn' : 'ok');
+  stanje();
 }
 // 📁 SHRANI V MAPO: <izbrana mapa>\Meta Ads\ (ob vsakem shranjevanju izpraznjena) — meta_uvoz.csv, slike\, videi\, NAVODILA.txt
 let MAPA = null;
@@ -480,17 +537,19 @@ async function zapisi(dir, pot, data) {
   const fh = await d.getFileHandle(deli[deli.length - 1], { create: true }), w = await fh.createWritable();
   await w.write(data); await w.close();
 }
-async function prenesiZip() {
-  await shrani(false);
-  const r = await fetch('/meta-ads/api/izvoz/' + PAK.id + '?status=' + (LS.get('ma_status') === 'PAUSED' ? 'PAUSED' : 'ACTIVE') + '&nacin=' + nacin(), { credentials: 'include' });
+async function prenesiZip(ids) {
+  if (PAK) await shrani(false);
+  const r = await fetch('/meta-ads/api/izvoz/' + (ids && ids.length ? ids.join(',') : PAK.id) + '?status=' + (LS.get('ma_status') === 'PAUSED' ? 'PAUSED' : 'ACTIVE') + '&nacin=' + nacin(), { credentials: 'include' });
   if (!r.ok) { let e = ''; try { e = (await r.json()).error; } catch (x) {} msg('msg', esc(e || 'Izvoz ni uspel.'), 'err'); return null; }
   return r.blob();
 }
-async function shraniVMapo() {
+async function shraniVMapo(ids) {
   if (!window.JSZip) { alert('Knjižnica za razpakiranje se ni naložila — osveži stran ali uporabi ⬇ ZIP.'); return; }
+  ids = Array.isArray(ids) ? ids : null;
+  if (ids && !confirm('Shranim ' + ids.length + ' kampanj: en CSV, slike in videi v mapi vsake kampanje (SKU)? Mapa Meta Ads se izprazni.')) return;
   if (!(await mapaDovoli())) return;
   msg('msg', '<span class="spin"></span> Pripravljam paket …', 'inf');
-  const b = await prenesiZip(); if (!b) return;
+  const b = await prenesiZip(ids); if (!b) return;
   const zip = await JSZip.loadAsync(b);
   let n = 0, nav = '';
   try {
@@ -508,12 +567,13 @@ async function shraniVMapo() {
       ? 'Import ads → File <b>meta_uvoz.csv</b>, Images vse iz <b>slike</b> → nato v vsakem ad setu oglas »… flexible« → Format Flexible → Add media → v iskalnik <b>_pl</b> (_sl, _ro …) + videi.'
       : 'v Ads Managerju: Import ads → File <b>meta_uvoz.csv</b>, Images vse iz <b>slike</b>, Videos vse iz <b>videi</b>.') +
     (opz ? '<br>⚠ ' + esc(opz).replace(/\r?\n/g, ' · ') : ''), opz ? 'warn' : 'ok');
-  stanje(); odpri(PAK.id);
+  stanje(); if (PAK) odpri(PAK.id);
 }
-async function izvozi() {
-  const b = await prenesiZip(); if (!b) return;
-  const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'meta_' + PAK.sku + '.zip'; a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); stanje(); odpri(PAK.id); }, 1500);
+async function izvozi(ids) {
+  ids = Array.isArray(ids) ? ids : null;
+  const b = await prenesiZip(ids); if (!b) return;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'meta_' + (ids ? ids.length + '_kampanj' : PAK.sku) + '.zip'; a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); stanje(); if (PAK) odpri(PAK.id); }, 1500);
 }
 risiIzbor();
 mapaNalozi().then(stanje).then(() => { const id = LS.get('ma_pak'); if (id) odpri(id); });

@@ -856,54 +856,105 @@ def vklopi(G: dict):
             opz.append(f"{len(videi)} videov — Meta sprejme največ 10 na uvoz")
         return vrst, sorted(slike), sorted(videi), opz, rocno
 
-    @app.get("/meta-ads/api/izvoz/{pid}")
-    async def ma_izvoz(request: Request, pid: str, status: str = "ACTIVE", nacin: str = "loceni"):
-        if not prijava(request):
-            return ni()
-        p = pak_get(pid)
-        if not p:
-            return JSONResponse({"ok": False, "error": "Paketa ni."}, status_code=404)
-        if not GLAVE:
-            return JSONResponse({"ok": False, "error": "Manjka static/meta_ads_glave.json."}, status_code=500)
+    async def zgradi_zip(pids, status, nacin):
+        """1 ali več paketov (SKU-jev) → EN ZIP: en meta_uvoz.csv z vsemi kampanjami, ena mapa slike/, videi/ → en uvoz v Ads Manager."""
         nacin = "flex" if nacin == "flex" else "loceni"
-        vrst, slike, videi, opz, rocno = sestavi(p, status, nacin)
-        if not vrst:
-            return JSONResponse({"ok": False, "error": "Ni nobenega oglasa za izvoz. " + " · ".join(opz[:5])}, status_code=400)
+        vse, opz_vse, deli = [], [], []
+        for pid in pids:
+            p = pak_get(pid)
+            if not p:
+                opz_vse.append(f"paket {pid} ne obstaja"); continue
+            vrst, slike, videi, opz, rocno = sestavi(p, status, nacin)
+            opz_vse += [f"{p['sku']}: {o}" for o in opz]
+            if not vrst:
+                opz_vse.append(f"{p['sku']}: ni nobenega oglasa — izpuščen"); continue
+            vse += vrst
+            deli.append((pid, p, vrst, slike, videi, rocno))
+        if not vse:
+            return None, opz_vse, 0
         buf = io.StringIO()
         w = csv.writer(buf, delimiter="\t", lineterminator="\r\n")
         w.writerow(GLAVE)
-        for r in vrst:
+        for r in vse:
             w.writerow([r.get(k, "") for k in GLAVE])
         z = io.BytesIO()
         with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("meta_uvoz.csv", b"\xff\xfe" + buf.getvalue().encode("utf-16-le"))
-            for s in slike:
-                zf.write(MAPA / pid / s, "slike/" + s)
-            for v in videi:
-                zf.write(MAPA / pid / "videi" / v, "videi/" + v, compress_type=zipfile.ZIP_STORED)
-            for s in sorted({s for sl_ in rocno.values() for s in sl_} - set(slike)):   # flex: vse kreative vseh trgov v isto mapo slike/
-                zf.write(MAPA / pid / s, "slike/" + s)
+            vec = len(deli) > 1   # več kampanj: mapa po SKU (SKU/slike, SKU/videi) → slike kampanj se ne pomešajo; CSV je skupen
+            for pid, p, vrst, slike, videi, rocno in deli:
+                pred = f"{p['sku']}/" if vec else ""
+                for s_ in sorted(set(slike) | {x for sl_ in rocno.values() for x in sl_}):   # flex: vse kreative vseh trgov kampanje v isto mapo slike/
+                    zf.write(MAPA / pid / s_, pred + "slike/" + s_)
+                for v in videi:
+                    zf.write(MAPA / pid / "videi" / v, pred + "videi/" + v, compress_type=zipfile.ZIP_STORED)
             koraki = ("1. Ads Manager → Import/Export → Import ads\r\n"
                       "2. File: meta_uvoz.csv\r\n3. Images: vse iz mape slike (Ctrl+A)\r\n4. Videos: vse iz mape videi (max 10 × 10 MB)\r\n"
                       "5. Import → preglej osnutke (In draft) → Publish\r\n") if nacin != "flex" else (
                       "1. Ads Manager → Import/Export → Import ads → File: meta_uvoz.csv, Images: VSE iz mape slike (Ctrl+A) → Import\r\n"
-                      "2. Za vsak ad set (trg): odpri oglas »… flexible« → Format: Flexible → Add media → v iskalnik vpiši »_pl« (oz. _sl, _ro …)\r\n"
-                      "   → izberi zadnje slike trga + videe (iskalnik »video«) → headline in primary text ostaneta po 1 → Publish\r\n")
+                      "2. Za vsak ad set (trg): odpri oglas »… flexible« → Format: Flexible → Add media → v iskalnik vpiši »SKU_pl« (oz. _sl, _ro …)\r\n"
+                      "   → izberi slike trga + videe → headline in primary text ostaneta po 1 → Publish\r\n")
             zf.writestr("NAVODILA.txt", (
-                f"Meta Ads uvoz — {p['sku']} — {_lj_iso()[:16]}\r\n\r\n"
-                f"{len(vrst)} oglasov, {len({r['Ad Set Name'] for r in vrst})} ad setov (trgi), status: {status}, način: {'Flexible (ročno dopolni)' if nacin == 'flex' else 'ločeni oglasi'}.\r\n\r\n"
-                + koraki + "\r\n"
-                + ("Opozorila:\r\n" + "\r\n".join(opz) + "\r\n" if opz else "")).encode("utf-8"))
+                f"Meta Ads uvoz — {', '.join(d_[1]['sku'] for d_ in deli)} — {_lj_iso()[:16]}\r\n\r\n"
+                f"{len(deli)} kampanj, {len(vse)} oglasov, status: {status}, način: {'Flexible (ročno dopolni)' if nacin == 'flex' else 'ločeni oglasi'}.\r\n\r\n"
+                + koraki
+                + ("\r\nVeč kampanj: slike in videi so v mapi vsake kampanje (SKU\\slike, SKU\\videi). V zavihku Images naloži slike iz VSEH map SKU\r\n"
+                   "(Choose images večkrat), nato v Add media iskalnik »SKU_pl« (npr. PANMAX_pl) → slike ene kampanje.\r\n" if vec else "")
+                + "\r\n"
+                + ("Opozorila:\r\n" + "\r\n".join(opz_vse) + "\r\n" if opz_vse else "")).encode("utf-8"))
         async with lock:
             d = nalozi()
-            px = next((x for x in d["paketi"] if x["id"] == pid), None)
-            if px is not None:
+            for pid, p, vrst, slike, videi, rocno in deli:
+                px = next((x for x in d["paketi"] if x["id"] == pid), None)
+                if px is None:
+                    continue
                 prvic = not px.get("izvozeno")
                 px["izvozeno"] = _lj_iso()
                 if prvic:   # 📊 števec: prvi izvoz paketa
-                    d["evidenca"].append({"sku": p["sku"], "at": _lj_iso(), "oglasov": len(vrst), "slik": len(set(slike) | {s for x in rocno.values() for s in x}), "nacin": nacin,
-                                          "trgi": sorted({r["Ad Set Name"] for r in vrst})})
-                _jsave(PAK_FILE, d)
+                    d["evidenca"].append({"sku": p["sku"], "at": _lj_iso(), "oglasov": len(vrst), "slik": len(set(slike) | {x for sl_ in rocno.values() for x in sl_}),
+                                          "nacin": nacin, "trgi": sorted({r["Ad Set Name"] for r in vrst})})
+            _jsave(PAK_FILE, d)
         z.seek(0)
+        return z, opz_vse, len(deli)
+
+    @app.get("/meta-ads/api/izvoz/{pid}")
+    async def ma_izvoz(request: Request, pid: str, status: str = "ACTIVE", nacin: str = "loceni"):
+        """En paket ali več: pid = »id1,id2,…« (izbrani v zgodovini) → en CSV z vsemi kampanjami."""
+        if not prijava(request):
+            return ni()
+        if not GLAVE:
+            return JSONResponse({"ok": False, "error": "Manjka static/meta_ads_glave.json."}, status_code=500)
+        pids = [x for x in pid.split(",") if re.fullmatch(r"[0-9a-f]{18}", x)][:30]
+        if not pids:
+            return JSONResponse({"ok": False, "error": "Paketa ni."}, status_code=404)
+        z, opz, n = await zgradi_zip(pids, status, nacin)
+        if not z:
+            return JSONResponse({"ok": False, "error": "Ni nobenega oglasa za izvoz. " + " · ".join(opz[:5])}, status_code=400)
+        ime = (pak_get(pids[0]) or {}).get("sku", "meta") if n == 1 else f"{n}_kampanj"
         return StreamingResponse(z, media_type="application/zip",
-                                 headers={"Content-Disposition": f'attachment; filename="meta_{p["sku"]}.zip"', "X-Opozorila": str(len(opz))})
+                                 headers={"Content-Disposition": f'attachment; filename="meta_{ime}.zip"', "X-Opozorila": str(len(opz))})
+
+    @app.post("/meta-ads/api/vec")
+    async def ma_vec(request: Request, data: dict):
+        """Množično za izbrane pakete: korak »osnove« (kreative) ali »lokaliziraj« — vsak paket v ozadju, kot ročni klik."""
+        if not prijava(request):
+            return ni()
+        akcija = data.get("akcija")
+        if akcija not in ("osnove", "lokaliziraj"):
+            return {"ok": False, "error": "Neznana akcija."}
+        model = "flare" if data.get("model") == "flare" else "nb21"
+        ok, preskoceni = [], []
+        for pid in [str(x) for x in (data.get("ids") or []) if re.fullmatch(r"[0-9a-f]{18}", str(x))][:30]:
+            p = pak_get(pid)
+            if not p or p.get("status") in ("koncept_v_delu", "osnove_v_delu", "lokal_v_delu") or not p.get("kreative"):
+                preskoceni.append(pid); continue
+            if akcija == "osnove":
+                idx = list(range(len(p["kreative"])))
+                await pak_set(pid, lambda q: ([q["kreative"][i].update(v_delu=True, osnova_napaka="") for i in idx], q.update(status="osnove_v_delu")))
+                asyncio.create_task(obdelaj_osnove(pid, idx))
+            else:
+                if not any(k.get("osnova") for k in p["kreative"]):
+                    preskoceni.append(pid); continue
+                await pak_set(pid, lambda q: q.update(status="lokal_v_delu"))
+                asyncio.create_task(obdelaj_lokal(pid, model, None))
+            ok.append(pid)
+        return {"ok": True, "zagnani": len(ok), "preskoceni": len(preskoceni)}
