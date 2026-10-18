@@ -9,6 +9,7 @@ import base64
 import csv
 import io
 import json
+import random
 import re
 import uuid
 import zipfile
@@ -62,8 +63,20 @@ MA_SCENE = {
     "detajl": {"ime": "Detajl / komplet", "vloga": "detajl",
                "scena": "DETAIL / BUNDLE: a macro close-up of the product's key feature or the complete set neatly arranged, rich textures, crisp studio light.",
                "postavitev": "hook headline in the top-left area, the 3 benefits as badges in a vertical column on the LEFT, small logo in the bottom-right corner."},
+    "eksperiment": {"ime": "🧪 Eksperiment", "vloga": "packshot", "scena": "", "postavitev": ""},   # smer naključno iz MA_EKSPERIMENTI ob vsakem risanju
 }
-MA_SCENE_RED = ["hero", "uporaba", "prej_potem", "okolje", "detajl"]   # kreativa 1–5
+# 🧪 kreativa 5 = eksperiment (2026-10-18): ob vsakem risanju / ↻ druga drzna umetniška smer — testira nove smeri, ki jih sicer ne bi
+MA_EKSPERIMENTI = [
+    "BOLD COLOUR BLOCK: flat, saturated graphic background in 2–3 strong colours, the product cut out and large, modern poster style.",
+    "3D FLOATING: the product floating in mid-air with its key parts or effects (water, sparks, light, motion trails) exploding around it, hyper-real 3D render look.",
+    "SURREAL: an unexpected, surreal oversized scene that dramatises the main benefit (e.g. the product as a giant hero object in a miniature world).",
+    "EXTREME ANGLE: very unusual camera angle (top-down flat lay or worm's-eye view) with dramatic perspective and strong shadows.",
+    "POP-ART / COMIC: pop-art or comic-book style background with halftone dots and bold outlines, the product itself kept photorealistic.",
+    "ONE-FRAME BEFORE/AFTER: one continuous image where the left half shows the frustrating problem and the right half the perfect result, with a bold diagonal split.",
+    "MINIMAL LUXURY: ultra-minimal premium composition, lots of negative space, soft gradient light, the product like a luxury object on a pedestal.",
+    "NEON NIGHT: dark night scene with neon glow and reflections, cinematic and high contrast, the product lit like a hero.",
+]
+MA_SCENE_RED = ["hero", "uporaba", "prej_potem", "okolje", "eksperiment"]   # kreativa 1–5 (detajl/komplet ostane na izbiro)
 MA_ZNAK = "🤖"   # znak pred imenom kampanje = ustvarjeno v suban.ai
 MA_SLIKA = {"1:1": (1080, 1080), "4:5": (1080, 1350)}   # 1:1 kot generator Kreative; 4:5 = preizkus za mobilni Feed (privzeto kreativa 5)
 MA_FLARE_SIZE = {"1:1": "1024x1024", "4:5": "1024x1536"}   # 4:5: Flare 2:3 → izrez sredine 4:5
@@ -274,7 +287,7 @@ def vklopi(G: dict):
         c.paste(im, (0, 128))
         b = io.BytesIO(); c.save(b, format="JPEG", quality=92); return b.getvalue()
 
-    def prompt_kreativa(ime, vibe, tekst, hook="", razmerje="1:1", scena=""):
+    def prompt_kreativa(ime, vibe, tekst, hook="", razmerje="1:1", scena="", smer=""):
         """Prompt generatorja Kreative (/generate-kreative) + HOOK: velik hook napis zgoraj, ime izdelka kot MANJŠI logo
         (sam branding kupcu še nič ne pove — uporabnik 2026-10-15). Brez hooka = točno prompt generatorja."""
         if hook:
@@ -283,6 +296,10 @@ def vklopi(G: dict):
         else:
             napisi = f"Do not include any text/words on the image except the device name in capital letters '{ime.upper()}' — place it where it fits best or makes sense. "
         sc = MA_SCENE.get(scena) or {}
+        if scena == "eksperiment":   # 🧪 drzna smer: samo izdelek, hook in prednosti so obvezni, slog in postavitev prosta
+            sc = {"scena": f"EXPERIMENTAL CREATIVE — be bold and different from a typical e-commerce ad. Art direction: {smer} ",
+                  "postavitev": "choose a bold, unexpected layout that fits this art direction, but keep the hook big and readable and the 3 benefits clear."}
+            vibe = vibe or "bold experimental"
         return ("From these reference images create a new FB ad creative. "
                 + (f"SCENE TYPE — {sc['scena']} The product must look EXACTLY like in the reference images (same shape, colours, parts). " if sc else "")
                 + f"Try a more intense '{vibe}' background. "
@@ -525,13 +542,14 @@ def vklopi(G: dict):
                 refs = await prenesi(k.get("refs") or p.get("ref_slike") or [], 3)
                 if not refs:
                     raise RuntimeError("referenčnih slik ni bilo mogoče prenesti")
+                smer = random.choice(MA_EKSPERIMENTI) if k.get("scena") == "eksperiment" else ""
                 raw = await flare(refs, prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", "1:1",
-                                                        k.get("scena") or ""), "1:1", n_ref=3)
+                                                        k.get("scena") or "", smer), "1:1", n_ref=3)
                 if razm == "4:5":
                     raw = await kvadrat_v_45(raw)
                 fn = f"osnova_{i + 1}_{uuid.uuid4().hex[:4]}.jpg"
                 (mapa / fn).write_bytes(raw)
-                await pak_set(pid, lambda q: q["kreative"][i].update(osnova=fn, osnova_napaka="", v_delu=False, razmerje=razm))
+                await pak_set(pid, lambda q: q["kreative"][i].update(osnova=fn, osnova_napaka="", v_delu=False, razmerje=razm, smer=smer.split(":")[0].title() if smer else ""))
             except Exception as e:
                 err = str(e)[:160]
                 await pak_set(pid, lambda q: q["kreative"][i].update(osnova_napaka=err, v_delu=False))
@@ -831,7 +849,7 @@ def vklopi(G: dict):
                     if not s:
                         opz.append(f"{t.upper()} kreativa {i + 1}: ni slike — izpuščena"); continue
                     prva = prva or s
-                    img, vfn, ct, an = s, "", "Link Page Post Ad", f"{p['sku']} {t.upper()} slika {i + 1} ({p['kreative'][i].get('razmerje') or '1:1'})"
+                    img, vfn, ct, an = s, "", "Link Page Post Ad", f"{p['sku']} {t.upper()} slika {i + 1} ({'eksperiment' if p['kreative'][i].get('scena') == 'eksperiment' else p['kreative'][i].get('razmerje') or '1:1'})"
                 else:
                     if not prva:
                         opz.append(f"{t.upper()} video {i + 1}: ni sličice (nobene slike trga) — izpuščen"); continue
