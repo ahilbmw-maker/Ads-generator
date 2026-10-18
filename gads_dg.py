@@ -199,7 +199,18 @@ def vklopi(G: dict):
             p = next((x for x in d["paketi"] if x["id"] == pid), None)
             if p is not None:
                 fn(p)
+                p["spremenjeno"] = _lj_iso()   # ⏱ zadnji napredek (zataknjen paket po ponovnem zagonu strežnika)
                 _jsave(PAK_FILE, d)
+
+    def zastalo(p, minut=10):
+        """Paket »v delu«, ki se > minut ne premakne = opravilo v ozadju se je izgubilo (ponovni zagon strežnika / deploy)."""
+        if p.get("status") != "v_delu":
+            return False
+        try:
+            t = datetime.fromisoformat(str(p.get("spremenjeno") or p.get("at"))[:19])
+            return (datetime.fromisoformat(_lj_iso()[:19]) - t).total_seconds() > minut * 60
+        except ValueError:
+            return False
 
     def najdi_izdelek(rows, sku):
         u = sku.strip().upper()
@@ -488,6 +499,7 @@ def vklopi(G: dict):
                                    "postavke": [{"sku": s, "status": "caka"} for s in skus]})
             d["paketi"] = d["paketi"][:30]
             _jsave(PAK_FILE, d)
+        await pak_set(pid, lambda q: q.update(ai_slike=data.get("ai_slike", True) is not False))
         asyncio.create_task(obdelaj(pid, trg, kampanja, skus, data.get("ai_slike", True) is not False))   # besedila v slogu izvorne kampanje
         return {"ok": True, "id": pid, "preskoceni": preskoceni}
 
@@ -585,7 +597,26 @@ def vklopi(G: dict):
         if not p:
             return {"ok": False, "error": "Paketa ni."}
         bn, kinfo = validiraj(p, _jload(NAST_FILE, {}) or {})
-        return {"ok": True, "paket": p, "business_name": bn, "kampanja_najdena": bool(kinfo)}
+        return {"ok": True, "paket": p, "business_name": bn, "kampanja_najdena": bool(kinfo), "zastalo": zastalo(p)}
+
+    @app.post("/gads-dg/api/nadaljuj")
+    async def dg_nadaljuj(request: Request, data: dict):
+        """▶ Nadaljuj zataknjene: ponovno požene samo postavke, ki so ostale »v pripravi« (opravilo se je izgubilo ob ponovnem zagonu)."""
+        if not prijava(request):
+            return ni()
+        pid = str(data.get("id") or "")
+        p = next((x for x in pak_load()["paketi"] if x["id"] == pid), None)
+        if not p:
+            return {"ok": False, "error": "Paketa ni."}
+        if not zastalo(p, 8):
+            return {"ok": False, "error": "Paket se še pripravlja — počakaj nekaj minut."}
+        skus = [x["sku"] for x in p.get("postavke") or [] if x.get("status") == "caka"]
+        if not skus:
+            await pak_set(pid, lambda q: q.update(status="pripravljeno"))
+            return {"ok": True, "n": 0}
+        await pak_set(pid, lambda q: q.update(status="v_delu"))
+        asyncio.create_task(obdelaj(pid, p["trg"], p.get("vir_kampanja") or p["kampanja"], skus, p.get("ai_slike", True) is not False))
+        return {"ok": True, "n": len(skus)}
 
     @app.get("/gads-dg/api/paketi")
     async def dg_paketi(request: Request):

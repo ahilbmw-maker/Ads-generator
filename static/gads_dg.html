@@ -318,6 +318,7 @@ function risi() {
     '<select class="f" id="stUvoz" onchange="LS.set(\'gdg_status\', this.value); risi()" title="Status kampanje, skupin in oglasov ob uvozu v Editor" style="width:auto"><option value="Enabled"' + (stUvoz() === 'Enabled' ? ' selected' : '') + '>✅ po Post takoj online</option><option value="Paused"' + (stUvoz() === 'Paused' ? ' selected' : '') + '>⏸ Paused</option></select>' +
     '<button class="btn grn" ' + dis + ' onclick="shraniVMapo()" title="Zapiše v izbrano mapo: Maaarket.xx\\ads_….csv + mapa »slike«">📁 Shrani v mapo (' + brezNap.length + ')</button>' +
     '<button class="btn" ' + dis + ' onclick="izvozi()">⬇ ZIP</button>' +
+    (PAK.zastalo ? '<button class="btn sm" style="border-color:var(--warn);color:var(--warn)" onclick="nadaljuj()" title="Paket se več kot 10 min ne premakne (strežnik se je verjetno ponovno zagnal) — ponovno poženem samo nedokončane SKU-je">▶ Nadaljuj zataknjene</button>' : '') +
     '<button class="btn sm ghost" ' + (p.status === 'v_delu' ? 'disabled' : '') + ' onclick="noveSlike()" title="Samo nove AI kreative (NB2.1) za vse SKU-je v paketu — besedila ostanejo · ~0,25 $ / SKU">🎨 Nove AI slike</button>' +
     '<button class="btn sm ghost" onclick="zapriPaket()" title="Zapri paket (ostane v zgodovini)">✕</button>' +
     '<div style="flex-basis:100%" class="sub" id="mapaInfo">' + (MAPA ? '📁 Mapa: <b>' + esc(MAPA.name) + '</b> · <a href="#" onclick="mapaZamenjaj();return false">zamenjaj</a>' : '📁 Mapa še ni izbrana — izbereš jo ob prvem shranjevanju') + '</div></div>';
@@ -430,6 +431,14 @@ async function shraniVMapo() {
   msg('msg', '✓ Shranjeno ' + n + ' datotek v 📁 ' + esc(MAPA.name) + '\\' + esc(trgMapa) + ' — v Editorju uvozi <b>' + esc(ime['ads.csv']) + '</b>, slike pa iz mape »slike« (vse naenkrat).', 'ok');
 }
 function stUvoz() { return LS.get('gdg_status') === 'Paused' ? 'Paused' : 'Enabled'; }
+async function nadaljuj() {
+  const n = PAK.paket.postavke.filter(x => x.status === 'caka').length;
+  if (!confirm('Ponovno poženem ' + n + ' nedokončanih SKU-jev? Že pripravljeni ostanejo.')) return;
+  const d = await api('/gads-dg/api/nadaljuj', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: PAK.paket.id }) });
+  if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); return; }
+  msg('msg', '▶ Nadaljujem ' + d.n + ' SKU-jev …', 'inf');
+  clearInterval(POLL); POLL = setInterval(() => naloziPaket(PAK.paket.id), 3000); naloziPaket(PAK.paket.id);
+}
 async function noveSlike() {
   const p = PAK.paket, n = p.postavke.filter(x => x.status === 'ok').length;
   if (!confirm('Narišem nove AI kreative (NB2.1, 7 na SKU) za ' + n + ' SKU-jev? Besedila ostanejo. Ocena ~' + (n * 0.25).toFixed(2) + ' $.')) return;
