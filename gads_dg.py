@@ -92,7 +92,27 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         d = _jload(NAST_FILE, {}) or {}
-        return {"ok": True, "trgi": d.get("trgi") or {}, "jeziki": DG_JEZIK, "stat": statistika(d)}
+        trgi = d.get("trgi") or {}
+        for t, tt in trgi.items():   # 📒 + SKU-ji iz izvoženih paketov (varnost: zapis v evidenco se je lahko izgubil)
+            tt["narejeni"] = narejeni_trga(tt, t)
+        return {"ok": True, "trgi": trgi, "jeziki": DG_JEZIK, "stat": statistika(d)}
+
+    def narejeni_trga(tt, trg):
+        """Evidenca narejenih na trgu = zapisi narejeni + SKU-ji vseh kampanj trga + SKU-ji IZVOŽENIH paketov trga (zgodovina).
+        2026-10-18: PANMAX je bil v izvoženem paketu SL, a ga evidenca ni imela (zapis izgubljen — npr. dva procesa ob deployu
+        ali prepis kampanje ob uvozu iz Editorja) → zgodovina paketov je zanesljiv vir."""
+        nar = dict(tt.get("narejeni") or {})
+        for kn, kv in (tt.get("kampanje") or {}).items():
+            for s_ in kv.get("skuji") or []:
+                nar.setdefault(s_, {"kampanja": kn, "at": kv.get("uvoz_at"), "vir": "izvoz"})
+        for pk in pak_load()["paketi"]:
+            if pk.get("trg") != trg or not pk.get("izvozeno"):
+                continue
+            for x in pk.get("postavke") or []:
+                if x.get("status") == "ok" and x.get("vkljuci") is not False and x.get("sku"):
+                    nar.setdefault(x["sku"].upper(), {"kampanja": pk.get("kampanja"), "ad_group": x.get("ad_group"), "at": pk.get("izvozeno"),
+                                                      "vir": "paket", "pid": pk.get("id")})
+        return nar
 
     def statistika(d):
         """📊 Števec: oglasi (SKU-ji, izvoženi prek Suban) in nove kampanje — danes / skupaj / po trgih + zadnjih 14 dni."""
@@ -450,10 +470,7 @@ def vklopi(G: dict):
                 return {"ok": False, "error": "Proračun in Target CPA morata biti večja od 0."}
             nova = {"ime": ime_n, "vir": kampanja, "budget": bud, "tcpa": tcpa}
         # 📒 že narejeni na tem trgu (evidenca + SKU-ji vseh kampanj trga) → preskoči, razen če »tudi že narejene«
-        nar = dict(tt.get("narejeni") or {})
-        for kn, kv in (tt.get("kampanje") or {}).items():
-            for s_ in kv.get("skuji") or []:
-                nar.setdefault(s_, {"kampanja": kn, "at": kv.get("uvoz_at"), "vir": "izvoz"})
+        nar = narejeni_trga(tt, trg)
         preskoceni = []
         if not data.get("tudi_narejene"):
             for s_ in skus:
