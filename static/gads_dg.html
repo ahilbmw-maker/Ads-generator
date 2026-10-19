@@ -237,7 +237,7 @@ function trgIzbran() {
   const t = TRG; LS.set('gdg_trg', t); risiTrgi();
   const tt = (NAST.trgi || {})[t] || { kampanje: {} }, k = Object.keys(tt.kampanje || {});
   document.getElementById('trgNaslov').innerHTML = zast(t) + ' ' + t.toUpperCase() + ' · ' + esc((NAST.jeziki || {})[t] || '') + (tt.racun ? ' · ' + esc(tt.racun) : '');
-  document.getElementById('kamp').innerHTML = k.length ? k.map(n => '<option' + (n === tt.izbrana ? ' selected' : '') + '>' + esc(n) + '</option>').join('')
+  document.getElementById('kamp').innerHTML = k.length ? k.map(n => '<option value="' + esc(n) + '"' + (n === tt.izbrana ? ' selected' : '') + '>' + esc(n) + '</option>').join('')
     : '<option value="">— naloži izvoz kampanje za ' + t.toUpperCase() + ' (gumb zgoraj desno) —</option>';
   kampInfo(); skuInfo();
 }

@@ -454,6 +454,9 @@ def vklopi(G: dict):
             return ni()
         trg = str(data.get("trg") or "").lower()
         kampanja = str(data.get("kampanja") or "").strip()
+        _kz = ((((_jload(NAST_FILE, {}) or {}).get("trgi") or {}).get(str(data.get("trg") or "").lower()) or {}).get("kampanje") or {})
+        if kampanja and kampanja not in _kz:   # ime z dvojnim presledkom (Editor) — izbirnik ga je strnil v enega
+            kampanja = next((n for n in _kz if " ".join(n.split()) == " ".join(kampanja.split())), kampanja)
         skus = []
         for s in re.split(r"[\s,;]+", str(data.get("skus") or "")):
             s = s.strip().upper()
