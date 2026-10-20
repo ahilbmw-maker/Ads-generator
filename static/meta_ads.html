@@ -299,7 +299,7 @@ async function vrstaZacni(vr, preskoceni) {
 }
 async function vrstaKorak(akcija, id) {
   if (akcija === 'pocisti' && !confirm('Počistim vrsto? (že narejeni paketi ostanejo v zgodovini)')) return;
-  if (akcija === 'preskoci' && !confirm('Preskočim trenutni SKU in začnem naslednjega?')) return;
+  if (akcija === 'preskoci' && !confirm('Preskočim trenutni SKU za kasneje (ostane v Zgodovini) in začnem naslednjega?')) return;
   const d = await post('/meta-ads/api/vrsta', { akcija, id: id || '' });
   if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); return null; }
   ST.vrsta = d.vrsta; risiVrsto();
@@ -316,7 +316,8 @@ function risiVrsto() {
   const cur = ps.find(x => x.status === 'v_delu'), curP = cur && (ST.paketi || []).find(p => p.id === cur.pid), nasl = ps.find(x => x.status === 'caka');
   const gotovCur = !!(curP && curP.izvozeno);
   el.innerHTML = '<div class="card" style="margin-bottom:14px"><div class="card-h"><b>🧵 Vrsta · ' + gotovi + ' / ' + ps.length + '</b><span class="sub">eden po eden · ko končaš, klikni »done → naslednji«</span><span class="grow"></span>' +
-    (cur ? '<button class="btn ' + (gotovCur ? 'grn' : 'pri') + '" onclick="vrstaKorak(\'naslednji\',\'' + esc(cur.pid) + '\')" title="Trenutni SKU označim kot ✓ narejen in začnem naslednjega">✓ ' + esc(cur.sku) + ' done → ' + (nasl ? '▶ Naslednji: ' + esc(nasl.sku) : '🏁 Končaj vrsto') + '</button>'
+    (cur ? '<button class="btn ' + (gotovCur ? 'grn' : 'pri') + '" onclick="vrstaKorak(\'naslednji\',\'' + esc(cur.pid) + '\')" title="Trenutni SKU označim kot ✓ narejen in začnem naslednjega">✓ ' + esc(cur.sku) + ' done → ' + (nasl ? '▶ Naslednji: ' + esc(nasl.sku) : '🏁 Končaj vrsto') + '</button>' +
+      '<button class="btn sm ghost" onclick="vrstaKorak(\'preskoci\',\'' + esc(cur.pid) + '\')" title="Ta SKU pustim za kasneje (paket ostane v Zgodovini, klik na ⏭ ga odpre) in začnem naslednjega">⏭ Preskoči (kasneje)</button>'
       : odprta ? '<button class="btn sm" onclick="vrstaKorak(\'naslednji\')">▶ Začni naslednjega</button>' : '') +
     '<button class="btn sm ghost" onclick="vrstaKorak(\'pocisti\')">✕ Počisti</button></div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap">' + ps.map(x => { const izv = x.status === 'preskoceno' && (ST.paketi || []).some(p => p.id === x.pid && p.izvozeno), c = izv ? ic.shranjeno : ic[x.status] || ['p-mut', '?'];   // preskočen, a izvožen = ✓
