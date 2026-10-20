@@ -14361,6 +14361,23 @@ let PLAN_FLT = 'vse';
 const planTip = p => p.dec ? 'dec' : (p.diff > 0 ? 'gor' : 'dol');
 const planJeDec = p => p.dec || /🔧/.test(p.opomba || '');   // 🔧 filter: čisti popravek + predlogi, ki popravijo tudi decimalke (6715,5 → 6999)
 const planVid = p => PLAN_FLT === 'vse' || (PLAN_FLT === 'dec' ? planJeDec(p) : planTip(p) === PLAN_FLT);
+// ⇅ razvrščanje v oknu: klik na glavo stolpca (ponovni klik = obratno), zapomni se v localStorage mz_plan_sort
+let PLAN_SORT = (() => { try { return JSON.parse(localStorage.getItem('mz_plan_sort')) || null; } catch (e) { return null; } })();
+const PLAN_SK = { sku: p => p.sku || '', c: p => p.c, pred: p => p.pred, diff: p => p.pct, marza: p => p.mZdaj, razlika: p => p.rZdaj,
+  sig: p => (p.x.sig && p.x.sig.t) || '', opomba: p => p.opomba || '' };
+function planVidSort() {
+  const a = PLAN.predlogi.filter(planVid);
+  if (!PLAN_SORT || !PLAN_SK[PLAN_SORT.k]) return a;
+  const f = PLAN_SK[PLAN_SORT.k], d = PLAN_SORT.d;
+  return a.slice().sort((x, y) => { const u = f(x), v = f(y); return (typeof u === 'string' ? u.localeCompare(v, 'sl') : (u || 0) - (v || 0)) * d; });
+}
+function planSort(k) {
+  PLAN_SORT = PLAN_SORT && PLAN_SORT.k === k ? (PLAN_SORT.d === 1 ? { k, d: -1 } : null) : { k, d: 1 };   // ↑ → ↓ → izvirni vrstni red
+  try { localStorage.setItem('mz_plan_sort', JSON.stringify(PLAN_SORT)); } catch (e) {}
+  PLAN_ZADNJI = -1; planRisi();
+}
+const planTh = (k, l, cls, tit) => '<th' + (cls ? ' class="' + cls + '"' : '') + ' style="cursor:pointer;user-select:none;white-space:nowrap" title="' + (tit ? tit + ' · ' : '') + 'Klik = razvrsti (↑ najmanj → največ, ponovno ↓, tretjič izvirno)" onclick="planSort(&quot;' + k + '&quot;)">' + l +
+  (PLAN_SORT && PLAN_SORT.k === k ? (PLAN_SORT.d === 1 ? ' ↑' : ' ↓') : ' <span style="opacity:.3">⇅</span>') + '</th>';
 function planIzberiOk() { PLAN.izbrani = new Set(PLAN.predlogi.filter(p => p.ok && planVid(p)).map(p => p.x.g_id)); }
 function planFilter(f) { PLAN_FLT = f; planIzberiOk(); planRisi(); }
 function planNastavi(k, v) {
@@ -14377,7 +14394,7 @@ function planKopiraj(el, t) {   // klik na SKU v planu = kopiraj (vrstica se ne 
 let PLAN_ZADNJI = -1;
 function planVrstaKlik(e, tr, izCb) {
   if (!tr || (!izCb && e.target.closest('a,button,input,select'))) return;
-  const vid = PLAN.predlogi.filter(planVid), i = +tr.dataset.pi, p = vid[i]; if (!p) return;
+  const vid = planVidSort(), i = +tr.dataset.pi, p = vid[i]; if (!p) return;
   const on = !PLAN.izbrani.has(p.x.g_id);
   if (e.shiftKey && PLAN_ZADNJI >= 0) { const [a, b] = PLAN_ZADNJI < i ? [PLAN_ZADNJI, i] : [i, PLAN_ZADNJI]; vid.slice(a, b + 1).forEach(q => on ? PLAN.izbrani.add(q.x.g_id) : PLAN.izbrani.delete(q.x.g_id)); }
   else { on ? PLAN.izbrani.add(p.x.g_id) : PLAN.izbrani.delete(p.x.g_id); }
@@ -14393,7 +14410,7 @@ function planRisi() {
   const avg = (a, f) => a.length ? a.reduce((s, p) => s + f(p), 0) / a.length : 0;
   const f2n = v => (Math.round(v * 100) / 100).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const mc = m => '<span class="m ' + mcls(Math.round(m * 10) / 10) + '">' + (Math.round(m * 10) / 10).toLocaleString('sl-SI') + ' %</span>';
-  const vid = P2.predlogi.filter(planVid);
+  const vid = planVidSort();
   const nT = t => P2.predlogi.filter(p => t === 'vse' || (t === 'dec' ? planJeDec(p) : planTip(p) === t)).length;
   const fch = (t, l) => '<span class="chip' + (PLAN_FLT === t ? ' on' : '') + '" style="cursor:pointer;padding:5px 12px;font-weight:700" onclick="planFilter(&quot;' + t + '&quot;)">' + l + ' ' + nT(t) + '</span>';
   const vrst = vid.map(p => {
@@ -14430,7 +14447,7 @@ function planRisi() {
       '<div><b>' + P2.preskok.length + '</b><span>preskočenih</span></div></div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 8px">' + fch('vse', 'Vse') + fch('gor', '⬆ Samo dvigi') + fch('dol', '⬇ Samo spusti') + fch('dec', '🔧 Decimalke') +
       '<span class="dim" style="margin-left:6px">v vrsto gredo samo potrjeni iz prikazanih</span></div>' +
-    (vid.length ? '<div class="plan-tab"><table><thead><tr><th><input type="checkbox" ' + (vid.length && vid.every(p => P2.izbrani.has(p.x.g_id)) ? 'checked' : '') + ' onchange="planVse(this.checked)"></th><th>SKU</th><th class="r">Zdaj</th><th class="r">Predlog</th><th class="r">Sprememba</th><th class="r">Marža</th><th class="r">Razlika €</th><th title="📊 Signal iz prodaje (obrat) — ob prehodu z miško razlog">Signal</th><th>Opomba</th></tr></thead><tbody>' + vrst + '</tbody></table></div>'
+    (vid.length ? '<div class="plan-tab"><table><thead><tr><th><input type="checkbox" ' + (vid.length && vid.every(p => P2.izbrani.has(p.x.g_id)) ? 'checked' : '') + ' onchange="planVse(this.checked)"></th>' + planTh('sku', 'SKU') + planTh('c', 'Zdaj', 'r') + planTh('pred', 'Predlog', 'r') + planTh('diff', 'Sprememba', 'r', 'po %') + planTh('marza', 'Marža', 'r', 'po trenutni marži') + planTh('razlika', 'Razlika €', 'r', 'po trenutni razliki') + planTh('sig', 'Signal', '', '📊 Signal iz prodaje (obrat) — ob prehodu z miško razlog') + planTh('opomba', 'Opomba') + '</tr></thead><tbody>' + vrst + '</tbody></table></div>'
       : '<div class="dim" style="padding:20px;text-align:center">Med izbranimi ni izdelkov za spremembo.</div>') +
     (P2.preskok.length ? '<details style="margin-top:8px"><summary class="dim" style="cursor:pointer">Preskočeni (' + P2.preskok.length + ')</summary><div class="dim" style="margin-top:6px">' +
       Object.entries(poRazlogu).map(([r, a]) => '<div><b>' + esc(r) + '</b> (' + a.length + '): ' + a.slice(0, 40).map(esc).join(', ') + (a.length > 40 ? ' …' : '') + '</div>').join('') + '</div></details>' : '') +
