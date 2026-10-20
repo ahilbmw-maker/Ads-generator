@@ -313,10 +313,13 @@ function risiVrsto() {
   const n = s => ps.filter(x => x.status === s).length, gotovi = n('shranjeno') + n('preskoceno');
   const odprta = n('caka') + n('v_delu') > 0;
   const ic = { caka: ['p-mut', '⏳'], v_delu: ['p-inf', '▶'], shranjeno: ['p-ok', '✓'], preskoceno: ['p-mut', '⏭'] };
+  const cur = ps.find(x => x.status === 'v_delu'), curP = cur && (ST.paketi || []).find(p => p.id === cur.pid), nasl = ps.find(x => x.status === 'caka');
+  const gotovCur = !!(curP && curP.izvozeno);
   el.innerHTML = '<div class="card" style="margin-bottom:14px"><div class="card-h"><b>🧵 Vrsta · ' + gotovi + ' / ' + ps.length + '</b><span class="sub">eden po eden · ko 📁 shraniš v mapo, se začne naslednji</span><span class="grow"></span>' +
+    (gotovCur ? '<button class="btn grn" onclick="vrstaKorak(\'naslednji\',\'' + esc(cur.pid) + '\')">✓ ' + esc(cur.sku) + ' shranjen → ' + (nasl ? '▶ Naslednji: ' + esc(nasl.sku) : '🏁 Končaj vrsto') + '</button>' : '') +
     (n('v_delu') ? '<button class="btn sm ghost" onclick="vrstaKorak(\'preskoci\')" title="Trenutnega ne shranim — začni naslednjega">⏭ Preskoči trenutnega</button>' : odprta ? '<button class="btn sm" onclick="vrstaKorak(\'naslednji\')">▶ Začni naslednjega</button>' : '') +
     '<button class="btn sm ghost" onclick="vrstaKorak(\'pocisti\')">✕ Počisti</button></div>' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap">' + ps.map(x => { const c = ic[x.status] || ['p-mut', '?'];
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' + ps.map(x => { const izv = x.status === 'preskoceno' && (ST.paketi || []).some(p => p.id === x.pid && p.izvozeno), c = izv ? ic.shranjeno : ic[x.status] || ['p-mut', '?'];   // preskočen, a izvožen = ✓
       return '<span class="pill ' + c[0] + '" style="' + (x.pid ? 'cursor:pointer;' : '') + (PAK && PAK.id === x.pid ? 'outline:2px solid var(--acc);' : '') + (x.status === 'v_delu' ? 'font-weight:800' : '') + '"' +
         (x.pid ? ' onclick="odpri(\'' + esc(x.pid) + '\')"' : '') + '>' + c[1] + ' ' + esc(x.sku) + '</span>'; }).join('') + '</div></div>';
 }
@@ -619,8 +622,8 @@ async function shraniVMapo(ids) {
       ? 'Import ads → File <b>meta_uvoz.csv</b>, Images vse iz <b>slike</b> → nato v vsakem ad setu oglas »… flexible« → Format Flexible → Add media → v iskalnik <b>_pl</b> (_sl, _ro …) + videi.'
       : 'v Ads Managerju: Import ads → File <b>meta_uvoz.csv</b>, Images vse iz <b>slike</b>, Videos vse iz <b>videi</b>.') +
     (opz ? '<br>⚠ ' + esc(opz).replace(/\r?\n/g, ' · ') : ''), opz ? 'warn' : 'ok');
-  stanje(); if (PAK) odpri(PAK.id);
-  if (!ids && PAK && VRSTA().some(x => x.status === 'v_delu' && x.pid === PAK.id)) {   // 🧵 trenutni iz vrste shranjen → naslednji
+  await stanje(); if (PAK) await odpri(PAK.id);
+  if (PAK && (!ids || ids.includes(PAK.id)) && VRSTA().some(x => x.status === 'v_delu' && x.pid === PAK.id)) {   // 🧵 trenutni iz vrste shranjen → naslednji
     const ost = VRSTA().filter(x => x.status === 'caka').length;
     if (ost && confirm('✓ ' + PAK.sku + ' shranjen. Začnem naslednjega v vrsti (še ' + ost + ')?')) await vrstaKorak('naslednji', PAK.id);
     else if (!ost) await vrstaKorak('naslednji', PAK.id);
