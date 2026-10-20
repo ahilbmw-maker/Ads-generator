@@ -398,7 +398,9 @@ function risi2(p) {
       '<div class="tx"><b style="color:var(--vi)">' + (i + 1) + ' · ' + esc(k.oznaka || '') + '</b>' + scenaSel(k, i, 'margin-top:5px') + '<input class="f" data-e="vibe" data-i="' + i + '" value="' + esc(k.vibe) + '" style="margin:5px 0;font-size:12px">' +
       '<input class="f" data-e="hook" data-i="' + i + '" value="' + esc(k.hook || '') + '" placeholder="hook" style="font-size:12px;font-weight:700;margin-bottom:5px">' +
       '<textarea class="f" data-e="tekst" data-i="' + i + '" rows="2" style="font-size:12px">' + esc(k.tekst || '') + '</textarea>' +
-      (k.scena === 'eksperiment' && k.smer ? '<div class="sub" style="margin-top:4px" title="Naključna umetniška smer — ↻ izbere drugo">🧪 ' + esc(k.smer) + '</div>' : '') + '<button class="btn sm" style="margin-top:6px" ' + (k.v_delu ? 'disabled' : '') + ' onclick="osnove([' + i + '])">↻ Nova slika</button></div></div>').join('') + '</div></div>';
+      (k.scena === 'eksperiment' && k.smer ? '<div class="sub" style="margin-top:4px" title="Naključna umetniška smer — ↻ izbere drugo">🧪 ' + esc(k.smer) + '</div>' : '') + '<div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap"><button class="btn sm" ' + (k.v_delu ? 'disabled' : '') + ' onclick="osnove([' + i + '],\'flare\')" title="Nova slika z GPT Image 2.5 Flare">↻ Flare 2.5</button>' +
+      '<button class="btn sm" ' + (k.v_delu ? 'disabled' : '') + ' onclick="osnove([' + i + '],\'nb21\')" title="Nova slika z Nano Banana 2.1 (isti prompt in reference)">↻ NB2.1</button>' +
+      (k.osnova && !k.v_delu ? '<span class="sub">' + esc(k.model || 'Flare 2.5') + '</span>' : '') + '</div></div></div>').join('') + '</div></div>';
   h += '<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><label class="sub" style="display:flex;align-items:center;gap:6px">Prevod napisov z <select class="f" id="model" style="width:auto" onchange="LS.set(\'ma_model\', this.value)">' +
     '<option value="nb21"' + (LS.get('ma_model') !== 'flare' ? ' selected' : '') + '>Nano Banana 2.1 (kot »Lok«)</option><option value="flare"' + (LS.get('ma_model') === 'flare' ? ' selected' : '') + '>GPT Image 2.5 Flare</option></select></label>' +
     '<span class="grow"></span><span class="sub">' + nT + ' trgov × ' + nO + ' kreativ = <b>' + (nT * nO) + '</b> prevedenih slik + prevodi besedil oglasov</span>' +
@@ -492,11 +494,11 @@ async function shrani(pokazi) {
   await post('/meta-ads/api/shrani', { id: PAK.id, ime: PAK.ime, kreative: PAK.kreative, oglasi_sl: PAK.oglasi_sl, videi: PAK.videi, trgi, nastavitve: PAK.nastavitve });
   if (pokazi) msg('msg', '✓ Shranjeno', 'ok');
 }
-async function osnove(idx) {
+async function osnove(idx, model) {
   await shrani(false);
   const n = idx ? idx.length : PAK.kreative.length;
   if (!idx && PAK.kreative.some(k => k.osnova) && !confirm('Znova narišem vseh ' + n + ' kreativ? (obstoječe se zamenjajo)')) return;
-  const d = await post('/meta-ads/api/osnove', { id: PAK.id, indeksi: idx || null });
+  const d = await post('/meta-ads/api/osnove', { id: PAK.id, indeksi: idx || null, model: model || 'flare' });
   if (!d.ok) { msg('msg', esc(d.error), 'err'); return; }
   KORAK = 2; await odpri(PAK.id);
 }

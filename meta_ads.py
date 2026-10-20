@@ -214,7 +214,8 @@ def vklopi(G: dict):
         if not key:
             raise RuntimeError("GEMINI_API_KEY ni nastavljen")
         modeli = [G.get("GEMINI_FLASH_IMG") or "gemini-nano-banana-2.1"] + ([G["GEMINI_FLASH_IMG_STARI"]] if G.get("GEMINI_FLASH_IMG_STARI") else [])
-        parts = [{"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(ref).decode()}}, {"text": prompt}]
+        refs_ = ref if isinstance(ref, list) else [(ref, "image/jpeg")]   # kreativa: do 3 reference [(bytes, mime)], prevod: 1 slika
+        parts = [{"inline_data": {"mime_type": m or "image/jpeg", "data": base64.b64encode(b).decode()}} for b, m in refs_] + [{"text": prompt}]
         zadnja = ""
         async with flare_sem:
             async with httpx.AsyncClient(timeout=180) as hc:
@@ -531,7 +532,7 @@ def vklopi(G: dict):
             await pak_set(pid, lambda q: q.update(status="napaka", napaka=f"Koncept ni uspel: {err}"))
 
     # ── 2) kreative v angleščini (isti prompt + Flare kot generator Kreative) ──
-    async def obdelaj_osnove(pid, indeksi):
+    async def obdelaj_osnove(pid, indeksi, model="flare"):
         p = pak_get(pid)
         mapa = MAPA / pid
         mapa.mkdir(parents=True, exist_ok=True)
@@ -548,13 +549,13 @@ def vklopi(G: dict):
                 if not refs:
                     raise RuntimeError("referenčnih slik ni bilo mogoče prenesti")
                 smer = random.choice(MA_EKSPERIMENTI) if k.get("scena") == "eksperiment" else ""
-                raw = await flare(refs, prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", "1:1",
-                                                        k.get("scena") or "", smer), "1:1", n_ref=3)
+                pr = prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", "1:1", k.get("scena") or "", smer)
+                raw = await (nb21(refs[:3], pr, "1:1") if model == "nb21" else flare(refs, pr, "1:1", n_ref=3))   # ↻ izbira modela po kreativi
                 if razm == "4:5":
                     raw = await kvadrat_v_45(raw)
                 fn = f"osnova_{i + 1}_{uuid.uuid4().hex[:4]}.jpg"
                 (mapa / fn).write_bytes(raw)
-                await pak_set(pid, lambda q: q["kreative"][i].update(osnova=fn, osnova_napaka="", v_delu=False, razmerje=razm, smer=smer.split(":")[0].title() if smer else ""))
+                await pak_set(pid, lambda q: q["kreative"][i].update(osnova=fn, osnova_napaka="", v_delu=False, razmerje=razm, smer=smer.split(":")[0].title() if smer else "", model="NB2.1" if model == "nb21" else "Flare 2.5"))
             except Exception as e:
                 err = str(e)[:160]
                 await pak_set(pid, lambda q: q["kreative"][i].update(osnova_napaka=err, v_delu=False))
@@ -840,7 +841,7 @@ def vklopi(G: dict):
             return {"ok": False, "error": "Najprej pripravi koncept."}
         idx = [int(i) for i in (data.get("indeksi") or range(len(p["kreative"]))) if 0 <= int(i) < len(p["kreative"])]
         await pak_set(pid, lambda q: ([q["kreative"][i].update(v_delu=True, osnova_napaka="") for i in idx], q.update(status="osnove_v_delu")))
-        asyncio.create_task(obdelaj_osnove(pid, idx))
+        asyncio.create_task(obdelaj_osnove(pid, idx, "nb21" if data.get("model") == "nb21" else "flare"))
         return {"ok": True}
 
     @app.post("/meta-ads/api/lokaliziraj")
