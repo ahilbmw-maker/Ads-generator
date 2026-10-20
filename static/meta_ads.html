@@ -139,7 +139,7 @@
 
   <div class="main">
     <div class="card">
-      <div class="card-h"><b>🧠 Novi SKU-ji</b><span class="sub">1 SKU = 1 kampanja z vsemi izbranimi trgi · več SKU-jev = več kampanj naenkrat</span></div>
+      <div class="card-h"><b>🧠 Novi SKU-ji</b><span class="sub">1 SKU = 1 kampanja z vsemi izbranimi trgi · več SKU-jev = 🧵 vrsta, eden po eden (že narejeni odkljukani)</span></div>
       <div class="row" style="align-items:flex-start">
         <div style="flex:1;min-width:200px"><label class="l" style="margin-top:0">SKU-ji <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· vsak v svojo vrstico · za SKU lahko dodaš Asana povezavo do videov</span></label>
           <textarea class="f" id="sku" rows="3" placeholder="MULTIMINCER https://app.asana.com/…/task/1211103386362549&#10;PANMAX&#10;M322" style="font-weight:700;font-family:Consolas,monospace;font-size:13px" onchange="skuPreveri()"></textarea></div>
@@ -175,6 +175,7 @@
     </div>
   </div>
 
+  <div id="vrsta"></div>
   <div id="msg"></div>
   <div id="paket"></div>
 </div>
@@ -208,7 +209,7 @@ async function stanje() {
     '<div class="kpi" style="--c:#1877f2"><div class="kl">Oglasi skupaj</div><div class="kv">' + (s.skupaj.oglasi || 0) + '</div><div class="ks">zadnjih 14 dni →</div>' + spark + '</div>' +
     '<div class="kpi" style="--c:#7c3aed"><div class="kl">Kampanje (SKU)</div><div class="kv">' + (s.danes.kampanje || 0) + ' <small>/ ' + (s.skupaj.kampanje || 0) + '</small></div><div class="ks">danes / skupaj</div></div>' +
     '<div class="kpi" style="--c:#f59e0b"><div class="kl">Lokalizirane slike</div><div class="kv">' + (s.skupaj.slike || 0) + '</div><div class="ks">Flare kreative v jeziku trga</div></div>';
-  zgodovina();
+  zgodovina(); risiVrsto();
 }
 function risiIzbor() {
   document.getElementById('trgiIzbor').innerHTML = TRGI.map(t => {
@@ -220,14 +221,16 @@ function risiIzbor() {
 function preklopi(t) {
   if (SKUI && !SKUI.trgi[t].url) return;
   IZBOR = IZBOR.includes(t) ? IZBOR.filter(x => x !== t) : IZBOR.concat([t]); risiIzbor();
+  if (t === 'rs' && SKUI && SKUV.length === 1) { SKUV[0].rs = IZBOR.includes('rs'); const cb = document.querySelector('#skuInfo input[onchange^="rsEn"]'); if (cb) cb.checked = SKUV[0].rs; }
 }
+function rsEn(on) { SKUV[0].rs = on; IZBOR = IZBOR.filter(x => x !== 'rs').concat(on ? ['rs'] : []); risiIzbor(); }   // 1 SKU: kljukica RS = ploščica RS
 // več SKU-jev: vrstica = »SKU [asana povezave]«
 let SKUV = [];   // [{sku, asana, info, rs}]
 function skuVrstice() {
   return document.getElementById('sku').value.split(/\n+/).map(l => l.trim()).filter(Boolean).map(l => {
     const deli = l.split(/[\s,;]+/), sku = (deli.find(x => !/asana\.com|^https?:/i.test(x)) || '').toUpperCase();
     return { sku, asana: deli.filter(x => /asana\.com/i.test(x)).join(' ') };
-  }).filter(x => x.sku).filter((x, i, a) => a.findIndex(y => y.sku === x.sku) === i).slice(0, 20);
+  }).filter(x => x.sku).filter((x, i, a) => a.findIndex(y => y.sku === x.sku) === i).slice(0, 60);
 }
 async function skuPreveri() {
   const vr = skuVrstice(); if (!vr.length) return;
@@ -238,9 +241,11 @@ async function skuPreveri() {
     const d = SKUI = SKUV[0].info;
     IZBOR = TRGI.filter(t => d.trgi[t].url && !d.trgi[t].neuvoz && !(t === 'rs' && d.brez_rs));
     const n = TRGI.filter(t => d.trgi[t].url).length;
+    SKUV[0].rs = IZBOR.includes('rs');
     document.getElementById('skuInfo').innerHTML = (d.naziv ? '<b>' + esc(d.naziv) + '</b> · ' : '') + 'v feedu ' + n + ' / 10 trgov' +
       (d.brez_rs ? ' · <span class="pill p-warn">🚫 brez RS (zapomnjeno)</span>' : '') +
-      (d.narejeno ? ' · <span class="pill p-inf">📒 že narejeno ' + esc(datum(d.narejeno.at)) + ' (' + d.narejeno.oglasov + ' oglasov)</span>' : '');
+      (d.narejeno ? ' · <span class="pill p-inf">📒 že narejeno ' + esc(datum(d.narejeno.at)) + ' (' + d.narejeno.oglasov + ' oglasov)</span>' : '') +
+      (d.trgi.rs.url ? ' · <label style="display:inline-flex;gap:5px;align-items:center;font-weight:700;cursor:pointer" title="RS (carina) — zapomni se po SKU"><input type="checkbox" ' + (SKUV[0].rs ? 'checked ' : '') + 'onchange="rsEn(this.checked)"> ' + zast('rs') + ' RS' + (d.trgi.rs.neuvoz ? ' 🚫' : '') + '</label>' : '');
   } else {
     SKUI = null;
     document.getElementById('skuInfo').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px">' +
@@ -262,7 +267,7 @@ async function koncept() {
   if (!vr.length) { msg('msgNov', preskoceni.length ? '📒 Vsi SKU-ji so že narejeni — obkljukaj ✓ tiste, ki jih želiš znova.' : 'Vpiši vsaj en SKU, ki je v feedu.', preskoceni.length ? 'warn' : 'err'); return; }
   if (vr.length === 1 && vr[0].info.narejeno && !confirm('📒 ' + vr[0].sku + ' je bil že narejen ' + datum(vr[0].info.narejeno.at) + ' (' + vr[0].info.narejeno.oglasov + ' oglasov). Pripravim znova?')) return;
   if (!IZBOR.filter(t => t !== 'rs').length && !IZBOR.includes('rs')) { msg('msgNov', 'Izberi vsaj en trg.', 'err'); return; }
-  if (vr.length > 1 && !confirm('Pripravim koncept za ' + vr.length + ' SKU-jev (' + vr.length + ' kampanj)?')) return;
+  if (vr.length > 1) return vrstaZacni(vr, preskoceni);
   document.getElementById('btnKon').disabled = true;
   const ids = [], nap = [];
   for (const v of vr) {
@@ -276,6 +281,44 @@ async function koncept() {
   if (ids.length > 1) { IZBRANI = new Set(ids); }
   if (ids.length === 1) { KORAK = 1; await odpri(ids[0]); }
   stanje();
+}
+// ── 🧵 VRSTA: eden po eden — koncept + kreative → pregled → 3 · Lokaliziraj → 📁 Shrani v mapo → samodejno naslednji ──
+const VRSTA = () => (ST.vrsta && ST.vrsta.postavke) || [];
+async function vrstaZacni(vr, preskoceni) {
+  const odprti = VRSTA().filter(x => x.status === 'caka' || x.status === 'v_delu').length;
+  if (!confirm('🧵 Vrsta ' + vr.length + ' SKU-jev, eden po eden:\n\n1) koncept + 5 kreativ (samodejno)\n2) ti pregledaš, lokaliziraš in 📁 shraniš v mapo\n3) šele nato se začne naslednji SKU' +
+    (preskoceni.length ? '\n\n📒 Preskočeni (že narejeni): ' + preskoceni.map(v => v.sku).join(', ') : '') + (odprti ? '\n\n⚠ Trenutna vrsta (' + odprti + ' nedokončanih) se zamenja.' : '') + '\n\nZačnem?')) return;
+  const postavke = vr.map(v => ({ sku: v.sku, asana: v.asana || '', trgi: IZBOR.filter(t => t !== 'rs').concat(v.rs ? ['rs'] : []) }));
+  document.getElementById('btnKon').disabled = true;
+  const d = await post('/meta-ads/api/vrsta', { postavke, auto: true });
+  document.getElementById('btnKon').disabled = false;
+  if (!d.ok) { msg('msgNov', esc(d.error || 'Napaka'), 'err'); return; }
+  ST.vrsta = d.vrsta; msg('msgNov', '🧵 Vrsta zagnana — ' + vr.length + ' SKU-jev, začenjam z ' + esc(vr[0].sku) + '.', 'ok');
+  if (d.id) { KORAK = 1; await odpri(d.id); }
+  stanje();
+}
+async function vrstaKorak(akcija, id) {
+  if (akcija === 'pocisti' && !confirm('Počistim vrsto? (že narejeni paketi ostanejo v zgodovini)')) return;
+  if (akcija === 'preskoci' && !confirm('Preskočim trenutni SKU in začnem naslednjega?')) return;
+  const d = await post('/meta-ads/api/vrsta', { akcija, id: id || '' });
+  if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); return null; }
+  ST.vrsta = d.vrsta; risiVrsto();
+  if (d.id) { const x = VRSTA().find(y => y.pid === d.id); msg('msg', '▶ Naslednji v vrsti: <b>' + esc(x ? x.sku : '') + '</b> — pišem koncept in rišem kreative …', 'inf'); KORAK = 1; await odpri(d.id); }
+  else if (akcija !== 'pocisti' && VRSTA().length && !VRSTA().some(x => x.status === 'caka' || x.status === 'v_delu')) msg('msg', '🏁 Vrsta končana — vsi SKU-ji obdelani.', 'ok');
+  stanje(); return d;
+}
+function risiVrsto() {
+  const el = document.getElementById('vrsta'), ps = VRSTA();
+  if (!ps.length) { el.innerHTML = ''; return; }
+  const n = s => ps.filter(x => x.status === s).length, gotovi = n('shranjeno') + n('preskoceno');
+  const odprta = n('caka') + n('v_delu') > 0;
+  const ic = { caka: ['p-mut', '⏳'], v_delu: ['p-inf', '▶'], shranjeno: ['p-ok', '✓'], preskoceno: ['p-mut', '⏭'] };
+  el.innerHTML = '<div class="card" style="margin-bottom:14px"><div class="card-h"><b>🧵 Vrsta · ' + gotovi + ' / ' + ps.length + '</b><span class="sub">eden po eden · ko 📁 shraniš v mapo, se začne naslednji</span><span class="grow"></span>' +
+    (n('v_delu') ? '<button class="btn sm ghost" onclick="vrstaKorak(\'preskoci\')" title="Trenutnega ne shranim — začni naslednjega">⏭ Preskoči trenutnega</button>' : odprta ? '<button class="btn sm" onclick="vrstaKorak(\'naslednji\')">▶ Začni naslednjega</button>' : '') +
+    '<button class="btn sm ghost" onclick="vrstaKorak(\'pocisti\')">✕ Počisti</button></div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' + ps.map(x => { const c = ic[x.status] || ['p-mut', '?'];
+      return '<span class="pill ' + c[0] + '" style="' + (x.pid ? 'cursor:pointer;' : '') + (PAK && PAK.id === x.pid ? 'outline:2px solid var(--acc);' : '') + (x.status === 'v_delu' ? 'font-weight:800' : '') + '"' +
+        (x.pid ? ' onclick="odpri(\'' + esc(x.pid) + '\')"' : '') + '>' + c[1] + ' ' + esc(x.sku) + '</span>'; }).join('') + '</div></div>';
 }
 async function odpri(id) {
   const d = await api('/meta-ads/api/paket/' + encodeURIComponent(id));
@@ -575,6 +618,11 @@ async function shraniVMapo(ids) {
       : 'v Ads Managerju: Import ads → File <b>meta_uvoz.csv</b>, Images vse iz <b>slike</b>, Videos vse iz <b>videi</b>.') +
     (opz ? '<br>⚠ ' + esc(opz).replace(/\r?\n/g, ' · ') : ''), opz ? 'warn' : 'ok');
   stanje(); if (PAK) odpri(PAK.id);
+  if (!ids && PAK && VRSTA().some(x => x.status === 'v_delu' && x.pid === PAK.id)) {   // 🧵 trenutni iz vrste shranjen → naslednji
+    const ost = VRSTA().filter(x => x.status === 'caka').length;
+    if (ost && confirm('✓ ' + PAK.sku + ' shranjen. Začnem naslednjega v vrsti (še ' + ost + ')?')) await vrstaKorak('naslednji', PAK.id);
+    else if (!ost) await vrstaKorak('naslednji', PAK.id);
+  }
 }
 async function izvozi(ids) {
   ids = Array.isArray(ids) ? ids : null;

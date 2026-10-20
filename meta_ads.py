@@ -518,8 +518,13 @@ def vklopi(G: dict):
                     trgi[t]["opomba"] = "ni v feedu trga"
                 elif x.get("neuvoz"):
                     trgi[t]["opomba"] = "🚫 ne uvažamo (Marža)"
-            await pak_set(pid, lambda q: q.update(status="koncept", ime=ime or sku, naziv=sl.get("naziv") or "", kreative=kre, oglasi_sl=ogl,
+            auto = bool(p.get("auto_osnove")) and bool(slike)   # 🧵 vrsta: kreative se narišejo takoj po konceptu
+            for k_ in kre if auto else []:
+                k_["v_delu"] = True
+            await pak_set(pid, lambda q: q.update(status="osnove_v_delu" if auto else "koncept", ime=ime or sku, naziv=sl.get("naziv") or "", kreative=kre, oglasi_sl=ogl,
                                                     videi=videi, opozorila=nap, ref_slike=slike[:12], galerija_vloge={str(k): v for k, v in vloge.items()}, trgi=trgi))
+            if auto:
+                asyncio.create_task(obdelaj_osnove(pid, list(range(len(kre)))))
         except Exception as e:
             print(f"[meta-ads] koncept {pid}: {e}")
             err = str(e)[:200]
@@ -647,7 +652,7 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         d = nalozi()
-        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "scene": {k: v["ime"] for k, v in MA_SCENE.items()},
+        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "vrsta": d.get("vrsta") or {"postavke": []}, "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "scene": {k: v["ime"] for k, v in MA_SCENE.items()},
                 "paketi": [{k: p.get(k) for k in ("id", "sku", "ime", "status", "at", "izvozeno")} |
                            {"trgi": [t for t in MA_TRGI if ((p.get("trgi") or {}).get(t) or {}).get("vkljuci")]} for p in d["paketi"]]}
 
@@ -673,24 +678,81 @@ def vklopi(G: dict):
         sku = str(data.get("sku") or "").strip().upper()
         if not re.match(r"^[A-Z0-9_\-\.]{2,40}$", sku):
             return {"ok": False, "error": "Vpiši en veljaven SKU."}
-        trgi_izbor = [t for t in (data.get("trgi") or MA_TRGI) if t in MA_TRGI] or MA_TRGI
-        asana = [s.strip() for s in re.split(r"[\s,]+", str(data.get("asana") or "")) if "asana.com" in s or re.fullmatch(r"\d{10,}", s.strip())][:5]
-        pid = datetime.now().strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:4]
         async with lock:
             d = nalozi()
-            if "rs" in trgi_izbor:   # 🚫 zapomni »brez RS« po SKU (carina)
-                d["brez_rs"] = [s for s in d["brez_rs"] if s != sku]
-            elif sku not in d["brez_rs"]:
-                d["brez_rs"].append(sku)
-            d["paketi"].insert(0, {"id": pid, "sku": sku, "at": _lj_iso(), "status": "koncept_v_delu", "trgi_izbor": trgi_izbor, "asana": asana,
-                                   "nastavitve": {"proracun": 60, "status": "ACTIVE", "kampanja": f"{MA_ZNAK} [ALL 9.0BID] {sku} #BidCap (Suban)"}})
-            for p in d["paketi"][30:]:   # stari paketi: slike/videi z diska
-                import shutil
-                shutil.rmtree(MAPA / p["id"], ignore_errors=True)
-            d["paketi"] = d["paketi"][:30]
+            pid = nov_paket(d, sku, data.get("trgi"), data.get("asana"))
             _jsave(PAK_FILE, d)
         asyncio.create_task(obdelaj_koncept(pid))
         return {"ok": True, "id": pid}
+
+    def nov_paket(d, sku, trgi, asana, auto_osnove=False):
+        """Nov paket v d (klicatelj drži lock in shrani) → pid; koncept zažene klicatelj."""
+        trgi_izbor = [t for t in (trgi or MA_TRGI) if t in MA_TRGI] or MA_TRGI
+        asana = [s.strip() for s in re.split(r"[\s,]+", str(asana or "")) if "asana.com" in s or re.fullmatch(r"\d{10,}", s.strip())][:5]
+        pid = datetime.now().strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:4]
+        if "rs" in trgi_izbor:   # 🚫 zapomni »brez RS« po SKU (carina)
+            d["brez_rs"] = [s for s in d["brez_rs"] if s != sku]
+        elif sku not in d["brez_rs"]:
+            d["brez_rs"].append(sku)
+        d["paketi"].insert(0, {"id": pid, "sku": sku, "at": _lj_iso(), "status": "koncept_v_delu", "trgi_izbor": trgi_izbor, "asana": asana,
+                               "auto_osnove": auto_osnove,
+                               "nastavitve": {"proracun": 60, "status": "ACTIVE", "kampanja": f"{MA_ZNAK} [ALL 9.0BID] {sku} #BidCap (Suban)"}})
+        for p in d["paketi"][30:]:   # stari paketi: slike/videi z diska
+            import shutil
+            shutil.rmtree(MAPA / p["id"], ignore_errors=True)
+        d["paketi"] = d["paketi"][:30]
+        return pid
+
+    # ── 🧵 VRSTA (2026-10-20): več SKU-jev EDEN PO EDEN — koncept + kreative za trenutnega, ti pregledaš, lokaliziraš,
+    #    📁 shraniš v mapo → šele nato se začne naslednji (d["vrsta"] = {postavke: [{sku, asana, trgi, status, pid}], auto})
+    def vrsta_zacni_naslednjega(d):
+        """V lock-u: prvi »caka« → nov paket; vrne pid ali None (vrsta končana / že kdo v delu)."""
+        vr = d.get("vrsta") or {}
+        ps = vr.get("postavke") or []
+        if any(x.get("status") == "v_delu" for x in ps):
+            return None
+        x = next((x for x in ps if x.get("status") == "caka"), None)
+        if not x:
+            return None
+        x["pid"] = nov_paket(d, x["sku"], x.get("trgi"), x.get("asana"), auto_osnove=vr.get("auto", True))
+        x["status"] = "v_delu"; x["zacetek"] = _lj_iso()
+        return x["pid"]
+
+    @app.post("/meta-ads/api/vrsta")
+    async def ma_vrsta(request: Request, data: dict):
+        """{postavke: [{sku, asana, trgi}], auto} = nova vrsta (zamenja staro), {akcija: naslednji|preskoci, id} = trenutni končan → naslednji, {akcija: pocisti}."""
+        if not prijava(request):
+            return ni()
+        akcija = data.get("akcija") or "nova"
+        async with lock:
+            d = nalozi()
+            vr = d.setdefault("vrsta", {"postavke": []})
+            if akcija == "nova":
+                ps = []
+                for x in data.get("postavke") or []:
+                    sku = str(x.get("sku") or "").strip().upper()
+                    if re.match(r"^[A-Z0-9_\-\.]{2,40}$", sku) and sku not in [y["sku"] for y in ps]:
+                        trgi = [t for t in (x.get("trgi") or MA_TRGI) if t in MA_TRGI]
+                        if "rs" in trgi:   # 🚫 zapomni »brez RS« po SKU (kot pri konceptu)
+                            d["brez_rs"] = [s for s in d["brez_rs"] if s != sku]
+                        elif sku not in d["brez_rs"]:
+                            d["brez_rs"].append(sku)
+                        ps.append({"sku": sku, "asana": str(x.get("asana") or ""), "trgi": trgi, "status": "caka"})
+                if not ps:
+                    return {"ok": False, "error": "Ni veljavnih SKU-jev."}
+                d["vrsta"] = vr = {"postavke": ps[:60], "auto": data.get("auto", True) is not False, "at": _lj_iso()}
+            elif akcija in ("naslednji", "preskoci"):
+                pid = str(data.get("id") or "")
+                for x in vr.get("postavke") or []:
+                    if x.get("status") == "v_delu" and (not pid or x.get("pid") == pid):
+                        x["status"] = "shranjeno" if akcija == "naslednji" else "preskoceno"; x["konec"] = _lj_iso()
+            elif akcija == "pocisti":
+                d["vrsta"] = vr = {"postavke": []}
+            nov = vrsta_zacni_naslednjega(d) if akcija != "pocisti" else None
+            _jsave(PAK_FILE, d)
+        if nov:
+            asyncio.create_task(obdelaj_koncept(nov))
+        return {"ok": True, "id": nov, "vrsta": vr}
 
     @app.post("/meta-ads/api/izbrisi")
     async def ma_izbrisi(request: Request, data: dict):
