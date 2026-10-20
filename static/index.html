@@ -1086,7 +1086,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-20 07:50</div>
+      <div class="sidebar-logo-sub">build 2026-10-20 08:07</div>
     </div>
   </div>
 
@@ -11500,7 +11500,7 @@ document.addEventListener('visibilitychange', () => {
 });
 const xsPSt = x => _xs.run.has(x.g_id) ? 'run' : (x.izbran ? 'ok' : (x.ima_predloge ? 'pr' : 'no'));
 // ⚠ izbran Xsell nima (dovolj) zaloge → zamenjaj (pod mejo kandidatov, privzeto 20 kosov)
-const xsPNz = x => !!x.izbran && x.izbran_zaloga != null && x.izbran_zaloga < (_xs.minZal || 20);
+const xsPNz = x => !!x.izbran && x.izbran_zaloga != null && x.izbran_zaloga <= 0;   // samo brez zaloge (< 20 se dnevno polni — uporabnik 2026-10-20)
 function xsPBase() {
   if (_xs.src === 'vsi') return _xs.list;
   const by = {}; _xs.list.forEach(x => { by[x.g_id] = x; });
@@ -11522,8 +11522,8 @@ function xsPRender() {
     '<span class="xs-chip" id="xsPAt" onclick="xsPLoad(true)" title="Osveži seznam (obrat, zaloga, novi izdelki) — samodejno ob odprtju, če je starejši od 30 min" style="margin-left:auto;color:#64748b"></span>';
   xsPAtUI();
   const nNz = base.filter(xsPNz).length;
-  document.getElementById('xsPFil').innerHTML = [['vse', 'Vse ' + base.length], ['no', 'Brez predlogov ' + cnt.no], ['pr', 'Za izbrati ' + cnt.pr], ['ok', '✓ Izbran ' + cnt.ok]].concat(nNz || _xs.pf === 'nz' ? [['nz', '⚠ Xsell malo zaloge (< ' + (_xs.minZal || 20) + ') ' + nNz]] : [])
-    .map(f => '<span class="xs-chip' + (_xs.pf === f[0] ? ' on' : '') + '" onclick="xsSetPF(\'' + f[0] + '\')"' + (f[0] === 'nz' ? ' style="color:#dc2626;font-weight:700" title="Izbrani Xsell ima manj kot ' + (_xs.minZal || 20) + ' kosov zaloge — zamenjaj (drug predlog ali ↻ Nove predloge)"' : '') + '>' + f[1] + '</span>').join('');
+  document.getElementById('xsPFil').innerHTML = [['vse', 'Vse ' + base.length], ['no', 'Brez predlogov ' + cnt.no], ['pr', 'Za izbrati ' + cnt.pr], ['ok', '✓ Izbran ' + cnt.ok]].concat(nNz || _xs.pf === 'nz' ? [['nz', '⚠ Xsell brez zaloge ' + nNz]] : [])
+    .map(f => '<span class="xs-chip' + (_xs.pf === f[0] ? ' on' : '') + '" onclick="xsSetPF(\'' + f[0] + '\')"' + (f[0] === 'nz' ? ' style="color:#dc2626;font-weight:700" title="Izbrani Xsell nima zaloge (0 kos) — zamenjaj (drug predlog ali ↻ Nove predloge)"' : '') + '>' + f[1] + '</span>').join('');
   const vis = xsPVis();
   document.getElementById('xsPList').innerHTML = vis.length ? vis.slice(0, 400).map(x => {
     const st = xsPSt(x), on = _xs.item && _xs.item.g_id === x.g_id;
