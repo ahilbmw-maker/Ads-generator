@@ -44,6 +44,7 @@ MA_CTA = {"sl": "Kupi zdaj", "hr": "Kupi sada", "rs": "Kupi sada", "hu": "Vásá
           "sk": "Kúpiť teraz", "gr": "Αγόρασε τώρα", "bg": "Купи сега", "ro": "Cumpără acum"}   # samo za predogled (CTA = SHOP_NOW)
 MA_EMOJI = "✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌 🙌 😍 💎 🏆 ⚡ 🌟 👏 💫 🛒 📦 🔑 💯 😊 🤩 🌿 🌱 🍃 🌸 🌻 🌞 🍀 🎉 🎊 🛍️ 💚 💙 🧡 💜 🤍 🖤"
 # Bid cap po trgu (€, kot v tekočih kampanjah 2026-10-16) — v koraku 3 nastavljiv po trgu
+MA_CC = 6.0   # 🎯 Cost cap (»Cost per result goal«) privzeto za vse trge — izvoz PEDALORA 2026-10-20: edina razlika od Bid cap = Campaign Bid Strategy + Bid Amount
 MA_BID = {"pl": 7.7, "bg": 7.7, "gr": 7.7, "cz": 7.7, "ro": 8.5, "rs": 9.0, "sk": 9.0, "hu": 9.0, "sl": 9.0, "hr": 9.0}
 MA_ADSET = {"sl": "SLO"}   # ime ad seta (ostali = koda trga)
 # 🎬 5 različnih tipov scene + postavitev napisov (2026-10-16: vseh 5 kreativ je bilo videti enako — ista referenca, isti kot, ista postavitev)
@@ -653,7 +654,7 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         d = nalozi()
-        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "vrsta": d.get("vrsta") or {"postavke": []}, "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "scene": {k: v["ime"] for k, v in MA_SCENE.items()},
+        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "vrsta": d.get("vrsta") or {"postavke": []}, "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "cc": MA_CC, "scene": {k: v["ime"] for k, v in MA_SCENE.items()},
                 "paketi": [{k: p.get(k) for k in ("id", "sku", "ime", "status", "at", "izvozeno")} |
                            {"trgi": [t for t in MA_TRGI if ((p.get("trgi") or {}).get(t) or {}).get("vkljuci")]} for p in d["paketi"]]}
 
@@ -812,20 +813,21 @@ def vklopi(G: dict):
                     for k_ in ("vkljuci", "stran"):
                         if k_ in tv:
                             p["trgi"][t][k_] = tv[k_]
-                    if "bid" in tv:
-                        try:
-                            b_ = round(float(str(tv["bid"]).replace(",", ".")), 2)
-                            if b_ > 0:
-                                p["trgi"][t]["bid"] = b_
-                        except ValueError:
-                            pass
+                    for k_ in ("bid", "cc"):   # bid cap / cost cap po trgu
+                        if k_ in tv:
+                            try:
+                                b_ = round(float(str(tv[k_]).replace(",", ".")), 2)
+                                if b_ > 0:
+                                    p["trgi"][t][k_] = b_
+                            except ValueError:
+                                pass
                     if isinstance(tv.get("oglasi"), list):
                         p["trgi"][t]["oglasi"] = [{"hl": str(o.get("hl") or ""), "pt": str(o.get("pt") or "")} for o in tv["oglasi"]]
                     if isinstance(tv.get("izkl"), list):
                         p["trgi"][t]["izkl"] = [str(x) for x in tv["izkl"]]
             if isinstance(data.get("nastavitve"), dict):
                 n = p.setdefault("nastavitve", {})
-                for k_ in ("proracun", "bid", "status", "kampanja"):
+                for k_ in ("proracun", "bid", "status", "kampanja", "strategija"):
                     if k_ in data["nastavitve"]:
                         n[k_] = data["nastavitve"][k_]
         await pak_set(pid, upd)
@@ -880,6 +882,9 @@ def vklopi(G: dict):
         if not kamp.startswith(MA_ZNAK):   # 🤖 = kampanja iz suban.ai (vedno spredaj, tudi če ime ročno spremeniš)
             kamp = f"{MA_ZNAK} {kamp}"
         st = "ACTIVE" if status == "ACTIVE" else "PAUSED"
+        cc = n.get("strategija") == "costcap"
+        if cc:
+            kamp = kamp.replace("#BidCap", "#CostCap")
         vrst, slike, videi, opz, rocno = [], set(), set(), [], {}
         nk = len(p.get("kreative") or [])
         vid = [(j, v) for j, v in enumerate(p.get("videi") or []) if v.get("vkljuci")]   # besedilo videa = po mestu v celem seznamu (5 + j)
@@ -919,7 +924,8 @@ def vklopi(G: dict):
                     img, vfn, ct, an = prva, vfile[i], "Video Page Post Ad", f"{p['sku']} {t.upper()} video {i + 1}"
                 r = dict(MA_STALNO)
                 r.update({"Campaign Name": kamp, "Campaign Status": st, "Campaign Daily Budget": str(n.get("proracun") or 60),
-                          "Ad Set Run Status": st, "Ad Set Name": MA_ADSET.get(t, t.upper()), "Countries": MA_DRZAVA[t], "Bid Amount": f"{float(tt.get('bid') or MA_BID.get(t, 9)):g}",
+                          "Ad Set Run Status": st, "Ad Set Name": MA_ADSET.get(t, t.upper()), "Countries": MA_DRZAVA[t], "Bid Amount": f"{float((tt.get('cc') or MA_CC) if cc else (tt.get('bid') or MA_BID.get(t, 9))):g}",
+                          "Campaign Bid Strategy": "Cost per result goal" if cc else MA_STALNO["Campaign Bid Strategy"],
                           "Link Object ID": f"o:{sid}", "Optimized Conversion Tracking Pixels": f"tp:{MA_PIKSEL[t]}",
                           "Conversion Tracking Pixels": f"tp:{MA_PIKSEL[t]}", "Link": tt["url"],
                           "Ad Status": st, "Ad Name": an, "Title": o["hl"], "Body": o["pt"], "Image File Name": img,
