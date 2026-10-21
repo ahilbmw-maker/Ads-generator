@@ -45,7 +45,7 @@ MA_CTA = {"sl": "Kupi zdaj", "hr": "Kupi sada", "rs": "Kupi sada", "hu": "Vásá
 MA_EMOJI = "✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌 🙌 😍 💎 🏆 ⚡ 🌟 👏 💫 🛒 📦 🔑 💯 😊 🤩 🌿 🌱 🍃 🌸 🌻 🌞 🍀 🎉 🎊 🛍️ 💚 💙 🧡 💜 🤍 🖤"
 # Bid cap po trgu (€, kot v tekočih kampanjah 2026-10-16) — v koraku 3 nastavljiv po trgu
 MA_ZNAK_CC = "🧧"   # 🧧 na koncu imena Cost cap kampanje
-MA_CC = 6.0   # 🎯 Cost cap (»Cost per result goal«) privzeto za vse trge — izvoz PEDALORA 2026-10-20: edina razlika od Bid cap = Campaign Bid Strategy + Bid Amount
+MA_CC = 5.5   # 🎯 Cost cap (»Cost per result goal«) privzeto za vse trge — izvoz PEDALORA 2026-10-20: edina razlika od Bid cap = Campaign Bid Strategy + Bid Amount
 MA_BID = {"pl": 7.7, "bg": 7.7, "gr": 7.7, "cz": 7.7, "ro": 8.5, "rs": 9.0, "sk": 9.0, "hu": 9.0, "sl": 9.0, "hr": 9.0}
 MA_ADSET = {"sl": "SLO"}   # ime ad seta (ostali = koda trga)
 # 🎬 5 različnih tipov scene + postavitev napisov (2026-10-16: vseh 5 kreativ je bilo videti enako — ista referenca, isti kot, ista postavitev)
