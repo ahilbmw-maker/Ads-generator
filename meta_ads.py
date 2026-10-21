@@ -109,7 +109,8 @@ def vklopi(G: dict):
     PAK_FILE = DATA_DIR / "meta_ads_paketi.json"   # {paketi: [...] (zadnjih 30), evidenca: [...], brez_rs: [SKU]}
     MAPA = DATA_DIR / "meta_ads"
     lock = asyncio.Lock()
-    flare_sem = asyncio.Semaphore(4)
+    flare_sem = asyncio.Semaphore(6)   # ⚡ 2026-10-21: Flare (OpenAI) in NB2.1 (Gemini) ločeno — prej skupaj 4 → lokalizacija 50 slik po 4
+    nb_sem = asyncio.Semaphore(12)
     try:
         GLAVE = json.load(open("static/" + MA_GLAVE_FILE, encoding="utf-8"))
     except Exception as e:
@@ -196,8 +197,12 @@ def vklopi(G: dict):
         form = {"model": "gpt-image-2.5-flare", "prompt": prompt, "size": MA_FLARE_SIZE.get(razmerje, "1024x1024"), "n": "1", "output_format": "jpeg"}
         async with flare_sem:
             async with httpx.AsyncClient(timeout=300) as hc:
-                r = await hc.post("https://api.openai.com/v1/images/edits", headers={"Authorization": f"Bearer {key}"}, data=form, files=files)
-                j = r.json()
+                for pos in range(4):   # 429 / 5xx → počakaj in ponovi (višja vzporednost)
+                    r = await hc.post("https://api.openai.com/v1/images/edits", headers={"Authorization": f"Bearer {key}"}, data=form, files=files)
+                    j = r.json()
+                    if r.status_code not in (429, 500, 502, 503) or pos == 3:
+                        break
+                    await asyncio.sleep(8 * (pos + 1))
         if r.status_code != 200:
             raise RuntimeError("Flare: " + str((j.get("error") or {}).get("message") or j)[:200])
         try:
@@ -219,12 +224,16 @@ def vklopi(G: dict):
         refs_ = ref if isinstance(ref, list) else [(ref, "image/jpeg")]   # kreativa: do 3 reference [(bytes, mime)], prevod: 1 slika
         parts = [{"inline_data": {"mime_type": m or "image/jpeg", "data": base64.b64encode(b).decode()}} for b, m in refs_] + [{"text": prompt}]
         zadnja = ""
-        async with flare_sem:
+        async with nb_sem:
             async with httpx.AsyncClient(timeout=180) as hc:
                 for model in modeli:
-                    r = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
-                                      json={"contents": [{"parts": parts}], "generationConfig": {"responseModalities": ["IMAGE", "TEXT"], "imageConfig": {"aspectRatio": razmerje}}})
-                    j = r.json()
+                    for pos in range(4):   # 429 / 5xx → počakaj in ponovi, šele nato rezervni model
+                        r = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
+                                          json={"contents": [{"parts": parts}], "generationConfig": {"responseModalities": ["IMAGE", "TEXT"], "imageConfig": {"aspectRatio": razmerje}}})
+                        j = r.json()
+                        if r.status_code not in (429, 500, 502, 503) or pos == 3:
+                            break
+                        await asyncio.sleep(6 * (pos + 1))
                     if r.status_code != 200:
                         zadnja = str((j.get("error") or {}).get("message") or j)[:200]; continue
                     try:
