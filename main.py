@@ -34432,6 +34432,13 @@ async def semafor_failrate(data: dict):
                 return {"ok": False, "error": "Neveljaven fail rate."}
         if "note" in data:
             e["note"] = str(data["note"] or "")
+        for _k in ("obdobje_od", "obdobje_do"):   # 📅 na podlagi katerih dni je vrednost izračunana (npr. 1.–10. 10.)
+            if _k in data:
+                _v = str(data[_k] or "").strip()[:10]
+                if not _v:
+                    e.pop(_k, None)
+                elif _re.match(r"^\d{4}-\d{2}-\d{2}$", _v):
+                    e[_k] = _v
         e["updated_at"] = _dt.now().isoformat(timespec="seconds")
         _semafor_save(d)
         return {"ok": True, "month": ym,
