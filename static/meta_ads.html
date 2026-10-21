@@ -240,11 +240,14 @@ async function uvoziObrat() {
   if (!d || !d.loaded || !(d.items || []).length) { msg('msgNov', 'V Analiza → Obrat 7 dni (FB) ni naloženih podatkov o prodaji.', 'err'); return; }
   const po = {};
   d.items.forEach(x => { const k = String(x.sku || '').trim().split('_')[0].toUpperCase(); if (k) po[k] = (po[k] || 0) + (+x.kolicina || 0); });
-  const vsi = Object.entries(po).sort((a, b) => b[1] - a[1]);
-  const n = parseInt(prompt('Obrat 7 dni: ' + vsi.length + ' izdelkov (variante združene). Koliko najbolje prodajanih uvozim? (največ 60)', Math.min(30, vsi.length)), 10);
+  await stanje();   // sveža evidenca narejenih + vrsta
+  const nar = new Set(ST.narejeni || []), vVrsti = new Set(VRSTA().filter(x => x.status === 'caka' || x.status === 'v_delu').map(x => x.sku));
+  const vsi = Object.entries(po).sort((a, b) => b[1] - a[1]), novi = vsi.filter(x => !nar.has(x[0]) && !vVrsti.has(x[0]));   // 📒 že narejeni in tisti v vrsti izločeni PRED štetjem
+  if (!novi.length) { msg('msgNov', '📒 Vsi izdelki iz Obrata so že narejeni ali v vrsti.', 'warn'); return; }
+  const n = parseInt(prompt('Obrat 7 dni: ' + vsi.length + ' izdelkov (variante združene) · ' + (vsi.length - novi.length) + ' že narejenih / v vrsti izločenih · ostane ' + novi.length + ' novih.\n\nKoliko najbolje prodajanih novih uvozim? (največ 60)', Math.min(30, novi.length)), 10);
   if (!n) return;
   OBRAT = Object.fromEntries(vsi);
-  document.getElementById('sku').value = vsi.slice(0, Math.min(60, n)).map(x => x[0]).join('\n');
+  document.getElementById('sku').value = novi.slice(0, Math.min(60, n)).map(x => x[0]).join('\n');
   await skuPreveri();
 }
 async function skuPreveri() {
