@@ -420,7 +420,8 @@ function risi3(p) {
     '<div style="flex:2;min-width:260px"><label class="l" style="margin-top:0">Ime kampanje</label><input class="f" data-e="n_kampanja" value="' + esc(n.kampanja || '') + '"></div>' +
     '<div style="width:130px"><label class="l" style="margin-top:0">Proračun € / dan</label><input class="f" data-e="n_proracun" inputmode="decimal" value="' + esc(n.proracun) + '"></div>' +
 
-    '<div style="width:200px"><label class="l" style="margin-top:0">Strategija</label><select class="f" data-e="n_strategija"><option value="bidcap"' + (n.strategija !== 'costcap' ? ' selected' : '') + '>Bid cap (po trgu)</option><option value="costcap"' + (n.strategija === 'costcap' ? ' selected' : '') + '>🎯 Cost cap (privzeto ' + (ST.cc || 6) + ' €)</option></select></div>' +
+    '<div style="width:200px"><label class="l" style="margin-top:0">Strategija</label><select class="f" data-e="n_strategija"><option value="bidcap"' + (n.strategija !== 'costcap' ? ' selected' : '') + '>Bid cap (po trgu)</option><option value="costcap"' + (n.strategija === 'costcap' ? ' selected' : '') + '>🎯 Cost cap</option></select></div>' +
+    (n.strategija === 'costcap' ? '<div style="width:130px"><label class="l" style="margin-top:0" title="Velja za vse trge (posamezen trg lahko popraviš spodaj)">Cost cap € · vsi trgi</label><input class="f" data-e="n_cc" inputmode="decimal" value="' + esc(n.cc || ST.cc || 5.5) + '"></div>' : '') +
     '<div style="width:190px"><label class="l" style="margin-top:0">Status ob uvozu</label><select class="f" onchange="LS.set(\'ma_status\', this.value)"><option value="ACTIVE"' + (st === 'ACTIVE' ? ' selected' : '') + '>✅ po Publish online</option><option value="PAUSED"' + (st === 'PAUSED' ? ' selected' : '') + '>⏸ Paused</option></select></div>' +
     '<div style="width:270px"><label class="l" style="margin-top:0">Način izvoza</label><select class="f" onchange="LS.set(\'ma_nacin\', this.value);risi()"><option value="flex"' + (nacin() === 'flex' ? ' selected' : '') + '>🧩 Flexible · 1 oglas na trg (kreative dodaš ročno)</option><option value="loceni"' + (nacin() === 'loceni' ? ' selected' : '') + '>📑 Ločeni oglasi · vsaka kreativa svoj oglas</option></select></div>' +
     '<span class="grow"></span><button class="btn grn lg" onclick="shraniVMapo()">📁 Shrani v mapo</button><button class="btn" onclick="izvozi()">⬇ ZIP</button></div>' +
@@ -436,7 +437,7 @@ function risi3(p) {
     (x.url ? '<a class="sub" href="' + esc(x.url) + '" target="_blank" rel="noopener">↗ ' + esc(x.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60)) + '</a>' : '<span class="pill p-err">ni URL-ja</span>') +
     (x.opomba ? '<span class="pill p-warn">' + esc(x.opomba) + '</span>' : '') + '<span class="grow"></span>' +
     ((p.nastavitve || {}).strategija === 'costcap'
-      ? '<label class="sub" style="display:flex;gap:6px;align-items:center" title="Cost per result goal">🎯 Cost cap € <input class="f" data-e="cc" inputmode="decimal" style="width:70px" value="' + esc(x.cc || ST.cc || 6) + '"></label>'
+      ? '<label class="sub" style="display:flex;gap:6px;align-items:center" title="Cost per result goal">🎯 Cost cap € <input class="f" data-e="cc" inputmode="decimal" style="width:70px" value="' + esc(x.cc || (p.nastavitve || {}).cc || ST.cc || 5.5) + '"></label>'
       : '<label class="sub" style="display:flex;gap:6px;align-items:center">Bid cap € <input class="f" data-e="bid" inputmode="decimal" style="width:70px" value="' + esc(x.bid || (ST.bid || {})[TRG] || 9) + '"></label>') +
     '<label class="sub" style="display:flex;gap:6px;align-items:center">FB stran <select class="f" data-e="stran" style="width:auto">' + Object.entries(ST.strani || {}).map(([id, s]) => '<option value="' + id + '"' + (id === x.stran ? ' selected' : '') + '>' + esc(s.ime) + '</option>').join('') + '</select></label>' +
     '<label class="tog sub" style="display:flex;gap:6px;align-items:center;font-weight:700;cursor:pointer"><input type="checkbox" data-e="vkljuci"' + (x.vkljuci ? ' checked' : '') + (x.url ? '' : ' disabled') + '> vključi trg</label></div>';
@@ -488,6 +489,8 @@ document.addEventListener('input', e => {
   else if (k === 't_hl' || k === 't_pt') { const x = PAK.trgi[TRG]; x.oglasi[o] = Object.assign({}, x.oglasi[o], { [k.slice(2)]: t.value }); }
   else if (k === 'stran') { PAK.trgi[TRG].stran = t.value; risi(); }
   else if (k === 'bid' || k === 'cc') PAK.trgi[TRG][k] = t.value;
+  else if (k === 'n_cc') { PAK.nastavitve = PAK.nastavitve || {}; PAK.nastavitve.cc = t.value; TRGI.forEach(tr => { if (PAK.trgi[tr]) delete PAK.trgi[tr].cc; });   // en znesek za vse trge
+    const v = document.querySelector('#paket [data-e="cc"]'); if (v) v.value = t.value; }
   else if (k === 'n_strategija') { PAK.nastavitve = PAK.nastavitve || {}; PAK.nastavitve.strategija = t.value; const ka = PAK.nastavitve.kampanja || '';
     PAK.nastavitve.kampanja = t.value === 'costcap' ? ka.replace('#BidCap', '#CostCap') : ka.replace('#CostCap', '#BidCap'); risi(); }
   else if (k === 'vkljuci') { PAK.trgi[TRG].vkljuci = t.checked; risi(); }

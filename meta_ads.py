@@ -828,7 +828,10 @@ def vklopi(G: dict):
                         p["trgi"][t]["izkl"] = [str(x) for x in tv["izkl"]]
             if isinstance(data.get("nastavitve"), dict):
                 n = p.setdefault("nastavitve", {})
-                for k_ in ("proracun", "bid", "status", "kampanja", "strategija"):
+                if "cc" in data["nastavitve"] and str(data["nastavitve"]["cc"]) != str(n.get("cc")):   # nov znesek za vse trge → pobriši vrednosti po trgih
+                    for tv_ in (p.get("trgi") or {}).values():
+                        tv_.pop("cc", None)
+                for k_ in ("proracun", "bid", "status", "kampanja", "strategija", "cc"):
                     if k_ in data["nastavitve"]:
                         n[k_] = data["nastavitve"][k_]
         await pak_set(pid, upd)
@@ -927,7 +930,7 @@ def vklopi(G: dict):
                     img, vfn, ct, an = prva, vfile[i], "Video Page Post Ad", f"{p['sku']} {t.upper()} video {i + 1}"
                 r = dict(MA_STALNO)
                 r.update({"Campaign Name": kamp, "Campaign Status": st, "Campaign Daily Budget": str(n.get("proracun") or 60),
-                          "Ad Set Run Status": st, "Ad Set Name": MA_ADSET.get(t, t.upper()), "Countries": MA_DRZAVA[t], "Bid Amount": f"{float((tt.get('cc') or MA_CC) if cc else (tt.get('bid') or MA_BID.get(t, 9))):g}",
+                          "Ad Set Run Status": st, "Ad Set Name": MA_ADSET.get(t, t.upper()), "Countries": MA_DRZAVA[t], "Bid Amount": f"{float((tt.get('cc') or n.get('cc') or MA_CC) if cc else (tt.get('bid') or MA_BID.get(t, 9))):g}",
                           "Campaign Bid Strategy": "Cost per result goal" if cc else MA_STALNO["Campaign Bid Strategy"],
                           "Link Object ID": f"o:{sid}", "Optimized Conversion Tracking Pixels": f"tp:{MA_PIKSEL[t]}",
                           "Conversion Tracking Pixels": f"tp:{MA_PIKSEL[t]}", "Link": tt["url"],
