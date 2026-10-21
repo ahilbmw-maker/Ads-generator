@@ -143,7 +143,8 @@
       <div class="row" style="align-items:flex-start">
         <div style="flex:1;min-width:200px"><label class="l" style="margin-top:0">SKU-ji <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· vsak v svojo vrstico · za SKU lahko dodaš Asana povezavo do videov</span></label>
           <textarea class="f" id="sku" rows="3" placeholder="MULTIMINCER https://app.asana.com/…/task/1211103386362549&#10;PANMAX&#10;M322" style="font-weight:700;font-family:Consolas,monospace;font-size:13px" onchange="skuPreveri()"></textarea></div>
-        <button class="btn" style="margin-top:22px" onclick="skuPreveri()">🔎 Preveri</button>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:22px"><button class="btn" onclick="skuPreveri()">🔎 Preveri</button>
+          <button class="btn" onclick="uvoziObrat()" title="Najbolje prodajani iz Analiza → Obrat 7 dni (FB) — variante združene v koren (M322_38 → M322)">📊 Uvozi po prodaji</button></div>
       </div>
       <div class="sub" id="skuInfo" style="margin-top:6px"></div>
       <label class="l">Trgi (ad seti) <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· klik = vključi / izključi · RS se zapomni po SKU (carina)</span></label>
@@ -232,6 +233,20 @@ function skuVrstice() {
     return { sku, asana: deli.filter(x => /asana\.com/i.test(x)).join(' ') };
   }).filter(x => x.sku).filter((x, i, a) => a.findIndex(y => y.sku === x.sku) === i).slice(0, 60);
 }
+// 📊 UVOZI PO PRODAJI: Analiza → Obrat 7 dni (FB) → koren SKU (pred prvim »_«: M322_38 → M322, MULTITOTE_black → MULTITOTE), količine seštete, po prodaji navzdol
+let OBRAT = {};
+async function uvoziObrat() {
+  const d = await api('/analiza-obrat14-data');
+  if (!d || !d.loaded || !(d.items || []).length) { msg('msgNov', 'V Analiza → Obrat 7 dni (FB) ni naloženih podatkov o prodaji.', 'err'); return; }
+  const po = {};
+  d.items.forEach(x => { const k = String(x.sku || '').trim().split('_')[0].toUpperCase(); if (k) po[k] = (po[k] || 0) + (+x.kolicina || 0); });
+  const vsi = Object.entries(po).sort((a, b) => b[1] - a[1]);
+  const n = parseInt(prompt('Obrat 7 dni: ' + vsi.length + ' izdelkov (variante združene). Koliko najbolje prodajanih uvozim? (največ 60)', Math.min(30, vsi.length)), 10);
+  if (!n) return;
+  OBRAT = Object.fromEntries(vsi);
+  document.getElementById('sku').value = vsi.slice(0, Math.min(60, n)).map(x => x[0]).join('\n');
+  await skuPreveri();
+}
 async function skuPreveri() {
   const vr = skuVrstice(); if (!vr.length) return;
   document.getElementById('skuInfo').innerHTML = '<span class="spin"></span> preverjam feede 10 trgov za ' + vr.length + ' SKU …';
@@ -249,9 +264,9 @@ async function skuPreveri() {
   } else {
     SKUI = null;
     document.getElementById('skuInfo').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px">' +
-      '<tr style="color:var(--txt2);text-align:left"><th title="Pripravi koncept za ta SKU (že narejeni so privzeto izključeni)">✓</th><th style="padding:4px 6px">SKU</th><th>Izdelek</th><th>Trgi</th><th title="Vključi RS (carina) — zapomni se po SKU">RS</th><th>Videi</th></tr>' +
+      '<tr style="color:var(--txt2);text-align:left"><th title="Pripravi koncept za ta SKU (že narejeni so privzeto izključeni)">✓</th><th style="padding:4px 6px">SKU</th><th title="Prodano zadnjih 7 dni (Obrat, vse variante)">Obrat</th><th>Izdelek</th><th>Trgi</th><th title="Vključi RS (carina) — zapomni se po SKU">RS</th><th>Videi</th></tr>' +
       SKUV.map((v, i) => { const d = v.info;
-        return '<tr style="border-top:1px solid var(--bd)' + (v.vklj ? '' : ';opacity:.55') + '"><td>' + (d ? '<input type="checkbox" ' + (v.vklj ? 'checked ' : '') + 'onchange="SKUV[' + i + '].vklj=this.checked;this.closest(\'tr\').style.opacity=this.checked?1:.55">' : '') + '</td><td style="padding:5px 6px;font-weight:700">' + esc(v.sku) + '</td>' +
+        return '<tr style="border-top:1px solid var(--bd)' + (v.vklj ? '' : ';opacity:.55') + '"><td>' + (d ? '<input type="checkbox" ' + (v.vklj ? 'checked ' : '') + 'onchange="SKUV[' + i + '].vklj=this.checked;this.closest(\'tr\').style.opacity=this.checked?1:.55">' : '') + '</td><td style="padding:5px 6px;font-weight:700">' + esc(v.sku) + '</td><td>' + (OBRAT[v.sku] != null ? OBRAT[v.sku] : '<span class="muted">—</span>') + '</td>' +
           (d ? '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(d.naziv || '') + (d.narejeno ? ' <span class="pill p-warn" title="Že izvoženo prek Suban — privzeto preskočen (obkljukaj ✓, če ga želiš znova)">📒 že narejeno ' + esc(datum(d.narejeno.at)) + '</span>' : '') + '</td><td>' + TRGI.filter(t => d.trgi[t].url).length + ' / 10</td>' +
             '<td>' + (d.trgi.rs.url ? '<input type="checkbox" ' + (v.rs ? 'checked ' : '') + 'onchange="SKUV[' + i + '].rs=this.checked"' + (d.trgi.rs.neuvoz ? ' title="🚫 ne uvažamo (Marža)"' : '') + '>' + (d.trgi.rs.neuvoz ? ' 🚫' : '') : '<span class="muted">ni URL</span>') + '</td>'
             : '<td colspan="3" style="color:var(--err)">' + esc(v.napaka) + '</td>') +
