@@ -34406,6 +34406,25 @@ async def semafor_failrate(data: dict):
         return {"ok": False, "error": "Neveljaven mesec (pričakujem YYYY-MM)."}
     async with _semafor_lock:
         d = _semafor_load()
+        zak = d.setdefault("fail_lock", {})   # 🔒 {YYYY-MM: {at}} — zaklenjen mesec se ne spreminja več
+        akc = str((data or {}).get("akcija") or "")
+        if akc in ("zakleni", "odkleni") and ym:
+            if akc == "zakleni":
+                # zamrzni: trgi brez vpisa v tem mesecu dobijo podedovano vrednost zapisano v ta mesec (kasnejša sprememba prejšnjega meseca je ne spremeni)
+                mo = d.setdefault("fail_rates_by_month", {}).setdefault(ym, {})
+                for mk in SEMAFOR_MARKETS:
+                    if (mo.get(mk) or {}).get("fail_rate") in (None, ""):
+                        v = _failrate_for_month(d, mk, ym)
+                        if v is not None:
+                            mo[mk] = {**(mo.get(mk) or {}), "fail_rate": round(v, 2), "podedovano": True,
+                                      "updated_at": _dt.now().isoformat(timespec="seconds")}
+                zak[ym] = {"at": _dt.now().isoformat(timespec="seconds")}
+            else:
+                zak.pop(ym, None)
+            _semafor_save(d)
+            return {"ok": True, "month": ym, "fail_lock": zak, "fail_rates": d["fail_rates"], "fail_rates_by_month": d.get("fail_rates_by_month", {})}
+        if ym and ym in zak:
+            return {"ok": False, "error": f"Mesec {ym} je zaklenjen — najprej ga odkleni (🔓)."}
         # gumb ↺: odstrani vrednost tega meseca (spet podeduje)
         if bool((data or {}).get("clear")) and ym:
             bym = d.setdefault("fail_rates_by_month", {})
