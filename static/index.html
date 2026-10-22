@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-22 18:48</div>
+      <div class="sidebar-logo-sub">build 2026-10-22 19:53</div>
     </div>
   </div>
 
@@ -6310,46 +6310,66 @@ function haiDrevo(p) {
   const viri = Object.keys(HAI_VIR).filter(k => p.po_viru[k] && p.po_viru[k].usd > 0);
   const vsi = viri.reduce((a, k) => a + Math.sqrt(p.po_viru[k].usd), 0) || 1;
   const pt = (a, r) => [cx + Math.cos(a) * r * (W / Math.min(W, H)) * 0.92, cy + Math.sin(a) * r];   // rahla elipsa — kartica je širša kot visoka
-  const veje = [], listi = [], fnNodes = [];
+  const veje = [], listi = [], fnNodes = [], srcNodes = [];
+  const fnIme = f => HAI_FN[f.fn] || f.fn.replace(/_/g, ' '), eur = v => (v || 0).toFixed(2).replace('.', ',');
   let a0 = -Math.PI / 2;
   viri.forEach(v => {
     const sek = Math.max(0.5, Math.sqrt(p.po_viru[v].usd) / vsi * Math.PI * 2), am = a0 + sek / 2, col = HAI_VIR[v][1];
     const sN = pt(am, Rm * 0.3);
-    veje.push({ pts: [[cx, cy], pt(am - 0.25, Rm * 0.16), sN], w: 1.5 + Math.log1p(p.po_viru[v].usd) * 0.9, col });
+    srcNodes.push({ x: sN[0], y: sN[1], v, col });
+    veje.push({ pts: [[cx, cy], pt(am - 0.25, Rm * 0.16), sN], w: 1.5 + Math.log1p(p.po_viru[v].usd) * 0.9, col, v, fn: null });
     const fns = p.po_funkciji.filter(f => f.vir === v), nf = fns.length || 1;
     fns.forEach((f, i) => {
       const af = a0 + sek * (i + 0.5) / nf, fN = pt(af, Rm * 0.6);
-      veje.push({ pts: [sN, pt((am + af) / 2 + 0.12, Rm * 0.45), fN], w: 0.8 + Math.log1p(f.usd) * 0.7, col });
-      const fnode = { x: fN[0], y: fN[1], f, col, listi: [] }; fnNodes.push(fnode);
+      const fnode = { x: fN[0], y: fN[1], f, col, v }; fnNodes.push(fnode);
+      veje.push({ pts: [sN, pt((am + af) / 2 + 0.12, Rm * 0.45), fN], w: 0.8 + Math.log1p(f.usd) * 0.7, col, v, fn: fnode });
       sd = hs(v + f.fn);
       const nVej = Math.min(4, 2 + Math.floor(Math.log10(1 + f.n))), raz = sek / nf * 0.8;
       for (let j = 0; j < nVej; j++) {   // vejice 2. reda
         const aj = af + (j - (nVej - 1) / 2) * raz / nVej + (rnd() - 0.5) * 0.08, jN = pt(aj, Rm * (0.76 + rnd() * 0.06));
-        veje.push({ pts: [fN, pt((af + aj) / 2, Rm * 0.68), jN], w: 0.6, col, a: 0.55 });
+        veje.push({ pts: [fN, pt((af + aj) / 2, Rm * 0.68), jN], w: 0.6, col, a: 0.55, v, fn: fnode });
         const nL = Math.min(5, 1 + Math.floor(Math.sqrt(f.n) / 3));
         for (let k = 0; k < nL; k++) {   // listi = klici
           const ak = aj + (rnd() - 0.5) * raz / nVej * 0.9, kN = pt(ak, Rm * (0.88 + rnd() * 0.12));
-          veje.push({ pts: [jN, pt((aj + ak) / 2, Rm * 0.85), kN], w: 0.4, col, a: 0.3 });
-          const L = { pot: [kN, jN, fN, sN, [cx, cy]], col, x: kN[0], y: kN[1], fn: fnode, faza: rnd() * 6 }; listi.push(L); fnode.listi.push(L);
+          veje.push({ pts: [jN, pt((aj + ak) / 2, Rm * 0.85), kN], w: 0.4, col, a: 0.3, v, fn: fnode });
+          listi.push({ pot: [kN, jN, fN, sN, [cx, cy]], col, x: kN[0], y: kN[1], fn: fnode, v, faza: rnd() * 6 });
         }
       }
     });
     a0 += sek;
   });
   const DELCI = [], skupajN = p.n || 1;
-  let hov = null;
-  cv.onmousemove = e => { const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    hov = fnNodes.find(n => Math.hypot(n.x - x, n.y - y) < 16) || null;
-    cv.title = hov ? (HAI_FN[hov.f.fn] || hov.f.fn.replace(/_/g, ' ')) + ' · ' + (hov.f.usd || 0).toFixed(2).replace('.', ',') + ' $ · ' + hov.f.n + '×' : ''; };
-  cv.onmouseleave = () => { hov = null; };
+  // 🎯 fokus ob prehodu z miško (kot v videu): funkcija / vir / jedro — ostalo zatemni, mehak prehod (fade)
+  let fok = null, fade = 0;
+  const vFok = (v, fn) => !fok || (fok.t === 'fn' ? fn === fok.n : fok.t === 'vir' ? v === fok.v : false);
+  cv.onmousemove = e => { const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, d = (n) => Math.hypot(n.x - x, n.y - y);
+    let nov = null;
+    if (Math.hypot(cx - x, cy - y) < 24) nov = { t: 'jedro' };
+    else { const s_ = srcNodes.find(n => d(n) < 14); if (s_) nov = { t: 'vir', v: s_.v, n: s_ };
+      else { const f_ = fnNodes.find(n => d(n) < 14) || ((listi.find(L => d(L) < 10) || {}).fn); if (f_) nov = { t: 'fn', n: f_, v: f_.v }; } }
+    if (JSON.stringify(nov && [nov.t, nov.v, nov.n && nov.n.x]) !== JSON.stringify(fok && [fok.t, fok.v, fok.n && fok.n.x])) { if (nov) fade = fok ? Math.min(fade, 0.4) : 0; fok = nov; }
+    cv.style.cursor = fok ? 'pointer' : 'crosshair'; };
+  cv.onmouseleave = () => { fok = null; };
   const tx = getComputedStyle(cv).getPropertyValue('--text').trim() || '#ece9ff';   // barva iz kartice (vijolična meglica)
+  const oblacek = (x, y, t1, t2, col) => {   // oznaka kot v videu
+    c.font = '700 11px DM Sans, sans-serif'; const w1 = Math.max(c.measureText(t1).width, (c.font = '500 10px DM Sans, sans-serif', c.measureText(t2).width)) + 14, h1 = 32;
+    let lx = x < cx ? x + 10 : x - 10 - w1, ly = y - h1 - 6; lx = Math.max(2, Math.min(lx, W - w1 - 2)); ly = Math.max(2, Math.min(ly, H - h1 - 2));
+    c.globalAlpha = 0.95 * fade; c.fillStyle = '#14112a'; c.strokeStyle = col; c.lineWidth = 1;
+    c.beginPath(); c.roundRect ? c.roundRect(lx, ly, w1, h1, 6) : c.rect(lx, ly, w1, h1); c.fill(); c.stroke();
+    c.globalAlpha = fade; c.textAlign = 'left'; c.textBaseline = 'top'; c.fillStyle = tx; c.font = '700 11px DM Sans, sans-serif'; c.fillText(t1, lx + 7, ly + 4);
+    c.fillStyle = '#a9a3d9'; c.font = '500 10px DM Sans, sans-serif'; c.fillText(t2, lx + 7, ly + 18); c.globalAlpha = 1;
+  };
   const tick = T => {
     if (!cv.isConnected) return;
+    fade = fok ? Math.min(1, fade + 0.08) : Math.max(0, fade - 0.08);
+    const zat = (inF) => inF ? 1 : 1 - 0.8 * fade;   // zatemnitev ostalih
     c.clearRect(0, 0, W, H);
-    veje.forEach(b => { c.beginPath(); c.moveTo(b.pts[0][0], b.pts[0][1]); c.quadraticCurveTo(b.pts[1][0], b.pts[1][1], b.pts[2][0], b.pts[2][1]);
-      c.strokeStyle = b.col; c.globalAlpha = (b.a || 0.85) * (hov && b.col !== hov.col ? 0.35 : 1); c.lineWidth = b.w; c.lineCap = 'round'; c.stroke(); });
+    veje.forEach(b => { const inF = fok && fok.t === 'fn' && b.fn === null ? b.v === fok.v : vFok(b.v, b.fn);
+      c.beginPath(); c.moveTo(b.pts[0][0], b.pts[0][1]); c.quadraticCurveTo(b.pts[1][0], b.pts[1][1], b.pts[2][0], b.pts[2][1]);
+      c.strokeStyle = b.col; c.globalAlpha = (b.a || 0.85) * zat(inF); c.lineWidth = b.w * (inF && fok && fok.t !== 'jedro' ? 1 + 0.25 * fade : 1); c.lineCap = 'round'; c.stroke(); });
     c.globalAlpha = 1;
-    listi.forEach(L => { const pl = 0.5 + 0.5 * Math.sin(T / 450 + L.faza); c.beginPath(); c.arc(L.x, L.y, 1.2 + pl * 1.1, 0, 7); c.fillStyle = L.col; c.globalAlpha = 0.35 + pl * 0.5; c.fill(); });
+    listi.forEach(L => { const inF = vFok(L.v, L.fn), pl = 0.5 + 0.5 * Math.sin(T / 450 + L.faza);
+      c.beginPath(); c.arc(L.x, L.y, 1.2 + pl * 1.1 + (inF && fok && fok.t !== 'jedro' ? 0.8 * fade : 0), 0, 7); c.fillStyle = L.col; c.globalAlpha = (0.35 + pl * 0.5) * zat(inF); c.fill(); });
     c.globalAlpha = 1;
     if (listi.length && DELCI.length < 70 && Math.random() < Math.min(0.9, 0.15 + Math.log10(1 + skupajN) * 0.18)) {   // več klicev = gostejši tok
       const L = listi[Math.floor(Math.random() * listi.length)]; DELCI.push({ L, u: 0, s: 0.006 + Math.random() * 0.006 });
@@ -6358,18 +6378,24 @@ function haiDrevo(p) {
       const d = DELCI[i]; d.u += d.s; if (d.u >= 1) { DELCI.splice(i, 1); continue; }
       const po = d.L.pot, seg = Math.min(po.length - 2, Math.floor(d.u * (po.length - 1))), t = d.u * (po.length - 1) - seg, e2 = t * t * (3 - 2 * t);
       const x = po[seg][0] + (po[seg + 1][0] - po[seg][0]) * e2, y = po[seg][1] + (po[seg + 1][1] - po[seg][1]) * e2;
-      c.beginPath(); c.arc(x, y, 1.8, 0, 7); c.fillStyle = d.L.col; c.globalAlpha = 0.9; c.fill();
-      c.beginPath(); c.arc(x, y, 4, 0, 7); c.globalAlpha = 0.15; c.fill();
+      const inF = (fok && fok.t === 'jedro') || vFok(d.L.v, d.L.fn), z = zat(inF), big = fok && fok.t === 'jedro' ? 1 + 0.4 * fade : 1;   // jedro: delci (klici) svetli, veje zatemnjene
+      c.beginPath(); c.arc(x, y, 1.8 * big, 0, 7); c.fillStyle = d.L.col; c.globalAlpha = 0.9 * z; c.fill();
+      c.beginPath(); c.arc(x, y, 4 * big, 0, 7); c.globalAlpha = 0.15 * z; c.fill();
     }
     c.globalAlpha = 1;
-    fnNodes.forEach(n => { c.beginPath(); c.arc(n.x, n.y, hov === n ? 5.5 : 3.5, 0, 7); c.fillStyle = n.col; c.fill(); });
-    const pr = 19 + Math.sin(T / 600) * 1.5;   // jedro
-    c.beginPath(); c.arc(cx, cy, pr + 6, 0, 7); c.fillStyle = tx; c.globalAlpha = 0.05; c.fill();
-    c.beginPath(); c.arc(cx, cy, pr, 0, 7); c.globalAlpha = 0.09; c.fill(); c.globalAlpha = 0.5; c.strokeStyle = tx; c.lineWidth = 0.8; c.stroke();
-    c.globalAlpha = 1; c.fillStyle = tx; c.font = '700 11px DM Sans, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText((p.n || 0).toLocaleString('sl-SI'), cx, cy - 4); c.font = '500 8.5px DM Sans, sans-serif'; c.globalAlpha = 0.6; c.fillText('klicev', cx, cy + 8); c.globalAlpha = 1;   // sredina = število klicev
-    if (hov) { c.font = '600 11px DM Sans, sans-serif'; c.textAlign = hov.x > cx ? 'right' : 'left';
-      c.fillText((HAI_FN[hov.f.fn] || hov.f.fn.replace(/_/g, ' ')) + ' · ' + (hov.f.usd || 0).toFixed(2).replace('.', ',') + ' $', hov.x + (hov.x > cx ? -8 : 8), hov.y - 10); }
+    fnNodes.forEach(n => { const inF = vFok(n.v, n); c.beginPath(); c.arc(n.x, n.y, fok && fok.n === n ? 3.5 + 2 * fade : 3.5, 0, 7); c.fillStyle = n.col; c.globalAlpha = zat(inF); c.fill(); });
+    c.globalAlpha = 1;
+    const jF = fok && fok.t === 'jedro' ? fade : 0, jz = fok && fok.t !== 'jedro' ? 1 - 0.5 * fade : 1;
+    const pr = 19 + Math.sin(T / 600) * 1.5 + 3 * jF;   // jedro
+    c.beginPath(); c.arc(cx, cy, pr + 6, 0, 7); c.fillStyle = tx; c.globalAlpha = 0.05 + 0.08 * jF; c.fill();
+    c.beginPath(); c.arc(cx, cy, pr, 0, 7); c.globalAlpha = 0.09; c.fill(); c.globalAlpha = (0.5 + 0.4 * jF) * jz; c.strokeStyle = tx; c.lineWidth = 0.8; c.stroke();
+    c.globalAlpha = jz; c.fillStyle = tx; c.font = '700 11px DM Sans, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText((p.n || 0).toLocaleString('sl-SI'), cx, cy - 4); c.font = '500 8.5px DM Sans, sans-serif'; c.globalAlpha = 0.6 * jz; c.fillText('klicev', cx, cy + 8); c.globalAlpha = 1;   // sredina = število klicev
+    if (fok && fade > 0.05) {
+      if (fok.t === 'fn') oblacek(fok.n.x, fok.n.y, fnIme(fok.n.f), eur(fok.n.f.usd) + ' $ · ' + (fok.n.f.n || 0).toLocaleString('sl-SI') + '× klicev', fok.n.col);
+      else if (fok.t === 'vir') oblacek(fok.n.x, fok.n.y, HAI_VIR[fok.v][0], eur(p.po_viru[fok.v].usd) + ' $ · ' + (p.po_viru[fok.v].n || 0).toLocaleString('sl-SI') + '× klicev', fok.n.col);
+      else oblacek(cx - 40, cy + 66, 'Vsi klici v obdobju', (p.n || 0).toLocaleString('sl-SI') + ' klicev · ' + eur(p.usd) + ' $', '#7F77DD');
+    }
     HAI_RAF = requestAnimationFrame(tick);
   };
   if (!viri.length) { c.fillStyle = 'rgba(128,128,128,.6)'; c.font = '12px DM Sans, sans-serif'; c.textAlign = 'center'; c.fillText('v tem obdobju ni AI klicev', cx, cy); return; }
