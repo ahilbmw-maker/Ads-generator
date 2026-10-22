@@ -1086,7 +1086,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-21 20:18</div>
+      <div class="sidebar-logo-sub">build 2026-10-21 20:32</div>
     </div>
   </div>
 
@@ -17078,7 +17078,21 @@ function semRenderFail(){
         + '<td style="padding:5px 6px;white-space:nowrap">' + (_zak ? '🔒' : '') + '<button ' + (_zak ? 'disabled style="display:none" ' : '') + 'onclick="semSaveFail(\'' + m + '\',this)" style="padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--text);font-family:inherit">💾</button>'
         + (!inherited && !_zak ? ' <button onclick="semClearFail(\'' + m + '\')" title="Odstrani vrednost tega meseca (spet podeduje)" style="padding:4px 8px;background:transparent;border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--text-tertiary);font-family:inherit">↺</button>' : '')
         + '</td></tr>'; }).join('')
-    + '</table>';
+    + '</table>' + semFailPovp();
+}
+// Ø fail % izbranega meseca: preprosto povprečje trgov + uteženo po naročilih trga v tem mesecu (Semafor posnetki)
+function semFailPovp(){
+  const vr = SEM_MARKETS.map(m => { const v = parseFloat(String(semFailMonthResolve(m).val).replace(',', '.'));
+    const o = (SEMD.snapshots || []).filter(x => x.market === m && String(x.date || '').slice(0,7) === _semFailMonth).reduce((a, x) => a + (x.orders || 0), 0);
+    return { m, v, o }; }).filter(x => isFinite(x.v));
+  if (!vr.length) return '';
+  const pr = vr.reduce((a, x) => a + x.v, 0) / vr.length, so = vr.reduce((a, x) => a + x.o, 0);
+  const ut = so ? vr.reduce((a, x) => a + x.v * x.o, 0) / so : null;
+  const f = v => v.toFixed(2).replace('.', ',') + ' %';
+  return '<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-top:10px;padding:9px 11px;background:var(--surface2);border-radius:9px;font-size:12.5px">'
+    + '<span><b>Ø ' + _semFailMonth + ':</b> <b style="font-size:15px">' + f(ut != null ? ut : pr) + '</b> <span style="color:var(--text-tertiary)">' + (ut != null ? 'uteženo po naročilih (' + so.toLocaleString('sl-SI') + ' nar.)' : 'preprosto povprečje') + '</span></span>'
+    + (ut != null ? '<span style="color:var(--text-secondary)">preprosto povprečje ' + vr.length + ' trgov: <b>' + f(pr) + '</b></span>' : '')
+    + '</div>';
 }
 const _semD = s => { const x = String(s||'').match(/^(\d{4})-(\d\d)-(\d\d)/); return x ? +x[3] + '. ' + +x[2] + '.' : '…'; };
 async function semFailZakleni(on){
