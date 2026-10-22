@@ -259,7 +259,7 @@ def vklopi(G: dict):
 
     # 🎨 načrt AI slik na SKU: (vrsta, razmerje za Gemini, indeks vibe) — Google priporoča ≥ 3 pokončne
     DG_AI_NACRT = [("1x1", "1:1", 0), ("1x1", "1:1", 1), ("4x5", "4:5", 0), ("4x5", "4:5", 1), ("4x5", "4:5", 2), ("191x1", "16:9", 0), ("191x1", "16:9", 2)]
-    gem_sem = asyncio.Semaphore(6)   # vzporednih klicev Gemini (vse SKU-je skupaj)
+    gem_sem = asyncio.Semaphore(12)   # vzporednih klicev Gemini (vse SKU-je skupaj) — ⚡ 2026-10-22: 6 → 12 (kot Meta Ads)
 
     def kratek_napis(b, n=20):
         """Napis na sliki: do ~20 znakov (daljši se na slikah ne berejo); krajše ostane cele (»2 в 1«),
@@ -316,9 +316,13 @@ def vklopi(G: dict):
                 for model in modeli:
                     for cfg in ({"responseModalities": ["IMAGE", "TEXT"], "imageConfig": {"aspectRatio": razmerje}}, {"responseModalities": ["IMAGE", "TEXT"]}):
                         try:
-                            r = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
-                                              json={"contents": [{"parts": parts}], "generationConfig": cfg})
-                            j = r.json()
+                            for pos in range(4):   # 429 / 5xx → počakaj in ponovi (višja vzporednost)
+                                r = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
+                                                  json={"contents": [{"parts": parts}], "generationConfig": cfg})
+                                j = r.json()
+                                if r.status_code not in (429, 500, 502, 503) or pos == 3:
+                                    break
+                                await asyncio.sleep(6 * (pos + 1))
                         except Exception as e:
                             zadnja = str(e)[:150]; continue
                         if r.status_code != 200:
@@ -366,6 +370,19 @@ def vklopi(G: dict):
         rez = await asyncio.gather(*(ena(i, v, r_, vi) for i, (v, r_, vi) in enumerate(DG_AI_NACRT)))
         return [x for x, _ in rez if x], [e for _, e in rez if e]
 
+    def beri_json(raw):
+        """Prvi/največji veljaven JSON objekt v besedilu (raw_decode od vsakega »{« — besedilo pred/za JSON ne moti)."""
+        dec, naj = json.JSONDecoder(), {}
+        for i, ch in enumerate(raw):
+            if ch == "{":
+                try:
+                    o, _ = dec.raw_decode(raw, i)
+                except ValueError:
+                    continue
+                if isinstance(o, dict) and len(json.dumps(o)) > len(json.dumps(naj)):
+                    naj = o
+        return naj
+
     def ai_besedila(trg, naziv, opis, primeri):
         jez = DG_JEZIK[trg]
         prim = "\n".join("- headlines: " + " | ".join(p["naslovi"]) + "\n  descriptions: " + " | ".join(p["opisi"]) for p in (primeri or [])[:2])
@@ -386,8 +403,7 @@ def vklopi(G: dict):
             '"bullets": ["...", "...", "..."], "vibes": ["...", "...", "..."]}')
         msg = G["client"].messages.create(model="claude-sonnet-4-6", max_tokens=6000, messages=[{"role": "user", "content": prompt}])
         raw = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
-        m = re.search(r"\{.*\}", raw, re.S)
-        j = json.loads(m.group(0)) if m else {}
+        j = beri_json(raw)   # 2026-10-22: »Extra data« — model je za JSON dodal še besedilo / drug JSON (GR, 2 SKU)
         skrajsaj = lambda s, n: s if len(s) <= n else (s[:n].rsplit(" ", 1)[0] if " " in s[:n] else s[:n]).rstrip(" ,.;:-")
         nas = [skrajsaj(str(x).strip(), DG_MAX["headline"]) for x in (j.get("naslovi") or []) if str(x).strip()][:5]
         opi = [skrajsaj(str(x).strip(), DG_MAX["description"]) for x in (j.get("opisi") or []) if str(x).strip()][:5]
@@ -405,7 +421,7 @@ def vklopi(G: dict):
         feed = G["feed_by_lang"].get(trg) or {}
         sl = G["feed_by_lang"].get("sl") or {}
         kinfo = ((_jload(NAST_FILE, {}) or {}).get("trgi", {}).get(trg, {}).get("kampanje", {}).get(kampanja) or {})   # kampanja = izvorna (vir)
-        sem = asyncio.Semaphore(4)
+        sem = asyncio.Semaphore(6)   # ⚡ SKU-jev hkrati (besedila Sonnet + 7 slik NB2.1) — prej 4
 
         async def en(sku):
             async with sem:

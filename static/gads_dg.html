@@ -408,10 +408,22 @@ async function shraniVMapo() {
   if (!(await mapaDovoli())) return;
   const p = PAK.paket;
   if (!(await shraniSpremembe(p))) return;
-  msg('msg', '<span class="spin"></span> Shranjujem v mapo …', 'inf');
-  const r = await fetch('/gads-dg/api/izvoz/' + encodeURIComponent(p.id) + '?status=' + stUvoz(), { credentials: 'include' });
-  if (!r.ok) { let e = ''; try { e = (await r.json()).error; } catch (x) {} msg('msg', esc(e || 'Izvoz ni uspel.'), 'err'); return; }
-  const zip = await JSZip.loadAsync(await r.blob());
+  // ⏳ napredek po korakih (2026-10-22: »Shranjujem v mapo …« je stal 5 min brez znaka, kje) — vsak korak se vidi, zastoj > 3 min = napaka
+  const t0 = Date.now(), kor = t => msg('msg', '<span class="spin"></span> Shranjujem v mapo · ' + t + ' <span style="opacity:.6">(' + Math.round((Date.now() - t0) / 1000) + ' s)</span>', 'inf');
+  kor('1/3 strežnik pripravlja ZIP …');
+  const ac = new AbortController(), tz = setTimeout(() => ac.abort(), 180000);
+  let r, blob;
+  try {
+    r = await fetch('/gads-dg/api/izvoz/' + encodeURIComponent(p.id) + '?status=' + stUvoz(), { credentials: 'include', signal: ac.signal });
+    if (!r.ok) { clearTimeout(tz); let e = ''; try { e = (await r.json()).error; } catch (x) {} msg('msg', esc(e || ('Izvoz ni uspel (HTTP ' + r.status + ').')), 'err'); return; }
+    const vse = +r.headers.get('Content-Length') || 0, rd = r.body.getReader(), deli = []; let n0 = 0;
+    for (;;) { const { done, value } = await rd.read(); if (done) break; deli.push(value); n0 += value.length;
+      kor('2/3 prenašam ZIP ' + (n0 / 1048576).toFixed(1) + (vse ? ' / ' + (vse / 1048576).toFixed(1) : '') + ' MB …'); }
+    blob = new Blob(deli);
+  } catch (e) { clearTimeout(tz); msg('msg', (e.name === 'AbortError' ? 'Strežnik se ni odzval v 3 min' : 'Prenos ni uspel: ' + esc(e.message || e)) + ' — poskusi znova ali uporabi ⬇ ZIP.', 'err'); return; }
+  clearTimeout(tz);
+  const zip = await JSZip.loadAsync(blob);
+  const vsehDat = Object.values(zip.files).filter(f => !f.dir).length;
   const trgMapa = (PAK.business_name || ('Maaarket.' + p.trg)).replace(/[\\/:*?"<>|]/g, '_');
   const _d = new Date(), _2 = n => String(n).padStart(2, '0'), zig = _d.getFullYear() + '-' + _2(_d.getMonth() + 1) + '-' + _2(_d.getDate()) + '_' + _2(_d.getHours()) + _2(_d.getMinutes());   // lokalni čas (prej UTC)
   const ime = { 'ads.csv': 'ads_' + zig + '.csv', 'manifest.csv': 'manifest_' + zig + '.csv', 'validation_report.csv': 'porocilo_' + zig + '.csv', 'NAVODILA.txt': 'NAVODILA_' + zig + '.txt' };
@@ -420,11 +432,12 @@ async function shraniVMapo() {
     // 🖼 vse slike v ENO mapo »slike« (imena po SKU) — ob vsakem shranjevanju se izprazni, da v Editorju označiš vse naenkrat
     const td = await MAPA.getDirectoryHandle(trgMapa, { create: true }), sd = await td.getDirectoryHandle('slike', { create: true });
     const stare = []; for await (const [nm] of sd.entries()) stare.push(nm);
-    for (const nm of stare) { try { await sd.removeEntry(nm, { recursive: true }); } catch (x) {} }
+    let ib = 0; for (const nm of stare) { try { await sd.removeEntry(nm, { recursive: true }); } catch (x) {} if (++ib % 20 === 0) kor('3/3 brišem stare slike ' + ib + ' / ' + stare.length + ' …'); }
     for (const [pot, f] of Object.entries(zip.files)) {
       if (f.dir) continue;
       const cilj = pot.startsWith('images/') ? trgMapa + '/slike/' + pot.split('/').pop() : trgMapa + '/' + (ime[pot] || pot);
       await zapisi(MAPA, cilj, await f.async('uint8array')); n++;
+      if (n % 5 === 0 || n === vsehDat) kor('3/3 zapisujem v mapo ' + n + ' / ' + vsehDat + ' …');
     }
   } catch (e) { msg('msg', 'Zapis v mapo ni uspel: ' + esc(e.message || e) + ' — poskusi znova ali uporabi ⬇ ZIP.', 'err'); return; }
   await nalozi(); zgodovina(); naloziPaket(p.id);   // nova kampanja / nove skupine so zdaj v seznamu trga (izbrana); števec se osveži
