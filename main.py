@@ -37887,6 +37887,17 @@ async def preklici_uredi(request: Request, data: dict):
             x["nujno"] = not x.get("nujno")
         elif akc == "komentar":
             x["komentar"] = str(data.get("komentar") or "").strip()[:500]
+        elif akc == "uredi":   # ✏️ povezava/številka + komentar
+            st = _preklici_st(str(data.get("vnos") or ""))
+            if not st:
+                return {"ok": False, "error": "V povezavi ni številke naročila."}
+            dv = next((y for y in d.get("postavke") or [] if y is not x and y.get("st") == st and not y.get("urejeno_at")), None)
+            if dv:
+                return {"ok": False, "error": f"Naročilo #{st} je že na seznamu ({dv.get('kdo') or '—'})."}
+            if st != x.get("st"):
+                akc = f"uredi: #{x.get('st')} → #{st}"
+            x["st"], x["url"] = st, f"https://www.siluxar.si/narocilnice/{st}"
+            x["komentar"] = str(data.get("komentar") or "").strip()[:500]
         else:
             return {"ok": False, "error": "Neznana akcija."}
         x.setdefault("zgodovina", []).append({"at": _lj_iso(), "kdo": kdo, "kaj": akc})
