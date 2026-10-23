@@ -37849,6 +37849,7 @@ async def preklici_dodaj(request: Request, data: dict):
     if not vrstice:
         return {"ok": False, "error": "Prilepi povezavo do naročila ali številko."}
     kom, kdo, nujno = str(data.get("komentar") or "").strip()[:500], str(data.get("kdo") or "").strip()[:40], bool(data.get("nujno"))
+    vrsta = "sprememba" if data.get("vrsta") == "sprememba" else "preklic"   # 🚫 preklic postavke / ✏️ sprememba naročila
     dodane, dvojniki, napacne = [], [], []
     async with _preklici_lock:
         d = _jload(PREKLICI_FILE, {}, strict=True) or {}
@@ -37861,7 +37862,7 @@ async def preklici_dodaj(request: Request, data: dict):
             if obst:
                 dvojniki.append({"st": st, "kdo": obst.get("kdo") or "", "at": obst.get("at")}); continue
             x = {"id": uuid.uuid4().hex[:10], "st": st, "url": f"https://www.siluxar.si/narocilnice/{st}", "komentar": kom, "kdo": kdo,
-                 "nujno": nujno, "at": _lj_iso(), "zgodovina": [{"at": _lj_iso(), "kdo": kdo, "kaj": "dodano"}]}
+                 "nujno": nujno, "vrsta": vrsta, "at": _lj_iso(), "zgodovina": [{"at": _lj_iso(), "kdo": kdo, "kaj": "dodano"}]}
             ps.insert(0, x); dodane.append(st)
         if dodane:
             _jsave(PREKLICI_FILE, d)
@@ -37898,6 +37899,8 @@ async def preklici_uredi(request: Request, data: dict):
                 akc = f"uredi: #{x.get('st')} → #{st}"
             x["st"], x["url"] = st, f"https://www.siluxar.si/narocilnice/{st}"
             x["komentar"] = str(data.get("komentar") or "").strip()[:500]
+            if data.get("vrsta") in ("preklic", "sprememba"):
+                x["vrsta"] = data["vrsta"]
         else:
             return {"ok": False, "error": "Neznana akcija."}
         x.setdefault("zgodovina", []).append({"at": _lj_iso(), "kdo": kdo, "kaj": akc})
