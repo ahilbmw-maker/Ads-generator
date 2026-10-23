@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-23 09:43</div>
+      <div class="sidebar-logo-sub">build 2026-10-23 10:01</div>
     </div>
   </div>
 
@@ -10072,7 +10072,7 @@ function narcSwitchTab(tab) {
 }
 
 // ═══ 🚫 PREKLICANE POSTAVKE (2026-10-23) — /preklici*; časovnik od oddaje: < 12 h zelen, 12–24 h rumen, > 24 h rdeč ═══
-let PREKL = [], PREKL_SKRITE = false, PREKL_ZDAJ_OFS = 0, PREKL_T = null, PREKL_ED = null;   // PREKL_ED = id postavke v urejanju (✏️)
+let PREKL = [], PREKL_SKRITE = false, PREKL_ZDAJ_OFS = 0, PREKL_T = null, PREKL_ED = null, PREKL_IZB = new Set();   // PREKL_IZB = kljukice za množično urejanje   // PREKL_ED = id postavke v urejanju (✏️)
 const preklEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const preklSt = v => { const m = String(v).match(/narocilnice\/(\d{4,})/) || String(v).match(/(?:^|\D)(\d{5,})(?!\d)/); return m ? m[1] : ''; };
 const preklMs = s => { const m = String(s || '').match(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):?(\d\d)?/); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) : 0; };   // Ljubljanski čas kot »UTC« (primerjava z zdaj s strežnika)
@@ -10109,6 +10109,16 @@ async function preklDodaj() {
   if (d.dodane.length) { document.getElementById('preklVnos').value = ''; document.getElementById('preklKom').value = ''; document.getElementById('preklNujno').checked = false; preklPredogled(); }
   preklRisi();
 }
+async function preklVec(akcija) {   // množično: izbrane (kljukice) → urejeno / odpri / nujno
+  const ids = [...PREKL_IZB].filter(id => PREKL.some(p => p.id === id)); if (!ids.length) return;
+  if (akcija === 'urejeno' && !confirm('Označim ' + ids.length + ' postavk kot urejene (skrije, ne izbriše)?')) return;
+  for (const id of ids) {
+    const r = await fetch('/preklici/uredi', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, akcija, kdo: document.getElementById('preklKdo').value.trim() }) });
+    const d = await r.json(); if (d.ok) PREKL = d.postavke;
+  }
+  PREKL_IZB.clear(); preklRisi();
+}
+function preklIzberi(id, on, ev) { if (ev) ev.stopPropagation(); on ? PREKL_IZB.add(id) : PREKL_IZB.delete(id); preklRisi(); }
 async function preklShraniEd(id) {
   const r = await fetch('/preklici/uredi', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, akcija: 'uredi', vnos: document.getElementById('preklEdUrl').value, komentar: document.getElementById('preklEdKom').value, kdo: document.getElementById('preklKdo').value.trim() }) });
@@ -10145,16 +10155,25 @@ function preklRisi() {
     const ur = !!p.urejeno_at, traja = (ur ? preklMs(p.urejeno_at) : zdaj) - preklMs(p.at), [bg, fg, rob] = ur ? ['var(--surface2)', 'var(--text-tertiary)', '#b4b2a9'] : preklBarva(traja);
     const zg = (p.zgodovina || []).map(z => z.at.slice(8, 10) + '.' + z.at.slice(5, 7) + '. ' + z.at.slice(11, 16) + ' ' + z.kaj + (z.kdo ? ' (' + z.kdo + ')' : '')).join('&#10;');
     return '<div style="display:grid;grid-template-columns:22px 120px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:8px 12px;margin-bottom:6px;border:1px solid var(--border);border-left:4px solid ' + rob + ';border-radius:0 9px 9px 0;background:var(--surface);' + (ur ? 'opacity:.6' : '') + '">'
-      + '<input type="checkbox" ' + (ur ? 'checked ' : '') + 'title="' + (ur ? 'Urejeno — klik = vrni med odprte' : '✓ Urejeno (skrije, ne izbriše)') + '" onclick="preklAkc(\'' + p.id + '\',\'' + (ur ? 'odpri' : 'urejeno') + '\',event)" style="width:17px;height:17px;cursor:pointer;accent-color:#12814f">'
+      + '<input type="checkbox" ' + (PREKL_IZB.has(p.id) ? 'checked ' : '') + 'title="Izberi za množično urejanje" onclick="preklIzberi(\'' + p.id + '\',this.checked,event)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">'
       + '<a href="' + preklEsc(p.url) + '" target="_blank" rel="noopener" style="font-weight:800;color:var(--accent);text-decoration:none;font-family:ui-monospace,monospace">#' + preklEsc(p.st) + ' ↗</a>'
       + '<div style="min-width:0;font-size:13px"><span onclick="preklAkc(\'' + p.id + '\',\'komentar\',event)" title="Klik = uredi (povezava, komentar)" style="cursor:text">' + (p.komentar ? preklEsc(p.komentar) : '<span style="color:var(--text-tertiary)">brez komentarja</span>') + '</span>'
       + ' <span style="color:var(--text-tertiary);font-size:11.5px" title="' + preklEsc(zg) + '">· ' + preklEsc(p.kdo || '—') + ' · ' + p.at.slice(8, 10) + '.' + p.at.slice(5, 7) + '. ' + p.at.slice(11, 16)
       + (ur ? ' · ✓ ' + preklEsc(p.urejeno_kdo || '') + ' ' + p.urejeno_at.slice(11, 16) : '') + '</span></div>'
       + '<span style="font-size:12px;font-weight:800;padding:3px 9px;border-radius:7px;background:' + bg + ';color:' + fg + ';white-space:nowrap" title="' + (ur ? 'Urejeno v tem času' : 'Od oddaje: < 12 h zeleno · 12–24 h rumeno · > 24 h rdeče') + '">⏱ ' + preklTraja(traja) + '</span>'
-      + '<span style="display:flex;gap:6px;align-items:center"><button onclick="preklAkc(\'' + p.id + '\',\'komentar\',event)" title="✏️ Uredi povezavo in komentar" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px">✏️</button><span onclick="preklAkc(\'' + p.id + '\',\'nujno\',event)" title="Klik = (od)označi nujno" style="cursor:pointer;font-size:11.5px;font-weight:800;padding:3px 8px;border-radius:7px;' + (p.nujno ? 'background:#fdecec;color:#b42318' : 'color:var(--text-tertiary);border:1px dashed var(--border)') + '">' + (p.nujno ? '🚨 nujno' : 'nujno?') + '</span></span></div>';
+      + '<span style="display:flex;gap:6px;align-items:center"><button onclick="preklAkc(\'' + p.id + '\',\'komentar\',event)" title="✏️ Uredi povezavo in komentar" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px">✏️</button><span onclick="preklAkc(\'' + p.id + '\',\'nujno\',event)" title="Klik = (od)označi nujno" style="cursor:pointer;font-size:11.5px;font-weight:800;padding:3px 8px;border-radius:7px;' + (p.nujno ? 'background:#fdecec;color:#b42318' : 'color:var(--text-tertiary);border:1px dashed var(--border)') + '">' + (p.nujno ? '🚨 nujno' : 'nujno?') + '</span>'
+      + (ur ? '<button onclick="preklAkc(\'' + p.id + '\',\'odpri\',event)" title="Vrni med odprte" style="padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;color:var(--text-secondary);font-family:inherit">↩ Odpri</button>'
+            : '<button onclick="preklAkc(\'' + p.id + '\',\'urejeno\',event)" title="Zaključi — postavka se skrije (ne izbriše)" style="padding:4px 12px;background:#12814f;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;white-space:nowrap">✓ Urejeno</button>')
+      + '</span></div>';
   };
+  const izb = [...PREKL_IZB].filter(id => PREKL.some(p => p.id === id));
+  const vecBar = izb.length ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 12px;margin-bottom:8px;border-radius:9px;background:#EEEDFE;color:#3C3489;font-size:12.5px"><b>' + izb.length + ' izbranih</b>'
+    + '<button onclick="preklVec(\'urejeno\')" style="padding:4px 12px;background:#12814f;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit">✓ Označi urejeno</button>'
+    + '<button onclick="preklVec(\'nujno\')" style="padding:4px 10px;background:transparent;border:1px solid #b9b4f0;border-radius:7px;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">🚨 Preklopi nujno</button>'
+    + (PREKL_SKRITE ? '<button onclick="preklVec(\'odpri\')" style="padding:4px 10px;background:transparent;border:1px solid #b9b4f0;border-radius:7px;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">↩ Odpri</button>' : '')
+    + '<button onclick="PREKL_IZB.clear();preklRisi()" style="margin-left:auto;padding:4px 10px;background:transparent;border:none;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">✕ Počisti izbor</button></div>' : '';
   const urejeni = [...odprte].sort((a, b) => (b.nujno ? 1 : 0) - (a.nujno ? 1 : 0) || preklMs(a.at) - preklMs(b.at));   // nujne na vrhu, nato najstarejše
-  box.innerHTML = (urejeni.length ? urejeni.map(vrsta).join('') : '<div class="history-empty">✓ Ni odprtih preklicev.</div>')
+  box.innerHTML = vecBar + (urejeni.length ? urejeni.map(vrsta).join('') : '<div class="history-empty">✓ Ni odprtih preklicev.</div>')
     + (PREKL_SKRITE && urejene.length ? '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text-tertiary);margin:14px 0 6px">UREJENE</div>' + [...urejene].sort((a, b) => preklMs(b.urejeno_at) - preklMs(a.urejeno_at)).map(vrsta).join('') : '');
 }
 setTimeout(() => { try { preklNalozi(); } catch (e) {} }, 2500);   // števec na zavihku tudi brez odpiranja
