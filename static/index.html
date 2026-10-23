@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-22 19:53</div>
+      <div class="sidebar-logo-sub">build 2026-10-23 07:17</div>
     </div>
   </div>
 
@@ -6299,9 +6299,16 @@ function homeAiRender() {
 }
 // 🌳 NEVRONSKO DREVO (2026-10-22, namesto stolpcev): jedro = skupni $, veje = vir → funkcija → razvejane vejice; klici (delci) tečejo od listov proti jedru
 let HAI_RAF = 0;
+let HAI_RO = null;
 function haiDrevo(p) {
   cancelAnimationFrame(HAI_RAF);
   const cv = document.getElementById('haiCv'); if (!cv) return;
+  // 📐 risba se prilagaja dejanski velikosti: ko je Domov skrit (drug zavihek), je canvas 0×0 → risba z napačno velikostjo se je raztegnila (jedro ni bilo krog)
+  if (HAI_RO) HAI_RO.disconnect();
+  if (window.ResizeObserver) { let zadnja = cv.clientWidth + 'x' + cv.clientHeight;
+    HAI_RO = new ResizeObserver(() => { const zdaj = cv.clientWidth + 'x' + cv.clientHeight; if (zdaj !== zadnja && cv.clientWidth > 0 && cv.clientHeight > 0) { zadnja = zdaj; haiDrevo(p); } });
+    HAI_RO.observe(cv); }
+  if (!cv.clientWidth || !cv.clientHeight) return;   // skrit → nariše se, ko postane viden (ResizeObserver)
   const dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 320, H = cv.clientHeight || 150;
   cv.width = W * dpr; cv.height = H * dpr;
   const c = cv.getContext('2d'); c.scale(dpr, dpr);
