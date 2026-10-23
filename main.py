@@ -37821,6 +37821,79 @@ async def mailchimp_ai_dizajn_izberi(request: Request):
     return {"ok": True, "id": pid}
 
 
+# ═══ 🚫 PREKLICANE POSTAVKE (Naročilnice → zadnji zavihek, 2026-10-23) ═══
+# Ekipa prilepi povezavo do Siluxar naročila (ali številko) + komentar → seznam za pregled; »✓ Urejeno« skrije (ne izbriše).
+PREKLICI_FILE = DATA_DIR / "preklicane_postavke.json"
+_preklici_lock = asyncio.Lock()
+
+
+def _preklici_st(vrstica: str) -> str:
+    m = re.search(r"narocilnice/(\d{4,})", vrstica) or re.search(r"(?<!\d)(\d{5,})(?!\d)", vrstica)
+    return m.group(1) if m else ""
+
+
+@app.get("/preklici")
+async def preklici_seznam(request: Request):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
+    d = _jload(PREKLICI_FILE, {}) or {}
+    return {"ok": True, "postavke": d.get("postavke") or [], "zdaj": _lj_iso()}
+
+
+@app.post("/preklici/dodaj")
+async def preklici_dodaj(request: Request, data: dict):
+    """{vnos: ena ali več vrstic (povezava ali številka), komentar, kdo, nujno} → nove postavke; isto ODPRTO naročilo = dvojnik (ne doda)."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
+    vrstice = [v.strip() for v in str(data.get("vnos") or "").splitlines() if v.strip()][:50]
+    if not vrstice:
+        return {"ok": False, "error": "Prilepi povezavo do naročila ali številko."}
+    kom, kdo, nujno = str(data.get("komentar") or "").strip()[:500], str(data.get("kdo") or "").strip()[:40], bool(data.get("nujno"))
+    dodane, dvojniki, napacne = [], [], []
+    async with _preklici_lock:
+        d = _jload(PREKLICI_FILE, {}, strict=True) or {}
+        ps = d.setdefault("postavke", [])
+        for v in vrstice:
+            st = _preklici_st(v)
+            if not st:
+                napacne.append(v[:60]); continue
+            obst = next((x for x in ps if x.get("st") == st and not x.get("urejeno_at")), None)
+            if obst:
+                dvojniki.append({"st": st, "kdo": obst.get("kdo") or "", "at": obst.get("at")}); continue
+            x = {"id": uuid.uuid4().hex[:10], "st": st, "url": f"https://www.siluxar.si/narocilnice/{st}", "komentar": kom, "kdo": kdo,
+                 "nujno": nujno, "at": _lj_iso(), "zgodovina": [{"at": _lj_iso(), "kdo": kdo, "kaj": "dodano"}]}
+            ps.insert(0, x); dodane.append(st)
+        if dodane:
+            _jsave(PREKLICI_FILE, d)
+    return {"ok": True, "dodane": dodane, "dvojniki": dvojniki, "napacne": napacne, "postavke": d.get("postavke") or []}
+
+
+@app.post("/preklici/uredi")
+async def preklici_uredi(request: Request, data: dict):
+    """{id, akcija: urejeno | odpri | nujno | komentar, kdo, komentar} — nič se ne briše (urejeno = skrito)."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
+    akc, kdo = str(data.get("akcija") or ""), str(data.get("kdo") or "").strip()[:40]
+    async with _preklici_lock:
+        d = _jload(PREKLICI_FILE, {}, strict=True) or {}
+        x = next((x for x in d.get("postavke") or [] if x.get("id") == data.get("id")), None)
+        if not x:
+            return {"ok": False, "error": "Postavke ni."}
+        if akc == "urejeno":
+            x["urejeno_at"], x["urejeno_kdo"] = _lj_iso(), kdo
+        elif akc == "odpri":
+            x.pop("urejeno_at", None); x.pop("urejeno_kdo", None)
+        elif akc == "nujno":
+            x["nujno"] = not x.get("nujno")
+        elif akc == "komentar":
+            x["komentar"] = str(data.get("komentar") or "").strip()[:500]
+        else:
+            return {"ok": False, "error": "Neznana akcija."}
+        x.setdefault("zgodovina", []).append({"at": _lj_iso(), "kdo": kdo, "kaj": akc})
+        _jsave(PREKLICI_FILE, d)
+    return {"ok": True, "postavke": d.get("postavke") or []}
+
+
 # 🎯 Google Ads → Demand Gen Bulk Creator (ločen modul gads_dg.py: /gads-dg, /gads-dg/api/*)
 import gads_dg as _gads_dg
 _gads_dg.vklopi(globals())

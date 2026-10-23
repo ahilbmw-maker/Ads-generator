@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-23 09:05</div>
+      <div class="sidebar-logo-sub">build 2026-10-23 09:26</div>
     </div>
   </div>
 
@@ -2254,6 +2254,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="narc-tab" id="narcTab-dvojniki" onclick="narcSwitchTab('dvojniki')">👥 Dvojniki</button>
       <button class="narc-tab" id="narcTab-karantena" onclick="narcSwitchTab('karantena')">Karantena</button>
       <button class="narc-tab" id="narcTab-priprava" onclick="narcSwitchTab('priprava')">📋 Priprava seznama</button>
+      <button class="narc-tab" id="narcTab-preklici" onclick="narcSwitchTab('preklici')">🚫 Preklicane postavke <span id="preklBadge" style="display:none;margin-left:4px;font-size:10.5px;font-weight:800;background:#e5484d;color:#fff;border-radius:9px;padding:1px 7px"></span></button>
     </div>
 
     <!-- TAB: NEGATIVNE RAZLIKE -->
@@ -2496,6 +2497,25 @@ input[type="text"].error { border-color: var(--red) !important; }
     </div><!-- /panel karantena -->
 
     <!-- TAB: PRIPRAVA SEZNAMA -->
+    <!-- TAB: 🚫 PREKLICANE POSTAVKE -->
+    <div id="narcPanel-preklici" style="display:none">
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+          <textarea id="preklVnos" rows="1" placeholder="Prilepi povezavo do naročila (https://www.siluxar.si/narocilnice/2910464) ali številko — več vrstic = več naročil" style="flex:2 1 320px;min-height:36px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px;resize:vertical" oninput="preklPredogled()"></textarea>
+          <input id="preklKom" placeholder="Komentar (npr. preklicati samo SKU M322_39)" style="flex:2 1 260px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px">
+          <input id="preklKdo" placeholder="Kdo" style="flex:0 1 110px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px">
+          <label style="display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid #f3c1c1;border-radius:var(--radius);background:#fdecec;color:#b42318;font-size:13px;font-weight:700;cursor:pointer"><input type="checkbox" id="preklNujno"> 🚨 Nujno</label>
+          <button onclick="preklDodaj()" style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">Dodaj</button>
+        </div>
+        <div id="preklPred" style="font-size:12px;color:var(--text-tertiary);margin-top:6px"></div>
+        <div id="preklMsg"></div>
+      </div>
+      <div class="card">
+        <div id="preklKpi" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px"></div>
+        <div id="preklSeznam"><div class="history-empty">Nalagam …</div></div>
+      </div>
+    </div>
+
     <div id="narcPanel-priprava" style="display:none">
       <div style="max-width:760px">
         <div class="card" style="margin-bottom:16px">
@@ -10043,9 +10063,87 @@ function narcSwitchTab(tab) {
   document.getElementById('narcTab-karantena').classList.toggle('active', tab === 'karantena');
   const pripT = document.getElementById('narcTab-priprava'); if (pripT) pripT.classList.toggle('active', tab === 'priprava');
   if (tab === 'priprava') prip1CheckStatus();
+  const prkP = document.getElementById('narcPanel-preklici'); if (prkP) prkP.style.display = tab === 'preklici' ? 'block' : 'none';
+  const prkT = document.getElementById('narcTab-preklici'); if (prkT) prkT.classList.toggle('active', tab === 'preklici');
+  if (tab === 'preklici') preklNalozi();
   try { localStorage.setItem('slx_active_subtab', tab); } catch(e) {}
 }
 
+// ═══ 🚫 PREKLICANE POSTAVKE (2026-10-23) — /preklici*; časovnik od oddaje: < 12 h zelen, 12–24 h rumen, > 24 h rdeč ═══
+let PREKL = [], PREKL_SKRITE = false, PREKL_ZDAJ_OFS = 0, PREKL_T = null;
+const preklEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const preklSt = v => { const m = String(v).match(/narocilnice\/(\d{4,})/) || String(v).match(/(?:^|\D)(\d{5,})(?!\d)/); return m ? m[1] : ''; };
+const preklMs = s => { const m = String(s || '').match(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):?(\d\d)?/); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) : 0; };   // Ljubljanski čas kot »UTC« (primerjava z zdaj s strežnika)
+const preklZdaj = () => Date.now() + PREKL_ZDAJ_OFS;
+function preklTraja(ms) { const m = Math.max(0, Math.floor(ms / 60000)), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60);
+  return d ? d + ' d ' + h + ' h' : h ? h + ' h ' + String(m % 60).padStart(2, '0') + ' min' : (m % 60) + ' min'; }
+function preklBarva(ms) { const h = ms / 3600000; return h < 12 ? ['#e6f6ee', '#12814f', '#1D9E75'] : h < 24 ? ['#fef3c7', '#92600a', '#EF9F27'] : ['#fdecec', '#b42318', '#E24B4A']; }
+async function preklNalozi() {
+  try { const k = localStorage.getItem('prekl_kdo'); const el = document.getElementById('preklKdo'); if (el && k && !el.value) el.value = k; } catch (e) {}
+  try { const r = await fetch('/preklici', { credentials: 'include' }); const d = await r.json(); if (!d.ok) return;
+    PREKL = d.postavke || []; PREKL_ZDAJ_OFS = preklMs(d.zdaj) - Date.now(); } catch (e) { return; }
+  preklRisi();
+  clearInterval(PREKL_T); PREKL_T = setInterval(() => { const p = document.getElementById('narcPanel-preklici'); if (p && p.style.display !== 'none') preklRisi(); }, 30000);
+}
+function preklPredogled() {
+  const v = document.getElementById('preklVnos').value.split(/\n+/).map(x => x.trim()).filter(Boolean), el = document.getElementById('preklPred');
+  if (!v.length) { el.innerHTML = ''; return; }
+  el.innerHTML = v.map(x => { const st = preklSt(x), dv = st && PREKL.some(p => p.st === st && !p.urejeno_at);
+    return st ? '<span style="margin-right:10px">' + (dv ? '⚠ <b>#' + st + '</b> je že na seznamu' : '✓ <b>#' + st + '</b>') + '</span>' : '<span style="color:#b42318;margin-right:10px">✕ ni številke: ' + preklEsc(x.slice(0, 30)) + '</span>'; }).join('');
+}
+async function preklDodaj() {
+  const kdo = document.getElementById('preklKdo').value.trim();
+  try { localStorage.setItem('prekl_kdo', kdo); } catch (e) {}
+  const r = await fetch('/preklici/dodaj', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vnos: document.getElementById('preklVnos').value, komentar: document.getElementById('preklKom').value, kdo, nujno: document.getElementById('preklNujno').checked }) });
+  const d = await r.json(), m = document.getElementById('preklMsg');
+  if (!d.ok) { m.innerHTML = '<div style="margin-top:8px;color:#b42318;font-size:12.5px">' + preklEsc(d.error) + '</div>'; return; }
+  PREKL = d.postavke || PREKL;
+  const deli = [];
+  if (d.dodane.length) deli.push('✓ Dodano: ' + d.dodane.map(s => '#' + s).join(', '));
+  if (d.dvojniki.length) deli.push('⚠ Že na seznamu (ni dodano): ' + d.dvojniki.map(x => '#' + x.st + (x.kdo ? ' (' + preklEsc(x.kdo) + ')' : '')).join(', '));
+  if (d.napacne.length) deli.push('✕ Brez številke: ' + d.napacne.map(preklEsc).join(', '));
+  m.innerHTML = '<div style="margin-top:8px;font-size:12.5px;color:' + (d.dvojniki.length || d.napacne.length ? '#92600a' : '#12814f') + '">' + deli.join(' · ') + '</div>';
+  if (d.dodane.length) { document.getElementById('preklVnos').value = ''; document.getElementById('preklKom').value = ''; document.getElementById('preklNujno').checked = false; preklPredogled(); }
+  preklRisi();
+}
+async function preklAkc(id, akcija, ev) {
+  if (ev) ev.stopPropagation();
+  let kom;
+  if (akcija === 'komentar') { const x = PREKL.find(p => p.id === id); kom = prompt('Komentar:', (x && x.komentar) || ''); if (kom === null) return; }
+  const r = await fetch('/preklici/uredi', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, akcija, komentar: kom, kdo: document.getElementById('preklKdo').value.trim() }) });
+  const d = await r.json(); if (!d.ok) { alert(d.error || 'Napaka'); return; }
+  PREKL = d.postavke; preklRisi();
+}
+function preklRisi() {
+  const zdaj = preklZdaj(), odprte = PREKL.filter(p => !p.urejeno_at), urejene = PREKL.filter(p => p.urejeno_at);
+  const b = document.getElementById('preklBadge'); if (b) { b.textContent = odprte.length; b.style.display = odprte.length ? '' : 'none'; }
+  const box = document.getElementById('preklSeznam'); if (!box) return;
+  const danes = new Date(zdaj).toISOString().slice(0, 10), urDanes = urejene.filter(p => p.urejeno_at.slice(0, 10) === danes);
+  const avg = urDanes.length ? urDanes.reduce((a, p) => a + preklMs(p.urejeno_at) - preklMs(p.at), 0) / urDanes.length : null;
+  const nuj = odprte.filter(p => p.nujno).length, star = odprte.filter(p => zdaj - preklMs(p.at) > 24 * 3600000).length;
+  const pill = (t, bg, c) => '<span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:7px;background:' + bg + ';color:' + c + '">' + t + '</span>';
+  document.getElementById('preklKpi').innerHTML = pill(odprte.length + ' odprtih', '#fef3c7', '#92600a') + (nuj ? pill('🚨 ' + nuj + ' nujnih', '#fdecec', '#b42318') : '') + (star ? pill('⏱ ' + star + ' čaka > 24 h', '#fdecec', '#b42318') : '')
+    + pill('Ø do ureditve danes: ' + (avg == null ? '—' : preklTraja(avg)), 'var(--surface2)', 'var(--text-secondary)')
+    + '<button onclick="PREKL_SKRITE=!PREKL_SKRITE;preklRisi()" style="margin-left:auto;padding:5px 12px;background:transparent;border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer;color:var(--text-secondary);font-family:inherit">' + (PREKL_SKRITE ? 'Skrij urejene' : 'Prikaži urejene (' + urejene.length + ')') + '</button>';
+  const vrsta = p => {
+    const ur = !!p.urejeno_at, traja = (ur ? preklMs(p.urejeno_at) : zdaj) - preklMs(p.at), [bg, fg, rob] = ur ? ['var(--surface2)', 'var(--text-tertiary)', '#b4b2a9'] : preklBarva(traja);
+    const zg = (p.zgodovina || []).map(z => z.at.slice(8, 10) + '.' + z.at.slice(5, 7) + '. ' + z.at.slice(11, 16) + ' ' + z.kaj + (z.kdo ? ' (' + z.kdo + ')' : '')).join('&#10;');
+    return '<div style="display:grid;grid-template-columns:22px 120px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:8px 12px;margin-bottom:6px;border:1px solid var(--border);border-left:4px solid ' + rob + ';border-radius:0 9px 9px 0;background:var(--surface);' + (ur ? 'opacity:.6' : '') + '">'
+      + '<input type="checkbox" ' + (ur ? 'checked ' : '') + 'title="' + (ur ? 'Urejeno — klik = vrni med odprte' : '✓ Urejeno (skrije, ne izbriše)') + '" onclick="preklAkc(\'' + p.id + '\',\'' + (ur ? 'odpri' : 'urejeno') + '\',event)" style="width:17px;height:17px;cursor:pointer;accent-color:#12814f">'
+      + '<a href="' + preklEsc(p.url) + '" target="_blank" rel="noopener" style="font-weight:800;color:var(--accent);text-decoration:none;font-family:ui-monospace,monospace">#' + preklEsc(p.st) + ' ↗</a>'
+      + '<div style="min-width:0;font-size:13px"><span onclick="preklAkc(\'' + p.id + '\',\'komentar\',event)" title="Klik = uredi komentar" style="cursor:text">' + (p.komentar ? preklEsc(p.komentar) : '<span style="color:var(--text-tertiary)">brez komentarja</span>') + '</span>'
+      + ' <span style="color:var(--text-tertiary);font-size:11.5px" title="' + preklEsc(zg) + '">· ' + preklEsc(p.kdo || '—') + ' · ' + p.at.slice(8, 10) + '.' + p.at.slice(5, 7) + '. ' + p.at.slice(11, 16)
+      + (ur ? ' · ✓ ' + preklEsc(p.urejeno_kdo || '') + ' ' + p.urejeno_at.slice(11, 16) : '') + '</span></div>'
+      + '<span style="font-size:12px;font-weight:800;padding:3px 9px;border-radius:7px;background:' + bg + ';color:' + fg + ';white-space:nowrap" title="' + (ur ? 'Urejeno v tem času' : 'Od oddaje: < 12 h zeleno · 12–24 h rumeno · > 24 h rdeče') + '">⏱ ' + preklTraja(traja) + '</span>'
+      + '<span onclick="preklAkc(\'' + p.id + '\',\'nujno\',event)" title="Klik = (od)označi nujno" style="cursor:pointer;font-size:11.5px;font-weight:800;padding:3px 8px;border-radius:7px;' + (p.nujno ? 'background:#fdecec;color:#b42318' : 'color:var(--text-tertiary);border:1px dashed var(--border)') + '">' + (p.nujno ? '🚨 nujno' : 'nujno?') + '</span></div>';
+  };
+  const urejeni = [...odprte].sort((a, b) => (b.nujno ? 1 : 0) - (a.nujno ? 1 : 0) || preklMs(a.at) - preklMs(b.at));   // nujne na vrhu, nato najstarejše
+  box.innerHTML = (urejeni.length ? urejeni.map(vrsta).join('') : '<div class="history-empty">✓ Ni odprtih preklicev.</div>')
+    + (PREKL_SKRITE && urejene.length ? '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text-tertiary);margin:14px 0 6px">UREJENE</div>' + [...urejene].sort((a, b) => preklMs(b.urejeno_at) - preklMs(a.urejeno_at)).map(vrsta).join('') : '');
+}
+setTimeout(() => { try { preklNalozi(); } catch (e) {} }, 2500);   // števec na zavihku tudi brez odpiranja
 async function prip1CheckStatus(){
   try{
     const r = await fetch('/priprava-korak1-status');
