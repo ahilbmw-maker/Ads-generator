@@ -619,18 +619,30 @@ async function zapisi(dir, pot, data) {
   const fh = await d.getFileHandle(deli[deli.length - 1], { create: true }), w = await fh.createWritable();
   await w.write(data); await w.close();
 }
+// ⏳ napredek po korakih + časovna omejitev 3 min (2026-10-23: »Pripravljam paket …« se je ustavil — verjetno ponovni zagon strežnika med izvozom)
+let KOR_T0 = 0;
+const kor = t => msg('msg', '<span class="spin"></span> ' + t + ' <span style="opacity:.6">(' + Math.round((Date.now() - KOR_T0) / 1000) + ' s)</span>', 'inf');
 async function prenesiZip(ids) {
+  KOR_T0 = Date.now();
   if (PAK) await shrani(false);
-  const r = await fetch('/meta-ads/api/izvoz/' + (ids && ids.length ? ids.join(',') : PAK.id) + '?status=' + (LS.get('ma_status') === 'PAUSED' ? 'PAUSED' : 'ACTIVE') + '&nacin=' + nacin(), { credentials: 'include' });
-  if (!r.ok) { let e = ''; try { e = (await r.json()).error; } catch (x) {} msg('msg', esc(e || 'Izvoz ni uspel.'), 'err'); return null; }
-  return r.blob();
+  kor('1/3 strežnik pripravlja paket (slike, videi, CSV) …');
+  const ac = new AbortController(), tz = setTimeout(() => ac.abort(), 180000);
+  try {
+    const r = await fetch('/meta-ads/api/izvoz/' + (ids && ids.length ? ids.join(',') : PAK.id) + '?status=' + (LS.get('ma_status') === 'PAUSED' ? 'PAUSED' : 'ACTIVE') + '&nacin=' + nacin(), { credentials: 'include', signal: ac.signal });
+    if (!r.ok) { clearTimeout(tz); let e = ''; try { e = (await r.json()).error; } catch (x) {} msg('msg', esc(e || ('Izvoz ni uspel (HTTP ' + r.status + ').')), 'err'); return null; }
+    const vse = +r.headers.get('Content-Length') || 0, rd = r.body.getReader(), deli = []; let n0 = 0;
+    for (;;) { const { done, value } = await rd.read(); if (done) break; deli.push(value); n0 += value.length;
+      kor('2/3 prenašam paket ' + (n0 / 1048576).toFixed(1) + (vse ? ' / ' + (vse / 1048576).toFixed(1) : '') + ' MB …'); }
+    clearTimeout(tz);
+    return new Blob(deli);
+  } catch (e) { clearTimeout(tz); msg('msg', (e.name === 'AbortError' ? 'Strežnik se ni odzval v 3 min' : 'Prenos ni uspel: ' + esc(e.message || e)) + ' — poskusi znova (strežnik se je morda ravno ponovno zagnal) ali uporabi ⬇ ZIP.', 'err'); return null; }
 }
 async function shraniVMapo(ids) {
   if (!window.JSZip) { alert('Knjižnica za razpakiranje se ni naložila — osveži stran ali uporabi ⬇ ZIP.'); return; }
   ids = Array.isArray(ids) ? ids : null;
   if (ids && !confirm('Shranim ' + ids.length + ' kampanj: en CSV, slike in videi v mapi vsake kampanje (SKU)? Mapa Meta Ads se izprazni.')) return;
   if (!(await mapaDovoli())) return;
-  msg('msg', '<span class="spin"></span> Pripravljam paket …', 'inf');
+  msg('msg', '<span class="spin"></span> Pripravljam paket …', 'inf');   // nato napredek po korakih (kor)
   const b = await prenesiZip(ids); if (!b) return;
   const zip = await JSZip.loadAsync(b);
   let n = 0, nav = '';
@@ -640,7 +652,7 @@ async function shraniVMapo(ids) {
     for (const nm of stare) { try { await md.removeEntry(nm, { recursive: true }); } catch (x) {} }
     for (const [pot, f] of Object.entries(zip.files)) {
       if (f.dir) continue;
-      await zapisi(md, pot, await f.async('uint8array')); n++;
+      await zapisi(md, pot, await f.async('uint8array')); n++; if (n % 5 === 0) kor('3/3 zapisujem v mapo ' + n + ' datotek …');
       if (pot === 'NAVODILA.txt') nav = await f.async('string');
     }
   } catch (e) { msg('msg', 'Zapis v mapo ni uspel: ' + esc(e.message || e) + ' — poskusi ⬇ ZIP.', 'err'); return; }
