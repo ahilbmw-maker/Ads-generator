@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-23 09:26</div>
+      <div class="sidebar-logo-sub">build 2026-10-23 09:35</div>
     </div>
   </div>
 
@@ -1238,7 +1238,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
   <div class="nav-item nav-narocilnice" id="nav-narocilnice" onclick="switchPage('narocilnice')">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-    Naročilnice
+    Naročilnice<span class="prekl-badge" style="display:none;margin-left:6px;font-size:10px;font-weight:800;background:#e5484d;color:#fff;border-radius:9px;padding:1px 6px;line-height:1.5"></span>
     <button class="nav-expand-btn" id="navexp-narocilnice" onclick="event.stopPropagation();navToggleSub('narocilnice')" title="Pododdelki">+</button>
   </div>
   <div class="nav-sub" id="navsub-narocilnice">
@@ -1246,6 +1246,8 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('vecja')">Večja naročila (&gt;3)</div>
     <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('dvojniki')">Dvojniki</div>
     <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('karantena')">Karantena</div>
+    <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('priprava')">Priprava seznama</div>
+    <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('preklici')">Preklicane postavke<span class="prekl-badge" style="display:none;margin-left:6px;font-size:10px;font-weight:800;background:#e5484d;color:#fff;border-radius:9px;padding:1px 6px;line-height:1.5"></span></div>
   </div>
   <div class="nav-item nav-sporocanje" id="nav-sporocanje" onclick="switchPage('sporocanje')">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -10118,7 +10120,7 @@ async function preklAkc(id, akcija, ev) {
 }
 function preklRisi() {
   const zdaj = preklZdaj(), odprte = PREKL.filter(p => !p.urejeno_at), urejene = PREKL.filter(p => p.urejeno_at);
-  const b = document.getElementById('preklBadge'); if (b) { b.textContent = odprte.length; b.style.display = odprte.length ? '' : 'none'; }
+  [document.getElementById('preklBadge'), ...document.querySelectorAll('.prekl-badge')].forEach(b => { if (b) { b.textContent = odprte.length; b.style.display = odprte.length ? '' : 'none'; } });   // zavihek + levi meni
   const box = document.getElementById('preklSeznam'); if (!box) return;
   const danes = new Date(zdaj).toISOString().slice(0, 10), urDanes = urejene.filter(p => p.urejeno_at.slice(0, 10) === danes);
   const avg = urDanes.length ? urDanes.reduce((a, p) => a + preklMs(p.urejeno_at) - preklMs(p.at), 0) / urDanes.length : null;
@@ -10144,6 +10146,7 @@ function preklRisi() {
     + (PREKL_SKRITE && urejene.length ? '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text-tertiary);margin:14px 0 6px">UREJENE</div>' + [...urejene].sort((a, b) => preklMs(b.urejeno_at) - preklMs(a.urejeno_at)).map(vrsta).join('') : '');
 }
 setTimeout(() => { try { preklNalozi(); } catch (e) {} }, 2500);   // števec na zavihku tudi brez odpiranja
+setInterval(() => { if (!document.hidden) try { preklNalozi(); } catch (e) {} }, 120000);   // števec sveži vsaki 2 min (dodajajo tudi drugi)
 async function prip1CheckStatus(){
   try{
     const r = await fetch('/priprava-korak1-status');
