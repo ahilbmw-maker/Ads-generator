@@ -8827,6 +8827,46 @@ ELEVENLABS_MODELS = {
     # vsi ostali jeziki: eleven_multilingual_v2 (default)
 }
 
+# 🎙 Krediti ElevenLabs (2026-10-24): pregled porabe znakov — prikaz v Meta Ads, jasno sporočilo ob praznem računu
+_ELEVEN_KRED = {"t": 0, "d": None}
+
+async def _eleven_krediti(osvezi=False):
+    """→ {ok, paket, porabljeno, limit, ostane, odstotek, reset (ISO)} iz /v1/user/subscription; predpomnjeno 10 min."""
+    import time as _t
+    if not osvezi and _ELEVEN_KRED["d"] and _t.time() - _ELEVEN_KRED["t"] < 600:
+        return _ELEVEN_KRED["d"]
+    key = os.environ.get("ELEVENLABS_API_KEY", "")
+    if not key:
+        return {"ok": False, "error": "ELEVENLABS_API_KEY ni nastavljen."}
+    try:
+        async with httpx.AsyncClient(timeout=15) as hc:
+            r = await hc.get("https://api.elevenlabs.io/v1/user/subscription", headers={"xi-api-key": key})
+        if r.status_code != 200:
+            return {"ok": False, "error": f"ElevenLabs HTTP {r.status_code}: {r.text[:150]}"}
+        s = r.json()
+        lim, por = int(s.get("character_limit") or 0), int(s.get("character_count") or 0)
+        rst = s.get("next_character_count_reset_unix")
+        d = {"ok": True, "paket": s.get("tier") or "", "porabljeno": por, "limit": lim, "ostane": max(0, lim - por),
+             "odstotek": round(max(0, lim - por) / lim * 100, 1) if lim else 0,
+             "reset": datetime.fromtimestamp(int(rst), __import__("zoneinfo").ZoneInfo("Europe/Ljubljana")).isoformat()[:16] if rst else ""}
+        _ELEVEN_KRED.update(t=_t.time(), d=d)
+        return d
+    except Exception as e:
+        return {"ok": False, "error": f"ElevenLabs: {e}"}
+
+@app.get("/elevenlabs-krediti")
+async def elevenlabs_krediti(osvezi: int = 0):
+    return await _eleven_krediti(bool(osvezi))
+
+def _eleven_napaka(resp):
+    """Berljiva napaka ElevenLabs — ob praznem računu (quota) navodilo, kaj narediti."""
+    t = resp.text or ""
+    _ELEVEN_KRED["t"] = 0   # ob napaki naslednji pregled kreditov svež
+    if "quota" in t.lower() or resp.status_code == 402:
+        return ("🎙 ElevenLabs: zmanjkalo je kreditov (znakov). Rešitev: elevenlabs.io → Subscription → dokupi znake "
+                "ali višji paket, ali počakaj na mesečni reset. Stanje kreditov je v glavi Meta Ads.")
+    return f"ElevenLabs napaka {resp.status_code}: {t[:300]}"
+
 @app.get("/vads-en-voices")
 async def vads_en_voices():
     """Seznam angleških glasov za izbiro (ženski + moški)."""
@@ -9051,7 +9091,7 @@ async def generate_audio(data: dict):
             resp = await _call(cur_text, cur_speed)
             if resp.status_code != 200:
                 from fastapi.responses import JSONResponse
-                return JSONResponse({"error": f"ElevenLabs napaka {resp.status_code}: {resp.text[:300]}"}, status_code=400)
+                return JSONResponse({"error": _eleven_napaka(resp)}, status_code=400)
             result = resp.json()
             actual = _audio_dur(result.get("alignment", {}))
 
