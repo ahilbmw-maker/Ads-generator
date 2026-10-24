@@ -1151,12 +1151,15 @@ def vklopi(G: dict):
         par = {"language": jez, "page_size": 30, "sort": "usage_character_count_1y"}
         if spol in ("male", "female"):
             par["gender"] = spol
+        vsi = []
         async with httpx.AsyncClient(timeout=30) as hc:
-            r = await hc.get(f"{EL_API}/shared-voices", params=par, headers={"xi-api-key": el_key()})
-        if r.status_code != 200:
-            return {"ok": False, "error": f"ElevenLabs HTTP {r.status_code}: {r.text[:200]}"}
+            for kat in ("professional", ""):   # 1) domači govorci (Professional Voice Clone z jezikom trga), 2) dopolnitev
+                r = await hc.get(f"{EL_API}/shared-voices", params=par | ({"category": kat} if kat else {}), headers={"xi-api-key": el_key()})
+                if r.status_code != 200:
+                    return {"ok": False, "error": f"ElevenLabs HTTP {r.status_code}: {r.text[:200]}"}
+                vsi += [v for v in r.json().get("voices") or [] if v.get("voice_id") not in {x.get("voice_id") for x in vsi}]
         out = []
-        for v in r.json().get("voices") or []:
+        for v in vsi:
             ver = next((x for x in v.get("verified_languages") or [] if x.get("language") == jez), None)
             if v.get("language") != jez and not ver:
                 continue   # samo glasovi, ki res govorijo jezik trga
@@ -1164,43 +1167,48 @@ def vklopi(G: dict):
                         "spol": v.get("gender"), "starost": v.get("age"), "naglas": (ver or {}).get("accent") or v.get("accent"),
                         "opis": (v.get("description") or "")[:160], "namen": v.get("use_case"), "slog": v.get("descriptive"),
                         "preview": (ver or {}).get("preview_url") or v.get("preview_url"),
-                        "uporaba": v.get("usage_character_count_1y") or 0, "kloni": v.get("cloned_by_count") or 0})
+                        "uporaba": v.get("usage_character_count_1y") or 0, "kloni": v.get("cloned_by_count") or 0,
+                        "domaci": v.get("category") == "professional" and v.get("language") == jez})
+        out.sort(key=lambda x: (not x["domaci"], -x["uporaba"]))
         return {"ok": True, "trg": trg, "glasovi": out[:12]}
 
     async def el_tts(hc, voice_id, besedilo):
         return await hc.post(f"{EL_API}/text-to-speech/{voice_id}", params={"output_format": "mp3_44100_128"},
                              headers={"xi-api-key": el_key()}, json={"text": besedilo, "model_id": MA_EL_MODEL})
 
-    @app.post("/meta-ads/api/glasovi/test")
-    async def ma_glasovi_test(request: Request, data: dict):
-        """{trg, voice_id, owner?, ime?, besedilo?} → mp3 (base64) z našim stavkom; knjižnični glas se po potrebi doda med »My voices«."""
-        if not prijava(request):
-            return ni()
-        trg = str(data.get("trg") or "")
-        vid = re.sub(r"[^A-Za-z0-9]", "", str(data.get("voice_id") or ""))
-        if trg not in MA_TRGI or not vid:
-            return {"ok": False, "error": "Manjka trg ali glas."}
-        besedilo = str(data.get("besedilo") or MA_GLAS_STAVEK[trg]).strip()[:400]
+    async def glas_dodaj(hc, trg, vid, owner, ime):
+        """Knjižnični glas → »My voices« (TTS ga potrebuje tam) → (voice_id | None, napaka); zapis v d["glasovi_moji"]."""
+        owner = re.sub(r"[^A-Za-z0-9]", "", str(owner or ""))
+        a = await hc.post(f"{EL_API}/voices/add/{owner}/{vid}", headers={"xi-api-key": el_key()},
+                          json={"new_name": f"MA {trg.upper()} {str(ime or vid)[:30]}"})
+        if a.status_code != 200 or not a.json().get("voice_id"):
+            return None, (f"Glasu ni bilo mogoče dodati: {a.text[:200]}" + (" — v ElevenLabs → My voices izbriši neuporabljene glasove (omejitev paketa)."
+                                                                               if "limit" in a.text.lower() else ""))
+        moj = a.json()["voice_id"]
+        async with lock:
+            d = nalozi(); d.setdefault("glasovi_moji", {})[vid] = moj; _jsave(PAK_FILE, d)
+        return moj, ""
+
+    async def glas_mp3(trg, vid, owner, ime, besedilo):
+        """→ (mp3 bytes | None, uporaben voice_id, napaka). Predpomnjeno po glas+stavek; knjižnični glas se po potrebi doda v »My voices«."""
         import httpx, hashlib
+        vid = re.sub(r"[^A-Za-z0-9]", "", str(vid or ""))
         kljuc = hashlib.sha1(f"{vid}|{MA_EL_MODEL}|{besedilo}".encode()).hexdigest()[:16]
         f = MAPA / "glasovi" / f"{trg}_{kljuc}.mp3"
-        if f.exists():   # isti glas + stavek → brez ponovne porabe kreditov
-            return {"ok": True, "audio": "data:audio/mpeg;base64," + base64.b64encode(f.read_bytes()).decode(), "voice_id": vid, "predpomnjeno": True}
+        moji = (nalozi().get("glasovi_moji") or {})
+        if f.exists():
+            return f.read_bytes(), moji.get(vid, vid), ""
         async with httpx.AsyncClient(timeout=90) as hc:
-            r = await el_tts(hc, vid, besedilo)
-            moj = vid
-            if r.status_code != 200 and data.get("owner"):   # knjižnični glas: dodaj med svoje glasove in poskusi znova
-                owner = re.sub(r"[^A-Za-z0-9]", "", str(data["owner"]))
-                a = await hc.post(f"{EL_API}/voices/add/{owner}/{vid}", headers={"xi-api-key": el_key()},
-                                  json={"new_name": f"MA {trg.upper()} {str(data.get('ime') or vid)[:30]}"})
-                if a.status_code == 200 and a.json().get("voice_id"):
-                    moj = a.json()["voice_id"]
-                    r = await el_tts(hc, moj, besedilo)
-                else:
-                    return {"ok": False, "error": f"Glasu ni bilo mogoče dodati: {a.text[:200]}"}
+            moj = moji.get(vid, vid)
+            r = await el_tts(hc, moj, besedilo)
+            if r.status_code != 200 and owner and moj == vid:   # knjižnični glas: dodaj med svoje glasove in poskusi znova
+                moj, nap = await glas_dodaj(hc, trg, vid, owner, ime)
+                if not moj:
+                    return None, vid, nap
+                r = await el_tts(hc, moj, besedilo)
         if r.status_code != 200:
             nap = G.get("_eleven_napaka")
-            return {"ok": False, "error": nap(r) if nap else f"ElevenLabs HTTP {r.status_code}: {r.text[:200]}"}
+            return None, moj, (nap(r) if nap else f"ElevenLabs HTTP {r.status_code}: {r.text[:200]}")
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_bytes(r.content)
         try:
@@ -1208,7 +1216,101 @@ def vklopi(G: dict):
                          len(besedilo) / 1000 * float(G.get("ELEVEN_USD_PER_1K") or 0.18), "krediti")
         except Exception as e:
             print(f"[meta-ads] ai_log: {e}")
-        return {"ok": True, "audio": "data:audio/mpeg;base64," + base64.b64encode(r.content).decode(), "voice_id": moj}
+        return r.content, moj, ""
+
+    @app.post("/meta-ads/api/glasovi/test")
+    async def ma_glasovi_test(request: Request, data: dict):
+        """{trg, voice_id, owner?, ime?, besedilo?} → mp3 (base64) z našim stavkom."""
+        if not prijava(request):
+            return ni()
+        trg = str(data.get("trg") or "")
+        if trg not in MA_TRGI or not data.get("voice_id"):
+            return {"ok": False, "error": "Manjka trg ali glas."}
+        besedilo = str(data.get("besedilo") or MA_GLAS_STAVEK[trg]).strip()[:400]
+        mp3, moj, nap = await glas_mp3(trg, data["voice_id"], data.get("owner"), data.get("ime"), besedilo)
+        if not mp3:
+            return {"ok": False, "error": nap}
+        return {"ok": True, "audio": "data:audio/mpeg;base64," + base64.b64encode(mp3).decode(), "voice_id": moj}
+
+    # 🤖 Ocena glasov (2026-10-24): izgovorjava = glas prebere stavek → Scribe prepiše nazaj → ujemanje besed z izvirnikom;
+    #    + domač govorec (professional z jezikom trga) + primeren namen/starost → ocena 0–100 in razlog. Izbere še vedno uporabnik.
+    MA_NAMEN_OGLAS = ("advertisement", "social_media", "conversational", "characters_animation", "narrative_story", "informative_educational")
+
+    def _norm_besede(t):
+        import unicodedata
+        t = unicodedata.normalize("NFC", str(t or "").lower())
+        return re.findall(r"\w+", t)
+
+    async def glas_stt(mp3, trg):
+        import httpx
+        async with httpx.AsyncClient(timeout=90) as hc:
+            for model in ("scribe_v2", "scribe_v1"):
+                r = await hc.post(f"{EL_API}/speech-to-text", headers={"xi-api-key": el_key()},
+                                  data={"model_id": model, "language_code": MA_EL_JEZIK[trg]}, files={"file": ("glas.mp3", mp3, "audio/mpeg")})
+                if r.status_code == 200:
+                    try:
+                        sek = len(mp3) / 16000
+                        G["_ai_log"]("elevenlabs", model, "meta_ads_glas_stt", round(sek), 0, sek / 3600 * 0.40, "sekunde")
+                    except Exception as e:
+                        print(f"[meta-ads] ai_log: {e}")
+                    return r.json().get("text") or "", ""
+                if r.status_code not in (400, 404, 422):
+                    break
+        return None, f"Scribe HTTP {r.status_code}: {r.text[:150]}"
+
+    @app.post("/meta-ads/api/glasovi/oceni")
+    async def ma_glasovi_oceni(request: Request, data: dict):
+        """{trg, besedilo?, glasovi: [{voice_id, owner, ime, domaci, namen, starost}]} (do 6) → ocene, razvrščeno."""
+        if not prijava(request):
+            return ni()
+        trg = str(data.get("trg") or "")
+        if trg not in MA_TRGI:
+            return {"ok": False, "error": "Neznan trg."}
+        besedilo = str(data.get("besedilo") or MA_GLAS_STAVEK[trg]).strip()[:400]
+        import difflib
+        izv = _norm_besede(besedilo)
+        sem = asyncio.Semaphore(3)
+
+        async def ena(v):
+            async with sem:
+                mp3, moj, nap = await glas_mp3(trg, v.get("voice_id"), v.get("owner"), v.get("ime"), besedilo)
+                if not mp3:
+                    return {"voice_id": v.get("voice_id"), "ok": False, "error": nap}
+                prepis, nap = await glas_stt(mp3, trg)
+                if prepis is None:
+                    return {"voice_id": v.get("voice_id"), "moj": moj, "ok": False, "error": nap}
+                izg = round(difflib.SequenceMatcher(None, izv, _norm_besede(prepis)).ratio() * 100)
+                dom = bool(v.get("domaci"))
+                namen = (v.get("namen") or "") in MA_NAMEN_OGLAS
+                star = (v.get("starost") or "") in ("young", "middle_aged")
+                ocena = round(izg * 0.65 + (20 if dom else 0) + (10 if namen else 0) + (5 if star else 0))
+                razlog = [f"izgovorjava {izg} %", "domač govorec" if dom else "ni domač (angleški glas)"]
+                if namen:
+                    razlog.append(f"namen {v.get('namen')}")
+                if izg < 85:
+                    razlog.append("⚠ napake v prepisu = slaba izgovorjava")
+                return {"voice_id": v.get("voice_id"), "moj": moj, "ok": True, "ocena": min(100, ocena), "izg": izg,
+                        "prepis": prepis[:300], "razlog": " · ".join(razlog)}
+
+        rez = await asyncio.gather(*[ena(v) for v in (data.get("glasovi") or [])[:6] if isinstance(v, dict)])
+        rez = sorted(rez, key=lambda x: -(x.get("ocena") or -1))
+        obdrzi = {x["voice_id"] for x in [y for y in rez if y.get("ok") and y["ocena"] >= 70][:2]}   # ⭐ najboljša 2
+        izbrani = {x.get("lib_id") for x in (nalozi().get("glasovi") or {}).values()}
+        brisi = [x for x in rez if x.get("moj") and x["moj"] != x["voice_id"] and x["voice_id"] not in obdrzi | izbrani]
+        if brisi:
+            import httpx
+            async with httpx.AsyncClient(timeout=30) as hc:
+                for x in brisi:
+                    r = await hc.delete(f"{EL_API}/voices/{x['moj']}", headers={"xi-api-key": el_key()})
+                    if r.status_code == 200:
+                        x["moj"] = None
+            async with lock:
+                d = nalozi()
+                for x in brisi:
+                    if x["moj"] is None:
+                        (d.get("glasovi_moji") or {}).pop(x["voice_id"], None)
+                _jsave(PAK_FILE, d)
+        return {"ok": True, "trg": trg, "ocene": rez}
 
     @app.post("/meta-ads/api/glasovi/izberi")
     async def ma_glasovi_izberi(request: Request, data: dict):
@@ -1227,7 +1329,23 @@ def vklopi(G: dict):
                 vid = re.sub(r"[^A-Za-z0-9]", "", str(data.get("voice_id") or ""))
                 if not vid:
                     return {"ok": False, "error": "Manjka glas."}
-                g[trg] = {"voice_id": vid, "ime": str(data.get("ime") or "")[:60], "opis": str(data.get("opis") or "")[:120], "at": _lj_iso()}
+                moj = (d.get("glasovi_moji") or {}).get(vid)
+        if not data.get("odstrani") and not moj:
+            if data.get("owner"):
+                import httpx
+                async with httpx.AsyncClient(timeout=30) as hc:
+                    moj, nap = await glas_dodaj(hc, trg, vid, data["owner"], data.get("ime"))
+                if not moj:
+                    return {"ok": False, "error": nap}
+            else:
+                moj = vid   # že naš glas (npr. privzeti Video Ads)
+        async with lock:
+            d = nalozi()
+            g = d.setdefault("glasovi", {})
+            if data.get("odstrani"):
+                g.pop(trg, None)
+            else:
+                g[trg] = {"voice_id": moj, "lib_id": vid, "ime": str(data.get("ime") or "")[:60], "opis": str(data.get("opis") or "")[:120], "at": _lj_iso()}
             _jsave(PAK_FILE, d)
         return {"ok": True, "izbrani": g}
 
