@@ -442,7 +442,8 @@ function risi3(p) {
     (n.strategija === 'costcap' ? '<div style="width:130px"><label class="l" style="margin-top:0" title="Velja za vse trge (posamezen trg lahko popraviš spodaj)">Cost cap € · vsi trgi</label><input class="f" data-e="n_cc" inputmode="decimal" value="' + esc(n.cc || ST.cc || 5.5) + '"></div>' : '') +
     '<div style="width:190px"><label class="l" style="margin-top:0">Status ob uvozu</label><select class="f" onchange="LS.set(\'ma_status\', this.value)"><option value="ACTIVE"' + (st === 'ACTIVE' ? ' selected' : '') + '>✅ po Publish online</option><option value="PAUSED"' + (st === 'PAUSED' ? ' selected' : '') + '>⏸ Paused</option></select></div>' +
     '<div style="width:270px"><label class="l" style="margin-top:0">Način izvoza</label><select class="f" onchange="LS.set(\'ma_nacin\', this.value);risi()"><option value="flex"' + (nacin() === 'flex' ? ' selected' : '') + '>🧩 Flexible · 1 oglas na trg (kreative dodaš ročno)</option><option value="loceni"' + (nacin() === 'loceni' ? ' selected' : '') + '>📑 Ločeni oglasi · vsaka kreativa svoj oglas</option></select></div>' +
-    '<span class="grow"></span><button class="btn grn lg" onclick="shraniVMapo()">📁 Shrani v mapo</button><button class="btn" onclick="izvozi()">⬇ ZIP</button></div>' +
+    '<span class="grow"></span><button class="btn grn lg" onclick="vAsano()" title="ZIP (CSV + slike + videi) se naloži v Asana task SKU-ja — oglaševalec ga prenese od tam">📤 V Asano</button><button class="btn" onclick="shraniVMapo()">📁 Shrani v mapo</button><button class="btn" onclick="izvozi()">⬇ ZIP</button></div>' +
+    (PAK.asana_zip ? '<div class="sub" style="margin-top:6px">📤 V Asani: <b>' + esc(PAK.asana_zip.ime) + '</b> (' + PAK.asana_zip.mb + ' MB) · ' + esc((PAK.asana_zip.at || '').slice(0, 16).replace('T', ' ')) + '</div>' : '') +
     '<div class="sub" style="margin-top:8px" id="mapaInfo">' + (MAPA ? '📁 ' + esc(MAPA.name) + '\\Meta Ads · <a href="#" onclick="mapaIzberi().then(risi);return false">zamenjaj</a>' : '📁 Mapo izbereš ob prvem shranjevanju (npr. Documents) — vse gre v podmapo <b>Meta Ads</b>.') + '</div></div>';
   h += '<div class="ttabs">' + tr.map(t => {
     const x = p.trgi[t], sl = Object.values(x.slike || {}), ok = sl.filter(s => s.datoteka).length, er = sl.filter(s => s.napaka).length + (x.prevod_napaka ? 1 : 0);
@@ -584,7 +585,8 @@ function risiVec() {
   el.innerHTML = '<b style="font-size:12.5px">' + n + ' izbranih</b>' + (vd ? ' <span class="sub">(' + vd + ' v pripravi)</span>' : '') + '<span class="grow"></span>' +
     '<button class="btn sm" onclick="vecKorak(\'osnove\')" title="Flare nariše 5 kreativ za vsak izbrani SKU">2 · Kreative</button>' +
     '<button class="btn sm" onclick="vecKorak(\'lokaliziraj\')" title="Prevod napisov in besedil za vse trge">3 · Lokaliziraj</button>' +
-    '<button class="btn sm grn" onclick="shraniVMapo([...IZBRANI])" title="En CSV z vsemi izbranimi kampanjami, slike in videi v mapi vsake kampanje (SKU)">📁 Shrani v mapo</button>' +
+    '<button class="btn sm grn" onclick="vAsano([...IZBRANI])" title="Vsak SKU svoj ZIP v svoj Asana task">📤 V Asano</button>' +
+    '<button class="btn sm" onclick="shraniVMapo([...IZBRANI])" title="En CSV z vsemi izbranimi kampanjami, slike in videi v mapi vsake kampanje (SKU)">📁 Shrani v mapo</button>' +
     '<button class="btn sm" onclick="izvozi([...IZBRANI])">⬇ ZIP</button>' +
     '<button class="btn sm ghost" onclick="IZBRANI.clear();zgodovina()">✕</button>';
 }
@@ -664,6 +666,33 @@ async function shraniVMapo(ids) {
   await stanje(); if (PAK) await odpri(PAK.id);
   if (PAK && (!ids || ids.includes(PAK.id)) && VRSTA().some(x => x.status === 'v_delu' && x.pid === PAK.id)) {   // 🧵 trenutni iz vrste shranjen → naslednji
     risiVrsto(); document.getElementById('vrsta').scrollIntoView({ behavior: 'smooth', block: 'start' });   // naslednji samo na gumb (uporabnik 2026-10-20)
+  }
+}
+// 📤 ZIP v Asana task SKU-ja (strežnik zgradi in naloži; vsak SKU v svoj task) — oglaševalci ga prenesejo iz taska
+async function vAsano(ids) {
+  ids = Array.isArray(ids) ? ids : null;
+  if (PAK && !ids) await shrani(false);
+  let asana = '';
+  if (!ids && !(PAK.asana || []).length) {
+    asana = prompt('Paket nima Asana taska. Prilepi povezavo do taska (Copy task link):', '');
+    if (!asana) return;
+  }
+  KOR_T0 = Date.now(); kor('pripravljam ZIP in nalagam v Asano …');
+  const t = setInterval(() => kor('pripravljam ZIP in nalagam v Asano …'), 1000);
+  let d;
+  try {
+    const r = await fetch('/meta-ads/api/v-asano', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids || [PAK.id], asana, status: LS.get('ma_status') === 'PAUSED' ? 'PAUSED' : 'ACTIVE', nacin: nacin() }) });
+    d = await r.json();
+  } catch (e) { clearInterval(t); msg('msg', 'Nalaganje ni uspelo: ' + esc(e.message || e), 'err'); return; }
+  clearInterval(t);
+  if (!d.rezultati) { msg('msg', esc(d.error || 'Napaka'), 'err'); return; }
+  const ok = d.rezultati.filter(x => x.ok), ne = d.rezultati.filter(x => !x.ok);
+  msg('msg', (ok.length ? '✓ V Asano naloženo ' + ok.length + ' ZIP: ' + ok.map(x => '<b>' + esc(x.ime) + '</b> (' + x.mb + ' MB)').join(', ') : '') +
+    (ne.length ? (ok.length ? '<br>' : '') + '⚠ ' + ne.map(x => esc((x.sku || '') + ': ' + x.error)).join(' · ') : ''), ne.length ? (ok.length ? 'warn' : 'err') : 'ok');
+  await stanje(); if (PAK) await odpri(PAK.id);
+  if (PAK && (!ids || ids.includes(PAK.id)) && VRSTA().some(x => x.status === 'v_delu' && x.pid === PAK.id)) {
+    risiVrsto(); document.getElementById('vrsta').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 async function izvozi(ids) {

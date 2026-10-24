@@ -1044,6 +1044,55 @@ def vklopi(G: dict):
         return StreamingResponse(z, media_type="application/zip",
                                  headers={"Content-Disposition": f'attachment; filename="meta_{ime}.zip"', "X-Opozorila": str(len(opz))})
 
+    # 📤 ZIP neposredno v Asana task SKU-ja (2026-10-24): oglaševalci si ZIP prenesejo iz taska, ne iz mape enega uporabnika
+    MA_ASANA_MAX = 95 * 1024 * 1024   # Asana sprejme do 100 MB na priponko
+
+    @app.post("/meta-ads/api/v-asano")
+    async def ma_v_asano(request: Request, data: dict):
+        """{ids, status, nacin, asana?} → vsak paket (SKU) svoj ZIP v SVOJ Asana task (povezava iz paketa ali podana)."""
+        if not prijava(request):
+            return ni()
+        import httpx, os
+        token = os.environ.get("ASANA_API_KEY", "")
+        if not token:
+            return {"ok": False, "error": "ASANA_API_KEY ni nastavljen."}
+        api = G.get("ASANA_API") or "https://app.asana.com/api/1.0"
+        status = "PAUSED" if data.get("status") == "PAUSED" else "ACTIVE"
+        rez = []
+        for pid in [str(x) for x in (data.get("ids") or []) if re.fullmatch(r"[0-9a-f]{18}", str(x))][:30]:
+            p = pak_get(pid)
+            if not p:
+                rez.append({"pid": pid, "ok": False, "error": "paket ne obstaja"}); continue
+            pov = str(data.get("asana") or "").strip() or next(iter(p.get("asana") or []), "")
+            m = re.search(r"/task/(\d+)", pov) or re.search(r"/(\d{10,})(?:/f)?/?(?:\?.*)?$", pov)
+            if not m:
+                rez.append({"pid": pid, "sku": p["sku"], "ok": False, "error": "ni povezave do Asana taska", "brez_taska": True}); continue
+            z, opz, n = await zgradi_zip([pid], status, data.get("nacin"))
+            if not z:
+                rez.append({"pid": pid, "sku": p["sku"], "ok": False, "error": "ni oglasov za izvoz"}); continue
+            vsebina = z.getvalue()
+            if len(vsebina) > MA_ASANA_MAX:
+                rez.append({"pid": pid, "sku": p["sku"], "ok": False, "error": f"ZIP {len(vsebina) / 1048576:.0f} MB > 95 MB (omejitev Asane) — uporabi ⬇ ZIP"}); continue
+            ime = f"META_{re.sub(r'[^A-Za-z0-9_-]+', '_', p['sku'])}_{_lj_iso()[:10]}.zip"
+            try:
+                async with httpx.AsyncClient(timeout=300) as hc:
+                    r = await hc.post(f"{api}/tasks/{m.group(1)}/attachments", headers={"Authorization": f"Bearer {token}"},
+                                      files={"file": (ime, vsebina, "application/zip")})
+            except Exception as e:
+                rez.append({"pid": pid, "sku": p["sku"], "ok": False, "error": f"Asana: {e}"}); continue
+            if r.status_code not in (200, 201):
+                rez.append({"pid": pid, "sku": p["sku"], "ok": False, "error": f"Asana HTTP {r.status_code}: {r.text[:120]}"}); continue
+            async with lock:
+                d = nalozi()
+                px = next((x for x in d["paketi"] if x["id"] == pid), None)
+                if px is not None:
+                    px["asana_zip"] = {"at": _lj_iso(), "ime": ime, "task": m.group(1), "mb": round(len(vsebina) / 1048576, 1)}
+                    if data.get("asana") and not px.get("asana"):
+                        px["asana"] = [pov]   # ročno podana povezava se zapomni
+                    _jsave(PAK_FILE, d)
+            rez.append({"pid": pid, "sku": p["sku"], "ok": True, "ime": ime, "mb": round(len(vsebina) / 1048576, 1), "opozorila": opz})
+        return {"ok": any(x.get("ok") for x in rez), "rezultati": rez}
+
     @app.post("/meta-ads/api/vec")
     async def ma_vec(request: Request, data: dict):
         """Množično za izbrane pakete: korak »osnove« (kreative) ali »lokaliziraj« — vsak paket v ozadju, kot ročni klik."""
