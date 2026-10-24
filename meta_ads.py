@@ -127,6 +127,16 @@ def vklopi(G: dict):
     lock = asyncio.Lock()
     flare_sem = asyncio.Semaphore(6)   # ⚡ 2026-10-21: Flare (OpenAI) in NB2.1 (Gemini) ločeno — prej skupaj 4 → lokalizacija 50 slik po 4
     nb_sem = asyncio.Semaphore(12)
+    el_sem = asyncio.Semaphore(3)   # 🎙 ElevenLabs: paket dovoli največ 5 hkratnih zahtev (429 concurrent_limit_exceeded, 2026-10-24)
+
+    async def el_post(hc, url, **kw):
+        """POST na ElevenLabs: največ 3 hkrati + ob 429 do 5 ponovitev z zamikom."""
+        for i in range(6):
+            async with el_sem:
+                r = await hc.post(url, **kw)
+            if r.status_code != 429 or i == 5:
+                return r
+            await asyncio.sleep(3 * (i + 1))
     try:
         GLAVE = json.load(open("static/" + MA_GLAVE_FILE, encoding="utf-8"))
     except Exception as e:
@@ -779,7 +789,7 @@ def vklopi(G: dict):
             raise RuntimeError("ni besedila za glas")
         glas = ((nalozi().get("glasovi") or {}).get(t) or {}).get("voice_id") or (G.get("ELEVENLABS_VOICES") or {}).get(t)
         async with httpx.AsyncClient(timeout=180) as hc:
-            r = await hc.post(f"{EL_API}/text-to-speech/{glas}/with-timestamps", headers={"xi-api-key": el_key()},
+            r = await el_post(hc, f"{EL_API}/text-to-speech/{glas}/with-timestamps", headers={"xi-api-key": el_key()},
                               json={"text": besedilo, "model_id": MA_EL_MODEL})
         if r.status_code != 200:
             nap = G.get("_eleven_napaka")
@@ -1145,6 +1155,11 @@ def vklopi(G: dict):
             if not el_key():
                 return {"ok": False, "error": "ELEVENLABS_API_KEY ni nastavljen."}
             samo = [(str(x[0]), int(x[1])) for x in (data.get("samo") or []) if x and x[0] in MA_TRGI and 0 <= int(x[1]) < len(p["videi"])]
+            if data.get("napake"):   # ↻ samo trgi/videi z napako ali brez videa (skripte ostanejo)
+                samo = [(t, j) for t in MA_TRGI if p["trgi"][t].get("vkljuci") for j, v in enumerate(p["videi"]) if v.get("vkljuci")
+                        and not ((p["trgi"][t].get("videi") or {}).get(str(j)) or {}).get("datoteka")]
+                if not samo:
+                    return {"ok": False, "error": "Ni napak — vsi videi so narejeni."}
             await pak_set(pid, lambda q: q.update(status="lokal_v_delu"))
             asyncio.create_task(obdelaj_video_lokal(pid, samo or None))
             return {"ok": True}
@@ -1481,7 +1496,7 @@ def vklopi(G: dict):
         return {"ok": True, "trg": trg, "glasovi": out[:12], "domacih": domacih}
 
     async def el_tts(hc, voice_id, besedilo):
-        return await hc.post(f"{EL_API}/text-to-speech/{voice_id}", params={"output_format": "mp3_44100_128"},
+        return await el_post(hc, f"{EL_API}/text-to-speech/{voice_id}", params={"output_format": "mp3_44100_128"},
                              headers={"xi-api-key": el_key()}, json={"text": besedilo, "model_id": MA_EL_MODEL})
 
     async def glas_dodaj(hc, trg, vid, owner, ime):
@@ -1553,7 +1568,7 @@ def vklopi(G: dict):
         import httpx
         async with httpx.AsyncClient(timeout=90) as hc:
             for model in ("scribe_v2", "scribe_v1"):
-                r = await hc.post(f"{EL_API}/speech-to-text", headers={"xi-api-key": el_key()},
+                r = await el_post(hc, f"{EL_API}/speech-to-text", headers={"xi-api-key": el_key()},
                                   data={"model_id": model, "language_code": MA_EL_JEZIK[trg]}, files={"file": ("glas.mp3", mp3, "audio/mpeg")})
                 if r.status_code == 200:
                     try:
