@@ -677,6 +677,7 @@ def vklopi(G: dict):
     # ── 🎬 VIDEO lokalizacija (2026-10-24): skripta (Sonnet vidi sličice videa) SL → prevodi → ElevenLabs glas trga (eleven_v3,
     #    with-timestamps) → podnapisi ASS (varna cona) → FFmpeg: glas + utišan original + podnapisi, < 10 MB → SKU_videoN_trg.mp4 + sličica
     MA_VIDEO_MB = 9.5
+    MA_VIDEO_MAX_S = 30   # ✂ daljši videi → prvih 30 s (79 s video = večina časa montaže; Meta priporoča 15–30 s), 2026-10-24
     MA_BESED_S = 2.0   # besed na sekundo govora (z rezervo; 2026-10-24: 2,3 → HR ×1,21 pospešeno — eleven_v3 govori počasneje)
     MA_TEMPO_OK = 1.12   # do tega pospeška glas zveni naravno; nad tem besedilo samodejno skrajšam in glas ustvarim znova (1×)
 
@@ -688,12 +689,29 @@ def vklopi(G: dict):
             pass
 
     # ⚡ 2026-10-24 (Render 2 CPU / 8 GB): Meta Ads montaža 2 hkrati, vsaka 1 nit in nice 10 → strežnik (/healthz) ima prednost pred FFmpeg
-    ff_sem = asyncio.Semaphore(max(1, int(os.environ.get("MA_FFMPEG_HKRATI") or 2)))   # env: 4 CPU → 3
+    def _cpu_meja():
+        """CPU omejitev containerja (cgroup v2 cpu.max / v1 cfs) — os.cpu_count na Renderju kaže CPU gostitelja."""
+        try:
+            k, per = open("/sys/fs/cgroup/cpu.max").read().split()[:2]
+            if k != "max":
+                return max(1, round(int(k) / int(per)))
+        except Exception:
+            pass
+        try:
+            k = int(open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read()); per = int(open("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read())
+            if k > 0:
+                return max(1, round(k / per))
+        except Exception:
+            pass
+        return 2
+    MA_CPU = _cpu_meja()
+    ff_sem = asyncio.Semaphore(max(1, int(os.environ.get("MA_FFMPEG_HKRATI") or max(2, MA_CPU - 1))))   # 2 CPU → 2, 4 CPU → 3 (1 jedro ostane strežniku); env prepiše
+    print(f"[meta-ads] CPU {MA_CPU} → video montaž hkrati: {ff_sem._value}")
 
     # 🔎 kaj trenutno teče (v pomnilniku): TECE[pid][(trg, j)] = {korak, od} — prikaz v koraku 2, da se vidi, kje se zatakne
     TECE = {}
-    delo_sem = asyncio.Semaphore(4)   # največ 4 videi (glas → montaža) hkrati v obdelavi
-    MA_VIDEO_TIMEOUT = 600   # en video za en trg (glas + krajšanje + montaža) največ 10 min, nato napaka namesto čakanja
+    delo_sem = asyncio.Semaphore(12)   # 2026-10-24: 4 → 12 — glas (el_sem 4) za naslednje videe nastaja, medtem ko montaža (ff_sem) zaseda CPU
+    MA_VIDEO_TIMEOUT = 900   # en video za en trg (glas + krajšanje + čakanje na montažo + montaža) največ 15 min, nato napaka
 
     def tece(pid, t, j, korak=None):
         import time
@@ -784,6 +802,13 @@ def vklopi(G: dict):
     # ⚡ 2026-10-24: največ 720p (krajša stranica) + superfast → ~2–3× hitreje; za Feed/Reels na telefonu dovolj (Meta video tako ali tako stisne)
     MA_ENC = ["-c:v", "libx264", "-preset", "veryfast", "-fpsmax", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-ar", "44100", "-movflags", "+faststart"]
 
+    def _konec(inf, dur):
+        """✂ Skrajšan video (> 30 s) → mehak zaključek: slika v črno in zvok utihne v zadnjih 0,8 s. → (video filter, audio filter)"""
+        if (inf.get("trajanje") or 0) <= MA_VIDEO_MAX_S + 0.5:
+            return "", ""
+        st = max(0.0, dur - 0.8)
+        return f",fade=t=out:st={st:.2f}:d=0.8", f",afade=t=out:st={st:.2f}:d=0.8"
+
     def _720(inf):
         """Krajša stranica največ 720 px (brez povečevanja), sode dimenzije za x264 → »Š:V« za scale."""
         w, h = inf.get("w") or 720, inf.get("h") or 720
@@ -809,7 +834,7 @@ def vklopi(G: dict):
         v = p["videi"][j]
         src = MAPA / pid / "videi" / v["datoteka"]
         inf = await video_info(src)
-        dur = inf["trajanje"] or float(v.get("trajanje") or 10)
+        dur = min(MA_VIDEO_MAX_S, inf["trajanje"] or float(v.get("trajanje") or 10))
         out_fn, th_fn = f"{p['sku']}_video{j + 1}_{t}.mp4", f"{p['sku']}_video{j + 1}_{t}.jpg"
         besedilo = ((v.get("skripte") or {}).get(t) or "").strip()
         if not besedilo:
@@ -868,8 +893,10 @@ def vklopi(G: dict):
             tece(pid, t, j, f"montaža ({inf['w']}×{inf['h']}, {dur:.0f} s)")
             ms = int(zamik * 1000)
             a = f"[1:a]atempo={tempo:.3f},adelay={ms}|{ms},apad[vo]"
-            a += ";[0:a]volume=0.22[bg];[bg][vo]amix=inputs=2:duration=first:normalize=0[a]" if inf["zvok"] else ";[vo]anull[a]"
-            filt = f"[0:v]scale={_720(inf)},ass=sub.ass[v];" + a
+            a += ";[0:a]volume=0.22[bg];[bg][vo]amix=inputs=2:duration=first:normalize=0[am]" if inf["zvok"] else ";[vo]anull[am]"
+            fv, fa = _konec(inf, dur)
+            a += f";[am]anull{fa}[a]"
+            filt = f"[0:v]scale={_720(inf)},ass=sub.ass{fv}[v];" + a
             await video_kodiraj(["-i", str(src), "-i", "vo.mp3"], filt, ["-map", "[v]", "-map", "[a]"], dur, "out.mp4", tmp)
             (MAPA / pid / "videi").mkdir(parents=True, exist_ok=True)
             shutil.copy(f"{tmp}/out.mp4", MAPA / pid / "videi" / out_fn)
@@ -884,13 +911,14 @@ def vklopi(G: dict):
         v = p["videi"][j]
         src = MAPA / pid / "videi" / v["datoteka"]
         inf = await video_info(src)
-        dur = inf["trajanje"] or 10
+        dur = min(MA_VIDEO_MAX_S, inf["trajanje"] or 10)
         fn, th = f"{p['sku']}_video{j + 1}_vsi.mp4", f"{p['sku']}_video{j + 1}_vsi.jpg"
-        if src.stat().st_size <= MA_VIDEO_MB * 1048576 and str(v.get("izvor") or ".mp4").lower().endswith(".mp4"):
+        if (inf["trajanje"] or 0) <= MA_VIDEO_MAX_S and src.stat().st_size <= MA_VIDEO_MB * 1048576 and str(v.get("izvor") or ".mp4").lower().endswith(".mp4"):
             shutil.copy(src, MAPA / pid / "videi" / fn)
         else:
             with tempfile.TemporaryDirectory() as tmp:
-                filt = f"[0:v]scale={_720(inf)}[v]" + (";[0:a]anull[a]" if inf["zvok"] else "")
+                fv, fa = _konec(inf, dur)
+                filt = f"[0:v]scale={_720(inf)}{fv}[v]" + (f";[0:a]anull{fa}[a]" if inf["zvok"] else "")
                 await video_kodiraj(["-i", str(src)], filt, ["-map", "[v]"] + (["-map", "[a]"] if inf["zvok"] else []), dur, "out.mp4", tmp)
                 shutil.copy(f"{tmp}/out.mp4", MAPA / pid / "videi" / fn)
         await video_slicica(MAPA / pid / "videi" / fn, f"{pid}/{th}", dur)
@@ -956,7 +984,7 @@ def vklopi(G: dict):
                     manjka = [t for t in trgi if not (v.get("skripte") or {}).get(t)]
                     if v.get("lokal", True) and manjka:   # ročno popravljene skripte ostanejo
                         src = MAPA / pid / "videi" / v["datoteka"]
-                        dur = (await video_info(src))["trajanje"] or 10
+                        dur = min(MA_VIDEO_MAX_S, (await video_info(src))["trajanje"] or 10)
                         okv = await video_slicice(src, dur)
                         sk = await asyncio.to_thread(skripte_ai, p.get("naziv") or p["sku"], p.get("opis_izdelka") or "", dur, okv,
                                                      ["sl"] + [t for t in trgi if t != "sl"])
@@ -981,7 +1009,7 @@ def vklopi(G: dict):
                             rez = await asyncio.wait_for(video_trg(pid, j, t), MA_VIDEO_TIMEOUT)
                 except asyncio.TimeoutError:
                     k_ = ((TECE.get(pid) or {}).get((t, j)) or {}).get("korak") or "?"
-                    rez = {"napaka": f"časovna omejitev 10 min (zataknilo se je pri: {k_})"}
+                    rez = {"napaka": f"časovna omejitev 15 min (zataknilo se je pri: {k_})"}
                 except Exception as e:
                     rez = {"napaka": str(e)[:240]}
                 finally:
