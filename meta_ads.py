@@ -121,7 +121,7 @@ def vklopi(G: dict):
     app, DATA_DIR = G["app"], G["DATA_DIR"]
     _jload, _jsave, _lj_iso = G["_jload"], G["_jsave"], G["_lj_iso"]
     from fastapi import Request
-    from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+    from fastapi.responses import FileResponse, JSONResponse, Response
 
     MA_ZAGON = _lj_iso()[:19]   # ⏸ paket »v delu«, ki se ni spremenil od zagona strežnika = opravilo izgubljeno (deploy / restart)
     PAK_FILE = DATA_DIR / "meta_ads_paketi.json"   # {paketi: [...] (zadnjih 30), evidenca: [...], brez_rs: [SKU]}
@@ -925,7 +925,23 @@ def vklopi(G: dict):
         await video_slicica(MAPA / pid / "videi" / fn, f"{pid}/{th}", dur)
         return {"datoteka": fn, "slicica": th, "univerzalni": True, "at": _lj_iso(), "mb": round((MAPA / pid / "videi" / fn).stat().st_size / 1048576, 1)}
 
+    AKTIVNI = set()   # ⏸ pid-i, ki jih ta proces (od zagona) dejansko obdeluje — »v delu« brez tega = opravilo izgubljeno
+
     async def obdelaj_skrci(pid):
+        AKTIVNI.add(pid)
+        try:
+            await _obdelaj_skrci(pid)
+        finally:
+            AKTIVNI.discard(pid)
+
+    async def obdelaj_video_lokal(pid, samo=None):
+        AKTIVNI.add(pid)
+        try:
+            await _obdelaj_video_lokal(pid, samo)
+        finally:
+            AKTIVNI.discard(pid)
+
+    async def _obdelaj_skrci(pid):
         """🗜 Že narejeni videi paketa → 720p (samo slika, zvok in podnapisi ostanejo; brez ElevenLabs) — stari paketi pred 720p (2026-10-24)."""
         import tempfile, shutil
         try:
@@ -967,7 +983,7 @@ def vklopi(G: dict):
         asyncio.create_task(obdelaj_skrci(pid))
         return {"ok": True}
 
-    async def obdelaj_video_lokal(pid, samo=None):
+    async def _obdelaj_video_lokal(pid, samo=None):
         """Celotna lokalizacija videov (prevodi oglasov + skripte + glas/podnapisi po trgih) ali samo = [(trg, j)] → ta video znova."""
         try:
             p = pak_get(pid)
@@ -1215,7 +1231,7 @@ def vklopi(G: dict):
         if p and p.get("status") in ("koncept_v_delu", "osnove_v_delu", "lokal_v_delu"):   # ⏸ brez napredka > 10 min → zastalo (deploy/ponovni zagon prekine opravilo v ozadju)
             try:
                 zadnje = str(p.get("spremenjeno") or p.get("at"))[:19]
-                p["zastalo"] = zadnje < MA_ZAGON or (datetime.fromisoformat(_lj_iso()[:19]) - datetime.fromisoformat(zadnje)).total_seconds() > 600   # pred zagonom strežnika = opravilo izgubljeno
+                p["zastalo"] = (pid not in AKTIVNI) if (p.get("status") == "lokal_v_delu" and tip_od(p) == "video") else zadnje < MA_ZAGON or (datetime.fromisoformat(_lj_iso()[:19]) - datetime.fromisoformat(zadnje)).total_seconds() > 600   # pred zagonom strežnika = opravilo izgubljeno
             except ValueError:
                 p["zastalo"] = False
         return {"ok": True, "paket": p} if p else {"ok": False, "error": "Paketa ni."}
@@ -1531,8 +1547,9 @@ def vklopi(G: dict):
         if not z:
             return JSONResponse({"ok": False, "error": "Ni nobenega oglasa za izvoz. " + " · ".join(opz[:5])}, status_code=400)
         ime = (pak_get(pids[0]) or {}).get("sku", "meta") if n == 1 else f"{n}_kampanj"
-        return StreamingResponse(z, media_type="application/zip",
-                                 headers={"Content-Disposition": f'attachment; filename="meta_{ime}.zip"', "X-Opozorila": str(len(opz))})
+        # ⚡ 2026-10-24: Response z bajti (+ Content-Length) namesto StreamingResponse(BytesIO) — ta je pošiljal ZIP »po vrsticah« (~1 MB/s)
+        return Response(z.getvalue(), media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="meta_{ime}.zip"', "X-Opozorila": str(len(opz))})
 
     # 📤 ZIP neposredno v Asana task SKU-ja (2026-10-24): oglaševalci si ZIP prenesejo iz taska, ne iz mape enega uporabnika
     MA_ASANA_MAX = 95 * 1024 * 1024   # Asana sprejme do 100 MB na priponko

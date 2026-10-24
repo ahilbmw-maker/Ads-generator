@@ -70,7 +70,7 @@ def vklopi(G: dict):
     app, DATA_DIR = G["app"], G["DATA_DIR"]
     _jload, _jsave, _lj_iso = G["_jload"], G["_jsave"], G["_lj_iso"]
     from fastapi import Request, UploadFile, File, Form
-    from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+    from fastapi.responses import FileResponse, JSONResponse, Response
 
     NAST_FILE = DATA_DIR / "gads_dg.json"          # {trgi: {trg: {racun, kampanje: {ime: {...}}, izbrana}}}
     PAK_FILE = DATA_DIR / "gads_dg_paketi.json"    # {paketi: [...]} (zadnjih 30)
@@ -777,7 +777,7 @@ def vklopi(G: dict):
                 _jsave(NAST_FILE, d)
         await pak_set(pid, lambda q: q.update(izvozeno=_lj_iso()))
         ime = f"suban_demandgen_{p['trg'].upper()}_{p['at'][:10]}.zip"
-        zb.seek(0)
-        return StreamingResponse(zb, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{ime}"'})
+        # ⚡ 2026-10-24: Response z bajti namesto StreamingResponse(BytesIO) — ta je pošiljal ZIP »po vrsticah« (počasen prenos)
+        return Response(zb.getvalue(), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{ime}"'})
 
     print("[gads-dg] modul vklopljen")
