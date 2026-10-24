@@ -245,7 +245,7 @@ let OBRAT = {};
 let TIP = 'slike';
 function risiTip() {
   const el = document.getElementById('tipIzbor'); if (!el) return;
-  el.innerHTML = [['slike', '🖼 Slike', ''], ['video', '🎬 Video', 'Video lokalizacija (glas + podnapisi po trgih) — v izdelavi']].map(([k, l, dis]) =>
+  el.innerHTML = [['slike', '🖼 Slike', ''], ['video', '🎬 Video', '']].map(([k, l, dis]) =>
     '<button type="button" ' + (dis ? 'disabled title="' + dis + '" ' : '') + 'onclick="TIP=\'' + k + '\';risiTip();skuPreveri()" style="padding:5px 12px;border:none;font:inherit;font-size:12.5px;font-weight:700;cursor:' + (dis ? 'not-allowed' : 'pointer') + ';opacity:' + (dis ? '.45' : '1') + ';background:' + (TIP === k ? 'var(--acc)' : 'transparent') + ';color:' + (TIP === k ? '#fff' : 'var(--txt2)') + '">' + l + (dis ? ' <span style="font-size:10.5px;font-weight:600">kmalu</span>' : '') + '</button>').join('');
 }
 const narejeniTip = () => new Set((TIP === 'video' ? ST.narejeni_video : ST.narejeni) || []);
@@ -379,6 +379,11 @@ function zagonPoll() {
   }, 3000);
 }
 function koraki() {
+  if (PAK.tip === 'video') {   // 🎬 1 · videi in besedila → 2 · glas, podnapisi in izvoz
+    const g3 = TRGI.some(t => PAK.trgi && PAK.trgi[t] && PAK.trgi[t].videi), odk = (PAK.videi || []).length > 0 || PAK.status === 'lokal_v_delu';
+    return '<div class="koraki">' + [[1, '1 · Videi in besedila', !!PAK.oglasi_sl, true], [3, '2 · Glas, podnapisi in izvoz', g3, odk]].map(([n, t, g, o]) =>
+      '<span class="korak' + (KORAK === n ? ' on' : '') + (g ? ' gotov' : '') + (o ? '' : ' zaklenjen') + '" ' + (o ? 'onclick="KORAK=' + n + ';risi()"' : '') + '>' + (g ? '✓ ' : '') + t + '</span>').join('') + '</div>';
+  }
   const s = PAK.status, ima2 = (PAK.kreative || []).some(k => k.osnova), ima3 = TRGI.some(t => PAK.trgi && PAK.trgi[t] && PAK.trgi[t].slike);
   const k = [[1, '1 · Koncept', !!PAK.kreative, true], [2, '2 · Kreative (EN)', ima2, !!PAK.kreative], [3, '3 · Trgi in izvoz', ima3, ima2 || s === 'lokal_v_delu']];
   return '<div class="koraki">' + k.map(([n, t, g, odkl]) => '<span class="korak' + (KORAK === n ? ' on' : '') + (g ? ' gotov' : '') + (odkl ? '' : ' zaklenjen') + '" ' + (odkl ? 'onclick="KORAK=' + n + ';risi()"' : '') + '>' + (g ? '✓ ' : '') + t + '</span>').join('') + '</div>';
@@ -390,14 +395,14 @@ function risi() {
   const napr = p.status === 'lokal_v_delu' && p.lok_skupaj ? Math.round((p.lok_gotovo || 0) / p.lok_skupaj * 100) : 0;
   let h = '<div class="pak-bar"><div><div class="pak-t">' + esc(p.sku) + (p.ime && p.ime !== p.sku ? ' · ' + esc(p.ime) : '') + '</div><div class="sub">' + esc(p.naziv || '') + ' · ' + esc(cas(p.at)) +
     (p.izvozeno ? ' · <span style="color:var(--ok);font-weight:700">✓ izvoženo ' + esc(cas(p.izvozeno)) + '</span>' : '') + '</div></div>' + koraki() + '<span class="grow"></span>' +
-    (vd ? '<span class="pill p-inf"><span class="spin" style="width:10px;height:10px"></span>' + ({ koncept_v_delu: 'pišem koncept …', osnove_v_delu: 'Flare riše kreative …', lokal_v_delu: 'prevajam napise in besedila … ' + (p.lok_gotovo || 0) + ' / ' + (p.lok_skupaj || '?') }[p.status]) + '</span>' +
+    (vd ? '<span class="pill p-inf"><span class="spin" style="width:10px;height:10px"></span>' + ({ koncept_v_delu: 'pišem koncept …', osnove_v_delu: 'Flare riše kreative …', lokal_v_delu: (p.tip === 'video' ? '🎙 glas in podnapisi … ' : 'prevajam napise in besedila … ') + (p.lok_gotovo || 0) + ' / ' + (p.lok_skupaj || '?') }[p.status]) + '</span>' +
       (napr ? '<span class="prog"><i style="width:' + napr + '%"></i></span>' : '') : '') +
     '<button class="btn sm ghost" onclick="zapri()" title="Zapri (ostane v zgodovini)">✕</button></div>';
   if (p.status === 'napaka') h += '<div class="msg err">' + esc(p.napaka || 'Napaka') + '</div>';
   else if (p.napaka) h += '<div class="msg warn">' + esc(p.napaka) + '</div>';
   if ((p.opozorila || []).length) h += '<div class="msg warn">⚠ ' + p.opozorila.map(esc).join(' · ') + '</div>';
   if (p.status === 'koncept_v_delu') h += '<div class="card prazno"><span class="spin"></span><br><br>Berem izdelek iz feedov, prenašam videe iz Asane in pišem koncept …</div>';
-  else if (p.kreative) h += KORAK === 1 ? risi1(p) : KORAK === 2 ? risi2(p) : risi3(p);
+  else if (p.kreative) h += p.tip === 'video' ? (KORAK === 3 ? risi3(p) : risi1v(p)) : KORAK === 1 ? risi1(p) : KORAK === 2 ? risi2(p) : risi3(p);
   el.innerHTML = h;
 }
 // ── 1 · koncept ──
@@ -425,6 +430,71 @@ function risi1(p) {
     '<span class="sub">Flare 2.5 nariše 5 kreativ z angleškimi napisi — isti prompt kot generator Kreative</span>' +
     '<button class="btn pri lg" ' + (V_DELU.includes(p.status) ? 'disabled' : '') + ' onclick="osnove()">2 · Ustvari kreative →</button></div>';
   return h;
+}
+// ── 🎬 video kampanja · 1 · videi in besedila ──
+function risi1v(p) {
+  const vid = p.videi || [], n = Math.max(1, vid.length), nT = TRGI.filter(t => p.trgi[t] && p.trgi[t].vkljuci).length;
+  const ogl = (p.oglasi_sl || []).concat(Array(Math.max(0, n - (p.oglasi_sl || []).length)).fill({ hl: '', pt: '' }));
+  const vk = vid.filter(v => v.vkljuci), lok = vk.filter(v => v.lokal !== false);
+  const znakov = Math.round(lok.reduce((a, v) => a + Math.max(3, (v.trajanje || 12) - 1.2) * 2.3 * 6.5, 0) * nT);
+  let h = '<div class="card"><div class="card-h"><b>▶ Videi</b><span class="sub">🎙 = glas v jeziku trga + podnapisi (naši videi brez vžganega besedila) · brez kljukice = univerzalni, isti v vseh trgih</span><span class="grow"></span>' +
+    '<label class="btn sm" style="cursor:pointer">＋ Dodaj videe<input type="file" accept=".mp4,.mov,.m4v,video/mp4,video/quicktime" multiple style="display:none" onchange="videoDodaj(this)"></label></div>' +
+    (vid.length ? '<div class="vid">' + vid.map((v, j) => '<figure><video src="' + dat(v.datoteka) + '#t=0.5" preload="metadata" controls muted></video>' +
+      '<label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-weight:700;cursor:pointer"><input type="checkbox" data-e="vid" data-f="' + esc(v.datoteka) + '"' + (v.vkljuci ? ' checked' : '') + '> ' + esc(v.datoteka) + '</label>' +
+      '<label style="display:flex;gap:6px;align-items:center;margin-top:4px;cursor:pointer;font-size:12.5px"><input type="checkbox" data-e="lokal" data-j="' + j + '"' + (v.lokal !== false ? ' checked' : '') + '> 🎙 glas + podnapisi po trgih</label>' +
+      '<div class="sub">' + (v.trajanje ? Math.round(v.trajanje) + ' s · ' : '') + v.mb + ' MB · ' + esc(v.izvor || '') + (v.rocno ? ' · ročno dodan' : '') + '</div></figure>').join('') + '</div>'
+      : '<div class="sub">Ni videov — dodaj jih z »＋ Dodaj videe« (ali v novem SKU-ju vpiši povezavo do Asana taska).</div>') + '</div>';
+  h += '<div class="card"><div class="card-h"><b>✍ Besedila oglasov (SLO matica)</b><span class="sub">1 oglas = 1 video + headline + primary text · prevedejo se v koraku 2</span></div>' +
+    ogl.slice(0, n).map((o, i) => '<div class="ogl"><span class="pill p-inf">▶ Video ' + (i + 1) + '</span>' +
+      '<input class="f" data-e="hl" data-i="' + i + '" placeholder="Headline (max 5 besed)" value="' + esc(o.hl) + '">' +
+      '<textarea class="f" data-e="pt" data-i="' + i + '" rows="3" placeholder="Primary text">' + esc(o.pt) + '</textarea></div>').join('') + '</div>';
+  h += '<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><button class="btn" onclick="shrani(true)">💾 Shrani popravke</button><span class="grow"></span>' +
+    '<span class="sub">' + nT + ' trgov × ' + lok.length + ' videov z glasom' + (vk.length > lok.length ? ' + ' + (vk.length - lok.length) + ' univerzalnih' : '') + ' · ~' + Math.round(znakov / 100) / 10 + ' k znakov ElevenLabs</span>' +
+    '<button class="btn pri lg" ' + (V_DELU.includes(p.status) || !vk.length ? 'disabled' : '') + ' onclick="lokalizirajVideo()">2 · Glas in podnapisi za ' + nT + ' trgov →</button></div>';
+  return h;
+}
+async function videoDodaj(inp) {
+  const fs = [...inp.files]; if (!fs.length) return;
+  for (let i = 0; i < fs.length; i++) {
+    msg('msg', '<span class="spin"></span> nalagam video ' + (i + 1) + ' / ' + fs.length + ': ' + esc(fs[i].name) + ' (' + (fs[i].size / 1048576).toFixed(1) + ' MB) …', 'inf');
+    const fd = new FormData(); fd.append('id', PAK.id); fd.append('file', fs[i]);
+    let d; try { d = await (await fetch('/meta-ads/api/video-dodaj', { method: 'POST', credentials: 'include', body: fd })).json(); } catch (e) { d = { ok: false, error: String(e) }; }
+    if (!d.ok) { msg('msg', '✗ ' + esc(fs[i].name) + ': ' + esc(d.error || 'napaka'), 'err'); return; }
+  }
+  msg('msg', '✓ Dodanih ' + fs.length + ' videov.', 'ok'); await odpri(PAK.id);
+}
+async function lokalizirajVideo() {
+  await shrani(false);
+  const nT = TRGI.filter(t => PAK.trgi[t] && PAK.trgi[t].vkljuci).length, nV = (PAK.videi || []).filter(v => v.vkljuci).length;
+  if (!confirm('Za ' + nV + ' videov × ' + nT + ' trgov napišem skripto (SL → prevodi), ustvarim glas (izbrani glasovi trgov) in podnapise ter prevedem besedila oglasov? Traja nekaj minut. Ročno popravljene skripte ostanejo.')) return;
+  const d = await post('/meta-ads/api/lokaliziraj', { id: PAK.id });
+  if (!d.ok) { msg('msg', esc(d.error), 'err'); return; }
+  KORAK = 3; await odpri(PAK.id);
+}
+async function znovaVideo(t, j) {
+  await shrani(false);
+  const d = await post('/meta-ads/api/lokaliziraj', { id: PAK.id, samo: [[t, j]] });
+  if (!d.ok) { msg('msg', esc(d.error), 'err'); return; }
+  await odpri(PAK.id);
+}
+// 🎬 korak 2 za trg: lokaliziran video + skripta (popravi → ↻ glas znova) + besedilo oglasa
+function risi3v(p, x, ogl, izkl, stran) {
+  const vids = (p.videi || []).map((v, j) => [v, j]).filter(([v]) => v.vkljuci);
+  return '<div class="sub" style="margin-bottom:8px">' + (nacin() === 'flex' ? '🧩 V CSV gre 1. video · ostale v Ads Managerju dodaš ročno (Flexible → Add media, iskalnik <b>_' + TRG + '</b>)' : '📑 Vsak video svoj oglas') + ' · ✕ = ne izvozi</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">' + vids.map(([v, j], k) => {
+      const tv = (x.videi || {})[String(j)] || {}, iz = izkl.has('video' + j), o = ogl[j] || { hl: '', pt: '' }, besedilo = nacin() !== 'flex' || k === 0;
+      const md = tv.datoteka ? '<video src="' + dat(tv.datoteka) + '?v=' + encodeURIComponent(tv.at || '') + '#t=0.5" preload="metadata" controls></video>'
+        : tv.napaka ? '<span class="sub" style="padding:12px;color:var(--err)">' + esc(tv.napaka) + '</span>' : p.status === 'lokal_v_delu' ? '<span class="spin"></span>' : '<span class="sub">še ni</span>';
+      return '<div class="fbk' + (iz ? ' izkl' : '') + '"><div class="hd"><div class="av">m</div><div><div class="pn">' + esc(stran.ime) + '</div><div class="sp">Sponzorirano · video ' + (j + 1) + (v.lokal === false ? ' · univerzalni' : ' · 🎙 ' + esc(((GLAS && GLAS.izbrani) || {})[TRG] ? GLAS.izbrani[TRG].ime : 'glas trga')) + '</div></div></div>' +
+        (besedilo ? '<textarea class="pt" data-e="t_pt" data-o="' + j + '" rows="3">' + esc(o.pt) + '</textarea>' : '') +
+        '<div class="md" style="aspect-ratio:auto;min-height:160px">' + md + '<div class="ak"><button title="' + (iz ? 'Vključi' : 'Izključi iz izvoza') + '" onclick="izkljuci(\'video' + j + '\')">' + (iz ? '↺' : '✕') + '</button></div></div>' +
+        (besedilo ? '<div class="ft"><div style="flex:1;min-width:0"><div class="dom">' + esc((x.url || '').replace(/^https?:\/\/(www\.)?/, '').split('/')[0]) + '</div><input class="hl" data-e="t_hl" data-o="' + j + '" value="' + esc(o.hl) + '"></div><span class="cta">' + esc((ST.cta || {})[TRG] || 'Shop now') + '</span></div>' : '') +
+        (v.lokal === false ? '' : '<div style="padding:8px 10px;border-top:1px solid var(--bd)"><div class="sub" style="margin-bottom:4px">🎙 Besedilo glasu (' + TRG.toUpperCase() + ')' + (tv.tempo > 1.01 ? ' · ⚡ ×' + tv.tempo : '') + '</div>' +
+          (tv.opozorilo ? '<div style="color:var(--warn,#b26b00);font-size:12px;margin-bottom:4px">⚠ ' + esc(tv.opozorilo) + '</div>' : '') +
+          '<textarea class="f" data-e="skripta" data-j="' + j + '" rows="4" style="font-size:12.5px">' + esc((v.skripte || {})[TRG] || '') + '</textarea>' +
+          '<div style="display:flex;gap:6px;margin-top:6px;align-items:center"><button class="btn sm" ' + (p.status === 'lokal_v_delu' ? 'disabled' : '') + ' onclick="znovaVideo(\'' + TRG + '\',' + j + ')" title="Nov glas in podnapisi s tem besedilom (~' + Math.round(((v.skripte || {})[TRG] || '').length) + ' znakov)">↻ Glas znova</button>' +
+          (tv.mb ? '<span class="sub">' + tv.mb + ' MB</span>' : '') + '</div></div>') + '</div>';
+    }).join('') + '</div>';
 }
 // ── 2 · osnovne slike ──
 function risi2(p) {
@@ -477,6 +547,7 @@ function risi3(p) {
   if (x.prevod_napaka) h += '<div class="msg err">Prevod ni uspel: ' + esc(x.prevod_napaka) + ' — klikni »3 · Lokaliziraj« v koraku 2 znova.</div>';
   if (!x.vkljuci) h += '<div class="sub">Trg je izključen iz kampanje.</div>';
   else if (!ogl.length) h += '<div class="prazno">' + (p.status === 'lokal_v_delu' ? '<span class="spin"></span><br><br>prevajam …' : 'Ta trg še ni lokaliziran — v koraku 2 klikni »3 · Lokaliziraj«.') + '</div>';
+  else if (p.tip === 'video') h += risi3v(p, x, ogl, izkl, stran);
   else if (nacin() === 'flex') {
     const o = ogl[0] || { hl: '', pt: '' };
     const nS = p.kreative.filter((k, i) => !izkl.has('slika' + i)).length, nV = vids.filter((v, j) => v.vkljuci && !izkl.has('video' + j)).length;
@@ -518,7 +589,9 @@ document.addEventListener('input', e => {
   else if (k === 'razm') { PAK.kreative[i].razmerje = t.value; }
   else if (k === 'scena') { PAK.kreative[i].scena = t.value; }
   else if (k === 'hl' || k === 'pt') { PAK.oglasi_sl = PAK.oglasi_sl || []; while (PAK.oglasi_sl.length <= i) PAK.oglasi_sl.push({ hl: '', pt: '' }); PAK.oglasi_sl[i] = Object.assign({}, PAK.oglasi_sl[i], { [k]: t.value }); }
-  else if (k === 'vid') { const v = PAK.videi.find(x => x.datoteka === t.dataset.f); if (v) v.vkljuci = t.checked; }
+  else if (k === 'vid') { const v = PAK.videi.find(x => x.datoteka === t.dataset.f); if (v) v.vkljuci = t.checked; if (PAK.tip === 'video') risi(); }
+  else if (k === 'lokal') { PAK.videi[+t.dataset.j].lokal = t.checked; risi(); }
+  else if (k === 'skripta') { const v = PAK.videi[+t.dataset.j]; v.skripte = Object.assign({}, v.skripte, { [TRG]: t.value }); }
   else if (k === 't_hl' || k === 't_pt') { const x = PAK.trgi[TRG]; x.oglasi[o] = Object.assign({}, x.oglasi[o], { [k.slice(2)]: t.value }); }
   else if (k === 'stran') { PAK.trgi[TRG].stran = t.value; risi(); }
   else if (k === 'bid' || k === 'cc') PAK.trgi[TRG][k] = t.value;
@@ -532,7 +605,7 @@ document.addEventListener('input', e => {
 });
 const scenaSel = (k, i, st) => '<select class="f" data-e="scena" data-i="' + i + '" style="' + (st || '') + ';font-size:12px">' + Object.entries(ST.scene || {}).map(([s, n]) => '<option value="' + s + '"' + (k.scena === s ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + (k.scena ? '' : '<option selected value="">— (kot generator)</option>') + '</select>';
 const razmSel = (k, i, st) => '<select class="f" data-e="razm" data-i="' + i + '" style="' + (st || '') + ';font-size:12px">' + ['1:1', '4:5'].map(r => '<option value="' + r + '"' + ((k.razmerje || '1:1') === r ? ' selected' : '') + '>' + (r === '1:1' ? '1:1 · 1080×1080 (vse postavitve)' : '4:5 · 1080×1350 (mobilni Feed)') + '</option>').join('') + '</select>';
-document.addEventListener('change', e => { if (e.target.matches('[data-e="n_strategija"],[data-e="vid"],[data-e="stran"],[data-e="vkljuci"],[data-e="razm"],[data-e="scena"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
+document.addEventListener('change', e => { if (e.target.matches('[data-e="n_strategija"],[data-e="vid"],[data-e="lokal"],[data-e="stran"],[data-e="vkljuci"],[data-e="razm"],[data-e="scena"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
 async function shrani(pokazi) {
   clearTimeout(SHR); if (!PAK) return;
   const trgi = {}; TRGI.forEach(t => { const x = PAK.trgi && PAK.trgi[t]; if (x) trgi[t] = { vkljuci: x.vkljuci, stran: x.stran, oglasi: x.oglasi, izkl: x.izkl || [], ...(x.bid ? { bid: x.bid } : {}), ...(x.cc ? { cc: x.cc } : {}) }; });
@@ -819,7 +892,7 @@ async function elKred(osvezi) {
   el.title = 'ElevenLabs ' + d.paket + ': porabljeno ' + d.porabljeno.toLocaleString('sl') + ' od ' + d.limit.toLocaleString('sl') + ' znakov (' + d.odstotek + ' % ostane). '
     + (d.odstotek < 20 ? 'Kmalu zmanjka → elevenlabs.io → Subscription: dokupi znake ali višji paket. ' : '') + 'Klik = osveži.';
 }
-risiIzbor(); risiTip(); elKred();
+risiIzbor(); risiTip(); elKred(); api('/meta-ads/api/glasovi').then(d => { if (d && d.ok && !GLAS) GLAS = d; });
 mapaNalozi().then(stanje).then(() => { const id = LS.get('ma_pak'); if (id) odpri(id); });
 </script>
 </body>

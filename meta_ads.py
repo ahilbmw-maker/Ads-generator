@@ -9,6 +9,7 @@ import base64
 import csv
 import io
 import json
+import os
 import random
 import re
 import uuid
@@ -501,6 +502,20 @@ def vklopi(G: dict):
         j = claude_json(prompt)
         return [{"hl": str(o.get("hl") or "").strip(), "pt": str(o.get("pt") or "").strip()} for o in (j.get("oglasi") or []) if o][:n_oglasov]
 
+    def trgi_paketa(info, p):
+        trgi = {}
+        for t in MA_TRGI:
+            x = info.get(t)
+            trgi[t] = {"url": (x or {}).get("url", ""), "g_id": (x or {}).get("g_id", ""), "naziv": (x or {}).get("naziv", ""),
+                       "neuvoz": bool((x or {}).get("neuvoz")),
+                       "vkljuci": bool(x and x.get("url")) and t in (p.get("trgi_izbor") or MA_TRGI) and not (x or {}).get("neuvoz"),
+                       "stran": MA_STRAN_TRG[t]}
+            if not x:
+                trgi[t]["opomba"] = "ni v feedu trga"
+            elif x.get("neuvoz"):
+                trgi[t]["opomba"] = "🚫 ne uvažamo (Marža)"
+        return trgi
+
     async def obdelaj_koncept(pid):
         p = pak_get(pid)
         try:
@@ -522,6 +537,17 @@ def vklopi(G: dict):
             videi, nap = await asana_videi(pid, sku, p.get("asana") or []) if p.get("asana") else ([], [])
             n_ogl = MA_N_KREATIV + len(videi)
             naziv = sl.get("naziv") or it.get("title") or sku
+            if tip_od(p) == "video":   # 🎬 video kampanja: brez kreativ — samo videi + besedila oglasov (1 na video)
+                for v in videi:
+                    try:
+                        v["trajanje"] = (await video_info(MAPA / pid / "videi" / v["datoteka"]))["trajanje"]
+                    except Exception as e:
+                        print(f"[meta-ads] video info: {e}")
+                    v.update(vkljuci=True, lokal=True, opomba="")   # izvoz vsak video prekodira pod 10 MB
+                ogl = await asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", "", max(1, len(videi)))
+                await pak_set(pid, lambda q: q.update(status="koncept", ime=sku, naziv=sl.get("naziv") or "", kreative=[], oglasi_sl=ogl, videi=videi,
+                                                        opozorila=nap, opis_izdelka=(it.get("description") or "")[:2500], trgi=trgi_paketa(info, p)))
+                return
             ime, a_opc, b_opc = await kreative_ab(sl.get("url") or "", naziv, it.get("description") or "")
             if not (a_opc and b_opc):
                 raise RuntimeError("analiza izdelka ni vrnila A/B opcij")
@@ -542,17 +568,7 @@ def vklopi(G: dict):
             for i_, k_ in enumerate(kre):
                 k_["scena"] = MA_SCENE_RED[i_ % len(MA_SCENE_RED)]
                 k_["refs"] = reference_za(slike[:12], vloge, naj, k_["scena"], i_) if slike else []
-            trgi = {}
-            for t in MA_TRGI:
-                x = info.get(t)
-                trgi[t] = {"url": (x or {}).get("url", ""), "g_id": (x or {}).get("g_id", ""), "naziv": (x or {}).get("naziv", ""),
-                           "neuvoz": bool((x or {}).get("neuvoz")),
-                           "vkljuci": bool(x and x.get("url")) and t in (p.get("trgi_izbor") or MA_TRGI) and not (x or {}).get("neuvoz"),
-                           "stran": MA_STRAN_TRG[t]}
-                if not x:
-                    trgi[t]["opomba"] = "ni v feedu trga"
-                elif x.get("neuvoz"):
-                    trgi[t]["opomba"] = "🚫 ne uvažamo (Marža)"
+            trgi = trgi_paketa(info, p)
             auto = bool(p.get("auto_osnove")) and bool(slike)   # 🧵 vrsta: kreative se narišejo takoj po konceptu
             for k_ in kre if auto else []:
                 k_["v_delu"] = True
@@ -630,24 +646,248 @@ def vklopi(G: dict):
         (MAPA / pid / fn).write_bytes(raw)
         return fn
 
+    async def prevodi_oglasov(pid, trgi):
+        """SLO besedila oglasov → jezik vsakega trga (SL = kopija matice)."""
+        ogl_sl = pak_get(pid)["oglasi_sl"]
+
+        async def prevod(t):
+            if t == "sl":
+                await pak_set(pid, lambda q: q["trgi"]["sl"].update(oglasi=[dict(o) for o in q["oglasi_sl"]], prevod_napaka=""))
+                return
+            try:
+                ads = await asyncio.to_thread(prevedi, t, ogl_sl)
+                await pak_set(pid, lambda q: q["trgi"][t].update(oglasi=ads, prevod_napaka=""))
+            except Exception as e:
+                err = str(e)[:160]
+                await pak_set(pid, lambda q: q["trgi"][t].update(prevod_napaka=err))
+        await asyncio.gather(*(prevod(t) for t in trgi))
+
+    # ── 🎬 VIDEO lokalizacija (2026-10-24): skripta (Sonnet vidi sličice videa) SL → prevodi → ElevenLabs glas trga (eleven_v3,
+    #    with-timestamps) → podnapisi ASS (varna cona) → FFmpeg: glas + utišan original + podnapisi, < 10 MB → SKU_videoN_trg.mp4 + sličica
+    MA_VIDEO_MB = 9.5
+    MA_BESED_S = 2.3   # besed na sekundo govora (z rezervo)
+
+    def _ff_poti():
+        try:
+            import static_ffmpeg
+            static_ffmpeg.add_paths()
+        except Exception:
+            pass
+
+    async def ff(args, cwd=None, timeout=900):
+        """FFmpeg v ozadju — skupni semafor strežnika (1 naenkrat, CPU)."""
+        import subprocess
+        _ff_poti()
+        sem = G.get("FFMPEG_SEMAPHORE") or asyncio.Semaphore(1)
+        async with sem:
+            r = await asyncio.to_thread(subprocess.run, args, capture_output=True, timeout=timeout, cwd=cwd)
+        if r.returncode != 0:
+            raise RuntimeError("FFmpeg: " + r.stderr.decode("utf-8", "replace")[-400:])
+
+    async def video_info(path):
+        import subprocess
+        _ff_poti()
+        r = await asyncio.to_thread(subprocess.run, ["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height",
+                                                     "-of", "json", str(path)], capture_output=True, timeout=60)
+        j = json.loads(r.stdout or b"{}")
+        st = j.get("streams") or []
+        v = next((s for s in st if s.get("codec_type") == "video"), {})
+        return {"trajanje": round(float((j.get("format") or {}).get("duration") or 0), 2), "w": int(v.get("width") or 0),
+                "h": int(v.get("height") or 0), "zvok": any(s.get("codec_type") == "audio" for s in st)}
+
+    async def video_slicice(path, dur, n=4):
+        import tempfile
+        out = []
+        with tempfile.TemporaryDirectory() as tmp:
+            for k in range(n):
+                f = f"{tmp}/f{k}.jpg"
+                try:
+                    await ff(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{dur * (k + 0.5) / n:.2f}", "-i", str(path), "-frames:v", "1",
+                              "-vf", "scale=480:-2", "-q:v", "4", f])
+                    out.append(open(f, "rb").read())
+                except Exception as e:
+                    print(f"[meta-ads] sličica videa: {e}")
+        return out
+
+    def skripte_ai(naziv, opis, dur, okvirji, jeziki):
+        """Sonnet vidi sličice videa → SL voice-over (dolžina po trajanju) + zvest prevod v jezike trgov. → {trg: besedilo}"""
+        besed = max(8, int((dur - 1.2) * MA_BESED_S))
+        drugi = [t for t in jeziki if t != "sl"]
+        vsebina = [{"type": "text", "text": (
+            f"You write the voice-over for a {dur:.0f}-second Facebook/Instagram video ad. The frames below show what happens in the video, in order — "
+            "the voice must fit what is shown (do not describe things that are not visible, do not contradict the video).\n"
+            f"Product: {naziv}\nDescription (may be in another language — use the meaning): {opis[:1500]}\n"
+            f"1) Slovenian master (key \"sl\"): about {besed} words — must be spoken comfortably within {max(3, dur - 1.2):.0f} seconds. "
+            "Natural spoken style, like a friend recommending it; hook in the first sentence; ONE main benefit + supporting detail; end with a strong statement. "
+            "No prices, discounts, 'click/order/buy now', '#1/best', medical claims or emojis. Correct Slovenian with č š ž.\n"
+            + ("2) Translate the Slovenian master faithfully (same meaning, natural native spoken language, correct diacritics) into: "
+               + ", ".join(f"{t} = {MA_JEZIK[t]}" for t in drugi)
+               + ". Hungarian, Polish, Czech, Slovak, Greek, Romanian and Bulgarian: about 10% fewer words (longer words / faster speech).\n" if drugi else "")
+            + "Return ONLY JSON with exactly these keys: " + ", ".join(['"sl"'] + [f'"{t}"' for t in drugi]))}]
+        for i, b in enumerate(okvirji):
+            vsebina += [{"type": "text", "text": f"Frame {i + 1}:"},
+                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(b).decode()}}]
+        msg = G["client"].messages.create(model="claude-sonnet-4-6", max_tokens=8000, messages=[{"role": "user", "content": vsebina}])
+        j = beri_json("".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text"))
+        return {t: str(j.get(t) or "").strip() for t in ["sl"] + drugi if str(j.get(t) or "").strip()}
+
+    def _ass(besede, w, h):
+        """Podnapisi ASS: 2–4 besede naenkrat, spodaj nad UI Reels/Feed (slog po formatu iz Video Ads), stranski odmik 10 % (varna cona)."""
+        s = (G.get("get_subtitle_style_for_format") or (lambda a, b: {"fontsize": 64, "marginv": 230, "outline": 5, "max_words": 5, "playresx": 1080, "playresy": 1920}))(w, h)
+        def ts(x):
+            x = max(0.0, x)
+            return f"{int(x // 3600)}:{int(x % 3600 // 60):02d}:{x % 60:05.2f}"
+        vrst, i = [], 0
+        while i < len(besede):
+            grp = [besede[i]]; i += 1
+            while i < len(besede) and len(grp) < min(4, s.get("max_words") or 4) and len(" ".join(x[0] for x in grp + [besede[i]])) <= 24:
+                grp.append(besede[i]); i += 1
+            txt = " ".join(x[0] for x in grp).replace("\\", "").replace("{", "(").replace("}", ")")
+            vrst.append(f"Dialogue: 0,{ts(grp[0][1])},{ts(grp[-1][2] + 0.05)},Default,,0,0,0,,{txt}")
+        ml = int(s["playresx"] * 0.10)
+        return ("[Script Info]\nScriptType: v4.00+\nPlayResX: " + str(s["playresx"]) + "\nPlayResY: " + str(s["playresy"]) + "\nWrapStyle: 0\n\n"
+                "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
+                "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+                f"Style: Default,Arial,{int(s['fontsize'] * 1.3)},&H00FFFFFF,&H00FFD600,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{s['outline']},0,2,{ml},{ml},{s['marginv']},1\n\n"
+                "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" + "\n".join(vrst) + "\n")
+
+    MA_ENC = ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-movflags", "+faststart"]
+
+    async def video_kodiraj(args_vhod, filt, mapiraj, dur, out, cwd):
+        """Kodiraj; nad 9,5 MB → še enkrat z nižjo kakovostjo (Meta uvoz: max 10 MB)."""
+        for crf, mx in (("26", "2000k"), ("31", "1100k")):
+            await ff(["ffmpeg", "-y", "-loglevel", "error", "-threads", "2", *args_vhod, "-filter_complex", filt, *mapiraj, *MA_ENC,
+                      "-crf", crf, "-maxrate", mx, "-bufsize", str(int(mx[:-1]) * 2) + "k", "-t", f"{dur:.2f}", out], cwd=cwd)
+            if os.path.getsize(os.path.join(cwd, out)) <= MA_VIDEO_MB * 1048576:
+                return
+        raise RuntimeError("video je tudi po stiskanju nad 10 MB (skrajšaj ga)")
+
+    async def video_slicica(pot_videa, fn, dur):
+        await ff(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{min(1.0, dur / 2):.2f}", "-i", str(pot_videa), "-frames:v", "1", "-q:v", "3", str(MAPA / fn)])
+
+    async def video_trg(pid, j, t):
+        """En video za en trg → {datoteka, slicica, tempo, opozorilo}."""
+        import tempfile, httpx, shutil
+        p = pak_get(pid)
+        v = p["videi"][j]
+        src = MAPA / pid / "videi" / v["datoteka"]
+        inf = await video_info(src)
+        dur = inf["trajanje"] or float(v.get("trajanje") or 10)
+        out_fn, th_fn = f"{p['sku']}_video{j + 1}_{t}.mp4", f"{p['sku']}_video{j + 1}_{t}.jpg"
+        besedilo = ((v.get("skripte") or {}).get(t) or "").strip()
+        if not besedilo:
+            raise RuntimeError("ni besedila za glas")
+        glas = ((nalozi().get("glasovi") or {}).get(t) or {}).get("voice_id") or (G.get("ELEVENLABS_VOICES") or {}).get(t)
+        async with httpx.AsyncClient(timeout=180) as hc:
+            r = await hc.post(f"{EL_API}/text-to-speech/{glas}/with-timestamps", headers={"xi-api-key": el_key()},
+                              json={"text": besedilo, "model_id": MA_EL_MODEL})
+        if r.status_code != 200:
+            nap = G.get("_eleven_napaka")
+            raise RuntimeError(nap(r) if nap else f"ElevenLabs HTTP {r.status_code}: {r.text[:200]}")
+        jr = r.json()
+        try:
+            G["_ai_log"]("elevenlabs", MA_EL_MODEL, "meta_ads_video_glas", len(besedilo), 0,
+                         len(besedilo) / 1000 * float(G.get("ELEVEN_USD_PER_1K") or 0.18), "krediti")
+        except Exception as e:
+            print(f"[meta-ads] ai_log: {e}")
+        besede = G["_parse_words"](jr.get("alignment") or jr.get("normalized_alignment") or {})
+        zamik, opz = 0.3, ""
+        with tempfile.TemporaryDirectory() as tmp:
+            open(f"{tmp}/vo.mp3", "wb").write(base64.b64decode(jr["audio_base64"]))
+            vo_dur = (await video_info(f"{tmp}/vo.mp3"))["trajanje"] or (besede[-1][2] if besede else 0)
+            cilj = max(1.0, dur - zamik - 0.4)
+            tempo = max(1.0, vo_dur / cilj) if vo_dur else 1.0
+            if tempo > 1.25:
+                opz = f"govor je {vo_dur:.1f} s za {dur:.0f} s video — skrajšaj besedilo (odrezan konec)"
+            elif tempo > 1.12:
+                opz = f"govor pospešen ×{tempo:.2f} — za bolj naraven glas skrajšaj besedilo"
+            tempo = min(tempo, 1.25)
+            besede = [(b, zamik + s / tempo, zamik + e / tempo) for b, s, e in besede]
+            open(f"{tmp}/sub.ass", "w", encoding="utf-8").write(_ass(besede, inf["w"], inf["h"]))
+            ms = int(zamik * 1000)
+            a = f"[1:a]atempo={tempo:.3f},adelay={ms}|{ms},apad[vo]"
+            a += ";[0:a]volume=0.22[bg];[bg][vo]amix=inputs=2:duration=first:normalize=0[a]" if inf["zvok"] else ";[vo]anull[a]"
+            filt = "[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2,ass=sub.ass[v];" + a
+            await video_kodiraj(["-i", str(src), "-i", "vo.mp3"], filt, ["-map", "[v]", "-map", "[a]"], dur, "out.mp4", tmp)
+            (MAPA / pid / "videi").mkdir(parents=True, exist_ok=True)
+            shutil.copy(f"{tmp}/out.mp4", MAPA / pid / "videi" / out_fn)
+        await video_slicica(MAPA / pid / "videi" / out_fn, f"{pid}/{th_fn}", dur)
+        return {"datoteka": out_fn, "slicica": th_fn, "tempo": round(tempo, 2), "opozorilo": opz, "at": _lj_iso(),
+                "mb": round((MAPA / pid / "videi" / out_fn).stat().st_size / 1048576, 1)}
+
+    async def video_univerzalni(pid, j):
+        """Video brez lokalizacije: isti v vseh trgih; prekodiran samo, če je nad 9,5 MB ali ni .mp4."""
+        import tempfile, shutil
+        p = pak_get(pid)
+        v = p["videi"][j]
+        src = MAPA / pid / "videi" / v["datoteka"]
+        inf = await video_info(src)
+        dur = inf["trajanje"] or 10
+        fn, th = f"{p['sku']}_video{j + 1}_vsi.mp4", f"{p['sku']}_video{j + 1}_vsi.jpg"
+        if src.stat().st_size <= MA_VIDEO_MB * 1048576 and str(v.get("izvor") or ".mp4").lower().endswith(".mp4"):
+            shutil.copy(src, MAPA / pid / "videi" / fn)
+        else:
+            with tempfile.TemporaryDirectory() as tmp:
+                filt = "[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[v]" + (";[0:a]anull[a]" if inf["zvok"] else "")
+                await video_kodiraj(["-i", str(src)], filt, ["-map", "[v]"] + (["-map", "[a]"] if inf["zvok"] else []), dur, "out.mp4", tmp)
+                shutil.copy(f"{tmp}/out.mp4", MAPA / pid / "videi" / fn)
+        await video_slicica(MAPA / pid / "videi" / fn, f"{pid}/{th}", dur)
+        return {"datoteka": fn, "slicica": th, "univerzalni": True, "at": _lj_iso(), "mb": round((MAPA / pid / "videi" / fn).stat().st_size / 1048576, 1)}
+
+    async def obdelaj_video_lokal(pid, samo=None):
+        """Celotna lokalizacija videov (prevodi oglasov + skripte + glas/podnapisi po trgih) ali samo = [(trg, j)] → ta video znova."""
+        try:
+            p = pak_get(pid)
+            trgi = [t for t in MA_TRGI if p["trgi"][t].get("vkljuci")]
+            vid = [j for j, v in enumerate(p.get("videi") or []) if v.get("vkljuci")]
+            if not samo:
+                n = len(p.get("videi") or [])
+                if len(p.get("oglasi_sl") or []) < n:   # dodani videi → dodatna besedila oglasov
+                    dod = await asyncio.to_thread(oglasi_ai, p.get("naziv") or p["sku"], p.get("opis_izdelka") or "", "", n - len(p.get("oglasi_sl") or []))
+                    await pak_set(pid, lambda q: q.update(oglasi_sl=(q.get("oglasi_sl") or []) + dod))
+                await prevodi_oglasov(pid, trgi)
+                p = pak_get(pid)
+                for j in vid:
+                    v = p["videi"][j]
+                    manjka = [t for t in trgi if not (v.get("skripte") or {}).get(t)]
+                    if v.get("lokal", True) and manjka:   # ročno popravljene skripte ostanejo
+                        src = MAPA / pid / "videi" / v["datoteka"]
+                        dur = (await video_info(src))["trajanje"] or 10
+                        okv = await video_slicice(src, dur)
+                        sk = await asyncio.to_thread(skripte_ai, p.get("naziv") or p["sku"], p.get("opis_izdelka") or "", dur, okv,
+                                                     ["sl"] + [t for t in trgi if t != "sl"])
+                        await pak_set(pid, lambda q, j=j, sk=sk, dur=dur: q["videi"][j].update(
+                            trajanje=dur, skripte={**sk, **{k: s for k, s in (q["videi"][j].get("skripte") or {}).items() if s}}))
+                p = pak_get(pid)
+                samo = [(t, j) for t in trgi for j in vid]
+            await pak_set(pid, lambda q: q.update(lok_skupaj=len(samo), lok_gotovo=0, napaka=""))
+            univ = {}
+            for j in sorted({j for _, j in samo if not p["videi"][j].get("lokal", True)}):
+                try:
+                    univ[j] = await video_univerzalni(pid, j)
+                except Exception as e:
+                    univ[j] = {"napaka": str(e)[:200]}
+
+            async def ena(t, j):
+                try:
+                    rez = univ[j] if j in univ else await video_trg(pid, j, t)
+                except Exception as e:
+                    rez = {"napaka": str(e)[:240]}
+                await pak_set(pid, lambda q: (q["trgi"][t].setdefault("videi", {}).update({str(j): rez}),
+                                              q.update(lok_gotovo=int(q.get("lok_gotovo") or 0) + 1)))
+            await asyncio.gather(*(ena(t, j) for t, j in samo))
+            await pak_set(pid, lambda q: q.update(status="pripravljeno"))
+        except Exception as e:
+            print(f"[meta-ads] video lokal {pid}: {e}")
+            err = str(e)[:200]
+            await pak_set(pid, lambda q: q.update(status="koncept", napaka=f"Lokalizacija videov ni uspela: {err}"))
+
     async def obdelaj_lokal(pid, model, samo=None):
         """samo = [(trg, i)] → samo te slike znova (brez prevodov)."""
         p = pak_get(pid)
         trgi = [t for t in MA_TRGI if p["trgi"][t].get("vkljuci")]
         if not samo:
-            ogl_sl = p["oglasi_sl"]
-
-            async def prevod(t):
-                if t == "sl":
-                    await pak_set(pid, lambda q: q["trgi"]["sl"].update(oglasi=[dict(o) for o in q["oglasi_sl"]], prevod_napaka=""))
-                    return
-                try:
-                    ads = await asyncio.to_thread(prevedi, t, ogl_sl)
-                    await pak_set(pid, lambda q: q["trgi"][t].update(oglasi=ads, prevod_napaka=""))
-                except Exception as e:
-                    err = str(e)[:160]
-                    await pak_set(pid, lambda q: q["trgi"][t].update(prevod_napaka=err))
-            await asyncio.gather(*(prevod(t) for t in trgi))
+            await prevodi_oglasov(pid, trgi)
             p = pak_get(pid)
             samo = [(t, i) for t in trgi if not p["trgi"][t].get("prevod_napaka") for i in range(len(p["kreative"])) if p["kreative"][i].get("osnova")]
 
@@ -848,6 +1088,10 @@ def vklopi(G: dict):
                 for x in p.get("videi") or []:
                     if x["datoteka"] == v.get("datoteka"):
                         x["vkljuci"] = bool(v.get("vkljuci"))
+                        if "lokal" in v:
+                            x["lokal"] = v["lokal"] is not False
+                        if isinstance(v.get("skripte"), dict):
+                            x["skripte"] = {t: str(s or "")[:1500] for t, s in v["skripte"].items() if t in MA_TRGI}
             for t, tv in (data.get("trgi") or {}).items():
                 if t in (p.get("trgi") or {}):
                     for k_ in ("vkljuci", "stran"):
@@ -895,6 +1139,15 @@ def vklopi(G: dict):
             return ni()
         pid = str(data.get("id") or "")
         p = pak_get(pid)
+        if p and tip_od(p) == "video":   # 🎬 glas + podnapisi po trgih
+            if not any(v.get("vkljuci") for v in p.get("videi") or []):
+                return {"ok": False, "error": "Dodaj vsaj en video."}
+            if not el_key():
+                return {"ok": False, "error": "ELEVENLABS_API_KEY ni nastavljen."}
+            samo = [(str(x[0]), int(x[1])) for x in (data.get("samo") or []) if x and x[0] in MA_TRGI and 0 <= int(x[1]) < len(p["videi"])]
+            await pak_set(pid, lambda q: q.update(status="lokal_v_delu"))
+            asyncio.create_task(obdelaj_video_lokal(pid, samo or None))
+            return {"ok": True}
         if not p or not any(k.get("osnova") for k in p.get("kreative") or []):
             return {"ok": False, "error": "Najprej ustvari osnovne slike."}
         model = "flare" if data.get("model") == "flare" else "nb21"   # privzeto NB2.1 = isto kot »Lok« (prevod slik)
@@ -902,6 +1155,37 @@ def vklopi(G: dict):
         await pak_set(pid, lambda q: q.update(status="lokal_v_delu"))
         asyncio.create_task(obdelaj_lokal(pid, model, samo or None))
         return {"ok": True}
+
+    from fastapi import UploadFile, File, Form
+
+    @app.post("/meta-ads/api/video-dodaj")
+    async def ma_video_dodaj(request: Request, id: str = Form(...), file: UploadFile = File(...)):
+        """Ročno dodan video (.mp4/.mov/.m4v, do 300 MB) → videi paketa kot SKU_videoN.mp4."""
+        if not prijava(request):
+            return ni()
+        p = pak_get(id)
+        if not p:
+            return {"ok": False, "error": "Paketa ni."}
+        ime = os.path.basename(file.filename or "video.mp4")
+        if not re.search(r"\.(mp4|mov|m4v)$", ime, re.I):
+            return {"ok": False, "error": "Samo .mp4, .mov ali .m4v."}
+        vs = await file.read()
+        if len(vs) > 300 * 1048576:
+            return {"ok": False, "error": "Video je večji od 300 MB."}
+        mapa = MAPA / id / "videi"
+        mapa.mkdir(parents=True, exist_ok=True)
+        n = 1 + max([int(m.group(1)) for v in p.get("videi") or [] if (m := re.search(r"_video(\d+)\.mp4$", v.get("datoteka") or ""))], default=0)
+        fn = f"{p['sku']}_video{n}.mp4"
+        (mapa / fn).write_bytes(vs)
+        try:
+            dur = (await video_info(mapa / fn))["trajanje"]
+        except Exception:
+            dur = None
+        mb = round(len(vs) / 1048576, 1)
+        rec = {"datoteka": fn, "izvor": ime[:80], "mb": mb, "vkljuci": True, "lokal": True, "trajanje": dur, "rocno": True,
+               "opomba": "" if tip_od(p) == "video" or mb <= 10 else "nad 10 MB — Meta uvoz ga ne sprejme"}
+        await pak_set(id, lambda q: q.setdefault("videi", []).append(rec))
+        return {"ok": True, "video": rec}
 
     @app.get("/meta-ads/api/datoteka/{pid}/{fn}")
     async def ma_datoteka(request: Request, pid: str, fn: str):
@@ -949,12 +1233,15 @@ def vklopi(G: dict):
             sid = tt.get("stran") if tt.get("stran") in MA_STRANI else "101449685670882"
             izkl = set(tt.get("izkl") or [])
             prva = None
+            je_video = tip_od(p) == "video"
             if nacin == "flex":   # vse slike trga v mapo za ročno dodajanje, v CSV samo prva
                 rocno[t] = [s_ for s_ in (((tt.get("slike") or {}).get(str(i)) or {}).get("datoteka") for i in range(nk) if f"slika{i}" not in izkl) if s_]
                 for j_, v in vid:
                     if f"video{j_}" not in izkl:
-                        videi.add(v["datoteka"])
-            enote = [("slika", i, i) for i in range(nk)] + [("video", j, nk + j) for j, _ in vid]
+                        vt_ = ((tt.get("videi") or {}).get(str(j_)) or {}).get("datoteka") if je_video else v["datoteka"]
+                        if vt_:
+                            videi.add(vt_)
+            enote = [("video", j, j) for j, _ in vid] if je_video else [("slika", i, i) for i in range(nk)] + [("video", j, nk + j) for j, _ in vid]
             vfile = {j: v["datoteka"] for j, v in vid}
             for vrsta, i, oi in enote:
                 if f"{vrsta}{i}" in izkl:
@@ -968,6 +1255,11 @@ def vklopi(G: dict):
                         opz.append(f"{t.upper()} kreativa {i + 1}: ni slike — izpuščena"); continue
                     prva = prva or s
                     img, vfn, ct, an = s, "", "Link Page Post Ad", f"{p['sku']} {t.upper()} slika {i + 1} ({'eksperiment' if p['kreative'][i].get('scena') == 'eksperiment' else p['kreative'][i].get('razmerje') or '1:1'})"
+                elif je_video:   # 🎬 lokaliziran video trga (glas + podnapisi) + njegova sličica
+                    vt_ = (tt.get("videi") or {}).get(str(i)) or {}
+                    if not vt_.get("datoteka"):
+                        opz.append(f"{t.upper()} video {i + 1}: {vt_.get('napaka') or 'ni lokaliziran'} — izpuščen"); continue
+                    img, vfn, ct, an = vt_["slicica"], vt_["datoteka"], "Video Page Post Ad", f"{p['sku']} {t.upper()} video {i + 1}" + ("" if vt_.get("univerzalni") else " (glas)")
                 else:
                     if not prva:
                         opz.append(f"{t.upper()} video {i + 1}: ni sličice (nobene slike trga) — izpuščen"); continue
@@ -1034,7 +1326,10 @@ def vklopi(G: dict):
             zf.writestr("NAVODILA.txt", (
                 f"Meta Ads uvoz — {', '.join(d_[1]['sku'] for d_ in deli)} — {_lj_iso()[:16]}\r\n\r\n"
                 f"{len(deli)} kampanj, {len(vse)} oglasov, status: {status}, način: {'Flexible (ročno dopolni)' if nacin == 'flex' else 'ločeni oglasi'}.\r\n\r\n"
-                + koraki
+                + (("1. Ads Manager → Import/Export → Import ads → File: meta_uvoz.csv · Images: VSE iz mape slike (sličice videov) · "
+                    "Videos: iz mape videi tiste, ki so v CSV (…_video1_xx.mp4, en na trg; max 10) → Import\r\n"
+                    "2. Za vsak ad set (trg): oglas »… flexible« → Format: Flexible → Add media → videi trga (iskalnik »_hu«, »_pl« …) "
+                    "+ univerzalni »…_vsi.mp4« → Publish\r\n") if nacin == "flex" and any(tip_od(d_[1]) == "video" for d_ in deli) else koraki)
                 + ("\r\nVeč kampanj: slike in videi so v mapi vsake kampanje (SKU\\slike, SKU\\videi). V zavihku Images naloži slike iz VSEH map SKU\r\n"
                    "(Choose images večkrat), nato v Add media iskalnik »SKU_pl« (npr. PANMAX_pl) → slike ene kampanje.\r\n" if vec else "")
                 + "\r\n"
