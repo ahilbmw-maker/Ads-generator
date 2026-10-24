@@ -855,6 +855,48 @@ def vklopi(G: dict):
         await video_slicica(MAPA / pid / "videi" / fn, f"{pid}/{th}", dur)
         return {"datoteka": fn, "slicica": th, "univerzalni": True, "at": _lj_iso(), "mb": round((MAPA / pid / "videi" / fn).stat().st_size / 1048576, 1)}
 
+    async def obdelaj_skrci(pid):
+        """🗜 Že narejeni videi paketa → 720p (samo slika, zvok in podnapisi ostanejo; brez ElevenLabs) — stari paketi pred 720p (2026-10-24)."""
+        import tempfile, shutil
+        try:
+            p = pak_get(pid)
+            dat = sorted({vt["datoteka"] for t in MA_TRGI for vt in ((p["trgi"].get(t) or {}).get("videi") or {}).values() if vt.get("datoteka")})
+            await pak_set(pid, lambda q: q.update(lok_skupaj=len(dat), lok_gotovo=0, napaka=""))
+            for fn in dat:
+                f = MAPA / pid / "videi" / fn
+                try:
+                    inf = await video_info(f)
+                    if min(inf["w"], inf["h"]) > 720 or f.stat().st_size > 6 * 1048576:
+                        with tempfile.TemporaryDirectory() as tmp:
+                            await video_kodiraj(["-i", str(f)], f"[0:v]scale={_720(inf)}[v]", ["-map", "[v]"] + (["-map", "0:a", "-c:a", "copy"] if inf["zvok"] else []),
+                                                inf["trajanje"] or 60, "out.mp4", tmp)
+                            shutil.copy(f"{tmp}/out.mp4", f)
+                except Exception as e:
+                    print(f"[meta-ads] skrči {fn}: {e}")
+                mb = round(f.stat().st_size / 1048576, 1) if f.exists() else 0
+
+                def upd(q, fn=fn, mb=mb):
+                    for t in MA_TRGI:
+                        for vt in ((q["trgi"].get(t) or {}).get("videi") or {}).values():
+                            if vt.get("datoteka") == fn:
+                                vt["mb"], vt["at"] = mb, _lj_iso()
+                    q["lok_gotovo"] = int(q.get("lok_gotovo") or 0) + 1
+                await pak_set(pid, upd)
+        finally:
+            await pak_set(pid, lambda q: q.update(status="pripravljeno"))
+
+    @app.post("/meta-ads/api/videi-skrci")
+    async def ma_videi_skrci(request: Request, data: dict):
+        if not prijava(request):
+            return ni()
+        pid = str(data.get("id") or "")
+        p = pak_get(pid)
+        if not p or tip_od(p) != "video":
+            return {"ok": False, "error": "Ni video paketa."}
+        await pak_set(pid, lambda q: q.update(status="lokal_v_delu"))
+        asyncio.create_task(obdelaj_skrci(pid))
+        return {"ok": True}
+
     async def obdelaj_video_lokal(pid, samo=None):
         """Celotna lokalizacija videov (prevodi oglasov + skripte + glas/podnapisi po trgih) ali samo = [(trg, j)] → ta video znova."""
         try:
