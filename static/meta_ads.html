@@ -395,7 +395,7 @@ function risi() {
   const napr = p.status === 'lokal_v_delu' && p.lok_skupaj ? Math.round((p.lok_gotovo || 0) / p.lok_skupaj * 100) : 0;
   let h = '<div class="pak-bar"><div><div class="pak-t">' + esc(p.sku) + (p.ime && p.ime !== p.sku ? ' · ' + esc(p.ime) : '') + '</div><div class="sub">' + esc(p.naziv || '') + ' · ' + esc(cas(p.at)) +
     (p.izvozeno ? ' · <span style="color:var(--ok);font-weight:700">✓ izvoženo ' + esc(cas(p.izvozeno)) + '</span>' : '') + '</div></div>' + koraki() + '<span class="grow"></span>' +
-    (vd ? '<span class="pill p-inf"><span class="spin" style="width:10px;height:10px"></span>' + ({ koncept_v_delu: 'pišem koncept …', osnove_v_delu: 'Flare riše kreative …', lokal_v_delu: (p.tip === 'video' ? '🎙 glas in podnapisi … ' : 'prevajam napise in besedila … ') + (p.lok_gotovo || 0) + ' / ' + (p.lok_skupaj || '?') }[p.status]) + '</span>' +
+    (vd ? '<span class="pill p-inf"><span class="spin" style="width:10px;height:10px"></span>' + ({ koncept_v_delu: 'pišem koncept …', osnove_v_delu: 'Flare riše kreative …', lokal_v_delu: (p.tip === 'video' ? (p.stiskam ? '🗜 stiskam videe … ' : '🎙 glas in podnapisi … ') : 'prevajam napise in besedila … ') + (p.lok_gotovo || 0) + ' / ' + (p.lok_skupaj || '?') }[p.status]) + '</span>' +
       (napr ? '<span class="prog"><i style="width:' + napr + '%"></i></span>' : '') : '') +
     (p.zastalo ? '<span class="pill p-warn" title="Brez napredka več kot 10 min — strežnik se je verjetno ponovno zagnal (deploy) in prekinil delo v ozadju">⏸ zastalo</span>' +
       (p.tip === 'video' && p.status === 'lokal_v_delu' ? '<button class="btn sm pri" onclick="znovaNapake()" title="Naredi samo manjkajoče videe — narejeni ostanejo">▶ Nadaljuj</button>' : '') : '') +
@@ -474,11 +474,6 @@ async function lokalizirajVideo() {
   if (!d.ok) { msg('msg', esc(d.error), 'err'); return; }
   KORAK = 3; await odpri(PAK.id);
 }
-async function skrciVidee() {
-  const d = await post('/meta-ads/api/videi-skrci', { id: PAK.id });
-  if (!d.ok) { msg('msg', esc(d.error), 'err'); return; }
-  await odpri(PAK.id);
-}
 async function znovaNapake() {
   await shrani(false);
   const d = await post('/meta-ads/api/lokaliziraj', { id: PAK.id, napake: true });
@@ -496,8 +491,7 @@ function risi3v(p, x, ogl, izkl, stran) {
   const vids = (p.videi || []).map((v, j) => [v, j]).filter(([v]) => v.vkljuci);
   const nNap = TRGI.filter(t => p.trgi[t] && p.trgi[t].vkljuci && p.trgi[t].oglasi).reduce((a, t) => a + vids.filter(([v, j]) => !((p.trgi[t].videi || {})[String(j)] || {}).datoteka).length, 0);
   const vsiMb = TRGI.reduce((a, t) => a + Object.values((p.trgi[t] && p.trgi[t].videi) || {}).reduce((b, v) => b + (v.mb || 0), 0), 0);
-  const tezki = TRGI.some(t => Object.entries((p.trgi[t] && p.trgi[t].videi) || {}).some(([j, v]) => v.mb && (v.mb * 8400 / Math.max(1, ((p.videi || [])[+j] || {}).trajanje || 15)) > 1800));   // nad ~1,8 Mb/s = narejen s starimi nastavitvami
-  return ((vsiMb > 90 || tezki) && p.status !== 'lokal_v_delu' ? '<div class="msg warn" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' + (vsiMb > 90 ? '⚠ ' : '') + 'Videi skupaj ~' + Math.round(vsiMb) + ' MB' + (vsiMb > 90 ? ' — ZIP bo velik (Asana sprejme največ 95 MB)' : ' — lahko jih še stisneš') + '<span class="grow"></span><button class="btn sm pri" onclick="skrciVidee()" title="Obstoječe videe stisnem (720p, 30 fps, ~1,5 Mb/s) — glas in podnapisi ostanejo, brez porabe ElevenLabs">🗜 Stisni videe</button></div>' : '') +
+  return (vsiMb > 90 ? '<div class="msg warn">⚠ Videi skupaj ~' + Math.round(vsiMb) + ' MB — Asana sprejme največ 95 MB (uporabi 📁 Shrani v mapo ali ⬇ ZIP)</div>' : '') +
     (nNap && p.status !== 'lokal_v_delu' ? '<div class="msg warn" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">⚠ ' + nNap + ' videov (vsi trgi) ni narejenih<span class="grow"></span><button class="btn sm pri" onclick="znovaNapake()">↻ Znova samo napake</button></div>' : '') +
     '<div class="sub" style="margin-bottom:8px">' + (nacin() === 'flex' ? '🧩 Uvoz ustvari oglas s sličico, besedilom in povezavo · videe dodaš v Ads Managerju (Flexible → Add media, iskalnik <b>_' + TRG + '</b>) in sličico odstraniš' : '📑 Vsak video svoj oglas') + ' · ✕ = ne izvozi</div>' +
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">' + vids.map(([v, j], k) => {

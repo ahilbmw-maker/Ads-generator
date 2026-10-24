@@ -902,7 +902,7 @@ def vklopi(G: dict):
         try:
             p = pak_get(pid)
             dat = sorted({vt["datoteka"] for t in MA_TRGI for vt in ((p["trgi"].get(t) or {}).get("videi") or {}).values() if vt.get("datoteka")})
-            await pak_set(pid, lambda q: q.update(lok_skupaj=len(dat), lok_gotovo=0, napaka=""))
+            await pak_set(pid, lambda q: q.update(lok_skupaj=len(dat), lok_gotovo=0, napaka="", stiskam=True))
             for fn in dat:
                 f = MAPA / pid / "videi" / fn
                 try:
@@ -924,7 +924,7 @@ def vklopi(G: dict):
                     q["lok_gotovo"] = int(q.get("lok_gotovo") or 0) + 1
                 await pak_set(pid, upd)
         finally:
-            await pak_set(pid, lambda q: q.update(status="pripravljeno"))
+            await pak_set(pid, lambda q: q.update(status="pripravljeno", stiskam=False))
 
     @app.post("/meta-ads/api/videi-skrci")
     async def ma_videi_skrci(request: Request, data: dict):
@@ -1173,6 +1173,13 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         p = pak_get(pid)
+        if p and tip_od(p) == "video" and p.get("status") == "pripravljeno" and not p.get("skrci_auto"):   # 🗜 stari videi (pred stiskanjem 2026-10-24) → samodejno stisni 1×
+            tezki = any(vt.get("mb") and vt["mb"] * 8400 / max(1, float(((p.get("videi") or [])[int(j)] if int(j) < len(p.get("videi") or []) else {}).get("trajanje") or 15)) > 1800
+                        for t in MA_TRGI for j, vt in ((p["trgi"].get(t) or {}).get("videi") or {}).items())
+            if tezki:
+                await pak_set(pid, lambda q: q.update(status="lokal_v_delu", skrci_auto=True))
+                asyncio.create_task(obdelaj_skrci(pid))
+                p = pak_get(pid)
         if p and TECE.get(pid):
             import time
             p["tece"] = [{"trg": t, "video": j + 1, "korak": x["korak"], "s": int(time.time() - x["od"])} for (t, j), x in sorted(TECE[pid].items())]
