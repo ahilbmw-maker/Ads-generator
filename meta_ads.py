@@ -782,7 +782,7 @@ def vklopi(G: dict):
                 "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" + "\n".join(vrst) + "\n")
 
     # ⚡ 2026-10-24: največ 720p (krajša stranica) + superfast → ~2–3× hitreje; za Feed/Reels na telefonu dovolj (Meta video tako ali tako stisne)
-    MA_ENC = ["-c:v", "libx264", "-preset", "superfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-movflags", "+faststart"]
+    MA_ENC = ["-c:v", "libx264", "-preset", "veryfast", "-fpsmax", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-ar", "44100", "-movflags", "+faststart"]
 
     def _720(inf):
         """Krajša stranica največ 720 px (brez povečevanja), sode dimenzije za x264 → »Š:V« za scale."""
@@ -792,7 +792,7 @@ def vklopi(G: dict):
 
     async def video_kodiraj(args_vhod, filt, mapiraj, dur, out, cwd):
         """Kodiraj; nad 9,5 MB → še enkrat z nižjo kakovostjo (Meta uvoz: max 10 MB)."""
-        for crf, mx in (("26", "2000k"), ("31", "1100k")):
+        for crf, mx in (("27", "1500k"), ("31", "1000k")):   # 2026-10-24: ~30–45 % manjše (30 fps, CRF 27, 1500k, zvok 96k, veryfast)
             await ff(["ffmpeg", "-y", "-loglevel", "error", "-threads", "1", *args_vhod, "-filter_complex", filt, *mapiraj, *MA_ENC,
                       "-crf", crf, "-maxrate", mx, "-bufsize", str(int(mx[:-1]) * 2) + "k", "-t", f"{dur:.2f}", out], cwd=cwd)
             if os.path.getsize(os.path.join(cwd, out)) <= MA_VIDEO_MB * 1048576:
@@ -907,7 +907,7 @@ def vklopi(G: dict):
                 f = MAPA / pid / "videi" / fn
                 try:
                     inf = await video_info(f)
-                    if min(inf["w"], inf["h"]) > 720 or f.stat().st_size > 6 * 1048576:
+                    if min(inf["w"], inf["h"]) > 720 or f.stat().st_size * 8 / 1000 / max(1, inf["trajanje"] or 1) > 1700:   # > 720p ali > ~1,7 Mb/s → stisni
                         with tempfile.TemporaryDirectory() as tmp:
                             await video_kodiraj(["-i", str(f)], f"[0:v]scale={_720(inf)}[v]", ["-map", "[v]"] + (["-map", "0:a", "-c:a", "copy"] if inf["zvok"] else []),
                                                 inf["trajanje"] or 60, "out.mp4", tmp)
