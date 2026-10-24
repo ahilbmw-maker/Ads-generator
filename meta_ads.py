@@ -123,6 +123,7 @@ def vklopi(G: dict):
     from fastapi import Request
     from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
+    MA_ZAGON = _lj_iso()[:19]   # ⏸ paket »v delu«, ki se ni spremenil od zagona strežnika = opravilo izgubljeno (deploy / restart)
     PAK_FILE = DATA_DIR / "meta_ads_paketi.json"   # {paketi: [...] (zadnjih 30), evidenca: [...], brez_rs: [SKU]}
     MAPA = DATA_DIR / "meta_ads"
     lock = asyncio.Lock()
@@ -1213,7 +1214,8 @@ def vklopi(G: dict):
             p["tece"] = [{"trg": t, "video": j + 1, "korak": x["korak"], "s": int(time.time() - x["od"])} for (t, j), x in sorted(TECE[pid].items())]
         if p and p.get("status") in ("koncept_v_delu", "osnove_v_delu", "lokal_v_delu"):   # ⏸ brez napredka > 10 min → zastalo (deploy/ponovni zagon prekine opravilo v ozadju)
             try:
-                p["zastalo"] = (datetime.fromisoformat(_lj_iso()[:19]) - datetime.fromisoformat(str(p.get("spremenjeno") or p.get("at"))[:19])).total_seconds() > 600
+                zadnje = str(p.get("spremenjeno") or p.get("at"))[:19]
+                p["zastalo"] = zadnje < MA_ZAGON or (datetime.fromisoformat(_lj_iso()[:19]) - datetime.fromisoformat(zadnje)).total_seconds() > 600   # pred zagonom strežnika = opravilo izgubljeno
             except ValueError:
                 p["zastalo"] = False
         return {"ok": True, "paket": p} if p else {"ok": False, "error": "Paketa ni."}
