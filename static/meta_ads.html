@@ -723,19 +723,25 @@ function glasRisi() {
   const iz = GLAS.izbrani || {};
   document.getElementById('glasPovz').textContent = '· izbranih ' + TRGI.filter(t => iz[t]).length + ' / 10';
   const k = GLAS_KAND[GLAS_TRG];
+  const imaOc = TRGI.some(t => glasTop(t).length);
   document.getElementById('glasTrgi').innerHTML =
+    '<div style="border:1px solid var(--bd);border-radius:10px;padding:10px 12px;margin-bottom:12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><b style="font-size:13px">✅ Potrjeni glasovi za video</b><span class="sub">' + TRGI.filter(t => iz[t]).length + ' / 10</span><span class="grow"></span>' +
+      (imaOc ? '<button class="btn sm grn" onclick="glasPotrdiVse(this)" title="Za vsak ocenjen trg potrdi glas z najvišjo oceno ⭐">⭐ Potrdi najboljše za vse trge</button>' : '') + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px">' + TRGI.map(t => '<div style="font-size:12.5px;padding:5px 8px;border-radius:7px;cursor:pointer;background:' + (iz[t] ? '#e7f6ee' : 'var(--bg2, #f4f4f6)') + ';color:' + (iz[t] ? '#0f6e3d' : 'var(--txt2)') + '" onclick="GLAS_TRG=\'' + t + '\';glasRisi()">' + zast(t) + ' <b>' + t.toUpperCase() + '</b> ' + (iz[t] ? '✓ ' + esc(iz[t].ime) : '— privzeti') + '</div>').join('') + '</div></div>' +
+    '<div id="glasMsg"></div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">' + TRGI.map(t => '<button class="btn sm' + (t === GLAS_TRG ? ' pri' : '') + '" onclick="GLAS_TRG=\'' + t + '\';glasRisi()">' + zast(t) + ' ' + t.toUpperCase() + (iz[t] ? ' ✓' : '') + '</button>').join('') + '</div>' +
     '<div class="sub" style="margin-bottom:6px">Izbran: ' + (iz[GLAS_TRG] ? '<b>' + esc(iz[GLAS_TRG].ime) + '</b> · <a href="#" onclick="glasIzberi(null);return false">↺ nazaj na privzetega</a>' : 'privzeti glas Video Ads (' + esc(GLAS.video_ads[GLAS_TRG] || '—') + ')') + '</div>' +
     '<textarea class="f" id="glasStavek" rows="2" style="margin-bottom:8px">' + esc(GLAS.stavki[GLAS_TRG] || '') + '</textarea>' +
     '<div style="display:flex;gap:6px;margin-bottom:8px"><button class="btn sm" onclick="glasKand(\'\')">🔎 Poišči glasove</button><button class="btn sm ghost" onclick="glasKand(\'female\')">♀</button><button class="btn sm ghost" onclick="glasKand(\'male\')">♂</button><button class="btn sm pri" onclick="glasOceni(this)" title="Top 5 glasov prebere stavek → prepis nazaj (Scribe) → izgovorjava % + domač govorec + namen">🤖 Oceni glasove</button><button class="btn sm ghost" onclick="glasOceniVse(this)" title="Oceni top 5 za vseh 10 trgov (~6.000 znakov)">🤖 Vsi trgi</button>' +
     (GLAS.video_ads[GLAS_TRG] ? '<button class="btn sm ghost" onclick="glasTest(\'' + GLAS.video_ads[GLAS_TRG] + '\',\'\',\'Video Ads privzeti\',this)">▶ privzeti Video Ads</button>' : '') + '</div>' +
     '<div id="glasKand">' + (k ? (k.length ? k.map((v, i) => { const oc = (GLAS_OC[GLAS_TRG] || {})[v.voice_id], top = oc && oc.ok && glasTop(GLAS_TRG).includes(v.voice_id);
-      return '<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--bd);flex-wrap:wrap' + (top ? ';background:var(--acc2);border-radius:8px;padding:7px 8px' : '') + '">' +
+      const jeIz = iz[GLAS_TRG] && iz[GLAS_TRG].lib_id === v.voice_id;
+      return '<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--bd);flex-wrap:wrap' + (jeIz ? ';background:#e7f6ee;border:2px solid #12814f;border-radius:8px;padding:7px 8px' : top ? ';background:var(--acc2);border-radius:8px;padding:7px 8px' : '') + '">' +
       '<div style="flex:1;min-width:220px">' + (top ? '⭐ ' : '') + '<b>' + esc(v.ime) + '</b>' + (v.domaci ? ' <span class="pill p-ok" title="Professional Voice Clone z jezikom trga — domač govorec">domač</span>' : '') +
       (oc ? (oc.ok ? ' <span class="pill ' + (oc.ocena >= 85 ? 'p-ok' : oc.ocena >= 70 ? 'p-warn' : 'p-err') + '" title="Prepis: ' + esc(oc.prepis) + '">🤖 ' + oc.ocena + '</span> <span class="sub">' + esc(oc.razlog) + '</span>' : ' <span class="pill p-err" title="' + esc(oc.error) + '">🤖 napaka</span>') : '') + ' <span class="sub">' + esc([v.spol === 'female' ? '♀' : v.spol === 'male' ? '♂' : '', v.starost, v.naglas, v.slog, v.namen].filter(Boolean).join(' · ')) + ' · ' + (v.uporaba >= 1e6 ? (v.uporaba / 1e6).toFixed(1) + ' M' : Math.round(v.uporaba / 1000) + ' k') + ' znakov/leto</span><div class="sub">' + esc(v.opis) + '</div></div>' +
       (v.preview ? '<button class="btn sm ghost" onclick="glasPredvajaj(\'' + esc(v.preview) + '\')">▶ vzorec</button>' : '') +
       '<button class="btn sm" onclick="glasTestI(' + i + ',this)">▶ naš stavek</button>' +
-      '<button class="btn sm grn" data-vid="' + esc(v.voice_id) + '" onclick="glasIzberi(' + i + ')">✓ Izberi</button></div>'; }).join('') : '<div class="sub">Ni glasov za ta jezik.</div>') : '') + '</div>';
+      (jeIz ? '<span class="pill p-ok" style="font-weight:800">✓ IZBRAN za ' + GLAS_TRG.toUpperCase() + '</span>' : '<button class="btn sm grn" data-vid="' + esc(v.voice_id) + '" onclick="glasIzberi(' + i + ')">✓ Izberi</button>') + '</div>'; }).join('') : '<div class="sub">Ni glasov za ta jezik.</div>') : '') + '</div>';
 }
 // 🤖 ocena: top 5 kandidatov → izgovorjava (Scribe) + domač + namen; ⭐ = najboljša 2 z oceno ≥ 70
 const GLAS_OC = {};
@@ -776,16 +782,30 @@ async function glasTest(vid, owner, ime, btn) {
   if (!d.ok) { alert(d.error || 'Napaka'); return; }
   GLAS_MOJ[vid] = d.voice_id; glasPredvajaj(d.audio); elKred(1);
 }
-async function glasIzberi(i) {
-  let body = { trg: GLAS_TRG, odstrani: true };
+function glasSporocilo(h, vrsta) { const el = document.getElementById('glasMsg'); if (el) el.innerHTML = '<div class="msg ' + (vrsta || 'ok') + '" style="margin-bottom:10px">' + h + '</div>'; }
+async function glasIzberi(i, trg) {
+  trg = trg || GLAS_TRG;
+  let body = { trg, odstrani: true };
   if (i !== null) {
-    const v = GLAS_KAND[GLAS_TRG][i];
-    if (!GLAS_MOJ[v.voice_id] && !(GLAS_OC[GLAS_TRG] || {})[v.voice_id]) { alert('Najprej poslušaj »▶ naš stavek« ali zaženi 🤖 Oceni — glas preveri v jeziku trga.'); return; }
-    body = { trg: GLAS_TRG, voice_id: v.voice_id, owner: v.owner, ime: v.ime, opis: [v.spol, v.naglas, v.slog].filter(Boolean).join(' · ') };
+    const v = GLAS_KAND[trg][i];
+    if (!GLAS_MOJ[v.voice_id] && !(GLAS_OC[trg] || {})[v.voice_id]) { alert('Najprej poslušaj »▶ naš stavek« ali zaženi 🤖 Oceni — glas preveri v jeziku trga.'); return false; }
+    body = { trg, voice_id: v.voice_id, owner: v.owner, ime: v.ime, opis: [v.spol, v.naglas, v.slog].filter(Boolean).join(' · ') };
   }
   const d = await post('/meta-ads/api/glasovi/izberi', body);
-  if (!d.ok) { alert(d.error || 'Napaka'); return; }
-  GLAS.izbrani = d.izbrani; glasRisi();
+  if (!d.ok) { glasSporocilo('✗ ' + trg.toUpperCase() + ': ' + esc(d.error || 'Napaka'), 'err'); return false; }
+  GLAS.izbrani = d.izbrani;
+  if (arguments.length < 2) { glasRisi(); glasSporocilo(i === null ? '↺ ' + trg.toUpperCase() + ': nazaj na privzeti glas Video Ads.' : '✓ <b>' + trg.toUpperCase() + '</b>: glas <b>' + esc(body.ime) + '</b> je potrjen za video lokalizacijo.'); }
+  return true;
+}
+async function glasPotrdiVse(btn) {   // ⭐ za vsak ocenjen trg potrdi glas z najvišjo oceno
+  const iz = GLAS.izbrani || {}, plan = TRGI.map(t => { const vid = glasTop(t)[0]; const i = vid ? (GLAS_KAND[t] || []).findIndex(v => v.voice_id === vid) : -1; return { t, i, v: i >= 0 ? GLAS_KAND[t][i] : null }; })
+    .filter(x => x.v && !(iz[x.t] && iz[x.t].lib_id === x.v.voice_id));
+  if (!plan.length) { glasSporocilo('Vsi ocenjeni trgi že imajo potrjen najboljši glas.', 'inf'); return; }
+  if (!confirm('Potrdim najboljši glas za ' + plan.length + ' trgov?\n\n' + plan.map(x => x.t.toUpperCase() + ': ' + x.v.ime + ' (🤖 ' + GLAS_OC[x.t][x.v.voice_id].ocena + ')').join('\n'))) return;
+  btn.disabled = true; let ok = 0; const nap = [];
+  for (const x of plan) { btn.innerHTML = '<span class="spin"></span> ' + x.t.toUpperCase(); (await glasIzberi(x.i, x.t)) ? ok++ : nap.push(x.t.toUpperCase()); }
+  btn.disabled = false; glasRisi();
+  glasSporocilo('✓ Potrjenih ' + ok + ' glasov' + (nap.length ? ' · ✗ napaka: ' + nap.join(', ') : '') + '. Preglej seznam »Potrjeni glasovi«.', nap.length ? 'warn' : 'ok');
 }
 // 🎙 ElevenLabs krediti: < 20 % oranžno, < 5 % rdeče (+ opozorilo), ob praznem računu jasno sporočilo
 async function elKred(osvezi) {
