@@ -1169,8 +1169,21 @@ def vklopi(G: dict):
                         "preview": (ver or {}).get("preview_url") or v.get("preview_url"),
                         "uporaba": v.get("usage_character_count_1y") or 0, "kloni": v.get("cloned_by_count") or 0,
                         "domaci": v.get("category") == "professional" and v.get("language") == jez})
-        out.sort(key=lambda x: (not x["domaci"], -x["uporaba"]))
-        return {"ok": True, "trg": trg, "glasovi": out[:12]}
+        domacih = len(out)
+        if domacih < 5:   # 2026-10-24: za SL v knjižnici skoraj ni glasov → dopolni z najbolj uporabljanimi oglasnimi večjezičnimi (eleven_v3 govori SL; 🤖 ocena preveri izgovorjavo)
+            async with httpx.AsyncClient(timeout=30) as hc:
+                r = await hc.get(f"{EL_API}/shared-voices", headers={"xi-api-key": el_key()},
+                                 params={"page_size": 15, "sort": "usage_character_count_1y", "use_cases": "advertisement"} | ({"gender": spol} if spol in ("male", "female") else {}))
+            for v in (r.json().get("voices") or []) if r.status_code == 200 else []:
+                if v.get("voice_id") in {x["voice_id"] for x in out}:
+                    continue
+                out.append({"voice_id": v.get("voice_id"), "owner": v.get("public_owner_id"), "ime": v.get("name"),
+                            "spol": v.get("gender"), "starost": v.get("age"), "naglas": f"{v.get('language') or ''} {v.get('accent') or ''}".strip(),
+                            "opis": (v.get("description") or "")[:160], "namen": v.get("use_case"), "slog": v.get("descriptive"),
+                            "preview": v.get("preview_url"), "uporaba": v.get("usage_character_count_1y") or 0, "kloni": v.get("cloned_by_count") or 0,
+                            "domaci": False, "vecjezicni": True})
+        out.sort(key=lambda x: (not x["domaci"], bool(x.get("vecjezicni")), -x["uporaba"]))
+        return {"ok": True, "trg": trg, "glasovi": out[:12], "domacih": domacih}
 
     async def el_tts(hc, voice_id, besedilo):
         return await hc.post(f"{EL_API}/text-to-speech/{voice_id}", params={"output_format": "mp3_44100_128"},
