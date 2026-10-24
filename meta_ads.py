@@ -319,11 +319,19 @@ def vklopi(G: dict):
                 + (f"LAYOUT: {sc['postavitev']} " if sc else "") +
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
                 f"Highlight (can be through icons or text in English) that it is: {tekst}. "
-                f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. "
+                + MA_VARNA_CONA
                 + "Square 1:1 format.")   # 4:5 = 1:1 + podaljšano ozadje (kvadrat_v_45)
 
     # 📐 4:5 (2026-10-16 b): Flare je hook risal do roba in naš obrez 2:3 → 4:5 ga je odrezal (2× kljub navodilom v promptu) →
     # kreativa se nariše kot 1:1 in se podaljša samo ozadje (kvadrat_v_45) → vse pomembno v osrednjem kvadratu (tudi za FB obrez na 1:1)
+
+    # 📐 Varna cona (2026-10-24): Instagram na telefonu 1:1 obreže levo in desno (~10 % na stran) → levo poravnane
+    # prednosti/hook so bile odrezane. Vse besedilo, ikone in logo v osrednjih 76 % širine, ob straneh samo ozadje.
+    MA_VARNA_CONA = ("SAFE ZONE (very important): Instagram crops this square image on the LEFT and RIGHT sides on phones. "
+                     "Keep ALL text, the hook, the benefit icons/labels and the logo inside the central 76% of the width — "
+                     "leave an empty margin of at least 12% of the image width on the left AND on the right (only background there), "
+                     "and at least 6% at the top and bottom. 'Left', 'right' and 'corner' in the layout mean inside this safe zone, never touching the edge. "
+                     "Never start text at the very left edge; if the benefit row does not fit, make the icons and labels smaller or move them closer together. ")
 
     def prompt_prevod(t, ime):
         """Isti prompt kot »Lok« (prevod slik): prevedi vidno besedilo, vse ostalo enako; ime izdelka/logo ostane."""
