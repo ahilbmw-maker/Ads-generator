@@ -685,7 +685,7 @@ def vklopi(G: dict):
             pass
 
     # ⚡ 2026-10-24 (Render 2 CPU / 8 GB): Meta Ads montaža 2 hkrati, vsaka 1 nit in nice 10 → strežnik (/healthz) ima prednost pred FFmpeg
-    ff_sem = asyncio.Semaphore(2)
+    ff_sem = asyncio.Semaphore(max(1, int(os.environ.get("MA_FFMPEG_HKRATI") or 2)))   # env: 4 CPU → 3
 
     async def ff(args, cwd=None, timeout=900):
         """FFmpeg v ozadju — največ 2 hkrati, nižja prioriteta procesa (nice) na Linuxu."""
@@ -765,7 +765,14 @@ def vklopi(G: dict):
                 f"Style: Default,Arial,{int(s['fontsize'] * 1.3)},&H00FFFFFF,&H00FFD600,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{s['outline']},0,2,{ml},{ml},{s['marginv']},1\n\n"
                 "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" + "\n".join(vrst) + "\n")
 
-    MA_ENC = ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-movflags", "+faststart"]
+    # ⚡ 2026-10-24: največ 720p (krajša stranica) + superfast → ~2–3× hitreje; za Feed/Reels na telefonu dovolj (Meta video tako ali tako stisne)
+    MA_ENC = ["-c:v", "libx264", "-preset", "superfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-movflags", "+faststart"]
+
+    def _720(inf):
+        """Krajša stranica največ 720 px (brez povečevanja), sode dimenzije za x264 → »Š:V« za scale."""
+        w, h = inf.get("w") or 720, inf.get("h") or 720
+        k = min(1.0, 720 / max(1, min(w, h)))
+        return f"{int(w * k) // 2 * 2}:{int(h * k) // 2 * 2}"
 
     async def video_kodiraj(args_vhod, filt, mapiraj, dur, out, cwd):
         """Kodiraj; nad 9,5 MB → še enkrat z nižjo kakovostjo (Meta uvoz: max 10 MB)."""
@@ -821,7 +828,7 @@ def vklopi(G: dict):
             ms = int(zamik * 1000)
             a = f"[1:a]atempo={tempo:.3f},adelay={ms}|{ms},apad[vo]"
             a += ";[0:a]volume=0.22[bg];[bg][vo]amix=inputs=2:duration=first:normalize=0[a]" if inf["zvok"] else ";[vo]anull[a]"
-            filt = "[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2,ass=sub.ass[v];" + a
+            filt = f"[0:v]scale={_720(inf)},ass=sub.ass[v];" + a
             await video_kodiraj(["-i", str(src), "-i", "vo.mp3"], filt, ["-map", "[v]", "-map", "[a]"], dur, "out.mp4", tmp)
             (MAPA / pid / "videi").mkdir(parents=True, exist_ok=True)
             shutil.copy(f"{tmp}/out.mp4", MAPA / pid / "videi" / out_fn)
@@ -842,7 +849,7 @@ def vklopi(G: dict):
             shutil.copy(src, MAPA / pid / "videi" / fn)
         else:
             with tempfile.TemporaryDirectory() as tmp:
-                filt = "[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[v]" + (";[0:a]anull[a]" if inf["zvok"] else "")
+                filt = f"[0:v]scale={_720(inf)}[v]" + (";[0:a]anull[a]" if inf["zvok"] else "")
                 await video_kodiraj(["-i", str(src)], filt, ["-map", "[v]"] + (["-map", "[a]"] if inf["zvok"] else []), dur, "out.mp4", tmp)
                 shutil.copy(f"{tmp}/out.mp4", MAPA / pid / "videi" / fn)
         await video_slicica(MAPA / pid / "videi" / fn, f"{pid}/{th}", dur)
@@ -1279,6 +1286,8 @@ def vklopi(G: dict):
                     if not vt_.get("datoteka"):
                         opz.append(f"{t.upper()} video {i + 1}: {vt_.get('napaka') or 'ni lokaliziran'} — izpuščen"); continue
                     img, vfn, ct, an = vt_["slicica"], vt_["datoteka"], "Video Page Post Ad", f"{p['sku']} {t.upper()} video {i + 1}" + ("" if vt_.get("univerzalni") else " (glas)")
+                    if nacin == "flex":   # 2026-10-24: video v uvozu = prazen oglas (brez besedila/linka) → uvozi kot slikovni oglas s sličico, videe dodaš v Flexible → Add media
+                        vfn, ct = "", "Link Page Post Ad"
                 else:
                     if not prva:
                         opz.append(f"{t.upper()} video {i + 1}: ni sličice (nobene slike trga) — izpuščen"); continue
@@ -1345,10 +1354,10 @@ def vklopi(G: dict):
             zf.writestr("NAVODILA.txt", (
                 f"Meta Ads uvoz — {', '.join(d_[1]['sku'] for d_ in deli)} — {_lj_iso()[:16]}\r\n\r\n"
                 f"{len(deli)} kampanj, {len(vse)} oglasov, status: {status}, način: {'Flexible (ročno dopolni)' if nacin == 'flex' else 'ločeni oglasi'}.\r\n\r\n"
-                + (("1. Ads Manager → Import/Export → Import ads → File: meta_uvoz.csv · Images: VSE iz mape slike (sličice videov) · "
-                    "Videos: iz mape videi tiste, ki so v CSV (…_video1_xx.mp4, en na trg; max 10) → Import\r\n"
-                    "2. Za vsak ad set (trg): oglas »… flexible« → Format: Flexible → Add media → videi trga (iskalnik »_hu«, »_pl« …) "
-                    "+ univerzalni »…_vsi.mp4« → Publish\r\n") if nacin == "flex" and any(tip_od(d_[1]) == "video" for d_ in deli) else koraki)
+                + (("1. Ads Manager → Import/Export → Import ads → File: meta_uvoz.csv · Images: VSE iz mape slike (sličice videov) → Import\r\n"
+                    "   (videov pri uvozu NE nalagaš — oglas se uvozi s sličico, besedilom, povezavo in gumbom)\r\n"
+                    "2. Za vsak ad set (trg): oglas »… flexible« → Format: Flexible → Add media → videi trga iz mape videi (iskalnik »_hu«, »_pl« …) "
+                    "+ univerzalni »…_vsi.mp4« → sličico odstrani → Publish\r\n") if nacin == "flex" and any(tip_od(d_[1]) == "video" for d_ in deli) else koraki)
                 + ("\r\nVeč kampanj: slike in videi so v mapi vsake kampanje (SKU\\slike, SKU\\videi). V zavihku Images naloži slike iz VSEH map SKU\r\n"
                    "(Choose images večkrat), nato v Add media iskalnik »SKU_pl« (npr. PANMAX_pl) → slike ene kampanje.\r\n" if vec else "")
                 + "\r\n"

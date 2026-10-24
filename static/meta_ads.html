@@ -488,7 +488,7 @@ function risi3v(p, x, ogl, izkl, stran) {
   const vids = (p.videi || []).map((v, j) => [v, j]).filter(([v]) => v.vkljuci);
   const nNap = TRGI.filter(t => p.trgi[t] && p.trgi[t].vkljuci && p.trgi[t].oglasi).reduce((a, t) => a + vids.filter(([v, j]) => !((p.trgi[t].videi || {})[String(j)] || {}).datoteka).length, 0);
   return (nNap && p.status !== 'lokal_v_delu' ? '<div class="msg warn" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">⚠ ' + nNap + ' videov (vsi trgi) ni narejenih<span class="grow"></span><button class="btn sm pri" onclick="znovaNapake()">↻ Znova samo napake</button></div>' : '') +
-    '<div class="sub" style="margin-bottom:8px">' + (nacin() === 'flex' ? '🧩 V CSV gre 1. video · ostale v Ads Managerju dodaš ročno (Flexible → Add media, iskalnik <b>_' + TRG + '</b>)' : '📑 Vsak video svoj oglas') + ' · ✕ = ne izvozi</div>' +
+    '<div class="sub" style="margin-bottom:8px">' + (nacin() === 'flex' ? '🧩 Uvoz ustvari oglas s sličico, besedilom in povezavo · videe dodaš v Ads Managerju (Flexible → Add media, iskalnik <b>_' + TRG + '</b>) in sličico odstraniš' : '📑 Vsak video svoj oglas') + ' · ✕ = ne izvozi</div>' +
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">' + vids.map(([v, j], k) => {
       const tv = (x.videi || {})[String(j)] || {}, iz = izkl.has('video' + j), o = ogl[j] || { hl: '', pt: '' }, besedilo = nacin() !== 'flex' || k === 0;
       const md = tv.datoteka ? '<video src="' + dat(tv.datoteka) + '?v=' + encodeURIComponent(tv.at || '') + '#t=0.5" preload="metadata" controls></video>'
