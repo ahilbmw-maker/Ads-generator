@@ -672,12 +672,12 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         d = nalozi()
-        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "vrsta": d.get("vrsta") or {"postavke": []}, "narejeni": sorted({e["sku"] for e in d["evidenca"]}), "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "cc": MA_CC, "scene": {k: v["ime"] for k, v in MA_SCENE.items()},
-                "paketi": [{k: p.get(k) for k in ("id", "sku", "ime", "status", "at", "izvozeno")} |
+        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "vrsta": d.get("vrsta") or {"postavke": []}, "narejeni": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "slike"}), "narejeni_video": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "video"}), "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "cc": MA_CC, "scene": {k: v["ime"] for k, v in MA_SCENE.items()},
+                "paketi": [{k: p.get(k) for k in ("id", "sku", "ime", "status", "at", "izvozeno")} | {"tip": tip_od(p)} |
                            {"trgi": [t for t in MA_TRGI if ((p.get("trgi") or {}).get(t) or {}).get("vkljuci")]} for p in d["paketi"]]}
 
     @app.get("/meta-ads/api/sku")
-    async def ma_sku(request: Request, sku: str = ""):
+    async def ma_sku(request: Request, sku: str = "", tip: str = "slike"):
         """Kateri trgi imajo SKU v feedu (URL) + 🚫 neuvoz + zapomnjen »brez RS«."""
         if not prijava(request):
             return ni()
@@ -686,7 +686,7 @@ def vklopi(G: dict):
             return {"ok": False, "error": "Vpiši SKU."}
         info = await izdelek_po_trgih(sku)
         d = nalozi()
-        nar = [e for e in d["evidenca"] if e["sku"] == sku]
+        nar = [e for e in d["evidenca"] if e["sku"] == sku and tip_od(e) == tip_od({"tip": tip})]   # že narejeno = isti tip kampanje
         return {"ok": True, "sku": sku, "trgi": {t: {"url": bool((info.get(t) or {}).get("url")), "neuvoz": bool((info.get(t) or {}).get("neuvoz"))} for t in MA_TRGI},
                 "naziv": (info.get("sl") or next(iter(info.values()), {}) or {}).get("naziv", ""), "brez_rs": sku in d["brez_rs"],
                 "narejeno": nar[-1] if nar else None}
@@ -700,12 +700,18 @@ def vklopi(G: dict):
             return {"ok": False, "error": "Vpiši en veljaven SKU."}
         async with lock:
             d = nalozi()
-            pid = nov_paket(d, sku, data.get("trgi"), data.get("asana"))
+            pid = nov_paket(d, sku, data.get("trgi"), data.get("asana"), tip=tip_od(data))
             _jsave(PAK_FILE, d)
         asyncio.create_task(obdelaj_koncept(pid))
         return {"ok": True, "id": pid}
 
-    def nov_paket(d, sku, trgi, asana, auto_osnove=False):
+    # 🖼/🎬 Tip kampanje (2026-10-24): vsaka kampanja SAMO slike ali SAMO video (ne mešamo); stari paketi in evidenca brez »tip« = slike
+    MA_TIP_OZN = {"slike": "#Slike", "video": "#Video"}
+    MA_ZNAK_VIDEO = "🎬"
+    def tip_od(x):
+        return "video" if (x or {}).get("tip") == "video" else "slike"
+
+    def nov_paket(d, sku, trgi, asana, auto_osnove=False, tip="slike"):
         """Nov paket v d (klicatelj drži lock in shrani) → pid; koncept zažene klicatelj."""
         trgi_izbor = [t for t in (trgi or MA_TRGI) if t in MA_TRGI] or MA_TRGI
         asana = [s.strip() for s in re.split(r"[\s,]+", str(asana or "")) if "asana.com" in s or re.fullmatch(r"\d{10,}", s.strip())][:5]
@@ -714,7 +720,8 @@ def vklopi(G: dict):
             d["brez_rs"] = [s for s in d["brez_rs"] if s != sku]
         elif sku not in d["brez_rs"]:
             d["brez_rs"].append(sku)
-        d["paketi"].insert(0, {"id": pid, "sku": sku, "at": _lj_iso(), "status": "koncept_v_delu", "trgi_izbor": trgi_izbor, "asana": asana,
+        tip = "video" if tip == "video" else "slike"
+        d["paketi"].insert(0, {"id": pid, "sku": sku, "at": _lj_iso(), "status": "koncept_v_delu", "trgi_izbor": trgi_izbor, "asana": asana, "tip": tip,
                                "auto_osnove": auto_osnove,
                                "nastavitve": {"proracun": 60, "status": "ACTIVE", "kampanja": f"{MA_ZNAK} [ALL 9.0BID] {sku} #BidCap (Suban)"}})
         for p in d["paketi"][30:]:   # stari paketi: slike/videi z diska
@@ -734,7 +741,7 @@ def vklopi(G: dict):
         x = next((x for x in ps if x.get("status") == "caka"), None)
         if not x:
             return None
-        x["pid"] = nov_paket(d, x["sku"], x.get("trgi"), x.get("asana"), auto_osnove=vr.get("auto", True))
+        x["pid"] = nov_paket(d, x["sku"], x.get("trgi"), x.get("asana"), auto_osnove=vr.get("auto", True), tip=tip_od(vr))
         x["status"] = "v_delu"; x["zacetek"] = _lj_iso()
         return x["pid"]
 
@@ -760,7 +767,7 @@ def vklopi(G: dict):
                         ps.append({"sku": sku, "asana": str(x.get("asana") or ""), "trgi": trgi, "status": "caka"})
                 if not ps:
                     return {"ok": False, "error": "Ni veljavnih SKU-jev."}
-                d["vrsta"] = vr = {"postavke": ps[:60], "auto": data.get("auto", True) is not False, "at": _lj_iso()}
+                d["vrsta"] = vr = {"postavke": ps[:60], "auto": data.get("auto", True) is not False, "at": _lj_iso(), "tip": tip_od(data)}
             elif akcija in ("naslednji", "preskoci"):
                 pid = str(data.get("id") or "")
                 for x in vr.get("postavke") or []:
@@ -902,6 +909,11 @@ def vklopi(G: dict):
         kamp = str(n.get("kampanja") or f"[ALL 9.0BID] {p['sku']} #BidCap (Suban)").strip()
         if not kamp.startswith(MA_ZNAK):   # 🤖 = kampanja iz suban.ai (vedno spredaj, tudi če ime ročno spremeniš)
             kamp = f"{MA_ZNAK} {kamp}"
+        ozn = MA_TIP_OZN[tip_od(p)]
+        if not any(o in kamp for o in MA_TIP_OZN.values()):   # 🖼/🎬 oznaka tipa (pred »(Suban)«)
+            kamp = kamp.replace(" (Suban)", f" {ozn} (Suban)") if " (Suban)" in kamp else f"{kamp} {ozn}"
+        if tip_od(p) == "video" and MA_ZNAK_VIDEO not in kamp:
+            kamp = f"{kamp} {MA_ZNAK_VIDEO}"
         st = "ACTIVE" if status == "ACTIVE" else "PAUSED"
         cc = n.get("strategija") == "costcap"
         if cc:
@@ -1021,7 +1033,7 @@ def vklopi(G: dict):
                 prvic = not px.get("izvozeno")
                 px["izvozeno"] = _lj_iso()
                 if prvic:   # 📊 števec: prvi izvoz paketa
-                    d["evidenca"].append({"sku": p["sku"], "at": _lj_iso(), "oglasov": len(vrst), "slik": len(set(slike) | {x for sl_ in rocno.values() for x in sl_}),
+                    d["evidenca"].append({"sku": p["sku"], "tip": tip_od(p), "at": _lj_iso(), "oglasov": len(vrst), "slik": len(set(slike) | {x for sl_ in rocno.values() for x in sl_}),
                                           "nacin": nacin, "trgi": sorted({r["Ad Set Name"] for r in vrst})})
             _jsave(PAK_FILE, d)
         z.seek(0)
