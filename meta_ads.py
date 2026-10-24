@@ -16,6 +16,21 @@ import zipfile
 from datetime import datetime, timedelta
 
 MA_TRGI = ["sl", "hr", "rs", "hu", "pl", "cz", "sk", "gr", "bg", "ro"]
+# 🎙 Glasovi za video (2026-10-24): ElevenLabs jezik (ISO 639-1) po trgu + testni stavek v jeziku trga
+MA_EL_JEZIK = {"sl": "sl", "hr": "hr", "rs": "sr", "hu": "hu", "pl": "pl", "cz": "cs", "sk": "sk", "gr": "el", "bg": "bg", "ro": "ro"}
+MA_EL_MODEL = "eleven_v3"   # v3 podpira vseh 10 jezikov (multilingual_v2 ne HU/RS/SL)
+MA_GLAS_STAVEK = {
+    "sl": "Veš, kaj me je najbolj presenetilo? Po celem dnevu sedenja me hrbet sploh ne boli več. Res priporočam!",
+    "hr": "Znaš što me najviše iznenadilo? Nakon cijelog dana sjedenja leđa me uopće više ne bole. Stvarno preporučujem!",
+    "rs": "Znaš šta me je najviše iznenadilo? Posle celog dana sedenja leđa me uopšte više ne bole. Stvarno preporučujem!",
+    "hu": "Tudod, mi lepett meg a legjobban? Egész napos ülés után egyáltalán nem fáj a hátam. Tényleg ajánlom!",
+    "pl": "Wiesz, co mnie najbardziej zaskoczyło? Po całym dniu siedzenia plecy w ogóle mnie nie bolą. Naprawdę polecam!",
+    "cz": "Víš, co mě nejvíc překvapilo? Po celém dni sezení mě záda vůbec nebolí. Opravdu doporučuju!",
+    "sk": "Vieš, čo ma najviac prekvapilo? Po celom dni sedenia ma chrbát vôbec nebolí. Naozaj odporúčam!",
+    "gr": "Ξέρεις τι με εξέπληξε περισσότερο; Μετά από μια ολόκληρη μέρα καθιστή, η πλάτη μου δεν πονάει καθόλου. Το προτείνω!",
+    "bg": "Знаеш ли кое ме изненада най-много? След цял ден седене гърбът изобщо не ме боли. Наистина го препоръчвам!",
+    "ro": "Știi ce m-a surprins cel mai mult? După o zi întreagă pe scaun, nu mă mai doare deloc spatele. Chiar îl recomand!",
+}
 MA_JEZIK = {"sl": "Slovenian", "hr": "Croatian", "rs": "Serbian (Latin script, never Cyrillic)", "hu": "Hungarian", "pl": "Polish",
             "cz": "Czech", "sk": "Slovak", "gr": "Greek (Greek alphabet)", "bg": "Bulgarian (Cyrillic)", "ro": "Romanian"}
 MA_JEZIK_SL = {"sl": "slovenščina", "hr": "hrvaščina", "rs": "srbščina (latinica)", "hu": "madžarščina", "pl": "poljščina", "cz": "češčina",
@@ -1104,6 +1119,117 @@ def vklopi(G: dict):
                     _jsave(PAK_FILE, d)
             rez.append({"pid": pid, "sku": p["sku"], "ok": True, "ime": ime, "mb": round(len(vsebina) / 1048576, 1), "opozorila": opz})
         return {"ok": any(x.get("ok") for x in rez), "rezultati": rez}
+
+    # ── 🎙 Glasovi po trgih (2026-10-24): kandidati iz ElevenLabs knjižnice (jezik trga, najbolj uporabljani) → predposlušanje
+    #    (brezplačno, preview_url) → »naš stavek« z eleven_v3 (~120 znakov) → ✓ izberi = glas trga za video lokalizacijo (d["glasovi"])
+    EL_API = "https://api.elevenlabs.io/v1"
+
+    def el_key():
+        import os
+        return os.environ.get("ELEVENLABS_API_KEY", "")
+
+    @app.get("/meta-ads/api/glasovi")
+    async def ma_glasovi(request: Request):
+        if not prijava(request):
+            return ni()
+        d = nalozi()
+        privz = G.get("ELEVENLABS_VOICES") or {}
+        return {"ok": True, "izbrani": d.get("glasovi") or {}, "stavki": MA_GLAS_STAVEK, "model": MA_EL_MODEL,
+                "video_ads": {t: privz.get(t) for t in MA_TRGI}}
+
+    @app.get("/meta-ads/api/glasovi/kandidati")
+    async def ma_glasovi_kandidati(request: Request, trg: str = "sl", spol: str = ""):
+        """Najbolj uporabljani glasovi iz knjižnice z jezikom trga (shared-voices, brez porabe kreditov)."""
+        if not prijava(request):
+            return ni()
+        if trg not in MA_TRGI:
+            return {"ok": False, "error": "Neznan trg."}
+        if not el_key():
+            return {"ok": False, "error": "ELEVENLABS_API_KEY ni nastavljen."}
+        import httpx
+        jez = MA_EL_JEZIK[trg]
+        par = {"language": jez, "page_size": 30, "sort": "usage_character_count_1y"}
+        if spol in ("male", "female"):
+            par["gender"] = spol
+        async with httpx.AsyncClient(timeout=30) as hc:
+            r = await hc.get(f"{EL_API}/shared-voices", params=par, headers={"xi-api-key": el_key()})
+        if r.status_code != 200:
+            return {"ok": False, "error": f"ElevenLabs HTTP {r.status_code}: {r.text[:200]}"}
+        out = []
+        for v in r.json().get("voices") or []:
+            ver = next((x for x in v.get("verified_languages") or [] if x.get("language") == jez), None)
+            if v.get("language") != jez and not ver:
+                continue   # samo glasovi, ki res govorijo jezik trga
+            out.append({"voice_id": v.get("voice_id"), "owner": v.get("public_owner_id"), "ime": v.get("name"),
+                        "spol": v.get("gender"), "starost": v.get("age"), "naglas": (ver or {}).get("accent") or v.get("accent"),
+                        "opis": (v.get("description") or "")[:160], "namen": v.get("use_case"), "slog": v.get("descriptive"),
+                        "preview": (ver or {}).get("preview_url") or v.get("preview_url"),
+                        "uporaba": v.get("usage_character_count_1y") or 0, "kloni": v.get("cloned_by_count") or 0})
+        return {"ok": True, "trg": trg, "glasovi": out[:12]}
+
+    async def el_tts(hc, voice_id, besedilo):
+        return await hc.post(f"{EL_API}/text-to-speech/{voice_id}", params={"output_format": "mp3_44100_128"},
+                             headers={"xi-api-key": el_key()}, json={"text": besedilo, "model_id": MA_EL_MODEL})
+
+    @app.post("/meta-ads/api/glasovi/test")
+    async def ma_glasovi_test(request: Request, data: dict):
+        """{trg, voice_id, owner?, ime?, besedilo?} → mp3 (base64) z našim stavkom; knjižnični glas se po potrebi doda med »My voices«."""
+        if not prijava(request):
+            return ni()
+        trg = str(data.get("trg") or "")
+        vid = re.sub(r"[^A-Za-z0-9]", "", str(data.get("voice_id") or ""))
+        if trg not in MA_TRGI or not vid:
+            return {"ok": False, "error": "Manjka trg ali glas."}
+        besedilo = str(data.get("besedilo") or MA_GLAS_STAVEK[trg]).strip()[:400]
+        import httpx, hashlib
+        kljuc = hashlib.sha1(f"{vid}|{MA_EL_MODEL}|{besedilo}".encode()).hexdigest()[:16]
+        f = MAPA / "glasovi" / f"{trg}_{kljuc}.mp3"
+        if f.exists():   # isti glas + stavek → brez ponovne porabe kreditov
+            return {"ok": True, "audio": "data:audio/mpeg;base64," + base64.b64encode(f.read_bytes()).decode(), "voice_id": vid, "predpomnjeno": True}
+        async with httpx.AsyncClient(timeout=90) as hc:
+            r = await el_tts(hc, vid, besedilo)
+            moj = vid
+            if r.status_code != 200 and data.get("owner"):   # knjižnični glas: dodaj med svoje glasove in poskusi znova
+                owner = re.sub(r"[^A-Za-z0-9]", "", str(data["owner"]))
+                a = await hc.post(f"{EL_API}/voices/add/{owner}/{vid}", headers={"xi-api-key": el_key()},
+                                  json={"new_name": f"MA {trg.upper()} {str(data.get('ime') or vid)[:30]}"})
+                if a.status_code == 200 and a.json().get("voice_id"):
+                    moj = a.json()["voice_id"]
+                    r = await el_tts(hc, moj, besedilo)
+                else:
+                    return {"ok": False, "error": f"Glasu ni bilo mogoče dodati: {a.text[:200]}"}
+        if r.status_code != 200:
+            nap = G.get("_eleven_napaka")
+            return {"ok": False, "error": nap(r) if nap else f"ElevenLabs HTTP {r.status_code}: {r.text[:200]}"}
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(r.content)
+        try:
+            G["_ai_log"]("elevenlabs", MA_EL_MODEL, "meta_ads_glas_test", len(besedilo), 0,
+                         len(besedilo) / 1000 * float(G.get("ELEVEN_USD_PER_1K") or 0.18), "krediti")
+        except Exception as e:
+            print(f"[meta-ads] ai_log: {e}")
+        return {"ok": True, "audio": "data:audio/mpeg;base64," + base64.b64encode(r.content).decode(), "voice_id": moj}
+
+    @app.post("/meta-ads/api/glasovi/izberi")
+    async def ma_glasovi_izberi(request: Request, data: dict):
+        """{trg, voice_id (uporaben za TTS), ime, opis?} → glas trga za video lokalizacijo; {trg, odstrani: true} = nazaj na privzetega."""
+        if not prijava(request):
+            return ni()
+        trg = str(data.get("trg") or "")
+        if trg not in MA_TRGI:
+            return {"ok": False, "error": "Neznan trg."}
+        async with lock:
+            d = nalozi()
+            g = d.setdefault("glasovi", {})
+            if data.get("odstrani"):
+                g.pop(trg, None)
+            else:
+                vid = re.sub(r"[^A-Za-z0-9]", "", str(data.get("voice_id") or ""))
+                if not vid:
+                    return {"ok": False, "error": "Manjka glas."}
+                g[trg] = {"voice_id": vid, "ime": str(data.get("ime") or "")[:60], "opis": str(data.get("opis") or "")[:120], "at": _lj_iso()}
+            _jsave(PAK_FILE, d)
+        return {"ok": True, "izbrani": g}
 
     @app.post("/meta-ads/api/vec")
     async def ma_vec(request: Request, data: dict):
