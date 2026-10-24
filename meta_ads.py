@@ -99,6 +99,7 @@ MA_ZNAK = "🤖"   # znak pred imenom kampanje = ustvarjeno v suban.ai
 MA_SLIKA = {"1:1": (1080, 1080), "4:5": (1080, 1350)}   # 1:1 kot generator Kreative; 4:5 = preizkus za mobilni Feed (privzeto kreativa 5)
 MA_FLARE_SIZE = {"1:1": "1024x1024", "4:5": "1024x1536"}   # 4:5: Flare 2:3 → izrez sredine 4:5
 MA_N_KREATIV = 5
+MA_VIDEO_MAX = 3   # 🎬 video kampanja: največ 3 videi (× trgi montaž; 6 videov × 9 trgov = 30 min priprave, uporabnik 2026-10-24)
 # stalni stolpci iz vzorčne kampanje DERISILK (izvoz 2026-10-15) — vse ostalo prazno
 MA_STALNO = {
     "Campaign Objective": "Outcome Sales", "Buying Type": "AUCTION", "Campaign Bid Strategy": "Bid cap", "New Objective": "Yes",
@@ -160,6 +161,7 @@ def vklopi(G: dict):
             p = next((x for x in d["paketi"] if x["id"] == pid), None)
             if p is not None:
                 fn(p)
+                p["spremenjeno"] = _lj_iso()   # ⏸ zaznava zastoja (ponovni zagon strežnika med delom v ozadju)
                 _jsave(PAK_FILE, d)
 
     def pak_get(pid):
@@ -548,12 +550,12 @@ def vklopi(G: dict):
             n_ogl = MA_N_KREATIV + len(videi)
             naziv = sl.get("naziv") or it.get("title") or sku
             if tip_od(p) == "video":   # 🎬 video kampanja: brez kreativ — samo videi + besedila oglasov (1 na video)
-                for v in videi:
+                for i_, v in enumerate(videi):
                     try:
                         v["trajanje"] = (await video_info(MAPA / pid / "videi" / v["datoteka"]))["trajanje"]
                     except Exception as e:
                         print(f"[meta-ads] video info: {e}")
-                    v.update(vkljuci=True, lokal=True, opomba="")   # izvoz vsak video prekodira pod 10 MB
+                    v.update(vkljuci=i_ < MA_VIDEO_MAX, lokal=True, opomba="")   # izvoz vsak video prekodira pod 10 MB; privzeto prvi 3
                 ogl = await asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", "", max(1, len(videi)))
                 await pak_set(pid, lambda q: q.update(status="koncept", ime=sku, naziv=sl.get("naziv") or "", kreative=[], oglasi_sl=ogl, videi=videi,
                                                         opozorila=nap, opis_izdelka=(it.get("description") or "")[:2500], trgi=trgi_paketa(info, p)))
@@ -675,7 +677,8 @@ def vklopi(G: dict):
     # ── 🎬 VIDEO lokalizacija (2026-10-24): skripta (Sonnet vidi sličice videa) SL → prevodi → ElevenLabs glas trga (eleven_v3,
     #    with-timestamps) → podnapisi ASS (varna cona) → FFmpeg: glas + utišan original + podnapisi, < 10 MB → SKU_videoN_trg.mp4 + sličica
     MA_VIDEO_MB = 9.5
-    MA_BESED_S = 2.3   # besed na sekundo govora (z rezervo)
+    MA_BESED_S = 2.0   # besed na sekundo govora (z rezervo; 2026-10-24: 2,3 → HR ×1,21 pospešeno — eleven_v3 govori počasneje)
+    MA_TEMPO_OK = 1.12   # do tega pospeška glas zveni naravno; nad tem besedilo samodejno skrajšam in glas ustvarim znova (1×)
 
     def _ff_poti():
         try:
@@ -687,7 +690,20 @@ def vklopi(G: dict):
     # ⚡ 2026-10-24 (Render 2 CPU / 8 GB): Meta Ads montaža 2 hkrati, vsaka 1 nit in nice 10 → strežnik (/healthz) ima prednost pred FFmpeg
     ff_sem = asyncio.Semaphore(max(1, int(os.environ.get("MA_FFMPEG_HKRATI") or 2)))   # env: 4 CPU → 3
 
-    async def ff(args, cwd=None, timeout=900):
+    # 🔎 kaj trenutno teče (v pomnilniku): TECE[pid][(trg, j)] = {korak, od} — prikaz v koraku 2, da se vidi, kje se zatakne
+    TECE = {}
+    delo_sem = asyncio.Semaphore(4)   # največ 4 videi (glas → montaža) hkrati v obdelavi
+    MA_VIDEO_TIMEOUT = 600   # en video za en trg (glas + krajšanje + montaža) največ 10 min, nato napaka namesto čakanja
+
+    def tece(pid, t, j, korak=None):
+        import time
+        d_ = TECE.setdefault(pid, {})
+        if korak is None:
+            d_.pop((t, j), None)
+        else:
+            d_[(t, j)] = {"korak": korak, "od": time.time()}
+
+    async def ff(args, cwd=None, timeout=420):
         """FFmpeg v ozadju — največ 2 hkrati, nižja prioriteta procesa (nice) na Linuxu."""
         import subprocess, shutil
         _ff_poti()
@@ -799,24 +815,48 @@ def vklopi(G: dict):
         if not besedilo:
             raise RuntimeError("ni besedila za glas")
         glas = ((nalozi().get("glasovi") or {}).get(t) or {}).get("voice_id") or (G.get("ELEVENLABS_VOICES") or {}).get(t)
-        async with httpx.AsyncClient(timeout=180) as hc:
-            r = await el_post(hc, f"{EL_API}/text-to-speech/{glas}/with-timestamps", headers={"xi-api-key": el_key()},
-                              json={"text": besedilo, "model_id": MA_EL_MODEL})
-        if r.status_code != 200:
-            nap = G.get("_eleven_napaka")
-            raise RuntimeError(nap(r) if nap else f"ElevenLabs HTTP {r.status_code}: {r.text[:200]}")
-        jr = r.json()
-        try:
-            G["_ai_log"]("elevenlabs", MA_EL_MODEL, "meta_ads_video_glas", len(besedilo), 0,
-                         len(besedilo) / 1000 * float(G.get("ELEVEN_USD_PER_1K") or 0.18), "krediti")
-        except Exception as e:
-            print(f"[meta-ads] ai_log: {e}")
-        besede = G["_parse_words"](jr.get("alignment") or jr.get("normalized_alignment") or {})
         zamik, opz = 0.3, ""
+        tece(pid, t, j, "glas (ElevenLabs)")
+        cilj = max(1.0, dur - zamik - 0.4)
+
+        async def tts(txt):
+            async with httpx.AsyncClient(timeout=180) as hc:
+                r = await el_post(hc, f"{EL_API}/text-to-speech/{glas}/with-timestamps", headers={"xi-api-key": el_key()},
+                                  json={"text": txt, "model_id": MA_EL_MODEL})
+            if r.status_code != 200:
+                nap = G.get("_eleven_napaka")
+                raise RuntimeError(nap(r) if nap else f"ElevenLabs HTTP {r.status_code}: {r.text[:200]}")
+            try:
+                G["_ai_log"]("elevenlabs", MA_EL_MODEL, "meta_ads_video_glas", len(txt), 0,
+                             len(txt) / 1000 * float(G.get("ELEVEN_USD_PER_1K") or 0.18), "krediti")
+            except Exception as e:
+                print(f"[meta-ads] ai_log: {e}")
+            return r.json()
+
         with tempfile.TemporaryDirectory() as tmp:
-            open(f"{tmp}/vo.mp3", "wb").write(base64.b64decode(jr["audio_base64"]))
-            vo_dur = (await video_info(f"{tmp}/vo.mp3"))["trajanje"] or (besede[-1][2] if besede else 0)
-            cilj = max(1.0, dur - zamik - 0.4)
+            async def poskus(txt):
+                jr_ = await tts(txt)
+                open(f"{tmp}/vo.mp3", "wb").write(base64.b64decode(jr_["audio_base64"]))
+                bs = G["_parse_words"](jr_.get("alignment") or jr_.get("normalized_alignment") or {})
+                vd = (await video_info(f"{tmp}/vo.mp3"))["trajanje"] or (bs[-1][2] if bs else 0)
+                return bs, vd
+            besede, vo_dur = await poskus(besedilo)
+            if vo_dur and vo_dur / cilj > MA_TEMPO_OK:   # ✂ predolgo → skrajšaj besedilo (isti pomen) in glas znova
+                n_bes = max(5, int(len(besedilo.split()) * cilj / vo_dur * 0.95))
+                try:
+                    tece(pid, t, j, "krajšanje besedila")
+                    j_ = await asyncio.to_thread(claude_json, (
+                        f"Shorten this {MA_JEZIK[t]} voice-over for a {dur:.0f}-second video ad to at most {n_bes} words. "
+                        "Keep the same language, meaning, hook and final statement; natural spoken style; correct diacritics; no emojis.\n"
+                        f"Text: {besedilo}\n" + 'Return ONLY JSON: {"tekst": "..."}'), 2000)
+                    krajse = str(j_.get("tekst") or "").strip()
+                    if krajse and len(krajse) < len(besedilo):
+                        tece(pid, t, j, "glas znova (krajše)")
+                        b2, d2 = await poskus(krajse)
+                        besede, vo_dur, besedilo = b2, d2, krajse
+                        await pak_set(pid, lambda q: q["videi"][j].setdefault("skripte", {}).update({t: krajse}))   # popravljena skripta vidna v UI
+                except Exception as e:
+                    print(f"[meta-ads] skrajšanje {t}: {e}")
             tempo = max(1.0, vo_dur / cilj) if vo_dur else 1.0
             if tempo > 1.25:
                 opz = f"govor je {vo_dur:.1f} s za {dur:.0f} s video — skrajšaj besedilo (odrezan konec)"
@@ -825,6 +865,7 @@ def vklopi(G: dict):
             tempo = min(tempo, 1.25)
             besede = [(b, zamik + s / tempo, zamik + e / tempo) for b, s, e in besede]
             open(f"{tmp}/sub.ass", "w", encoding="utf-8").write(_ass(besede, inf["w"], inf["h"]))
+            tece(pid, t, j, f"montaža ({inf['w']}×{inf['h']}, {dur:.0f} s)")
             ms = int(zamik * 1000)
             a = f"[1:a]atempo={tempo:.3f},adelay={ms}|{ms},apad[vo]"
             a += ";[0:a]volume=0.22[bg];[bg][vo]amix=inputs=2:duration=first:normalize=0[a]" if inf["zvok"] else ";[vo]anull[a]"
@@ -933,9 +974,18 @@ def vklopi(G: dict):
 
             async def ena(t, j):
                 try:
-                    rez = univ[j] if j in univ else await video_trg(pid, j, t)
+                    if j in univ:
+                        rez = univ[j]
+                    else:
+                        async with delo_sem:   # časovna omejitev teče šele, ko video res začne (ne med čakanjem v vrsti)
+                            rez = await asyncio.wait_for(video_trg(pid, j, t), MA_VIDEO_TIMEOUT)
+                except asyncio.TimeoutError:
+                    k_ = ((TECE.get(pid) or {}).get((t, j)) or {}).get("korak") or "?"
+                    rez = {"napaka": f"časovna omejitev 10 min (zataknilo se je pri: {k_})"}
                 except Exception as e:
                     rez = {"napaka": str(e)[:240]}
+                finally:
+                    tece(pid, t, j)
                 await pak_set(pid, lambda q: (q["trgi"][t].setdefault("videi", {}).update({str(j): rez}),
                                               q.update(lok_gotovo=int(q.get("lok_gotovo") or 0) + 1)))
             await asyncio.gather(*(ena(t, j) for t, j in samo))
@@ -1123,6 +1173,14 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         p = pak_get(pid)
+        if p and TECE.get(pid):
+            import time
+            p["tece"] = [{"trg": t, "video": j + 1, "korak": x["korak"], "s": int(time.time() - x["od"])} for (t, j), x in sorted(TECE[pid].items())]
+        if p and p.get("status") in ("koncept_v_delu", "osnove_v_delu", "lokal_v_delu"):   # ⏸ brez napredka > 10 min → zastalo (deploy/ponovni zagon prekine opravilo v ozadju)
+            try:
+                p["zastalo"] = (datetime.fromisoformat(_lj_iso()[:19]) - datetime.fromisoformat(str(p.get("spremenjeno") or p.get("at"))[:19])).total_seconds() > 600
+            except ValueError:
+                p["zastalo"] = False
         return {"ok": True, "paket": p} if p else {"ok": False, "error": "Paketa ni."}
 
     @app.post("/meta-ads/api/shrani")
@@ -1205,6 +1263,8 @@ def vklopi(G: dict):
         if p and tip_od(p) == "video":   # 🎬 glas + podnapisi po trgih
             if not any(v.get("vkljuci") for v in p.get("videi") or []):
                 return {"ok": False, "error": "Dodaj vsaj en video."}
+            if sum(1 for v in p["videi"] if v.get("vkljuci")) > MA_VIDEO_MAX:
+                return {"ok": False, "error": f"Največ {MA_VIDEO_MAX} videi na kampanjo — odkljukaj odvečne."}
             if not el_key():
                 return {"ok": False, "error": "ELEVENLABS_API_KEY ni nastavljen."}
             samo = [(str(x[0]), int(x[1])) for x in (data.get("samo") or []) if x and x[0] in MA_TRGI and 0 <= int(x[1]) < len(p["videi"])]
@@ -1250,7 +1310,8 @@ def vklopi(G: dict):
         except Exception:
             dur = None
         mb = round(len(vs) / 1048576, 1)
-        rec = {"datoteka": fn, "izvor": ime[:80], "mb": mb, "vkljuci": True, "lokal": True, "trajanje": dur, "rocno": True,
+        vkl = tip_od(p) != "video" or sum(1 for v in p.get("videi") or [] if v.get("vkljuci")) < MA_VIDEO_MAX
+        rec = {"datoteka": fn, "izvor": ime[:80], "mb": mb, "vkljuci": vkl, "lokal": True, "trajanje": dur, "rocno": True,
                "opomba": "" if tip_od(p) == "video" or mb <= 10 else "nad 10 MB — Meta uvoz ga ne sprejme"}
         await pak_set(id, lambda q: q.setdefault("videi", []).append(rec))
         return {"ok": True, "video": rec}

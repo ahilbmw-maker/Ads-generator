@@ -397,7 +397,10 @@ function risi() {
     (p.izvozeno ? ' · <span style="color:var(--ok);font-weight:700">✓ izvoženo ' + esc(cas(p.izvozeno)) + '</span>' : '') + '</div></div>' + koraki() + '<span class="grow"></span>' +
     (vd ? '<span class="pill p-inf"><span class="spin" style="width:10px;height:10px"></span>' + ({ koncept_v_delu: 'pišem koncept …', osnove_v_delu: 'Flare riše kreative …', lokal_v_delu: (p.tip === 'video' ? '🎙 glas in podnapisi … ' : 'prevajam napise in besedila … ') + (p.lok_gotovo || 0) + ' / ' + (p.lok_skupaj || '?') }[p.status]) + '</span>' +
       (napr ? '<span class="prog"><i style="width:' + napr + '%"></i></span>' : '') : '') +
+    (p.zastalo ? '<span class="pill p-warn" title="Brez napredka več kot 10 min — strežnik se je verjetno ponovno zagnal (deploy) in prekinil delo v ozadju">⏸ zastalo</span>' +
+      (p.tip === 'video' && p.status === 'lokal_v_delu' ? '<button class="btn sm pri" onclick="znovaNapake()" title="Naredi samo manjkajoče videe — narejeni ostanejo">▶ Nadaljuj</button>' : '') : '') +
     '<button class="btn sm ghost" onclick="zapri()" title="Zapri (ostane v zgodovini)">✕</button></div>';
+  if (p.status === 'lokal_v_delu' && (p.tece || []).length) h += '<div class="msg inf" style="font-size:12.5px">⏳ Teče: ' + p.tece.map(x => '<b>' + esc(x.trg.toUpperCase()) + '</b> video ' + x.video + ' · ' + esc(x.korak) + ' · <span style="color:' + (x.s > 240 ? 'var(--err)' : 'inherit') + '">' + Math.floor(x.s / 60) + ':' + String(x.s % 60).padStart(2, '0') + '</span>').join(' &nbsp;|&nbsp; ') + '</div>';
   if (p.status === 'napaka') h += '<div class="msg err">' + esc(p.napaka || 'Napaka') + '</div>';
   else if (p.napaka) h += '<div class="msg warn">' + esc(p.napaka) + '</div>';
   if ((p.opozorila || []).length) h += '<div class="msg warn">⚠ ' + p.opozorila.map(esc).join(' · ') + '</div>';
@@ -437,7 +440,7 @@ function risi1v(p) {
   const ogl = (p.oglasi_sl || []).concat(Array(Math.max(0, n - (p.oglasi_sl || []).length)).fill({ hl: '', pt: '' }));
   const vk = vid.filter(v => v.vkljuci), lok = vk.filter(v => v.lokal !== false);
   const znakov = Math.round(lok.reduce((a, v) => a + Math.max(3, (v.trajanje || 12) - 1.2) * 2.3 * 6.5, 0) * nT);
-  let h = '<div class="card"><div class="card-h"><b>▶ Videi</b><span class="sub">🎙 = glas v jeziku trga + podnapisi (naši videi brez vžganega besedila) · brez kljukice = univerzalni, isti v vseh trgih</span><span class="grow"></span>' +
+  let h = '<div class="card"><div class="card-h"><b>▶ Videi</b><span class="pill ' + (vk.length > 3 ? 'p-err' : 'p-inf') + '">izbranih ' + vk.length + ' / 3</span><span class="sub">🎙 = glas v jeziku trga + podnapisi (naši videi brez vžganega besedila) · brez kljukice = univerzalni, isti v vseh trgih</span><span class="grow"></span>' +
     '<label class="btn sm" style="cursor:pointer">＋ Dodaj videe<input type="file" accept=".mp4,.mov,.m4v,video/mp4,video/quicktime" multiple style="display:none" onchange="videoDodaj(this)"></label></div>' +
     (vid.length ? '<div class="vid">' + vid.map((v, j) => '<figure><video src="' + dat(v.datoteka) + '#t=0.5" preload="metadata" controls muted></video>' +
       '<label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-weight:700;cursor:pointer"><input type="checkbox" data-e="vid" data-f="' + esc(v.datoteka) + '"' + (v.vkljuci ? ' checked' : '') + '> ' + esc(v.datoteka) + '</label>' +
@@ -604,7 +607,9 @@ document.addEventListener('input', e => {
   else if (k === 'razm') { PAK.kreative[i].razmerje = t.value; }
   else if (k === 'scena') { PAK.kreative[i].scena = t.value; }
   else if (k === 'hl' || k === 'pt') { PAK.oglasi_sl = PAK.oglasi_sl || []; while (PAK.oglasi_sl.length <= i) PAK.oglasi_sl.push({ hl: '', pt: '' }); PAK.oglasi_sl[i] = Object.assign({}, PAK.oglasi_sl[i], { [k]: t.value }); }
-  else if (k === 'vid') { const v = PAK.videi.find(x => x.datoteka === t.dataset.f); if (v) v.vkljuci = t.checked; if (PAK.tip === 'video') risi(); }
+  else if (k === 'vid') { const v = PAK.videi.find(x => x.datoteka === t.dataset.f);
+    if (v && t.checked && PAK.tip === 'video' && PAK.videi.filter(x => x.vkljuci).length >= 3) { t.checked = false; alert('Največ 3 videi na kampanjo — najprej odkljukaj drugega.'); return; }
+    if (v) v.vkljuci = t.checked; if (PAK.tip === 'video') risi(); }
   else if (k === 'lokal') { PAK.videi[+t.dataset.j].lokal = t.checked; risi(); }
   else if (k === 'skripta') { const v = PAK.videi[+t.dataset.j]; v.skripte = Object.assign({}, v.skripte, { [TRG]: t.value }); }
   else if (k === 't_hl' || k === 't_pt') { const x = PAK.trgi[TRG]; x.oglasi[o] = Object.assign({}, x.oglasi[o], { [k.slice(2)]: t.value }); }
