@@ -127,10 +127,10 @@ def vklopi(G: dict):
     lock = asyncio.Lock()
     flare_sem = asyncio.Semaphore(6)   # ⚡ 2026-10-21: Flare (OpenAI) in NB2.1 (Gemini) ločeno — prej skupaj 4 → lokalizacija 50 slik po 4
     nb_sem = asyncio.Semaphore(12)
-    el_sem = asyncio.Semaphore(3)   # 🎙 ElevenLabs: paket dovoli največ 5 hkratnih zahtev (429 concurrent_limit_exceeded, 2026-10-24)
+    el_sem = asyncio.Semaphore(4)   # 🎙 ElevenLabs Creator: eleven_v3 največ 5 hkrati (429 concurrent_limit_exceeded, 2026-10-24) → 4, 1 rezerva za Video Ads
 
     async def el_post(hc, url, **kw):
-        """POST na ElevenLabs: največ 3 hkrati + ob 429 do 5 ponovitev z zamikom."""
+        """POST na ElevenLabs: največ 4 hkrati + ob 429 do 5 ponovitev z zamikom."""
         for i in range(6):
             async with el_sem:
                 r = await hc.post(url, **kw)
@@ -684,12 +684,16 @@ def vklopi(G: dict):
         except Exception:
             pass
 
+    # ⚡ 2026-10-24 (Render 2 CPU / 8 GB): Meta Ads montaža 2 hkrati, vsaka 1 nit in nice 10 → strežnik (/healthz) ima prednost pred FFmpeg
+    ff_sem = asyncio.Semaphore(2)
+
     async def ff(args, cwd=None, timeout=900):
-        """FFmpeg v ozadju — skupni semafor strežnika (1 naenkrat, CPU)."""
-        import subprocess
+        """FFmpeg v ozadju — največ 2 hkrati, nižja prioriteta procesa (nice) na Linuxu."""
+        import subprocess, shutil
         _ff_poti()
-        sem = G.get("FFMPEG_SEMAPHORE") or asyncio.Semaphore(1)
-        async with sem:
+        if shutil.which("nice"):
+            args = ["nice", "-n", "10", *args]
+        async with ff_sem:
             r = await asyncio.to_thread(subprocess.run, args, capture_output=True, timeout=timeout, cwd=cwd)
         if r.returncode != 0:
             raise RuntimeError("FFmpeg: " + r.stderr.decode("utf-8", "replace")[-400:])
@@ -766,7 +770,7 @@ def vklopi(G: dict):
     async def video_kodiraj(args_vhod, filt, mapiraj, dur, out, cwd):
         """Kodiraj; nad 9,5 MB → še enkrat z nižjo kakovostjo (Meta uvoz: max 10 MB)."""
         for crf, mx in (("26", "2000k"), ("31", "1100k")):
-            await ff(["ffmpeg", "-y", "-loglevel", "error", "-threads", "2", *args_vhod, "-filter_complex", filt, *mapiraj, *MA_ENC,
+            await ff(["ffmpeg", "-y", "-loglevel", "error", "-threads", "1", *args_vhod, "-filter_complex", filt, *mapiraj, *MA_ENC,
                       "-crf", crf, "-maxrate", mx, "-bufsize", str(int(mx[:-1]) * 2) + "k", "-t", f"{dur:.2f}", out], cwd=cwd)
             if os.path.getsize(os.path.join(cwd, out)) <= MA_VIDEO_MB * 1048576:
                 return
