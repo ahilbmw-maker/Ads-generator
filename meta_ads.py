@@ -358,9 +358,11 @@ def vklopi(G: dict):
     # prednosti/hook so bile odrezane. Vse besedilo, ikone in logo v osrednjih 76 % širine, ob straneh samo ozadje.
     MA_VARNA_CONA = ("SAFE ZONE (very important): Instagram crops this square image on the LEFT and RIGHT sides on phones. "
                      "Keep ALL text, the hook, the benefit icons/labels and the logo inside the central 76% of the width — "
-                     "leave an empty margin of at least 12% of the image width on the left AND on the right (only background there), "
-                     "and at least 6% at the top and bottom. 'Left', 'right' and 'corner' in the layout mean inside this safe zone, never touching the edge. "
-                     "Never start text at the very left edge; if the benefit row does not fit, make the icons and labels smaller or move them closer together. ")
+                     "no text or icon closer than 12% of the image width to the left or right edge, and 6% to the top or bottom. "
+                     "'Left', 'right' and 'corner' in the layout mean inside this safe zone, never touching the edge. "
+                     "Never start text at the very left edge; if the benefit row does not fit, make the icons and labels smaller or move them closer together. "
+                     "IMPORTANT: this is only about text placement — the photo/scene and background must fill the WHOLE square edge to edge: "
+                     "no borders, no frames, no blank or solid-colour side bars, no letterboxing, not a smaller picture inside the square. ")   # 2026-10-25: NB2.1 je »prazen rob« narisal kot sive/črne pasove
 
     def prompt_prevod(t, ime):
         """Isti prompt kot »Lok« (prevod slik): prevedi vidno besedilo, vse ostalo enako; ime izdelka/logo ostane."""
