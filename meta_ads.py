@@ -595,7 +595,16 @@ def vklopi(G: dict):
             await pak_set(pid, lambda q: q.update(status="napaka", napaka=f"Koncept ni uspel: {err}"))
 
     # ── 2) kreative v angleščini (isti prompt + Flare kot generator Kreative) ──
-    async def obdelaj_osnove(pid, indeksi, model="flare"):
+    # 🔀 2026-10-25: Flare kopira kompozicijo referenc (malo raznolikosti), NB2.1 bolj sledi vibe → privzeto MEŠANO:
+    #    kreative 1, 3, 5 = NB2.1, 2 in 4 = Flare (model v imenu oglasa → primerjava CTR/CPA v Ads Managerju)
+
+    def model_za(p, i, model):
+        if model in ("flare", "nb21"):
+            return model
+        m = ((p.get("nastavitve") or {}).get("model_kreativ") or "mesano")
+        return m if m in ("flare", "nb21") else ("nb21" if i % 2 == 0 else "flare")
+
+    async def obdelaj_osnove(pid, indeksi, model="auto"):
         p = pak_get(pid)
         mapa = MAPA / pid
         mapa.mkdir(parents=True, exist_ok=True)
@@ -613,12 +622,13 @@ def vklopi(G: dict):
                     raise RuntimeError("referenčnih slik ni bilo mogoče prenesti")
                 smer = random.choice(MA_EKSPERIMENTI) if k.get("scena") == "eksperiment" else ""
                 pr = prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", "1:1", k.get("scena") or "", smer)
-                raw = await (nb21(refs[:3], pr, "1:1") if model == "nb21" else flare(refs, pr, "1:1", n_ref=3))   # ↻ izbira modela po kreativi
+                m_ = model_za(p, i, model)
+                raw = await (nb21(refs[:3], pr, "1:1") if m_ == "nb21" else flare(refs, pr, "1:1", n_ref=3))   # ↻ izbira modela po kreativi
                 if razm == "4:5":
                     raw = await kvadrat_v_45(raw)
                 fn = f"osnova_{i + 1}_{uuid.uuid4().hex[:4]}.jpg"
                 (mapa / fn).write_bytes(raw)
-                await pak_set(pid, lambda q: q["kreative"][i].update(osnova=fn, osnova_napaka="", v_delu=False, razmerje=razm, smer=smer.split(":")[0].title() if smer else "", model="NB2.1" if model == "nb21" else "Flare 2.5"))
+                await pak_set(pid, lambda q: q["kreative"][i].update(osnova=fn, osnova_napaka="", v_delu=False, razmerje=razm, smer=smer.split(":")[0].title() if smer else "", model="NB2.1" if m_ == "nb21" else "Flare 2.5"))
             except Exception as e:
                 err = str(e)[:160]
                 await pak_set(pid, lambda q: q["kreative"][i].update(osnova_napaka=err, v_delu=False))
@@ -1288,7 +1298,7 @@ def vklopi(G: dict):
                 if "cc" in data["nastavitve"] and str(data["nastavitve"]["cc"]) != str(n.get("cc")):   # nov znesek za vse trge → pobriši vrednosti po trgih
                     for tv_ in (p.get("trgi") or {}).values():
                         tv_.pop("cc", None)
-                for k_ in ("proracun", "bid", "status", "kampanja", "strategija", "cc"):
+                for k_ in ("proracun", "bid", "status", "kampanja", "strategija", "cc", "model_kreativ"):
                     if k_ in data["nastavitve"]:
                         n[k_] = data["nastavitve"][k_]
         await pak_set(pid, upd)
@@ -1304,7 +1314,7 @@ def vklopi(G: dict):
             return {"ok": False, "error": "Najprej pripravi koncept."}
         idx = [int(i) for i in (data.get("indeksi") or range(len(p["kreative"]))) if 0 <= int(i) < len(p["kreative"])]
         await pak_set(pid, lambda q: ([q["kreative"][i].update(v_delu=True, osnova_napaka="") for i in idx], q.update(status="osnove_v_delu")))
-        asyncio.create_task(obdelaj_osnove(pid, idx, "nb21" if data.get("model") == "nb21" else "flare"))
+        asyncio.create_task(obdelaj_osnove(pid, idx, data.get("model") if data.get("model") in ("nb21", "flare") else "auto"))
         return {"ok": True}
 
     @app.post("/meta-ads/api/lokaliziraj")
@@ -1436,7 +1446,7 @@ def vklopi(G: dict):
                     if not s:
                         opz.append(f"{t.upper()} kreativa {i + 1}: ni slike — izpuščena"); continue
                     prva = prva or s
-                    img, vfn, ct, an = s, "", "Link Page Post Ad", f"{p['sku']} {t.upper()} slika {i + 1} ({'eksperiment' if p['kreative'][i].get('scena') == 'eksperiment' else p['kreative'][i].get('razmerje') or '1:1'})"
+                    img, vfn, ct, an = s, "", "Link Page Post Ad", f"{p['sku']} {t.upper()} slika {i + 1} ({'eksperiment' if p['kreative'][i].get('scena') == 'eksperiment' else p['kreative'][i].get('razmerje') or '1:1'}{', ' + p['kreative'][i]['model'] if p['kreative'][i].get('model') else ''})"
                 elif je_video:   # 🎬 lokaliziran video trga (glas + podnapisi) + njegova sličica
                     vt_ = (tt.get("videi") or {}).get(str(i)) or {}
                     if not vt_.get("datoteka"):

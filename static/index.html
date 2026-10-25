@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-25 09:50</div>
+      <div class="sidebar-logo-sub">build 2026-10-25 10:22</div>
     </div>
   </div>
 
@@ -1902,6 +1902,7 @@ input[type="text"].error { border-color: var(--red) !important; }
                 <button type="button" class="kbmbtn" data-m="image2" onclick="kbToggleModel('image2')">🟢 Image 2</button>
                 <button type="button" class="kbmbtn" data-m="flare" onclick="kbToggleModel('flare')">🔶 Flare 2.5</button>
                 <button type="button" class="kbmbtn" data-m="flash" onclick="kbToggleModel('flash')">⚡ NB2.1</button>
+                <button type="button" class="kbmbtn" data-m="flimg" onclick="kbToggleModel('flimg')" title="En delež, razdeljen na pol: Flare 2.5 + Image 2. Z NB2.1 pri 20 slikah: 10 NB2.1 · 5 Flare · 5 Image 2">🔶🟢 Flare/Image 2</button>
                 <button type="button" class="kbmbtn" data-m="pro" onclick="kbToggleModel('pro')">✨ NB Pro</button>
               </div>
             </div>
@@ -8365,8 +8366,12 @@ function kbGetModel(){
   if(!kbSelModels.length) return 'image2';
   const vsi = ['image2','flare','flash','pro'];
   if(kbSelModels.length === 4 && vsi.every(m=>kbSelModels.indexOf(m)>=0)) return 'compare4';
-  if(kbSelModels.length === 1) return kbSelModels[0];
-  return 'multi:' + kbSelModels.join(',');   // več izbranih → backend razdeli enakomerno
+  if(kbSelModels.length === 1 && kbSelModels[0] !== 'flimg') return kbSelModels[0];
+  // več izbranih → backend razdeli ciklično. 🔀 »Flare/Image 2« (2026-10-25) = EN delež, ki se izmenično razdeli na Flare in Image 2:
+  // NB2.1 + Flare/Image 2 pri 20 slikah → flash,flare,flash,image2 = 10 NB2.1 · 5 Flare · 5 Image 2
+  const vrsta = [];
+  for(let k = 0; k < 2; k++) kbSelModels.forEach(m => vrsta.push(m === 'flimg' ? (k ? 'image2' : 'flare') : m));
+  return 'multi:' + vrsta.join(',');
 }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ try{kbInitModels();}catch(e){} });
 else { try{kbInitModels();}catch(e){} }

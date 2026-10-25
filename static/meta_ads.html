@@ -430,7 +430,8 @@ function risi1(p) {
       '<div class="sub">' + v.mb + ' MB · ' + esc(v.izvor) + '</div>' + (v.opomba ? '<div style="color:var(--err);font-size:11.5px">' + esc(v.opomba) + '</div>' : '') + '</figure>').join('') + '</div>'
       : '<div class="sub">Ni videov (v novem SKU-ju dodaj povezavo do Asana taska).</div>') + '</div>';
   h += '<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><button class="btn" onclick="shrani(true)">💾 Shrani popravke</button><span class="grow"></span>' +
-    '<span class="sub">Flare 2.5 nariše 5 kreativ z angleškimi napisi — isti prompt kot generator Kreative</span>' +
+    '<label class="sub" style="display:flex;gap:6px;align-items:center" title="Flare kopira kompozicijo referenc, NB2.1 bolj sledi vibe. Model je v imenu oglasa → primerjaj CTR/CPA v Ads Managerju.">Model kreativ <select class="f" data-e="n_model_kreativ" style="width:auto">' +
+    [['mesano', '🔀 Mešano (1,3,5 NB2.1 · 2,4 Flare)'], ['nb21', '⚡ NB2.1 (vseh 5)'], ['flare', '🔶 Flare 2.5 (vseh 5)']].map(([v, l]) => '<option value="' + v + '"' + (((p.nastavitve || {}).model_kreativ || 'mesano') === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>' +
     '<button class="btn pri lg" ' + (V_DELU.includes(p.status) ? 'disabled' : '') + ' onclick="osnove()">2 · Ustvari kreative →</button></div>';
   return h;
 }
@@ -631,7 +632,7 @@ async function osnove(idx, model) {
   await shrani(false);
   const n = idx ? idx.length : PAK.kreative.length;
   if (!idx && PAK.kreative.some(k => k.osnova) && !confirm('Znova narišem vseh ' + n + ' kreativ? (obstoječe se zamenjajo)')) return;
-  const d = await post('/meta-ads/api/osnove', { id: PAK.id, indeksi: idx || null, model: model || 'flare' });
+  const d = await post('/meta-ads/api/osnove', { id: PAK.id, indeksi: idx || null, model: model || 'auto' });
   if (!d.ok) { msg('msg', esc(d.error), 'err'); return; }
   KORAK = 2; await odpri(PAK.id);
 }
