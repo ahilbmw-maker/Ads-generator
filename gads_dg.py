@@ -259,7 +259,7 @@ def vklopi(G: dict):
 
     # 🎨 načrt AI slik na SKU: (vrsta, razmerje za Gemini, indeks vibe) — Google priporoča ≥ 3 pokončne
     DG_AI_NACRT = [("1x1", "1:1", 0), ("1x1", "1:1", 1), ("4x5", "4:5", 0), ("4x5", "4:5", 1), ("4x5", "4:5", 2), ("191x1", "16:9", 0), ("191x1", "16:9", 2)]
-    gem_sem = asyncio.Semaphore(12)   # vzporednih klicev Gemini (vse SKU-je skupaj) — ⚡ 2026-10-22: 6 → 12 (kot Meta Ads)
+    gem_sem = asyncio.Semaphore(20)   # vzporednih klicev Gemini (vse SKU-je skupaj) — ⚡ 2026-10-22: 6 → 12, 2026-10-25: 12 → 20
 
     def kratek_napis(b, n=20):
         """Napis na sliki: do ~20 znakov (daljši se na slikah ne berejo); krajše ostane cele (»2 в 1«),
