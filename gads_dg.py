@@ -38,8 +38,8 @@ def beri_izvoz(raw: bytes) -> list:
     g = lambda r, k: (r[ix[k]].strip() if k in ix and ix[k] < len(r) else "")
     kamp = {}
     for r in vrst[1:]:
-        c = g(r, "Campaign")
-        if not c:
+        c = (r[ix["Campaign"]] if "Campaign" in ix and ix["Campaign"] < len(r) else "").strip("\r\n")   # ⚠ brez strip(): ime mora biti TOČNO kot v Editorju (presledki!), sicer uvoz ustvari novo (Search) kampanjo
+        if not c.strip():
             continue
         k = kamp.setdefault(c, {"ime": c, "tip": "", "ad_groups": [], "skuji": [], "business_name": "", "trg": "", "primeri": [], "jeziki": "",
                                 "kamp_vrstica": {}, "lokacije": []})
@@ -694,6 +694,13 @@ def vklopi(G: dict):
         if not izb:
             return JSONResponse({"ok": False, "error": "Ni oglasov brez napak za izvoz."}, status_code=400)
         nk = p.get("nova_kampanja")
+        if not nk:   # 🛡 2026-10-25: ime kampanje mora biti TOČNO kot v Editorju — sicer Editor ob uvozu ustvari NOVO (Search) kampanjo
+            kamp_t = (((_jload(NAST_FILE, {}) or {}).get("trgi") or {}).get(p["trg"]) or {}).get("kampanje") or {}
+            if p["kampanja"] not in kamp_t:
+                pravo = next((n for n in kamp_t if " ".join(n.split()) == " ".join(p["kampanja"].split())), None)
+                if not pravo:
+                    return JSONResponse({"ok": False, "error": f"Kampanje »{p['kampanja']}« ni v naloženem izvozu {p['trg'].upper()} — naloži izvoz iz Editorja znova (sicer bi uvoz ustvaril novo kampanjo)."}, status_code=400)
+                p = dict(p, kampanja=pravo)
         k_vr, lok = [], []
         if nk:   # ➕ nova kampanja: kopija vrstice izvorne kampanje (ime, proračun, Target CPA, Paused, začetek danes) + lokacije
             kv = dict(kinfo.get("kamp_vrstica") or {})
