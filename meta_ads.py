@@ -1096,7 +1096,7 @@ def vklopi(G: dict):
             return ni()
         d = nalozi()
         return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "vrsta": d.get("vrsta") or {"postavke": []}, "narejeni": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "slike"}), "narejeni_video": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "video"}), "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "cc": MA_CC, "scene": {k: v["ime"] for k, v in MA_SCENE.items()},
-                "paketi": [{k: p.get(k) for k in ("id", "sku", "ime", "status", "at", "izvozeno")} | {"tip": tip_od(p)} |
+                "paketi": [{k: p.get(k) for k in ("id", "sku", "ime", "status", "at", "izvozeno", "potrjeno")} | {"tip": tip_od(p)} |
                            {"trgi": [t for t in MA_TRGI if ((p.get("trgi") or {}).get(t) or {}).get("vkljuci")]} for p in d["paketi"]]}
 
     @app.get("/meta-ads/api/sku")
@@ -1123,7 +1123,7 @@ def vklopi(G: dict):
             return {"ok": False, "error": "Vpiši en veljaven SKU."}
         async with lock:
             d = nalozi()
-            pid = nov_paket(d, sku, data.get("trgi"), data.get("asana"), tip=tip_od(data))
+            pid = nov_paket(d, sku, data.get("trgi"), data.get("asana"), auto_osnove=bool(data.get("auto_osnove")), tip=tip_od(data))   # 📦 vsi naenkrat: kreative takoj po konceptu
             _jsave(PAK_FILE, d)
         asyncio.create_task(obdelaj_koncept(pid))
         return {"ok": True, "id": pid}
@@ -1254,6 +1254,8 @@ def vklopi(G: dict):
         pid = str(data.get("id") or "")
 
         def upd(p):
+            if "potrjeno" in data:   # ✓ pregledano in potrjeno (📦 vsi naenkrat → potrdiš → množično lokaliziraš in izvoziš)
+                p["potrjeno"] = _lj_iso() if data["potrjeno"] else None
             if data.get("ime"):
                 p["ime"] = re.sub(r"[^A-Z0-9 \-&]", "", str(data["ime"]).upper())[:20].strip() or p.get("ime")
             for i, k in enumerate(data.get("kreative") or []):

@@ -154,13 +154,14 @@
       <textarea class="f" id="asana" rows="2" placeholder="https://app.asana.com/1/…/task/1211103386362549"></textarea>
       <div style="display:flex;align-items:center;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--bd);flex-wrap:wrap">
         <button class="btn pri lg" id="btnKon" onclick="koncept()">1 · Pripravi koncept →</button>
+        <label class="sub" style="display:flex;gap:6px;align-items:center" title="Več SKU-jev: 🧵 eden po eden (vrsta) ali 📦 vsi naenkrat — koncept + kreative za vse hkrati, potrdiš ✓, nato v Zgodovini »Izberi potrjene« → 3 · Lokaliziraj → 📁 Shrani v mapo (en CSV, slike v mapi vsakega SKU)">Več SKU-jev <select class="f" id="vecNacin" style="width:auto" onchange="LS.set('ma_vec_nacin', this.value)"><option value="vsi">📦 Vsi naenkrat</option><option value="vrsta">🧵 Eden po eden</option></select></label>
         <span class="sub">Analiza kot v generatorju Kreative (ime, A prednosti, B vibe) + besedila oglasov v slovenščini — vse lahko popraviš, preden se rišejo slike.</span>
       </div>
       <div id="msgNov"></div>
     </div>
     <div>
       <div class="card">
-        <div class="card-h"><b>📜 Zgodovina</b><span class="sub">zadnjih 30 · klik = odpri</span><span class="grow"></span><button class="btn sm ghost" onclick="izbrisiVse()" title="Izbriše vse pakete (razen tistih, ki se še pripravljajo) — števec oglasov ostane">🗑 Počisti vse</button></div>
+        <div class="card-h"><b>📜 Zgodovina</b><span class="sub">zadnjih 30 · klik = odpri</span><span class="grow"></span><button class="btn sm" onclick="izberiPotrjene()" title="Označi vse potrjene (✓), ki še niso izvoženi — nato množični koraki spodaj">✓ Izberi potrjene</button><button class="btn sm ghost" onclick="izbrisiVse()" title="Izbriše vse pakete (razen tistih, ki se še pripravljajo) — števec oglasov ostane">🗑 Počisti vse</button></div>
         <div id="vecBar" style="display:none;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 10px;padding:8px 10px;border-radius:10px;background:var(--acc2)"></div>
         <div class="zg" id="zgod"><div class="prazno">Nalagam …</div></div>
       </div>
@@ -299,12 +300,14 @@ async function koncept() {
   if (!vr.length) { msg('msgNov', preskoceni.length ? '📒 Vsi SKU-ji so že narejeni — obkljukaj ✓ tiste, ki jih želiš znova.' : 'Vpiši vsaj en SKU, ki je v feedu.', preskoceni.length ? 'warn' : 'err'); return; }
   if (vr.length === 1 && vr[0].info.narejeno && !confirm('📒 ' + vr[0].sku + ' je bil že narejen ' + datum(vr[0].info.narejeno.at) + ' (' + vr[0].info.narejeno.oglasov + ' oglasov). Pripravim znova?')) return;
   if (!IZBOR.filter(t => t !== 'rs').length && !IZBOR.includes('rs')) { msg('msgNov', 'Izberi vsaj en trg.', 'err'); return; }
-  if (vr.length > 1) return vrstaZacni(vr, preskoceni);
+  const vsiNaenkrat = vr.length > 1 && LS.get('ma_vec_nacin') !== 'vrsta';
+  if (vr.length > 1 && !vsiNaenkrat) return vrstaZacni(vr, preskoceni);
+  if (vsiNaenkrat && !confirm('📦 Za ' + vr.length + ' SKU-jev naenkrat pripravim koncept' + (TIP === 'video' ? '' : ' in kreative') + '. Ko so narejeni, vsakega odpri, preglej in klikni »✓ Potrdi«, nato v Zgodovini »Izberi potrjene« → 3 · Lokaliziraj → 📁 Shrani v mapo (en CSV, slike v mapi vsakega SKU). Začnem?')) return;
   document.getElementById('btnKon').disabled = true;
   const ids = [], nap = [];
   for (const v of vr) {
     const trgi = IZBOR.filter(t => t !== 'rs').concat((vr.length === 1 ? IZBOR.includes('rs') : v.rs) ? ['rs'] : []);
-    const d = await post('/meta-ads/api/koncept', { sku: v.sku, tip: TIP, trgi, asana: [v.asana, vr.length === 1 ? document.getElementById('asana').value : ''].join(' ') });
+    const d = await post('/meta-ads/api/koncept', { sku: v.sku, tip: TIP, trgi, auto_osnove: vsiNaenkrat && TIP !== 'video', asana: [v.asana, vr.length === 1 ? document.getElementById('asana').value : ''].join(' ') });
     if (d.ok) ids.push(d.id); else nap.push(v.sku + ': ' + (d.error || 'napaka'));
   }
   document.getElementById('btnKon').disabled = false;
@@ -399,6 +402,7 @@ function risi() {
       (napr ? '<span class="prog"><i style="width:' + napr + '%"></i></span>' : '') : '') +
     (p.zastalo ? '<span class="pill p-warn" title="Brez napredka več kot 10 min — strežnik se je verjetno ponovno zagnal (deploy) in prekinil delo v ozadju">⏸ zastalo</span>' +
       (p.tip === 'video' && p.status === 'lokal_v_delu' ? '<button class="btn sm pri" onclick="znovaNapake()" title="Naredi samo manjkajoče videe — narejeni ostanejo">▶ Nadaljuj</button>' : '') : '') +
+    (!vd && p.status !== 'napaka' && (p.kreative || []).length + (p.videi || []).length ? (p.potrjeno ? '<button class="btn sm grn" onclick="potrdi(false)" title="Potrjeno — klik = prekliči">✓ Potrjeno</button>' : '<button class="btn sm pri" onclick="potrdi(true)" title="Pregledano — gre med »Izberi potrjene« v Zgodovini">✓ Potrdi</button>') : '') +
     '<button class="btn sm ghost" onclick="zapri()" title="Zapri (ostane v zgodovini)">✕</button></div>';
   if (p.status === 'lokal_v_delu' && (p.tece || []).length) h += '<div class="msg inf" style="font-size:12.5px">⏳ Teče: ' + p.tece.map(x => '<b>' + esc(x.trg.toUpperCase()) + '</b> video ' + x.video + ' · ' + esc(x.korak) + ' · <span style="color:' + (x.s > 240 ? 'var(--err)' : 'inherit') + '">' + Math.floor(x.s / 60) + ':' + String(x.s % 60).padStart(2, '0') + '</span>').join(' &nbsp;|&nbsp; ') + '</div>';
   if (p.status === 'napaka') h += '<div class="msg err">' + esc(p.napaka || 'Napaka') + '</div>';
@@ -669,7 +673,7 @@ function zgodovina() {
   const opis = { koncept_v_delu: ['p-inf', '⏳ koncept'], koncept: ['p-mut', '1 · koncept'], osnove_v_delu: ['p-inf', '⏳ slike'], osnove: ['p-mut', '2 · slike'], lokal_v_delu: ['p-inf', '⏳ trgi'], pripravljeno: ['p-warn', 'pripravljeno'], napaka: ['p-err', 'napaka'] };
   const vidni = ZG_VSE ? ps : ps.filter((p, i) => i < ZG_N || IZBRANI.has(p.id) || (PAK && PAK.id === p.id) || V_DELU.includes(p.status));   // prvih ZG_N + izbrani/odprti/v pripravi
   el.innerHTML = ps.length ? vidni.map(p => { const o = p.izvozeno ? ['p-ok', '✓ izvoženo'] : opis[p.status] || ['p-mut', p.status];
-    return '<div class="zg-r' + (PAK && PAK.id === p.id ? ' on' : '') + '" data-id="' + esc(p.id) + '" onclick="odpri(\'' + esc(p.id) + '\')"><div style="min-width:0;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" style="margin-top:3px;width:15px;height:15px;accent-color:var(--acc)" ' + (IZBRANI.has(p.id) ? 'checked ' : '') + 'onclick="event.stopPropagation()" onchange="izberi(\'' + esc(p.id) + '\',this.checked)"><div style="min-width:0"><div class="zg-t">' + (p.tip === 'video' ? '🎬 ' : '🖼 ') + esc(p.sku) + (p.ime && p.ime !== p.sku ? ' <span class="sub">' + esc(p.ime) + '</span>' : '') + '</div>' +
+    return '<div class="zg-r' + (PAK && PAK.id === p.id ? ' on' : '') + '" data-id="' + esc(p.id) + '" onclick="odpri(\'' + esc(p.id) + '\')"><div style="min-width:0;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" style="margin-top:3px;width:15px;height:15px;accent-color:var(--acc)" ' + (IZBRANI.has(p.id) ? 'checked ' : '') + 'onclick="event.stopPropagation()" onchange="izberi(\'' + esc(p.id) + '\',this.checked)"><div style="min-width:0"><div class="zg-t">' + (p.tip === 'video' ? '🎬 ' : '🖼 ') + esc(p.sku) + (p.potrjeno && !p.izvozeno ? ' <span class="pill p-ok" style="font-size:10.5px">✓ potrjeno</span>' : '') + (p.ime && p.ime !== p.sku ? ' <span class="sub">' + esc(p.ime) + '</span>' : '') + '</div>' +
       '<div class="zg-s">' + (p.trgi || []).map(t => t.toUpperCase()).join(' · ') + '</div></div></div><div class="zg-d"><span class="pill ' + o[0] + '">' + o[1] + '</span><div style="margin-top:3px">' + esc(datum(p.at)) + ' ' + esc(String(p.at || '').slice(11, 16)) + ' <button class="btn sm ghost" style="padding:1px 5px" title="Izbriši iz zgodovine" onclick="event.stopPropagation();izbrisi(\'' + esc(p.id) + '\',\'' + esc(p.sku) + '\')">🗑</button></div></div></div>'; }).join('')
     : '<div class="prazno">Še ni paketov — vpiši SKU in klikni »Pripravi koncept«.</div>';
   if (ps.length > ZG_N) el.innerHTML += '<div style="text-align:center;margin-top:6px"><button class="btn sm ghost" onclick="ZG_VSE=!ZG_VSE;zgodovina()">' + (ZG_VSE ? '▲ Prikaži manj' : '▼ Prikaži več (' + (ps.length - vidni.length) + ')') + '</button></div>';
@@ -679,6 +683,16 @@ function zgodovina() {
 let IZBRANI = new Set(), ZG_T = null, ZG_VSE = false;
 const ZG_N = 5;   // zgodovina: privzeto zadnjih 5, »Prikaži več« za ostale
 function izberi(id, on) { if (on) IZBRANI.add(id); else IZBRANI.delete(id); risiVec(); }
+function izberiPotrjene() {
+  const ps = (ST.paketi || []).filter(p => p.potrjeno && !p.izvozeno);
+  if (!ps.length) { msg('msg', 'Ni potrjenih (neizvoženih) paketov — odpri paket in klikni »✓ Potrdi«.', 'warn'); return; }
+  IZBRANI = new Set(ps.map(p => p.id)); ZG_VSE = true; zgodovina(); risiVec();
+}
+async function potrdi(on) {
+  const d = await post('/meta-ads/api/shrani', { id: PAK.id, potrjeno: !!on });
+  if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); return; }
+  PAK.potrjeno = on ? new Date().toISOString() : null; risi(); stanje();
+}
 function risiVec() {
   const el = document.getElementById('vecBar'), ps = (ST.paketi || []).filter(p => IZBRANI.has(p.id));
   IZBRANI = new Set(ps.map(p => p.id));
@@ -908,7 +922,7 @@ async function elKred(osvezi) {
   el.title = 'ElevenLabs ' + d.paket + ': porabljeno ' + d.porabljeno.toLocaleString('sl') + ' od ' + d.limit.toLocaleString('sl') + ' znakov (' + d.odstotek + ' % ostane). '
     + (d.odstotek < 20 ? 'Kmalu zmanjka → elevenlabs.io → Subscription: dokupi znake ali višji paket. ' : '') + 'Klik = osveži.';
 }
-risiIzbor(); risiTip(); elKred(); api('/meta-ads/api/glasovi').then(d => { if (d && d.ok && !GLAS) GLAS = d; });
+risiIzbor(); risiTip(); elKred(); { const vn = document.getElementById('vecNacin'); if (vn) vn.value = LS.get('ma_vec_nacin') === 'vrsta' ? 'vrsta' : 'vsi'; } api('/meta-ads/api/glasovi').then(d => { if (d && d.ok && !GLAS) GLAS = d; });
 mapaNalozi().then(stanje).then(() => { const id = LS.get('ma_pak'); if (id) odpri(id); });
 </script>
 </body>
