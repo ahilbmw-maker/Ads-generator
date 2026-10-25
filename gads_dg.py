@@ -696,11 +696,14 @@ def vklopi(G: dict):
         nk = p.get("nova_kampanja")
         if not nk:   # 🛡 2026-10-25: ime kampanje mora biti TOČNO kot v Editorju — sicer Editor ob uvozu ustvari NOVO (Search) kampanjo
             kamp_t = (((_jload(NAST_FILE, {}) or {}).get("trgi") or {}).get(p["trg"]) or {}).get("kampanje") or {}
-            if p["kampanja"] not in kamp_t:
-                pravo = next((n for n in kamp_t if " ".join(n.split()) == " ".join(p["kampanja"].split())), None)
-                if not pravo:
-                    return JSONResponse({"ok": False, "error": f"Kampanje »{p['kampanja']}« ni v naloženem izvozu {p['trg'].upper()} — naloži izvoz iz Editorja znova (sicer bi uvoz ustvaril novo kampanjo)."}, status_code=400)
-                p = dict(p, kampanja=pravo)
+            # 🏷 oznake v imenu (npr. » @STOP« za pravilo ob 00h) se v Editorju dodajajo/brišejo → ista kampanja = isto ime brez oznak;
+            #    uporabi ZADNJE naloženo ime (točno kot v Editorju zdaj) — uporabnik ob preimenovanju samo znova naloži izvoz
+            def osnova(n):
+                return " ".join(t for t in str(n).split() if not t.startswith("@")).lower()
+            kand = sorted((n for n in kamp_t if osnova(n) == osnova(p["kampanja"])), key=lambda n: str(kamp_t[n].get("uvoz_at") or ""), reverse=True)
+            if not kand:
+                return JSONResponse({"ok": False, "error": f"Kampanje »{p['kampanja']}« ni v naloženem izvozu {p['trg'].upper()} — naloži izvoz iz Editorja znova (sicer bi uvoz ustvaril novo kampanjo)."}, status_code=400)
+            p = dict(p, kampanja=kand[0])
         k_vr, lok = [], []
         if nk:   # ➕ nova kampanja: kopija vrstice izvorne kampanje (ime, proračun, Target CPA, Paused, začetek danes) + lokacije
             kv = dict(kinfo.get("kamp_vrstica") or {})
