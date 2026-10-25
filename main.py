@@ -10734,7 +10734,8 @@ async def product_sales(data: dict):
 KREATIVE_BATCH_FILE = DATA_DIR / "kreative_batch_queue.json"
 _kbatch_lock = asyncio.Lock()
 _kqueue_file_lock = asyncio.Lock()   # za varno dopisovanje v KREATIVE_QUEUE_FILE
-KBATCH_PAUSE_S = 20                  # premor med SKU-ji (sekund)
+KBATCH_PAUSE_S = 5                   # zamik med ZAGONI SKU-jev (2026-10-25: 20 → 5 s; OpenAI gpt-image = 250 IPM, ne 50)
+KBATCH_HKRATI = 3                    # SKU-jev hkrati (~20 slik/SKU naenkrat → 3 × 20 = 60 slik ≈ 60–90 IPM, pod 250)
 KBATCH_A_COUNT = 2                   # prva 2 teksta
 KBATCH_REF_IMAGES = 5                # prvih 5 referenčnih slik
 KBATCH_MAX_COUNT = 2                 # max slik/kombo za batch (2×5×2 = 20 slik/SKU)
@@ -11042,8 +11043,22 @@ def _kbatch_hb_stale(j) -> bool:
         return True   # brez/pokvarjen hb = star zapis → prevzemljiv
 
 
+_kbatch_tece = set()   # id-ji jobov, ki jih ta proces trenutno obdeluje (največ KBATCH_HKRATI)
+
+
+async def _kbatch_zazeni(job):
+    hb_task = asyncio.create_task(_kbatch_heartbeat(job["id"]))
+    try:
+        await _kbatch_process_one(job)
+    except Exception as e:
+        print(f"[kbatch] job {job.get('id')}: {e}")
+    finally:
+        hb_task.cancel()
+        _kbatch_tece.discard(job["id"])
+
+
 async def _kreative_batch_worker_loop():
-    """Strežniški worker: STROGO en SKU naenkrat + premor med SKU-ji.
+    """Strežniški worker: do KBATCH_HKRATI SKU-jev hkrati (zagoni z zamikom KBATCH_PAUSE_S).
     Lease/heartbeat: tudi če ob deployu za hip tečeta dva procesa (ali več uvicorn
     workerjev), en job obdeluje samo en worker; 'running' brez svežega heartbeata
     (> 3 min, npr. ubit proces) se prevzame nazaj."""
@@ -11057,8 +11072,11 @@ async def _kreative_batch_worker_loop():
             if active_other:
                 await asyncio.sleep(10)
                 continue
-            nxt = next((j for j in jobs if j.get("status") == "waiting"
-                        or (j.get("status") == "running" and _kbatch_hb_stale(j))), None)
+            if len(_kbatch_tece) >= KBATCH_HKRATI:
+                await asyncio.sleep(2)
+                continue
+            nxt = next((j for j in jobs if j.get("id") not in _kbatch_tece and (j.get("status") == "waiting"
+                        or (j.get("status") == "running" and _kbatch_hb_stale(j)))), None)
             if not nxt:
                 await asyncio.sleep(5)
                 continue
@@ -11069,12 +11087,9 @@ async def _kreative_batch_worker_loop():
             cur = next((j for j in _kbatch_load() if j.get("id") == nxt["id"]), None)
             if not cur or cur.get("worker") != _KBATCH_WORKER_ID:
                 continue   # drug proces je bil hitrejši — prepusti njemu
-            hb_task = asyncio.create_task(_kbatch_heartbeat(nxt["id"]))
-            try:
-                await _kbatch_process_one(nxt)
-            finally:
-                hb_task.cancel()
-            await asyncio.sleep(KBATCH_PAUSE_S)   # premor — ne zabij gpt-image-2
+            _kbatch_tece.add(nxt["id"])
+            asyncio.create_task(_kbatch_zazeni(nxt))
+            await asyncio.sleep(KBATCH_PAUSE_S)   # zamik med zagoni — slike ne gredo vse v isti sekundi
         except Exception as e:
             print(f"[kbatch] loop err: {e}")
             await asyncio.sleep(10)
@@ -14466,6 +14481,7 @@ function planRisi() {
   }).join('');
   const poRazlogu = {}; P2.preskok.forEach(s => (poRazlogu[s.r] = poRazlogu[s.r] || []).push(s.sku));
   o.innerHTML = '<div class="plan-box">' +
+    (FEED_STAR ? '<div style="background:#fdecec;color:#b42318;border:1px solid #f3c1c1;border-radius:9px;padding:8px 12px;margin-bottom:10px;font-weight:700">⚠ Feed ' + esc(String(trg).toUpperCase()) + ' je star ' + FEED_STAR + ' ur — trgovina ga ni zgradila znova. Predlogi temeljijo na STARIH cenah (že narejeni popravki se lahko pojavijo znova) — ne pošiljaj v vrsto, dokler feed ni svež.</div>' : '') +
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:17px">🧮 Plan cen · ' + esc(String(trg).toUpperCase()) + '</b>' +
       '<span class="dim">predlog — v CMS se še nič ne spremeni</span><button class="btn" style="margin-left:auto" onclick="document.getElementById(\'planOkno\').style.display=\'none\'">✕</button></div>' +
     '<div class="plan-nast">Cilj: <select onchange="planNastavi(\'smer\',this.value)"><option value="najblizja"' + (N.smer === 'najblizja' ? ' selected' : '') + '>najbližja Bato (enako → navzgor)</option><option value="gor"' + (N.smer === 'gor' ? ' selected' : '') + '>samo navzgor na Bato</option><option value="obrat"' + (N.smer === 'obrat' ? ' selected' : '') + '>📊 po obratu (signal)</option></select>' +
@@ -14807,12 +14823,16 @@ document.addEventListener('click',e=>{
     if(on){cmsLog(x,'undo'); x.cms=null;} else {cmsLog(x,'done'); const n=new Date().toISOString(); x.cms={st:'popravljeno',trg,opened_at:(x.cms&&x.cms.opened_at)||n,done_at:n,vir:BATO?'Bato cene':'Marža po trgih'};}
     render();}
 });
+let FEED_STAR=0;   // ure starosti feeda trga, če > 26 h (sicer 0)
 async function loadFeedInfo(){
   const el=document.getElementById('feedInfo'); const L=(TRGI.find(t=>t[0]===trg)||[])[1]||trg.toUpperCase();
   el.innerHTML='Feed '+L+': preverjam …';
   let m={}; try{m=await (await fetch('/feed-meta?trg='+trg)).json();}catch(e){}
   if(!m.ok){el.innerHTML='Feed '+L+': podatki niso na voljo';return;}
+  // ⚠ star feed (2026-10-25: trgovina feedov 25. 10. ni zgradila → Plan cen je predlagal že narejene popravke)
+  const _st=m.built_at?(Date.now()-Date.parse(m.built_at))/3600000:0; FEED_STAR=_st>26?Math.round(_st):0;
   el.innerHTML='<span>Feed <b>'+L+'</b>: '+(m.built_at?'zgrajen v trgovini <b>'+fmtT(m.built_at)+'</b> · ':'')+'prebran <b>'+fmtT(m.fetched_at)+'</b></span>'+
+    (FEED_STAR?'<span class="novo" style="background:#fdecec;color:#b42318;font-weight:800" title="Trgovina feeda ni zgradila več kot 26 ur — cene in spremembe od takrat v feedu NISO vidne. Ne delaj dvigov, dokler feed ni svež (Marko: izvoz storage/exports/…/google.xml).">⚠ Feed je star '+FEED_STAR+' ur — cene niso aktualne</span>':'')+
     (m.novejsi?'<span class="novo">⚠ v trgovini je novejši feed ('+fmtT(m.live_built_at)+')</span>':'')+
     (m.error?'<span class="novo" title="'+esc(m.error)+'">⚠ zadnji prenos ni uspel ('+fmtT(m.last_error_at)+') — prikazana prejšnja verzija</span>':'')+
     '<button class="chip" id="refBtn" onclick="refreshTrg()" title="Ponovno prebere feed samo za ta trg">↻ Osveži '+L+'</button>'+

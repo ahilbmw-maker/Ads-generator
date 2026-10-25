@@ -127,7 +127,7 @@ def vklopi(G: dict):
     PAK_FILE = DATA_DIR / "meta_ads_paketi.json"   # {paketi: [...] (zadnjih 30), evidenca: [...], brez_rs: [SKU]}
     MAPA = DATA_DIR / "meta_ads"
     lock = asyncio.Lock()
-    flare_sem = asyncio.Semaphore(6)   # ⚡ 2026-10-21: Flare (OpenAI) in NB2.1 (Gemini) ločeno — prej skupaj 4 → lokalizacija 50 slik po 4
+    flare_sem = asyncio.Semaphore(15)   # 2026-10-25: 6 → 15 (OpenAI gpt-image = 250 IPM) · ⚡ 2026-10-21: Flare (OpenAI) in NB2.1 (Gemini) ločeno — prej skupaj 4 → lokalizacija 50 slik po 4
     nb_sem = asyncio.Semaphore(12)
     el_sem = asyncio.Semaphore(4)   # 🎙 ElevenLabs Creator: eleven_v3 največ 5 hkrati (429 concurrent_limit_exceeded, 2026-10-24) → 4, 1 rezerva za Video Ads
 
