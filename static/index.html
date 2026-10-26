@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-26 14:43</div>
+      <div class="sidebar-logo-sub">build 2026-10-26 14:47</div>
     </div>
   </div>
 
@@ -1247,7 +1247,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('dvojniki')">Dvojniki</div>
     <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('karantena')">Karantena</div>
     <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('priprava')">Priprava seznama</div>
-    <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('alternative')">Alternative<span class="alt-badge" style="display:none;margin-left:6px;font-size:10px;font-weight:800;background:#e5484d;color:#fff;border-radius:9px;padding:1px 6px;line-height:1.5"></span></div>
+    <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('alternative')">Alternative</div>
     <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('preklici')">Popravki naročil<span class="prekl-badge" style="display:none;margin-left:6px;font-size:10px;font-weight:800;background:#e5484d;color:#fff;border-radius:9px;padding:1px 6px;line-height:1.5"></span></div>
   </div>
   <div class="nav-item nav-sporocanje" id="nav-sporocanje" onclick="switchPage('sporocanje')">
@@ -10132,8 +10132,8 @@ function preklFavicon(pika) {
   };
   img.src = izv;
 }
-function narcStevec() {   // odprti popravki + alternative → naslov zavihka »(3) Suban AI«, rdeča pika, oznaka Naročilnice v meniju
-  const n = PREKL.filter(p => !p.urejeno_at).length + ALT.filter(p => !p.urejeno_at).length;
+function narcStevec() {   // odprti popravki naročil → naslov zavihka »(3) Suban AI«, rdeča pika, oznaka Naročilnice v meniju (alternative NE — samo števec na svojem zavihku)
+  const n = PREKL.filter(p => !p.urejeno_at).length;
   document.title = (n ? '(' + n + ') ' : '') + document.title.replace(/^\(\d+\)\s*/, '');
   preklFavicon(n > 0);
   const b = document.getElementById('narcNavBadge'); if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; }
@@ -10338,7 +10338,7 @@ function altRisi() {
   const zdaj = preklZdaj(), stat = p => p.urejeno_at ? 'urejeno' : p.naroceno_at ? 'naroceno' : 'odprto';
   const flt = p => (ALT_FLT === 'vse' || stat(p) === ALT_FLT || (p.tagi || []).includes(ALT_FLT)) && (!ALT_DOBF || altDobavitelji(p.komentar).some(x => x[0] === ALT_DOBF));
   const odprteVse = ALT.filter(p => !p.urejeno_at), odprte = odprteVse.filter(flt), urejene = ALT.filter(p => p.urejeno_at).filter(flt);
-  [document.getElementById('altBadge'), ...document.querySelectorAll('.alt-badge')].forEach(b => { if (b) { b.textContent = odprteVse.length; b.style.display = odprteVse.length ? '' : 'none'; } });
+  [document.getElementById('altBadge')].forEach(b => { if (b) { b.textContent = odprteVse.length; b.style.display = odprteVse.length ? '' : 'none'; } });
   const box = document.getElementById('altSeznam'); if (!box) return;
   const nuj = odprte.filter(p => p.nujno).length, star = odprte.filter(p => !p.naroceno_at && zdaj - preklMs(p.at) > 24 * 3600000).length;
   const pill = (t, bg, c) => '<span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:7px;background:' + bg + ';color:' + c + '">' + t + '</span>';
