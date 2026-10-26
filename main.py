@@ -37909,7 +37909,7 @@ async def preklici_dodaj(request: Request, data: dict):
     if not vrstice:
         return {"ok": False, "error": "Prilepi povezavo do naročila ali številko."}
     kom, kdo, nujno = str(data.get("komentar") or "").strip()[:500], str(data.get("kdo") or "").strip()[:40], bool(data.get("nujno"))
-    vrsta = "sprememba" if data.get("vrsta") == "sprememba" else "preklic"   # 🚫 preklic postavke / ✏️ sprememba naročila
+    vrsta = data.get("vrsta") if data.get("vrsta") in ("sprememba", "manjka") else "preklic"   # 🚫 preklic postavke / ✏️ sprememba naročila / 📦 manjka (2026-10-26)
     dodane, dvojniki, napacne = [], [], []
     async with _preklici_lock:
         d = _jload(PREKLICI_FILE, {}, strict=True) or {}
@@ -37959,7 +37959,7 @@ async def preklici_uredi(request: Request, data: dict):
                 akc = f"uredi: #{x.get('st')} → #{st}"
             x["st"], x["url"] = st, f"https://www.siluxar.si/narocilnice/{st}"
             x["komentar"] = str(data.get("komentar") or "").strip()[:500]
-            if data.get("vrsta") in ("preklic", "sprememba"):
+            if data.get("vrsta") in ("preklic", "sprememba", "manjka"):
                 x["vrsta"] = data["vrsta"]
         else:
             return {"ok": False, "error": "Neznana akcija."}
