@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-26 13:16</div>
+      <div class="sidebar-logo-sub">build 2026-10-26 13:22</div>
     </div>
   </div>
 
@@ -2505,9 +2505,9 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           <textarea id="preklVnos" rows="1" placeholder="Povezava ali št. naročila (npr. 2910464)" title="Prilepi povezavo do naročila (siluxar.si/narocilnice/2910464) ali samo številko — več vrstic = več naročil" style="flex:2 1 320px;min-height:36px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px;resize:vertical" oninput="preklPredogled()"></textarea>
+          <span id="preklVrsta" data-v="" title="Obvezno: kaj je s tem naročilom?" style="display:inline-flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;flex:none"></span>
           <input id="preklKom" placeholder="Komentar (npr. preklicati samo SKU M322_39 · manjka 953327-2)" style="flex:2 1 260px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px">
           <input id="preklKdo" placeholder="Kdo" style="flex:0 1 110px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px">
-          <span id="preklVrsta" data-v="preklic" style="display:inline-flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;flex:none"></span>
           <label style="display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid #f3c1c1;border-radius:var(--radius);background:#fdecec;color:#b42318;font-size:13px;font-weight:700;cursor:pointer"><input type="checkbox" id="preklNujno"> 🚨 Nujno</label>
           <button onclick="preklDodaj()" style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">Dodaj</button>
         </div>
@@ -10090,7 +10090,7 @@ function preklTraja(ms) { const m = Math.max(0, Math.floor(ms / 60000)), d = Mat
   return d ? d + ' d ' + h + ' h' : h ? h + ' h ' + String(m % 60).padStart(2, '0') + ' min' : (m % 60) + ' min'; }
 function preklBarva(ms) { const h = ms / 3600000; return h < 12 ? ['#e6f6ee', '#12814f', '#1D9E75'] : h < 24 ? ['#fef3c7', '#92600a', '#EF9F27'] : ['#fdecec', '#b42318', '#E24B4A']; }
 async function preklNalozi() {
-  const vs = document.getElementById('preklVrsta'); if (vs && !vs.innerHTML) preklVrstaSel(vs, vs.dataset.v || 'preklic');
+  const vs = document.getElementById('preklVrsta'); if (vs && !vs.innerHTML) preklVrstaSel(vs, vs.dataset.v || '');
   try { const k = localStorage.getItem('prekl_kdo'); const el = document.getElementById('preklKdo'); if (el && k && !el.value) el.value = k; } catch (e) {}
   try { const r = await fetch('/preklici', { credentials: 'include' }); const d = await r.json(); if (!d.ok) return;
     PREKL = d.postavke || []; PREKL_ZDAJ_OFS = preklMs(d.zdaj) - Date.now(); } catch (e) { return; }
@@ -10104,13 +10104,19 @@ function preklPredogled() {
     return st ? '<span style="margin-right:10px">' + (dv ? '⚠ <b>#' + st + '</b> je že na seznamu' : '✓ <b>#' + st + '</b>') + '</span>' : '<span style="color:#b42318;margin-right:10px">✕ ni številke: ' + preklEsc(x.slice(0, 30)) + '</span>'; }).join('');
 }
 async function preklDodaj() {
-  const kdo = document.getElementById('preklKdo').value.trim();
+  const kdo = document.getElementById('preklKdo').value.trim(), vsEl = document.getElementById('preklVrsta');
+  if (!vsEl.dataset.v) {   // ✋ vrsta je obvezna (2026-10-26) — brez samodejnega »Preklic«
+    document.getElementById('preklMsg').innerHTML = '<div style="margin-top:8px;color:#b42318;font-size:12.5px;font-weight:700">Izberi, kaj je z naročilom: 🚫 Preklic, ✏️ Sprememba ali 📦 Manjka.</div>';
+    vsEl.style.outline = '2px solid #b42318'; vsEl.style.outlineOffset = '2px'; setTimeout(() => { vsEl.style.outline = ''; }, 2500);
+    return;
+  }
   try { localStorage.setItem('prekl_kdo', kdo); } catch (e) {}
   const r = await fetch('/preklici/dodaj', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ vnos: document.getElementById('preklVnos').value, komentar: document.getElementById('preklKom').value, kdo, nujno: document.getElementById('preklNujno').checked, vrsta: document.getElementById('preklVrsta').dataset.v }) });
   const d = await r.json(), m = document.getElementById('preklMsg');
   if (!d.ok) { m.innerHTML = '<div style="margin-top:8px;color:#b42318;font-size:12.5px">' + preklEsc(d.error) + '</div>'; return; }
   PREKL = d.postavke || PREKL;
+  if (d.dodane.length) preklVrstaSel(vsEl, '');   // naslednji vnos: vrsto spet izbereš sam
   const deli = [];
   if (d.dodane.length) deli.push('✓ Dodano: ' + d.dodane.map(s => '#' + s).join(', '));
   if (d.dvojniki.length) deli.push('⚠ Že na seznamu (ni dodano): ' + d.dvojniki.map(x => '#' + x.st + (x.kdo ? ' (' + preklEsc(x.kdo) + ')' : '')).join(', '));

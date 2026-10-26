@@ -37909,7 +37909,9 @@ async def preklici_dodaj(request: Request, data: dict):
     if not vrstice:
         return {"ok": False, "error": "Prilepi povezavo do naročila ali številko."}
     kom, kdo, nujno = str(data.get("komentar") or "").strip()[:500], str(data.get("kdo") or "").strip()[:40], bool(data.get("nujno"))
-    vrsta = data.get("vrsta") if data.get("vrsta") in ("sprememba", "manjka") else "preklic"   # 🚫 preklic postavke / ✏️ sprememba naročila / 📦 manjka (2026-10-26)
+    if data.get("vrsta") not in ("preklic", "sprememba", "manjka"):   # 2026-10-26: vrsta je obvezna (brez samodejnega »preklic«)
+        return {"ok": False, "error": "Izberi, kaj je z naročilom: Preklic, Sprememba ali Manjka."}
+    vrsta = data["vrsta"]   # 🚫 preklic postavke / ✏️ sprememba naročila / 📦 manjka
     dodane, dvojniki, napacne = [], [], []
     async with _preklici_lock:
         d = _jload(PREKLICI_FILE, {}, strict=True) or {}
