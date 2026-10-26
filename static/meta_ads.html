@@ -651,8 +651,16 @@ async function lokaliziraj() {
 async function dopolni(ids) {   // ↻ prevodi trgov brez besedil + manjkajoče slike/videi (narejeno ostane)
   const d = await post('/meta-ads/api/vec', { akcija: 'dopolni', ids, model: LS.get('ma_model') === 'flare' ? 'flare' : 'nb21' });
   if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); return; }
-  msg('msg', '↻ Dopolnjujem ' + d.zagnani + ' paketov (samo manjkajoče)' + (d.preskoceni ? ' · ' + d.preskoceni + ' preskočenih (še v pripravi)' : '') + ' — ko je končano, znova 📁 Shrani v mapo.', 'inf');
   await stanje(); if (PAK && ids.includes(PAK.id)) await odpri(PAK.id);
+  const t0 = Date.now();
+  const cakaj = async () => {   // ⏳ sproti: koliko jih še teče → ob koncu ✓ + gumb Shrani v mapo
+    await stanje();
+    const ps = (ST.paketi || []).filter(p => ids.includes(p.id)), vd = ps.filter(p => V_DELU.includes(p.status)).length;
+    if (vd) { msg('msg', '<span class="spin"></span> ↻ Dopolnjujem manjkajoče · še ' + vd + ' / ' + ps.length + ' paketov v delu (' + Math.round((Date.now() - t0) / 1000) + ' s) — obvestim te, ko bo končano.', 'inf'); setTimeout(cakaj, 5000); return; }
+    msg('msg', '✓ Dopolnjeno (' + ps.length + ' paketov) — zdaj <button class="btn sm grn" onclick="shraniVMapo(' + esc(JSON.stringify(ids)) + ')">📁 Shrani v mapo</button>', 'ok');
+    if (PAK && ids.includes(PAK.id)) await odpri(PAK.id);
+  };
+  cakaj();
 }
 async function lokalTrg(t) {   // ↻ en trg: prevod besedil + manjkajoče slike
   await shrani(false);
