@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-26 13:44</div>
+      <div class="sidebar-logo-sub">build 2026-10-26 14:26</div>
     </div>
   </div>
 
@@ -10180,7 +10180,7 @@ function preklRisi() {
     return '<div style="display:grid;grid-template-columns:22px 120px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:8px 12px;margin-bottom:6px;border:1px solid var(--border);border-left:4px solid ' + rob + ';border-radius:0 9px 9px 0;background:var(--surface);' + (ur ? 'opacity:.6' : '') + '">'
       + '<input type="checkbox" ' + (PREKL_IZB.has(p.id) ? 'checked ' : '') + 'title="Izberi za množično urejanje" onclick="preklIzberi(\'' + p.id + '\',this.checked,event)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">'
       + '<a href="' + preklEsc(p.url) + '" target="_blank" rel="noopener" style="font-weight:800;color:var(--accent);text-decoration:none;font-family:ui-monospace,monospace">#' + preklEsc(p.st) + ' ↗</a>'
-      + '<div style="min-width:0;font-size:13px"><span onclick="preklAkc(\'' + p.id + '\',\'komentar\',event)" title="Klik = uredi (povezava, komentar)" style="cursor:text">' + (p.komentar ? preklEsc(p.komentar) : '<span style="color:var(--text-tertiary)">brez komentarja</span>') + '</span>'
+      + '<div style="min-width:0;font-size:13px"><span onclick="preklAkc(\'' + p.id + '\',\'komentar\',event)" title="Klik = uredi (povezava, komentar)" style="cursor:text">' + (p.komentar ? '<span style="font-size:14.5px;font-weight:700;color:#633806;background:#faeeda;padding:2px 9px;border-radius:6px;box-decoration-break:clone;-webkit-box-decoration-break:clone">' + preklEsc(p.komentar) + '</span>' : '<span style="color:var(--text-tertiary);font-weight:400;font-size:13px">brez komentarja</span>') + '</span>'
       + ' <span style="color:var(--text-tertiary);font-size:11.5px" title="' + preklEsc(zg) + '">· ' + preklEsc(p.kdo || '—') + ' · ' + p.at.slice(8, 10) + '.' + p.at.slice(5, 7) + '. ' + p.at.slice(11, 16)
       + (ur ? ' · ✓ ' + preklEsc(p.urejeno_kdo || '') + ' ' + p.urejeno_at.slice(11, 16) : '') + '</span>'
       + (v_ => ' <span style="margin-left:6px;font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;background:' + v_[1] + ';color:' + v_[2] + '">' + v_[0] + '</span>')(PREKL_VR[p.vrsta || 'preklic']) + '</div>'
