@@ -1066,6 +1066,34 @@ def vklopi(G: dict):
             err = str(e)[:200]
             await pak_set(pid, lambda q: q.update(status="koncept", napaka=f"Lokalizacija videov ni uspela: {err}"))
 
+    async def obdelaj_dopolni(pid, model):
+        """↻ Dopolni manjkajoče (2026-10-26, SILUX143: HU/BG/RO brez besedil → oglasi izpuščeni ob izvozu):
+        vključeni trgi brez (popolnih) besedil → prevod; nato samo manjkajoče slike / videi. Narejeno ostane."""
+        try:
+            p = pak_get(pid)
+            trgi = [t for t in MA_TRGI if (p["trgi"].get(t) or {}).get("vkljuci")]
+            n_sl = len(p.get("oglasi_sl") or [])
+            brez = [t for t in trgi if len(p["trgi"][t].get("oglasi") or []) < n_sl
+                    or any(not (o.get("hl") and o.get("pt")) for o in p["trgi"][t].get("oglasi") or [])]
+            if brez:
+                await prevodi_oglasov(pid, brez)
+            p = pak_get(pid)
+            if tip_od(p) == "video":
+                samo = [(t, j) for t in trgi for j, v in enumerate(p.get("videi") or [])
+                        if v.get("vkljuci") and not ((p["trgi"][t].get("videi") or {}).get(str(j)) or {}).get("datoteka")]
+                if samo:
+                    await obdelaj_video_lokal(pid, samo)
+                    return
+            else:
+                samo = [(t, i) for t in trgi for i, k in enumerate(p.get("kreative") or [])
+                        if k.get("osnova") and not (((p["trgi"][t].get("slike") or {}).get(str(i)) or {}).get("datoteka"))]
+                if samo:
+                    await obdelaj_lokal(pid, model, samo)
+                    return
+        except Exception as e:
+            print(f"[meta-ads] dopolni {pid}: {e}")
+        await pak_set(pid, lambda q: q.update(status="pripravljeno"))
+
     async def obdelaj_lokal_trg(pid, model, t):
         """En trg: prevod besedil oglasov + samo slike, ki jih še ni (narejene ostanejo)."""
         try:
@@ -1908,12 +1936,16 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         akcija = data.get("akcija")
-        if akcija not in ("osnove", "lokaliziraj"):
+        if akcija not in ("osnove", "lokaliziraj", "dopolni"):
             return {"ok": False, "error": "Neznana akcija."}
         model = "flare" if data.get("model") == "flare" else "nb21"
         ok, preskoceni = [], []
         for pid in [str(x) for x in (data.get("ids") or []) if re.fullmatch(r"[0-9a-f]{18}", str(x))][:30]:
             p = pak_get(pid)
+            if p and akcija == "dopolni" and p.get("status") not in ("koncept_v_delu", "osnove_v_delu", "lokal_v_delu"):
+                await pak_set(pid, lambda q: q.update(status="lokal_v_delu"))
+                v_ozadju(pid, obdelaj_dopolni(pid, model))
+                ok.append(pid); continue
             if not p or p.get("status") in ("koncept_v_delu", "osnove_v_delu", "lokal_v_delu") or not p.get("kreative"):
                 preskoceni.append(pid); continue
             if akcija == "osnove":

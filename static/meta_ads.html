@@ -648,6 +648,12 @@ async function lokaliziraj() {
   if (!d.ok) { msg('msg', esc(d.error), 'err'); return; }
   KORAK = 3; await odpri(PAK.id);
 }
+async function dopolni(ids) {   // ↻ prevodi trgov brez besedil + manjkajoče slike/videi (narejeno ostane)
+  const d = await post('/meta-ads/api/vec', { akcija: 'dopolni', ids, model: LS.get('ma_model') === 'flare' ? 'flare' : 'nb21' });
+  if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); return; }
+  msg('msg', '↻ Dopolnjujem ' + d.zagnani + ' paketov (samo manjkajoče)' + (d.preskoceni ? ' · ' + d.preskoceni + ' preskočenih (še v pripravi)' : '') + ' — ko je končano, znova 📁 Shrani v mapo.', 'inf');
+  await stanje(); if (PAK && ids.includes(PAK.id)) await odpri(PAK.id);
+}
 async function lokalTrg(t) {   // ↻ en trg: prevod besedil + manjkajoče slike
   await shrani(false);
   const d = await post('/meta-ads/api/lokaliziraj', { id: PAK.id, model: LS.get('ma_model') === 'flare' ? 'flare' : 'nb21', trg: t });
@@ -710,6 +716,7 @@ function risiVec() {
   el.innerHTML = '<b style="font-size:12.5px">' + n + ' izbranih</b>' + (vd ? ' <span class="sub">(' + vd + ' v pripravi)</span>' : '') + '<span class="grow"></span>' +
     '<button class="btn sm" onclick="vecKorak(\'osnove\')" title="Flare nariše 5 kreativ za vsak izbrani SKU">2 · Kreative</button>' +
     '<button class="btn sm" onclick="vecKorak(\'lokaliziraj\')" title="Prevod napisov in besedil za vse trge">3 · Lokaliziraj</button>' +
+    '<button class="btn sm" onclick="dopolni([...IZBRANI])" title="Samo trgi brez besedil + manjkajoče slike/videi — narejeno ostane">↻ Dopolni manjkajoče</button>' +
     '<button class="btn sm grn" onclick="vAsano([...IZBRANI])" title="Vsak SKU svoj ZIP v svoj Asana task">📤 V Asano</button>' +
     '<button class="btn sm" onclick="shraniVMapo([...IZBRANI])" title="En CSV z vsemi izbranimi kampanjami, slike in videi v mapi vsake kampanje (SKU)">📁 Shrani v mapo</button>' +
     '<button class="btn sm" onclick="izvozi([...IZBRANI])">⬇ ZIP</button>' +
@@ -784,10 +791,12 @@ async function shraniVMapo(ids) {
     }
   } catch (e) { msg('msg', 'Zapis v mapo ni uspel: ' + esc(e.message || e) + ' — poskusi ⬇ ZIP.', 'err'); return; }
   const opz = (nav.split('Opozorila:')[1] || '').trim();
+  const dopIds = (ids || (PAK ? [PAK.id] : []));
+  const dopBtn = /manjka besedilo|ni slike|ni lokaliziran/.test(opz) && dopIds.length ? ' <button class="btn sm pri" onclick="dopolni(' + esc(JSON.stringify(dopIds)) + ')">↻ Dopolni manjkajoče</button>' : '';
   msg('msg', '✓ Shranjeno ' + n + ' datotek v 📁 ' + esc(MAPA.name) + '\\Meta Ads — ' + (nacin() === 'flex'
       ? 'Import ads → File <b>meta_uvoz.csv</b>, Images vse iz <b>slike</b> → nato v vsakem ad setu oglas »… flexible« → Format Flexible → Add media → v iskalnik <b>_pl</b> (_sl, _ro …) + videi.'
       : 'v Ads Managerju: Import ads → File <b>meta_uvoz.csv</b>, Images vse iz <b>slike</b>, Videos vse iz <b>videi</b>.') +
-    (opz ? '<br>⚠ ' + esc(opz).replace(/\r?\n/g, ' · ') : ''), opz ? 'warn' : 'ok');
+    (opz ? '<br>⚠ ' + esc(opz).replace(/\r?\n/g, ' · ') + dopBtn : ''), opz ? 'warn' : 'ok');
   await stanje(); if (PAK) await odpri(PAK.id);
   if (PAK && (!ids || ids.includes(PAK.id)) && VRSTA().some(x => x.status === 'v_delu' && x.pid === PAK.id)) {   // 🧵 trenutni iz vrste shranjen → naslednji
     risiVrsto(); document.getElementById('vrsta').scrollIntoView({ behavior: 'smooth', block: 'start' });   // naslednji samo na gumb (uporabnik 2026-10-20)
