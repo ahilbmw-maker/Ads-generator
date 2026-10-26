@@ -564,7 +564,7 @@ function risi3(p) {
     '<label class="tog sub" style="display:flex;gap:6px;align-items:center;font-weight:700;cursor:pointer"><input type="checkbox" data-e="vkljuci"' + (x.vkljuci ? ' checked' : '') + (x.url ? '' : ' disabled') + '> vključi trg</label></div>';
   if (x.prevod_napaka) h += '<div class="msg err">Prevod ni uspel: ' + esc(x.prevod_napaka) + ' — klikni »3 · Lokaliziraj« v koraku 2 znova.</div>';
   if (!x.vkljuci) h += '<div class="sub">Trg je izključen iz kampanje.</div>';
-  else if (!ogl.length) h += '<div class="prazno">' + (p.status === 'lokal_v_delu' ? '<span class="spin"></span><br><br>prevajam …' : 'Ta trg še nima prevedenih besedil oglasov.<br><br><button class="btn pri" onclick="lokalTrg('' + TRG + '')">↻ Lokaliziraj samo ' + TRG.toUpperCase() + '</button><div class="sub" style="margin-top:6px">prevod besedil + samo manjkajoče slike — narejene ostanejo</div>') + '</div>';
+  else if (!ogl.length) h += '<div class="prazno">' + (p.status === 'lokal_v_delu' ? '<span class="spin"></span><br><br>prevajam …' : 'Ta trg še nima prevedenih besedil oglasov.<br><br><button class="btn pri" onclick="lokalTrg(\'' + TRG + '\')">↻ Lokaliziraj samo ' + TRG.toUpperCase() + '</button><div class="sub" style="margin-top:6px">prevod besedil + samo manjkajoče slike — narejene ostanejo</div>') + '</div>';
   else if (p.tip === 'video') h += risi3v(p, x, ogl, izkl, stran);
   else if (nacin() === 'flex') {
     const o = ogl[0] || { hl: '', pt: '' };
