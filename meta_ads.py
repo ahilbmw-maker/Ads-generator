@@ -1052,6 +1052,20 @@ def vklopi(G: dict):
             err = str(e)[:200]
             await pak_set(pid, lambda q: q.update(status="koncept", napaka=f"Lokalizacija videov ni uspela: {err}"))
 
+    async def obdelaj_lokal_trg(pid, model, t):
+        """En trg: prevod besedil oglasov + samo slike, ki jih še ni (narejene ostanejo)."""
+        try:
+            await prevodi_oglasov(pid, [t])
+            p = pak_get(pid)
+            manjka = [(t, i) for i, k in enumerate(p.get("kreative") or []) if k.get("osnova")
+                      and not (((p["trgi"][t].get("slike") or {}).get(str(i)) or {}).get("datoteka"))]
+            if manjka:
+                await obdelaj_lokal(pid, model, manjka)
+                return
+        except Exception as e:
+            print(f"[meta-ads] lokal trg {t}: {e}")
+        await pak_set(pid, lambda q: q.update(status="pripravljeno"))
+
     async def obdelaj_lokal(pid, model, samo=None):
         """samo = [(trg, i)] → samo te slike znova (brez prevodov)."""
         p = pak_get(pid)
@@ -1348,6 +1362,9 @@ def vklopi(G: dict):
         model = "flare" if data.get("model") == "flare" else "nb21"   # privzeto NB2.1 = isto kot »Lok« (prevod slik)
         samo = [(str(x[0]), int(x[1])) for x in (data.get("samo") or []) if x and x[0] in MA_TRGI]
         await pak_set(pid, lambda q: q.update(status="lokal_v_delu"))
+        if data.get("trg") in MA_TRGI and not samo:   # ↻ samo en trg: prevod besedil + manjkajoče slike (2026-10-26: CZ brez besedil, 3/5 slik)
+            asyncio.create_task(obdelaj_lokal_trg(pid, model, data["trg"]))
+            return {"ok": True}
         asyncio.create_task(obdelaj_lokal(pid, model, samo or None))
         return {"ok": True}
 
