@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-26 14:26</div>
+      <div class="sidebar-logo-sub">build 2026-10-26 14:29</div>
     </div>
   </div>
 
@@ -10089,6 +10089,23 @@ const preklZdaj = () => Date.now() + PREKL_ZDAJ_OFS;
 function preklTraja(ms) { const m = Math.max(0, Math.floor(ms / 60000)), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60);
   return d ? d + ' d ' + h + ' h' : h ? h + ' h ' + String(m % 60).padStart(2, '0') + ' min' : (m % 60) + ' min'; }
 function preklBarva(ms) { const h = ms / 3600000; return h < 12 ? ['#e6f6ee', '#12814f', '#1D9E75'] : h < 24 ? ['#fef3c7', '#92600a', '#EF9F27'] : ['#fdecec', '#b42318', '#E24B4A']; }
+let PREKL_FAV = null;   // ikona zavihka z rdečo piko, ko so odprti popravki naročil
+function preklFavicon(pika) {
+  const ikone = document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]'), izv = '/static/suban-s-icon.png';
+  const nastavi = h => ikone.forEach(l => { if (l.getAttribute('href') !== h) l.setAttribute('href', h); });
+  if (!pika) { nastavi(izv); return; }
+  if (PREKL_FAV) { nastavi(PREKL_FAV); return; }
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+      x.drawImage(img, 0, 0, 64, 64);
+      x.beginPath(); x.arc(48, 16, 15, 0, 2 * Math.PI); x.fillStyle = '#e5484d'; x.fill(); x.lineWidth = 4; x.strokeStyle = '#fff'; x.stroke();
+      PREKL_FAV = c.toDataURL('image/png'); nastavi(PREKL_FAV);
+    } catch (e) {}
+  };
+  img.src = izv;
+}
 async function preklNalozi() {
   const vs = document.getElementById('preklVrsta'); if (vs && !vs.innerHTML) preklVrstaSel(vs, vs.dataset.v || '');
   try { const k = localStorage.getItem('prekl_kdo'); const el = document.getElementById('preklKdo'); if (el && k && !el.value) el.value = k; } catch (e) {}
@@ -10096,6 +10113,7 @@ async function preklNalozi() {
     PREKL = d.postavke || []; PREKL_ZDAJ_OFS = preklMs(d.zdaj) - Date.now(); } catch (e) { return; }
   const nOdpr = PREKL.filter(p => !p.urejeno_at).length;   // števec tudi v naslovu zavihka brskalnika: »(3) Suban AI«
   document.title = (nOdpr ? '(' + nOdpr + ') ' : '') + document.title.replace(/^\(\d+\)\s*/, '');
+  preklFavicon(nOdpr > 0);
   if (!PREKL_ED) preklRisi();   // med urejanjem ne prerisuj (izgubil bi vpisano)
   clearInterval(PREKL_T); PREKL_T = setInterval(() => { const p = document.getElementById('narcPanel-preklici'); if (p && p.style.display !== 'none' && !PREKL_ED) preklRisi(); }, 30000);
 }
