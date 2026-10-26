@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-26 14:29</div>
+      <div class="sidebar-logo-sub">build 2026-10-26 14:43</div>
     </div>
   </div>
 
@@ -1238,7 +1238,7 @@ input[type="text"].error { border-color: var(--red) !important; }
 
   <div class="nav-item nav-narocilnice" id="nav-narocilnice" onclick="switchPage('narocilnice')">
     <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-    Naročilnice<span class="prekl-badge" style="display:none;margin-left:6px;font-size:10px;font-weight:800;background:#e5484d;color:#fff;border-radius:9px;padding:1px 6px;line-height:1.5"></span>
+    Naročilnice<span id="narcNavBadge" style="display:none;margin-left:6px;font-size:10px;font-weight:800;background:#e5484d;color:#fff;border-radius:9px;padding:1px 6px;line-height:1.5"></span>
     <button class="nav-expand-btn" id="navexp-narocilnice" onclick="event.stopPropagation();navToggleSub('narocilnice')" title="Pododdelki">+</button>
   </div>
   <div class="nav-sub" id="navsub-narocilnice">
@@ -1247,6 +1247,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('dvojniki')">Dvojniki</div>
     <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('karantena')">Karantena</div>
     <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('priprava')">Priprava seznama</div>
+    <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('alternative')">Alternative<span class="alt-badge" style="display:none;margin-left:6px;font-size:10px;font-weight:800;background:#e5484d;color:#fff;border-radius:9px;padding:1px 6px;line-height:1.5"></span></div>
     <div class="nav-sub-item" onclick="switchPage('narocilnice');narcSwitchTab('preklici')">Popravki naročil<span class="prekl-badge" style="display:none;margin-left:6px;font-size:10px;font-weight:800;background:#e5484d;color:#fff;border-radius:9px;padding:1px 6px;line-height:1.5"></span></div>
   </div>
   <div class="nav-item nav-sporocanje" id="nav-sporocanje" onclick="switchPage('sporocanje')">
@@ -2258,6 +2259,7 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="narc-tab" id="narcTab-karantena" onclick="narcSwitchTab('karantena')">Karantena</button>
       <button class="narc-tab" id="narcTab-priprava" onclick="narcSwitchTab('priprava')">📋 Priprava seznama</button>
       <button class="narc-tab" id="narcTab-preklici" onclick="narcSwitchTab('preklici')">🛠 Popravki naročil <span id="preklBadge" style="display:none;margin-left:4px;font-size:10.5px;font-weight:800;background:#e5484d;color:#fff;border-radius:9px;padding:1px 7px"></span></button>
+      <button class="narc-tab" id="narcTab-alternative" onclick="narcSwitchTab('alternative')">🔁 Alternative <span id="altBadge" style="display:none;margin-left:4px;font-size:10.5px;font-weight:800;background:#e5484d;color:#fff;border-radius:9px;padding:1px 7px"></span></button>
     </div>
 
     <!-- TAB: NEGATIVNE RAZLIKE -->
@@ -2517,6 +2519,26 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div class="card">
         <div id="preklKpi" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px"></div>
         <div id="preklSeznam"><div class="history-empty">Nalagam …</div></div>
+      </div>
+    </div>
+
+    <!-- TAB: 🔁 ALTERNATIVE (2026-10-26) -->
+    <div id="narcPanel-alternative" style="display:none">
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+          <textarea id="altVnos" rows="2" placeholder="Povezava + komentar v isti vrstici (npr. …/narocilnice/2910629 04143 amio) — prilepiš lahko cel seznam" title="Vsaka vrstica = eno naročilo: povezava ali številka, za njo komentar (alternativa, storno …)" style="flex:3 1 420px;min-height:36px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px;resize:vertical" oninput="altPredogled()"></textarea>
+          <input id="altKom" placeholder="Komentar (če ga ni v vrstici)" style="flex:1 1 200px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px">
+          <input id="altKdo" placeholder="Kdo" style="flex:0 1 110px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px">
+          <label style="display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid #f3c1c1;border-radius:var(--radius);background:#fdecec;color:#b42318;font-size:13px;font-weight:700;cursor:pointer"><input type="checkbox" id="altNujno"> 🚨 Nujno</label>
+          <button onclick="altDodaj()" style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">Dodaj</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px"><span style="font-size:12px;color:var(--text-tertiary)">Tagi (klik):</span><span id="altTagi" data-v=""></span></div>
+        <div id="altPred" style="font-size:12px;color:var(--text-tertiary);margin-top:6px"></div>
+        <div id="altMsg"></div>
+      </div>
+      <div class="card">
+        <div id="altKpi" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px"></div>
+        <div id="altSeznam"><div class="history-empty">Nalagam …</div></div>
       </div>
     </div>
 
@@ -10074,6 +10096,9 @@ function narcSwitchTab(tab) {
   const prkP = document.getElementById('narcPanel-preklici'); if (prkP) prkP.style.display = tab === 'preklici' ? 'block' : 'none';
   const prkT = document.getElementById('narcTab-preklici'); if (prkT) prkT.classList.toggle('active', tab === 'preklici');
   if (tab === 'preklici') preklNalozi();
+  const altP = document.getElementById('narcPanel-alternative'); if (altP) altP.style.display = tab === 'alternative' ? 'block' : 'none';
+  const altT = document.getElementById('narcTab-alternative'); if (altT) altT.classList.toggle('active', tab === 'alternative');
+  if (tab === 'alternative') altNalozi();
   try { localStorage.setItem('slx_active_subtab', tab); } catch(e) {}
 }
 
@@ -10089,6 +10114,7 @@ const preklZdaj = () => Date.now() + PREKL_ZDAJ_OFS;
 function preklTraja(ms) { const m = Math.max(0, Math.floor(ms / 60000)), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60);
   return d ? d + ' d ' + h + ' h' : h ? h + ' h ' + String(m % 60).padStart(2, '0') + ' min' : (m % 60) + ' min'; }
 function preklBarva(ms) { const h = ms / 3600000; return h < 12 ? ['#e6f6ee', '#12814f', '#1D9E75'] : h < 24 ? ['#fef3c7', '#92600a', '#EF9F27'] : ['#fdecec', '#b42318', '#E24B4A']; }
+let ALT = [];   // 🔁 Alternative (spodaj) — tu zaradi skupnega števca
 let PREKL_FAV = null;   // ikona zavihka z rdečo piko, ko so odprti popravki naročil
 function preklFavicon(pika) {
   const ikone = document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]'), izv = '/static/suban-s-icon.png';
@@ -10106,14 +10132,18 @@ function preklFavicon(pika) {
   };
   img.src = izv;
 }
+function narcStevec() {   // odprti popravki + alternative → naslov zavihka »(3) Suban AI«, rdeča pika, oznaka Naročilnice v meniju
+  const n = PREKL.filter(p => !p.urejeno_at).length + ALT.filter(p => !p.urejeno_at).length;
+  document.title = (n ? '(' + n + ') ' : '') + document.title.replace(/^\(\d+\)\s*/, '');
+  preklFavicon(n > 0);
+  const b = document.getElementById('narcNavBadge'); if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; }
+}
 async function preklNalozi() {
   const vs = document.getElementById('preklVrsta'); if (vs && !vs.innerHTML) preklVrstaSel(vs, vs.dataset.v || '');
   try { const k = localStorage.getItem('prekl_kdo'); const el = document.getElementById('preklKdo'); if (el && k && !el.value) el.value = k; } catch (e) {}
   try { const r = await fetch('/preklici', { credentials: 'include' }); const d = await r.json(); if (!d.ok) return;
     PREKL = d.postavke || []; PREKL_ZDAJ_OFS = preklMs(d.zdaj) - Date.now(); } catch (e) { return; }
-  const nOdpr = PREKL.filter(p => !p.urejeno_at).length;   // števec tudi v naslovu zavihka brskalnika: »(3) Suban AI«
-  document.title = (nOdpr ? '(' + nOdpr + ') ' : '') + document.title.replace(/^\(\d+\)\s*/, '');
-  preklFavicon(nOdpr > 0);
+  narcStevec();
   if (!PREKL_ED) preklRisi();   // med urejanjem ne prerisuj (izgubil bi vpisano)
   clearInterval(PREKL_T); PREKL_T = setInterval(() => { const p = document.getElementById('narcPanel-preklici'); if (p && p.style.display !== 'none' && !PREKL_ED) preklRisi(); }, 30000);
 }
@@ -10174,6 +10204,7 @@ function preklRisi() {
   const zdaj = preklZdaj(), vFlt = p => PREKL_FLT === 'vse' || (p.vrsta || 'preklic') === PREKL_FLT;
   const odprteVse = PREKL.filter(p => !p.urejeno_at), odprte = odprteVse.filter(vFlt), urejene = PREKL.filter(p => p.urejeno_at).filter(vFlt);
   [document.getElementById('preklBadge'), ...document.querySelectorAll('.prekl-badge')].forEach(b => { if (b) { b.textContent = odprteVse.length; b.style.display = odprteVse.length ? '' : 'none'; } });   // zavihek + levi meni
+  narcStevec();
   const box = document.getElementById('preklSeznam'); if (!box) return;
   const danes = new Date(zdaj).toISOString().slice(0, 10), urDanes = urejene.filter(p => p.urejeno_at.slice(0, 10) === danes);
   const avg = urDanes.length ? urDanes.reduce((a, p) => a + preklMs(p.urejeno_at) - preklMs(p.at), 0) / urDanes.length : null;
@@ -10220,7 +10251,147 @@ function preklRisi() {
     + (PREKL_SKRITE && urejene.length ? '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text-tertiary);margin:14px 0 6px">UREJENE</div>' + [...urejene].sort((a, b) => preklMs(b.urejeno_at) - preklMs(a.urejeno_at)).map(vrsta).join('') : '');
 }
 setTimeout(() => { try { preklNalozi(); } catch (e) {} }, 2500);   // števec na zavihku tudi brez odpiranja
-setInterval(() => { try { preklNalozi(); } catch (e) {} }, 60000);   // števec sveži vsako minuto, tudi v ozadju (naslov zavihka; dodajajo tudi drugi)
+setInterval(() => { try { preklNalozi(); } catch (e) {} }, 60000);
+setTimeout(() => { try { altNalozi(); } catch (e) {} }, 3000);
+setInterval(() => { try { altNalozi(); } catch (e) {} }, 60000);
+
+// ═══ 🔁 ALTERNATIVE (2026-10-26) — /alternative*; naročila brez izdelka pri dobavitelju → alternativa / storno; odprto → 🛒 naročeno → ✓ urejeno ═══
+const ALT_TAG = { storno: ['🚫 Storno naročila', '#fdecec', '#b42318'], storno_post: ['✂ Storno postavke', '#fbeaf0', '#993556'], alternativa: ['🔁 Alternativa', '#e6f0fb', '#185FA5'], splet: ['🗑 Odstrani s spleta', '#f1efe8', '#5f5e5a'] };
+const ALT_DOB = { amio: 'Amio', polcar: 'Polcar', ikonka: 'Ikonka', bigbuy: 'BigBuy' };   // dobavitelj iz komentarja (»04143 amio«, »99ZS064A polcar«)
+let ALT_SKRITE = false, ALT_FLT = 'vse', ALT_DOBF = '', ALT_ED = null, ALT_IZB = new Set();
+function altTagSel(el, v) {   // več tagov hkrati: data-v = »storno,splet«
+  el.dataset.v = v; const izb = v ? v.split(',') : [];
+  el.innerHTML = Object.entries(ALT_TAG).map(([k, x]) => { const on = izb.includes(k);
+    return '<button type="button" onclick="altTagKlik(this.parentNode,\'' + k + '\')" style="margin:0 6px 4px 0;padding:5px 11px;border:1px solid ' + (on ? x[2] : 'var(--border)') + ';border-radius:14px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;background:' + (on ? x[1] : 'var(--surface2)') + ';color:' + (on ? x[2] : 'var(--text-tertiary)') + '">' + x[0] + '</button>'; }).join('');
+}
+function altTagKlik(el, k) { const s = new Set(el.dataset.v ? el.dataset.v.split(',') : []); s.has(k) ? s.delete(k) : s.add(k); altTagSel(el, Object.keys(ALT_TAG).filter(t => s.has(t)).join(',')); if (el.id === 'altTagi') altPredogled(); }
+function altDobavitelji(kom) {   // [[Dobavitelj, šifra]] — šifra = beseda s številko ob imenu dobavitelja (prej, potem, sicer prva prosta)
+  const t = String(kom || '').split(/[\s,;]+/).filter(Boolean), koda = w => /\d/.test(w) && /^[A-Za-z0-9][A-Za-z0-9._\/-]{3,}$/.test(w), upor = new Set(), out = [];
+  t.forEach((w, i) => { const dob = ALT_DOB[w.toLowerCase().replace(/[^a-z]/g, '')]; if (!dob) return;
+    let j = [i - 1, i + 1, i - 2, i + 2].find(j => t[j] && koda(t[j]) && !upor.has(j));
+    if (j == null) j = t.findIndex((x, k) => koda(x) && !upor.has(k));
+    if (j != null && j >= 0) upor.add(j);
+    out.push([dob, j != null && j >= 0 ? t[j] : '']); });
+  return out;
+}
+const altKom = x => { const st = preklSt(x); let k = x.replace(/https?:\/\/\S*narocilnice\/\d+\S*/, ' '); if (st) k = k.replace(new RegExp('(^|[^\\w-])' + st + '(?![\\w-])'), ' '); return k.replace(/\s+/g, ' ').replace(/^[\s\-–:;,]+|[\s\-–:;,]+$/g, ''); };
+async function altNalozi() {
+  const tg = document.getElementById('altTagi'); if (tg && !tg.innerHTML) altTagSel(tg, '');
+  try { const k = localStorage.getItem('prekl_kdo'); const el = document.getElementById('altKdo'); if (el && k && !el.value) el.value = k; } catch (e) {}
+  try { const r = await fetch('/alternative', { credentials: 'include' }); const d = await r.json(); if (!d.ok) return;
+    ALT = d.postavke || []; PREKL_ZDAJ_OFS = preklMs(d.zdaj) - Date.now(); } catch (e) { return; }
+  narcStevec();
+  if (!ALT_ED) altRisi();
+}
+function altPredogled() {
+  const v = document.getElementById('altVnos').value.split(/\n+/).map(x => x.trim()).filter(Boolean), el = document.getElementById('altPred');
+  const kom0 = document.getElementById('altKom').value.trim(), tagi = document.getElementById('altTagi').dataset.v;
+  if (!v.length) { el.innerHTML = ''; return; }
+  el.innerHTML = v.map(x => { const st = preklSt(x), k = altKom(x) || kom0, dv = st && ALT.some(p => p.st === st && !p.urejeno_at);
+    if (!st) return '<div style="color:#b42318">✕ ni številke: ' + preklEsc(x.slice(0, 40)) + '</div>';
+    if (dv) return '<div style="color:#92600a">⚠ <b>#' + st + '</b> je že na seznamu</div>';
+    if (!k && !tagi) return '<div style="color:#b42318">✕ <b>#' + st + '</b> brez komentarja — dopiši ga ali klikni tag</div>';
+    return '<div>✓ <b>#' + st + '</b> ' + preklEsc(k) + (!tagi && /^storno\.?$/i.test(k) ? ' <span style="color:#b42318">→ 🚫 Storno naročila</span>' : '') + '</div>'; }).join('');
+}
+async function altDodaj() {
+  const kdo = document.getElementById('altKdo').value.trim(), tg = document.getElementById('altTagi');
+  try { localStorage.setItem('prekl_kdo', kdo); } catch (e) {}
+  const r = await fetch('/alternative/dodaj', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vnos: document.getElementById('altVnos').value, komentar: document.getElementById('altKom').value, kdo, nujno: document.getElementById('altNujno').checked, tagi: tg.dataset.v ? tg.dataset.v.split(',') : [] }) });
+  const d = await r.json(), m = document.getElementById('altMsg');
+  if (!d.ok) { m.innerHTML = '<div style="margin-top:8px;color:#b42318;font-size:12.5px">' + preklEsc(d.error) + '</div>'; return; }
+  ALT = d.postavke || ALT;
+  const deli = [];
+  if (d.dodane.length) deli.push('✓ Dodano ' + d.dodane.length + ': ' + d.dodane.map(s => '#' + s).join(', '));
+  if (d.dvojniki.length) deli.push('⚠ Že na seznamu (ni dodano): ' + d.dvojniki.map(x => '#' + x.st + (x.kdo ? ' (' + preklEsc(x.kdo) + ')' : '')).join(', '));
+  if (d.napacne.length) deli.push('✕ Ni dodano: ' + d.napacne.map(preklEsc).join(', '));
+  m.innerHTML = '<div style="margin-top:8px;font-size:12.5px;color:' + (d.dvojniki.length || d.napacne.length ? '#92600a' : '#12814f') + '">' + deli.join(' · ') + '</div>';
+  if (d.dodane.length) { document.getElementById('altVnos').value = ''; document.getElementById('altKom').value = ''; document.getElementById('altNujno').checked = false; altTagSel(tg, ''); altPredogled(); }
+  narcStevec(); altRisi();
+}
+async function altPost(id, akcija, extra) {
+  const r = await fetch('/alternative/uredi', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ id, akcija, kdo: document.getElementById('altKdo').value.trim() }, extra || {})) });
+  const d = await r.json(); if (!d.ok) { alert(d.error || 'Napaka'); return false; }
+  ALT = d.postavke; return true;
+}
+async function altAkc(id, akcija, ev) {
+  if (ev) ev.stopPropagation();
+  if (akcija === 'uredi') { ALT_ED = id; altRisi(); setTimeout(() => { const e = document.getElementById('altEdKom'); if (e) e.focus(); }, 0); return; }
+  if (await altPost(id, akcija)) { narcStevec(); altRisi(); }
+}
+async function altShraniEd(id) {
+  const tg = document.getElementById('altEdTagi');
+  if (await altPost(id, 'uredi', { vnos: document.getElementById('altEdUrl').value, komentar: document.getElementById('altEdKom').value, tagi: tg.dataset.v ? tg.dataset.v.split(',') : [] })) { ALT_ED = null; altRisi(); }
+}
+async function altVec(akcija) {
+  const ids = [...ALT_IZB].filter(id => ALT.some(p => p.id === id)); if (!ids.length) return;
+  if (akcija === 'urejeno' && !confirm('Označim ' + ids.length + ' postavk kot urejene (skrije, ne izbriše)?')) return;
+  for (const id of ids) {
+    const p = ALT.find(x => x.id === id); if (akcija === 'naroceno' && p && p.naroceno_at) continue;   // množično samo označi (ne odznači)
+    await altPost(id, akcija);
+  }
+  ALT_IZB.clear(); narcStevec(); altRisi();
+}
+function altIzberi(id, on, ev) { if (ev) ev.stopPropagation(); on ? ALT_IZB.add(id) : ALT_IZB.delete(id); altRisi(); }
+function altRisi() {
+  const zdaj = preklZdaj(), stat = p => p.urejeno_at ? 'urejeno' : p.naroceno_at ? 'naroceno' : 'odprto';
+  const flt = p => (ALT_FLT === 'vse' || stat(p) === ALT_FLT || (p.tagi || []).includes(ALT_FLT)) && (!ALT_DOBF || altDobavitelji(p.komentar).some(x => x[0] === ALT_DOBF));
+  const odprteVse = ALT.filter(p => !p.urejeno_at), odprte = odprteVse.filter(flt), urejene = ALT.filter(p => p.urejeno_at).filter(flt);
+  [document.getElementById('altBadge'), ...document.querySelectorAll('.alt-badge')].forEach(b => { if (b) { b.textContent = odprteVse.length; b.style.display = odprteVse.length ? '' : 'none'; } });
+  const box = document.getElementById('altSeznam'); if (!box) return;
+  const nuj = odprte.filter(p => p.nujno).length, star = odprte.filter(p => !p.naroceno_at && zdaj - preklMs(p.at) > 24 * 3600000).length;
+  const pill = (t, bg, c) => '<span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:7px;background:' + bg + ';color:' + c + '">' + t + '</span>';
+  const seg = (arr, cur, set) => '<span style="display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">' + arr.map(([k, l, c, n]) =>
+    '<button onclick="' + set + '=\'' + k + '\';altRisi()" style="padding:4px 10px;border:none;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;background:' + (cur === k ? 'var(--surface2)' : 'transparent') + ';color:' + (cur === k ? c : 'var(--text-tertiary)') + '">' + l + (n != null ? ' ' + n : '') + '</button>').join('') + '</span>';
+  const nDob = Object.values(ALT_DOB).map(dob => [dob, odprteVse.filter(p => altDobavitelji(p.komentar).some(x => x[0] === dob)).length]).filter(x => x[1]);
+  document.getElementById('altKpi').innerHTML = pill(odprteVse.filter(p => !p.naroceno_at).length + ' odprtih', '#fef3c7', '#92600a') + pill('🛒 ' + odprteVse.filter(p => p.naroceno_at).length + ' naročenih', '#e6f0fb', '#185FA5')
+    + (nuj ? pill('🚨 ' + nuj + ' nujnih', '#fdecec', '#b42318') : '') + (star ? pill('⏱ ' + star + ' čaka > 24 h', '#fdecec', '#b42318') : '')
+    + seg([['vse', 'Vse', 'var(--text)', odprteVse.length], ['odprto', 'Odprto', '#92600a', odprteVse.filter(p => !p.naroceno_at).length], ['naroceno', '🛒 Naročeno', '#185FA5', odprteVse.filter(p => p.naroceno_at).length]]
+        .concat(Object.entries(ALT_TAG).map(([k, x]) => [k, x[0], x[2], odprteVse.filter(p => (p.tagi || []).includes(k)).length])), ALT_FLT, 'ALT_FLT')
+    + (nDob.length ? seg([['', 'Vsi dobavitelji', 'var(--text)']].concat(nDob.map(([d, n]) => [d, d, '#3C3489', n])), ALT_DOBF, 'ALT_DOBF') : '')
+    + '<button onclick="ALT_SKRITE=!ALT_SKRITE;altRisi()" style="margin-left:auto;padding:5px 12px;background:transparent;border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer;color:var(--text-secondary);font-family:inherit">' + (ALT_SKRITE ? 'Skrij urejene' : 'Prikaži urejene (' + urejene.length + ')') + '</button>';
+  const inp = 'padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px';
+  const cas = s => s.slice(8, 10) + '.' + s.slice(5, 7) + '. ' + s.slice(11, 16);
+  const vrsta = p => {
+    if (ALT_ED === p.id) return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 12px;margin-bottom:6px;border:1px solid var(--accent);border-left:4px solid var(--accent);border-radius:0 9px 9px 0;background:var(--surface)">'
+      + '<input id="altEdUrl" value="' + preklEsc(p.url) + '" title="Povezava ali številka naročila" style="flex:1 1 240px;' + inp + '">'
+      + '<input id="altEdKom" value="' + preklEsc(p.komentar || '') + '" placeholder="Komentar" onkeydown="if(event.key===\'Enter\')altShraniEd(\'' + p.id + '\');if(event.key===\'Escape\'){ALT_ED=null;altRisi()}" style="flex:2 1 300px;' + inp + '">'
+      + '<span id="altEdTagi" data-v="' + (p.tagi || []).join(',') + '" style="flex-basis:100%"></span>'
+      + '<button onclick="altShraniEd(\'' + p.id + '\')" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">💾 Shrani</button>'
+      + '<button onclick="ALT_ED=null;altRisi()" style="padding:6px 12px;background:transparent;border:1px solid var(--border);border-radius:7px;font-size:12.5px;cursor:pointer;color:var(--text-secondary);font-family:inherit">Prekliči</button></div>';
+    const ur = !!p.urejeno_at, nar = !!p.naroceno_at, traja = (ur ? preklMs(p.urejeno_at) : nar ? preklMs(p.naroceno_at) : zdaj) - preklMs(p.at);
+    const [bg, fg, rob] = ur ? ['var(--surface2)', 'var(--text-tertiary)', '#b4b2a9'] : nar ? ['#e6f0fb', '#185FA5', '#378ADD'] : preklBarva(traja);
+    const zg = (p.zgodovina || []).map(z => cas(z.at) + ' ' + z.kaj + (z.kdo ? ' (' + z.kdo + ')' : '')).join('&#10;');
+    const samoStorno = (p.tagi || []).length && (p.tagi || []).every(t => t === 'storno' || t === 'splet');
+    const tagi = (p.tagi || []).map(t => ALT_TAG[t] ? ' <span style="margin-left:4px;font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;background:' + ALT_TAG[t][1] + ';color:' + ALT_TAG[t][2] + '">' + ALT_TAG[t][0] + '</span>' : '').join('');
+    const dob = altDobavitelji(p.komentar).map(([d, s]) => ' <span onclick="event.stopPropagation();' + (s ? 'navigator.clipboard.writeText(\'' + preklEsc(s) + '\');this.style.outline=\'2px solid #7F77DD\'' : '') + '" title="' + (s ? 'Klik = kopiraj šifro ' + preklEsc(s) : 'Šifre ni v komentarju') + '" style="margin-left:4px;cursor:' + (s ? 'copy' : 'default') + ';font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;background:#EEEDFE;color:#3C3489">' + d + (s ? ' · <span style="font-family:ui-monospace,monospace">' + preklEsc(s) + '</span>' : '') + '</span>').join('');
+    return '<div style="display:grid;grid-template-columns:22px 120px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:8px 12px;margin-bottom:6px;border:1px solid var(--border);border-left:4px solid ' + rob + ';border-radius:0 9px 9px 0;background:var(--surface);' + (ur ? 'opacity:.6' : '') + '">'
+      + '<input type="checkbox" ' + (ALT_IZB.has(p.id) ? 'checked ' : '') + 'title="Izberi za množično urejanje" onclick="altIzberi(\'' + p.id + '\',this.checked,event)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">'
+      + '<a href="' + preklEsc(p.url) + '" target="_blank" rel="noopener" style="font-weight:800;color:var(--accent);text-decoration:none;font-family:ui-monospace,monospace">#' + preklEsc(p.st) + ' ↗</a>'
+      + '<div style="min-width:0;font-size:13px;line-height:1.9"><span onclick="altAkc(\'' + p.id + '\',\'uredi\',event)" title="Klik = uredi (povezava, komentar, tagi)" style="cursor:text">' + (p.komentar ? '<span style="font-size:14.5px;font-weight:700;color:#633806;background:#faeeda;padding:2px 9px;border-radius:6px;box-decoration-break:clone;-webkit-box-decoration-break:clone">' + preklEsc(p.komentar) + '</span>' : '<span style="color:var(--text-tertiary);font-size:13px">brez komentarja</span>') + '</span>'
+      + tagi + dob
+      + ' <span style="color:var(--text-tertiary);font-size:11.5px" title="' + preklEsc(zg) + '">· ' + preklEsc(p.kdo || '—') + ' · ' + cas(p.at)
+      + (nar ? ' · 🛒 ' + preklEsc(p.naroceno_kdo || '') + ' ' + cas(p.naroceno_at) : '') + (ur ? ' · ✓ ' + preklEsc(p.urejeno_kdo || '') + ' ' + cas(p.urejeno_at) : '') + '</span></div>'
+      + '<span style="font-size:12px;font-weight:800;padding:3px 9px;border-radius:7px;background:' + bg + ';color:' + fg + ';white-space:nowrap" title="' + (ur ? 'Do ureditve' : nar ? 'Od oddaje do naročila' : 'Od oddaje: < 12 h zeleno · 12–24 h rumeno · > 24 h rdeče') + '">' + (nar && !ur ? '🛒 ' : '⏱ ') + preklTraja(traja) + '</span>'
+      + '<span style="display:flex;gap:6px;align-items:center"><button onclick="altAkc(\'' + p.id + '\',\'uredi\',event)" title="✏️ Uredi povezavo, komentar in tage" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px">✏️</button><span onclick="altAkc(\'' + p.id + '\',\'nujno\',event)" title="Klik = (od)označi nujno" style="cursor:pointer;font-size:11.5px;font-weight:800;padding:3px 8px;border-radius:7px;' + (p.nujno ? 'background:#fdecec;color:#b42318' : 'color:var(--text-tertiary);border:1px dashed var(--border)') + '">' + (p.nujno ? '🚨 nujno' : 'nujno?') + '</span>'
+      + (ur ? '<button onclick="altAkc(\'' + p.id + '\',\'odpri\',event)" title="Vrni med odprte" style="padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;color:var(--text-secondary);font-family:inherit">↩ Odpri</button>'
+            : (samoStorno ? '' : '<button onclick="altAkc(\'' + p.id + '\',\'naroceno\',event)" title="' + (nar ? 'Klik = nazaj na odprto' : 'Alternativa je naročena pri dobavitelju') + '" style="padding:4px 10px;background:' + (nar ? '#e6f0fb' : 'transparent') + ';border:1px solid ' + (nar ? '#85B7EB' : 'var(--border)') + ';border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;color:#185FA5;font-family:inherit;white-space:nowrap">' + (nar ? '🛒 Naročeno ✓' : '🛒 Naročeno') + '</button>')
+              + '<button onclick="altAkc(\'' + p.id + '\',\'urejeno\',event)" title="Zaključi — postavka se skrije (ne izbriše)" style="padding:4px 12px;background:#12814f;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;white-space:nowrap">✓ Urejeno</button>')
+      + '</span></div>';
+  };
+  const izb = [...ALT_IZB].filter(id => ALT.some(p => p.id === id));
+  const vecBar = izb.length ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 12px;margin-bottom:8px;border-radius:9px;background:#EEEDFE;color:#3C3489;font-size:12.5px"><b>' + izb.length + ' izbranih</b>'
+    + '<button onclick="altVec(\'naroceno\')" style="padding:4px 10px;background:transparent;border:1px solid #b9b4f0;border-radius:7px;cursor:pointer;font-size:12px;color:#185FA5;font-weight:700;font-family:inherit">🛒 Označi naročeno</button>'
+    + '<button onclick="altVec(\'urejeno\')" style="padding:4px 12px;background:#12814f;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit">✓ Označi urejeno</button>'
+    + '<button onclick="altVec(\'nujno\')" style="padding:4px 10px;background:transparent;border:1px solid #b9b4f0;border-radius:7px;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">🚨 Preklopi nujno</button>'
+    + (ALT_SKRITE ? '<button onclick="altVec(\'odpri\')" style="padding:4px 10px;background:transparent;border:1px solid #b9b4f0;border-radius:7px;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">↩ Odpri</button>' : '')
+    + '<button onclick="ALT_IZB.clear();altRisi()" style="margin-left:auto;padding:4px 10px;background:transparent;border:none;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">✕ Počisti izbor</button></div>' : '';
+  const red = [...odprte].sort((a, b) => (b.nujno ? 1 : 0) - (a.nujno ? 1 : 0) || (a.naroceno_at ? 1 : 0) - (b.naroceno_at ? 1 : 0) || preklMs(a.at) - preklMs(b.at));   // nujne, odprte (najstarejše), nato naročene
+  setTimeout(() => { const e = document.getElementById('altEdTagi'); if (e && !e.innerHTML) altTagSel(e, e.dataset.v); }, 0);
+  box.innerHTML = vecBar + (red.length ? red.map(vrsta).join('') : '<div class="history-empty">✓ Ni odprtih alternativ.</div>')
+    + (ALT_SKRITE && urejene.length ? '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text-tertiary);margin:14px 0 6px">UREJENE</div>' + [...urejene].sort((a, b) => preklMs(b.urejeno_at) - preklMs(a.urejeno_at)).map(vrsta).join('') : '');
+}   // števec sveži vsako minuto, tudi v ozadju (naslov zavihka; dodajajo tudi drugi)
 async function prip1CheckStatus(){
   try{
     const r = await fetch('/priprava-korak1-status');

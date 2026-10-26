@@ -37970,6 +37970,105 @@ async def preklici_uredi(request: Request, data: dict):
     return {"ok": True, "postavke": d.get("postavke") or []}
 
 
+# ═══ 🔁 ALTERNATIVE (Naročilnice → zavihek za Popravki naročil, 2026-10-26) ═══
+# Naročila, kjer dobavitelj izdelka nima → alternativa (druga šifra / dobavitelj) ali storno. Prej seznam v Asani (»URL komentar« po vrsticah).
+# Status: odprto → 🛒 naročeno (naroceno_at) → ✓ urejeno (urejeno_at = skrito, nič se ne briše).
+ALTERNATIVE_FILE = DATA_DIR / "alternative.json"
+_alternative_lock = asyncio.Lock()
+ALT_TAGI = ("storno", "storno_post", "alternativa", "splet")   # 🚫 storno naročila · ✂ storno postavke · 🔁 alternativa · 🗑 odstrani s spleta
+
+
+def _alt_tagi(t) -> list:
+    return [x for x in ALT_TAGI if x in (t or [])]
+
+
+@app.get("/alternative")
+async def alternative_seznam(request: Request):
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
+    d = _jload(ALTERNATIVE_FILE, {}) or {}
+    return {"ok": True, "postavke": d.get("postavke") or [], "zdaj": _lj_iso()}
+
+
+@app.post("/alternative/dodaj")
+async def alternative_dodaj(request: Request, data: dict):
+    """{vnos: vrstice »povezava/številka [komentar]«, komentar (če ga v vrstici ni), tagi, kdo, nujno} → nove postavke;
+    isto ODPRTO naročilo = dvojnik. Vrstica brez komentarja in brez taga = napaka."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
+    vrstice = [v.strip() for v in str(data.get("vnos") or "").splitlines() if v.strip()][:100]
+    if not vrstice:
+        return {"ok": False, "error": "Prilepi povezavo do naročila ali številko."}
+    kom0, kdo, nujno = str(data.get("komentar") or "").strip()[:500], str(data.get("kdo") or "").strip()[:40], bool(data.get("nujno"))
+    tagi0 = _alt_tagi(data.get("tagi"))
+    dodane, dvojniki, napacne = [], [], []
+    async with _alternative_lock:
+        d = _jload(ALTERNATIVE_FILE, {}, strict=True) or {}
+        ps = d.setdefault("postavke", [])
+        for v in vrstice:
+            st = _preklici_st(v)
+            if not st:
+                napacne.append(v[:60]); continue
+            kom = re.sub(r"https?://\S*narocilnice/\d+\S*", " ", v)
+            kom = re.sub(r"(?<![\w-])" + st + r"(?![\w-])", " ", kom, count=1)
+            kom = re.sub(r"\s+", " ", kom).strip(" -–:;,\t")[:500] or kom0
+            tagi = list(tagi0)
+            if not tagi and re.fullmatch(r"(?i)storno\.?", kom or ""):   # samo »storno« = storno naročila
+                tagi = ["storno"]
+            if not kom and not tagi:
+                napacne.append(f"#{st} brez komentarja"); continue
+            obst = next((x for x in ps if x.get("st") == st and not x.get("urejeno_at")), None)
+            if obst:
+                dvojniki.append({"st": st, "kdo": obst.get("kdo") or "", "at": obst.get("at")}); continue
+            x = {"id": uuid.uuid4().hex[:10], "st": st, "url": f"https://www.siluxar.si/narocilnice/{st}", "komentar": kom, "tagi": tagi,
+                 "kdo": kdo, "nujno": nujno, "at": _lj_iso(), "zgodovina": [{"at": _lj_iso(), "kdo": kdo, "kaj": "dodano"}]}
+            ps.insert(0, x); dodane.append(st)
+        if dodane:
+            _jsave(ALTERNATIVE_FILE, d)
+    return {"ok": True, "dodane": dodane, "dvojniki": dvojniki, "napacne": napacne, "postavke": d.get("postavke") or []}
+
+
+@app.post("/alternative/uredi")
+async def alternative_uredi(request: Request, data: dict):
+    """{id, akcija: naroceno | urejeno | odpri | nujno | uredi (vnos, komentar, tagi), kdo} — nič se ne briše."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
+    akc, kdo = str(data.get("akcija") or ""), str(data.get("kdo") or "").strip()[:40]
+    async with _alternative_lock:
+        d = _jload(ALTERNATIVE_FILE, {}, strict=True) or {}
+        x = next((x for x in d.get("postavke") or [] if x.get("id") == data.get("id")), None)
+        if not x:
+            return {"ok": False, "error": "Postavke ni."}
+        if akc == "naroceno":   # 🛒 naročeno pri alternativi (ponovni klik = nazaj na odprto)
+            if x.get("naroceno_at"):
+                x.pop("naroceno_at", None); x.pop("naroceno_kdo", None); akc = "naroceno preklicano"
+            else:
+                x["naroceno_at"], x["naroceno_kdo"] = _lj_iso(), kdo
+        elif akc == "urejeno":
+            x["urejeno_at"], x["urejeno_kdo"] = _lj_iso(), kdo
+        elif akc == "odpri":
+            x.pop("urejeno_at", None); x.pop("urejeno_kdo", None)
+        elif akc == "nujno":
+            x["nujno"] = not x.get("nujno")
+        elif akc == "uredi":
+            st = _preklici_st(str(data.get("vnos") or ""))
+            if not st:
+                return {"ok": False, "error": "V povezavi ni številke naročila."}
+            dv = next((y for y in d.get("postavke") or [] if y is not x and y.get("st") == st and not y.get("urejeno_at")), None)
+            if dv:
+                return {"ok": False, "error": f"Naročilo #{st} je že na seznamu ({dv.get('kdo') or '—'})."}
+            if st != x.get("st"):
+                akc = f"uredi: #{x.get('st')} → #{st}"
+            x["st"], x["url"] = st, f"https://www.siluxar.si/narocilnice/{st}"
+            x["komentar"] = str(data.get("komentar") or "").strip()[:500]
+            x["tagi"] = _alt_tagi(data.get("tagi"))
+        else:
+            return {"ok": False, "error": "Neznana akcija."}
+        x.setdefault("zgodovina", []).append({"at": _lj_iso(), "kdo": kdo, "kaj": akc})
+        _jsave(ALTERNATIVE_FILE, d)
+    return {"ok": True, "postavke": d.get("postavke") or []}
+
+
 # 🎯 Google Ads → Demand Gen Bulk Creator (ločen modul gads_dg.py: /gads-dg, /gads-dg/api/*)
 import gads_dg as _gads_dg
 _gads_dg.vklopi(globals())
