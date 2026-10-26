@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-26 13:22</div>
+      <div class="sidebar-logo-sub">build 2026-10-26 13:44</div>
     </div>
   </div>
 
@@ -10094,6 +10094,8 @@ async function preklNalozi() {
   try { const k = localStorage.getItem('prekl_kdo'); const el = document.getElementById('preklKdo'); if (el && k && !el.value) el.value = k; } catch (e) {}
   try { const r = await fetch('/preklici', { credentials: 'include' }); const d = await r.json(); if (!d.ok) return;
     PREKL = d.postavke || []; PREKL_ZDAJ_OFS = preklMs(d.zdaj) - Date.now(); } catch (e) { return; }
+  const nOdpr = PREKL.filter(p => !p.urejeno_at).length;   // števec tudi v naslovu zavihka brskalnika: »(3) Suban AI«
+  document.title = (nOdpr ? '(' + nOdpr + ') ' : '') + document.title.replace(/^\(\d+\)\s*/, '');
   if (!PREKL_ED) preklRisi();   // med urejanjem ne prerisuj (izgubil bi vpisano)
   clearInterval(PREKL_T); PREKL_T = setInterval(() => { const p = document.getElementById('narcPanel-preklici'); if (p && p.style.display !== 'none' && !PREKL_ED) preklRisi(); }, 30000);
 }
@@ -10200,7 +10202,7 @@ function preklRisi() {
     + (PREKL_SKRITE && urejene.length ? '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text-tertiary);margin:14px 0 6px">UREJENE</div>' + [...urejene].sort((a, b) => preklMs(b.urejeno_at) - preklMs(a.urejeno_at)).map(vrsta).join('') : '');
 }
 setTimeout(() => { try { preklNalozi(); } catch (e) {} }, 2500);   // števec na zavihku tudi brez odpiranja
-setInterval(() => { if (!document.hidden) try { preklNalozi(); } catch (e) {} }, 120000);   // števec sveži vsaki 2 min (dodajajo tudi drugi)
+setInterval(() => { try { preklNalozi(); } catch (e) {} }, 60000);   // števec sveži vsako minuto, tudi v ozadju (naslov zavihka; dodajajo tudi drugi)
 async function prip1CheckStatus(){
   try{
     const r = await fetch('/priprava-korak1-status');
