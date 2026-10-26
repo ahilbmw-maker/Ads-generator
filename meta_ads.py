@@ -531,6 +531,20 @@ def vklopi(G: dict):
                 trgi[t]["opomba"] = "🚫 ne uvažamo (Marža)"
         return trgi
 
+    # ⏸ 2026-10-26: kreativa je 30 min ostala »v delu« (opravilo izgubljeno ob ponovnem zagonu strežnika) → gumba ↻ zaklenjena.
+    #    AKT[pid] = število opravil, ki jih TA proces res izvaja; /paket brez AKT sprosti zataknjene oznake (v_delu, *_v_delu).
+    AKT = {}
+
+    def v_ozadju(pid, coro):
+        AKT[pid] = AKT.get(pid, 0) + 1   # sinhrono — /paket takoj po kliku že ve, da teče
+
+        async def tek():
+            try:
+                await coro
+            finally:
+                AKT[pid] = max(0, AKT.get(pid, 1) - 1)
+        asyncio.create_task(tek())
+
     async def obdelaj_koncept(pid):
         p = pak_get(pid)
         try:
@@ -590,7 +604,7 @@ def vklopi(G: dict):
             await pak_set(pid, lambda q: q.update(status="osnove_v_delu" if auto else "koncept", ime=ime or sku, naziv=sl.get("naziv") or "", kreative=kre, oglasi_sl=ogl,
                                                     videi=videi, opozorila=nap, ref_slike=slike[:12], galerija_vloge={str(k): v for k, v in vloge.items()}, trgi=trgi))
             if auto:
-                asyncio.create_task(obdelaj_osnove(pid, list(range(len(kre)))))
+                v_ozadju(pid, obdelaj_osnove(pid, list(range(len(kre)))))
         except Exception as e:
             print(f"[meta-ads] koncept {pid}: {e}")
             err = str(e)[:200]
@@ -1141,7 +1155,7 @@ def vklopi(G: dict):
             d = nalozi()
             pid = nov_paket(d, sku, data.get("trgi"), data.get("asana"), auto_osnove=bool(data.get("auto_osnove")), tip=tip_od(data))   # 📦 vsi naenkrat: kreative takoj po konceptu
             _jsave(PAK_FILE, d)
-        asyncio.create_task(obdelaj_koncept(pid))
+        v_ozadju(pid, obdelaj_koncept(pid))
         return {"ok": True, "id": pid}
 
     # 🖼/🎬 Tip kampanje (2026-10-24): vsaka kampanja SAMO slike ali SAMO video (ne mešamo); stari paketi in evidenca brez »tip« = slike
@@ -1217,7 +1231,7 @@ def vklopi(G: dict):
             nov = vrsta_zacni_naslednjega(d) if akcija != "pocisti" else None
             _jsave(PAK_FILE, d)
         if nov:
-            asyncio.create_task(obdelaj_koncept(nov))
+            v_ozadju(nov, obdelaj_koncept(nov))
         return {"ok": True, "id": nov, "vrsta": vr}
 
     @app.post("/meta-ads/api/izbrisi")
@@ -1244,6 +1258,21 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         p = pak_get(pid)
+        if p and not AKT.get(pid) and not (pid in AKTIVNI) and (any(k.get("v_delu") for k in p.get("kreative") or [])
+                                                             or p.get("status") in ("koncept_v_delu", "osnove_v_delu") or (p.get("status") == "lokal_v_delu" and tip_od(p) != "video")):
+            def sprosti(q):   # nihče ne riše → sprosti (sicer ↻ zaklenjen za vedno)
+                for k in q.get("kreative") or []:
+                    if k.get("v_delu"):
+                        k["v_delu"] = False
+                        k["osnova_napaka"] = k.get("osnova_napaka") or "prekinjeno (ponovni zagon strežnika) — klikni ↻"
+                if q.get("status") == "osnove_v_delu":
+                    q["status"] = "osnove"
+                elif q.get("status") == "lokal_v_delu":
+                    q["status"] = "pripravljeno"
+                elif q.get("status") == "koncept_v_delu":
+                    q.update(status="napaka", napaka="Koncept je bil prekinjen (ponovni zagon strežnika) — pripravi ga znova.")
+            await pak_set(pid, sprosti)
+            p = pak_get(pid)
         if p and tip_od(p) == "video" and p.get("status") == "pripravljeno" and not p.get("skrci_auto"):   # 🗜 stari videi (pred stiskanjem 2026-10-24) → samodejno stisni 1×
             tezki = any(vt.get("mb") and vt["mb"] * 8400 / max(1, float(((p.get("videi") or [])[int(j)] if int(j) < len(p.get("videi") or []) else {}).get("trajanje") or 15)) > 1800
                         for t in MA_TRGI for j, vt in ((p["trgi"].get(t) or {}).get("videi") or {}).items())
@@ -1332,7 +1361,7 @@ def vklopi(G: dict):
             return {"ok": False, "error": "Najprej pripravi koncept."}
         idx = [int(i) for i in (data.get("indeksi") or range(len(p["kreative"]))) if 0 <= int(i) < len(p["kreative"])]
         await pak_set(pid, lambda q: ([q["kreative"][i].update(v_delu=True, osnova_napaka="") for i in idx], q.update(status="osnove_v_delu")))
-        asyncio.create_task(obdelaj_osnove(pid, idx, data.get("model") if data.get("model") in ("nb21", "flare") else "auto"))
+        v_ozadju(pid, obdelaj_osnove(pid, idx, data.get("model") if data.get("model") in ("nb21", "flare") else "auto"))
         return {"ok": True}
 
     @app.post("/meta-ads/api/lokaliziraj")
@@ -1363,9 +1392,9 @@ def vklopi(G: dict):
         samo = [(str(x[0]), int(x[1])) for x in (data.get("samo") or []) if x and x[0] in MA_TRGI]
         await pak_set(pid, lambda q: q.update(status="lokal_v_delu"))
         if data.get("trg") in MA_TRGI and not samo:   # ↻ samo en trg: prevod besedil + manjkajoče slike (2026-10-26: CZ brez besedil, 3/5 slik)
-            asyncio.create_task(obdelaj_lokal_trg(pid, model, data["trg"]))
+            v_ozadju(pid, obdelaj_lokal_trg(pid, model, data["trg"]))
             return {"ok": True}
-        asyncio.create_task(obdelaj_lokal(pid, model, samo or None))
+        v_ozadju(pid, obdelaj_lokal(pid, model, samo or None))
         return {"ok": True}
 
     from fastapi import UploadFile, File, Form
@@ -1890,11 +1919,11 @@ def vklopi(G: dict):
             if akcija == "osnove":
                 idx = list(range(len(p["kreative"])))
                 await pak_set(pid, lambda q: ([q["kreative"][i].update(v_delu=True, osnova_napaka="") for i in idx], q.update(status="osnove_v_delu")))
-                asyncio.create_task(obdelaj_osnove(pid, idx))
+                v_ozadju(pid, obdelaj_osnove(pid, idx))
             else:
                 if not any(k.get("osnova") for k in p["kreative"]):
                     preskoceni.append(pid); continue
                 await pak_set(pid, lambda q: q.update(status="lokal_v_delu"))
-                asyncio.create_task(obdelaj_lokal(pid, model, None))
+                v_ozadju(pid, obdelaj_lokal(pid, model, None))
             ok.append(pid)
         return {"ok": True, "zagnani": len(ok), "preskoceni": len(preskoceni)}
