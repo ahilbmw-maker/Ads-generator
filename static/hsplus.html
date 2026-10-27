@@ -227,7 +227,8 @@
       <button class="btn lb-cak" onclick="masovno({status:'cakajoce'})">Čakajoče</button>
       <button class="btn lb-prv" onclick="masovno({status:'prevzeto'})">Prevzeto</button>
       <button class="btn lb-pre" onclick="masovno({status:'preklicano'})">Preklicano</button>
-      <button class="btn" onclick="izbrisi()" style="margin-left:auto">🗑 Odstrani</button>
+      <button class="btn" onclick="kopirajSku()" style="margin-left:auto" title="Kopira SKU-je izbranih postavk (vsak v svoji vrstici)">📋 Kopiraj SKU</button>
+      <button class="btn" onclick="izbrisi()">🗑 Odstrani</button>
       <button class="btn" onclick="SEL.clear();render()">✕</button>
     </div>
   </div>
@@ -297,6 +298,12 @@ try { document.getElementById('kdo').value = localStorage.getItem('hsb_kdo') || 
 document.getElementById('kdo').addEventListener('input', e => { try { localStorage.setItem('hsb_kdo', e.target.value); } catch (er) {} });
 const kdo = () => document.getElementById('kdo').value;
 
+async function kopirajSku() {   // 📋 SKU-ji izbranih v odložišče (vrstni red kot v seznamu, brez dvojnikov)
+  const sku = [...new Set(D.filter(it => SEL.has(it.id)).map(it => String(it.sku || it.naziv || '').trim()).filter(Boolean))];
+  if (!sku.length) return;
+  try { await navigator.clipboard.writeText(sku.join('\n')); sporocilo('📋 Kopiranih ' + sku.length + ' SKU', 'ok', 3000); }
+  catch (e) { prompt('Kopiraj (Ctrl+C):', sku.join(' ')); }
+}
 function sporocilo(t, cls, ms) {
   const m = document.getElementById('msg'); m.className = 'msg ' + cls; m.innerHTML = t; m.style.display = 'block';
   clearTimeout(m._t); if (ms) m._t = setTimeout(() => m.style.display = 'none', ms);
