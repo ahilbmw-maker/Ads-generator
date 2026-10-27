@@ -1286,7 +1286,11 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         p = pak_get(pid)
-        if p and not AKT.get(pid) and not (pid in AKTIVNI) and (any(k.get("v_delu") for k in p.get("kreative") or [])
+        # 2026-10-27: sveže ustvarjen koncept (PROVACUUMSEALER) je bil takoj »prekinjen« brez deploya — AKT je samo v pomnilniku
+        #    TEGA procesa (drug proces / delavec ga ne vidi) → sprosti šele, ko se paket ni spremenil od zagona strežnika ali > 15 min
+        _zad = (p or {}).get("spremenjeno") or (p or {}).get("at") or ""
+        _star = bool(_zad) and (_zad[:19] < MA_ZAGON or (datetime.fromisoformat(_lj_iso()[:19]) - datetime.fromisoformat(_zad[:19])).total_seconds() > 900)
+        if p and _star and not AKT.get(pid) and not (pid in AKTIVNI) and (any(k.get("v_delu") for k in p.get("kreative") or [])
                                                              or p.get("status") in ("koncept_v_delu", "osnove_v_delu") or (p.get("status") == "lokal_v_delu" and tip_od(p) != "video")):
             def sprosti(q):   # nihče ne riše → sprosti (sicer ↻ zaklenjen za vedno)
                 for k in q.get("kreative") or []:
