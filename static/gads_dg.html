@@ -144,6 +144,7 @@
       <label class="l" style="margin-top:4px">Demand Gen kampanja</label>
       <select class="f" id="kamp" onchange="kampInfo()"></select>
       <div class="kinfo" id="kampInfo"></div>
+      <div class="sub" style="margin-top:6px">Največ SKU / kampanjo <input class="f" id="maxSku" inputmode="numeric" style="width:60px;display:inline-block;padding:3px 6px" onchange="LS.set('gdg_max', this.value); kampInfo()" title="Ko je izbrana kampanja polna, se ostanek samodejno razdeli v nove kampanje (kopija izbrane: #2, #3 …)"> · ostanek gre samodejno v nove kampanje (#2, #3 …)</div>
       <div style="margin-top:12px"><label class="tog"><input type="checkbox" id="novaOn" onchange="novaUI()"> ➕ Ustvari novo kampanjo (kopija izbrane)</label></div>
       <div class="nova" id="novaBox" style="display:none">
         <label class="l">Ime nove kampanje</label><input class="f" id="novaIme">
@@ -194,7 +195,7 @@
 <script>
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const MAX = { h: 40, d: 90 };
-let NAST = { trgi: {}, jeziki: {} }, PAK = null, POLL = null, TRG = 'bg';
+let NAST = { trgi: {}, jeziki: {} }, PAK = null, POLL = null, TRG = 'bg', ZG = [];
 const TRGI = ['sl', 'hr', 'rs', 'hu', 'pl', 'cz', 'sk', 'gr', 'bg', 'ro'];
 const ZASTAVA = { sl: 'si' };
 const zast = t => '<span class="fi fi-' + (ZASTAVA[t] || t) + '"></span>';
@@ -212,6 +213,7 @@ function msg(el, t, cls) { document.getElementById(el).innerHTML = t ? '<div cla
 async function nalozi() {
   NAST = await api('/gads-dg/api/nastavitve');
   TRG = LS.get('gdg_trg') || 'bg'; if (!TRGI.includes(TRG)) TRG = 'bg';
+  const mi = document.getElementById('maxSku'); if (mi) mi.value = maxSku();
   risiKpi(); trgIzbran();
 }
 // 📊 števec: oglasi (SKU-ji, izvoženi prek Suban) in nove kampanje
@@ -239,7 +241,7 @@ function trgIzbran() {
   const t = TRG; LS.set('gdg_trg', t); risiTrgi();
   const tt = (NAST.trgi || {})[t] || { kampanje: {} }, k = Object.keys(tt.kampanje || {});
   document.getElementById('trgNaslov').innerHTML = zast(t) + ' ' + t.toUpperCase() + ' · ' + esc((NAST.jeziki || {})[t] || '') + (tt.racun ? ' · ' + esc(tt.racun) : '');
-  document.getElementById('kamp').innerHTML = k.length ? k.map(n => '<option value="' + esc(n) + '"' + (n === tt.izbrana ? ' selected' : '') + '>' + esc(n) + '</option>').join('')
+  document.getElementById('kamp').innerHTML = k.length ? k.map(n => '<option value="' + esc(n) + '"' + (n === tt.izbrana ? ' selected' : '') + '>' + esc(n) + ' · ' + ((tt.kampanje[n].skuji || []).length) + ' SKU</option>').join('')
     : '<option value="">— naloži izvoz kampanje za ' + t.toUpperCase() + ' (gumb zgoraj desno) —</option>';
   kampInfo(); skuInfo();
 }
@@ -255,10 +257,30 @@ function kampInfo() {
   const tt = (NAST.trgi || {})[t] || {}, k = (tt.kampanje || {})[n];
   ['novaIme', 'novaBud', 'novaCpa'].forEach(i => { const e = document.getElementById(i); if (e) e.value = ''; }); if (document.getElementById('novaOn')) novaUI();
   document.getElementById('kampInfo').innerHTML = k ? '<span class="pill p-mut">🏷 ' + esc(k.business_name || '?') + '</span>' +
-    '<span class="pill p-mut">' + (k.ad_groups || []).length + ' skupin</span><span class="pill p-mut">' + (k.skuji || []).length + ' SKU</span>' +
+    '<span class="pill p-mut">' + (k.ad_groups || []).length + ' skupin</span><span class="pill ' + ((k.skuji || []).length >= maxSku() ? 'p-warn' : 'p-mut') + '" title="SKU-jev v kampanji / največ na kampanjo">' + (k.skuji || []).length + ' / ' + maxSku() + ' SKU' + ((k.skuji || []).length >= maxSku() ? ' · polna' : '') + '</span>' +
     (k.iz_suban ? '<span class="pill p-inf">➕ ustvaril Suban</span>' : '') +
     '<span class="pill p-mut" title="Kdaj je bil naložen izvoz iz Editorja">⬆ ' + esc(cas(k.uvoz_at)) + '</span>' : '';
   skuInfo();
+}
+// 📦 največ SKU-jev na kampanjo (proračun kampanje je skupen → pri 100 skupinah večina ne dobi prikazov) — ostanek v nove kampanje
+function maxSku() { const v = parseInt(LS.get('gdg_max') || '', 10); return v > 0 ? v : 30; }
+function kampOsnova(n) { return String(n || '').split(/\s+/).filter(x => x && !x.startsWith('@')).join(' ').replace(/\s*#\d+$/, ''); }
+function kampSt(n) { const m = String(n || '').split(/\s+/).filter(x => x && !x.startsWith('@')).join(' ').match(/#(\d+)$/); return m ? +m[1] : 1; }
+function razdelitev(novi) {   // → [{kampanja, nova?, skus}] ali null (ni treba deliti)
+  const tt = (NAST.trgi || {})[TRG] || {}, n = document.getElementById('kamp').value, k = (tt.kampanje || {})[n];
+  if (!k || document.getElementById('novaOn').checked) return null;
+  const mx = maxSku(), prostor = Math.max(0, mx - (k.skuji || []).length);
+  if (novi.length <= prostor) return null;
+  const deli = prostor ? [{ kampanja: n, skus: novi.slice(0, prostor) }] : [];
+  const baza = kampOsnova(n), bl = baza.toLowerCase(), zasedena = new Set();
+  Object.keys(tt.kampanje || {}).concat((ZG || []).filter(p => p.trg === TRG).map(p => p.kampanja)).forEach(x => { if (kampOsnova(x).toLowerCase() === bl) zasedena.add(kampSt(x)); });
+  let st = 2;
+  for (let i = prostor; i < novi.length; i += mx) {
+    while (zasedena.has(st)) st++;
+    zasedena.add(st);
+    deli.push({ kampanja: n, nova: { ime: baza + ' #' + st }, skus: novi.slice(i, i + mx) });
+  }
+  return deli;
 }
 // ✓ sproti: kateri SKU-ji so na tem trgu že narejeni (preskočijo se)
 function skuSeznam() { return [...new Set(document.getElementById('skus').value.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean))]; }
@@ -303,6 +325,8 @@ function skuInfo() {
   el.innerHTML = '<span class="pill p-ok">' + novi + ' novih</span>' +
     (ze.length ? '<span class="pill ' + (tudi ? 'p-inf' : 'p-warn') + '" title="' + esc(ze.map(s => s + ' — ' + datum(nar[s].at) + ' · ' + (nar[s].kampanja || '')).join('\n')) + '">' + (tudi ? '↻ ' : '📒 preskočim ') + ze.length + ': ' + esc(ze.slice(0, 6).join(', ')) + (ze.length > 6 ? ' …' : '') + '</span>' : '') +
     (ai && n ? '<span class="sub">🎨 ~' + (n * 0.25).toFixed(2).replace('.', ',') + ' $</span>' : '');
+  const dl = razdelitev(tudi ? sk : sk.filter(s => !nar[s]));
+  if (dl) el.innerHTML += '<span class="pill p-warn" title="' + esc(dl.map(x => (x.nova ? '➕ ' + x.nova.ime : x.kampanja) + ': ' + x.skus.length + ' SKU').join('\n')) + '">📦 kampanja polna (' + maxSku() + ') → ' + dl.map(x => x.nova ? '➕ #' + x.nova.ime.split('#').pop() + ': ' + x.skus.length : 'izbrana: ' + x.skus.length).join(' · ') + '</span>';
 }
 async function naloziIzvoz() {
   const inp = document.getElementById('izvoz'), f = inp.files[0]; if (!f) return;
@@ -319,12 +343,36 @@ async function pripravi() {
   if (!kampanja) { msg('msg', 'Najprej naloži izvoz kampanje za ' + trg.toUpperCase() + ' (⬆ Naloži izvoz iz Editorja).', 'err'); return; }
   if (!skuSeznam().length) { msg('msg', 'Vpiši vsaj en SKU.', 'err'); document.getElementById('skus').focus(); return; }
   const nova = document.getElementById('novaOn').checked ? { ime: document.getElementById('novaIme').value, budget: document.getElementById('novaBud').value, tcpa: document.getElementById('novaCpa').value } : null;
+  const nar = narejeniTrg(), dl = razdelitev(document.getElementById('tudiNar').checked ? skuSeznam() : skuSeznam().filter(s => !nar[s]));
+  if (dl) return pripraviRazdeljeno(dl);
   document.getElementById('btnPri').disabled = true;
   const d = await api('/gads-dg/api/pripravi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trg, kampanja, skus, nova, ai_slike: document.getElementById('aiSlike').checked, tudi_narejene: document.getElementById('tudiNar').checked }) });
   if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), (d.preskoceni || []).length ? 'warn' : 'err'); document.getElementById('btnPri').disabled = false; return; }
   LS.set('gdg_pak', d.id); msg('msg', '');
   clearInterval(POLL); POLL = setInterval(() => naloziPaket(d.id), 3000);
   await naloziPaket(d.id); zgodovina(); skoci();
+}
+// 📦 ostanek v nove kampanje (kopija izbrane, ime »… #2«), vsaka svoj paket
+async function pripraviRazdeljeno(dl) {
+  const tt = (NAST.trgi || {})[TRG] || {}, kv = ((tt.kampanje || {})[dl[0].kampanja] || {}).kamp_vrstica || {};
+  const nove = dl.filter(x => x.nova);
+  if (!confirm('Izbrana kampanja ima prostora za ' + (dl[0].nova ? 0 : dl[0].skus.length) + ' SKU (največ ' + maxSku() + ').\n\n' +
+    dl.map(x => (x.nova ? '➕ NOVA »' + x.nova.ime + '«' : '→ »' + x.kampanja + '«') + ': ' + x.skus.length + ' SKU').join('\n') +
+    '\n\nNove kampanje so kopija izbrane (omrežja, lokacija, cilji). Nadaljujem?')) return;
+  const bud = prompt('Dnevni proračun za ' + (nove.length === 1 ? 'novo kampanjo' : 'vsako od ' + nove.length + ' novih kampanj') + ':', kv['Budget'] || ''); if (bud === null) return;
+  const cpa = prompt('Target CPA za nove kampanje:', kv['Target CPA'] || ''); if (cpa === null) return;
+  document.getElementById('btnPri').disabled = true;
+  const ok = [], nap = [];
+  for (const x of dl) {
+    const d = await api('/gads-dg/api/pripravi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trg: TRG, kampanja: x.kampanja, skus: x.skus.join('\n'),
+      nova: x.nova ? { ime: x.nova.ime, budget: bud, tcpa: cpa } : null, ai_slike: document.getElementById('aiSlike').checked, tudi_narejene: document.getElementById('tudiNar').checked }) });
+    if (d.ok) ok.push({ id: d.id, ime: x.nova ? x.nova.ime : x.kampanja, n: x.skus.length }); else nap.push((x.nova ? x.nova.ime : x.kampanja) + ': ' + (d.error || 'napaka'));
+  }
+  document.getElementById('btnPri').disabled = false;
+  msg('msg', (ok.length ? '✓ ' + ok.length + ' paketov: ' + ok.map(o => '<b>' + esc(o.ime) + '</b> (' + o.n + ' SKU)').join(' · ') + ' — vsi so v Zgodovini desno, vsakega izvoziš posebej.' : '') + (nap.length ? '<br>✗ ' + esc(nap.join(' · ')) : ''), nap.length ? 'warn' : 'ok');
+  if (!ok.length) return;
+  LS.set('gdg_pak', ok[0].id); clearInterval(POLL); POLL = setInterval(() => naloziPaket(ok[0].id), 3000);
+  await naloziPaket(ok[0].id); zgodovina(); skoci();
 }
 function skoci() { const e = document.getElementById('paket'); if (e) window.scrollTo({ top: e.offsetTop - 8, behavior: 'smooth' }); }
 async function naloziPaket(id) {
@@ -496,7 +544,7 @@ function zapriPaket() { clearInterval(POLL); POLL = null; PAK = null; LS.set('gd
 async function zgodovina() {
   const d = await api('/gads-dg/api/paketi'), el = document.getElementById('zgod');
   if (!d.ok) { el.innerHTML = '<div class="prazno">—</div>'; return; }
-  const ps = d.paketi || [], cur = PAK && PAK.paket.id;
+  const ps = d.paketi || [], cur = PAK && PAK.paket.id; ZG = ps;
   el.innerHTML = ps.length ? ps.map(p => '<div class="zg-r' + (p.id === cur ? ' on' : '') + '" data-id="' + esc(p.id) + '" onclick="odpriPaket(\'' + esc(p.id) + '\')">' + zast(String(p.trg || '')) +
       '<div style="min-width:0"><div class="zg-t">' + (p.nova ? '➕ ' : '') + esc(p.kampanja || '') + '</div><div class="zg-s" title="' + esc((p.skuji || []).join(', ')) + '">' + p.n + ' SKU · ' + esc((p.skuji || []).join(', ')) + '</div></div>' +
       '<div class="zg-d">' + (p.status === 'v_delu' ? '<span class="pill p-inf">⏳ v pripravi</span>' : p.izvozeno ? '<span class="pill p-ok">✓ izvoženo</span>' : '<span class="pill p-warn">pripravljeno</span>') + '<div style="margin-top:3px">' + esc(datum(p.at)) + ' ' + esc(String(p.at || '').slice(11, 16)) + '</div></div></div>').join('')
