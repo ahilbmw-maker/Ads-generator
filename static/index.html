@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-27 06:57</div>
+      <div class="sidebar-logo-sub">build 2026-10-27 08:02</div>
     </div>
   </div>
 
@@ -9062,6 +9062,7 @@ function kRenderResults(results) {
     });
   }
   cards = urejene;
+  cards.forEach((c, i) => { c.idx = i; });   // idx = mesto v kCardsData (prej indeks pred razvrstitvijo → Asana/prenos/Lok so vzeli napačno kartico)
   window.kCardsData = cards;
   // fiksiraj število stolpcev grida na število modelov
   // model=stolpec ostane, a stolpci omejeni na ~360px (slike manjše pri malo modelih)
