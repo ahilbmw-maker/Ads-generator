@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-27 19:29</div>
+      <div class="sidebar-logo-sub">build 2026-10-28 10:31</div>
     </div>
   </div>
 
@@ -10179,6 +10179,7 @@ async function preklDodaj() {
 async function preklVec(akcija) {   // množično: izbrane (kljukice) → urejeno / odpri / nujno
   const ids = [...PREKL_IZB].filter(id => PREKL.some(p => p.id === id)); if (!ids.length) return;
   if (akcija === 'urejeno' && !confirm('Označim ' + ids.length + ' postavk kot urejene (skrije, ne izbriše)?')) return;
+  if (akcija === 'izbrisi' && !confirm('Izbrišem ' + ids.length + ' postavk s seznama?')) return;
   for (const id of ids) {
     const r = await fetch('/preklici/uredi', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, akcija, kdo: document.getElementById('preklKdo').value.trim() }) });
     const d = await r.json(); if (d.ok) PREKL = d.postavke;
@@ -10196,6 +10197,7 @@ async function preklAkc(id, akcija, ev) {
   if (ev) ev.stopPropagation();
   let kom;
   if (akcija === 'komentar') { PREKL_ED = id; preklRisi(); setTimeout(() => { const e = document.getElementById('preklEdKom'); if (e) e.focus(); }, 0); return; }   // klik na komentar = ✏️ urejanje
+  if (akcija === 'izbrisi' && !confirm('Izbrišem postavko #' + ((PREKL.find(p => p.id === id) || {}).st || '') + ' s seznama?')) return;
   const r = await fetch('/preklici/uredi', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, akcija, komentar: kom, kdo: document.getElementById('preklKdo').value.trim() }) });
   const d = await r.json(); if (!d.ok) { alert(d.error || 'Napaka'); return; }
@@ -10235,7 +10237,7 @@ function preklRisi() {
       + (ur ? ' · ✓ ' + preklEsc(p.urejeno_kdo || '') + ' ' + p.urejeno_at.slice(11, 16) : '') + '</span>'
       + (v_ => ' <span style="margin-left:6px;font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;background:' + v_[1] + ';color:' + v_[2] + '">' + v_[0] + '</span>')(PREKL_VR[p.vrsta || 'preklic']) + '</div>'
       + '<span style="font-size:12px;font-weight:800;padding:3px 9px;border-radius:7px;background:' + bg + ';color:' + fg + ';white-space:nowrap" title="' + (ur ? 'Urejeno v tem času' : 'Od oddaje: < 12 h zeleno · 12–24 h rumeno · > 24 h rdeče') + '">⏱ ' + preklTraja(traja) + '</span>'
-      + '<span style="display:flex;gap:6px;align-items:center"><button onclick="preklAkc(\'' + p.id + '\',\'komentar\',event)" title="✏️ Uredi povezavo in komentar" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px">✏️</button><span onclick="preklAkc(\'' + p.id + '\',\'nujno\',event)" title="Klik = (od)označi nujno" style="cursor:pointer;font-size:11.5px;font-weight:800;padding:3px 8px;border-radius:7px;' + (p.nujno ? 'background:#fdecec;color:#b42318' : 'color:var(--text-tertiary);border:1px dashed var(--border)') + '">' + (p.nujno ? '🚨 nujno' : 'nujno?') + '</span>'
+      + '<span style="display:flex;gap:6px;align-items:center"><button onclick="preklAkc(\'' + p.id + '\',\'komentar\',event)" title="✏️ Uredi povezavo in komentar" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px">✏️</button><button onclick="preklAkc(\'' + p.id + '\',\'izbrisi\',event)" title="🗑 Izbriši s seznama" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px">🗑</button><span onclick="preklAkc(\'' + p.id + '\',\'nujno\',event)" title="Klik = (od)označi nujno" style="cursor:pointer;font-size:11.5px;font-weight:800;padding:3px 8px;border-radius:7px;' + (p.nujno ? 'background:#fdecec;color:#b42318' : 'color:var(--text-tertiary);border:1px dashed var(--border)') + '">' + (p.nujno ? '🚨 nujno' : 'nujno?') + '</span>'
       + (ur ? '<button onclick="preklAkc(\'' + p.id + '\',\'odpri\',event)" title="Vrni med odprte" style="padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;color:var(--text-secondary);font-family:inherit">↩ Odpri</button>'
             : '<button onclick="preklAkc(\'' + p.id + '\',\'urejeno\',event)" title="Zaključi — postavka se skrije (ne izbriše)" style="padding:4px 12px;background:#12814f;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;white-space:nowrap">✓ Urejeno</button>')
       + '</span></div>';
@@ -10245,6 +10247,7 @@ function preklRisi() {
     + '<button onclick="preklVec(\'urejeno\')" style="padding:4px 12px;background:#12814f;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit">✓ Označi urejeno</button>'
     + '<button onclick="preklVec(\'nujno\')" style="padding:4px 10px;background:transparent;border:1px solid #b9b4f0;border-radius:7px;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">🚨 Preklopi nujno</button>'
     + (PREKL_SKRITE ? '<button onclick="preklVec(\'odpri\')" style="padding:4px 10px;background:transparent;border:1px solid #b9b4f0;border-radius:7px;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">↩ Odpri</button>' : '')
+    + '<button onclick="preklVec(\'izbrisi\')" style="padding:4px 10px;background:transparent;border:1px solid #f0b4b4;border-radius:7px;cursor:pointer;font-size:12px;color:#b42318;font-weight:700;font-family:inherit">🗑 Izbriši</button>'
     + '<button onclick="PREKL_IZB.clear();preklRisi()" style="margin-left:auto;padding:4px 10px;background:transparent;border:none;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">✕ Počisti izbor</button></div>' : '';
   const urejeni = [...odprte].sort((a, b) => (b.nujno ? 1 : 0) - (a.nujno ? 1 : 0) || preklMs(a.at) - preklMs(b.at));   // nujne na vrhu, nato najstarejše
   setTimeout(() => { const ev = document.getElementById('preklEdVr'); if (ev && !ev.innerHTML) preklVrstaSel(ev, ev.dataset.v); }, 0);
@@ -10319,6 +10322,7 @@ async function altPost(id, akcija, extra) {
 async function altAkc(id, akcija, ev) {
   if (ev) ev.stopPropagation();
   if (akcija === 'uredi') { ALT_ED = id; altRisi(); setTimeout(() => { const e = document.getElementById('altEdKom'); if (e) e.focus(); }, 0); return; }
+  if (akcija === 'izbrisi' && !confirm('Izbrišem postavko #' + ((ALT.find(p => p.id === id) || {}).st || '') + ' s seznama?')) return;
   if (await altPost(id, akcija)) { narcStevec(); altRisi(); }
 }
 async function altShraniEd(id) {
@@ -10328,6 +10332,7 @@ async function altShraniEd(id) {
 async function altVec(akcija) {
   const ids = [...ALT_IZB].filter(id => ALT.some(p => p.id === id)); if (!ids.length) return;
   if (akcija === 'urejeno' && !confirm('Označim ' + ids.length + ' postavk kot urejene (skrije, ne izbriše)?')) return;
+  if (akcija === 'izbrisi' && !confirm('Izbrišem ' + ids.length + ' postavk s seznama?')) return;
   for (const id of ids) {
     const p = ALT.find(x => x.id === id); if (akcija === 'naroceno' && p && p.naroceno_at) continue;   // množično samo označi (ne odznači)
     await altPost(id, akcija);
@@ -10375,7 +10380,7 @@ function altRisi() {
       + ' <span style="color:var(--text-tertiary);font-size:11.5px" title="' + preklEsc(zg) + '">· ' + preklEsc(p.kdo || '—') + ' · ' + cas(p.at)
       + (nar ? ' · 🛒 ' + preklEsc(p.naroceno_kdo || '') + ' ' + cas(p.naroceno_at) : '') + (ur ? ' · ✓ ' + preklEsc(p.urejeno_kdo || '') + ' ' + cas(p.urejeno_at) : '') + '</span></div>'
       + '<span style="font-size:12px;font-weight:800;padding:3px 9px;border-radius:7px;background:' + bg + ';color:' + fg + ';white-space:nowrap" title="' + (ur ? 'Do ureditve' : nar ? 'Od oddaje do naročila' : 'Od oddaje: < 12 h zeleno · 12–24 h rumeno · > 24 h rdeče') + '">' + (nar && !ur ? '🛒 ' : '⏱ ') + preklTraja(traja) + '</span>'
-      + '<span style="display:flex;gap:6px;align-items:center"><button onclick="altAkc(\'' + p.id + '\',\'uredi\',event)" title="✏️ Uredi povezavo, komentar in tage" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px">✏️</button><span onclick="altAkc(\'' + p.id + '\',\'nujno\',event)" title="Klik = (od)označi nujno" style="cursor:pointer;font-size:11.5px;font-weight:800;padding:3px 8px;border-radius:7px;' + (p.nujno ? 'background:#fdecec;color:#b42318' : 'color:var(--text-tertiary);border:1px dashed var(--border)') + '">' + (p.nujno ? '🚨 nujno' : 'nujno?') + '</span>'
+      + '<span style="display:flex;gap:6px;align-items:center"><button onclick="altAkc(\'' + p.id + '\',\'uredi\',event)" title="✏️ Uredi povezavo, komentar in tage" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px">✏️</button><button onclick="altAkc(\'' + p.id + '\',\'izbrisi\',event)" title="🗑 Izbriši s seznama" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px">🗑</button><span onclick="altAkc(\'' + p.id + '\',\'nujno\',event)" title="Klik = (od)označi nujno" style="cursor:pointer;font-size:11.5px;font-weight:800;padding:3px 8px;border-radius:7px;' + (p.nujno ? 'background:#fdecec;color:#b42318' : 'color:var(--text-tertiary);border:1px dashed var(--border)') + '">' + (p.nujno ? '🚨 nujno' : 'nujno?') + '</span>'
       + (ur ? '<button onclick="altAkc(\'' + p.id + '\',\'odpri\',event)" title="Vrni med odprte" style="padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;color:var(--text-secondary);font-family:inherit">↩ Odpri</button>'
             : (samoStorno ? '' : '<button onclick="altAkc(\'' + p.id + '\',\'naroceno\',event)" title="' + (nar ? 'Klik = nazaj na odprto' : 'Alternativa je naročena pri dobavitelju') + '" style="padding:4px 10px;background:' + (nar ? '#e6f0fb' : 'transparent') + ';border:1px solid ' + (nar ? '#85B7EB' : 'var(--border)') + ';border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;color:#185FA5;font-family:inherit;white-space:nowrap">' + (nar ? '🛒 Naročeno ✓' : '🛒 Naročeno') + '</button>')
               + '<button onclick="altAkc(\'' + p.id + '\',\'urejeno\',event)" title="Zaključi — postavka se skrije (ne izbriše)" style="padding:4px 12px;background:#12814f;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;white-space:nowrap">✓ Urejeno</button>')
@@ -10387,6 +10392,7 @@ function altRisi() {
     + '<button onclick="altVec(\'urejeno\')" style="padding:4px 12px;background:#12814f;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit">✓ Označi urejeno</button>'
     + '<button onclick="altVec(\'nujno\')" style="padding:4px 10px;background:transparent;border:1px solid #b9b4f0;border-radius:7px;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">🚨 Preklopi nujno</button>'
     + (ALT_SKRITE ? '<button onclick="altVec(\'odpri\')" style="padding:4px 10px;background:transparent;border:1px solid #b9b4f0;border-radius:7px;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">↩ Odpri</button>' : '')
+    + '<button onclick="altVec(\'izbrisi\')" style="padding:4px 10px;background:transparent;border:1px solid #f0b4b4;border-radius:7px;cursor:pointer;font-size:12px;color:#b42318;font-weight:700;font-family:inherit">🗑 Izbriši</button>'
     + '<button onclick="ALT_IZB.clear();altRisi()" style="margin-left:auto;padding:4px 10px;background:transparent;border:none;cursor:pointer;font-size:12px;color:#3C3489;font-family:inherit">✕ Počisti izbor</button></div>' : '';
   const red = [...odprte].sort((a, b) => (b.nujno ? 1 : 0) - (a.nujno ? 1 : 0) || (a.naroceno_at ? 1 : 0) - (b.naroceno_at ? 1 : 0) || preklMs(a.at) - preklMs(b.at));   // nujne, odprte (najstarejše), nato naročene
   setTimeout(() => { const e = document.getElementById('altEdTagi'); if (e && !e.innerHTML) altTagSel(e, e.dataset.v); }, 0);

@@ -37933,7 +37933,7 @@ async def preklici_dodaj(request: Request, data: dict):
 
 @app.post("/preklici/uredi")
 async def preklici_uredi(request: Request, data: dict):
-    """{id, akcija: urejeno | odpri | nujno | komentar, kdo, komentar} — nič se ne briše (urejeno = skrito)."""
+    """{id, akcija: urejeno | odpri | nujno | komentar | izbrisi, kdo, komentar} — urejeno = skrito; izbrisi = v arhiv `izbrisani`."""
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
     akc, kdo = str(data.get("akcija") or ""), str(data.get("kdo") or "").strip()[:40]
@@ -37963,6 +37963,10 @@ async def preklici_uredi(request: Request, data: dict):
             x["komentar"] = str(data.get("komentar") or "").strip()[:500]
             if data.get("vrsta") in ("preklic", "sprememba", "manjka"):
                 x["vrsta"] = data["vrsta"]
+        elif akc == "izbrisi":   # 🗑 iz seznama v arhiv (2026-10-28)
+            d["postavke"] = [y for y in d.get("postavke") or [] if y is not x]
+            x["izbrisano_at"], x["izbrisano_kdo"] = _lj_iso(), kdo
+            d.setdefault("izbrisani", []).insert(0, x); del d["izbrisani"][500:]
         else:
             return {"ok": False, "error": "Neznana akcija."}
         x.setdefault("zgodovina", []).append({"at": _lj_iso(), "kdo": kdo, "kaj": akc})
@@ -38030,7 +38034,7 @@ async def alternative_dodaj(request: Request, data: dict):
 
 @app.post("/alternative/uredi")
 async def alternative_uredi(request: Request, data: dict):
-    """{id, akcija: naroceno | urejeno | odpri | nujno | uredi (vnos, komentar, tagi), kdo} — nič se ne briše."""
+    """{id, akcija: naroceno | urejeno | odpri | nujno | uredi (vnos, komentar, tagi) | izbrisi, kdo} — izbrisi = v arhiv `izbrisani`."""
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         return JSONResponse({"ok": False, "error": "Ni prijave"}, status_code=401)
     akc, kdo = str(data.get("akcija") or ""), str(data.get("kdo") or "").strip()[:40]
@@ -38062,6 +38066,10 @@ async def alternative_uredi(request: Request, data: dict):
             x["st"], x["url"] = st, f"https://www.siluxar.si/narocilnice/{st}"
             x["komentar"] = str(data.get("komentar") or "").strip()[:500]
             x["tagi"] = _alt_tagi(data.get("tagi"))
+        elif akc == "izbrisi":   # 🗑 iz seznama v arhiv (2026-10-28)
+            d["postavke"] = [y for y in d.get("postavke") or [] if y is not x]
+            x["izbrisano_at"], x["izbrisano_kdo"] = _lj_iso(), kdo
+            d.setdefault("izbrisani", []).insert(0, x); del d["izbrisani"][500:]
         else:
             return {"ok": False, "error": "Neznana akcija."}
         x.setdefault("zgodovina", []).append({"at": _lj_iso(), "kdo": kdo, "kaj": akc})
