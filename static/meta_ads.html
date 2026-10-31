@@ -772,9 +772,19 @@ async function zapisi(dir, pot, data) {
 // ⏳ napredek po korakih + časovna omejitev 3 min (2026-10-23: »Pripravljam paket …« se je ustavil — verjetno ponovni zagon strežnika med izvozom)
 let KOR_T0 = 0;
 const kor = t => msg('msg', '<span class="spin"></span> ' + t + ' <span style="opacity:.6">(' + Math.round((Date.now() - KOR_T0) / 1000) + ' s)</span>', 'inf');
+// 🛡 pred shranjevanjem: manjka slika ali besedilo za kak trg (AIRBOX 2026-10-31: CZ in GR samo 4 slike) → ↻ Dopolni ali vseeno
+async function preveriManjkajoce(ids) {
+  const id = ids && ids.length ? ids : (PAK ? [PAK.id] : []); if (!id.length) return true;
+  const d = await api('/meta-ads/api/preveri/' + id.join(',') + '?nacin=' + nacin());
+  const m = (d && d.manjka) || []; if (!m.length) return true;
+  const nl = String.fromCharCode(10);
+  if (confirm('⚠ Manjka ' + m.length + ':' + nl + nl + m.slice(0, 15).join(nl) + (m.length > 15 ? nl + '…' : '') + nl + nl + 'OK = ↻ Dopolni manjkajoče (narejeno ostane)' + nl + 'Prekliči = shrani vseeno')) { dopolni(id); return false; }
+  return true;
+}
 async function prenesiZip(ids) {
   KOR_T0 = Date.now();
   if (PAK) await shrani(false);
+  if (!(await preveriManjkajoce(ids))) { msg('msg', '↻ Dopolnjujem manjkajoče — ko je pripravljeno, shrani znova.', 'inf'); return null; }
   kor('1/3 strežnik pripravlja paket (slike, videi, CSV) …');
   const ac = new AbortController(), tz = setTimeout(() => ac.abort(), 180000);
   try {
@@ -822,6 +832,7 @@ async function shraniVMapo(ids) {
 async function vAsano(ids) {
   ids = Array.isArray(ids) ? ids : null;
   if (PAK && !ids) await shrani(false);
+  if (!(await preveriManjkajoce(ids))) { msg('msg', '↻ Dopolnjujem manjkajoče — ko je pripravljeno, pošlji znova.', 'inf'); return; }
   let asana = '';
   if (!ids && !(PAK.asana || []).length) {
     asana = prompt('Paket nima Asana taska. Prilepi povezavo do taska (Copy task link):', '');

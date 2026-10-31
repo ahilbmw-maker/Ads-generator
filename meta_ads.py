@@ -1622,6 +1622,10 @@ def vklopi(G: dict):
             je_video = tip_od(p) == "video"
             if nacin == "flex":   # vse slike trga v mapo za ročno dodajanje, v CSV samo prva
                 rocno[t] = [akcija_fn(s_, bn) if bn else s_ for s_ in (((tt.get("slike") or {}).get(str(i)) or {}).get("datoteka") for i in range(nk) if f"slika{i}" not in izkl) if s_]
+                for i in range(nk):   # 🛡 2026-10-31 (AIRBOX: CZ in GR samo 4 slike) — manjkajoča slika trga = opozorilo (prej tiho izpuščena)
+                    s_ = ((tt.get("slike") or {}).get(str(i)) or {})
+                    if f"slika{i}" not in izkl and not s_.get("datoteka"):
+                        opz.append(f"{t.upper()} kreativa {i + 1}: ni slike{' (' + s_['napaka'][:80] + ')' if s_.get('napaka') else ''}")
                 for j_, v in vid:
                     if f"video{j_}" not in izkl:
                         vt_ = ((tt.get("videi") or {}).get(str(j_)) or {}).get("datoteka") if je_video else v["datoteka"]
@@ -1746,6 +1750,18 @@ def vklopi(G: dict):
             _jsave(PAK_FILE, d)
         z.seek(0)
         return z, opz_vse, len(deli)
+
+    @app.get("/meta-ads/api/preveri/{pid}")
+    async def ma_preveri(request: Request, pid: str, nacin: str = "flex"):
+        """🛡 Pred shranjevanjem / ZIP / Asano: manjkajoče slike in besedila po trgih (brez gradnje ZIP-a)."""
+        if not prijava(request):
+            return ni()
+        opz = []
+        for x in [x for x in pid.split(",") if re.fullmatch(r"[0-9a-f]{18}", x)][:30]:
+            p = pak_get(x)
+            if p:
+                opz += [f"{p['sku']}: {o}" for o in sestavi(p, "PAUSED", "flex" if nacin == "flex" else "loceni")[3]]
+        return {"ok": True, "opozorila": opz, "manjka": [o for o in opz if re.search(r"ni slike|manjka besedilo|ni lokaliziran|ni URL", o)]}
 
     @app.get("/meta-ads/api/izvoz/{pid}")
     async def ma_izvoz(request: Request, pid: str, status: str = "ACTIVE", nacin: str = "loceni"):
