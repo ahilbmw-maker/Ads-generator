@@ -207,6 +207,10 @@ async function api(url, opt) {
 const post = (u, b) => api(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
 function msg(el, t, cls) { document.getElementById(el).innerHTML = t ? '<div class="msg ' + (cls || 'ok') + '">' + t + '</div>' : ''; }
 const dat = fn => '/meta-ads/api/datoteka/' + PAK.id + '/' + encodeURIComponent(fn);
+// 🖤 akcija: paket ima svojo izbiro, sicer zadnja (globalna); slike v koraku 3 kažejo predogled z okvirjem
+const akcijaOn = p => { const n = (p || PAK || {}).nastavitve || {}; return 'akcija' in n ? !!n.akcija : !!((ST || {}).akcija || {}).on; };
+const akcijaKoda = p => { const n = (p || PAK || {}).nastavitve || {}; return String(n.akcija_koda || ((ST || {}).akcija || {}).koda || 'BLACK8').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+const datA = fn => dat(akcijaOn() && akcijaKoda() && /\.jpg$/.test(fn) ? fn.replace(/\.jpg$/, '_bn' + akcijaKoda() + '.jpg') : fn);
 
 async function stanje() {
   ST = await api('/meta-ads/api/stanje');
@@ -544,6 +548,7 @@ function risi3(p) {
     (n.strategija === 'costcap' ? '<div style="width:130px"><label class="l" style="margin-top:0" title="Velja za vse trge (posamezen trg lahko popraviš spodaj)">Cost cap € · vsi trgi</label><input class="f" data-e="n_cc" inputmode="decimal" value="' + esc(n.cc || ST.cc || 5.5) + '"></div>' : '') +
     '<div style="width:190px"><label class="l" style="margin-top:0">Status ob uvozu</label><select class="f" onchange="LS.set(\'ma_status\', this.value)"><option value="ACTIVE"' + (st === 'ACTIVE' ? ' selected' : '') + '>✅ po Publish online</option><option value="PAUSED"' + (st === 'PAUSED' ? ' selected' : '') + '>⏸ Paused</option></select></div>' +
     '<div style="width:270px"><label class="l" style="margin-top:0">Način izvoza</label><select class="f" onchange="LS.set(\'ma_nacin\', this.value);risi()"><option value="flex"' + (nacin() === 'flex' ? ' selected' : '') + '>🧩 Flexible · 1 oglas na trg (kreative dodaš ročno)</option><option value="loceni"' + (nacin() === 'loceni' ? ' selected' : '') + '>📑 Ločeni oglasi · vsaka kreativa svoj oglas</option></select></div>' +
+    (p.tip !== 'video' ? '<div style="width:230px"><label class="l" style="margin-top:0" title="Kreativa ostane nespremenjena (hook), pomanjšana v črn okvir s pasom »BLACK NOVEMBER · KODA«; headline »Black November: …«, primary text 1. vrstica s kodo; ime oglasa BN, kampanja #BlackNov. Velja ob izvozu — zadnja izbira je privzeta za nove pakete.">🖤 Akcija</label><div style="display:flex;gap:6px;align-items:center"><label class="tog" style="white-space:nowrap"><input type="checkbox" data-e="n_akcija"' + (akcijaOn(p) ? ' checked' : '') + '> Black November</label><input class="f" data-e="n_akcija_koda" style="width:90px" value="' + esc(akcijaKoda(p)) + '" placeholder="KODA"></div></div>' : '') +
     '<span class="grow"></span><button class="btn grn lg" onclick="vAsano()" title="ZIP (CSV + slike + videi) se naloži v Asana task SKU-ja — oglaševalec ga prenese od tam">📤 V Asano</button><button class="btn" onclick="shraniVMapo()">📁 Shrani v mapo</button><button class="btn" onclick="izvozi()">⬇ ZIP</button></div>' +
     (PAK.asana_zip ? '<div class="sub" style="margin-top:6px">📤 V Asani: <b>' + esc(PAK.asana_zip.ime) + '</b> (' + PAK.asana_zip.mb + ' MB) · ' + esc((PAK.asana_zip.at || '').slice(0, 16).replace('T', ' ')) + '</div>' : '') +
     '<div class="sub" style="margin-top:8px" id="mapaInfo">' + (MAPA ? '📁 ' + esc(MAPA.name) + '\\Meta Ads · <a href="#" onclick="mapaIzberi().then(risi);return false">zamenjaj</a>' : '📁 Mapo izbereš ob prvem shranjevanju (npr. Documents) — vse gre v podmapo <b>Meta Ads</b>.') + '</div></div>';
@@ -573,12 +578,12 @@ function risi3(p) {
     h += '<div style="display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:16px;align-items:start">' +
       '<div class="fbk"><div class="hd"><div class="av">m</div><div><div class="pn">' + esc(stran.ime) + '</div><div class="sp">Sponzorirano · Flexible · ' + (nS + nV) + ' kreativ</div></div></div>' +
       '<textarea class="pt" data-e="t_pt" data-o="0" rows="4">' + esc(o.pt) + '</textarea>' +
-      '<div class="md">' + (prva.datoteka ? '<img src="' + dat(prva.datoteka) + '">' : '<span class="sub">ni slike</span>') + '</div>' +
+      '<div class="md">' + (prva.datoteka ? '<img src="' + datA(prva.datoteka) + '">' : '<span class="sub">ni slike</span>') + '</div>' +
       '<div class="ft"><div style="flex:1;min-width:0"><div class="dom">' + esc((x.url || '').replace(/^https?:\/\/(www\.)?/, '').split('/')[0]) + '</div><input class="hl" data-e="t_hl" data-o="0" value="' + esc(o.hl) + '"></div><span class="cta">' + esc((ST.cta || {})[TRG] || 'Shop now') + '</span></div></div>' +
       '<div><div class="sub" style="margin-bottom:8px">🧩 V CSV gre samo 1. kreativa · ostale v Ads Managerju dodaš ročno (Format → Flexible → Add media) — v iskalnik vpiši <b>_' + TRG + '</b> + videi · ✕ = ne dodaj</div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px">' +
       p.kreative.map((k, i) => { const s = (x.slike || {})[String(i)] || {}, iz = izkl.has('slika' + i);
-        return '<div class="fbk' + (iz ? ' izkl' : '') + '"><div class="md" style="aspect-ratio:' + (k.razmerje === '4:5' ? '4/5' : '1/1') + '">' + (s.datoteka ? '<img src="' + dat(s.datoteka) + '?v=' + encodeURIComponent(s.datoteka) + '" loading="lazy">' : s.napaka ? '<span class="sub" style="padding:8px;color:var(--err)">' + esc(s.napaka) + '</span>' : p.status === 'lokal_v_delu' ? '<span class="spin"></span>' : '<span class="sub">ni slike</span>') +
+        return '<div class="fbk' + (iz ? ' izkl' : '') + '"><div class="md" style="aspect-ratio:' + (k.razmerje === '4:5' ? '4/5' : '1/1') + '">' + (s.datoteka ? '<img src="' + datA(s.datoteka) + '?v=' + encodeURIComponent(s.datoteka) + '" loading="lazy">' : s.napaka ? '<span class="sub" style="padding:8px;color:var(--err)">' + esc(s.napaka) + '</span>' : p.status === 'lokal_v_delu' ? '<span class="spin"></span>' : '<span class="sub">ni slike</span>') +
           '<div class="ak"><button title="Nova slika" onclick="znovaSlika(\'' + TRG + '\',' + i + ')">↻</button><button onclick="izkljuci(\'slika' + i + '\')">' + (iz ? '↺' : '✕') + '</button></div></div><div class="sub" style="padding:4px 8px">' + (i + 1) + ' · ' + esc(k.razmerje || '1:1') + '</div></div>'; }).join('') +
       vids.map((v, j) => !v.vkljuci ? '' : '<div class="fbk' + (izkl.has('video' + j) ? ' izkl' : '') + '"><div class="md"><video src="' + dat(v.datoteka) + '#t=0.5" preload="metadata" muted controls></video><div class="ak"><button onclick="izkljuci(\'video' + j + '\')">' + (izkl.has('video' + j) ? '↺' : '✕') + '</button></div></div><div class="sub" style="padding:4px 8px">▶ video ' + (j + 1) + '</div></div>').join('') +
       '</div></div></div>';
@@ -586,7 +591,7 @@ function risi3(p) {
     const nk = p.kreative.length, enote = p.kreative.map((k, i) => ['slika', i, i]).concat(vids.map((v, j) => ['video', j, nk + j]).filter(([, j]) => vids[j].vkljuci));
     h += '<div class="fb">' + enote.map(([vr, i, oi]) => {
       const o = ogl[oi] || { hl: '', pt: '' }, key = vr + i, s = vr === 'slika' ? (x.slike || {})[String(i)] || {} : null, iz = izkl.has(key);
-      const md = vr === 'slika' ? (s.datoteka ? '<img src="' + dat(s.datoteka) + '?v=' + encodeURIComponent(s.datoteka) + '" loading="lazy">' : s.napaka ? '<span class="sub" style="padding:12px;color:var(--err)">' + esc(s.napaka) + '</span>' : p.status === 'lokal_v_delu' ? '<span class="spin"></span>' : '<span class="sub">ni slike</span>')
+      const md = vr === 'slika' ? (s.datoteka ? '<img src="' + datA(s.datoteka) + '?v=' + encodeURIComponent(s.datoteka) + '" loading="lazy">' : s.napaka ? '<span class="sub" style="padding:12px;color:var(--err)">' + esc(s.napaka) + '</span>' : p.status === 'lokal_v_delu' ? '<span class="spin"></span>' : '<span class="sub">ni slike</span>')
         : '<video src="' + dat(vids[i].datoteka) + '#t=0.5" preload="metadata" controls muted></video>';
       return '<div class="fbk' + (iz ? ' izkl' : '') + '"><div class="hd"><div class="av">m</div><div><div class="pn">' + esc(stran.ime) + '</div><div class="sp">Sponzorirano · ' + (vr === 'slika' ? 'kreativa ' + (i + 1) : 'video ' + (i + 1)) + '</div></div></div>' +
         '<textarea class="pt" data-e="t_pt" data-o="' + oi + '" rows="3">' + esc(o.pt) + '</textarea>' +
@@ -620,12 +625,15 @@ document.addEventListener('input', e => {
   else if (k === 'n_strategija') { PAK.nastavitve = PAK.nastavitve || {}; PAK.nastavitve.strategija = t.value; const ka = PAK.nastavitve.kampanja || '';
     PAK.nastavitve.kampanja = t.value === 'costcap' ? ka.replace('#BidCap', '#CostCap') : ka.replace('#CostCap', '#BidCap'); risi(); }
   else if (k === 'vkljuci') { PAK.trgi[TRG].vkljuci = t.checked; risi(); }
+  else if (k === 'n_akcija' || k === 'n_akcija_koda') { PAK.nastavitve = PAK.nastavitve || {}; PAK.nastavitve.akcija = k === 'n_akcija' ? t.checked : akcijaOn();
+    PAK.nastavitve.akcija_koda = k === 'n_akcija_koda' ? t.value.toUpperCase().replace(/[^A-Z0-9]/g, '') : akcijaKoda();
+    ST.akcija = { on: PAK.nastavitve.akcija, koda: PAK.nastavitve.akcija_koda }; if (k === 'n_akcija') risi(); }
   else if (k.startsWith('n_')) { PAK.nastavitve = PAK.nastavitve || {}; PAK.nastavitve[k.slice(2)] = t.value; }
   clearTimeout(SHR); SHR = setTimeout(() => shrani(false), 1200);
 });
 const scenaSel = (k, i, st) => '<select class="f" data-e="scena" data-i="' + i + '" style="' + (st || '') + ';font-size:12px">' + Object.entries(ST.scene || {}).map(([s, n]) => '<option value="' + s + '"' + (k.scena === s ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + (k.scena ? '' : '<option selected value="">— (kot generator)</option>') + '</select>';
 const razmSel = (k, i, st) => '<select class="f" data-e="razm" data-i="' + i + '" style="' + (st || '') + ';font-size:12px">' + ['1:1', '4:5'].map(r => '<option value="' + r + '"' + ((k.razmerje || '1:1') === r ? ' selected' : '') + '>' + (r === '1:1' ? '1:1 · 1080×1080 (vse postavitve)' : '4:5 · 1080×1350 (mobilni Feed)') + '</option>').join('') + '</select>';
-document.addEventListener('change', e => { if (e.target.matches('[data-e="n_strategija"],[data-e="vid"],[data-e="lokal"],[data-e="stran"],[data-e="vkljuci"],[data-e="razm"],[data-e="scena"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
+document.addEventListener('change', e => { if (e.target.matches('[data-e="n_akcija_koda"]') && PAK) risi(); if (e.target.matches('[data-e="n_akcija"],[data-e="n_strategija"],[data-e="vid"],[data-e="lokal"],[data-e="stran"],[data-e="vkljuci"],[data-e="razm"],[data-e="scena"]')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
 async function shrani(pokazi) {
   clearTimeout(SHR); if (!PAK) return;
   const trgi = {}; TRGI.forEach(t => { const x = PAK.trgi && PAK.trgi[t]; if (x) trgi[t] = { vkljuci: x.vkljuci, stran: x.stran, oglasi: x.oglasi, izkl: x.izkl || [], ...(x.bid ? { bid: x.bid } : {}), ...(x.cc ? { cc: x.cc } : {}) }; });

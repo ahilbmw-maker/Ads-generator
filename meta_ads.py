@@ -63,6 +63,13 @@ MA_EMOJI = "✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌
 MA_ZNAK_CC = "🧧"   # 🧧 na koncu imena Cost cap kampanje
 MA_CC = 5.5   # 🎯 Cost cap (»Cost per result goal«) privzeto za vse trge — izvoz PEDALORA 2026-10-20: edina razlika od Bid cap = Campaign Bid Strategy + Bid Amount
 MA_BID = {"pl": 7.7, "bg": 7.7, "gr": 7.7, "cz": 7.7, "ro": 8.5, "rs": 9.0, "sk": 9.0, "hu": 9.0, "sl": 9.0, "hr": 9.0}
+# 🖤 Akcija (Black November 2026-11): slika NI ponovno narisana (hook ostane) — pomanjšana v črn okvir + spodnji pas »BLACK NOVEMBER · KODA: X«;
+#    headline dobi predpono, primary text prvo vrstico s kodo; ime oglasa » BN«, kampanja »#BlackNov«. Vse ob izvozu (izklop = izvoz brez akcije).
+MA_AKCIJA_IME = "BLACK NOVEMBER"
+MA_AKCIJA_KODA = {"sl": "KODA", "hr": "KOD", "rs": "KOD", "hu": "KÓD", "pl": "KOD", "cz": "KÓD", "sk": "KÓD", "gr": "ΚΩΔΙΚΟΣ", "bg": "КОД", "ro": "COD"}
+MA_AKCIJA_PT = {"sl": "s kodo {k} še ceneje!", "hr": "s kodom {k} još povoljnije!", "rs": "sa kodom {k} još povoljnije!", "hu": "a {k} kóddal még olcsóbban!",
+                "pl": "z kodem {k} jeszcze taniej!", "cz": "s kódem {k} ještě levněji!", "sk": "s kódom {k} ešte lacnejšie!",
+                "gr": "με τον κωδικό {k} ακόμα φθηνότερα!", "bg": "с код {k} още по-изгодно!", "ro": "cu codul {k} și mai ieftin!"}
 MA_ADSET = {"sl": "SLO"}   # ime ad seta (ostali = koda trga)
 # 🎬 5 različnih tipov scene + postavitev napisov (2026-10-16: vseh 5 kreativ je bilo videti enako — ista referenca, isti kot, ista postavitev)
 MA_SCENE = {
@@ -275,6 +282,93 @@ def vklopi(G: dict):
                                 return await asyncio.to_thread(obrez, base64.b64decode(pt["inlineData"].get("data") or ""), razmerje)
                     zadnja = "NB2.1 ni vrnil slike"
         raise RuntimeError(zadnja or "napaka NB2.1")
+
+    # ── 🖤 akcija (Black November) ──
+    FONT_POTI = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+                 str(DATA_DIR / "fonts" / "NotoSans-Bold.ttf"), "C:/Windows/Fonts/arialbd.ttf"]
+
+    async def font_akcija():
+        """Pisava z latinico, grščino in cirilico; če je na strežniku ni, enkrat prenese Noto Sans Bold v /data/fonts."""
+        for f in FONT_POTI:
+            if os.path.exists(f):
+                return f
+        import httpx
+        cilj = DATA_DIR / "fonts" / "NotoSans-Bold.ttf"
+        cilj.parent.mkdir(parents=True, exist_ok=True)
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as hc:
+            r = await hc.get("https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf/NotoSans-Bold.ttf")
+            r.raise_for_status()
+            cilj.write_bytes(r.content)
+        return str(cilj)
+
+    def akcija_okvir(raw, trg, koda, font):
+        """Kreativa nespremenjena (uporabnik: slika in hook PRVA, akcija samo dodatek; okvir in značka čez sliko zavrnjena)
+        → spodaj tanek črn pas (6 % višine): BLACK NOVEMBER (zlato) · KODA: X (belo), na sredini v varni coni (IG obreže levo/desno 12 %).
+        Velikost ostane ENAKA (kvadrat — sicer Marketplace/Explore obreže pas): slika izgubi po 3 % zgoraj in spodaj (prompt ima 6 % varnega roba)."""
+        from PIL import Image, ImageDraw, ImageFont
+        im = Image.open(io.BytesIO(raw)).convert("RGB")
+        W, H = im.size
+        pas = round(H * 0.06)
+        # ✂ koliko odrezati zgoraj (zg) in koliko spodaj (pas − zg): tam, kjer v odrezanih vrsticah ni napisov/ikon/logotipa
+        #    (ostri robovi); če bi vsak razrez porezal napis (npr. logo tik ob vrhu IN prednosti tik ob dnu) → slika se rahlo
+        #    pomanjša (−6 %) brez obreza, ob straneh ostane 3 % črnega roba (IG ga tako ali tako odreže)
+        from PIL import ImageFilter
+        rob = im.convert("L").filter(ImageFilter.FIND_EDGES).point(lambda v: 1 if v > 70 else 0)
+        px = rob.load()
+        # vrstica »ima napis«, če ima KATERIKOLI od 16 stolpcev gosto robov (majhen logo v kotu na celi širini ne bi izstopal)
+        ns, sw = 16, W // 16
+        def ima(y):
+            return any(sum(px[x, y] for x in range(s * sw, (s + 1) * sw, 2)) / (sw / 2) > 0.2 for s in range(ns))
+        rez = round(H * 0.012)   # napis naj ostane vsaj ~13 px od roba
+        vrh = next((y for y in range(2, pas + rez + 2) if ima(y)), pas + rez + 2) - 2           # prosto zgoraj
+        dno = next((y for y in range(2, pas + rez + 2) if ima(H - 1 - y)), pas + rez + 2) - 2   # prosto spodaj
+        prosto_z, prosto_s = max(0, vrh - rez), max(0, dno - rez)
+        nova = Image.new("RGB", (W, H), (0, 0, 0))
+        zg = round(pas * prosto_z / (prosto_z + prosto_s)) if prosto_z + prosto_s >= pas else 0
+        zg = min(zg, prosto_z, pas)
+        if prosto_z + prosto_s < pas or pas - zg > prosto_s:
+            w = round(W * (H - pas) / H)   # ob straneh po ~3 %: zamegljeno nadaljevanje slike (ne črn okvir)
+            nova.paste(im.resize((W, H - pas)).filter(ImageFilter.GaussianBlur(H * 0.02)), (0, 0))
+            nova.paste(im.resize((w, H - pas), Image.LANCZOS), ((W - w) // 2, 0))
+        else:
+            nova.paste(im.crop((0, zg, W, zg + H - pas)), (0, 0))
+        H -= pas   # pas se riše pod sliko (y = H … H + pas)
+        d = ImageDraw.Draw(nova)
+        a, b = MA_AKCIJA_IME, f"   {MA_AKCIJA_KODA.get(trg, 'CODE')}: {koda}"
+        vel = round(pas * 0.5)
+        while vel > 10:
+            fa = ImageFont.truetype(font, vel)
+            if d.textlength(a + b, font=fa) <= W * 0.72:
+                break
+            vel -= 1
+        la, lb = d.textlength(a, font=fa), d.textlength(b, font=fa)
+        x, y = (W - la - lb) / 2, H + pas / 2
+        d.text((x, y), a, font=fa, fill=(245, 197, 66), anchor="lm")
+        d.text((x + la, y), b, font=fa, fill=(255, 255, 255), anchor="lm")
+        o = io.BytesIO(); nova.save(o, format="JPEG", quality=92); return o.getvalue()
+
+    def akcija_od(p):
+        """→ koda akcije za paket ali None (paket ima svojo izbiro, sicer globalna privzeta)."""
+        n = p.get("nastavitve") or {}
+        a = n["akcija"] if "akcija" in n else (nalozi().get("akcija") or {}).get("on")
+        k = re.sub(r"[^A-Z0-9]", "", str(n.get("akcija_koda") or (nalozi().get("akcija") or {}).get("koda") or "BLACK8").upper())
+        return k if a and k else None
+
+    def akcija_fn(fn, koda):   # STEAMAX_pl_1.jpg → STEAMAX_pl_1_bnBLACK8.jpg (iskalnik »_pl« v Add media še deluje)
+        return re.sub(r"\.jpg$", "", fn) + f"_bn{koda}.jpg"
+
+    async def akcija_pripravi(pid, fn):
+        """Ustvari sliko z akcijo (…_bnKODA.jpg) iz osnovne, če je še ni."""
+        m = re.fullmatch(r"(.+_([a-z]{2})_\d+)_bn([A-Z0-9]+)\.jpg", fn)
+        cilj = MAPA / pid / fn
+        if not m or cilj.exists():
+            return cilj
+        osn = MAPA / pid / (m.group(1) + ".jpg")
+        if not osn.exists():
+            return cilj
+        font = await font_akcija()
+        cilj.write_bytes(await asyncio.to_thread(akcija_okvir, osn.read_bytes(), m.group(2), m.group(3), font))
+        return cilj
 
     def obrez(raw, razmerje="1:1"):
         from PIL import Image
@@ -1153,7 +1247,7 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         d = nalozi()
-        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "vrsta": d.get("vrsta") or {"postavke": []}, "narejeni": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "slike"}), "narejeni_video": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "video"}), "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "cc": MA_CC, "scene": {k: v["ime"] for k, v in MA_SCENE.items()},
+        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "vrsta": d.get("vrsta") or {"postavke": []}, "narejeni": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "slike"}), "narejeni_video": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "video"}), "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "cc": MA_CC, "scene": {k: v["ime"] for k, v in MA_SCENE.items()}, "akcija": d.get("akcija") or {}, "akcija_pt": MA_AKCIJA_PT,
                 "paketi": [{k: p.get(k) for k in ("id", "sku", "ime", "status", "at", "izvozeno", "potrjeno")} | {"tip": tip_od(p)} |
                            {"trgi": [t for t in MA_TRGI if ((p.get("trgi") or {}).get(t) or {}).get("vkljuci")]} for p in d["paketi"]]}
 
@@ -1377,10 +1471,20 @@ def vklopi(G: dict):
                 if "cc" in data["nastavitve"] and str(data["nastavitve"]["cc"]) != str(n.get("cc")):   # nov znesek za vse trge → pobriši vrednosti po trgih
                     for tv_ in (p.get("trgi") or {}).values():
                         tv_.pop("cc", None)
-                for k_ in ("proracun", "bid", "status", "kampanja", "strategija", "cc", "model_kreativ"):
+                for k_ in ("proracun", "bid", "status", "kampanja", "strategija", "cc", "model_kreativ", "akcija", "akcija_koda"):
                     if k_ in data["nastavitve"]:
                         n[k_] = data["nastavitve"][k_]
         await pak_set(pid, upd)
+        na = data.get("nastavitve") if isinstance(data.get("nastavitve"), dict) else {}
+        if "akcija" in na or "akcija_koda" in na:   # 🖤 zadnja izbira = privzeto za nove pakete
+            async with lock:
+                d = nalozi()
+                g = d.setdefault("akcija", {})
+                if "akcija" in na:
+                    g["on"] = bool(na["akcija"])
+                if "akcija_koda" in na:
+                    g["koda"] = re.sub(r"[^A-Z0-9]", "", str(na["akcija_koda"]).upper())[:20]
+                _jsave(PAK_FILE, d)
         return {"ok": True}
 
     @app.post("/meta-ads/api/osnove")
@@ -1468,6 +1572,11 @@ def vklopi(G: dict):
         if not re.fullmatch(r"[0-9a-f]{18}", pid) or not re.fullmatch(r"[A-Za-z0-9_\-\.]+", fn):
             return JSONResponse({"ok": False}, status_code=404)
         f = MAPA / pid / fn
+        if not f.exists() and "_bn" in fn:   # 🖤 predogled slike z akcijo
+            try:
+                f = await akcija_pripravi(pid, fn)
+            except Exception as e:
+                print(f"[meta-ads] akcija slika {fn}: {e}")
         if not f.exists():
             f = MAPA / pid / "videi" / fn
         if not f.exists():
@@ -1493,6 +1602,9 @@ def vklopi(G: dict):
             kamp = kamp.replace("#BidCap", "#CostCap")
             if not kamp.endswith(MA_ZNAK_CC):   # 🧧 na koncu = Cost cap kampanja (uporabnik 2026-10-20)
                 kamp = f"{kamp} {MA_ZNAK_CC}"
+        bn = akcija_od(p) if tip_od(p) != "video" else None
+        if bn and "#BlackNov" not in kamp:
+            kamp = kamp.replace(" (Suban)", " #BlackNov (Suban)") if " (Suban)" in kamp else f"{kamp} #BlackNov"
         vrst, slike, videi, opz, rocno = [], set(), set(), [], {}
         nk = len(p.get("kreative") or [])
         vid = [(j, v) for j, v in enumerate(p.get("videi") or []) if v.get("vkljuci")]   # besedilo videa = po mestu v celem seznamu (5 + j)
@@ -1509,7 +1621,7 @@ def vklopi(G: dict):
             prva = None
             je_video = tip_od(p) == "video"
             if nacin == "flex":   # vse slike trga v mapo za ročno dodajanje, v CSV samo prva
-                rocno[t] = [s_ for s_ in (((tt.get("slike") or {}).get(str(i)) or {}).get("datoteka") for i in range(nk) if f"slika{i}" not in izkl) if s_]
+                rocno[t] = [akcija_fn(s_, bn) if bn else s_ for s_ in (((tt.get("slike") or {}).get(str(i)) or {}).get("datoteka") for i in range(nk) if f"slika{i}" not in izkl) if s_]
                 for j_, v in vid:
                     if f"video{j_}" not in izkl:
                         vt_ = ((tt.get("videi") or {}).get(str(j_)) or {}).get("datoteka") if je_video else v["datoteka"]
@@ -1527,6 +1639,8 @@ def vklopi(G: dict):
                     s = ((tt.get("slike") or {}).get(str(i)) or {}).get("datoteka")
                     if not s:
                         opz.append(f"{t.upper()} kreativa {i + 1}: ni slike — izpuščena"); continue
+                    if bn:
+                        s = akcija_fn(s, bn)
                     prva = prva or s
                     img, vfn, ct, an = s, "", "Link Page Post Ad", f"{p['sku']} {t.upper()} slika {i + 1} ({'eksperiment' if p['kreative'][i].get('scena') == 'eksperiment' else p['kreative'][i].get('razmerje') or '1:1'}{', ' + p['kreative'][i]['model'] if p['kreative'][i].get('model') else ''})"
                 elif je_video:   # 🎬 lokaliziran video trga (glas + podnapisi) + njegova sličica
@@ -1552,6 +1666,10 @@ def vklopi(G: dict):
                           "Instagram Account ID (New)": "" if stran.get("ig_x") else stran["ig"]})
                 if nacin == "flex":
                     r["Ad Name"] = f"{p['sku']} {t.upper()} flexible"
+                if bn:   # 🖤 headline s predpono, primary text s prvo vrstico s kodo
+                    r["Ad Name"] += " BN"
+                    r["Title"] = "Black November: " + re.sub(r"^[^\w]+", "", o["hl"])
+                    r["Body"] = f"🖤 BLACK NOVEMBER — {MA_AKCIJA_PT.get(t, MA_AKCIJA_PT['sl']).format(k=bn)} {o['pt']}"   # brez novih vrstic (Metin izvoz jih v Body nima — uvoz nepreverjen)
                 vrst.append(r)
                 slike.add(img)
                 if vfn:
@@ -1578,6 +1696,10 @@ def vklopi(G: dict):
             deli.append((pid, p, vrst, slike, videi, rocno))
         if not vse:
             return None, opz_vse, 0
+        for pid, p, vrst, slike, videi, rocno in deli:   # 🖤 slike z akcijo (…_bnKODA.jpg)
+            for s_ in set(slike) | {x for sl_ in rocno.values() for x in sl_}:
+                if "_bn" in s_:
+                    await akcija_pripravi(pid, s_)
         buf = io.StringIO()
         w = csv.writer(buf, delimiter="\t", lineterminator="\r\n")
         w.writerow(GLAVE)
