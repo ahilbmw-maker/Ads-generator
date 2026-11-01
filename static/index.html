@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-10-31 17:36</div>
+      <div class="sidebar-logo-sub">build 2026-11-01 10:28</div>
     </div>
   </div>
 
@@ -2013,7 +2013,12 @@ input[type="text"].error { border-color: var(--red) !important; }
         <div class="card" style="min-height:500px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
             <span class="slabel">GENERIRANE KREATIVE</span>
-            <span style="font-size:11px;color:var(--text-tertiary)" id="kResultCount"></span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <label style="font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px" title="Pod kreativo tanek črn pas BLACK NOVEMBER · CODE: koda (kot v Meta Ads)"><input type="checkbox" class="akcOn" onchange="akcSet(this.checked, null)"> 🖤 Black November</label>
+              <input class="akcKoda" value="BLACK8" onchange="akcSet(null, this.value)" style="width:72px;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text)" title="Koda akcije">
+              <span class="akcStatus" style="font-size:10px;color:var(--text-tertiary)"></span>
+              <span style="font-size:11px;color:var(--text-tertiary)" id="kResultCount"></span>
+            </span>
           </div>
           <div id="kLoading" style="display:none;text-align:center;padding:2rem">
             <div class="spinner"></div>
@@ -2227,6 +2232,9 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
             <span class="slabel">LOKALIZIRANE KREATIVE</span>
             <div style="display:flex;align-items:center;gap:6px">
+              <label style="font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px" title="Pod kreativo tanek črn pas BLACK NOVEMBER · KODA: koda v jeziku trga"><input type="checkbox" class="akcOn" onchange="akcSet(this.checked, null)"> 🖤 Black November</label>
+              <input class="akcKoda" value="BLACK8" onchange="akcSet(null, this.value)" style="width:72px;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text)" title="Koda akcije">
+              <span class="akcStatus" style="font-size:10px;color:var(--text-tertiary)"></span>
               <span style="font-size:11px;color:var(--text-tertiary)" id="lokResultCount"></span>
               <button id="lokDownloadAllBtn" onclick="lokDownloadAll()" style="display:none;padding:5px 10px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text-secondary);cursor:pointer;font-family:'DM Sans',sans-serif">⬇ Vse</button>
               <button id="lokAsanaAllBtn" onclick="lokAsanaAll()" style="display:none;padding:5px 10px;font-size:11px;font-weight:600;border:none;border-radius:6px;background:var(--accent);color:white;cursor:pointer;font-family:'DM Sans',sans-serif">→ Asana vse</button>
@@ -9099,7 +9107,7 @@ function kRenderResults(results) {
         '<div class="k-select-check" onclick="kToggleSelect(' + c.idx + ')">' +
           '<svg viewBox="0 0 12 12" style="width:9px;height:9px;stroke:white;fill:none;stroke-width:2.5"><polyline points="2,6 5,9 10,3"/></svg>' +
         '</div>' +
-        '<div class="k-zoom-btn" onmouseenter="kShowPreview(\'' + esc(c.url) + '\',event)" onmouseleave="kHidePreview()" title="Predogled">' +
+        '<div class="k-zoom-btn" onmouseenter="kShowPreview(this.parentNode.querySelector(\'img\').src,event)" onmouseleave="kHidePreview()" title="Predogled">' +
           '<svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:white;fill:none;stroke-width:2.5"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>' +
         '</div>' +
       '</div>' +
@@ -9115,7 +9123,62 @@ function kRenderResults(results) {
   }).join('');
 
   document.getElementById('kResultCount').textContent = cards.filter(c=>c.url).length + ' slik';
+  if (AKC.on) akcKreative();
 }
+
+// ── 🖤 Black November pas (isti kot Meta Ads: /kreative/akcija) — generator (CODE) + lokalizacija (KODA v jeziku trga) ──
+let AKC = (() => { try { return JSON.parse(localStorage.getItem('k_akcija') || '{}'); } catch(e) { return {}; } })();
+const _akcCache = {};
+function akcInit() {
+  document.querySelectorAll('.akcOn').forEach(el => { el.checked = !!AKC.on; });
+  document.querySelectorAll('.akcKoda').forEach(el => { el.value = AKC.koda || 'BLACK8'; });
+}
+function akcSet(on, koda) {
+  if (on !== null) AKC.on = on;
+  if (koda !== null) AKC.koda = String(koda).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'BLACK8';
+  try { localStorage.setItem('k_akcija', JSON.stringify(AKC)); } catch(e) {}
+  akcInit();
+  akcKreative(); akcLok();
+}
+async function akcPretvori(url, trg, koda) {
+  const k = koda + '|' + trg + '|' + url.length + '|' + url.slice(-80);
+  if (_akcCache[k]) return _akcCache[k];
+  let src = url;
+  if (!src.startsWith('data:')) {
+    const b = await (await fetch(src)).blob();
+    src = await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); });
+  }
+  const d = await (await fetch('/kreative/akcija', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({slika: src, trg, koda})})).json();
+  if (!d.ok) throw new Error(d.error || 'napaka');
+  return (_akcCache[k] = d.slika);
+}
+// o.orig = izvirnik, o.url = prikazana / prenesena / v Asano (z ali brez pasu)
+async function akcUporabi(seznam, trgOd, imgOd) {
+  const items = seznam.filter(o => o && (o.orig || o.url));
+  const st = document.querySelectorAll('.akcStatus');
+  let i = 0, ok = 0, nap = 0;
+  const pis = t => st.forEach(e => { e.textContent = t; });
+  if (AKC.on && items.length) pis('🖤 pripravljam ' + items.length + ' …');
+  await Promise.all(Array.from({length: 4}, async () => {
+    while (i < items.length) {
+      const o = items[i++];
+      if (!o.orig) o.orig = o.url;
+      let nov = o.orig;
+      if (AKC.on) { try { nov = await akcPretvori(o.orig, trgOd(o), AKC.koda || 'BLACK8'); ok++; } catch(e) { nap++; console.warn('akcija', e); } }
+      o.url = nov;
+      const im = imgOd(o); if (im) im.src = nov;
+    }
+  }));
+  pis(AKC.on ? ('🖤 ' + ok + (nap ? ' · ⚠ ' + nap + ' napak' : '')) : '');
+}
+function akcKreative() {
+  akcUporabi(window.kCardsData || [], () => 'en', o => document.querySelector('#kcard-' + o.idx + ' img'));
+}
+function akcLok() {
+  akcUporabi(typeof lokResultsData !== 'undefined' ? lokResultsData : [], o => String(o.lang || '').toLowerCase(),
+             o => document.querySelector('img[data-lok="' + lokResultsData.indexOf(o) + '"]'));
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', akcInit); else akcInit();
 
 function kToggleSelect(idx) {
   const card = document.getElementById('kcard-' + idx);
@@ -9575,13 +9638,14 @@ function lokRenderResults(results) {
     return (
       '<div class="k-img-card">' +
       '<div class="k-img-combo">' + esc(r.filename||r.lang) + (r.asana_ok ? ' \u2713 Asana' : '') + '</div>' +
-      '<div style="position:relative"><img src="' + esc(r.url) + '" loading="lazy" onmouseenter="kShowPreview(\'' + esc(r.url) + '\',event)" onmouseleave="kHidePreview()"></div>' +
+      '<div style="position:relative"><img src="' + esc(r.url) + '" data-lok="' + idx + '" loading="lazy" onmouseenter="kShowPreview(this.src,event)" onmouseleave="kHidePreview()"></div>' +
       '<div class="k-img-actions">' +
         '<button class="k-img-btn" onclick="lokDownloadOne(' + idx + ')">\u2b07</button>' +
         '<button class="k-img-btn primary" onclick="lokAsanaOne(' + idx + ')">\u2192 Asana</button>' +
       '</div></div>'
     );
   }).join('');
+  if (AKC.on) akcLok();
 }
 
 function lokDownloadOne(idx) {
@@ -11553,8 +11617,9 @@ function kSendToLok(idx) {
   if (!card || !card.url) return;
 
   // Dodaj v čakalnico če še ni
-  if (!window._lokQueue.find(q => q.url === card.url)) {
-    window._lokQueue.push({url: card.url, combo: card.combo || ''});
+  const src = card.orig || card.url;   // 🖤 v lokalizacijo gre slika BREZ pasu (pas se doda po jeziku trga)
+  if (!window._lokQueue.find(q => q.url === src)) {
+    window._lokQueue.push({url: src, combo: card.combo || ''});
   }
 
   // Vizualni feedback na gumbu

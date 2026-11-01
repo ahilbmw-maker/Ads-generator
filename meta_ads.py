@@ -334,17 +334,42 @@ def vklopi(G: dict):
             nova.paste(im.crop((0, zg, W, zg + H - pas)), (0, 0))
         H -= pas   # pas se riše pod sliko (y = H … H + pas)
         d = ImageDraw.Draw(nova)
-        a, b = MA_AKCIJA_IME, f"   {MA_AKCIJA_KODA.get(trg, 'CODE')}: {koda}"
+        # trg brez prevoda (generator Kreative, ena angleška kreativa za vse trge) → namesto besede »CODE:« ikona kupona
+        kupon = trg not in MA_AKCIJA_KODA
+        a, b = MA_AKCIJA_IME, (f" {koda}" if kupon else f"   {MA_AKCIJA_KODA[trg]}: {koda}")
         vel = round(pas * 0.5)
         while vel > 10:
             fa = ImageFont.truetype(font, vel)
-            if d.textlength(a + b, font=fa) <= W * 0.72:
+            ik = round(vel * 1.55) + round(vel * 0.9) if kupon else 0   # kupon + razmik pred njim
+            if d.textlength(a + b, font=fa) + ik <= W * 0.72:
                 break
             vel -= 1
         la, lb = d.textlength(a, font=fa), d.textlength(b, font=fa)
-        x, y = (W - la - lb) / 2, H + pas / 2
+        x, y = (W - la - ik - lb) / 2, H + pas / 2
         d.text((x, y), a, font=fa, fill=(245, 197, 66), anchor="lm")
-        d.text((x + la, y), b, font=fa, fill=(255, 255, 255), anchor="lm")
+        if kupon:
+            # 🎟 vstopnica: zlat obris, polkrožni zarezi levo/desno, črtkana perforacija
+            kw, kh = round(vel * 1.55), round(vel * 0.95)
+            x0 = round(x + la + vel * 0.9); y0 = round(y - kh / 2)
+            sir = max(2, round(vel * 0.11)); zl = (245, 197, 66)
+            d.rounded_rectangle((x0, y0, x0 + kw, y0 + kh), radius=round(kh * 0.18), outline=zl, width=sir)
+            r_ = round(kh * 0.24)
+            for cx in (x0, x0 + kw):
+                d.ellipse((cx - r_, y - r_, cx + r_, y + r_), fill=(0, 0, 0), outline=zl, width=sir)
+            # zakrij zunanji polovici zarez (da je zareza »vgriznjena« v rob)
+            d.rectangle((x0 - r_ - sir, y0, x0 - 1, y0 + kh), fill=(0, 0, 0))
+            d.rectangle((x0 + kw + 1, y0, x0 + kw + r_ + sir, y0 + kh), fill=(0, 0, 0))
+            px_ = x0 + round(kw * 0.36)
+            for yy in range(y0 + sir * 2, y0 + kh - sir * 2, sir * 2):
+                d.line((px_, yy, px_, min(yy + sir, y0 + kh - sir * 2)), fill=zl, width=max(1, sir // 2 + 1))
+            # zvezdica na desnem delu
+            cx_, cy_, rz = x0 + round(kw * 0.68), y, kh * 0.2
+            import math
+            tocke = [(cx_ + (rz if i % 2 == 0 else rz * 0.45) * math.sin(i * math.pi / 5), cy_ - (rz if i % 2 == 0 else rz * 0.45) * math.cos(i * math.pi / 5)) for i in range(10)]
+            d.polygon(tocke, fill=zl)
+            d.text((x + la + ik, y), b, font=fa, fill=(255, 255, 255), anchor="lm")
+        else:
+            d.text((x + la, y), b, font=fa, fill=(255, 255, 255), anchor="lm")
         o = io.BytesIO(); nova.save(o, format="JPEG", quality=92); return o.getvalue()
 
     def akcija_od(p):
@@ -369,6 +394,24 @@ def vklopi(G: dict):
         font = await font_akcija()
         cilj.write_bytes(await asyncio.to_thread(akcija_okvir, osn.read_bytes(), m.group(2), m.group(3), font))
         return cilj
+
+    @app.post("/kreative/akcija")
+    async def kreative_akcija(request: Request, data: dict):
+        """🖤 Generator Kreative / Lokalizacija: {slika (data URL), trg, koda} → slika z istim pasom kot Meta Ads (»CODE« za angleške)."""
+        if not prijava(request):
+            return ni()
+        s = str(data.get("slika") or "")
+        if not s.startswith("data:image") or "," not in s:
+            return {"ok": False, "error": "Slika mora biti data URL."}
+        t = str(data.get("trg") or "").lower()
+        t = {"si": "sl", "slo": "sl", "cs": "cz", "el": "gr", "sr": "rs"}.get(t, t)
+        koda = re.sub(r"[^A-Z0-9]", "", str(data.get("koda") or "BLACK8").upper()) or "BLACK8"
+        try:
+            raw = base64.b64decode(s.split(",", 1)[1])
+            out = await asyncio.to_thread(akcija_okvir, raw, t, koda, await font_akcija())
+        except Exception as e:
+            return {"ok": False, "error": f"Akcija: {e}"}
+        return {"ok": True, "slika": "data:image/jpeg;base64," + base64.b64encode(out).decode()}
 
     def obrez(raw, razmerje="1:1"):
         from PIL import Image
