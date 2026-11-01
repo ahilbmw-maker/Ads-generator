@@ -1431,6 +1431,8 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         akcija = data.get("akcija") or "nova"
+        if not isinstance(akcija, str):   # 🖤 2026-11-01: {akcija: {on, koda}} = Black November nove vrste (ne ukaz) → vrsta se ni nikoli zagnala
+            akcija = "nova"
         async with lock:
             d = nalozi()
             vr = d.setdefault("vrsta", {"postavke": []})
