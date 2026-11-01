@@ -180,7 +180,7 @@
     </div>
   </div>
 
-  <details class="nav" id="glasBox" ontoggle="if(this.open)glasNalozi()" style="margin-bottom:14px">
+  <details class="nav" id="glasBox" hidden ontoggle="if(this.open)glasNalozi()" style="margin-bottom:14px">
     <summary>🎙 Glasovi po trgih (za video) <span class="sub" id="glasPovz"></span></summary>
     <div class="sub" style="margin:8px 0">Kandidati so najbolj uporabljani glasovi iz ElevenLabs knjižnice v jeziku trga. <b>▶ vzorec</b> je brezplačen (vzorec avtorja glasu), <b>▶ naš stavek</b> prebere testni stavek z modelom eleven_v3 (~120 znakov kreditov, ponovitev je brezplačna). <b>✓ Izberi</b> = glas trga za video lokalizacijo.</div>
     <div id="glasTrgi"></div>
@@ -256,6 +256,7 @@ let OBRAT = {};
 // 🖼/🎬 tip kampanje: samo slike ALI samo video (ne mešamo) — »že narejeno« velja po tipu
 let TIP = 'slike';
 function risiTip() {
+  const gb = document.getElementById('glasBox'); if (gb) gb.hidden = TIP !== 'video';   // 🎙 glasovi samo pri video kampanjah
   const el = document.getElementById('tipIzbor'); if (!el) return;
   el.innerHTML = [['slike', '🖼 Slike', ''], ['video', '🎬 Video', '']].map(([k, l, dis]) =>
     '<button type="button" ' + (dis ? 'disabled title="' + dis + '" ' : '') + 'onclick="TIP=\'' + k + '\';risiTip();skuPreveri()" style="padding:5px 12px;border:none;font:inherit;font-size:12.5px;font-weight:700;cursor:' + (dis ? 'not-allowed' : 'pointer') + ';opacity:' + (dis ? '.45' : '1') + ';background:' + (TIP === k ? 'var(--acc)' : 'transparent') + ';color:' + (TIP === k ? '#fff' : 'var(--txt2)') + '">' + l + (dis ? ' <span style="font-size:10.5px;font-weight:600">kmalu</span>' : '') + '</button>').join('');
@@ -706,7 +707,8 @@ async function izbrisiVse() {
 function zgodovina() {
   const ps = ST.paketi || [], el = document.getElementById('zgod');
   const opis = { koncept_v_delu: ['p-inf', '⏳ koncept'], koncept: ['p-mut', '1 · koncept'], osnove_v_delu: ['p-inf', '⏳ slike'], osnove: ['p-mut', '2 · slike'], lokal_v_delu: ['p-inf', '⏳ trgi'], pripravljeno: ['p-warn', 'pripravljeno'], napaka: ['p-err', 'napaka'] };
-  const skrij = LS.get('ma_skrij_izv') === '1', ps0 = skrij ? ps.filter(p => !p.izvozeno || IZBRANI.has(p.id) || (PAK && PAK.id === p.id)) : ps;   // ☐ Skrij izvožene (2026-10-26)
+  const skrij = LS.get('ma_skrij_izv') === '1', ps0 = skrij ? ps.filter(p => !p.izvozeno) : ps;   // ☐ Skrij izvožene (2026-10-26; od 2026-11-01 takoj, tudi odprt/izbran)
+  if (skrij && ps.some(p => p.izvozeno && IZBRANI.has(p.id))) { ps.forEach(p => { if (p.izvozeno) IZBRANI.delete(p.id); }); risiVec(); }
   const vidni = ZG_VSE ? ps0 : ps0.filter((p, i) => i < ZG_N || IZBRANI.has(p.id) || (PAK && PAK.id === p.id) || V_DELU.includes(p.status));   // prvih ZG_N + izbrani/odprti/v pripravi
   el.innerHTML = ps.length ? vidni.map(p => { const o = p.izvozeno ? ['p-ok', '✓ izvoženo'] : opis[p.status] || ['p-mut', p.status];
     return '<div class="zg-r' + (PAK && PAK.id === p.id ? ' on' : '') + '" data-id="' + esc(p.id) + '" onclick="odpri(\'' + esc(p.id) + '\')"><div style="min-width:0;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" style="margin-top:3px;width:15px;height:15px;accent-color:var(--acc)" ' + (IZBRANI.has(p.id) ? 'checked ' : '') + 'onclick="event.stopPropagation()" onchange="izberi(\'' + esc(p.id) + '\',this.checked)"><div style="min-width:0"><div class="zg-t">' + (p.tip === 'video' ? '🎬 ' : '🖼 ') + esc(p.sku) + (p.potrjeno && !p.izvozeno ? ' <span class="pill p-ok" style="font-size:10.5px">✓ potrjeno</span>' : '') + (p.ime && p.ime !== p.sku ? ' <span class="sub">' + esc(p.ime) + '</span>' : '') + '</div>' +
