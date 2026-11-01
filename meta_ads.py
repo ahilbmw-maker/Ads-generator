@@ -342,18 +342,12 @@ def vklopi(G: dict):
             d.text((x + la, y), b, font=fa, fill=(255, 255, 255), anchor="lm")
         o = io.BytesIO(); nova.save(o, format="JPEG", quality=92); return o.getvalue()
 
-    def akcija_okvir(raw, trg, koda, font):
-        """Kreativa nespremenjena (uporabnik: slika in hook PRVA, akcija samo dodatek; okvir in značka čez sliko zavrnjena)
-        → spodaj tanek črn pas (6 % višine): BLACK NOVEMBER (zlato) · KODA: X (belo), na sredini v varni coni (IG obreže levo/desno 12 %).
-        Velikost ostane ENAKA (kvadrat — sicer Marketplace/Explore obreže pas): slika izgubi po 3 % zgoraj in spodaj (prompt ima 6 % varnega roba)."""
-        from PIL import Image, ImageDraw
-        im = Image.open(io.BytesIO(raw)).convert("RGB")
+    def akcija_izrez(im):
+        """→ (f, zg, tesno): f = enobarven pas spodaj (odreži v celoti), zg = odrez zgoraj (ostalo do pasu spodaj),
+        tesno = spodaj ni prostega prostora → pas bi lahko porezal napis (⚠ v koraku 2 → ↻)."""
+        from PIL import ImageFilter, ImageStat
         W, H = im.size
         pas = round(H * 0.06)
-        # ✂ koliko odrezati zgoraj (zg) in koliko spodaj (pas − zg): tam, kjer v odrezanih vrsticah ni napisov/ikon/logotipa
-        #    (ostri robovi); če bi vsak razrez porezal napis (npr. logo tik ob vrhu IN prednosti tik ob dnu) → slika se rahlo
-        #    pomanjša (−6 %) brez obreza, ob straneh ostane 3 % črnega roba (IG ga tako ali tako odreže)
-        from PIL import ImageFilter, ImageStat
         # 2026-11-01: model je »prostor za pas« včasih narisal kot enobarven pas (bež/siv, ~8 %) → ostanek nad našim pasom.
         # Enobarvne vrstice na dnu (do 14 %) odreži v celoti, sliko rahlo povečaj (ob straneh je 12 % varne cone)
         g_ = im.convert("L")
@@ -363,34 +357,54 @@ def vklopi(G: dict):
         while f < H * 0.14 and ravna(H - 1 - f):
             f += 1
         if f > pas:
-            k = (H - pas) / (H - f)
-            w2 = round(W * k)
-            im = im.crop((0, 0, W, H - f)).resize((w2, H - pas), Image.LANCZOS).crop(((w2 - W) // 2, 0, (w2 - W) // 2 + W, H - pas))
-            nova = Image.new("RGB", (W, H), (0, 0, 0))
-            nova.paste(im, (0, 0))
-            H -= pas
-            d = ImageDraw.Draw(nova)
-            return pas_risi(nova, d, W, H, pas, trg, koda, font)
-        rob = im.convert("L").filter(ImageFilter.FIND_EDGES).point(lambda v: 1 if v > 70 else 0)
+            return f, 0, False
+        # ✂ koliko odrezati zgoraj (zg) in koliko spodaj (pas − zg): tam, kjer v odrezanih vrsticah ni napisov/ikon/logotipa (ostri robovi)
+        rob = g_.filter(ImageFilter.FIND_EDGES).point(lambda v: 1 if v > 70 else 0)
         px = rob.load()
         # vrstica »ima napis«, če ima KATERIKOLI od 16 stolpcev gosto robov (majhen logo v kotu na celi širini ne bi izstopal)
         ns, sw = 16, W // 16
         def ima(y):
-            return any(sum(px[x, y] for x in range(s * sw, (s + 1) * sw, 2)) / (sw / 2) > 0.2 for s in range(ns))
+            return any(sum(px[x, y] for x in range(s_ * sw, (s_ + 1) * sw, 2)) / (sw / 2) > 0.2 for s_ in range(ns))
         rez = round(H * 0.012)   # napis naj ostane vsaj ~13 px od roba
         vrh = next((y for y in range(2, pas + rez + 2) if ima(y)), pas + rez + 2) - 2           # prosto zgoraj
         dno = next((y for y in range(2, pas + rez + 2) if ima(H - 1 - y)), pas + rez + 2) - 2   # prosto spodaj
         prosto_z, prosto_s = max(0, vrh - rez), max(0, dno - rez)
-        nova = Image.new("RGB", (W, H), (0, 0, 0))
         zg = 0 if prosto_s >= pas else (round(pas * prosto_z / (prosto_z + prosto_s)) if prosto_z + prosto_s >= pas else 0)
         zg = min(zg, prosto_z, pas)
         if prosto_z + prosto_s < pas or pas - zg > prosto_s:
             # 2026-11-01: brez pomanjšanja + zamegljenih robov (uporabnik: »ne dopade«) — prompt drži spodnjih 10 % brez napisov,
-            # robovi tam so scena (tla, izdelek) → zgoraj odreži le prosto, ostalo spodaj
-            zg = min(prosto_z, pas)
-        nova.paste(im.crop((0, zg, W, zg + H - pas)), (0, 0))
+            # robovi tam so scena (tla, izdelek) → zgoraj odreži le prosto, ostalo spodaj; tesno → ⚠ (lahko je tudi napis)
+            return 0, min(prosto_z, pas), True
+        return 0, zg, False
+
+    def akcija_okvir(raw, trg, koda, font):
+        """Kreativa nespremenjena (uporabnik: slika in hook PRVA, akcija samo dodatek; okvir in značka čez sliko zavrnjena)
+        → spodaj tanek črn pas (6 % višine): BLACK NOVEMBER (zlato) · KODA: X (belo), na sredini v varni coni (IG obreže levo/desno 12 %).
+        Velikost ostane ENAKA (kvadrat — sicer Marketplace/Explore obreže pas): slika izgubi 6 % (prompt pusti spodaj prostor)."""
+        from PIL import Image, ImageDraw
+        im = Image.open(io.BytesIO(raw)).convert("RGB")
+        W, H = im.size
+        pas = round(H * 0.06)
+        f, zg, _ = akcija_izrez(im)
+        nova = Image.new("RGB", (W, H), (0, 0, 0))
+        if f:
+            k = (H - pas) / (H - f)
+            w2 = round(W * k)
+            nova.paste(im.crop((0, 0, W, H - f)).resize((w2, H - pas), Image.LANCZOS).crop(((w2 - W) // 2, 0, (w2 - W) // 2 + W, H - pas)), (0, 0))
+        else:
+            nova.paste(im.crop((0, zg, W, zg + H - pas)), (0, 0))
         H -= pas   # pas se riše pod sliko (y = H … H + pas)
         return pas_risi(nova, ImageDraw.Draw(nova), W, H, pas, trg, koda, font)
+
+    TESNO = {}   # (pid, fn) → bool (⚠ ni prostora za pas)
+
+    def akcija_tesno(pid, fn):
+        from PIL import Image
+        kl = (pid, fn)
+        if kl not in TESNO:
+            f = MAPA / pid / fn
+            TESNO[kl] = bool(f.exists() and akcija_izrez(Image.open(f).convert("RGB"))[2])
+        return TESNO[kl]
 
     def akcija_od(p):
         """→ koda akcije za paket ali None (paket ima svojo izbiro, sicer globalna privzeta)."""
@@ -404,15 +418,16 @@ def vklopi(G: dict):
 
     async def akcija_pripravi(pid, fn):
         """Ustvari sliko z akcijo (…_bnKODA.jpg) iz osnovne, če je še ni."""
-        m = re.fullmatch(r"(.+_([a-z]{2})_\d+)_bn([A-Z0-9]+)\.jpg", fn)
+        m = re.fullmatch(r"(.+?)_bn([A-Z0-9]+)\.jpg", fn)
         cilj = MAPA / pid / fn
         if not m or cilj.exists():
             return cilj
         osn = MAPA / pid / (m.group(1) + ".jpg")
         if not osn.exists():
             return cilj
+        mt = re.search(r"_([a-z]{2})_\d+$", m.group(1))   # SKU_pl_1 → pl; osnova_1_ab12 (korak 2) → en = 🎟 kupon
         font = await font_akcija()
-        cilj.write_bytes(await asyncio.to_thread(akcija_okvir, osn.read_bytes(), m.group(2), m.group(3), font))
+        cilj.write_bytes(await asyncio.to_thread(akcija_okvir, osn.read_bytes(), mt.group(1) if mt else "en", m.group(2), font))
         return cilj
 
     @app.post("/kreative/akcija")
@@ -1340,6 +1355,7 @@ def vklopi(G: dict):
             return {"ok": False, "error": "Vpiši en veljaven SKU."}
         async with lock:
             d = nalozi()
+            akcija_nastavi(d, data)
             pid = nov_paket(d, sku, data.get("trgi"), data.get("asana"), auto_osnove=bool(data.get("auto_osnove")), tip=tip_od(data))   # 📦 vsi naenkrat: kreative takoj po konceptu
             _jsave(PAK_FILE, d)
         v_ozadju(pid, obdelaj_koncept(pid))
@@ -1350,6 +1366,12 @@ def vklopi(G: dict):
     MA_ZNAK_VIDEO = "🎬"
     def tip_od(x):
         return "video" if (x or {}).get("tip") == "video" else "slike"
+
+    def akcija_nastavi(d, data):
+        """🖤 izbira iz koraka 1 ({akcija: {on, koda}}) → privzeta za nove pakete (prompt kreativ pusti spodaj prostor za pas)."""
+        a = data.get("akcija")
+        if isinstance(a, dict):
+            d["akcija"] = {"on": bool(a.get("on")), "koda": re.sub(r"[^A-Z0-9]", "", str(a.get("koda") or "BLACK8").upper()) or "BLACK8"}
 
     def nov_paket(d, sku, trgi, asana, auto_osnove=False, tip="slike"):
         """Nov paket v d (klicatelj drži lock in shrani) → pid; koncept zažene klicatelj."""
@@ -1408,6 +1430,7 @@ def vklopi(G: dict):
                 if not ps:
                     return {"ok": False, "error": "Ni veljavnih SKU-jev."}
                 d["vrsta"] = vr = {"postavke": ps[:60], "auto": data.get("auto", True) is not False, "at": _lj_iso(), "tip": tip_od(data)}
+                akcija_nastavi(d, data)
             elif akcija in ("naslednji", "preskoci"):
                 pid = str(data.get("id") or "")
                 for x in vr.get("postavke") or []:
@@ -1471,6 +1494,10 @@ def vklopi(G: dict):
                 await pak_set(pid, lambda q: q.update(status="lokal_v_delu", skrci_auto=True))
                 asyncio.create_task(obdelaj_skrci(pid))
                 p = pak_get(pid)
+        if p and tip_od(p) != "video" and akcija_od(p):   # 🖤 ⚠ kreativa brez prostora za pas → ↻ (korak 2)
+            for k in p.get("kreative") or []:
+                if k.get("osnova") and not k.get("v_delu"):
+                    k["akcija_tesno"] = await asyncio.to_thread(akcija_tesno, pid, k["osnova"])
         if p and TECE.get(pid):
             import time
             p["tece"] = [{"trg": t, "video": j + 1, "korak": x["korak"], "s": int(time.time() - x["od"])} for (t, j), x in sorted(TECE[pid].items())]
