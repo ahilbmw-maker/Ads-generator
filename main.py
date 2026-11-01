@@ -7370,9 +7370,10 @@ async def fetch_product_images(data: dict):
         return {"error": str(e)}
 
 
-KREATIVE_AKCIJA_PROSTOR = ("PROMO STRIP SPACE (very important): the bottom 8% of the image will later be covered by a thin promo strip. "
-                           "Keep that bottom 8% as a plain, calm continuation of the background/scene — no text, no icons, no logo, no benefit labels "
-                           "and no important product parts there; place the benefits row and everything else above it. ")
+KREATIVE_AKCIJA_PROSTOR = ("BOTTOM TEXT-FREE ZONE (very important): a thin promo strip will later cover the bottom 7% of the image. "
+                           "Keep ALL text, icons, benefit labels and the logo ABOVE the bottom 10% of the image. "
+                           "The photo/scene itself must continue naturally all the way to the bottom edge — do NOT draw any bar, band, "
+                           "empty strip, panel, frame or solid-colour area at the bottom. ")   # 2026-11-01: »prazen prostor« je model narisal kot bež/siv pas
 
 @app.post("/generate-kreative")
 async def generate_kreative(data: dict):

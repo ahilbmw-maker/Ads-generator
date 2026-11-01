@@ -301,39 +301,9 @@ def vklopi(G: dict):
             cilj.write_bytes(r.content)
         return str(cilj)
 
-    def akcija_okvir(raw, trg, koda, font):
-        """Kreativa nespremenjena (uporabnik: slika in hook PRVA, akcija samo dodatek; okvir in značka čez sliko zavrnjena)
-        → spodaj tanek črn pas (6 % višine): BLACK NOVEMBER (zlato) · KODA: X (belo), na sredini v varni coni (IG obreže levo/desno 12 %).
-        Velikost ostane ENAKA (kvadrat — sicer Marketplace/Explore obreže pas): slika izgubi po 3 % zgoraj in spodaj (prompt ima 6 % varnega roba)."""
-        from PIL import Image, ImageDraw, ImageFont
-        im = Image.open(io.BytesIO(raw)).convert("RGB")
-        W, H = im.size
-        pas = round(H * 0.06)
-        # ✂ koliko odrezati zgoraj (zg) in koliko spodaj (pas − zg): tam, kjer v odrezanih vrsticah ni napisov/ikon/logotipa
-        #    (ostri robovi); če bi vsak razrez porezal napis (npr. logo tik ob vrhu IN prednosti tik ob dnu) → slika se rahlo
-        #    pomanjša (−6 %) brez obreza, ob straneh ostane 3 % črnega roba (IG ga tako ali tako odreže)
-        from PIL import ImageFilter
-        rob = im.convert("L").filter(ImageFilter.FIND_EDGES).point(lambda v: 1 if v > 70 else 0)
-        px = rob.load()
-        # vrstica »ima napis«, če ima KATERIKOLI od 16 stolpcev gosto robov (majhen logo v kotu na celi širini ne bi izstopal)
-        ns, sw = 16, W // 16
-        def ima(y):
-            return any(sum(px[x, y] for x in range(s * sw, (s + 1) * sw, 2)) / (sw / 2) > 0.2 for s in range(ns))
-        rez = round(H * 0.012)   # napis naj ostane vsaj ~13 px od roba
-        vrh = next((y for y in range(2, pas + rez + 2) if ima(y)), pas + rez + 2) - 2           # prosto zgoraj
-        dno = next((y for y in range(2, pas + rez + 2) if ima(H - 1 - y)), pas + rez + 2) - 2   # prosto spodaj
-        prosto_z, prosto_s = max(0, vrh - rez), max(0, dno - rez)
-        nova = Image.new("RGB", (W, H), (0, 0, 0))
-        zg = 0 if prosto_s >= pas else (round(pas * prosto_z / (prosto_z + prosto_s)) if prosto_z + prosto_s >= pas else 0)
-        zg = min(zg, prosto_z, pas)
-        if prosto_z + prosto_s < pas or pas - zg > prosto_s:
-            w = round(W * (H - pas) / H)   # ob straneh po ~3 %: zamegljeno nadaljevanje slike (ne črn okvir)
-            nova.paste(im.resize((W, H - pas)).filter(ImageFilter.GaussianBlur(H * 0.02)), (0, 0))
-            nova.paste(im.resize((w, H - pas), Image.LANCZOS), ((W - w) // 2, 0))
-        else:
-            nova.paste(im.crop((0, zg, W, zg + H - pas)), (0, 0))
-        H -= pas   # pas se riše pod sliko (y = H … H + pas)
-        d = ImageDraw.Draw(nova)
+    def pas_risi(nova, d, W, H, pas, trg, koda, font):
+        """Črn pas pod sliko (y = H … H + pas): BLACK NOVEMBER (zlato) · KODA: X ali 🎟 kupon + koda."""
+        from PIL import ImageFont
         # trg brez prevoda (generator Kreative, ena angleška kreativa za vse trge) → namesto besede »CODE:« ikona kupona
         kupon = trg not in MA_AKCIJA_KODA
         a, b = MA_AKCIJA_IME, (f" {koda}" if kupon else f"   {MA_AKCIJA_KODA[trg]}: {koda}")
@@ -371,6 +341,57 @@ def vklopi(G: dict):
         else:
             d.text((x + la, y), b, font=fa, fill=(255, 255, 255), anchor="lm")
         o = io.BytesIO(); nova.save(o, format="JPEG", quality=92); return o.getvalue()
+
+    def akcija_okvir(raw, trg, koda, font):
+        """Kreativa nespremenjena (uporabnik: slika in hook PRVA, akcija samo dodatek; okvir in značka čez sliko zavrnjena)
+        → spodaj tanek črn pas (6 % višine): BLACK NOVEMBER (zlato) · KODA: X (belo), na sredini v varni coni (IG obreže levo/desno 12 %).
+        Velikost ostane ENAKA (kvadrat — sicer Marketplace/Explore obreže pas): slika izgubi po 3 % zgoraj in spodaj (prompt ima 6 % varnega roba)."""
+        from PIL import Image, ImageDraw
+        im = Image.open(io.BytesIO(raw)).convert("RGB")
+        W, H = im.size
+        pas = round(H * 0.06)
+        # ✂ koliko odrezati zgoraj (zg) in koliko spodaj (pas − zg): tam, kjer v odrezanih vrsticah ni napisov/ikon/logotipa
+        #    (ostri robovi); če bi vsak razrez porezal napis (npr. logo tik ob vrhu IN prednosti tik ob dnu) → slika se rahlo
+        #    pomanjša (−6 %) brez obreza, ob straneh ostane 3 % črnega roba (IG ga tako ali tako odreže)
+        from PIL import ImageFilter, ImageStat
+        # 2026-11-01: model je »prostor za pas« včasih narisal kot enobarven pas (bež/siv, ~8 %) → ostanek nad našim pasom.
+        # Enobarvne vrstice na dnu (do 14 %) odreži v celoti, sliko rahlo povečaj (ob straneh je 12 % varne cone)
+        g_ = im.convert("L")
+        def ravna(y):
+            return ImageStat.Stat(g_.crop((0, y, W, y + 1)).resize((96, 1))).stddev[0] < 7
+        f = 0
+        while f < H * 0.14 and ravna(H - 1 - f):
+            f += 1
+        if f > pas:
+            k = (H - pas) / (H - f)
+            w2 = round(W * k)
+            im = im.crop((0, 0, W, H - f)).resize((w2, H - pas), Image.LANCZOS).crop(((w2 - W) // 2, 0, (w2 - W) // 2 + W, H - pas))
+            nova = Image.new("RGB", (W, H), (0, 0, 0))
+            nova.paste(im, (0, 0))
+            H -= pas
+            d = ImageDraw.Draw(nova)
+            return pas_risi(nova, d, W, H, pas, trg, koda, font)
+        rob = im.convert("L").filter(ImageFilter.FIND_EDGES).point(lambda v: 1 if v > 70 else 0)
+        px = rob.load()
+        # vrstica »ima napis«, če ima KATERIKOLI od 16 stolpcev gosto robov (majhen logo v kotu na celi širini ne bi izstopal)
+        ns, sw = 16, W // 16
+        def ima(y):
+            return any(sum(px[x, y] for x in range(s * sw, (s + 1) * sw, 2)) / (sw / 2) > 0.2 for s in range(ns))
+        rez = round(H * 0.012)   # napis naj ostane vsaj ~13 px od roba
+        vrh = next((y for y in range(2, pas + rez + 2) if ima(y)), pas + rez + 2) - 2           # prosto zgoraj
+        dno = next((y for y in range(2, pas + rez + 2) if ima(H - 1 - y)), pas + rez + 2) - 2   # prosto spodaj
+        prosto_z, prosto_s = max(0, vrh - rez), max(0, dno - rez)
+        nova = Image.new("RGB", (W, H), (0, 0, 0))
+        zg = 0 if prosto_s >= pas else (round(pas * prosto_z / (prosto_z + prosto_s)) if prosto_z + prosto_s >= pas else 0)
+        zg = min(zg, prosto_z, pas)
+        if prosto_z + prosto_s < pas or pas - zg > prosto_s:
+            w = round(W * (H - pas) / H)   # ob straneh po ~3 %: zamegljeno nadaljevanje slike (ne črn okvir)
+            nova.paste(im.resize((W, H - pas)).filter(ImageFilter.GaussianBlur(H * 0.02)), (0, 0))
+            nova.paste(im.resize((w, H - pas), Image.LANCZOS), ((W - w) // 2, 0))
+        else:
+            nova.paste(im.crop((0, zg, W, zg + H - pas)), (0, 0))
+        H -= pas   # pas se riše pod sliko (y = H … H + pas)
+        return pas_risi(nova, ImageDraw.Draw(nova), W, H, pas, trg, koda, font)
 
     def akcija_od(p):
         """→ koda akcije za paket ali None (paket ima svojo izbiro, sicer globalna privzeta)."""
