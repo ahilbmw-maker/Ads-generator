@@ -2147,6 +2147,100 @@ async def cene_vrsta_dodaj(data: dict):
     return {"ok": True, "dodanih": n, "ze_v_vrsti": ze, "danes_ze": danes_n, "blokirani": blok}
 
 
+# ═══ 🆕 NOVI IZDELKI (2026-11-01): ob objavi vpišeš SKU-je (vsi dobijo 20 € − 25 % − kategorijski) → ko so v feedu,
+#    cilj po trgu = (NC + 9 €) × DDV trga × tečaj, zaokroženo NAVZGOR na lepo ceno (razlika nikoli pod 9 €) → potrdiš → Vrsta cen.
+#    Vtičnik spremeni Prodajno za razliko (nova − dejanska v feedu) → kategorijski popust in CMS DDV (HU/CZ/SK 22 %) sta upoštevana sama.
+NOVI_IZD_FILE = DATA_DIR / "novi_izdelki.json"
+NOVI_RAZLIKA = 9.0
+NOVI_LEPO = {"RSD": (100, 99), "HUF": (100, 99), "CZK": (10, 9), "PLN": (5, 4), "RON": (5, 4)}   # (korak, končnica); EUR x,99
+
+
+def _novi_lepo_gor(v, cur):
+    """Najmanjša lepa cena ≥ v: EUR x,99 · RSD/HUF xx99 · CZK x9 · PLN/RON x4/x9."""
+    import math
+    korak, kon = NOVI_LEPO.get(cur, (1, 0.99))
+    return round(math.ceil(round((v - kon) / korak, 6)) * korak + kon, 2)
+
+
+def _novi_ujema(row, k):
+    for s_ in (str(row.get("sku") or "").upper(), str(row.get("nc_sku") or "").upper()):
+        if s_ and (s_ == k or s_.startswith((k + "_", k + "-"))):
+            return True
+    return False
+
+
+@app.get("/novi-izdelki")
+async def novi_izdelki_get(raz: float = NOVI_RAZLIKA):
+    d = _jload(NOVI_IZD_FILE, {}) or {}
+    skuji, poslano = d.get("skuji") or {}, d.get("poslano") or {}
+    raz = max(0.0, min(100.0, float(raz)))
+    rez = await asyncio.gather(*[_marza_trgi_get(t) for t in MARZA_TRGI], return_exceptions=True)
+    predlogi, po_sku = [], {k: {"trgi": 0} for k in skuji}
+    for trg, res in zip(MARZA_TRGI, rez):
+        if not isinstance(res, dict) or not res.get("ok"):
+            continue
+        ddv = 1 + MARZA_TRGI[trg][1] / 100   # PRAVI DDV (toliko davka plačamo) → razlika res ≥ 9 €
+        fx = {"EUR": 1.0, **(res.get("tecaji") or {})}
+        videni = set()
+        for row in res.get("rows") or []:
+            k = next((k for k in skuji if _novi_ujema(row, k)), None)
+            if not k or not row.get("cms_id") or (trg, str(row["cms_id"])) in videni:
+                continue
+            videni.add((trg, str(row["cms_id"])))
+            po_sku[k]["trgi"] += 1
+            cur, zdaj, nc = row.get("valuta") or "EUR", row.get("koncna"), row.get("nc")
+            x = {"k": k, "trg": trg, "cms_id": str(row["cms_id"]), "g_id": str(row.get("g_id") or ""), "sku": row.get("sku") or "",
+                 "naziv": row.get("naziv") or "", "url": row.get("url") or "", "cur": cur, "zdaj": zdaj, "ref": row.get("cena") or zdaj, "nc": nc,
+                 "poslano": poslano.get(f"{trg}|{row['cms_id']}")}
+            if row.get("neuvoz"):
+                x["preskok"] = "🚫 ne uvažamo"
+            elif not nc:
+                x["preskok"] = "ni NC v zalogi"
+            elif not zdaj or not fx.get(cur):
+                x["preskok"] = "ni cene / tečaja"
+            else:
+                nova = _novi_lepo_gor((nc + raz) * ddv * fx[cur], cur)
+                x.update(nova=nova, raz_zdaj=round(zdaj / ddv / fx[cur] - nc, 2), raz_po=round(nova / ddv / fx[cur] - nc, 2),
+                         pct=round((nova / zdaj - 1) * 100, 1))
+                if abs(nova - zdaj) < 0.005:
+                    x["preskok"] = "✓ že prava cena"
+            predlogi.append(x)
+    return {"ok": True, "raz": raz, "skuji": [{"sku": k, "at": v.get("at"), "trgi": po_sku[k]["trgi"]} for k, v in sorted(skuji.items(), key=lambda kv: kv[1].get("at") or "", reverse=True)],
+            "predlogi": predlogi}
+
+
+@app.post("/novi-izdelki/uredi")
+async def novi_izdelki_uredi(data: dict):
+    """{dodaj: "SKU1\nSKU2"} ali {odstrani: [SKU]}."""
+    d = _jload(NOVI_IZD_FILE, {}) or {}
+    sk = d.setdefault("skuji", {})
+    n = 0
+    for k in re.split(r"[\s,;]+", str(data.get("dodaj") or "")):
+        k = k.strip().upper()
+        if re.fullmatch(r"[A-Z0-9_\-\.]{2,40}", k) and k not in sk:
+            sk[k] = {"at": _lj_iso()}; n += 1
+    for k in data.get("odstrani") or []:
+        sk.pop(str(k).upper(), None)
+    _jsave(NOVI_IZD_FILE, d)
+    return {"ok": True, "dodanih": n}
+
+
+@app.post("/novi-izdelki/v-vrsto")
+async def novi_izdelki_v_vrsto(data: dict):
+    """{items: [... kot /cene-vrsta/dodaj]} → Vrsta cen + zapis »poslano« (trg|cms_id)."""
+    r = await cene_vrsta_dodaj(data)
+    if r.get("ok"):
+        blok = r.get("blokirani") or {}
+        d = _jload(NOVI_IZD_FILE, {}) or {}
+        po = d.setdefault("poslano", {})
+        for i in data.get("items") or []:
+            kl = f"{str(i.get('trg')).lower()}|{i.get('cms_id')}"
+            if kl not in blok:
+                po[kl] = _lj_iso()
+        _jsave(NOVI_IZD_FILE, d)
+    return r
+
+
 @app.post("/cene-vrsta/naslednji")
 async def cene_vrsta_naslednji(data: dict):
     """Vtičnik: zasede naslednjih n (privzeto 5) čakajočih, najstarejše najprej. Ustavljena vrsta → prazno."""
@@ -13589,6 +13683,7 @@ async def marza_trgi_stran(request: Request):
   <button class="chip" id="obrBtn" onclick="obratOsvezi()" title="Ponovno prebere prodajo iz Siluxarja (sicer vsak dan ob 6:40)">↻ Obrat</button>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s ✓ (popravljeno) ali potrjene v novem feedu. Samo odprti v CMS (✎) in opozorila ostanejo vidni."><input type="checkbox" id="skrijUr" onchange="savePref();render()"> Skrij urejene</label>
   <label style="font-size:14px;display:flex;gap:5px;align-items:center;margin-left:6px" title="Skrije izdelke, označene s 🚫 (ne uvažamo na ta trg — npr. carina v RS). Izključeni so tudi iz Bato cen."><input type="checkbox" id="skrijNu" checked onchange="savePref();render()"> Skrij neuvozne <span id="nuCnt" class="dim"></span></label>
+  <button class="bato-btn" onclick="noviOdpri()" title="Novi izdelki (vpišeš ob objavi) → cena po trgih = NC + 9 € razlike, lepo zaokroženo → Vrsta cen">🆕 Novi izdelki</button>
   <button class="bato-btn" id="vrstaBtn" onclick="vrstaOdpri()" title="Vrsta potrjenih cen iz »🧮 Plan cen« — izvaja jo vtičnik po 5">📋 Vrsta cen</button>
   <button class="bato-btn" onclick="spOdpri()" title="Vse spremembe cen (Vrsta, paketi, ± Znesek, Price Checker, decimalke, ročno) po dnevih, s preverbo v feedu">📜 Spremembe cen</button>
   <button class="bato-btn" id="batoBtn" onclick="toggleBato()" title="Redne cene, ki se ne končajo na bato (x,99 / x99 / x9)">💲 Bato cene</button>
@@ -14560,6 +14655,62 @@ function vrstaOdpri(sporocilo) {
     o.addEventListener('click', e => { if (e.target === o) vrstaZapri(); }); }
   o.style.display = 'flex'; o.dataset.msg = sporocilo || '';
   vrstaNalozi(); clearInterval(vrstaTimer); vrstaTimer = setInterval(vrstaNalozi, 4000);   // v živo, dokler je okno odprto (4 s — vtičnik dela 7 hkrati)
+}
+// 🆕 NOVI IZDELKI: SKU-ji ob objavi → ko so v feedu: (NC + 9 €) × DDV, navzgor na lepo ceno → Vrsta cen (vtičnik: Prodajna + razlika)
+let NOVI = null, NOVI_IZ = new Set(), NOVI_RAZ = (() => { try { return +localStorage.getItem('novi_raz') || 9; } catch (e) { return 9; } })();
+async function noviOdpri() {
+  let o = document.getElementById('noviOkno');
+  if (!o) { o = document.createElement('div'); o.id = 'noviOkno'; o.className = 'vrsta-ov'; document.body.appendChild(o);
+    o.addEventListener('click', e => { if (e.target === o) o.style.display = 'none'; }); }
+  o.style.display = 'flex'; o.innerHTML = '<div class="plan-box">🆕 računam po vseh trgih …</div>'; await noviNalozi(true);
+}
+async function noviNalozi(izberi) {
+  try { NOVI = await (await fetch('/novi-izdelki?raz=' + NOVI_RAZ, { cache: 'no-store' })).json(); } catch (e) { NOVI = { ok: false, error: e.message }; }
+  if (izberi && NOVI.ok) NOVI_IZ = new Set(NOVI.predlogi.filter(x => x.nova != null && !x.preskok && !x.poslano).map(x => x.trg + '|' + x.cms_id));
+  noviRisi();
+}
+async function noviUredi(body) {
+  await fetch('/novi-izdelki/uredi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  await noviNalozi(true);
+}
+function noviRisi() {
+  const o = document.getElementById('noviOkno'); if (!o) return;
+  if (!NOVI || !NOVI.ok) { o.innerHTML = '<div class="plan-box">⚠ ' + esc((NOVI && NOVI.error) || 'Napaka') + '</div>'; return; }
+  const n2 = (v, c) => v == null ? '' : (+v).toLocaleString('sl-SI', { minimumFractionDigits: c === 'EUR' ? 2 : 0, maximumFractionDigits: 2 });
+  const ps = NOVI.predlogi, izb = ps.filter(x => NOVI_IZ.has(x.trg + '|' + x.cms_id));
+  const chips = NOVI.skuji.map(s => '<span class="chip" style="display:inline-flex;gap:6px;align-items:center" title="Dodano ' + esc(String(s.at || '').slice(0, 16).replace('T', ' ')) + '"><b>' + esc(s.sku) + '</b>' +
+    (s.trgi ? '<span class="dim">' + s.trgi + ' trg.</span>' : '<span style="color:#b45309">⏳ še ni v feedu</span>') +
+    '<button style="border:0;background:none;cursor:pointer;color:var(--txt3)" title="Odstrani s seznama" onclick="noviUredi({odstrani:[\'' + esc(s.sku) + '\']})">✕</button></span>').join(' ');
+  const vrst = ps.map(x => { const kl = x.trg + '|' + x.cms_id, ok = x.nova != null && !x.preskok, ve = Math.abs(x.pct || 0) > 40;
+    return '<tr' + (ve && ok ? ' class="plan-flag"' : '') + '><td>' + (ok ? '<input type="checkbox" ' + (NOVI_IZ.has(kl) ? 'checked ' : '') + 'onchange="noviIzberi(\'' + kl + '\',this.checked)">' : '') + '</td>' +
+      '<td><b>' + esc(x.trg.toUpperCase()) + '</b></td><td title="' + esc(x.naziv) + '">' + esc(x.sku) + '</td><td class="r">' + n2(x.nc, 'EUR') + ' €</td>' +
+      '<td class="r">' + n2(x.zdaj, x.cur) + ' ' + esc(x.cur) + '</td><td class="r"><b>' + (ok ? n2(x.nova, x.cur) + ' ' + esc(x.cur) : '') + '</b></td>' +
+      '<td class="r">' + (ok ? (x.pct > 0 ? '+' : '') + n2(x.pct, 'EUR') + ' %' + (ve ? ' ⚠' : '') : '') + '</td>' +
+      '<td class="r">' + (x.raz_zdaj != null ? n2(x.raz_zdaj, 'EUR') + ' → <b>' + n2(x.raz_po, 'EUR') + '</b> €' : '') + '</td>' +
+      '<td class="dim">' + esc(x.preskok || '') + (x.poslano ? ' 📋 poslano ' + esc(String(x.poslano).slice(5, 16).replace('T', ' ')) : '') + '</td></tr>'; }).join('');
+  o.innerHTML = '<div class="plan-box" style="width:min(1100px,96vw);max-height:90vh;overflow:auto">' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><b style="font-size:16px">🆕 Novi izdelki → razlika ' + n2(NOVI.raz, 'EUR') + ' €</b><span class="grow" style="flex:1"></span><button class="btn" onclick="document.getElementById(\'noviOkno\').style.display=\'none\'">✕</button></div>' +
+    '<div class="dim" style="margin-bottom:8px">Ob objavi vpiši SKU-je (varianta npr. TIMEXA_black ali koren TIMEXA = vse variante). Ko so v feedu (naslednji dan po 6:00): cilj = (NC + razlika) × DDV trga, zaokroženo <b>navzgor</b> na lepo ceno (x,99 · xx99 · x9 · x4/x9). Vtičnik Prodajno spremeni za razliko do dejanske cene v feedu — 25 % in kategorijski popust sta upoštevana sama.</div>' +
+    '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px"><textarea id="noviVnos" rows="3" placeholder="RUBYBOW&#10;TIMEXA_black&#10;…" style="flex:1;font-family:monospace;padding:6px;border:1px solid var(--bd);border-radius:7px"></textarea>' +
+      '<div style="display:flex;flex-direction:column;gap:6px"><button class="btn" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="noviUredi({dodaj:document.getElementById(\'noviVnos\').value})">＋ Dodaj SKU-je</button>' +
+      '<label class="dim" style="display:flex;gap:5px;align-items:center">Razlika € <input type="number" step="0.5" min="0" value="' + NOVI.raz + '" style="width:60px" onchange="NOVI_RAZ=+this.value||9;try{localStorage.setItem(\'novi_raz\',NOVI_RAZ)}catch(e){};noviNalozi(true)"></label></div></div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">' + (chips || '<span class="dim">Seznam je prazen.</span>') + '</div>' +
+    (ps.length ? '<div class="plan-tab"><table><thead><tr><th></th><th>Trg</th><th>SKU</th><th class="r">NC</th><th class="r">Zdaj</th><th class="r">Nova</th><th class="r">Sprememba</th><th class="r">Razlika €</th><th>Opomba</th></tr></thead><tbody>' + vrst + '</tbody></table></div>'
+      : '<div class="dim" style="padding:16px;text-align:center">Nobenega od SKU-jev še ni v feedu.</div>') +
+    '<div style="display:flex;gap:8px;margin-top:12px;align-items:center"><span class="dim">⚠ = sprememba nad 40 % (preveri NC). Varovalka 1× na dan velja.</span>' +
+      '<button class="btn" style="margin-left:auto;background:#16a34a;color:#fff;border-color:#16a34a" ' + (izb.length ? '' : 'disabled ') + 'onclick="noviVVrsto()">✓ Pošlji ' + izb.length + ' v vrsto</button></div></div>';
+}
+function noviIzberi(kl, on) { if (on) NOVI_IZ.add(kl); else NOVI_IZ.delete(kl); noviRisi(); }
+async function noviVVrsto() {
+  const iz = NOVI.predlogi.filter(x => NOVI_IZ.has(x.trg + '|' + x.cms_id) && x.nova != null && !x.preskok);
+  if (!iz.length || !confirm('✓ Pošljem ' + iz.length + ' cen novih izdelkov v Vrsto cen?')) return;
+  try {
+    const r = await (await fetch('/novi-izdelki/v-vrsto', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: iz.map(x => ({ trg: x.trg, cms_id: x.cms_id, g_id: x.g_id, sku: x.sku, naziv: String(x.naziv || '').slice(0, 120), cur: x.cur, stara: x.zdaj, nova: x.nova, ref: +x.ref || x.zdaj })) }) })).json();
+    if (!r.ok) { alert(r.error || 'Napaka'); return; }
+    document.getElementById('noviOkno').style.display = 'none';
+    vrstaOdpri('✓ Novi izdelki: v vrsto dodanih ' + r.dodanih + (r.ze_v_vrsti ? ' · ' + r.ze_v_vrsti + ' je že čakalo' : '') + (r.danes_ze ? ' · ⛔ ' + r.danes_ze + ' izpuščenih (danes že spremenjeno)' : '') + '. V panelu vtičnika vklopi »▶ Izvajaj vrsto«.');
+  } catch (e) { alert('Pošiljanje ni uspelo — preveri povezavo.'); }
 }
 function vrstaZapri() { const o = document.getElementById('vrstaOkno'); if (o) o.style.display = 'none'; clearInterval(vrstaTimer); vrstaTimer = null; }
 // 📜 SPREMEMBE CEN — en pregled vseh sprememb (dnevnik /cene-dnevnik), filtri dan / trg / vir / iskanje, CSV
