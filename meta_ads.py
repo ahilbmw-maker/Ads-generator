@@ -377,7 +377,7 @@ def vklopi(G: dict):
             return 0, min(prosto_z, pas), True
         return 0, zg, False
 
-    def akcija_okvir(raw, trg, koda, font):
+    def akcija_okvir(raw, trg, koda, font, blur=False):
         """Kreativa nespremenjena (uporabnik: slika in hook PRVA, akcija samo dodatek; okvir in značka čez sliko zavrnjena)
         → spodaj tanek črn pas (6 % višine): BLACK NOVEMBER (zlato) · KODA: X (belo), na sredini v varni coni (IG obreže levo/desno 12 %).
         Velikost ostane ENAKA (kvadrat — sicer Marketplace/Explore obreže pas): slika izgubi 6 % (prompt pusti spodaj prostor)."""
@@ -385,9 +385,16 @@ def vklopi(G: dict):
         im = Image.open(io.BytesIO(raw)).convert("RGB")
         W, H = im.size
         pas = round(H * 0.06)
-        f, zg, _ = akcija_izrez(im)
+        f, zg, tesno = akcija_izrez(im)
         nova = Image.new("RGB", (W, H), (0, 0, 0))
-        if f:
+        if tesno and blur:
+            # Meta Ads (uporabnik 2026-11-01: ↻ dokler ni prostora vzame preveč časa) → brez obreza: slika −6 %,
+            # ob straneh ~3 % zamegljeno nadaljevanje (IG na telefonu stranice tako ali tako odreže)
+            from PIL import ImageFilter
+            w = round(W * (H - pas) / H)
+            nova.paste(im.resize((W, H - pas)).filter(ImageFilter.GaussianBlur(H * 0.02)), (0, 0))
+            nova.paste(im.resize((w, H - pas), Image.LANCZOS), ((W - w) // 2, 0))
+        elif f:
             k = (H - pas) / (H - f)
             w2 = round(W * k)
             nova.paste(im.crop((0, 0, W, H - f)).resize((w2, H - pas), Image.LANCZOS).crop(((w2 - W) // 2, 0, (w2 - W) // 2 + W, H - pas)), (0, 0))
@@ -396,7 +403,8 @@ def vklopi(G: dict):
         H -= pas   # pas se riše pod sliko (y = H … H + pas)
         return pas_risi(nova, ImageDraw.Draw(nova), W, H, pas, trg, koda, font)
 
-    TESNO = {}   # (pid, fn) → bool (⚠ ni prostora za pas)
+    TESNO = {}   # (pid, fn) → bool (ni prostora za pas → Meta Ads: zamegljeni robovi)
+    MA_AKCIJA_VER = datetime.fromisoformat("2026-11-01T12:45:00+00:00").timestamp()   # slike z akcijo, starejše od tega (obrez namesto zamegljenih robov), se naredijo znova
 
     def akcija_tesno(pid, fn):
         from PIL import Image
@@ -420,14 +428,14 @@ def vklopi(G: dict):
         """Ustvari sliko z akcijo (…_bnKODA.jpg) iz osnovne, če je še ni."""
         m = re.fullmatch(r"(.+?)_bn([A-Z0-9]+)\.jpg", fn)
         cilj = MAPA / pid / fn
-        if not m or cilj.exists():
+        if not m or (cilj.exists() and cilj.stat().st_mtime > MA_AKCIJA_VER):   # starejše (obrezane) se naredijo znova
             return cilj
         osn = MAPA / pid / (m.group(1) + ".jpg")
         if not osn.exists():
             return cilj
         mt = re.search(r"_([a-z]{2})_\d+$", m.group(1))   # SKU_pl_1 → pl; osnova_1_ab12 (korak 2) → en = 🎟 kupon
         font = await font_akcija()
-        cilj.write_bytes(await asyncio.to_thread(akcija_okvir, osn.read_bytes(), mt.group(1) if mt else "en", m.group(2), font))
+        cilj.write_bytes(await asyncio.to_thread(akcija_okvir, osn.read_bytes(), mt.group(1) if mt else "en", m.group(2), font, True))
         return cilj
 
     @app.post("/kreative/akcija")
@@ -822,14 +830,14 @@ def vklopi(G: dict):
                 smer = random.choice(MA_EKSPERIMENTI) if k.get("scena") == "eksperiment" else ""
                 pr = prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", "1:1", k.get("scena") or "", smer, bool(akcija_od(p)))
                 m_ = model_za(p, i, model)
-                raw = await (nb21(refs[:3], pr, "1:1") if m_ == "nb21" else flare(refs, pr, "1:1", n_ref=3))   # ↻ izbira modela po kreativi
+                raw = await asyncio.wait_for(nb21(refs[:3], pr, "1:1") if m_ == "nb21" else flare(refs, pr, "1:1", n_ref=3), MA_SLIKA_TIMEOUT)   # ↻ izbira modela po kreativi
                 if razm == "4:5":
                     raw = await kvadrat_v_45(raw)
                 fn = f"osnova_{i + 1}_{uuid.uuid4().hex[:4]}.jpg"
                 (mapa / fn).write_bytes(raw)
                 await pak_set(pid, lambda q: q["kreative"][i].update(osnova=fn, osnova_napaka="", v_delu=False, razmerje=razm, smer=smer.split(":")[0].title() if smer else "", model="NB2.1" if m_ == "nb21" else "Flare 2.5"))
             except Exception as e:
-                err = str(e)[:160]
+                err = str(e)[:160] or "časovna omejitev (8 min) — klikni ↻"
                 await pak_set(pid, lambda q: q["kreative"][i].update(osnova_napaka=err, v_delu=False))
         await asyncio.gather(*(ena(i) for i in indeksi))
         await pak_set(pid, lambda q: q.update(status="osnove"))
@@ -921,6 +929,7 @@ def vklopi(G: dict):
     # 🔎 kaj trenutno teče (v pomnilniku): TECE[pid][(trg, j)] = {korak, od} — prikaz v koraku 2, da se vidi, kje se zatakne
     TECE = {}
     delo_sem = asyncio.Semaphore(12)   # 2026-10-24: 4 → 12 — glas (el_sem 4) za naslednje videe nastaja, medtem ko montaža (ff_sem) zaseda CPU
+    MA_SLIKA_TIMEOUT = 480   # ⏱ ena slika (kreativa ali prevod) največ 8 min (httpx timeout velja za branje, s ponovitvami 429/5xx lahko visi 20+ min)
     MA_VIDEO_TIMEOUT = 900   # en video za en trg (glas + krajšanje + čakanje na montažo + montaža) največ 15 min, nato napaka
 
     def tece(pid, t, j, korak=None):
@@ -1302,10 +1311,10 @@ def vklopi(G: dict):
 
         async def ena(t, i):
             try:
-                fn = await tekst_slika(pid, t, i, model)
+                fn = await asyncio.wait_for(tekst_slika(pid, t, i, model), MA_SLIKA_TIMEOUT)   # ⏱ 2026-11-01: HATIPS 1/2 je visel > 5 min (počasen / ponavljan klic API) → napaka + ↻
                 await pak_set(pid, lambda q: q["trgi"][t].setdefault("slike", {}).update({str(i): {"datoteka": fn, "model": model}}))
             except Exception as e:
-                err = str(e)[:160]
+                err = str(e)[:160] or "časovna omejitev (8 min) — klikni ↻"
                 await pak_set(pid, lambda q: q["trgi"][t].setdefault("slike", {}).update({str(i): {"napaka": err}}))
             finally:
                 await pak_set(pid, lambda q: q.update(lok_gotovo=int(q.get("lok_gotovo") or 0) + 1))
