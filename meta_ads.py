@@ -324,7 +324,7 @@ def vklopi(G: dict):
         dno = next((y for y in range(2, pas + rez + 2) if ima(H - 1 - y)), pas + rez + 2) - 2   # prosto spodaj
         prosto_z, prosto_s = max(0, vrh - rez), max(0, dno - rez)
         nova = Image.new("RGB", (W, H), (0, 0, 0))
-        zg = round(pas * prosto_z / (prosto_z + prosto_s)) if prosto_z + prosto_s >= pas else 0
+        zg = 0 if prosto_s >= pas else (round(pas * prosto_z / (prosto_z + prosto_s)) if prosto_z + prosto_s >= pas else 0)
         zg = min(zg, prosto_z, pas)
         if prosto_z + prosto_s < pas or pas - zg > prosto_s:
             w = round(W * (H - pas) / H)   # ob straneh po ~3 %: zamegljeno nadaljevanje slike (ne črn okvir)
@@ -465,7 +465,7 @@ def vklopi(G: dict):
         c.paste(im, (0, 128))
         b = io.BytesIO(); c.save(b, format="JPEG", quality=92); return b.getvalue()
 
-    def prompt_kreativa(ime, vibe, tekst, hook="", razmerje="1:1", scena="", smer=""):
+    def prompt_kreativa(ime, vibe, tekst, hook="", razmerje="1:1", scena="", smer="", akcija=False):
         """Prompt generatorja Kreative (/generate-kreative) + HOOK: velik hook napis zgoraj, ime izdelka kot MANJŠI logo
         (sam branding kupcu še nič ne pove — uporabnik 2026-10-15). Brez hooka = točno prompt generatorja."""
         if hook:
@@ -486,6 +486,7 @@ def vklopi(G: dict):
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
                 f"Highlight (can be through icons or text in English) that it is: {tekst}. "
                 + MA_VARNA_CONA
+                + (G["KREATIVE_AKCIJA_PROSTOR"] if akcija else "")   # 🖤 spodaj prostor za pas akcije
                 + "Square 1:1 format.")   # 4:5 = 1:1 + podaljšano ozadje (kvadrat_v_45)
 
     # 📐 4:5 (2026-10-16 b): Flare je hook risal do roba in naš obrez 2:3 → 4:5 ga je odrezal (2× kljub navodilom v promptu) →
@@ -774,7 +775,7 @@ def vklopi(G: dict):
                 if not refs:
                     raise RuntimeError("referenčnih slik ni bilo mogoče prenesti")
                 smer = random.choice(MA_EKSPERIMENTI) if k.get("scena") == "eksperiment" else ""
-                pr = prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", "1:1", k.get("scena") or "", smer)
+                pr = prompt_kreativa(p.get("ime") or p["sku"], k.get("vibe") or "lifestyle", k.get("tekst") or "", k.get("hook") or "", "1:1", k.get("scena") or "", smer, bool(akcija_od(p)))
                 m_ = model_za(p, i, model)
                 raw = await (nb21(refs[:3], pr, "1:1") if m_ == "nb21" else flare(refs, pr, "1:1", n_ref=3))   # ↻ izbira modela po kreativi
                 if razm == "4:5":

@@ -7370,6 +7370,10 @@ async def fetch_product_images(data: dict):
         return {"error": str(e)}
 
 
+KREATIVE_AKCIJA_PROSTOR = ("PROMO STRIP SPACE (very important): the bottom 8% of the image will later be covered by a thin promo strip. "
+                           "Keep that bottom 8% as a plain, calm continuation of the background/scene — no text, no icons, no logo, no benefit labels "
+                           "and no important product parts there; place the benefits row and everything else above it. ")
+
 @app.post("/generate-kreative")
 async def generate_kreative(data: dict):
     """Generira kreative z Google Gemini (Nano Banana 2.1 / Pro) API."""
@@ -7390,6 +7394,8 @@ async def generate_kreative(data: dict):
 
     # Globalni izbrani model (fallback, če B-opcija nima svojega): 'flash'|'pro'|'image2'
     _model_choice = (data.get("model") or "flash").lower()
+    # 🖤 akcija: spodaj prost pas za »BLACK NOVEMBER · koda« (doda se pri prikazu/prenosu — meta_ads.akcija_okvir odreže samo ta del)
+    _akc_txt = KREATIVE_AKCIJA_PROSTOR if data.get("akcija") else ""
 
     # ── GEMINI FILE URI CACHE ──────────────────────────────────────────────────
     # Gemini Files API vrne URI ki velja 48h — cachiramo na disk da ne uploadamo vsakič
@@ -7434,7 +7440,7 @@ async def generate_kreative(data: dict):
                 f"Do not include any text/words on the image except the device name in capital letters '{product_name}' — place it where it fits best or makes sense. "
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
                 f"Highlight (can be through icons or text in English) that it is: {a.get('text', '')}. "
-                f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. Square 1:1 format."
+                f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. {_akc_txt}Square 1:1 format."
             )
             prompts_for_b.append((a, prompt))
 
@@ -10978,6 +10984,7 @@ async def _kbatch_process_one(job: dict):
         gen = await generate_kreative({
             "productName": name, "aOptions": a_opts, "bOptions": b_opts,
             "count": min(int(job.get("count") or KBATCH_MAX_COUNT), KBATCH_MAX_COUNT), "images": refs, "model": _bmodel,
+            "akcija": bool(job.get("akcija")),
         })
         if gen.get("error"):
             raise RuntimeError(f"generiranje: {gen['error']}")
@@ -11123,6 +11130,7 @@ async def kreative_batch_add(data: dict):
     count = max(1, min(KBATCH_MAX_COUNT, int(data.get("count") or KBATCH_MAX_COUNT)))
     vibe = str(data.get("vibe", "") or "").strip()[:300]   # ročni vibe — zamenja 5. ozadje pri vseh SKU
     bmodel = str(data.get("model", "") or "image2").lower()   # model za cel batch
+    akcija = bool(data.get("akcija"))   # 🖤 prompt pusti spodaj prostor za pas
     if bmodel not in ("flash", "pro", "image2", "flare", "compare4") and not str(bmodel).startswith("multi:"):
         bmodel = "image2"
     if entries:
@@ -11139,7 +11147,7 @@ async def kreative_batch_add(data: dict):
                 if sku.upper() in existing:
                     dupl.append(sku); continue
                 jid = "kb" + str(int(_time.time() * 1000)) + str(len(jobs))
-                jobs.append({"id": jid, "sku": sku, "url": url, "name": e.get("name") or sku,
+                jobs.append({"id": jid, "akcija": akcija, "sku": sku, "url": url, "name": e.get("name") or sku,
                              "count": count, "vibe": vibe, "model": bmodel, "status": "waiting", "error": None, "step": "",
                              "created": datetime.now(timezone.utc).isoformat()})
                 added.append(sku); existing.add(sku.upper())
@@ -11164,12 +11172,12 @@ async def kreative_batch_add(data: dict):
                 url, name = _kbatch_sku_to_url(sku)
             jid = "kb" + str(int(_time.time() * 1000)) + str(len(jobs))
             if not url:
-                jobs.append({"id": jid, "sku": sku, "url": None, "name": sku, "count": count,
+                jobs.append({"id": jid, "akcija": akcija, "sku": sku, "url": None, "name": sku, "count": count,
                              "status": "error", "error": "SKU ni najden v SL feedu",
                              "created": datetime.now(timezone.utc).isoformat()})
                 not_found.append(sku)
             else:
-                jobs.append({"id": jid, "sku": sku, "url": url, "name": name, "count": count,
+                jobs.append({"id": jid, "akcija": akcija, "sku": sku, "url": url, "name": name, "count": count,
                              "vibe": vibe, "model": bmodel, "status": "waiting", "error": None, "step": "",
                              "created": datetime.now(timezone.utc).isoformat()})
                 added.append(sku)

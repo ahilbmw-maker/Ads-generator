@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-11-01 10:28</div>
+      <div class="sidebar-logo-sub">build 2026-11-01 10:37</div>
     </div>
   </div>
 
@@ -8498,7 +8498,7 @@ async function kbConfirmAdd() {
   try {
     const vibe = (document.getElementById('kbVibe')?.value || '').trim();
     const r = await fetch('/kreative-batch-add', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ entries: picked, count, vibe, model: kbGetModel() }) });
+      body: JSON.stringify({ entries: picked, count, vibe, model: kbGetModel(), akcija: !!AKC.on }) });
     const d = await r.json();
     if (!d.ok) { alert('Napaka: ' + (d.error||'')); return; }
     ov.remove();
@@ -8663,7 +8663,7 @@ async function kQueueProcess() {
   try {
     const res = await fetch('/generate-kreative', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({productName: next.productName, aOptions: next.aOpts, bOptions: next.bOpts, count: next.count, images: next.images})
+      body: JSON.stringify({productName: next.productName, aOptions: next.aOpts, bOptions: next.bOpts, count: next.count, images: next.images, akcija: !!AKC.on})
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -8973,7 +8973,7 @@ async function kGenerate() {
   try {
     const res = await fetch('/generate-kreative', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({productName, aOptions: aOpts, bOptions: bOpts, count: kCount, images})
+      body: JSON.stringify({productName, aOptions: aOpts, bOptions: bOpts, count: kCount, images, akcija: !!AKC.on})
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
