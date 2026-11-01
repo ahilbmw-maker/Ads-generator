@@ -7375,7 +7375,8 @@ KREATIVE_BREZ_CENE = ("NO PRICES (very important): never show any price, currenc
 KREATIVE_AKCIJA_PROSTOR = ("BOTTOM TEXT-FREE ZONE (very important): a thin promo strip will later cover the bottom 7% of the image. "
                            "Keep ALL text, icons, benefit labels and the logo ABOVE the bottom 10% of the image. "
                            "The photo/scene itself must continue naturally all the way to the bottom edge — do NOT draw any bar, band, "
-                           "empty strip, panel, frame or solid-colour area at the bottom. ")   # 2026-11-01: »prazen prostor« je model narisal kot bež/siv pas
+                           "empty strip, panel, frame or solid-colour area at the bottom. "
+                           "This rule OVERRIDES any layout instruction that mentions the bottom: 'along the bottom' means the lowest text row ends at least 12% above the bottom edge. ")   # 2026-11-01: »prazen prostor« je model narisal kot bež/siv pas
 
 @app.post("/generate-kreative")
 async def generate_kreative(data: dict):

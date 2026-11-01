@@ -500,6 +500,15 @@ def vklopi(G: dict):
         c.paste(im, (0, 128))
         b = io.BytesIO(); c.save(b, format="JPEG", quality=92); return b.getvalue()
 
+    def akcija_postavitev(t):
+        """🖤 2026-11-01: postavitve scen (»icons along the bottom«, »logo bottom-right«, »hook at the BOTTOM«) so prevladale nad
+        navodilom za prostor spodaj (TASKCYCLE: 2× ikone ob robu) → pri akciji »spodaj« = v spodnjem delu, vsaj 12 % nad robom."""
+        nad = "at least 12% above the bottom edge"
+        t = t.replace("in a row along the bottom", f"in a row in the lower part of the image, {nad}")
+        t = t.replace("in the bottom-right corner", f"in the lower-right area, {nad}")
+        t = t.replace("at the BOTTOM", f"in the lower part ({nad})")
+        return t
+
     def prompt_kreativa(ime, vibe, tekst, hook="", razmerje="1:1", scena="", smer="", akcija=False):
         """Prompt generatorja Kreative (/generate-kreative) + HOOK: velik hook napis zgoraj, ime izdelka kot MANJŠI logo
         (sam branding kupcu še nič ne pove — uporabnik 2026-10-15). Brez hooka = točno prompt generatorja."""
@@ -517,7 +526,7 @@ def vklopi(G: dict):
                 + (f"SCENE TYPE — {sc['scena']} The product must look EXACTLY like in the reference images (same shape, colours, parts). " if sc else "")
                 + f"Try a more intense '{vibe}' background. "
                 + napisi
-                + (f"LAYOUT: {sc['postavitev']} " if sc else "") +
+                + (f"LAYOUT: {akcija_postavitev(sc['postavitev']) if akcija else sc['postavitev']} " if sc else "") +
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
                 f"Highlight (can be through icons or text in English) that it is: {tekst}. "
                 + G["KREATIVE_BREZ_CENE"]
