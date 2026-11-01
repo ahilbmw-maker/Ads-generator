@@ -505,6 +505,7 @@ def vklopi(G: dict):
                 + (f"LAYOUT: {sc['postavitev']} " if sc else "") +
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
                 f"Highlight (can be through icons or text in English) that it is: {tekst}. "
+                + G["KREATIVE_BREZ_CENE"]
                 + MA_VARNA_CONA
                 + (G["KREATIVE_AKCIJA_PROSTOR"] if akcija else "")   # 🖤 spodaj prostor za pas akcije
                 + "Square 1:1 format.")   # 4:5 = 1:1 + podaljšano ozadje (kvadrat_v_45)

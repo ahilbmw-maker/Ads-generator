@@ -7370,6 +7370,8 @@ async def fetch_product_images(data: dict):
         return {"error": str(e)}
 
 
+KREATIVE_BREZ_CENE = ("NO PRICES (very important): never show any price, currency symbol or amount (€, $, Ft, zł, Kč, lei …), "
+                      "no 'only X', no discount percentages, no price tags or price badges — prices differ by market and change. ")   # 2026-11-01: model je risal »ONLY €14.99«
 KREATIVE_AKCIJA_PROSTOR = ("BOTTOM TEXT-FREE ZONE (very important): a thin promo strip will later cover the bottom 7% of the image. "
                            "Keep ALL text, icons, benefit labels and the logo ABOVE the bottom 10% of the image. "
                            "The photo/scene itself must continue naturally all the way to the bottom edge — do NOT draw any bar, band, "
@@ -7441,6 +7443,7 @@ async def generate_kreative(data: dict):
                 f"Do not include any text/words on the image except the device name in capital letters '{product_name}' — place it where it fits best or makes sense. "
                 f"If possible (if you recognize any suitable English naming styles), you can also create a logo from the name. "
                 f"Highlight (can be through icons or text in English) that it is: {a.get('text', '')}. "
+                + KREATIVE_BREZ_CENE +
                 f"Keep all text and icons well within the image borders — nothing should be cut off at the edges. {_akc_txt}Square 1:1 format."
             )
             prompts_for_b.append((a, prompt))
