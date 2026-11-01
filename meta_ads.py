@@ -385,11 +385,10 @@ def vklopi(G: dict):
         zg = 0 if prosto_s >= pas else (round(pas * prosto_z / (prosto_z + prosto_s)) if prosto_z + prosto_s >= pas else 0)
         zg = min(zg, prosto_z, pas)
         if prosto_z + prosto_s < pas or pas - zg > prosto_s:
-            w = round(W * (H - pas) / H)   # ob straneh po ~3 %: zamegljeno nadaljevanje slike (ne črn okvir)
-            nova.paste(im.resize((W, H - pas)).filter(ImageFilter.GaussianBlur(H * 0.02)), (0, 0))
-            nova.paste(im.resize((w, H - pas), Image.LANCZOS), ((W - w) // 2, 0))
-        else:
-            nova.paste(im.crop((0, zg, W, zg + H - pas)), (0, 0))
+            # 2026-11-01: brez pomanjšanja + zamegljenih robov (uporabnik: »ne dopade«) — prompt drži spodnjih 10 % brez napisov,
+            # robovi tam so scena (tla, izdelek) → zgoraj odreži le prosto, ostalo spodaj
+            zg = min(prosto_z, pas)
+        nova.paste(im.crop((0, zg, W, zg + H - pas)), (0, 0))
         H -= pas   # pas se riše pod sliko (y = H … H + pas)
         return pas_risi(nova, ImageDraw.Draw(nova), W, H, pas, trg, koda, font)
 

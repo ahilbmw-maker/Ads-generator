@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-11-01 10:52</div>
+      <div class="sidebar-logo-sub">build 2026-11-01 11:01</div>
     </div>
   </div>
 
@@ -1911,6 +1911,10 @@ input[type="text"].error { border-color: var(--red) !important; }
               <input id="kbCount" type="number" min="1" max="2" value="2" style="width:56px;box-sizing:border-box;padding:8px 5px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;text-align:center">
             </label>
           </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2)">
+            <label style="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;flex:1" title="Prompt pusti spodaj prostor, pod kreativo tanek črn pas BLACK NOVEMBER · 🎟 koda (obkljukaj PRED generiranjem)"><input type="checkbox" class="akcOn" onchange="akcSet(this.checked, null)"> 🖤 Black November</label>
+            <input class="akcKoda" value="BLACK8" onchange="akcSet(null, this.value)" style="width:80px;font-size:12px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text)" title="Koda akcije">
+          </div>
           <button onclick="kbAdd()" id="kbAddBtn" style="width:100%;margin-top:8px;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">▶ Dodaj v batch</button>
           <div style="margin-top:8px">
             <label style="font-size:11px;color:var(--text-tertiary);display:block;margin-bottom:4px">✨ Moj vibe (neobvezno — zamenja zadnje, 5. ozadje pri vseh SKU)</label>
@@ -2014,8 +2018,6 @@ input[type="text"].error { border-color: var(--red) !important; }
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
             <span class="slabel">GENERIRANE KREATIVE</span>
             <span style="display:flex;align-items:center;gap:8px">
-              <label style="font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px" title="Pod kreativo tanek črn pas BLACK NOVEMBER · CODE: koda (kot v Meta Ads)"><input type="checkbox" class="akcOn" onchange="akcSet(this.checked, null)"> 🖤 Black November</label>
-              <input class="akcKoda" value="BLACK8" onchange="akcSet(null, this.value)" style="width:72px;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text)" title="Koda akcije">
               <span class="akcStatus" style="font-size:10px;color:var(--text-tertiary)"></span>
               <span style="font-size:11px;color:var(--text-tertiary)" id="kResultCount"></span>
             </span>
