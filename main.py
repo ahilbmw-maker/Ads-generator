@@ -2152,6 +2152,7 @@ async def cene_vrsta_dodaj(data: dict):
 #    Vtičnik spremeni Prodajno za razliko (nova − dejanska v feedu) → kategorijski popust in CMS DDV (HU/CZ/SK 22 %) sta upoštevana sama.
 NOVI_IZD_FILE = DATA_DIR / "novi_izdelki.json"
 NOVI_RAZLIKA = 9.0
+NOVI_EXTRA = {"rs": 1.0}   # RS: +1 € (carina vmes) — razlika RS = 10 €
 NOVI_LEPO = {"RSD": (100, 99), "HUF": (100, 99), "CZK": (10, 9), "PLN": (5, 4), "RON": (5, 4)}   # (korak, končnica); EUR x,99
 
 
@@ -2199,7 +2200,7 @@ async def novi_izdelki_get(raz: float = NOVI_RAZLIKA):
             elif not zdaj or not fx.get(cur):
                 x["preskok"] = "ni cene / tečaja"
             else:
-                nova = _novi_lepo_gor((nc + raz) * ddv * fx[cur], cur)
+                nova = _novi_lepo_gor((nc + raz + NOVI_EXTRA.get(trg, 0)) * ddv * fx[cur], cur)
                 x.update(nova=nova, raz_zdaj=round(zdaj / ddv / fx[cur] - nc, 2), raz_po=round(nova / ddv / fx[cur] - nc, 2),
                          pct=round((nova / zdaj - 1) * 100, 1))
                 if abs(nova - zdaj) < 0.005:
@@ -14690,7 +14691,7 @@ function noviRisi() {
       '<td class="dim">' + esc(x.preskok || '') + (x.poslano ? ' 📋 poslano ' + esc(String(x.poslano).slice(5, 16).replace('T', ' ')) : '') + '</td></tr>'; }).join('');
   o.innerHTML = '<div class="plan-box" style="width:min(1100px,96vw);max-height:90vh;overflow:auto">' +
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><b style="font-size:16px">🆕 Novi izdelki → razlika ' + n2(NOVI.raz, 'EUR') + ' €</b><span class="grow" style="flex:1"></span><button class="btn" onclick="document.getElementById(\'noviOkno\').style.display=\'none\'">✕</button></div>' +
-    '<div class="dim" style="margin-bottom:8px">Ob objavi vpiši SKU-je (varianta npr. TIMEXA_black ali koren TIMEXA = vse variante). Ko so v feedu (naslednji dan po 6:00): cilj = (NC + razlika) × DDV trga, zaokroženo <b>navzgor</b> na lepo ceno (x,99 · xx99 · x9 · x4/x9). Vtičnik Prodajno spremeni za razliko do dejanske cene v feedu — 25 % in kategorijski popust sta upoštevana sama.</div>' +
+    '<div class="dim" style="margin-bottom:8px">Ob objavi vpiši SKU-je (varianta npr. TIMEXA_black ali koren TIMEXA = vse variante). Ko so v feedu (naslednji dan po 6:00): cilj = (NC + razlika) × DDV trga (RS + 1 € zaradi carine), zaokroženo <b>navzgor</b> na lepo ceno (x,99 · xx99 · x9 · x4/x9). Vtičnik Prodajno spremeni za razliko do dejanske cene v feedu — 25 % in kategorijski popust sta upoštevana sama.</div>' +
     '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px"><textarea id="noviVnos" rows="3" placeholder="RUBYBOW&#10;TIMEXA_black&#10;…" style="flex:1;font-family:monospace;padding:6px;border:1px solid var(--bd);border-radius:7px"></textarea>' +
       '<div style="display:flex;flex-direction:column;gap:6px"><button class="btn" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="noviUredi({dodaj:document.getElementById(\'noviVnos\').value})">＋ Dodaj SKU-je</button>' +
       '<label class="dim" style="display:flex;gap:5px;align-items:center">Razlika € <input type="number" step="0.5" min="0" value="' + NOVI.raz + '" style="width:60px" onchange="NOVI_RAZ=+this.value||9;try{localStorage.setItem(\'novi_raz\',NOVI_RAZ)}catch(e){};noviNalozi(true)"></label></div></div>' +
