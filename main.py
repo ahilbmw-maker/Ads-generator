@@ -79,9 +79,9 @@ _AI_OPENAI_CENE = {"gpt-image-2": (5.0, 8.0, 30.0), "gpt-image-2.5-flare": (5.0,
 _AI_GEMINI_CENE = {"gemini-3.1-flash-image-preview": (0.25, 1.5, 60.0), "gemini-3-pro-image": (2.0, 12.0, 120.0),
                    "gemini-nano-banana-2.1": (1.5, 7.5, 30.0)}   # $ / 1M: vhod, tekst izhod, slika izhod
 # ⚡ Nano Banana 2.1 (2026-10-14): naslednik Nano Banana 2 (gemini-3.1-flash-image se ukine 29. 10. 2026), ~pol cene na sliko.
-# Ob napaki novega modela enkrat ponovi s starim (do ukinitve). Nazaj: env GEMINI_FLASH_IMG=gemini-3.1-flash-image-preview
+# Stari NB2 (gemini-3.1-flash-image-preview) je bil rezerva do ukinitve 29. 10. 2026 → 2026-11-02 odstranjena (prazno = brez rezerve).
 GEMINI_FLASH_IMG = os.environ.get("GEMINI_FLASH_IMG", "gemini-nano-banana-2.1")
-GEMINI_FLASH_IMG_STARI = "gemini-3.1-flash-image-preview"
+GEMINI_FLASH_IMG_STARI = ""
 ELEVEN_USD_PER_1K = float(os.environ.get("ELEVEN_USD_PER_1K") or 0.18)   # Creator: $22 / 121.000 kreditov (1 znak = 1 kredit)
 _AI_SKIP_FN = {"_messages_create_sonnet", "_messages_create_logged", "_kw", "_ai_log", "_ai_log_claude", "_ai_funkcija",
                "_xsell_opus", "_xsell_log_usage", "_sonnet_call", "run", "_run", "_worker"}
@@ -2995,7 +2995,7 @@ def _parse_amio_pdf_bytes(content: bytes) -> dict:
     # Reuse obstoječe Claude prompt logike — pokliči parse endpoint interno
     # (Tukaj dupliciramo ključno logiko da se izognemo HTTP loop)
     msg = client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-sonnet-4-6",   # centralni preklop → Sonnet 5.5 (rezerva 4.6); 4.5 se ukine 30. 11. 2026
         max_tokens=20000,
         messages=[{
             "role": "user",
@@ -6814,7 +6814,7 @@ SPLOŠNA PRAVILA:
 Vrni SAMO JSON: {{{batch_json_keys}}}"""
 
 
-_META_PREVEDI_MODELI = {"haiku55": "claude-haiku-5-5", "haiku45": "claude-haiku-4-5-20251001"}
+_META_PREVEDI_MODELI = {"haiku55": "claude-haiku-5-5", "sonnet55": "claude-sonnet-5-5", "haiku45": "claude-sonnet-5-5"}   # Haiku 4.5 (star) → Sonnet 5.5
 
 
 @app.get("/meta-prevedi")
@@ -6824,7 +6824,7 @@ async def meta_prevedi_status(request: Request):
 
 @app.post("/meta-prevedi")
 async def meta_prevedi(request: Request):
-    """🔁 Prevedi znova (samo lastnik): podana SL besedila → vsi jeziki z izbranim Haiku (primerjava 5.5 / 4.5)."""
+    """🔁 Prevedi znova (samo lastnik): podana SL besedila → vsi jeziki z izbranim modelom (Haiku 5.5 / Sonnet 5.5)."""
     if not _owner_authorized(request):
         return JSONResponse({"error": "owner"}, status_code=403)
     body = await request.json()
@@ -7677,7 +7677,7 @@ async def generate_kreative(data: dict):
                 resp = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}",
                                      json=payload, headers={"Content-Type": "application/json"})
                 result = resp.json()
-                if resp.status_code != 200 and model_key != "pro" and model_id != GEMINI_FLASH_IMG_STARI:
+                if resp.status_code != 200 and GEMINI_FLASH_IMG_STARI and model_key != "pro" and model_id != GEMINI_FLASH_IMG_STARI:
                     print(f"[kreative] {model_id} napaka {resp.status_code}: {str(result)[:160]} — ponovim s {GEMINI_FLASH_IMG_STARI}")
                     model_id = GEMINI_FLASH_IMG_STARI
                     resp = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}",
@@ -7977,7 +7977,7 @@ async def localize_kreativa(data: dict):
             async with httpx.AsyncClient(timeout=120.0) as hc:
                 resp = await hc.post(api_url, json=payload, headers={"Content-Type": "application/json"})
                 result = resp.json()
-                if resp.status_code != 200 and _pm != GEMINI_FLASH_IMG_STARI:
+                if resp.status_code != 200 and GEMINI_FLASH_IMG_STARI and _pm != GEMINI_FLASH_IMG_STARI:
                     _pm = GEMINI_FLASH_IMG_STARI
                     resp = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/{_pm}:generateContent?key={gemini_key}",
                                          json=payload, headers={"Content-Type": "application/json"})
@@ -25223,7 +25223,7 @@ IMPORTANT:
 
         loop = asyncio.get_event_loop()
         message = await loop.run_in_executor(None, lambda: client.messages.create(
-            model="claude-sonnet-4-5",
+            model="claude-sonnet-4-6",   # centralni preklop → Sonnet 5.5 (rezerva 4.6); 4.5 se ukine 30. 11. 2026
             max_tokens=20000,
             messages=[{
                 "role": "user",
@@ -26998,7 +26998,7 @@ def _parse_ikonka_pdf(content: bytes) -> dict:
     pdf_b64 = base64.standard_b64encode(content).decode('utf-8')
 
     msg = client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-sonnet-4-6",   # centralni preklop → Sonnet 5.5 (rezerva 4.6); 4.5 se ukine 30. 11. 2026
         max_tokens=20000,
         messages=[{
             "role": "user",
