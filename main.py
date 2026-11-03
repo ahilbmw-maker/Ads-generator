@@ -33896,7 +33896,8 @@ SEMAFOR_MARKETS = ["SI", "HR", "RS", "HU", "CZ", "SK", "PL", "GR", "RO", "BG"]
 # Brez parametra = Maaarket (semafor_cpa.json) — Domov, Trend in Plan cen (luč trga) berejo samo Maaarket.
 import contextvars as _sem_cv
 _SEM_BRAND = _sem_cv.ContextVar("sem_brand", default="")
-SEMAFOR_BRANDS = {"silux": {"file": DATA_DIR / "semafor_silux.json", "markets": SEMAFOR_MARKETS + ["IT"]}}
+# Silux: brez RS (ni pod Suban d.o.o. — vrstica se ob vnosu preskoči), + IT (brez oglasov, dobiček šteje v skupno)
+SEMAFOR_BRANDS = {"silux": {"file": DATA_DIR / "semafor_silux.json", "markets": [m for m in SEMAFOR_MARKETS if m != "RS"] + ["IT"]}}
 
 
 def _sem_file():
