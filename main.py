@@ -4930,7 +4930,7 @@ def _rvc_parse(text: str) -> dict:
     """Parsira prilepljen RVC izpis. Ignorira stolpca Facebook in Google.
     Vrne {markets:[{trg,narocila,postnina,rvc_nar,skupaj}], total:{...}}."""
     import re as _re
-    chunks = _re.split(r'(?=Maaarket\.|SKUPAJ)', text or "", flags=_re.IGNORECASE)
+    chunks = _re.split(r'(?=Maaarket\.|Silux[\w-]*\.|SKUPAJ)', text or "", flags=_re.IGNORECASE)   # + Silux.SI, Silux-auto.IT (Semafor Silux)
     markets = []
     total = None
     for ch in chunks:
@@ -33892,12 +33892,37 @@ SEMAFOR_DEFAULT_FAILRATES = {
 }
 SEMAFOR_MARKETS = ["SI", "HR", "RS", "HU", "CZ", "SK", "PL", "GR", "RO", "BG"]
 
+# 🚦 Semafor po znamki (2026-11-03): ?brand=silux → svoja datoteka (posnetki, poraba FB/Google/Criteo, fail %, nastavitve).
+# Brez parametra = Maaarket (semafor_cpa.json) — Domov, Trend in Plan cen (luč trga) berejo samo Maaarket.
+import contextvars as _sem_cv
+_SEM_BRAND = _sem_cv.ContextVar("sem_brand", default="")
+SEMAFOR_BRANDS = {"silux": {"file": DATA_DIR / "semafor_silux.json", "markets": SEMAFOR_MARKETS + ["IT"]}}
+
+
+def _sem_file():
+    b = SEMAFOR_BRANDS.get(_SEM_BRAND.get())
+    return b["file"] if b else SEMAFOR_FILE
+
+
+def _sem_markets() -> list:
+    b = SEMAFOR_BRANDS.get(_SEM_BRAND.get())
+    return b["markets"] if b else SEMAFOR_MARKETS
+
+
+@app.middleware("http")
+async def _sem_brand_mw(request, call_next):
+    if request.url.path.startswith("/semafor-"):
+        b = (request.query_params.get("brand") or "").lower()
+        _SEM_BRAND.set(b if b in SEMAFOR_BRANDS else "")
+    return await call_next(request)
+
 
 def _semafor_load() -> dict:
     d = {}
     try:
-        if SEMAFOR_FILE.exists():
-            d = json.loads(SEMAFOR_FILE.read_text(encoding="utf-8"))
+        f = _sem_file()
+        if f.exists():
+            d = json.loads(f.read_text(encoding="utf-8"))
     except Exception as e:
         print(f"[semafor] load err: {e}")
     d.setdefault("snapshots", [])          # daily_snapshot — NESPREMENLJIVI zapisi
@@ -33912,10 +33937,20 @@ def _semafor_load() -> dict:
         d["settings"]["window_days"] = 1
         d["settings"]["day_mode"] = True
     d.setdefault("cpa_manual", {})         # {market: {cpa, updated_at}} — ročni vnos (točka 9)
-    d.setdefault("spend", [])              # dnevna poraba po trgu: {date, market, fb, google}
+    d.setdefault("spend", [])              # dnevna poraba po trgu: {date, market, fb, google, criteo (Silux)}
     # fail rate PO MESECIH: {"YYYY-MM": {market: {fail_rate, note, updated_at}}}
     # vsak mesec brez svoje vrednosti podeduje od zadnjega prejšnjega meseca, ki jo ima
     d.setdefault("fail_rates_by_month", {})
+    if _SEM_BRAND.get():
+        # Silux (2026-11-03, uporabnik): fail % (neprevzeti) zaenkrat iz Maaarket semaforja — samo branje
+        try:
+            mq = json.loads(SEMAFOR_FILE.read_text(encoding="utf-8")) if SEMAFOR_FILE.exists() else {}
+            for k in ("fail_rates", "fail_rates_by_month", "fail_lock"):
+                if k in mq:
+                    d[k] = mq[k]
+            d["fail_iz"] = "maaarket"
+        except Exception as e:
+            print(f"[semafor] fail % iz Maaarket: {e}")
     return d
 
 
@@ -33943,15 +33978,16 @@ def _failrate_for_month(d: dict, market: str, ym: str):
 
 
 def _semafor_save(d: dict):
-    tmp = SEMAFOR_FILE.with_suffix(".tmp")
+    f = _sem_file()
+    tmp = f.with_suffix(".tmp")
     tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, SEMAFOR_FILE)
+    os.replace(tmp, f)
 
 
 def _semafor_market_code(trg: str) -> str:
-    """Maaarket.si → SI. Prazno, če ni prepoznano."""
+    """Maaarket.si → SI, Silux-auto.IT → IT (Silux). Prazno, če ni prepoznano."""
     t = (trg or "").strip().lower()
-    for code in SEMAFOR_MARKETS:
+    for code in _sem_markets():
         if t.endswith("." + code.lower()) or t == code.lower():
             return code
     return ""
@@ -34000,22 +34036,21 @@ def _semafor_merge_snapshot_rows(rows: list) -> list:
 
 
 def _semafor_merge_spend_rows(rows: list) -> list:
-    """En trg = ena vrstica porabe (FB + Google seštet)."""
+    """En trg = ena vrstica porabe (FB + Google (+ Criteo) seštet). Vir, ki ga ni v nobeni vrstici, ostane izpuščen
+    (/semafor-spend ga ob prepisu prevzame iz obstoječega zapisa — npr. samo Criteo ne pobriše FB/Google)."""
     by, order = {}, []
     for r in rows or []:
         m = str((r or {}).get("market") or "").upper().strip()
-        if m not in SEMAFOR_MARKETS:
+        if m not in _sem_markets():
             continue
         if m not in by:
-            by[m] = {"market": m, "fb": 0.0, "google": 0.0}; order.append(m)
-        try:
-            by[m]["fb"] += float(r.get("fb") or 0)
-            by[m]["google"] += float(r.get("google") or 0)
-        except Exception:
-            pass
-    for m in order:
-        by[m]["fb"] = round(by[m]["fb"], 2)
-        by[m]["google"] = round(by[m]["google"], 2)
+            by[m] = {"market": m}; order.append(m)
+        for k in ("fb", "google", "criteo"):
+            if k in r and r.get(k) not in (None, ""):
+                try:
+                    by[m][k] = round(by[m].get(k, 0.0) + float(r.get(k) or 0), 2)
+                except Exception:
+                    pass
     return [by[m] for m in order]
 
 
@@ -34495,16 +34530,17 @@ async def semafor_data():
         if cleaned:
             print(f"[semafor] počiščenih podvojenih zapisov: {cleaned}")
             _semafor_save(d)
-    storage = {"path": str(SEMAFOR_FILE), "exists": SEMAFOR_FILE.exists(), "cleaned": cleaned,
-               "persistent": str(SEMAFOR_FILE).startswith("/data"), "size": 0, "mtime": None}
+    f = _sem_file()
+    storage = {"path": str(f), "exists": f.exists(), "cleaned": cleaned,
+               "persistent": str(f).startswith("/data"), "size": 0, "mtime": None}
     try:
-        if SEMAFOR_FILE.exists():
-            st = SEMAFOR_FILE.stat()
+        if f.exists():
+            st = f.stat()
             storage["size"] = st.st_size
             storage["mtime"] = _dt.fromtimestamp(st.st_mtime, tz=timezone.utc).astimezone(_lj_now().tzinfo).isoformat(timespec="seconds")
     except Exception as e:
         print(f"[semafor] stat err: {e}")
-    return {"ok": True, "storage": storage, **d}
+    return {"ok": True, "storage": storage, "brand": _SEM_BRAND.get() or "maaarket", "markets": _sem_markets(), **d}
 
 
 @app.post("/semafor-parse")
@@ -34622,7 +34658,9 @@ async def semafor_fail_normalize():
 async def semafor_failrate(data: dict):
     from datetime import datetime as _dt
     m = str((data or {}).get("market") or "").upper().strip()
-    if m not in SEMAFOR_MARKETS:
+    if _SEM_BRAND.get():
+        return {"ok": False, "error": "Fail % za Silux se bere iz Maaarket semaforja — uredi ga tam."}
+    if m not in _sem_markets():
         return {"ok": False, "error": "Neznan trg."}
     # mesec, na katerega se vpis nanaša (YYYY-MM). Če ni podan → globalni (staro obnašanje).
     ym = str((data or {}).get("month") or "").strip()[:7]
@@ -34637,7 +34675,7 @@ async def semafor_failrate(data: dict):
             if akc == "zakleni":
                 # zamrzni: trgi brez vpisa v tem mesecu dobijo podedovano vrednost zapisano v ta mesec (kasnejša sprememba prejšnjega meseca je ne spremeni)
                 mo = d.setdefault("fail_rates_by_month", {}).setdefault(ym, {})
-                for mk in SEMAFOR_MARKETS:
+                for mk in _sem_markets():
                     if (mo.get(mk) or {}).get("fail_rate") in (None, ""):
                         v = _failrate_for_month(d, mk, ym)
                         if v is not None:
@@ -34715,7 +34753,7 @@ async def semafor_cpa(data: dict):
     """Ročni vnos dejanskega CPA po trgu (točka 9 — dokler ni avtomatskega vira)."""
     from datetime import datetime as _dt
     m = str((data or {}).get("market") or "").upper().strip()
-    if m not in SEMAFOR_MARKETS:
+    if m not in _sem_markets():
         return {"ok": False, "error": "Neznan trg."}
     async with _semafor_lock:
         d = _semafor_load()
@@ -34754,17 +34792,23 @@ async def semafor_spend(data: dict):
         if conflicts and not force:
             return {"ok": False, "conflicts": conflicts,
                     "error": "Za ta datum poraba že obstaja: " + ", ".join(conflicts)}
+        stari = {x["market"]: x for x in d["spend"] if x["date"] == date and x["market"] in conflicts}
         if force and conflicts:
             d["spend"] = [x for x in d["spend"]
                           if not (x["date"] == date and x["market"] in conflicts)]
         now = _lj_now().isoformat(timespec="seconds")   # ljubljanski čas, ne UTC
         for r in rows:
             m = str(r.get("market") or "").upper()
-            if m not in SEMAFOR_MARKETS:
+            if m not in _sem_markets():
                 continue
-            d["spend"].append({"date": date, "market": m,
-                               "fb": float(r.get("fb") or 0), "google": float(r.get("google") or 0),
-                               "created_at": now})
+            st_ = stari.get(m) or {}
+            z = {"date": date, "market": m}
+            for k in ("fb", "google", "criteo"):   # vir, ki ni podan, ostane iz starega zapisa (Criteo ločeno od FB/Google)
+                v = r[k] if k in r else st_.get(k)
+                if v is not None or k != "criteo":
+                    z[k] = float(v or 0)
+            z["created_at"] = now
+            d["spend"].append(z)
         _semafor_dedupe(d)
         d["spend"].sort(key=lambda x: (x["date"], x["market"]))
         _semafor_save(d)
@@ -34802,7 +34846,7 @@ def _semafor_vision_prompt(kind: str) -> str:
                 "(stolpec Country / Država / Regija). Za vsako državo izvleci porabo "
                 "(Amount spent / Porabljeni znesek)." + _SEMAFOR_VISION_COMMON)
     return ("Na slikah je izpis iz Google Ads po računih. Ime računa je oblike 'Maaarket.si', "
-            "'Maaarket.bg' ipd. — koda trga je KONČNICA imena računa (.bg → BG). Za vsak račun "
+            "'Maaarket.bg', 'Silux.gr', 'Silux-auto.sk' ipd. — koda trga je KONČNICA imena računa (.bg → BG, .it → IT). Za vsak račun "
             "izvleci strošek (Cost / Stroški / Cena). Račune brez prepoznavne končnice izpusti."
             + _SEMAFOR_VISION_COMMON)
 
@@ -34896,7 +34940,7 @@ async def semafor_spend_vision(data: dict):
         if amt is None:
             continue
         label = str((r or {}).get("label") or "")
-        if code in SEMAFOR_MARKETS:
+        if code in _sem_markets():
             markets[code] = round(markets.get(code, 0.0) + amt, 2)
         else:
             skipped.append({"market": code or "?", "label": label, "amount": round(amt, 2)})

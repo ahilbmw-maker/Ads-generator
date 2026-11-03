@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-11-03 11:22</div>
+      <div class="sidebar-logo-sub">build 2026-11-03 13:24</div>
     </div>
   </div>
 
@@ -3354,7 +3354,11 @@ input[type="text"].error { border-color: var(--red) !important; }
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
           <div>
-            <div style="font-weight:800;font-size:15px">🚦 Semafor CPA po trgih</div>
+            <div style="font-weight:800;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">🚦 Semafor CPA po trgih
+              <span id="semBrandSw" style="display:inline-flex;border:1px solid var(--border);border-radius:999px;overflow:hidden;font-size:12px">
+                <button data-b="maaarket" onclick="semBrandSet('maaarket')" style="padding:4px 12px;border:none;cursor:pointer;font-weight:700;font-family:inherit">Maaarket</button>
+                <button data-b="silux" onclick="semBrandSet('silux')" style="padding:4px 12px;border:none;cursor:pointer;font-weight:700;font-family:inherit">Silux</button>
+              </span></div>
             <div style="font-size:11.5px;color:var(--text-secondary)">Mejni CPA, pri katerem je naročilo še dobičkonosno — iz shranjenih dnevnih posnetkov. Modul samo računa in prikazuje.</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">
@@ -3415,7 +3419,7 @@ input[type="text"].error { border-color: var(--red) !important; }
             <div id="semThumbs-fb" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
           </div>
           <div id="semPasteBox-google" tabindex="0" onclick="semPasteFocus('google')" onfocus="semPasteFocus('google')" ondragover="event.preventDefault();this.classList.add('akt')" ondragleave="this.classList.remove('akt')" ondrop="semImgDrop(event,'google')" class="sem-pb sem-pb-google">
-            <div class="sem-pb-t"><span style="font-size:20px">🔎</span> Google — poraba po Maaarket.xx računih</div>
+            <div class="sem-pb-t"><span style="font-size:20px">🔎</span> Google — poraba po <span class="semBrIme">Maaarket</span>.xx računih</div>
             <div class="sem-pb-s">klikni sem in prilepi (Ctrl+V) · končnica računa = trg · ali <span onclick="event.stopPropagation();semImgPick('google')" style="text-decoration:underline">izberi datoteke</span></div>
             <div id="semThumbs-google" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
           </div>
@@ -3424,13 +3428,22 @@ input[type="text"].error { border-color: var(--red) !important; }
         <input type="file" id="semImgInp-google" accept="image/*" multiple style="display:none" onchange="semImgFiles(this,'google')">
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;margin-top:10px">
           <button id="semVisionBtn" onclick="semVisionRun()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">🤖 Preberi slike</button>
-          <label>Datum <input id="semSpendDate" type="date" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"></label>
+          <label>Datum <input id="semSpendDate" type="date" oninput="semCriteoFill()" style="padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"></label>
           <span id="semSpendDateHint" style="font-size:11px;color:var(--text-tertiary)"></span>
           <button id="semSpendSaveBtn" onclick="semSpendSave(false)" style="display:none;padding:8px 16px;background:#12a35f;color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">💾 Potrdi datum in shrani</button>
           <button id="semSpendClearBtn" onclick="semSpendReset()" style="display:none;padding:8px 12px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;cursor:pointer;font-family:inherit">✕ Počisti</button>
           <span id="semSpendMsg" style="color:var(--text-secondary)"></span>
         </div>
         <div id="semSpendPrev" style="margin-top:10px;overflow-x:auto"></div>
+        <div id="semCriteoBox" style="display:none;margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);font-size:12px">
+          <b>🟠 Criteo</b> <span style="color:var(--text-tertiary)">— ročni vnos za datum zgoraj (samo HR in SI) · prišteje se k porabi; FB/Google ostaneta, kot sta</span>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px">
+            <label>HR € <input id="semCrHR" type="number" step="0.01" min="0" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"></label>
+            <label>SI € <input id="semCrSI" type="number" step="0.01" min="0" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit"></label>
+            <button onclick="semCriteoSave()" style="padding:7px 14px;background:#12a35f;color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">💾 Shrani Criteo</button>
+            <span id="semCrMsg" style="color:var(--text-secondary)"></span>
+          </div>
+        </div>
         <details style="margin-top:10px">
           <summary style="cursor:pointer;font-size:11.5px;color:var(--text-tertiary)">📄 Rezerva: uvoz iz CSV (FB export / Google performance report)</summary>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;margin-top:8px">
@@ -17263,7 +17276,43 @@ function recoDrawGraph(box, sku, sales, from, to) {
 // neprevzeti bi bili odbiti dvakrat (glej semafor-cpa-specifikacija.md, točka 2).
 let SEMD = null;
 let _semRows = null;   // predogled razčlenjenih vrstic
-const SEM_MARKETS = ['SI','HR','RS','HU','CZ','SK','PL','GR','RO','BG'];
+let SEM_MARKETS = ['SI','HR','RS','HU','CZ','SK','PL','GR','RO','BG'];   // Silux: + IT (iz /semafor-data → markets)
+// 🚦 Znamka (2026-11-03): Maaarket | Silux — Silux ima svojo shrambo (?brand=silux) in Criteo (ročno HR/SI, prišteje se h Google)
+let SEM_BRAND = (() => { try { return localStorage.getItem('sem_brand') === 'silux' ? 'silux' : 'maaarket'; } catch(e) { return 'maaarket'; } })();
+function semU(u){ return SEM_BRAND === 'silux' ? u + (u.includes('?') ? '&' : '?') + 'brand=silux' : u; }
+function semGL(){ return SEM_BRAND === 'silux' ? 'Google+Criteo' : 'Google'; }
+function semBrandUi(){
+  document.querySelectorAll('#semBrandSw button').forEach(b => { const on = b.dataset.b === SEM_BRAND;
+    b.style.background = on ? 'var(--accent)' : 'transparent'; b.style.color = on ? '#fff' : 'var(--text-secondary)'; });
+  document.querySelectorAll('.semBrIme').forEach(e => e.textContent = SEM_BRAND === 'silux' ? 'Silux' : 'Maaarket');
+  const cb = document.getElementById('semCriteoBox'); if (cb) cb.style.display = SEM_BRAND === 'silux' ? '' : 'none';
+}
+function semBrandSet(b){
+  if (b === SEM_BRAND) return;
+  SEM_BRAND = b; try { localStorage.setItem('sem_brand', b); } catch(e) {}
+  SEMD = null; _semRows = null;
+  ['semPreviewBox','semTableBox','semProfitBox'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
+  const sb = document.getElementById('semSaveBtn'); if (sb) sb.style.display = 'none';
+  try { semSpendReset(); } catch(e) {}
+  semBrandUi(); semLoad();
+}
+function semCriteoFill(){
+  if (SEM_BRAND !== 'silux' || !SEMD) return;
+  const ds = (document.getElementById('semSpendDate')||{}).value;
+  ['HR','SI'].forEach(m => { const el = document.getElementById('semCr'+m); if (!el || document.activeElement === el) return;
+    const p = (SEMD.spend||[]).find(x => x.date === ds && x.market === m); el.value = (p && p.criteo) ? p.criteo : ''; });
+}
+async function semCriteoSave(){
+  const date = document.getElementById('semSpendDate').value, msg = document.getElementById('semCrMsg');
+  if (!date){ msg.textContent = 'Izberi datum.'; return; }
+  const rows = ['HR','SI'].map(m => ({market:m, criteo: +(parseFloat(String(document.getElementById('semCr'+m).value||'0').replace(',','.')) || 0).toFixed(2)}));
+  try{
+    const d = await (await fetch(semU('/semafor-spend'), {method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({date, rows, force:true})})).json();   // force: FB/Google istega dne ostaneta (strežnik jih prevzame)
+    msg.textContent = d && d.ok ? '✓ Criteo shranjen za ' + date : '✗ ' + ((d && d.error) || 'napaka');
+    if (d && d.ok) semLoad();
+  }catch(e){ msg.textContent = '✗ ' + e.message; }
+}
 function semSgn(v){ return (v===null||v===undefined||isNaN(v)) ? '—' : (v>0?'+':'') + Number(v).toFixed(2).replace('.',',') + ' €'; }
 function semEur(v, dec){ return (v===null||v===undefined||isNaN(v)) ? '—' : Number(v).toFixed(dec===undefined?2:dec).replace('.',',') + ' €'; }
 // ═══ 📈 TREND (Analiza) — ali dvig cen (RVC/nar.) vleče tudi CPA ═══
@@ -17469,10 +17518,14 @@ async function trAiNova(){
 }
 async function semLoad(){
   try{
-    const r = await fetch('/semafor-data');
+    const r = await fetch(semU('/semafor-data'));
     const d = await r.json();
     if (!d || !d.ok) return;
+    if ((d.brand || 'maaarket') !== SEM_BRAND) return;   // med nalaganjem preklopljeno
+    if (Array.isArray(d.markets) && d.markets.length) SEM_MARKETS = d.markets;
+    (d.spend || []).forEach(p => { p.g_ads = p.google || 0; if (p.criteo) p.google = (p.google || 0) + p.criteo; });   // Silux: Criteo šteje kot del »Google+Criteo«
     SEMD = d;
+    semBrandUi(); semCriteoFill();
     const st = d.settings || {};
     const w = document.getElementById('semWin'); if (w) w.value = String(st.window_days || 7);
     const t = document.getElementById('semTarget'); if (t) t.value = st.target_contribution ?? 2.5;
@@ -17501,7 +17554,7 @@ async function semSaveSettings(){
     reserve: num('semReserve', 0)
   };
   try{
-    const r = await fetch('/semafor-settings', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r = await fetch(semU('/semafor-settings'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d = await r.json();
     if (d && d.ok){
       SEMD.settings = d.settings;
@@ -17519,7 +17572,7 @@ async function semPreview(){
   _semRows = null; btn.style.display = 'none'; box.innerHTML = '';
   if (!text.trim()){ msg.textContent = 'Prilepi izpis.'; return; }
   try{
-    const r = await fetch('/semafor-parse', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+    const r = await fetch(semU('/semafor-parse'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
     const d = await r.json();
     if (!d || !d.ok){ msg.textContent = '✗ ' + ((d && d.error) || 'napaka'); return; }
     _semRows = d.rows;
@@ -17541,7 +17594,7 @@ async function semSaveSnap(force){
   const date = document.getElementById('semDate').value;
   const msg = document.getElementById('semParseMsg');
   try{
-    const r = await fetch('/semafor-snapshot', {method:'POST',headers:{'Content-Type':'application/json'},
+    const r = await fetch(semU('/semafor-snapshot'), {method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify({date, rows:_semRows, force:!!force})});
     const d = await r.json();
     if (d && d.ok){
@@ -17632,7 +17685,7 @@ async function semFailZakleni(on){
   if (!confirm(on ? '🔒 Zaklenem ' + _semFailMonth + '?\n\nVse vrednosti tega meseca (tudi podedovane) se zamrznejo in jih ni več mogoče spremeniti. Izračuni za dneve tega meseca jih uporabljajo trajno.'
                   : '🔓 Odklenem ' + _semFailMonth + '? Vrednosti bo spet mogoče spreminjati.')) return;
   try{
-    const r = await fetch('/semafor-failrate', {method:'POST',headers:{'Content-Type':'application/json'}, body: JSON.stringify({market:'SI', month:_semFailMonth, akcija: on ? 'zakleni' : 'odkleni'})});
+    const r = await fetch(semU('/semafor-failrate'), {method:'POST',headers:{'Content-Type':'application/json'}, body: JSON.stringify({market:'SI', month:_semFailMonth, akcija: on ? 'zakleni' : 'odkleni'})});
     const d = await r.json();
     if (!d || !d.ok){ alert((d && d.error) || 'Napaka'); return; }
     SEMD.fail_lock = d.fail_lock || {}; SEMD.fail_rates_by_month = d.fail_rates_by_month || SEMD.fail_rates_by_month;
@@ -17643,7 +17696,7 @@ function semFailMonthSet(v){ _semFailMonth = (v||'').slice(0,7) || semFailMonthD
 async function semClearFail(m){
   if (!confirm('Odstranim vpisano vrednost za ' + m + ' v mesecu ' + _semFailMonth + '?\n\nTrg bo spet podedoval iz prejšnjega meseca.')) return;
   try{
-    const r = await fetch('/semafor-failrate',{method:'POST',headers:{'Content-Type':'application/json'},
+    const r = await fetch(semU('/semafor-failrate'),{method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify({market:m, month:_semFailMonth, fail_rate:'', clear:true})});
     const d = await r.json();
     if (d && d.ok){ SEMD.fail_rates_by_month = d.fail_rates_by_month || SEMD.fail_rates_by_month; semRenderFail(); if (typeof semRenderTable==='function') semRenderTable(); }
@@ -17656,7 +17709,7 @@ async function semSaveFail(m, btn){
   const frRound = Math.round(fr * 100) / 100;   // na 2 decimalki
   const note = document.getElementById('semFrN-' + m).value;
   try{
-    const r = await fetch('/semafor-failrate', {method:'POST',headers:{'Content-Type':'application/json'},
+    const r = await fetch(semU('/semafor-failrate'), {method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify({market:m, month:_semFailMonth, fail_rate:frRound, note,
         obdobje_od: (document.getElementById('semFrOd-' + m)||{}).value || '', obdobje_do: (document.getElementById('semFrDo-' + m)||{}).value || ''})});
     const d = await r.json();
@@ -17671,7 +17724,7 @@ async function semSaveFail(m, btn){
 }
 async function semSaveCpa(m, val){
   try{
-    const r = await fetch('/semafor-cpa', {method:'POST',headers:{'Content-Type':'application/json'},
+    const r = await fetch(semU('/semafor-cpa'), {method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify({market:m, cpa: val === '' ? '' : parseFloat(val)})});
     const d = await r.json();
     if (d && d.ok){ SEMD.cpa_manual = d.cpa_manual; semRenderTable(); }
@@ -17804,7 +17857,7 @@ async function semVisionRun(){
   const errs = [], oks = [];
   for (const k of kinds){
     try{
-      const r = await fetch('/semafor-spend-vision', {method:'POST',headers:{'Content-Type':'application/json'},
+      const r = await fetch(semU('/semafor-spend-vision'), {method:'POST',headers:{'Content-Type':'application/json'},
         body: JSON.stringify({kind:k, images:_semImgs[k].map(x => ({data:x.data, media_type:x.media_type}))})});
       const d = await r.json();
       if (!d || !d.ok){ errs.push((k==='fb'?'FB':'Google') + ': ' + ((d && d.error) || 'napaka')); continue; }
@@ -17907,7 +17960,7 @@ async function semSpendSave(force){
         + rows.reduce((a,b)=>a+b.google,0).toFixed(2) + ' €)')) return;
   }
   try{
-    const r = await fetch('/semafor-spend', {method:'POST',headers:{'Content-Type':'application/json'},
+    const r = await fetch(semU('/semafor-spend'), {method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify({date, rows, force:!!force})});
     const d = await r.json();
     if (d && d.ok){
@@ -18008,7 +18061,7 @@ async function semDayDelete(){
   if (!sn.length && !sp.length) return;
   if (!confirm('Pobrišem VSE zapise za ' + day + '?\n\nRVC posnetki: ' + sn.length + ' trgov\nPoraba: ' + sp.length + ' trgov\n\nUporabi, če je bil dan vnesen z napačnim datumom.')) return;
   try{
-    const r = await fetch('/semafor-delete-day', {method:'POST',headers:{'Content-Type':'application/json'},
+    const r = await fetch(semU('/semafor-delete-day'), {method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify({date:day, what:'both'})});
     const d = await r.json();
     if (d && d.ok) semLoad();
@@ -18111,7 +18164,7 @@ function semStatsRender(){
   const td = (t, st) => '<td style="padding:6px 8px;text-align:right;white-space:nowrap;' + (st||'') + '">' + t + '</td>';
   const head = '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:9.5px">'
     + th('Datum','left') + th('Naročil') + th('RVC') + th('RVC/nar') + th('Realni RVC') + th('Fail')
-    + th('📘 FB') + th('🔎 Google') + th('Poraba') + th('CPA') + th('POAS') + th('Dobiček') + th('Realni dobiček')
+    + th('📘 FB') + th('🔎 ' + semGL()) + th('Poraba') + th('CPA') + th('POAS') + th('Dobiček') + th('Realni dobiček')
     + th('⭐ Realni/nar') + th('Marža') + '</tr>';
   const body = rows.map(r => {
     const fail = div(r.rvc - r.real, r.rvc), cpa = div(r.spend, r.orders), poas = div(r.rvc, r.spend);
@@ -18151,7 +18204,7 @@ function semStatsCsv(){
   const rows = semStatsRows(); if (!rows.length) return;
   const num = v => (v==null || !isFinite(v)) ? '' : Number(v).toFixed(2).replace('.', ',');
   const div = (a,b) => (b>0) ? a/b : null;
-  const head = ['Datum','Naročil','RVC','RVC/nar','Realni RVC','Fail %','FB','Google','Poraba','CPA','POAS','Dobiček','Realni dobiček','Realni dobiček/naročilo'];
+  const head = ['Datum','Naročil','RVC','RVC/nar','Realni RVC','Fail %','FB',semGL(),'Poraba','CPA','POAS','Dobiček','Realni dobiček','Realni dobiček/naročilo'];
   const lines = [head.join(';')];
   rows.forEach(r => lines.push([r.date, r.orders, num(r.rvc), num(div(r.rvc,r.orders)), num(r.real),
     num(div(r.rvc-r.real, r.rvc)*100), num(r.fb), num(r.g), num(r.spend), num(div(r.spend,r.orders)),
@@ -18376,7 +18429,7 @@ function semRenderProfit(){
   if (!snaps.length || !spend.length){
     const miss = !snaps.length ? 'RVC posnetek' : 'poraba (FB + Google)';
     const have = !snaps.length
-      ? 'Poraba je shranjena: <b>' + eur0(spendSum) + '</b> (FB ' + eur0(fbSum) + ' · Google ' + eur0(gSum) + ')'
+      ? 'Poraba je shranjena: <b>' + eur0(spendSum) + '</b> (FB ' + eur0(fbSum) + ' · ' + semGL() + ' ' + eur0(gSum) + ')'
       : 'RVC je shranjen: <b>' + eur0(rvcSum) + '</b> · ' + ordSum + ' naročil · realni ' + eur0(realSum);
     box.innerHTML = '<div class="card" style="margin-bottom:12px;border-left:5px solid var(--border)">' + head
       + '<div style="font-size:19px;font-weight:800;color:var(--text-secondary);margin:6px 0 2px">⏳ manjka ' + miss + '</div>'
@@ -18421,9 +18474,9 @@ function semRenderProfit(){
   const tiles = [
     tile('POAS', poas==null?'—':nm(poas)+'×', 'realni <b>' + (poasReal==null?'—':nm(poasReal)+'×') + '</b> · prag 1,00×',
          poas==null?null:(poas>=1?'#12a35f':'#e5484d')),
-    tile('Poraba skupaj', eur(spendSum), 'FB ' + pctv((fbShare||0)*100,0) + ' · Google ' + pctv((1-(fbShare||0))*100,0)),
+    tile('Poraba skupaj', eur(spendSum), 'FB ' + pctv((fbShare||0)*100,0) + ' · ' + semGL() + ' ' + pctv((1-(fbShare||0))*100,0)),
     tile('📘 FB', eur(fbSum), plT(rows.filter(r=>r.fb>0).length)),
-    tile('🔎 Google', eur(gSum), plT(rows.filter(r=>r.g>0).length)),
+    tile('🔎 ' + semGL(), eur(gSum), plT(rows.filter(r=>r.g>0).length)),
     tile('RVC skupaj', eur(rvcSum), 'realni <b>' + eur(realSum) + '</b>'),
     tile('Naročil', String(ordSum), plT(rows.length) + ' · ' + posM + ' 🟢 / ' + negM + ' 🔴'),
     tile('CPA skupni', cpa==null?'—':eur(cpa), 'break-even ' + (beOrd==null?'—':eur(beOrd))
@@ -18449,7 +18502,7 @@ function semRenderProfit(){
     + '<tr style="color:var(--text-tertiary);text-transform:uppercase;font-size:10px">'
     + '<th style="text-align:left;padding:5px 8px">Trg</th><th style="text-align:right;padding:5px 8px">Naročil</th>'
     + '<th style="text-align:right;padding:5px 8px">RVC</th><th style="text-align:right;padding:5px 8px">FB</th>'
-    + '<th style="text-align:right;padding:5px 8px">Google</th><th style="text-align:right;padding:5px 8px">Poraba</th>'
+    + '<th style="text-align:right;padding:5px 8px">' + semGL() + '</th><th style="text-align:right;padding:5px 8px">Poraba</th>'
     + '<th style="text-align:right;padding:5px 8px">CPA</th><th style="text-align:right;padding:5px 8px">POAS</th>'
     + '<th style="text-align:right;padding:5px 8px">Fail</th>'
     + '<th style="text-align:right;padding:5px 8px">Dobiček</th><th style="text-align:right;padding:5px 8px">Realni</th></tr>'
