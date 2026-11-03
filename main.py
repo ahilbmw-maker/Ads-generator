@@ -37219,7 +37219,7 @@ async def _nl_obdelaj(nid: str):
                   **{k: b.get(k, "") for k in NL_BESEDILNA}}
             st_izp = len({m for m in re.findall(r"\{\{IZP(\d)_", p["html"])})
             izbrani = list({id(x): x for x in (najdi(vrstice[t], s) for s in kandidati)
-                            if x and str(x.get("sku") or "").upper() != sku.upper()}.values())[:st_izp]
+                            if x and not x.get("neuvoz") and str(x.get("sku") or "").upper() != sku.upper()}.values())[:st_izp]   # 🚫 ne uvažamo na trg (RS carina) → naslednji kandidat
             for i, x in enumerate(izbrani, 1):
                 xs_ = str(x.get("sku") or "").upper()
                 vr.update({f"IZP{i}_SLIKA": x.get("slika") or "", f"IZP{i}_URL": _nl_utm(x.get("url"), kamp),
@@ -37605,7 +37605,7 @@ async def _nl_dodaj_trge(nid: str, novi: list, obstojeci: list):
                   **{k: (iz_sl.get("vrednosti") or {}).get(k, "") for k in NL_BESEDILNA}}   # začasno SLO — prevod jih takoj zamenja
             st_izp = len({m for m in re.findall(r"\{\{IZP(\d)_", p["html"])})
             izbrani = list({id(x): x for x in (_nl_najdi(rows, s_) for s_ in kandidati)
-                            if x and str(x.get("sku") or "").upper() != sku.upper()}.values())[:st_izp]
+                            if x and not x.get("neuvoz") and str(x.get("sku") or "").upper() != sku.upper()}.values())[:st_izp]   # 🚫 ne uvažamo → naslednji kandidat
             for i, x in enumerate(izbrani, 1):
                 vr.update({f"IZP{i}_SLIKA": x.get("slika") or "", f"IZP{i}_URL": _nl_utm(x.get("url"), kamp),
                            f"IZP{i}_NAZIV": _nl_lepo_ime(x.get("naziv") or "")})
