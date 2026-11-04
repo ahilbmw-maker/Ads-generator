@@ -145,7 +145,8 @@
         <div style="flex:1;min-width:200px"><label class="l" style="margin-top:0">SKU-ji <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· vsak v svojo vrstico · za SKU lahko dodaš Asana povezavo do videov</span></label>
           <textarea class="f" id="sku" rows="3" placeholder="MULTIMINCER https://app.asana.com/…/task/1211103386362549&#10;PANMAX&#10;M322" style="font-weight:700;font-family:Consolas,monospace;font-size:13px" onchange="skuPreveri()"></textarea></div>
         <div style="display:flex;flex-direction:column;gap:6px;margin-top:22px"><button class="btn" onclick="skuPreveri()">🔎 Preveri</button>
-          <button class="btn" onclick="uvoziObrat()" title="Najbolje prodajani iz Analiza → Obrat 7 dni (FB) — variante združene v koren (M322_38 → M322)">📊 Uvozi po prodaji</button></div>
+          <button class="btn" onclick="uvoziObrat()" title="Najbolje prodajani iz Analiza → Obrat 7 dni (FB) — variante združene v koren (M322_38 → M322)">📊 Uvozi po prodaji</button>
+          <button class="btn" onclick="uvoziZaloga()" title="Veliko zaloge, razlika nad minimumom trga, v izvozu Mete ni porabe, sezona ni daleč (Urejevalnik cen → 📊 Obrat). Razvrščeno po zaklenjeni nabavni vrednosti.">📦 Uvozi po zalogi</button></div>
       </div>
       <div class="sub" id="skuInfo" style="margin-top:6px"></div>
       <label class="l">Trgi (ad seti) <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· klik = vključi / izključi · RS se zapomni po SKU (carina)</span></label>
@@ -275,6 +276,20 @@ async function uvoziObrat() {
   if (!n) return;
   OBRAT = Object.fromEntries(vsi);
   document.getElementById('sku').value = novi.slice(0, Math.min(60, n)).map(x => x[0]).join('\n');
+  await skuPreveri();
+}
+async function uvoziZaloga() {
+  const d = await api('/obrat-zaloga-kandidati');
+  if (!d || !d.ok) { msg('msgNov', (d && d.error) || 'Kandidatov ni bilo mogoče prebrati.', 'err'); return; }
+  if (!d.izvoz_do) { msg('msgNov', 'Najprej naloži izvoz kampanj: Urejevalnik cen → 📊 Obrat → 💸 Oglas, ni prodaje.', 'warn'); return; }
+  await stanje();
+  const nar = narejeniTip(), vVrsti = new Set(VRSTA().filter(x => x.status === 'caka' || x.status === 'v_delu').map(x => x.sku));
+  const vsi = d.items || [], novi = vsi.filter(x => !nar.has(x.sku) && !vVrsti.has(x.sku));
+  if (!novi.length) { msg('msgNov', '📒 Vsi kandidati so že narejeni ali v vrsti.', 'warn'); return; }
+  const n = parseInt(prompt('Veliko zaloge, brez oglasa v izvozu: ' + vsi.length + ' izdelkov · ' + (vsi.length - novi.length) + ' že narejenih / v vrsti izločenih · ostane ' + novi.length + ' novih.\n\nKoliko z največ zaklenjene nabavne vrednosti uvozim? (največ 60)', Math.min(30, novi.length)), 10);
+  if (!n) return;
+  OBRAT = Object.fromEntries(vsi.map(x => [x.sku, x.s30]));
+  document.getElementById('sku').value = novi.slice(0, Math.min(60, n)).map(x => x.sku).join('\n');
   await skuPreveri();
 }
 async function skuPreveri() {

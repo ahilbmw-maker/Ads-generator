@@ -155,7 +155,8 @@
         <div class="sub" style="margin-top:8px">Omrežja, jeziki, lokacija, Merchant in cilji se kopirajo iz izbrane kampanje. Začetek danes, status po izbiri ob izvozu.</div>
       </div>
       <div style="display:flex;align-items:flex-end;gap:8px"><label class="l" style="flex:1">SKU-ji <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· vsak v svojo vrstico ali ločeni z vejico</span></label>
-        <button class="btn sm" onclick="uvoziObrat()" title="Najbolje prodajani iz Analiza → Obrat 7 dni (FB) — variante združene v koren (M322_38 → M322), že narejeni na tem trgu skriti">📊 Uvozi po prodaji</button></div>
+        <button class="btn sm" onclick="uvoziObrat()" title="Najbolje prodajani iz Analiza → Obrat 7 dni (FB) — variante združene v koren (M322_38 → M322), že narejeni na tem trgu skriti">📊 Uvozi po prodaji</button>
+        <button class="btn sm" onclick="uvoziZaloga()" title="Veliko zaloge, razlika nad minimumom trga, v izvozu Mete ni porabe, sezona ni daleč (Urejevalnik cen → 📊 Obrat). Google tu ni upoštevan; že narejeni na tem trgu skriti.">📦 Uvozi po zalogi</button></div>
       <textarea class="f" id="skus" rows="7" placeholder="AQUABARRIER&#10;ORTOFEET&#10;VACUSTICK" oninput="skuInfo()"></textarea>
       <div class="skuInfo" id="skuInfo"></div>
       <div id="obratSez"></div>
@@ -290,7 +291,19 @@ function narejeniTrg() {   // 📒 že narejeni na izbranem trgu: evidenca + SKU
   return nar;
 }
 // 📊 Uvozi po prodaji (kot Meta Ads): Obrat 7 dni → koren SKU → že narejeni na trgu skriti → izbereš s kljukicami
-let OBRAT_SEZ = [], OBRAT_SKRITI = 0;
+let OBRAT_SEZ = [], OBRAT_SKRITI = 0, OBRAT_NASLOV = '📊 Po prodaji (Obrat 7 dni)';
+async function uvoziZaloga() {
+  const d = await api('/obrat-zaloga-kandidati');
+  if (!d || !d.ok) { msg('msg', (d && d.error) || 'Kandidatov ni bilo mogoče prebrati.', 'err'); return; }
+  if (!d.izvoz_do) { msg('msg', 'Najprej naloži izvoz kampanj: Urejevalnik cen → 📊 Obrat → 💸 Oglas, ni prodaje.', 'warn'); return; }
+  const nar = narejeniTrg(), vsi = d.items || [], novi = vsi.filter(x => !nar[x.sku]);
+  if (!novi.length) { msg('msg', '📒 Vsi kandidati so na ' + TRG.toUpperCase() + ' že narejeni.', 'warn'); return; }
+  const n = parseInt(prompt('Veliko zaloge, brez Meta oglasa v izvozu: ' + vsi.length + ' izdelkov · ' + (vsi.length - novi.length) + ' že narejenih na ' + TRG.toUpperCase() + ' skritih · ostane ' + novi.length + ' novih.\n\nKoliko z največ zaklenjene nabavne vrednosti prikažem? (največ 60)', Math.min(30, novi.length)), 10);
+  if (!n) return;
+  OBRAT_SKRITI = vsi.length - novi.length; OBRAT_NASLOV = '📦 Po zalogi (NC €)';
+  OBRAT_SEZ = novi.slice(0, Math.min(60, n)).map(x => ({ sku: x.sku, k: Math.round(x.nc), on: true }));
+  obratRisi(); obratVPolje();
+}
 async function uvoziObrat() {
   const d = await api('/analiza-obrat14-data');
   if (!d || !d.loaded || !(d.items || []).length) { msg('msg', 'V Analiza → Obrat 7 dni (FB) ni naloženih podatkov o prodaji.', 'err'); return; }
@@ -300,7 +313,7 @@ async function uvoziObrat() {
   if (!novi.length) { msg('msg', '📒 Vsi izdelki iz Obrata so na ' + TRG.toUpperCase() + ' že narejeni.', 'warn'); return; }
   const n = parseInt(prompt('Obrat 7 dni: ' + vsi.length + ' izdelkov (variante združene) · ' + (vsi.length - novi.length) + ' že narejenih na ' + TRG.toUpperCase() + ' skritih · ostane ' + novi.length + ' novih.\n\nKoliko najbolje prodajanih novih prikažem? (največ 60)', Math.min(30, novi.length)), 10);
   if (!n) return;
-  OBRAT_SKRITI = vsi.length - novi.length;
+  OBRAT_SKRITI = vsi.length - novi.length; OBRAT_NASLOV = '📊 Po prodaji (Obrat 7 dni)';
   OBRAT_SEZ = novi.slice(0, Math.min(60, n)).map(([sku, k]) => ({ sku, k, on: true }));
   obratRisi(); obratVPolje();
 }
@@ -309,7 +322,7 @@ function obratRisi() {
   if (!OBRAT_SEZ.length) { el.innerHTML = ''; return; }
   const on = OBRAT_SEZ.filter(x => x.on).length;
   el.innerHTML = '<div style="border:1px solid var(--bd);border-radius:10px;padding:8px 10px;margin-top:8px">' +
-    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><b style="font-size:12.5px">📊 Po prodaji (Obrat 7 dni)</b><span class="sub">' + on + ' / ' + OBRAT_SEZ.length + ' izbranih · ' + OBRAT_SKRITI + ' že narejenih skritih</span><span class="grow"></span>' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><b style="font-size:12.5px">' + OBRAT_NASLOV + '</b><span class="sub">' + on + ' / ' + OBRAT_SEZ.length + ' izbranih · ' + OBRAT_SKRITI + ' že narejenih skritih</span><span class="grow"></span>' +
     '<button class="btn sm ghost" onclick="OBRAT_SEZ.forEach(x=>x.on=true);obratRisi();obratVPolje()">✓ vse</button><button class="btn sm ghost" onclick="OBRAT_SEZ.forEach(x=>x.on=false);obratRisi();obratVPolje()">nič</button><button class="btn sm ghost" onclick="OBRAT_SEZ=[];obratRisi()" title="Zapri seznam (SKU-ji v polju ostanejo)">✕</button></div>' +
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px 10px;max-height:260px;overflow:auto">' +
     OBRAT_SEZ.map((x, i) => '<label style="display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer;opacity:' + (x.on ? 1 : .5) + '"><input type="checkbox"' + (x.on ? ' checked' : '') + ' onchange="OBRAT_SEZ[' + i + '].on=this.checked;obratRisi();obratVPolje()"><b style="font-family:Consolas,monospace">' + esc(x.sku) + '</b><span class="sub">' + x.k + '</span></label>').join('') +
