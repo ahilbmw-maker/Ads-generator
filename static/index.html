@@ -1087,7 +1087,7 @@ input[type="text"].error { border-color: var(--red) !important; }
     <div class="sidebar-logo-icon" style="background:transparent;padding:0;overflow:visible;width:28px;height:28px;"><img src="/static/suban-s-icon.png" alt="Suban" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <div>
       <div class="sidebar-logo-text">Suban<span style="color:#2563eb"> AI</span></div>
-      <div class="sidebar-logo-sub">build 2026-11-03 13:40</div>
+      <div class="sidebar-logo-sub">build 2026-11-04 17:43</div>
     </div>
   </div>
 
@@ -1169,6 +1169,7 @@ input[type="text"].error { border-color: var(--red) !important; }
   <div class="nav-sub" id="navsub-calc">
     <div class="nav-sub-item" onclick="switchPage('calc');switchCalcTab('pricecheck')">Price Checker</div>
     <div class="nav-sub-item" onclick="switchPage('calc');switchCalcTab('marza')">💶 Marža po trgih</div>
+    <div class="nav-sub-item" onclick="switchPage('calc');switchCalcTab('obrat')">📊 Obrat</div>
   </div>
 
   <div class="nav-item nav-analiza" id="nav-analiza" onclick="switchPage('analiza')">
@@ -1707,9 +1708,13 @@ input[type="text"].error { border-color: var(--red) !important; }
       <button class="calc-tab-btn" id="calcTab-marza" onclick="switchCalcTab('marza')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
         💶 Marža po trgih
       </button>
+      <button class="calc-tab-btn" id="calcTab-obrat" onclick="switchCalcTab('obrat')" style="padding:8px 16px;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+        📊 Obrat
+      </button>
     </div>
     <iframe id="calcFrame-pricecheck" data-src="/static/price_checker.html?v=20261013a" style="width:100%;height:calc(100vh - 7rem);border:none" allow="clipboard-write"></iframe>
     <iframe id="calcFrame-marza" data-src="/marza-trgi-stran?embed=1" style="width:100%;height:calc(100vh - 7rem);border:none;display:none" allow="clipboard-write"></iframe>
+    <iframe id="calcFrame-obrat" data-src="/obrat-plan-stran" style="width:100%;height:calc(100vh - 7rem);border:none;display:none" allow="clipboard-write"></iframe>
   </div>
 
   <!-- ═══ KREATIVE PAGE ═══ -->
@@ -6005,8 +6010,8 @@ document.addEventListener('keydown', e => {
   } catch (err) {}
 });
 function switchCalcTab(tab) {
-  if (tab !== 'marza') tab = 'pricecheck'; // Kalkulator odstranjen
-  ['pricecheck', 'marza'].forEach(t => {
+  if (tab !== 'marza' && tab !== 'obrat') tab = 'pricecheck'; // Kalkulator odstranjen
+  ['pricecheck', 'marza', 'obrat'].forEach(t => {
     const btn = document.getElementById('calcTab-' + t);
     const frame = document.getElementById('calcFrame-' + t);
     if (t === tab) {
@@ -17030,7 +17035,9 @@ function recoRender(d) {
     const trC = r.trend_dir === 'up' ? 'var(--green)' : (r.trend_dir === 'down' ? 'var(--red)' : 'var(--text-tertiary)');
     const trA = r.trend_dir === 'up' ? '↑' : (r.trend_dir === 'down' ? '↓' : '→');
     const wow = r.wow == null ? '' : ' · t/t ' + (r.wow>0?'+':'') + r.wow + '%';
-    const saleBadge = r.sale
+    const saleBadge = r.znizano
+      ? '<span style="background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px">⬇ Znižano</span>'
+      : r.sale
       ? '<span style="background:#ec4899;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px">🏷️ SALE</span>'
       : '';
     let saleTip = '';
@@ -17281,6 +17288,9 @@ let SEM_MARKETS = ['SI','HR','RS','HU','CZ','SK','PL','GR','RO','BG'];   // Silu
 let SEM_BRAND = (() => { try { return localStorage.getItem('sem_brand') === 'silux' ? 'silux' : 'maaarket'; } catch(e) { return 'maaarket'; } })();
 function semU(u){ return SEM_BRAND === 'silux' ? u + (u.includes('?') ? '&' : '?') + 'brand=silux' : u; }
 function semGL(){ return SEM_BRAND === 'silux' ? 'Google+Criteo' : 'Google'; }
+// Silux IT: brez oglasov (CPA = 0), fail 0 % (vse prepaid — nazaj pridejo samo reklamacije) → dobiček šteje v skupnem seštevku
+const SEM_BREZ_OGLASOV = {silux: ['IT']}, SEM_FAIL_FIKSNO = {silux: {IT: 0}};
+function semBrezOglasov(m){ return (SEM_BREZ_OGLASOV[SEM_BRAND] || []).includes(m); }
 function semBrandUi(){
   document.querySelectorAll('#semBrandSw button').forEach(b => { const on = b.dataset.b === SEM_BRAND;
     b.style.background = on ? 'var(--accent)' : 'transparent'; b.style.color = on ? '#fff' : 'var(--text-secondary)'; });
@@ -18113,6 +18123,7 @@ function _effectiveFailRates(ym){
     }
     if(val!=null) out[m] = {fail_rate: val, note};
   });
+  Object.entries(SEM_FAIL_FIKSNO[SEM_BRAND] || {}).forEach(([m, v]) => { if (!out[m]) out[m] = {fail_rate: v, note: 'prepaid'}; });
   return out;
 }
 function semStatsRows(){
@@ -18140,7 +18151,7 @@ function semStatsRows(){
     });
     sp.forEach(p => { fb += p.fb||0; g += p.google||0; });
     const spend = fb + g;
-    return {date, markets:sn.length, spendMarkets:sp.length, orders, rvc, gross, real, fb, g, spend,
+    return {date, markets:sn.length, spendMarkets:sp.length + sn.filter(x => semBrezOglasov(x.market) && !sp.some(q => q.market === x.market)).length, orders, rvc, gross, real, fb, g, spend,
             profit: rvc - spend, realProfit: real - spend, noFail,
             hasSnap: sn.length>0, hasSpend: sp.length>0};
   });
@@ -18421,7 +18432,7 @@ function semRenderProfit(){
     } else noSnap.push(m);
     const a = p ? (p.fb || 0) : 0, b = p ? (p.google || 0) : 0;
     rvcSum += rvcT; realSum += realT; fbSum += a; gSum += b; ordSum += orders; grossSum += grossT;
-    rows.push({m, orders, rvcT, realT, sp:a+b, fb:a, g:b, fail:f, noSnap:!s, noSpend:!p});
+    rows.push({m, orders, rvcT, realT, sp:a+b, fb:a, g:b, fail:f, noSnap:!s, noSpend:!p && !semBrezOglasov(m)});
   });
   const spendSum = fbSum + gSum, profit = rvcSum - spendSum, real = realSum - spendSum;
 
@@ -18604,9 +18615,10 @@ function semCompute(){
       spOrd += (snap.orders || 0);
       spDays++;
     }
-    const autoCpa = (spOrd > 0 && spSum > 0) ? spSum / spOrd : null;
+    const brez = !spSum && semBrezOglasov(m);                  // Silux IT: ne oglašujemo → CPA 0
+    const autoCpa = (spOrd > 0 && spSum > 0) ? spSum / spOrd : (brez ? 0 : null);
     const cpa = cpaE ? cpaE.cpa : autoCpa;                    // ročni vnos ima prednost
-    const cpaSrc = cpaE ? 'ročno' : (autoCpa != null ? 'auto ' + spDays + 'd' : '');
+    const cpaSrc = cpaE ? 'ročno' : (brez ? 'brez oglasov' : (autoCpa != null ? 'auto ' + spDays + 'd' : ''));
     rows.push({market:m, days:new Set(ms.map(x=>x.date)).size, orders:ordSum, rvc, rvcB, fail, beGross, fixed:fixedC, be, target, down, cpa, cpaSrc});
   }
   const maxBE = Math.max(...rows.filter(r=>r.be!=null).map(r=>r.be), -Infinity);
@@ -20960,6 +20972,10 @@ document.addEventListener('DOMContentLoaded', () => {
 let _zalogaData = [];
 let _zalExtraPos = {};   // sku → [dodatne lokacije] (backup zaloga)
 let _zalSale = new Set(); // SKU-ji (UPPER) z oznako SALE (razprodaja/znižano)
+let _zalZn = {};   // ⬇ Znižano (Obrat / Plan cen): {SKU zaloge: [zapisi po trgih]}
+function _zalZnTag(sku){ const k = String(sku||'').trim().toUpperCase(), a = _zalZn[k] || _zalZn[k.split('_').slice(0,-1).join('_')]; if (!a) return '';
+  const tit = a.map(z => String(z.trg||'').toUpperCase() + ' ' + String(z.at||'').slice(0,10) + ': ' + z.prej + ' → ' + z.potem + ' ' + (z.cur||'') + ' — ' + (z.razlog||'')).join('\n');
+  return '<span title="' + esc(tit) + '" style="flex-shrink:0;background:#dc2626;color:#fff;font-size:10px;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;cursor:help">⬇ Znižano ' + a.length + ' trg.</span>'; }
 let _pozChanged = new Set();   // SKU-ji s SPREMENJENO pozicijo (za pošiljanje samo sprememb v siluxar)
 let _zalogaSortCol = 'stock';
 let _zalogaSortDir = -1; // -1 = desc (največ zaloge najprej)
@@ -21227,6 +21243,10 @@ async function zalogaLoad() {
       const ed = await er.json();
       _zalExtraPos = (ed && ed.ok && ed.extra) ? ed.extra : {};
     } catch(e) { _zalExtraPos = {}; }
+    try {   // ⬇ Znižano
+      const zd = await (await fetch('/cene-znizano')).json(); _zalZn = {};
+      Object.values((zd && zd.znizano) || {}).forEach(z => { const k = String(z.sku_zal || z.sku || '').toUpperCase(); (_zalZn[k] = _zalZn[k] || []).push(z); });
+    } catch(e) { _zalZn = {}; }
     // naloži SALE oznake
     try {
       const sr = await fetch('/zaloga-sale');
@@ -21717,7 +21737,7 @@ function zalogaRender() {
       + '<span class="zal-c-id" style="color:var(--text-tertiary);font-size:11px">' + esc(it.product_id||'—') + '</span>'
       + '<div class="zal-c-sku" style="display:flex;align-items:center;gap:6px;overflow:hidden">'
       + '<span style="font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:90px;font-size:14px" title="' + esc(it.product_sku) + '">' + esc(it.product_sku||'—') + '</span>'
-      + ((it.warehouse||'').trim().toLowerCase() === 'silux2' ? '<span class="zal-tag-sklad2">🏬 Skladišče2</span>' : '')
+      + ((it.warehouse||'').trim().toLowerCase() === 'silux2' ? '<span class="zal-tag-sklad2">🏬 Skladišče2</span>' : '') + _zalZnTag(it.product_sku)
       + '<button class="zal-c-copy" onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(it.product_sku||'') + '\').then(()=>{this.textContent=\'✓ Kopirano\';this.style.background=\'var(--green)\';this.style.color=\'#fff\';this.style.borderColor=\'var(--green)\';setTimeout(()=>{this.textContent=\'📋 Kopiraj\';this.style.background=\'\';this.style.color=\'\';this.style.borderColor=\'\'},1500)})" title="Kopiraj SKU" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;transition:all 0.1s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.color=\'var(--accent)\'" onmouseout="if(this.textContent!==\'✓ Kopirano\'){this.style.borderColor=\'\';this.style.color=\'\'}">📋 Kopiraj</button>'
       + '<button class="zal-c-sale zaloga-mobile-hide" onclick="event.stopPropagation();zalToggleSale(\'' + esc((it.product_sku||'').replace(/'/g,"\\'")) + '\',this)" title="' + (_isSale ? 'Odstrani SALE oznako' : 'Označi kot SALE (razprodaja/znižano)') + '" style="flex-shrink:0;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;' + (_isSale ? 'background:#ec4899;border:1px solid #ec4899;color:#fff' : 'background:var(--surface2);border:1px solid var(--border);color:var(--text-tertiary)') + '">🏷 SALE</button>'
       + '<button class="zal-c-graf zaloga-mobile-hide" onclick="event.stopPropagation();zalToggleGraf(\'' + esc((it.product_sku||'').replace(/'/g,"\\'")) + '\',\'' + esc((it.title||'').replace(/'/g,"\\'")) + '\',this)" title="Graf prodaje + priporočilo cene" style="flex-shrink:0;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;padding:3px 8px;white-space:nowrap;font-family:DM Sans,sans-serif;background:var(--surface2);border:1px solid var(--border);color:var(--accent)">📈 Graf</button>'
