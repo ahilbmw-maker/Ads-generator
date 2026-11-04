@@ -650,6 +650,17 @@ setInterval(() => loadCmsLog(true), 60000);   // vsako minuto (tudi urejanja dru
 let _pcDanes = {};
 async function loadDanes() { try { const d = await (await fetch('/cene-danes-seznam', { cache: 'no-store' })).json(); if (d.ok) _pcDanes = d.danes || {}; } catch (e) {} }
 loadDanes(); setInterval(loadDanes, 60000);
+// ⬇ Znižano + ⏳ testno obdobje (spusti iz 📊 Obrat / Plana cen po obratu): 14 dni teče meritev učinka → pred spremembo opozorilo
+let _pcZn = {};
+async function loadZnizano(rerender) { try { const d = await (await fetch('/cene-znizano', { cache: 'no-store' })).json(); if (d.ok) { const ch = JSON.stringify(d.znizano || {}) !== JSON.stringify(_pcZn); _pcZn = d.znizano || {}; if (rerender && ch && typeof renderTable === 'function' && allRows && allRows.length) renderTable(allRows); } } catch (e) {} }
+loadZnizano(false); setInterval(() => loadZnizano(true), 60000);
+function _pcZnZa(trg, pid) { if (trg !== '*') return _pcZn[trg + '|' + pid] || null; return Object.values(_pcZn).find(z => String(z.cms_id) === String(pid)) || null; }
+function _pcD(t) { const q = new Date(t); return q.getDate() + '. ' + (q.getMonth() + 1) + '.'; }
+function _pcTest(trg, pid) { const z = _pcZnZa(trg, pid); if (!z || !z.at) return null; const t0 = new Date(z.at).getTime(); return Date.now() - t0 < 14 * 864e5 ? { od: _pcD(t0), do: _pcD(t0 + 14 * 864e5) } : null; }
+function _pcZnTag(trg, pid) { const z = _pcZnZa(trg, pid); if (!z) return '';
+  return ' <span title="' + escHtml('Znižano ' + _pcD(z.at) + ': ' + z.prej + ' → ' + z.potem + ' ' + (z.cur || '') + ' — ' + (z.razlog || '')) + '" style="display:inline-block;background:#dc2626;color:#fff;font-size:10.5px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap;cursor:help">⬇ Znižano ' + _pcD(z.at) + (_pcTest(trg, pid) ? ' ⏳' : '') + '</span>'; }
+function _pcTestPotrdi(a) { const t = a.filter(x => _pcTest(x.trg, x.cms_id)); if (!t.length) return true;
+  return confirm('⏳ ' + t.length + ' izdelkov je v testnem obdobju:\n\n' + t.slice(0, 15).map(x => { const q = _pcTest(x.trg, x.cms_id); return '• ' + x.sku + (x.trg !== '*' ? ' (' + x.trg.toUpperCase() + ')' : '') + ': znižano ' + q.od + ', merjenje do ' + q.do; }).join('\n') + (t.length > 15 ? '\n… in še ' + (t.length - 15) : '') + '\n\nSprememba zdaj prekine meritev učinka. Vseeno spremenim?'); }
 function _cmsBadge(pid) {
   const L = _cmsRecent(pid); if (!L.length) return '';
   const e = L[0], done = L.some(x => x.done_at);
@@ -670,6 +681,7 @@ function _pcCmsLog(a, ev) {
     const msg = 'Ta izdelek je bil nedavno že odprt v CMS:\n\n' + L.map(x => '• ' + (x.done_at ? '✓ označeno ' + _fmtT(x.done_at) : '✎ odprto ' + _fmtT(x.opened_at)) + ' — ' + _cmsVir(x)).join('\n') + '\n\nVseeno odprem CMS?';
     if (!confirm(msg)) { if (ev) ev.preventDefault(); return false; }
   }
+  if (!_pcTestPotrdi([{ trg, cms_id: pid, sku: a.dataset.pcSku }])) { if (ev) ev.preventDefault(); return false; }
   try {
     fetch('/cms-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
       body: JSON.stringify({ akcija: 'open', cms_id: pid, trg, sku: a.dataset.pcSku, vir: 'Price Checker' }) });
@@ -733,7 +745,7 @@ function skuHtml(sku, row) {
   }
   if (!pid) return escHtml(s) + saleBadge + recoBadge;
   const url = MAAARKET_BASE + encodeURIComponent(pid) + (_pcTrg(row) === 'sl' ? '/edit' : '?tab=vsebina');   // SLO: cena na samem izdelku
-  return `<a href="${url}" target="_blank" rel="noopener" data-pc-cms="${escHtml(String(pid))}" data-pc-sku="${escHtml(s)}" data-pc-trg="${_pcTrg(row)}" onclick="event.stopPropagation();return _pcCmsLog(this,event)" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>` + _cmsBadge(pid) + saleBadge + recoBadge;
+  return `<a href="${url}" target="_blank" rel="noopener" data-pc-cms="${escHtml(String(pid))}" data-pc-sku="${escHtml(s)}" data-pc-trg="${_pcTrg(row)}" onclick="event.stopPropagation();return _pcCmsLog(this,event)" title="Odpri v maaarket adminu (ID ${pid})" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)" onmouseover="this.style.borderBottomStyle='solid'" onmouseout="this.style.borderBottomStyle='dotted'">${escHtml(s)}</a>` + _cmsBadge(pid) + _pcZnTag(_pcTrg(row), String(pid)) + saleBadge + recoBadge;
 }
 // majhen helper za varen izpis SKU (SKU-ji so interni, a vseeno)
 function escHtml(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -3315,6 +3327,7 @@ async function pcDvigniCms(){
     items = items.filter(x => !bl[x.trg + '|' + x.cms_id]);
     if (!items.length) return;
   }
+  if (!_pcTestPotrdi(items)) return;
   const trgi = [...new Set(items.map(x => x.trg))];
   const STEP = { EUR:'+1 €', CZK:'+5 Kč', PLN:'+5 zł', RON:'+5 lei', HUF:'+100 Ft', RSD:'+100 din' };
   const kor = [...new Set(items.map(x => STEP[String(x.valuta || 'EUR').toUpperCase()] || '+1'))].join(' · ');

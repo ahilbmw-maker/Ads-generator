@@ -3251,6 +3251,8 @@ async function poslji(){
   const iz=vSku(POGLED).flatMap(g=>vTrgi(g,POGLED).filter(e=>e.stanje==='predlog'&&IZB.has(kl(e))).map(e=>({e,g})));
   if(!iz.length){ alert('Ni izbranih cen.'); return; }
   const po={}; iz.forEach(({e})=>{po[e.trg]=(po[e.trg]||0)+1;});
+  const test=iz.filter(({e})=>e.zn&&e.zn.at&&Date.now()-new Date(e.zn.at)<14*864e5);
+  if(test.length&&!confirm('⏳ '+test.length+' cen je v testnem obdobju (znižano v zadnjih 14 dneh):\n\n'+test.slice(0,15).map(({e})=>'• '+e.sku+' ('+oz(e.trg)+'): znižano '+dat(e.zn.at)).join('\n')+(test.length>15?'\n… in še '+(test.length-15):'')+'\n\nSprememba zdaj prekine meritev učinka. Vseeno nadaljujem?')) return;
   if(!confirm('✓ Pošljem '+iz.length+' cen v vrsto?\n\n'+Object.entries(po).map(([t,c])=>oz(t)+': '+c).join(' · ')+'\n\nVtičnik jih nastavi, ko je v panelu vklopljeno »▶ Izvajaj vrsto«.'+(POGLED!=='gor'?'\nZnižani izdelki dobijo oznako ⬇ Znižano z razlogom.':''))) return;
   try{
     const r=await (await fetch('/cene-vrsta/dodaj',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:iz.map(({e,g})=>({trg:e.trg,cms_id:e.cms_id,g_id:e.g_id,sku:e.sku,sku_zal:g.sku,naziv:e.naziv,cur:e.cur,stara:e.c,nova:izr(e).pred,ref:e.ref,razlog:e.smer!=='gor'?e.razlog:''}))})})).json();
@@ -14810,6 +14812,12 @@ async function load(){
 // ═══ 📊 SIGNAL CENE IZ OBRATA (faza 2) — samo prikaz, cen ne spreminja ═══
 // dnevi zaloge = zaloga / (½ Ø7 + ½ Ø28) · < OBR_NIZKO dni → dvig · > OBR_VISOKO → spust (razen razlika < 7 €) · trend 28 dni · sezona ročno
 let ZNIZ = {};   // ⬇ Znižano: {trg|cms_id: {at, prej, potem, razlog …}}
+// ⏳ testno obdobje: 14 dni po spustu (oznaka ⬇ Znižano) teče meritev v 📈 Učinku → pred ročno spremembo opozorilo, uporabnik lahko vseeno potrdi
+const TEST_DNI = 14;
+function testnoInfo(x){ const z=ZNIZ[trg+'|'+x.cms_id]; if(!z||!z.at) return null; const t0=new Date(z.at).getTime(), d=Math.floor((Date.now()-t0)/864e5); if(d>=TEST_DNI) return null;
+  const f=t=>{const q=new Date(t);return q.getDate()+'. '+(q.getMonth()+1)+'.';}; return {od:f(t0),do:f(t0+TEST_DNI*864e5)}; }
+function testnoPotrdi(xs){ const a=xs.map(x=>[x,testnoInfo(x)]).filter(q=>q[1]); if(!a.length) return true;
+  return confirm('⏳ '+a.length+' izdelkov je v testnem obdobju:\n\n'+a.slice(0,15).map(([x,t])=>'• '+String(x.sku||'').toUpperCase()+' ('+String(trg).toUpperCase()+'): znižano '+t.od+', merjenje do '+t.do).join('\n')+(a.length>15?'\n… in še '+(a.length-15):'')+'\n\nSprememba zdaj prekine meritev učinka. Vseeno spremenim?'); }
 function obrRazMin(){ return (OBR&&OBR.raz_min&&OBR.raz_min[trg])||OBR_RAZ_MIN; }   // minimum razlike trga po return rate (Semafor)
 function znTag(x){ const z=ZNIZ[trg+'|'+x.cms_id]; if(!z) return ''; const d=String(z.at||'').slice(0,10).split('-'), dd=d.length===3?(+d[2])+'. '+(+d[1])+'.':'';
   return ' <span title="'+esc('Znižano '+dd+': '+z.prej+' → '+z.potem+' '+(z.cur||'')+(z.koraki>1?' · '+z.koraki+'. spust':'')+' — '+(z.razlog||''))+'" style="display:inline-block;background:#dc2626;color:#fff;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap;cursor:help">⬇ Znižano '+dd+'</span>'; }
@@ -15686,6 +15694,7 @@ function planCsv() {
 async function planVVrsto() {
   const iz = PLAN.predlogi.filter(p => PLAN.izbrani.has(p.x.g_id));
   if (!iz.length) { alert('Ni potrjenih predlogov.'); return; }
+  if (!testnoPotrdi(iz.filter(p => !p.dec).map(p => p.x))) return;
   if (!confirm('✓ Pošljem ' + iz.length + ' cen (' + String(trg).toUpperCase() + ') v vrsto?\n\nVtičnik jih bo nastavil po 5 hkrati, ko je v panelu vklopljeno »▶ Izvajaj vrsto« (Chrome mora biti odprt in prijavljen v CMS).\nVsak izdelek dobi TOČNO planirano ceno — če je cena v CMS medtem drugačna, ga preskoči (⚠).')) return;
   try {
     const r = await (await fetch('/cene-vrsta/dodaj', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -15932,6 +15941,7 @@ async function paketCmsVarno(){
       +(SEL.size?'\n\nNadaljujem z ostalimi ('+SEL.size+').':'\n\nNi ostalih izbranih.'));
     if(!SEL.size) return;
   }
+  if(!testnoPotrdi((D&&D.rows||[]).filter(x=>SEL.has(x.g_id)&&x.cms_id))) return;
   paketCms();
 }
 async function paketCms(){
@@ -16026,6 +16036,7 @@ document.addEventListener('click',e=>{
   const a=e.target.closest('a[data-cms]');
   if(a){const x=D&&D.rows[+a.dataset.cms]; if(!x) return;
     const op=cmsOpozorilo(x); if(op && !confirm(op)){e.preventDefault(); return;}
+    if(!testnoPotrdi([x])){e.preventDefault(); return;}
     cmsLog(x,'open'); x.cms={st:'odprto',trg,opened_at:new Date().toISOString(),vir:BATO?'Bato cene':'Marža po trgih'}; setTimeout(render,300); return;}
   const cb=e.target.closest('input.selcb');
   if(cb){ selClick(cb,e); return; }
