@@ -3105,9 +3105,9 @@ async def obrat_plan_stran(request: Request):
   tr.dv.iz td{background:#eef2ff}
   tr.dv.iz td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
   tr.dv0 td{color:var(--txt3)}
-  td.prod{background:#f0f6ff;padding:6px 10px;width:32%}
-  .prw{display:flex;align-items:center;justify-content:flex-end;gap:12px}
-  .graf{flex:1 1 150px;min-width:150px;height:38px;display:block}
+  td.prod{background:#f0f6ff;padding:6px 10px;width:1%}
+  .prw{display:flex;align-items:center;justify-content:flex-end;gap:10px}
+  .graf{flex:none;width:150px;height:34px;display:block}
   .prt{flex:none;text-align:right;white-space:nowrap;line-height:1.25}
   .prt b{font-size:17px}
   .pb{height:4px;border-radius:99px;background:#eef0f3;overflow:hidden;margin-top:3px}
@@ -3312,16 +3312,16 @@ function risiTabelo(ohrani){
     stran(G,vrHtml)+'</table>'+vecHtml(G):'<div class="note">V tem pogledu ni izdelkov. Preveri filtre zgoraj.</div>');
   risiBar(); vecOpazuj();
 }
-function prodGraf(d,smer){   // 60 dni: stolpci + črta (drseče povprečje 7 dni); SVG se raztegne na širino stolpca
-  const ma=d.map((_,i)=>{ const a=d.slice(Math.max(0,i-6),i+1); return a.reduce((p,q)=>p+q,0)/a.length; });
-  const mx=Math.max(1,...d,...ma), H=38, y=v=>H-v/mx*(H-2);
-  const pot=a=>a.map(i=>d[i]>0?'M'+(i+.12).toFixed(2)+' '+H+'V'+Math.min(H-.7,y(d[i])).toFixed(1)+'h.76V'+H+'z':'').join('');
-  const ks={z:'#16a34a',m:'#dc2626',e:'#64748b'}[smer], idx=[...Array(60).keys()];
-  return '<svg class="graf" viewBox="0 0 60 '+H+'" preserveAspectRatio="none" aria-hidden="true"><path d="'+pot(idx.slice(0,53))+'" fill="#c3d5ee"/><path d="'+pot(idx.slice(53))+'" fill="'+ks+'"/>'+
+function prodGraf(d,smer){   // zadnjih 30 dni (kot številka ob grafu): stolpci + črta (povprečje 7 dni, računano tudi iz dni pred grafom); SVG se raztegne na širino stolpca
+  const zac=d.length-30, dni=d.slice(zac), ma=dni.map((_,i)=>{ const a=d.slice(Math.max(0,zac+i-6),zac+i+1); return a.reduce((p,q)=>p+q,0)/a.length; });
+  const mx=Math.max(1,...dni,...ma), H=38, y=v=>H-v/mx*(H-2);
+  const pot=a=>a.map(i=>dni[i]>0?'M'+(i+.12).toFixed(2)+' '+H+'V'+Math.min(H-.7,y(dni[i])).toFixed(1)+'h.76V'+H+'z':'').join('');
+  const ks={z:'#16a34a',m:'#dc2626',e:'#64748b'}[smer], idx=[...Array(30).keys()];
+  return '<svg class="graf" viewBox="0 0 30 '+H+'" preserveAspectRatio="none" aria-hidden="true"><path d="'+pot(idx.slice(0,23))+'" fill="#c3d5ee"/><path d="'+pot(idx.slice(23))+'" fill="'+ks+'"/>'+
     '<polyline points="'+ma.map((v,i)=>(i+.5)+','+y(v).toFixed(1)).join(' ')+'" fill="none" stroke="#1e3a8a" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>'; }
 function prodTd(g){ const d=g.d60, vs=(a,b)=>d.slice(a,b).reduce((p,q)=>p+q,0), n7=d?vs(53,60):null, p7=d?vs(46,53):null, smer=n7==null||n7===p7?'e':n7>p7?'z':'m';
   const ted=d?[...Array(8).keys()].map(i=>vs(60-7*(8-i),60-7*(7-i))).join(', '):'';
-  const tit='Stolpci: prodaja po dnevih, zadnjih 60 dni (zadnjih 7 dni obarvanih). Črta: povprečje 7 dni. Zadnjih 30 dni: '+n(g.s30,0)+(g.s30_prej==null?'':' · prejšnjih 30 dni: '+n(g.s30_prej,0))+(d?' · po tednih: '+ted:'')+' · skupna prodaja vseh trgov';
+  const tit='Stolpci: prodaja po dnevih, zadnjih 30 dni (zadnjih 7 dni obarvanih). Črta: povprečje 7 dni. Zadnjih 30 dni: '+n(g.s30,0)+(g.s30_prej==null?'':' · prejšnjih 30 dni: '+n(g.s30_prej,0))+(d?' · po tednih: '+ted:'')+' · skupna prodaja vseh trgov';
   return '<td class="prod" title="'+esc(tit)+'"><div class="prw">'+(d?prodGraf(d,smer):'')+'<div class="prt"><b>'+n(g.s30,0)+'</b>'+(g.s30_prej==null?'':' <span class="dim">prej '+n(g.s30_prej,0)+'</span>')+
     (d?'<div class="dim">7 d: <b style="font-size:13px" class="'+(smer==='z'?'up':smer==='m'?'dn':'')+'">'+n(n7,0)+'</b> · prej '+n(p7,0)+'</div>':'')+'</div></div></td>'; }
 function vrHtml(g,brezDet){const tr=vTrgi(g,POGLED), od=ODPRT.has(g.sku)&&!brezDet;
