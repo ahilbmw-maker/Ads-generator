@@ -3025,11 +3025,8 @@ async def obrat_plan_stran(request: Request):
   :root{--bg:#f4f5f7;--card:#fff;--bd:#e3e6eb;--txt:#16181d;--txt2:#5d6470;--txt3:#9aa1ad;--acc:#4f46e5;--dol:#dc2626;--gor:#15803d}
   body{font-family:'DM Sans',-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--txt);padding:16px 20px 80px;font-size:14px}
   h1{font-size:21px;margin:0}
-  .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
   .dim{color:var(--txt2);font-size:12.5px}
   .btn{padding:7px 12px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--txt)}
-  .tab{padding:7px 14px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;color:var(--txt2)}
-  .tab.on{background:var(--acc);border-color:var(--acc);color:#fff}
   .kpi{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
   .kpi>div{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 14px;min-width:150px}
   .kpi b{display:block;font-size:18px}
@@ -3039,29 +3036,36 @@ async def obrat_plan_stran(request: Request):
   .t.on{color:var(--txt);border-color:#94a3b8}
   .t.f{color:var(--txt2);font-weight:600}
   .t.f.on{background:#eef2ff;border-color:var(--acc);color:var(--acc)}
-  .stick{position:sticky;top:0;z-index:30;background:var(--bg);padding:8px 0 2px;margin-top:-8px}
-  .top{gap:6px;margin-bottom:6px}
-  .top h1{font-size:18px;white-space:nowrap;margin-right:6px}
-  .tab{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 11px;font-size:13.5px;font-weight:600;white-space:nowrap}
-  .tab b{font-weight:800;font-size:14px;color:var(--txt)}
-  .tab.z b{color:#c2410c}.tab.d b{color:var(--gor)}.tab.s b{color:var(--dol)}
-  .tab.on,.tab.on b{color:#fff}
-  .tab.z.on{background:#ea580c;border-color:#ea580c}.tab.d.on{background:#15803d;border-color:#15803d}.tab.s.on{background:#dc2626;border-color:#dc2626}
-  .tab.nul{opacity:.5}
-  .tab.ti{font-weight:500}
-  .sepv{width:1px;height:22px;background:var(--bd);margin:0 3px}
-  .top .btn,.flt .btn{height:32px;display:inline-flex;align-items:center;white-space:nowrap}
-  .flt{gap:6px;margin-bottom:6px}
+  .karte{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-bottom:10px}
+  .ka{display:grid;grid-template-columns:auto 1fr;column-gap:12px;align-items:center;align-content:center;padding:12px 14px;background:#fff;border:2px solid #d9dde6;border-radius:12px;cursor:pointer;transition:transform .12s,box-shadow .12s;flex:1 1 150px;min-width:140px}
+  .ka:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.06)}
+  .ka .ic{grid-row:1 / span 2;width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;background:rgba(255,255,255,.75)}
+  .ka .nm{font-size:30px;font-weight:700;line-height:1.05}
+  .ka .lb{font-size:13.5px;font-weight:600;margin-top:2px;white-space:nowrap}
+  .ka.nul{opacity:.55}
+  .ka.on{box-shadow:0 0 0 3px rgba(79,70,229,.22);border-color:var(--acc)}
+  .k-v .ic{background:#f0f2f8}
+  .k-z{background:#fff7ed}.k-z .nm,.k-z .lb{color:#ea580c}.k-z.on{border-color:#ea580c}
+  .k-d{background:#f0fdf4}.k-d .nm,.k-d .lb{color:#16a34a}.k-d.on{border-color:#16a34a}
+  .k-s{background:#fff0f0}.k-s .nm,.k-s .lb{color:#e53e3e}.k-s.on{border-color:#e53e3e}
+  .k-n{background:#fffbeb}.k-n .nm,.k-n .lb{color:#d97706}.k-n.on{border-color:#d97706}
+  .k-o{background:#f3efff}.k-o .nm,.k-o .lb{color:#7c3aed}.k-o.on{border-color:#7c3aed}
+  .k-b{background:#eff6ff}.k-b .nm,.k-b .lb{color:#2563eb}.k-b.on{border-color:#2563eb}
+  .k-g{background:#f8fafc}.k-g .nm,.k-g .lb{color:var(--txt2)}.k-g.on{border-color:#64748b}
+  .stick{position:sticky;top:0;z-index:30;background:var(--bg);padding:6px 0;display:flex;align-items:flex-start;gap:8px}
+  .acts{display:flex;align-items:center;gap:6px;margin-left:auto}
+  .acts .btn,.flt .btn{height:32px;display:inline-flex;align-items:center;white-space:nowrap}
+  .stick .flt{gap:6px;margin:0;flex:1;min-width:0}
   .flt input[type=search]{height:32px;width:170px}
   .t{height:32px;display:inline-flex;align-items:center;gap:5px;border-radius:8px;white-space:nowrap}
   .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
   .t:not(.on) .dot{opacity:.35}
-  .lbl{color:var(--txt2);font-size:12.5px;margin-left:6px;white-space:nowrap}
-  .seg{display:inline-flex;height:32px;border:1px solid var(--bd);border-radius:8px;overflow:hidden}
-  .sg{border:0;background:#fff;padding:0 10px;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--txt2);cursor:pointer;white-space:nowrap}
-  .sg.on{background:#eef2ff;color:var(--acc);font-weight:700}
+  .lbl{color:var(--txt2);font-size:12.5px;margin-left:4px;white-space:nowrap}
+  .urw{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 4px 0 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;font-size:12.5px;font-weight:700;color:#92400e;white-space:nowrap}
+  .sg{height:24px;border:0;border-radius:6px;background:transparent;padding:0 9px;font-family:inherit;font-size:12.5px;font-weight:600;color:#92400e;cursor:pointer;white-space:nowrap}
+  .sg.on{background:#d97706;color:#fff;font-weight:700}
   .vecw{position:relative;display:inline-flex}
-  .vecp{position:absolute;top:36px;left:0;z-index:40;background:#fff;border:1px solid var(--bd);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px;display:flex;flex-direction:column;gap:4px;min-width:250px}
+  .vecp{position:absolute;top:36px;left:0;z-index:40;background:#fff;border:1px solid var(--bd);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px;display:flex;flex-direction:column;gap:4px;min-width:170px}
   .vecp .t{width:100%;justify-content:flex-start}
   .kpi{gap:0 16px;margin-bottom:8px}
   .kpi>div{background:none;border:0;padding:0;min-width:0;display:flex;align-items:baseline;gap:5px;white-space:nowrap}
@@ -3109,10 +3113,10 @@ async def obrat_plan_stran(request: Request):
   .up{color:var(--gor);font-weight:700}.dn{color:var(--dol);font-weight:700}
   @media(max-width:720px){.stick{position:static}body{padding:10px 10px 90px}.naziv{max-width:130px}.flt input[type=search]{width:100%}}
 </style></head><body>
-<div class="stick"><div class="top"><h1>📊 Obrat</h1>
-  <span class="tab z" id="v-zm" onclick="pogled('zm')"></span><span class="tab d" id="v-gor" onclick="pogled('gor')"></span><span class="tab s" id="v-dol" onclick="pogled('dol')"></span><i class="sepv"></i><span class="tab" id="v-vse" onclick="pogled('vse')"></span><span class="tab" id="v-dno" onclick="pogled('dno')"></span><span class="tab" id="v-oglas" onclick="pogled('oglas')"></span><span class="tab" id="v-zal" onclick="pogled('zal')"></span>
-  <span style="flex:1"></span><span class="tab ti" id="v-uc" onclick="pogled('uc')"></span><span class="tab ti" id="v-zn" onclick="pogled('zn')"></span><button class="btn" id="pomBtn" onclick="pomoc()" title="Razlaga pogleda">?</button><button class="btn" onclick="nalozi()">↻ Osveži</button><span class="dim" id="at" style="white-space:nowrap"></span></div>
-<div class="flt" id="flt"></div></div>
+<div class="karte">
+  <div class="ka k-z" id="v-zm" onclick="pogled('zm')"></div><div class="ka k-d" id="v-gor" onclick="pogled('gor')"></div><div class="ka k-s" id="v-dol" onclick="pogled('dol')"></div><div class="ka k-v" id="v-vse" onclick="pogled('vse')"></div><div class="ka k-n" id="v-dno" onclick="pogled('dno')"></div><div class="ka k-o" id="v-oglas" onclick="pogled('oglas')"></div><div class="ka k-b" id="v-zal" onclick="pogled('zal')"></div><div class="ka k-g" id="v-uc" onclick="pogled('uc')"></div><div class="ka k-g" id="v-zn" onclick="pogled('zn')"></div>
+</div>
+<div class="stick"><div class="flt" id="flt"></div><div class="acts"><span class="dim" id="at" style="white-space:nowrap"></span><button class="btn" id="pomBtn" onclick="pomoc()" title="Razlaga pogleda">?</button><button class="btn" onclick="nalozi()">↻ Osveži</button></div></div>
 <div id="warn"></div>
 <div class="kpi" id="kpi"></div>
 <div id="box" class="dim">Nalagam vse trge …</div>
@@ -3198,10 +3202,10 @@ const SKEY={por:g=>g.oglas.poraba,ob:g=>g.oglas.s30,zal:g=>g.zaloga,w:g=>g.w,tr:
 function urediPo(k){ SORT=SORT&&SORT.k===k?(SORT.d===-1?{k,d:1}:null):{k,d:-1}; risiTabelo(); }
 function risi(){
   const c=v=>vSku(v).filter(g=>fF(g,v)).length;
-  const T=(v,ic,l,st)=>{ const el=document.getElementById('v-'+v); el.innerHTML=ic+(st==null?'':' <b>'+n(st,0)+'</b>')+' '+l; el.classList.toggle('nul',st===0); };
-  T('zm','🔥','Zmanjkuje',c('zm')); T('gor','⬆','Dvig',c('gor')); T('dol','⬇','Spust',c('dol'));
-  T('vse','📋','Vsi',c('vse')); T('dno','⛔','Na dnu',c('dno')); T('oglas','💸','Oglas',c('oglas')); T('zal','📦','Brez oglasa',D.skuji.filter(g=>g.brez_oglasa).length);
-  T('uc','📈','Učinek'); T('zn','⬇','Znižani',Object.keys(D.znizano||{}).length);
+  const T=(v,ic,l,st)=>{ const el=document.getElementById('v-'+v); el.innerHTML='<div class="ic">'+ic+'</div>'+(st==null?'':'<div class="nm">'+n(st,0)+'</div>')+'<div class="lb">'+l+'</div>'; el.classList.toggle('nul',st===0); };
+  T('zm','🔥','Zmanjkuje',c('zm')); T('gor','⬆️','Dvig',c('gor')); T('dol','⬇️','Spust',c('dol'));
+  T('vse','📋','Vsi na zalogi',c('vse')); T('dno','⛔','Na dnu',c('dno')); T('oglas','💸','Oglas, ni prodaje',c('oglas')); T('zal','📦','Zaloga brez oglasa',D.skuji.filter(g=>g.brez_oglasa).length);
+  T('uc','📈','Učinek'); T('zn','🏷','Znižani',Object.keys(D.znizano||{}).length);
   ['zm','vse','dol','gor','dno','oglas','zal','uc','zn'].forEach(v=>document.getElementById('v-'+v).classList.toggle('on',v===POGLED));
   const at_=document.getElementById('at'); at_.textContent=D.obrat_at?dat(D.obrat_at)+' '+String(D.obrat_at).slice(11,16):'—'; at_.title='Zadnje branje obrata · skupna prodaja vseh trgov'; document.getElementById('pomBtn').style.background=POM?'#eef2ff':'';
   const st=Object.entries(D.feed_star||{});
@@ -3221,6 +3225,7 @@ let VECO=false, POM=ls('obr_pom',false);
 function nt(t){ return POM?'<div class="note">'+t+'</div>':''; }
 function pomoc(){ POM=!POM; lss('obr_pom',POM); document.getElementById('pomBtn').style.background=POM?'#eef2ff':''; risiTabelo(true); }
 function vecOdpri(){ VECO=!VECO; risiFlt(); }
+function trgVsi(){ FT=new Set(FT.size===TRGI.length?[]:TRGI); lss('obr_trgi',[...FT]); privzetoIzb(); risi(); }
 function fUr(v){ FLT.ur=v; lss('obr_flt',FLT); privzetoIzb(); risi(); }
 function fDef(){   // [ključ, vrednost, oznaka, razlaga]
   const a=[];
@@ -3235,18 +3240,17 @@ function risiFlt(){
   if(['zn','uc','zal'].includes(POGLED)){ f.innerHTML=''; return; }
   const LB={zelena:'#16a34a',rumena:'#eab308',rdeca:'#dc2626',siva:'#94a3b8'};
   const on=([k,v])=>FLT[k]===v, kl_=([k,v])=>'fSet(\''+k+'\','+(v===true?'true':'\''+v+'\'')+')';
-  const FD=fDef(), ak=FD.filter(on), dvo=(VS(POGLED)||POGLED==='dol'||POGLED==='oglas'), oga=POGLED==='oglas', st=ak.length+(dvo&&DVOJNI?1:0)+(oga&&OG_AKT?1:0);
+  const FD=fDef(), dvo=(VS(POGLED)||POGLED==='dol'||POGLED==='oglas'), oga=POGLED==='oglas';
   const vsi=vSku(POGLED), sk=vsi.length-vsi.filter(g=>fF(g,POGLED)).length;
   const sg=(v,l)=>'<button class="sg'+((FLT.ur||'')===v?' on':'')+'" onclick="fUr(\''+v+'\')">'+l+'</button>';
-  const opc=FD.map(x=>'<button class="t f'+(on(x)?' on':'')+'" title="'+esc(x[3])+'" onclick="'+kl_(x)+'">'+esc(x[2])+'</button>').join('')+
-    (dvo?'<button class="t f'+(DVOJNI?' on':'')+'" title="Pri zalogi nad '+D.dvojni_dni+' dni predlaga dva koraka spusta, če razlika ostane nad minimumom trga" onclick="dvojni(!DVOJNI)">2× korak pri zalogi > '+D.dvojni_dni+' dni</button>':'')+
-    (oga?'<button class="t f'+(OG_AKT?' on':'')+'" onclick="ogAkt(!OG_AKT)">Samo aktivni oglasi</button>':'');
+  const trg=TRGI.map(t=>{const l=(D.luci||{})[t]||{},rm_=(D.raz_mini||{})[t]||{}; return '<button class="t'+(FT.has(t)?' on':'')+'" title="'+esc('Minimum razlike '+n(rm_.min,2)+' € · return '+(rm_.fail==null?'—':n(rm_.fail,1)+' %')+(l.razlog?' · '+l.razlog:''))+'" onclick="trgKlik(\''+t+'\')">'+(LB[l.luc]?'<i class="dot" style="background:'+LB[l.luc]+'"></i>':'')+oz(t)+'</button>';}).join('');
+  const del=FT.size<TRGI.length;
   f.innerHTML='<input type="search" placeholder="Išči SKU ali naziv" value="'+esc(Q)+'" oninput="iskanje(this.value)">'+
-    TRGI.map(t=>{const l=(D.luci||{})[t]||{},rm_=(D.raz_mini||{})[t]||{}; return '<button class="t'+(FT.has(t)?' on':'')+'" title="'+esc('Minimum razlike '+n(rm_.min,2)+' € · return '+(rm_.fail==null?'—':n(rm_.fail,1)+' %')+(l.razlog?' · '+l.razlog:''))+'" onclick="trgKlik(\''+t+'\')">'+(LB[l.luc]?'<i class="dot" style="background:'+LB[l.luc]+'"></i>':'')+oz(t)+'</button>';}).join('')+
-    '<span class="lbl">Skrij urejene</span><span class="seg" title="Sprememba cene na kateremkoli trgu ali postavka v vrsti">'+sg('','ne')+sg('danes','danes')+sg('14','14 dni')+'</span>'+
-    '<span class="vecw"><button class="btn'+'" onclick="vecOdpri()"'+(st?' style="background:#eef2ff;border-color:var(--acc);color:var(--acc)"':'')+'>Več filtrov'+(st?' ('+st+')':'')+' ▾</button>'+(VECO?'<div class="vecp">'+opc+'</div>':'')+'</span>'+
-    ak.map(x=>'<button class="t f on" title="Izklopi filter" onclick="'+kl_(x)+'">'+esc(x[2])+' ✕</button>').join('')+
-    (dvo&&DVOJNI?'<button class="t f on" onclick="dvojni(false)">2× korak ✕</button>':'')+(oga&&OG_AKT?'<button class="t f on" onclick="ogAkt(false)">Aktivni oglasi ✕</button>':'')+
+    '<span class="vecw"><button class="btn" onclick="vecOdpri()"'+(del?' style="background:#eef2ff;border-color:var(--acc);color:var(--acc)"':'')+'>Trgi: '+(del?FT.size+' / '+TRGI.length:'vsi')+' ▾</button>'+(VECO?'<div class="vecp"><button class="t f" onclick="trgVsi()">'+(del?'Izberi vse':'Odznači vse')+'</button>'+trg+'</div>':'')+'</span>'+
+    '<span class="urw" title="Sprememba cene na kateremkoli trgu ali postavka v vrsti">Skrij urejene'+sg('','ne')+sg('danes','danes')+sg('14','14 dni')+'</span>'+
+    FD.map(x=>'<button class="t f'+(on(x)?' on':'')+'" title="'+esc(x[3])+'" onclick="'+kl_(x)+'">'+esc(x[2])+'</button>').join('')+
+    (dvo?'<button class="t f'+(DVOJNI?' on':'')+'" title="Pri zalogi nad '+D.dvojni_dni+' dni predlaga dva koraka spusta, če razlika ostane nad minimumom trga" onclick="dvojni(!DVOJNI)">2× korak</button>':'')+
+    (oga?'<button class="t f'+(OG_AKT?' on':'')+'" onclick="ogAkt(!OG_AKT)">Samo aktivni oglasi</button>':'')+
     (sk?'<span class="lbl">skritih '+sk+'</span><button class="t f" onclick="fReset()">↺ pokaži vse</button>':'');
 }
 function znTxt(z){ return z?'⬇ Znižano '+dat(z.at)+(z.koraki>1?' ('+z.koraki+'×)':''):''; }
