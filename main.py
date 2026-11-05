@@ -2361,6 +2361,8 @@ def _obrat_signal(o: dict, raz, zal: int, poti: int, sz: str, danes, raz_min: fl
     if dos is not None and dos < OBR_NIZKO:
         return {"k": "gor", "t": "🟢 dvig", "r": f"Zaloge za {dos} dni (< {OBR_NIZKO})", "dos": dos}
     if dos is None or dos > OBR_VISOKO:
+        if tr is not None and tr >= OBR_RAST:   # spust bi samo znižal zaslužek na kos pri prodaji, ki raste tudi brez njega
+            return {"k": "drzi", "t": "⏸ drži", "r": f"Prodaja raste (trend +{tr} %), zaloge za {'∞' if dos is None else dos} dni — ne spuščaj", "dos": dos}
         r_ = f"Zaloge za {'∞' if dos is None else dos} dni (> {OBR_VISOKO})" + (", prodaja pada" if pad else "")
         if raz is not None and raz < raz_min:
             return {"k": "dno", "t": "⛔ na dnu", "r": r_, "dos": dos}
@@ -2740,8 +2742,42 @@ async def obrat_zaloga_kandidati(request: Request):
     return {"ok": True, "izvoz_do": d["oglasi"]["do"], "items": sorted(po.values(), key=lambda q: -q["nc"])}
 
 
-@app.get("/obrat-plan")
+_OBR_PLAN_CACHE = {"key": None, "d": None, "b": b""}
+_OBR_PLAN_LOCK = asyncio.Lock()
+
+
+def _obr_plan_kljuc():
+    """Vsi viri /obrat-plan. Ura = star feed in čas se osvežita vsaj vsako polno uro. Varovalka 1× na dan se ob pošiljanju vedno preveri znova (/cene-vrsta/dodaj)."""
+    viri = (OBRAT_FILE, OBRAT_SEZONA_FILE, OBRAT_OGLASI_FILE, NOVI_IZD_FILE, ZNIZANO_FILE, VRSTA_FILE, CENE_LEDGER_FILE, CENE_DNEVNIK_FILE,
+            CMS_LOG_FILE, PRICE_CHANGES_FILE, HSB_FILE, SEMAFOR_FILE, SEMAFOR_ZGOD_FILE)
+    return (_lj_iso()[:13], _OBR_RAZVRSCAM["tece"], _OBR_RAZVRSCAM["napaka"], tuple(_mtime(f) for f in viri),
+            tuple(str(_marza_trgi_key(t)) for t in MARZA_TRGI), tuple(str((feed_meta.get(t) or {}).get("last_modified")) for t in MARZA_TRGI))
+
+
 async def obrat_plan(request: Request):
+    """Rezultat /obrat-plan (dict) iz predpomnilnika; ob spremembi katerega koli vira izračun znova."""
+    if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
+        return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    async with _OBR_PLAN_LOCK:
+        k = _obr_plan_kljuc()   # pred izračunom: sprememba med izračunom = naslednjič znova
+        if _OBR_PLAN_CACHE["key"] == k:
+            return _OBR_PLAN_CACHE["d"]
+        d = await _obrat_plan_izracun(request)
+        if isinstance(d, dict) and d.get("ok"):
+            _OBR_PLAN_CACHE.update(key=k, d=d, b=json.dumps(d, ensure_ascii=False).encode("utf-8"))
+        return d
+
+
+@app.get("/obrat-plan")
+async def obrat_plan_pot(request: Request):
+    from fastapi.responses import Response
+    d = await obrat_plan(request)
+    if isinstance(d, dict) and d.get("ok") and _OBR_PLAN_CACHE["d"] is d:
+        return Response(_OBR_PLAN_CACHE["b"], media_type="application/json", headers={"Cache-Control": "no-store"})
+    return d
+
+
+async def _obrat_plan_izracun(request: Request):
     """Vsi trgi, združeno po SKU: signal, predlog po trgu, stanje (predlog / na dnu / premor / danes / luč / dvigi / prag), presežna zaloga nad OBR_VISOKO dni prodaje"""
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
@@ -2822,6 +2858,8 @@ async def obrat_plan(request: Request):
                     ag = None   # obrat je dovolj → običajen signal
                 else:
                     o = ag if not o else o
+                    if ((o or {}).get("trend") or 0) >= OBR_RAST:   # prodaja raste → brez spusta in predloga za ustavitev oglasa
+                        ag = None
             if zal <= 0 or c <= 0:
                 continue
             brez_podatka = not o   # ni prodaje v branju obrata: viden samo v 📋 Vsi na zalogi
@@ -3059,7 +3097,7 @@ const oz=t=>OZN[t]||t.toUpperCase();
 const ls=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}};
 const lss=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
 let D=null, POGLED=ls('obr_pogled','dol'), IZB=new Set(), ODPRT=new Set(), Q='', FT=new Set(ls('obr_trgi',TRGI)), DVOJNI=ls('obr_dvojni',false), SORT=null, OG_AKT=ls('obr_og_akt',false), MAXPR=1;
-let FLT=Object.assign({ur:'danes',moz:true,tr:'',pres:false,ogl:false,nizn:false,npot:false},ls('obr_flt',{}));
+let FLT=Object.assign({smer:'',ur:'danes',moz:true,tr:'',pres:false,ogl:false,nizn:false,npot:false},ls('obr_flt',{}));
 const LEG=' Trgi so vedno v istem stolpcu: oranžno črtkano = zaklenjeno, klik odklene · ✓ zeleno = urejeno danes · – = ni predloga · prazno = izdelka ni na trgu.';
 const kl=e=>e.trg+'|'+e.cms_id;
 const n=(v,d)=>v==null?'—':Number(v).toLocaleString('sl-SI',{minimumFractionDigits:d||0,maximumFractionDigits:d==null?2:d});
@@ -3076,11 +3114,23 @@ function vTrgi(g,v){ return g.trgi.filter(e=>FT.has(e.trg)&&(v==='vse'?true:v===
 const vseMoz=e=>POGLED==='vse'&&e.neto&&e.c&&e.ur!==0&&e.stanje!=='danes'&&!(D.feed_star||{})[e.trg];
 const izbirljiv=e=>e.stanje==='predlog'||e.ovr||(vseMoz(e)&&ROCNO[kl(e)]!=null);
 const rMin=t=>((D.raz_mini||{})[t]||{}).min||D.raz_min;
+const KOS=80; let VID=KOS, RST=[], RFN=null, VIO=null, OHR=false, ISK=0;
+function stran(G,fn){ RST=G; RFN=fn; if(!OHR) VID=KOS; return G.slice(0,VID).map(g=>fn(g)).join(''); }
+function vecHtml(G){ return G.length>VID?'<div id="vec" style="text-align:center;padding:14px"><button class="btn" onclick="vec()">Prikaži še ('+(G.length-VID)+')</button></div>':''; }
+function vecOpazuj(){ if(VIO) VIO.disconnect(); const v=document.getElementById('vec'); if(v&&window.IntersectionObserver){ VIO=new IntersectionObserver(a=>{ if(a.some(x=>x.isIntersecting)) vec(); },{rootMargin:'800px'}); VIO.observe(v); } }
+function vec(){ const tb=document.querySelector('#box>table>tbody'), v=document.getElementById('vec'); if(!tb||!v) return;
+  tb.insertAdjacentHTML('beforeend',RST.slice(VID,VID+KOS).map(g=>RFN(g)).join('')); VID+=KOS;
+  if(VID>=RST.length){ v.remove(); if(VIO) VIO.disconnect(); } else { v.querySelector('button').textContent='Prikaži še ('+(RST.length-VID)+')'; vecOpazuj(); } }
+function vrFn(){ return POGLED==='oglas'?ogHtml:vrHtml; }
+function vrTr(sku){ return [...document.querySelectorAll('#box>table>tbody>tr.vr')].find(x=>x.dataset.g===sku); }
+function osveziG(sku){ const g=D.skuji.find(x=>x.sku===sku), t=vrTr(sku); if(!g||!t){ risiTabelo(true); return; }
+  const nx=t.nextElementSibling; if(nx&&nx.classList.contains('det')) nx.remove(); t.outerHTML=vrFn()(g); risiBar(); }
 function vSku(v){ return (D?D.skuji:[]).filter(g=>vTrgi(g,v).length&&(v!=='oglas'||!OG_AKT||g.oglas.aktiven)); }
 function fF(g,v){   // iskanje najde tudi skrite izdelke
   if(Q||!['vse','dol','gor','dno','oglas'].includes(v)) return true;
   const F=FLT;
   if(F.ur&&g.trgi.some(e=>e.ur!=null&&e.ur<(F.ur==='danes'?1:14))) return false;
+  if(v==='vse'&&F.smer&&!g.trgi.some(e=>FT.has(e.trg)&&(e.stanje==='predlog'||e.ovr)&&(F.smer==='gor'?e.smer==='gor':e.smer!=='gor'))) return false;
   if(F.moz&&v!=='dno'&&v!=='vse'&&!vTrgi(g,v).some(e=>e.stanje==='predlog')) return false;
   if(F.tr==='pada'&&!(g.trend!=null&&g.trend<=D.obr_pad)) return false;
   if(F.tr==='raste'&&!(g.trend!=null&&g.trend>=D.obr_rast)) return false;
@@ -3091,7 +3141,7 @@ function fF(g,v){   // iskanje najde tudi skrite izdelke
   return true;
 }
 function fSet(k,v){ FLT[k]=FLT[k]===v?(v===true?false:''):v; lss('obr_flt',FLT); privzetoIzb(); risi(); }
-function fReset(){ FLT={ur:'',moz:false,tr:'',pres:false,ogl:false,nizn:false,npot:false}; lss('obr_flt',FLT); privzetoIzb(); risi(); }
+function fReset(){ FLT={smer:'',ur:'',moz:false,tr:'',pres:false,ogl:false,nizn:false,npot:false}; lss('obr_flt',FLT); privzetoIzb(); risi(); }
 function matTh(){ return TRGI.filter(t=>FT.has(t)).map(t=>'<th class="mc">'+oz(t)+'</th>').join(''); }
 function matTd(g,v){ const tr=vTrgi(g,v);
   return TRGI.filter(t=>FT.has(t)).map(t=>{ const a=tr.filter(e=>e.trg===t); if(a.length) return '<td class="mc">'+a.map(cip).join('')+'</td>';
@@ -3106,11 +3156,11 @@ async function nalozi(){
 function pogled(v){ POGLED=v; lss('obr_pogled',v); SORT=null; ODPRT.clear(); privzetoIzb(); risi(); }
 function trgKlik(t){ FT.has(t)?FT.delete(t):FT.add(t); lss('obr_trgi',[...FT]); privzetoIzb(); risi(); }
 function dvojni(on){ DVOJNI=on; lss('obr_dvojni',on); privzetoIzb(); risi(); }
-function iskanje(v){ Q=v.trim().toUpperCase(); risiTabelo(); }
+function iskanje(v){ clearTimeout(ISK); ISK=setTimeout(()=>{ Q=v.trim().toUpperCase(); risiTabelo(); },150); }
 function izdPredlogi(g){ const a=vTrgi(g,POGLED).filter(e=>e.stanje==='predlog'), ok=a.filter(e=>izr(e).ok); return ok.length?ok:a; }   // ⚠ predlogi (nad 15 %, star feed) samo ročno, razen če so edini
 function izdGumb(g){ const a=izdPredlogi(g); if(!a.length) return ''; const vsi=a.every(e=>IZB.has(kl(e)));
   return '<button class="btn" style="padding:3px 9px;font-size:12px;margin-right:6px'+(vsi?';background:var(--acc);border-color:var(--acc);color:#fff':'')+'" data-izd="'+esc(g.sku)+'" title="Izberi ali odznači vse trge tega izdelka">'+(vsi?'✓ izdelek':'＋ izdelek')+'</button>'; }
-function izberi(on){ const a=viden().flatMap(g=>izdPredlogi(g)); a.forEach(e=>on?IZB.add(kl(e)):IZB.delete(kl(e))); risiTabelo(); }
+function izberi(on){ const a=viden().flatMap(g=>izdPredlogi(g)); a.forEach(e=>on?IZB.add(kl(e)):IZB.delete(kl(e))); risiTabelo(true); }
 function viden(){ const a=vSku(POGLED).filter(g=>fF(g,POGLED)).filter(g=>!Q||g.sku.includes(Q)||String(g.naziv).toUpperCase().includes(Q));
   const f=SORT&&SKEY[SORT.k]; return a.sort((x,y)=>f?((f(x)??-1e12)-(f(y)??-1e12))*SORT.d:(POGLED==='oglas'?y.oglas.poraba-x.oglas.poraba:POGLED==='gor'?y.s30-x.s30:y.presezek_nc-x.presezek_nc)); }
 const SKEY={por:g=>g.oglas.poraba,ob:g=>g.oglas.s30,zal:g=>g.zaloga,w:g=>g.w,tr:g=>g.trend,dos:g=>g.dos??1e9,os:g=>g.presezek_nc,n:g=>vTrgi(g,POGLED).length};
@@ -3151,7 +3201,7 @@ function risiFlt(){
 function fltVrsta(){
   const b=(k,v,l,tit)=>'<button class="t f'+(FLT[k]===v?' on':'')+'" title="'+esc(tit)+'" onclick="fSet(\''+k+'\','+(v===true?'true':'\''+v+'\'')+')">'+l+'</button>';
   const vsi=vSku(POGLED), vidni=vsi.filter(g=>fF(g,POGLED)).length, sk=vsi.length-vidni;
-  return '<div class="flt2">'+b('ur','danes','Skrij urejene danes','Sprememba cene danes ali postavka v vrsti, na kateremkoli trgu')+b('ur','14','Skrij urejene 14 dni','Sprememba cene v zadnjih 14 dneh, na kateremkoli trgu')+
+  return '<div class="flt2">'+(POGLED==='vse'?b('smer','gor','⬆ Predlog dvig','Vsaj en trg ima predlog za dvig')+b('smer','dol','⬇ Predlog spust','Vsaj en trg ima predlog za spust'):'')+b('ur','danes','Skrij urejene danes','Sprememba cene danes ali postavka v vrsti, na kateremkoli trgu')+b('ur','14','Skrij urejene 14 dni','Sprememba cene v zadnjih 14 dneh, na kateremkoli trgu')+
     (POGLED==='dno'||POGLED==='vse'?'':b('moz',true,'Samo z možnim predlogom','Skrije izdelke, kjer je vse zaklenjeno. Iskanje jih še vedno najde.'))+
     b('tr','pada','Prodaja pada','Trend '+D.obr_pad+' % ali manj')+b('tr','raste','Prodaja raste','Trend +'+D.obr_rast+' % ali več')+
     b('pres',true,'Presežek nad 1.000 €','Več kot 1.000 € NC nad '+D.cilj_dni+' dni prodaje')+
@@ -3174,18 +3224,22 @@ function cip(e){
   return '<span class="c st" title="'+esc(e.op.join(' · '))+'">'+ik+' '+oz(e.trg)+'</span>';
 }
 function presTd(g){ return '<td class="r" title="'+esc('Kosi nad ciljno zalogo. Cilj '+D.cilj_dni+' dni prodaje = '+n(g.w*D.cilj_dni,0)+' kos · zaloga'+(g.poti?' + na poti':'')+' = '+n(g.zaloga+g.poti,0)+' kos')+'"><b>'+n(g.presezek,0)+' kos</b><div class="dim">'+eur(g.presezek_nc)+' NC</div><div class="pb"><i style="width:'+Math.round(g.presezek_nc/MAXPR*100)+'%"></i></div></td>'; }
-function risiTabelo(){
+function risiTabelo(ohrani){
+  OHR=ohrani===true;
   const box=document.getElementById('box');
   risiKpi(); MAXPR=Math.max(1,...viden().map(g=>g.presezek_nc||0));
   if(POGLED==='zn'){ risiZnizani(box); document.getElementById('bar').style.display='none'; return; }
-  if(POGLED==='oglas'){ risiOglasi(box); risiBar(); return; }
+  if(POGLED==='oglas'){ risiOglasi(box); risiBar(); vecOpazuj(); return; }
   if(POGLED==='zal'){ risiZaloga(box); risiBar(); return; }
   if(POGLED==='uc'){ risiUcinek(box); risiBar(); return; }
   const G=viden();
   const opis={vse:'Vsi naši izdelki na zalogi, tudi brez predloga. Klik na vrstico = podrobnosti: vpiši ceno ali ▼ ▲ en korak, po trgu ali za vse trge naenkrat. Pravila te ne ustavijo, ampak te ob pošiljanju opozorijo; trdo veljata samo 1 sprememba na dan in star feed. Izdelki brez NC niso prikazani.',dol:'Predlog: en korak dol, razlika nikoli pod minimumom trga (8 € pri najnižjem return rate, višji return = višji minimum; vidiš ga na prehodu z miško čez trg). Nič ni izbrano: ＋ izdelek = vsi trgi izdelka, klik na trg = samo ta trg, ✓ vse spodaj = vsi prikazani, klik na vrstico = podrobnosti.',gor:'Predlog: en korak gor. 🚀 raste = trend ≥ +15 % in zaloge do 60 dni. Luč trga in največ 2 dviga v 60 dneh veljata.',dno:'Preveč zaloge, cene pa ne moremo več nižati (razlika bi padla pod minimum trga). Pomagajo oglas, Xsell ali bundle.'}[POGLED];
   const th=(k,l,r)=>'<th'+(r?' class="r"':'')+' onclick="urediPo(\''+k+'\')">'+l+(SORT&&SORT.k===k?(SORT.d===1?' ↑':' ↓'):'')+'</th>';
   box.innerHTML='<div class="note">'+opis+LEG+'</div>'+(G.length?'<table><tr><th></th><th>SKU</th>'+th('zal','Zaloga',1)+th('w','Prodaja / dan',1)+th('tr','Trend',1)+th('dos','Dni zaloge',1)+(POGLED==='gor'?'':th('os','Presežek',1))+th('n','Trgi')+matTh()+'</tr>'+
-    G.map(g=>{const tr=vTrgi(g,POGLED), od=ODPRT.has(g.sku);
+    stran(G,vrHtml)+'</table>'+vecHtml(G):'<div class="note">V tem pogledu ni izdelkov. Preveri filtre zgoraj.</div>');
+  risiBar(); vecOpazuj();
+}
+function vrHtml(g,brezDet){const tr=vTrgi(g,POGLED), od=ODPRT.has(g.sku)&&!brezDet;
       return '<tr class="vr" data-g="'+esc(g.sku)+'"><td>'+(g.slika?'<img class="img" loading="lazy" src="'+esc(g.slika)+'">':'')+'</td>'+
         '<td><span class="sku" data-copy="'+esc(g.sku)+'" title="Klik = kopiraj">'+esc(g.sku)+'</span><div class="naziv" title="'+esc(g.naziv)+'">'+esc(g.naziv)+'</div></td>'+
         '<td class="r">'+n(g.zaloga,0)+(g.poti?'<div class="dim">🚚 +'+n(g.poti,0)+'</div>':'')+'</td>'+
@@ -3194,8 +3248,6 @@ function risiTabelo(){
         '<td class="r"><b>'+(g.dos==null?'∞':n(g.dos,0))+'</b></td>'+
         (POGLED==='gor'?'':presTd(g))+
         '<td>'+(POGLED==='dno'?'':izdGumb(g))+'</td>'+matTd(g,POGLED)+'</tr>'+(od?detajl(g,tr):'');
-    }).join('')+'</table>':'<div class="note">V tem pogledu ni izdelkov. Preveri filtre zgoraj.</div>');
-  risiBar();
 }
 function risiBar(){
   const pr=vSku(POGLED).flatMap(g=>vTrgi(g,POGLED).filter(e=>izbirljiv(e)&&IZB.has(kl(e))));
@@ -3205,7 +3257,7 @@ function risiBar(){
   document.getElementById('barTxt').textContent='Izbranih '+pr.length+' cen';
   document.getElementById('barSub').textContent='v '+new Set(pr.map(e=>e.trg)).size+' trgih · v CMS se nič ne spremeni do potrditve';
 }
-function detCelice(e){ const p=izr(e), dol=p.pct!=null?p.pct<0:e.smer==='dol';
+function detCelice(e){ const p=(POGLED==='vse'&&e.stanje!=='predlog'&&!e.ovr&&ROCNO[kl(e)]==null)?{}:izr(e), dol=p.pct!=null?p.pct<0:e.smer==='dol';
   return ['<td class="r '+(dol?'dn':'up')+'">'+(p.pct==null?'—':(p.pct>0?'+':'')+n(p.pct,1)+' %')+'</td>',
     '<td class="r">'+n(e.raz,2)+(p.raz_po==null?'':' → <b'+(ROCNO[kl(e)]!=null&&p.pct<0&&p.raz_po<rMin(e.trg)?' class="dn" title="Pod minimumom trga '+n(rMin(e.trg),2)+' €"':'')+'>'+n(p.raz_po,2)+'</b>')+'</td>',
     '<td class="r">'+n(e.m,1)+' %'+(p.m_po==null?'':' → '+n(p.m_po,1)+' %')+'</td>',
@@ -3215,14 +3267,15 @@ function detVse(g){ const a=izdPredlogi(g); if(!a.length) return ''; const c=a.f
 function detajl(g,tr){
   const vseG=POGLED==='vse'&&tr.some(vseMoz)?'<div style="margin-bottom:6px"><span class="dim">Vsi trgi: </span><button class="btn" style="padding:3px 9px;font-size:12px" data-stv="-1" data-g="'+esc(g.sku)+'" title="Vsak trg en korak dol">▼ en korak</button> <button class="btn" style="padding:3px 9px;font-size:12px" data-stv="1" data-g="'+esc(g.sku)+'" title="Vsak trg en korak gor">▲ en korak</button> <button class="btn" style="padding:3px 9px;font-size:12px" data-stv="0" data-g="'+esc(g.sku)+'">✕ počisti</button></div>':'';
   return '<tr class="det"><td colspan="30">'+vseG+'<table><tr><th>'+detVse(g)+'Trg</th><th class="r">Zdaj</th><th class="r" title="Vpiši svojo ceno, prazno = naš predlog">Predlog ✎</th><th class="r">Sprememba</th><th class="r">Razlika €</th><th class="r">Marža</th><th class="r" title="Spust: koliko več prodaje rabimo, da je skupna razlika enaka. Dvig: koliko prodaje lahko izgubimo.">Prag prodaje</th><th>Signal</th><th>Opomba</th></tr>'+
-    tr.map(e=>{const p=izr(e), roc=ROCNO[kl(e)]!=null, izbir=izbirljiv(e)&&e.neto, moz=izbir||vseMoz(e), def=e.stanje==='predlog'||e.ovr;
+    tr.map(e=>detVrsta(e,g)).join('')+'</table></td></tr>';
+}
+function detVrsta(e,g){const p=izr(e), roc=ROCNO[kl(e)]!=null, izbir=izbirljiv(e)&&e.neto, moz=izbir||vseMoz(e), def=e.stanje==='predlog'||e.ovr;
       const iz=izbir&&IZB.has(kl(e));
       return '<tr class="'+(moz?'dv'+(iz?' iz':''):'dv0')+'"'+(izbir?' data-k="'+esc(kl(e))+'" title="Klik = izberi ali odznači trg"':'')+'><td>'+(izbir?'<input type="checkbox" class="izb'+(e.stanje==='predlog'?'':' lock')+'" tabindex="-1"'+(iz?' checked':'')+'>'+(e.stanje==='predlog'||!def?'':(e.stanje==='luc'?'🔴 ':'⏳ ')):'')+'<b>'+oz(e.trg)+'</b> '+(e.url?'<a href="'+esc(e.url)+'" target="_blank" rel="noopener">↗</a> ':'')+'<a href="https://api.maaarket.si/nova/resources/products/'+esc(e.cms_id)+(e.trg==='sl'?'/edit':'?tab=vsebina')+'" target="_blank" rel="noopener" title="CMS">✎</a></td>'+
-        '<td class="r">'+n(e.c)+' '+esc(e.cur)+'</td><td class="r">'+(moz?'<input class="rc'+(roc?' on':'')+'" inputmode="decimal" data-r="'+esc(kl(e))+'" data-g="'+esc(g.sku)+'" placeholder="'+(def?esc(n((DVOJNI&&e.dvojni?e.dvojni:e).pred)):'cena')+'" value="'+(roc?esc(n(ROCNO[kl(e)])):'')+'" title="Vpiši svojo ceno v '+esc(e.cur)+', prazno = '+(def?'naš predlog':'brez spremembe')+'">'+(vseMoz(e)?' <button class="btn" style="padding:1px 6px;font-size:11px" data-st="'+esc(kl(e))+'" data-d="-1" data-g="'+esc(g.sku)+'" title="En korak dol: '+esc(n(e.k_dol))+' '+esc(e.cur)+'">▼</button> <button class="btn" style="padding:1px 6px;font-size:11px" data-st="'+esc(kl(e))+'" data-d="1" data-g="'+esc(g.sku)+'" title="En korak gor: '+esc(n(e.k_gor))+' '+esc(e.cur)+'">▲</button>':''):'<b>'+(p.pred==null?'—':n(p.pred))+'</b>')+'</td>'+
+        '<td class="r">'+n(e.c)+' '+esc(e.cur)+'</td><td class="r">'+(moz?'<input class="rc'+(roc?' on':'')+'" inputmode="decimal" data-r="'+esc(kl(e))+'" data-g="'+esc(g.sku)+'" placeholder="'+(def?esc(n((DVOJNI&&e.dvojni?e.dvojni:e).pred)):'cena')+'" value="'+(roc?esc(n(ROCNO[kl(e)])):'')+'" title="Vpiši svojo ceno v '+esc(e.cur)+', prazno = '+(def?'naš predlog':'brez spremembe')+'">'+(vseMoz(e)?' <button class="btn" tabindex="-1" style="padding:1px 6px;font-size:11px" data-st="'+esc(kl(e))+'" data-d="-1" data-g="'+esc(g.sku)+'" title="En korak dol: '+esc(n(e.k_dol))+' '+esc(e.cur)+'">▼</button> <button class="btn" tabindex="-1" style="padding:1px 6px;font-size:11px" data-st="'+esc(kl(e))+'" data-d="1" data-g="'+esc(g.sku)+'" title="En korak gor: '+esc(n(e.k_gor))+' '+esc(e.cur)+'">▲</button>':''):'<b>'+(p.pred==null?'—':n(p.pred))+'</b>')+'</td>'+
         detCelice(e).join('')+
         '<td style="white-space:nowrap" title="'+esc(e.razlog)+'">'+esc(e.sig)+'</td>'+
         '<td>'+(e.zn?'<span class="zn" title="'+esc(znTit(e.zn))+'">'+esc(znTxt(e.zn))+'</span> ':'')+'<span class="dim">'+esc(e.op.join(' · '))+'</span></td></tr>';
-    }).join('')+'</table></td></tr>';
 }
 document.addEventListener('change',ev=>{
   const i=ev.target.closest&&ev.target.closest('input[data-r]'); if(!i) return;
@@ -3235,7 +3288,10 @@ document.addEventListener('change',ev=>{
     if(Math.abs(v-e.c)/e.c>0.3&&!confirm(oz(e.trg)+': '+n(e.c)+' → '+n(v)+' '+e.cur+' je sprememba nad 30 %. Je cena prava?')){ pon(); return; }
     ROCNO[k]=v; IZB.add(k);
   }
-  if(POGLED==='vse'){ if(!izbirljiv(e)) IZB.delete(k); ROC_CAS=Date.now(); risiTabelo(); return; }
+  if(POGLED==='vse'){ if(!izbirljiv(e)) IZB.delete(k); ROC_CAS=Date.now();
+    const fok=document.activeElement===i, t_=vrTr(g.sku); i.closest('tr').outerHTML=detVrsta(e,g); if(t_) t_.outerHTML=vrFn()(g,true);
+    [...document.querySelectorAll('input[data-izd]')].filter(x=>x.dataset.izd===g.sku).forEach(x=>{ x.outerHTML=detVse(g); });
+    if(fok){ const n_=document.querySelector('input[data-r="'+k+'"]'); if(n_) n_.focus(); } risiBar(); return; }
   i.classList.toggle('on',ROCNO[k]!=null); pon();
   const tr=i.closest('tr'); detCelice(e).forEach((h,j)=>{ tr.cells[3+j].outerHTML=h; });
   const c=[...document.querySelectorAll('.c[data-k]')].find(x=>x.dataset.k===k); if(c) c.outerHTML=cip(e);
@@ -3292,17 +3348,18 @@ function risiOglasi(box){
     '<button class="btn" onclick="ogKoledar()">📅 Termini sezon</button></div>'+(O.napaka?'<div class="warn">Razvrščanje: '+esc(O.napaka)+'</div>':'')+
     '<div class="note">Obrat iz suban.ai (vsi kanali) pod 30 kosov / 30 dni, oglas pa je tekel. V sezoni: spust · prihaja: drži · končana: razprodaja pri veliko zalogi · daleč ali 2× znižano: 🛑 predlog za ustavitev oglasa (oglasov sistem ne spreminja). Nič ni izbrano: ＋ izdelek = vsi trgi izdelka, klik na trg = samo ta trg. Klik na sezono = popravi.</div>';
   const tab=G.length?'<table><tr><th></th><th>SKU</th>'+th('por','Oglas',1)+th('ob','Obrat 30 d',1)+th('zal','Zaloga',1)+th('dos','Dni zaloge',1)+'<th>Sezona</th>'+th('os','Presežek',1)+th('n','Trgi')+matTh()+'</tr>'+
-    G.map(g=>{const o=g.oglas, tr=vTrgi(g,'oglas'), ss=SEZ_OZN[o.sez]||SEZ_OZN.neznano;
+    stran(G,ogHtml)+'</table>'+vecHtml(G):'<div class="note">'+(O.do?'Ni izdelkov z oglasom in premalo obrata.':'Naloži izvoz kampanj iz Ads Managerja.')+'</div>';
+  const brez=O.brez&&O.brez.length?'<details style="margin-top:10px"><summary class="dim" style="cursor:pointer">Kampanje brez povezave z Maaarket izdelkom ('+O.brez.length+')</summary><table style="margin-top:6px">'+O.brez.map(b=>'<tr><td>'+esc(b.ime)+'</td><td class="r">'+eur(b.poraba)+'</td></tr>').join('')+'</table></details>':'';
+  const bz=O.brez_zaloge&&O.brez_zaloge.length?'<div class="dim" style="margin-top:10px">Oglas je tekel, izdelka ni na zalogi (preskočeno): '+O.brez_zaloge.map(esc).join(', ')+'</div>':'';
+  box.innerHTML=glava+tab+bz+brez;
+}
+function ogHtml(g,brezDet){const o=g.oglas, tr=vTrgi(g,'oglas'), ss=SEZ_OZN[o.sez]||SEZ_OZN.neznano, SEG=(D.oglasi||{}).seg||{};
       return '<tr class="vr" data-g="'+esc(g.sku)+'"><td>'+(g.slika?'<img class="img" loading="lazy" src="'+esc(g.slika)+'">':'')+'</td>'+
         '<td><span class="sku" data-copy="'+esc(g.sku)+'" title="Klik = kopiraj">'+esc(g.sku)+'</span><div class="naziv" title="'+esc(g.naziv)+'">'+esc(g.naziv)+'</div></td>'+
         '<td class="r"><b>'+eur(o.poraba)+'</b><div class="dim">'+(o.aktiven?'🟡 aktiven':'⛔ izklopljen')+' · '+n(o.nakupi,0)+' nak.'+(o.dni?' · '+(o.prvic_v_izvozu?'≥ ':'')+o.dni+' d':'')+'</div></td>'+
         '<td class="r"><b>'+n(o.s30,0)+'</b></td><td class="r">'+n(g.zaloga,0)+(g.poti?'<div class="dim">🚚 +'+n(g.poti,0)+'</div>':'')+'</td><td class="r">'+(g.dos==null?'∞':n(g.dos,0))+'</td>'+
         '<td data-sez="'+esc(o.token)+'" style="cursor:pointer" title="Klik = popravi oznake sezone"><b style="color:'+ss[1]+';white-space:nowrap">'+ss[0]+'</b><div class="dim">'+esc((o.segi||[]).map(x=>SEG[x]||x).join(', '))+(o.rocna?' ✎':'')+'</div></td>'+
-        presTd(g)+'<td>'+izdGumb(g)+'</td>'+matTd(g,'oglas')+'</tr>'+(ODPRT.has(g.sku)?detajl(g,tr):'');
-    }).join('')+'</table>':'<div class="note">'+(O.do?'Ni izdelkov z oglasom in premalo obrata.':'Naloži izvoz kampanj iz Ads Managerja.')+'</div>';
-  const brez=O.brez&&O.brez.length?'<details style="margin-top:10px"><summary class="dim" style="cursor:pointer">Kampanje brez povezave z Maaarket izdelkom ('+O.brez.length+')</summary><table style="margin-top:6px">'+O.brez.map(b=>'<tr><td>'+esc(b.ime)+'</td><td class="r">'+eur(b.poraba)+'</td></tr>').join('')+'</table></details>':'';
-  const bz=O.brez_zaloge&&O.brez_zaloge.length?'<div class="dim" style="margin-top:10px">Oglas je tekel, izdelka ni na zalogi (preskočeno): '+O.brez_zaloge.map(esc).join(', ')+'</div>':'';
-  box.innerHTML=glava+tab+bz+brez;
+        presTd(g)+'<td>'+izdGumb(g)+'</td>'+matTd(g,'oglas')+'</tr>'+(ODPRT.has(g.sku)&&!brezDet?detajl(g,tr):'');
 }
 function ogAkt(on){ OG_AKT=on; lss('obr_og_akt',on); privzetoIzb(); risi(); }
 async function ogUpload(files){
@@ -3344,21 +3401,21 @@ document.addEventListener('click',async ev=>{
   const sz=ev.target.closest('[data-sez]');
   if(sz){ ogSezona(sz.dataset.sez); return; }
   const iz=ev.target.closest('[data-izd]');
-  if(iz){ const g=D.skuji.find(x=>x.sku===iz.dataset.izd), a=g?izdPredlogi(g):[], vsi=a.every(e=>IZB.has(kl(e))); a.forEach(e=>vsi?IZB.delete(kl(e)):IZB.add(kl(e))); risiTabelo(); return; }
+  if(iz){ const g=D.skuji.find(x=>x.sku===iz.dataset.izd), a=g?izdPredlogi(g):[], vsi=a.every(e=>IZB.has(kl(e))); a.forEach(e=>vsi?IZB.delete(kl(e)):IZB.add(kl(e))); osveziG(iz.dataset.izd); return; }
   const st=ev.target.closest('[data-st],[data-stv]');
   if(st){ const g=D.skuji.find(x=>x.sku===st.dataset.g); if(!g) return;
     const v=st.dataset.stv, d=+(v!=null?v:st.dataset.d), a=vTrgi(g,'vse').filter(e=>vseMoz(e)&&(v!=null||kl(e)===st.dataset.st));
-    a.forEach(e=>{ const k=kl(e), pc=d<0?e.k_dol:e.k_gor; if(!d){ delete ROCNO[k]; if(!izbirljiv(e)) IZB.delete(k); } else if(pc>0){ ROCNO[k]=pc; IZB.add(k); } });
-    risiTabelo(); return; }
+    a.forEach(e=>{ const k=kl(e), pc=d<0?e.k_dol:e.k_gor; if(!d){ delete ROCNO[k]; IZB.delete(k); } else if(pc>0){ ROCNO[k]=pc; IZB.add(k); } });
+    osveziG(g.sku); return; }
   const c=ev.target.closest('[data-k]');
   if(c&&!ev.target.closest('a,input.rc')){ const k=c.dataset.k;
     if(c.tagName==='TR'&&Date.now()-ROC_CAS<400){ c.querySelector('input.izb').checked=IZB.has(k); return; }   // klik ob vpisu cene: trg je že izbran, ne odznači ga
-    IZB.has(k)?IZB.delete(k):IZB.add(k); risiTabelo(); return; }
+    IZB.has(k)?IZB.delete(k):IZB.add(k); const v_=c.closest('tr.vr')||(c.closest('tr.det')||{}).previousElementSibling; if(v_) osveziG(v_.dataset.g); else risiTabelo(true); return; }
   const od=ev.target.closest('[data-odstrani]');
   if(od){ await fetch('/cene-znizano/odstrani',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kljuci:[od.dataset.odstrani]})}); delete D.znizano[od.dataset.odstrani]; risi(); return; }
   if(ev.target.closest('a,button,input,tr.det')) return;
   const tr=ev.target.closest('tr.vr');
-  if(tr){ const s=tr.dataset.g; ODPRT.has(s)?ODPRT.delete(s):ODPRT.add(s); risiTabelo(); }
+  if(tr){ const s=tr.dataset.g; ODPRT.has(s)?ODPRT.delete(s):ODPRT.add(s); osveziG(s); }
 });
 async function poslji(){
   const iz=vSku(POGLED).flatMap(g=>vTrgi(g,POGLED).filter(e=>izbirljiv(e)&&IZB.has(kl(e))).map(e=>({e,g})));
@@ -14968,7 +15025,8 @@ function obratZdruzi(){
       else if((o.s30||0)<OBR_MIN30) sig={k:'malo',t:'💤 brez volumna',c:'#94a3b8',r:7,o:(o.s30||0)+' prodanih v 30 dneh (< '+OBR_MIN30+') — sprememba cene brez oglasa ne pomaga; signal velja, ko izdelek dobi obrat. '+opis};
       else if(dos!=null&&dos<OBR_NIZKO) sig={k:'gor',t:'🟢 dvig',c:'#15803d',r:1,o:'Zaloge za '+dos+' dni (< '+OBR_NIZKO+') — dvig zaščiti zalogo in poveča razliko. '+opis};
       else if(dos==null||dos>OBR_VISOKO){
-        if(raz!=null&&raz<obrRazMin()) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Preveč zaloge, a razlika < '+String(obrRazMin()).replace('.',',')+' € (minimum trga po return rate) — ne spuščaj; Xsell / bundle / oglas. '+opis};
+        if(tr!=null&&tr>=OBR_RAST) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Prodaja raste (trend +'+tr+' %), zaloge za '+(dos==null?'∞':dos)+' dni — ne spuščaj. '+opis};
+        else if(raz!=null&&raz<obrRazMin()) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Preveč zaloge, a razlika < '+String(obrRazMin()).replace('.',',')+' € (minimum trga po return rate) — ne spuščaj; Xsell / bundle / oglas. '+opis};
         else sig={k:'dol',t:'🔴 spust',c:'#dc2626',r:2,o:'Zaloge za '+(dos==null?'∞':dos)+' dni (> '+OBR_VISOKO+')'+(pad?', prodaja pada':'')+' — kapital je zaklenjen. '+opis};
       } else if(!pad&&tr!=null&&tr>=OBR_RAST&&dos<=OBR_RAST_DNI) sig={k:'gor',t:'🚀 raste',c:'#15803d',r:1,o:'Prodaja raste (trend +'+tr+' %), zaloge za '+dos+' dni — izkoristi povpraševanje. '+opis};
       else if(!pad&&raz!=null&&raz<9) sig={k:'gor',t:'🟢 test dvig',c:'#15803d',r:1,o:'Zdrava zaloga, prodaja ne pada, razlika < 9 € — poskusi en Bato korak gor. '+opis};
