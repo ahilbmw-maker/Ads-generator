@@ -3001,6 +3001,13 @@ async def obrat_plan_stran(request: Request):
   .c.ur{background:#dcfce7;color:#166534;cursor:help}
   .rc{width:82px;padding:3px 6px;border:1px solid #94a3b8;border-radius:6px;font-family:inherit;font-size:13px;font-weight:700;text-align:right}
   .rc.on{border-color:var(--acc);background:#eef2ff;color:var(--acc)}
+  .izb{width:16px;height:16px;margin:0 8px 0 0;vertical-align:-3px;cursor:pointer;accent-color:var(--acc)}
+  .izb.lock{accent-color:#d97706}
+  tr.dv{cursor:pointer}
+  tr.dv:hover td{background:#f5f6fa}
+  tr.dv.iz td{background:#eef2ff}
+  tr.dv.iz td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
+  tr.dv0 td{color:var(--txt3)}
   .pb{height:4px;border-radius:99px;background:#eef0f3;overflow:hidden;margin-top:3px}
   .pb i{display:block;height:100%;background:var(--dol)}
   table{border-collapse:collapse;width:100%;background:var(--card);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
@@ -3052,7 +3059,7 @@ const kl=e=>e.trg+'|'+e.cms_id;
 const n=(v,d)=>v==null?'—':Number(v).toLocaleString('sl-SI',{minimumFractionDigits:d||0,maximumFractionDigits:d==null?2:d});
 const eur=v=>n(v,2)+' €';
 const dat=s=>{const p=String(s||'').slice(0,10).split('-');return p.length===3?(+p[2])+'. '+(+p[1])+'.':'';};
-let ROCNO={};   // ročno vpisana cena {trg|cms_id: cena}, velja do naslednjega nalaganja
+let ROC_CAS=0, ROCNO={};   // ročno vpisana cena {trg|cms_id: cena}, velja do naslednjega nalaganja
 const izr=e=>{ const r=ROCNO[kl(e)]; return r!=null?rocIzr(e,r):((DVOJNI&&e.dvojni)?e.dvojni:e); };   // ročna cena, sicer izbran korak: 1× ali 2×
 function rocIzr(e,r){ const np=e.neto*r/e.c, raz=np-e.nc, m=raz/np*100, pct=(r-e.c)/e.c*100;
   return {pred:r,raz_po:Math.round(raz*100)/100,m_po:Math.round(m*10)/10,pct:Math.round(pct*10)/10,prag:raz>0?Math.round((e.neto-e.nc)/raz*100-100):null,
@@ -3178,6 +3185,7 @@ function risiTabelo(){
 }
 function risiBar(){
   const pr=vSku(POGLED).flatMap(g=>vTrgi(g,POGLED).filter(e=>(e.stanje==='predlog'||e.ovr)&&IZB.has(kl(e))));
+  document.querySelectorAll('input[data-ind]').forEach(i=>{ i.indeterminate=true; });
   const bar=document.getElementById('bar');
   bar.style.display=(POGLED==='dol'||POGLED==='gor'||POGLED==='oglas')?'flex':'none';
   document.getElementById('barTxt').textContent='Izbranih '+pr.length+' cen';
@@ -3188,10 +3196,13 @@ function detCelice(e){ const p=izr(e), dol=p.pct!=null?p.pct<0:e.smer==='dol';
     '<td class="r">'+n(e.raz,2)+(p.raz_po==null?'':' → <b>'+n(p.raz_po,2)+'</b>')+'</td>',
     '<td class="r">'+n(e.m,1)+' %'+(p.m_po==null?'':' → '+n(p.m_po,1)+' %')+'</td>',
     '<td class="r">'+(p.prag==null?'—':(dol?'+'+p.prag+' %':(p.prag)+' %'))+'</td>']; }
+function detVse(g){ const a=izdPredlogi(g); if(!a.length) return ''; const c=a.filter(e=>IZB.has(kl(e))).length;
+  return '<input type="checkbox" class="izb" data-izd="'+esc(g.sku)+'" title="Izberi ali odznači vse trge s predlogom"'+(c===a.length?' checked':'')+(c&&c<a.length?' data-ind="1"':'')+'>'; }
 function detajl(g,tr){
-  return '<tr class="det"><td colspan="30"><table><tr><th>Trg</th><th class="r">Zdaj</th><th class="r" title="Vpiši svojo ceno, prazno = naš predlog">Predlog ✎</th><th class="r">Sprememba</th><th class="r">Razlika €</th><th class="r">Marža</th><th class="r" title="Spust: koliko več prodaje rabimo, da je skupna razlika enaka. Dvig: koliko prodaje lahko izgubimo.">Prag prodaje</th><th>Signal</th><th>Opomba</th></tr>'+
+  return '<tr class="det"><td colspan="30"><table><tr><th>'+detVse(g)+'Trg</th><th class="r">Zdaj</th><th class="r" title="Vpiši svojo ceno, prazno = naš predlog">Predlog ✎</th><th class="r">Sprememba</th><th class="r">Razlika €</th><th class="r">Marža</th><th class="r" title="Spust: koliko več prodaje rabimo, da je skupna razlika enaka. Dvig: koliko prodaje lahko izgubimo.">Prag prodaje</th><th>Signal</th><th>Opomba</th></tr>'+
     tr.map(e=>{const p=izr(e), roc=ROCNO[kl(e)]!=null, moz=(e.stanje==='predlog'||e.ovr)&&e.neto;
-      return '<tr><td><b>'+oz(e.trg)+'</b> '+(e.url?'<a href="'+esc(e.url)+'" target="_blank" rel="noopener">↗</a> ':'')+'<a href="https://api.maaarket.si/nova/resources/products/'+esc(e.cms_id)+(e.trg==='sl'?'/edit':'?tab=vsebina')+'" target="_blank" rel="noopener" title="CMS">✎</a></td>'+
+      const iz=moz&&IZB.has(kl(e));
+      return '<tr class="'+(moz?'dv'+(iz?' iz':''):'dv0')+'"'+(moz?' data-k="'+esc(kl(e))+'" title="Klik = izberi ali odznači trg"':'')+'><td>'+(moz?'<input type="checkbox" class="izb'+(e.stanje==='predlog'?'':' lock')+'" tabindex="-1"'+(iz?' checked':'')+'>'+(e.stanje==='predlog'?'':(e.stanje==='luc'?'🔴 ':'⏳ ')):'')+'<b>'+oz(e.trg)+'</b> '+(e.url?'<a href="'+esc(e.url)+'" target="_blank" rel="noopener">↗</a> ':'')+'<a href="https://api.maaarket.si/nova/resources/products/'+esc(e.cms_id)+(e.trg==='sl'?'/edit':'?tab=vsebina')+'" target="_blank" rel="noopener" title="CMS">✎</a></td>'+
         '<td class="r">'+n(e.c)+' '+esc(e.cur)+'</td><td class="r">'+(moz?'<input class="rc'+(roc?' on':'')+'" inputmode="decimal" data-r="'+esc(kl(e))+'" data-g="'+esc(g.sku)+'" placeholder="'+esc(n((DVOJNI&&e.dvojni?e.dvojni:e).pred))+'" value="'+(roc?esc(n(ROCNO[kl(e)])):'')+'" title="Vpiši svojo ceno v '+esc(e.cur)+', prazno = naš predlog">':'<b>'+(p.pred==null?'—':n(p.pred))+'</b>')+'</td>'+
         detCelice(e).join('')+
         '<td style="white-space:nowrap" title="'+esc(e.razlog)+'">'+esc(e.sig)+'</td>'+
@@ -3212,7 +3223,8 @@ document.addEventListener('change',ev=>{
   i.classList.toggle('on',ROCNO[k]!=null); pon();
   const tr=i.closest('tr'); detCelice(e).forEach((h,j)=>{ tr.cells[3+j].outerHTML=h; });
   const c=[...document.querySelectorAll('.c[data-k]')].find(x=>x.dataset.k===k); if(c) c.outerHTML=cip(e);
-  const b=[...document.querySelectorAll('[data-izd]')].find(x=>x.dataset.izd===g.sku); if(b) b.outerHTML=izdGumb(g);
+  [...document.querySelectorAll('[data-izd]')].filter(x=>x.dataset.izd===g.sku).forEach(x=>{ x.outerHTML=x.tagName==='INPUT'?detVse(g):izdGumb(g); });
+  tr.classList.toggle('iz',IZB.has(k)); const cb=tr.querySelector('input.izb'); if(cb) cb.checked=IZB.has(k); ROC_CAS=Date.now();
   risiBar();
 });
 let UC=null;
@@ -3318,7 +3330,9 @@ document.addEventListener('click',async ev=>{
   const iz=ev.target.closest('[data-izd]');
   if(iz){ const g=D.skuji.find(x=>x.sku===iz.dataset.izd), a=g?izdPredlogi(g):[], vsi=a.every(e=>IZB.has(kl(e))); a.forEach(e=>vsi?IZB.delete(kl(e)):IZB.add(kl(e))); risiTabelo(); return; }
   const c=ev.target.closest('[data-k]');
-  if(c){ const k=c.dataset.k; IZB.has(k)?IZB.delete(k):IZB.add(k); risiTabelo(); return; }
+  if(c&&!ev.target.closest('a,input.rc')){ const k=c.dataset.k;
+    if(c.tagName==='TR'&&Date.now()-ROC_CAS<400){ c.querySelector('input.izb').checked=IZB.has(k); return; }   // klik ob vpisu cene: trg je že izbran, ne odznači ga
+    IZB.has(k)?IZB.delete(k):IZB.add(k); risiTabelo(); return; }
   const od=ev.target.closest('[data-odstrani]');
   if(od){ await fetch('/cene-znizano/odstrani',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kljuci:[od.dataset.odstrani]})}); delete D.znizano[od.dataset.odstrani]; risi(); return; }
   if(ev.target.closest('a,button,input,tr.det')) return;
