@@ -2910,18 +2910,22 @@ async def obrat_plan(request: Request):
                 if dni < pm:
                     e["stanje"] = "premor"
                     e["op"].append(f"spremenjeno pred {dni} d — počakaj še {pm - dni} d")
-            if gor and e["stanje"] == "predlog":
+            ovira = None
+            if gor and e["stanje"] in ("predlog", "premor"):
                 prg = OBR_PRAG.get(cur, 10)
                 L = luci[t].get("luc")
                 if int(pred / prg + 1e-9) > int(c / prg + 1e-9):
-                    e["stanje"] = "prag"
-                    e["op"].append(f"dvig bi prestopil prag {int(pred / prg + 1e-9) * prg} {cur}")
+                    ovira = ("prag", f"dvig bi prestopil prag {int(pred / prg + 1e-9) * prg} {cur}")
                 elif (zz.get("dvigi") or 0) >= 2:
-                    e["stanje"] = "dvigi"
-                    e["op"].append(f"že {zz['dvigi']} dviga v 60 dneh")
+                    ovira = ("dvigi", f"že {zz['dvigi']} dviga v 60 dneh")
                 elif L == "rdeca" or (L == "rumena" and sg["t"] != "🟢 dvig"):
-                    e["stanje"] = "luc"
-                    e["op"].append(("🔴" if L == "rdeca" else "🟡") + " trg: " + ("brez dvigov" if L == "rdeca" else "samo dvig pri malo zaloge"))
+                    ovira = ("luc", ("🔴" if L == "rdeca" else "🟡") + " trg: " + ("brez dvigov" if L == "rdeca" else "samo dvig pri malo zaloge"))
+                if ovira:
+                    if e["stanje"] == "predlog":
+                        e["stanje"] = ovira[0]
+                    e["op"].append(ovira[1])
+            # ⏳ premor lahko uporabnik preglasi (klik na trg + potrditev); ostale varovalke, 1× na dan in star feed ostanejo
+            e["premor_ovr"] = e["stanje"] == "premor" and not ovira and t not in feed_star
             if not gor and sg["dos"] is None or (not gor and sg["dos"] > OBR_DVOJNI_DNI):
                 p2 = _obrat_lepo(pred - korak, cur, False)
                 if p2 > 0 and neto_p(p2) - nc >= rm:
@@ -2942,6 +2946,9 @@ async def obrat_plan(request: Request):
             k = f"{e['trg']}|{e['cms_id']}"
             if e["stanje"] == "predlog" and k in blok:
                 e["stanje"] = "danes"
+                e["op"].append("⛔ " + str(blok[k]))
+            elif e.get("premor_ovr") and k in blok:
+                e["premor_ovr"] = False
                 e["op"].append("⛔ " + str(blok[k]))
             for v in (e, e.get("dvojni") or {}):
                 if "pct" in v:
@@ -2999,6 +3006,8 @@ async def obrat_plan_stran(request: Request):
   .c.fl.iz{background:#d97706;border-color:#d97706;color:#fff}
   .c.dno{background:#fee2e2;color:#991b1b;cursor:help}
   .c.st{background:#f1f5f9;color:#94a3b8;cursor:help}
+  .c.ovr{background:#fff7ed;border:1px dashed #f59e0b;color:#92400e}
+  .c.ovr.iz{background:#d97706;border:1px solid #d97706;color:#fff}
   .zn{display:inline-block;background:#dc2626;color:#fff;font-size:10.5px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap;cursor:help}
   tr.det>td{background:#fafbfc;padding:6px 10px 12px 58px}
   tr.det table{border:1px solid var(--bd);font-size:13px}
@@ -3091,6 +3100,7 @@ function znTit(z){ return 'Znižano '+dat(z.at)+': '+n(z.prej)+' → '+n(z.potem
 function cip(e){
   const p=izr(e), iz=IZB.has(kl(e));
   if(e.stanje==='predlog'){ return '<span class="c predlog'+(p.ok?'':' fl')+(iz?' iz':'')+'" data-k="'+esc(kl(e))+'" title="'+esc(n(e.c)+' → '+n(p.pred)+' '+e.cur+(e.op.length?' · '+e.op.join(' · '):''))+'">'+oz(e.trg)+'</span>'; }
+  if(e.premor_ovr){ return '<span class="c ovr'+(iz?' iz':'')+'" data-k="'+esc(kl(e))+'" title="'+esc(n(e.c)+' → '+n(p.pred)+' '+e.cur+' · '+e.op.join(' · ')+' · klik = izberi vseeno')+'">⏳ '+oz(e.trg)+'</span>'; }
   if(e.stanje==='dno') return '<span class="c dno" title="'+esc(e.op.join(' · '))+'">⛔ '+oz(e.trg)+'</span>';
   const ik={premor:'⏳',danes:'⛔',luc:'🔴',dvigi:'⏸',prag:'⏸',stop:'🛑',sez:'⏸',neznano:'❓',nov:'🆕'}[e.stanje]||'';
   return '<span class="c st" title="'+esc(e.op.join(' · '))+'">'+ik+' '+oz(e.trg)+'</span>';
@@ -3118,7 +3128,7 @@ function risiTabelo(){
   risiBar();
 }
 function risiBar(){
-  const pr=vPredlogi(POGLED).filter(e=>IZB.has(kl(e)));
+  const pr=vSku(POGLED).flatMap(g=>vTrgi(g,POGLED).filter(e=>(e.stanje==='predlog'||e.premor_ovr)&&IZB.has(kl(e))));
   const bar=document.getElementById('bar');
   bar.style.display=(POGLED==='dol'||POGLED==='gor'||POGLED==='oglas')?'flex':'none';
   document.getElementById('barTxt').textContent='Izbranih '+pr.length+' cen';
@@ -3248,9 +3258,11 @@ document.addEventListener('click',async ev=>{
   if(tr){ const s=tr.dataset.g; ODPRT.has(s)?ODPRT.delete(s):ODPRT.add(s); risiTabelo(); }
 });
 async function poslji(){
-  const iz=vSku(POGLED).flatMap(g=>vTrgi(g,POGLED).filter(e=>e.stanje==='predlog'&&IZB.has(kl(e))).map(e=>({e,g})));
+  const iz=vSku(POGLED).flatMap(g=>vTrgi(g,POGLED).filter(e=>(e.stanje==='predlog'||e.premor_ovr)&&IZB.has(kl(e))).map(e=>({e,g})));
   if(!iz.length){ alert('Ni izbranih cen.'); return; }
   const po={}; iz.forEach(({e})=>{po[e.trg]=(po[e.trg]||0)+1;});
+  const prem=iz.filter(({e})=>e.stanje==='premor');
+  if(prem.length&&!confirm('⏳ '+prem.length+' cen je v premoru (nedavno spremenjeno):\n\n'+prem.slice(0,15).map(({e})=>'• '+e.sku+' ('+oz(e.trg)+'): '+e.op.join(' · ')).join('\n')+(prem.length>15?'\n… in še '+(prem.length-15):'')+'\n\nVseeno spremenim?')) return;
   const test=iz.filter(({e})=>e.zn&&e.zn.at&&Date.now()-new Date(e.zn.at)<14*864e5);
   if(test.length&&!confirm('⏳ '+test.length+' cen je v testnem obdobju (znižano v zadnjih 14 dneh):\n\n'+test.slice(0,15).map(({e})=>'• '+e.sku+' ('+oz(e.trg)+'): znižano '+dat(e.zn.at)).join('\n')+(test.length>15?'\n… in še '+(test.length-15):'')+'\n\nSprememba zdaj prekine meritev učinka. Vseeno nadaljujem?')) return;
   if(!confirm('✓ Pošljem '+iz.length+' cen v vrsto?\n\n'+Object.entries(po).map(([t,c])=>oz(t)+': '+c).join(' · ')+'\n\nVtičnik jih nastavi, ko je v panelu vklopljeno »▶ Izvajaj vrsto«.'+(POGLED!=='gor'?'\nZnižani izdelki dobijo oznako ⬇ Znižano z razlogom.':''))) return;
