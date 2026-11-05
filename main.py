@@ -3114,7 +3114,7 @@ async def obrat_plan_stran(request: Request):
   @media(max-width:720px){.stick{position:static}body{padding:10px 10px 90px}.naziv{max-width:130px}.flt input[type=search]{width:100%}}
 </style></head><body>
 <div class="karte">
-  <div class="ka k-z" id="v-zm" onclick="pogled('zm')"></div><div class="ka k-d" id="v-gor" onclick="pogled('gor')"></div><div class="ka k-s" id="v-dol" onclick="pogled('dol')"></div><div class="ka k-v" id="v-vse" onclick="pogled('vse')"></div><div class="ka k-n" id="v-dno" onclick="pogled('dno')"></div><div class="ka k-o" id="v-oglas" onclick="pogled('oglas')"></div><div class="ka k-b" id="v-zal" onclick="pogled('zal')"></div><div class="ka k-g" id="v-uc" onclick="pogled('uc')"></div><div class="ka k-g" id="v-zn" onclick="pogled('zn')"></div>
+  <div class="ka k-v" id="v-vse" onclick="pogled('vse')"></div><div class="ka k-d" id="v-gor" onclick="pogled('gor')"></div><div class="ka k-s" id="v-dol" onclick="pogled('dol')"></div><div class="ka k-z" id="v-zm" onclick="pogled('zm')"></div><div class="ka k-n" id="v-dno" onclick="pogled('dno')"></div><div class="ka k-o" id="v-oglas" onclick="pogled('oglas')"></div><div class="ka k-b" id="v-zal" onclick="pogled('zal')"></div><div class="ka k-g" id="v-uc" onclick="pogled('uc')"></div><div class="ka k-g" id="v-zn" onclick="pogled('zn')"></div>
 </div>
 <div class="stick"><div class="flt" id="flt"></div><div class="acts"><span class="dim" id="at" style="white-space:nowrap"></span><button class="btn" id="pomBtn" onclick="pomoc()" title="Razlaga pogleda">?</button><button class="btn" onclick="nalozi()">↻ Osveži</button></div></div>
 <div id="warn"></div>
