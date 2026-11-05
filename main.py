@@ -3105,6 +3105,7 @@ async def obrat_plan_stran(request: Request):
   tr.det>td{background:#fafbfc;padding:6px 10px 12px 58px}
   tr.det table{border:1px solid var(--bd);font-size:13px}
   tr.vr{cursor:pointer}
+  #box>table>tbody>tr:not(.det):hover>td{background:#e6eaff}
   .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--bd);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 -4px 14px rgba(0,0,0,.06)}
   .send{background:#16a34a;color:#fff;border-color:#16a34a}
   #box{overflow-x:auto}
