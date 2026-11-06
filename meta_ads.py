@@ -54,10 +54,30 @@ MA_STRANI = {
     "111891964957486": {"ime": "Maaarket Retail", "ig": "17841451744798020"},
     "100747945468598": {"ime": "Maaarket Cz", "ig": "17841447402045875", "ig_x": "4007613509295987"},
     "107310948408390": {"ime": "Maaarket Outlet", "ig": "17841450415404322", "ig_x": "4484961918278211"},
+    # ⚡ ThunderShop (2026-11-06): ločen ad account in BM, piksli deljeni z Maaarket; ig_x iz izbirnika Instagram profile v Ads Managerju
+    "101302395042754": {"ime": "Thundershop EU", "znamka": "thundershop", "ig": "", "ig_x": "4867799863339353"},
+    "103409011493921": {"ime": "ThunderShop Europe", "znamka": "thundershop", "ig": "", "ig_x": "34721773627466275"},
+    "103164179150383": {"ime": "ThunderShop Deals", "znamka": "thundershop", "ig": "", "ig_x": "5050241578419907"},
+    "113257273832615": {"ime": "ThunderShop Hr", "znamka": "thundershop", "ig": "", "ig_x": "3259151760858421"},
+    "104726534693472": {"ime": "ThunderShop Rs", "znamka": "thundershop", "ig": "", "ig_x": "4481644161910025"},
 }
 # privzeta stran po trgu (strani trga + splošne razporejene, da noben ne preseže 250 oglasov); v koraku 3 jo lahko zamenjaš
 MA_STRAN_TRG = {"pl": "100158825529238", "sk": "108850387978565", "hr": "105709857728802", "cz": "100747945468598", "sl": "101449685670882",
                 "rs": "107310948408390", "hu": "111891964957486", "gr": "113166093926419", "bg": "103042431541052", "ro": "100174912815985"}
+MA_STRAN_THUNDER = {"hr": "113257273832615", "rs": "104726534693472", "sl": "101302395042754", "cz": "101302395042754", "sk": "101302395042754",
+                    "hu": "103409011493921", "gr": "103409011493921", "ro": "103164179150383", "bg": "103164179150383"}   # PL: ThunderShop nima trgovine
+MA_ZNAMKE = {"maaarket": "Maaarket", "thundershop": "ThunderShop"}
+
+
+def znamka_od(x):
+    """Stari paketi, evidenca in vrsta brez »znamka« = Maaarket."""
+    return "thundershop" if (x or {}).get("znamka") == "thundershop" else "maaarket"
+
+
+def stran_za(znamka, t):
+    return MA_STRAN_THUNDER.get(t) if znamka == "thundershop" else MA_STRAN_TRG[t]
+
+
 MA_CTA = {"sl": "Kupi zdaj", "hr": "Kupi sada", "rs": "Kupi sada", "hu": "Vásárolj most", "pl": "Kup teraz", "cz": "Koupit",
           "sk": "Kúpiť teraz", "gr": "Αγόρασε τώρα", "bg": "Купи сега", "ro": "Cumpără acum"}   # samo za predogled (CTA = SHOP_NOW)
 # ✍ Različna besedila (2026-11-06: 29 od 30 prvih besedil je bilo »težava? + z izdelkom X rešitev«, v Flexible gre samo prvo)
@@ -96,9 +116,17 @@ def _bes_vprasanje(t):
     return "?" in re.split(r"(?<=[.!?])\s", str(t or "").strip())[0]
 
 
-def _bes_tezave(ogl, koti, stara):
+def _bes_tuja_znamka(t, znamka):
+    return next((ime for z, ime in MA_ZNAMKE.items() if z != znamka and ime.lower() in str(t or "").lower()), "")
+
+
+def _bes_tezave(ogl, koti, stara, znamka="maaarket"):
     """Kaj je narobe z besedili: seznam opisov (prazen = v redu)."""
     tez = []
+    for i, o in enumerate(ogl):
+        tuja = _bes_tuja_znamka(f"{o.get('hl')} {o.get('pt')}", znamka)
+        if tuja:
+            tez.append(f"oglas {i + 1} omenja trgovino {tuja}, prodaja pa {MA_ZNAMKE[znamka]}")
     vpr = [i for i, o in enumerate(ogl) if _bes_vprasanje(o.get("pt"))]
     if len(vpr) > max(1, len(ogl) // 5):
         tez.append(f"z vprašanjem se začne {len(vpr)} oglasov, dovoljen je največ {max(1, len(ogl) // 5)}")
@@ -260,7 +288,7 @@ def vklopi(G: dict):
                 return r
         return None
 
-    async def izdelek_po_trgih(sku):
+    async def izdelek_po_trgih(sku, znamka="maaarket"):
         """{trg: {url, g_id, naziv}} iz Marže trga + RS neuvoz (🚫)."""
         neuvoz = (_jload(DATA_DIR / "marza_ne_uvazamo.json", {}) or {})
         out = {}
@@ -277,6 +305,9 @@ def vklopi(G: dict):
                           "cms_id": str(r.get("cms_id") or ""), "slika": r.get("slika") or "",
                           "neuvoz": str(r.get("g_id") or "") in (neuvoz.get(t) or {})}
         await asyncio.gather(*(en(t) for t in MA_TRGI))
+        if znamka != "maaarket":   # ista pot, druga domena; trg brez domene znamke (ThunderShop: PL) odpade
+            dom = G["BRAND_DOMAINS"][znamka]
+            out = {t: x | {"url_vir": x["url"], "url": re.sub(r"^https?://[^/]+", f"https://{dom[t]}", x["url"]) if x["url"] else ""} for t, x in out.items() if t in dom}
         return out
 
     # ── Flare / NB2.1 ──
@@ -797,14 +828,14 @@ def vklopi(G: dict):
                 d["zacetki"] = (d["zacetki"] + [_bes_zacetek(ogl[0].get("pt"), 8)])[-MA_BES_ZADNJI:]
             _jsave(BES_FILE, d)
 
-    def oglasi_ai(naziv, opis, prednosti, n_oglasov, sku=""):
+    def oglasi_ai(naziv, opis, prednosti, n_oglasov, sku="", znamka="maaarket"):
         koti, stara, zacetki = bes_pripravi(sku, n_oglasov)
         koti_txt = "\n".join(f"Oglas {i + 1}: {MA_KOTI[k]}" for i, k in enumerate(koti))
         stara_txt = ("\nTA BESEDILA ZA TA IZDELEK SO ŽE V DRUGIH KAMPANJAH. Napiši povsem drugače: drugi začetki, drugi stavki, drugi naslovi:\n"
                      + "\n".join(f"- {x.get('hl')} | {x.get('pt')}" for x in stara) + "\n") if stara else ""
         zac_txt = ("\nTako so se začeli zadnji oglasi drugih izdelkov. Ne posnemaj njihove zgradbe:\n" + "\n".join(f"- {z} …" for z in zacetki) + "\n") if zacetki else ""
         prompt = (
-            f"Napiši {n_oglasov} RAZLIČNIH Facebook/Instagram oglasov v SLOVENŠČINI za izdelek trgovine Maaarket.\n"
+            f"Napiši {n_oglasov} RAZLIČNIH Facebook/Instagram oglasov v SLOVENŠČINI za izdelek trgovine {MA_ZNAMKE[znamka]}. Druge trgovine ne omenjaj.\n"
             f"Izdelek: {naziv}\nOpis (lahko v drugem jeziku — uporabi pomen): {opis[:1800]}\nKljučne prednosti (angleško): {prednosti}\n"
             "Vsak oglas: pt (Primary Text): 2–3 vrstice, 2–3 emoji-ji, prodajni ton, brez cen, vsak DRUGAČEN; "
             "hl (Headline): MAX 5 BESED, 1 emoji na začetku, brez cen, vsak DRUGAČEN.\n"
@@ -819,10 +850,10 @@ def vklopi(G: dict):
             j = claude_json(pr)
             return [{"hl": str(o.get("hl") or "").strip(), "pt": str(o.get("pt") or "").strip()} for o in (j.get("oglasi") or []) if o][:n_oglasov]
         ogl = poskus(prompt)
-        tez = _bes_tezave(ogl, koti, stara)
+        tez = _bes_tezave(ogl, koti, stara, znamka)
         if ogl and tez:   # 🛡 enkrat znova; obdrži boljšega
             ogl2 = poskus(prompt + "\n\nPrejšnji odgovor ni bil dober: " + "; ".join(tez) + ". Napiši vse znova.")
-            tez2 = _bes_tezave(ogl2, koti, stara)
+            tez2 = _bes_tezave(ogl2, koti, stara, znamka)
             if ogl2 and len(tez2) < len(tez):
                 ogl, tez = ogl2, tez2
             if tez:
@@ -837,9 +868,9 @@ def vklopi(G: dict):
             trgi[t] = {"url": (x or {}).get("url", ""), "g_id": (x or {}).get("g_id", ""), "naziv": (x or {}).get("naziv", ""),
                        "neuvoz": bool((x or {}).get("neuvoz")),
                        "vkljuci": bool(x and x.get("url")) and t in (p.get("trgi_izbor") or MA_TRGI) and not (x or {}).get("neuvoz"),
-                       "stran": MA_STRAN_TRG[t]}
+                       "stran": stran_za(znamka_od(p), t)}
             if not x:
-                trgi[t]["opomba"] = "ni v feedu trga"
+                trgi[t]["opomba"] = "ni v feedu trga" if stran_za(znamka_od(p), t) else f"{MA_ZNAMKE[znamka_od(p)]} nima tega trga"
             elif x.get("neuvoz"):
                 trgi[t]["opomba"] = "🚫 ne uvažamo (Marža)"
         return trgi
@@ -862,7 +893,7 @@ def vklopi(G: dict):
         p = pak_get(pid)
         try:
             sku = p["sku"]
-            info = await izdelek_po_trgih(sku)
+            info = await izdelek_po_trgih(sku, znamka_od(p))
             sl = info.get("sl") or next(iter(info.values()), None)
             if not sl:
                 await pak_set(pid, lambda q: q.update(status="napaka", napaka=f"SKU {sku} ni v nobenem feedu (Marža po trgih)."))
@@ -886,11 +917,11 @@ def vklopi(G: dict):
                     except Exception as e:
                         print(f"[meta-ads] video info: {e}")
                     v.update(vkljuci=i_ < MA_VIDEO_MAX, lokal=True, opomba="")   # izvoz vsak video prekodira pod 10 MB; privzeto prvi 3
-                ogl = await asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", "", max(1, len(videi)), sku)
+                ogl = await asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", "", max(1, len(videi)), sku, znamka_od(p))
                 await pak_set(pid, lambda q: q.update(status="koncept", ime=sku, naziv=sl.get("naziv") or "", kreative=[], oglasi_sl=ogl, videi=videi,
                                                         opozorila=nap, opis_izdelka=(it.get("description") or "")[:2500], trgi=trgi_paketa(info, p)))
                 return
-            ime, a_opc, b_opc = await kreative_ab(sl.get("url") or "", naziv, it.get("description") or "")
+            ime, a_opc, b_opc = await kreative_ab(sl.get("url_vir") or sl.get("url") or "", naziv, it.get("description") or "")
             if not (a_opc and b_opc):
                 raise RuntimeError("analiza izdelka ni vrnila A/B opcij")
             kre = []
@@ -899,7 +930,7 @@ def vklopi(G: dict):
                 kre.append({"oznaka": f"{a_.get('label', 'A')} × {b_.get('label', 'B')}", "tekst": str(a_["text"]).strip()[:120], "vibe": str(b_["text"]).strip()[:60],
                             "razmerje": "1:1"})   # 4 × 1:1 + 1 × 4:5 (preizkus mobilni Feed)
             hk, ogl = await asyncio.gather(asyncio.to_thread(hooki_ai, naziv, it.get("description") or "", kre),
-                                           asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", a_opc[0]["text"], max(n_ogl, MA_N_KREATIV), sku))
+                                           asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", a_opc[0]["text"], max(n_ogl, MA_N_KREATIV), sku, znamka_od(p)))
             for k_, h_ in zip(kre, hk):
                 k_["hook"] = h_
             try:
@@ -1332,7 +1363,7 @@ def vklopi(G: dict):
             if not samo:
                 n = len(p.get("videi") or [])
                 if len(p.get("oglasi_sl") or []) < n:   # dodani videi → dodatna besedila oglasov
-                    dod = await asyncio.to_thread(oglasi_ai, p.get("naziv") or p["sku"], p.get("opis_izdelka") or "", "", n - len(p.get("oglasi_sl") or []), p["sku"])
+                    dod = await asyncio.to_thread(oglasi_ai, p.get("naziv") or p["sku"], p.get("opis_izdelka") or "", "", n - len(p.get("oglasi_sl") or []), p["sku"], znamka_od(p))
                     await pak_set(pid, lambda q: q.update(oglasi_sl=(q.get("oglasi_sl") or []) + dod))
                 await prevodi_oglasov(pid, trgi)
                 p = pak_get(pid)
@@ -1467,21 +1498,22 @@ def vklopi(G: dict):
         if not prijava(request):
             return ni()
         d = nalozi()
-        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "vrsta": d.get("vrsta") or {"postavke": []}, "narejeni": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "slike"}), "narejeni_video": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "video"}), "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "cc": MA_CC, "scene": {k: v["ime"] for k, v in MA_SCENE.items()}, "akcija": d.get("akcija") or {}, "akcija_pt": MA_AKCIJA_PT,
-                "paketi": [{k: p.get(k) for k in ("id", "sku", "ime", "status", "at", "izvozeno", "potrjeno")} | {"tip": tip_od(p)} |
+        return {"ok": True, "stat": statistika(d), "brez_rs": d["brez_rs"], "vrsta": d.get("vrsta") or {"postavke": []}, "narejeni": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "slike"}), "narejeni_video": sorted({e["sku"] for e in d["evidenca"] if tip_od(e) == "video"}), "narejeni_po": {z: {t_: sorted({e["sku"] for e in d["evidenca"] if znamka_od(e) == z and tip_od(e) == t_}) for t_ in ("slike", "video")} for z in MA_ZNAMKE}, "strani": MA_STRANI, "jeziki": MA_JEZIK_SL, "cta": MA_CTA, "bid": MA_BID, "cc": MA_CC, "scene": {k: v["ime"] for k, v in MA_SCENE.items()}, "akcija": d.get("akcija") or {}, "akcija_pt": MA_AKCIJA_PT,
+                "paketi": [{k: p.get(k) for k in ("id", "sku", "ime", "status", "at", "izvozeno", "potrjeno")} | {"tip": tip_od(p), "znamka": znamka_od(p)} |
                            {"trgi": [t for t in MA_TRGI if ((p.get("trgi") or {}).get(t) or {}).get("vkljuci")]} for p in d["paketi"]]}
 
     @app.get("/meta-ads/api/sku")
-    async def ma_sku(request: Request, sku: str = "", tip: str = "slike"):
+    async def ma_sku(request: Request, sku: str = "", tip: str = "slike", znamka: str = "maaarket"):
         """Kateri trgi imajo SKU v feedu (URL) + 🚫 neuvoz + zapomnjen »brez RS«."""
         if not prijava(request):
             return ni()
         sku = sku.strip().upper()
         if not sku:
             return {"ok": False, "error": "Vpiši SKU."}
-        info = await izdelek_po_trgih(sku)
+        zn = znamka_od({"znamka": znamka})
+        info = await izdelek_po_trgih(sku, zn)
         d = nalozi()
-        nar = [e for e in d["evidenca"] if e["sku"] == sku and tip_od(e) == tip_od({"tip": tip})]   # že narejeno = isti tip kampanje
+        nar = [e for e in d["evidenca"] if e["sku"] == sku and tip_od(e) == tip_od({"tip": tip}) and znamka_od(e) == zn]   # že narejeno = ista znamka in tip kampanje
         return {"ok": True, "sku": sku, "trgi": {t: {"url": bool((info.get(t) or {}).get("url")), "neuvoz": bool((info.get(t) or {}).get("neuvoz"))} for t in MA_TRGI},
                 "naziv": (info.get("sl") or next(iter(info.values()), {}) or {}).get("naziv", ""), "brez_rs": sku in d["brez_rs"],
                 "narejeno": nar[-1] if nar else None}
@@ -1496,7 +1528,7 @@ def vklopi(G: dict):
         async with lock:
             d = nalozi()
             akcija_nastavi(d, data)
-            pid = nov_paket(d, sku, data.get("trgi"), data.get("asana"), auto_osnove=bool(data.get("auto_osnove")), tip=tip_od(data))   # 📦 vsi naenkrat: kreative takoj po konceptu
+            pid = nov_paket(d, sku, data.get("trgi"), data.get("asana"), auto_osnove=bool(data.get("auto_osnove")), tip=tip_od(data), znamka=znamka_od(data))   # 📦 vsi naenkrat: kreative takoj po konceptu
             _jsave(PAK_FILE, d)
         v_ozadju(pid, obdelaj_koncept(pid))
         return {"ok": True, "id": pid}
@@ -1513,7 +1545,7 @@ def vklopi(G: dict):
         if isinstance(a, dict):
             d["akcija"] = {"on": bool(a.get("on")), "koda": re.sub(r"[^A-Z0-9]", "", str(a.get("koda") or "BLACK8").upper()) or "BLACK8"}
 
-    def nov_paket(d, sku, trgi, asana, auto_osnove=False, tip="slike"):
+    def nov_paket(d, sku, trgi, asana, auto_osnove=False, tip="slike", znamka="maaarket"):
         """Nov paket v d (klicatelj drži lock in shrani) → pid; koncept zažene klicatelj."""
         trgi_izbor = [t for t in (trgi or MA_TRGI) if t in MA_TRGI] or MA_TRGI
         asana = [s.strip() for s in re.split(r"[\s,]+", str(asana or "")) if "asana.com" in s or re.fullmatch(r"\d{10,}", s.strip())][:5]
@@ -1523,7 +1555,7 @@ def vklopi(G: dict):
         elif sku not in d["brez_rs"]:
             d["brez_rs"].append(sku)
         tip = "video" if tip == "video" else "slike"
-        d["paketi"].insert(0, {"id": pid, "sku": sku, "at": _lj_iso(), "status": "koncept_v_delu", "trgi_izbor": trgi_izbor, "asana": asana, "tip": tip,
+        d["paketi"].insert(0, {"id": pid, "sku": sku, "at": _lj_iso(), "status": "koncept_v_delu", "trgi_izbor": trgi_izbor, "asana": asana, "tip": tip, "znamka": znamka,
                                "auto_osnove": auto_osnove,
                                "nastavitve": {"proracun": 60, "status": "ACTIVE", "kampanja": f"{MA_ZNAK} [ALL 9.0BID] {sku} #BidCap (Suban)"}})
         for p in d["paketi"][30:]:   # stari paketi: slike/videi z diska
@@ -1543,7 +1575,7 @@ def vklopi(G: dict):
         x = next((x for x in ps if x.get("status") == "caka"), None)
         if not x:
             return None
-        x["pid"] = nov_paket(d, x["sku"], x.get("trgi"), x.get("asana"), auto_osnove=vr.get("auto", True), tip=tip_od(vr))
+        x["pid"] = nov_paket(d, x["sku"], x.get("trgi"), x.get("asana"), auto_osnove=vr.get("auto", True), tip=tip_od(vr), znamka=znamka_od(vr))
         x["status"] = "v_delu"; x["zacetek"] = _lj_iso()
         return x["pid"]
 
@@ -1571,7 +1603,7 @@ def vklopi(G: dict):
                         ps.append({"sku": sku, "asana": str(x.get("asana") or ""), "trgi": trgi, "status": "caka"})
                 if not ps:
                     return {"ok": False, "error": "Ni veljavnih SKU-jev."}
-                d["vrsta"] = vr = {"postavke": ps[:60], "auto": data.get("auto", True) is not False, "at": _lj_iso(), "tip": tip_od(data)}
+                d["vrsta"] = vr = {"postavke": ps[:60], "auto": data.get("auto", True) is not False, "at": _lj_iso(), "tip": tip_od(data), "znamka": znamka_od(data)}
                 akcija_nastavi(d, data)
             elif akcija in ("naslednji", "preskoci"):
                 pid = str(data.get("id") or "")
@@ -1849,8 +1881,14 @@ def vklopi(G: dict):
             if not tt.get("url"):
                 opz.append(f"{t.upper()}: ni URL-ja — izpuščen"); continue
             ogl = tt.get("oglasi") or []
-            stran = MA_STRANI.get(tt.get("stran") or "") or MA_STRANI["101449685670882"]
-            sid = tt.get("stran") if tt.get("stran") in MA_STRANI else "101449685670882"
+            sid = tt.get("stran")
+            if (MA_STRANI.get(sid) or {}).get("znamka", "maaarket") != znamka_od(p) or sid not in MA_STRANI:   # 🛡 nikoli stran druge znamke
+                sid = stran_za(znamka_od(p), t)
+            stran = MA_STRANI[sid]
+            for o_ in ogl:
+                tuja_ = _bes_tuja_znamka(f"{o_.get('hl')} {o_.get('pt')}", znamka_od(p))
+                if tuja_:
+                    opz.append(f"{t.upper()}: besedilo omenja {tuja_}: {str(o_.get('hl'))[:40]}")
             izkl = set(tt.get("izkl") or [])
             prva = None
             je_video = tip_od(p) == "video"
@@ -1921,6 +1959,8 @@ def vklopi(G: dict):
     async def zgradi_zip(pids, status, nacin):
         """1 ali več paketov (SKU-jev) → EN ZIP: en meta_uvoz.csv z vsemi kampanjami, ena mapa slike/, videi/ → en uvoz v Ads Manager."""
         nacin = "flex" if nacin == "flex" else "loceni"
+        if len({znamka_od(pak_get(x)) for x in pids if pak_get(x)}) > 1:   # ločen ad account: en CSV gre v en račun
+            return None, ["Izbrani so paketi Maaarket in ThunderShop. Izvozi jih ločeno, ker imata ločen ad account."], 0
         vse, opz_vse, deli = [], [], []
         for pid in pids:
             p = pak_get(pid)
@@ -1980,7 +2020,7 @@ def vklopi(G: dict):
                 px["izvozeno"] = _lj_iso()
                 bes_zapisi(p["sku"], px.get("oglasi_sl") or [], zacetek=False)   # ✍ tudi ročno popravljena besedila
                 if prvic:   # 📊 števec: prvi izvoz paketa
-                    d["evidenca"].append({"sku": p["sku"], "tip": tip_od(p), "at": _lj_iso(), "oglasov": len(vrst), "slik": len(set(slike) | {x for sl_ in rocno.values() for x in sl_}),
+                    d["evidenca"].append({"sku": p["sku"], "tip": tip_od(p), "znamka": znamka_od(p), "at": _lj_iso(), "oglasov": len(vrst), "slik": len(set(slike) | {x for sl_ in rocno.values() for x in sl_}),
                                           "nacin": nacin, "trgi": sorted({r["Ad Set Name"] for r in vrst})})
             _jsave(PAK_FILE, d)
         z.seek(0)
@@ -2012,6 +2052,8 @@ def vklopi(G: dict):
         if not z:
             return JSONResponse({"ok": False, "error": "Ni nobenega oglasa za izvoz. " + " · ".join(opz[:5])}, status_code=400)
         ime = (pak_get(pids[0]) or {}).get("sku", "meta") if n == 1 else f"{n}_kampanj"
+        if znamka_od(pak_get(pids[0])) == "thundershop":
+            ime = f"thundershop_{ime}"
         # ⚡ 2026-10-24: Response z bajti (+ Content-Length) namesto StreamingResponse(BytesIO) — ta je pošiljal ZIP »po vrsticah« (~1 MB/s)
         return Response(z.getvalue(), media_type="application/zip",
                         headers={"Content-Disposition": f'attachment; filename="meta_{ime}.zip"', "X-Opozorila": str(len(opz))})
@@ -2045,7 +2087,7 @@ def vklopi(G: dict):
             vsebina = z.getvalue()
             if len(vsebina) > MA_ASANA_MAX:
                 rez.append({"pid": pid, "sku": p["sku"], "ok": False, "error": f"ZIP {len(vsebina) / 1048576:.0f} MB > 95 MB (omejitev Asane) — uporabi ⬇ ZIP"}); continue
-            ime = f"META_{re.sub(r'[^A-Za-z0-9_-]+', '_', p['sku'])}_{_lj_iso()[:10]}.zip"
+            ime = f"META_{'THUNDERSHOP_' if znamka_od(p) == 'thundershop' else ''}{re.sub(r'[^A-Za-z0-9_-]+', '_', p['sku'])}_{_lj_iso()[:10]}.zip"
             try:
                 async with httpx.AsyncClient(timeout=300) as hc:
                     r = await hc.post(f"{api}/tasks/{m.group(1)}/attachments", headers={"Authorization": f"Bearer {token}"},

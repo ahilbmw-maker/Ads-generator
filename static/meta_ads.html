@@ -140,7 +140,7 @@
 
   <div class="main">
     <div class="card">
-      <div class="card-h"><b>🧠 Novi SKU-ji</b><span id="tipIzbor" style="display:inline-flex;border:1px solid var(--bd);border-radius:8px;overflow:hidden"></span><span class="sub">1 SKU = 1 kampanja z vsemi izbranimi trgi · več SKU-jev = 🧵 vrsta, eden po eden (že narejeni odkljukani)</span></div>
+      <div class="card-h"><b>🧠 Novi SKU-ji</b><span id="znamkaIzbor" style="display:inline-flex;border:1px solid var(--bd);border-radius:8px;overflow:hidden"></span><span id="tipIzbor" style="display:inline-flex;border:1px solid var(--bd);border-radius:8px;overflow:hidden"></span><span class="sub">1 SKU = 1 kampanja z vsemi izbranimi trgi · več SKU-jev = 🧵 vrsta, eden po eden (že narejeni odkljukani)</span></div>
       <div class="row" style="align-items:flex-start">
         <div style="flex:1;min-width:200px"><label class="l" style="margin-top:0">SKU-ji <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· vsak v svojo vrstico · za SKU lahko dodaš Asana povezavo do videov</span></label>
           <textarea class="f" id="sku" rows="3" placeholder="MULTIMINCER https://app.asana.com/…/task/1211103386362549&#10;PANMAX&#10;M322" style="font-weight:700;font-family:Consolas,monospace;font-size:13px" onchange="skuPreveri()"></textarea></div>
@@ -233,13 +233,13 @@ async function stanje() {
 }
 function risiIzbor() {
   document.getElementById('trgiIzbor').innerHTML = TRGI.map(t => {
-    const i = SKUI && SKUI.trgi[t], ni = i && !i.url, nu = i && i.neuvoz, on = IZBOR.includes(t) && !ni;
+    const i = SKUI && SKUI.trgi[t], ni = (ZNAMKA === 'thundershop' && t === 'pl') || (i && !i.url), nu = i && i.neuvoz, on = IZBOR.includes(t) && !ni;
     return '<span class="trg ' + (on ? 'on' : 'off') + '" onclick="preklopi(\'' + t + '\')" title="' + (ni ? 'SKU ni v feedu tega trga (ni URL-ja)' : nu ? 'V Marži označen 🚫 ne uvažamo' : '') + '">' + zast(t) + t.toUpperCase() +
       (ni ? ' <small>ni URL</small>' : nu ? ' <small>🚫</small>' : '') + '</span>';
   }).join('');
 }
 function preklopi(t) {
-  if (SKUI && !SKUI.trgi[t].url) return;
+  if ((SKUI && !SKUI.trgi[t].url) || (ZNAMKA === 'thundershop' && t === 'pl')) return;
   IZBOR = IZBOR.includes(t) ? IZBOR.filter(x => x !== t) : IZBOR.concat([t]); risiIzbor();
   if (t === 'rs' && SKUI && SKUV.length === 1) { SKUV[0].rs = IZBOR.includes('rs'); const cb = document.querySelector('#skuInfo input[onchange^="rsEn"]'); if (cb) cb.checked = SKUV[0].rs; }
 }
@@ -256,13 +256,19 @@ function skuVrstice() {
 let OBRAT = {};
 // 🖼/🎬 tip kampanje: samo slike ALI samo video (ne mešamo) — »že narejeno« velja po tipu
 let TIP = 'slike';
+let ZNAMKA = LS.get('ma_znamka') === 'thundershop' ? 'thundershop' : 'maaarket';
+function risiZnamka() {
+  const el = document.getElementById('znamkaIzbor'); if (!el) return;
+  el.innerHTML = [['maaarket', 'Maaarket'], ['thundershop', '⚡ ThunderShop']].map(([k, l]) =>
+    '<button type="button" onclick="ZNAMKA=\'' + k + '\';LS.set(\'ma_znamka\',ZNAMKA);risiZnamka();risiIzbor();skuPreveri()" style="padding:5px 12px;border:none;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;background:' + (ZNAMKA === k ? 'var(--acc)' : 'transparent') + ';color:' + (ZNAMKA === k ? '#fff' : 'var(--txt2)') + '">' + l + '</button>').join('');
+}
 function risiTip() {
   const gb = document.getElementById('glasBox'); if (gb) gb.hidden = TIP !== 'video';   // 🎙 glasovi samo pri video kampanjah
   const el = document.getElementById('tipIzbor'); if (!el) return;
   el.innerHTML = [['slike', '🖼 Slike', ''], ['video', '🎬 Video', '']].map(([k, l, dis]) =>
     '<button type="button" ' + (dis ? 'disabled title="' + dis + '" ' : '') + 'onclick="TIP=\'' + k + '\';risiTip();skuPreveri()" style="padding:5px 12px;border:none;font:inherit;font-size:12.5px;font-weight:700;cursor:' + (dis ? 'not-allowed' : 'pointer') + ';opacity:' + (dis ? '.45' : '1') + ';background:' + (TIP === k ? 'var(--acc)' : 'transparent') + ';color:' + (TIP === k ? '#fff' : 'var(--txt2)') + '">' + l + (dis ? ' <span style="font-size:10.5px;font-weight:600">kmalu</span>' : '') + '</button>').join('');
 }
-const narejeniTip = () => new Set((TIP === 'video' ? ST.narejeni_video : ST.narejeni) || []);
+const narejeniTip = () => new Set(((ST.narejeni_po || {})[ZNAMKA] || {})[TIP] || []);
 async function uvoziObrat() {
   const d = await api('/analiza-obrat14-data');
   if (!d || !d.loaded || !(d.items || []).length) { msg('msgNov', 'V Analiza → Obrat 7 dni (FB) ni naloženih podatkov o prodaji.', 'err'); return; }
@@ -295,7 +301,7 @@ async function uvoziZaloga() {
 async function skuPreveri() {
   const vr = skuVrstice(); if (!vr.length) return;
   document.getElementById('skuInfo').innerHTML = '<span class="spin"></span> preverjam feede 10 trgov za ' + vr.length + ' SKU …';
-  const res = await Promise.all(vr.map(v => api('/meta-ads/api/sku?tip=' + TIP + '&sku=' + encodeURIComponent(v.sku))));
+  const res = await Promise.all(vr.map(v => api('/meta-ads/api/sku?tip=' + TIP + '&znamka=' + ZNAMKA + '&sku=' + encodeURIComponent(v.sku))));
   SKUV = vr.map((v, i) => { const d = res[i] || {}; return Object.assign(v, { info: d.ok ? d : null, napaka: d.ok ? '' : (d.error || 'napaka'), rs: !!(d.ok && d.trgi.rs.url && !d.trgi.rs.neuvoz && !d.brez_rs), vklj: !!(d.ok && !d.narejeno) }); });   // 📒 že izvožen SKU privzeto preskočen
   if (SKUV.length === 1 && SKUV[0].info) {   // en SKU: kot prej (trgi brez URL-ja označeni)
     const d = SKUI = SKUV[0].info;
@@ -334,7 +340,7 @@ async function koncept() {
   const ids = [], nap = [];
   for (const v of vr) {
     const trgi = IZBOR.filter(t => t !== 'rs').concat((vr.length === 1 ? IZBOR.includes('rs') : v.rs) ? ['rs'] : []);
-    const d = await post('/meta-ads/api/koncept', { sku: v.sku, tip: TIP, trgi, auto_osnove: vsiNaenkrat && TIP !== 'video', akcija: akcNov(), asana: [v.asana, vr.length === 1 ? document.getElementById('asana').value : ''].join(' ') });
+    const d = await post('/meta-ads/api/koncept', { sku: v.sku, tip: TIP, znamka: ZNAMKA, trgi, auto_osnove: vsiNaenkrat && TIP !== 'video', akcija: akcNov(), asana: [v.asana, vr.length === 1 ? document.getElementById('asana').value : ''].join(' ') });
     if (d.ok) ids.push(d.id); else nap.push(v.sku + ': ' + (d.error || 'napaka'));
   }
   document.getElementById('btnKon').disabled = false;
@@ -352,7 +358,7 @@ async function vrstaZacni(vr, preskoceni) {
     (preskoceni.length ? '\n\n📒 Preskočeni (že narejeni): ' + preskoceni.map(v => v.sku).join(', ') : '') + (odprti ? '\n\n⚠ Trenutna vrsta (' + odprti + ' nedokončanih) se zamenja.' : '') + '\n\nZačnem?')) return;
   const postavke = vr.map(v => ({ sku: v.sku, asana: v.asana || '', trgi: IZBOR.filter(t => t !== 'rs').concat(v.rs ? ['rs'] : []) }));
   document.getElementById('btnKon').disabled = true;
-  const d = await post('/meta-ads/api/vrsta', { postavke, auto: true, tip: TIP, akcija: akcNov() });
+  const d = await post('/meta-ads/api/vrsta', { postavke, auto: true, tip: TIP, znamka: ZNAMKA, akcija: akcNov() });
   document.getElementById('btnKon').disabled = false;
   if (!d.ok) { msg('msgNov', esc(d.error || 'Napaka'), 'err'); return; }
   ST.vrsta = d.vrsta; msg('msgNov', '🧵 Vrsta zagnana — ' + vr.length + ' SKU-jev, začenjam z ' + esc(vr[0].sku) + '.', 'ok');
@@ -581,14 +587,14 @@ function risi3(p) {
       (x.vkljuci ? (er ? ' <span class="pill p-err">' + er + '</span>' : ok ? ' <span class="pill p-ok">' + ok + '</span>' : '') : ' <span class="pill p-mut">izklj.</span>') + '</span>';
   }).join('') + '</div>';
   const x = p.trgi[TRG], vids = p.videi || [], ogl = x.oglasi || [], izkl = new Set(x.izkl || []);
-  const stran = (ST.strani || {})[x.stran] || { ime: 'Maaarket' };
+  const stran = (ST.strani || {})[x.stran] || { ime: PAK && PAK.znamka === 'thundershop' ? 'ThunderShop' : 'Maaarket' };
   h += '<div class="card"><div class="card-h">' + zast(TRG) + '<b>' + TRG.toUpperCase() + ' · ' + esc((ST.jeziki || {})[TRG] || '') + '</b>' +
     (x.url ? '<a class="sub" href="' + esc(x.url) + '" target="_blank" rel="noopener">↗ ' + esc(x.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60)) + '</a>' : '<span class="pill p-err">ni URL-ja</span>') +
     (x.opomba ? '<span class="pill p-warn">' + esc(x.opomba) + '</span>' : '') + '<span class="grow"></span>' +
     ((p.nastavitve || {}).strategija === 'costcap'
       ? '<label class="sub" style="display:flex;gap:6px;align-items:center" title="Cost per result goal">🎯 Cost cap € <input class="f" data-e="cc" inputmode="decimal" style="width:70px" value="' + esc(x.cc || (p.nastavitve || {}).cc || ST.cc || 5.5) + '"></label>'
       : '<label class="sub" style="display:flex;gap:6px;align-items:center">Bid cap € <input class="f" data-e="bid" inputmode="decimal" style="width:70px" value="' + esc(x.bid || (ST.bid || {})[TRG] || 9) + '"></label>') +
-    '<label class="sub" style="display:flex;gap:6px;align-items:center">FB stran <select class="f" data-e="stran" style="width:auto">' + Object.entries(ST.strani || {}).map(([id, s]) => '<option value="' + id + '"' + (id === x.stran ? ' selected' : '') + '>' + esc(s.ime) + '</option>').join('') + '</select></label>' +
+    '<label class="sub" style="display:flex;gap:6px;align-items:center">FB stran <select class="f" data-e="stran" style="width:auto">' + Object.entries(ST.strani || {}).filter(([id, s]) => (s.znamka || 'maaarket') === ((PAK && PAK.znamka) || 'maaarket')).map(([id, s]) => '<option value="' + id + '"' + (id === x.stran ? ' selected' : '') + '>' + esc(s.ime) + '</option>').join('') + '</select></label>' +
     '<label class="tog sub" style="display:flex;gap:6px;align-items:center;font-weight:700;cursor:pointer"><input type="checkbox" data-e="vkljuci"' + (x.vkljuci ? ' checked' : '') + (x.url ? '' : ' disabled') + '> vključi trg</label></div>';
   if (x.prevod_napaka) h += '<div class="msg err">Prevod ni uspel: ' + esc(x.prevod_napaka) + ' — klikni »3 · Lokaliziraj« v koraku 2 znova.</div>';
   if (!x.vkljuci) h += '<div class="sub">Trg je izključen iz kampanje.</div>';
@@ -726,7 +732,7 @@ function zgodovina() {
   if (skrij && ps.some(p => p.izvozeno && IZBRANI.has(p.id))) { ps.forEach(p => { if (p.izvozeno) IZBRANI.delete(p.id); }); risiVec(); }
   const vidni = ZG_VSE ? ps0 : ps0.filter((p, i) => i < ZG_N || IZBRANI.has(p.id) || (PAK && PAK.id === p.id) || V_DELU.includes(p.status));   // prvih ZG_N + izbrani/odprti/v pripravi
   el.innerHTML = ps.length ? vidni.map(p => { const o = p.izvozeno ? ['p-ok', '✓ izvoženo'] : opis[p.status] || ['p-mut', p.status];
-    return '<div class="zg-r' + (PAK && PAK.id === p.id ? ' on' : '') + '" data-id="' + esc(p.id) + '" onclick="odpri(\'' + esc(p.id) + '\')"><div style="min-width:0;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" style="margin-top:3px;width:15px;height:15px;accent-color:var(--acc)" ' + (IZBRANI.has(p.id) ? 'checked ' : '') + 'onclick="event.stopPropagation()" onchange="izberi(\'' + esc(p.id) + '\',this.checked)"><div style="min-width:0"><div class="zg-t">' + (p.tip === 'video' ? '🎬 ' : '🖼 ') + esc(p.sku) + (p.potrjeno && !p.izvozeno ? ' <span class="pill p-ok" style="font-size:10.5px">✓ potrjeno</span>' : '') + (p.ime && p.ime !== p.sku ? ' <span class="sub">' + esc(p.ime) + '</span>' : '') + '</div>' +
+    return '<div class="zg-r' + (PAK && PAK.id === p.id ? ' on' : '') + '" data-id="' + esc(p.id) + '" onclick="odpri(\'' + esc(p.id) + '\')"><div style="min-width:0;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" style="margin-top:3px;width:15px;height:15px;accent-color:var(--acc)" ' + (IZBRANI.has(p.id) ? 'checked ' : '') + 'onclick="event.stopPropagation()" onchange="izberi(\'' + esc(p.id) + '\',this.checked)"><div style="min-width:0"><div class="zg-t">' + (p.znamka === 'thundershop' ? '⚡ ' : '') + (p.tip === 'video' ? '🎬 ' : '🖼 ') + esc(p.sku) + (p.potrjeno && !p.izvozeno ? ' <span class="pill p-ok" style="font-size:10.5px">✓ potrjeno</span>' : '') + (p.ime && p.ime !== p.sku ? ' <span class="sub">' + esc(p.ime) + '</span>' : '') + '</div>' +
       '<div class="zg-s">' + (p.trgi || []).map(t => t.toUpperCase()).join(' · ') + '</div></div></div><div class="zg-d"><span class="pill ' + o[0] + '">' + o[1] + '</span><div style="margin-top:3px">' + esc(datum(p.at)) + ' ' + esc(String(p.at || '').slice(11, 16)) + ' <button class="btn sm ghost" style="padding:1px 5px" title="Izbriši iz zgodovine" onclick="event.stopPropagation();izbrisi(\'' + esc(p.id) + '\',\'' + esc(p.sku) + '\')">🗑</button></div></div></div>'; }).join('')
     : '<div class="prazno">Še ni paketov — vpiši SKU in klikni »Pripravi koncept«.</div>';
   if (skrij && ps.length && !ps0.length) el.innerHTML = '<div class="prazno">✓ Vsi paketi so izvoženi.</div>';
@@ -990,7 +996,7 @@ async function elKred(osvezi) {
   el.title = 'ElevenLabs ' + d.paket + ': porabljeno ' + d.porabljeno.toLocaleString('sl') + ' od ' + d.limit.toLocaleString('sl') + ' znakov (' + d.odstotek + ' % ostane). '
     + (d.odstotek < 20 ? 'Kmalu zmanjka → elevenlabs.io → Subscription: dokupi znake ali višji paket. ' : '') + 'Klik = osveži.';
 }
-risiIzbor(); risiTip(); elKred(); { const vn = document.getElementById('vecNacin'); if (vn) vn.value = LS.get('ma_vec_nacin') === 'vrsta' ? 'vrsta' : 'vsi'; const si = document.getElementById('skrijIzv'); if (si) si.checked = LS.get('ma_skrij_izv') === '1'; } api('/meta-ads/api/glasovi').then(d => { if (d && d.ok && !GLAS) GLAS = d; });
+risiZnamka(); risiIzbor(); risiTip(); elKred(); { const vn = document.getElementById('vecNacin'); if (vn) vn.value = LS.get('ma_vec_nacin') === 'vrsta' ? 'vrsta' : 'vsi'; const si = document.getElementById('skrijIzv'); if (si) si.checked = LS.get('ma_skrij_izv') === '1'; } api('/meta-ads/api/glasovi').then(d => { if (d && d.ok && !GLAS) GLAS = d; });
 mapaNalozi().then(stanje).then(() => { const id = LS.get('ma_pak'); if (id) odpri(id); });
 </script>
 </body>
