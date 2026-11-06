@@ -3106,6 +3106,7 @@ async def obrat_plan_stran(request: Request):
   tr.dv.iz td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
   tr.dv0 td{color:var(--txt3)}
   td.prod{background:#f0f6ff;padding:6px 10px;width:1%}
+  .zalst{font-size:17px}
   .prw{display:flex;align-items:center;justify-content:flex-end;gap:10px}
   .graf{flex:none;width:150px;height:34px;display:block}
   .prt{flex:none;text-align:right;white-space:nowrap;line-height:1.25}
@@ -3327,7 +3328,7 @@ function prodTd(g){ const d=g.d60, vs=(a,b)=>d.slice(a,b).reduce((p,q)=>p+q,0), 
 function vrHtml(g,brezDet){const tr=vTrgi(g,POGLED), od=ODPRT.has(g.sku)&&!brezDet;
       return '<tr class="vr" data-g="'+esc(g.sku)+'"><td>'+(g.slika?'<img class="img" loading="lazy" src="'+esc(g.slika)+'">':'')+'</td>'+
         '<td><span class="sku" data-copy="'+esc(g.sku)+'" title="Klik = kopiraj">'+esc(g.sku)+'</span><div class="naziv" title="'+esc(g.naziv)+'">'+esc(g.naziv)+'</div></td>'+
-        '<td class="r">'+n(g.zaloga,0)+(g.poti?'<div class="dim">🚚 +'+n(g.poti,0)+'</div>':'')+'</td>'+
+        '<td class="r"><b class="zalst">'+n(g.zaloga,0)+'</b>'+(g.poti?'<div class="dim">🚚 +'+n(g.poti,0)+'</div>':'')+'</td>'+
         prodTd(g)+
         '<td class="r '+(g.trend>0?'up':g.trend<0?'dn':'')+'" title="'+TR_RAZ+'">'+(g.trend==null?'—':(g.trend>0?'+':'')+g.trend+' %')+'</td>'+
         '<td class="r"><b>'+(g.dos==null?'∞':n(g.dos,0))+'</b>'+(zmanjk(g)?'<div class="dn" style="font-size:11.5px;white-space:nowrap" title="Samo zaloga v skladišču, brez blaga na poti">🔥 '+n(zalDni(g),0)+' d · ~'+zmDat(g)+'</div>':'')+'</td>'+
