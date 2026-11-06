@@ -7,11 +7,13 @@
 import asyncio
 import base64
 import csv
+import difflib
 import io
 import json
 import os
 import random
 import re
+import threading
 import uuid
 import zipfile
 from datetime import datetime, timedelta
@@ -58,6 +60,59 @@ MA_STRAN_TRG = {"pl": "100158825529238", "sk": "108850387978565", "hr": "1057098
                 "rs": "107310948408390", "hu": "111891964957486", "gr": "113166093926419", "bg": "103042431541052", "ro": "100174912815985"}
 MA_CTA = {"sl": "Kupi zdaj", "hr": "Kupi sada", "rs": "Kupi sada", "hu": "Vásárolj most", "pl": "Kup teraz", "cz": "Koupit",
           "sk": "Kúpiť teraz", "gr": "Αγόρασε τώρα", "bg": "Купи сега", "ro": "Cumpără acum"}   # samo za predogled (CTA = SHOP_NOW)
+# ✍ Različna besedila (2026-11-06: 29 od 30 prvih besedil je bilo »težava? + z izdelkom X rešitev«, v Flexible gre samo prvo)
+MA_KOTI = {
+    "korist": "začni takoj s konkretno koristjo, kot trditev",
+    "prizor": "začni s kratkim prizorom iz vsakdanje uporabe (kje, kdaj, kaj se dogaja)",
+    "rezultat": "začni s tem, kaj je po uporabi drugače",
+    "koraki": "pokaži, kako preprosto deluje, v 2–3 kratkih korakih",
+    "primerjava": "primerjaj z običajnim načinom dela, brez imenovanja drugih znamk",
+    "priloznost": "začni s konkretno priložnostjo, ko izdelek pride prav (pot, sezona, darilo, opravilo)",
+    "radovednost": "začni z zanimivim dejstvom o izdelku iz opisa ali s trditvijo, ki vzbudi radovednost",
+    "problem": "začni z vsakdanjo težavo; tu je vprašanje dovoljeno",
+}
+MA_BES_NA_SKU = 30   # shranjenih besedil na SKU
+MA_BES_V_PROMPT = 15   # od tega v prompt kot prepovedana
+MA_BES_ZADNJI = 20   # začetki in koti zadnjih SKU-jev
+MA_BES_PODOBNO = 0.6   # delež ujemanja znakov, nad katerim je besedilo preveč podobno
+
+
+def _bes_norm(t):
+    return " ".join(re.sub(r"[^\w ]+", " ", str(t or "").lower()).split())
+
+
+def _bes_zacetek(t, n=5):
+    return " ".join(_bes_norm(t).split()[:n])
+
+
+def _bes_podobno(a, b):
+    a_, b_ = _bes_norm(a), _bes_norm(b)
+    if not a_ or not b_:
+        return False
+    return _bes_zacetek(a_) == _bes_zacetek(b_) or difflib.SequenceMatcher(None, a_, b_, autojunk=False).ratio() >= MA_BES_PODOBNO
+
+
+def _bes_vprasanje(t):
+    return "?" in re.split(r"(?<=[.!?])\s", str(t or "").strip())[0]
+
+
+def _bes_tezave(ogl, koti, stara):
+    """Kaj je narobe z besedili: seznam opisov (prazen = v redu)."""
+    tez = []
+    vpr = [i for i, o in enumerate(ogl) if _bes_vprasanje(o.get("pt"))]
+    if len(vpr) > max(1, len(ogl) // 5):
+        tez.append(f"z vprašanjem se začne {len(vpr)} oglasov, dovoljen je največ {max(1, len(ogl) // 5)}")
+    tez += [f"oglas {i + 1} se začne z vprašanjem, njegov kot pa tega ne dovoli" for i in vpr if i < len(koti) and koti[i] != "problem"]
+    for i, o in enumerate(ogl):
+        if any(_bes_podobno(o.get("pt"), x.get("pt")) for x in stara):
+            tez.append(f"oglas {i + 1} je preveč podoben že uporabljenemu besedilu tega izdelka")
+        if any(_bes_norm(o.get("hl")) == _bes_norm(x.get("hl")) for x in stara):
+            tez.append(f"naslov oglasa {i + 1} je že bil uporabljen")
+        if any(_bes_podobno(o.get("pt"), x.get("pt")) for x in ogl[:i]):
+            tez.append(f"oglas {i + 1} je preveč podoben drugemu oglasu v tem odgovoru")
+    return tez
+
+
 MA_EMOJI = "✅ ⭐ 🔥 💪 🎯 👍 ❤️ 💥 🚀 ✨ 💡 🎁 💰 👌 🙌 😍 💎 🏆 ⚡ 🌟 👏 💫 🛒 📦 🔑 💯 😊 🤩 🌿 🌱 🍃 🌸 🌻 🌞 🍀 🎉 🎊 🛍️ 💚 💙 🧡 💜 🤍 🖤"
 # Bid cap po trgu (€, kot v tekočih kampanjah 2026-10-16) — v koraku 3 nastavljiv po trgu
 MA_ZNAK_CC = "🧧"   # 🧧 na koncu imena Cost cap kampanje
@@ -132,6 +187,8 @@ def vklopi(G: dict):
 
     MA_ZAGON = _lj_iso()[:19]   # ⏸ paket »v delu«, ki se ni spremenil od zagona strežnika = opravilo izgubljeno (deploy / restart)
     PAK_FILE = DATA_DIR / "meta_ads_paketi.json"   # {paketi: [...] (zadnjih 30), evidenca: [...], brez_rs: [SKU]}
+    BES_FILE = DATA_DIR / "meta_ads_besedila.json"   # ✍ {sku: {SKU: [{hl, pt, kot, at}]}, koti_zadnji: [...], zacetki: [...]}
+    bes_lock = threading.Lock()
     MAPA = DATA_DIR / "meta_ads"
     lock = asyncio.Lock()
     flare_sem = asyncio.Semaphore(15)   # 2026-10-25: 6 → 15 (OpenAI gpt-image = 250 IPM) · ⚡ 2026-10-21: Flare (OpenAI) in NB2.1 (Gemini) ločeno — prej skupaj 4 → lokalizacija 50 slik po 4
@@ -696,17 +753,82 @@ def vklopi(G: dict):
         izb = [naj] + (ujemajo + ostale)[:2]
         return [urls[k] for k in dict.fromkeys(izb)]
 
-    def oglasi_ai(naziv, opis, prednosti, n_oglasov):
+    def bes_nalozi():
+        """Spomin besedil; prvič se napolni iz paketov v zgodovini (starejših besedil nismo hranili)."""
+        if BES_FILE.exists():
+            d = _jload(BES_FILE, {}) or {}
+        else:
+            d = {}
+            for p in sorted(nalozi()["paketi"], key=lambda x: x.get("at") or ""):
+                ogl = p.get("oglasi_sl") or []
+                d.setdefault("sku", {}).setdefault(p.get("sku") or "", []).extend({"hl": o.get("hl") or "", "pt": o.get("pt") or "", "at": p.get("at") or ""} for o in ogl)
+                if ogl:
+                    d.setdefault("zacetki", []).append(_bes_zacetek(ogl[0].get("pt"), 8))
+        d.setdefault("sku", {}); d.setdefault("koti_zadnji", []); d.setdefault("zacetki", [])
+        return d
+
+    def bes_pripravi(sku, n):
+        """Koti za n besedil, stara besedila SKU-ja, začetki zadnjih SKU-jev. Kot prvega se takoj zapiše (hkratni paketi dobijo različne)."""
+        with bes_lock:
+            d = bes_nalozi()
+            stara = d["sku"].get(sku) or []
+            ze_sku = [x.get("kot") for x in stara]
+            koti = list(MA_KOTI)
+            random.shuffle(koti)
+            koti.sort(key=lambda k: (d["koti_zadnji"].count(k), ze_sku.count(k)))   # stabilno: najmanj uporabljen kot gre prvi
+            d["koti_zadnji"] = (d["koti_zadnji"] + koti[:1])[-MA_BES_ZADNJI:]
+            d["zacetki"] = d["zacetki"][-MA_BES_ZADNJI:]
+            _jsave(BES_FILE, d)
+        return [koti[i % len(koti)] for i in range(n)], stara[-MA_BES_V_PROMPT:], list(d["zacetki"])
+
+    def bes_zapisi(sku, ogl, koti=None, zacetek=True):
+        """Besedila SKU-ja v trajni spomin (brez dvojnikov). Ob izvozu tudi ročno popravljena."""
+        if not sku or not ogl:
+            return
+        with bes_lock:
+            d = bes_nalozi()
+            a = d["sku"].setdefault(sku, [])
+            znana = {_bes_norm(x.get("pt")) for x in a}
+            for i, o in enumerate(ogl):
+                if _bes_norm(o.get("pt")) not in znana:
+                    a.append({"hl": o.get("hl") or "", "pt": o.get("pt") or "", "kot": koti[i] if koti and i < len(koti) else "", "at": _lj_iso()})
+            d["sku"][sku] = a[-MA_BES_NA_SKU:]
+            if zacetek:
+                d["zacetki"] = (d["zacetki"] + [_bes_zacetek(ogl[0].get("pt"), 8)])[-MA_BES_ZADNJI:]
+            _jsave(BES_FILE, d)
+
+    def oglasi_ai(naziv, opis, prednosti, n_oglasov, sku=""):
+        koti, stara, zacetki = bes_pripravi(sku, n_oglasov)
+        koti_txt = "\n".join(f"Oglas {i + 1}: {MA_KOTI[k]}" for i, k in enumerate(koti))
+        stara_txt = ("\nTA BESEDILA ZA TA IZDELEK SO ŽE V DRUGIH KAMPANJAH. Napiši povsem drugače: drugi začetki, drugi stavki, drugi naslovi:\n"
+                     + "\n".join(f"- {x.get('hl')} | {x.get('pt')}" for x in stara) + "\n") if stara else ""
+        zac_txt = ("\nTako so se začeli zadnji oglasi drugih izdelkov. Ne posnemaj njihove zgradbe:\n" + "\n".join(f"- {z} …" for z in zacetki) + "\n") if zacetki else ""
         prompt = (
             f"Napiši {n_oglasov} RAZLIČNIH Facebook/Instagram oglasov v SLOVENŠČINI za izdelek trgovine Maaarket.\n"
             f"Izdelek: {naziv}\nOpis (lahko v drugem jeziku — uporabi pomen): {opis[:1800]}\nKljučne prednosti (angleško): {prednosti}\n"
-            "Vsak oglas: pt (Primary Text): 2–3 vrstice, 2–3 emoji-ji, prodajni ton, brez cen, vsak DRUGAČEN (problem, korist, uporaba, mnenja, radovednost); "
+            "Vsak oglas: pt (Primary Text): 2–3 vrstice, 2–3 emoji-ji, prodajni ton, brez cen, vsak DRUGAČEN; "
             "hl (Headline): MAX 5 BESED, 1 emoji na začetku, brez cen, vsak DRUGAČEN.\n"
+            f"Vrstni red in kot oglasov je obvezen:\n{koti_txt}\n"
+            "Prvi stavek je vprašanje samo pri kotu, ki to izrecno dovoli. Izogibaj se zgradbi »Težava? Z izdelkom X rešitev.« Ne izmišljaj si mnenj kupcev.\n"
             f"EMOJI PRAVILO: uporabljaj SAMO te emoji-je (drugi se lahko prikažejo kot □): {MA_EMOJI}\n"
             "Pravila Mete: brez cen in popustov, brez 'najboljši/#1', brez zdravstvenih obljub, brez osebnih lastnosti ('Imaš prekomerno težo?'); šumniki č š ž.\n"
+            f"{stara_txt}{zac_txt}"
             'Vrni SAMO JSON: {"oglasi": [{"hl": "...", "pt": "..."}]}')
-        j = claude_json(prompt)
-        return [{"hl": str(o.get("hl") or "").strip(), "pt": str(o.get("pt") or "").strip()} for o in (j.get("oglasi") or []) if o][:n_oglasov]
+
+        def poskus(pr):
+            j = claude_json(pr)
+            return [{"hl": str(o.get("hl") or "").strip(), "pt": str(o.get("pt") or "").strip()} for o in (j.get("oglasi") or []) if o][:n_oglasov]
+        ogl = poskus(prompt)
+        tez = _bes_tezave(ogl, koti, stara)
+        if ogl and tez:   # 🛡 enkrat znova; obdrži boljšega
+            ogl2 = poskus(prompt + "\n\nPrejšnji odgovor ni bil dober: " + "; ".join(tez) + ". Napiši vse znova.")
+            tez2 = _bes_tezave(ogl2, koti, stara)
+            if ogl2 and len(tez2) < len(tez):
+                ogl, tez = ogl2, tez2
+            if tez:
+                print(f"[meta-ads] besedila {sku}: {'; '.join(tez)[:300]}")
+        bes_zapisi(sku, ogl, koti)
+        return ogl
 
     def trgi_paketa(info, p):
         trgi = {}
@@ -764,7 +886,7 @@ def vklopi(G: dict):
                     except Exception as e:
                         print(f"[meta-ads] video info: {e}")
                     v.update(vkljuci=i_ < MA_VIDEO_MAX, lokal=True, opomba="")   # izvoz vsak video prekodira pod 10 MB; privzeto prvi 3
-                ogl = await asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", "", max(1, len(videi)))
+                ogl = await asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", "", max(1, len(videi)), sku)
                 await pak_set(pid, lambda q: q.update(status="koncept", ime=sku, naziv=sl.get("naziv") or "", kreative=[], oglasi_sl=ogl, videi=videi,
                                                         opozorila=nap, opis_izdelka=(it.get("description") or "")[:2500], trgi=trgi_paketa(info, p)))
                 return
@@ -777,7 +899,7 @@ def vklopi(G: dict):
                 kre.append({"oznaka": f"{a_.get('label', 'A')} × {b_.get('label', 'B')}", "tekst": str(a_["text"]).strip()[:120], "vibe": str(b_["text"]).strip()[:60],
                             "razmerje": "1:1"})   # 4 × 1:1 + 1 × 4:5 (preizkus mobilni Feed)
             hk, ogl = await asyncio.gather(asyncio.to_thread(hooki_ai, naziv, it.get("description") or "", kre),
-                                           asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", a_opc[0]["text"], max(n_ogl, MA_N_KREATIV)))
+                                           asyncio.to_thread(oglasi_ai, naziv, it.get("description") or "", a_opc[0]["text"], max(n_ogl, MA_N_KREATIV), sku))
             for k_, h_ in zip(kre, hk):
                 k_["hook"] = h_
             try:
@@ -1210,7 +1332,7 @@ def vklopi(G: dict):
             if not samo:
                 n = len(p.get("videi") or [])
                 if len(p.get("oglasi_sl") or []) < n:   # dodani videi → dodatna besedila oglasov
-                    dod = await asyncio.to_thread(oglasi_ai, p.get("naziv") or p["sku"], p.get("opis_izdelka") or "", "", n - len(p.get("oglasi_sl") or []))
+                    dod = await asyncio.to_thread(oglasi_ai, p.get("naziv") or p["sku"], p.get("opis_izdelka") or "", "", n - len(p.get("oglasi_sl") or []), p["sku"])
                     await pak_set(pid, lambda q: q.update(oglasi_sl=(q.get("oglasi_sl") or []) + dod))
                 await prevodi_oglasov(pid, trgi)
                 p = pak_get(pid)
@@ -1856,6 +1978,7 @@ def vklopi(G: dict):
                     continue
                 prvic = not px.get("izvozeno")
                 px["izvozeno"] = _lj_iso()
+                bes_zapisi(p["sku"], px.get("oglasi_sl") or [], zacetek=False)   # ✍ tudi ročno popravljena besedila
                 if prvic:   # 📊 števec: prvi izvoz paketa
                     d["evidenca"].append({"sku": p["sku"], "tip": tip_od(p), "at": _lj_iso(), "oglasov": len(vrst), "slik": len(set(slike) | {x for sl_ in rocno.values() for x in sl_}),
                                           "nacin": nacin, "trgi": sorted({r["Ad Set Name"] for r in vrst})})
