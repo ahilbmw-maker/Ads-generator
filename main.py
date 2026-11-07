@@ -3200,7 +3200,13 @@ async def obrat_plan_stran(request: Request):
   .prw{display:flex;align-items:center;justify-content:flex-end;gap:10px}
   .graf{flex:none;width:150px;height:34px;display:block}
   .prt{flex:none;text-align:right;white-space:nowrap;line-height:1.25}
-  .prt b{font-size:17px}
+  .prt b{font-size:14px;color:var(--txt2,#475569)}
+  .p7{flex:none;text-align:right;white-space:nowrap;line-height:1.2}
+  .p7 b{font-size:21px}
+  .p7 .ch{display:inline-block;vertical-align:3px;margin-left:5px;padding:1px 6px;border-radius:99px;font-size:11.5px;font-weight:700;background:#e2e8f0;color:#475569}
+  .p7 .ch.up{background:#dcfce7;color:#15803d}
+  .p7 .ch.dn{background:#fee2e2;color:#b91c1c}
+  .trp{font-size:11px;font-weight:400;color:var(--txt3);white-space:nowrap}
   .pb{height:4px;border-radius:99px;background:#eef0f3;overflow:hidden;margin-top:3px}
   .pb i{display:block;height:100%;background:var(--dol)}
   table{border-collapse:collapse;width:100%;background:var(--card);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
@@ -3317,7 +3323,12 @@ function izdGumb(g){ const a=izdPredlogi(g); if(!a.length) return ''; const vsi=
 function izberi(on){ const a=viden().flatMap(g=>izdPredlogi(g)); a.forEach(e=>on?IZB.add(kl(e)):IZB.delete(kl(e))); risiTabelo(true); }
 function viden(){ const a=vSku(POGLED).filter(g=>fF(g,POGLED)).filter(g=>!Q||g.sku.includes(Q)||String(g.naziv).toUpperCase().includes(Q));
   const f=SORT&&SKEY[SORT.k]; return a.sort((x,y)=>f?((f(x)??-1e12)-(f(y)??-1e12))*SORT.d:(POGLED==='zm'?zalDni(x)-zalDni(y):POGLED==='oglas'?y.oglas.poraba-x.oglas.poraba:POGLED==='gor'?y.s30-x.s30:y.presezek_nc-x.presezek_nc)); }
-const TR_RAZ='Smer prodaje v zadnjih 28 dneh: premica skozi dnevno prodajo, sprememba od začetka do konca obdobja. Ni primerjava s prejšnjim tednom. Pri majhni prodaji je nezanesljiv.';
+const TR_RAZ='Smer prodaje znotraj zadnjih 28 dni: premica skozi dnevno prodajo, od njenega začetka do konca (spodaj kosov na dan). Ni primerjava s prejšnjimi 30 dnevi ali prejšnjim tednom, zato je lahko negativen, čeprav je 30 dni več kot prej (npr. po vrhu prodaje). Zelo slab ali dober zadnji dan ga močno premakne.';
+function trPremica(g){ const a=g.d60&&g.d60.slice(-28); if(!a||a.length<14||g.trend==null) return '';   // ista premica kot _obrat_kazalniki; variante imajo lahko drug izračun → takrat brez
+  const c=a.length, m=a.reduce((p,q)=>p+q,0)/c, mx=(c-1)/2; if(!m) return '';
+  let t=0,b=0; a.forEach((y,i)=>{t+=(i-mx)*(y-m); b+=(i-mx)**2;}); const k=t/b;
+  if(Math.abs(k*(c-1)/m*100-g.trend)>2) return '';
+  return '<div class="trp">'+n(Math.max(0,m-k*mx),0)+' → '+n(Math.max(0,m+k*mx),0)+' /dan</div>'; }
 const SKEY={s:g=>g.s30,por:g=>g.oglas.poraba,ob:g=>g.oglas.s30,zal:g=>g.zaloga,w:g=>g.w,tr:g=>g.trend,dos:g=>g.dos??1e9,os:g=>g.presezek_nc,n:g=>vTrgi(g,POGLED).length};
 function urediPo(k){ SORT=SORT&&SORT.k===k?(SORT.d===-1?{k,d:1}:null):{k,d:-1}; risiTabelo(); }
 function risi(){
@@ -3399,7 +3410,7 @@ function risiTabelo(ohrani){
   const G=viden();
   const opis={zm:'Prodaja raste (trend vsaj +'+D.obr_rast+' %), vsaj '+D.obr_min30+' prodanih v 30 dneh in zaloge v skladišču za manj kot '+ZM_DNI+' dni. Blago na poti se ne šteje: 🚚 vidiš pri zalogi, ladje preveri sam. Najprej tisti, ki bodo pošli najhitreje. Cene določiš ti: klik na vrstico, vpiši ceno ali ▼ ▲.',vse:'Vsi naši izdelki na zalogi, tudi brez predloga. Klik na vrstico = podrobnosti: vpiši ceno ali ▼ ▲ en korak, po trgu ali za vse trge naenkrat. Pravila te ne ustavijo, ampak te ob pošiljanju opozorijo; trdo veljata samo 1 sprememba na dan in star feed. Izdelki brez NC niso prikazani.',dol:'Predlog: en korak dol, razlika nikoli pod minimumom trga (8 € pri najnižjem return rate, višji return = višji minimum; vidiš ga na prehodu z miško čez trg). Nič ni izbrano: ＋ izdelek = vsi trgi izdelka, klik na trg = samo ta trg, ✓ vse spodaj = vsi prikazani, klik na vrstico = podrobnosti.',gor:'Predlog: en korak gor. 🚀 raste = trend ≥ +15 % in zaloge do 60 dni. Luč trga in največ 2 dviga v 60 dneh veljata.',dno:'Preveč zaloge, cene pa ne moremo več nižati (razlika bi padla pod minimum trga). Pomagajo oglas, Xsell ali bundle.'}[POGLED];
   const th=(k,l,r)=>'<th'+(r?' class="r"':'')+' onclick="urediPo(\''+k+'\')">'+l+(SORT&&SORT.k===k?(SORT.d===1?' ↑':' ↓'):'')+'</th>';
-  box.innerHTML=nt(opis+LEG)+(G.length?'<table><tr><th></th><th>SKU</th>'+th('zal','Zaloga',1)+th('s','Prodaja 30 d',1)+th('tr','<span title="'+TR_RAZ+'">Trend 28 d</span>',1)+th('dos','Dni zaloge',1)+(POGLED==='gor'?'':th('os','Presežek',1))+th('n','Trgi')+matTh()+'</tr>'+
+  box.innerHTML=nt(opis+LEG)+(G.length?'<table><tr><th></th><th>SKU</th>'+th('zal','Zaloga',1)+th('s','Prodaja 7 d · 30 d',1)+th('tr','<span title="'+TR_RAZ+'">Trend 28 d</span>',1)+th('dos','Dni zaloge',1)+(POGLED==='gor'?'':th('os','Presežek',1))+th('n','Trgi')+matTh()+'</tr>'+
     stran(G,vrHtml)+'</table>'+vecHtml(G):'<div class="note">V tem pogledu ni izdelkov. Preveri filtre zgoraj.</div>');
   risiBar(); vecOpazuj();
 }
@@ -3413,14 +3424,16 @@ function prodGraf(d,smer){   // zadnjih 30 dni (kot številka ob grafu): stolpci
 function prodTd(g){ const d=g.d60, vs=(a,b)=>d.slice(a,b).reduce((p,q)=>p+q,0), n7=d?vs(53,60):null, p7=d?vs(46,53):null, smer=n7==null||n7===p7?'e':n7>p7?'z':'m';
   const ted=d?[...Array(8).keys()].map(i=>vs(60-7*(8-i),60-7*(7-i))).join(', '):'';
   const tit='Stolpci: prodaja po dnevih, zadnjih 30 dni (zadnjih 7 dni obarvanih). Črta: povprečje 7 dni. Zadnjih 30 dni: '+n(g.s30,0)+(g.s30_prej==null?'':' · prejšnjih 30 dni: '+n(g.s30_prej,0))+(d?' · po tednih: '+ted:'')+' · skupna prodaja vseh trgov';
-  return '<td class="prod" title="'+esc(tit)+'"><div class="prw">'+(d?prodGraf(d,smer):'')+'<div class="prt"><b>'+n(g.s30,0)+'</b>'+(g.s30_prej==null?'':' <span class="dim">prej '+n(g.s30_prej,0)+'</span>')+
-    (d?'<div class="dim">7 d: <b style="font-size:13px" class="'+(smer==='z'?'up':smer==='m'?'dn':'')+'">'+n(n7,0)+'</b> · prej '+n(p7,0)+'</div>':'')+'</div></div></td>'; }
+  const pct=d&&p7?Math.round((n7-p7)/p7*100):null, ch=!d?'':n7===p7?'= 0 %':!p7?'▲ novo':(pct>0?'▲ +':'▼ ')+pct+' %', kl7=smer==='z'?'up':smer==='m'?'dn':'';
+  return '<td class="prod" title="'+esc(tit)+'"><div class="prw">'+(d?prodGraf(d,smer):'')+
+    (d?'<div class="p7"><b class="'+kl7+'">'+n(n7,0)+'</b><span class="ch '+kl7+'">'+ch+'</span><div class="dim">7 d · prej '+n(p7,0)+'</div></div>':'')+
+    '<div class="prt"><b>'+n(g.s30,0)+'</b><div class="dim">30 d'+(g.s30_prej==null?'':' · prej '+n(g.s30_prej,0))+'</div></div></div></td>'; }
 function vrHtml(g,brezDet){const tr=vTrgi(g,POGLED), od=ODPRT.has(g.sku)&&!brezDet;
       return '<tr class="vr" data-g="'+esc(g.sku)+'"><td>'+(g.slika?'<img class="img" loading="lazy" src="'+esc(g.slika)+'">':'')+'</td>'+
         '<td><span class="sku" data-copy="'+esc(g.sku)+'" title="Klik = kopiraj">'+esc(g.sku)+'</span><div class="naziv" title="'+esc(g.naziv)+'">'+esc(g.naziv)+'</div></td>'+
         '<td class="r"><b class="zalst">'+n(g.zaloga,0)+'</b>'+(g.poti?'<div class="dim">🚚 +'+n(g.poti,0)+'</div>':'')+'</td>'+
         prodTd(g)+
-        '<td class="r '+(g.trend>0?'up':g.trend<0?'dn':'')+'" title="'+TR_RAZ+'">'+(g.trend==null?'—':(g.trend>0?'+':'')+g.trend+' %')+'</td>'+
+        '<td class="r '+(g.trend>0?'up':g.trend<0?'dn':'')+'" title="'+TR_RAZ+'">'+(g.trend==null?'—':(g.trend>0?'+':'')+g.trend+' %')+trPremica(g)+'</td>'+
         '<td class="r"><b>'+(g.dos==null?'∞':n(g.dos,0))+'</b>'+(zmanjk(g)?'<div class="dn" style="font-size:11.5px;white-space:nowrap" title="Samo zaloga v skladišču, brez blaga na poti">🔥 '+n(zalDni(g),0)+' d · ~'+zmDat(g)+'</div>':'')+'</td>'+
         (POGLED==='gor'?'':presTd(g))+
         '<td>'+(POGLED==='dno'?'':izdGumb(g))+'</td>'+matTd(g,POGLED)+'</tr>'+(od?detajl(g,tr):'');
