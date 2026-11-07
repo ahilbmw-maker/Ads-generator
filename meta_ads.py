@@ -2061,6 +2061,49 @@ def vklopi(G: dict):
     # 📤 ZIP neposredno v Asana task SKU-ja (2026-10-24): oglaševalci si ZIP prenesejo iz taska, ne iz mape enega uporabnika
     MA_ASANA_MAX = 95 * 1024 * 1024   # Asana sprejme do 100 MB na priponko
 
+    def zamenjaj_znamko(p, zn):
+        """⇄ 2026-11-07 (uporabnik: paket narejen kot Maaarket, moral bi biti ThunderShop): ista pot na domeni druge znamke,
+        FB stran znamke, ime trgovine v besedilih. Trg brez domene (ThunderShop: PL) se izklopi; stari URL ostane v url_<znamka> za vrnitev.
+        Slike in ime kampanje ne vsebujejo znamke."""
+        staro = znamka_od(p)
+        if staro == zn:
+            return False
+        dom = G["BRAND_DOMAINS"][zn]
+        rx = re.compile(re.escape(MA_ZNAMKE[staro]), re.I)
+        zam = lambda ogl: [o | {"hl": rx.sub(MA_ZNAMKE[zn], str(o.get("hl") or "")), "pt": rx.sub(MA_ZNAMKE[zn], str(o.get("pt") or ""))} for o in (ogl or [])]
+        p["znamka"] = zn
+        p["oglasi_sl"] = zam(p.get("oglasi_sl"))
+        for t, tt in (p.get("trgi") or {}).items():
+            if tt.get("url"):
+                tt[f"url_{staro}"] = tt["url"]
+            tt["oglasi"] = zam(tt.get("oglasi"))
+            if t not in dom:
+                tt.update(url="", vkljuci=False, opomba=f"{MA_ZNAMKE[zn]} nima tega trga")
+                continue
+            if tt.get("opomba") == f"{MA_ZNAMKE[staro]} nima tega trga":
+                tt.pop("opomba", None)
+            url = tt.get(f"url_{zn}") or re.sub(r"^https?://[^/]+", f"https://{dom[t]}", tt.get("url") or tt.get(f"url_{staro}") or "")
+            if url and not tt.get("url") and not tt.get("neuvoz") and t in (p.get("trgi_izbor") or MA_TRGI):
+                tt["vkljuci"] = True   # vrnitev trga, ki ga prejšnja znamka ni imela
+            tt["url"] = url
+            tt["stran"] = stran_za(zn, t)
+        return True
+
+    @app.post("/meta-ads/api/znamka")
+    async def ma_znamka(request: Request, data: dict):
+        """{ids, znamka} — zamenjaj znamko paketov (pred izvozom)."""
+        if not prijava(request):
+            return ni()
+        zn = str(data.get("znamka") or "")
+        if zn not in MA_ZNAMKE:
+            return {"ok": False, "error": "Neznana znamka."}
+        n = 0
+        for pid in [str(x) for x in (data.get("ids") or []) if re.fullmatch(r"[0-9a-f]{18}", str(x))][:60]:
+            sp = []
+            await pak_set(pid, lambda p_: sp.append(zamenjaj_znamko(p_, zn)))
+            n += sum(sp)
+        return {"ok": True, "zamenjanih": n}
+
     @app.post("/meta-ads/api/v-asano")
     async def ma_v_asano(request: Request, data: dict):
         """{ids, status, nacin, asana?} → vsak paket (SKU) svoj ZIP v SVOJ Asana task (povezava iz paketa ali podana)."""

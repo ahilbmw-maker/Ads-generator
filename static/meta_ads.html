@@ -576,6 +576,7 @@ function risi3(p) {
     '<div style="width:200px"><label class="l" style="margin-top:0">Strategija</label><select class="f" data-e="n_strategija"><option value="bidcap"' + (n.strategija !== 'costcap' ? ' selected' : '') + '>Bid cap (po trgu)</option><option value="costcap"' + (n.strategija === 'costcap' ? ' selected' : '') + '>🎯 Cost cap</option></select></div>' +
     (n.strategija === 'costcap' ? '<div style="width:130px"><label class="l" style="margin-top:0" title="Velja za vse trge (posamezen trg lahko popraviš spodaj)">Cost cap € · vsi trgi</label><input class="f" data-e="n_cc" inputmode="decimal" value="' + esc(n.cc || ST.cc || 5.5) + '"></div>' : '') +
     '<div style="width:190px"><label class="l" style="margin-top:0">Status ob uvozu</label><select class="f" onchange="LS.set(\'ma_status\', this.value)"><option value="ACTIVE"' + (st === 'ACTIVE' ? ' selected' : '') + '>✅ po Publish online</option><option value="PAUSED"' + (st === 'PAUSED' ? ' selected' : '') + '>⏸ Paused</option></select></div>' +
+    '<div style="width:160px"><label class="l" style="margin-top:0" title="Paket narejen pod napačno znamko: URL-ji, FB strani in besedila se zamenjajo, slike ostanejo. ThunderShop nima PL.">Znamka</label><select class="f" onchange="zamenjajZnamko([PAK.id], this.value).then(ok => { if (!ok) risi(); })">' + [['maaarket', 'Maaarket'], ['thundershop', '⚡ ThunderShop']].map(([k, l]) => '<option value="' + k + '"' + ((p.znamka || 'maaarket') === k ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></div>' +
     '<div style="width:270px"><label class="l" style="margin-top:0">Način izvoza</label><select class="f" onchange="LS.set(\'ma_nacin\', this.value);risi()"><option value="flex"' + (nacin() === 'flex' ? ' selected' : '') + '>🧩 Flexible · 1 oglas na trg (kreative dodaš ročno)</option><option value="loceni"' + (nacin() === 'loceni' ? ' selected' : '') + '>📑 Ločeni oglasi · vsaka kreativa svoj oglas</option></select></div>' +
     (p.tip !== 'video' ? '<div style="width:230px"><label class="l" style="margin-top:0" title="Kreativa ostane nespremenjena (hook), pomanjšana v črn okvir s pasom »BLACK NOVEMBER · KODA«; headline »Black November: …«, primary text 1. vrstica s kodo; ime oglasa BN, kampanja #BlackNov. Velja ob izvozu — zadnja izbira je privzeta za nove pakete.">🖤 Akcija</label><div style="display:flex;gap:6px;align-items:center"><label class="tog" style="white-space:nowrap"><input type="checkbox" data-e="n_akcija"' + (akcijaOn(p) ? ' checked' : '') + '> Black November</label><input class="f" data-e="n_akcija_koda" style="width:90px" value="' + esc(akcijaKoda(p)) + '" placeholder="KODA"></div></div>' : '') +
     '<span class="grow"></span><button class="btn grn lg" onclick="vAsano()" title="ZIP (CSV + slike + videi) se naloži v Asana task SKU-ja — oglaševalec ga prenese od tam">📤 V Asano</button><button class="btn" onclick="shraniVMapo()">📁 Shrani v mapo</button><button class="btn" onclick="izvozi()">⬇ ZIP</button></div>' +
@@ -766,6 +767,7 @@ function risiVec() {
     '<button class="btn sm grn" onclick="vAsano([...IZBRANI])" title="Vsak SKU svoj ZIP v svoj Asana task">📤 V Asano</button>' +
     '<button class="btn sm" onclick="shraniVMapo([...IZBRANI])" title="En CSV z vsemi izbranimi kampanjami, slike in videi v mapi vsake kampanje (SKU)">📁 Shrani v mapo</button>' +
     '<button class="btn sm" onclick="izvozi([...IZBRANI])">⬇ ZIP</button>' +
+    '<button class="btn sm" onclick="zamenjajZnamko([...IZBRANI], ps.every(p => p.znamka === \'thundershop\') ? \'maaarket\' : \'thundershop\')" title="Paketi narejeni pod napačno znamko: URL-ji, FB strani, besedila (PL izpade pri ThunderShop)">⇄ ' + (ps.every(p => p.znamka === 'thundershop') ? 'V Maaarket' : 'V ⚡ ThunderShop') + '</button>' +
     '<button class="btn sm ghost" onclick="IZBRANI.clear();zgodovina()">✕</button>';
 }
 async function vecKorak(akcija) {
@@ -811,9 +813,25 @@ async function preveriManjkajoce(ids) {
   if (confirm('⚠ Manjka ' + m.length + ':' + nl + nl + m.slice(0, 15).join(nl) + (m.length > 15 ? nl + '…' : '') + nl + nl + 'OK = ↻ Dopolni manjkajoče (narejeno ostane)' + nl + 'Prekliči = shrani vseeno')) { dopolni(id); return false; }
   return true;
 }
+// ⇄ Znamka paketa (2026-11-07): narejen kot Maaarket, moral bi biti ThunderShop → URL-ji na domeni znamke, FB strani, besedila; PL izpade
+async function zamenjajZnamko(ids, zn) {
+  const ime = zn === 'thundershop' ? 'ThunderShop' : 'Maaarket';
+  if (!confirm('Zamenjam ' + (ids.length > 1 ? ids.length + ' paketov' : 'paket') + ' v ' + ime + '?\n\nURL-ji gredo na domeno ' + ime + ', FB strani ' + ime + ', ime trgovine v besedilih se zamenja.' + (zn === 'thundershop' ? ' PL se izpusti (ThunderShop ga nima).' : '') + ' Slike ostanejo.')) return false;
+  const d = await post('/meta-ads/api/znamka', { ids, znamka: zn });
+  if (!d.ok) { msg('msg', esc(d.error || 'Napaka'), 'err'); return false; }
+  await stanje(); if (PAK) await odpri(PAK.id);
+  msg('msg', '✓ Zamenjano v ' + ime + ': ' + d.zamenjanih + ' paketov', 'ok');
+  return true;
+}
+async function preveriZnamko(ids) {   // zgoraj izbrana znamka ≠ znamka paketa → ponudi zamenjavo (Prekliči = izvoz kot je)
+  const ps = ids && ids.length ? (ST.paketi || []).filter(p => ids.includes(p.id)) : (PAK ? [PAK] : []);
+  const druge = ps.filter(p => (p.znamka || 'maaarket') !== ZNAMKA);
+  if (druge.length) await zamenjajZnamko(druge.map(p => p.id), ZNAMKA);
+}
 async function prenesiZip(ids) {
   KOR_T0 = Date.now();
   if (PAK) await shrani(false);
+  await preveriZnamko(ids);
   if (!(await preveriManjkajoce(ids))) { msg('msg', '↻ Dopolnjujem manjkajoče — ko je pripravljeno, shrani znova.', 'inf'); return null; }
   kor('1/3 strežnik pripravlja paket (slike, videi, CSV) …');
   const ac = new AbortController(), tz = setTimeout(() => ac.abort(), 180000);
@@ -862,6 +880,7 @@ async function shraniVMapo(ids) {
 async function vAsano(ids) {
   ids = Array.isArray(ids) ? ids : null;
   if (PAK && !ids) await shrani(false);
+  await preveriZnamko(ids);
   if (!(await preveriManjkajoce(ids))) { msg('msg', '↻ Dopolnjujem manjkajoče — ko je pripravljeno, pošlji znova.', 'inf'); return; }
   let asana = '';
   if (!ids && !(PAK.asana || []).length) {
