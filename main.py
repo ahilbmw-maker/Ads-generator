@@ -3339,9 +3339,11 @@ function vSku(v){ return (D?D.skuji:[]).filter(g=>vTrgi(g,v).length&&(v!=='zm'||
 function fF(g,v){   // iskanje najde tudi skrite izdelke
   if(Q||!['vse','zm','dol','gor','dno','oglas'].includes(v)) return true;
   const F=FLT;
-  if(F.ur&&g.trgi.some(e=>e.ur!=null&&e.ur<(F.ur==='danes'?1:14))) return false;
+  const ur14=g.trgi.some(e=>e.ur!=null&&e.ur<14);
+  if(F.ur==='samo'){ if(!ur14) return false; }   // samo urejeni v zadnjih 14 dneh: filter »z možnim predlogom« tu ne velja, ker je urejen izdelek običajno v premoru
+  else if(F.ur&&g.trgi.some(e=>e.ur!=null&&e.ur<(F.ur==='danes'?1:14))) return false;
   if(VS(v)&&F.smer&&!g.trgi.some(e=>FT.has(e.trg)&&(e.stanje==='predlog'||e.ovr)&&(F.smer==='gor'?e.smer==='gor':e.smer!=='gor'))) return false;
-    if(F.moz&&v!=='dno'&&!VS(v)&&!vTrgi(g,v).some(e=>e.stanje==='predlog')) return false;
+    if(F.moz&&F.ur!=='samo'&&v!=='dno'&&!VS(v)&&!vTrgi(g,v).some(e=>e.stanje==='predlog')) return false;
   if(F.tr==='pada'&&g.smer7!==-1) return false;
   if(F.tr==='raste'&&g.smer7!==1) return false;
   if(F.pres&&g.presezek_nc<1000) return false;
@@ -3429,7 +3431,7 @@ function risiFlt(){
   const del=FT.size<TRGI.length;
   f.innerHTML='<input type="search" placeholder="Išči SKU ali naziv" value="'+esc(Q)+'" oninput="iskanje(this.value)">'+
     '<span class="vecw"><button class="btn" onclick="vecOdpri()"'+(del?' style="background:#eef2ff;border-color:var(--acc);color:var(--acc)"':'')+'>Trgi: '+(del?FT.size+' / '+TRGI.length:'vsi')+' ▾</button>'+(VECO?'<div class="vecp"><button class="t f" onclick="trgVsi()">'+(del?'Izberi vse':'Odznači vse')+'</button>'+trg+'</div>':'')+'</span>'+
-    '<span class="urw" title="Sprememba cene na kateremkoli trgu ali postavka v vrsti">Skrij urejene'+sg('','ne')+sg('danes','danes')+sg('14','14 dni')+'</span>'+
+    '<span class="urw" title="Sprememba cene na kateremkoli trgu ali postavka v vrsti">Skrij urejene'+sg('','ne')+sg('danes','danes')+sg('14','14 dni')+'<span style="width:1px;height:16px;background:#f59e0b"></span>'+sg('samo','Samo urejene (14 dni)')+'</span>'+
     FD.map(x=>'<button class="t f'+(on(x)?' on':'')+'" title="'+esc(x[3])+'" onclick="'+kl_(x)+'">'+esc(x[2])+'</button>').join('')+
     (dvo?'<button class="t f'+(DVOJNI?' on':'')+'" title="Pri zalogi nad '+D.dvojni_dni+' dni predlaga dva koraka spusta, če razlika ostane nad minimumom trga" onclick="dvojni(!DVOJNI)">2× korak</button>':'')+
     (oga?'<button class="t f'+(OG_AKT?' on':'')+'" onclick="ogAkt(!OG_AKT)">Samo aktivni oglasi</button>':'')+
