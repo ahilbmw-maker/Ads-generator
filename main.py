@@ -2373,6 +2373,20 @@ def _obr_smer7(o: dict) -> int:
     return 1 if pct >= OBR_7_PROC else -1 if pct <= -OBR_7_PROC else 0
 
 
+def _obr_pad7(o: dict) -> bool:
+    """Pada, tudi pri majhni prodaji: dviga ne predlagamo, če je zadnjih 7 dni vsaj 20 % manj (FLAMLUX 3 proti 9, SNAPBUTTONS 5 proti 9)."""
+    s_, p_ = (o or {}).get("s7"), (o or {}).get("p7")
+    return bool(p_) and s_ is not None and (s_ - p_) / p_ * 100 <= -OBR_7_PROC
+
+
+def _obr_nizko7(o: dict, zaloga: int) -> bool:
+    """Malo zaloge tudi po tempu zadnjih 7 dni. Mešanica ½ 7 d + ½ 28 d pri padcu precenjuje prodajo (FLAMLUX: 10 dni po mešanici, 26 po zadnjih 7)."""
+    s_ = (o or {}).get("s7")
+    if s_ is None:
+        return True   # stari zapis brez s7
+    return s_ > 0 and zaloga / (s_ / 7) < OBR_NIZKO
+
+
 def _obr_tx7(o: dict) -> str:
     return f"7 dni {o.get('s7')} proti {o.get('p7')}"
 
@@ -2468,7 +2482,8 @@ def _obrat_signal(o: dict, raz, zal: int, poti: int, sz: str, danes, raz_min: fl
         return {"k": "sez", "t": "🎄 sezona" if sz == "zima" else "☀️ sezona", "r": f"Med sezono ({sz}) — ne spuščaj", "dos": dos}
     if (o.get("s30") or 0) < OBR_MIN30:
         return {"k": "malo", "t": "💤 brez volumna", "r": f"{o.get('s30') or 0} prodanih v 30 dneh (< {OBR_MIN30})", "dos": dos}
-    if dos is not None and dos < OBR_NIZKO:
+    malo = dos is not None and dos < OBR_NIZKO
+    if malo and _obr_nizko7(o, zal + poti):
         return {"k": "gor", "t": "🟢 dvig", "r": f"Zaloge za {dos} dni (< {OBR_NIZKO})", "dos": dos}
     if dos is None or dos > OBR_VISOKO:
         if sm == 1:   # spust bi samo znižal zaslužek na kos pri prodaji, ki raste tudi brez njega
@@ -2479,10 +2494,12 @@ def _obrat_signal(o: dict, raz, zal: int, poti: int, sz: str, danes, raz_min: fl
         return {"k": "dol", "t": "🔴 spust", "r": r_, "dos": dos}
     if sm == 1 and dos <= OBR_RAST_DNI:
         return {"k": "gor", "t": "🚀 raste", "r": f"Prodaja raste ({_obr_tx7(o)}), zaloge za {dos} dni", "dos": dos}
-    if not pad and raz is not None and raz < 9:
+    if not _obr_pad7(o) and raz is not None and raz < 9:
         return {"k": "gor", "t": "🟢 test dvig", "r": "Zdrava zaloga, prodaja ne pada, razlika < 9 €", "dos": dos}
-    if pad and raz is not None and raz > max(9, raz_min + 1):
+    if pad and not malo and raz is not None and raz > max(9, raz_min + 1):   # malo zaloge: spust ni smiseln
         return {"k": "dol", "t": "🔴 test spust", "r": f"Prodaja pada ({_obr_tx7(o)}), razlika > 9 €", "dos": dos}
+    if malo:
+        return {"k": "drzi", "t": "⏸ drži", "r": f"Zaloge za {dos} dni, a pri zadnjih 7 dneh ({o.get('s7')} kos) je ne zmanjka — brez dviga zaradi zaloge", "dos": dos}
     return {"k": "drzi", "t": "⏸ drži", "r": "Zdravo stanje", "dos": dos}
 
 
@@ -2856,10 +2873,23 @@ _OBR_PLAN_CACHE = {"key": None, "d": None, "b": b""}
 _OBR_PLAN_LOCK = asyncio.Lock()
 
 
+def _hs_zaloga_po_sku() -> dict:
+    """SKU (HS+ ali naša šifra iz HS+ prevzemov) → zaloga v HS+ katalogu, samo > 0. Samo za prikaz v Obratu, na predloge ne vpliva."""
+    out = {k: p["zaloga"] for k, p in (_hsb_katalog().get("sku") or {}).items()}
+    try:
+        for it in _hsb_load().get("items", []):
+            n, k = str(it.get("nasa_sifra") or "").strip().upper(), _hsb_iz_kataloga(it)
+            if n and k and n not in out:
+                out[n] = k["zaloga"]
+    except Exception as e:
+        print(f"[obrat] HS+ prevzemi: {e}")
+    return {k: v for k, v in out.items() if v > 0}
+
+
 def _obr_plan_kljuc():
     """Vsi viri /obrat-plan. Ura = star feed in čas se osvežita vsaj vsako polno uro. Varovalka 1× na dan se ob pošiljanju vedno preveri znova (/cene-vrsta/dodaj)."""
     viri = (OBRAT_FILE, OBRAT_DNEVI_FILE, OBRAT_SEZONA_FILE, OBRAT_OGLASI_FILE, NOVI_IZD_FILE, ZNIZANO_FILE, VRSTA_FILE, CENE_LEDGER_FILE, CENE_DNEVNIK_FILE,
-            CMS_LOG_FILE, PRICE_CHANGES_FILE, HSB_FILE, SEMAFOR_FILE, SEMAFOR_ZGOD_FILE)
+            CMS_LOG_FILE, PRICE_CHANGES_FILE, HSB_FILE, HSPLUS_CATALOG_CACHE, SEMAFOR_FILE, SEMAFOR_ZGOD_FILE)
     return (_lj_iso()[:13], _OBR_RAZVRSCAM["tece"], _OBR_RAZVRSCAM["napaka"], tuple(_mtime(f) for f in viri),
             tuple(str(_marza_trgi_key(t)) for t in MARZA_TRGI), tuple(str((feed_meta.get(t) or {}).get("last_modified")) for t in MARZA_TRGI))
 
@@ -2897,7 +2927,7 @@ async def _obrat_plan_izracun(request: Request):
     rez = await asyncio.gather(*[_marza_trgi_get(t) for t in trgi], return_exceptions=True)
     luci_r = await asyncio.gather(*[plan_luc(request, trg=t, obd=0) for t in trgi], return_exceptions=True)
     op = await obrat_podatki(request)
-    S, SZ, NP = op.get("sku") or {}, op.get("sezona") or {}, op.get("na_poti") or {}
+    S, SZ, NP, HS = op.get("sku") or {}, op.get("sezona") or {}, op.get("na_poti") or {}, op.get("hs") or {}
     IDX = _obr_indeks(S)
     zadnja = ((await cene_zadnja(request, "")) or {}).get("zadnja") or {}
     ZN = _jload(ZNIZANO_FILE, {}) or {}
@@ -2999,6 +3029,7 @@ async def _obrat_plan_izracun(request: Request):
             raz = x.get("marza_eur")
             sz_rocna = SZ.get(key) or SZ.get(sku) or ""
             rm = (RM.get(t) or {}).get("min") or OBR_RAZ_MIN
+            hs_ = int(HS.get(key) or HS.get(sku) or 0)
             sg = _obrat_signal(o, raz, zal, poti, sz_rocna, danes, rm)
             if ag:
                 w_ = ag.get("w") or 0
@@ -3013,7 +3044,7 @@ async def _obrat_plan_izracun(request: Request):
                 n_ = o.get("n") or 0
                 s30_prej = round(((o.get("s60") or 0) - (o.get("s30") or 0)) * 30 / (n_ - 30)) if n_ >= 50 else None
                 g = skuji[key] = {"sku": key, "naziv": x.get("naziv") or "", "slika": x.get("slika") or "", "zaloga": zal, "poti": poti, "nc": nc,
-                                  "w": w, "s30": o.get("s30") or 0, "d7": o.get("d7"), "d28": o.get("d28"), "trend": o.get("trend"), "smer7": _obr_smer7(o), "brez": o.get("brez"),
+                                  "w": w, "s30": o.get("s30") or 0, "d7": o.get("d7"), "d28": o.get("d28"), "trend": o.get("trend"), "smer7": _obr_smer7(o), "hs": hs_, "brez": o.get("brez"),
                                   "dos": sg["dos"], "presezek": presezek, "presezek_nc": round(presezek * nc, 2), "brez_podatka": brez_podatka, "s30_prej": s30_prej, "d60": _d60(key, sku), "trgi": []}
                 g["oglas_akt"] = bool((_og_za(key, sku) or {}).get("aktiven"))
                 if ag:
@@ -3451,7 +3482,7 @@ function prodTd(g){ const d=g.d60, vs=(a,b)=>d.slice(a,b).reduce((p,q)=>p+q,0), 
 function vrHtml(g,brezDet){const tr=vTrgi(g,POGLED), od=ODPRT.has(g.sku)&&!brezDet;
       return '<tr class="vr" data-g="'+esc(g.sku)+'"><td>'+(g.slika?'<img class="img" loading="lazy" src="'+esc(g.slika)+'">':'')+'</td>'+
         '<td><span class="sku" data-copy="'+esc(g.sku)+'" title="Klik = kopiraj">'+esc(g.sku)+'</span><div class="naziv" title="'+esc(g.naziv)+'">'+esc(g.naziv)+'</div></td>'+
-        '<td class="r"><b class="zalst">'+n(g.zaloga,0)+'</b>'+(g.poti?'<div class="dim">🚚 +'+n(g.poti,0)+'</div>':'')+'</td>'+
+        '<td class="r"><b class="zalst">'+n(g.zaloga,0)+'</b>'+(g.poti?'<div class="dim">🚚 +'+n(g.poti,0)+'</div>':'')+(g.hs?'<div class="dim" title="Zaloga v HS+ katalogu, ni naša. Samo informacija, na predloge ne vpliva.">HS+ '+n(g.hs,0)+'</div>':'')+'</td>'+
         prodTd(g)+
         '<td class="r '+(g.trend>0?'up':g.trend<0?'dn':'')+'" title="'+TR_RAZ+'">'+(g.trend==null?'—':(g.trend>0?'+':'')+g.trend+' %')+trPremica(g)+'</td>'+
         '<td class="r"><b>'+(g.dos==null?'∞':n(g.dos,0))+'</b>'+(zmanjk(g)?'<div class="dn" style="font-size:11.5px;white-space:nowrap" title="Samo zaloga v skladišču, brez blaga na poti">🔥 '+n(zalDni(g),0)+' d · ~'+zmDat(g)+'</div>':'')+'</td>'+
@@ -12196,7 +12227,7 @@ async def obrat_podatki(request: Request):
     except Exception:
         poti = {}
     return {"ok": True, "at": d.get("at"), "od": d.get("od"), "do": d.get("do"), "sku": d.get("sku") or {}, "sezona": _jload(OBRAT_SEZONA_FILE, {}) or {},
-            "na_poti": {k: v for k, v in poti.items() if v > 0}, "raz_min": {t: v["min"] for t, v in _obr_raz_min().items()}}
+            "na_poti": {k: v for k, v in poti.items() if v > 0}, "hs": _hs_zaloga_po_sku(), "raz_min": {t: v["min"] for t, v in _obr_raz_min().items()}}
 
 
 @app.post("/obrat-osvezi")
@@ -15220,6 +15251,8 @@ async function obratNalozi(){
   obratZdruzi();
 }
 function obrSmer7(o){ const s=o&&o.s7, p=o&&o.p7; if(s==null||p==null||Math.max(s,p)<OBR_7_MIN) return 0; if(!p) return 1; const c=(s-p)/p*100; return c>=OBR_7_PROC?1:c<=-OBR_7_PROC?-1:0; }   // isto kot _obr_smer7
+function obrPad7(o){ const s=o&&o.s7, p=o&&o.p7; return !!p&&s!=null&&(s-p)/p*100<=-OBR_7_PROC; }   // isto kot _obr_pad7
+function obrNizko7(o,zal){ const s=o&&o.s7; return s==null?true:s>0&&zal/(s/7)<OBR_NIZKO; }   // isto kot _obr_nizko7
 function obratZdruzi(){
   if(!D||!D.rows) return;
   const VAR={}; Object.keys((OBR&&OBR.sku)||{}).forEach(k=>{ [...k.matchAll(/[_-]|(?<=\d)(?=[A-Z])/g)].forEach(m=>{ (VAR[k.slice(0,m.index)]=VAR[k.slice(0,m.index)]||[]).push(OBR.sku[k]); }); });   // koren brez lastne prodaje (M322 = 0, variante 2088) → vsota variant
@@ -15232,20 +15265,21 @@ function obratZdruzi(){
     let sig=null;
     if(o && zal>0){
       const poti=+(NP[key]||NP[String(x.sku||'').toUpperCase()]||0);
-      const w=o.w||0, dos=w>0?Math.round((zal+poti)/w):null, tr=o.trend, sm=obrSmer7(o), pad=sm===-1, tx7='7 dni '+o.s7+' proti '+o.p7;
+      const w=o.w||0, dos=w>0?Math.round((zal+poti)/w):null, tr=o.trend, sm=obrSmer7(o), pad=sm===-1, tx7='7 dni '+o.s7+' proti '+o.p7, malo=dos!=null&&dos<OBR_NIZKO;
       const opis=(poti?'🚚 na poti '+poti+' kos (HS+) · ':'')+'Ø '+String(o.d7).replace('.',',')+'/dan (7 d) · '+String(o.d28).replace('.',',')+'/dan (28 d) · '+tx7+' · trend '+(tr==null?'—':(tr>0?'+':'')+tr+' %')+' · zaloga '+zal+' → '+(dos==null?'∞':dos+' dni')+(o.brez?' · '+o.brez+' dni brez prodaje':'')+(raz!=null?' · razlika '+raz.toFixed(2).replace('.',',')+' €':'');
       const predSez=(sz==='zima'&&(mes>=9&&mes<=11||(mes===12&&dan<=15)))||(sz==='poletje'&&mes>=3&&mes<=7);   // zima do 15. 12., nato razprodaja
       if(predSez) sig={k:'sez',t:sz==='zima'?'🎄 sezona':'☀️ sezona',c:'#2563eb',r:5,o:'Pred / med sezono ('+sz+') — ne spuščaj; oceni po vrhu. '+opis};
       // brez volumna (ni v oglasih / se ne prodaja): cena ne pomaga — Bato je urejen; signal začne veljati, ko dobi obrat
       else if((o.s30||0)<OBR_MIN30) sig={k:'malo',t:'💤 brez volumna',c:'#94a3b8',r:7,o:(o.s30||0)+' prodanih v 30 dneh (< '+OBR_MIN30+') — sprememba cene brez oglasa ne pomaga; signal velja, ko izdelek dobi obrat. '+opis};
-      else if(dos!=null&&dos<OBR_NIZKO) sig={k:'gor',t:'🟢 dvig',c:'#15803d',r:1,o:'Zaloge za '+dos+' dni (< '+OBR_NIZKO+') — dvig zaščiti zalogo in poveča razliko. '+opis};
+      else if(malo&&obrNizko7(o,zal+poti)) sig={k:'gor',t:'🟢 dvig',c:'#15803d',r:1,o:'Zaloge za '+dos+' dni (< '+OBR_NIZKO+') — dvig zaščiti zalogo in poveča razliko. '+opis};
       else if(dos==null||dos>OBR_VISOKO){
         if(sm===1) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Prodaja raste ('+tx7+'), zaloge za '+(dos==null?'∞':dos)+' dni — ne spuščaj. '+opis};
         else if(raz!=null&&raz<obrRazMin()) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Preveč zaloge, a razlika < '+String(obrRazMin()).replace('.',',')+' € (minimum trga po return rate) — ne spuščaj; Xsell / bundle / oglas. '+opis};
         else sig={k:'dol',t:'🔴 spust',c:'#dc2626',r:2,o:'Zaloge za '+(dos==null?'∞':dos)+' dni (> '+OBR_VISOKO+')'+(pad?', prodaja pada':'')+' — kapital je zaklenjen. '+opis};
       } else if(sm===1&&dos<=OBR_RAST_DNI) sig={k:'gor',t:'🚀 raste',c:'#15803d',r:1,o:'Prodaja raste ('+tx7+'), zaloge za '+dos+' dni — izkoristi povpraševanje. '+opis};
-      else if(!pad&&raz!=null&&raz<9) sig={k:'gor',t:'🟢 test dvig',c:'#15803d',r:1,o:'Zdrava zaloga, prodaja ne pada, razlika < 9 € — poskusi en Bato korak gor. '+opis};
-      else if(pad&&raz!=null&&raz>Math.max(9,obrRazMin()+1)) sig={k:'dol',t:'🔴 test spust',c:'#dc2626',r:2,o:'Prodaja pada ('+tx7+'), razlika > 9 € — poskusi en korak dol (pod prag). '+opis};
+      else if(!obrPad7(o)&&raz!=null&&raz<9) sig={k:'gor',t:'🟢 test dvig',c:'#15803d',r:1,o:'Zdrava zaloga, prodaja ne pada, razlika < 9 € — poskusi en Bato korak gor. '+opis};
+      else if(pad&&!malo&&raz!=null&&raz>Math.max(9,obrRazMin()+1)) sig={k:'dol',t:'🔴 test spust',c:'#dc2626',r:2,o:'Prodaja pada ('+tx7+'), razlika > 9 € — poskusi en korak dol (pod prag). '+opis};
+      else if(malo) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Zaloge za '+dos+' dni, a pri zadnjih 7 dneh ('+o.s7+' kos) je ne zmanjka — brez dviga zaradi zaloge. '+opis};
       else sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Zdravo stanje — spremljaj. '+opis};
     }
     // ⏸ PRAG: dvig bi prestopil psihološki prag (19,99 → 20,99 · 4999 → 5399 · 1999 RSD → 2099 · 99 → 104 PLN …) → drži, ne dvig
