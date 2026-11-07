@@ -2342,7 +2342,7 @@ async def novi_izdelki_v_vrsto(data: dict):
 #    ⬇ Znižano: oznaka, ZAKAJ je cena znižana (/data/cene_znizano.json) — zapiše Vrsta /rezultat (postavka z `razlog`), briše jo prvi dvig iz 📜 dnevnika.
 ZNIZANO_FILE = DATA_DIR / "cene_znizano.json"   # {"trg|cms_id": {trg, cms_id, g_id, sku, sku_zal, naziv, cur, at, prej, potem, prva, koraki, razlog}}
 OBR_RAZ_MIN = 8.0        # razlika po spustu nikoli pod 8 € (uporabnik: »res MIN«)
-OBR_NIZKO, OBR_VISOKO, OBR_PAD, OBR_MIN30 = 21, 90, -15, 30
+OBR_NIZKO, OBR_VISOKO, OBR_MIN30 = 21, 90, 30
 
 
 def _obr_raz_min() -> dict:
@@ -2356,7 +2356,27 @@ def _obr_raz_min() -> dict:
     return {t: {"min": round(OBR_RAZ_MIN * (1 - b / 100) / (1 - (b if v is None else v) / 100), 2), "fail": v} for t, v in f.items()}
 
 
-OBR_RAST, OBR_RAST_DNI = 15, 60      # 🚀 raste: trend ≥ +15 % in zaloge največ za 60 dni
+OBR_RAST_DNI = 60      # 🚀 raste: zaloge največ za 60 dni
+# Smer prodaje = zadnjih 7 dni proti prejšnjim 7 (2026-11-07; prej trend 28 dni). Test na 60 dneh, 212 izdelkov: napoved naslednjih 7 dni iz zadnjih 7 ima napako 36 %,
+# iz trenda 28 dni 39 %, povprečje 28 dni 44 %; ko si nasprotujeta, ima prav 7 dni. Impulzivni nakupi: 28 dni je prepočasno. Trend ostane samo za prikaz.
+OBR_7_PROC, OBR_7_MIN = 20, 10      # ±20 %; če je bilo v obeh tednih manj kot 10 kosov = stabilno (šum)
+
+
+def _obr_smer7(o: dict) -> int:
+    """1 raste · -1 pada · 0 stabilno. Isto kot obrSmer7 (Marža) in pravila v Obratu."""
+    s_, p_ = (o or {}).get("s7"), (o or {}).get("p7")
+    if s_ is None or p_ is None or max(s_, p_) < OBR_7_MIN:
+        return 0
+    if not p_:
+        return 1
+    pct = (s_ - p_) / p_ * 100
+    return 1 if pct >= OBR_7_PROC else -1 if pct <= -OBR_7_PROC else 0
+
+
+def _obr_tx7(o: dict) -> str:
+    return f"7 dni {o.get('s7')} proti {o.get('p7')}"
+
+
 OBR_PREMOR_DOL, OBR_PREMOR_GOR = 7, 14
 OBR_DVOJNI_DNI = 180     # 2× korak (izbira v UI) pri zalogi nad 180 dni
 OBR_MAX_PCT, OBR_MARZA_MIN = 15, 20
@@ -2441,9 +2461,9 @@ def _obrat_sezona(sz: str, danes) -> bool:
 
 def _obrat_signal(o: dict, raz, zal: int, poti: int, sz: str, danes, raz_min: float = OBR_RAZ_MIN):
     """Isto kot obratZdruzi (Marža). k: gor | dol | dno (preveč zaloge, razlika že pod minimumom) | drzi | sez | malo."""
-    w, tr = o.get("w") or 0, o.get("trend")
+    w, sm = o.get("w") or 0, _obr_smer7(o)
     dos = round((zal + poti) / w) if w > 0 else None
-    pad = tr is not None and tr <= OBR_PAD
+    pad = sm == -1
     if _obrat_sezona(sz, danes):
         return {"k": "sez", "t": "🎄 sezona" if sz == "zima" else "☀️ sezona", "r": f"Med sezono ({sz}) — ne spuščaj", "dos": dos}
     if (o.get("s30") or 0) < OBR_MIN30:
@@ -2451,18 +2471,18 @@ def _obrat_signal(o: dict, raz, zal: int, poti: int, sz: str, danes, raz_min: fl
     if dos is not None and dos < OBR_NIZKO:
         return {"k": "gor", "t": "🟢 dvig", "r": f"Zaloge za {dos} dni (< {OBR_NIZKO})", "dos": dos}
     if dos is None or dos > OBR_VISOKO:
-        if tr is not None and tr >= OBR_RAST:   # spust bi samo znižal zaslužek na kos pri prodaji, ki raste tudi brez njega
-            return {"k": "drzi", "t": "⏸ drži", "r": f"Prodaja raste (trend +{tr} %), zaloge za {'∞' if dos is None else dos} dni — ne spuščaj", "dos": dos}
+        if sm == 1:   # spust bi samo znižal zaslužek na kos pri prodaji, ki raste tudi brez njega
+            return {"k": "drzi", "t": "⏸ drži", "r": f"Prodaja raste ({_obr_tx7(o)}), zaloge za {'∞' if dos is None else dos} dni — ne spuščaj", "dos": dos}
         r_ = f"Zaloge za {'∞' if dos is None else dos} dni (> {OBR_VISOKO})" + (", prodaja pada" if pad else "")
         if raz is not None and raz < raz_min:
             return {"k": "dno", "t": "⛔ na dnu", "r": r_, "dos": dos}
         return {"k": "dol", "t": "🔴 spust", "r": r_, "dos": dos}
-    if not pad and tr is not None and tr >= OBR_RAST and dos <= OBR_RAST_DNI:
-        return {"k": "gor", "t": "🚀 raste", "r": f"Prodaja raste (trend +{tr} %), zaloge za {dos} dni", "dos": dos}
+    if sm == 1 and dos <= OBR_RAST_DNI:
+        return {"k": "gor", "t": "🚀 raste", "r": f"Prodaja raste ({_obr_tx7(o)}), zaloge za {dos} dni", "dos": dos}
     if not pad and raz is not None and raz < 9:
         return {"k": "gor", "t": "🟢 test dvig", "r": "Zdrava zaloga, prodaja ne pada, razlika < 9 €", "dos": dos}
     if pad and raz is not None and raz > max(9, raz_min + 1):
-        return {"k": "dol", "t": "🔴 test spust", "r": f"Prodaja pada (trend {tr} %), razlika > 9 €", "dos": dos}
+        return {"k": "dol", "t": "🔴 test spust", "r": f"Prodaja pada ({_obr_tx7(o)}), razlika > 9 €", "dos": dos}
     return {"k": "drzi", "t": "⏸ drži", "r": "Zdravo stanje", "dos": dos}
 
 
@@ -2529,10 +2549,10 @@ def _obr_agg(idx: dict, t: str) -> dict:
     """Prodaja korena z variantami: M322 ima sam obrat 0, 12 variant pa 2088 (preverjeno na podatkih 2026-11-04) → brez seštevka lažen »ni obrata«."""
     v = idx.get(t) or []
     if not v:
-        return {"s30": 0, "s60": 0, "n": 0, "w": 0, "d7": 0, "d28": 0, "trend": None, "brez": None}
+        return {"s30": 0, "s60": 0, "n": 0, "w": 0, "d7": 0, "d28": 0, "s7": 0, "p7": 0, "trend": None, "brez": None}
     top = max(v, key=lambda o: o.get("s30") or 0)
     return {"s30": sum(o.get("s30") or 0 for o in v), "s60": sum(o.get("s60") or 0 for o in v), "n": max(o.get("n") or 0 for o in v), "w": round(sum(o.get("w") or 0 for o in v), 2), "d7": round(sum(o.get("d7") or 0 for o in v), 2),
-            "d28": round(sum(o.get("d28") or 0 for o in v), 2), "trend": top.get("trend"), "brez": min(o.get("brez") or 0 for o in v)}
+            "d28": round(sum(o.get("d28") or 0 for o in v), 2), "s7": sum(o.get("s7") or 0 for o in v), "p7": sum(o.get("p7") or 0 for o in v), "trend": top.get("trend"), "brez": min(o.get("brez") or 0 for o in v)}
 
 
 @app.post("/obrat-oglasi/upload")
@@ -2968,7 +2988,7 @@ async def _obrat_plan_izracun(request: Request):
                     ag = None   # obrat je dovolj → običajen signal
                 else:
                     o = ag if not o else o
-                    if ((o or {}).get("trend") or 0) >= OBR_RAST:   # prodaja raste → brez spusta in predloga za ustavitev oglasa
+                    if _obr_smer7(o) == 1:   # prodaja raste → brez spusta in predloga za ustavitev oglasa
                         ag = None
             if zal <= 0 or c <= 0:
                 continue
@@ -2993,7 +3013,7 @@ async def _obrat_plan_izracun(request: Request):
                 n_ = o.get("n") or 0
                 s30_prej = round(((o.get("s60") or 0) - (o.get("s30") or 0)) * 30 / (n_ - 30)) if n_ >= 50 else None
                 g = skuji[key] = {"sku": key, "naziv": x.get("naziv") or "", "slika": x.get("slika") or "", "zaloga": zal, "poti": poti, "nc": nc,
-                                  "w": w, "s30": o.get("s30") or 0, "d7": o.get("d7"), "d28": o.get("d28"), "trend": o.get("trend"), "brez": o.get("brez"),
+                                  "w": w, "s30": o.get("s30") or 0, "d7": o.get("d7"), "d28": o.get("d28"), "trend": o.get("trend"), "smer7": _obr_smer7(o), "brez": o.get("brez"),
                                   "dos": sg["dos"], "presezek": presezek, "presezek_nc": round(presezek * nc, 2), "brez_podatka": brez_podatka, "s30_prej": s30_prej, "d60": _d60(key, sku), "trgi": []}
                 g["oglas_akt"] = bool((_og_za(key, sku) or {}).get("aktiven"))
                 if ag:
@@ -3117,7 +3137,7 @@ async def _obrat_plan_izracun(request: Request):
                     e["op"].append(f"marža pod {OBR_MARZA_MIN} %")
                 if e["trg"] in feed_star:
                     e["op"].append(f"⚠ feed star {feed_star[e['trg']]} ur")
-    return {"ok": True, "at": zdaj.isoformat(timespec="seconds"), "obrat_at": op.get("at"), "cilj_dni": OBR_VISOKO, "max_pct": OBR_MAX_PCT, "marza_min": OBR_MARZA_MIN, "obr_pad": OBR_PAD, "obr_rast": OBR_RAST, "obr_min30": OBR_MIN30, "luci": luci, "feed_star": feed_star,
+    return {"ok": True, "at": zdaj.isoformat(timespec="seconds"), "obrat_at": op.get("at"), "cilj_dni": OBR_VISOKO, "max_pct": OBR_MAX_PCT, "marza_min": OBR_MARZA_MIN, "obr_7": OBR_7_PROC, "obr_7_min": OBR_7_MIN, "obr_min30": OBR_MIN30, "luci": luci, "feed_star": feed_star,
             "raz_min": OBR_RAZ_MIN, "raz_mini": RM, "dvojni_dni": OBR_DVOJNI_DNI, "skuji": list(skuji.values()), "znizano": ZN,
             "oglasi": {"od": OG.get("od"), "do": OG.get("do"), "at": OG.get("at"), "kampanj": len(OG.get("kampanje") or []), "brez": sorted(og_brez.values(), key=lambda q: -q["poraba"]),
                        "brez_zaloge": sorted(t_ for t_ in og if t_ not in og_uporabljen), "seg": OBR_SEG, "koledar": koledar, "razvrscam": _OBR_RAZVRSCAM["tece"], "napaka": _OBR_RAZVRSCAM["napaka"],
@@ -3271,7 +3291,7 @@ const vseMoz=e=>VS(POGLED)&&e.neto&&e.c&&e.ur!==0&&e.stanje!=='danes'&&!(D.feed_
 const izbirljiv=e=>e.stanje==='predlog'||e.ovr||(vseMoz(e)&&ROCNO[kl(e)]!=null);
 const rMin=t=>((D.raz_mini||{})[t]||{}).min||D.raz_min;
 // 🔥 Zmanjkuje: prodaja raste, volumen, zaloge v skladišču za manj kot 21 dni (blago na poti se NE šteje — prihod preveri uporabnik)
-const ZM_DNI=21, zalDni=g=>g.w>0?g.zaloga/g.w:null, zmanjk=g=>g.s30>=D.obr_min30&&g.trend!=null&&g.trend>=D.obr_rast&&g.w>0&&zalDni(g)<ZM_DNI;
+const ZM_DNI=21, zalDni=g=>g.w>0?g.zaloga/g.w:null, zmanjk=g=>g.s30>=D.obr_min30&&g.smer7===1&&g.w>0&&zalDni(g)<ZM_DNI;
 const zmDat=g=>dat(new Date(Date.now()+zalDni(g)*864e5).toISOString());
 const KOS=80; let VID=KOS, RST=[], RFN=null, VIO=null, OHR=false, ISK=0;
 function stran(G,fn){ RST=G; RFN=fn; if(!OHR) VID=KOS; return G.slice(0,VID).map(g=>fn(g)).join(''); }
@@ -3291,8 +3311,8 @@ function fF(g,v){   // iskanje najde tudi skrite izdelke
   if(F.ur&&g.trgi.some(e=>e.ur!=null&&e.ur<(F.ur==='danes'?1:14))) return false;
   if(VS(v)&&F.smer&&!g.trgi.some(e=>FT.has(e.trg)&&(e.stanje==='predlog'||e.ovr)&&(F.smer==='gor'?e.smer==='gor':e.smer!=='gor'))) return false;
     if(F.moz&&v!=='dno'&&!VS(v)&&!vTrgi(g,v).some(e=>e.stanje==='predlog')) return false;
-  if(F.tr==='pada'&&!(g.trend!=null&&g.trend<=D.obr_pad)) return false;
-  if(F.tr==='raste'&&!(g.trend!=null&&g.trend>=D.obr_rast)) return false;
+  if(F.tr==='pada'&&g.smer7!==-1) return false;
+  if(F.tr==='raste'&&g.smer7!==1) return false;
   if(F.pres&&g.presezek_nc<1000) return false;
   if(F.ogl&&!g.oglas_akt) return false;
   if(F.nizn&&g.trgi.some(e=>e.zn)) return false;
@@ -3322,7 +3342,7 @@ function izdGumb(g){ const a=izdPredlogi(g); if(!a.length) return ''; const vsi=
 function izberi(on){ const a=viden().flatMap(g=>izdPredlogi(g)); a.forEach(e=>on?IZB.add(kl(e)):IZB.delete(kl(e))); risiTabelo(true); }
 function viden(){ const a=vSku(POGLED).filter(g=>fF(g,POGLED)).filter(g=>!Q||g.sku.includes(Q)||String(g.naziv).toUpperCase().includes(Q));
   const f=SORT&&SKEY[SORT.k]; return a.sort((x,y)=>f?((f(x)??-1e12)-(f(y)??-1e12))*SORT.d:(POGLED==='zm'?zalDni(x)-zalDni(y):POGLED==='oglas'?y.oglas.poraba-x.oglas.poraba:POGLED==='gor'?y.s30-x.s30:y.presezek_nc-x.presezek_nc)); }
-const TR_RAZ='Smer prodaje znotraj zadnjih 28 dni: premica skozi dnevno prodajo, od njenega začetka do konca (spodaj kosov na dan). Ni primerjava s prejšnjimi 30 dnevi ali prejšnjim tednom, zato je lahko negativen, čeprav je 30 dni več kot prej (npr. po vrhu prodaje). Zelo slab ali dober zadnji dan ga močno premakne.';
+const TR_RAZ='Samo za prikaz, pravila gledajo 7 dni proti prejšnjim 7. Smer prodaje znotraj zadnjih 28 dni: premica skozi dnevno prodajo, od njenega začetka do konca (spodaj kosov na dan). Ni primerjava s prejšnjimi 30 dnevi ali prejšnjim tednom, zato je lahko negativen, čeprav je 30 dni več kot prej (npr. po vrhu prodaje). Zelo slab ali dober zadnji dan ga močno premakne.';
 function trPremica(g){ const a=g.d60&&g.d60.slice(-28); if(!a||a.length<14||g.trend==null) return '';   // ista premica kot _obrat_kazalniki; variante imajo lahko drug izračun → takrat brez
   const c=a.length, m=a.reduce((p,q)=>p+q,0)/c, mx=(c-1)/2; if(!m) return '';
   let t=0,b=0; a.forEach((y,i)=>{t+=(i-mx)*(y-m); b+=(i-mx)**2;}); const k=t/b;
@@ -3362,7 +3382,7 @@ function fDef(){   // [ključ, vrednost, oznaka, razlaga]
   const a=[];
   if(VS(POGLED)) a.push(['smer','gor','⬆ Predlog dvig','Vsaj en trg ima predlog za dvig'],['smer','dol','⬇ Predlog spust','Vsaj en trg ima predlog za spust']);
   if(POGLED!=='dno'&&!VS(POGLED)) a.push(['moz',true,'Samo z možnim predlogom','Skrije izdelke, kjer je vse zaklenjeno. Iskanje jih še vedno najde.']);
-  a.push(['tr','pada','Prodaja pada','Trend '+D.obr_pad+' % ali manj'],['tr','raste','Prodaja raste','Trend +'+D.obr_rast+' % ali več'],['pres',true,'Presežek nad 1.000 €','Več kot 1.000 € NC nad '+D.cilj_dni+' dni prodaje']);
+  a.push(['tr','pada','Prodaja pada','Zadnjih 7 dni vsaj '+D.obr_7+' % manj kot prejšnjih 7 (vsaj '+D.obr_7_min+' kosov)'],['tr','raste','Prodaja raste','Zadnjih 7 dni vsaj '+D.obr_7+' % več kot prejšnjih 7 (vsaj '+D.obr_7_min+' kosov)'],['pres',true,'Presežek nad 1.000 €','Več kot 1.000 € NC nad '+D.cilj_dni+' dni prodaje']);
   if((D.oglasi||{}).do) a.push(['ogl',true,'Oglas aktiven','Iz zadnjega Meta izvoza ('+dat(D.oglasi.do)+')']);
   a.push(['nizn',true,'Ni bil znižan','Brez oznake ⬇ Znižano'],['npot',true,'Brez blaga na poti','Brez 🚚 v HS+ prevzemih']);
   return a; }
@@ -3408,7 +3428,7 @@ function risiTabelo(ohrani){
   if(POGLED==='zal'){ risiZaloga(box); risiBar(); return; }
   if(POGLED==='uc'){ risiUcinek(box); risiBar(); return; }
   const G=viden();
-  const opis={zm:'Prodaja raste (trend vsaj +'+D.obr_rast+' %), vsaj '+D.obr_min30+' prodanih v 30 dneh in zaloge v skladišču za manj kot '+ZM_DNI+' dni. Blago na poti se ne šteje: 🚚 vidiš pri zalogi, ladje preveri sam. Najprej tisti, ki bodo pošli najhitreje. Cene določiš ti: klik na vrstico, vpiši ceno ali ▼ ▲.',vse:'Vsi naši izdelki na zalogi, tudi brez predloga. Klik na vrstico = podrobnosti: vpiši ceno ali ▼ ▲ en korak, po trgu ali za vse trge naenkrat. Pravila te ne ustavijo, ampak te ob pošiljanju opozorijo; trdo veljata samo 1 sprememba na dan in star feed. Izdelki brez NC niso prikazani.',dol:'Predlog: en korak dol, razlika nikoli pod minimumom trga (8 € pri najnižjem return rate, višji return = višji minimum; vidiš ga na prehodu z miško čez trg). Nič ni izbrano: ＋ izdelek = vsi trgi izdelka, klik na trg = samo ta trg, ✓ vse spodaj = vsi prikazani, klik na vrstico = podrobnosti.',gor:'Predlog: en korak gor. 🚀 raste = trend ≥ +15 % in zaloge do 60 dni. Luč trga in največ 2 dviga v 60 dneh veljata.',dno:'Preveč zaloge, cene pa ne moremo več nižati (razlika bi padla pod minimum trga). Pomagajo oglas, Xsell ali bundle.'}[POGLED];
+  const opis={zm:'Prodaja raste (zadnjih 7 dni vsaj +'+D.obr_7+' % proti prejšnjim 7), vsaj '+D.obr_min30+' prodanih v 30 dneh in zaloge v skladišču za manj kot '+ZM_DNI+' dni. Blago na poti se ne šteje: 🚚 vidiš pri zalogi, ladje preveri sam. Najprej tisti, ki bodo pošli najhitreje. Cene določiš ti: klik na vrstico, vpiši ceno ali ▼ ▲.',vse:'Vsi naši izdelki na zalogi, tudi brez predloga. Klik na vrstico = podrobnosti: vpiši ceno ali ▼ ▲ en korak, po trgu ali za vse trge naenkrat. Pravila te ne ustavijo, ampak te ob pošiljanju opozorijo; trdo veljata samo 1 sprememba na dan in star feed. Izdelki brez NC niso prikazani.',dol:'Predlog: en korak dol, razlika nikoli pod minimumom trga (8 € pri najnižjem return rate, višji return = višji minimum; vidiš ga na prehodu z miško čez trg). Nič ni izbrano: ＋ izdelek = vsi trgi izdelka, klik na trg = samo ta trg, ✓ vse spodaj = vsi prikazani, klik na vrstico = podrobnosti.',gor:'Predlog: en korak gor. 🚀 raste = trend ≥ +15 % in zaloge do 60 dni. Luč trga in največ 2 dviga v 60 dneh veljata.',dno:'Preveč zaloge, cene pa ne moremo več nižati (razlika bi padla pod minimum trga). Pomagajo oglas, Xsell ali bundle.'}[POGLED];
   const th=(k,l,r)=>'<th'+(r?' class="r"':'')+' onclick="urediPo(\''+k+'\')">'+l+(SORT&&SORT.k===k?(SORT.d===1?' ↑':' ↓'):'')+'</th>';
   const th7=(k,l)=>th(k,l,1).replace('class="r"','class="r c7"');
   box.innerHTML=nt(opis+LEG)+(G.length?'<table><tr><th></th><th>SKU</th>'+th('zal','Zaloga',1)+th7('n7','7 d zdaj')+th7('p7','7 d prej')+th7('r7','7 d %')+th('s','30 dni',1)+th('tr','<span title="'+TR_RAZ+'">Trend 28 d</span>',1)+th('dos','Dni zaloge',1)+(POGLED==='gor'?'':th('os','Presežek',1))+th('n','Trgi')+matTh()+'</tr>'+
@@ -12032,7 +12052,7 @@ def _obrat_kazalniki(dnevi: list) -> dict:
             break
         brez += 1
     return {"d7": round(d7, 2), "d28": round(d28, 2), "w": round(0.5 * d7 + 0.5 * d28, 2), "trend": trend, "brez": brez,
-            "s30": int(sum(v[-30:])), "s60": int(sum(v)), "n": len(v)}
+            "s7": int(sum(v[-7:])), "p7": int(sum(v[-14:-7])), "s30": int(sum(v[-30:])), "s60": int(sum(v)), "n": len(v)}
 
 
 def _obrat_v_zalogo() -> int:
@@ -12136,7 +12156,7 @@ async def _obrat_osvezi() -> dict:
             out[sku] = _obrat_kazalniki([po.get(d, 0) for d in dates])
         if not out:
             return {"ok": False, "error": "Siluxar ni vrnil prodaje: " + "; ".join(nap[:3])}
-        _jsave(OBRAT_FILE, {"at": _lj_iso(), "od": dates[0], "do": dates[-1], "sku": out, "napake": nap[:5]})
+        _jsave(OBRAT_FILE, {"v": 2, "at": _lj_iso(), "od": dates[0], "do": dates[-1], "sku": out, "napake": nap[:5]})
         _obrat_dnevi_shrani(surovo, dates)
         nz = _obrat_v_zalogo()
         print(f"[obrat] {len(out)} SKU ({dates[0]} … {dates[-1]}), v zalogo {nz}" + (f" · napake: {nap[:2]}" if nap else ""))
@@ -12147,8 +12167,9 @@ async def _obrat_loop():
     """Vsak dan ob 6:40 (po feedih); ob zagonu, če je zapis starejši od 20 h."""
     await asyncio.sleep(150)
     try:
-        at = (_jload(OBRAT_FILE, {}) or {}).get("at") or ""
-        if not at or (datetime.fromisoformat(_lj_iso()) - datetime.fromisoformat(at)).total_seconds() > 20 * 3600:
+        ob_ = _jload(OBRAT_FILE, {}) or {}
+        at = ob_.get("at") or ""
+        if not at or ob_.get("v") != 2 or (datetime.fromisoformat(_lj_iso()) - datetime.fromisoformat(at)).total_seconds() > 20 * 3600:   # v2: s7, p7
             await _obrat_osvezi()
     except Exception as e:
         print(f"[obrat] zagon: {e}")
@@ -15123,7 +15144,7 @@ async def marza_trgi_stran(request: Request):
   <th class="r" onclick="srt('marza_eur')" title="Razlika = cena brez DDV − NC (v €), kot v Price Checkerju">Razlika €</th>
   <th class="r" onclick="srt('marza_pct')">Marža %</th>
   <th class="r" onclick="srt('zaloga')">Zaloga</th>
-  <th onclick="srt('sig_r')" title="📊 Signal cene iz prodaje (Siluxar, skupaj vsi trgi): dnevi zaloge × trend 28 dni × razlika €. Klik na celico = sezona.">Signal</th>
+  <th onclick="srt('sig_r')" title="📊 Signal cene iz prodaje (Siluxar, skupaj vsi trgi): dnevi zaloge × 7 dni proti prejšnjim 7 × razlika €. Klik na celico = sezona.">Signal</th>
   <th class="r" onclick="srt('obrat')" title="Obrat v zadnjih 30 dneh (kosov, iz zaloge). V oklepaju trajanje zaloge.">Obrat 30d</th>
 </tr></thead><tbody id="tb"><tr><td colspan="14" style="padding:30px;text-align:center" class="dim">Nalagam…</td></tr></tbody></table></div>
 <button class="more" id="more" style="display:none" onclick="lim+=300;render()">Prikaži več</button>
@@ -15178,7 +15199,7 @@ async function load(){
   render();
 }
 // ═══ 📊 SIGNAL CENE IZ OBRATA (faza 2) — samo prikaz, cen ne spreminja ═══
-// dnevi zaloge = zaloga / (½ Ø7 + ½ Ø28) · < OBR_NIZKO dni → dvig · > OBR_VISOKO → spust (razen razlika < 7 €) · trend 28 dni · sezona ročno
+// dnevi zaloge = zaloga / (½ Ø7 + ½ Ø28) · < OBR_NIZKO dni → dvig · > OBR_VISOKO → spust (razen razlika < 7 €) · 7 dni proti prejšnjim 7 · sezona ročno
 let ZNIZ = {};   // ⬇ Znižano: {trg|cms_id: {at, prej, potem, razlog …}}
 // ⏳ testno obdobje: 14 dni po spustu (oznaka ⬇ Znižano) teče meritev v 📈 Učinku → pred ročno spremembo opozorilo, uporabnik lahko vseeno potrdi
 const TEST_DNI = 14;
@@ -15189,7 +15210,7 @@ function testnoPotrdi(xs){ const a=xs.map(x=>[x,testnoInfo(x)]).filter(q=>q[1]);
 function obrRazMin(){ return (OBR&&OBR.raz_min&&OBR.raz_min[trg])||OBR_RAZ_MIN; }   // minimum razlike trga po return rate (Semafor)
 function znTag(x){ const z=ZNIZ[trg+'|'+x.cms_id]; if(!z) return ''; const d=String(z.at||'').slice(0,10).split('-'), dd=d.length===3?(+d[2])+'. '+(+d[1])+'.':'';
   return ' <span title="'+esc('Znižano '+dd+': '+z.prej+' → '+z.potem+' '+(z.cur||'')+(z.koraki>1?' · '+z.koraki+'. spust':'')+' — '+(z.razlog||''))+'" style="display:inline-block;background:#dc2626;color:#fff;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap;cursor:help">⬇ Znižano '+dd+'</span>'; }
-let OBR = null; const OBR_NIZKO = 21, OBR_VISOKO = 90, OBR_PAD = -15, OBR_MIN30 = 30, OBR_RAZ_MIN = 8, OBR_RAST = 15, OBR_RAST_DNI = 60, OBR_PREMOR_DOL = 7;   // signal samo za izdelke z volumnom (≥ 30 prodanih / 30 dni ≈ 1 na dan)
+let OBR = null; const OBR_NIZKO = 21, OBR_VISOKO = 90, OBR_MIN30 = 30, OBR_RAZ_MIN = 8, OBR_7_PROC = 20, OBR_7_MIN = 10, OBR_RAST_DNI = 60, OBR_PREMOR_DOL = 7;   // signal samo za izdelke z volumnom (≥ 30 prodanih / 30 dni ≈ 1 na dan)
 async function obratNalozi(){
   const [d,z,zn]=await Promise.all([fetch('/obrat-podatki',{cache:'no-store'}).then(r=>r.json()).catch(()=>({})),
     fetch('/cene-zadnja?trg='+encodeURIComponent(trg),{cache:'no-store'}).then(r=>r.json()).catch(()=>({})),
@@ -15198,10 +15219,11 @@ async function obratNalozi(){
   if(d&&d.ok) OBR=d; if(z&&z.zadnja) ZADNJA=z.zadnja;   // ⏳ premor v stolpcu Signal (zadnja sprememba iz 📜)
   obratZdruzi();
 }
+function obrSmer7(o){ const s=o&&o.s7, p=o&&o.p7; if(s==null||p==null||Math.max(s,p)<OBR_7_MIN) return 0; if(!p) return 1; const c=(s-p)/p*100; return c>=OBR_7_PROC?1:c<=-OBR_7_PROC?-1:0; }   // isto kot _obr_smer7
 function obratZdruzi(){
   if(!D||!D.rows) return;
   const VAR={}; Object.keys((OBR&&OBR.sku)||{}).forEach(k=>{ [...k.matchAll(/[_-]|(?<=\d)(?=[A-Z])/g)].forEach(m=>{ (VAR[k.slice(0,m.index)]=VAR[k.slice(0,m.index)]||[]).push(OBR.sku[k]); }); });   // koren brez lastne prodaje (M322 = 0, variante 2088) → vsota variant
-  const varAgg=a=>{ const t=a.reduce((p,q)=>(q.s30||0)>(p.s30||0)?q:p,a[0]), v=f=>Math.round(a.reduce((z,q)=>z+(q[f]||0),0)*100)/100; return {s30:v('s30'),w:v('w'),d7:v('d7'),d28:v('d28'),trend:t.trend,brez:Math.min(...a.map(q=>q.brez||0))}; };
+  const varAgg=a=>{ const t=a.reduce((p,q)=>(q.s30||0)>(p.s30||0)?q:p,a[0]), v=f=>Math.round(a.reduce((z,q)=>z+(q[f]||0),0)*100)/100; return {s30:v('s30'),w:v('w'),d7:v('d7'),d28:v('d28'),s7:v('s7'),p7:v('p7'),trend:t.trend,brez:Math.min(...a.map(q=>q.brez||0))}; };
   const mes=new Date().getMonth()+1, dan=new Date().getDate(), S=(OBR&&OBR.sku)||{}, SZ=(OBR&&OBR.sezona)||{}, NP=(OBR&&OBR.na_poti)||{};
   D.rows.forEach(x=>{
     const key=String(x.nc_sku||x.sku||'').toUpperCase(); let o=S[key]||S[String(x.sku||'').toUpperCase()];
@@ -15210,20 +15232,20 @@ function obratZdruzi(){
     let sig=null;
     if(o && zal>0){
       const poti=+(NP[key]||NP[String(x.sku||'').toUpperCase()]||0);
-      const w=o.w||0, dos=w>0?Math.round((zal+poti)/w):null, tr=o.trend, pad=tr!=null&&tr<=OBR_PAD;
-      const opis=(poti?'🚚 na poti '+poti+' kos (HS+) · ':'')+'Ø '+String(o.d7).replace('.',',')+'/dan (7 d) · '+String(o.d28).replace('.',',')+'/dan (28 d) · trend '+(tr==null?'—':(tr>0?'+':'')+tr+' %')+' · zaloga '+zal+' → '+(dos==null?'∞':dos+' dni')+(o.brez?' · '+o.brez+' dni brez prodaje':'')+(raz!=null?' · razlika '+raz.toFixed(2).replace('.',',')+' €':'');
+      const w=o.w||0, dos=w>0?Math.round((zal+poti)/w):null, tr=o.trend, sm=obrSmer7(o), pad=sm===-1, tx7='7 dni '+o.s7+' proti '+o.p7;
+      const opis=(poti?'🚚 na poti '+poti+' kos (HS+) · ':'')+'Ø '+String(o.d7).replace('.',',')+'/dan (7 d) · '+String(o.d28).replace('.',',')+'/dan (28 d) · '+tx7+' · trend '+(tr==null?'—':(tr>0?'+':'')+tr+' %')+' · zaloga '+zal+' → '+(dos==null?'∞':dos+' dni')+(o.brez?' · '+o.brez+' dni brez prodaje':'')+(raz!=null?' · razlika '+raz.toFixed(2).replace('.',',')+' €':'');
       const predSez=(sz==='zima'&&(mes>=9&&mes<=11||(mes===12&&dan<=15)))||(sz==='poletje'&&mes>=3&&mes<=7);   // zima do 15. 12., nato razprodaja
       if(predSez) sig={k:'sez',t:sz==='zima'?'🎄 sezona':'☀️ sezona',c:'#2563eb',r:5,o:'Pred / med sezono ('+sz+') — ne spuščaj; oceni po vrhu. '+opis};
       // brez volumna (ni v oglasih / se ne prodaja): cena ne pomaga — Bato je urejen; signal začne veljati, ko dobi obrat
       else if((o.s30||0)<OBR_MIN30) sig={k:'malo',t:'💤 brez volumna',c:'#94a3b8',r:7,o:(o.s30||0)+' prodanih v 30 dneh (< '+OBR_MIN30+') — sprememba cene brez oglasa ne pomaga; signal velja, ko izdelek dobi obrat. '+opis};
       else if(dos!=null&&dos<OBR_NIZKO) sig={k:'gor',t:'🟢 dvig',c:'#15803d',r:1,o:'Zaloge za '+dos+' dni (< '+OBR_NIZKO+') — dvig zaščiti zalogo in poveča razliko. '+opis};
       else if(dos==null||dos>OBR_VISOKO){
-        if(tr!=null&&tr>=OBR_RAST) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Prodaja raste (trend +'+tr+' %), zaloge za '+(dos==null?'∞':dos)+' dni — ne spuščaj. '+opis};
+        if(sm===1) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Prodaja raste ('+tx7+'), zaloge za '+(dos==null?'∞':dos)+' dni — ne spuščaj. '+opis};
         else if(raz!=null&&raz<obrRazMin()) sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Preveč zaloge, a razlika < '+String(obrRazMin()).replace('.',',')+' € (minimum trga po return rate) — ne spuščaj; Xsell / bundle / oglas. '+opis};
         else sig={k:'dol',t:'🔴 spust',c:'#dc2626',r:2,o:'Zaloge za '+(dos==null?'∞':dos)+' dni (> '+OBR_VISOKO+')'+(pad?', prodaja pada':'')+' — kapital je zaklenjen. '+opis};
-      } else if(!pad&&tr!=null&&tr>=OBR_RAST&&dos<=OBR_RAST_DNI) sig={k:'gor',t:'🚀 raste',c:'#15803d',r:1,o:'Prodaja raste (trend +'+tr+' %), zaloge za '+dos+' dni — izkoristi povpraševanje. '+opis};
+      } else if(sm===1&&dos<=OBR_RAST_DNI) sig={k:'gor',t:'🚀 raste',c:'#15803d',r:1,o:'Prodaja raste ('+tx7+'), zaloge za '+dos+' dni — izkoristi povpraševanje. '+opis};
       else if(!pad&&raz!=null&&raz<9) sig={k:'gor',t:'🟢 test dvig',c:'#15803d',r:1,o:'Zdrava zaloga, prodaja ne pada, razlika < 9 € — poskusi en Bato korak gor. '+opis};
-      else if(pad&&raz!=null&&raz>Math.max(9,obrRazMin()+1)) sig={k:'dol',t:'🔴 test spust',c:'#dc2626',r:2,o:'Prodaja pada (trend '+tr+' %), razlika > 9 € — poskusi en korak dol (pod prag). '+opis};
+      else if(pad&&raz!=null&&raz>Math.max(9,obrRazMin()+1)) sig={k:'dol',t:'🔴 test spust',c:'#dc2626',r:2,o:'Prodaja pada ('+tx7+'), razlika > 9 € — poskusi en korak dol (pod prag). '+opis};
       else sig={k:'drzi',t:'⏸ drži',c:'#64748b',r:4,o:'Zdravo stanje — spremljaj. '+opis};
     }
     // ⏸ PRAG: dvig bi prestopil psihološki prag (19,99 → 20,99 · 4999 → 5399 · 1999 RSD → 2099 · 99 → 104 PLN …) → drži, ne dvig
