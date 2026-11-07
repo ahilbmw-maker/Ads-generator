@@ -7,6 +7,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
+from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 from pathlib import Path
 
@@ -886,9 +887,12 @@ async def _fetch_feed_lang(hc, lang: str):
         meta["last_modified"] = resp.headers.get("last-modified") or ""
         if resp.status_code != 200:
             print(f"  ✗ {lang}: HTTP {resp.status_code}")
+            meta["error"] = f"HTTP {resp.status_code}"
             return None, meta
         prods = parse_feed(resp.text)
         meta["count"] = len(prods)
+        if not prods:
+            meta["error"] = "XML je prazen ali neberljiv"
         print(f"  ✓ {lang}: {len(prods)} products")
         return (prods or None), meta
     except Exception as e:
@@ -937,7 +941,7 @@ async def fetch_one_feed(lang: str) -> dict:
     _apply_feed_lang(lang, prods, meta)
     if prods is not None:
         _rebuild_feed_indexes()
-        _save_feed_cache_to_disk()
+    _save_feed_cache_to_disk()   # tudi ob napaki: meta (napako) morajo videti vsi procesi
     return feed_meta.get(lang) or meta
 
 
@@ -1028,6 +1032,7 @@ async def feed_search_title(q: str, market: str = "all"):
 
 def _save_feed_cache_to_disk():
     """Shrani feed cache + indekse na persistent disk (/data), da preživijo deploy."""
+    global _feed_disk_mtime
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         payload = {
@@ -1038,9 +1043,10 @@ def _save_feed_cache_to_disk():
             "slug_to_id": slug_to_id,
             "sl_image_index": sl_image_index,
         }
-        tmp = FEED_CACHE_FILE.with_suffix(".tmp")
+        tmp = FEED_CACHE_FILE.with_name(f"{FEED_CACHE_FILE.name}.{os.getpid()}.tmp")   # svoj .tmp za vsak proces
         tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         tmp.replace(FEED_CACHE_FILE)
+        _feed_disk_mtime = _feed_cache_mtime()
         print(f"[feed cache] shranjen na disk ({FEED_CACHE_FILE})")
     except Exception as e:
         print(f"[feed cache] shranjevanje spodletelo: {e}")
@@ -1049,10 +1055,11 @@ def _save_feed_cache_to_disk():
 def _load_feed_cache_from_disk(allow_stale: bool = False) -> bool:
     """Naloži feed cache z diska, če obstaja, je svež (<TTL) in pravilne format verzije.
     Vrne True ob uspehu."""
-    global feed_by_lang, slug_to_id, sl_image_index, last_fetch, feed_meta
+    global feed_by_lang, slug_to_id, sl_image_index, last_fetch, feed_meta, _feed_disk_mtime
     try:
         if not FEED_CACHE_FILE.exists():
             return False
+        _feed_disk_mtime = _feed_cache_mtime()   # pred branjem: novejši zapis med branjem se ujame ob naslednji preverbi
         payload = json.loads(FEED_CACHE_FILE.read_text(encoding="utf-8"))
         # zavrzi star format (npr. pokvarjen sku_url indeks iz prejšnje verzije ekstrakcije)
         if payload.get("format_version") != CACHE_FORMAT_VERSION:
@@ -1084,6 +1091,90 @@ def _load_feed_cache_from_disk(allow_stale: bool = False) -> bool:
         return False
 
 
+# ═══ FEED MED PROCESI ═══ (2026-11-07) Strežnik teče v več procesih, vsak ima feed v svojem pomnilniku: klik na ↻ je osvežil
+# samo enega, ostali so kazali star čas »prebran« (zato 2–3 kliki), ob 6:00 pa je feed prenesel vsak proces.
+# Disk je skupen: kdor prenese, zapiše feed_cache.json, ostali ga preberejo, ko se spremeni. Prenos samo eden naenkrat.
+FEED_PRENOS_LOCK = DATA_DIR / "feed_prenos.lock"
+FEED_PRENOS_STAR_S = 90       # zaklep brez srčnega utripa = proces se je ustavil (deploy) → zaklep se prevzame
+_feed_disk_mtime = 0          # verzija feed_cache.json, ki jo ima ta proces v pomnilniku
+_feed_sync_lock: Optional["asyncio.Lock"] = None
+
+
+def _feed_cache_mtime() -> int:
+    try:
+        return FEED_CACHE_FILE.stat().st_mtime_ns
+    except OSError:
+        return 0
+
+
+async def _feed_sync_z_diska() -> bool:
+    """Če je drug proces zapisal novejši feed, ga naloži. Brez spremembe je to samo stat datoteke."""
+    global _feed_sync_lock
+    if _feed_cache_mtime() == _feed_disk_mtime:
+        return False
+    if _feed_sync_lock is None:
+        _feed_sync_lock = asyncio.Lock()
+    async with _feed_sync_lock:
+        if _feed_cache_mtime() == _feed_disk_mtime:
+            return False
+        await asyncio.to_thread(_load_feed_cache_from_disk, True)
+        return True
+
+
+async def _feed_sync_loop():
+    while True:
+        await asyncio.sleep(10)
+        try:
+            await _feed_sync_z_diska()
+        except Exception as e:
+            print(f"[feed sync] {type(e).__name__}: {e}")
+
+
+async def _feed_zakleni_med_procesi():
+    while True:
+        try:
+            os.close(os.open(FEED_PRENOS_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            return
+        except FileExistsError:
+            try:
+                if datetime.now().timestamp() - FEED_PRENOS_LOCK.stat().st_mtime > FEED_PRENOS_STAR_S:
+                    FEED_PRENOS_LOCK.unlink()
+                    continue
+            except OSError:
+                continue   # zaklep je medtem izginil → takoj znova
+            await asyncio.sleep(1)
+        except OSError as e:
+            print(f"[feed zaklep] {e} — nadaljujem brez zaklepa")
+            return
+
+
+async def _feed_srcni_utrip():
+    while True:
+        await asyncio.sleep(20)
+        try:
+            os.utime(FEED_PRENOS_LOCK)
+        except OSError:
+            pass
+
+
+@asynccontextmanager
+async def _feed_prenos():
+    """Vsak prenos feeda: en sam naenkrat v vseh procesih in vedno iz najnovejše verzije z diska
+    (sicer bi spremembe cen primerjal s starim feedom, zapis pa povozil osvežitev drugega procesa)."""
+    async with _get_feed_lock():
+        await _feed_zakleni_med_procesi()
+        utrip = asyncio.create_task(_feed_srcni_utrip())
+        try:
+            await _feed_sync_z_diska()
+            yield
+        finally:
+            utrip.cancel()
+            try:
+                FEED_PRENOS_LOCK.unlink()
+            except OSError:
+                pass
+
+
 async def ensure_cache_fresh():
     if not is_cache_stale():
         return
@@ -1091,8 +1182,7 @@ async def ensure_cache_fresh():
     if _load_feed_cache_from_disk():
         return
     # potrebujemo prenos — a samo EN naenkrat, ostale zahteve počakajo nanj
-    lock = _get_feed_lock()
-    async with lock:
+    async with _feed_prenos():
         # ponovni pregled: med čakanjem je morda nekdo drug že napolnil cache
         if not is_cache_stale():
             return
@@ -1394,6 +1484,7 @@ async def feed_meta_get(request: Request, trg: str = "sl", live: int = 1):
     trg = (trg or "sl").lower()
     if trg not in MAAARKET_FEEDS:
         return {"ok": False, "error": f"Neznan trg: {trg}"}
+    await _feed_sync_z_diska()
     m = dict(feed_meta.get(trg) or {})
     out = {"ok": True, "trg": trg, "fetched_at": m.get("fetched_at") or (last_fetch.isoformat(timespec="seconds") if last_fetch else None),
            "built_at": _iso_from_http_date(m.get("last_modified") or ""), "error": m.get("error"),
@@ -1423,8 +1514,7 @@ async def feed_refresh_one(request: Request):
     trg = str(body.get("trg") or "sl").lower()
     if trg not in MAAARKET_FEEDS:
         return {"ok": False, "error": f"Neznan trg: {trg}"}
-    lock = _get_feed_lock()
-    async with lock:
+    async with _feed_prenos():
         meta = await fetch_one_feed(trg)
     if meta.get("error") or (meta.get("status") and meta.get("status") != 200):
         return {"ok": False, "error": "Feed ni dosegljiv: " + str(meta.get("error") or ("HTTP " + str(meta.get("status")))) + " — ostaja prejšnja verzija."}
@@ -1437,7 +1527,7 @@ async def feed_refresh_vse(request: Request):
     """Ročna osvežitev feedov VSEH trgov naenkrat (gumb v Marži po trgih). Zaporedno pod _feed_lock; trg, ki ne uspe, obdrži prejšnjo verzijo."""
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
-    async with _get_feed_lock():
+    async with _feed_prenos():
         await fetch_all_feeds()
     trgi = {}
     for t in MAAARKET_FEEDS:
@@ -3949,6 +4039,7 @@ async def startup_event():
     asyncio.create_task(_ffmpeg_warmup())
 
     asyncio.create_task(periodic_refresh())
+    asyncio.create_task(_feed_sync_loop())   # feed, ki ga je prenesel drug proces
     asyncio.create_task(_daily_cashflow_sync())
     asyncio.create_task(_pricecheck_count_loop())
     asyncio.create_task(_email_polling_loop())
@@ -3991,7 +4082,7 @@ async def periodic_refresh():
         try:
             naslednji = _feed_zadnja_6() + timedelta(days=1)
             await asyncio.sleep(max(60, (naslednji - datetime.now()).total_seconds() + 30))
-            async with _get_feed_lock():
+            async with _feed_prenos():   # ostali procesi počakajo, preberejo z diska in ne prenašajo znova
                 if is_cache_stale():
                     await fetch_all_feeds()
         except asyncio.CancelledError:
@@ -8034,7 +8125,8 @@ async def cache_status():
 
 @app.post("/refresh-cache")
 async def refresh_cache():
-    await fetch_all_feeds()
+    async with _feed_prenos():
+        await fetch_all_feeds()
     return {"status": "ok", "last_fetch": last_fetch.isoformat()}
 
 
@@ -9694,7 +9786,7 @@ async def zaloga_refresh_feed():
     if lock.locked():
         return {"ok": False, "note": "osvežitev že poteka, počakaj trenutek"}
     try:
-        async with lock:
+        async with _feed_prenos():
             await fetch_all_feeds()
         idx = sl_image_index or {}
         return {
@@ -14566,6 +14658,7 @@ async def marza_trgi(request: Request, trg: str = "sl"):
     if not _auth_check_token(request.cookies.get(AUTH_COOKIE, "")):
         from fastapi.responses import JSONResponse
         return JSONResponse({"ok": False, "error": "Prijavi se."}, status_code=403)
+    await _feed_sync_z_diska()
     return await _marza_trgi_get(trg)
 
 
